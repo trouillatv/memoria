@@ -38,6 +38,9 @@ import { PvCastingBlock } from './PvCastingBlock'
 import { PvParticipantRow, AddParticipant } from './PvParticipantRow'
 import { PvResizable } from './PvResizable'
 import { PvPanel } from '../../PvPanel'
+import { getSiteIntervenantFiche } from '@/lib/knowledge/site-intervenants-view'
+import { IntervenantFicheDeepLink } from '@/app/(dashboard)/sites/[id]/views/intervenants/IntervenantFicheDeepLink'
+import { logUsageEvent } from '@/lib/db/usage-events'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,12 +53,16 @@ const SECTION_META: Record<PvSection, { label: string; icon: typeof Users }> = {
 }
 const SECTION_ORDER: PvSection[] = ['participants', 'remarques_cr', 'points_examines', 'previsions', 'photos']
 
-export default async function PvValidationPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PvValidationPage({ params, searchParams }: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ person?: string; person_source?: string }>
+}) {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
   if (user.role !== 'admin' && user.role !== 'manager') redirect('/planning')
 
   const { id } = await params
+  const { person: personId } = await searchParams
   const [report, pv, pvDoc, finalVersions] = await Promise.all([
     getSiteReport(id),
     buildPvValidation(id),
@@ -94,6 +101,18 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
     id: c.id,
     label: c.function ? `${c.fullName} — ${c.companyName} (${c.function})` : `${c.fullName} — ${c.companyName}`,
   }))
+
+  // « Fiche partout » (4/4) : un décisionnaire ouvre sa fiche transverse UNIQUEMENT
+  // s'il est déjà un intervenant du casting (mainContactId d'une ligne active). Pas
+  // de rapprochement nominal, pas d'association auto : hors casting = nom inerte.
+  const personLinkByContact: Record<string, string> = {}
+  for (const it of intervenants) if (it.mainContactId) personLinkByContact[it.mainContactId] = it.id
+  // La fiche demandée par `?person=`, chargée par-dessus la réunion (fermeture =
+  // retour exact à la réunion). `null` hors org/hors casting → jamais reconstruite.
+  const fiche = personId && report.site_id
+    ? await getSiteIntervenantFiche(report.site_id, { intervenantId: personId }).catch(() => null)
+    : null
+  if (fiche) void logUsageEvent({ event: 'intervenant_fiche_opened:decision', siteId: report.site_id })
 
   // PHOTOS (priorité #1) : vignettes signées + exclusion + ORDRE/COUVERTURE + commentaire.
   const sitePhotos = await listMeetingScopedPhotos({ id, site_id: report.site_id, created_at: report.created_at })
@@ -278,7 +297,7 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
       {/* Décisions — « on a décidé que… » : mémoire durable du site, projetée dans
           les Points administratifs du CR (spine), gérée ici (pas d'écran parallèle). */}
       <div className="border-t pt-5">
-        <PvDecisionsBlock reportId={id} decisions={decisions} contacts={contactOptions} actions={actionRows.map((a) => ({ id: a.id, label: a.title }))} existingSubjectNames={existingSubjectNames} />
+        <PvDecisionsBlock reportId={id} decisions={decisions} contacts={contactOptions} actions={actionRows.map((a) => ({ id: a.id, label: a.title }))} existingSubjectNames={existingSubjectNames} personLinkByContact={personLinkByContact} />
       </div>
 
       {/* Ajouts STRUCTURÉS en séance (anomalie / prévision) — objets typés mémorisés. */}
@@ -371,6 +390,11 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
           </>
         }
       />
+      {/* La fiche transverse, ouverte par-dessus la réunion. Fermer restitue
+          exactement la réunion en cours (le deep-link ne touche que `?person=`). */}
+      {fiche && report.site_id && (
+        <IntervenantFicheDeepLink siteId={report.site_id} person={fiche} />
+      )}
     </div>
   )
 }

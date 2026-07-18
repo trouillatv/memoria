@@ -5,7 +5,8 @@
 // → caduque/contredite) ici même ; la décision est PROJETÉE dans le CR (Points
 // administratifs) via le spine, pas dans un écran parallèle. MVP : ajout = human/sûr/actée.
 import { useMemo, useRef, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { Gavel, Pencil, Check, X, Trash2, Plus, Loader2, Link2 } from 'lucide-react'
 import { addDecisionAction, editDecisionAction, deleteDecisionAction, attachDecisionToSubjectAction, attachDecisionSubjectsAction } from '../../pv-actions'
 import { ACTION_CODES } from '@/lib/db/action-codes'
@@ -109,8 +110,10 @@ function ddmmyyyy(iso: string | null): string | null {
   return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`
 }
 
-function Row({ reportId, d, contacts, actions }: { reportId: string; d: SiteDecision; contacts: DecisionOption[]; actions: DecisionOption[] }) {
+function Row({ reportId, d, contacts, actions, personLinkByContact }: { reportId: string; d: SiteDecision; contacts: DecisionOption[]; actions: DecisionOption[]; personLinkByContact: Record<string, string> }) {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [editing, setEditing] = useState(false)
   const [titre, setTitre] = useState(d.titre)
   const [desc, setDesc] = useState(d.description ?? '')
@@ -136,7 +139,28 @@ function Row({ reportId, d, contacts, actions }: { reportId: string; d: SiteDeci
 
   // Décisionnaire : la PERSONNE réelle si liée (P2), sinon l'organisme, sinon le rôle.
   const decideur = contactLabel || d.decisionnaireOrg || d.decisionnaireRole
-  const meta = [d.sujet, decideur, d.impact ? IMPACT_LABEL[d.impact] : null, ddmmyyyy(d.echeance) ? `éch. ${ddmmyyyy(d.echeance)}` : null].filter(Boolean).join(' · ')
+  // « Fiche partout » : le décisionnaire ouvre sa fiche transverse UNIQUEMENT s'il
+  // est un intervenant du casting (résolu côté serveur). Hors casting = texte
+  // inerte : aucun rapprochement nominal, aucune fiche reconstruite.
+  const decideurLinkId = d.decisionnaireContactId ? personLinkByContact[d.decisionnaireContactId] : undefined
+  const ficheHref = (intervenantId: string): string => {
+    const p = new URLSearchParams(searchParams?.toString() ?? '')
+    p.set('person', intervenantId)
+    p.set('person_source', 'decision')
+    return `${pathname}?${p.toString()}`
+  }
+  const echLabel = ddmmyyyy(d.echeance)
+  const metaParts: React.ReactNode[] = []
+  if (d.sujet) metaParts.push(d.sujet)
+  if (decideur) {
+    metaParts.push(
+      decideurLinkId
+        ? <Link key="dec" href={ficheHref(decideurLinkId)} scroll={false} className="underline decoration-dotted underline-offset-2 hover:text-foreground">{decideur}</Link>
+        : decideur,
+    )
+  }
+  if (d.impact) metaParts.push(IMPACT_LABEL[d.impact])
+  if (echLabel) metaParts.push(`éch. ${echLabel}`)
 
   return (
     <li className="rounded-lg border bg-card px-3 py-2 text-sm">
@@ -195,7 +219,11 @@ function Row({ reportId, d, contacts, actions }: { reportId: string; d: SiteDeci
           <span className="min-w-0 flex-1">
             <span className={d.statut === 'caduque' || d.statut === 'contredite' ? 'text-muted-foreground line-through' : ''}>{d.titre}</span>
             {d.description && <span className="block text-[11px] text-muted-foreground">{d.description}</span>}
-            {meta && <span className="block text-[11px] text-muted-foreground">{meta}</span>}
+            {metaParts.length > 0 && (
+              <span className="block text-[11px] text-muted-foreground">
+                {metaParts.map((part, i) => <span key={i}>{i > 0 && ' · '}{part}</span>)}
+              </span>
+            )}
             {actionLabel && <span className="block text-[11px] text-sky-700">→ Action : {actionLabel}</span>}
           </span>
           {/* Cycle de vie piloté à la main (la mémoire vivante : appliquée / caduque…). */}
@@ -280,8 +308,11 @@ function AddDecision({ reportId, contacts }: { reportId: string; contacts: Decis
   )
 }
 
-export function PvDecisionsBlock({ reportId, decisions, contacts = [], actions = [], existingSubjectNames = [] }: {
+export function PvDecisionsBlock({ reportId, decisions, contacts = [], actions = [], existingSubjectNames = [], personLinkByContact = {} }: {
   reportId: string; decisions: SiteDecision[]; contacts?: DecisionOption[]; actions?: DecisionOption[]; existingSubjectNames?: string[]
+  /** contactId → id du lien de casting actif : le décisionnaire n'est cliquable
+   *  (ouvre sa fiche) que s'il est présent ici. Absent = nom inerte. */
+  personLinkByContact?: Record<string, string>
 }) {
   return (
     <section className="space-y-2">
@@ -290,7 +321,7 @@ export function PvDecisionsBlock({ reportId, decisions, contacts = [], actions =
       </h2>
       <SubjectProposals reportId={reportId} decisions={decisions} existingNames={existingSubjectNames} />
       {decisions.length > 0 && (
-        <ul className="space-y-1">{decisions.map((d) => <Row key={d.id} reportId={reportId} d={d} contacts={contacts} actions={actions} />)}</ul>
+        <ul className="space-y-1">{decisions.map((d) => <Row key={d.id} reportId={reportId} d={d} contacts={contacts} actions={actions} personLinkByContact={personLinkByContact} />)}</ul>
       )}
       <AddDecision reportId={reportId} contacts={contacts} />
     </section>
