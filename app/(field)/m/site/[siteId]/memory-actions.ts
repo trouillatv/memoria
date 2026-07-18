@@ -111,8 +111,12 @@ export async function promoteFromMemoryAction(
       case 'not_found':
         return { ok: false, error: 'Élément introuvable' }
     }
-  } catch {
-    return { ok: false, error: 'Confirmation impossible' }
+  } catch (e) {
+    // Ne JAMAIS avaler l'erreur en silence : « Confirmation impossible » ne dit
+    // rien, ni à l'utilisateur ni au journal. On loggue la cause réelle et on la
+    // remonte (une erreur DB nomme son problème : contrainte, FK, colonne…).
+    console.error('[promoteFromMemory] échec de la promotion', e)
+    return { ok: false, error: e instanceof Error ? e.message : 'Confirmation impossible' }
   }
 }
 
