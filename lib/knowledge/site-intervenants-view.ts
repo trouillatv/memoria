@@ -59,6 +59,10 @@ export interface IntervenantPerson {
   /** Ce que la personne doit faire sur CE chantier — actions ouvertes assignées
    *  STRUCTURELLEMENT (assigned_contact_id), jamais par texte/rôle (P2 Slice 3A). */
   assignedActions: AssignedAction[]
+  /** Décisions PORTÉES sur ce chantier (decisionnaire_contact_id, mig 138). */
+  decisionsCount: number
+  /** Obligations OUVERTES sous sa responsabilité (responsible_contact_id, mig 146). */
+  openObligationsCount: number
   /** Où on le connaît ailleurs (contact d'abord, sinon entreprise) — org-scopé. */
   elsewhere: IntervenantElsewhere[]
 }
@@ -200,6 +204,15 @@ async function buildIntervenantPeople(
   // hors casting actif n'est rattachée à personne (pas de personne orpheline).
   const activeContactIds = [...new Set(intervenants.map((i) => i.mainContactId).filter((x): x is string => !!x))]
   let actionsByContact = new Map<string, AssignedAction[]>()
+  // Décisions portées + obligations ouvertes + dernières dates structurées (mig 138/146).
+  const decisionsByContact = new Map<string, number>()
+  const openObligationsByContact = new Map<string, number>()
+  const lastStructuredByContact = new Map<string, string>()
+  const bumpLast = (c: string, dt: string | null | undefined) => {
+    if (!dt) return
+    const prev = lastStructuredByContact.get(c)
+    if (!prev || dt > prev) lastStructuredByContact.set(c, dt)
+  }
   if (activeContactIds.length > 0) {
     const { data: actionRows } = await db.from('site_actions')
       .select('id, title, assigned_contact_id, due_date, due_date_status, report_id, status, created_at')
@@ -207,6 +220,21 @@ async function buildIntervenantPeople(
       .in('assigned_contact_id', activeContactIds)
       .in('status', ['open', 'planned'])
     actionsByContact = assignedActionsByContact(siteId, (actionRows ?? []) as RawAssignedActionRow[], todayLocalIso())
+    for (const r of (actionRows ?? []) as Array<{ assigned_contact_id: string | null; created_at: string }>) {
+      if (r.assigned_contact_id) bumpLast(r.assigned_contact_id, r.created_at)
+    }
+    const { data: decRows } = await db.from('site_decisions')
+      .select('decisionnaire_contact_id, date_decision, created_at').eq('site_id', siteId).in('decisionnaire_contact_id', activeContactIds)
+    for (const d of (decRows ?? []) as Array<{ decisionnaire_contact_id: string | null; date_decision: string | null; created_at: string }>) {
+      if (!d.decisionnaire_contact_id) continue
+      decisionsByContact.set(d.decisionnaire_contact_id, (decisionsByContact.get(d.decisionnaire_contact_id) ?? 0) + 1)
+      bumpLast(d.decisionnaire_contact_id, d.date_decision ?? d.created_at)
+    }
+    const { data: oblRows } = await db.from('site_obligation')
+      .select('responsible_contact_id, satisfied_at').eq('site_id', siteId).in('responsible_contact_id', activeContactIds)
+    for (const o of (oblRows ?? []) as Array<{ responsible_contact_id: string | null; satisfied_at: string | null }>) {
+      if (o.responsible_contact_id && !o.satisfied_at) openObligationsByContact.set(o.responsible_contact_id, (openObligationsByContact.get(o.responsible_contact_id) ?? 0) + 1)
+    }
   }
 
   return intervenants.map((it) => {
@@ -218,7 +246,10 @@ async function buildIntervenantPeople(
       .map(([reportId, date]) => ({ reportId, date }))
       .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
     const mentionCount = mentions.reduce((n, m) => n + Math.max(1, (m.source_capture_ids ?? []).length), 0)
-    const dates = [it.effectiveFrom, ...citedVisits.map((v) => v.date)].filter((x): x is string => !!x)
+    // « Dernière activité » = la plus récente trace STRUCTURÉE (casting, visite citée,
+    // action, décision) — jamais une présence supposée.
+    const lastStructured = it.mainContactId ? lastStructuredByContact.get(it.mainContactId) : null
+    const dates = [it.effectiveFrom, ...citedVisits.map((v) => v.date), lastStructured].filter((x): x is string => !!x)
     const elsewhere = (it.mainContactId ? elsewhereByContact.get(it.mainContactId) : null)
       ?? elsewhereByCompany.get(it.companyId) ?? []
     return {
@@ -238,6 +269,8 @@ async function buildIntervenantPeople(
       citedVisits,
       mentionCount,
       assignedActions: it.mainContactId ? actionsByContact.get(it.mainContactId) ?? [] : [],
+      decisionsCount: it.mainContactId ? decisionsByContact.get(it.mainContactId) ?? 0 : 0,
+      openObligationsCount: it.mainContactId ? openObligationsByContact.get(it.mainContactId) ?? 0 : 0,
       // Dédoublonné par chantier — deux rôles sur le même chantier = une ligne.
       elsewhere: [...new Map(elsewhere.map((e) => [e.siteId, e])).values()],
     }
