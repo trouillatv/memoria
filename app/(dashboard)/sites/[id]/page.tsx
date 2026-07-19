@@ -60,7 +60,7 @@ import { listClients } from '@/lib/db/sites'
 import { SiteBriefButton } from './SiteBriefButton'
 import { SiteAddMenu } from './SiteAddMenu'
 import { SiteMemoryQuery } from './SiteMemoryQuery'
-import { SiteTabsNav, SITE_TAB_KEYS, type SiteTabKey } from './SiteTabsNav'
+import { SiteTabsNav, resolveSiteTab, type SiteTabKey } from './SiteTabsNav'
 import { TogglePanel } from './TogglePanel'
 import { DocumentsWorkspace, type DocumentsQrState, type SiteMediaSummary } from './views/documents/DocumentsWorkspace'
 import { MemoireConfirmer } from './views/memoire/MemoireConfirmer'
@@ -79,7 +79,6 @@ interface PageProps {
 }
 
 type ChantierViewKey = SiteTabKey
-const CHANTIER_VIEW_KEYS = SITE_TAB_KEYS
 
 // D'où la fiche a été ouverte — l'instrumentation qui tranchera « onglet vs
 // fiche partout » (arbitrage 2026-07-18). Toute NOUVELLE porte ajoute sa source.
@@ -93,9 +92,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   const { id } = await params
   const { tab: rawTab, person: personId, person_source: personSource, action: actionId, decision: decisionId, memtab: rawMemtab } = await searchParams
   const memtab: MemoireSubTab = rawMemtab === 'confirmer' ? 'confirmer' : 'pourquoi'
-  const tab: ChantierViewKey = (CHANTIER_VIEW_KEYS as ReadonlyArray<string>).includes(rawTab ?? '')
-    ? (rawTab as ChantierViewKey)
-    : 'apercu'
+  const tab: ChantierViewKey = resolveSiteTab(rawTab)
 
   // « La fiche est le produit » : un `?person=<id>` ouvre la MÊME fiche par
   // dessus n'importe quel onglet. Chargée ici pour être disponible partout.
@@ -114,65 +111,14 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   // n'importe quel onglet (patron miroir de `?action=`). Fail-closed en amont.
   const decisionFiche = decisionId ? await getSiteDecisionFiche(id, decisionId).catch(() => null) : null
 
-  // L'onglet Aperçu ne figure PAS ici : il lit son propre read model (SiteOverview).
-  // Ces chargeurs servent les autres onglets, qui recevront le leur à leur tour.
-  const [
-    identity,
-    openActions,
-    blocages,
-    currentState,
-    recentActivity,
-    lastVisit,
-    memorySignals,
-    visits,
-    missions,
-    interventionsResult,
-    cycles,
-    teams,
-    deadlines,
-  ] = await Promise.all([
-    getSiteIdentity(id),
-    listOpenSiteActions({ siteIds: [id] }).catch(() => []),
-    listBlocagesBySite(id).catch(() => []),
-    getSiteCurrentState(id).catch(() => null),
-    getSiteRecentActivity(id, 12).catch(() => []),
-    getLastEndedVisitForSite(id).catch(() => null),
-    buildSiteMemorySignals(id).catch(() => []),
-    listSiteVisitsWithCounts(id, 8).catch(() => []),
-    listMissionsBySite(id).catch(() => []),
-    listInterventionsSupervisor({ siteId: id, dateRange: 'all', limit: 80 }).catch(() => ({ items: [], total: 0 })),
-    listCyclesBySite(id).catch(() => []),
-    listTeams().catch(() => []),
-    // Les échéances confirmées : le Planning les montre datées, ou « à planifier ».
-    listSiteDeadlines(id).catch(() => []),
-  ])
-
+  // ── ÉTAPE 1 « Réactivité perçue » ──────────────────────────────────────────
+  // Il n'y a PLUS de chargement global. Auparavant, 13 requêtes partaient avant
+  // le premier octet de HTML, quel que soit l'onglet : changer d'onglet (ou
+  // ouvrir une fiche) re-jouait TOUT, d'où la sensation de rechargement.
+  // Désormais chaque onglet paie SES requêtes, et seulement les siennes.
+  // Seule l'identité reste commune : l'en-tête l'affiche et le 404 en dépend.
+  const identity = await getSiteIdentity(id)
   if (!identity) notFound()
-
-  // L'onglet Travail montre le cycle de vie d'une action (proposée → ouverte →
-  // terminée). Ces titres viennent du MÊME read model que l'Aperçu : une action
-  // proposée est la même sur les deux onglets, ou le chantier se contredit.
-  const workOverview = tab === 'travail'
-    ? await getSiteOverview(id).catch(() => emptySiteOverview(id))
-    : emptySiteOverview(id)
-
-  const openBlocages = blocages.filter((b) => b.dateEnd === null)
-  const sinceIso = lastVisit?.endedAt ?? lastVisit?.startedAt ?? null
-  const recentChanges = selectRecentChanges(toOverviewChanges(recentActivity), { sinceIso, limit: 5 })
-  const nextEvent = selectNextEvent(toOverviewEvents(currentState, id), new Date().toISOString())
-
-  // La vie datée du chantier — visites, réunions, échéances, interventions. Le
-  // Planning ne traçait que les interventions : ZÉRO ligne sur les 5
-  // organisations. Il était vide par construction, la semaine où une visite a eu
-  // lieu. On charge la semaine courante ± une, pour que la grille et les
-  // compteurs lisent la même chose.
-  const jour = new Date()
-  const lundi = new Date(jour); lundi.setDate(jour.getDate() - ((jour.getDay() === 0 ? 7 : jour.getDay()) - 1))
-  const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate() + 6)
-  const iso = (d: Date) => d.toISOString().slice(0, 10)
-  const planningTimeline: PlanningTimelineEvent[] = tab === 'planning'
-    ? await getPlanningTimeline({ from: iso(lundi), to: iso(dimanche) }, { siteIds: [id] }).catch(() => [])
-    : []
 
   return (
     <div className="mx-auto w-full max-w-[1180px] space-y-5 px-1 pb-10">
@@ -250,53 +196,17 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         {tab === 'apercu' ? (
           <SiteOverviewTab siteId={id} />
         ) : tab === 'travail' ? (
-          <WorkWorkspace
-            siteId={id}
-            actions={openActions}
-            blocages={openBlocages}
-            missions={missions}
-            interventions={interventionsResult.items}
-            proposed={workOverview.actions.proposed}
-            proposedTotal={workOverview.actions.summary.proposed}
-            deadlines={deadlines}
-            deadlinesProposed={workOverview.deadlines.summary.proposed}
-            completedRecent={workOverview.actions.completedRecent}
-            synthesisHref={workOverview.activity.lastVisit ? `/m/visite/${workOverview.activity.lastVisit.reportId}/cr` : undefined}
-          />
+          <TravailView siteId={id} />
         ) : tab === 'chronologie' ? (
-          <ChronologyWorkspace
-            siteId={id}
-            changes={recentChanges}
-            deadlines={deadlines}
-            visits={visits}
-            actions={openActions}
-            blocages={blocages}
-            interventions={interventionsResult.items}
-          />
+          <ChronologieView siteId={id} />
         ) : tab === 'planning' ? (
-          <PlanningWorkspace
-            siteId={id}
-            nextEvent={nextEvent}
-            interventions={interventionsResult.items}
-            missions={missions}
-            blocages={openBlocages}
-            cycles={cycles}
-            deadlines={deadlines}
-            teams={teams}
-            timeline={planningTimeline}
-          />
+          <PlanningView siteId={id} />
         ) : tab === 'documents-preuves' ? (
           <DocumentsPreuvesView siteId={id} canExport={user.role === 'admin' || user.role === 'manager'} />
         ) : tab === 'intervenants' ? (
           <IntervenantsView siteId={id} />
         ) : tab === 'memoire' ? (
-          <MemoireView
-            siteId={id}
-            siteName={identity.name}
-            signals={memorySignals}
-            teams={teams}
-            memtab={memtab}
-          />
+          <MemoireView siteId={id} siteName={identity.name} memtab={memtab} />
         ) : tab === 'explorer' ? (
           <ExplorerView siteId={id} />
         ) : (
@@ -319,6 +229,99 @@ function ChantierShell({
   children: ReactNode
 }) {
   return <div className="space-y-5">{children}</div>
+}
+
+// ── LES VUES AUTONOMES ───────────────────────────────────────────────────────
+// Chacune charge SES données, et rien d'autre. Un clic sur Intervenants ne paie
+// plus les requêtes du Planning. Aucun changement d'affichage : mêmes composants,
+// mêmes props — seule la provenance des données a bougé.
+
+async function TravailView({ siteId }: { siteId: string }) {
+  // Le cycle de vie d'une action (proposée → ouverte → terminée) vient du MÊME
+  // read model que l'Aperçu : une action proposée est la même sur les deux
+  // onglets, ou le chantier se contredit.
+  const [actions, blocages, missions, interventions, deadlines, overview] = await Promise.all([
+    listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
+    listBlocagesBySite(siteId).catch(() => []),
+    listMissionsBySite(siteId).catch(() => []),
+    listInterventionsSupervisor({ siteId, dateRange: 'all', limit: 80 }).catch(() => ({ items: [], total: 0 })),
+    listSiteDeadlines(siteId).catch(() => []),
+    getSiteOverview(siteId).catch(() => emptySiteOverview(siteId)),
+  ])
+  return (
+    <WorkWorkspace
+      siteId={siteId}
+      actions={actions}
+      blocages={blocages.filter((b) => b.dateEnd === null)}
+      missions={missions}
+      interventions={interventions.items}
+      proposed={overview.actions.proposed}
+      proposedTotal={overview.actions.summary.proposed}
+      deadlines={deadlines}
+      deadlinesProposed={overview.deadlines.summary.proposed}
+      completedRecent={overview.actions.completedRecent}
+      synthesisHref={overview.activity.lastVisit ? `/m/visite/${overview.activity.lastVisit.reportId}/cr` : undefined}
+    />
+  )
+}
+
+async function ChronologieView({ siteId }: { siteId: string }) {
+  const [recentActivity, lastVisit, deadlines, visits, actions, blocages, interventions] = await Promise.all([
+    getSiteRecentActivity(siteId, 12).catch(() => []),
+    getLastEndedVisitForSite(siteId).catch(() => null),
+    listSiteDeadlines(siteId).catch(() => []),
+    listSiteVisitsWithCounts(siteId, 8).catch(() => []),
+    listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
+    listBlocagesBySite(siteId).catch(() => []),
+    listInterventionsSupervisor({ siteId, dateRange: 'all', limit: 80 }).catch(() => ({ items: [], total: 0 })),
+  ])
+  const sinceIso = lastVisit?.endedAt ?? lastVisit?.startedAt ?? null
+  const changes = selectRecentChanges(toOverviewChanges(recentActivity), { sinceIso, limit: 5 })
+  return (
+    <ChronologyWorkspace
+      siteId={siteId}
+      changes={changes}
+      deadlines={deadlines}
+      visits={visits}
+      actions={actions}
+      blocages={blocages}
+      interventions={interventions.items}
+    />
+  )
+}
+
+async function PlanningView({ siteId }: { siteId: string }) {
+  // La vie datée du chantier — visites, réunions, échéances, interventions. On
+  // charge la semaine courante, pour que la grille et les compteurs lisent la
+  // même chose.
+  const jour = new Date()
+  const lundi = new Date(jour); lundi.setDate(jour.getDate() - ((jour.getDay() === 0 ? 7 : jour.getDay()) - 1))
+  const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate() + 6)
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+
+  const [currentState, interventions, missions, blocages, cycles, deadlines, teams, timeline] = await Promise.all([
+    getSiteCurrentState(siteId).catch(() => null),
+    listInterventionsSupervisor({ siteId, dateRange: 'all', limit: 80 }).catch(() => ({ items: [], total: 0 })),
+    listMissionsBySite(siteId).catch(() => []),
+    listBlocagesBySite(siteId).catch(() => []),
+    listCyclesBySite(siteId).catch(() => []),
+    listSiteDeadlines(siteId).catch(() => []),
+    listTeams().catch(() => []),
+    getPlanningTimeline({ from: iso(lundi), to: iso(dimanche) }, { siteIds: [siteId] }).catch((): PlanningTimelineEvent[] => []),
+  ])
+  return (
+    <PlanningWorkspace
+      siteId={siteId}
+      nextEvent={selectNextEvent(toOverviewEvents(currentState, siteId), new Date().toISOString())}
+      interventions={interventions.items}
+      missions={missions}
+      blocages={blocages.filter((b) => b.dateEnd === null)}
+      cycles={cycles}
+      deadlines={deadlines}
+      teams={teams}
+      timeline={timeline}
+    />
+  )
 }
 
 async function DocumentsPreuvesView({ siteId, canExport }: { siteId: string; canExport: boolean }) {
@@ -429,14 +432,10 @@ async function ExplorerView({ siteId }: { siteId: string }) {
 async function MemoireView({
   siteId,
   siteName,
-  signals,
-  teams,
   memtab,
 }: {
   siteId: string
   siteName: string
-  signals: MemorySignal[]
-  teams: DbTeam[]
   memtab: MemoireSubTab
 }) {
   // « Mémoire du chantier » = l'endroit où l'on COMPREND et où l'on VALIDE — pas
@@ -457,7 +456,12 @@ async function MemoireView({
 
   let content: ReactNode
   if (memtab === 'confirmer') {
-    const subjects = await listSubjectsBySite(siteId).catch(() => [])
+    // Signaux et équipes ne servent QU'ICI : « Pourquoi ? » ne les paie plus.
+    const [subjects, signals, teams] = await Promise.all([
+      listSubjectsBySite(siteId).catch(() => []),
+      buildSiteMemorySignals(siteId).catch((): MemorySignal[] => []),
+      listTeams().catch((): DbTeam[] => []),
+    ])
     content = (
       <MemoireConfirmer
         siteId={siteId}

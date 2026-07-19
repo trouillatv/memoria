@@ -22,6 +22,15 @@ export type SiteTabKey = typeof SITE_TABS[number]['key']
 
 export const SITE_TAB_KEYS = SITE_TABS.map((t) => t.key) as ReadonlyArray<SiteTabKey>
 
+/** L'onglet actif, tolérant : une valeur absente ou inconnue retombe sur l'Aperçu.
+ *  Pur et exporté pour être testable — c'est lui qui décide quel onglet charge ses
+ *  données (étape 1 « Réactivité perçue »). */
+export function resolveSiteTab(raw: string | null | undefined): SiteTabKey {
+  return (SITE_TAB_KEYS as ReadonlyArray<string>).includes(raw ?? '')
+    ? (raw as SiteTabKey)
+    : 'apercu'
+}
+
 export function SiteTabsNav({ active, siteId }: { active: SiteTabKey; siteId: string }) {
   return (
     <nav
