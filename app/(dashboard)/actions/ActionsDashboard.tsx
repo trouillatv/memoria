@@ -10,7 +10,7 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import {
-  ACTION_STATUS_LABEL, inTab, applyActionFilters, isOverdue,
+  ACTION_STATUS_LABEL, inTab, applyActionFilters, isOverdue, daysUntil,
   type ActionDashboardItem, type ActionOrigin, type ActionListStatus, type ActionTab,
 } from '@/lib/knowledge/actions-dashboard-model'
 import type { ActionsDashboard as Data } from '@/lib/knowledge/actions-dashboard'
@@ -136,40 +136,42 @@ export function ActionsDashboard({ data, today }: { data: Data; today: string })
         <ul className="divide-y divide-border/60">
           {rows.map((a: ActionDashboardItem) => {
             const overdue = isOverdue(a, today)
+            const late = overdue && a.dueDate ? Math.abs(daysUntil(today, a.dueDate)) : 0
             return (
-              <li key={a.id} className={cn('relative hover:bg-muted/40', overdue && 'bg-rose-50/40 dark:bg-rose-950/10')}>
+              <li key={a.id} className={cn('relative px-4 py-3 hover:bg-muted/40', overdue && 'bg-rose-50/40 dark:bg-rose-950/10')}>
                 {overdue && <span className="absolute inset-y-0 left-0 w-[3px] bg-rose-500/70" />}
-                <div className="flex items-start gap-3 px-4 py-3">
-                  <div className="min-w-0 flex-1">
-                    {/* Le FAIT d'abord (coloré, cliquable → revenir à la visite/réunion/réserve) */}
-                    {a.origin && (
-                      <Link href={a.origin.href ?? '#'} className="inline-flex items-center gap-1.5 text-[12px] font-medium hover:underline" style={{ color: ORIGIN_DOT[a.origin.type] }}>
-                        <span className="h-2 w-2 shrink-0 rounded-full bg-current" />
-                        {a.origin.label}
-                      </Link>
-                    )}
-                    {/* L'ENGAGEMENT — le titre domine (→ ouvre la fiche) */}
-                    <Link href={a.href} scroll={false} className="group block">
-                      <p className="mt-0.5 text-[15px] font-semibold leading-snug text-foreground group-hover:text-primary">{a.title}</p>
-                    </Link>
-                    {/* Ce qui a été observé sur le terrain */}
-                    {a.observed && <p className="mt-1 line-clamp-1 text-[12.5px] italic text-muted-foreground">« {a.observed} »</p>}
-                    {/* Le contexte : où · pour quand · qui */}
-                    <p className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12px] text-muted-foreground">
-                      <span>📍 {a.siteName}</span>
-                      {a.dueDate && (
-                        <span className={overdue ? 'font-medium text-rose-600 dark:text-rose-400' : undefined}>
-                          Échéance&nbsp;: {frDue(a.dueDate)}{a.lateness.text && a.status !== 'done' && ` (${a.lateness.text})`}
-                        </span>
-                      )}
-                      <span>{a.responsibleName ? `👤 ${a.responsibleName}` : '👤 À affecter'}</span>
-                    </p>
-                  </div>
-                  {/* L'état, discret, à droite */}
-                  <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUS_CLS[a.status])}>
-                    {overdue && <span aria-hidden>⚠</span>}{a.statusLabel}
-                  </span>
+                {/* Le STATUT près du titre — il fait partie de l'identité de l'action.
+                    L'urgence (retard) ressort ici, à côté. */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUS_CLS[a.status])}>{a.statusLabel}</span>
+                  {overdue && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:ring-rose-900">
+                      ⚠ En retard de {late}&nbsp;jour{late > 1 ? 's' : ''}
+                    </span>
+                  )}
                 </div>
+                {/* L'ENGAGEMENT — le titre est le héros (→ ouvre la fiche) */}
+                <Link href={a.href} scroll={false} className="group mt-1 block">
+                  <p className="text-[15px] font-semibold leading-snug text-foreground group-hover:text-primary">{a.title}</p>
+                </Link>
+                {/* Le FAIT — visible mais SECONDAIRE, coloré, cliquable (→ visite/réunion/réserve) */}
+                {a.origin && (
+                  <Link href={a.origin.href ?? '#'} className="mt-0.5 inline-flex items-center gap-1.5 text-[11.5px] hover:underline" style={{ color: ORIGIN_DOT[a.origin.type] }}>
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+                    {a.origin.label}
+                  </Link>
+                )}
+                {a.observed && <p className="mt-0.5 line-clamp-1 text-[11.5px] italic text-muted-foreground/80">« {a.observed} »</p>}
+                {/* Le contexte, discret : où · qui · (échéance si pas déjà en retard) */}
+                <p className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12px] text-muted-foreground">
+                  <Link href={`/sites/${a.siteId}`} className="hover:text-foreground hover:underline">📍 {a.siteName}</Link>
+                  <span>👤 {a.responsibleName ?? 'À affecter'}</span>
+                  {!overdue && a.dueDate && (
+                    <span className={a.lateness.tone === 'neg' && a.status !== 'done' ? 'font-medium text-rose-600 dark:text-rose-400' : undefined}>
+                      📅 {frDue(a.dueDate)}{a.lateness.text && a.status !== 'done' && ` (${a.lateness.text})`}
+                    </span>
+                  )}
+                </p>
               </li>
             )
           })}
