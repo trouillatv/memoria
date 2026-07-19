@@ -15,7 +15,7 @@ import type { DbSiteAction } from '@/types/db'
 import { primaryProvenanceKind } from '@/lib/knowledge/action-provenance'
 import { normalizeActionHistory, type RawActionEvent } from '@/lib/knowledge/action-history'
 import {
-  ACTION_STATUS_LABEL, latenessLabel, summarizeActions, actionFicheHref,
+  ACTION_STATUS_LABEL, describeDue, summarizeActions, actionFicheHref,
   type ActionDashboardItem, type ActionOrigin, type ActionsDashboardSummary, type ActionListStatus,
 } from '@/lib/knowledge/actions-dashboard-model'
 
@@ -174,7 +174,7 @@ export async function getActionsDashboard(opts?: { siteId?: string }): Promise<A
       status: a.status, statusLabel: ACTION_STATUS_LABEL[a.status] ?? a.status,
       responsibleName, responsibleSub,
       dueDate: due, dueDateStatus: a.due_date_status,
-      lateness: latenessLabel({ status: a.status, dueDate: due }, today),
+      dueLabel: describeDue({ status: a.status, dueDate: due }, today),
       origin: originOf(a),
       // Le fait observé (capture déclencheuse), tronqué pour la ligne.
       observed: a.source_capture_id ? (captureBody.get(a.source_capture_id)?.slice(0, 140) ?? null) : null,

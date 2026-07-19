@@ -21,7 +21,9 @@ export interface ActionOrigin {
   href: string | null
 }
 
-export interface LatenessLabel {
+// Libellé de l'ÉCHÉANCE d'une action (retard/à-venir/clôturée) — jamais la
+// ponctualité d'une personne. Nommé « due » pour rester hors du champ RH (V3).
+export interface DueLabel {
   text: string | null
   tone: 'neg' | 'ok' | 'done' | null
 }
@@ -39,7 +41,7 @@ export interface ActionDashboardItem {
   responsibleSub: string | null
   dueDate: string | null
   dueDateStatus: 'explicit' | 'estimated' | null
-  lateness: LatenessLabel
+  dueLabel: DueLabel
   origin: ActionOrigin | null
   /** Le fait observé qui a déclenché l'action (capture.body tronqué), ou null.
    *  Donne le récit « fait observé → engagement » directement dans la ligne. */
@@ -88,9 +90,9 @@ export function daysUntil(today: string, due: string): number {
 
 /** Libellé d'échéance : « J-3 » à venir, « +12 jours » en retard, « clôturée » si
  *  terminée. Ne dépend jamais de l'état courant reconstruit. */
-export function latenessLabel(
+export function describeDue(
   a: Pick<ActionDashboardItem, 'status' | 'dueDate'>, today: string,
-): LatenessLabel {
+): DueLabel {
   if (a.status === 'done') return { text: 'clôturée', tone: 'done' }
   if (a.status === 'cancelled' || !a.dueDate) return { text: null, tone: null }
   const d = daysUntil(today, a.dueDate)

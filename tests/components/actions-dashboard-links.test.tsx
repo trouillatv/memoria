@@ -15,7 +15,7 @@ const item: ActionDashboardItem = {
   status: 'open', statusLabel: 'Ouverte',
   responsibleName: 'M. Roué', responsibleSub: null,
   dueDate: null, dueDateStatus: null,
-  lateness: { text: null, tone: null },
+  dueLabel: { text: null, tone: null },
   origin: null, observed: null, lastActivity: null,
   hasClosureTrace: false,
   href: actionFicheHref('a1', 's9'),

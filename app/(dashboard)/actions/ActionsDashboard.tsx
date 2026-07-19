@@ -241,8 +241,8 @@ function ActionRow({ a, today, hideSite = false }: { a: ActionDashboardItem; tod
         {!hideSite && <Link href={`/sites/${a.siteId}`} className="hover:text-foreground hover:underline">📍 {a.siteName}</Link>}
         <span>👤 {a.responsibleName ?? 'À affecter'}</span>
         {!overdue && a.dueDate && (
-          <span className={a.lateness.tone === 'neg' && a.status !== 'done' ? 'font-medium text-rose-600 dark:text-rose-400' : undefined}>
-            📅 {frDue(a.dueDate)}{a.lateness.text && a.status !== 'done' && ` (${a.lateness.text})`}
+          <span className={a.dueLabel.tone === 'neg' && a.status !== 'done' ? 'font-medium text-rose-600 dark:text-rose-400' : undefined}>
+            📅 {frDue(a.dueDate)}{a.dueLabel.text && a.status !== 'done' && ` (${a.dueLabel.text})`}
           </span>
         )}
       </p>

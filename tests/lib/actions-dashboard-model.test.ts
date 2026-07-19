@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ACTION_STATUS_LABEL, isOverdue, isDoneWithoutProof, latenessLabel, daysUntil,
+  ACTION_STATUS_LABEL, isOverdue, isDoneWithoutProof, describeDue, daysUntil,
   inTab, applyActionFilters, summarizeActions,
   type ActionDashboardItem,
 } from '@/lib/knowledge/actions-dashboard-model'
@@ -9,7 +9,7 @@ const TODAY = '2026-07-19'
 const item = (o: Partial<ActionDashboardItem>): ActionDashboardItem => ({
   id: 'x', siteId: 's', siteName: 'S', title: 'T', description: null, status: 'open', statusLabel: 'Ouverte',
   responsibleName: null, responsibleSub: null, dueDate: null, dueDateStatus: null,
-  lateness: { text: null, tone: null }, origin: null, observed: null, lastActivity: null, hasClosureTrace: false, href: '/', ...o,
+  dueLabel: { text: null, tone: null }, origin: null, observed: null, lastActivity: null, hasClosureTrace: false, href: '/', ...o,
 })
 
 describe('statuts — fidèles au modèle réel, jamais « En cours »', () => {
@@ -45,15 +45,15 @@ describe('Terminées sans preuve — clôturée SANS trace de clôture', () => {
 
 describe('libellé d’échéance', () => {
   it('à venir → J-n ; proche → tonalité d’alerte', () => {
-    expect(latenessLabel({ status: 'open', dueDate: '2026-07-22' }, TODAY)).toEqual({ text: 'J-3', tone: 'neg' })
-    expect(latenessLabel({ status: 'open', dueDate: '2026-07-25' }, TODAY)).toEqual({ text: 'J-6', tone: 'ok' })
+    expect(describeDue({ status: 'open', dueDate: '2026-07-22' }, TODAY)).toEqual({ text: 'J-3', tone: 'neg' })
+    expect(describeDue({ status: 'open', dueDate: '2026-07-25' }, TODAY)).toEqual({ text: 'J-6', tone: 'ok' })
   })
   it('dépassée → +n jours', () => {
-    expect(latenessLabel({ status: 'open', dueDate: '2026-07-07' }, TODAY)).toEqual({ text: '+12 jours', tone: 'neg' })
+    expect(describeDue({ status: 'open', dueDate: '2026-07-07' }, TODAY)).toEqual({ text: '+12 jours', tone: 'neg' })
   })
   it('terminée → « clôturée » ; sans échéance → rien', () => {
-    expect(latenessLabel({ status: 'done', dueDate: '2026-07-07' }, TODAY)).toEqual({ text: 'clôturée', tone: 'done' })
-    expect(latenessLabel({ status: 'open', dueDate: null }, TODAY)).toEqual({ text: null, tone: null })
+    expect(describeDue({ status: 'done', dueDate: '2026-07-07' }, TODAY)).toEqual({ text: 'clôturée', tone: 'done' })
+    expect(describeDue({ status: 'open', dueDate: null }, TODAY)).toEqual({ text: null, tone: null })
   })
   it('daysUntil compte en jours civils', () => {
     expect(daysUntil(TODAY, '2026-07-22')).toBe(3)
