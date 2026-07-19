@@ -20,6 +20,7 @@
 import { Fragment } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { useFicheHref } from '@/components/knowledge/use-fiche-href'
 
 /** Un maillon du fil : un TYPE court (« Réunion », « Décision », « Action »), pas
  *  le titre de l'objet — le titre reste la vedette, en dessous, dans la fiche. */
@@ -36,6 +37,8 @@ export interface TrailBack {
 }
 
 export function FicheTrail({ nodes, back }: { nodes: TrailNode[]; back?: TrailBack | null }) {
+  // Remonter le fil ne doit pas changer l'onglet derrière le panneau.
+  const ficheHref = useFicheHref()
   const showFil = nodes.length >= 2
   if (!showFil && !back) return null
 
@@ -43,7 +46,7 @@ export function FicheTrail({ nodes, back }: { nodes: TrailNode[]; back?: TrailBa
     <div className="mb-1.5 space-y-1">
       {back && (
         <Link
-          href={back.href}
+          href={ficheHref(back.href) ?? back.href}
           scroll={false}
           className="inline-flex items-center gap-1 text-[12.5px] font-medium text-muted-foreground hover:text-foreground"
         >
@@ -60,7 +63,7 @@ export function FicheTrail({ nodes, back }: { nodes: TrailNode[]; back?: TrailBa
               {i > 0 && <span aria-hidden className="text-[12px] leading-5 text-muted-foreground/40">›</span>}
               <span className="flex flex-col items-center">
                 {n.href && !n.current ? (
-                  <Link href={n.href} scroll={false} className="text-[12px] leading-5 text-muted-foreground hover:text-foreground">
+                  <Link href={ficheHref(n.href) ?? n.href} scroll={false} className="text-[12px] leading-5 text-muted-foreground hover:text-foreground">
                     {n.typeLabel}
                   </Link>
                 ) : (

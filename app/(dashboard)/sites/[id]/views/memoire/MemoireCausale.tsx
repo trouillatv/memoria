@@ -7,6 +7,7 @@
 
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { useFicheHref } from '@/components/knowledge/use-fiche-href'
 import type { CausalThread, CausalRelation, CausalNodeKind } from '@/lib/knowledge/causal-threads-model'
 
 const NODE_ICON: Record<CausalNodeKind, string> = {
@@ -34,7 +35,7 @@ const REL: Record<CausalRelation, { glyph: string; cls: string; title: string }>
   rupture: { glyph: '⇢', cls: 'text-amber-600 dark:text-amber-400', title: 'lien non établi' },
 }
 
-function Node({ node }: { node: CausalThread['steps'][number]['node'] }) {
+function Node({ node, href }: { node: CausalThread['steps'][number]['node']; href: string | null }) {
   const inner = (
     <span className={cn('flex min-w-[150px] flex-col gap-0.5 rounded-[10px] border px-3 py-2', NODE_CLS[node.kind])}>
       <span className={cn('flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide', NODE_TXT[node.kind])}>{NODE_ICON[node.kind]} {node.kind === 'cloture' ? 'Preuve' : node.kind}</span>
@@ -42,10 +43,12 @@ function Node({ node }: { node: CausalThread['steps'][number]['node'] }) {
       {node.detail && <span className="text-[10.5px] text-muted-foreground">{node.detail}</span>}
     </span>
   )
-  return node.href ? <Link href={node.href} scroll={false} className="hover:opacity-80">{inner}</Link> : inner
+  return href ? <Link href={href} scroll={false} className="hover:opacity-80">{inner}</Link> : inner
 }
 
 export function MemoireCausale({ threads, siteId }: { threads: CausalThread[]; siteId: string }) {
+  // Ouvrir un nœud garde l'onglet Mémoire (et son sous-onglet) derrière le panneau.
+  const ficheHref = useFicheHref()
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-2">
@@ -84,7 +87,7 @@ export function MemoireCausale({ threads, siteId }: { threads: CausalThread[]; s
                         {REL[step.relationFromPrev].glyph}
                       </span>
                     )}
-                    <Node node={step.node} />
+                    <Node node={step.node} href={ficheHref(step.node.href)} />
                   </div>
                 ))}
               </div>

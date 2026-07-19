@@ -14,6 +14,7 @@
 
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { useFicheHref } from '@/components/knowledge/use-fiche-href'
 
 export interface Chapo {
   /** Le verbe de relation, propre au type de fiche : « Découle de », « Produit »… ;
@@ -26,7 +27,10 @@ export interface Chapo {
 }
 
 export function FicheChapo({ chapo, className }: { chapo: Chapo | null; className?: string }) {
+  // Ouvrir l'objet lié ne doit pas changer l'onglet derrière le panneau.
+  const ficheHref = useFicheHref()
   if (!chapo) return null
+  const href = ficheHref(chapo.href)
   // Énoncé sans objet nommé : le libellé EST la phrase (pas de verbe gris + cible).
   if (chapo.title === null) {
     return <p className={cn('mt-1 text-[13.5px] font-medium text-foreground', className)}>{chapo.label}</p>
@@ -34,8 +38,8 @@ export function FicheChapo({ chapo, className }: { chapo: Chapo | null; classNam
   return (
     <div className={cn('mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[13.5px]', className)}>
       <span className="text-[12.5px] text-muted-foreground">{chapo.label}</span>
-      {chapo.href ? (
-        <Link href={chapo.href} scroll={false} className="font-medium text-primary hover:underline">
+      {href ? (
+        <Link href={href} scroll={false} className="font-medium text-primary hover:underline">
           {chapo.title}
         </Link>
       ) : (

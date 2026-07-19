@@ -8,6 +8,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useFicheHref } from '@/components/knowledge/use-fiche-href'
 import { Users, Clock, PauseCircle, Building2, UserPlus, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { IntervenantsDashboard, IntervenantRow } from '@/lib/knowledge/intervenants-dashboard-model'
@@ -66,6 +67,8 @@ const CHIPS: Array<{ key: QuickFilter; label: string }> = [
 
 export function IntervenantsLeaderboard({ dashboard, toIdentify }: { dashboard: IntervenantsDashboard; toIdentify: ToIdentifyItem[] }) {
   const { rows, kpis } = dashboard
+  // Ouvrir une fiche personne garde l'onglet Intervenants derrière le panneau.
+  const ficheHref = useFicheHref()
   const [search, setSearch] = useState('')
   const [company, setCompany] = useState<string | null>(null)
   const [chip, setChip] = useState<QuickFilter>('all')
@@ -191,7 +194,7 @@ export function IntervenantsLeaderboard({ dashboard, toIdentify }: { dashboard: 
             {visible.map((r: IntervenantRow) => (
               <tr key={r.intervenantId} className="group border-b border-border/50 last:border-0 hover:bg-muted/40">
                 <td className="px-4 py-3">
-                  <Link href={r.href} scroll={false} className="flex items-center gap-3">
+                  <Link href={ficheHref(r.href) ?? r.href} scroll={false} className="flex items-center gap-3">
                     <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">{initials(r.name)}</span>
                     <span className="min-w-0"><b className="text-[13.5px] font-semibold">{r.name}</b><span className="block text-[11px] text-muted-foreground">{r.role} · {r.companyName}</span></span>
                   </Link>
