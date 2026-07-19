@@ -51,6 +51,15 @@ export interface ActionDashboardItem {
   href: string
 }
 
+/** L'URL qui ouvre la fiche Action EN SURIMPRESSION sur la liste Actions
+ *  (coquille persistante montée sur /actions), sans changer de page vers le
+ *  chantier. `action_site` accompagne l'id pour charger la fiche (fail-closed) ;
+ *  `action_source=actions` garde le × « Fermer » (on n'arrive d'aucun autre objet).
+ *  Le chantier ne devient le fond que sur un clic EXPLICITE (📍 / « Voir le chantier »). */
+export function actionFicheHref(actionId: string, siteId: string): string {
+  return `/actions?action=${actionId}&action_site=${siteId}&action_source=actions`
+}
+
 // ── Appartenance aux KPIs (actions seulement ; « à confirmer » = propositions) ──
 export const isActive = (s: ActionListStatus): boolean => s === 'open' || s === 'planned'
 export const isDone = (s: ActionListStatus): boolean => s === 'done'

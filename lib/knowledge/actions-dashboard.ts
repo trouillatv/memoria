@@ -15,7 +15,7 @@ import type { DbSiteAction } from '@/types/db'
 import { primaryProvenanceKind } from '@/lib/knowledge/action-provenance'
 import { normalizeActionHistory, type RawActionEvent } from '@/lib/knowledge/action-history'
 import {
-  ACTION_STATUS_LABEL, latenessLabel, summarizeActions,
+  ACTION_STATUS_LABEL, latenessLabel, summarizeActions, actionFicheHref,
   type ActionDashboardItem, type ActionOrigin, type ActionsDashboardSummary, type ActionListStatus,
 } from '@/lib/knowledge/actions-dashboard-model'
 
@@ -178,7 +178,8 @@ export async function getActionsDashboard(opts?: { siteId?: string }): Promise<A
       observed: a.source_capture_id ? (captureBody.get(a.source_capture_id)?.slice(0, 140) ?? null) : null,
       lastActivity,
       hasClosureTrace: !!(a.completed_photo_path || a.completed_comment?.trim()),
-      href: `/sites/${a.site_id}?action=${a.id}&action_source=actions`,
+      // Surimpression sur la liste Actions, jamais une navigation vers le chantier.
+      href: actionFicheHref(a.id, a.site_id),
     }
   })
 

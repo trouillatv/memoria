@@ -43,7 +43,7 @@ export function PersistentFicheSheet({ siteId, person, action, decision }: {
   // Identique aux ex-deep-links (mêmes clés supprimées).
   function close() {
     const next = new URLSearchParams(params.toString())
-    if (active === 'action') { next.delete('action'); next.delete('action_source') }
+    if (active === 'action') { next.delete('action'); next.delete('action_source'); next.delete('action_site') }
     else if (active === 'decision') { next.delete('decision'); next.delete('decision_source') }
     else if (active === 'person') { next.delete('person'); next.delete('person_source') }
     const qs = next.toString()
