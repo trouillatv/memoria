@@ -7,6 +7,7 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { DecisionFicheSheet } from './DecisionFiche'
+import type { TrailBack } from '@/components/knowledge/FicheTrail'
 import type { DecisionFicheData } from '@/lib/knowledge/decision-fiche'
 
 export function DecisionFicheDeepLink({ decision }: { decision: DecisionFicheData }) {
@@ -22,5 +23,13 @@ export function DecisionFicheDeepLink({ decision }: { decision: DecisionFicheDat
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }
 
-  return <DecisionFicheSheet decision={decision} onClose={close} />
+  // « Remonter l'histoire » : quand on est arrivé depuis l'action liée
+  // (`decision_source=action`), le retour ramène à CETTE action — le maillon aval
+  // du fil. Toute autre porte (intervenant, aperçu, recherche…) reste « Fermer ».
+  const back: TrailBack | null =
+    params.get('decision_source') === 'action' && decision.action
+      ? { typeLabel: 'Action', href: decision.action.href, fromTitle: decision.action.title }
+      : null
+
+  return <DecisionFicheSheet decision={decision} onClose={close} back={back} />
 }

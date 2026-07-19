@@ -46,8 +46,8 @@ export interface DecisionFicheData {
   echeance: string | null
   /** Qui PORTE la décision (≠ responsable d'action). Cliquable seulement si au casting. */
   decideur: { name: string; detail: string | null; href: string | null } | null
-  /** La réunion/visite SOURCE (provenance). */
-  meeting: { label: string; href: string } | null
+  /** La réunion/visite SOURCE (provenance). `kind` distingue les deux pour le fil. */
+  meeting: { label: string; href: string; kind: 'reunion' | 'visite' } | null
   /** La conséquence : l'action qui en découle (1:1). */
   action: { title: string; statusLabel: string; href: string } | null
 }
@@ -88,7 +88,7 @@ export async function getSiteDecisionFiche(siteId: string, decisionId: string): 
       const rr = r as { origin: string | null; title: string | null; started_at: string | null; created_at: string }
       const type = rr.origin ? 'Visite' : 'Réunion'
       const date = frDate(rr.started_at ?? rr.created_at)
-      meeting = { label: `${rr.title?.trim() || type}${date ? ` du ${date}` : ''}`, href: `/meetings/${d.reportId}` }
+      meeting = { label: `${rr.title?.trim() || type}${date ? ` du ${date}` : ''}`, href: `/meetings/${d.reportId}`, kind: rr.origin ? 'visite' : 'reunion' }
     }
   }
 

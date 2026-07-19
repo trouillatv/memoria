@@ -9,6 +9,7 @@
 import Link from 'next/link'
 import { ChevronRight, UserCheck, CheckCircle2, Circle } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { FicheTrail, type TrailNode, type TrailBack } from '@/components/knowledge/FicheTrail'
 import { cn } from '@/lib/utils'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { describeAssignedActionDate } from '@/lib/knowledge/assigned-actions'
@@ -27,7 +28,7 @@ const STATUS_CLS: Record<SiteActionStatus, string> = {
   cancelled: 'bg-muted text-muted-foreground ring-border',
 }
 
-export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData | null; onClose: () => void }) {
+export function ActionFicheSheet({ action, onClose, back }: { action: ActionFicheData | null; onClose: () => void; back?: TrailBack | null }) {
   if (!action) return null
   const a = action
   const date = describeAssignedActionDate(
@@ -35,10 +36,28 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
     todayLocalIso(),
   )
 
+  // Le fil : [Réunion/Visite] › [Décision] › Action, le point sous l'Action.
+  // Le maillon amont préfère la réunion/visite (chaîne causale) ; à défaut, le
+  // contexte, puis la réserve/le sujet d'origine. Depuis des champs déjà chargés.
+  let amont: TrailNode | null = null
+  if (a.source?.available && (a.source.type === 'reunion' || a.source.type === 'visite')) {
+    amont = { typeLabel: a.source.type === 'visite' ? 'Visite' : 'Réunion', href: a.source.href, current: false }
+  } else if (a.context) {
+    amont = { typeLabel: 'Réunion', href: a.context.href, current: false }
+  } else if (a.source?.available) {
+    amont = { typeLabel: a.source.type === 'reserve' ? 'Réserve' : 'Sujet', href: a.source.href, current: false }
+  }
+  const trail: TrailNode[] = [
+    ...(amont ? [amont] : []),
+    ...(a.fromDecision ? [{ typeLabel: 'Décision', href: a.fromDecision.href, current: false }] : []),
+    { typeLabel: 'Action', href: null, current: true },
+  ]
+
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+      <SheetContent side="right" showCloseButton={!back} className="w-full overflow-y-auto sm:max-w-md">
         <SheetHeader className="pb-0">
+          <FicheTrail nodes={trail} back={back} />
           <span className={cn('w-fit rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUS_CLS[a.status])}>
             {a.statusLabel}
           </span>

@@ -8,6 +8,7 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { ActionFicheSheet } from './ActionFiche'
+import type { TrailBack } from '@/components/knowledge/FicheTrail'
 import type { ActionFicheData } from '@/lib/knowledge/action-fiche'
 
 export function ActionFicheDeepLink({ action }: { action: ActionFicheData }) {
@@ -23,5 +24,13 @@ export function ActionFicheDeepLink({ action }: { action: ActionFicheData }) {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }
 
-  return <ActionFicheSheet action={action} onClose={close} />
+  // « Remonter l'histoire » : arrivé depuis la décision d'origine
+  // (`action_source=decision`), le retour ramène à CETTE décision — le maillon
+  // amont du fil. Toute autre porte (personne, recherche, Aujourd'hui…) = « Fermer ».
+  const back: TrailBack | null =
+    params.get('action_source') === 'decision' && action.fromDecision
+      ? { typeLabel: 'Décision', href: action.fromDecision.href, fromTitle: action.fromDecision.title }
+      : null
+
+  return <ActionFicheSheet action={action} onClose={close} back={back} />
 }

@@ -6,8 +6,9 @@
 // → historique. On ne recrée jamais la réunion (source ≠ objet). Aucune écriture.
 
 import Link from 'next/link'
-import { ChevronRight, UserCheck, ChevronDown } from 'lucide-react'
+import { ChevronRight, UserCheck } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { FicheTrail, type TrailNode, type TrailBack } from '@/components/knowledge/FicheTrail'
 import { cn } from '@/lib/utils'
 import type { DecisionFicheData } from '@/lib/knowledge/decision-fiche'
 import type { DecisionStatut } from '@/lib/db/decision-constants'
@@ -23,15 +24,24 @@ const STATUT_CLS: Record<DecisionStatut, string> = {
   contredite: 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900',
 }
 
-export function DecisionFicheSheet({ decision, onClose }: { decision: DecisionFicheData | null; onClose: () => void }) {
+export function DecisionFicheSheet({ decision, onClose, back }: { decision: DecisionFicheData | null; onClose: () => void; back?: TrailBack | null }) {
   if (!decision) return null
   const d = decision
 
+  // Le fil : Réunion › Décision › Action, le point sous la Décision (courant).
+  const trail: TrailNode[] = [
+    ...(d.meeting ? [{ typeLabel: d.meeting.kind === 'visite' ? 'Visite' : 'Réunion', href: d.meeting.href, current: false }] : []),
+    { typeLabel: 'Décision', href: null, current: true },
+    ...(d.action ? [{ typeLabel: 'Action', href: d.action.href, current: false }] : []),
+  ]
+
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+      {/* Le « ← » remplace le « × » quand on remonte l'histoire depuis une fiche. */}
+      <SheetContent side="right" showCloseButton={!back} className="w-full overflow-y-auto sm:max-w-md">
         {/* 1. LE FAIT */}
         <SheetHeader className="pb-0">
+          <FicheTrail nodes={trail} back={back} />
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">⚑ Décision</span>
             <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUT_CLS[d.statut])}>{d.statutLabel}</span>
@@ -108,19 +118,6 @@ export function DecisionFicheSheet({ decision, onClose }: { decision: DecisionFi
               <div className="grid grid-cols-[110px_1fr] items-baseline gap-3"><span className="text-[12.5px] text-muted-foreground">Statut</span><span className={cn('w-fit rounded-md px-2 py-0.5 text-[11.5px] ring-1', STATUT_CLS[d.statut])}>{d.statutLabel}</span></div>
             </div>
           </section>
-
-          {/* La chaîne de causalité — petite frise */}
-          <div className="flex flex-col items-center gap-0 pt-1 text-[12.5px]">
-            {d.meeting
-              ? <Link href={d.meeting.href} className="rounded-lg border bg-card px-3 py-1.5 font-medium hover:bg-muted">☷ Réunion</Link>
-              : <span className="rounded-lg border bg-card px-3 py-1.5 font-medium text-muted-foreground">☷ Réunion</span>}
-            <ChevronDown className="h-4 w-4 text-muted-foreground/50" />
-            <span className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">⚑ Décision</span>
-            <ChevronDown className="h-4 w-4 text-muted-foreground/50" />
-            {d.action
-              ? <Link href={d.action.href} scroll={false} className="rounded-lg border bg-card px-3 py-1.5 font-medium hover:bg-muted">◉ Action</Link>
-              : <span className="rounded-lg border bg-card px-3 py-1.5 font-medium text-muted-foreground">◉ Action</span>}
-          </div>
         </div>
       </SheetContent>
     </Sheet>
