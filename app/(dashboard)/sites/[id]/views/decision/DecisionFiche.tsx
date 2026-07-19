@@ -51,12 +51,15 @@ export function DecisionFicheSheet({ decision, onClose }: { decision: DecisionFi
               ? <p className="mt-1.5 text-[14px] leading-relaxed">{d.description}</p>
               : <p className="mt-1.5 text-[13px] text-muted-foreground">Motivation non renseignée.</p>}
             {d.sujet && <div className="mt-2"><span className="inline-flex items-center gap-1 rounded-lg bg-muted px-2 py-0.5 text-[11.5px] text-muted-foreground">🏷 {d.sujet}</span></div>}
-            {d.meeting && (
+            {d.meeting ? (
               <Link href={d.meeting.href} className="mt-2.5 flex items-center gap-2.5 rounded-lg bg-muted/50 p-2.5 hover:bg-muted">
                 <span className="grid h-6 w-6 shrink-0 place-items-center rounded bg-indigo-50 text-[12px] text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300">☷</span>
                 <span className="text-[12.5px] text-muted-foreground">Décision prise lors de la <span className="block font-semibold text-foreground">{d.meeting.label}</span></span>
                 <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" />
               </Link>
+            ) : (
+              // État vide EXPLICITE : jamais laisser croire qu'une provenance existe.
+              <p className="mt-2.5 text-[12.5px] text-muted-foreground">Aucune réunion source liée.</p>
             )}
           </section>
 
@@ -72,7 +75,7 @@ export function DecisionFicheSheet({ decision, onClose }: { decision: DecisionFi
                 <p className="mt-1 text-[13.5px] font-medium">{d.decideur.name}{d.decideur.detail ? <span className="font-normal text-muted-foreground"> · {d.decideur.detail}</span> : null}</p>
               )
             ) : (
-              <p className="mt-1 text-[13px] text-muted-foreground">Décideur non identifié.</p>
+              <p className="mt-1 text-[13px] text-muted-foreground">Décideur non renseigné.</p>
             )}
           </section>
 
@@ -92,7 +95,7 @@ export function DecisionFicheSheet({ decision, onClose }: { decision: DecisionFi
                 <p className="mt-2 border-t border-dashed border-emerald-200 pt-2 text-[11px] text-muted-foreground dark:border-emerald-900/40">Cette décision entraîne aujourd’hui cette action.</p>
               </div>
             ) : (
-              <p className="mt-1 text-[13px] text-muted-foreground">Aucune action n’en découle à ce jour.</p>
+              <p className="mt-1 text-[13px] text-muted-foreground">Aucune action liée à cette décision.</p>
             )}
           </section>
 
