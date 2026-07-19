@@ -7,7 +7,7 @@
 
 import Link from 'next/link'
 import { UserCheck } from 'lucide-react'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { FicheTrail, type TrailNode, type TrailBack } from '@/components/knowledge/FicheTrail'
 import { FicheChapo, type Chapo } from '@/components/knowledge/FicheChapo'
 import { cn } from '@/lib/utils'
@@ -25,7 +25,9 @@ const STATUT_CLS: Record<DecisionStatut, string> = {
   contredite: 'bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-900',
 }
 
-export function DecisionFicheSheet({ decision, onClose, back }: { decision: DecisionFicheData | null; onClose: () => void; back?: TrailBack | null }) {
+// Le CORPS de la fiche Décision, sans coquille Sheet : monté à l'intérieur d'un
+// Sheet partagé (la coquille persistante du parcours). Aucun changement visuel.
+export function DecisionFicheBody({ decision, back }: { decision: DecisionFicheData | null; back?: TrailBack | null }) {
   if (!decision) return null
   const d = decision
 
@@ -42,9 +44,7 @@ export function DecisionFicheSheet({ decision, onClose, back }: { decision: Deci
     : null
 
   return (
-    <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
-      {/* Le « ← » remplace le « × » quand on remonte l'histoire depuis une fiche. */}
-      <SheetContent side="right" showCloseButton={!back} className="w-full overflow-y-auto sm:max-w-md">
+    <>
         {/* 1. LE FAIT */}
         <SheetHeader className="pb-0">
           <FicheTrail nodes={trail} back={back} />
@@ -118,7 +118,6 @@ export function DecisionFicheSheet({ decision, onClose, back }: { decision: Deci
             </div>
           </section>
         </div>
-      </SheetContent>
-    </Sheet>
+    </>
   )
 }

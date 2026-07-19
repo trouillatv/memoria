@@ -23,15 +23,33 @@ import type { IntervenantPerson } from '@/lib/knowledge/site-intervenants-view'
 import { assignedActionCountLabel, describeAssignedActionDate } from '@/lib/knowledge/assigned-actions'
 import { logIntervenantActionOpenedAction } from './intervenants-actions'
 
+// La COQUILLE de la fiche Intervenant, conservée pour l'onglet Intervenants
+// (sélection locale). Le parcours cross-surface (?person=) passe désormais par
+// PersistentFicheSheet, qui monte le MÊME corps sans re-créer le Sheet.
 export function IntervenantFicheSheet({ siteId, person, onClose }: {
   siteId: string
   person: IntervenantPerson | null
   onClose: () => void
 }) {
+  if (!person) return null
+  return (
+    <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+        <IntervenantFicheBody siteId={siteId} person={person} />
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+// Le CORPS présentationnel — sans coquille Sheet, pour être monté soit par le
+// wrapper ci-dessus, soit par la coquille persistante du parcours.
+export function IntervenantFicheBody({ siteId, person }: {
+  siteId: string
+  person: IntervenantPerson
+}) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [showDecisions, setShowDecisions] = useState(false)
-  if (!person) return null
   const p = person
   // Jour civil Nouméa, calculé UNE fois (jamais dans la boucle de rendu).
   const today = todayLocalIso()
@@ -93,8 +111,7 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
   if (p.email) infos.push(['Mail', p.email])
 
   return (
-    <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+    <>
         <SheetHeader className="pb-0">
           <SheetTitle className="text-base font-semibold">{p.name}</SheetTitle>
           <p className="text-[13px] text-muted-foreground">
@@ -242,7 +259,6 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
             <ChevronRight className="h-3.5 w-3.5" />
           </Link>
         </div>
-      </SheetContent>
-    </Sheet>
+    </>
   )
 }

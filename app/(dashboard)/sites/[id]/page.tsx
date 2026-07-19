@@ -35,11 +35,9 @@ import { getSiteIntervenantsView, getSiteIntervenantFiche } from '@/lib/knowledg
 import { buildIntervenantsDashboard } from '@/lib/knowledge/intervenants-dashboard-model'
 import { IntervenantsLeaderboard } from './views/intervenants/IntervenantsLeaderboard'
 import { todayLocalIso } from '@/lib/time/local-date'
-import { IntervenantFicheDeepLink } from './views/intervenants/IntervenantFicheDeepLink'
+import { PersistentFicheSheet } from './views/PersistentFicheSheet'
 import { getSiteActionFiche } from '@/lib/knowledge/action-fiche'
-import { ActionFicheDeepLink } from './views/action/ActionFicheDeepLink'
 import { getSiteDecisionFiche } from '@/lib/knowledge/decision-fiche'
-import { DecisionFicheDeepLink } from './views/decision/DecisionFicheDeepLink'
 import { getSiteCausalThreads } from '@/lib/knowledge/causal-threads'
 import { MemoireCausale } from './views/memoire/MemoireCausale'
 import { MemoireSubTabs, type MemoireSubTab } from './views/memoire/MemoireSubTabs'
@@ -306,13 +304,11 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         )}
       </ChantierShell>
 
-      {/* La fiche transverse, ouverte par-dessus n'importe quel onglet via
-          `?person=`. Une seule fiche, des dizaines de portes. */}
-      {ficheParam && <IntervenantFicheDeepLink siteId={id} person={ficheParam} />}
-      {/* La fiche canonique Action, même mécanique via `?action=`. */}
-      {actionFiche && <ActionFicheDeepLink action={actionFiche} />}
-      {/* La fiche Décision (le pivot), même mécanique via `?decision=`. */}
-      {decisionFiche && <DecisionFicheDeepLink decision={decisionFiche} />}
+      {/* La COQUILLE PERSISTANTE (Lot 2 · PR1) : une seule fiche montée par-dessus
+          n'importe quel onglet, quel que soit le maillon (?person= / ?action= /
+          ?decision=). Naviguer d'un objet à l'autre change le CONTENU sans détruire
+          le Sheet — le navigateur ne recrée plus la fiche à chaque saut. */}
+      <PersistentFicheSheet siteId={id} person={ficheParam} action={actionFiche} decision={decisionFiche} />
     </div>
   )
 }

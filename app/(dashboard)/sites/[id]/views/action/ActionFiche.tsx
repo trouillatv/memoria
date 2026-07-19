@@ -8,7 +8,7 @@
 
 import Link from 'next/link'
 import { ChevronRight, UserCheck, CheckCircle2, Circle } from 'lucide-react'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { FicheTrail, type TrailNode, type TrailBack } from '@/components/knowledge/FicheTrail'
 import { FicheChapo, type Chapo } from '@/components/knowledge/FicheChapo'
 import { cn } from '@/lib/utils'
@@ -29,7 +29,9 @@ const STATUS_CLS: Record<SiteActionStatus, string> = {
   cancelled: 'bg-muted text-muted-foreground ring-border',
 }
 
-export function ActionFicheSheet({ action, onClose, back }: { action: ActionFicheData | null; onClose: () => void; back?: TrailBack | null }) {
+// Le CORPS de la fiche Action, sans coquille Sheet : monté à l'intérieur d'un
+// Sheet partagé (la coquille persistante du parcours). Aucun changement visuel.
+export function ActionFicheBody({ action, back }: { action: ActionFicheData | null; back?: TrailBack | null }) {
   if (!action) return null
   const a = action
   const date = describeAssignedActionDate(
@@ -63,8 +65,7 @@ export function ActionFicheSheet({ action, onClose, back }: { action: ActionFich
       : null
 
   return (
-    <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
-      <SheetContent side="right" showCloseButton={!back} className="w-full overflow-y-auto sm:max-w-md">
+    <>
         <SheetHeader className="pb-0">
           <FicheTrail nodes={trail} back={back} />
           <span className={cn('w-fit rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUS_CLS[a.status])}>
@@ -257,7 +258,6 @@ export function ActionFicheSheet({ action, onClose, back }: { action: ActionFich
             {a.historyNote && <p className="mt-2 text-[12px] italic text-muted-foreground">{a.historyNote}</p>}
           </section>
         </div>
-      </SheetContent>
-    </Sheet>
+    </>
   )
 }
