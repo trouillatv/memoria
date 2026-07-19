@@ -15,7 +15,10 @@ import { describeAssignedActionDate } from '@/lib/knowledge/assigned-actions'
 import type { ActionFicheData } from '@/lib/knowledge/action-fiche'
 import type { SiteActionStatus } from '@/types/db'
 
-const H4 = 'text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground'
+// Trois niveaux de poids visuel — le dossier hiérarchise, il ne s'aplatit pas.
+const H4 = 'text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground' // moyen
+const H4_STRONG = 'text-[11.5px] font-semibold uppercase tracking-wide text-foreground' // fort
+const H4_MUTED = 'text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/50' // discret
 
 const STATUS_CLS: Record<SiteActionStatus, string> = {
   open: 'bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:ring-sky-900',
@@ -49,7 +52,7 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
           {/* ── 1. CE QUI A ÉTÉ OBSERVÉ — en tête : ça dit tout de suite POURQUOI ── */}
           {a.observed && (
             <section className="rounded-lg border-l-2 border-primary/50 bg-muted/40 p-3">
-              <h4 className={H4}>Ce qui a été observé</h4>
+              <h4 className={H4_STRONG}>Ce qui a été observé</h4>
               {a.observed.text && <p className="mt-1.5 text-[13.5px] italic leading-relaxed">« {a.observed.text} »</p>}
               {(a.observed.isVocal || a.observed.authorLabel) && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 text-[11.5px] text-muted-foreground">
@@ -113,7 +116,7 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
 
           {/* ── 4. PROGRESSION — où en est l'engagement (dérivé, le chemin restant) ── */}
           <section>
-            <h4 className={H4}>📈 Progression de l’action</h4>
+            <h4 className={H4_STRONG}>📈 Progression de l’action</h4>
             <ul className="mt-1.5 space-y-1">
               {a.progress.map((p) => (
                 <li key={p.label} className="flex items-center gap-2 text-[13px]">
@@ -193,10 +196,11 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
             </section>
           )}
 
-          {/* ── 7. RELATIONS — le réseau d'objets de la mémoire (tout cliquable) ── */}
+          {/* ── ZONE DISCRÈTE : relations + historique. Utiles, mais en retrait —
+               le dossier ne doit pas s'aplatir en longue fiche. ── */}
           {a.relations.length > 0 && (
-            <section>
-              <h4 className={H4}>🔗 Relations</h4>
+            <section className="border-t border-border/60 pt-4">
+              <h4 className={H4_MUTED}>🔗 Relations</h4>
               <div className="mt-1.5 flex flex-wrap gap-2">
                 {a.relations.map((r, i) => r.href ? (
                   <Link key={i} href={r.href} className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12px] hover:bg-muted"><span aria-hidden>{r.icon}</span>{r.label}</Link>
@@ -211,7 +215,7 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
                pour savoir à quelle heure elle a été créée. Uniquement les faits
                journalisés (site_action_events), en fil. Jamais reconstruit. ── */}
           <section>
-            <h4 className={H4}>Historique</h4>
+            <h4 className={H4_MUTED}>📜 Historique</h4>
             <div className="mt-1.5 space-y-3">
               {a.historyDays.map((day) => (
                 <div key={day.dayIso}>
