@@ -1,0 +1,210 @@
+<style>
+  :root {
+    --sidebar:#0f172a; --sidebar-ink:#cbd5e1; --sidebar-dim:#64748b; --sidebar-active:#1e293b;
+    --ground:#f1f5f9; --panel:#fff; --ink:#0f172a; --ink-soft:#334155; --muted:#64748b; --faint:#94a3b8;
+    --line:#e2e8f0; --line-soft:#eef2f6; --primary:#2563eb; --primary-soft:#eff6ff;
+    --amber:#d97706; --amber-bg:#fffbeb; --blue:#2563eb; --blue-bg:#eff6ff;
+    --rose:#e11d48; --rose-bg:#fff1f2; --emerald:#059669; --emerald-bg:#ecfdf5; --indigo:#4f46e5;
+    --radius:12px; --shadow:0 1px 2px rgba(15,23,42,.04),0 1px 3px rgba(15,23,42,.06);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --ground:#0b1220;--panel:#0f172a;--ink:#e2e8f0;--ink-soft:#cbd5e1;--muted:#94a3b8;--faint:#64748b;
+    --line:#1e293b;--line-soft:#172033;--primary:#60a5fa;--primary-soft:#172033;
+    --amber:#fbbf24;--amber-bg:#231a08;--blue:#60a5fa;--blue-bg:#0e1a33;--rose:#fb7185;--rose-bg:#2a0f16;
+    --emerald:#34d399;--emerald-bg:#07231a;--indigo:#a5b4fc;--sidebar:#070d18;--sidebar-active:#141f33;}}
+  :root[data-theme="dark"]{--ground:#0b1220;--panel:#0f172a;--ink:#e2e8f0;--ink-soft:#cbd5e1;--muted:#94a3b8;--faint:#64748b;--line:#1e293b;--line-soft:#172033;--primary:#60a5fa;--primary-soft:#172033;--amber:#fbbf24;--amber-bg:#231a08;--blue:#60a5fa;--blue-bg:#0e1a33;--rose:#fb7185;--rose-bg:#2a0f16;--emerald:#34d399;--emerald-bg:#07231a;--indigo:#a5b4fc;--sidebar:#070d18;--sidebar-active:#141f33;}
+  :root[data-theme="light"]{--ground:#f1f5f9;--panel:#fff;--ink:#0f172a;--line:#e2e8f0;}
+  *{box-sizing:border-box;} body{margin:0;font-family:var(--font);background:var(--ground);color:var(--ink);-webkit-font-smoothing:antialiased;}
+  .app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh;}
+  .side{background:var(--sidebar);color:var(--sidebar-ink);padding:18px 12px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh;}
+  .brand{display:flex;align-items:center;gap:9px;padding:6px 8px 14px;font-weight:700;color:#fff;font-size:17px;}
+  .brand .m{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,#3b82f6,#2563eb);display:grid;place-items:center;color:#fff;font-weight:800;font-size:14px;}
+  .site-switch{background:var(--sidebar-active);border-radius:10px;padding:9px 11px;margin:2px 0 12px;}
+  .site-switch b{color:#fff;font-size:13.5px;display:block;} .site-switch span{color:var(--sidebar-dim);font-size:11.5px;}
+  .nav a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:var(--sidebar-ink);text-decoration:none;font-size:13.5px;}
+  .nav a.active{background:var(--sidebar-active);color:#fff;box-shadow:inset 2px 0 0 var(--primary);}
+  .side .foot{margin-top:auto;display:flex;align-items:center;gap:9px;padding:8px;border-top:1px solid #1e293b;}
+  .avatar{width:28px;height:28px;border-radius:50%;background:#334155;color:#fff;display:grid;place-items:center;font-size:12px;font-weight:600;}
+  .main{padding:24px 28px 40px;min-width:0;}
+  .head h1{margin:0;font-size:24px;letter-spacing:-.01em;} .head p{margin:3px 0 18px;color:var(--muted);font-size:13.5px;}
+
+  .kpis{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:12px;margin-bottom:22px;}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 15px;box-shadow:var(--shadow);position:relative;overflow:hidden;}
+  .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);}
+  .kpi .k-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--accent);}
+  .kpi .k-num{font-size:30px;font-weight:700;letter-spacing:-.02em;margin:4px 0 2px;}
+  .kpi .k-sub{font-size:11.5px;color:var(--muted);line-height:1.5;}
+  .kpi.hero{--accent:var(--primary);} .kpi.late{--accent:var(--rose);} .kpi.idle{--accent:var(--amber);} .kpi.multi{--accent:var(--indigo);}
+  .kpi.hero{background:linear-gradient(180deg,var(--primary-soft),var(--panel));}
+
+  /* Encart workflow « À identifier » — langage visuel DISTINCT des KPIs (bordure
+     tiretée, pas d'accent coloré) : c'est du pipeline IA, pas une métrique de relation. */
+  .toid{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+    border:1px dashed var(--line);border-radius:10px;background:transparent;padding:11px 15px;margin-bottom:18px;}
+  .toid .t{font-size:12.5px;color:var(--muted);}
+  .toid .t b{color:var(--ink-soft);font-weight:600;margin-right:8px;}
+  .toid a{font-size:12.5px;font-weight:600;color:var(--primary);text-decoration:none;white-space:nowrap;}
+  .bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+  .search{flex:1;min-width:220px;display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:8px 11px;color:var(--faint);font-size:13px;}
+  .search input{border:0;outline:0;background:transparent;color:var(--ink);font-size:13px;width:100%;font-family:inherit;}
+  .sel{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:13px;color:var(--ink-soft);}
+
+  .table-wrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow-x:auto;box-shadow:var(--shadow);}
+  table{width:100%;border-collapse:collapse;min-width:920px;}
+  thead th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);font-weight:600;padding:11px 14px;border-bottom:1px solid var(--line);}
+  thead th.num{text-align:center;} thead th.right{text-align:right;}
+  tbody td{padding:12px 14px;border-bottom:1px solid var(--line-soft);font-size:13px;vertical-align:middle;}
+  tbody tr:last-child td{border-bottom:0;} tbody tr{cursor:pointer;} tbody tr:hover{background:var(--line-soft);}
+  .who{display:flex;align-items:center;gap:10px;}
+  .who .av{width:32px;height:32px;border-radius:50%;background:var(--primary-soft);color:var(--primary);display:grid;place-items:center;font-size:12px;font-weight:700;}
+  .who b{font-weight:600;font-size:13.5px;} .who small{display:block;color:var(--muted);font-size:11px;}
+  .num{text-align:center;font-variant-numeric:tabular-nums;}
+  .metric{display:inline-flex;flex-direction:column;align-items:center;line-height:1.2;}
+  .metric .big{font-size:15px;font-weight:700;} .metric .lbl{font-size:10px;color:var(--faint);}
+  .metric.z .big{color:var(--faint);font-weight:500;}
+  .retard{display:inline-block;margin-top:2px;font-size:10.5px;font-weight:600;color:var(--rose);}
+  .cited{color:var(--muted);font-size:12px;}
+  .last{font-size:12px;text-align:right;}
+  .last .d{font-variant-numeric:tabular-nums;} .last .rel{display:block;font-size:10.5px;color:var(--muted);}
+  .chip{display:inline-flex;align-items:center;gap:4px;border-radius:20px;padding:2px 8px;font-size:10.5px;font-weight:600;}
+  .chip.idle{background:var(--amber-bg);color:var(--amber);} .chip.multi{background:var(--primary-soft);color:var(--primary);}
+  .eng{display:inline-flex;align-items:baseline;gap:4px;} .eng .n{font-size:16px;font-weight:700;color:var(--primary);} .eng .u{font-size:10.5px;color:var(--faint);}
+
+  .legend{margin-top:20px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:15px 18px;box-shadow:var(--shadow);}
+  .legend h4{margin:0 0 8px;font-size:12.5px;} .legend ul{margin:0;padding-left:18px;font-size:12px;line-height:1.8;color:var(--ink-soft);}
+  .legend b{color:var(--emerald);} .legend .no{color:var(--rose);}
+  .tag{font-size:11px;color:var(--faint);margin-top:10px;}
+  @media (max-width:1100px){.kpis{grid-template-columns:1fr 1fr;}} @media (max-width:720px){.app{grid-template-columns:1fr;}.side{display:none;}}
+</style>
+
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="m">M</span> MemorIA</div>
+    <div class="site-switch"><b>Petro Attiti</b><span>Chantier actif ▾</span></div>
+    <nav class="nav">
+      <a href="#">◎ Aperçu</a><a href="#">▤ Planning</a><a href="#">✔ Travail du jour</a>
+      <a href="#">◉ Actions</a><a href="#">⏱ Échéances</a>
+      <a href="#" class="active">◑ Intervenants</a>
+      <a href="#">⬡ Équipes</a><a href="#">△ Vigilances</a><a href="#">▦ Réserves</a>
+      <a href="#">▢ Documents</a><a href="#">◱ Visites</a><a href="#">☷ Réunions</a>
+    </nav>
+    <div style="flex:1"></div>
+    <div class="foot"><span class="avatar">VM</span><div style="font-size:12.5px;color:#fff;">Vincent Milon<br><span style="color:var(--sidebar-dim);font-size:11px;">Gestionnaire</span></div></div>
+  </aside>
+
+  <main class="main">
+    <div class="head">
+      <h1>Intervenants</h1>
+      <p>Le réseau humain du chantier — la relation, racontée par les engagements. Pas un annuaire.</p>
+    </div>
+
+    <!-- KPI CENTRAL = Engagements actifs -->
+    <section class="kpis">
+      <div class="kpi hero">
+        <div class="k-label">Engagements actifs</div>
+        <div class="k-num">18</div>
+        <div class="k-sub">portés par 6 intervenants · <b>13 actions ouvertes</b> · 5 obligations</div>
+      </div>
+      <div class="kpi late"><div class="k-label">En retard</div><div class="k-num">3</div><div class="k-sub">2 personnes concernées</div></div>
+      <div class="kpi idle"><div class="k-label">Sans activité récente</div><div class="k-num">1</div><div class="k-sub">&gt; 30 jours</div></div>
+      <div class="kpi multi"><div class="k-label">Sur plusieurs chantiers</div><div class="k-num">2</div><div class="k-sub">intervenants transverses</div></div>
+    </section>
+
+    <!-- Frontière de la connaissance : proposé ≠ validé. Encart de WORKFLOW, hors leaderboard. -->
+    <div class="toid">
+      <div class="t"><b>À identifier</b>3 personnes citées attendent une validation — elles n'entrent dans la connaissance du chantier qu'après confirmation.</div>
+      <a href="#">Examiner les propositions →</a>
+    </div>
+
+    <div class="bar">
+      <div class="search">🔍 <input placeholder="Rechercher un intervenant, une entreprise, un rôle…" /></div>
+      <select class="sel"><option>Entreprise</option></select>
+      <select class="sel"><option>Rôle</option></select>
+      <select class="sel"><option>Trier : engagements actifs ▾</option></select>
+    </div>
+
+    <!-- LEADERBOARD : comparer d'un coup d'œil qui porte quoi -->
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Intervenant</th>
+          <th class="num">Engagements</th>
+          <th class="num">Actions</th>
+          <th class="num">Décisions</th>
+          <th class="num">Obligations</th>
+          <th>Cité dans</th>
+          <th class="right">Dernière activité</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><div class="who"><span class="av">PV</span><span><b>Paul Vernier</b><small>Électricité · Sotrap</small></span></div></td>
+            <td class="num"><span class="eng"><span class="n">5</span><span class="u">actifs</span></span></td>
+            <td class="num"><span class="metric"><span class="big">4</span><span class="lbl">ouvertes</span></span><span class="retard">2 en retard</span></td>
+            <td class="num"><span class="metric"><span class="big">1</span><span class="lbl">portée</span></span></td>
+            <td class="num"><span class="metric"><span class="big">1</span><span class="lbl">ouverte</span></span></td>
+            <td class="cited">cité dans 5 visites</td>
+            <td class="last"><span class="d">17/07</span><span class="rel">il y a 2 jours</span><span class="chip multi">🏗 2 chantiers</span></td>
+          </tr>
+          <tr>
+            <td><div class="who"><span class="av">EM</span><span><b>Émeline Martin</b><small>MOE · BECIB</small></span></div></td>
+            <td class="num"><span class="eng"><span class="n">4</span><span class="u">actifs</span></span></td>
+            <td class="num"><span class="metric"><span class="big">2</span><span class="lbl">ouvertes</span></span></td>
+            <td class="num"><span class="metric"><span class="big">3</span><span class="lbl">portées</span></span></td>
+            <td class="num"><span class="metric"><span class="big">2</span><span class="lbl">ouvertes</span></span></td>
+            <td class="cited">cité dans 8 visites</td>
+            <td class="last"><span class="d">18/07</span><span class="rel">hier</span><span class="chip multi">🏗 4 chantiers</span></td>
+          </tr>
+          <tr>
+            <td><div class="who"><span class="av">AW</span><span><b>Alex Wright</b><small>Gros œuvre · AGP</small></span></div></td>
+            <td class="num"><span class="eng"><span class="n">4</span><span class="u">actifs</span></span></td>
+            <td class="num"><span class="metric"><span class="big">3</span><span class="lbl">ouvertes</span></span><span class="retard">1 en retard</span></td>
+            <td class="num"><span class="metric z"><span class="big">0</span><span class="lbl">portée</span></span></td>
+            <td class="num"><span class="metric"><span class="big">1</span><span class="lbl">ouverte</span></span></td>
+            <td class="cited">cité dans 3 visites</td>
+            <td class="last"><span class="d">14/07</span><span class="rel">il y a 5 jours</span></td>
+          </tr>
+          <tr>
+            <td><div class="who"><span class="av">MT</span><span><b>Marc Tama</b><small>Électricité · Élec Pro</small></span></div></td>
+            <td class="num"><span class="eng"><span class="n">1</span><span class="u">actif</span></span></td>
+            <td class="num"><span class="metric"><span class="big">1</span><span class="lbl">ouverte</span></span><span class="retard">1 en retard</span></td>
+            <td class="num"><span class="metric z"><span class="big">0</span><span class="lbl">portée</span></span></td>
+            <td class="num"><span class="metric z"><span class="big">0</span><span class="lbl">ouverte</span></span></td>
+            <td class="cited">cité dans 2 visites</td>
+            <td class="last"><span class="d">16/07</span><span class="rel">il y a 3 jours</span></td>
+          </tr>
+          <tr>
+            <td><div class="who"><span class="av">CB</span><span><b>Claire Bat</b><small>Peinture · ContraBat</small></span></div></td>
+            <td class="num"><span class="eng"><span class="n" style="color:var(--faint)">0</span><span class="u">actif</span></span></td>
+            <td class="num"><span class="metric z"><span class="big">0</span><span class="lbl">ouverte</span></span></td>
+            <td class="num"><span class="metric z"><span class="big">0</span><span class="lbl">portée</span></span></td>
+            <td class="num"><span class="metric z"><span class="big">0</span><span class="lbl">ouverte</span></span></td>
+            <td class="cited">cité dans 1 visite</td>
+            <td class="last"><span class="d">07/07</span><span class="rel">il y a 12 jours</span></td>
+          </tr>
+          <tr>
+            <td><div class="who"><span class="av">JR</span><span><b>Jean Roy</b><small>Plomberie · Becib</small></span></div></td>
+            <td class="num"><span class="eng"><span class="n">1</span><span class="u">actif</span></span></td>
+            <td class="num"><span class="metric"><span class="big">1</span><span class="lbl">ouverte</span></span></td>
+            <td class="num"><span class="metric z"><span class="big">0</span><span class="lbl">portée</span></span></td>
+            <td class="num"><span class="metric z"><span class="big">0</span><span class="lbl">ouverte</span></span></td>
+            <td class="cited">cité dans 2 visites</td>
+            <td class="last"><span class="d">02/06</span><span class="rel">il y a 47 jours</span><span class="chip idle">⚠ inactif</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="padding:11px 15px;color:var(--muted);font-size:12px;">6 intervenants <b>validés</b> · un clic ouvre la <b>fiche existante</b> (identité · engagements · chronologie · relations)</div>
+    </div>
+
+    <div class="legend">
+      <h4>La relation = les engagements structurés, jamais la présence supposée</h4>
+      <ul>
+        <li><b>✓</b> Actions assignées (ouvertes · en retard), <b>décisions portées</b>, <b>obligations ouvertes</b>, casting, dernière activité structurée, autres chantiers — tout calculable.</li>
+        <li><b>✓</b> « <b>cité dans N visites</b> » (provenance confirmée), formulé exactement ainsi.</li>
+        <li><span class="no">✗ « présent à N visites » · « présent à N réunions »</span> — participants = texte libre, aucun lien personne (anti-RH voulu).</li>
+        <li><span class="no">✗ réserves attribuées</span> — pas de lien personne (issued_by texte libre).</li>
+      </ul>
+      <p class="tag">La fiche intervenant existe déjà (deep-link ?person=). Cette page centrale la RÉUTILISE au clic — elle ne la recrée pas. KPI central : <b>Engagements actifs</b>, pas « interactions ».</p>
+    </div>
+  </main>
+</div>

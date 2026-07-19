@@ -22,6 +22,7 @@ import { listSiteIntervenants, type SiteIntervenant } from '@/lib/db/site-interv
 import { splitPersonCompany } from '@/lib/knowledge/person-name'
 import { assignedActionsByContact, type AssignedAction, type RawAssignedActionRow } from '@/lib/knowledge/assigned-actions'
 import { todayLocalIso } from '@/lib/time/local-date'
+import { buildIntervenantsDashboard, type IntervenantsDashboard } from '@/lib/knowledge/intervenants-dashboard-model'
 
 export interface IntervenantCitedVisit {
   reportId: string
@@ -367,6 +368,16 @@ export async function getSiteIntervenantsView(siteId: string): Promise<SiteInter
     groups,
     toIdentify,
   }
+}
+
+/** La PAGE Intervenants (pilotage) — PROJECTION de la vue existante vers un
+ *  leaderboard + KPIs. Compose `getSiteIntervenantsView` : mêmes personnes, même
+ *  vérité que la fiche ; on n'ajoute que le classement et les compteurs de vue. */
+export async function getIntervenantsDashboard(siteId: string): Promise<IntervenantsDashboard | null> {
+  const view = await getSiteIntervenantsView(siteId)
+  if (!view) return null
+  const people = view.groups.flatMap((g) => g.people)
+  return buildIntervenantsDashboard(siteId, people, view.toIdentifyCount, todayLocalIso())
 }
 
 /** UNE fiche intervenant, chargée par identité — le point d'accès de « la fiche

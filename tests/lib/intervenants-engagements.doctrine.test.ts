@@ -31,3 +31,18 @@ describe('read model intervenant — engagements structurels', () => {
     expect(src).not.toMatch(/participants[\s\S]{0,80}contact/i)
   })
 })
+
+describe('page Intervenants — projection + frontière proposé/validé', () => {
+  it('getIntervenantsDashboard COMPOSE la vue existante (ne réimplémente pas)', () => {
+    // Il appelle getSiteIntervenantsView et délègue au module pur — jamais un 2ᵉ calcul.
+    expect(src).toMatch(/getIntervenantsDashboard[\s\S]*?await getSiteIntervenantsView\(siteId\)/)
+    expect(src).toContain('buildIntervenantsDashboard(siteId, people, view.toIdentifyCount')
+  })
+
+  it('deux mondes séparés : proposé → « à identifier » (status proposed), validé → casting', () => {
+    // « à identifier » = propositions stakeholder ENCORE proposées…
+    expect(src).toMatch(/kind', 'stakeholder'\)\.eq\('site_id', siteId\)\.eq\('status', 'proposed'\)|eq\('kind', 'stakeholder'\)\.eq\('status', 'proposed'\)/)
+    // …le leaderboard vient du casting (buildIntervenantPeople), jamais des proposées.
+    expect(src).toContain('view.groups.flatMap')
+  })
+})

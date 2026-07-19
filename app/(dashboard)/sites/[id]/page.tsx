@@ -33,7 +33,9 @@ import { getSiteQrHistory, getSiteQrInfo } from '@/lib/db/site-qr'
 import { getMemoryReview } from '@/lib/knowledge/memory-review'
 import { getSiteGraph } from '@/lib/knowledge/site-graph'
 import { getSiteIntervenantsView, getSiteIntervenantFiche } from '@/lib/knowledge/site-intervenants-view'
-import { IntervenantsWorkspace } from './views/intervenants/IntervenantsWorkspace'
+import { buildIntervenantsDashboard } from '@/lib/knowledge/intervenants-dashboard-model'
+import { IntervenantsLeaderboard } from './views/intervenants/IntervenantsLeaderboard'
+import { todayLocalIso } from '@/lib/time/local-date'
 import { IntervenantFicheDeepLink } from './views/intervenants/IntervenantFicheDeepLink'
 import { getSiteActionFiche } from '@/lib/knowledge/action-fiche'
 import { ActionFicheDeepLink } from './views/action/ActionFicheDeepLink'
@@ -403,7 +405,10 @@ async function IntervenantsView({ siteId }: { siteId: string }) {
   // La décision « l'onglet a-t-il sa place ? » se prendra sur l'usage réel
   // (arbitrage 2026-07-18 : en observation) — best-effort, ne retarde rien.
   void logUsageEvent({ event: 'intervenants_opened', siteId })
-  return <IntervenantsWorkspace view={view} />
+  // Projection leaderboard depuis la MÊME lecture (pas de second fetch) : mêmes
+  // personnes, même vérité que la fiche.
+  const dashboard = buildIntervenantsDashboard(siteId, view.groups.flatMap((g) => g.people), view.toIdentifyCount, todayLocalIso())
+  return <IntervenantsLeaderboard dashboard={dashboard} toIdentify={view.toIdentify} />
 }
 
 async function ExplorerView({ siteId }: { siteId: string }) {
