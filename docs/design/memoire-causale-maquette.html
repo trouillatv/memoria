@@ -1,0 +1,137 @@
+<style>
+  :root{
+    --ground:#eef2f6;--panel:#fff;--ink:#0f172a;--ink-soft:#334155;--muted:#64748b;--faint:#94a3b8;
+    --line:#e2e8f0;--line-soft:#eef2f6;--primary:#2563eb;--primary-soft:#eff6ff;
+    --indigo:#4f46e5;--indigo-bg:#eef2ff;--emerald:#059669;--emerald-bg:#ecfdf5;--emerald-ring:#a7f3d0;
+    --blue:#2563eb;--blue-bg:#eff6ff;--rose:#e11d48;--rose-bg:#fff1f2;--amber:#d97706;--amber-bg:#fffbeb;
+    --radius:14px;--shadow:0 1px 2px rgba(15,23,42,.04),0 1px 3px rgba(15,23,42,.06);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --ground:#0b1220;--panel:#0f172a;--ink:#e2e8f0;--ink-soft:#cbd5e1;--muted:#94a3b8;--faint:#64748b;
+    --line:#1e293b;--line-soft:#172033;--primary:#60a5fa;--primary-soft:#172033;
+    --indigo:#a5b4fc;--indigo-bg:#161a33;--emerald:#34d399;--emerald-bg:#07231a;--emerald-ring:#0c3b2b;
+    --blue:#60a5fa;--blue-bg:#0e1a33;--rose:#fb7185;--rose-bg:#2a0f16;--amber:#fbbf24;--amber-bg:#231a08;}}
+  :root[data-theme="dark"]{--ground:#0b1220;--panel:#0f172a;--ink:#e2e8f0;--ink-soft:#cbd5e1;--muted:#94a3b8;--faint:#64748b;--line:#1e293b;--line-soft:#172033;--primary:#60a5fa;--primary-soft:#172033;--indigo:#a5b4fc;--indigo-bg:#161a33;--emerald:#34d399;--emerald-bg:#07231a;--emerald-ring:#0c3b2b;--blue:#60a5fa;--blue-bg:#0e1a33;--rose:#fb7185;--rose-bg:#2a0f16;--amber:#fbbf24;--amber-bg:#231a08;}
+  :root[data-theme="light"]{--ground:#eef2f6;--panel:#fff;--ink:#0f172a;--line:#e2e8f0;}
+  *{box-sizing:border-box;} body{margin:0;font-family:var(--font);background:var(--ground);color:var(--ink);-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1000px;margin:0 auto;padding:28px 20px 48px;}
+  h1{font-size:25px;letter-spacing:-.01em;margin:0;}
+  .sub{color:var(--muted);font-size:14px;margin:4px 0 2px;}
+  .ro{display:inline-block;margin-top:8px;font-size:11px;font-weight:600;color:var(--muted);background:var(--line-soft);border-radius:20px;padding:3px 10px;}
+
+  .q{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:20px 0 26px;}
+  .q .c{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px;box-shadow:var(--shadow);}
+  .q .c b{font-size:12.5px;} .q .c p{margin:4px 0 0;font-size:11.5px;color:var(--muted);line-height:1.5;}
+
+  .thread{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px;box-shadow:var(--shadow);}
+  .thread .th{font-size:13.5px;font-weight:600;margin-bottom:2px;}
+  .thread .ts{font-size:11.5px;color:var(--muted);margin-bottom:13px;}
+  .chain{display:flex;align-items:stretch;flex-wrap:wrap;gap:0;}
+  .node{display:flex;flex-direction:column;gap:3px;border:1px solid var(--line);border-radius:10px;padding:9px 12px;min-width:150px;background:var(--panel);cursor:pointer;}
+  .node .k{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:5px;}
+  .node .l{font-size:12.5px;font-weight:600;line-height:1.3;}
+  .node .d{font-size:10.5px;color:var(--muted);}
+  .node.reunion{border-color:var(--indigo);} .node.reunion .k{color:var(--indigo);}
+  .node.decision{border-color:var(--emerald-ring);background:var(--emerald-bg);} .node.decision .k{color:var(--emerald);}
+  .node.action{border-color:var(--blue);} .node.action .k{color:var(--blue);}
+  .node.reserve{border-color:var(--rose);} .node.reserve .k{color:var(--rose);}
+  .node.cloture{border-color:var(--emerald);background:var(--emerald-bg);} .node.cloture .k{color:var(--emerald);}
+  /* Trois relations, jamais confondues */
+  .arr{display:flex;align-items:center;padding:0 9px;font-size:18px;align-self:center;}
+  .arr.produit{color:var(--ink-soft);}      /* → cause portée par le modèle */
+  .arr.lie{color:var(--faint);font-size:15px;}  /* — relation certaine, sans causalité */
+  .arr.rupture{color:var(--amber);}          /* ⇢ chaîne interrompue */
+  /* Rupture — jamais comblée */
+  .gap{display:flex;flex-direction:column;justify-content:center;border:1px dashed var(--amber);background:var(--amber-bg);border-radius:10px;padding:9px 12px;min-width:170px;}
+  .gap .k{font-size:10px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.04em;}
+  .gap .l{font-size:11px;color:var(--ink-soft);margin-top:3px;line-height:1.4;}
+  .arr.dash{color:var(--amber);}
+
+  .legend{margin-top:22px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow);font-size:12px;}
+  .legend h4{margin:0 0 9px;font-size:13px;} .legend .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  .legend ul{margin:0;padding-left:16px;line-height:1.8;color:var(--ink-soft);}
+  .legend .ok b{color:var(--emerald);} .legend .no b{color:var(--amber);}
+  @media (max-width:720px){.q{grid-template-columns:1fr;}.legend .cols{grid-template-columns:1fr;}}
+</style>
+
+<div class="wrap">
+  <h1>Mémoire</h1>
+  <p class="sub">La chronologie <b>causale</b> du chantier — comment on en est arrivé à l'état actuel.</p>
+  <span class="ro">◔ Lecture seule</span>
+
+  <div class="q">
+    <div class="c"><b>Que se passe-t-il ?</b><p>Les faits datés : réunions, décisions, réserves.</p></div>
+    <div class="c"><b>Pourquoi cet état existe-t-il ?</b><p>La chaîne de causes, suivie par les liens réels — jamais devinée.</p></div>
+    <div class="c"><b>Qu'est-ce qui a changé ensuite ?</b><p>Les conséquences : actions produites, réserves levées, clôtures.</p></div>
+  </div>
+  <p style="font-size:11.5px;color:var(--faint);margin:-12px 0 20px;">Chaque fil répond à ce qu'il sait. Quand un maillon manque, il le dit — il n'invente rien.</p>
+
+  <!-- Fil 1 — chaîne COMPLÈTE. La décision PRODUIT l'action ; l'action est LIÉE à
+       la réserve (sans affirmer que la réserve a causé la décision) ; la réserve
+       PRODUIT sa levée. -->
+  <div class="thread">
+    <div class="th">Non-conformité du câblage local technique</div>
+    <div class="ts">Un choix, une action, une preuve — chaque maillon est un lien réel.</div>
+    <div class="chain">
+      <div class="node decision"><span class="k">⚑ Décision</span><span class="l">Reprendre le câblage avant réception</span><span class="d">Réunion du 12 juil.</span></div>
+      <div class="arr produit" title="produit">→</div>
+      <div class="node action"><span class="k">◉ Action</span><span class="l">Lever la réserve R-14</span><span class="d">Assignée · Sotrap</span></div>
+      <div class="arr lie" title="liée à">—</div>
+      <div class="node reserve"><span class="k">▦ Réserve</span><span class="l">R-14 · câblage local</span><span class="d">Constatée le 5 juil.</span></div>
+      <div class="arr produit" title="produit">→</div>
+      <div class="node cloture"><span class="k">✓ Levée</span><span class="l">Réserve levée + photo</span><span class="d">24 juil.</span></div>
+    </div>
+  </div>
+
+  <!-- Fil 2 — réunion → décision → action en cours (le "pourquoi" d'un état actuel) -->
+  <div class="thread">
+    <div class="th">Réception reportée au 15 septembre</div>
+    <div class="ts">Pourquoi la réception n'est pas prononcée aujourd'hui.</div>
+    <div class="chain">
+      <div class="node reunion"><span class="k">☷ Réunion</span><span class="l">Réunion de chantier</span><span class="d">12 juil.</span></div>
+      <div class="arr produit" title="produit">→</div>
+      <div class="node decision"><span class="k">⚑ Décision</span><span class="l">Reporter la réception au 15 sept.</span><span class="d">Actée · en vigueur</span></div>
+      <div class="arr produit" title="produit">→</div>
+      <div class="node action"><span class="k">◉ Action</span><span class="l">Lever les réserves CVC</span><span class="d">En cours · en retard</span></div>
+    </div>
+  </div>
+
+  <!-- Fil 3 — RUPTURE honnête : décision sans observation reliée -->
+  <div class="thread">
+    <div class="th">Changement de fournisseur d'étanchéité</div>
+    <div class="ts">Ce que le modèle sait — et ce qu'il ne relie pas.</div>
+    <div class="chain">
+      <div class="gap"><span class="k">⚠ Non établi</span><span class="l">Aucune observation reliée à cette décision</span></div>
+      <div class="arr rupture" title="chaîne interrompue">⇢</div>
+      <div class="node decision"><span class="k">⚑ Décision</span><span class="l">Changer de fournisseur d'étanchéité</span><span class="d">Réunion du 8 juil.</span></div>
+      <div class="arr produit" title="produit">→</div>
+      <div class="node action"><span class="k">◉ Action</span><span class="l">Commander les nouvelles membranes</span><span class="d">Terminée · 20 juil.</span></div>
+    </div>
+  </div>
+
+  <!-- Fil 4 — action née d'une visite (pas de décision), pas encore close -->
+  <div class="thread">
+    <div class="th">Gravats du local technique</div>
+    <div class="ts">Née d'une observation en visite — sans passer par une décision.</div>
+    <div class="chain">
+      <div class="node reunion"><span class="k">◱ Visite</span><span class="l">Visite d'avancement</span><span class="d">17 juil.</span></div>
+      <div class="arr produit" title="produit">→</div>
+      <div class="node action"><span class="k">◉ Action</span><span class="l">Faire évacuer les gravats</span><span class="d">Ouverte · À affecter · pas encore close</span></div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <h4>Trois façons de relier — jamais confondues</h4>
+    <div class="cols">
+      <ul class="ok">
+        <li><b style="color:var(--ink-soft)">→ produit / découle de</b> : une cause portée par le chantier.<br>Réunion → Décision · Décision → Action · Réserve → sa levée · Action → sa clôture.</li>
+        <li><b style="color:var(--faint)">— lié à / concerne</b> : une relation certaine, <b>sans</b> affirmer de cause. Ex. une action <i>concerne</i> une réserve — mais la réserve n'a pas « décidé ».</li>
+      </ul>
+      <ul class="no">
+        <li><b>⇢ lien non établi</b> : le chantier ne relie pas ces deux éléments. On l'affiche comme un trou, jamais comme une cause.</li>
+        <li>Jamais affirmé : « une observation a mené à cette décision », « cette visite a mené à cette décision ». Chaque nœud est <b>cliquable</b> vers sa fiche.</li>
+      </ul>
+    </div>
+  </div>
+</div>
