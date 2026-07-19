@@ -1,11 +1,11 @@
 // ── « À CONFIRMER » — la file de décisions humaines (desktop) ────────────────
-// Une INBOX, pas une page de lecture : voici ce que l'IA propose, voici ce que
-// votre validation produira. Frontière NETTE : les propositions d'abord, les
-// connaissances VALIDÉES dans leur propre section — jamais une même pile.
-// Les anciens blocs (suites, dossiers vivants, passation) deviennent des accès
-// secondaires : la page garde un centre de gravité.
+// Une INBOX, pas une page de lecture. Ordre : propositions (le centre) →
+// recherche en SECOND plan → connaissances validées (rupture visuelle nette :
+// au-dessus l'IA propose, ici l'humain a validé) → actions utiles regroupées.
+// « Atelier complet » vit ICI (outil de revue/traitement), pas dans « Pourquoi ? ».
 
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { Check, ChevronRight } from 'lucide-react'
 import { MemoryInbox } from '@/app/(field)/m/site/[siteId]/MemoryReviewPanel'
 import { WhyButton } from '@/components/provenance/WhyButton'
@@ -21,6 +21,7 @@ export function MemoireConfirmer({
   signals,
   subjectsCount,
   teams,
+  searchSlot,
 }: {
   siteId: string
   siteName: string
@@ -28,23 +29,35 @@ export function MemoireConfirmer({
   signals: MemorySignal[]
   subjectsCount: number
   teams: DbTeam[]
+  searchSlot?: ReactNode
 }) {
   const suites = signals.reduce((n, s) => n + s.items.length, 0)
   const groups = [...new Set(review.confirmed.map((c) => c.group))]
 
   return (
     <div className="space-y-5">
-      {/* ── L'INBOX — le travail est ici ── */}
+      {/* ── L'INBOX — le centre de la page ── */}
       <section>
-        <h2 className="text-[15px] font-semibold">Propositions en attente</h2>
-        <p className="mb-3 text-[12.5px] text-muted-foreground">Ce que l’IA a relevé. Le bouton dit exactement ce que votre validation produira.</p>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-[15px] font-semibold">Propositions en attente</h2>
+            {/* Une phrase de DOCTRINE produit, pas une aide secondaire. */}
+            <p className="mb-3 text-[13px] text-foreground/75">Ce que l’IA a relevé. Le bouton dit exactement ce que votre validation produira.</p>
+          </div>
+          <Link href={`/memoire/${siteId}`} className="shrink-0 rounded-lg border px-3 py-1.5 text-[12.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+            Atelier complet
+          </Link>
+        </div>
         <MemoryInbox siteId={siteId} items={review.toReview} withFilters />
       </section>
 
-      {/* ── LES CONNAISSANCES VALIDÉES — l'autre monde, clairement séparé ── */}
-      <section className="border-t pt-4">
-        <h2 className="text-[15px] font-semibold">Ce que le chantier sait</h2>
-        <p className="mb-3 text-[12.5px] text-muted-foreground">Uniquement ce qu’un humain a validé.</p>
+      {/* ── La recherche, en SECOND plan ── */}
+      {searchSlot}
+
+      {/* ── LES CONNAISSANCES VALIDÉES — rupture visuelle nette avec les propositions ── */}
+      <section className="rounded-xl border bg-muted/30 p-4">
+        <h2 className="text-[15px] font-semibold">Connaissances validées</h2>
+        <p className="mb-3 text-[12.5px] text-muted-foreground">Au-dessus, l’IA propose. Ici, l’humain a validé.</p>
         {review.confirmed.length === 0 ? (
           <p className="text-[13px] text-muted-foreground">Rien de confirmé pour l’instant.</p>
         ) : (
@@ -72,19 +85,22 @@ export function MemoireConfirmer({
         )}
       </section>
 
-      {/* ── ACCÈS SECONDAIRES — des raccourcis, pas des blocs empilés ── */}
-      <section className="flex flex-wrap items-center gap-2 border-t pt-4 text-[12.5px]">
-        {suites > 0 && (
-          <Link href={`/sites/${siteId}?tab=travail`} className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
-            {suites} élément{suites > 1 ? 's' : ''} demande{suites > 1 ? 'nt' : ''} une suite <ChevronRight className="h-3.5 w-3.5" />
-          </Link>
-        )}
-        {subjectsCount > 0 && (
-          <Link href={`/sites/${siteId}/subjects`} className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
-            Explorer les dossiers vivants <ChevronRight className="h-3.5 w-3.5" />
-          </Link>
-        )}
-        <PrepareSitePassationButton siteId={siteId} siteName={siteName} teams={teams} />
+      {/* ── ACTIONS UTILES — regroupées, jamais un bouton qui flotte seul ── */}
+      <section>
+        <h2 className="mb-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">Actions utiles</h2>
+        <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
+          <PrepareSitePassationButton siteId={siteId} siteName={siteName} teams={teams} />
+          {subjectsCount > 0 && (
+            <Link href={`/sites/${siteId}/subjects`} className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+              Voir les dossiers vivants <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          )}
+          {suites > 0 && (
+            <Link href={`/sites/${siteId}?tab=travail`} className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+              Ouvrir le travail ({suites} suite{suites > 1 ? 's' : ''}) <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          )}
+        </div>
       </section>
     </div>
   )

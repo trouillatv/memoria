@@ -450,6 +450,15 @@ async function MemoireView({
   // reste le bloc commun. Même source que la Mémoire terrain (`getMemoryReview`).
   const review = await getMemoryReview(siteId).catch(() => ({ confirmed: [], toReview: [] }))
 
+  // La recherche : commune aux deux lectures, mais jamais au premier plan dans
+  // « À confirmer » (le centre y est l'inbox) — elle y passe en second plan.
+  const searchBlock = (
+    <section className="rounded-xl border bg-card p-3.5 shadow-sm">
+      <p className="mb-2 text-[12.5px] font-medium text-muted-foreground">Poser une question sur ce chantier</p>
+      <SiteMemoryQuery siteId={siteId} />
+    </section>
+  )
+
   let content: ReactNode
   if (memtab === 'confirmer') {
     const subjects = await listSubjectsBySite(siteId).catch(() => [])
@@ -461,27 +470,22 @@ async function MemoireView({
         signals={signals}
         subjectsCount={subjects.length}
         teams={teams}
+        searchSlot={searchBlock}
       />
     )
   } else {
     // Pourquoi ? — les chaînes causales validées (fils par engagement).
-    content = <MemoireCausale threads={(await getSiteCausalThreads(siteId)) ?? []} siteId={siteId} />
+    content = (
+      <div className="space-y-5">
+        {searchBlock}
+        <MemoireCausale threads={(await getSiteCausalThreads(siteId)) ?? []} siteId={siteId} />
+      </div>
+    )
   }
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <MemoireSubTabs active={memtab} toConfirmCount={review.toReview.length} />
-        {/* Mode avancé, pas un sous-menu. */}
-        <Link href={`/memoire/${siteId}`} className="mb-4 rounded-lg border px-3 py-1.5 text-[12.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
-          Atelier complet
-        </Link>
-      </div>
-      {/* La recherche : le bloc COMMUN aux deux lectures. */}
-      <section className="mb-5 rounded-xl border bg-card p-3.5 shadow-sm">
-        <p className="mb-2 text-[12.5px] font-medium text-muted-foreground">Poser une question sur ce chantier</p>
-        <SiteMemoryQuery siteId={siteId} />
-      </section>
+      <MemoireSubTabs active={memtab} toConfirmCount={review.toReview.length} />
       {content}
     </div>
   )

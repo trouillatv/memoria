@@ -12,7 +12,7 @@
 //   · les propositions ne sont JAMAIS mélangées aux connaissances validées.
 
 import { useMemo, useState, useTransition } from 'react'
-import { Check, ChevronRight, Loader2, MapPin, MoreHorizontal, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Loader2, MapPin, X } from 'lucide-react'
 import { promoteFromMemoryAction, dismissFromMemoryAction } from './memory-actions'
 import { WhyButton } from '@/components/provenance/WhyButton'
 import { cn } from '@/lib/utils'
@@ -73,16 +73,18 @@ export function MemoryInbox({ siteId, items, withFilters = false }: {
 
   return (
     <div>
-      {withFilters && remaining.length > 3 && (
+      {/* Les comptes sont TOUJOURS affichés (comportement verrouillé) ; l'état
+          actif est net — un filtre, pas un petit tag. */}
+      {withFilters && remaining.length > 1 && (
         <div className="mb-2.5 flex flex-wrap gap-1.5">
           <button type="button" onClick={() => setFamily(null)}
-            className={cn('rounded-full border px-2.5 py-1 text-[12px]', family === null ? 'border-foreground bg-foreground text-background font-medium' : 'text-muted-foreground')}>
-            Tous ({remaining.length})
+            className={cn('rounded-full border px-3 py-1 text-[12px]', family === null ? 'border-foreground bg-foreground font-semibold text-background shadow-sm' : 'bg-card text-muted-foreground hover:text-foreground')}>
+            Tous {remaining.length}
           </button>
           {FAMILY_ORDER.filter((f) => counts[f] > 0).map((f) => (
             <button key={f} type="button" onClick={() => setFamily(family === f ? null : f)}
-              className={cn('rounded-full border px-2.5 py-1 text-[12px]', family === f ? 'border-foreground bg-foreground text-background font-medium' : 'text-muted-foreground')}>
-              {FAMILY_LABEL[f]} ({counts[f]})
+              className={cn('rounded-full border px-3 py-1 text-[12px]', family === f ? 'border-foreground bg-foreground font-semibold text-background shadow-sm' : 'bg-card text-muted-foreground hover:text-foreground')}>
+              {FAMILY_LABEL[f]} {counts[f]}
             </button>
           ))}
         </div>
@@ -310,13 +312,21 @@ function ReviewCard({
       {!asking && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {/* Le geste vient du contrat, jamais de l'écran : le bouton dit quel
-              objet va naître (« Créer l'intervenant », « Acter la décision »). */}
+              objet va naître. HIÉRARCHIE par conséquence métier : créer un
+              intervenant ou acter une décision ENGAGE le chantier → bouton plein ;
+              confirmer une information l'ENRICHIT → bouton tonal. Quatre cartes
+              bleues d'affilée attiraient plus que leur contenu. */}
           {item.capability.available ? (
             <button
               type="button"
               disabled={pending}
               onClick={() => promote()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground active:opacity-80 disabled:opacity-50"
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium active:opacity-80 disabled:opacity-50',
+                (FAMILY_OF[item.kind] ?? 'connaissances') === 'connaissances'
+                  ? 'border border-primary/40 bg-primary/10 text-primary'
+                  : 'bg-primary text-primary-foreground',
+              )}
             >
               {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               {item.capability.label}
@@ -325,14 +335,15 @@ function ReviewCard({
             // Un type sans geste ne reste pas muet : il dit pourquoi.
             <p className="text-[12px] text-muted-foreground">{item.capability.explanation}</p>
           )}
-          {/* Le détail (extrait, Écarter) derrière ⋯ — l'inbox reste dense. */}
+          {/* Le détail (extrait, Écarter) derrière un CHEVRON — « ⋯ » était trop
+              cryptique, écarter doit rester facile à trouver. */}
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            aria-label="Détails de la proposition"
+            aria-label={open ? 'Replier les détails' : 'Détails et écarter'}
             className="inline-flex items-center rounded-lg border px-2 py-1.5 text-muted-foreground active:brightness-95"
           >
-            <MoreHorizontal className="h-4 w-4" />
+            <ChevronDown className={cn('h-4 w-4 transition-transform', open && 'rotate-180')} />
           </button>
           {open && (
             <button
