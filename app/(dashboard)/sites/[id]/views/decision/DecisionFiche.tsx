@@ -6,7 +6,7 @@
 // → historique. On ne recrée jamais la réunion (source ≠ objet). Aucune écriture.
 
 import Link from 'next/link'
-import { ChevronRight, UserCheck } from 'lucide-react'
+import { UserCheck } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { FicheTrail, type TrailNode, type TrailBack } from '@/components/knowledge/FicheTrail'
 import { FicheChapo, type Chapo } from '@/components/knowledge/FicheChapo'
@@ -68,12 +68,14 @@ export function DecisionFicheSheet({ decision, onClose, back }: { decision: Deci
               ? <p className="mt-1.5 text-[14px] leading-relaxed">{d.description}</p>
               : <p className="mt-1.5 text-[13px] text-muted-foreground">Motivation non renseignée.</p>}
             {d.sujet && <div className="mt-2"><span className="inline-flex items-center gap-1 rounded-lg bg-muted px-2 py-0.5 text-[11.5px] text-muted-foreground">🏷 {d.sujet}</span></div>}
+            {/* Le fil dit DÉJÀ « il y a une réunion en amont » ; ici on ne garde que
+                le fait qu'il ne porte pas : QUELLE réunion, QUAND. Du contexte, pas
+                une carte — une ligne discrète, jamais un bloc « regarde-moi ». */}
             {d.meeting ? (
-              <Link href={d.meeting.href} className="mt-2.5 flex items-center gap-2.5 rounded-lg bg-muted/50 p-2.5 hover:bg-muted">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded bg-indigo-50 text-[12px] text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300">☷</span>
-                <span className="text-[12.5px] text-muted-foreground">Décision prise lors de la <span className="block font-semibold text-foreground">{d.meeting.label}</span></span>
-                <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" />
-              </Link>
+              <div className="mt-2.5">
+                <p className="text-[11.5px] text-muted-foreground">Prise lors de</p>
+                <Link href={d.meeting.href} className="text-[13px] font-medium text-foreground hover:underline">{d.meeting.label}</Link>
+              </div>
             ) : (
               // État vide EXPLICITE : jamais laisser croire qu'une provenance existe.
               <p className="mt-2.5 text-[12.5px] text-muted-foreground">Aucune réunion source liée.</p>
