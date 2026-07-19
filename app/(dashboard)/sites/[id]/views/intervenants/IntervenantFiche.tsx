@@ -18,6 +18,7 @@ import { ChevronRight, ChevronDown, Network, Phone } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { FicheChapo, type Chapo } from '@/components/knowledge/FicheChapo'
+import { FICHE_TITLE_MOTION, FICHE_BODY_MOTION } from '@/components/knowledge/fiche-motion'
 import { frDayMonthLocal, todayLocalIso } from '@/lib/time/local-date'
 import type { IntervenantPerson } from '@/lib/knowledge/site-intervenants-view'
 import { assignedActionCountLabel, describeAssignedActionDate } from '@/lib/knowledge/assigned-actions'
@@ -113,16 +114,16 @@ export function IntervenantFicheBody({ siteId, person }: {
   return (
     <>
         <SheetHeader className="pb-0">
-          <SheetTitle className="text-base font-semibold">{p.name}</SheetTitle>
+          <SheetTitle className={cn('text-base font-semibold', FICHE_TITLE_MOTION)}>{p.name}</SheetTitle>
           <p className="text-[13px] text-muted-foreground">
             {[p.companyName, p.fonction ?? `Rôle ${p.role}`].filter(Boolean).join(' · ')}
           </p>
           {/* La relation d'identité, puis la provenance en une ligne discrète. */}
-          <FicheChapo chapo={chapo} />
+          <FicheChapo chapo={chapo} className={FICHE_TITLE_MOTION} />
           <p className="mt-1 text-[11.5px] text-muted-foreground/80">{prov}</p>
         </SheetHeader>
 
-        <div className="space-y-5 px-4 pb-6">
+        <div className={cn('space-y-5 px-4 pb-6', FICHE_BODY_MOTION)}>
           {/* « Actions à suivre » — les actions liées structurellement à cette
               personne sur CE chantier (assigned_contact_id). Cadrage NEUTRE
               (Vincent) : surtout pas « Aujourd'hui », qui suggérerait une

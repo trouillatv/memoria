@@ -11,6 +11,7 @@ import { ChevronRight, UserCheck, CheckCircle2, Circle } from 'lucide-react'
 import { SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { FicheTrail, type TrailNode, type TrailBack } from '@/components/knowledge/FicheTrail'
 import { FicheChapo, type Chapo } from '@/components/knowledge/FicheChapo'
+import { FICHE_TITLE_MOTION, FICHE_BODY_MOTION } from '@/components/knowledge/fiche-motion'
 import { cn } from '@/lib/utils'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { describeAssignedActionDate } from '@/lib/knowledge/assigned-actions'
@@ -71,12 +72,12 @@ export function ActionFicheBody({ action, back }: { action: ActionFicheData | nu
           <span className={cn('w-fit rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUS_CLS[a.status])}>
             {a.statusLabel}
           </span>
-          <SheetTitle className="text-base font-semibold leading-snug">{a.title}</SheetTitle>
-          <FicheChapo chapo={chapo} />
+          <SheetTitle className={cn('text-base font-semibold leading-snug', FICHE_TITLE_MOTION)}>{a.title}</SheetTitle>
+          <FicheChapo chapo={chapo} className={FICHE_TITLE_MOTION} />
           {a.corpsEtat && <p className="text-[13px] text-muted-foreground">{a.corpsEtat}</p>}
         </SheetHeader>
 
-        <div className="space-y-5 px-4 pb-6">
+        <div className={cn('space-y-5 px-4 pb-6', FICHE_BODY_MOTION)}>
           {a.body && <p className="text-[13.5px]">{a.body}</p>}
 
           {/* ── 1. CE QUI A ÉTÉ OBSERVÉ — en tête : ça dit tout de suite POURQUOI ── */}

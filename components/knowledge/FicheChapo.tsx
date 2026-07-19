@@ -13,6 +13,7 @@
 // explique ET ouvre. Tout est composé de faits déjà connus, jamais inventé.
 
 import Link from 'next/link'
+import { cn } from '@/lib/utils'
 
 export interface Chapo {
   /** Le verbe de relation, propre au type de fiche : « Découle de », « Produit »… ;
@@ -24,14 +25,14 @@ export interface Chapo {
   href: string | null
 }
 
-export function FicheChapo({ chapo }: { chapo: Chapo | null }) {
+export function FicheChapo({ chapo, className }: { chapo: Chapo | null; className?: string }) {
   if (!chapo) return null
   // Énoncé sans objet nommé : le libellé EST la phrase (pas de verbe gris + cible).
   if (chapo.title === null) {
-    return <p className="mt-1 text-[13.5px] font-medium text-foreground">{chapo.label}</p>
+    return <p className={cn('mt-1 text-[13.5px] font-medium text-foreground', className)}>{chapo.label}</p>
   }
   return (
-    <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[13.5px]">
+    <div className={cn('mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[13.5px]', className)}>
       <span className="text-[12.5px] text-muted-foreground">{chapo.label}</span>
       {chapo.href ? (
         <Link href={chapo.href} scroll={false} className="font-medium text-primary hover:underline">

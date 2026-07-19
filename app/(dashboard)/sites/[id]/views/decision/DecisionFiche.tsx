@@ -10,6 +10,7 @@ import { UserCheck } from 'lucide-react'
 import { SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { FicheTrail, type TrailNode, type TrailBack } from '@/components/knowledge/FicheTrail'
 import { FicheChapo, type Chapo } from '@/components/knowledge/FicheChapo'
+import { FICHE_TITLE_MOTION, FICHE_BODY_MOTION } from '@/components/knowledge/fiche-motion'
 import { cn } from '@/lib/utils'
 import type { DecisionFicheData } from '@/lib/knowledge/decision-fiche'
 import type { DecisionStatut } from '@/lib/db/decision-constants'
@@ -53,14 +54,14 @@ export function DecisionFicheBody({ decision, back }: { decision: DecisionFicheD
             <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUT_CLS[d.statut])}>{d.statutLabel}</span>
             {d.impactLabel && <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">Impact : {d.impactLabel}</span>}
           </div>
-          <SheetTitle className="text-base font-semibold leading-snug">{d.titre}</SheetTitle>
-          <FicheChapo chapo={chapo} />
+          <SheetTitle className={cn('text-base font-semibold leading-snug', FICHE_TITLE_MOTION)}>{d.titre}</SheetTitle>
+          <FicheChapo chapo={chapo} className={FICHE_TITLE_MOTION} />
           <p className={cn('text-[12px] font-medium', d.enVigueur ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}>
             {d.enVigueur && '● '}{d.vigueurLabel}
           </p>
         </SheetHeader>
 
-        <div className="space-y-5 px-4 pb-6">
+        <div className={cn('space-y-5 px-4 pb-6', FICHE_BODY_MOTION)}>
           {/* 2. POURQUOI — le constat d'abord, puis la provenance */}
           <section>
             <h4 className={H4_STRONG}>Pourquoi ?</h4>

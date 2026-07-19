@@ -62,12 +62,17 @@ export function PersistentFicheSheet({ siteId, person, action, decision }: {
   // Rien d'actif → aucune fiche montée (comportement d'origine à la fermeture).
   if (!active) return null
 
+  // PR2 — l'IDENTITÉ de l'objet affiché. Quand elle change, seul le CORPS est
+  // remonté : la transformation (crossfade titre/chapô, glissement du corps) se
+  // rejoue. La COQUILLE, elle, n'est jamais remontée — c'est l'acquis de PR1.
+  const contentKey = `${active}:${params.get(active) ?? ''}`
+
   return (
     <Sheet open onOpenChange={(o) => { if (!o) close() }}>
       <SheetContent side="right" showCloseButton={!back} className="w-full overflow-y-auto sm:max-w-md">
-        {active === 'action' && <ActionFicheBody action={action} back={back} />}
-        {active === 'decision' && <DecisionFicheBody decision={decision} back={back} />}
-        {active === 'person' && person && <IntervenantFicheBody siteId={siteId} person={person} />}
+        {active === 'action' && <ActionFicheBody key={contentKey} action={action} back={back} />}
+        {active === 'decision' && <DecisionFicheBody key={contentKey} decision={decision} back={back} />}
+        {active === 'person' && person && <IntervenantFicheBody key={contentKey} siteId={siteId} person={person} />}
       </SheetContent>
     </Sheet>
   )
