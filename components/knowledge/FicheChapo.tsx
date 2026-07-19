@@ -15,15 +15,21 @@
 import Link from 'next/link'
 
 export interface Chapo {
-  /** Le verbe de relation, propre au type de fiche : « Découle de », « Produit »… */
+  /** Le verbe de relation, propre au type de fiche : « Découle de », « Produit »… ;
+   *  ou, quand `title` est null, l'ÉNONCÉ complet (« Porte des engagements actifs »). */
   label: string
-  /** L'objet cible (titre réel) et sa fiche, quand elle existe. */
-  title: string
+  /** L'objet cible (titre réel) quand la relation en pointe UN seul. `null` = énoncé
+   *  sans objet nommé : ni élire, ni compter (règle Vincent pour les transverses). */
+  title: string | null
   href: string | null
 }
 
 export function FicheChapo({ chapo }: { chapo: Chapo | null }) {
   if (!chapo) return null
+  // Énoncé sans objet nommé : le libellé EST la phrase (pas de verbe gris + cible).
+  if (chapo.title === null) {
+    return <p className="mt-1 text-[13.5px] font-medium text-foreground">{chapo.label}</p>
+  }
   return (
     <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[13.5px]">
       <span className="text-[12.5px] text-muted-foreground">{chapo.label}</span>

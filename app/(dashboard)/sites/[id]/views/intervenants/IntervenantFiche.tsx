@@ -17,6 +17,7 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import { ChevronRight, ChevronDown, Network, Phone } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { FicheChapo, type Chapo } from '@/components/knowledge/FicheChapo'
 import { frDayMonthLocal, todayLocalIso } from '@/lib/time/local-date'
 import type { IntervenantPerson } from '@/lib/knowledge/site-intervenants-view'
 import { assignedActionCountLabel, describeAssignedActionDate } from '@/lib/knowledge/assigned-actions'
@@ -53,13 +54,33 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
     return `${pathname}?${q.toString()}`
   }
 
-  // Une phrase DÉTERMINISTE, composée de faits — jamais un texte inventé.
-  const phrase = p.isPerson
-    ? `${p.fonction ?? 'Interlocuteur'} ${p.companyName} — rôle ${p.role} sur ce chantier.`
-    : `Entreprise du chantier — rôle ${p.role}.`
-  const provenance = p.citedVisits.length > 0
-    ? `D’après ${p.citedVisits.length} visite${p.citedVisits.length > 1 ? 's' : ''} et le casting du chantier.`
-    : 'D’après le casting du chantier.'
+  // Le chapô = la relation d'IDENTITÉ (règle 6). L'intervenant est un objet
+  // TRANSVERSE : sa relation n'est pas causale mais identitaire — ce dont il RÉPOND.
+  // UN engagement actif → on le nomme ; PLUSIEURS → « Porte des engagements actifs »
+  // (jamais en élire un — l'urgence n'est pas une identité — jamais compter) ;
+  // AUCUN → pas de chapô (le sous-titre rôle + entreprise suffit ; pas de redite).
+  const activeCount = p.assignedActions.length + p.openObligationsCount
+  const chapo: Chapo | null =
+    activeCount === 0
+      ? null
+      : p.assignedActions.length === 1 && p.openObligationsCount === 0
+        ? { label: 'Responsable de', title: p.assignedActions[0].title, href: actionHref(p.assignedActions[0].id) }
+        : { label: 'Porte des engagements actifs', title: null, href: null }
+
+  // La provenance, en UNE ligne — fusion des ex-sections « En une phrase » et
+  // « Pourquoi est-il ici ? » qui répondaient deux fois au même « pourquoi ».
+  const accord = p.isPerson ? '' : 'e'
+  const prov = p.citedVisits.length > 0
+    ? `Au casting du chantier · cité${accord} dans ${p.citedVisits.length} visite${p.citedVisits.length > 1 ? 's' : ''}, confirmé${accord} par un humain.`
+    : `Au casting du chantier, confirmé${accord} par un humain.`
+
+  // Le corps montre CE QUI COMPTE MAINTENANT : engagements triés retard d'abord,
+  // puis échéance la plus proche. L'urgence vit ICI, jamais dans l'identité.
+  const sortedActions = [...p.assignedActions].sort((a, b) => {
+    if (a.isLate !== b.isLate) return a.isLate ? -1 : 1
+    const ad = a.dueDate ?? '9999-99-99', bd = b.dueDate ?? '9999-99-99'
+    return ad < bd ? -1 : ad > bd ? 1 : 0
+  })
 
   const timeline: Array<{ date: string | null; label: string }> = [
     ...p.citedVisits.slice(0, 2).map((v) => ({ date: v.date, label: 'Cité pendant cette visite' })),
@@ -79,15 +100,12 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
           <p className="text-[13px] text-muted-foreground">
             {[p.companyName, p.fonction ?? `Rôle ${p.role}`].filter(Boolean).join(' · ')}
           </p>
+          {/* La relation d'identité, puis la provenance en une ligne discrète. */}
+          <FicheChapo chapo={chapo} />
+          <p className="mt-1 text-[11.5px] text-muted-foreground/80">{prov}</p>
         </SheetHeader>
 
         <div className="space-y-5 px-4 pb-6">
-          <section>
-            <h4 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">En une phrase</h4>
-            <p className="mt-1 text-[13.5px]">{phrase}</p>
-            <p className="mt-0.5 text-[12px] text-muted-foreground/80">{provenance}</p>
-          </section>
-
           {/* « Actions à suivre » — les actions liées structurellement à cette
               personne sur CE chantier (assigned_contact_id). Cadrage NEUTRE
               (Vincent) : surtout pas « Aujourd'hui », qui suggérerait une
@@ -106,7 +124,7 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
               <>
                 <p className="mt-1 text-[13px] font-medium">{assignedActionCountLabel(p.assignedActions.length)}</p>
                 <ul className="mt-1.5 space-y-1.5">
-                  {p.assignedActions.map((a) => {
+                  {sortedActions.map((a) => {
                     const d = describeAssignedActionDate(a, today)
                     return (
                       <li key={a.id}>
@@ -162,16 +180,8 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
             </section>
           )}
 
-          <section>
-            <h4 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Pourquoi {p.isPerson ? 'est-il ici' : 'est-elle ici'} ?
-            </h4>
-            <p className="mt-1 text-[13.5px]">
-              {p.citedVisits.length > 0
-                ? `Cité${p.isPerson ? '' : 'e'} dans ${p.citedVisits.length} visite${p.citedVisits.length > 1 ? 's' : ''} de ce chantier, et confirmé${p.isPerson ? '' : 'e'} par un humain.`
-                : 'Ajouté au casting du chantier par un humain.'}
-            </p>
-          </section>
+          {/* « Pourquoi est-il ici ? » a fusionné dans le chapô (l'identité) + la
+              ligne de provenance de l'en-tête — on ne l'explique plus deux fois. */}
 
           <section>
             <h4 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">Dernières activités</h4>
