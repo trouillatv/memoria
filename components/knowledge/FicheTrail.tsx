@@ -52,7 +52,9 @@ export function FicheTrail({ nodes, back }: { nodes: TrailNode[]; back?: TrailBa
       )}
 
       {showFil && (
-        <div className="flex items-start gap-1.5">
+        // flex-wrap : sur mobile étroit, un maillon à long libellé passe à la ligne
+        // avec son point, plutôt que de déborder du panneau.
+        <div className="flex flex-wrap items-start gap-x-1.5 gap-y-1">
           {nodes.map((n, i) => (
             <Fragment key={i}>
               {i > 0 && <span aria-hidden className="text-[12px] leading-5 text-muted-foreground/40">›</span>}
