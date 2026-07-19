@@ -107,6 +107,8 @@ export interface ActionFicheData {
   /** Qui a créé l'action (auteur de l'événement `created`), ou `null`. Replace
    *  l'action dans son histoire humaine. Jamais résolu depuis l'état courant. */
   createdByLabel: string | null
+  /** Qui a clôturé (auteur du dernier événement `completed`), ou `null`. */
+  closedByLabel: string | null
 }
 
 const PROOF_BUCKET = 'intervention-photos'
@@ -334,5 +336,6 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
     ],
     observed,
     createdByLabel: historyEntries.find((e) => e.kind === 'created')?.actorLabel ?? null,
+    closedByLabel: [...historyEntries].reverse().find((e) => e.kind === 'completed')?.actorLabel ?? null,
   }
 }

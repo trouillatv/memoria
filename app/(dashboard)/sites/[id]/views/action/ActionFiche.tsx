@@ -157,6 +157,11 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
           {a.proofs && (
             <section>
               <h4 className={H4}>{a.proofs.scope === 'current' ? 'Preuves' : 'Clôture antérieure'}</h4>
+              {a.proofs.scope === 'current' && (a.proofs.dateLabel || a.closedByLabel) && (
+                <p className="mt-1 text-[12px] text-muted-foreground">
+                  Clôturée{a.proofs.dateLabel ? ` le ${a.proofs.dateLabel}` : ''}{a.closedByLabel ? ` · par ${a.closedByLabel}` : ''}
+                </p>
+              )}
               {a.proofs.scope === 'previous' && (
                 // Les traces d'une clôture antérieure ne prouvent PAS l'état courant :
                 // l'action a été rouverte. On ne les présente jamais comme « terminé ».
