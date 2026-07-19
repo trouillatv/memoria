@@ -116,9 +116,10 @@ export function ActionFicheSheet({ action, onClose, back }: { action: ActionFich
             <p className="text-[13px] text-muted-foreground">Origine indisponible — la relation existait, l’objet a disparu.</p>
           )}
 
-          {/* ── 4. PROGRESSION — où en est l'engagement (dérivé, le chemin restant) ── */}
+          {/* ── ÉTAT — où en est l'engagement (dérivé, le chemin restant). « État »,
+               pas « Progression » : c'est l'avancement de l'objet, pas une courbe. ── */}
           <section>
-            <h4 className={H4_STRONG}>📈 Progression de l’action</h4>
+            <h4 className={H4_STRONG}>État de l’action</h4>
             <ul className="mt-1.5 space-y-1">
               {a.progress.map((p) => (
                 <li key={p.label} className="flex items-center gap-2 text-[13px]">

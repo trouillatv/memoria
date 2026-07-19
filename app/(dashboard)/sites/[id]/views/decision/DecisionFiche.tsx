@@ -96,25 +96,15 @@ export function DecisionFicheSheet({ decision, onClose, back }: { decision: Deci
             )}
           </section>
 
-          {/* 4. CONSÉQUENCE — mise en avant : l'action qui en découle (1:1) */}
-          <section>
-            <h4 className={H4_STRONG}>Sa conséquence</h4>
-            {d.action ? (
-              <div className="mt-1.5 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
-                <p className="text-[10.5px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">L’action qui en découle</p>
-                <p className="mt-1.5 flex items-center gap-2 text-[14px] font-semibold">
-                  <span className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded bg-emerald-600 text-[11px] text-white">✓</span>
-                  {d.action.title}
-                </p>
-                <Link href={d.action.href} scroll={false} className="mt-2 inline-flex items-center gap-0.5 text-[13px] font-medium text-primary hover:underline">
-                  Ouvrir l’action <ChevronRight className="h-3.5 w-3.5" />
-                </Link>
-                <p className="mt-2 border-t border-dashed border-emerald-200 pt-2 text-[11px] text-muted-foreground dark:border-emerald-900/40">Cette décision entraîne aujourd’hui cette action.</p>
-              </div>
-            ) : (
+          {/* CONSÉQUENCE — l'action est déjà nommée ET ouvrable par le chapô
+               (« Produit : … ») en tête ; on ne la répète plus. Seul l'état vide
+               explicite subsiste (recette métier) : une décision sans action le DIT. */}
+          {!d.action && (
+            <section>
+              <h4 className={H4}>Sa conséquence</h4>
               <p className="mt-1 text-[13px] text-muted-foreground">Aucune action liée à cette décision.</p>
-            )}
-          </section>
+            </section>
+          )}
 
           {/* 5. HISTORIQUE — statut COURANT, jamais une fausse transition (pas de journal) */}
           <section>
