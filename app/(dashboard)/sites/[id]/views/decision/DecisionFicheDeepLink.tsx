@@ -28,7 +28,7 @@ export function DecisionFicheDeepLink({ decision }: { decision: DecisionFicheDat
   // du fil. Toute autre porte (intervenant, aperçu, recherche…) reste « Fermer ».
   const back: TrailBack | null =
     params.get('decision_source') === 'action' && decision.action
-      ? { typeLabel: 'Action', href: decision.action.href, fromTitle: decision.action.title }
+      ? { typeLabel: 'Action', href: decision.action.href }
       : null
 
   return <DecisionFicheSheet decision={decision} onClose={close} back={back} />

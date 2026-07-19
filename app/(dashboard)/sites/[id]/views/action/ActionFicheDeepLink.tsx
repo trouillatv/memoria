@@ -29,7 +29,7 @@ export function ActionFicheDeepLink({ action }: { action: ActionFicheData }) {
   // amont du fil. Toute autre porte (personne, recherche, Aujourd'hui…) = « Fermer ».
   const back: TrailBack | null =
     params.get('action_source') === 'decision' && action.fromDecision
-      ? { typeLabel: 'Décision', href: action.fromDecision.href, fromTitle: action.fromDecision.title }
+      ? { typeLabel: 'Décision', href: action.fromDecision.href }
       : null
 
   return <ActionFicheSheet action={action} onClose={close} back={back} />

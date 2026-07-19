@@ -8,9 +8,11 @@
 //
 // Deux sorties, jamais confondues (règle « un clic = une continuité ») :
 //   · `back` présent → on est arrivé depuis une autre fiche → « ← <maillon> »
-//     REMONTE l'histoire (le × est masqué par la fiche). Sous-titre « Depuis : … ».
+//     REMONTE l'histoire (le × est masqué par la fiche).
 //   · `back` absent → on est arrivé en direct (Travail, Chronologie, recherche) →
 //     la fiche garde son × « Fermer ».
+// Pas de sous-titre « Depuis : … » : le fil au-dessus et le libellé du bouton le
+// disent déjà (version A retenue — la redondance n'ajoutait rien).
 //
 // Présentationnel pur : les nœuds et le retour sont calculés par la fiche / le
 // deep-link à partir de données DÉJÀ chargées. Aucun objet, aucune requête neuve.
@@ -31,8 +33,6 @@ export interface TrailNode {
 export interface TrailBack {
   typeLabel: string
   href: string
-  /** Le titre de l'objet de provenance — sous-titre discret « Depuis : … ». */
-  fromTitle: string | null
 }
 
 export function FicheTrail({ nodes, back }: { nodes: TrailNode[]; back?: TrailBack | null }) {
@@ -72,10 +72,6 @@ export function FicheTrail({ nodes, back }: { nodes: TrailNode[]; back?: TrailBa
             </Fragment>
           ))}
         </div>
-      )}
-
-      {back?.fromTitle && (
-        <p className="text-[11px] leading-tight text-muted-foreground/70">Depuis : {back.fromTitle}</p>
       )}
     </div>
   )
