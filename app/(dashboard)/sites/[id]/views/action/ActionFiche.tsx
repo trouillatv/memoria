@@ -10,6 +10,7 @@ import Link from 'next/link'
 import { ChevronRight, UserCheck, CheckCircle2, Circle } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { FicheTrail, type TrailNode, type TrailBack } from '@/components/knowledge/FicheTrail'
+import { FicheChapo, type Chapo } from '@/components/knowledge/FicheChapo'
 import { cn } from '@/lib/utils'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { describeAssignedActionDate } from '@/lib/knowledge/assigned-actions'
@@ -53,6 +54,14 @@ export function ActionFicheSheet({ action, onClose, back }: { action: ActionFich
     { typeLabel: 'Action', href: null, current: true },
   ]
 
+  // Le chapô : la relation CENTRALE d'une action = ce dont elle découle (la
+  // décision d'abord, sinon son origine). Une seule relation, cliquable.
+  const chapo: Chapo | null = a.fromDecision
+    ? { label: 'Découle de', title: a.fromDecision.title, href: a.fromDecision.href }
+    : a.source?.available
+      ? { label: 'Découle de', title: a.source.title, href: a.source.href }
+      : null
+
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
       <SheetContent side="right" showCloseButton={!back} className="w-full overflow-y-auto sm:max-w-md">
@@ -62,6 +71,7 @@ export function ActionFicheSheet({ action, onClose, back }: { action: ActionFich
             {a.statusLabel}
           </span>
           <SheetTitle className="text-base font-semibold leading-snug">{a.title}</SheetTitle>
+          <FicheChapo chapo={chapo} />
           {a.corpsEtat && <p className="text-[13px] text-muted-foreground">{a.corpsEtat}</p>}
         </SheetHeader>
 
@@ -117,14 +127,9 @@ export function ActionFicheSheet({ action, onClose, back }: { action: ActionFich
                 // Une relation existait mais l'objet a disparu — jamais masqué.
                 <p className="mt-1 text-[13px] text-muted-foreground">Origine indisponible</p>
               )}
-              {/* Le niveau décisionnel du « pourquoi » : la décision dont cette action découle. */}
-              {a.fromDecision && (
-                <Link href={a.fromDecision.href} scroll={false} className="mt-2 flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50/50 p-2 text-[12.5px] hover:bg-indigo-50 dark:border-indigo-900/40 dark:bg-indigo-950/20">
-                  <span aria-hidden className="text-indigo-600 dark:text-indigo-300">⚑</span>
-                  <span className="text-muted-foreground">Issue de la décision : <span className="font-medium text-foreground">« {a.fromDecision.title} »</span></span>
-                  <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                </Link>
-              )}
+              {/* La décision d'origine n'est plus répétée ici : le chapô sous le
+                  titre (« Découle de : … ») la porte déjà — jamais deux fois la
+                  même relation. */}
               {a.createdByLabel && (
                 <p className="mt-1.5 text-[11.5px] text-muted-foreground">Créée par {a.createdByLabel}</p>
               )}

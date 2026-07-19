@@ -9,6 +9,7 @@ import Link from 'next/link'
 import { ChevronRight, UserCheck } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { FicheTrail, type TrailNode, type TrailBack } from '@/components/knowledge/FicheTrail'
+import { FicheChapo, type Chapo } from '@/components/knowledge/FicheChapo'
 import { cn } from '@/lib/utils'
 import type { DecisionFicheData } from '@/lib/knowledge/decision-fiche'
 import type { DecisionStatut } from '@/lib/db/decision-constants'
@@ -35,6 +36,11 @@ export function DecisionFicheSheet({ decision, onClose, back }: { decision: Deci
     ...(d.action ? [{ typeLabel: 'Action', href: d.action.href, current: false }] : []),
   ]
 
+  // Le chapô : la relation CENTRALE d'une décision = l'action qu'elle produit (1:1).
+  const chapo: Chapo | null = d.action
+    ? { label: 'Produit', title: d.action.title, href: d.action.href }
+    : null
+
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
       {/* Le « ← » remplace le « × » quand on remonte l'histoire depuis une fiche. */}
@@ -48,6 +54,7 @@ export function DecisionFicheSheet({ decision, onClose, back }: { decision: Deci
             {d.impactLabel && <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">Impact : {d.impactLabel}</span>}
           </div>
           <SheetTitle className="text-base font-semibold leading-snug">{d.titre}</SheetTitle>
+          <FicheChapo chapo={chapo} />
           <p className={cn('text-[12px] font-medium', d.enVigueur ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}>
             {d.enVigueur && '● '}{d.vigueurLabel}
           </p>
