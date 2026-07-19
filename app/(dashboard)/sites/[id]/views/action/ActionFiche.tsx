@@ -46,10 +46,40 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
         <div className="space-y-5 px-4 pb-6">
           {a.body && <p className="text-[13.5px]">{a.body}</p>}
 
-          {/* ── L'HISTOIRE D'ABORD : pourquoi cette action existe ── */}
+          {/* ── 1. CE QUI A ÉTÉ OBSERVÉ — en tête : ça dit tout de suite POURQUOI ── */}
+          {a.observed && (
+            <section className="rounded-lg border-l-2 border-primary/50 bg-muted/40 p-3">
+              <h4 className={H4}>Ce qui a été observé</h4>
+              {a.observed.text && <p className="mt-1.5 text-[13.5px] italic leading-relaxed">« {a.observed.text} »</p>}
+              {(a.observed.isVocal || a.observed.authorLabel) && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 text-[11.5px] text-muted-foreground">
+                  {a.observed.isVocal && <span>🎤 Mémo vocal (transcription)</span>}
+                  {a.observed.authorLabel && <span>Noté par {a.observed.authorLabel}</span>}
+                </div>
+              )}
+              {a.observed.photoUrl && (
+                <a href={a.observed.photoUrl} target="_blank" rel="noopener noreferrer" className="mt-2 block w-fit">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={a.observed.photoUrl} alt="Photo prise sur le terrain" className="max-h-44 w-auto rounded-md border" />
+                </a>
+              )}
+              {a.observed.photoMissing && <p className="mt-1 text-[11.5px] text-muted-foreground">Photo indisponible</p>}
+            </section>
+          )}
+
+          {/* ── 2. CHANTIER — le contexte principal : « sur quel chantier ? » ── */}
+          <section>
+            <h4 className={H4}>📍 Chantier</h4>
+            <p className="mt-1 text-[13.5px] font-medium">{a.siteName}</p>
+            <Link href={`/sites/${a.siteId}`} className="inline-flex items-center gap-0.5 pt-0.5 text-[13px] font-medium text-primary hover:underline">
+              Voir le chantier <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          </section>
+
+          {/* ── 3. ORIGINE — l'événement du chantier qui a créé l'action ── */}
           {a.source && (
             <section>
-              <h4 className={H4}>Pourquoi cette action</h4>
+              <h4 className={H4}>📄 Origine</h4>
               {a.source.available ? (
                 <div className="mt-1 space-y-0.5">
                   <p className="text-[12px] font-medium text-muted-foreground">{a.source.typeLabel}</p>
@@ -68,27 +98,6 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
               {a.createdByLabel && (
                 <p className="mt-1.5 text-[11.5px] text-muted-foreground">Créée par {a.createdByLabel}</p>
               )}
-              {/* Ce qui a été observé sur le terrain — la capture précise qui a
-                  déclenché l'action. Le PROBLÈME, pas seulement le titre. */}
-              {a.observed && (
-                <div className="mt-2.5 rounded-lg border-l-2 border-primary/40 bg-muted/40 p-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">Ce qui a été observé</p>
-                  {a.observed.text && <p className="mt-1 text-[13px] italic">« {a.observed.text} »</p>}
-                  {(a.observed.isVocal || a.observed.authorLabel) && (
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 text-[11.5px] text-muted-foreground">
-                      {a.observed.isVocal && <span>🎤 Mémo vocal (transcription)</span>}
-                      {a.observed.authorLabel && <span>Noté par {a.observed.authorLabel}</span>}
-                    </div>
-                  )}
-                  {a.observed.photoUrl && (
-                    <a href={a.observed.photoUrl} target="_blank" rel="noopener noreferrer" className="mt-2 block w-fit">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={a.observed.photoUrl} alt="Photo prise sur le terrain" className="max-h-40 w-auto rounded-md border" />
-                    </a>
-                  )}
-                  {a.observed.photoMissing && <p className="mt-1 text-[11.5px] text-muted-foreground">Photo indisponible</p>}
-                </div>
-              )}
               {a.context && (
                 <div className="mt-2.5">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Contexte</p>
@@ -102,9 +111,9 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
             </section>
           )}
 
-          {/* ── ÉTAT ACTUEL : où en est l'engagement, en un coup d'œil (dérivé) ── */}
+          {/* ── 4. PROGRESSION — où en est l'engagement (dérivé, le chemin restant) ── */}
           <section>
-            <h4 className={H4}>État actuel</h4>
+            <h4 className={H4}>📈 Progression de l’action</h4>
             <ul className="mt-1.5 space-y-1">
               {a.progress.map((p) => (
                 <li key={p.label} className="flex items-center gap-2 text-[13px]">
@@ -117,8 +126,9 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
             </ul>
           </section>
 
+          {/* ── 5. RESPONSABLE ── */}
           <section>
-            <h4 className={H4}>Responsable</h4>
+            <h4 className={H4}>👤 Responsable</h4>
             {a.responsible?.kind === 'contact' ? (
               <p className="mt-1 inline-flex items-center gap-1 text-[13.5px] font-medium text-emerald-700 dark:text-emerald-400">
                 <UserCheck className="h-3.5 w-3.5" />
@@ -183,15 +193,15 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
             </section>
           )}
 
-          {/* ── RELATIONS : naviguer dans la mémoire du chantier (provenance connue) ── */}
+          {/* ── 7. RELATIONS — le réseau d'objets de la mémoire (tout cliquable) ── */}
           {a.relations.length > 0 && (
             <section>
-              <h4 className={H4}>Relations</h4>
+              <h4 className={H4}>🔗 Relations</h4>
               <div className="mt-1.5 flex flex-wrap gap-2">
                 {a.relations.map((r, i) => r.href ? (
-                  <Link key={i} href={r.href} className="rounded-lg border px-2.5 py-1 text-[12px] hover:bg-muted">{r.label}</Link>
+                  <Link key={i} href={r.href} className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12px] hover:bg-muted"><span aria-hidden>{r.icon}</span>{r.label}</Link>
                 ) : (
-                  <span key={i} className="rounded-lg border px-2.5 py-1 text-[12px] text-muted-foreground">{r.label}</span>
+                  <span key={i} className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12px] text-muted-foreground"><span aria-hidden>{r.icon}</span>{r.label}</span>
                 ))}
               </div>
             </section>

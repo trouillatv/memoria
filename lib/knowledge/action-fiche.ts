@@ -98,8 +98,10 @@ export interface ActionFicheData {
   /** « État actuel » : où en est l'engagement, en un coup d'œil. DÉRIVÉ des données
    *  déjà chargées — aucun champ inventé, aucune donnée nouvelle. */
   progress: Array<{ label: string; done: boolean }>
-  /** Objets liés cliquables (mémoire du chantier), depuis la provenance connue. */
-  relations: Array<{ label: string; href: string | null }>
+  /** Nom du chantier — contexte principal du dossier. */
+  siteName: string
+  /** Objets liés cliquables (le réseau de la mémoire), depuis la provenance connue. */
+  relations: Array<{ icon: string; label: string; href: string | null }>
   /** Ce qui a été observé sur le terrain et a déclenché l'action, ou `null`. */
   observed: ActionFicheObserved | null
   /** Qui a créé l'action (auteur de l'événement `created`), ou `null`. Replace
@@ -322,11 +324,13 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
       { label: 'Preuve déposée', done: !!(a.completed_photo_path || a.completed_comment?.trim()) },
       { label: 'Action clôturée', done: a.status === 'done' },
     ],
-    // Relations depuis la provenance connue (jamais une association devinée).
+    siteName,
+    // Le réseau d'objets, depuis la provenance connue (jamais une association devinée).
     relations: [
-      { label: siteName, href: `/sites/${siteId}` },
-      ...(source?.available && source.href ? [{ label: source.title, href: source.href }] : []),
-      ...(context ? [{ label: context.label, href: context.href }] : []),
+      { icon: '🏗', label: `Chantier : ${siteName}`, href: `/sites/${siteId}` },
+      ...(source?.available && source.href ? [{ icon: '📄', label: source.title, href: source.href }] : []),
+      ...(responsible?.kind === 'contact' ? [{ icon: '👤', label: responsible.name, href: null }] : []),
+      ...(context ? [{ icon: '📄', label: context.label, href: context.href }] : []),
     ],
     observed,
     createdByLabel: historyEntries.find((e) => e.kind === 'created')?.actorLabel ?? null,
