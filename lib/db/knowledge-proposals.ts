@@ -454,15 +454,17 @@ export interface PromotionCapability {
 }
 
 /** Les six types de la mig 212 et leur geste. Le 7ᵉ devra passer par ici. */
+// Le bouton décrit EXACTEMENT ce que l'humain va autoriser (quel objet naît) —
+// jamais un « Ajouter » générique dont l'effet varie selon la carte.
 const CAPABILITIES: Record<string, { label: string; requiredInputs: PromotionInputName[] }> = {
   action: { label: "Créer l'action", requiredInputs: [] },
-  deadline: { label: 'Ajouter au planning', requiredInputs: [] },
-  decision: { label: 'Confirmer la décision', requiredInputs: [] },
+  deadline: { label: "Ajouter l'échéance au planning", requiredInputs: [] },
+  decision: { label: 'Acter la décision', requiredInputs: [] },
   // Le rôle ne se lit pas dans « Ginger » : la proposition est une chaîne nue.
-  stakeholder: { label: 'Ajouter au chantier', requiredInputs: ['role'] },
+  stakeholder: { label: "Créer l'intervenant", requiredInputs: ['role'] },
   vigilance: { label: 'Retenir le point de vigilance', requiredInputs: [] },
   // Périssable ou durable ? L'humain tranche, jamais le modèle.
-  knowledge: { label: 'Ajouter à la mémoire', requiredInputs: ['nature'] },
+  knowledge: { label: 'Confirmer cette information', requiredInputs: ['nature'] },
 }
 
 export function getPromotionCapability(kind: string): PromotionCapability {

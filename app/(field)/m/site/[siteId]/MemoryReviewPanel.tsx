@@ -1,18 +1,21 @@
 'use client'
 
 // ── LA MÉMOIRE ACTIONNABLE ───────────────────────────────────────────────────
-// Le vide de « Ce que le chantier sait » n'était pas de l'UX : personne ne
-// pouvait confirmer une information ou un intervenant, parce que le cycle métier
-// était incomplet. Il l'est maintenant — cet écran est la moitié visible.
-//
-// LA RÈGLE : cet écran ne DÉCIDE d'aucun bouton. Il lit `capability`, fournie par
-// le read model. Un type sans geste affiche son explication ; un type qui exige
-// une réponse (le rôle, la nature) ouvre la question au lieu de planter.
+// « À confirmer » est une INBOX, pas une page de lecture : voici ce que l'IA
+// propose, voici ce que votre validation produira. Doctrine :
+//   · la proposition décrit ce que l'IA croit avoir trouvé ; le BOUTON décrit
+//     exactement ce que l'humain va autoriser (capability.label, jamais décidé ici) ;
+//   · cartes COMPACTES — nature, contenu, source, conséquence visibles sans ouvrir ;
+//     l'extrait complet et « Écarter » vivent dans le détail (⋯) ;
+//   · filtres par CONSÉQUENCE métier (Personnes / Engagements / Connaissances),
+//     déduits du type d'objet — jamais une appréciation opaque ;
+//   · les propositions ne sont JAMAIS mélangées aux connaissances validées.
 
-import { useState, useTransition } from 'react'
-import { Check, ChevronRight, Loader2, MapPin, X } from 'lucide-react'
+import { useMemo, useState, useTransition } from 'react'
+import { Check, ChevronRight, Loader2, MapPin, MoreHorizontal, X } from 'lucide-react'
 import { promoteFromMemoryAction, dismissFromMemoryAction } from './memory-actions'
 import { WhyButton } from '@/components/provenance/WhyButton'
+import { cn } from '@/lib/utils'
 import type { MemoryReview, ReviewItem } from '@/lib/knowledge/memory-review'
 import { frDayMonthLocal } from '@/lib/time/local-date'
 import { splitPersonCompany, looksLikePerson } from '@/lib/knowledge/person-name'
@@ -24,22 +27,78 @@ const KIND_LABEL: Record<string, string> = {
   knowledge: 'Information',
   stakeholder: 'Intervenant',
   decision: 'Décision',
-  vigilance: 'Point de vigilance',
+  vigilance: 'Vigilance',
 }
 
-export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: MemoryReview }) {
-  // Le déplacement INSTANTANÉ : l'élément quitte « À examiner » dès le geste,
-  // sans attendre le serveur. Sinon le conducteur clique, rien ne bouge, et il
-  // doute d'avoir cliqué.
-  //
-  // L'élément retenu, en revanche, n'est PAS ajouté ici : `revalidatePath` le
-  // fait réapparaître dans `confirmed`, lu depuis l'objet réel. Une liste
-  // optimiste en plus l'afficherait DEUX FOIS pendant l'aller-retour — c'est
-  // arrivé, et c'est la même faute que deux read models pour un même fait :
-  // deux sources, une vérité. Le serveur est la source.
-  const [done, setDone] = useState<Set<string>>(new Set())
+// La FAMILLE = la conséquence de la validation, déduite du type (jamais inventée) :
+// valider un intervenant crée un casting ; une décision engage le chantier ; une
+// information enrichit la connaissance.
+type Family = 'personnes' | 'engagements' | 'connaissances'
+const FAMILY_OF: Record<string, Family> = {
+  stakeholder: 'personnes',
+  decision: 'engagements',
+  action: 'engagements',
+  deadline: 'engagements',
+  knowledge: 'connaissances',
+  vigilance: 'connaissances',
+}
+const FAMILY_LABEL: Record<Family, string> = {
+  personnes: 'Personnes', engagements: 'Engagements', connaissances: 'Connaissances',
+}
+// L'ordre = le poids factuel de la validation (casting > engagement > contexte).
+const FAMILY_ORDER: Family[] = ['personnes', 'engagements', 'connaissances']
 
-  const remaining = review.toReview.filter((i) => !done.has(i.id))
+/** L'INBOX seule (sans les connaissances validées) — réutilisée par la Mémoire
+ *  desktop. `withFilters` affiche les familles quand la file est assez longue. */
+export function MemoryInbox({ siteId, items, withFilters = false }: {
+  siteId: string
+  items: ReviewItem[]
+  withFilters?: boolean
+}) {
+  const [done, setDone] = useState<Set<string>>(new Set())
+  const [family, setFamily] = useState<Family | null>(null)
+
+  const remaining = items.filter((i) => !done.has(i.id))
+  const counts = useMemo(() => {
+    const c: Record<Family, number> = { personnes: 0, engagements: 0, connaissances: 0 }
+    for (const i of remaining) c[FAMILY_OF[i.kind] ?? 'connaissances']++
+    return c
+  }, [remaining])
+  const visible = family ? remaining.filter((i) => (FAMILY_OF[i.kind] ?? 'connaissances') === family) : remaining
+  // Tri par poids de conséquence, ordre stable à l'intérieur d'une famille.
+  const ordered = [...visible].sort((a, b) =>
+    FAMILY_ORDER.indexOf(FAMILY_OF[a.kind] ?? 'connaissances') - FAMILY_ORDER.indexOf(FAMILY_OF[b.kind] ?? 'connaissances'))
+
+  if (remaining.length === 0) return <p className="text-[13px] text-muted-foreground">Rien à confirmer pour l’instant.</p>
+
+  return (
+    <div>
+      {withFilters && remaining.length > 3 && (
+        <div className="mb-2.5 flex flex-wrap gap-1.5">
+          <button type="button" onClick={() => setFamily(null)}
+            className={cn('rounded-full border px-2.5 py-1 text-[12px]', family === null ? 'border-foreground bg-foreground text-background font-medium' : 'text-muted-foreground')}>
+            Tous ({remaining.length})
+          </button>
+          {FAMILY_ORDER.filter((f) => counts[f] > 0).map((f) => (
+            <button key={f} type="button" onClick={() => setFamily(family === f ? null : f)}
+              className={cn('rounded-full border px-2.5 py-1 text-[12px]', family === f ? 'border-foreground bg-foreground text-background font-medium' : 'text-muted-foreground')}>
+              {FAMILY_LABEL[f]} ({counts[f]})
+            </button>
+          ))}
+        </div>
+      )}
+      <ul className="space-y-1.5">
+        {ordered.map((item) => (
+          <ReviewCard key={item.id} siteId={siteId} item={item} onDone={() => setDone((s) => new Set(s).add(item.id))} />
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** Le panneau du TERRAIN : connaissances validées + inbox — deux mondes, deux
+ *  sections, jamais mélangés dans une même pile. */
+export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: MemoryReview }) {
   const groups = [...new Set(review.confirmed.map((c) => c.group))]
 
   return (
@@ -49,9 +108,6 @@ export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: 
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Ce que le chantier sait
           </h2>
-          {/* Honnête, et bref : une grande carte vide donnerait l'impression d'un
-              écran cassé. La phrase dit l'état réel, les propositions suivent tout
-              de suite — c'est là qu'est le travail. */}
           <p className="mt-1 text-[13px] text-muted-foreground">Rien de confirmé pour l’instant.</p>
         </div>
       ) : (
@@ -64,14 +120,9 @@ export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: 
                   <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
                   <span className="min-w-0">
                     {c.title}
-                    {/* La nature choisie à la confirmation, enfin visible : sans
-                        elle, la question posée n'aurait servi à rien. */}
                     {c.nature && (
                       <span className="ml-1.5 text-[11px] text-muted-foreground">· {c.nature}</span>
                     )}
-                    {/* « Voir l'origine » — le raccourci du moteur d'explication,
-                        réservé aux décisions (l'objet le plus durable mérite de
-                        montrer d'où il vient). */}
                     {c.group === 'Décisions' && (
                       <span className="mt-0.5 block">
                         <WhyButton objectType="decision" objectId={c.id} label="Voir l’origine" />
@@ -85,21 +136,14 @@ export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: 
         ))
       )}
 
-      {remaining.length > 0 && (
+      {review.toReview.length > 0 && (
         <div>
           <h3 className="text-[13px] font-medium text-sky-700 dark:text-sky-300">
-            À examiner ({remaining.length})
+            À examiner ({review.toReview.length})
           </h3>
-          <ul className="mt-2 space-y-2">
-            {remaining.map((item) => (
-              <ReviewCard
-                key={item.id}
-                siteId={siteId}
-                item={item}
-                onDone={() => setDone((s) => new Set(s).add(item.id))}
-              />
-            ))}
-          </ul>
+          <div className="mt-2">
+            <MemoryInbox siteId={siteId} items={review.toReview} />
+          </div>
         </div>
       )}
     </section>
@@ -117,12 +161,12 @@ function ReviewCard({
 }) {
   const [pending, start] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  // Le détail (extrait complet + Écarter) est replié : la carte reste une LIGNE
+  // dense — deux à trois propositions par écran, c'était trop peu.
+  const [open, setOpen] = useState(false)
   // Ce que l'écran doit DEMANDER — il ne le devine pas, la capability le dit.
   const [asking, setAsking] = useState<'role' | 'who' | 'nature' | null>(null)
-  // Le rôle choisi, en attente de la réponse « personne ou entreprise ? ».
   const [role, setRole] = useState<string | null>(null)
-  // Préremplissage PROPOSÉ depuis le titre (« Vincent Milon (PAVE) ») — l'humain
-  // tranche : sans distinction, confirmer une personne créait une ENTREPRISE.
   const guess = splitPersonCompany(item.title)
   const [personName, setPersonName] = useState(guess.person ?? (looksLikePerson(item.title) ? item.title : ''))
   const [companyName, setCompanyName] = useState(guess.company ?? '')
@@ -155,12 +199,15 @@ function ReviewCard({
   }
 
   return (
-    <li className="rounded-xl border bg-card p-3">
-      <p className="text-[12px] text-muted-foreground">{KIND_LABEL[item.kind] ?? item.kind}</p>
-      <p className="mt-0.5 text-[13px] font-medium text-foreground/90">{item.title}</p>
-      {item.body && <p className="mt-0.5 text-[13px] text-muted-foreground">{item.body}</p>}
-
+    <li className="rounded-xl border bg-card px-3 py-2">
+      {/* La ligne dense : nature · contenu · provenance — tout visible sans ouvrir. */}
+      <div className="flex items-baseline gap-2">
+        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">{KIND_LABEL[item.kind] ?? item.kind}</span>
+        <p className="min-w-0 text-[13px] font-medium leading-snug text-foreground/90">{item.title}</p>
+      </div>
       <Provenance item={item} />
+
+      {open && item.body && <p className="mt-1.5 text-[13px] text-muted-foreground">{item.body}</p>}
 
       {asking === 'role' && (
         <div className="mt-2 rounded-lg bg-muted/50 p-2">
@@ -261,9 +308,9 @@ function ReviewCard({
       {error && <p className="mt-2 text-[12px] text-rose-600">{error}</p>}
 
       {!asking && (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          {/* Le geste vient du contrat, jamais de l'écran. Pas de « Confirmer » nu :
-              le bouton dit ce qui va se passer. */}
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {/* Le geste vient du contrat, jamais de l'écran : le bouton dit quel
+              objet va naître (« Créer l'intervenant », « Acter la décision »). */}
           {item.capability.available ? (
             <button
               type="button"
@@ -278,38 +325,45 @@ function ReviewCard({
             // Un type sans geste ne reste pas muet : il dit pourquoi.
             <p className="text-[12px] text-muted-foreground">{item.capability.explanation}</p>
           )}
+          {/* Le détail (extrait, Écarter) derrière ⋯ — l'inbox reste dense. */}
           <button
             type="button"
-            disabled={pending}
-            onClick={dismiss}
-            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] text-muted-foreground active:brightness-95 disabled:opacity-50"
+            onClick={() => setOpen((v) => !v)}
+            aria-label="Détails de la proposition"
+            className="inline-flex items-center rounded-lg border px-2 py-1.5 text-muted-foreground active:brightness-95"
           >
-            <X className="h-3.5 w-3.5" /> Écarter
+            <MoreHorizontal className="h-4 w-4" />
           </button>
+          {open && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={dismiss}
+              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] text-muted-foreground active:brightness-95 disabled:opacity-50"
+            >
+              <X className="h-3.5 w-3.5" /> Écarter
+            </button>
+          )}
         </div>
       )}
     </li>
   )
 }
 
-/** « Mentionné dans la visite du 15 juillet · 4 photos · 2 mémos » — et le lien
- *  vers la preuve. Sans provenance, le conducteur devrait croire MemorIA sur
- *  parole. (Cf. confiance-actif-transversal.) */
+/** Provenance COMPACTE : « ↳ Visite du 15 juillet · 6 traces » — elle garantit
+ *  l'honnêteté sans dominer la carte. Le clic ouvre la source. */
 function Provenance({ item }: { item: ReviewItem }) {
   const p = item.provenance
   if (!p.reportId) return null
-  const preuves = [
-    p.photos > 0 ? `${p.photos} photo${p.photos > 1 ? 's' : ''}` : null,
-    p.vocals > 0 ? `${p.vocals} mémo${p.vocals > 1 ? 's' : ''}` : null,
-  ].filter(Boolean)
+  const traces = p.photos + p.vocals
   return (
     <a
       href={`/m/visite/${p.reportId}/cr`}
-      className="mt-1.5 inline-flex items-center gap-1 text-[12px] text-muted-foreground active:text-foreground"
+      className="mt-0.5 inline-flex items-center gap-1 text-[11.5px] text-muted-foreground active:text-foreground"
     >
       <MapPin className="h-3 w-3 shrink-0" />
       {p.visitedAt ? `Visite du ${frDayMonthLocal(p.visitedAt)}` : 'Issue d’une visite'}
-      {preuves.length > 0 && ` · ${preuves.join(' · ')}`}
+      {traces > 0 && ` · ${traces} trace${traces > 1 ? 's' : ''}`}
       <ChevronRight className="h-3 w-3 shrink-0" />
     </a>
   )

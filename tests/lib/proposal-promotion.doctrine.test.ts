@@ -51,8 +51,13 @@ describe('La règle de sortie — un geste réel, ou rien', () => {
       expect(cap.label, `« ${k} » n'a pas de geste`).toBeTruthy()
       expect(cap.label, 'un bouton « Confirmer » nu ne dit pas ce qui va se passer').not.toBe('Confirmer')
     }
+    // Le bouton décrit EXACTEMENT quel objet la validation produit — jamais un
+    // « Ajouter » générique dont l'effet varie selon la carte (recette 2026-07-19).
     expect(getPromotionCapability('action').label).toBe("Créer l'action")
-    expect(getPromotionCapability('deadline').label).toBe('Ajouter au planning')
+    expect(getPromotionCapability('deadline').label).toBe("Ajouter l'échéance au planning")
+    expect(getPromotionCapability('stakeholder').label).toBe("Créer l'intervenant")
+    expect(getPromotionCapability('decision').label).toBe('Acter la décision')
+    expect(getPromotionCapability('knowledge').label).toBe('Confirmer cette information')
   })
 
   it("le cycle est complet : plus aucun type n'est orphelin", () => {

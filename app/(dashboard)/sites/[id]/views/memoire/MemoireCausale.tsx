@@ -45,12 +45,16 @@ function Node({ node }: { node: CausalThread['steps'][number]['node'] }) {
   return node.href ? <Link href={node.href} scroll={false} className="hover:opacity-80">{inner}</Link> : inner
 }
 
-export function MemoireCausale({ threads }: { threads: CausalThread[] }) {
+export function MemoireCausale({ threads, siteId }: { threads: CausalThread[]; siteId: string }) {
   return (
     <div className="space-y-4">
-      <header>
-        <h1 className="text-2xl font-bold tracking-tight">Mémoire</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">La chronologie <b>causale</b> du chantier — comment on en est arrivé à l’état actuel.</p>
+      <header className="flex flex-wrap items-end justify-between gap-2">
+        <p className="text-sm text-muted-foreground">Comment les faits validés expliquent l’état actuel du chantier.</p>
+        {/* Après avoir compris la causalité, on peut consulter le déroulé temporel —
+            la Chronologie CANONIQUE, jamais un doublon ici. */}
+        <Link href={`/sites/${siteId}?tab=chronologie`} className="text-[12.5px] font-medium text-primary hover:underline">
+          Voir la chronologie complète →
+        </Link>
       </header>
 
       <div className="grid gap-3 sm:grid-cols-3">

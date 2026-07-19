@@ -8,13 +8,11 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { listBlocagesBySite } from '@/lib/db/site-blocages'
 import { listMissionsBySite } from '@/lib/db/missions'
-import { listInterventionsSupervisor, type SupervisorInterventionRow } from '@/lib/db/interventions'
+import { listInterventionsSupervisor } from '@/lib/db/interventions'
 import { listCyclesBySite } from '@/lib/db/planning-cycles'
 import { listSiteDeadlines } from '@/lib/db/site-deadlines'
 import { listTeams } from '@/lib/db/teams'
-import { listHandoverBriefsBySite } from '@/lib/db/handover'
 import type { DbTeam } from '@/types/db'
-import type { ComponentProps } from 'react'
 import {
   getLastEndedVisitForSite,
   listSiteVisitsWithCounts,
@@ -67,7 +65,7 @@ import { SiteMemoryQuery } from './SiteMemoryQuery'
 import { SiteTabsNav, SITE_TAB_KEYS, type SiteTabKey } from './SiteTabsNav'
 import { TogglePanel } from './TogglePanel'
 import { DocumentsWorkspace, type DocumentsQrState, type SiteMediaSummary } from './views/documents/DocumentsWorkspace'
-import { MemoryWorkspace, type SiteRelay } from './views/memory/MemoryWorkspace'
+import { MemoireConfirmer } from './views/memoire/MemoireConfirmer'
 import { WorkWorkspace } from './views/work/WorkWorkspace'
 import { SandboxResetButton } from './SandboxResetButton'
 import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
@@ -96,9 +94,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
 
   const { id } = await params
   const { tab: rawTab, person: personId, person_source: personSource, action: actionId, decision: decisionId, memtab: rawMemtab } = await searchParams
-  const memtab: MemoireSubTab = (['pourquoi', 'chronologie', 'confirmer'] as const).includes(rawMemtab as MemoireSubTab)
-    ? (rawMemtab as MemoireSubTab)
-    : 'pourquoi'
+  const memtab: MemoireSubTab = rawMemtab === 'confirmer' ? 'confirmer' : 'pourquoi'
   const tab: ChantierViewKey = (CHANTIER_VIEW_KEYS as ReadonlyArray<string>).includes(rawTab ?? '')
     ? (rawTab as ChantierViewKey)
     : 'apercu'
@@ -300,11 +296,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
             siteId={id}
             siteName={identity.name}
             signals={memorySignals}
-            interventions={interventionsResult.items}
             teams={teams}
-            traceCount={visits.length}
             memtab={memtab}
-            chronology={{ siteId: id, changes: recentChanges, deadlines, visits, actions: openActions, blocages, interventions: interventionsResult.items }}
           />
         ) : tab === 'explorer' ? (
           <ExplorerView siteId={id} />
@@ -441,86 +434,57 @@ async function MemoireView({
   siteId,
   siteName,
   signals,
-  interventions,
   teams,
-  traceCount,
   memtab,
-  chronology,
 }: {
   siteId: string
   siteName: string
   signals: MemorySignal[]
-  interventions: SupervisorInterventionRow[]
   teams: DbTeam[]
-  traceCount: number
   memtab: MemoireSubTab
-  chronology: ComponentProps<typeof ChronologyWorkspace>
 }) {
-  // « Mémoire du chantier » — trois lectures d'un même chantier : Pourquoi (chaînes
-  // causales validées), Chronologie (faits datés), À confirmer (propositions IA).
-  // On ne charge que le sous-onglet actif. Même source que la Mémoire terrain
-  // (`getMemoryReview`), jamais une copie.
+  // « Mémoire du chantier » = l'endroit où l'on COMPREND et où l'on VALIDE — pas
+  // l'endroit où l'on range tout. Deux axes : Pourquoi ? (chaînes causales) et
+  // À confirmer (inbox des propositions IA). La Chronologie canonique vit dans la
+  // navigation principale — un lien y renvoie, jamais un doublon. La recherche
+  // reste le bloc commun. Même source que la Mémoire terrain (`getMemoryReview`).
+  const review = await getMemoryReview(siteId).catch(() => ({ confirmed: [], toReview: [] }))
+
   let content: ReactNode
-  if (memtab === 'chronologie') {
-    content = <ChronologyWorkspace {...chronology} />
-  } else if (memtab === 'confirmer') {
-    const [subjects, passations, review] = await Promise.all([
-      listSubjectsBySite(siteId).catch(() => []),
-      listHandoverBriefsBySite(siteId).catch(() => []),
-      getMemoryReview(siteId).catch(() => ({ confirmed: [], toReview: [] })),
-    ])
+  if (memtab === 'confirmer') {
+    const subjects = await listSubjectsBySite(siteId).catch(() => [])
     content = (
-      <MemoryWorkspace
+      <MemoireConfirmer
         siteId={siteId}
         siteName={siteName}
-        signals={signals}
         review={review}
-        subjects={subjects}
-        relays={toSiteRelays(interventions)}
+        signals={signals}
+        subjectsCount={subjects.length}
         teams={teams}
-        passations={passations}
-        traceCount={traceCount}
       />
     )
   } else {
     // Pourquoi ? — les chaînes causales validées (fils par engagement).
-    content = <MemoireCausale threads={(await getSiteCausalThreads(siteId)) ?? []} />
+    content = <MemoireCausale threads={(await getSiteCausalThreads(siteId)) ?? []} siteId={siteId} />
   }
 
   return (
     <div>
-      <MemoireSubTabs active={memtab} />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <MemoireSubTabs active={memtab} toConfirmCount={review.toReview.length} />
+        {/* Mode avancé, pas un sous-menu. */}
+        <Link href={`/memoire/${siteId}`} className="mb-4 rounded-lg border px-3 py-1.5 text-[12.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+          Atelier complet
+        </Link>
+      </div>
+      {/* La recherche : le bloc COMMUN aux deux lectures. */}
+      <section className="mb-5 rounded-xl border bg-card p-3.5 shadow-sm">
+        <p className="mb-2 text-[12.5px] font-medium text-muted-foreground">Poser une question sur ce chantier</p>
+        <SiteMemoryQuery siteId={siteId} />
+      </section>
       {content}
     </div>
   )
-}
-
-/** Qui connaît ce chantier : uniquement les équipes réellement venues (intervention
- *  terminée ou validée). Une intervention planifiée ne prouve aucune présence. */
-function toSiteRelays(interventions: SupervisorInterventionRow[]): SiteRelay[] {
-  const byTeam = new Map<string, SiteRelay>()
-
-  for (const intervention of interventions) {
-    if (intervention.status !== 'completed' && intervention.status !== 'validated') continue
-    const teamId = intervention.assigned_team_id ?? intervention.team?.id
-    if (!teamId) continue
-
-    const passage = (intervention.scheduled_for ?? intervention.scheduled_at).slice(0, 10)
-    const existing = byTeam.get(teamId)
-    if (existing) {
-      existing.interventions += 1
-      if (!existing.lastPassage || passage > existing.lastPassage) existing.lastPassage = passage
-    } else {
-      byTeam.set(teamId, {
-        id: teamId,
-        name: intervention.team?.name ?? 'Équipe',
-        lastPassage: passage,
-        interventions: 1,
-      })
-    }
-  }
-
-  return [...byTeam.values()].sort((a, b) => (b.lastPassage ?? '').localeCompare(a.lastPassage ?? ''))
 }
 
 async function buildDocumentsQrState(siteId: string): Promise<DocumentsQrState> {
