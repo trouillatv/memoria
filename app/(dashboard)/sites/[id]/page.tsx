@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { headers } from 'next/headers'
-import type { ReactNode } from 'react'
+import { Suspense, type ReactNode } from 'react'
 import QRCode from 'qrcode'
 import { ArrowLeft, CalendarPlus, Search } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -94,23 +94,6 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   const memtab: MemoireSubTab = rawMemtab === 'confirmer' ? 'confirmer' : 'pourquoi'
   const tab: ChantierViewKey = resolveSiteTab(rawTab)
 
-  // « La fiche est le produit » : un `?person=<id>` ouvre la MÊME fiche par
-  // dessus n'importe quel onglet. Chargée ici pour être disponible partout.
-  const ficheParam = personId
-    ? await getSiteIntervenantFiche(id, { intervenantId: personId }).catch(() => null)
-    : null
-  if (ficheParam && personSource && FICHE_SOURCES.has(personSource)) {
-    void logUsageEvent({ event: `intervenant_fiche_opened:${personSource}`, siteId: id })
-  }
-
-  // « Plus jamais une simple ligne » (Lot 4) : un `?action=<id>` ouvre la fiche
-  // canonique de l'action par-dessus n'importe quel onglet. Fail-closed en amont.
-  const actionFiche = actionId ? await getSiteActionFiche(id, actionId).catch(() => null) : null
-
-  // Le PIVOT du chantier : un `?decision=<id>` ouvre la fiche Décision par-dessus
-  // n'importe quel onglet (patron miroir de `?action=`). Fail-closed en amont.
-  const decisionFiche = decisionId ? await getSiteDecisionFiche(id, decisionId).catch(() => null) : null
-
   // ── ÉTAPE 1 « Réactivité perçue » ──────────────────────────────────────────
   // Il n'y a PLUS de chargement global. Auparavant, 13 requêtes partaient avant
   // le premier octet de HTML, quel que soit l'onglet : changer d'onglet (ou
@@ -193,32 +176,46 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           </div>
         </div>
 
-        {tab === 'apercu' ? (
-          <SiteOverviewTab siteId={id} />
-        ) : tab === 'travail' ? (
-          <TravailView siteId={id} />
-        ) : tab === 'chronologie' ? (
-          <ChronologieView siteId={id} />
-        ) : tab === 'planning' ? (
-          <PlanningView siteId={id} />
-        ) : tab === 'documents-preuves' ? (
-          <DocumentsPreuvesView siteId={id} canExport={user.role === 'admin' || user.role === 'manager'} />
-        ) : tab === 'intervenants' ? (
-          <IntervenantsView siteId={id} />
-        ) : tab === 'memoire' ? (
-          <MemoireView siteId={id} siteName={identity.name} memtab={memtab} />
-        ) : tab === 'explorer' ? (
-          <ExplorerView siteId={id} />
-        ) : (
-          null
-        )}
+        {/* ÉTAPE 2 — l'en-tête et les onglets ci-dessus ne dépendent que de
+            l'identité : ils sortent AVANT les données de l'onglet, qui arrivent
+            en flux. `fallback={null}` : aucun squelette tant que la recette n'a
+            pas prouvé qu'un temps mort subsiste (décision de Vincent). Lors d'un
+            changement d'onglet, React garde le contenu précédent le temps de la
+            transition — pas d'écran blanc. La clé force une frontière propre par
+            onglet : le contenu d'un onglet n'attend jamais celui d'un autre. */}
+        <Suspense key={tab} fallback={null}>
+          {tab === 'apercu' ? (
+            <SiteOverviewTab siteId={id} />
+          ) : tab === 'travail' ? (
+            <TravailView siteId={id} />
+          ) : tab === 'chronologie' ? (
+            <ChronologieView siteId={id} />
+          ) : tab === 'planning' ? (
+            <PlanningView siteId={id} />
+          ) : tab === 'documents-preuves' ? (
+            <DocumentsPreuvesView siteId={id} canExport={user.role === 'admin' || user.role === 'manager'} />
+          ) : tab === 'intervenants' ? (
+            <IntervenantsView siteId={id} />
+          ) : tab === 'memoire' ? (
+            <MemoireView siteId={id} siteName={identity.name} memtab={memtab} />
+          ) : tab === 'explorer' ? (
+            <ExplorerView siteId={id} />
+          ) : (
+            null
+          )}
+        </Suspense>
       </ChantierShell>
 
       {/* La COQUILLE PERSISTANTE (Lot 2 · PR1) : une seule fiche montée par-dessus
           n'importe quel onglet, quel que soit le maillon (?person= / ?action= /
           ?decision=). Naviguer d'un objet à l'autre change le CONTENU sans détruire
-          le Sheet — le navigateur ne recrée plus la fiche à chaque saut. */}
-      <PersistentFicheSheet siteId={id} person={ficheParam} action={actionFiche} decision={decisionFiche} />
+          le Sheet — le navigateur ne recrée plus la fiche à chaque saut.
+          Étape 2 : son chargement ne bloque PLUS le rendu de la page. Pas de
+          repli visuel (`fallback={null}`) : on n'ajoute aucun squelette tant que
+          la recette n'a pas prouvé qu'un temps mort subsiste. */}
+      <Suspense fallback={null}>
+        <FicheSlot siteId={id} personId={personId} personSource={personSource} actionId={actionId} decisionId={decisionId} />
+      </Suspense>
     </div>
   )
 }
@@ -229,6 +226,33 @@ function ChantierShell({
   children: ReactNode
 }) {
   return <div className="space-y-5">{children}</div>
+}
+
+// ── LA FICHE, CHARGÉE HORS DU CHEMIN CRITIQUE (étape 2) ──────────────────────
+// Les trois chargeurs de fiche bloquaient le rendu de TOUTE la page : ouvrir un
+// objet attendait ses données avant que quoi que ce soit n'apparaisse. Ils vivent
+// désormais dans leur propre frontière Suspense : l'en-tête, les onglets et le
+// contenu sortent sans les attendre. Entre deux fiches, React conserve l'ancien
+// contenu pendant la transition — aucun écran blanc, aucun flash.
+async function FicheSlot({
+  siteId, personId, personSource, actionId, decisionId,
+}: {
+  siteId: string
+  personId?: string
+  personSource?: string
+  actionId?: string
+  decisionId?: string
+}) {
+  // Les trois paramètres sont mutuellement exclusifs : au plus UNE requête.
+  const [person, action, decision] = await Promise.all([
+    personId ? getSiteIntervenantFiche(siteId, { intervenantId: personId }).catch(() => null) : null,
+    actionId ? getSiteActionFiche(siteId, actionId).catch(() => null) : null,
+    decisionId ? getSiteDecisionFiche(siteId, decisionId).catch(() => null) : null,
+  ])
+  if (person && personSource && FICHE_SOURCES.has(personSource)) {
+    void logUsageEvent({ event: `intervenant_fiche_opened:${personSource}`, siteId })
+  }
+  return <PersistentFicheSheet siteId={siteId} person={person} action={action} decision={decision} />
 }
 
 // ── LES VUES AUTONOMES ───────────────────────────────────────────────────────
