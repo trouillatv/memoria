@@ -62,6 +62,8 @@ export interface IntervenantPerson {
   assignedActions: AssignedAction[]
   /** Décisions PORTÉES sur ce chantier (decisionnaire_contact_id, mig 138). */
   decisionsCount: number
+  /** La liste (titre + id) — pour ouvrir chaque décision depuis la fiche. */
+  decisions: Array<{ id: string; titre: string }>
   /** Obligations OUVERTES sous sa responsabilité (responsible_contact_id, mig 146). */
   openObligationsCount: number
   /** Où on le connaît ailleurs (contact d'abord, sinon entreprise) — org-scopé. */
@@ -206,7 +208,7 @@ async function buildIntervenantPeople(
   const activeContactIds = [...new Set(intervenants.map((i) => i.mainContactId).filter((x): x is string => !!x))]
   let actionsByContact = new Map<string, AssignedAction[]>()
   // Décisions portées + obligations ouvertes + dernières dates structurées (mig 138/146).
-  const decisionsByContact = new Map<string, number>()
+  const decisionsByContact = new Map<string, Array<{ id: string; titre: string }>>()
   const openObligationsByContact = new Map<string, number>()
   const lastStructuredByContact = new Map<string, string>()
   const bumpLast = (c: string, dt: string | null | undefined) => {
@@ -225,10 +227,13 @@ async function buildIntervenantPeople(
       if (r.assigned_contact_id) bumpLast(r.assigned_contact_id, r.created_at)
     }
     const { data: decRows } = await db.from('site_decisions')
-      .select('decisionnaire_contact_id, date_decision, created_at').eq('site_id', siteId).in('decisionnaire_contact_id', activeContactIds)
-    for (const d of (decRows ?? []) as Array<{ decisionnaire_contact_id: string | null; date_decision: string | null; created_at: string }>) {
+      .select('id, titre, decisionnaire_contact_id, date_decision, created_at').eq('site_id', siteId).in('decisionnaire_contact_id', activeContactIds)
+      .order('date_decision', { ascending: false })
+    for (const d of (decRows ?? []) as Array<{ id: string; titre: string; decisionnaire_contact_id: string | null; date_decision: string | null; created_at: string }>) {
       if (!d.decisionnaire_contact_id) continue
-      decisionsByContact.set(d.decisionnaire_contact_id, (decisionsByContact.get(d.decisionnaire_contact_id) ?? 0) + 1)
+      const list = decisionsByContact.get(d.decisionnaire_contact_id) ?? []
+      list.push({ id: d.id, titre: d.titre })
+      decisionsByContact.set(d.decisionnaire_contact_id, list)
       bumpLast(d.decisionnaire_contact_id, d.date_decision ?? d.created_at)
     }
     const { data: oblRows } = await db.from('site_obligation')
@@ -270,7 +275,8 @@ async function buildIntervenantPeople(
       citedVisits,
       mentionCount,
       assignedActions: it.mainContactId ? actionsByContact.get(it.mainContactId) ?? [] : [],
-      decisionsCount: it.mainContactId ? decisionsByContact.get(it.mainContactId) ?? 0 : 0,
+      decisions: it.mainContactId ? decisionsByContact.get(it.mainContactId) ?? [] : [],
+      decisionsCount: it.mainContactId ? (decisionsByContact.get(it.mainContactId)?.length ?? 0) : 0,
       openObligationsCount: it.mainContactId ? openObligationsByContact.get(it.mainContactId) ?? 0 : 0,
       // Dédoublonné par chantier — deux rôles sur le même chantier = une ligne.
       elsewhere: [...new Map(elsewhere.map((e) => [e.siteId, e])).values()],

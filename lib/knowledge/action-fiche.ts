@@ -85,6 +85,9 @@ export interface ActionFicheData {
   /** Contexte SECONDAIRE (la réunion/visite où l'action est née), quand la source
    *  primaire est une réserve/un sujet. */
   context: ActionFicheContext | null
+  /** La DÉCISION dont découle cette action (lookup inverse site_decisions.action_id).
+   *  Répond à « pourquoi cette action existe » au niveau décisionnel. `null` sinon. */
+  fromDecision: { title: string; href: string } | null
   createdAt: string
   doneAt: string | null
   /** Chronologie CANONIQUE — uniquement les événements réellement journalisés
@@ -269,6 +272,14 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
     }
   }
 
+  // ── « Issue de la décision » : lookup INVERSE — la décision dont cette action
+  //    est la conséquence (site_decisions.action_id = cette action). ──
+  let fromDecision: ActionFicheData['fromDecision'] = null
+  {
+    const { data: dec } = await db.from('site_decisions').select('id, titre').eq('action_id', actionId).eq('site_id', siteId).maybeSingle()
+    if (dec) fromDecision = { title: (dec as { titre: string }).titre, href: `/sites/${siteId}?decision=${(dec as { id: string }).id}&decision_source=action` }
+  }
+
   // ── « Ce qui a été observé » (Slice ②) : la capture QUI A DÉCLENCHÉ l'action —
   //    son texte + sa photo. Scopée à source_capture_id (la capture PRÉCISE), jamais
   //    une photo « du même report supposée liée ». ──
@@ -311,6 +322,7 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
     isLate,
     source,
     context,
+    fromDecision,
     createdAt: a.created_at,
     doneAt: a.done_at,
     historyDays,

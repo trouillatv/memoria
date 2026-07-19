@@ -9,7 +9,7 @@ const person = (o: Partial<IntervenantPerson>): IntervenantPerson => ({
   intervenantId: `i${n++}`, contactId: 'c1', isPerson: true, name: 'Personne', fonction: null, role: 'Rôle',
   companyId: 'co1', companyName: 'Co', phone: null, mobile: null, email: null,
   firstSeen: null, lastActivity: null, citedVisits: [], mentionCount: 0,
-  assignedActions: [], decisionsCount: 0, openObligationsCount: 0, elsewhere: [], ...o,
+  assignedActions: [], decisions: [], decisionsCount: 0, openObligationsCount: 0, elsewhere: [], ...o,
 })
 const act = (isLate: boolean): AssignedAction => ({
   id: `a${n++}`, title: 't', dueDate: null, dueDateStatus: null, isLate, href: '/', hrefSource: 'site_work',

@@ -98,6 +98,14 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
                 // Une relation existait mais l'objet a disparu — jamais masqué.
                 <p className="mt-1 text-[13px] text-muted-foreground">Origine indisponible</p>
               )}
+              {/* Le niveau décisionnel du « pourquoi » : la décision dont cette action découle. */}
+              {a.fromDecision && (
+                <Link href={a.fromDecision.href} scroll={false} className="mt-2 flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50/50 p-2 text-[12.5px] hover:bg-indigo-50 dark:border-indigo-900/40 dark:bg-indigo-950/20">
+                  <span aria-hidden className="text-indigo-600 dark:text-indigo-300">⚑</span>
+                  <span className="text-muted-foreground">Issue de la décision : <span className="font-medium text-foreground">« {a.fromDecision.title} »</span></span>
+                  <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                </Link>
+              )}
               {a.createdByLabel && (
                 <p className="mt-1.5 text-[11.5px] text-muted-foreground">Créée par {a.createdByLabel}</p>
               )}

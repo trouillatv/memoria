@@ -1,0 +1,160 @@
+<style>
+  :root{
+    --ground:#eef2f6;--panel:#fff;--ink:#0f172a;--ink-soft:#334155;--muted:#64748b;--faint:#94a3b8;
+    --line:#e2e8f0;--line-soft:#eef2f6;--primary:#2563eb;--primary-soft:#eff6ff;
+    --emerald:#059669;--emerald-bg:#ecfdf5;--emerald-ring:#a7f3d0;
+    --amber:#d97706;--amber-bg:#fffbeb;--indigo:#4f46e5;--indigo-bg:#eef2ff;
+    --rose:#e11d48;--rose-bg:#fff1f2;
+    --radius:14px;--shadow:0 10px 40px rgba(15,23,42,.14);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --ground:#0b1220;--panel:#0f172a;--ink:#e2e8f0;--ink-soft:#cbd5e1;--muted:#94a3b8;--faint:#64748b;
+    --line:#1e293b;--line-soft:#172033;--primary:#60a5fa;--primary-soft:#172033;
+    --emerald:#34d399;--emerald-bg:#07231a;--emerald-ring:#0c3b2b;--amber:#fbbf24;--amber-bg:#231a08;
+    --indigo:#a5b4fc;--indigo-bg:#161a33;--rose:#fb7185;--rose-bg:#2a0f16;--shadow:0 10px 40px rgba(0,0,0,.5);}}
+  :root[data-theme="dark"]{--ground:#0b1220;--panel:#0f172a;--ink:#e2e8f0;--ink-soft:#cbd5e1;--muted:#94a3b8;--faint:#64748b;--line:#1e293b;--line-soft:#172033;--primary:#60a5fa;--primary-soft:#172033;--emerald:#34d399;--emerald-bg:#07231a;--emerald-ring:#0c3b2b;--amber:#fbbf24;--amber-bg:#231a08;--indigo:#a5b4fc;--indigo-bg:#161a33;--rose:#fb7185;--rose-bg:#2a0f16;}
+  :root[data-theme="light"]{--ground:#eef2f6;--panel:#fff;--ink:#0f172a;--line:#e2e8f0;}
+  *{box-sizing:border-box;} body{margin:0;font-family:var(--font);background:var(--ground);color:var(--ink);-webkit-font-smoothing:antialiased;
+    min-height:100vh;display:flex;justify-content:center;padding:26px 16px;}
+  .wrap{width:100%;max-width:452px;}
+  .cap{font-size:12px;color:var(--faint);text-align:center;margin-bottom:12px;}
+  .sheet{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
+  .h4{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);}
+  .h4.strong{color:var(--ink-soft);}
+
+  /* 1 — Le FAIT */
+  .head{padding:18px 20px 16px;border-bottom:1px solid var(--line-soft);}
+  .eyebrow{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
+  .tag{display:inline-flex;align-items:center;gap:5px;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;border:1px solid transparent;}
+  .tag.kind{background:var(--indigo-bg);color:var(--indigo);}
+  .tag.actee{background:var(--emerald-bg);color:var(--emerald);border-color:var(--emerald-ring);}
+  .tag.impact{background:var(--primary-soft);color:var(--primary);}
+  .title{font-size:19px;font-weight:700;line-height:1.3;letter-spacing:-.01em;}
+  .impact-line{margin-top:8px;font-size:12.5px;color:var(--muted);}
+  .impact-line b{color:var(--ink-soft);font-weight:600;}
+
+  .body{padding:6px 20px 20px;display:flex;flex-direction:column;}
+  .sec{padding:16px 0;border-bottom:1px solid var(--line-soft);}
+  .sec:last-child{border-bottom:0;}
+
+  .chip{display:inline-flex;align-items:center;gap:5px;border-radius:8px;background:var(--line-soft);padding:3px 9px;font-size:11.5px;color:var(--ink-soft);font-weight:500;}
+  .desc{margin-top:9px;font-size:13.5px;line-height:1.55;}
+  .link{display:inline-flex;align-items:center;gap:5px;color:var(--primary);font-weight:600;font-size:13px;text-decoration:none;}
+  .prov{margin-top:11px;display:flex;align-items:center;gap:9px;background:var(--line-soft);border-radius:10px;padding:10px 12px;}
+  .prov .ic{width:26px;height:26px;border-radius:7px;background:var(--indigo-bg);color:var(--indigo);display:grid;place-items:center;font-size:13px;flex-shrink:0;}
+  .prov .t{font-size:12.5px;color:var(--muted);}
+  .prov .t b{display:block;color:var(--ink);font-weight:600;font-size:13px;}
+
+  .person{margin-top:9px;display:flex;align-items:center;gap:10px;}
+  .person .av{width:34px;height:34px;border-radius:50%;background:var(--primary-soft);color:var(--primary);display:grid;place-items:center;font-weight:700;font-size:12px;}
+  .person .n{font-weight:600;font-size:14px;} .person .r{color:var(--muted);font-size:12px;}
+
+  /* 4 — Conséquence, mise en avant */
+  .conseq{margin-top:10px;border:1.5px solid var(--emerald-ring);background:var(--emerald-bg);border-radius:12px;padding:13px 14px;}
+  .conseq .lead{font-size:11.5px;font-weight:600;color:var(--emerald);text-transform:uppercase;letter-spacing:.04em;}
+  .conseq .act{margin-top:8px;display:flex;align-items:center;gap:9px;font-size:14px;font-weight:600;}
+  .conseq .act .box{width:18px;height:18px;border-radius:5px;background:var(--emerald);color:#fff;display:grid;place-items:center;font-size:11px;flex-shrink:0;}
+  .conseq .open{margin-top:9px;}
+  .conseq .one{margin-top:9px;font-size:11px;color:var(--muted);border-top:1px dashed var(--emerald-ring);padding-top:8px;}
+
+  /* 5 — Historique */
+  .hist{margin-top:10px;font-size:13px;}
+  .hist .row{display:flex;justify-content:space-between;padding:4px 0;color:var(--ink-soft);}
+  .hist .row .k{color:var(--muted);}
+  .flow{margin-top:6px;display:flex;align-items:center;gap:6px;font-size:12px;}
+  .flow .st{border-radius:6px;padding:2px 8px;background:var(--line-soft);color:var(--muted);}
+  .flow .st.on{background:var(--emerald-bg);color:var(--emerald);font-weight:600;}
+
+  .vigueur{margin-top:6px;font-size:11.5px;font-weight:600;color:var(--emerald);}
+  /* Historique en frise datée */
+  .htl{margin-top:10px;display:flex;flex-direction:column;gap:13px;}
+  .htl .r{display:grid;grid-template-columns:104px 1fr;gap:12px;align-items:baseline;}
+  .htl .d{font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .htl .l{font-size:12.5px;color:var(--muted);}
+  .flow{display:inline-flex;align-items:center;gap:6px;}
+  .flow .st{border-radius:6px;padding:2px 8px;font-size:11.5px;background:var(--line-soft);color:var(--muted);}
+  .flow .st.on{background:var(--emerald-bg);color:var(--emerald);font-weight:600;}
+  /* Chaîne de causalité — petite frise graphique */
+  .frise{margin-top:16px;display:flex;flex-direction:column;align-items:center;}
+  .frise .node{display:flex;align-items:center;gap:9px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 15px;font-size:13px;font-weight:600;}
+  .frise .node .ic{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;font-size:12px;}
+  .frise .node.reunion .ic{background:var(--indigo-bg);color:var(--indigo);}
+  .frise .node.decision{border-color:var(--emerald-ring);background:var(--emerald-bg);}
+  .frise .node.decision .ic{background:var(--emerald);color:#fff;}
+  .frise .node.action .ic{background:var(--primary-soft);color:var(--primary);}
+  .frise .arr{color:var(--faint);font-size:15px;padding:5px 0;}
+  .frise .cap2{margin-top:13px;font-size:11.5px;color:var(--faint);text-align:center;max-width:330px;line-height:1.6;}
+</style>
+
+<div class="wrap">
+  <p class="cap">Fiche Décision — panneau latéral <code>?decision=</code> (même patron que la fiche Action)</p>
+
+  <div class="sheet">
+    <!-- 1. LE FAIT -->
+    <div class="head">
+      <div class="eyebrow">
+        <span class="tag kind">⚑ Décision</span>
+        <span class="tag actee">Actée</span>
+        <span class="tag impact">Impact : Planning</span>
+      </div>
+      <div class="title">Reporter la réception au 15 septembre</div>
+      <div class="vigueur">● En vigueur — cette décision produit actuellement ses effets</div>
+      <div class="impact-line"><b>Ce que ça change :</b> décale la réception du lot CVC.</div>
+    </div>
+
+    <div class="body">
+      <!-- 2. POURQUOI — le constat d'abord (aéré), puis la provenance -->
+      <div class="sec">
+        <div class="h4 strong">Pourquoi ?</div>
+        <p class="desc" style="margin-top:8px;font-size:14.5px;">Les réserves CVC ne sont pas levées. La réception ne peut pas être prononcée sans risque de non-conformité.</p>
+        <div style="margin-top:10px;"><span class="chip">🏷 Réception · CVC</span></div>
+        <div class="prov">
+          <span class="ic">☷</span>
+          <div class="t">Décision prise lors de la<b>Réunion de chantier du 12 juillet</b></div>
+          <a href="#" class="link" style="margin-left:auto;">Voir la réunion →</a>
+        </div>
+      </div>
+
+      <!-- 3. QUI -->
+      <div class="sec">
+        <div class="h4">Décideur</div>
+        <div class="person">
+          <span class="av">JD</span>
+          <div><a href="#" class="link" style="font-size:14px;">Jean Dupont</a><div class="r">Conducteur travaux · Vinci Construction · porte cette décision</div></div>
+        </div>
+      </div>
+
+      <!-- 4. CONSÉQUENCE (mise en avant, 1:1 assumé) -->
+      <div class="sec">
+        <div class="h4 strong">Sa conséquence</div>
+        <div class="conseq">
+          <div class="lead">L'action qui en découle</div>
+          <div class="act"><span class="box">✓</span> Lever les réserves CVC</div>
+          <div class="open"><a href="#" class="link">Ouvrir l'action →</a></div>
+          <div class="one">Cette décision entraîne aujourd'hui cette action.</div>
+        </div>
+      </div>
+
+      <!-- 5. HISTORIQUE — en frise datée -->
+      <div class="sec">
+        <div class="h4">Historique</div>
+        <div class="htl">
+          <div class="r"><span class="d">12 juil. 2025</span><span class="l">Décision prise</span></div>
+          <div class="r"><span class="d">15 sept. 2025</span><span class="l">Échéance</span></div>
+          <div class="r"><span class="d">Statut</span><span class="l"><span class="flow"><span class="st">Proposée</span>→<span class="st on">Actée</span></span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- La chaîne de causalité — petite frise graphique -->
+  <div class="frise">
+    <div class="node reunion"><span class="ic">☷</span> Réunion</div>
+    <div class="arr">↓</div>
+    <div class="node decision"><span class="ic">⚑</span> Décision</div>
+    <div class="arr">↓</div>
+    <div class="node action"><span class="ic">◉</span> Action</div>
+    <p class="cap2">On remonte au « pourquoi », on redescend au « quoi faire ». La réunion est la <i>source</i>, la décision est l'<i>objet</i>.</p>
+  </div>
+</div>

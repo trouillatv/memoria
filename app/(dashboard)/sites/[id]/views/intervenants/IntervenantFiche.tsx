@@ -11,9 +11,10 @@
 // site-intervenants-view). Il n'invente aucune information — chaque phrase est
 // composée de faits datés et sourcés.
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { ChevronRight, Network, Phone } from 'lucide-react'
+import { ChevronRight, ChevronDown, Network, Phone } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { frDayMonthLocal, todayLocalIso } from '@/lib/time/local-date'
@@ -28,6 +29,7 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
 }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const [showDecisions, setShowDecisions] = useState(false)
   if (!person) return null
   const p = person
   // Jour civil Nouméa, calculé UNE fois (jamais dans la boucle de rendu).
@@ -39,6 +41,14 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
     const q = new URLSearchParams(searchParams?.toString() ?? '')
     q.set('action', actionId)
     q.set('action_source', 'person')
+    q.delete('person'); q.delete('person_source')
+    return `${pathname}?${q.toString()}`
+  }
+  // Ouvrir une DÉCISION portée : on ferme la fiche personne, on ouvre la décision.
+  const decisionHref = (decisionId: string): string => {
+    const q = new URLSearchParams(searchParams?.toString() ?? '')
+    q.set('decision', decisionId)
+    q.set('decision_source', 'intervenant')
     q.delete('person'); q.delete('person_source')
     return `${pathname}?${q.toString()}`
   }
@@ -126,6 +136,31 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
               </>
             )}
           </section>
+
+          {/* Décisions PORTÉES — sobre : un compteur cliquable qui déplie la liste.
+              Chaque décision ouvre sa fiche (?decision=). On ne raconte pas ici. */}
+          {p.decisions.length > 0 && (
+            <section>
+              <button onClick={() => setShowDecisions((v) => !v)} className="flex w-full items-center gap-1.5 text-left">
+                <h4 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">Décisions portées</h4>
+                <span className="rounded-full bg-muted px-1.5 text-[11px] font-semibold text-muted-foreground">{p.decisionsCount}</span>
+                {showDecisions ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+              </button>
+              {showDecisions && (
+                <ul className="mt-1.5 space-y-1.5">
+                  {p.decisions.map((dec) => (
+                    <li key={dec.id}>
+                      <Link href={decisionHref(dec.id)} scroll={false} className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 hover:bg-muted/40">
+                        <span aria-hidden className="text-indigo-600 dark:text-indigo-300">⚑</span>
+                        <span className="text-[13px] font-medium leading-snug line-clamp-2">{dec.titre}</span>
+                        <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
 
           <section>
             <h4 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">

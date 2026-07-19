@@ -63,6 +63,17 @@ export async function listDecisionsByReport(reportId: string): Promise<SiteDecis
   return (data ?? []).map(rowToDecision)
 }
 
+/** UNE décision, scopée au chantier (garde IDOR). `null` si absente. */
+export async function getSiteDecision(siteId: string, id: string): Promise<SiteDecision | null> {
+  const { data } = await createAdminClient()
+    .from('site_decisions')
+    .select(SELECT)
+    .eq('id', id)
+    .eq('site_id', siteId)
+    .maybeSingle()
+  return data ? rowToDecision(data as Record<string, unknown>) : null
+}
+
 /** Toutes les décisions d'un site (recherche mémoire / cross-CR / contradictions). */
 export async function listDecisionsBySite(siteId: string): Promise<SiteDecision[]> {
   const { data } = await createAdminClient()
