@@ -85,10 +85,13 @@ export async function getActionsDashboard(opts?: { siteId?: string }): Promise<A
   const reportIds = new Set(actions.map((a) => a.report_id).filter((v): v is string => !!v))
 
   const captureReport = new Map<string, string>()
+  const captureBody = new Map<string, string>()
   if (captureIds.length) {
-    const { data: caps } = await db.from('visit_capture').select('id, report_id').in('id', captureIds).in('site_id', siteIds)
-    for (const c of (caps ?? []) as Array<{ id: string; report_id: string | null }>)
+    const { data: caps } = await db.from('visit_capture').select('id, report_id, body').in('id', captureIds).in('site_id', siteIds)
+    for (const c of (caps ?? []) as Array<{ id: string; report_id: string | null; body: string | null }>) {
       if (c.report_id) { captureReport.set(c.id, c.report_id); reportIds.add(c.report_id) }
+      if (c.body?.trim()) captureBody.set(c.id, c.body.trim())
+    }
   }
 
   const reserveById = new Map<string, string>()
@@ -138,8 +141,8 @@ export async function getActionsDashboard(opts?: { siteId?: string }): Promise<A
       const l = longDate(r?.date)
       const s = shortDate(r?.date)
       const label = type === 'visite'
-        ? (l ? `Après la visite du ${l}` : 'Après une visite')
-        : (l ? `Issue de la réunion du ${l}` : 'Issue d’une réunion')
+        ? (l ? `Issue de la visite du ${l}` : 'Issue d’une visite')
+        : (l ? `Décidée en réunion du ${l}` : 'Issue d’une réunion')
       const base = r?.title?.trim() || (type === 'visite' ? 'Visite' : 'Réunion')
       return { type, label, short: s ? `${base} · ${s}` : base, href: `/meetings/${repId}` }
     }
@@ -171,6 +174,8 @@ export async function getActionsDashboard(opts?: { siteId?: string }): Promise<A
       dueDate: due, dueDateStatus: a.due_date_status,
       lateness: latenessLabel({ status: a.status, dueDate: due }, today),
       origin: originOf(a),
+      // Le fait observé (capture déclencheuse), tronqué pour la ligne.
+      observed: a.source_capture_id ? (captureBody.get(a.source_capture_id)?.slice(0, 140) ?? null) : null,
       lastActivity,
       hasClosureTrace: !!(a.completed_photo_path || a.completed_comment?.trim()),
       href: `/sites/${a.site_id}?action=${a.id}&action_source=actions`,

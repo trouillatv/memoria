@@ -51,4 +51,9 @@ describe('getActionsDashboard — fail-closed, groundé, sans invention', () => 
   it('« terminées sans preuve » = trace de clôture réelle (Slice 7)', () => {
     expect(src).toMatch(/completed_photo_path \|\| a\.completed_comment/)
   })
+
+  it('le fait observé de la ligne vient de la capture déclencheuse (source_capture_id), jamais du titre', () => {
+    expect(src).toContain('captureBody')
+    expect(src).toMatch(/observed: a\.source_capture_id \? \(captureBody\.get\(a\.source_capture_id\)/)
+  })
 })

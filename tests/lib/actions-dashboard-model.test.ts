@@ -9,7 +9,7 @@ const TODAY = '2026-07-19'
 const item = (o: Partial<ActionDashboardItem>): ActionDashboardItem => ({
   id: 'x', siteId: 's', siteName: 'S', title: 'T', description: null, status: 'open', statusLabel: 'Ouverte',
   responsibleName: null, responsibleSub: null, dueDate: null, dueDateStatus: null,
-  lateness: { text: null, tone: null }, origin: null, lastActivity: null, hasClosureTrace: false, href: '/', ...o,
+  lateness: { text: null, tone: null }, origin: null, observed: null, lastActivity: null, hasClosureTrace: false, href: '/', ...o,
 })
 
 describe('statuts — fidèles au modèle réel, jamais « En cours »', () => {

@@ -41,6 +41,9 @@ export interface ActionDashboardItem {
   dueDateStatus: 'explicit' | 'estimated' | null
   lateness: LatenessLabel
   origin: ActionOrigin | null
+  /** Le fait observé qui a déclenché l'action (capture.body tronqué), ou null.
+   *  Donne le récit « fait observé → engagement » directement dans la ligne. */
+  observed: string | null
   lastActivity: { label: string; occurredAt: string } | null
   /** Trace de clôture présente (photo ou commentaire) — pour « Terminées sans preuve ». */
   hasClosureTrace: boolean

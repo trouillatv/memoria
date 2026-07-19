@@ -139,25 +139,37 @@ export function ActionsDashboard({ data, today }: { data: Data; today: string })
             return (
               <li key={a.id} className={cn('relative hover:bg-muted/40', overdue && 'bg-rose-50/40 dark:bg-rose-950/10')}>
                 {overdue && <span className="absolute inset-y-0 left-0 w-[3px] bg-rose-500/70" />}
-                <Link href={a.href} scroll={false} className="block px-4 py-3">
-                  <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUS_CLS[a.status])}>
+                <div className="flex items-start gap-3 px-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    {/* Le FAIT d'abord (coloré, cliquable → revenir à la visite/réunion/réserve) */}
+                    {a.origin && (
+                      <Link href={a.origin.href ?? '#'} className="inline-flex items-center gap-1.5 text-[12px] font-medium hover:underline" style={{ color: ORIGIN_DOT[a.origin.type] }}>
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-current" />
+                        {a.origin.label}
+                      </Link>
+                    )}
+                    {/* L'ENGAGEMENT — le titre domine (→ ouvre la fiche) */}
+                    <Link href={a.href} scroll={false} className="group block">
+                      <p className="mt-0.5 text-[15px] font-semibold leading-snug text-foreground group-hover:text-primary">{a.title}</p>
+                    </Link>
+                    {/* Ce qui a été observé sur le terrain */}
+                    {a.observed && <p className="mt-1 line-clamp-1 text-[12.5px] italic text-muted-foreground">« {a.observed} »</p>}
+                    {/* Le contexte : où · pour quand · qui */}
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12px] text-muted-foreground">
+                      <span>📍 {a.siteName}</span>
+                      {a.dueDate && (
+                        <span className={overdue ? 'font-medium text-rose-600 dark:text-rose-400' : undefined}>
+                          Échéance&nbsp;: {frDue(a.dueDate)}{a.lateness.text && a.status !== 'done' && ` (${a.lateness.text})`}
+                        </span>
+                      )}
+                      <span>{a.responsibleName ? `👤 ${a.responsibleName}` : '👤 À affecter'}</span>
+                    </p>
+                  </div>
+                  {/* L'état, discret, à droite */}
+                  <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUS_CLS[a.status])}>
                     {overdue && <span aria-hidden>⚠</span>}{a.statusLabel}
                   </span>
-                  <p className="mt-1.5 text-[15px] font-semibold leading-snug text-foreground">{a.title}</p>
-                  {a.origin && (
-                    <p className="mt-1 flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
-                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: ORIGIN_DOT[a.origin.type] }} />
-                      {a.origin.label}
-                    </p>
-                  )}
-                  <p className="mt-0.5 text-[12px] text-muted-foreground">
-                    {a.dueDate && (
-                      <span className={overdue ? 'font-medium text-rose-600 dark:text-rose-400' : undefined}>
-                        Échéance : {frDue(a.dueDate)}{a.lateness.text && a.status !== 'done' && ` (${a.lateness.text})`} • </span>
-                    )}
-                    Responsable : {a.responsibleName ?? 'À affecter'}
-                  </p>
-                </Link>
+                </div>
               </li>
             )
           })}
