@@ -27,7 +27,7 @@ const data: Data = {
     actives: 1, activesBreakdown: { open: 1, planned: 0 }, enRetard: 0, termineesSansPreuve: 0, terminees: 0, total: 1,
   },
   actions: [item],
-  filters: { responsibles: ['M. Roué'], origins: [], statuses: ['open'] },
+  filters: { responsibles: ['M. Roué'], origins: [], statuses: ['open'], sites: [{ id: 's9', name: 'Chantier Test' }] },
 }
 
 describe('ActionsDashboard — un clic = une destination', () => {

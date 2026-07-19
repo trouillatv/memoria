@@ -6,7 +6,7 @@
 // pourquoi · qui · pour quand). KPIs compacts sur une ligne, filtres collants,
 // onglets discrets. Aucune fonction hors-tranche (priorité/relance/affectation).
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import {
@@ -64,6 +64,23 @@ export function ActionsDashboard({ data, today }: { data: Data; today: string })
   const [responsibleName, setResponsible] = useState<string | null>(null)
   const [originType, setOrigin] = useState<ActionOrigin['type'] | null>(null)
   const [status, setStatus] = useState<ActionListStatus | null>(null)
+  const [siteId, setSiteId] = useState<string | null>(null)
+  // « Regrouper par chantier » : optionnel (jamais imposé — sinon la page devient
+  // très verticale avec beaucoup de chantiers), dernier choix mémorisé.
+  const [groupBySite, setGroupBySite] = useState(false)
+  useEffect(() => {
+    // Lecture POST-montage volontaire : le serveur ne connaît pas localStorage, la
+    // lire à l'init provoquerait un décalage d'hydratation. D'où le setState ici.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    try { setGroupBySite(localStorage.getItem('actions:groupBySite') === '1') } catch { /* localStorage indispo */ }
+  }, [])
+  function toggleGroupBySite() {
+    setGroupBySite((v) => {
+      const next = !v
+      try { localStorage.setItem('actions:groupBySite', next ? '1' : '0') } catch { /* noop */ }
+      return next
+    })
+  }
 
   const tabCounts = useMemo(() => {
     const c: Record<ActionTab, number> = { all: 0, active: 0, overdue: 0, done_no_proof: 0, done: 0 }
@@ -73,8 +90,21 @@ export function ActionsDashboard({ data, today }: { data: Data; today: string })
 
   const rows = useMemo(() => {
     const byTab = actions.filter((a) => inTab(a, today, tab))
-    return applyActionFilters(byTab, { search, responsibleName, originType, status })
-  }, [actions, today, tab, search, responsibleName, originType, status])
+    return applyActionFilters(byTab, { search, responsibleName, originType, status, siteId })
+  }, [actions, today, tab, search, responsibleName, originType, status, siteId])
+
+  // Regroupement par chantier (quand activé) : mêmes lignes filtrées, rangées par
+  // chantier, en-tête + compte par groupe. Chantiers triés par nom.
+  const groups = useMemo(() => {
+    if (!groupBySite) return null
+    const byId = new Map<string, { siteId: string; siteName: string; items: ActionDashboardItem[] }>()
+    for (const a of rows) {
+      const g = byId.get(a.siteId) ?? { siteId: a.siteId, siteName: a.siteName, items: [] }
+      g.items.push(a)
+      byId.set(a.siteId, g)
+    }
+    return [...byId.values()].sort((x, y) => x.siteName.localeCompare(y.siteName))
+  }, [groupBySite, rows])
 
   const b = summary.proposalBreakdown
 
@@ -111,7 +141,7 @@ export function ActionsDashboard({ data, today }: { data: Data; today: string })
         <div className="flex flex-wrap gap-2">
           <div className="flex min-w-[200px] flex-1 items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-[13px]">
             <span className="text-muted-foreground">🔍</span>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher une action, un responsable, une origine…"
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher une action, un chantier, un responsable…"
               className="w-full bg-transparent text-foreground outline-none placeholder:text-muted-foreground" />
           </div>
           <select value={responsibleName ?? ''} onChange={(e) => setResponsible(e.target.value || null)} className="rounded-lg border bg-card px-2.5 py-1.5 text-[13px] text-muted-foreground">
@@ -126,6 +156,21 @@ export function ActionsDashboard({ data, today }: { data: Data; today: string })
             <option value="">État</option>
             {filters.statuses.map((s) => <option key={s} value={s}>{ACTION_STATUS_LABEL[s]}</option>)}
           </select>
+          {/* Lire les actions par chantier, sans perdre la vue globale. */}
+          <select value={siteId ?? ''} onChange={(e) => setSiteId(e.target.value || null)} className="rounded-lg border bg-card px-2.5 py-1.5 text-[13px] text-muted-foreground">
+            <option value="">Chantier</option>
+            {filters.sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          {/* Regroupement activable (jamais imposé), dernier choix mémorisé. */}
+          <button
+            type="button"
+            onClick={toggleGroupBySite}
+            aria-pressed={groupBySite}
+            className={cn('rounded-lg border px-2.5 py-1.5 text-[13px] font-medium transition-colors',
+              groupBySite ? 'border-primary bg-primary/10 text-primary' : 'bg-card text-muted-foreground hover:text-foreground')}
+          >
+            Regrouper par chantier
+          </button>
         </div>
       </div>
 
@@ -133,52 +178,74 @@ export function ActionsDashboard({ data, today }: { data: Data; today: string })
            prochaine chose à faire ? »). Origine, échéance et responsable sont du
            CONTEXTE sous le titre — pas des colonnes qui se battent avec lui. ── */}
       <div className="overflow-hidden rounded-xl border bg-card">
-        <ul className="divide-y divide-border/60">
-          {rows.map((a: ActionDashboardItem) => {
-            const overdue = isOverdue(a, today)
-            const late = overdue && a.dueDate ? Math.abs(daysUntil(today, a.dueDate)) : 0
-            return (
-              <li key={a.id} className={cn('relative px-4 py-3 hover:bg-muted/40', overdue && 'bg-rose-50/40 dark:bg-rose-950/10')}>
-                {overdue && <span className="absolute inset-y-0 left-0 w-[3px] bg-rose-500/70" />}
-                {/* Le STATUT près du titre — il fait partie de l'identité de l'action.
-                    L'urgence (retard) ressort ici, à côté. */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUS_CLS[a.status])}>{a.statusLabel}</span>
-                  {overdue && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:ring-rose-900">
-                      ⚠ En retard de {late}&nbsp;jour{late > 1 ? 's' : ''}
-                    </span>
-                  )}
+        {rows.length === 0 ? (
+          <p className="px-4 py-12 text-center text-sm text-muted-foreground">Aucune action ne correspond à ces filtres.</p>
+        ) : groups ? (
+          // Regroupé : un en-tête par chantier ; le 📍 par ligne devient redondant → masqué.
+          <div className="divide-y divide-border/60">
+            {groups.map((g) => (
+              <div key={g.siteId}>
+                <div className="flex items-center justify-between gap-2 bg-muted/30 px-4 py-2">
+                  <span className="text-[12.5px] font-semibold text-foreground">📍 {g.siteName}</span>
+                  <span className="text-[11.5px] font-medium tabular-nums text-muted-foreground">{g.items.length}</span>
                 </div>
-                {/* L'ENGAGEMENT — le titre est le héros (→ ouvre la fiche) */}
-                <Link href={a.href} scroll={false} className="group mt-1 block">
-                  <p className="text-[15px] font-semibold leading-snug text-foreground group-hover:text-primary">{a.title}</p>
-                </Link>
-                {/* Le FAIT — visible mais SECONDAIRE, coloré, cliquable (→ visite/réunion/réserve) */}
-                {a.origin && (
-                  <Link href={a.origin.href ?? '#'} className="mt-0.5 inline-flex items-center gap-1.5 text-[11.5px] hover:underline" style={{ color: ORIGIN_DOT[a.origin.type] }}>
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
-                    {a.origin.label}
-                  </Link>
-                )}
-                {a.observed && <p className="mt-0.5 line-clamp-1 text-[11.5px] italic text-muted-foreground/80">« {a.observed} »</p>}
-                {/* Le contexte, discret : où · qui · (échéance si pas déjà en retard) */}
-                <p className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12px] text-muted-foreground">
-                  <Link href={`/sites/${a.siteId}`} className="hover:text-foreground hover:underline">📍 {a.siteName}</Link>
-                  <span>👤 {a.responsibleName ?? 'À affecter'}</span>
-                  {!overdue && a.dueDate && (
-                    <span className={a.lateness.tone === 'neg' && a.status !== 'done' ? 'font-medium text-rose-600 dark:text-rose-400' : undefined}>
-                      📅 {frDue(a.dueDate)}{a.lateness.text && a.status !== 'done' && ` (${a.lateness.text})`}
-                    </span>
-                  )}
-                </p>
-              </li>
-            )
-          })}
-          {rows.length === 0 && <li className="px-4 py-12 text-center text-sm text-muted-foreground">Aucune action ne correspond à ces filtres.</li>}
-        </ul>
+                <ul className="divide-y divide-border/60">
+                  {g.items.map((a) => <ActionRow key={a.id} a={a} today={today} hideSite />)}
+                </ul>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <ul className="divide-y divide-border/60">
+            {rows.map((a) => <ActionRow key={a.id} a={a} today={today} />)}
+          </ul>
+        )}
         <div className="border-t px-4 py-2.5 text-[12px] text-muted-foreground">{rows.length} action{rows.length > 1 ? 's' : ''}</div>
       </div>
     </div>
+  )
+}
+
+// UNE LIGNE = UNE ACTION. Le titre domine (→ ouvre la fiche en surimpression).
+// `hideSite` masque le 📍 chantier quand on est déjà regroupé par chantier.
+function ActionRow({ a, today, hideSite = false }: { a: ActionDashboardItem; today: string; hideSite?: boolean }) {
+  const overdue = isOverdue(a, today)
+  const late = overdue && a.dueDate ? Math.abs(daysUntil(today, a.dueDate)) : 0
+  return (
+    <li className={cn('relative px-4 py-3 hover:bg-muted/40', overdue && 'bg-rose-50/40 dark:bg-rose-950/10')}>
+      {overdue && <span className="absolute inset-y-0 left-0 w-[3px] bg-rose-500/70" />}
+      {/* Le STATUT près du titre — il fait partie de l'identité de l'action. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUS_CLS[a.status])}>{a.statusLabel}</span>
+        {overdue && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:ring-rose-900">
+            ⚠ En retard de {late}&nbsp;jour{late > 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+      {/* L'ENGAGEMENT — le titre est le héros (→ ouvre la fiche) */}
+      <Link href={a.href} scroll={false} className="group mt-1 block">
+        <p className="text-[15px] font-semibold leading-snug text-foreground group-hover:text-primary">{a.title}</p>
+      </Link>
+      {/* Le FAIT — visible mais SECONDAIRE, coloré, cliquable (→ visite/réunion/réserve) */}
+      {a.origin && (
+        <Link href={a.origin.href ?? '#'} className="mt-0.5 inline-flex items-center gap-1.5 text-[11.5px] hover:underline" style={{ color: ORIGIN_DOT[a.origin.type] }}>
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+          {a.origin.label}
+        </Link>
+      )}
+      {a.observed && <p className="mt-0.5 line-clamp-1 text-[11.5px] italic text-muted-foreground/80">« {a.observed} »</p>}
+      {/* Le contexte, discret : où · qui · (échéance si pas déjà en retard).
+          Le 📍 chantier (→ ouvre le chantier) est masqué en mode regroupé. */}
+      <p className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12px] text-muted-foreground">
+        {!hideSite && <Link href={`/sites/${a.siteId}`} className="hover:text-foreground hover:underline">📍 {a.siteName}</Link>}
+        <span>👤 {a.responsibleName ?? 'À affecter'}</span>
+        {!overdue && a.dueDate && (
+          <span className={a.lateness.tone === 'neg' && a.status !== 'done' ? 'font-medium text-rose-600 dark:text-rose-400' : undefined}>
+            📅 {frDue(a.dueDate)}{a.lateness.text && a.status !== 'done' && ` (${a.lateness.text})`}
+          </span>
+        )}
+      </p>
+    </li>
   )
 }

@@ -117,16 +117,20 @@ export interface ActionFilterState {
   responsibleName: string | null
   originType: ActionOrigin['type'] | null
   status: ActionListStatus | null
+  /** Filtre Chantier (optionnel) : lire les actions d'un seul chantier sans perdre
+   *  la vue globale. La recherche trouve aussi le nom du chantier (cf. haystack). */
+  siteId?: string | null
 }
 
 export function applyActionFilters(items: ActionDashboardItem[], f: ActionFilterState): ActionDashboardItem[] {
   const q = f.search.trim().toLowerCase()
   return items.filter((it) => {
     if (f.status && it.status !== f.status) return false
+    if (f.siteId && it.siteId !== f.siteId) return false
     if (f.responsibleName && it.responsibleName !== f.responsibleName) return false
     if (f.originType && it.origin?.type !== f.originType) return false
     if (q) {
-      const hay = `${it.title} ${it.description ?? ''} ${it.responsibleName ?? ''} ${it.origin?.label ?? ''}`.toLowerCase()
+      const hay = `${it.title} ${it.description ?? ''} ${it.siteName} ${it.responsibleName ?? ''} ${it.origin?.label ?? ''}`.toLowerCase()
       if (!hay.includes(q)) return false
     }
     return true

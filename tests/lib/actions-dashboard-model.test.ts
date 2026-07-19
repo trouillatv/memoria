@@ -87,6 +87,19 @@ describe('onglets et filtres — logique centralisée', () => {
     expect(applyActionFilters(list, { search: '', responsibleName: null, originType: 'visite', status: null }).map((i) => i.id)).toEqual(['2'])
     expect(applyActionFilters(list, { search: 'coffret', responsibleName: null, originType: null, status: null }).map((i) => i.id)).toEqual(['1'])
   })
+
+  it('filtre Chantier + recherche par nom de chantier (commit 2)', () => {
+    const list = [
+      item({ id: '1', siteId: 's1', siteName: 'Les Alizés', title: 'Coffret' }),
+      item({ id: '2', siteId: 's2', siteName: 'Cocotiers', title: 'Peinture' }),
+    ]
+    // Filtre Chantier : ne garde que le site choisi.
+    expect(applyActionFilters(list, { search: '', responsibleName: null, originType: null, status: null, siteId: 's2' }).map((i) => i.id)).toEqual(['2'])
+    // La recherche trouve aussi le nom du chantier.
+    expect(applyActionFilters(list, { search: 'cocotiers', responsibleName: null, originType: null, status: null }).map((i) => i.id)).toEqual(['2'])
+    // siteId absent → aucun filtrage par chantier (rétrocompat).
+    expect(applyActionFilters(list, { search: '', responsibleName: null, originType: null, status: null }).map((i) => i.id)).toEqual(['1', '2'])
+  })
 })
 
 describe('summarizeActions — KPIs, « à confirmer » vient des propositions', () => {

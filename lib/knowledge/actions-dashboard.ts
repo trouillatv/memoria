@@ -26,6 +26,8 @@ export interface ActionsDashboard {
     responsibles: string[]
     origins: ActionOrigin['type'][]
     statuses: ActionListStatus[]
+    /** Chantiers présents dans la liste (pour le filtre Chantier), triés par nom. */
+    sites: { id: string; name: string }[]
   }
 }
 
@@ -34,7 +36,7 @@ const EMPTY: ActionsDashboard = {
     aConfirmer: 0, proposalBreakdown: { deadline: 0, decision: 0, knowledge: 0, stakeholder: 0, vigilance: 0 },
     actives: 0, activesBreakdown: { open: 0, planned: 0 }, enRetard: 0, termineesSansPreuve: 0, terminees: 0, total: 0,
   },
-  actions: [], filters: { responsibles: [], origins: [], statuses: [] },
+  actions: [], filters: { responsibles: [], origins: [], statuses: [], sites: [] },
 }
 
 const LONG = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long' })
@@ -194,6 +196,9 @@ export async function getActionsDashboard(opts?: { siteId?: string }): Promise<A
   const responsibles = [...new Set(items.map((i) => i.responsibleName).filter((v): v is string => !!v))].sort((a, b) => a.localeCompare(b))
   const origins = [...new Set(items.map((i) => i.origin?.type).filter((v): v is ActionOrigin['type'] => !!v))]
   const statuses = [...new Set(items.map((i) => i.status))] as ActionListStatus[]
+  const sitesInList = [...new Map(items.map((i) => [i.siteId, i.siteName])).entries()]
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name))
 
-  return { summary, actions: items, filters: { responsibles, origins, statuses } }
+  return { summary, actions: items, filters: { responsibles, origins, statuses, sites: sitesInList } }
 }
