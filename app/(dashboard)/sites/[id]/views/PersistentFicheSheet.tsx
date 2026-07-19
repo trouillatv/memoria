@@ -14,6 +14,14 @@
 // Ouverture initiale (rien → une fiche) et fermeture totale (une fiche → rien)
 // gardent EXACTEMENT le comportement d'origine (montage/démontage du Sheet).
 
+/* eslint-disable react-hooks/refs -- Comparaison VOLONTAIRE de l'identité précédente
+   pendant le rendu : c'est la seule façon de distinguer « la fiche APPARAÎT » (aucune
+   animation interne — le panneau qui arrive explique déjà le changement) de « la fiche
+   CHANGE D'OBJET » (transformation). Un state + effet ajouterait les classes APRÈS
+   l'ouverture, ce qui déclencherait précisément l'animation qu'on veut éviter. Cette
+   valeur ne pilote que des classes CSS de transition — jamais une donnée affichée. */
+
+import { useEffect, useRef } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { ActionFicheBody } from './action/ActionFiche'
@@ -59,20 +67,27 @@ export function PersistentFicheSheet({ siteId, person, action, decision }: {
         ? { typeLabel: 'Action', href: decision.action.href }
         : null
 
+  // PR2 — l'IDENTITÉ de l'objet affiché. Quand elle change, seul le CORPS est
+  // remonté : la transformation se rejoue. La COQUILLE n'est jamais remontée (PR1).
+  const contentKey = active ? `${active}:${params.get(active) ?? ''}` : null
+
+  // DEUX ÉVÉNEMENTS ≠ DEUX GESTES : à l'OUVERTURE (aucun contenu précédent), le
+  // panneau qui arrive explique déjà le changement → on n'anime PAS le contenu.
+  // Sur un CHANGEMENT D'OBJET (un contenu était déjà là), le mouvement explique
+  // « tu es toujours ici, mais ce que tu regardes a changé » → on anime.
+  const previousKeyRef = useRef<string | null>(null)
+  const isObjectChange = previousKeyRef.current !== null && previousKeyRef.current !== contentKey
+  useEffect(() => { previousKeyRef.current = contentKey }, [contentKey])
+
   // Rien d'actif → aucune fiche montée (comportement d'origine à la fermeture).
   if (!active) return null
-
-  // PR2 — l'IDENTITÉ de l'objet affiché. Quand elle change, seul le CORPS est
-  // remonté : la transformation (crossfade titre/chapô, glissement du corps) se
-  // rejoue. La COQUILLE, elle, n'est jamais remontée — c'est l'acquis de PR1.
-  const contentKey = `${active}:${params.get(active) ?? ''}`
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) close() }}>
       <SheetContent side="right" showCloseButton={!back} className="w-full overflow-y-auto sm:max-w-md">
-        {active === 'action' && <ActionFicheBody key={contentKey} action={action} back={back} />}
-        {active === 'decision' && <DecisionFicheBody key={contentKey} decision={decision} back={back} />}
-        {active === 'person' && person && <IntervenantFicheBody key={contentKey} siteId={siteId} person={person} />}
+        {active === 'action' && <ActionFicheBody key={contentKey} action={action} back={back} animateContent={isObjectChange} />}
+        {active === 'decision' && <DecisionFicheBody key={contentKey} decision={decision} back={back} animateContent={isObjectChange} />}
+        {active === 'person' && person && <IntervenantFicheBody key={contentKey} siteId={siteId} person={person} animateContent={isObjectChange} />}
       </SheetContent>
     </Sheet>
   )

@@ -44,9 +44,10 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
 
 // Le CORPS présentationnel — sans coquille Sheet, pour être monté soit par le
 // wrapper ci-dessus, soit par la coquille persistante du parcours.
-export function IntervenantFicheBody({ siteId, person }: {
+export function IntervenantFicheBody({ siteId, person, animateContent = false }: {
   siteId: string
   person: IntervenantPerson
+  animateContent?: boolean
 }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -114,16 +115,16 @@ export function IntervenantFicheBody({ siteId, person }: {
   return (
     <>
         <SheetHeader className="pb-0">
-          <SheetTitle className={cn('text-base font-semibold', FICHE_TITLE_MOTION)}>{p.name}</SheetTitle>
+          <SheetTitle className={cn('text-base font-semibold', animateContent && FICHE_TITLE_MOTION)}>{p.name}</SheetTitle>
           <p className="text-[13px] text-muted-foreground">
             {[p.companyName, p.fonction ?? `Rôle ${p.role}`].filter(Boolean).join(' · ')}
           </p>
           {/* La relation d'identité, puis la provenance en une ligne discrète. */}
-          <FicheChapo chapo={chapo} className={FICHE_TITLE_MOTION} />
+          <FicheChapo chapo={chapo} className={animateContent ? FICHE_TITLE_MOTION : undefined} />
           <p className="mt-1 text-[11.5px] text-muted-foreground/80">{prov}</p>
         </SheetHeader>
 
-        <div className={cn('space-y-5 px-4 pb-6', FICHE_BODY_MOTION)}>
+        <div className={cn('space-y-5 px-4 pb-6', animateContent && FICHE_BODY_MOTION)}>
           {/* « Actions à suivre » — les actions liées structurellement à cette
               personne sur CE chantier (assigned_contact_id). Cadrage NEUTRE
               (Vincent) : surtout pas « Aujourd'hui », qui suggérerait une

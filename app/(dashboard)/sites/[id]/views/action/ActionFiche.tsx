@@ -32,7 +32,7 @@ const STATUS_CLS: Record<SiteActionStatus, string> = {
 
 // Le CORPS de la fiche Action, sans coquille Sheet : monté à l'intérieur d'un
 // Sheet partagé (la coquille persistante du parcours). Aucun changement visuel.
-export function ActionFicheBody({ action, back }: { action: ActionFicheData | null; back?: TrailBack | null }) {
+export function ActionFicheBody({ action, back, animateContent = false }: { action: ActionFicheData | null; back?: TrailBack | null; animateContent?: boolean }) {
   if (!action) return null
   const a = action
   const date = describeAssignedActionDate(
@@ -72,12 +72,12 @@ export function ActionFicheBody({ action, back }: { action: ActionFicheData | nu
           <span className={cn('w-fit rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUS_CLS[a.status])}>
             {a.statusLabel}
           </span>
-          <SheetTitle className={cn('text-base font-semibold leading-snug', FICHE_TITLE_MOTION)}>{a.title}</SheetTitle>
-          <FicheChapo chapo={chapo} className={FICHE_TITLE_MOTION} />
+          <SheetTitle className={cn('text-base font-semibold leading-snug', animateContent && FICHE_TITLE_MOTION)}>{a.title}</SheetTitle>
+          <FicheChapo chapo={chapo} className={animateContent ? FICHE_TITLE_MOTION : undefined} />
           {a.corpsEtat && <p className="text-[13px] text-muted-foreground">{a.corpsEtat}</p>}
         </SheetHeader>
 
-        <div className={cn('space-y-5 px-4 pb-6', FICHE_BODY_MOTION)}>
+        <div className={cn('space-y-5 px-4 pb-6', animateContent && FICHE_BODY_MOTION)}>
           {a.body && <p className="text-[13.5px]">{a.body}</p>}
 
           {/* ── 1. CE QUI A ÉTÉ OBSERVÉ — en tête : ça dit tout de suite POURQUOI ── */}

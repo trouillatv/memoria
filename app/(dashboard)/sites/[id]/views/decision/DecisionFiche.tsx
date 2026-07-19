@@ -28,7 +28,7 @@ const STATUT_CLS: Record<DecisionStatut, string> = {
 
 // Le CORPS de la fiche Décision, sans coquille Sheet : monté à l'intérieur d'un
 // Sheet partagé (la coquille persistante du parcours). Aucun changement visuel.
-export function DecisionFicheBody({ decision, back }: { decision: DecisionFicheData | null; back?: TrailBack | null }) {
+export function DecisionFicheBody({ decision, back, animateContent = false }: { decision: DecisionFicheData | null; back?: TrailBack | null; animateContent?: boolean }) {
   if (!decision) return null
   const d = decision
 
@@ -54,14 +54,14 @@ export function DecisionFicheBody({ decision, back }: { decision: DecisionFicheD
             <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUT_CLS[d.statut])}>{d.statutLabel}</span>
             {d.impactLabel && <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">Impact : {d.impactLabel}</span>}
           </div>
-          <SheetTitle className={cn('text-base font-semibold leading-snug', FICHE_TITLE_MOTION)}>{d.titre}</SheetTitle>
-          <FicheChapo chapo={chapo} className={FICHE_TITLE_MOTION} />
+          <SheetTitle className={cn('text-base font-semibold leading-snug', animateContent && FICHE_TITLE_MOTION)}>{d.titre}</SheetTitle>
+          <FicheChapo chapo={chapo} className={animateContent ? FICHE_TITLE_MOTION : undefined} />
           <p className={cn('text-[12px] font-medium', d.enVigueur ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}>
             {d.enVigueur && '● '}{d.vigueurLabel}
           </p>
         </SheetHeader>
 
-        <div className={cn('space-y-5 px-4 pb-6', FICHE_BODY_MOTION)}>
+        <div className={cn('space-y-5 px-4 pb-6', animateContent && FICHE_BODY_MOTION)}>
           {/* 2. POURQUOI — le constat d'abord, puis la provenance */}
           <section>
             <h4 className={H4_STRONG}>Pourquoi ?</h4>
