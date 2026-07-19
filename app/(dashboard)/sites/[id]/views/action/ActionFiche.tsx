@@ -108,42 +108,12 @@ export function ActionFicheSheet({ action, onClose, back }: { action: ActionFich
             </Link>
           </section>
 
-          {/* ── 3. ORIGINE — l'événement du chantier qui a créé l'action ── */}
-          {a.source && (
-            <section>
-              <h4 className={H4}>📄 Origine</h4>
-              {a.source.available ? (
-                <div className="mt-1 space-y-0.5">
-                  <p className="text-[12px] font-medium text-muted-foreground">{a.source.typeLabel}</p>
-                  <p className="text-[13.5px] font-medium">{a.source.title}</p>
-                  {a.source.detail && <p className="text-[12px] text-muted-foreground">{a.source.detail}</p>}
-                  {a.source.href && (
-                    <Link href={a.source.href} className="inline-flex items-center gap-0.5 pt-0.5 text-[13px] font-medium text-primary hover:underline">
-                      {a.source.linkLabel} <ChevronRight className="h-3.5 w-3.5" />
-                    </Link>
-                  )}
-                </div>
-              ) : (
-                // Une relation existait mais l'objet a disparu — jamais masqué.
-                <p className="mt-1 text-[13px] text-muted-foreground">Origine indisponible</p>
-              )}
-              {/* La décision d'origine n'est plus répétée ici : le chapô sous le
-                  titre (« Découle de : … ») la porte déjà — jamais deux fois la
-                  même relation. */}
-              {a.createdByLabel && (
-                <p className="mt-1.5 text-[11.5px] text-muted-foreground">Créée par {a.createdByLabel}</p>
-              )}
-              {a.context && (
-                <div className="mt-2.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Contexte</p>
-                  {a.context.href ? (
-                    <Link href={a.context.href} className="text-[13px] text-primary hover:underline">{a.context.label}</Link>
-                  ) : (
-                    <p className="text-[13px] text-muted-foreground">{a.context.label}</p>
-                  )}
-                </div>
-              )}
-            </section>
+          {/* ── PROVENANCE — désormais portée par le fil (les maillons amont) et le
+               chapô (« Découle de : … ») ; on ne la répète plus en section. L'auteur
+               vit dans l'historique. Seul l'état honnête « origine perdue » reste
+               visible : une relation existait, l'objet a disparu — jamais masqué. ── */}
+          {a.source && !a.source.available && (
+            <p className="text-[13px] text-muted-foreground">Origine indisponible — la relation existait, l’objet a disparu.</p>
           )}
 
           {/* ── 4. PROGRESSION — où en est l'engagement (dérivé, le chemin restant) ── */}

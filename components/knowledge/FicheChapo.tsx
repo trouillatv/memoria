@@ -1,14 +1,16 @@
 'use client'
 
 // ── LE CHAPÔ — « pourquoi cet objet compte » ─────────────────────────────────
-// Une ÉTIQUETTE sous le titre, pas une phrase : le cerveau lit « Découle de : X »
-// plus vite qu'une tournure complète. UNE seule relation centrale par fiche —
-// jamais un inventaire (règle Vincent) : l'objet dit son RÔLE dans la chaîne, pas
-// son bilan. Le libellé de relation vient du TYPE de fiche (Action → « Découle de »,
-// Décision → « Produit »…), la cible est l'objet le plus significatif.
+// Sous le titre : le verbe de relation (gris, discret) + l'objet cible (le LIEN).
+// Deux héros seulement — le titre et l'objet lié ; le verbe s'efface. Pas de
+// pastille colorée : le fil au-dessus porte déjà du bleu, un badge en créerait un
+// 3ᵉ niveau. Lu ensemble, fil + chapô forment une phrase (« Je suis une Action,
+// elle découle de cette Décision »).
 //
-// La cible est cliquable : le chapô explique ET ouvre — une porte de plus, jamais
-// un texte mort. Tout est composé de faits déjà connus, jamais inventé.
+// UNE seule relation centrale par fiche — jamais un inventaire (règle Vincent) :
+// l'objet dit son RÔLE dans la chaîne. Le verbe vient du TYPE de fiche (Action →
+// « Découle de », Décision → « Produit »…). La cible est cliquable : le chapô
+// explique ET ouvre. Tout est composé de faits déjà connus, jamais inventé.
 
 import Link from 'next/link'
 
@@ -23,12 +25,10 @@ export interface Chapo {
 export function FicheChapo({ chapo }: { chapo: Chapo | null }) {
   if (!chapo) return null
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px]">
-      <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-primary">
-        {chapo.label}
-      </span>
+    <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[13.5px]">
+      <span className="text-[12.5px] text-muted-foreground">{chapo.label}</span>
       {chapo.href ? (
-        <Link href={chapo.href} scroll={false} className="font-medium text-foreground hover:underline">
+        <Link href={chapo.href} scroll={false} className="font-medium text-primary hover:underline">
           {chapo.title}
         </Link>
       ) : (
