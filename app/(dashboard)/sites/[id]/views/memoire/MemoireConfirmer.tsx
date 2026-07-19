@@ -2,7 +2,11 @@
 // Une INBOX, pas une page de lecture. Ordre : propositions (le centre) →
 // recherche en SECOND plan → connaissances validées (rupture visuelle nette :
 // au-dessus l'IA propose, ici l'humain a validé) → actions utiles regroupées.
-// « Atelier complet » vit ICI (outil de revue/traitement), pas dans « Pourquoi ? ».
+// Le lien « Atelier complet » a été RETIRÉ d'ici (Vincent, 2026-07-20) : une inbox
+// n'a qu'un travail — valider les propositions ; une sortie vers une autre page y
+// concurrence l'action principale. Il n'a pas été déplacé dans « Pourquoi ? » (surface
+// de lecture, qui a déjà sa sortie « Voir la chronologie complète »). L'atelier reste
+// accessible par /sites/<id>/memoire — aucune capacité perdue.
 
 import Link from 'next/link'
 import type { ReactNode } from 'react'
@@ -41,15 +45,10 @@ export function MemoireConfirmer({
     <div className="space-y-5">
       {/* ── L'INBOX — le centre de la page ── */}
       <section>
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <h2 className="text-[15px] font-semibold">Propositions en attente</h2>
-            {/* Une phrase de DOCTRINE produit, pas une aide secondaire. */}
-            <p className="mb-3 text-[13px] text-foreground/75">Ce que l’IA a relevé. Le bouton dit exactement ce que votre validation produira.</p>
-          </div>
-          <Link href={`/memoire/${siteId}`} className="shrink-0 rounded-lg border px-3 py-1.5 text-[12.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
-            Atelier complet
-          </Link>
+        <div>
+          <h2 className="text-[15px] font-semibold">Propositions en attente</h2>
+          {/* Une phrase de DOCTRINE produit, pas une aide secondaire. */}
+          <p className="mb-3 text-[13px] text-foreground/75">Ce que l’IA a relevé. Le bouton dit exactement ce que votre validation produira.</p>
         </div>
         <MemoryInbox siteId={siteId} items={review.toReview} withFilters />
       </section>
