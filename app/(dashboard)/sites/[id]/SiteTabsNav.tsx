@@ -11,7 +11,7 @@ export const SITE_TABS = [
   // ici ? » — question durable, distincte de l'Aperçu (« où en est-on ? »).
   // La même personne se retrouve ici sur chaque chantier où elle apparaît.
   { key: 'intervenants', label: 'Intervenants' },
-  { key: 'memoire', label: 'Mémoire' },
+  { key: 'memoire', label: 'Mémoire du chantier' },
   // « Explorer », jamais « Connexions » (cadrage 2026-07-18) : la Mémoire dit ce
   // que MemorIA sait ; Explorer montre comment tout est relié. Un outil, pas un
   // CRUD — mêmes données, autre lecture.

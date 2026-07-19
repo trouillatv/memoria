@@ -14,6 +14,7 @@ import { listSiteDeadlines } from '@/lib/db/site-deadlines'
 import { listTeams } from '@/lib/db/teams'
 import { listHandoverBriefsBySite } from '@/lib/db/handover'
 import type { DbTeam } from '@/types/db'
+import type { ComponentProps } from 'react'
 import {
   getLastEndedVisitForSite,
   listSiteVisitsWithCounts,
@@ -41,6 +42,9 @@ import { getSiteActionFiche } from '@/lib/knowledge/action-fiche'
 import { ActionFicheDeepLink } from './views/action/ActionFicheDeepLink'
 import { getSiteDecisionFiche } from '@/lib/knowledge/decision-fiche'
 import { DecisionFicheDeepLink } from './views/decision/DecisionFicheDeepLink'
+import { getSiteCausalThreads } from '@/lib/knowledge/causal-threads'
+import { MemoireCausale } from './views/memoire/MemoireCausale'
+import { MemoireSubTabs, type MemoireSubTab } from './views/memoire/MemoireSubTabs'
 import { ExplorerWorkspace } from './views/explorer/ExplorerWorkspace'
 import { logUsageEvent } from '@/lib/db/usage-events'
 import { listSubjectsBySite } from '@/lib/db/subjects'
@@ -75,7 +79,7 @@ import { SiteOverviewTab } from './views/apercu/SiteOverviewTab'
 
 interface PageProps {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ tab?: string; person?: string; person_source?: string; action?: string; decision?: string }>
+  searchParams: Promise<{ tab?: string; person?: string; person_source?: string; action?: string; decision?: string; memtab?: string }>
 }
 
 type ChantierViewKey = SiteTabKey
@@ -91,7 +95,10 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const { tab: rawTab, person: personId, person_source: personSource, action: actionId, decision: decisionId } = await searchParams
+  const { tab: rawTab, person: personId, person_source: personSource, action: actionId, decision: decisionId, memtab: rawMemtab } = await searchParams
+  const memtab: MemoireSubTab = (['pourquoi', 'chronologie', 'confirmer'] as const).includes(rawMemtab as MemoireSubTab)
+    ? (rawMemtab as MemoireSubTab)
+    : 'pourquoi'
   const tab: ChantierViewKey = (CHANTIER_VIEW_KEYS as ReadonlyArray<string>).includes(rawTab ?? '')
     ? (rawTab as ChantierViewKey)
     : 'apercu'
@@ -296,6 +303,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
             interventions={interventionsResult.items}
             teams={teams}
             traceCount={visits.length}
+            memtab={memtab}
+            chronology={{ siteId: id, changes: recentChanges, deadlines, visits, actions: openActions, blocages, interventions: interventionsResult.items }}
           />
         ) : tab === 'explorer' ? (
           <ExplorerView siteId={id} />
@@ -435,6 +444,8 @@ async function MemoireView({
   interventions,
   teams,
   traceCount,
+  memtab,
+  chronology,
 }: {
   siteId: string
   siteName: string
@@ -442,29 +453,45 @@ async function MemoireView({
   interventions: SupervisorInterventionRow[]
   teams: DbTeam[]
   traceCount: number
+  memtab: MemoireSubTab
+  chronology: ComponentProps<typeof ChronologyWorkspace>
 }) {
-  // La connaissance du chantier — la MÊME source que la Mémoire du terrain
-  // (`getMemoryReview`), jamais une copie : un fait ne peut pas être vrai sur un
-  // écran et inexistant sur l'autre. Une lecture qui échoue laisse le reste de la
-  // Mémoire debout.
-  const [subjects, passations, review] = await Promise.all([
-    listSubjectsBySite(siteId).catch(() => []),
-    listHandoverBriefsBySite(siteId).catch(() => []),
-    getMemoryReview(siteId).catch(() => ({ confirmed: [], toReview: [] })),
-  ])
+  // « Mémoire du chantier » — trois lectures d'un même chantier : Pourquoi (chaînes
+  // causales validées), Chronologie (faits datés), À confirmer (propositions IA).
+  // On ne charge que le sous-onglet actif. Même source que la Mémoire terrain
+  // (`getMemoryReview`), jamais une copie.
+  let content: ReactNode
+  if (memtab === 'chronologie') {
+    content = <ChronologyWorkspace {...chronology} />
+  } else if (memtab === 'confirmer') {
+    const [subjects, passations, review] = await Promise.all([
+      listSubjectsBySite(siteId).catch(() => []),
+      listHandoverBriefsBySite(siteId).catch(() => []),
+      getMemoryReview(siteId).catch(() => ({ confirmed: [], toReview: [] })),
+    ])
+    content = (
+      <MemoryWorkspace
+        siteId={siteId}
+        siteName={siteName}
+        signals={signals}
+        review={review}
+        subjects={subjects}
+        relays={toSiteRelays(interventions)}
+        teams={teams}
+        passations={passations}
+        traceCount={traceCount}
+      />
+    )
+  } else {
+    // Pourquoi ? — les chaînes causales validées (fils par engagement).
+    content = <MemoireCausale threads={(await getSiteCausalThreads(siteId)) ?? []} />
+  }
 
   return (
-    <MemoryWorkspace
-      siteId={siteId}
-      siteName={siteName}
-      signals={signals}
-      review={review}
-      subjects={subjects}
-      relays={toSiteRelays(interventions)}
-      teams={teams}
-      passations={passations}
-      traceCount={traceCount}
-    />
+    <div>
+      <MemoireSubTabs active={memtab} />
+      {content}
+    </div>
   )
 }
 
