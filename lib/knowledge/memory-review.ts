@@ -58,6 +58,11 @@ export interface ConfirmedItem {
    *  enfin visible. Sans elle, la question posée à la confirmation n'aurait servi
    *  à rien. */
   nature: string | null
+  /** La fiche que l'élément ouvre, quand elle existe (intervenant, décision). Un
+   *  savoir validé n'est pas une note morte : il mène à son objet. Null pour les
+   *  types sans fiche propre (connaissances, vigilances) — on ne fabrique pas de
+   *  lien qui n'ouvre rien. */
+  href: string | null
 }
 
 export interface MemoryReview {
@@ -99,15 +104,19 @@ export async function getMemoryReview(siteId: string): Promise<MemoryReview> {
   const confirmed: ConfirmedItem[] = [
     ...entries
       .filter((e) => e.kind === 'durable_knowledge')
-      .map((e) => ({ id: e.id, group: 'Ce que le chantier sait', title: e.title, nature: natureOf(e.kind) })),
+      .map((e) => ({ id: e.id, group: 'Ce que le chantier sait', title: e.title, nature: natureOf(e.kind), href: null })),
     ...entries
       .filter((e) => e.kind !== 'durable_knowledge')
-      .map((e) => ({ id: e.id, group: 'Ce que le chantier sait', title: e.title, nature: natureOf(e.kind) })),
+      .map((e) => ({ id: e.id, group: 'Ce que le chantier sait', title: e.title, nature: natureOf(e.kind), href: null })),
     ...intervenants.map((i) => ({
       id: i.id, group: 'Intervenants', title: `${i.companyName} — ${i.role}`, nature: null,
+      href: `/sites/${siteId}?tab=intervenants&person=${i.id}&person_source=memoire`,
     })),
-    ...decisions.map((d) => ({ id: d.id, group: 'Décisions', title: d.titre, nature: null })),
-    ...watchpoints.map((w) => ({ id: w.id, group: 'Points de vigilance', title: w.title, nature: null })),
+    ...decisions.map((d) => ({
+      id: d.id, group: 'Décisions', title: d.titre, nature: null,
+      href: `/sites/${siteId}?decision=${d.id}&decision_source=memoire`,
+    })),
+    ...watchpoints.map((w) => ({ id: w.id, group: 'Points de vigilance', title: w.title, nature: null, href: null })),
   ]
 
   return {

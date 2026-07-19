@@ -33,6 +33,9 @@ export function MemoireConfirmer({
 }) {
   const suites = signals.reduce((n, s) => n + s.items.length, 0)
   const groups = [...new Set(review.confirmed.map((c) => c.group))]
+  // La passation est toujours là ; les deux autres dépendent des données. Un
+  // titre au-dessus d'un seul bouton fait croire à une section incomplète.
+  const usefulCount = 1 + (subjectsCount > 0 ? 1 : 0) + (suites > 0 ? 1 : 0)
 
   return (
     <div className="space-y-5">
@@ -70,7 +73,13 @@ export function MemoireConfirmer({
                     <li key={c.id} className="flex items-start gap-2 text-[13px] text-foreground/90">
                       <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
                       <span className="min-w-0">
-                        {c.title}
+                        {/* Un savoir validé mène à son objet : la fiche s'ouvre par-dessus
+                            (?person= / ?decision=). Sans fiche propre, il reste texte. */}
+                        {c.href ? (
+                          <Link href={c.href} scroll={false} className="font-medium hover:underline">{c.title}</Link>
+                        ) : (
+                          c.title
+                        )}
                         {c.nature && <span className="ml-1.5 text-[11px] text-muted-foreground">· {c.nature}</span>}
                         {c.group === 'Décisions' && (
                           <span className="mt-0.5 block"><WhyButton objectType="decision" objectId={c.id} label="Voir l’origine" /></span>
@@ -85,9 +94,11 @@ export function MemoireConfirmer({
         )}
       </section>
 
-      {/* ── ACTIONS UTILES — regroupées, jamais un bouton qui flotte seul ── */}
+      {/* ── ACTIONS UTILES — le titre n'apparaît qu'à partir de deux gestes ── */}
       <section>
-        <h2 className="mb-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">Actions utiles</h2>
+        {usefulCount > 1 && (
+          <h2 className="mb-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">Actions utiles</h2>
+        )}
         <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
           <PrepareSitePassationButton siteId={siteId} siteName={siteName} teams={teams} />
           {subjectsCount > 0 && (

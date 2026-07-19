@@ -85,7 +85,7 @@ const CHANTIER_VIEW_KEYS = SITE_TAB_KEYS
 
 // D'où la fiche a été ouverte — l'instrumentation qui tranchera « onglet vs
 // fiche partout » (arbitrage 2026-07-18). Toute NOUVELLE porte ajoute sa source.
-const FICHE_SOURCES = new Set(['explorer', 'recherche', 'visite', 'reunion', 'decision', 'apercu'])
+const FICHE_SOURCES = new Set(['explorer', 'recherche', 'visite', 'reunion', 'decision', 'apercu', 'memoire'])
 
 export default async function SitePage({ params, searchParams }: PageProps) {
   const user = await getCurrentUserWithProfile()

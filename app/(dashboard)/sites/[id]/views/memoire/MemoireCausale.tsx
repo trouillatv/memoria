@@ -57,17 +57,16 @@ export function MemoireCausale({ threads, siteId }: { threads: CausalThread[]; s
         </Link>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        {[['Que se passe-t-il ?', 'Les faits datés : réunions, décisions, réserves.'],
-          ['Pourquoi cet état existe-t-il ?', 'La chaîne de causes, suivie par les liens réels — jamais devinée.'],
-          ['Qu’est-ce qui a changé ensuite ?', 'Les conséquences : actions produites, réserves levées, clôtures.']].map(([q, s]) => (
-          <div key={q} className="rounded-xl border bg-card p-3.5 shadow-sm">
-            <p className="text-[12.5px] font-semibold">{q}</p>
-            <p className="mt-0.5 text-[11.5px] text-muted-foreground">{s}</p>
-          </div>
-        ))}
+      {/* Le repère de lecture, compact : les fils sont le cœur, ils passent en
+          premier. Le détail des trois questions n'a plus besoin de trois cartes. */}
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-lg border bg-card px-3 py-2 text-[12px]">
+        <span className="font-medium text-foreground">Les faits</span>
+        <span className="text-muted-foreground">→</span>
+        <span className="font-medium text-foreground">leurs causes validées</span>
+        <span className="text-muted-foreground">→</span>
+        <span className="font-medium text-foreground">leurs conséquences.</span>
+        <span className="text-muted-foreground/80">Quand un maillon manque, le fil le dit — il n’invente rien.</span>
       </div>
-      <p className="-mt-1 text-[11.5px] text-muted-foreground/80">Chaque fil répond à ce qu’il sait. Quand un maillon manque, il le dit — il n’invente rien.</p>
 
       {threads.length === 0 ? (
         <p className="rounded-xl border border-dashed bg-muted/20 p-8 text-center text-sm text-muted-foreground">Aucun fil causal à afficher pour l’instant.</p>
@@ -94,14 +93,21 @@ export function MemoireCausale({ threads, siteId }: { threads: CausalThread[]; s
         </div>
       )}
 
-      <div className="rounded-xl border bg-card p-4 text-[11.5px] shadow-sm">
-        <p className="mb-2 text-[13px] font-semibold">Trois façons de relier — jamais confondues</p>
-        <ul className="grid gap-1.5 sm:grid-cols-3">
+      {/* La légende, repliée par défaut : trois glyphes suffisent à lire, le
+          détail s'ouvre pour qui veut comprendre. Plus une doc en bas de page. */}
+      <details className="rounded-xl border bg-card px-4 py-3 text-[11.5px] shadow-sm">
+        <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-4 gap-y-1">
+          <span className="text-foreground/70"><b>→</b> produit</span>
+          <span className="text-muted-foreground"><b>—</b> concerne</span>
+          <span className="text-amber-600 dark:text-amber-400"><b>⇢</b> lien non établi</span>
+          <span className="ml-auto text-[11px] font-medium text-primary">Comprendre les liens</span>
+        </summary>
+        <ul className="mt-2.5 grid gap-1.5 border-t pt-2.5 sm:grid-cols-3">
           <li><b className="text-foreground/70">→ produit / découle de</b> : une cause portée par le chantier.</li>
           <li><b className="text-muted-foreground">— lié à / concerne</b> : une relation certaine, sans affirmer de cause.</li>
           <li><b className="text-amber-600 dark:text-amber-400">⇢ lien non établi</b> : le chantier ne relie pas ces deux éléments — jamais présenté comme une cause.</li>
         </ul>
-      </div>
+      </details>
     </div>
   )
 }

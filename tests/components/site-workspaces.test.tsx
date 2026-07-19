@@ -29,7 +29,7 @@ describe('site workspaces', () => {
         subjects={[]}
         review={{
           confirmed: [
-            { id: 'k-1', group: 'Décisions', title: 'Les accès seront communiqués ultérieurement', nature: null },
+            { id: 'k-1', group: 'Décisions', title: 'Les accès seront communiqués ultérieurement', nature: null, href: null },
           ],
           toReview: [
             {
