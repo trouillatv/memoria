@@ -501,9 +501,11 @@ function makeDayFacts(overrides: Partial<DayFacts> = {}): DayFacts {
   return {
     expected: 0,
     done: 0,
+    realized: 0,
     kept: 0,
     projected: 0,
     closed: false,
+closureReasonKind: null,
     hasException: false,
     cycleCovers: false,
     ...overrides,

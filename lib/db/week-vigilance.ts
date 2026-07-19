@@ -21,6 +21,8 @@ export interface UnassignedInterventionLite {
   planned_end: string | null
   mission_name: string
   site_name: string
+  /** A1 — pour ouvrir le tiroir de LA cellule concernée (?cell=site::date). */
+  site_id: string
 }
 
 export interface TeamSlotConflict {
@@ -59,7 +61,7 @@ export async function getWeekVigilance(
     .select(
       `id, scheduled_for, slot, planned_start, planned_end, assigned_team_id,
        team:teams(id, name),
-       mission:missions!inner(name, site:sites!inner(name))`,
+       mission:missions!inner(name, site:sites!inner(id, name))`,
     )
     .gte('scheduled_for', startIso)
     .lte('scheduled_for', endIso)
@@ -68,7 +70,7 @@ export async function getWeekVigilance(
   const { data, error } = await q
   if (error) throw error
 
-  type SiteLite = { name: string }
+  type SiteLite = { id: string; name: string }
   type MissionLite = { name: string; site: SiteLite | SiteLite[] | null }
   type TeamLite = { id: string; name: string }
   type Row = {
@@ -103,6 +105,7 @@ export async function getWeekVigilance(
       planned_end: r.planned_end,
       mission_name: mission.name,
       site_name: site?.name ?? '—',
+      site_id: site?.id ?? '',
     })
   }
   unassigned.sort((a, b) => {

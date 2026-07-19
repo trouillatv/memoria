@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   dayState,
+  dayIsRealized,
   dayTarget,
   monthVerdict,
   verdictPhrase,
@@ -28,9 +29,11 @@ import {
 const f = (over: Partial<DayFacts> = {}): DayFacts => ({
   expected: 0,
   done: 0,
+  realized: 0,
   kept: 0,
   projected: 0,
   closed: false,
+closureReasonKind: null,
   hasException: false,
   cycleCovers: false,
   ...over,
@@ -73,6 +76,38 @@ describe('La préséance des états — une cellule, un état, une seconde', () 
     // Re-crier tous les mois un conflit déjà tranché userait le rouge — et le
     // jour où un vrai conflit arrive, plus personne ne le lit.
     expect(dayState(f({ closed: true, kept: 1 }))).toBe('closed')
+  })
+})
+
+// FAIT ≠ PRÉVU (Lot A1) : le ✓ ne doit JAMAIS mentir. Il n'apparaît que si le
+// terrain a DÉCLARÉ le passage fait (completed/validated) et qu'il ne reste rien
+// en attente. `done` mélange in_progress+completed+validated : s'en servir pour
+// un ✓ tromperait — c'est précisément ce que ce garde-fou empêche.
+describe('Le jour réalisé — un ✓ honnête, jamais générique', () => {
+  it('est réalisé quand tout est fait (completed/validated) et rien en attente', () => {
+    expect(dayIsRealized(f({ realized: 2, done: 2 }))).toBe(true)
+  })
+
+  it("n'est PAS réalisé si une occurrence est encore en cours (in_progress)", () => {
+    // done = 2 (1 completed + 1 in_progress), realized = 1 → il reste du travail.
+    expect(dayIsRealized(f({ realized: 1, done: 2 }))).toBe(false)
+  })
+
+  it("n'est PAS réalisé s'il reste des interventions prévues", () => {
+    expect(dayIsRealized(f({ realized: 1, done: 1, expected: 1 }))).toBe(false)
+  })
+
+  it("n'est PAS réalisé quand rien n'est déclaré fait", () => {
+    expect(dayIsRealized(f({ expected: 2 }))).toBe(false)
+    expect(dayIsRealized(f())).toBe(false)
+  })
+
+  it('ne récompense pas un jour fermé', () => {
+    expect(dayIsRealized(f({ realized: 1, done: 1, closed: true }))).toBe(false)
+  })
+
+  it('une maintenue en suspens n’est pas encore une réalisation', () => {
+    expect(dayIsRealized(f({ realized: 1, done: 1, kept: 1 }))).toBe(false)
   })
 })
 

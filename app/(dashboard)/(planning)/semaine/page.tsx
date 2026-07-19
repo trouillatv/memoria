@@ -515,7 +515,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
           rouge qui saute aux yeux dès qu'un signal apparaît (sans équipe,
           chevauchement horaire). Silence positif respecté : si aucun signal,
           le widget ne rend rien et la zone disparaît. */}
-      <WeekVigilanceSection data={vigilance} />
+      <WeekVigilanceSection data={vigilance} weekParam={formatWeekParam(range)} />
 
       {/* Doctrine /semaine — modifications ponctuelles uniquement.
           Discret mais permanent : c'est la règle produit, pas un toast éphémère. */}

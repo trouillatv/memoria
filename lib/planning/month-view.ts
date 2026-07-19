@@ -22,13 +22,21 @@
 // Pur : aucune base, aucun réseau. La page assemble les faits ; ce module dit
 // ce qu'ils SIGNIFIENT.
 
+import type { ClosureReasonKind } from '@/lib/planning/closures'
+
 /** Ce qu'on sait d'un (chantier, jour) — des FAITS, assemblés par la page. */
 export interface DayFacts {
   /** Encore attendues ce jour — HORS décisions « maintenir » déjà tranchées :
    *  re-crier un conflit déjà tranché apprend à ignorer le rouge. */
   expected: number
-  /** Déjà faites ou en cours — le passé du mois se lit aussi. */
+  /** Faites OU en cours (in_progress + completed + validated) — ce qui rend un
+   *  jour « ok ». Attention : ce compteur MÉLANGE plusieurs sens ; il ne prouve
+   *  PAS une réalisation. Pour un ✓ à l'écran, utiliser `realized`. */
   done: number
+  /** RÉALISÉ au sens strict : completed + validated. Le terrain a DÉCLARÉ le
+   *  passage fait. C'est la SEULE donnée qui autorise un ✓ (fait ≠ prévu).
+   *  `in_progress` n'est pas réalisé ; `skipped` est raté. */
+  realized: number
   /** Maintenues malgré une fermeture (décision prise) : du travail prévu, qui
    *  ne doit PLUS alarmer. */
   kept: number
@@ -36,6 +44,9 @@ export interface DayFacts {
   projected: number
   /** Le chantier est déclaré fermé ce jour-là. */
   closed: boolean
+  /** Le MOTIF de la fermeture (férié, client, inventaire…) — pour que la case
+   *  fermée ouvre son tiroir sans re-requêter. `null` si le jour n'est pas fermé. */
+  closureReasonKind: ClosureReasonKind | null
   /** Au moins une occurrence dévie de son roulement ce jour-là. */
   hasException: boolean
   /** Le chantier a un roulement publié qui COUVRE ce jour — c'est lui qui rend
@@ -54,6 +65,25 @@ export interface DayFacts {
  *   empty     →  rien, et rien d'anormal (gris)
  */
 export type DayState = 'conflict' | 'closed' | 'hole' | 'ok' | 'projected' | 'empty'
+
+/**
+ * LE JOUR EST-IL RÉALISÉ ? — la condition d'un ✓ honnête (Vincent, 2026-07-15).
+ *
+ * Vrai seulement quand le terrain a déclaré fait (completed/validated) ET qu'il
+ * ne reste RIEN en attente : aucune occurrence encore planifiée (`expected`),
+ * aucune maintenue en suspens (`kept`), aucune en cours (`done === realized`).
+ * Un jour à moitié fait, ou avec une intervention encore « en cours », n'affiche
+ * pas de ✓ — il reste « prévu ». On ne récompense que ce qui est réellement fait.
+ */
+export function dayIsRealized(f: DayFacts): boolean {
+  return (
+    !f.closed &&
+    f.realized > 0 &&
+    f.expected === 0 &&
+    f.kept === 0 &&
+    f.done === f.realized
+  )
+}
 
 export function dayState(f: DayFacts): DayState {
   // Le conflit ne compte QUE ce qui n'a pas été tranché : une décision
