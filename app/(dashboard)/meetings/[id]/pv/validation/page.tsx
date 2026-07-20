@@ -55,7 +55,7 @@ const SECTION_ORDER: PvSection[] = ['participants', 'remarques_cr', 'points_exam
 
 export default async function PvValidationPage({ params, searchParams }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ person?: string; person_source?: string }>
+  searchParams: Promise<{ person?: string }>
 }) {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')

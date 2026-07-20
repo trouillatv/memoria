@@ -146,7 +146,6 @@ function Row({ reportId, siteId, d, contacts, actions, personLinkByContact }: { 
   const ficheHref = (intervenantId: string): string => {
     const p = new URLSearchParams(searchParams?.toString() ?? '')
     p.set('person', intervenantId)
-    p.set('person_source', 'decision')
     return `${pathname}?${p.toString()}`
   }
   const echLabel = ddmmyyyy(d.echeance)

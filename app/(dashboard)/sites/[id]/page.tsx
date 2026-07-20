@@ -69,14 +69,13 @@ import { SiteOverviewTab } from './views/apercu/SiteOverviewTab'
 
 interface PageProps {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ tab?: string; person?: string; person_source?: string; action?: string; decision?: string; memtab?: string }>
+  searchParams: Promise<{ tab?: string; person?: string; action?: string; decision?: string; memtab?: string }>
 }
 
 type ChantierViewKey = SiteTabKey
 
 // D'où la fiche a été ouverte — l'instrumentation qui tranchera « onglet vs
 // fiche partout » (arbitrage 2026-07-18). Toute NOUVELLE porte ajoute sa source.
-const FICHE_SOURCES = new Set(['explorer', 'recherche', 'visite', 'reunion', 'decision', 'apercu', 'memoire'])
 
 export default async function SitePage({ params, searchParams }: PageProps) {
   const user = await getCurrentUserWithProfile()
@@ -84,7 +83,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const { tab: rawTab, person: personId, person_source: personSource, action: actionId, decision: decisionId, memtab: rawMemtab } = await searchParams
+  const { tab: rawTab, person: personId, action: actionId, decision: decisionId, memtab: rawMemtab } = await searchParams
   const memtab: MemoireSubTab = rawMemtab === 'confirmer' ? 'confirmer' : 'pourquoi'
   const tab: ChantierViewKey = resolveSiteTab(rawTab)
 
@@ -208,7 +207,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           repli visuel (`fallback={null}`) : on n'ajoute aucun squelette tant que
           la recette n'a pas prouvé qu'un temps mort subsiste. */}
       <Suspense fallback={null}>
-        <FicheSlot siteId={id} personId={personId} personSource={personSource} actionId={actionId} decisionId={decisionId} />
+        <FicheSlot siteId={id} personId={personId} actionId={actionId} decisionId={decisionId} />
       </Suspense>
     </div>
   )
@@ -229,11 +228,10 @@ function ChantierShell({
 // contenu sortent sans les attendre. Entre deux fiches, React conserve l'ancien
 // contenu pendant la transition — aucun écran blanc, aucun flash.
 async function FicheSlot({
-  siteId, personId, personSource, actionId, decisionId,
+  siteId, personId, actionId, decisionId,
 }: {
   siteId: string
   personId?: string
-  personSource?: string
   actionId?: string
   decisionId?: string
 }) {
@@ -243,9 +241,13 @@ async function FicheSlot({
     actionId ? getSiteActionFiche(siteId, actionId).catch(() => null) : null,
     decisionId ? getSiteDecisionFiche(siteId, decisionId).catch(() => null) : null,
   ])
-  if (person && personSource && FICHE_SOURCES.has(personSource)) {
-    void logUsageEvent({ event: `intervenant_fiche_opened:${personSource}`, siteId })
-  }
+  // La mesure « par quelle porte ouvre-t-on une fiche Intervenant ? » vivait
+  // ici, dérivée de `person_source` dans l'URL. La migration des adresses l'a
+  // supprimée, et c'est une conséquence assumée : l'identité d'un objet ne
+  // dépend plus de sa porte d'entrée, on ne réintroduit pas la provenance dans
+  // le protocole de navigation pour alimenter un compteur.
+  // Le mécanisme qui reste est le bon : un événement émis par le COMPOSANT qui
+  // ouvre la fiche (cf. logIntervenantFicheOpenedAction), pas par l'adresse.
   return <PersistentFicheSheet siteId={siteId} person={person} action={action} decision={decision} />
 }
 
