@@ -256,9 +256,29 @@ et rien de plus :
 
 1. mesure avant — **archivée** : 2104 ms du clic au panneau lisible ;
 2. correctif déployé — **fait** (`1865fa19`, la garde ne fait plus attendre les lectures) ;
-3. mesure après, **dans les mêmes conditions** — ⏳ en attente ;
-4. gain absolu, gain relatif, absence de régression fonctionnelle — ⏳ ;
-5. suppression de la sonde `app/api/perf/fiche/route.ts` — ⏳.
+3. mesure après, **dans les mêmes conditions** — **faite** ;
+4. gain absolu, gain relatif, absence de régression — **fait**, ci-dessous ;
+5. suppression de la sonde `app/api/perf/fiche/route.ts` — **faite**.
+
+### Résultat avant / après (production, même décision, onglet neuf)
+
+| Mesure | Avant | Après | Gain absolu | Gain relatif |
+|---|---|---|---|---|
+| Read model de la fiche (sonde, valeur médiane) | ~780 ms | ~590 ms | **−190 ms** | **−24 %** |
+| Clic → panneau lisible (médiane de 3) | 2104 ms | 1448 ms | **−656 ms** | **−31 %** |
+| Clic → panneau lisible (étendue après) | — | 1028–1758 ms | — | — |
+
+**L'explication dominante est confirmée, et par le chiffre le plus exigeant** : le modèle
+prédisait qu'une vague supprimée vaudrait ~185 ms ; la sonde en mesure **190**. Une
+prédiction chiffrée d'avance et vérifiée vaut mieux qu'un gain constaté après coup.
+
+Le temps de bout en bout varie davantage (1028–1758 ms) : la latence réseau et l'état de
+la fonction s'y ajoutent. C'est la raison pour laquelle la sonde, plus stable, est la
+preuve retenue.
+
+**Aucune régression fonctionnelle** : contenu de la fiche complet (fil, chapô, relation
+« Produit »), chaîne Décision → Action intacte, fermeture par Échap correcte, et
+invariant de sortie toujours satisfait en onglet neuf.
 
 Ensuite : ne rouvrir ni la navigation ni la performance, **sauf si une nouvelle mesure
 contredit ces conclusions**.
