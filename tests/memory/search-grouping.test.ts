@@ -130,6 +130,41 @@ describe('Le clic mène à l’HISTOIRE, pas au fait isolé', () => {
   })
 })
 
+describe('Un objet qui a une adresse s’ouvre LUI-MÊME', () => {
+  // Le défaut corrigé : on cherchait une Décision, on la trouvait, et on
+  // atterrissait sur l'accueil du chantier — l'objet perdu au moment de
+  // l'ouvrir.
+  it('une décision ouvre la décision', () => {
+    expect(memoryHitHref(hit({ type: 'site_decision', id: 'dec-1' })))
+      .toBe('/sites/s1/decision/dec-1')
+  })
+
+  it('une action ouvre l’action', () => {
+    expect(memoryHitHref(hit({ type: 'site_action', id: 'act-1' })))
+      .toBe('/sites/s1/action/act-1')
+  })
+
+  it('l’objet prime sur son fil : la fiche porte déjà le sien', () => {
+    // C'est le changement de règle. Une décision rattachée à un sujet ouvre la
+    // décision, plus le sujet : on a cherché une décision, pas son sujet.
+    expect(memoryHitHref(hit({ type: 'site_decision', id: 'dec-1', subjectId: 'sub-9' })))
+      .toBe('/sites/s1/decision/dec-1')
+  })
+
+  it('sans chantier, aucune adresse d’objet n’est fabriquée', () => {
+    expect(memoryHitHref(hit({ type: 'site_decision', id: 'dec-1', siteId: null })))
+      .toBe('/sites')
+  })
+
+  it('les types sans modèle de navigation gardent leur repli', () => {
+    // Volontaire : ne pas généraliser des URL qui n'existent pas. Le retour au
+    // chantier reste honnête tant que ces objets n'ont pas de fiche.
+    for (const type of ['anomaly', 'observation', 'site_reserve', 'obligation'] as const) {
+      expect(memoryHitHref(hit({ type, id: 'x' }))).toBe('/sites/s1')
+    }
+  })
+})
+
 describe('Toute la mémoire, pas l’année en cours', () => {
   it('la fenêtre par défaut dépasse largement deux ans', () => {
     // « On avait déjà vu cette fuite il y a deux ans ? » — une fenêtre d'un an

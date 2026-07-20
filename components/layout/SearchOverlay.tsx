@@ -13,6 +13,7 @@ import {
   ShieldCheck, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch, BookOpen, CalendarClock } from 'lucide-react'
 import { searchMemoryAction } from './search-action'
 import type { MemoryHit, MemoryHitType } from '@/lib/db/memory-search'
+import { memoryHitHref } from '@/lib/memory/hit-href'
 import { HIT_LABEL_FR } from '@/lib/memory/search-grouping'
 
 // Un seul vocabulaire pour toutes les surfaces de recherche (⌘K et /recherche) :
@@ -102,8 +103,11 @@ export function SearchOverlay() {
 
   function navigate(hit: MemoryHit) {
     setOpen(false)
-    // Navigation simple vers la fiche site (centre de la mémoire du lieu).
-    if (hit.siteId) router.push(`/sites/${hit.siteId}`)
+    // L'overlay avait sa PROPRE règle de destination — toujours la fiche site —
+    // pendant que /recherche utilisait memoryHitHref(). Deux portes, deux
+    // comportements : corriger la fonction n'aurait ouvert que l'une des deux.
+    // Une seule règle de destination, partagée.
+    router.push(memoryHitHref(hit))
   }
 
   const groupedHits = hits.reduce<Record<MemoryHitType, MemoryHit[]>>((acc, hit) => {

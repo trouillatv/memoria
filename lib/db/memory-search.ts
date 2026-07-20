@@ -94,25 +94,8 @@ export async function searchMemory(opts: SearchMemoryOptions): Promise<MemoryHit
   }))
 }
 
-/**
- * Où mène un résultat.
- *
- * Règle : on emmène TOUJOURS vers le fil s'il existe. Un fait isolé répond
- * « oui, on en a parlé » ; le fil répond « voilà toute l'histoire » — c'est ce
- * que Guillaume cherche vraiment quand il demande « on avait déjà vu ça ? ».
- */
-export function memoryHitHref(hit: MemoryHit): string {
-  // Un document se lit DANS SA FICHE — jamais réduit à son extrait.
-  if (hit.type === 'document') return `/documents/${hit.id}`
-
-  if (!hit.siteId) return '/sites'
-
-  // Le sujet EST le fil.
-  if (hit.type === 'subject') return `/sites/${hit.siteId}/subjects/${hit.id}`
-
-  // Un fait rattaché à un sujet : on ouvre le fil, pas le fait isolé.
-  if (hit.subjectId) return `/sites/${hit.siteId}/subjects/${hit.subjectId}`
-
-  // Sinon la fiche chantier, qui agrège la mémoire (pas de deep-link par objet).
-  return `/sites/${hit.siteId}`
-}
+// La règle de destination vit dans `lib/memory/hit-href.ts` : ce module-ci
+// importe le client admin (clé service role) et ne doit jamais atteindre un
+// bundle client, or l'overlay ⌘K est un composant client. Réexporté ici pour
+// que les appelants existants ne changent pas d'import.
+export { memoryHitHref } from '@/lib/memory/hit-href'
