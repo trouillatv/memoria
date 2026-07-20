@@ -16,11 +16,17 @@ export function ActionFichePanel({ action }: { action: ActionFicheData }) {
   const pathname = usePathname()
   const search = useSearchParams()?.toString() ?? ''
 
+  // Cf. DecisionFichePanel : une zone parallèle non appariée garde son contenu en
+  // navigation client. L'adresse tranche — plus de segment, plus de panneau.
+  const ouvert = pathname.includes('/action/')
+
   // « Découle de : <décision> » — le retour vers l'amont reste dans le modèle.
   const href = toSegmentHref(action.fromDecision?.href, 'decision', pathname, search)
   const a = href && action.fromDecision
     ? { ...action, fromDecision: { ...action.fromDecision, href } }
     : action
+
+  if (!ouvert) return null
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) router.replace(quitterEspaceHref(pathname, search)) }}>

@@ -22,12 +22,20 @@ export function DecisionFichePanel({ decision }: { decision: DecisionFicheData }
   const pathname = usePathname()
   const search = useSearchParams()?.toString() ?? ''
 
+  // Mesuré en production : après une navigation CLIENT vers l'onglet, Next ne
+  // remet pas une zone parallèle non appariée à son `default` — elle conserve son
+  // dernier contenu. L'adresse disait « aucune fiche », le panneau restait affiché.
+  // C'est donc l'ADRESSE qui tranche : plus de segment, plus de panneau.
+  const ouvert = pathname.includes('/decision/')
+
   // La relation « Produit : <action> » doit rester DANS le nouveau modèle, sinon
   // la chaîne se brise et retombe sur l'ancien chemin par paramètres.
   const href = toSegmentHref(decision.action?.href, 'action', pathname, search)
   const d = href && decision.action
     ? { ...decision, action: { ...decision.action, href } }
     : decision
+
+  if (!ouvert) return null
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) router.replace(quitterEspaceHref(pathname, search)) }}>
