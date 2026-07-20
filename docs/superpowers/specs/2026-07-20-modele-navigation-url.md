@@ -107,6 +107,63 @@ favoris, recherche globale (Lot 3), et tout futur objet (Lot 4).
 - Anciennes URL (`?tab=`, `?decision=`…) : prévoir une redirection, sinon les liens déjà partagés
   cassent.
 
+---
+
+# Résultats du prototype (mesurés en production le 2026-07-20)
+
+> **Prototype VALIDÉ.** Il a confirmé le modèle de navigation et réfuté l'hypothèse
+> de performance initiale. C'est son rôle : répondre à une question, pas réussir.
+
+## 1. Le modèle de navigation est validé ✅
+
+Mesuré sur `/sites/<id>/decision/<id>?tab=memoire`, quatre cycles consécutifs :
+
+- **contexte conservé** — défilement à 316 px avant, 316 px après ouverture et fermeture ;
+  l'onglet reste actif derrière le panneau ;
+- **retour navigateur fiable** — aucun déraillement sur quatre allers-retours ;
+  fermeture entre 200 ms et 1 s ;
+- **aucun remontage du contenu** — un témoin posé dans le DOM avant ouverture a survécu
+  à tous les cycles : le contenu de l'onglet n'est pas reconstruit ;
+- **paramètres de provenance disparus** — zéro occurrence de `decision_source` ou
+  `from_person` sur la page.
+
+**L'ADR tient.** Le modèle « une adresse canonique par objet + zone parallèle » fonctionne.
+
+## 2. L'hypothèse de performance est réfutée ⚠️
+
+Hypothèse de départ : *découpler les routes ⇒ plus de recalcul ⇒ plus de lenteur.*
+
+Mesure : **l'ouverture reste à 2–3 s** sur les quatre cycles. Le réseau montre que le
+navigateur **redemande la route de l'onglet** (~1 à 1,6 s) alors même que son segment
+n'a pas changé.
+
+D'où la distinction, qui n'avait pas été anticipée :
+
+> **Ne pas remonter côté client ≠ ne pas recalculer côté serveur.**
+
+Le découplage supprime le remontage. Il ne supprime pas la requête.
+
+## 3. Le double rendu a une limite nommée
+
+L'accès direct plantait (`Cannot destructure property 'store'`) : le corps de la fiche
+utilise le titre accessible d'une boîte de dialogue, qui n'existe pas hors d'un panneau.
+
+Conséquence pour la généralisation : **le partage total du composant n'est pas possible.**
+Un détail — le titre — dépend nécessairement du contexte d'affichage. D'où `variant:
+'panel' | 'page'` : une exception nommée et justifiée, plutôt que deux implémentations
+qui divergeraient.
+
+## Question ouverte (à mesurer, sans désigner de coupable)
+
+> **Pourquoi Next redemande-t-il un payload RSC alors que le segment visible n'a pas
+> changé ?**
+
+Causes possibles, aucune établie : `force-dynamic`, `cookies()`, `headers()`,
+`searchParams`, `fetch(..., { cache: 'no-store' })`, invalidation RSC, ou simplement le
+comportement normal du routeur. **Ne pas partir en chasse d'un coupable avant d'avoir la
+preuve** — la première tentative d'explication (`force-dynamic`) était une hypothèse
+présentée comme une cause, exactement l'erreur que ce projet s'interdit.
+
 ## Périmètre du prototype (après validation de cet ADR)
 
 **Un seul onglet, un seul type de fiche** : `memoire` + `decision`.
