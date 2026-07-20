@@ -1,0 +1,139 @@
+import 'server-only'
+
+// ── LA FICHE DOCUMENT — la PREUVE dans le graphe ─────────────────────────────
+// Deuxième objet du Lot 4. Le gabarit est figé : on l'applique, on ne le
+// rediscute pas (adresse propre · fiche propre · fil · relations · recherche ·
+// trois gestes).
+//
+// Ce que la fiche est, et n'est pas :
+//   · elle EST le nœud du graphe — « d'où vient ce document, que prouve-t-il ? » ;
+//   · elle n'est PAS la visionneuse (`/documents/<id>` : URL signée courte, rôle,
+//     journal d'audit, liens éditables). Le lien vers elle est une SORTIE nommée.
+//     Même règle que la Réunion — cf. doctrines/objets-jamais-conteneurs.md.
+//
+// ⚠️ RELATION ABSENTE DU MODÈLE, à ne pas inventer : il n'existe AUCUN lien entre
+// un document et une action ou une décision. `document_links.target_type` accepte
+// contract · site · tender · client · intervention · team · tenant · reserve.
+// La fiche montre donc ce qui existe (réunion source, réserve prouvée) et se tait
+// sur le reste, plutôt que de suggérer une causalité non enregistrée.
+//
+// ⚠️ LITIGE : un document de type `litige` n'entre PAS dans le graphe. Il reste
+// consultable depuis son dossier et sa visionneuse — il n'est pas caché, il n'est
+// pas MÉLANGÉ aux faits de chantier. Même règle que son exclusion du corpus de
+// recherche (mig 204), appliquée ici à la navigation.
+
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
+import { canViewDocument } from '@/lib/documents/access'
+import { DOCUMENT_TYPE_OPTIONS } from '@/lib/documents/labels'
+import type { UserRole, DocumentVisibility, DocumentType } from '@/types/db'
+
+// Le libellé du type vient de la MÊME source que les formulaires : une seule
+// liste de vérité, jamais un second dictionnaire qui divergerait.
+const TYPE_LABEL = new Map(DOCUMENT_TYPE_OPTIONS.map((o) => [o.value, o.label]))
+
+const DATE_FMT = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long', year: 'numeric' })
+const frDate = (iso: string | null | undefined): string | null => (iso ? DATE_FMT.format(new Date(iso)) : null)
+
+export interface DocumentFicheData {
+  id: string
+  siteId: string
+  filename: string
+  typeLabel: string
+  /** Date d'effet si elle est connue, sinon date de dépôt — jamais inventée. */
+  dateLabel: string | null
+  dateIsEffective: boolean
+  /** La réunion qui a produit ce document (compte-rendu validé). */
+  reunion: { label: string; href: string } | null
+  /** Les réserves que ce document prouve (`document_links.target_type = 'reserve'`). */
+  reserves: Array<{ id: string; label: string }>
+  /** La visionneuse : URL signée, rôle, audit. Une SORTIE, pas le contenu. */
+  visionneuseHref: string
+}
+
+export async function getSiteDocumentFiche(
+  siteId: string,
+  documentId: string,
+  role: UserRole | null,
+): Promise<DocumentFicheData | null> {
+  const db = createAdminClient()
+
+  // UNE SEULE VAGUE. La garde d'organisation ne dépend d'aucune lecture : elle
+  // part avec elles et décide toujours (fail-closed).
+  const [orgId, siteRes, docRes, lienSiteRes] = await Promise.all([
+    getOrgId(),
+    db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle(),
+    db.from('documents')
+      .select('id, filename, document_type, visibility_level, effective_date, created_at, organization_id, deleted_at')
+      .eq('id', documentId).maybeSingle(),
+    // Le document doit être RATTACHÉ à ce chantier : sans ce lien, l'adresse
+    // `/sites/<A>/document/<X>` ne doit rien ouvrir, même si X existe ailleurs.
+    db.from('document_links').select('id')
+      .eq('document_id', documentId).eq('target_type', 'site').eq('target_id', siteId).maybeSingle(),
+  ])
+
+  if (!orgId) return null
+  const site = siteRes.data as { organization_id: string | null } | null
+  if (!site || site.organization_id !== orgId) return null
+
+  const d = docRes.data as {
+    id: string; filename: string; document_type: DocumentType
+    visibility_level: DocumentVisibility; effective_date: string | null
+    created_at: string; organization_id: string | null; deleted_at: string | null
+  } | null
+  if (!d || d.deleted_at) return null
+  if (d.organization_id !== orgId) return null
+  if (!lienSiteRes.data) return null
+
+  // Le rôle décide, comme dans la visionneuse. On ne révèle pas l'existence.
+  if (!canViewDocument(role, d.visibility_level)) return null
+  // Le litige ne circule pas dans le graphe.
+  if (d.document_type === 'litige') return null
+
+  // Niveau 2 — ces lectures dépendent du document, pas l'une de l'autre.
+  const [reunionRes, reserveLiensRes] = await Promise.all([
+    db.from('report_documents').select('report_id').eq('document_id', documentId).maybeSingle(),
+    db.from('document_links').select('target_id')
+      .eq('document_id', documentId).eq('target_type', 'reserve'),
+  ])
+
+  let reunion: DocumentFicheData['reunion'] = null
+  const repId = (reunionRes.data as { report_id: string | null } | null)?.report_id ?? null
+  if (repId) {
+    const { data } = await db.from('site_reports')
+      .select('origin, title, started_at, created_at')
+      .eq('id', repId).eq('site_id', siteId).maybeSingle()
+    const r = data as { origin: string | null; title: string | null; started_at: string | null; created_at: string } | null
+    if (r) {
+      const type = r.origin ? 'Visite' : 'Réunion'
+      const date = frDate(r.started_at ?? r.created_at)
+      reunion = {
+        label: `${r.title?.trim() || type}${date ? ` du ${date}` : ''}`,
+        href: `/sites/${siteId}/reunion/${repId}`,
+      }
+    }
+  }
+
+  const reserveIds = ((reserveLiensRes.data ?? []) as Array<{ target_id: string }>).map((l) => l.target_id)
+  let reserves: DocumentFicheData['reserves'] = []
+  if (reserveIds.length > 0) {
+    const { data } = await db.from('site_reserve')
+      .select('id, label').in('id', reserveIds).eq('site_id', siteId)
+    reserves = ((data ?? []) as Array<{ id: string; label: string | null }>)
+      .map((r) => ({ id: r.id, label: r.label?.trim() || 'Réserve' }))
+  }
+
+  const effective = frDate(d.effective_date)
+
+  return {
+    id: d.id,
+    siteId,
+    filename: d.filename,
+    typeLabel: TYPE_LABEL.get(d.document_type) ?? d.document_type,
+    dateLabel: effective ?? frDate(d.created_at),
+    dateIsEffective: Boolean(effective),
+    reunion,
+    reserves,
+    visionneuseHref: `/documents/${d.id}`,
+  }
+}

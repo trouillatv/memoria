@@ -24,7 +24,14 @@ export interface HitLocation {
  */
 export function memoryHitHref(hit: HitLocation): string {
   // Un document se lit DANS SA FICHE — jamais réduit à son extrait.
-  if (hit.type === 'document') return `/documents/${hit.id}`
+  // Lot 4 : quand il appartient à un chantier, sa fiche est celle du GRAPHE — elle
+  // s'ouvre en panneau et garde le contexte. La visionneuse (`/documents/<id>`)
+  // reste la sortie nommée depuis cette fiche : c'est elle qui porte le fichier,
+  // l'URL signée et le journal d'accès. Hors chantier, elle redevient la seule
+  // destination possible : il n'y a pas de coquille où l'ouvrir.
+  if (hit.type === 'document') {
+    return hit.siteId ? `/sites/${hit.siteId}/document/${hit.id}` : `/documents/${hit.id}`
+  }
 
   if (!hit.siteId) return '/sites'
 

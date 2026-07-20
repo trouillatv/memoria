@@ -250,6 +250,13 @@ describe('L’extrait d’un document met le mot en évidence — sans charabia'
   })
 
   it('un document se lit DANS SA FICHE — jamais réduit à son extrait', () => {
-    expect(memoryHitHref(hit({ type: 'document', id: 'doc-1' }))).toBe('/documents/doc-1')
+    // Lot 4 : rattaché à un chantier, il s'ouvre dans la coquille du graphe.
+    expect(memoryHitHref(hit({ type: 'document', id: 'doc-1' })))
+      .toBe('/sites/s1/document/doc-1')
+  })
+
+  it('hors chantier, le document garde sa visionneuse — pas de coquille où l’ouvrir', () => {
+    expect(memoryHitHref(hit({ type: 'document', id: 'doc-1', siteId: null })))
+      .toBe('/documents/doc-1')
   })
 })
