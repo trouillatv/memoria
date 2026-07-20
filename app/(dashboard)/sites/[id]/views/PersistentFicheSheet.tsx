@@ -102,7 +102,14 @@ export function PersistentFicheSheet({ siteId, person, action, decision }: {
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) close() }}>
-      <SheetContent side="right" showCloseButton={!back} className="w-full overflow-y-auto sm:max-w-md">
+      {/* Le × reste TOUJOURS disponible. Le Lot 1 le masquait dès qu'un « ← »
+          existait (deux sorties concurrentes sur ce qui était encore une modale) ;
+          en chaînant Décision → Action → retour, `back` est défini à chaque étape
+          et le panneau n'offrait donc PLUS AUCUNE sortie visible — il fallait
+          deviner Échap ou le clic-dehors. Maintenant que le panneau est un espace
+          de navigation, les deux gestes ne se concurrencent plus : « ← » remonte
+          d'un cran (haut-gauche, dans le fil), « × » quitte l'espace (haut-droite). */}
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
         {active === 'action' && <ActionFicheBody key={contentKey} action={action} back={back} animateContent={isObjectChange} />}
         {active === 'decision' && <DecisionFicheBody key={contentKey} decision={decision} back={back} animateContent={isObjectChange} />}
         {active === 'person' && person && <IntervenantFicheBody key={contentKey} siteId={siteId} person={person} animateContent={isObjectChange} />}
