@@ -136,3 +136,41 @@ qu'il n'a pas à fournir.
 **Corollaire sur la forme** : un `ATTENTE_ARBITRAGE` sans tentative documentée est
 mal formé. Le bloc de reprise doit dire ce qui a été essayé et pourquoi ça n'a pas
 suffi — sans quoi l'arbitre doit refaire le diagnostic avant de pouvoir arbitrer.
+
+## L'observateur fait partie de ce qu'on vérifie
+
+> **Une preuve ne vaut que si l'observateur est lui-même fiable.** (Vincent, 2026-07-21)
+
+Deux exemples symétriques, tous deux survenus dans la session fondatrice :
+
+- **un outil qui fait croire à un bug** alors que le produit fonctionne — le renderer
+  se figeait 10 à 20 s après un clic ; la navigation avait bien eu lieu, mais les
+  captures échouaient ou montraient l'état d'avant. Conclusion tirée trois fois :
+  « le clic ne fait rien ». Faux ;
+- **un outil qui fait croire que tout fonctionne** alors qu'il n'a rien observé — un
+  tripwire dont le motif cassait `/bin/sh` et dont le `catch` prenait sa propre panne
+  pour un succès ; un `vitest` lancé avec un reporter inexistant, zéro test exécuté,
+  code de sortie masqué par un `tail`.
+
+Le second est le plus dangereux : il produit un vert sans mesure.
+
+**Ce qu'on en tire, concrètement** :
+
+1. avant de conclure à un défaut, vérifier que l'outil a réellement observé — cliquer
+   ailleurs sur la même page, refaire le geste sur un autre objet, lire la console ;
+2. avant de croire un vert, vérifier qu'une mesure a eu lieu — code de sortie réel,
+   nombre de tests exécutés, pas seulement l'absence d'erreur ;
+3. **séparer l'observation de l'implémentation.** C'est la raison d'être du
+   vérificateur et de l'agent de recette : celui qui a écrit le code a un intérêt dans
+   le résultat, et un outil silencieux l'arrange.
+
+## Pourquoi les états sont exclusifs
+
+Le contrat ne dit pas « sauf si on est presque sûr ». Il dit que chaque preuve doit
+être obtenue.
+
+D'où l'absence de « terminé sauf… » : à la clôture de la session fondatrice, aucun
+doute technique ne subsistait sur les lots 3 et 4 — recette verte, suite verte — mais
+un commit n'avait pas reçu sa revue. Ils sont restés `EN_VALIDATION_FINALE`. La
+distinction n'est pas de la prudence, c'est la différence entre **preuve produit** et
+**preuve de validation**.
