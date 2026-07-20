@@ -1,6 +1,7 @@
 # ADR — Modèle d'URL de la navigation (onglets & fiches)
 
-> Statut : **PROPOSITION, à valider par Vincent.** Aucune ligne de code n'est écrite avant validation.
+> Statut : **VALIDÉ** (Vincent, 2026-07-20). Modèle implémenté, recette verte en production,
+> chapitre « navigation » clos — voir le bilan en fin de document.
 > Contexte : premier sous-lot du Lot 3. Décidé le 2026-07-20 de figer ce modèle AVANT tout prototype.
 
 ## Le problème, mesuré
@@ -200,10 +201,56 @@ Repli assumé : après un rechargement direct, la pile est vide (aucun panneau n
 affiché dans ce cas, donc aucun ×). Si la sortie était malgré tout demandée, elle
 navigue explicitement vers l'onglet.
 
-## Question ouverte (à mesurer, sans désigner de coupable)
+---
 
-> **Pourquoi Next redemande-t-il un payload RSC alors que le segment visible n'a pas
-> changé ?**
+# Bilan du prototype — ADR VALIDÉ, chapitre clos (2026-07-20)
+
+| Hypothèse mise à l'épreuve | Verdict |
+|---|---|
+| Découpler l'objet affiché du contenu de l'onglet | **validée** |
+| Invariants de navigation (les trois gestes disjoints) | **validés** |
+| Suppression des paramètres de provenance | **validée** |
+| Invariant de sortie (× puis Précédent ne rouvre rien) | **validé** |
+| Gain de performance attendu du découplage | **réfutée par la mesure** |
+
+La dernière ligne est la plus utile. Le prototype a produit un **résultat négatif sur la
+performance et positif sur l'architecture** — c'est exactement ce qu'on attend d'un
+prototype : répondre, pas réussir.
+
+**Ce qui distingue l'état applicatif de l'état du navigateur.** La pile de
+`fiche-espace-historique.ts` ne représente pas l'historique du navigateur mais **le
+parcours dans l'espace des fiches**. Les deux ne coïncident pas : `history.length` ne
+donne pas la position et ne diminue pas au retour arrière. C'est ce qui justifie un état
+applicatif dédié plutôt qu'une lecture de l'API du navigateur.
+
+Le bouton **Suivant** peut rouvrir les fiches après un ×. Ce n'est pas un défaut : le ×
+termine le parcours courant, il ne falsifie pas l'historique du navigateur.
+
+**Aucun autre chantier de navigation n'est ouvert.**
+
+## Ce que l'enquête performance a répondu (2026-07-20, après ce prototype)
+
+La question ci-dessous a reçu sa réponse, et sa prémisse était en partie fausse.
+
+**Prémisse corrigée** : je n'observe **aucune** requête RSC séparée pour l'onglet. La
+seule requête qui pèse sur l'ouverture est celle de la route de la fiche — le contenu
+qu'on vient de demander. La formulation « le navigateur redemande la route de l'onglet »
+était plus affirmative que la mesure ne l'autorisait.
+
+**Réponse mesurée** : 97 % du temps d'ouverture est serveur (2041 ms sur 2104), et ce
+n'est pas du transfert (2177 octets en 1410 ms). Un aller-retour vers la base coûte
+**~185 ms quoi qu'il lise** ; cinq allers-retours **simultanés** coûtent le prix d'un
+seul (5 en série : 179/182/182/186/183 ms — les mêmes en parallèle : ~200 ms au total).
+
+> **Ce qui se paie est le nombre de VAGUES SÉQUENTIELLES, pas le nombre de requêtes.**
+
+C'est une contrainte transversale à tout le produit, pas un défaut de la navigation.
+
+## Question ouverte — CLOSE par les mesures ci-dessus
+
+> ~~**Pourquoi Next redemande-t-il un payload RSC alors que le segment visible n'a pas
+> changé ?**~~ — question fondée sur une observation non confirmée. Conservée pour
+> mémoire du raisonnement, pas comme chantier.
 
 Causes possibles, aucune établie : `force-dynamic`, `cookies()`, `headers()`,
 `searchParams`, `fetch(..., { cache: 'no-store' })`, invalidation RSC, ou simplement le
