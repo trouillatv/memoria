@@ -53,8 +53,6 @@ export interface DecisionFicheData {
 }
 
 export async function getSiteDecisionFiche(siteId: string, decisionId: string): Promise<DecisionFicheData | null> {
-  const orgId = await getOrgId()
-  if (!orgId) return null
   const db = createAdminClient()
   // ── OUVRIR UNE FICHE NE DOIT PAS ÊTRE UNE FILE D'ATTENTE ────────────────────
   // Ces lectures étaient enchaînées : six allers-retours en série vers la base,
@@ -66,10 +64,24 @@ export async function getSiteDecisionFiche(siteId: string, decisionId: string): 
   // l'autre. La garde décide toujours (fail-closed) ; on ne l'attend simplement
   // plus avant de commencer l'autre lecture, dont le résultat est jeté si la
   // garde refuse.
-  const [siteRes, d] = await Promise.all([
+  // MESURÉ EN PRODUCTION (2026-07-20) : un aller-retour coûte ~185 ms, qu'il
+  // lise une colonne ou un enregistrement entier ; mais cinq allers-retours
+  // SIMULTANÉS coûtent le prix d'un seul. Ce qui se paie n'est donc pas le
+  // nombre de requêtes, c'est le nombre de VAGUES.
+  //
+  // `getOrgId()` en est une à lui seul — deux, même : vérifier le jeton, puis
+  // lire le profil. Il était attendu AVANT que la moindre lecture ne parte,
+  // alors qu'il ne dépend d'aucune d'elles. Il part maintenant avec elles.
+  //
+  // La garde reste fail-closed et décide toujours : on ne l'a pas affaiblie,
+  // on a seulement cessé de faire la queue derrière elle. Les résultats des
+  // lectures lancées en parallèle sont jetés si elle refuse.
+  const [orgId, siteRes, d] = await Promise.all([
+    getOrgId(),
     db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle(),
     getSiteDecision(siteId, decisionId),
   ])
+  if (!orgId) return null
   const site = siteRes.data
   if (!site || (site as { organization_id: string | null }).organization_id !== orgId) return null
   if (!d) return null
