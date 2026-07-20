@@ -228,16 +228,21 @@ termine le parcours courant, il ne falsifie pas l'historique du navigateur.
 
 **Aucun autre chantier de navigation n'est ouvert.**
 
-## Ce que l'enquête performance a répondu (2026-07-20, après ce prototype)
+## Ce que l'enquête performance a établi (2026-07-20, après ce prototype)
 
-La question ci-dessous a reçu sa réponse, et sa prémisse était en partie fausse.
+⚠️ **Statut exact : explication DOMINANTE, pas encore démontrée.** Tant que la mesure
+avant/après n'a pas constaté le gain en production, on n'a pas prouvé que ces ~2 s
+viennent bien de cette succession de vagues. C'est très probable ; ce n'est pas établi.
+La preuve sera l'écart mesuré, pas la vraisemblance du raisonnement.
+
+La question ci-dessous, elle, est bien close : sa prémisse était en partie fausse.
 
 **Prémisse corrigée** : je n'observe **aucune** requête RSC séparée pour l'onglet. La
 seule requête qui pèse sur l'ouverture est celle de la route de la fiche — le contenu
 qu'on vient de demander. La formulation « le navigateur redemande la route de l'onglet »
 était plus affirmative que la mesure ne l'autorisait.
 
-**Réponse mesurée** : 97 % du temps d'ouverture est serveur (2041 ms sur 2104), et ce
+**Ce qui est mesuré** : 97 % du temps d'ouverture est serveur (2041 ms sur 2104), et ce
 n'est pas du transfert (2177 octets en 1410 ms). Un aller-retour vers la base coûte
 **~185 ms quoi qu'il lise** ; cinq allers-retours **simultanés** coûtent le prix d'un
 seul (5 en série : 179/182/182/186/183 ms — les mêmes en parallèle : ~200 ms au total).
@@ -245,6 +250,18 @@ seul (5 en série : 179/182/182/186/183 ms — les mêmes en parallèle : ~200 m
 > **Ce qui se paie est le nombre de VAGUES SÉQUENTIELLES, pas le nombre de requêtes.**
 
 C'est une contrainte transversale à tout le produit, pas un défaut de la navigation.
+
+**Jalon de clôture du chapitre performance** (Vincent, 2026-07-20) — dans cet ordre,
+et rien de plus :
+
+1. mesure avant — **archivée** : 2104 ms du clic au panneau lisible ;
+2. correctif déployé — **fait** (`1865fa19`, la garde ne fait plus attendre les lectures) ;
+3. mesure après, **dans les mêmes conditions** — ⏳ en attente ;
+4. gain absolu, gain relatif, absence de régression fonctionnelle — ⏳ ;
+5. suppression de la sonde `app/api/perf/fiche/route.ts` — ⏳.
+
+Ensuite : ne rouvrir ni la navigation ni la performance, **sauf si une nouvelle mesure
+contredit ces conclusions**.
 
 ## Question ouverte — CLOSE par les mesures ci-dessus
 
