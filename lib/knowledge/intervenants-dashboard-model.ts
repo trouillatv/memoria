@@ -87,7 +87,7 @@ export function buildIntervenantsDashboard(
       isIdle: daysSinceActivity !== null && daysSinceActivity > IDLE_DAYS,
       otherSitesCount,
       isMultiSite: otherSitesCount > 0,
-      href: `/sites/${siteId}?person=${p.intervenantId}`,
+      href: `/sites/${siteId}/intervenant/${p.intervenantId}`,
     }
   })
 

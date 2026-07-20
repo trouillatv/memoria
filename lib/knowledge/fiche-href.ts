@@ -20,7 +20,7 @@ export const FICHE_PARAMS = [
 ] as const
 
 /** Les objets qui ont une adresse canonique. Un segment de plus s'ajoute ici. */
-const SEGMENTS = ['action', 'decision', 'reunion', 'document', 'reserve', 'observation'] as const
+const SEGMENTS = ['action', 'decision', 'reunion', 'document', 'reserve', 'observation', 'intervenant'] as const
 const SEGMENT_RE = new RegExp(`^(/sites/[^/]+)/(?:${SEGMENTS.join('|')})/[^/]+/?$`)
 
 /** `/sites/<id>/action/<x>` → `/sites/<id>` ; `/sites/<id>` → lui-même. */
