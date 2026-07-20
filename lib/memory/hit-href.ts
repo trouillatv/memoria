@@ -43,6 +43,9 @@ export function memoryHitHref(hit: HitLocation): string {
   // défini, et le repli vers le chantier reste honnête jusque-là.
   if (hit.type === 'site_decision') return `/sites/${hit.siteId}/decision/${hit.id}`
   if (hit.type === 'site_action') return `/sites/${hit.siteId}/action/${hit.id}`
+  // Lot 4 — la Réunion a son adresse. Elle ouvre la RÉUNION, pas le chantier qui
+  // la contient ni l'espace de travail de son compte-rendu.
+  if (hit.type === 'meeting') return `/sites/${hit.siteId}/reunion/${hit.id}`
 
   // Le sujet EST le fil.
   if (hit.type === 'subject') return `/sites/${hit.siteId}/subjects/${hit.id}`

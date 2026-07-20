@@ -25,6 +25,10 @@ export type MemoryHitType =
   | 'site_deadline'
   // Le SUJET lui-même : pas un fait, mais LE FIL auquel les faits se rattachent.
   | 'subject'
+  // Mig 222 — la RÉUNION, tête de la chaîne causale. On trouvait ses décisions
+  // et son compte-rendu sans jamais pouvoir ouvrir leur cause. Le transcript
+  // reste HORS corpus : parole brute, jamais mélangée aux faits.
+  | 'meeting'
   // Mig 204 — le texte extrait des DOCUMENTS. Les LITIGES en sont exclus, à la
   // source (index partiel + filtre SQL) : jamais dans l'écran seulement.
   | 'document'

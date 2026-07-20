@@ -6,8 +6,8 @@
 // Déterministe, zéro IA. Cf. searchPatrimoineAction.
 
 import { useEffect, useState, useTransition } from 'react'
-import {
-  Search, Camera, Pencil, AlertTriangle, ListTodo, Gavel, FileText, Wrench, X,
+import { 
+  Search, Users, Camera, Pencil, AlertTriangle, ListTodo, Gavel, FileText, Wrench, X,
   Eye, Lightbulb, Ban, ClipboardCheck, GitBranch, BookOpen, CalendarClock,
 } from 'lucide-react'
 import { searchPatrimoineAction, type SearchPatrimoineResult } from './patrimoine-actions'
@@ -20,6 +20,7 @@ const META: Record<MemoryHitType, { label: string; Icon: typeof Camera; cls: str
   site_deadline: { label: 'Échéances', Icon: CalendarClock, cls: 'text-emerald-600', ring: 'bg-emerald-100 dark:bg-emerald-950/40' },
   site_action: { label: 'Actions', Icon: ListTodo, cls: 'text-violet-600', ring: 'bg-violet-100 dark:bg-violet-950/40' },
   meeting_decision: { label: 'Décisions', Icon: Gavel, cls: 'text-indigo-600', ring: 'bg-indigo-100 dark:bg-indigo-950/40' },
+  meeting: { label: 'Réunions', Icon: Users, cls: 'text-violet-600', ring: 'bg-violet-100 dark:bg-violet-950/40' },
   report_document: { label: 'Documents', Icon: FileText, cls: 'text-slate-600', ring: 'bg-slate-100 dark:bg-slate-800/60' },
   intervention: { label: 'Interventions', Icon: Wrench, cls: 'text-amber-600', ring: 'bg-amber-100 dark:bg-amber-950/40' },
   anomaly: { label: 'Anomalies', Icon: AlertTriangle, cls: 'text-amber-600', ring: 'bg-amber-100 dark:bg-amber-950/40' },

@@ -144,6 +144,13 @@ describe('Un objet qui a une adresse s’ouvre LUI-MÊME', () => {
       .toBe('/sites/s1/action/act-1')
   })
 
+  it('une réunion ouvre la réunion, pas le chantier qui la contient', () => {
+    // Lot 4. Application directe de la règle de modélisation : un conteneur est
+    // un contexte, jamais un écran de substitution.
+    expect(memoryHitHref(hit({ type: 'meeting', id: 'rep-1' })))
+      .toBe('/sites/s1/reunion/rep-1')
+  })
+
   it('l’objet prime sur son fil : la fiche porte déjà le sien', () => {
     // C'est le changement de règle. Une décision rattachée à un sujet ouvre la
     // décision, plus le sujet : on a cherché une décision, pas son sujet.

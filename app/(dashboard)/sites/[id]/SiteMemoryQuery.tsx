@@ -44,6 +44,8 @@ const TYPE_META: Record<SiteMemoryHit['type'], { label: string; Icon: typeof Sti
   // S4a-1 — mémoire récente produite par MemorIA, désormais cherchable.
   site_action:      { label: 'Action',       Icon: ListTodo,   cls: 'bg-sky-50 text-sky-700 border-sky-200' },
   meeting_decision: { label: 'Décision',     Icon: FileCheck2, cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  // Mig 222 — la réunion elle-même, tête de la chaîne causale.
+  meeting:          { label: 'Réunion',      Icon: Users,      cls: 'bg-violet-50 text-violet-700 border-violet-200' },
   site_reserve:     { label: 'Réserve',      Icon: ShieldCheck, cls: 'bg-rose-50 text-rose-700 border-rose-200' },
   report_document:  { label: 'Compte-rendu', Icon: FileText,   cls: 'bg-slate-50 text-slate-700 border-slate-200' },
   // S4a-2 — couche Connaissance (CCTP, marché, procédure…). Recall sémantique.

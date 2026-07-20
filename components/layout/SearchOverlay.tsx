@@ -8,8 +8,8 @@
 
 import { useState, useEffect, useTransition, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  Search, X, AlertTriangle, FileText, Camera, MapPin, ListTodo, FileCheck2,
+import { 
+  Search, Users, X, AlertTriangle, FileText, Camera, MapPin, ListTodo, FileCheck2,
   ShieldCheck, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch, BookOpen, CalendarClock } from 'lucide-react'
 import { searchMemoryAction } from './search-action'
 import type { MemoryHit, MemoryHitType } from '@/lib/db/memory-search'
@@ -27,6 +27,7 @@ const TYPE_ICON: Record<MemoryHitType, React.ComponentType<{ className?: string 
   photo: Camera,
   site_action: ListTodo,
   meeting_decision: FileCheck2,
+  meeting: Users,
   site_reserve: ShieldCheck,
   site_deadline: CalendarClock,
   report_document: FileText,

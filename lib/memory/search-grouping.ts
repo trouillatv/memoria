@@ -25,6 +25,7 @@ export const HIT_LABEL_FR: Record<MemoryHitType, string> = {
   site_action: 'Action',
   site_decision: 'Décision',
   meeting_decision: 'Décision de réunion',
+  meeting: 'Réunion',
   site_reserve: 'Réserve',
   site_deadline: 'Échéance',
   report_document: 'Compte-rendu',
