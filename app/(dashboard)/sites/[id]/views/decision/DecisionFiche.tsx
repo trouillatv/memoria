@@ -28,7 +28,13 @@ const STATUT_CLS: Record<DecisionStatut, string> = {
 
 // Le CORPS de la fiche Décision, sans coquille Sheet : monté à l'intérieur d'un
 // Sheet partagé (la coquille persistante du parcours). Aucun changement visuel.
-export function DecisionFicheBody({ decision, back, animateContent = false }: { decision: DecisionFicheData | null; back?: TrailBack | null; animateContent?: boolean }) {
+// `variant` — le MÊME corps est monté à deux endroits (panneau et page complète).
+// Un seul détail ne peut pas être partagé : le TITRE. Dans le panneau il doit être
+// le titre accessible de la boîte de dialogue (`SheetTitle`) ; en page complète ce
+// contexte n'existe pas et le composant plante (« Cannot destructure property
+// 'store' »). Découvert par le prototype Lot 3 : c'était le risque annoncé du
+// double rendu. Tout le reste du corps est strictement identique — une seule vérité.
+export function DecisionFicheBody({ decision, back, animateContent = false, variant = 'panel' }: { decision: DecisionFicheData | null; back?: TrailBack | null; animateContent?: boolean; variant?: 'panel' | 'page' }) {
   if (!decision) return null
   const d = decision
 
@@ -54,7 +60,9 @@ export function DecisionFicheBody({ decision, back, animateContent = false }: { 
             <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUT_CLS[d.statut])}>{d.statutLabel}</span>
             {d.impactLabel && <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">Impact : {d.impactLabel}</span>}
           </div>
-          <SheetTitle className={cn('text-base font-semibold leading-snug', animateContent && FICHE_TITLE_MOTION)}>{d.titre}</SheetTitle>
+          {variant === 'page'
+            ? <h1 className="text-base font-semibold leading-snug">{d.titre}</h1>
+            : <SheetTitle className={cn('text-base font-semibold leading-snug', animateContent && FICHE_TITLE_MOTION)}>{d.titre}</SheetTitle>}
           <FicheChapo chapo={chapo} className={animateContent ? FICHE_TITLE_MOTION : undefined} />
           <p className={cn('text-[12px] font-medium', d.enVigueur ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}>
             {d.enVigueur && '● '}{d.vigueurLabel}

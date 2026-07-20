@@ -36,7 +36,7 @@ export default async function DecisionFichePage({
         <ArrowLeft className="h-4 w-4" /> {identity.name}
       </Link>
       <div className="rounded-[22px] border bg-card shadow-sm">
-        <DecisionFicheBody decision={decision} />
+        <DecisionFicheBody decision={decision} variant="page" />
       </div>
     </div>
   )
