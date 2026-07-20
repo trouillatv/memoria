@@ -331,11 +331,17 @@ async function insertReserve(c: Ctx, input: {
 
 async function insertDecision(c: Ctx, input: {
   siteId: string; titre: string; reportId: string; dateDecision: string; description?: string
+  /** La CONSÉQUENCE de la décision (site_decisions.action_id, 1:1 — mig 137).
+   *  Sans lui, la décision existe en base mais n'apparaît NI dans les fils causals
+   *  NI dans le chapô « Découle de / Produit » : la chaîne Réunion → Décision →
+   *  Action est alors intestable. C'est ce lien qui fait exister le parcours. */
+  actionId?: string | null
 }) {
   const { error } = await c.supabase.from('site_decisions').insert({
     site_id: input.siteId, titre: input.titre,
     description: input.description ?? null, report_id: input.reportId,
     date_decision: input.dateDecision, created_by: c.managerId,
+    action_id: input.actionId ?? null,
   })
   if (error) throw error
 }
@@ -427,15 +433,6 @@ async function main() {
       text: 'Coordination reconstruction Petro Atiti. Les zones incendiées sont sécurisées. Décisions : lancer les faux plafonds secteur B, commander les menuiseries extérieures, programmer le contrôle incendie, préparer la réception partielle de septembre.',
     }))
 
-  if (petroR1) {
-    await step('Petro — 4 décisions de réunion', async () => {
-      await insertDecision(c, { siteId: petro, titre: 'Lancer les faux plafonds secteur B', reportId: petroR1, dateDecision: d(-17) })
-      await insertDecision(c, { siteId: petro, titre: 'Commander les menuiseries extérieures', reportId: petroR1, dateDecision: d(-17) })
-      await insertDecision(c, { siteId: petro, titre: 'Programmer le contrôle incendie', reportId: petroR1, dateDecision: d(-17) })
-      await insertDecision(c, { siteId: petro, titre: 'Préparer la réception partielle', reportId: petroR1, dateDecision: d(-17) })
-    })
-  }
-
   const petroMission = await step('Petro — Mission « Second œuvre — faux plafonds »', () =>
     insertMission(c, petro, 'Second œuvre — faux plafonds secteur B', 'on_demand'))
 
@@ -471,6 +468,22 @@ async function main() {
         return [a1, a2, a3, a4]
       })
     : null
+
+  // Les décisions viennent APRÈS les actions, car chacune porte sa conséquence
+  // (action_id). Sans ce lien, la chaîne Réunion → Décision → Action n'existe
+  // ni dans les fils causals ni dans le chapô : la mémoire paraît incomplète.
+  if (petroR1 && petroActions) {
+    await step('Petro — 4 décisions de réunion (3 reliées à leur action)', async () => {
+      const [a1, , a3, a4] = petroActions
+      await insertDecision(c, { siteId: petro, titre: 'Lancer les faux plafonds secteur B', reportId: petroR1, dateDecision: d(-17), actionId: a1 })
+      await insertDecision(c, { siteId: petro, titre: 'Commander les menuiseries extérieures', reportId: petroR1, dateDecision: d(-17), actionId: a3 })
+      await insertDecision(c, { siteId: petro, titre: 'Programmer le contrôle incendie', reportId: petroR1, dateDecision: d(-17), actionId: a4 })
+      // Volontairement SANS action liée : la fiche Décision doit aussi savoir dire
+      // « aucune action liée à cette décision ». L'état vide fait partie du produit,
+      // et la démo doit l'exposer plutôt que de le cacher.
+      await insertDecision(c, { siteId: petro, titre: 'Préparer la réception partielle', reportId: petroR1, dateDecision: d(-17) })
+    })
+  }
 
   await step('Petro — Réserves (1 levée, 1 ouverte)', async () => {
     await insertReserve(c, {
