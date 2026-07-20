@@ -143,7 +143,7 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
     const href = h.type === 'intervenant' && h.personId && variant === 'desktop'
       ? `${siteHref}?tab=intervenants&person=${h.personId}&person_source=recherche`
       : h.type === 'site_action' && variant === 'desktop'
-        ? `${siteHref}?action=${h.id}&action_source=recherche`
+        ? `${siteHref}/action/${h.id}`
         : h.href ?? siteHref
     return (
       <li key={`${h.type}-${h.id}`}>

@@ -1,24 +1,27 @@
-// ── PROTOTYPE Lot 3 · garder la chaîne DANS le nouveau modèle d'adresses ─────
-// Les read models produisent encore des liens par paramètres
-// (`/sites/<id>?action=<id>&action_source=decision`). Tant que la migration n'est
-// pas décidée, on ne les touche pas : le panneau réécrit le lien au moment de
-// l'afficher, vers `/sites/<id>/action/<id>?<query courante>`.
+// ── L'ADRESSE DU MAILLON SUIVANT ─────────────────────────────────────────────
+// Ce module a d'abord servi de TRADUCTEUR : les read models produisaient des liens
+// par paramètres (`/sites/<id>?action=<id>&action_source=decision`) et le panneau
+// les réécrivait en segments au moment de les afficher.
 //
-// Sans cette réécriture, suivre une relation depuis un panneau retomberait sur
-// l'ancien chemin — et la chaîne à deux objets, celle qui doit trancher la règle
-// « fermer = retour navigateur », n'existerait jamais.
+// La migration des adresses (2026-07-20) a supprimé ce besoin : les read models
+// émettent désormais l'adresse canonique. `toSegmentHref` n'avait plus aucune
+// source à traduire, il a été retiré — un traducteur sans texte à traduire est une
+// dette, pas un filet de sécurité.
+//
+// Restent les deux règles qui n'ont pas d'équivalent ailleurs.
 
 /** `/sites/<id>/decision/<x>` → `/sites/<id>` : la base, quel que soit le maillon ouvert.
- *  Chaque objet qui reçoit une adresse au Lot 4 s'ajoute ici — et nulle part ailleurs. */
+ *  Chaque objet qui reçoit une adresse s'ajoute ici — et nulle part ailleurs. */
 function baseChantier(pathname: string): string {
   return pathname.replace(/\/(decision|action|reunion|document|reserve|observation)\/[^/]+\/?$/, '')
 }
 
 /** Suivre une relation ne change pas le décor : l'onglet, le sous-onglet et les
  *  filtres courants voyagent avec l'adresse de la fiche suivante.
- *  `toSegmentHref` le fait déjà pour les liens hérités (par paramètres) ; les read
- *  models du Lot 4 produisent directement des adresses de segment, qui ont le même
- *  besoin — sans quoi fermer la fiche retomberait sur l'onglet par défaut. */
+ *
+ *  Le pendant côté onglet est `mergeFicheHref` (lib/knowledge/fiche-href.ts), qui
+ *  doit FUSIONNER deux querys. Ici, dans un panneau, la cible n'en a pas : il n'y
+ *  a rien à fusionner, seulement un contexte à emporter. */
 export function garderContexte(href: string | null | undefined, search: string): string | null {
   if (!href) return null
   if (!search || href.includes('?')) return href
@@ -35,16 +38,4 @@ export function garderContexte(href: string | null | undefined, search: string):
 export function quitterEspaceHref(pathname: string, search: string): string {
   const base = baseChantier(pathname)
   return search ? `${base}?${search}` : base
-}
-
-export function toSegmentHref(
-  hrefLegacy: string | null | undefined,
-  type: 'action' | 'decision',
-  pathname: string,
-  search: string,
-): string | null {
-  if (!hrefLegacy) return null
-  const id = new RegExp(`[?&]${type}=([^&]+)`).exec(hrefLegacy)?.[1]
-  if (!id) return null
-  return `${baseChantier(pathname)}/${type}/${id}${search ? `?${search}` : ''}`
 }

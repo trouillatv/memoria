@@ -242,7 +242,7 @@ function Row({ reportId, siteId, d, contacts, actions, personLinkByContact }: { 
               // Lot 4 · Slice 4 : une décision qui référence une action ouvre la
               // FICHE canonique de l'action (?action=). Sinon simple texte.
               siteId && d.actionId ? (
-                <Link href={`/sites/${siteId}?action=${d.actionId}&action_source=decision`} scroll={false}
+                <Link href={`/sites/${siteId}/action/${d.actionId}`} scroll={false}
                   className="block text-[11px] text-sky-700 hover:underline">→ Action : {actionLabel}</Link>
               ) : (
                 <span className="block text-[11px] text-sky-700">→ Action : {actionLabel}</span>

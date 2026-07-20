@@ -407,7 +407,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
           <ul className="space-y-1">
             {documents.map((d) => (
               <li key={d.id} className="text-sm rounded-md border bg-card px-3 py-1.5">
-                <Link href={`/documents/${d.id}`} className="hover:underline">{d.filename}</Link>
+                <Link href={`/sites/${id}/document/${d.id}`} scroll={false} className="hover:underline">{d.filename}</Link>
               </li>
             ))}
           </ul>

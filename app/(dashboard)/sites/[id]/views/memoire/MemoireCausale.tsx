@@ -6,10 +6,8 @@
 // nœud ouvre sa fiche. On n'affiche que des liens réels — jamais une cause devinée.
 
 import Link from 'next/link'
-import { usePathname, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useFicheHref } from '@/components/knowledge/use-fiche-href'
-import { toSegmentHref } from '../fiche-segment-href'
 import type { CausalThread, CausalRelation, CausalNodeKind } from '@/lib/knowledge/causal-threads-model'
 
 const NODE_ICON: Record<CausalNodeKind, string> = {
@@ -48,30 +46,10 @@ function Node({ node, href }: { node: CausalThread['steps'][number]['node']; hre
   return href ? <Link href={href} scroll={false} className="hover:opacity-80">{inner}</Link> : inner
 }
 
-// PROTOTYPE Lot 3 — une DÉCISION n'est plus un paramètre d'URL mais un segment :
-// /sites/<id>/decision/<id>?tab=memoire. Ouvrir n'invalide donc plus le segment de
-// l'onglet, qui n'a aucune raison d'être recalculé. On conserve la query courante
-// (onglet, sous-onglet) telle quelle. L'identifiant est relu depuis le lien produit
-// par le read model : le prototype ne modifie aucun modèle de données.
-//
-// ⚠️ Corrigé en recette (2026-07-20) : cette fonction collait le segment sur le
-// `pathname` COURANT. Tant qu'aucune fiche n'était ouverte, pathname valait
-// `/sites/<id>` et le lien était juste. Dès qu'une fiche l'était, pathname valait
-// déjà `/sites/<id>/decision/<x>` et le lien devenait
-// `/sites/<id>/decision/<x>/decision/<y>` — une adresse qui n'existe pas.
-// Le défaut ne pouvait apparaître QUE depuis un panneau ouvert : le fil causal
-// reste visible derrière lui, et c'est le premier parcours à trois maillons qui
-// l'a révélé. On délègue désormais à `toSegmentHref`, qui ramène d'abord à la
-// base du chantier — une seule règle de construction, partagée.
-function decisionSegmentHref(nodeHref: string | null, pathname: string, search: string): string | null {
-  return toSegmentHref(nodeHref, 'decision', pathname, search)
-}
 
 export function MemoireCausale({ threads, siteId }: { threads: CausalThread[]; siteId: string }) {
   // Ouvrir un nœud garde l'onglet Mémoire (et son sous-onglet) derrière le panneau.
   const ficheHref = useFicheHref()
-  const pathname = usePathname()
-  const search = useSearchParams()?.toString() ?? ''
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-2">
@@ -110,12 +88,12 @@ export function MemoireCausale({ threads, siteId }: { threads: CausalThread[]; s
                         {REL[step.relationFromPrev].glyph}
                       </span>
                     )}
-                    <Node
-                      node={step.node}
-                      href={step.node.kind === 'decision'
-                        ? decisionSegmentHref(step.node.href, pathname, search)
-                        : ficheHref(step.node.href)}
-                    />
+                    {/* Tous les nœuds passent par la MÊME règle depuis la
+                        migration des adresses : les read models émettent des
+                        segments canoniques, et `useFicheHref` conserve le décor
+                        pour toute cible du même chantier. La Décision n'a plus
+                        son traitement à part. */}
+                    <Node node={step.node} href={ficheHref(step.node.href)} />
                   </div>
                 ))}
               </div>

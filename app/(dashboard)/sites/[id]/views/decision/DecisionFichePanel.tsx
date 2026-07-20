@@ -15,7 +15,7 @@ import { useEffect } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { DecisionFicheBody } from './DecisionFiche'
-import { toSegmentHref, quitterEspaceHref, garderContexte } from '../fiche-segment-href'
+import { quitterEspaceHref, garderContexte } from '../fiche-segment-href'
 import { noterFiche, terminerParcours } from '../fiche-espace-historique'
 import type { DecisionFicheData } from '@/lib/knowledge/decision-fiche'
 
@@ -42,18 +42,18 @@ export function DecisionFichePanel({ decision }: { decision: DecisionFicheData }
     if (!terminerParcours()) router.replace(quitterEspaceHref(pathname, search))
   }
 
-  // La relation « Produit : <action> » doit rester DANS le nouveau modèle, sinon
-  // la chaîne se brise et retombe sur l'ancien chemin par paramètres.
-  const href = toSegmentHref(decision.action?.href, 'action', pathname, search)
-  const base = href && decision.action
-    ? { ...decision, action: { ...decision.action, href } }
-    : decision
-
-  // La réunion source est une adresse de segment depuis le Lot 4 : elle remonte
-  // le fil DANS le panneau, à condition d'emporter le contexte de l'onglet.
-  const d = base.meeting
-    ? { ...base, meeting: { ...base.meeting, href: garderContexte(base.meeting.href, search) ?? base.meeting.href } }
-    : base
+  // Les read models produisent désormais des adresses CANONIQUES : il n'y a
+  // plus rien à réécrire ici. Il reste seulement à leur faire emporter le
+  // contexte de l'onglet, pour que suivre une relation ne change pas le décor.
+  const d: DecisionFicheData = {
+    ...decision,
+    action: decision.action
+      ? { ...decision.action, href: garderContexte(decision.action.href, search) ?? decision.action.href }
+      : null,
+    meeting: decision.meeting
+      ? { ...decision.meeting, href: garderContexte(decision.meeting.href, search) ?? decision.meeting.href }
+      : null,
+  }
 
   if (!ouvert) return null
 

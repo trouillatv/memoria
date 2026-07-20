@@ -138,7 +138,7 @@ export async function getSiteDecisionFiche(siteId: string, decisionId: string): 
   const a = aRes.data
   if (a) {
     const aa = a as { title: string; status: 'open' | 'planned' | 'done' | 'cancelled' }
-    action = { title: aa.title, statusLabel: actionStatusLabel(aa.status), href: `/sites/${siteId}?action=${d.actionId}&action_source=decision` }
+    action = { title: aa.title, statusLabel: actionStatusLabel(aa.status), href: `/sites/${siteId}/action/${d.actionId}` }
   }
 
   return {

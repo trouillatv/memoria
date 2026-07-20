@@ -76,10 +76,10 @@ export async function getSiteCausalThreads(siteId: string): Promise<CausalThread
     // n'invente pas un fil.
     if (!dec && !hasReserve && !hasOrigin) continue
 
-    const action: CausalNode = { kind: 'action', label: a.title, detail: actionStatusLabel(a.status), href: `/sites/${siteId}?action=${a.id}&action_source=memoire` }
+    const action: CausalNode = { kind: 'action', label: a.title, detail: actionStatusLabel(a.status), href: `/sites/${siteId}/action/${a.id}` }
 
     const decision = dec
-      ? { node: { kind: 'decision', label: dec.titre, detail: null, href: `/sites/${siteId}?decision=${dec.id}&decision_source=memoire` } as CausalNode, meeting: dec.reportId ? reportNode(dec.reportId) : null }
+      ? { node: { kind: 'decision', label: dec.titre, detail: null, href: `/sites/${siteId}/decision/${dec.id}` } as CausalNode, meeting: dec.reportId ? reportNode(dec.reportId) : null }
       : null
     const origin = !dec && hasOrigin ? reportNode(a.report_id as string) : null
 
@@ -94,7 +94,7 @@ export async function getSiteCausalThreads(siteId: string): Promise<CausalThread
       : null
 
     const cloture = !hasReserve && a.status === 'done'
-      ? ({ kind: 'cloture', label: 'Action clôturée', detail: frShort(a.done_at), href: `/sites/${siteId}?action=${a.id}&action_source=memoire` } as CausalNode)
+      ? ({ kind: 'cloture', label: 'Action clôturée', detail: frShort(a.done_at), href: `/sites/${siteId}/action/${a.id}` } as CausalNode)
       : null
 
     threads.push(assembleThread({ actionId: a.id, action, decision, origin, reserve, cloture, title: a.title, subtitle: null }))

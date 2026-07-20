@@ -279,7 +279,7 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
   let fromDecision: ActionFicheData['fromDecision'] = null
   {
     const { data: dec } = await db.from('site_decisions').select('id, titre').eq('action_id', actionId).eq('site_id', siteId).maybeSingle()
-    if (dec) fromDecision = { title: (dec as { titre: string }).titre, href: `/sites/${siteId}?decision=${(dec as { id: string }).id}&decision_source=action` }
+    if (dec) fromDecision = { title: (dec as { titre: string }).titre, href: `/sites/${siteId}/decision/${(dec as { id: string }).id}` }
   }
 
   // ── « Ce qui a été observé » (Slice ②) : la capture QUI A DÉCLENCHÉ l'action —

@@ -114,7 +114,7 @@ export async function getMemoryReview(siteId: string): Promise<MemoryReview> {
     })),
     ...decisions.map((d) => ({
       id: d.id, group: 'Décisions', title: d.titre, nature: null,
-      href: `/sites/${siteId}?decision=${d.id}&decision_source=memoire`,
+      href: `/sites/${siteId}/decision/${d.id}`,
     })),
     ...watchpoints.map((w) => ({ id: w.id, group: 'Points de vigilance', title: w.title, nature: null, href: null })),
   ]

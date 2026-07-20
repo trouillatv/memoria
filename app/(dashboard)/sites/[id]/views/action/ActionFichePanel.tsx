@@ -9,7 +9,7 @@ import { useEffect } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { ActionFicheBody } from './ActionFiche'
-import { toSegmentHref, quitterEspaceHref } from '../fiche-segment-href'
+import { quitterEspaceHref, garderContexte } from '../fiche-segment-href'
 import { noterFiche, terminerParcours } from '../fiche-espace-historique'
 import type { ActionFicheData } from '@/lib/knowledge/action-fiche'
 
@@ -31,10 +31,10 @@ export function ActionFichePanel({ action }: { action: ActionFicheData }) {
     if (!terminerParcours()) router.replace(quitterEspaceHref(pathname, search))
   }
 
-  // « Découle de : <décision> » — le retour vers l'amont reste dans le modèle.
-  const href = toSegmentHref(action.fromDecision?.href, 'decision', pathname, search)
-  const a = href && action.fromDecision
-    ? { ...action, fromDecision: { ...action.fromDecision, href } }
+  // « Découle de : <décision> » — adresse canonique produite par le read model ;
+  // il ne lui manque que le contexte de l'onglet courant.
+  const a = action.fromDecision
+    ? { ...action, fromDecision: { ...action.fromDecision, href: garderContexte(action.fromDecision.href, search) ?? action.fromDecision.href } }
     : action
 
   if (!ouvert) return null

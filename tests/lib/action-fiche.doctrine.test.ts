@@ -98,7 +98,9 @@ describe('« Issue de la décision » — lookup INVERSE (le pivot)', () => {
   it('la décision d’origine vient de site_decisions.action_id = cette action, scopée au chantier', () => {
     expect(src).toMatch(/from\('site_decisions'\)[\s\S]*?eq\('action_id', actionId\)[\s\S]*?eq\('site_id', siteId\)/)
     expect(src).toContain('fromDecision')
-    expect(src).toContain('?decision=')
+    // Adresse canonique depuis la migration — plus de paramètre de provenance.
+    expect(src).toContain('/decision/${(dec as { id: string }).id}')
+    expect(src).not.toContain('decision_source=')
   })
 })
 
