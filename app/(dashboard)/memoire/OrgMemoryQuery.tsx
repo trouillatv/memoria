@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import Link from 'next/link'
-import {  Search, Users, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen, ListTodo, Flag, Hammer, Info, Check, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch, CalendarClock } from 'lucide-react'
+import {  UserSquare, Search, Users, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen, ListTodo, Flag, Hammer, Info, Check, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch, CalendarClock } from 'lucide-react'
 import {
   askOrgMemoryAction,
   getOrgMemoryTermsAction,
@@ -44,6 +44,8 @@ const TYPE_META: Record<OrgMemoryHit['type'], { label: string; Icon: typeof Stic
   meeting_decision: { label: 'Décision',     Icon: Check,    cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
   // Mig 222 — la réunion elle-même, tête de la chaîne causale.
   meeting:          { label: 'Réunion',      Icon: Users,    cls: 'bg-violet-50 text-violet-700 border-violet-200' },
+  // Mig 223 — qui est qui. Icône PERSONNE, distincte de la réunion.
+  intervenant:      { label: 'Intervenant',  Icon: UserSquare, cls: 'bg-teal-50 text-teal-700 border-teal-200' },
   site_reserve:     { label: 'Réserve',      Icon: Flag,     cls: 'bg-rose-50 text-rose-700 border-rose-200' },
   site_deadline:    { label: 'Échéance',     Icon: CalendarClock, cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   report_document:  { label: 'Compte-rendu', Icon: Archive,  cls: 'bg-slate-50 text-slate-700 border-slate-200' },

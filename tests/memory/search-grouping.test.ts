@@ -153,6 +153,11 @@ describe('Un objet qui a une adresse s’ouvre LUI-MÊME', () => {
       .toBe('/sites/s1/observation/obs-1')
   })
 
+  it('un intervenant ouvre sa fiche, pas le chantier', () => {
+    expect(memoryHitHref(hit({ type: 'intervenant', id: 'int-1' })))
+      .toBe('/sites/s1/intervenant/int-1')
+  })
+
   it('une réserve ouvre la réserve — elle a son adresse depuis le Lot 4', () => {
     expect(memoryHitHref(hit({ type: 'site_reserve', id: 'res-1' })))
       .toBe('/sites/s1/reserve/res-1')
@@ -200,6 +205,7 @@ describe('Chaque nature de trace porte un nom de chantier, pas un nom de table',
       'observation', 'anomaly', 'site_note', 'intervention', 'photo',
       'site_action', 'site_decision', 'meeting_decision', 'site_reserve',
       'report_document', 'knowledge', 'blocage', 'obligation', 'subject', 'document',
+      'intervenant', 'meeting',
     ]
     for (const t of types) {
       expect(HIT_LABEL_FR[t]).toBeTruthy()

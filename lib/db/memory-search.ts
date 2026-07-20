@@ -23,6 +23,9 @@ export type MemoryHitType =
   // Mig 215 — l'échéance confirmée. « Quelles échéances ? » n'atteignait aucune
   // table : l'objet existait, la recherche ne le connaissait pas.
   | 'site_deadline'
+  // Mig 223 — « qui est qui ? ». Nom, rôle, fonction, entreprise ; JAMAIS les
+  // coordonnées, et casting ACTIF seulement.
+  | 'intervenant'
   // Le SUJET lui-même : pas un fait, mais LE FIL auquel les faits se rattachent.
   | 'subject'
   // Mig 222 — la RÉUNION, tête de la chaîne causale. On trouvait ses décisions

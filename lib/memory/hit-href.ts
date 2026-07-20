@@ -58,6 +58,9 @@ export function memoryHitHref(hit: HitLocation): string {
   // cherché un constat de terrain, pas le sujet auquel il se rattache.
   if (hit.type === 'observation') return `/sites/${hit.siteId}/observation/${hit.id}`
 
+  // L'Intervenant a son adresse depuis le lot du même nom.
+  if (hit.type === 'intervenant') return `/sites/${hit.siteId}/intervenant/${hit.id}`
+
   // Lot 4 — la Réserve a son adresse : elle ouvre la RÉSERVE, pas le chantier.
   if (hit.type === 'site_reserve') return `/sites/${hit.siteId}/reserve/${hit.id}`
 
