@@ -56,25 +56,52 @@ export async function getSiteDecisionFiche(siteId: string, decisionId: string): 
   const orgId = await getOrgId()
   if (!orgId) return null
   const db = createAdminClient()
-  const { data: site } = await db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle()
+  // ── OUVRIR UNE FICHE NE DOIT PAS ÊTRE UNE FILE D'ATTENTE ────────────────────
+  // Ces lectures étaient enchaînées : six allers-retours en série vers la base,
+  // chacun attendant le précédent. Mesuré à ~230 ms l'unité, soit ~1,4 s rien
+  // qu'en sérialisation — et 3 s ressenties à l'ouverture du panneau.
+  // Aucune donnée n'est chargée en plus : seul l'ORDONNANCEMENT change.
+  //
+  // Niveau 1 — la garde d'organisation et la décision ne dépendent pas l'une de
+  // l'autre. La garde décide toujours (fail-closed) ; on ne l'attend simplement
+  // plus avant de commencer l'autre lecture, dont le résultat est jeté si la
+  // garde refuse.
+  const [siteRes, d] = await Promise.all([
+    db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle(),
+    getSiteDecision(siteId, decisionId),
+  ])
+  const site = siteRes.data
   if (!site || (site as { organization_id: string | null }).organization_id !== orgId) return null
-
-  const d = await getSiteDecision(siteId, decisionId)
   if (!d) return null
+
+  // Niveau 2 — décideur, casting, réunion source et action ne dépendent QUE de la
+  // décision. Ils partent donc ensemble : quatre allers-retours simultanés au
+  // lieu de quatre en file.
+  const nul = Promise.resolve({ data: null })
+  const [cRes, interRes, rRes, aRes] = await Promise.all([
+    d.decisionnaireContactId
+      ? db.from('company_contacts').select('full_name, function').eq('id', d.decisionnaireContactId).maybeSingle()
+      : nul,
+    d.decisionnaireContactId
+      ? db.from('site_intervenants').select('id').eq('site_id', siteId).eq('main_contact_id', d.decisionnaireContactId).is('effective_to', null).maybeSingle()
+      : nul,
+    d.reportId
+      ? db.from('site_reports').select('origin, title, started_at, created_at').eq('id', d.reportId).eq('site_id', siteId).maybeSingle()
+      : nul,
+    d.actionId
+      ? db.from('site_actions').select('title, status').eq('id', d.actionId).eq('site_id', siteId).maybeSingle()
+      : nul,
+  ])
 
   // Décideur — la personne qui PORTE la décision. Cliquable UNIQUEMENT si elle est
   // au casting actif (mêmes règles que le décisionnaire PV) ; sinon nom non lié,
   // ou le rôle/organisme en repli. Jamais un faux lien.
   let decideur: DecisionFicheData['decideur'] = null
-  if (d.decisionnaireContactId) {
-    const { data: c } = await db.from('company_contacts').select('full_name, function').eq('id', d.decisionnaireContactId).maybeSingle()
-    if (c) {
-      const { data: inter } = await db.from('site_intervenants').select('id')
-        .eq('site_id', siteId).eq('main_contact_id', d.decisionnaireContactId).is('effective_to', null).maybeSingle()
-      const interId = (inter as { id: string } | null)?.id ?? null
-      const detail = [(c as { function: string | null }).function, d.decisionnaireRole, d.decisionnaireOrg].filter(Boolean).join(' · ') || null
-      decideur = { name: (c as { full_name: string | null }).full_name ?? '', detail, href: interId ? `/sites/${siteId}?person=${interId}&person_source=decision` : null }
-    }
+  const c = cRes.data
+  if (c) {
+    const interId = (interRes.data as { id: string } | null)?.id ?? null
+    const detail = [(c as { function: string | null }).function, d.decisionnaireRole, d.decisionnaireOrg].filter(Boolean).join(' · ') || null
+    decideur = { name: (c as { full_name: string | null }).full_name ?? '', detail, href: interId ? `/sites/${siteId}?person=${interId}&person_source=decision` : null }
   }
   if (!decideur && (d.decisionnaireRole || d.decisionnaireOrg)) {
     decideur = { name: [d.decisionnaireRole, d.decisionnaireOrg].filter(Boolean).join(' · '), detail: null, href: null }
@@ -82,24 +109,20 @@ export async function getSiteDecisionFiche(siteId: string, decisionId: string): 
 
   // Réunion source (provenance) — scopée au chantier.
   let meeting: DecisionFicheData['meeting'] = null
-  if (d.reportId) {
-    const { data: r } = await db.from('site_reports').select('origin, title, started_at, created_at').eq('id', d.reportId).eq('site_id', siteId).maybeSingle()
-    if (r) {
-      const rr = r as { origin: string | null; title: string | null; started_at: string | null; created_at: string }
-      const type = rr.origin ? 'Visite' : 'Réunion'
-      const date = frDate(rr.started_at ?? rr.created_at)
-      meeting = { label: `${rr.title?.trim() || type}${date ? ` du ${date}` : ''}`, href: `/meetings/${d.reportId}`, kind: rr.origin ? 'visite' : 'reunion' }
-    }
+  const r = rRes.data
+  if (r) {
+    const rr = r as { origin: string | null; title: string | null; started_at: string | null; created_at: string }
+    const type = rr.origin ? 'Visite' : 'Réunion'
+    const date = frDate(rr.started_at ?? rr.created_at)
+    meeting = { label: `${rr.title?.trim() || type}${date ? ` du ${date}` : ''}`, href: `/meetings/${d.reportId}`, kind: rr.origin ? 'visite' : 'reunion' }
   }
 
   // Conséquence : l'action liée (action_id) — scopée au chantier.
   let action: DecisionFicheData['action'] = null
-  if (d.actionId) {
-    const { data: a } = await db.from('site_actions').select('title, status').eq('id', d.actionId).eq('site_id', siteId).maybeSingle()
-    if (a) {
-      const aa = a as { title: string; status: 'open' | 'planned' | 'done' | 'cancelled' }
-      action = { title: aa.title, statusLabel: actionStatusLabel(aa.status), href: `/sites/${siteId}?action=${d.actionId}&action_source=decision` }
-    }
+  const a = aRes.data
+  if (a) {
+    const aa = a as { title: string; status: 'open' | 'planned' | 'done' | 'cancelled' }
+    action = { title: aa.title, statusLabel: actionStatusLabel(aa.status), href: `/sites/${siteId}?action=${d.actionId}&action_source=decision` }
   }
 
   return {
