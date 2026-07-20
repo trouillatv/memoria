@@ -113,7 +113,7 @@ export async function getSiteDecisionFiche(siteId: string, decisionId: string): 
   if (c) {
     const interId = (interRes.data as { id: string } | null)?.id ?? null
     const detail = [(c as { function: string | null }).function, d.decisionnaireRole, d.decisionnaireOrg].filter(Boolean).join(' · ') || null
-    decideur = { name: (c as { full_name: string | null }).full_name ?? '', detail, href: interId ? `/sites/${siteId}?person=${interId}&person_source=decision` : null }
+    decideur = { name: (c as { full_name: string | null }).full_name ?? '', detail, href: interId ? `/sites/${siteId}/intervenant/${interId}` : null }
   }
   if (!decideur && (d.decisionnaireRole || d.decisionnaireOrg)) {
     decideur = { name: [d.decisionnaireRole, d.decisionnaireOrg].filter(Boolean).join(' · '), detail: null, href: null }

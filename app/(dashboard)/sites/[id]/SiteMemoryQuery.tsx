@@ -141,7 +141,7 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
     // canonique (Lot 4 · Slice 4). Desktop seulement : les deep-links
     // `?person=`/`?action=` n'existent pas encore sur le terrain mobile.
     const href = h.type === 'intervenant' && h.personId && variant === 'desktop'
-      ? `${siteHref}?tab=intervenants&person=${h.personId}&person_source=recherche`
+      ? `${siteHref}/intervenant/${h.personId}`
       : h.type === 'site_action' && variant === 'desktop'
         ? `${siteHref}/action/${h.id}`
         : h.href ?? siteHref

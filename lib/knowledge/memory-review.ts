@@ -110,7 +110,7 @@ export async function getMemoryReview(siteId: string): Promise<MemoryReview> {
       .map((e) => ({ id: e.id, group: 'Ce que le chantier sait', title: e.title, nature: natureOf(e.kind), href: null })),
     ...intervenants.map((i) => ({
       id: i.id, group: 'Intervenants', title: `${i.companyName} — ${i.role}`, nature: null,
-      href: `/sites/${siteId}?tab=intervenants&person=${i.id}&person_source=memoire`,
+      href: `/sites/${siteId}/intervenant/${i.id}`,
     })),
     ...decisions.map((d) => ({
       id: d.id, group: 'Décisions', title: d.titre, nature: null,

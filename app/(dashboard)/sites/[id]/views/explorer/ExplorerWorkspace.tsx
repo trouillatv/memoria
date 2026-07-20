@@ -624,7 +624,7 @@ export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
                     confirmé. */}
                 {n.type === 'acteur' && center.startsWith('int_') && (
                   <Link
-                    href={`/sites/${graph.siteId}?tab=explorer&person=${center.slice(4)}&person_source=explorer`}
+                    href={`/sites/${graph.siteId}/intervenant/${center.slice(4)}`}
                     scroll={false}
                     className="rounded-full border bg-muted/50 px-3 py-1.5 text-[12.5px] font-semibold hover:border-foreground/30"
                   >
