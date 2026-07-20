@@ -147,3 +147,21 @@ Ils survivront au code qui les a produits, et c'est avec eux que le Lot 4 commen
 
 Le hub par sujet et les autres objets ouvrent un nouveau chapitre, avec leurs propres
 questions. Ce n'est pas une prolongation du Lot 3.
+
+---
+
+## Dernière ligne du Lot 3 (Vincent, 2026-07-20)
+
+> **Le Lot 3 ne livre pas seulement une nouvelle navigation ; il établit les règles qui
+> permettront aux prochains objets d'intégrer le graphe sans rediscuter sa sémantique.**
+
+Changement de nature du travail à venir : le Lot 4 n'a plus à **concevoir** un modèle de
+navigation, il a à l'**appliquer** à de nouveaux objets.
+
+Les deux acquis les plus transposables ont quitté cette spec pour devenir des doctrines,
+parce qu'ils dépassent la navigation :
+
+- `doctrines/objets-jamais-conteneurs.md` — règle de **modélisation** : un conteneur est
+  un contexte, jamais un écran de substitution.
+- `doctrines/prediction-avant-explication.md` — règle de **méthode** : observation →
+  hypothèse → prédiction mesurable → expérimentation → conclusion.
