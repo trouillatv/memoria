@@ -68,3 +68,41 @@ Ce que ces états interdisent :
 
 **Absence de preuve ≠ preuve de succès.** Une suite de tests non relancée ne dit rien —
 ni vert ni rouge. Le seul énoncé honnête est « je ne peux rien affirmer ».
+
+## Deux règles sur les tests, apprises en quatre occurrences
+
+### 1. Une assertion négative ignore les commentaires
+
+> **Toute assertion négative portant sur le code source doit s'appliquer à une
+> version dépourvue de commentaires, sauf si l'intention est précisément de
+> vérifier les commentaires.** (Vincent, 2026-07-20)
+
+Le commentaire fait partie de la **documentation**, pas du **comportement**. Il est
+normal qu'il cite un symbole supprimé pour expliquer sa disparition — c'est même
+sa raison d'être. Un `not.toContain('action_source')` qui échoue sur la phrase
+« `action_source` a été retiré parce que… » ne signale aucun défaut.
+
+Quatre occurrences indépendantes dans la même session (Réserve, `?action=`,
+Document, fiche personne). Utilitaire à poser dans le fichier de test :
+
+```ts
+const sansCommentaires = (s: string): string =>
+  s.replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n').filter((l) => !l.trim().startsWith('//')).join('\n')
+```
+
+### 2. Un test se couple au comportement, jamais à l'implémentation
+
+Quand une migration fait tomber un test, la première question n'est pas « comment
+le réparer » mais **« que protégeait-il réellement ? »**.
+
+Cas fondateur : un test exigeait `set('action', …)` — la construction d'URL par
+paramètres. La migration l'a supprimée, le test est tombé. Or ce qu'il devait
+protéger n'était pas cette forme, c'était : *depuis la fiche personne, une action
+ouvre sa fiche canonique*. Reformulé sur l'intention, il protège la même chose et
+survit à la prochaine migration.
+
+**Sa chute était le signe que le correctif marchait** : il exigeait précisément le
+mécanisme qui faisait planter la page. Un test couplé à l'implémentation produit
+ce faux positif à chaque refonte — et pousse à réparer le test plutôt qu'à lire ce
+qu'il dit.
