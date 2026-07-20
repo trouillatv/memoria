@@ -102,7 +102,7 @@ export async function getSiteDocumentFiche(
   if (repId) {
     const { data } = await db.from('site_reports')
       .select('origin, title, started_at, created_at')
-      .eq('id', repId).eq('site_id', siteId).maybeSingle()
+      .eq('id', repId).eq('site_id', siteId).is('deleted_at', null).maybeSingle()
     const r = data as { origin: string | null; title: string | null; started_at: string | null; created_at: string } | null
     if (r) {
       const type = r.origin ? 'Visite' : 'Réunion'

@@ -1,5 +1,5 @@
-import { notFound, redirect } from 'next/navigation'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { requireDeskUser } from '@/lib/auth/page-guard'
+import { notFound } from 'next/navigation'
 import { getSiteDocumentFiche } from '@/lib/knowledge/document-fiche'
 import { DocumentFichePanel } from '../../../views/document/DocumentFichePanel'
 
@@ -14,8 +14,9 @@ export default async function DocumentFicheInterceptee({
 }: {
   params: Promise<{ id: string; documentId: string }>
 }) {
-  const user = await getCurrentUserWithProfile()
-  if (!user) redirect('/login')
+  // Une route INTERCEPTÉE est une page : elle s atteint aussi en tapant l URL.
+  // Le panneau ne doit pas être une porte plus large que la page directe.
+  const user = await requireDeskUser()
 
   const { id, documentId } = await params
   const doc = await getSiteDocumentFiche(id, documentId, user.role).catch(() => null)

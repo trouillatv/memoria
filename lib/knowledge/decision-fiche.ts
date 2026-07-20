@@ -92,13 +92,13 @@ export async function getSiteDecisionFiche(siteId: string, decisionId: string): 
   const nul = Promise.resolve({ data: null })
   const [cRes, interRes, rRes, aRes] = await Promise.all([
     d.decisionnaireContactId
-      ? db.from('company_contacts').select('full_name, function').eq('id', d.decisionnaireContactId).maybeSingle()
+      ? db.from('company_contacts').select('full_name, function').eq('id', d.decisionnaireContactId).is('deleted_at', null).maybeSingle()
       : nul,
     d.decisionnaireContactId
       ? db.from('site_intervenants').select('id').eq('site_id', siteId).eq('main_contact_id', d.decisionnaireContactId).is('effective_to', null).maybeSingle()
       : nul,
     d.reportId
-      ? db.from('site_reports').select('origin, title, started_at, created_at').eq('id', d.reportId).eq('site_id', siteId).maybeSingle()
+      ? db.from('site_reports').select('origin, title, started_at, created_at').eq('id', d.reportId).eq('site_id', siteId).is('deleted_at', null).maybeSingle()
       : nul,
     d.actionId
       ? db.from('site_actions').select('title, status').eq('id', d.actionId).eq('site_id', siteId).maybeSingle()

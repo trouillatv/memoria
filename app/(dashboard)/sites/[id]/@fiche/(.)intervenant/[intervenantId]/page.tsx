@@ -1,3 +1,4 @@
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { notFound } from 'next/navigation'
 import { getSiteIntervenantFiche } from '@/lib/knowledge/site-intervenants-view'
 import { IntervenantFichePanel } from '../../../views/intervenants/IntervenantFichePanel'
@@ -11,6 +12,10 @@ export default async function IntervenantFicheInterceptee({
 }: {
   params: Promise<{ id: string; intervenantId: string }>
 }) {
+  // Une route INTERCEPTÉE est une page : elle s atteint aussi en tapant l URL.
+  // Le panneau ne doit pas etre une porte plus large que la page directe.
+  await requireDeskUser()
+
   const { id, intervenantId } = await params
   const person = await getSiteIntervenantFiche(id, { intervenantId }).catch(() => null)
   if (!person) notFound()

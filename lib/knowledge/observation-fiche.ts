@@ -123,7 +123,7 @@ export async function getSiteObservationFiche(siteId: string, captureId: string)
   // La visite : relation NOT NULL, scopée au chantier par sécurité malgré tout.
   const { data: repData } = await db.from('site_reports')
     .select('origin, title, started_at, created_at')
-    .eq('id', c.report_id).eq('site_id', siteId).maybeSingle()
+    .eq('id', c.report_id).eq('site_id', siteId).is('deleted_at', null).maybeSingle()
   const rep = repData as { origin: string | null; title: string | null; started_at: string | null; created_at: string } | null
   // Sans visite lisible, la fiche n'a plus de fil : on préfère ne rien ouvrir
   // plutôt que d'afficher une observation flottante.
@@ -131,11 +131,46 @@ export async function getSiteObservationFiche(siteId: string, captureId: string)
   const repType = rep.origin ? 'Visite' : 'Réunion'
   const repDate = frDate(rep.started_at ?? rep.created_at)
 
-  const produits: ObservationProduit[] = ((routesRes.data ?? []) as Array<{ target_id: string; target_table: string | null }>)
-    .map((r) => {
-      const { typeLabel, href } = cibleHref(r.target_table, r.target_id, siteId)
-      return { id: r.target_id, typeLabel, href }
-    })
+  // ── LA CIBLE D'UN ROUTAGE DOIT APPARTENIR À CE CHANTIER ────────────────────
+  // `visit_capture_routes` ne porte pas de `site_id` : la capture est scopée, ses
+  // cibles ne le sont pas. Sans cette vérification, un `target_id` pointant un
+  // objet d'un autre chantier produisait un lien — et révélait son existence.
+  // Les six autres fiches scopent chacune de leurs relations ; celle-ci était la
+  // seule à ne pas le faire.
+  const routes = (routesRes.data ?? []) as Array<{ target_id: string; target_table: string | null }>
+  const idsParTable = new Map<string, string[]>()
+  for (const r of routes) {
+    if (!r.target_table) continue
+    idsParTable.set(r.target_table, [...(idsParTable.get(r.target_table) ?? []), r.target_id])
+  }
+
+  // Une lecture par table, toutes en parallèle : on ne paie qu'une vague.
+  const tablesConnues = ['site_actions', 'site_reserve', 'subjects', 'documents'] as const
+  const verifs = await Promise.all(
+    tablesConnues.map(async (table) => {
+      const ids = idsParTable.get(table)
+      if (!ids?.length) return [table, new Set<string>()] as const
+      // `documents` n'a pas de `site_id` : son rattachement passe par un lien.
+      const { data } = table === 'documents'
+        ? await db.from('document_links').select('document_id')
+            .in('document_id', ids).eq('target_type', 'site').eq('target_id', siteId)
+        : await db.from(table).select('id').in('id', ids).eq('site_id', siteId)
+      const vus = new Set(
+        ((data ?? []) as Array<Record<string, string>>).map((row) => row.document_id ?? row.id),
+      )
+      return [table, vus] as const
+    }),
+  )
+  const autorises: Map<string, Set<string>> = new Map(verifs)
+
+  // Une seule passe : la cible garde sa ligne, mais ne devient CLIQUABLE que si
+  // elle appartient bien à ce chantier. Ne pas l afficher du tout masquerait un
+  // routage réel ; l ouvrir sans vérifier révélerait un objet d ailleurs.
+  const produits: ObservationProduit[] = routes.map((r) => {
+    const { typeLabel, href } = cibleHref(r.target_table, r.target_id, siteId)
+    const verifiee = r.target_table ? (autorises.get(r.target_table)?.has(r.target_id) ?? false) : false
+    return { id: r.target_id, typeLabel, href: verifiee ? href : null }
+  })
 
   return {
     id: c.id,

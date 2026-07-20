@@ -88,7 +88,7 @@ export async function getSiteReunionFiche(siteId: string, reportId: string): Pro
     getOrgId(),
     db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle(),
     db.from('site_reports').select('id, origin, title, started_at, created_at, participants')
-      .eq('id', reportId).eq('site_id', siteId).maybeSingle(),
+      .eq('id', reportId).eq('site_id', siteId).is('deleted_at', null).maybeSingle(),
     listDecisionsByReport(reportId),
     db.from('report_documents').select('status').eq('report_id', reportId)
       .order('created_at', { ascending: false }).limit(1).maybeSingle(),

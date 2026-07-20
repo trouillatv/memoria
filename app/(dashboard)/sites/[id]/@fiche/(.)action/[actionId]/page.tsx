@@ -1,3 +1,4 @@
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { notFound } from 'next/navigation'
 import { getSiteActionFiche } from '@/lib/knowledge/action-fiche'
 import { ActionFichePanel } from '../../../views/action/ActionFichePanel'
@@ -12,6 +13,10 @@ export default async function ActionFicheInterceptee({
 }: {
   params: Promise<{ id: string; actionId: string }>
 }) {
+  // Une route INTERCEPTÉE est une page : elle s atteint aussi en tapant l URL.
+  // Le panneau ne doit pas etre une porte plus large que la page directe.
+  await requireDeskUser()
+
   const { id, actionId } = await params
   const action = await getSiteActionFiche(id, actionId).catch(() => null)
   if (!action) notFound()

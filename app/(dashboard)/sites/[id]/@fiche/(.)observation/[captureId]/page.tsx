@@ -1,3 +1,4 @@
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { notFound } from 'next/navigation'
 import { getSiteObservationFiche } from '@/lib/knowledge/observation-fiche'
 import { ObservationFichePanel } from '../../../views/observation/ObservationFichePanel'
@@ -11,6 +12,10 @@ export default async function ObservationFicheInterceptee({
 }: {
   params: Promise<{ id: string; captureId: string }>
 }) {
+  // Une route INTERCEPTÉE est une page : elle s atteint aussi en tapant l URL.
+  // Le panneau ne doit pas etre une porte plus large que la page directe.
+  await requireDeskUser()
+
   const { id, captureId } = await params
   const observation = await getSiteObservationFiche(id, captureId).catch(() => null)
   if (!observation) notFound()
