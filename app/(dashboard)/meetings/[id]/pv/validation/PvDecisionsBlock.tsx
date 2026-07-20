@@ -217,7 +217,21 @@ function Row({ reportId, siteId, d, contacts, actions, personLinkByContact }: { 
         <div className="flex items-start gap-2">
           <Gavel className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />
           <span className="min-w-0 flex-1">
-            <span className={d.statut === 'caduque' || d.statut === 'contredite' ? 'text-muted-foreground line-through' : ''}>{d.titre}</span>
+            {/* « Toutes les portes » : l'écran de validation reste l'espace de
+                travail (saisie, cycle de vie, rattachement) ; le titre ouvre la
+                fiche du graphe, d'où l'on suit les relations de la décision.
+                Sans chantier (réunion de contrat), pas de fiche : simple texte. */}
+            {siteId ? (
+              <Link
+                href={`/sites/${siteId}/decision/${d.id}`}
+                scroll={false}
+                className={`hover:underline ${d.statut === 'caduque' || d.statut === 'contredite' ? 'text-muted-foreground line-through' : ''}`}
+              >
+                {d.titre}
+              </Link>
+            ) : (
+              <span className={d.statut === 'caduque' || d.statut === 'contredite' ? 'text-muted-foreground line-through' : ''}>{d.titre}</span>
+            )}
             {d.description && <span className="block text-[11px] text-muted-foreground">{d.description}</span>}
             {metaParts.length > 0 && (
               <span className="block text-[11px] text-muted-foreground">

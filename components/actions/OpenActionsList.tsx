@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Check, MapPin, Mic, HardHat, User, Loader2, Clock, Camera, X, CalendarClock, Link2, AlertTriangle, RotateCcw } from 'lucide-react'
+import { Check, MapPin, Mic, HardHat, User, Loader2, Clock, Camera, X, CalendarClock, Link2, AlertTriangle, RotateCcw, Network } from 'lucide-react'
 import { toast } from 'sonner'
 import { closeActionAction, reopenActionAction, markActionProgressAction, planActionAction, listSiteMissionsForPlanningAction, listActiveTeamsForPlanningAction, associateActionToElementAction, listSiteSubjectsForAssociationAction } from '@/app/(dashboard)/actions/actions'
 import { actionHealth } from '@/lib/actions/health'
@@ -210,6 +210,17 @@ export function OpenActionsList({
                         <Link2 className="h-3.5 w-3.5" />Suivre ce point
                       </button>
                     ))}
+                    {/* « Toutes les portes » : cette liste menait vers l'ORIGINE de
+                        l'action (point suivi, site, réunion) mais jamais vers
+                        l'action elle-même. Les destinations métier restent
+                        inchangées ; l'objet gagne son accès. */}
+                    <Link
+                      href={`/sites/${a.site_id}/action/${a.id}`}
+                      scroll={false}
+                      className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+                    >
+                      <Network className="h-3.5 w-3.5" />Voir la fiche
+                    </Link>
                     <Link
                       href={`/sites/${a.site_id}`}
                       className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
