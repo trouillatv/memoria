@@ -106,3 +106,33 @@ survit à la prochaine migration.
 mécanisme qui faisait planter la page. Un test couplé à l'implémentation produit
 ce faux positif à chaque refonte — et pousse à réparer le test plutôt qu'à lire ce
 qu'il dit.
+
+## Ce qui autorise à passer en ATTENTE_ARBITRAGE
+
+> **Avant toute mise en `ATTENTE_ARBITRAGE`, l'orchestrateur doit avoir effectué au
+> moins une tentative raisonnable de résolution du problème relevant de son domaine
+> de compétence, et documenter cette tentative dans le bloc de reprise.**
+> (Vincent, 2026-07-21)
+
+Une suspension ne signifie pas « il y a une erreur ». Elle signifie **« je ne peux
+plus progresser de manière autonome »**. La différence est tout le sujet.
+
+**Relève du domaine de compétence — on diagnostique, on corrige, on relance, on ne
+demande rien** : erreur de compilation, test cassé, import manquant, erreur de
+typage, refactoring oublié, lien mort, régression introduite par le lot.
+
+L'ordre est toujours le même : diagnostiquer → tenter → revérifier → et seulement
+si l'on reste bloqué, escalader.
+
+**Justifie une escalade** : une décision métier · plusieurs solutions également
+valides · une information manquante que le code ne porte pas (comportement attendu
+ambigu, API inconnue) · plusieurs tentatives infructueuses · un moyen qui manque
+(un accès, une donnée que le jeu de démonstration ne contient pas).
+
+L'humain est **arbitre**, jamais débogueur de première ligne. Le solliciter sur une
+erreur de typage lui fait payer le prix d'une interruption pour une information
+qu'il n'a pas à fournir.
+
+**Corollaire sur la forme** : un `ATTENTE_ARBITRAGE` sans tentative documentée est
+mal formé. Le bloc de reprise doit dire ce qui a été essayé et pourquoi ça n'a pas
+suffi — sans quoi l'arbitre doit refaire le diagnostic avant de pouvoir arbitrer.
