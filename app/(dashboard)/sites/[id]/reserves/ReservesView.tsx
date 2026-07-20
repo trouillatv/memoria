@@ -6,6 +6,7 @@
 // jamais "résolu" (juridiquement dangereux).
 
 import { useRef, useState, useTransition } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ClipboardCheck,
@@ -276,7 +277,17 @@ function ReserveCard({ reserve, siteId, siteDocuments }: { reserve: ReserveWithP
       {/* Ligne titre : libellé + statut */}
       <div className="flex items-start gap-2 flex-wrap">
         <ClipboardCheck className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" aria-hidden />
-        <span className="font-medium text-sm flex-1">{reserve.label}</span>
+        {/* « Toutes les portes » : l'écran qui LISTE un objet doit l'ouvrir. Cet
+            écran-ci reste l'espace de GESTION (lever, joindre une preuve, créer une
+            action) ; le libellé, lui, mène à la fiche du graphe — d'où l'on peut
+            suivre les relations sans revenir ici. */}
+        <Link
+          href={`/sites/${siteId}/reserve/${reserve.id}`}
+          scroll={false}
+          className="font-medium text-sm flex-1 hover:underline"
+        >
+          {reserve.label}
+        </Link>
         {isLifted ? (
           <span className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-emerald-900 shrink-0">
             Levé
