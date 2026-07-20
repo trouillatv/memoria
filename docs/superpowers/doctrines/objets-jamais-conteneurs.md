@@ -103,3 +103,24 @@ lien. On ne fabrique pas une porte vers ce qui n'existe pas encore ; le jour où
 fiche existe, la règle s'applique. C'est aussi le cas d'un objet qui, ce jour-là,
 n'a pas d'adresse *dans ce contexte* — une réunion rattachée à un contrat plutôt
 qu'à un chantier n'a pas de fiche site-scopée, donc pas de lien.
+
+### Quand supprimer un mécanisme de compatibilité
+
+> **Un mécanisme de compatibilité peut être supprimé lorsqu'il ne protège plus
+> aucun lien que nous souhaitons continuer à honorer.** (Vincent, 2026-07-20)
+
+Deux situations se ressemblent et ne se traitent pas pareil :
+
+- **un adaptateur interne** — `toSegmentHref` traduisait des liens émis par le code
+  courant. Dès que tous les producteurs parlent la langue canonique, il ne protège
+  plus rien : il est supprimé, sinon il devient une source de divergences ;
+- **une compatibilité descendante** — la lecture de `?person=` protège des liens qui
+  vivent **hors du système** : favoris, courriels, historiques de navigateur. Aucun
+  inventaire du dépôt ne peut prouver qu'ils n'existent plus.
+
+Le second n'est pas une dette technique. C'est un **contrat encore assumé**, et le
+critère de suppression est produit, pas technique : décide-t-on de cesser d'honorer
+ces liens ? Tant que la réponse est non, le garder n'est pas de l'inertie.
+
+État au 2026-07-20 : `?person=` n'est plus émis nulle part, mais reste **lu** par
+`FicheSlot` et par la page de validation PV.
