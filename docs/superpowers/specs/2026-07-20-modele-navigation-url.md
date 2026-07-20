@@ -153,6 +153,37 @@ Un détail — le titre — dépend nécessairement du contexte d'affichage. D'o
 'panel' | 'page'` : une exception nommée et justifiée, plutôt que deux implémentations
 qui divergeraient.
 
+## Décision du Lot 3 — les trois gestes de la navigation entre objets
+
+Le second maillon (chaîne Décision → Action) a tranché : `fermer = history.back()`
+ne tient pas. Les deux intentions sont distinctes. Décision de Vincent (2026-07-20) :
+
+| Geste | Sens | Comportement |
+|---|---|---|
+| **Précédent** du navigateur | explorer le parcours effectué dans le graphe | remonte d'un maillon, panneau ouvert |
+| **←** dans la fiche | revenir à l'objet précédent du graphe | remonte d'un maillon, panneau ouvert |
+| **×** (et Échap, clic-dehors) | **terminer le parcours courant** dans l'espace des fiches | ferme et revient au contexte (l'onglet) |
+
+Formulation retenue : **« × termine le parcours courant »**, et non « × annule
+l'excursion ». La nuance compte : l'historique du navigateur reste un historique de
+navigation, on ne cherche pas à le réécrire. Mais choisir *Quitter* exprime une
+intention différente de *Revenir en arrière*.
+
+### Invariant d'expérience (à respecter, quelle que soit la technique)
+
+> **Après une fermeture par ×, une pression immédiate sur le bouton Précédent du
+> navigateur ne doit pas rouvrir une fiche.**
+
+Ce n'est pas une conséquence technique : c'est une règle d'expérience. La technique
+(`replace`, `back`, `history.go(-n)`, autre) sera choisie *pour la respecter* — et
+non l'inverse.
+
+⚠️ **État mesuré au 2026-07-20 : cet invariant n'est PAS satisfait.** Le × fait
+aujourd'hui un `replace` vers l'onglet ; l'historique passe de
+`[onglet] → [décision] → [action]` à `[onglet] → [décision] → [onglet]`, donc
+l'entrée « décision » subsiste et un Précédent la rouvre. Les six cas de la recette
+sont verts, celui-ci ne l'est pas. Technique à choisir dans un travail dédié.
+
 ## Question ouverte (à mesurer, sans désigner de coupable)
 
 > **Pourquoi Next redemande-t-il un payload RSC alors que le segment visible n'a pas

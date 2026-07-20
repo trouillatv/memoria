@@ -13,8 +13,15 @@ peut pas porter les deux sens :
 
 | Intention | Geste | Comportement attendu |
 |---|---|---|
-| **Revenir d'un objet** | Précédent du navigateur | remonte d'un maillon ; le panneau **reste ouvert** sur l'objet précédent |
-| **Quitter l'espace des fiches** | croix · Échap · clic-dehors | ferme le panneau et revient à l'onglet, **en une fois**, sans réafficher l'objet précédent |
+| **Explorer le parcours** | Précédent du navigateur | remonte d'un maillon ; le panneau **reste ouvert** sur l'objet précédent |
+| **Revenir à l'objet précédent** | **←** dans la fiche | idem : remonte d'un maillon dans le graphe |
+| **Terminer le parcours courant** | croix · Échap · clic-dehors | ferme le panneau et revient à l'onglet, **en une fois**, sans réafficher l'objet précédent |
+
+> **Invariant d'expérience** — après une fermeture par ×, une pression immédiate sur
+> le **Précédent** du navigateur **ne doit pas rouvrir une fiche**. C'est une règle
+> d'expérience, pas une conséquence technique : la technique est choisie pour la
+> respecter. ⚠️ **Non satisfait au 2026-07-20** (le `replace` laisse l'entrée de la
+> Décision dans la pile) — voir l'ADR.
 
 ## Parcours de référence
 
