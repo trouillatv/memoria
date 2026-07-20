@@ -314,7 +314,7 @@ async function searchSiteReports(siteId: string, q: string): Promise<SiteMemoryH
       occurredAt: r.ended_at ?? r.started_at ?? r.created_at,
       similarity: null,
       keyword: general,
-      href: `/meetings/${r.id}`,
+      href: `/sites/${siteId}/reunion/${r.id}`,
     }
   })
 }

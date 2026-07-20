@@ -136,14 +136,16 @@ async function loadReport(db: Db, siteId: string, reportId: string): Promise<Loa
 }
 
 /** Une source « report » (réunion ou visite) — libellés depuis les données réelles. */
-function reportSource(r: Exclude<LoadedReport, 'missing'>, reportId: string): ActionFicheSource {
+function reportSource(r: Exclude<LoadedReport, 'missing'>, reportId: string, siteId: string): ActionFicheSource {
   const type: ProvenanceType = r.origin ? 'visite' : 'reunion'
   return {
     type,
     typeLabel: PROVENANCE_TYPE_LABEL[type],
     title: r.title?.trim() || (type === 'visite' ? 'Visite' : 'Compte rendu'),
     detail: frDate(r.date),
-    href: `/meetings/${reportId}`,
+    // La réunion source s'ouvre en FICHE — une seule règle de destination pour
+    // toutes les portes, y compris celles qui n'étaient pas dans le diff du Lot 4.
+    href: `/sites/${siteId}/reunion/${reportId}`,
     linkLabel: PROVENANCE_LINK_LABEL[type],
     available: true,
   }
@@ -200,7 +202,7 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
         }
   } else if (kind === 'report' && a.report_id) {
     const r = await loadReport(db, siteId, a.report_id)
-    source = r === 'missing' ? unavailable('reunion') : reportSource(r, a.report_id)
+    source = r === 'missing' ? unavailable('reunion') : reportSource(r, a.report_id, siteId)
   } else if (kind === 'capture' && a.source_capture_id) {
     const { data: cap } = await db.from('visit_capture')
       .select('report_id').eq('id', a.source_capture_id).eq('site_id', siteId).maybeSingle()
@@ -208,7 +210,7 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
     if (!capReportId) source = unavailable('visite')
     else {
       const r = await loadReport(db, siteId, capReportId)
-      source = r === 'missing' ? unavailable('visite') : reportSource(r, capReportId)
+      source = r === 'missing' ? unavailable('visite') : reportSource(r, capReportId, siteId)
     }
   } else if (kind === 'subject' && a.subject_id) {
     const { data: s } = await db.from('subjects')
@@ -268,7 +270,7 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
     if (r !== 'missing') {
       const t = r.origin ? 'Visite' : 'Réunion'
       const d = frDate(r.date)
-      context = { label: `${r.title?.trim() || t}${d ? ` · ${d}` : ''}`, href: `/meetings/${a.report_id}` }
+      context = { label: `${r.title?.trim() || t}${d ? ` · ${d}` : ''}`, href: `/sites/${siteId}/reunion/${a.report_id}` }
     }
   }
 

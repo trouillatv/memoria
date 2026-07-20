@@ -63,7 +63,7 @@ export async function getSiteCausalThreads(siteId: string): Promise<CausalThread
     return {
       kind: r.origin ? 'visite' : 'reunion',
       label: `${r.title?.trim() || (r.origin ? 'Visite' : 'Réunion')}${d ? ` · ${d}` : ''}`,
-      detail: null, href: `/meetings/${reportId}`,
+      detail: null, href: `/sites/${siteId}/reunion/${reportId}`,
     }
   }
 

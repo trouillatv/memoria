@@ -66,7 +66,8 @@ export async function getSiteChronicle(siteId: string, opts: { limit?: number } 
     const cat = MEM_CAT[e.type]
     if (!cat) continue
     let href: string | undefined
-    if (cat === 'meeting') href = `/meetings/${e.id}`
+    // La réunion s'ouvre en fiche, pas dans l'espace de travail de son CR.
+    if (cat === 'meeting') href = `/sites/${siteId}/reunion/${e.id}`
     else if (cat === 'intervention') href = `/interventions/${e.interventionId ?? e.id}`
     events.push({ id: `mem-${e.type}-${e.id}`, category: cat, date: e.occurredAt, title: e.title, detail: e.detail, href, source: 'memory' })
   }
