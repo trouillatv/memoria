@@ -9,6 +9,7 @@ import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useFicheHref } from '@/components/knowledge/use-fiche-href'
+import { toSegmentHref } from '../fiche-segment-href'
 import type { CausalThread, CausalRelation, CausalNodeKind } from '@/lib/knowledge/causal-threads-model'
 
 const NODE_ICON: Record<CausalNodeKind, string> = {
@@ -52,11 +53,18 @@ function Node({ node, href }: { node: CausalThread['steps'][number]['node']; hre
 // l'onglet, qui n'a aucune raison d'être recalculé. On conserve la query courante
 // (onglet, sous-onglet) telle quelle. L'identifiant est relu depuis le lien produit
 // par le read model : le prototype ne modifie aucun modèle de données.
+//
+// ⚠️ Corrigé en recette (2026-07-20) : cette fonction collait le segment sur le
+// `pathname` COURANT. Tant qu'aucune fiche n'était ouverte, pathname valait
+// `/sites/<id>` et le lien était juste. Dès qu'une fiche l'était, pathname valait
+// déjà `/sites/<id>/decision/<x>` et le lien devenait
+// `/sites/<id>/decision/<x>/decision/<y>` — une adresse qui n'existe pas.
+// Le défaut ne pouvait apparaître QUE depuis un panneau ouvert : le fil causal
+// reste visible derrière lui, et c'est le premier parcours à trois maillons qui
+// l'a révélé. On délègue désormais à `toSegmentHref`, qui ramène d'abord à la
+// base du chantier — une seule règle de construction, partagée.
 function decisionSegmentHref(nodeHref: string | null, pathname: string, search: string): string | null {
-  if (!nodeHref) return null
-  const id = /[?&]decision=([^&]+)/.exec(nodeHref)?.[1]
-  if (!id) return null
-  return `${pathname}/decision/${id}${search ? `?${search}` : ''}`
+  return toSegmentHref(nodeHref, 'decision', pathname, search)
 }
 
 export function MemoireCausale({ threads, siteId }: { threads: CausalThread[]; siteId: string }) {
