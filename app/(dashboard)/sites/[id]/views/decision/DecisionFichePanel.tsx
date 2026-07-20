@@ -22,10 +22,13 @@ export function DecisionFichePanel({ decision }: { decision: DecisionFicheData }
   const pathname = usePathname()
   const search = useSearchParams()?.toString() ?? ''
 
-  // Mesuré en production : après une navigation CLIENT vers l'onglet, Next ne
-  // remet pas une zone parallèle non appariée à son `default` — elle conserve son
-  // dernier contenu. L'adresse disait « aucune fiche », le panneau restait affiché.
-  // C'est donc l'ADRESSE qui tranche : plus de segment, plus de panneau.
+  // OBSERVÉ dans notre architecture (mesure prod, cas 4 de la recette) : après un
+  // `router.replace(...)` vers l'onglet, la zone parallèle a conservé son contenu —
+  // l'adresse disait « aucune fiche », le panneau restait affiché. Nous pilotons
+  // donc explicitement l'affichage par l'URL : plus de segment, plus de panneau.
+  // (Ce n'est PAS une règle générale de Next : nous n'avons vérifié ni la doc ni un
+  // exemple minimal. Le comportement peut tenir aux routes interceptées ou aux
+  // layouts. On décrit le fait, on ne généralise pas.)
   const ouvert = pathname.includes('/decision/')
 
   // La relation « Produit : <action> » doit rester DANS le nouveau modèle, sinon

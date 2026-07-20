@@ -16,8 +16,9 @@ export function ActionFichePanel({ action }: { action: ActionFicheData }) {
   const pathname = usePathname()
   const search = useSearchParams()?.toString() ?? ''
 
-  // Cf. DecisionFichePanel : une zone parallèle non appariée garde son contenu en
-  // navigation client. L'adresse tranche — plus de segment, plus de panneau.
+  // Cf. DecisionFichePanel : OBSERVÉ chez nous — après un `router.replace(...)`, la
+  // zone parallèle a gardé son contenu. On pilote donc l'affichage par l'URL, sans
+  // en déduire une règle générale du framework.
   const ouvert = pathname.includes('/action/')
 
   // « Découle de : <décision> » — le retour vers l'amont reste dans le modèle.
