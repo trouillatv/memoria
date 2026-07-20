@@ -113,20 +113,23 @@ describe('Les faits se groupent par CHANTIER', () => {
 })
 
 describe('Le clic mène à l’HISTOIRE, pas au fait isolé', () => {
-  it('un fait rattaché à un fil ouvre le fil', () => {
-    expect(memoryHitHref(hit({ subjectId: 'sub-9' }))).toBe('/sites/s1/subjects/sub-9')
+  it('un fait SANS adresse propre, rattaché à un fil, ouvre le fil', () => {
+    // Vaut pour les types qui n'ont pas encore de fiche. Dès qu'un objet a une
+    // adresse, elle prime — cf. « l'objet prime sur son fil » plus bas.
+    expect(memoryHitHref(hit({ type: 'anomaly', subjectId: 'sub-9' })))
+      .toBe('/sites/s1/subjects/sub-9')
   })
 
   it('un sujet ouvre son propre fil', () => {
     expect(memoryHitHref(hit({ type: 'subject', id: 'sub-9' }))).toBe('/sites/s1/subjects/sub-9')
   })
 
-  it('un fait sans fil ouvre la fiche chantier', () => {
-    expect(memoryHitHref(hit())).toBe('/sites/s1')
+  it('un fait sans adresse ni fil ouvre la fiche chantier', () => {
+    expect(memoryHitHref(hit({ type: 'anomaly' }))).toBe('/sites/s1')
   })
 
   it('un fait sans chantier ne mène nulle part de faux', () => {
-    expect(memoryHitHref(hit({ siteId: null }))).toBe('/sites')
+    expect(memoryHitHref(hit({ type: 'anomaly', siteId: null }))).toBe('/sites')
   })
 })
 
@@ -142,6 +145,12 @@ describe('Un objet qui a une adresse s’ouvre LUI-MÊME', () => {
   it('une action ouvre l’action', () => {
     expect(memoryHitHref(hit({ type: 'site_action', id: 'act-1' })))
       .toBe('/sites/s1/action/act-1')
+  })
+
+  it('une observation ouvre l’observation, même rattachée à un fil', () => {
+    // L'objet prime sur son conteneur ET sur son fil : la fiche porte le sien.
+    expect(memoryHitHref(hit({ type: 'observation', id: 'obs-1', subjectId: 'sub-9' })))
+      .toBe('/sites/s1/observation/obs-1')
   })
 
   it('une réserve ouvre la réserve — elle a son adresse depuis le Lot 4', () => {
@@ -171,7 +180,7 @@ describe('Un objet qui a une adresse s’ouvre LUI-MÊME', () => {
   it('les types sans modèle de navigation gardent leur repli', () => {
     // Volontaire : ne pas généraliser des URL qui n'existent pas. Le retour au
     // chantier reste honnête tant que ces objets n'ont pas de fiche.
-    for (const type of ['anomaly', 'observation', 'obligation'] as const) {
+    for (const type of ['anomaly', 'obligation'] as const) {
       expect(memoryHitHref(hit({ type, id: 'x' }))).toBe('/sites/s1')
     }
   })

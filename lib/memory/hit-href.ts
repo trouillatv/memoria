@@ -54,6 +54,10 @@ export function memoryHitHref(hit: HitLocation): string {
   // la contient ni l'espace de travail de son compte-rendu.
   if (hit.type === 'meeting') return `/sites/${hit.siteId}/reunion/${hit.id}`
 
+  // Lot 4 — l'Observation a son adresse. Elle prime sur la règle du fil : on a
+  // cherché un constat de terrain, pas le sujet auquel il se rattache.
+  if (hit.type === 'observation') return `/sites/${hit.siteId}/observation/${hit.id}`
+
   // Lot 4 — la Réserve a son adresse : elle ouvre la RÉSERVE, pas le chantier.
   if (hit.type === 'site_reserve') return `/sites/${hit.siteId}/reserve/${hit.id}`
 
