@@ -14,7 +14,7 @@
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { DecisionFicheBody } from './DecisionFiche'
-import { toSegmentHref } from '../fiche-segment-href'
+import { toSegmentHref, quitterEspaceHref } from '../fiche-segment-href'
 import type { DecisionFicheData } from '@/lib/knowledge/decision-fiche'
 
 export function DecisionFichePanel({ decision }: { decision: DecisionFicheData }) {
@@ -30,7 +30,7 @@ export function DecisionFichePanel({ decision }: { decision: DecisionFicheData }
     : decision
 
   return (
-    <Sheet open onOpenChange={(o) => { if (!o) router.back() }}>
+    <Sheet open onOpenChange={(o) => { if (!o) router.replace(quitterEspaceHref(pathname, search)) }}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
         <DecisionFicheBody decision={d} />
       </SheetContent>

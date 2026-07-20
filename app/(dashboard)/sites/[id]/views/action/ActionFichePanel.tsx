@@ -8,7 +8,7 @@
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { ActionFicheBody } from './ActionFiche'
-import { toSegmentHref } from '../fiche-segment-href'
+import { toSegmentHref, quitterEspaceHref } from '../fiche-segment-href'
 import type { ActionFicheData } from '@/lib/knowledge/action-fiche'
 
 export function ActionFichePanel({ action }: { action: ActionFicheData }) {
@@ -23,7 +23,7 @@ export function ActionFichePanel({ action }: { action: ActionFicheData }) {
     : action
 
   return (
-    <Sheet open onOpenChange={(o) => { if (!o) router.back() }}>
+    <Sheet open onOpenChange={(o) => { if (!o) router.replace(quitterEspaceHref(pathname, search)) }}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
         <ActionFicheBody action={a} />
       </SheetContent>
