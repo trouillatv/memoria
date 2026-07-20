@@ -646,23 +646,44 @@ async function main() {
   // La démo n'est pas un décor : c'est le jeu de données fonctionnel. Si l'un de
   // ces quatre cas disparaît, le parcours correspondant devient intestable — et
   // dans six mois personne ne saurait pourquoi. Le seed le dit tout de suite.
-  await step('Vérification du scénario de recette (Petro Atiti)', async () => {
+  await step('Vérification du GRAPHE de recette (Petro Atiti)', async () => {
     const { data: decs } = await supabase.from('site_decisions').select('titre, action_id').eq('site_id', petro)
     const { data: acts } = await supabase.from('site_actions').select('id, title, assigned_contact_id').eq('site_id', petro)
+    const { data: cast } = await supabase.from('site_intervenants').select('main_contact_id').eq('site_id', petro)
     const decisions = (decs ?? []) as Array<{ titre: string; action_id: string | null }>
     const actions = (acts ?? []) as Array<{ id: string; title: string; assigned_contact_id: string | null }>
-    const liees = new Set(decisions.map((x) => x.action_id).filter(Boolean))
+    const casting = (cast ?? []) as Array<{ main_contact_id: string | null }>
+
+    // On ne compte pas des lignes : on PARCOURT le graphe, comme le fera l'utilisateur.
+    const actionsDuSite = new Set(actions.map((a) => a.id))
+    const liees = new Set(decisions.map((x) => x.action_id).filter((v): v is string => !!v))
+    const decLiees = decisions.filter((d) => d.action_id)
+    // Le lien doit RÉSOUDRE, et vers une action du MÊME chantier (jamais d'orphelin
+    // ni de fuite inter-chantiers).
+    const decResolues = decLiees.filter((d) => actionsDuSite.has(d.action_id!))
+
+    // Chaîne Action → contact → casting : c'est elle qui rend la fiche Intervenant
+    // navigable. Un contact supprimé, ou hors casting, casse le parcours.
+    const assignees = actions.filter((a) => a.assigned_contact_id)
+    const contactIds = [...new Set(assignees.map((a) => a.assigned_contact_id!))]
+    const { data: cts } = contactIds.length
+      ? await supabase.from('company_contacts').select('id').in('id', contactIds)
+      : { data: [] as Array<{ id: string }> }
+    const contactsExistants = new Set(((cts ?? []) as Array<{ id: string }>).map((x) => x.id))
+    const castingContacts = new Set(casting.map((x) => x.main_contact_id).filter((v): v is string => !!v))
 
     const cas: Array<[string, boolean]> = [
-      ['une Décision reliée à une Action', decisions.some((x) => x.action_id)],
-      ['une Décision SANS Action liée', decisions.some((x) => !x.action_id)],
-      ['une Action SANS Décision liée', actions.some((a) => !liees.has(a.id))],
-      ['un Intervenant avec des Actions à suivre', actions.filter((a) => a.assigned_contact_id).length >= 1],
+      ['Décision → Action : le lien résout vers une action du MÊME chantier', decResolues.length >= 1],
+      ['aucun lien Décision → Action orphelin', decLiees.length === decResolues.length],
+      ['une Décision SANS Action liée (état vide honnête)', decisions.some((x) => !x.action_id)],
+      ['une Action SANS Décision liée (chapô absent)', actions.some((a) => !liees.has(a.id))],
+      ['Action → responsable : le contact assigné EXISTE', assignees.length >= 1 && assignees.every((a) => contactsExistants.has(a.assigned_contact_id!))],
+      ['responsable → casting : ce contact est main_contact du chantier', assignees.some((a) => castingContacts.has(a.assigned_contact_id!))],
     ]
     const manquants = cas.filter(([, ok]) => !ok).map(([nom]) => nom)
     for (const [nom, ok] of cas) console.log(`      ${ok ? '✓' : '✗'} ${nom}`)
     if (manquants.length > 0) {
-      throw new Error(`Scénario de recette incomplet — cas manquant(s) : ${manquants.join(' · ')}`)
+      throw new Error(`Graphe de recette incomplet — ${manquants.length} rupture(s) : ${manquants.join(' · ')}`)
     }
   })
 
