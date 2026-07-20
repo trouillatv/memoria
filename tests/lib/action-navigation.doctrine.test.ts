@@ -34,6 +34,15 @@ describe('Lot 4 Slice 4 — navigation canonique vers la fiche Action', () => {
     expect(code).not.toContain("set('action'")
     expect(code).not.toContain('action_source')
     expect(code).not.toContain('from_person')
+
+    // ⚠️ « Suivre une relation ne change pas le decor ». En retirant la fabrication
+    // d adresse, le commit avait retire AVEC ELLE la conservation de l onglet : le
+    // saut vers une action jetait `?tab=`, et fermer ramenait sur l Apercu. La
+    // recette navigateur ne pouvait pas le voir — sur l onglet par defaut, une URL
+    // nue et `?tab=apercu` rendent le meme ecran. D ou ce test.
+    expect(code).toContain('garderContexte')
+    expect(code).toMatch(/actionHref[\s\S]{0,200}garderContexte/)
+    expect(code).toMatch(/decisionHref[\s\S]{0,200}garderContexte/)
     expect(fiche).toContain('actionHref(a.id)')
     // La destination spéciale (a.href = /meetings ou tab=travail) n'est plus le lien.
     expect(fiche).not.toContain('href={a.href}')

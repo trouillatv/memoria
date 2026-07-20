@@ -34,7 +34,7 @@ export function IntervenantFichePanel({ siteId, person }: { siteId: string; pers
   return (
     <Sheet open onOpenChange={(o) => { if (!o) quitter() }}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
-        <IntervenantFicheBody siteId={siteId} person={person} />
+        <IntervenantFicheBody siteId={siteId} person={person} search={search} />
       </SheetContent>
     </Sheet>
   )

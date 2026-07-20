@@ -17,6 +17,7 @@ import { ChevronRight, ChevronDown, Network, Phone } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { FicheChapo, type Chapo } from '@/components/knowledge/FicheChapo'
+import { garderContexte } from '../fiche-segment-href'
 import { FICHE_TITLE_MOTION, FICHE_BODY_MOTION } from '@/components/knowledge/fiche-motion'
 import { frDayMonthLocal, todayLocalIso } from '@/lib/time/local-date'
 import type { IntervenantPerson } from '@/lib/knowledge/site-intervenants-view'
@@ -48,10 +49,16 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
 // de la boîte de dialogue (`SheetTitle`) ; en page complète ce contexte n'existe
 // pas et le composant plante (« Cannot destructure property 'store' »). Même
 // exception nommée que sur les six autres fiches — jamais deux implémentations.
-export function IntervenantFicheBody({ siteId, person, animateContent = false, variant = 'panel' }: {
+export function IntervenantFicheBody({ siteId, person, animateContent = false, variant = 'panel', search = '' }: {
   siteId: string
   person: IntervenantPerson
   animateContent?: boolean
+  /** La query de l'onglet courant, emportée par les liens sortants. Sans elle,
+   *  suivre une relation JETTE le décor : `?tab=` disparaît, et fermer la fiche
+   *  suivante ramène sur l'Aperçu au lieu de l'onglet d'où l'on vient. Les six
+   *  autres fiches obtiennent le même effet via `garderContexte` dans leur
+   *  panneau ; celle-ci construit ses adresses, elle porte donc la règle. */
+  search?: string
   variant?: 'panel' | 'page'
 }) {
   const [showDecisions, setShowDecisions] = useState(false)
@@ -74,8 +81,14 @@ export function IntervenantFicheBody({ siteId, person, animateContent = false, v
   // Les six autres fiches reçoivent des adresses déjà construites ; celle-ci les
   // construit désormais en ABSOLU, sans lire l'URL courante. Le retour ne passe
   // plus par `from_person` : c'est l'historique qui le porte (invariant du Lot 3).
-  const actionHref = (actionId: string): string => `/sites/${siteId}/action/${actionId}`
-  const decisionHref = (decisionId: string): string => `/sites/${siteId}/decision/${decisionId}`
+  // ⚠️ `garderContexte` et non une concaténation : « suivre une relation ne change
+  // pas le décor ». Régression trouvée par le contrôle indépendant — la recette
+  // navigateur ne pouvait pas la voir, car sur l'onglet par défaut (`apercu`) une
+  // URL nue et une URL avec `?tab=apercu` rendent le même écran.
+  const actionHref = (actionId: string): string =>
+    garderContexte(`/sites/${siteId}/action/${actionId}`, search) ?? `/sites/${siteId}/action/${actionId}`
+  const decisionHref = (decisionId: string): string =>
+    garderContexte(`/sites/${siteId}/decision/${decisionId}`, search) ?? `/sites/${siteId}/decision/${decisionId}`
 
   // Le chapô = la relation d'IDENTITÉ (règle 6). L'intervenant est un objet
   // TRANSVERSE : sa relation n'est pas causale mais identitaire — ce dont il RÉPOND.

@@ -134,7 +134,7 @@ export function PersistentFicheSheet({ siteId, person, action, decision }: {
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
         {active === 'action' && <ActionFicheBody key={contentKey} action={action} back={back} animateContent={isObjectChange} />}
         {active === 'decision' && <DecisionFicheBody key={contentKey} decision={decision} back={back} animateContent={isObjectChange} />}
-        {active === 'person' && person && <IntervenantFicheBody key={contentKey} siteId={siteId} person={person} animateContent={isObjectChange} />}
+        {active === 'person' && person && <IntervenantFicheBody key={contentKey} siteId={siteId} person={person} animateContent={isObjectChange} search={params.toString()} />}
       </SheetContent>
     </Sheet>
   )
