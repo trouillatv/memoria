@@ -45,3 +45,57 @@ bout-en-bout (1028–1758 ms) varie trop pour prouver quoi que ce soit.
 
 Cette discipline s'applique aux ADR, aux recettes et aux commentaires de code. Elle vaut
 au-delà de la performance : partout où une cause est avancée.
+
+---
+
+## Corollaire : vérifier que le scénario EXISTE avant de suspecter le code
+
+> **Quand une recette échoue, vérifier d'abord que le scénario existe dans les
+> données, avant de suspecter le code.** (Vincent, 2026-07-20)
+
+C'est le même défaut que le « ÷3 », déplacé dans le temps : conclure une cause
+avant de l'avoir établie. Une recette rouge dit qu'un écran n'a pas produit le
+résultat attendu — elle ne dit pas *pourquoi*, et « le code est faux » est
+seulement l'hypothèse la plus disponible.
+
+Cas fondateur (fiche Document, 2026-07-20) : l'adresse d'un document légitime
+rendait « Page introuvable ». Le premier réflexe a été de suspecter les gardes qui
+venaient d'être écrites. La vérification a montré l'inverse : le document
+appartenait à une **autre organisation** que la session ouverte, et la garde
+fail-closed faisait exactement son travail. « Corriger » aurait ouvert une faille
+d'isolation pour réparer un défaut qui n'existait pas.
+
+Ordre à tenir devant une recette rouge :
+
+1. **le scénario existe-t-il ?** — les données permettent-elles seulement de
+   l'exercer (bon tenant, bon rôle, objets liés présents) ;
+2. **le comportement observé est-il correct ?** — un refus peut être la réponse
+   juste ;
+3. **alors seulement**, suspecter le code.
+
+## Un troisième état : NON OBSERVABLE
+
+VALIDÉ et NON VALIDÉ ne suffisent pas. Il existe un cas où le mécanisme est écrit,
+compilé, testé et déployé, mais où **le jeu de données ne permet pas de l'exercer**.
+
+> **NON OBSERVABLE** — le comportement n'a pas été vu, et ne peut pas l'être en
+> l'état des données. Ce n'est ni une preuve, ni un échec.
+
+L'état existe pour empêcher deux erreurs symétriques :
+
+- **déclarer validé** ce qui n'a jamais été vu ;
+- **bloquer un lot** sur un jeu de données qui ne permet pas de l'exercer.
+
+Il s'écrit toujours avec sa cause, jamais seul — sans quoi un futur lecteur le
+lira comme un oubli ou un échec. Exemple, tel qu'il doit être consigné :
+
+> Fiche Document — famille « objet protégé » : mécanisme de sécurité **observé**
+> (refus cross-tenant en production, sans révéler l'existence) ; parcours métier
+> **non observable** avec le tenant de démonstration actuel, qui ne contient aucun
+> document rattaché à un chantier.
+
+Et il porte une dette de vérification : ce qui rendra le scénario possible doit
+être nommé. Ici, la Réserve — c'est elle qui donnera au Document ses preuves à
+justifier. On attend que le modèle métier produise la donnée, plutôt que de la
+fabriquer pour faire passer une recette : ce serait confondre enrichir un jeu de
+démonstration et valider un mécanisme.
