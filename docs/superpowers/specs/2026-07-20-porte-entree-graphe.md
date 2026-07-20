@@ -114,3 +114,36 @@ d'écran annonce le résultat visé sans que la saisie perde le focus.
 
 Vérifié en production : ⌘K → saisie → ↓ → Entrée → le panneau de la Décision s'ouvre et
 l'overlay se ferme.
+
+---
+
+## Principes acquis — point de départ du Lot 4
+
+Ces quatre énoncés ne décrivent pas une implémentation : ce sont les acquis du Lot 3.
+Ils survivront au code qui les a produits, et c'est avec eux que le Lot 4 commence.
+
+1. **La navigation est pilotée par les objets, non par leurs conteneurs.**
+   *La recherche ouvre l'objet qui satisfait la requête, pas le conteneur qui le
+   référence.* Formulation de Vincent, volontairement plus large que le cas tranché
+   (Décision rattachée à un sujet) : elle s'appliquera telle quelle aux Documents,
+   Réserves et Réunions quand le Lot 4 leur donnera leur propre navigation. Un
+   conteneur est une relation navigable depuis l'objet, jamais une destination
+   substituée à lui.
+
+2. **Une même règle de destination s'applique à toutes les portes d'entrée.**
+   Il n'existe pas « la règle de `/recherche` » et « la règle de ⌘K ». Il existe une
+   règle métier de destination, dans un module pur, que les portes appliquent. Toute
+   nouvelle porte l'applique aussi — elle ne la réécrit pas.
+
+3. **Une recherche déclenche un seul retrieval logique**, quel que soit le nombre de
+   types affichés. Invariant, pas propriété de `search_memory` : l'implémentation peut
+   changer, l'énoncé doit rester vrai. Il existe pour empêcher la dérive vers N requêtes
+   indépendantes — le coût se paie en **vagues séquentielles**, pas en requêtes.
+
+4. **Les performances se raisonnent à partir de coûts mesurés, pas supposés.**
+   Une répartition mesurée n'est pas une cause démontrée tant que le correctif n'a pas
+   produit le gain prédit. La preuve retenue est la prédiction vérifiée (~185 ms
+   annoncés, 190 mesurés), jamais le gain brut.
+
+Le hub par sujet et les autres objets ouvrent un nouveau chapitre, avec leurs propres
+questions. Ce n'est pas une prolongation du Lot 3.
