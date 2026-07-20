@@ -20,8 +20,8 @@ peut pas porter les deux sens :
 > **Invariant d'expérience** — après une fermeture par ×, une pression immédiate sur
 > le **Précédent** du navigateur **ne doit pas rouvrir une fiche**. C'est une règle
 > d'expérience, pas une conséquence technique : la technique est choisie pour la
-> respecter. ⚠️ **Non satisfait au 2026-07-20** (le `replace` laisse l'entrée de la
-> Décision dans la pile) — voir l'ADR.
+> respecter. ✅ **Satisfait — vérifié en production le 2026-07-20**, à un et à deux
+> maillons, y compris après un retour en arrière avant la fermeture.
 
 ## Parcours de référence
 
@@ -40,8 +40,21 @@ Chantier de démonstration **Petro Atiti**, onglet **Mémoire → Pourquoi ?**
 ### Contrôles après fermeture (cas 4, 5, 6)
 
 - aucun panneau ne reste monté ;
-- le **Précédent** du navigateur **ne rouvre pas** la fiche qui vient d'être fermée ;
+- le **Précédent** du navigateur **ne rouvre pas** la fiche qui vient d'être fermée,
+  **ni aucune fiche du parcours** — il sort sur ce qui précédait l'onglet ;
 - le défilement et l'état de l'onglet sont conservés autant que possible.
+
+> **Tester dans un onglet neuf.** Un onglet qui a déjà servi garde dans sa pile des
+> adresses de fiches d'essais précédents : un Précédent peut alors y retomber
+> légitimement, et le contrôle se lit comme un échec alors qu'il n'en est pas un.
+> C'est arrivé pendant la mise au point.
+
+> Le bouton **Suivant** peut encore ramener dans l'espace des fiches. C'est voulu :
+> le × termine le parcours, il ne réécrit pas l'historique du navigateur.
+
+| # | Étape (après le cas 4) | Résultat attendu |
+|---|---|---|
+| 4b | Revenir sur une fiche par **Précédent**, *puis* fermer | consomme exactement le parcours restant ; un Précédent ne rouvre rien |
 
 ### Accès direct et partage
 

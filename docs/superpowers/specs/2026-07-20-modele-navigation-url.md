@@ -178,11 +178,27 @@ Ce n'est pas une conséquence technique : c'est une règle d'expérience. La tec
 (`replace`, `back`, `history.go(-n)`, autre) sera choisie *pour la respecter* — et
 non l'inverse.
 
-⚠️ **État mesuré au 2026-07-20 : cet invariant n'est PAS satisfait.** Le × fait
-aujourd'hui un `replace` vers l'onglet ; l'historique passe de
-`[onglet] → [décision] → [action]` à `[onglet] → [décision] → [onglet]`, donc
-l'entrée « décision » subsiste et un Précédent la rouvre. Les six cas de la recette
-sont verts, celui-ci ne l'est pas. Technique à choisir dans un travail dédié.
+✅ **Satisfait — vérifié en production le 2026-07-20.**
+
+Le `replace` ne pouvait pas y suffire : il remplace la **dernière** entrée, alors
+que le parcours en a laissé une par objet. `[onglet] → [décision] → [action]`
+devenait `[onglet] → [décision] → [onglet]`, et un Précédent rouvrait la décision.
+
+La sortie consomme donc **tout le parcours en une fois**. Compter ces entrées
+demande de suivre le chemin réellement effectué : `history.length` ne dit pas la
+position et **ne diminue pas** quand on revient en arrière — s'y fier ferait sortir
+d'un cran de trop dès que l'utilisateur a reculé avant de fermer. D'où une pile
+tenue au niveau du module (`fiche-espace-historique.ts`), qui empile en avançant et
+**tronque** en revenant sur un maillon déjà visité.
+
+Vérifié : sortie à un maillon, sortie à deux maillons, et sortie après un retour en
+arrière — dans chaque cas le Précédent sort de l'application au lieu de rouvrir une
+fiche. Le bouton **Suivant** peut encore y ramener : le × termine le parcours, il ne
+réécrit pas l'historique du navigateur.
+
+Repli assumé : après un rechargement direct, la pile est vide (aucun panneau n'est
+affiché dans ce cas, donc aucun ×). Si la sortie était malgré tout demandée, elle
+navigue explicitement vers l'onglet.
 
 ## Question ouverte (à mesurer, sans désigner de coupable)
 
