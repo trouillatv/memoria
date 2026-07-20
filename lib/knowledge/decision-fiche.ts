@@ -126,7 +126,11 @@ export async function getSiteDecisionFiche(siteId: string, decisionId: string): 
     const rr = r as { origin: string | null; title: string | null; started_at: string | null; created_at: string }
     const type = rr.origin ? 'Visite' : 'Réunion'
     const date = frDate(rr.started_at ?? rr.created_at)
-    meeting = { label: `${rr.title?.trim() || type}${date ? ` du ${date}` : ''}`, href: `/meetings/${d.reportId}`, kind: rr.origin ? 'visite' : 'reunion' }
+    // Lot 4 : la réunion a désormais une ADRESSE dans le chantier. Jusqu'ici ce
+    // maillon pointait vers `/meetings/<id>` — l'espace de travail du compte-rendu —
+    // et remonter le fil FAISAIT SORTIR du panneau. C'est la dette nommée à la
+    // clôture du Lot 3 ; elle est levée ici, sans que le fil change de forme.
+    meeting = { label: `${rr.title?.trim() || type}${date ? ` du ${date}` : ''}`, href: `/sites/${siteId}/reunion/${d.reportId}`, kind: rr.origin ? 'visite' : 'reunion' }
   }
 
   // Conséquence : l'action liée (action_id) — scopée au chantier.

@@ -8,9 +8,21 @@
 // l'ancien chemin — et la chaîne à deux objets, celle qui doit trancher la règle
 // « fermer = retour navigateur », n'existerait jamais.
 
-/** `/sites/<id>/decision/<x>` → `/sites/<id>` : la base, quel que soit le maillon ouvert. */
+/** `/sites/<id>/decision/<x>` → `/sites/<id>` : la base, quel que soit le maillon ouvert.
+ *  Chaque objet qui reçoit une adresse au Lot 4 s'ajoute ici — et nulle part ailleurs. */
 function baseChantier(pathname: string): string {
-  return pathname.replace(/\/(decision|action)\/[^/]+\/?$/, '')
+  return pathname.replace(/\/(decision|action|reunion)\/[^/]+\/?$/, '')
+}
+
+/** Suivre une relation ne change pas le décor : l'onglet, le sous-onglet et les
+ *  filtres courants voyagent avec l'adresse de la fiche suivante.
+ *  `toSegmentHref` le fait déjà pour les liens hérités (par paramètres) ; les read
+ *  models du Lot 4 produisent directement des adresses de segment, qui ont le même
+ *  besoin — sans quoi fermer la fiche retomberait sur l'onglet par défaut. */
+export function garderContexte(href: string | null | undefined, search: string): string | null {
+  if (!href) return null
+  if (!search || href.includes('?')) return href
+  return `${href}?${search}`
 }
 
 /** L'adresse de l'ONGLET, sans aucune fiche : c'est « quitter l'espace des fiches ».

@@ -15,7 +15,7 @@ import { useEffect } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { DecisionFicheBody } from './DecisionFiche'
-import { toSegmentHref, quitterEspaceHref } from '../fiche-segment-href'
+import { toSegmentHref, quitterEspaceHref, garderContexte } from '../fiche-segment-href'
 import { noterFiche, terminerParcours } from '../fiche-espace-historique'
 import type { DecisionFicheData } from '@/lib/knowledge/decision-fiche'
 
@@ -45,9 +45,15 @@ export function DecisionFichePanel({ decision }: { decision: DecisionFicheData }
   // La relation « Produit : <action> » doit rester DANS le nouveau modèle, sinon
   // la chaîne se brise et retombe sur l'ancien chemin par paramètres.
   const href = toSegmentHref(decision.action?.href, 'action', pathname, search)
-  const d = href && decision.action
+  const base = href && decision.action
     ? { ...decision, action: { ...decision.action, href } }
     : decision
+
+  // La réunion source est une adresse de segment depuis le Lot 4 : elle remonte
+  // le fil DANS le panneau, à condition d'emporter le contexte de l'onglet.
+  const d = base.meeting
+    ? { ...base, meeting: { ...base.meeting, href: garderContexte(base.meeting.href, search) ?? base.meeting.href } }
+    : base
 
   if (!ouvert) return null
 
