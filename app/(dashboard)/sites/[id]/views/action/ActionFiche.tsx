@@ -32,7 +32,10 @@ const STATUS_CLS: Record<SiteActionStatus, string> = {
 
 // Le CORPS de la fiche Action, sans coquille Sheet : monté à l'intérieur d'un
 // Sheet partagé (la coquille persistante du parcours). Aucun changement visuel.
-export function ActionFicheBody({ action, back, animateContent = false }: { action: ActionFicheData | null; back?: TrailBack | null; animateContent?: boolean }) {
+// `variant` — même corps monté en panneau ou en page complète. Seul le titre
+// diffère : dans le panneau il est le titre accessible de la boîte de dialogue,
+// en page ce contexte n'existe pas (cf. DecisionFicheBody, même limite nommée).
+export function ActionFicheBody({ action, back, animateContent = false, variant = 'panel' }: { action: ActionFicheData | null; back?: TrailBack | null; animateContent?: boolean; variant?: 'panel' | 'page' }) {
   if (!action) return null
   const a = action
   const date = describeAssignedActionDate(
@@ -72,7 +75,9 @@ export function ActionFicheBody({ action, back, animateContent = false }: { acti
           <span className={cn('w-fit rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUS_CLS[a.status])}>
             {a.statusLabel}
           </span>
-          <SheetTitle className={cn('text-base font-semibold leading-snug', animateContent && FICHE_TITLE_MOTION)}>{a.title}</SheetTitle>
+          {variant === 'page'
+            ? <h1 className="text-base font-semibold leading-snug">{a.title}</h1>
+            : <SheetTitle className={cn('text-base font-semibold leading-snug', animateContent && FICHE_TITLE_MOTION)}>{a.title}</SheetTitle>}
           <FicheChapo chapo={chapo} className={animateContent ? FICHE_TITLE_MOTION : undefined} />
           {a.corpsEtat && <p className="text-[13px] text-muted-foreground">{a.corpsEtat}</p>}
         </SheetHeader>
