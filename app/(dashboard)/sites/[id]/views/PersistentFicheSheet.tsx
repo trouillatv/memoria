@@ -57,12 +57,24 @@ export function PersistentFicheSheet({ siteId, person, action, decision }: {
   // restait à l'écran le temps que le serveur recalcule toute la page — ~3 s
   // observées en production, pour un geste qui n'a rien à demander à personne.
   // On ferme donc TOUT DE SUITE, et l'URL se met à jour derrière.
-  const [closingKey, setClosingKey] = useState<string | null>(null)
+  //
+  // ⚠️ Ceci n'est PAS la solution aux 3 secondes : le serveur travaille toujours
+  // autant, on cesse seulement de le faire attendre à l'utilisateur. La cause
+  // (l'onglet et la fiche sont deux paramètres de la MÊME adresse, donc changer
+  // l'un recalcule l'autre) est traitée en ouverture du Lot 3.
+  //
+  // On retient l'ADRESSE COMPLÈTE au moment de la fermeture, et on relâche dès
+  // qu'elle bouge — pour quelque raison que ce soit. Retenir l'identité de la
+  // fiche laissait une fenêtre où recliquer la même fiche ne faisait rien.
+  const search = params.toString()
+  const [closedSearch, setClosedSearch] = useState<string | null>(null)
+  if (closedSearch !== null && closedSearch !== search) setClosedSearch(null)
+  const isClosing = closedSearch !== null && closedSearch === search
 
   // Fermer retire le param du maillon courant + sa source, sans perdre l'onglet.
   // Identique aux ex-deep-links (mêmes clés supprimées).
   function close() {
-    setClosingKey(contentKey)
+    setClosedSearch(search)
     const next = new URLSearchParams(params.toString())
     if (active === 'action') { next.delete('action'); next.delete('action_source'); next.delete('action_site') }
     else if (active === 'decision') { next.delete('decision'); next.delete('decision_source') }
@@ -98,11 +110,6 @@ export function PersistentFicheSheet({ siteId, person, action, decision }: {
           ? { typeLabel: 'Intervenant', href: backToPersonHref(fromPerson) }
           : null
 
-  // Une fois la fermeture prise en compte par l'URL, on oublie la fermeture
-  // optimiste — sinon revenir en arrière rouvrirait une fiche encore marquée
-  // « fermée », et le panneau resterait invisible.
-  if (closingKey !== null && contentKey === null) setClosingKey(null)
-  const isClosing = closingKey !== null && closingKey === contentKey
 
   // DEUX ÉVÉNEMENTS ≠ DEUX GESTES : à l'OUVERTURE (aucun contenu précédent), le
   // panneau qui arrive explique déjà le changement → on n'anime PAS le contenu.
