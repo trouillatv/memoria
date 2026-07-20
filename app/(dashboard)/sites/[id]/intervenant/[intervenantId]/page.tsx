@@ -34,7 +34,7 @@ export default async function IntervenantFichePage({
         <ArrowLeft className="h-4 w-4" /> {identity.name}
       </Link>
       <div className="rounded-[22px] border bg-card shadow-sm">
-        <IntervenantFicheBody siteId={id} person={person} />
+        <IntervenantFicheBody siteId={id} person={person} variant="page" />
       </div>
     </div>
   )

@@ -1,3 +1,4 @@
+import { documentHref } from '@/lib/knowledge/document-href'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Layers, ListTodo, ClipboardCheck, FileCheck2, FileText, Gavel, History, CalendarClock, AlertTriangle, Target, Quote, Lightbulb, Camera } from 'lucide-react'
@@ -329,7 +330,9 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
           <ul className="space-y-1">
             {siteDecisions.map((d) => (
               <li key={d.id} className="text-sm rounded-md border bg-card px-3 py-1.5">
-                <span className="font-medium">{d.titre}</span>
+                {/* Le dossier vivant OUVRE les objets qu'il cite : une décision citée
+                    ici mène à sa fiche, comme un document plus bas. */}
+                <Link href={`/sites/${id}/decision/${d.id}`} scroll={false} className="font-medium hover:underline">{d.titre}</Link>
                 <span className="text-muted-foreground"> · {d.statut}</span>
                 {d.dateDecision && <span className="text-muted-foreground"> · <CalendarClock className="inline h-3 w-3" /> {d.dateDecision}</span>}
               </li>
@@ -345,7 +348,8 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
           <ul className="space-y-1">
             {actions.map((a) => (
               <li key={a.id} className="text-sm rounded-md border bg-card px-3 py-1.5">
-                <span className="font-medium">{a.title}</span>
+                {/* Le dossier vivant OUVRE les objets qu'il cite : l'action mène à sa fiche. */}
+                <Link href={`/sites/${id}/action/${a.id}`} scroll={false} className="font-medium hover:underline">{a.title}</Link>
                 {a.assigned_to && <span className="text-muted-foreground"> — {a.assigned_to}</span>}
                 {a.due_date && <span className="text-muted-foreground"> · échéance {a.due_date}</span>}
                 <span className="text-muted-foreground"> · {ACTION_STATUS_FR[a.status] ?? a.status}</span>
@@ -377,7 +381,8 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
           <ul className="space-y-1">
             {reserves.map((r) => (
               <li key={r.id} className="text-sm rounded-md border bg-card px-3 py-1.5">
-                <span className="font-medium">{r.label}</span>
+                {/* Le dossier vivant OUVRE les objets qu'il cite : la réserve mène à sa fiche. */}
+                <Link href={`/sites/${id}/reserve/${r.id}`} scroll={false} className="font-medium hover:underline">{r.label}</Link>
                 <span className="text-muted-foreground"> · {r.status === 'lifted' ? 'levée' : 'ouverte'}</span>
               </li>
             ))}
@@ -385,7 +390,9 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
         )}
       </section>
 
-      {/* Décisions */}
+      {/* Décisions issues des CR (site_report_proposals). PAS de lien : ces
+          propositions ne sont pas des décisions structurées (site_decisions) et
+          n'ont donc pas d'adresse de fiche — on ne devine pas une adresse. */}
       <section className="space-y-2">
         <h2 className="text-sm font-semibold inline-flex items-center gap-2"><FileCheck2 className="h-4 w-4 text-indigo-600" /> Décisions ({decisions.length})</h2>
         {decisions.length === 0 ? <p className="text-xs text-muted-foreground/80 italic">Aucune décision rattachée.</p> : (
@@ -407,7 +414,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
           <ul className="space-y-1">
             {documents.map((d) => (
               <li key={d.id} className="text-sm rounded-md border bg-card px-3 py-1.5">
-                <Link href={`/sites/${id}/document/${d.id}`} scroll={false} className="hover:underline">{d.filename}</Link>
+                <Link href={documentHref(d, id)} scroll={false} className="hover:underline">{d.filename}</Link>
               </li>
             ))}
           </ul>

@@ -28,8 +28,19 @@ describe('getSiteDocumentFiche — la porte n’est pas plus large que la vision
   it('le document doit être RATTACHÉ à ce chantier (garde IDOR)', () => {
     // Sans ce lien, `/sites/<A>/document/<X>` ouvrirait un document d'un autre
     // chantier au seul motif qu'il existe.
-    expect(model).toMatch(/from\('document_links'\)[\s\S]*?eq\('target_type', 'site'\)[\s\S]*?eq\('target_id', siteId\)/)
-    expect(model).toContain('if (!lienSiteRes.data) return null')
+    // Le rattachement peut être DIRECT (lien `site`) ou INDIRECT (via un sujet ou
+    // une réserve du chantier) : ce qu'on protège n'est pas la forme du lien, mais
+    // le fait qu'un document étranger au chantier n'ouvre rien.
+    // ⚠️ La comparaison d ID de la branche DIRECTE. Sans elle, tout document
+    // portant un lien `site` — vers N IMPORTE QUEL chantier — s ouvrirait ici.
+    // Le controle independant a releve que rien ne la verifiait : on pouvait la
+    // retirer sans faire echouer un seul test.
+    expect(model).toContain("l.target_type === 'site' && l.target_id === siteId")
+    expect(model).toContain('documentAppartientAuChantier')
+    expect(model).toContain('if (!(await documentAppartientAuChantier(db, liens, siteId))) return null')
+    // Et les cibles indirectes sont relues SCOPÉES : un lien vers la réserve d'un
+    // AUTRE chantier ne doit rien rattacher.
+    expect(model).toMatch(/\.in\('id', ids\)\.eq\('site_id', siteId\)/)
   })
 
   it('garde org fail-closed, des deux côtés (chantier ET document)', () => {
@@ -43,7 +54,10 @@ describe('getSiteDocumentFiche — la porte n’est pas plus large que la vision
   })
 
   it('la route interceptée exige un utilisateur et ne révèle pas l’existence', () => {
-    expect(intercept).toContain('getCurrentUserWithProfile')
+    // La garde est passee a requireDeskUser() : elle redirige AVANT de lire, et
+    // n autorise que admin|manager (allowlist), la ou l ancienne forme se
+    // contentait de charger l utilisateur.
+    expect(intercept).toContain('requireDeskUser')
     expect(intercept).toContain('user.role')
     expect(intercept).toContain('notFound()')
   })

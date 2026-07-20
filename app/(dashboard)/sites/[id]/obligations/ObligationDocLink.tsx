@@ -1,5 +1,6 @@
 'use client'
 
+import { documentHref } from '@/lib/knowledge/document-href'
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -58,7 +59,9 @@ export function ObligationDocLink({ siteId, obligationId, linked, siteDocs }: Pr
           {linked.map((l) => (
             <li key={l.linkId} className="flex items-center gap-1.5 text-[11px]">
               <FileText className="h-3 w-3 shrink-0 text-muted-foreground" />
-              <Link href={`/documents/${l.documentId}`} className="font-medium hover:underline">{l.filename}</Link>
+              {/* Le chantier est connu : le lien ouvre la fiche document du graphe.
+                  La visionneuse /documents/<id> reste la sortie depuis la fiche. */}
+              <Link href={documentHref({ id: l.documentId, document_type: l.documentType }, siteId)} scroll={false} className="font-medium hover:underline">{l.filename}</Link>
               {l.referenceLabel && <span className="text-muted-foreground">— {l.referenceLabel}</span>}
               <button type="button" disabled={pending} onClick={() => unlink(l.linkId)}
                 className="ml-auto text-muted-foreground hover:text-rose-700" aria-label="Retirer le lien">

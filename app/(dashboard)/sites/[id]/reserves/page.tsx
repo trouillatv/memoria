@@ -49,7 +49,9 @@ export default async function SiteReservesPage({ params }: PageProps) {
           actions: actions.map((a) => ({
             id: a.id, title: a.title, assignedTo: a.assigned_to, status: a.status, dueDate: a.due_date,
           })),
-          documents: documents.map((d) => ({ id: d.id, filename: d.filename })),
+          // `document_type` voyage jusqu à l ecran : c est lui qui decide de la
+          // destination (un LITIGE ne s ouvre jamais dans le graphe).
+          documents: documents.map((d) => ({ id: d.id, filename: d.filename, document_type: d.document_type })),
         }
       }),
     ),

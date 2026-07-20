@@ -18,7 +18,10 @@ export type SubjectCriticality = 'basse' | 'moyenne' | 'haute'
 export interface SubjectReserveLite {
   id: string; label: string; status: string; issuedOn: string | null
 }
-export interface SubjectDocLite { id: string; filename: string }
+/** `document_type` est NÉCESSAIRE à la destination : un litige ne s ouvre jamais
+ *  dans le graphe (cf. lib/knowledge/document-href.ts). Le tronquer ici rendait
+ *  la regle inapplicable a l ecran — cause du rejet n°2 du verificateur. */
+export interface SubjectDocLite { id: string; filename: string; document_type: string }
 
 export interface SubjectSummary {
   id: string
@@ -265,7 +268,9 @@ export async function getSubjectThread(subjectId: string): Promise<SubjectThread
     siteDecisions: ((siteDecisions ?? []) as Array<{ id: string; titre: string; statut: string; date_decision: string | null }>)
       .map((d) => ({ id: d.id, titre: d.titre, statut: d.statut, dateDecision: d.date_decision })),
     anomalies,
-    documents: documents.map((d) => ({ id: d.id, filename: d.filename })),
+    // `document_type` voyage jusqu’à l’écran : c’est lui qui décide de la
+    // destination. Sans lui, un LITIGE partait vers le graphe, qui le refuse.
+    documents: documents.map((d) => ({ id: d.id, filename: d.filename, document_type: d.document_type })),
   }
 }
 

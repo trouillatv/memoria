@@ -64,6 +64,11 @@ export async function searchMemory(opts: SearchMemoryOptions): Promise<MemoryHit
 
   const supabase = createAdminClient()
   const orgId = await getOrgId()
+  // ⚠️ FAIL-CLOSED. Le client admin contourne la RLS, et cote SQL `p_org_id is
+  // null` signifie AUCUN filtre tenant : sans cette garde, une session illisible
+  // (ou une exception avalee par getOrgId) rendait la memoire de TOUTES les
+  // organisations. Depuis la mig 223 le corpus contient des noms de personnes.
+  if (!orgId) return []
   const { data, error } = await supabase.rpc('search_memory', {
     p_q: q,
     p_contract_id: opts.contractId ?? null,

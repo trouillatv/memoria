@@ -1,3 +1,4 @@
+import { documentHref } from '@/lib/knowledge/document-href'
 import Link from 'next/link'
 import { analysisStatusLabel } from '@/lib/documents/labels'
 import type { DbDocument } from '@/types/db'
@@ -8,7 +9,18 @@ import type { DbDocument } from '@/types/db'
 // (canViewDocument). Le chrome (titre, compteur, lien « Ajouter », état
 // vide) reste géré par chaque page selon son idiome.
 
-export function LinkedDocumentsList({ documents }: { documents: DbDocument[] }) {
+export function LinkedDocumentsList({
+  documents,
+  siteId,
+}: {
+  documents: DbDocument[]
+  /** Chantier de rattachement, quand l'appelant le connaît (page site, …).
+   *  Fourni : la liste ouvre l'objet du graphe `/sites/<siteId>/document/<id>`.
+   *  Absent (contrat, …) : on garde la visionneuse `/documents/<id>`, qui reste
+   *  de toute façon la sortie nommée depuis la fiche. */
+  siteId?: string
+}) {
+  const linkClass = 'font-medium underline hover:text-foreground break-words'
   return (
     <ul className="divide-y">
       {documents.map((d) => (
@@ -17,12 +29,24 @@ export function LinkedDocumentsList({ documents }: { documents: DbDocument[] }) 
           className="flex items-center justify-between gap-3 py-2 text-sm"
         >
           <span className="min-w-0">
-            <Link
-              href={`/documents/${d.id}`}
-              className="font-medium underline hover:text-foreground break-words"
-            >
-              {d.filename}
-            </Link>
+            {/* Chantier connu → la liste ouvre l'objet du graphe (panneau, d'où
+                scroll={false}). Sinon on garde la visionneuse globale. */}
+            {siteId ? (
+              <Link
+                href={documentHref(d, siteId)}
+                scroll={false}
+                className={linkClass}
+              >
+                {d.filename}
+              </Link>
+            ) : (
+              <Link
+                href={`/documents/${d.id}`}
+                className={linkClass}
+              >
+                {d.filename}
+              </Link>
+            )}
             <span className="text-xs text-muted-foreground">
               {' '}· {d.document_type}
             </span>

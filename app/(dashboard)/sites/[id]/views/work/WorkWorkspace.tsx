@@ -272,7 +272,11 @@ export function WorkWorkspace({
                 const late = Boolean(action.due_date && action.due_date < todayIso)
                 return (
                   <article key={action.id} className="rounded-2xl border p-4">
-                    <Link href={`/sites/${siteId}/actions`} className="font-semibold hover:underline">
+                    {/* Le titre menait a `/sites/<id>/actions`, un HUB qui ne liste
+                        aucune action : le clic ne donnait rien. Il ouvre desormais la
+                        fiche de l action. Les chips d edition ci-dessous gardent le hub,
+                        qui est leur destination legitime. */}
+                    <Link href={`/sites/${siteId}/action/${action.id}`} scroll={false} className="font-semibold hover:underline">
                       {action.title}
                     </Link>
                     <p className="mt-1 text-sm text-muted-foreground">

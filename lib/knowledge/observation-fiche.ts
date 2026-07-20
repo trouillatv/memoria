@@ -30,6 +30,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { documentHref } from '@/lib/knowledge/document-href'
 
 const DATE_FMT = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long', year: 'numeric' })
 const frDate = (iso: string | null | undefined): string | null => (iso ? DATE_FMT.format(new Date(iso)) : null)
@@ -87,7 +88,10 @@ function cibleHref(table: string | null, targetId: string, siteId: string): { ty
     case 'site_actions': return { typeLabel: 'Action', href: `/sites/${siteId}/action/${targetId}` }
     case 'site_reserve': return { typeLabel: 'Réserve', href: `/sites/${siteId}/reserve/${targetId}` }
     case 'subjects': return { typeLabel: 'Sujet', href: `/sites/${siteId}/subjects/${targetId}` }
-    case 'documents': return { typeLabel: 'Document', href: `/sites/${siteId}/document/${targetId}` }
+    // La regle unique decide, ici comme partout : un litige ne s ouvre jamais
+    // dans le graphe. Les cibles verifiees excluent deja les litiges, mais on ne
+    // reconstruit pas l adresse a la main pour autant.
+    case 'documents': return { typeLabel: 'Document', href: documentHref({ id: targetId, document_type: '' }, siteId) }
     // Une anomalie n'a pas de fiche : on la nomme sans fabriquer d'adresse.
     default: return { typeLabel: 'Anomalie', href: null }
   }
@@ -151,9 +155,14 @@ export async function getSiteObservationFiche(siteId: string, captureId: string)
       const ids = idsParTable.get(table)
       if (!ids?.length) return [table, new Set<string>()] as const
       // `documents` n'a pas de `site_id` : son rattachement passe par un lien.
+      // ⚠️ Pour un document, deux conditions, pas une : rattaché à CE chantier,
+      // ET pas un litige. Le litige est hors du graphe (la fiche le refuse), donc
+      // un lien vers elle mènerait à `notFound()`. Ne vérifier que le rattachement
+      // rendait la ligne cliquable vers le vide.
       const { data } = table === 'documents'
-        ? await db.from('document_links').select('document_id')
+        ? await db.from('document_links').select('document_id, documents!inner(document_type)')
             .in('document_id', ids).eq('target_type', 'site').eq('target_id', siteId)
+            .neq('documents.document_type', 'litige')
         : await db.from(table).select('id').in('id', ids).eq('site_id', siteId)
       const vus = new Set(
         ((data ?? []) as Array<Record<string, string>>).map((row) => row.document_id ?? row.id),

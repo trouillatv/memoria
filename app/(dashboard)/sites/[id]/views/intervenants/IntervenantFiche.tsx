@@ -44,10 +44,16 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
 
 // Le CORPS présentationnel — sans coquille Sheet, pour être monté soit par le
 // wrapper ci-dessus, soit par la coquille persistante du parcours.
-export function IntervenantFicheBody({ siteId, person, animateContent = false }: {
+// `variant` — le MÊME corps est monté à deux endroits. Un seul détail ne peut
+// pas être partagé : le TITRE. Dans le panneau il doit être le titre accessible
+// de la boîte de dialogue (`SheetTitle`) ; en page complète ce contexte n'existe
+// pas et le composant plante (« Cannot destructure property 'store' »). Même
+// exception nommée que sur les six autres fiches — jamais deux implémentations.
+export function IntervenantFicheBody({ siteId, person, animateContent = false, variant = 'panel' }: {
   siteId: string
   person: IntervenantPerson
   animateContent?: boolean
+  variant?: 'panel' | 'page'
 }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -121,7 +127,9 @@ export function IntervenantFicheBody({ siteId, person, animateContent = false }:
   return (
     <>
         <SheetHeader className="pb-0">
-          <SheetTitle className={cn('text-base font-semibold', animateContent && FICHE_TITLE_MOTION)}>{p.name}</SheetTitle>
+          {variant === 'page'
+            ? <h1 className="text-base font-semibold">{p.name}</h1>
+            : <SheetTitle className={cn('text-base font-semibold', animateContent && FICHE_TITLE_MOTION)}>{p.name}</SheetTitle>}
           <p className="text-[13px] text-muted-foreground">
             {[p.companyName, p.fonction ?? `Rôle ${p.role}`].filter(Boolean).join(' · ')}
           </p>

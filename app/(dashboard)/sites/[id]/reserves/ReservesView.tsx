@@ -5,6 +5,7 @@
 // jamais une mesure d'humain). VOCABULAIRE : on dit "lever" / "levé",
 // jamais "résolu" (juridiquement dangereux).
 
+import { documentHref } from '@/lib/knowledge/document-href'
 import { useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -32,7 +33,9 @@ export interface ReserveLinkedAction {
   dueDate: string | null
 }
 
-export interface ReserveLinkedDoc { id: string; filename: string }
+/** `document_type` est nécessaire à la destination : un LITIGE ne s’ouvre
+ *  jamais dans le graphe (cf. lib/knowledge/document-href.ts). */
+export interface ReserveLinkedDoc { id: string; filename: string; document_type: string }
 
 export interface ReserveWithPhotos extends SiteReserve {
   photoBeforeUrl: string | null
@@ -360,7 +363,10 @@ function ReserveCard({ reserve, siteId, siteDocuments }: { reserve: ReserveWithP
           <ul className="space-y-0.5">
             {reserve.documents.map((d) => (
               <li key={d.id} className="text-xs">
-                • <a href={`/documents/${d.id}`} className="hover:underline">{d.filename}</a>
+                {/* La liste ouvre l'objet du graphe : le chantier est connu ici,
+                    donc on vise la fiche document. La visionneuse /documents/<id>
+                    reste la sortie nommée depuis cette fiche. */}
+                • <Link href={documentHref(d, siteId)} scroll={false} className="hover:underline">{d.filename}</Link>
               </li>
             ))}
           </ul>

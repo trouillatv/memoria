@@ -1,5 +1,6 @@
 'use client'
 
+import { documentHref } from '@/lib/knowledge/document-href'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { Download, FileSearch, FileText, FolderCheck, ImageIcon, Mic, Search, ShieldCheck, StickyNote, Upload, Video } from 'lucide-react'
@@ -65,7 +66,10 @@ export function DocumentsWorkspace({
       title: document.filename,
       detail: document.document_type || 'Document',
       occurredAt: document.created_at ?? null,
-      href: `/documents/${document.id}`,
+      // La bibliothèque du chantier OUVRE l'objet du graphe (fiche document dans
+      // son contexte de chantier) ; la visionneuse /documents/<id> reste la
+      // sortie nommée depuis cette fiche (fichier, URL signée, journal d'accès).
+      href: documentHref(document, siteId),
       searchable: `${document.filename} ${document.document_type}`,
     }))
     const mediaEntries: LibraryEntry[] = media.map((item) => ({
@@ -80,7 +84,7 @@ export function DocumentsWorkspace({
       searchable: `${item.title} ${item.detail} ${kindLabel(item.kind)} ${sourceLabel(item.source)}`,
     }))
     return [...docEntries, ...mediaEntries].sort((a, b) => (b.occurredAt ?? '').localeCompare(a.occurredAt ?? ''))
-  }, [documents, media])
+  }, [documents, media, siteId])
   const filteredEntries = useMemo(() => {
     const normalizedQuery = normalize(query)
     return libraryEntries.filter((entry) => {
@@ -154,7 +158,9 @@ export function DocumentsWorkspace({
             </div>
             <div className="divide-y">
               {filteredEntries.slice(0, 40).map((entry) => (
-                <Link key={entry.id} href={entry.href} className="grid min-h-14 grid-cols-[minmax(0,1fr)_130px_130px] gap-3 px-3 py-2.5 transition-colors hover:bg-muted/40">
+                // scroll={false} pour un document : la fiche s'ouvre en panneau,
+                // la liste ne doit pas remonter en haut de page.
+                <Link key={entry.id} href={entry.href} scroll={entry.kind !== 'document'} className="grid min-h-14 grid-cols-[minmax(0,1fr)_130px_130px] gap-3 px-3 py-2.5 transition-colors hover:bg-muted/40">
                   <span className="flex min-w-0 items-center gap-3">
                     <LibraryIcon entry={entry} />
                     <span className="min-w-0">

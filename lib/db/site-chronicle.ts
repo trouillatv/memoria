@@ -6,6 +6,7 @@
 // Réutilise getSiteMemoryTimeline (interventions/photos/anomalies/notes/CR/actions/
 // blocages, avec dédup) et AJOUTE décisions, réserves, documents, enrichissements.
 
+import { documentHref } from '@/lib/knowledge/document-href'
 import { getSiteMemoryTimeline, type SiteMemoryEvent } from '@/lib/db/site-memory'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listDocumentsForTarget } from '@/lib/db/documents'
@@ -81,7 +82,10 @@ export async function getSiteChronicle(siteId: string, opts: { limit?: number } 
   }
 
   for (const doc of docs) {
-    events.push({ id: `doc-${doc.id}`, category: 'document', date: doc.created_at, title: doc.filename, href: `/documents/${doc.id}`, source: 'document' })
+    // La chronique est TOUJOURS celle d'un chantier : l'entrée ouvre la fiche
+    // document dans le graphe, pas la visionneuse globale (qui reste la sortie
+    // nommée depuis la fiche : fichier, URL signée, journal d'accès).
+    events.push({ id: `doc-${doc.id}`, category: 'document', date: doc.created_at, title: doc.filename, href: documentHref(doc, siteId), source: 'document' })
   }
 
   for (const en of enrichments) {

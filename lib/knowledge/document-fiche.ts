@@ -51,6 +51,32 @@ export interface DocumentFicheData {
   visionneuseHref: string
 }
 
+/** Le document est-il rattaché à ce chantier, directement ou via un de ses objets ?
+ *  Les cibles indirectes sont relues SCOPÉES au chantier : un lien vers une réserve
+ *  d'un autre chantier ne rattache rien. */
+async function documentAppartientAuChantier(
+  db: ReturnType<typeof createAdminClient>,
+  liens: Array<{ target_type: string; target_id: string }>,
+  siteId: string,
+): Promise<boolean> {
+  if (liens.some((l) => l.target_type === 'site' && l.target_id === siteId)) return true
+
+  // Les seuls rattachements indirects qui valent : un objet qui APPARTIENT au
+  // chantier. On ne remonte pas au contrat ni au client — leur périmètre dépasse
+  // celui du chantier, et le document ne lui appartiendrait pas pour autant.
+  const INDIRECTS: Array<[string, 'subjects' | 'site_reserve']> = [
+    ['subject', 'subjects'],
+    ['reserve', 'site_reserve'],
+  ]
+  for (const [type, table] of INDIRECTS) {
+    const ids = liens.filter((l) => l.target_type === type).map((l) => l.target_id)
+    if (!ids.length) continue
+    const { data } = await db.from(table).select('id').in('id', ids).eq('site_id', siteId).limit(1)
+    if ((data ?? []).length > 0) return true
+  }
+  return false
+}
+
 export async function getSiteDocumentFiche(
   siteId: string,
   documentId: string,
@@ -68,8 +94,13 @@ export async function getSiteDocumentFiche(
       .eq('id', documentId).maybeSingle(),
     // Le document doit être RATTACHÉ à ce chantier : sans ce lien, l'adresse
     // `/sites/<A>/document/<X>` ne doit rien ouvrir, même si X existe ailleurs.
-    db.from('document_links').select('id')
-      .eq('document_id', documentId).eq('target_type', 'site').eq('target_id', siteId).maybeSingle(),
+    // ⚠️ Le rattachement peut être INDIRECT : un document lié à un sujet ou à une
+    // réserve appartient au chantier de cet objet sans forcément porter un lien
+    // `site` en propre (`addDocumentLink` n'enregistre qu'un couple type/cible).
+    // N'exiger que le lien direct rendait `notFound()` sur des documents pourtant
+    // listés dans le chantier — défaut trouvé par le contrôle indépendant.
+    db.from('document_links').select('target_type, target_id')
+      .eq('document_id', documentId),
   ])
 
   if (!orgId) return null
@@ -83,7 +114,9 @@ export async function getSiteDocumentFiche(
   } | null
   if (!d || d.deleted_at) return null
   if (d.organization_id !== orgId) return null
-  if (!lienSiteRes.data) return null
+  // Rattachement direct, ou indirect via un objet DE CE CHANTIER.
+  const liens = (lienSiteRes.data ?? []) as Array<{ target_type: string; target_id: string }>
+  if (!(await documentAppartientAuChantier(db, liens, siteId))) return null
 
   // Le rôle décide, comme dans la visionneuse. On ne révèle pas l'existence.
   if (!canViewDocument(role, d.visibility_level)) return null
