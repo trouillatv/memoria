@@ -58,10 +58,15 @@ export function IntervenantFicheBody({ siteId, person, animateContent = false }:
   // Lot 4 · Slice 4 — « plus jamais une simple ligne » : une action ouvre TOUJOURS
   // sa fiche canonique (?action=), plus la réunion ni l'onglet Travail. On ferme
   // la fiche personne et on ouvre celle de l'action, en gardant l'onglet courant.
+  // `from_person` garde D'OÙ l'on vient : sans lui, `?person=` disparaît de l'URL
+  // et plus rien ne permet de REVENIR à cette personne — l'objet suivant devient
+  // une impasse (« Fermer » seulement). Le retour est ce qui fait la différence
+  // entre « je suis allé quelque part » et « j'ai ouvert une fenêtre ».
   const actionHref = (actionId: string): string => {
     const q = new URLSearchParams(searchParams?.toString() ?? '')
     q.set('action', actionId)
     q.set('action_source', 'person')
+    q.set('from_person', p.intervenantId)
     q.delete('person'); q.delete('person_source')
     return `${pathname}?${q.toString()}`
   }
@@ -70,6 +75,7 @@ export function IntervenantFicheBody({ siteId, person, animateContent = false }:
     const q = new URLSearchParams(searchParams?.toString() ?? '')
     q.set('decision', decisionId)
     q.set('decision_source', 'intervenant')
+    q.set('from_person', p.intervenantId)
     q.delete('person'); q.delete('person_source')
     return `${pathname}?${q.toString()}`
   }

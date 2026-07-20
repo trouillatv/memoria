@@ -54,18 +54,36 @@ export function PersistentFicheSheet({ siteId, person, action, decision }: {
     if (active === 'action') { next.delete('action'); next.delete('action_source'); next.delete('action_site') }
     else if (active === 'decision') { next.delete('decision'); next.delete('decision_source') }
     else if (active === 'person') { next.delete('person'); next.delete('person_source') }
+    next.delete('from_person')
     const qs = next.toString()
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }
 
-  // « Remonter l'histoire » : selon la provenance, le « ← » ramène au maillon amont
-  // (logique reprise telle quelle des ex-deep-links Action et Décision).
+  // Le retour vers la PERSONNE d'où l'on vient : `?person=` a été retiré de l'URL
+  // au moment du saut, donc seul `from_person` sait vers qui revenir.
+  const fromPerson = params.get('from_person')
+  function backToPersonHref(personId: string): string {
+    const q = new URLSearchParams(params.toString())
+    q.delete('action'); q.delete('action_source'); q.delete('action_site')
+    q.delete('decision'); q.delete('decision_source'); q.delete('from_person')
+    q.set('person', personId)
+    const qs = q.toString()
+    return qs ? `${pathname}?${qs}` : pathname
+  }
+
+  // « Remonter l'histoire » : le « ← » ramène au maillon d'où l'on vient. Ce
+  // retour ne concerne plus seulement les origines CAUSALES (décision ↔ action) :
+  // arriver depuis un Intervenant sans pouvoir y revenir était une impasse — or
+  // c'est le Retour qui distingue « je suis allé quelque part » de « j'ai ouvert
+  // une fenêtre ». (Révision assumée d'un détail du Lot 1.)
   const back: TrailBack | null =
     active === 'action' && params.get('action_source') === 'decision' && action?.fromDecision
       ? { typeLabel: 'Décision', href: action.fromDecision.href }
       : active === 'decision' && params.get('decision_source') === 'action' && decision?.action
         ? { typeLabel: 'Action', href: decision.action.href }
-        : null
+        : fromPerson && (active === 'action' || active === 'decision')
+          ? { typeLabel: 'Intervenant', href: backToPersonHref(fromPerson) }
+          : null
 
   // PR2 — l'IDENTITÉ de l'objet affiché. Quand elle change, seul le CORPS est
   // remonté : la transformation se rejoue. La COQUILLE n'est jamais remontée (PR1).

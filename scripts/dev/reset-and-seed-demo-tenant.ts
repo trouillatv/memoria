@@ -343,12 +343,17 @@ async function insertDecision(c: Ctx, input: {
    *  NI dans le chapô « Découle de / Produit » : la chaîne Réunion → Décision →
    *  Action est alors intestable. C'est ce lien qui fait exister le parcours. */
   actionId?: string | null
+  /** Le DÉCIDEUR : la personne qui PORTE la décision (mig 138). Sans lui, la fiche
+   *  Intervenant n'affiche jamais « Décisions portées » — la personne n'existe que
+   *  par ses actions, et la moitié de sa mémoire relationnelle est invisible. */
+  decisionnaireContactId?: string | null
 }) {
   const { error } = await c.supabase.from('site_decisions').insert({
     site_id: input.siteId, titre: input.titre,
     description: input.description ?? null, report_id: input.reportId,
     date_decision: input.dateDecision, created_by: c.managerId,
     action_id: input.actionId ?? null,
+    decisionnaire_contact_id: input.decisionnaireContactId ?? null,
   })
   if (error) throw error
 }
@@ -532,8 +537,10 @@ async function main() {
   if (petroR1 && petroActions) {
     await step('Petro — 4 décisions de réunion (3 reliées à leur action)', async () => {
       const [a1, , a3, a4] = petroActions
-      await insertDecision(c, { siteId: petro, titre: 'Lancer les faux plafonds secteur B', reportId: petroR1, dateDecision: d(-17), actionId: a1 })
-      await insertDecision(c, { siteId: petro, titre: 'Commander les menuiseries extérieures', reportId: petroR1, dateDecision: d(-17), actionId: a3 })
+      // Deux décisions PORTÉES par le conducteur de travaux : la fiche Intervenant
+      // doit montrer ses décisions autant que ses actions.
+      await insertDecision(c, { siteId: petro, titre: 'Lancer les faux plafonds secteur B', reportId: petroR1, dateDecision: d(-17), actionId: a1, decisionnaireContactId: petroContact })
+      await insertDecision(c, { siteId: petro, titre: 'Commander les menuiseries extérieures', reportId: petroR1, dateDecision: d(-17), actionId: a3, decisionnaireContactId: petroContact })
       await insertDecision(c, { siteId: petro, titre: 'Programmer le contrôle incendie', reportId: petroR1, dateDecision: d(-17), actionId: a4 })
       // Volontairement SANS action liée : la fiche Décision doit aussi savoir dire
       // « aucune action liée à cette décision ». L'état vide fait partie du produit,
@@ -647,10 +654,10 @@ async function main() {
   // ces quatre cas disparaît, le parcours correspondant devient intestable — et
   // dans six mois personne ne saurait pourquoi. Le seed le dit tout de suite.
   await step('Vérification du GRAPHE de recette (Petro Atiti)', async () => {
-    const { data: decs } = await supabase.from('site_decisions').select('titre, action_id').eq('site_id', petro)
+    const { data: decs } = await supabase.from('site_decisions').select('titre, action_id, decisionnaire_contact_id').eq('site_id', petro)
     const { data: acts } = await supabase.from('site_actions').select('id, title, assigned_contact_id').eq('site_id', petro)
     const { data: cast } = await supabase.from('site_intervenants').select('main_contact_id').eq('site_id', petro)
-    const decisions = (decs ?? []) as Array<{ titre: string; action_id: string | null }>
+    const decisions = (decs ?? []) as Array<{ titre: string; action_id: string | null; decisionnaire_contact_id: string | null }>
     const actions = (acts ?? []) as Array<{ id: string; title: string; assigned_contact_id: string | null }>
     const casting = (cast ?? []) as Array<{ main_contact_id: string | null }>
 
@@ -679,6 +686,8 @@ async function main() {
       ['une Action SANS Décision liée (chapô absent)', actions.some((a) => !liees.has(a.id))],
       ['Action → responsable : le contact assigné EXISTE', assignees.length >= 1 && assignees.every((a) => contactsExistants.has(a.assigned_contact_id!))],
       ['responsable → casting : ce contact est main_contact du chantier', assignees.some((a) => castingContacts.has(a.assigned_contact_id!))],
+      // Une personne n'existe pas que par ses actions : elle PORTE aussi des décisions.
+      ['Décision → décideur : porté par un contact du casting', decisions.some((x) => x.decisionnaire_contact_id && castingContacts.has(x.decisionnaire_contact_id))],
     ]
     const manquants = cas.filter(([, ok]) => !ok).map(([nom]) => nom)
     for (const [nom, ok] of cas) console.log(`      ${ok ? '✓' : '✗'} ${nom}`)
