@@ -13,7 +13,6 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { usePathname, useSearchParams } from 'next/navigation'
 import { ChevronRight, ChevronDown, Network, Phone } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -55,36 +54,28 @@ export function IntervenantFicheBody({ siteId, person, animateContent = false, v
   animateContent?: boolean
   variant?: 'panel' | 'page'
 }) {
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
   const [showDecisions, setShowDecisions] = useState(false)
   const p = person
   // Jour civil Nouméa, calculé UNE fois (jamais dans la boucle de rendu).
   const today = todayLocalIso()
-  // Lot 4 · Slice 4 — « plus jamais une simple ligne » : une action ouvre TOUJOURS
-  // sa fiche canonique (?action=), plus la réunion ni l'onglet Travail. On ferme
-  // la fiche personne et on ouvre celle de l'action, en gardant l'onglet courant.
-  // `from_person` garde D'OÙ l'on vient : sans lui, `?person=` disparaît de l'URL
-  // et plus rien ne permet de REVENIR à cette personne — l'objet suivant devient
-  // une impasse (« Fermer » seulement). Le retour est ce qui fait la différence
-  // entre « je suis allé quelque part » et « j'ai ouvert une fenêtre ».
-  const actionHref = (actionId: string): string => {
-    const q = new URLSearchParams(searchParams?.toString() ?? '')
-    q.set('action', actionId)
-    q.set('action_source', 'person')
-    q.set('from_person', p.intervenantId)
-    q.delete('person'); q.delete('person_source')
-    return `${pathname}?${q.toString()}`
-  }
-  // Ouvrir une DÉCISION portée : on ferme la fiche personne, on ouvre la décision.
-  const decisionHref = (decisionId: string): string => {
-    const q = new URLSearchParams(searchParams?.toString() ?? '')
-    q.set('decision', decisionId)
-    q.set('decision_source', 'intervenant')
-    q.set('from_person', p.intervenantId)
-    q.delete('person'); q.delete('person_source')
-    return `${pathname}?${q.toString()}`
-  }
+
+  // ── LES ADRESSES SE CONSOMMENT, ELLES NE SE FABRIQUENT PLUS ICI ───────────
+  // Ce corps CONSTRUISAIT ses liens avec `usePathname()` + `useSearchParams()`,
+  // seul des sept à le faire — héritage du modèle `?person=`. Deux conséquences,
+  // corrigées ensemble :
+  //
+  //  1. `useSearchParams()` exige une frontière <Suspense> en rendu serveur. Le
+  //     panneau vit dans une zone parallèle qui en a une ; la PAGE DIRECTE, non
+  //     — elle plantait en production sous cinq preuves vertes ;
+  //  2. ces deux fonctions étaient les DERNIERS émetteurs de paramètres de
+  //     provenance (`action_source`, `from_person`…), que le Lot 3 avait
+  //     supprimés partout ailleurs.
+  //
+  // Les six autres fiches reçoivent des adresses déjà construites ; celle-ci les
+  // construit désormais en ABSOLU, sans lire l'URL courante. Le retour ne passe
+  // plus par `from_person` : c'est l'historique qui le porte (invariant du Lot 3).
+  const actionHref = (actionId: string): string => `/sites/${siteId}/action/${actionId}`
+  const decisionHref = (decisionId: string): string => `/sites/${siteId}/decision/${decisionId}`
 
   // Le chapô = la relation d'IDENTITÉ (règle 6). L'intervenant est un objet
   // TRANSVERSE : sa relation n'est pas causale mais identitaire — ce dont il RÉPOND.

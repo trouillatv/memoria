@@ -22,8 +22,18 @@ const search = read('app/(dashboard)/sites/[id]/SiteMemoryQuery.tsx')
 const decision = read('app/(dashboard)/meetings/[id]/pv/validation/PvDecisionsBlock.tsx')
 
 describe('Lot 4 Slice 4 — navigation canonique vers la fiche Action', () => {
-  it('fiche personne : l’action ouvre ?action=, plus la réunion ni l’onglet Travail', () => {
-    expect(fiche).toMatch(/set\('action'/)
+  it('fiche personne : l’action ouvre son ADRESSE CANONIQUE, plus la réunion ni l’onglet Travail', () => {
+    // La FORME a changé, pas l’intention. Ce corps CONSTRUISAIT son lien en lisant
+    // l'URL courante (`set('action', …)` + paramètres de provenance) : seul des sept
+    // à le faire, et `useSearchParams()` y faisait planter la PAGE DIRECTE, qui n’a
+    // pas de frontière <Suspense>. Il consomme désormais une adresse absolue.
+    expect(fiche).toMatch(/\/sites\/\$\{siteId\}\/action\/\$\{actionId\}/)
+    // ⚠️ Sur le CODE seul : les commentaires citent ces parametres pour expliquer
+    // POURQUOI ils ont disparu. 4e fois que ce piege se referme dans la session.
+    const code = sansCommentaires(fiche)
+    expect(code).not.toContain("set('action'")
+    expect(code).not.toContain('action_source')
+    expect(code).not.toContain('from_person')
     expect(fiche).toContain('actionHref(a.id)')
     // La destination spéciale (a.href = /meetings ou tab=travail) n'est plus le lien.
     expect(fiche).not.toContain('href={a.href}')
