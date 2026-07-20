@@ -50,3 +50,30 @@ Corollaire opérationnel : la règle de destination vit dans **un seul module pu
 Réserve, Document, Réunion et Observation n'ont pas encore leur propre navigation :
 leur repli vers le chantier est **assumé et temporaire**, pas une exception à la règle.
 Le Lot 4 le lève objet par objet.
+
+---
+
+## Invariant d'intégration : les listes sont des portes
+
+> **Tout objet du graphe doit être ouvrable depuis l'écran qui le liste.**
+> (Vincent, 2026-07-20)
+
+La règle ci-dessus dit *où mène* une porte. Celle-ci dit *combien de portes* doivent
+exister. Les deux se complètent : une destination unique ne sert à rien si un seul
+chemin y conduit.
+
+Un objet doté d'une adresse, d'une fiche et d'un fil, mais que seule la recherche
+sait ouvrir, est **à moitié intégré**. L'utilisateur qui regarde la liste des
+réserves de son chantier a l'objet sous les yeux et ne peut pas l'ouvrir : il doit
+deviner qu'il faut passer par la recherche pour atteindre ce qu'il voit déjà.
+
+**Les listes métier sont des portes d'entrée du graphe, au même titre que la
+recherche.** Elles appliquent donc la même règle de destination — elles ouvrent
+l'objet, jamais son conteneur, et jamais par une adresse à elles.
+
+Portée : Réserves, Documents, Réunions, Observations, Actions, Décisions — et tout
+objet à venir. Ce n'est pas une correction, c'est la suite logique de l'adressage.
+
+État au 2026-07-20 : **non tenu**. La fiche Réserve n'est ouvrable que depuis la
+recherche ; `/sites/<id>/reserves` ne pointe pas vers elle. Inscrit dans les travaux
+d'intégration du graphe, hors du Lot 4 qui livre les objets eux-mêmes.
