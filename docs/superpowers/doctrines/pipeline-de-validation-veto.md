@@ -202,3 +202,28 @@ Ce qui ne change pas : l'auteur ne se certifie jamais lui-même, les six preuves
 contrat de livraison, les quatre états de lot, et « recette non exécutée = lot non
 livré ». Seul le **mécanisme** du contrôle change — l'indépendance qui compte est
 celle entre l'affirmation et la preuve, pas celle entre deux agents.
+
+### Précision (2026-07-21, plus tard) — le tri entre main et agent
+
+La révision ci-dessus allait trop loin dans un sens : la régression de contexte de
+la fiche Intervenant (le saut vers une Action jetait `?tab=`) n'aurait été vue **ni
+par une vérification à la main, ni par la recette** — sur l'onglet par défaut, une
+URL nue et `?tab=apercu` rendent le même écran. C'est un agent qui l'a trouvée. Ce
+genre de prise justifie de garder le mécanisme.
+
+Le tri, avant de lancer quoi que ce soit :
+
+1. **Vérifiable à la main en quelques minutes** (une requête SQL, un code de
+   sortie, une URL à ouvrir, un grep dont on sait quoi chercher) → **on le fait à
+   la main, immédiatement.** Jamais d'agent là-dessus.
+2. **Structurellement invisible aux vérifications rapides** — composition entre
+   fichiers ou montages, états qui rendent identiquement, invariant à balayer sur
+   tout le dépôt, régression que la recette ne peut pas distinguer → **agent
+   justifié**, sur un périmètre étroit et une mission bornée. Pas « vérifie tout »
+   pendant des heures : une question précise, un diff délimité.
+3. Un rapport d'agent reste une **hypothèse à démontrer** avant toute correction
+   (`demontrer-avant-agir.md`) — c'est ce qui protège du verdict faux, sans
+   renoncer aux prises que seul un agent fait.
+
+En une phrase : **la main pour ce qui se mesure vite, l'agent pour ce que ni la
+main ni la recette ne peuvent voir — et l'exécution pour départager les deux.**
