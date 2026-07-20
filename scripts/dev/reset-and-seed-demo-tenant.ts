@@ -224,6 +224,11 @@ async function insertAction(c: Ctx, input: {
   status?: string; dueDate?: string | null; lastProgressAt?: string | null
   convertedType?: 'mission' | 'intervention' | null; convertedId?: string | null
   corpsEtat?: string | null
+  /** Le RESPONSABLE structurel (contact du casting). `assigned_to` reçoit le nom
+   *  en miroir lisible ; `assigned_contact_id` reste la preuve. Sans lui, la fiche
+   *  Intervenant n'a aucune « Action à suivre » — donc aucun parcours à recetter. */
+  assignedContactId?: string | null
+  assignedToName?: string | null
 }): Promise<string> {
   const { data, error } = await c.supabase
     .from('site_actions')
@@ -233,6 +238,8 @@ async function insertAction(c: Ctx, input: {
       report_id: input.reportId ?? null, due_date: input.dueDate ?? null,
       last_progress_at: input.lastProgressAt ?? null, corps_etat: input.corpsEtat ?? null,
       converted_to_type: input.convertedType ?? null, converted_to_id: input.convertedId ?? null,
+      assigned_contact_id: input.assignedContactId ?? null,
+      assigned_to: input.assignedToName ?? null,
     })
     .select('id')
     .single()
@@ -342,6 +349,39 @@ async function insertDecision(c: Ctx, input: {
     description: input.description ?? null, report_id: input.reportId,
     date_decision: input.dateDecision, created_by: c.managerId,
     action_id: input.actionId ?? null,
+  })
+  if (error) throw error
+}
+
+// ── LE CASTING — entreprise, personne, rôle sur le chantier (mig 137) ────────
+async function insertCompany(c: Ctx, name: string, shortName?: string): Promise<string> {
+  const { data, error } = await c.supabase.from('companies')
+    .insert({ organization_id: c.orgId, name, short_name: shortName ?? null })
+    .select('id').single()
+  if (error) throw error
+  return (data as { id: string }).id
+}
+
+async function insertContact(c: Ctx, input: {
+  companyId: string; fullName: string; fonction?: string; isMain?: boolean
+}): Promise<string> {
+  const { data, error } = await c.supabase.from('company_contacts')
+    .insert({
+      organization_id: c.orgId,
+      company_id: input.companyId, full_name: input.fullName,
+      function: input.fonction ?? null, is_main: input.isMain ?? false,
+    })
+    .select('id').single()
+  if (error) throw error
+  return (data as { id: string }).id
+}
+
+async function insertIntervenant(c: Ctx, input: {
+  siteId: string; role: string; companyId: string; mainContactId?: string | null
+}) {
+  const { error } = await c.supabase.from('site_intervenants').insert({
+    site_id: input.siteId, role: input.role,
+    company_id: input.companyId, main_contact_id: input.mainContactId ?? null,
   })
   if (error) throw error
 }
@@ -459,12 +499,29 @@ async function main() {
     })
   }
 
+  // Le CASTING : sans entreprise ni contact, aucune action n'a de responsable
+  // structurel, donc la fiche Intervenant n'a rien à montrer et le parcours
+  // Intervenant → Action n'existe pas.
+  const petroContact = await step('Petro — Casting (entreprise + conducteur de travaux)', async () => {
+    const company = await insertCompany(c, 'Clim Austral', 'Clim Austral')
+    const contact = await insertContact(c, {
+      companyId: company, fullName: 'Joseph Wamytan',
+      fonction: 'Conducteur de travaux', isMain: true,
+    })
+    await insertIntervenant(c, { siteId: petro, role: 'ETV', companyId: company, mainContactId: contact })
+    return contact
+  })
+
   const petroActions = petroR1
-    ? await step('Petro — Actions issues de la réunion', async () => {
+    ? await step('Petro — Actions issues de la réunion (2 avec responsable)', async () => {
         const a1 = await insertAction(c, { siteId: petro, title: 'Vérifier les réservations CVC secteur B', createdAt: t(-17, '09:00'), reportId: petroR1, status: 'planned', convertedType: petroMission ? 'mission' : null, convertedId: petroMission })
-        const a2 = await insertAction(c, { siteId: petro, title: 'Contrôler les alimentations électriques provisoires', createdAt: t(-17, '09:00'), reportId: petroR1, dueDate: d(2), corpsEtat: 'Électricité' })
+        // a2 : PORTE le responsable ET reste SANS décision liée → c'est le cas
+        // « Action sans Décision » du scénario de recette.
+        const a2 = await insertAction(c, { siteId: petro, title: 'Contrôler les alimentations électriques provisoires', createdAt: t(-17, '09:00'), reportId: petroR1, dueDate: d(2), corpsEtat: 'Électricité', assignedContactId: petroContact, assignedToName: petroContact ? 'Joseph Wamytan' : null })
         const a3 = await insertAction(c, { siteId: petro, title: 'Valider les portes coupe-feu avec le bureau de contrôle', createdAt: t(-17, '09:00'), reportId: petroR1, dueDate: d(5), corpsEtat: 'Menuiserie' })
-        const a4 = await insertAction(c, { siteId: petro, title: 'Organiser la visite sécurité avec la Province', createdAt: t(-17, '09:00'), reportId: petroR1, lastProgressAt: t(-1, '16:00') })
+        // Deux actions pour le même responsable → la fiche Intervenant affiche une
+        // LISTE « Actions à suivre » (et non le chapô à engagement unique).
+        const a4 = await insertAction(c, { siteId: petro, title: 'Organiser la visite sécurité avec la Province', createdAt: t(-17, '09:00'), reportId: petroR1, lastProgressAt: t(-1, '16:00'), assignedContactId: petroContact, assignedToName: petroContact ? 'Joseph Wamytan' : null })
         return [a1, a2, a3, a4]
       })
     : null
@@ -584,6 +641,30 @@ async function main() {
   // ══ PORT AUTONOME — suivi qui décroche (accueil orange) ═════════════════
   await step('Port Autonome — suivi sans avancée depuis 8 j', () =>
     insertAction(c, { siteId: port, title: 'Suivre le devis de reprise du bardage', createdAt: t(-20, '09:00'), lastProgressAt: t(-8, '09:00') }))
+
+  // ══ LE SCÉNARIO DE RECETTE EST GARANTI PAR LA DÉMO ELLE-MÊME ═════════════
+  // La démo n'est pas un décor : c'est le jeu de données fonctionnel. Si l'un de
+  // ces quatre cas disparaît, le parcours correspondant devient intestable — et
+  // dans six mois personne ne saurait pourquoi. Le seed le dit tout de suite.
+  await step('Vérification du scénario de recette (Petro Atiti)', async () => {
+    const { data: decs } = await supabase.from('site_decisions').select('titre, action_id').eq('site_id', petro)
+    const { data: acts } = await supabase.from('site_actions').select('id, title, assigned_contact_id').eq('site_id', petro)
+    const decisions = (decs ?? []) as Array<{ titre: string; action_id: string | null }>
+    const actions = (acts ?? []) as Array<{ id: string; title: string; assigned_contact_id: string | null }>
+    const liees = new Set(decisions.map((x) => x.action_id).filter(Boolean))
+
+    const cas: Array<[string, boolean]> = [
+      ['une Décision reliée à une Action', decisions.some((x) => x.action_id)],
+      ['une Décision SANS Action liée', decisions.some((x) => !x.action_id)],
+      ['une Action SANS Décision liée', actions.some((a) => !liees.has(a.id))],
+      ['un Intervenant avec des Actions à suivre', actions.filter((a) => a.assigned_contact_id).length >= 1],
+    ]
+    const manquants = cas.filter(([, ok]) => !ok).map(([nom]) => nom)
+    for (const [nom, ok] of cas) console.log(`      ${ok ? '✓' : '✗'} ${nom}`)
+    if (manquants.length > 0) {
+      throw new Error(`Scénario de recette incomplet — cas manquant(s) : ${manquants.join(' · ')}`)
+    }
+  })
 
   console.log(`\n=== Terminé ${stepFailures > 0 ? `avec ${stepFailures} échec(s) — voir ✗ ci-dessus` : 'sans échec'} ===`)
   console.log(`\nConnexion démo : demo@memoria.nc / ${DEMO_PASSWORD}`)
