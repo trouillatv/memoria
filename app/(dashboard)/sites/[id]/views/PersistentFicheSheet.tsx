@@ -21,7 +21,7 @@
    l'ouverture, ce qui déclencherait précisément l'animation qu'on veut éviter. Cette
    valeur ne pilote que des classes CSS de transition — jamais une donnée affichée. */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { ActionFicheBody } from './action/ActionFiche'
@@ -47,9 +47,22 @@ export function PersistentFicheSheet({ siteId, person, action, decision }: {
   const active: 'action' | 'decision' | 'person' | null =
     action ? 'action' : decision ? 'decision' : person ? 'person' : null
 
+  // PR2 — l'IDENTITÉ de l'objet affiché. Quand elle change, seul le CORPS est
+  // remonté : la transformation se rejoue. La COQUILLE n'est jamais remontée (PR1).
+  const contentKey = active ? `${active}:${params.get(active) ?? ''}` : null
+
+  // ── FERMER NE DOIT RIEN ATTENDRE ───────────────────────────────────────────
+  // Fermer ne charge AUCUNE donnée : rien du serveur n'est nécessaire pour faire
+  // disparaître le panneau. Or l'URL pilotait seule l'affichage, donc le panneau
+  // restait à l'écran le temps que le serveur recalcule toute la page — ~3 s
+  // observées en production, pour un geste qui n'a rien à demander à personne.
+  // On ferme donc TOUT DE SUITE, et l'URL se met à jour derrière.
+  const [closingKey, setClosingKey] = useState<string | null>(null)
+
   // Fermer retire le param du maillon courant + sa source, sans perdre l'onglet.
   // Identique aux ex-deep-links (mêmes clés supprimées).
   function close() {
+    setClosingKey(contentKey)
     const next = new URLSearchParams(params.toString())
     if (active === 'action') { next.delete('action'); next.delete('action_source'); next.delete('action_site') }
     else if (active === 'decision') { next.delete('decision'); next.delete('decision_source') }
@@ -85,9 +98,11 @@ export function PersistentFicheSheet({ siteId, person, action, decision }: {
           ? { typeLabel: 'Intervenant', href: backToPersonHref(fromPerson) }
           : null
 
-  // PR2 — l'IDENTITÉ de l'objet affiché. Quand elle change, seul le CORPS est
-  // remonté : la transformation se rejoue. La COQUILLE n'est jamais remontée (PR1).
-  const contentKey = active ? `${active}:${params.get(active) ?? ''}` : null
+  // Une fois la fermeture prise en compte par l'URL, on oublie la fermeture
+  // optimiste — sinon revenir en arrière rouvrirait une fiche encore marquée
+  // « fermée », et le panneau resterait invisible.
+  if (closingKey !== null && contentKey === null) setClosingKey(null)
+  const isClosing = closingKey !== null && closingKey === contentKey
 
   // DEUX ÉVÉNEMENTS ≠ DEUX GESTES : à l'OUVERTURE (aucun contenu précédent), le
   // panneau qui arrive explique déjà le changement → on n'anime PAS le contenu.
@@ -101,7 +116,7 @@ export function PersistentFicheSheet({ siteId, person, action, decision }: {
   if (!active) return null
 
   return (
-    <Sheet open onOpenChange={(o) => { if (!o) close() }}>
+    <Sheet open={!isClosing} onOpenChange={(o) => { if (!o) close() }}>
       {/* Le × reste TOUJOURS disponible. Le Lot 1 le masquait dès qu'un « ← »
           existait (deux sorties concurrentes sur ce qui était encore une modale) ;
           en chaînant Décision → Action → retour, `back` est défini à chaque étape
