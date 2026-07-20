@@ -11,7 +11,7 @@
 /** `/sites/<id>/decision/<x>` → `/sites/<id>` : la base, quel que soit le maillon ouvert.
  *  Chaque objet qui reçoit une adresse au Lot 4 s'ajoute ici — et nulle part ailleurs. */
 function baseChantier(pathname: string): string {
-  return pathname.replace(/\/(decision|action|reunion|document)\/[^/]+\/?$/, '')
+  return pathname.replace(/\/(decision|action|reunion|document|reserve)\/[^/]+\/?$/, '')
 }
 
 /** Suivre une relation ne change pas le décor : l'onglet, le sous-onglet et les

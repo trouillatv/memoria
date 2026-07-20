@@ -144,6 +144,11 @@ describe('Un objet qui a une adresse s’ouvre LUI-MÊME', () => {
       .toBe('/sites/s1/action/act-1')
   })
 
+  it('une réserve ouvre la réserve — elle a son adresse depuis le Lot 4', () => {
+    expect(memoryHitHref(hit({ type: 'site_reserve', id: 'res-1' })))
+      .toBe('/sites/s1/reserve/res-1')
+  })
+
   it('une réunion ouvre la réunion, pas le chantier qui la contient', () => {
     // Lot 4. Application directe de la règle de modélisation : un conteneur est
     // un contexte, jamais un écran de substitution.
@@ -166,7 +171,7 @@ describe('Un objet qui a une adresse s’ouvre LUI-MÊME', () => {
   it('les types sans modèle de navigation gardent leur repli', () => {
     // Volontaire : ne pas généraliser des URL qui n'existent pas. Le retour au
     // chantier reste honnête tant que ces objets n'ont pas de fiche.
-    for (const type of ['anomaly', 'observation', 'site_reserve', 'obligation'] as const) {
+    for (const type of ['anomaly', 'observation', 'obligation'] as const) {
       expect(memoryHitHref(hit({ type, id: 'x' }))).toBe('/sites/s1')
     }
   })
