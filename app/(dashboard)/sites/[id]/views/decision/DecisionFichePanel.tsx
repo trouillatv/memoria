@@ -11,10 +11,12 @@
 // deviennent deux intentions distinctes qui ne correspondent plus au même état
 // d'historique. Si la règle ne tient plus, il faudra redonner au × sa sémantique.
 
+import { useEffect } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { DecisionFicheBody } from './DecisionFiche'
 import { toSegmentHref, quitterEspaceHref } from '../fiche-segment-href'
+import { noterFiche, terminerParcours } from '../fiche-espace-historique'
 import type { DecisionFicheData } from '@/lib/knowledge/decision-fiche'
 
 export function DecisionFichePanel({ decision }: { decision: DecisionFicheData }) {
@@ -31,6 +33,15 @@ export function DecisionFichePanel({ decision }: { decision: DecisionFicheData }
   // layouts. On décrit le fait, on ne généralise pas.)
   const ouvert = pathname.includes('/decision/')
 
+  // On suit le parcours réellement effectué dans l'espace, pour savoir combien
+  // d'entrées la sortie devra consommer.
+  useEffect(() => { if (ouvert) noterFiche(pathname) }, [ouvert, pathname])
+
+  // « Terminer le parcours courant » — cf. invariant de l'ADR.
+  function quitter() {
+    if (!terminerParcours()) router.replace(quitterEspaceHref(pathname, search))
+  }
+
   // La relation « Produit : <action> » doit rester DANS le nouveau modèle, sinon
   // la chaîne se brise et retombe sur l'ancien chemin par paramètres.
   const href = toSegmentHref(decision.action?.href, 'action', pathname, search)
@@ -41,7 +52,7 @@ export function DecisionFichePanel({ decision }: { decision: DecisionFicheData }
   if (!ouvert) return null
 
   return (
-    <Sheet open onOpenChange={(o) => { if (!o) router.replace(quitterEspaceHref(pathname, search)) }}>
+    <Sheet open onOpenChange={(o) => { if (!o) quitter() }}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
         <DecisionFicheBody decision={d} />
       </SheetContent>
