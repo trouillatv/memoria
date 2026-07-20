@@ -21,8 +21,8 @@
    l'ouverture, ce qui déclencherait précisément l'animation qu'on veut éviter. Cette
    valeur ne pilote que des classes CSS de transition — jamais une donnée affichée. */
 
-import { useEffect, useRef, useState } from 'react'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useRef } from 'react'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { ActionFicheBody } from './action/ActionFiche'
 import { DecisionFicheBody } from './decision/DecisionFiche'
@@ -38,50 +38,50 @@ export function PersistentFicheSheet({ siteId, person, action, decision }: {
   action: ActionFicheData | null
   decision: DecisionFicheData | null
 }) {
-  const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
 
+  // ── C'EST L'ADRESSE QUI DIT CE QUI EST OUVERT ──────────────────────────────
+  // Le panneau se pilotait sur les DONNÉES venues du serveur. Il restait donc
+  // affiché tant que le serveur n'avait pas recalculé toute la page — ~3 s.
+  // Désormais il se pilote sur l'ADRESSE : une fiche est ouverte si son
+  // paramètre est présent ET si ses données sont là. Retirer le paramètre suffit
+  // à la fermer, immédiatement, sans rien demander au serveur.
+  //
   // Un seul maillon actif à la fois : les liens croisés suppriment l'autre param
   // (cf. IntervenantFiche `actionHref`/`decisionHref`, decision-fiche, action-fiche).
   const active: 'action' | 'decision' | 'person' | null =
-    action ? 'action' : decision ? 'decision' : person ? 'person' : null
+    params.get('action') && action ? 'action'
+      : params.get('decision') && decision ? 'decision'
+        : params.get('person') && person ? 'person'
+          : null
 
   // PR2 — l'IDENTITÉ de l'objet affiché. Quand elle change, seul le CORPS est
   // remonté : la transformation se rejoue. La COQUILLE n'est jamais remontée (PR1).
   const contentKey = active ? `${active}:${params.get(active) ?? ''}` : null
 
-  // ── FERMER NE DOIT RIEN ATTENDRE ───────────────────────────────────────────
-  // Fermer ne charge AUCUNE donnée : rien du serveur n'est nécessaire pour faire
-  // disparaître le panneau. Or l'URL pilotait seule l'affichage, donc le panneau
-  // restait à l'écran le temps que le serveur recalcule toute la page — ~3 s
-  // observées en production, pour un geste qui n'a rien à demander à personne.
-  // On ferme donc TOUT DE SUITE, et l'URL se met à jour derrière.
+  // ── FERMER NE DEMANDE PLUS RIEN AU SERVEUR ─────────────────────────────────
+  // Fermer ne charge aucune donnée. On met donc l'adresse à jour CÔTÉ CLIENT via
+  // l'API History native — que Next resynchronise avec `useSearchParams` sans
+  // aucun aller-retour. Le paramètre disparaît, donc `active` passe à null, donc
+  // le panneau se ferme : instantanément, et sans recalcul serveur inutile.
   //
-  // ⚠️ Ceci n'est PAS la solution aux 3 secondes : le serveur travaille toujours
-  // autant, on cesse seulement de le faire attendre à l'utilisateur. La cause
-  // (l'onglet et la fiche sont deux paramètres de la MÊME adresse, donc changer
-  // l'un recalcule l'autre) est traitée en ouverture du Lot 3.
-  //
-  // On retient l'ADRESSE COMPLÈTE au moment de la fermeture, et on relâche dès
-  // qu'elle bouge — pour quelque raison que ce soit. Retenir l'identité de la
-  // fiche laissait une fenêtre où recliquer la même fiche ne faisait rien.
-  const search = params.toString()
-  const [closedSearch, setClosedSearch] = useState<string | null>(null)
-  if (closedSearch !== null && closedSearch !== search) setClosedSearch(null)
-  const isClosing = closedSearch !== null && closedSearch === search
-
-  // Fermer retire le param du maillon courant + sa source, sans perdre l'onglet.
-  // Identique aux ex-deep-links (mêmes clés supprimées).
+  // Ce n'est plus un masque : la précédente version cachait le panneau pendant
+  // que l'adresse restait fausse ~3 s, ce qui créait une FENÊTRE MORTE — recliquer
+  // la même fiche visait l'adresse courante et ne faisait rien. Ici l'adresse et
+  // l'affichage sont vrais au même instant, donc le re-clic fonctionne.
   function close() {
-    setClosedSearch(search)
     const next = new URLSearchParams(params.toString())
     if (active === 'action') { next.delete('action'); next.delete('action_source'); next.delete('action_site') }
     else if (active === 'decision') { next.delete('decision'); next.delete('decision_source') }
     else if (active === 'person') { next.delete('person'); next.delete('person_source') }
     next.delete('from_person')
     const qs = next.toString()
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    // `replaceState` et non `router.replace` : aucune requête serveur n'est
+    // déclenchée. Next lit cette adresse et met `useSearchParams` à jour, ce qui
+    // suffit à fermer le panneau. Le contenu de l'onglet, lui, n'est pas touché —
+    // il n'avait aucune raison d'être recalculé.
+    window.history.replaceState(null, '', qs ? `${pathname}?${qs}` : pathname)
   }
 
   // Le retour vers la PERSONNE d'où l'on vient : `?person=` a été retiré de l'URL
@@ -123,7 +123,7 @@ export function PersistentFicheSheet({ siteId, person, action, decision }: {
   if (!active) return null
 
   return (
-    <Sheet open={!isClosing} onOpenChange={(o) => { if (!o) close() }}>
+    <Sheet open onOpenChange={(o) => { if (!o) close() }}>
       {/* Le × reste TOUJOURS disponible. Le Lot 1 le masquait dès qu'un « ← »
           existait (deux sorties concurrentes sur ce qui était encore une modale) ;
           en chaînant Décision → Action → retour, `back` est défini à chaque étape

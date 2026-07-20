@@ -12,7 +12,6 @@ import { listInterventionsSupervisor } from '@/lib/db/interventions'
 import { listCyclesBySite } from '@/lib/db/planning-cycles'
 import { listSiteDeadlines } from '@/lib/db/site-deadlines'
 import { listTeams } from '@/lib/db/teams'
-import type { DbTeam } from '@/types/db'
 import {
   getLastEndedVisitForSite,
   listSiteVisitsWithCounts,
@@ -23,13 +22,11 @@ import {
   getSiteRecentActivity,
   type RecentActivityItem,
 } from '@/lib/db/site-cockpit'
-import { buildSiteMemorySignals, type MemorySignal } from '@/lib/db/site-memory-signals'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { listSitePhotos } from '@/lib/db/site-photos'
 import { getVisitCapturePreviewUrls, listVisitCapturesBySite } from '@/lib/db/visit-captures'
 import { listSiteProofDossiers } from '@/lib/db/proof-dossier'
 import { getSiteQrHistory, getSiteQrInfo } from '@/lib/db/site-qr'
-import { getMemoryReview } from '@/lib/knowledge/memory-review'
 import { getSiteGraph } from '@/lib/knowledge/site-graph'
 import { getSiteIntervenantsView, getSiteIntervenantFiche } from '@/lib/knowledge/site-intervenants-view'
 import { buildIntervenantsDashboard } from '@/lib/knowledge/intervenants-dashboard-model'
@@ -38,12 +35,10 @@ import { todayLocalIso } from '@/lib/time/local-date'
 import { PersistentFicheSheet } from './views/PersistentFicheSheet'
 import { getSiteActionFiche } from '@/lib/knowledge/action-fiche'
 import { getSiteDecisionFiche } from '@/lib/knowledge/decision-fiche'
-import { getSiteCausalThreads } from '@/lib/knowledge/causal-threads'
-import { MemoireCausale } from './views/memoire/MemoireCausale'
-import { MemoireSubTabs, type MemoireSubTab } from './views/memoire/MemoireSubTabs'
+import { type MemoireSubTab } from './views/memoire/MemoireSubTabs'
+import { MemoireView } from './views/memoire/MemoireView'
 import { ExplorerWorkspace } from './views/explorer/ExplorerWorkspace'
 import { logUsageEvent } from '@/lib/db/usage-events'
-import { listSubjectsBySite } from '@/lib/db/subjects'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import {
   selectNextEvent,
@@ -63,7 +58,6 @@ import { SiteMemoryQuery } from './SiteMemoryQuery'
 import { SiteTabsNav, resolveSiteTab, type SiteTabKey } from './SiteTabsNav'
 import { TogglePanel } from './TogglePanel'
 import { DocumentsWorkspace, type DocumentsQrState, type SiteMediaSummary } from './views/documents/DocumentsWorkspace'
-import { MemoireConfirmer } from './views/memoire/MemoireConfirmer'
 import { WorkWorkspace } from './views/work/WorkWorkspace'
 import { SandboxResetButton } from './SandboxResetButton'
 import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
@@ -451,68 +445,6 @@ async function ExplorerView({ siteId }: { siteId: string }) {
   // best-effort, ne retarde jamais le rendu.
   void logUsageEvent({ event: 'explorer_opened', siteId })
   return <ExplorerWorkspace graph={graph} />
-}
-
-async function MemoireView({
-  siteId,
-  siteName,
-  memtab,
-}: {
-  siteId: string
-  siteName: string
-  memtab: MemoireSubTab
-}) {
-  // « Mémoire du chantier » = l'endroit où l'on COMPREND et où l'on VALIDE — pas
-  // l'endroit où l'on range tout. Deux axes : Pourquoi ? (chaînes causales) et
-  // À confirmer (inbox des propositions IA). La Chronologie canonique vit dans la
-  // navigation principale — un lien y renvoie, jamais un doublon. La recherche
-  // reste le bloc commun. Même source que la Mémoire terrain (`getMemoryReview`).
-  const review = await getMemoryReview(siteId).catch(() => ({ confirmed: [], toReview: [] }))
-
-  // La recherche : commune aux deux lectures, mais jamais au premier plan dans
-  // « À confirmer » (le centre y est l'inbox) — elle y passe en second plan.
-  const searchBlock = (
-    <section className="rounded-xl border bg-card p-3.5 shadow-sm">
-      <p className="mb-2 text-[12.5px] font-medium text-muted-foreground">Poser une question sur ce chantier</p>
-      <SiteMemoryQuery siteId={siteId} />
-    </section>
-  )
-
-  let content: ReactNode
-  if (memtab === 'confirmer') {
-    // Signaux et équipes ne servent QU'ICI : « Pourquoi ? » ne les paie plus.
-    const [subjects, signals, teams] = await Promise.all([
-      listSubjectsBySite(siteId).catch(() => []),
-      buildSiteMemorySignals(siteId).catch((): MemorySignal[] => []),
-      listTeams().catch((): DbTeam[] => []),
-    ])
-    content = (
-      <MemoireConfirmer
-        siteId={siteId}
-        siteName={siteName}
-        review={review}
-        signals={signals}
-        subjectsCount={subjects.length}
-        teams={teams}
-        searchSlot={searchBlock}
-      />
-    )
-  } else {
-    // Pourquoi ? — les chaînes causales validées (fils par engagement).
-    content = (
-      <div className="space-y-5">
-        {searchBlock}
-        <MemoireCausale threads={(await getSiteCausalThreads(siteId)) ?? []} siteId={siteId} />
-      </div>
-    )
-  }
-
-  return (
-    <div>
-      <MemoireSubTabs active={memtab} toConfirmCount={review.toReview.length} />
-      {content}
-    </div>
-  )
 }
 
 async function buildDocumentsQrState(siteId: string): Promise<DocumentsQrState> {

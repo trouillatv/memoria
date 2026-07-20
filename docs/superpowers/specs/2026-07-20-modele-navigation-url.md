@@ -33,6 +33,19 @@ L'onglet devient un **segment de chemin**, plus un paramètre.
 Conséquence recherchée : changer de fiche ne touche plus au segment de l'onglet, donc le contenu de
 l'onglet n'est plus recalculé.
 
+> ⚠️ **CONTRAINTE DÉCOUVERTE PENDANT LE PROTOTYPE (2026-07-20) — cette forme d'URL
+> n'est PAS disponible telle quelle.** L'espace `/sites/<id>/<segment>` est **déjà
+> occupé** par une quinzaine de routes héritées : `actions`, `documents`, `reserves`,
+> `subjects`, `photos`, `journal`, `preuves`, `visites`, `livraisons`, `obligations`,
+> `roulements`, `scopes`, `recit`, `reprise`, `qr`, `chronicle`… et **`memoire`**,
+> qui rend aujourd'hui le hub (Atelier / Sujets / Récit) — celui par lequel l'atelier
+> reste accessible depuis qu'on a retiré son lien de « À confirmer ».
+>
+> Le principe (séparer l'onglet de la fiche) n'est pas remis en cause ; **la forme
+> des URL l'est.** Le prototype doit proposer une structure compatible avec cet
+> héritage — par exemple un préfixe de vue (`/sites/<id>/vue/<onglet>`), ou la
+> migration explicite des pages héritées concernées. **À trancher avant de généraliser.**
+
 ### 2. L'URL canonique d'une fiche
 
 La fiche devient elle aussi un **segment**, affiché dans une **zone parallèle** (*parallel route*)
