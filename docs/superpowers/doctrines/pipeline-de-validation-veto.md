@@ -174,3 +174,31 @@ doute technique ne subsistait sur les lots 3 et 4 — recette verte, suite verte
 un commit n'avait pas reçu sa revue. Ils sont restés `EN_VALIDATION_FINALE`. La
 distinction n'est pas de la prudence, c'est la différence entre **preuve produit** et
 **preuve de validation**.
+
+---
+
+## RÉVISION (2026-07-21) — le veto appartient aux preuves exécutables
+
+Bilan après usage réel : les agents vérificateurs ont trouvé de vrais défauts, mais
+ils ont aussi rendu un verdict **faux** (défaut réfuté par un test de 30 secondes en
+production, qui avait déjà coûté un correctif fantôme), failli rejeter à tort sur un
+artefact de leur propre outillage, et coûté un passage long là où une vérification
+ciblée à deux tranchait en quelques minutes. Les preuves décisives de tout le lot
+ont été **directes** : une recette en production, une mesure SQL contre la vraie
+base — jamais un rapport.
+
+La règle devient :
+
+- **le veto appartient aux preuves exécutables** — code de sortie réel, recette
+  navigateur, mesure directe en base. Aucun rapport d'agent n'accepte ni ne rejette
+  un lot ;
+- un agent sert à l'**inventaire large** et à la relecture qui produit des
+  **hypothèses** — et toute hypothèse de revue se démontre avant correction
+  (cf. `demontrer-avant-agir.md`), y compris quand elle vient d'un vérificateur ;
+- la vérification ciblée se choisit **à deux** : la bonne question posée par le
+  propriétaire du produit, exécutée immédiatement.
+
+Ce qui ne change pas : l'auteur ne se certifie jamais lui-même, les six preuves du
+contrat de livraison, les quatre états de lot, et « recette non exécutée = lot non
+livré ». Seul le **mécanisme** du contrôle change — l'indépendance qui compte est
+celle entre l'affirmation et la preuve, pas celle entre deux agents.
