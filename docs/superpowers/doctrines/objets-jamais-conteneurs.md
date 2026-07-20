@@ -77,3 +77,29 @@ objet à venir. Ce n'est pas une correction, c'est la suite logique de l'adressa
 État au 2026-07-20 : **non tenu**. La fiche Réserve n'est ouvrable que depuis la
 recherche ; `/sites/<id>/reserves` ne pointe pas vers elle. Inscrit dans les travaux
 d'intégration du graphe, hors du Lot 4 qui livre les objets eux-mêmes.
+
+### Précision : les écrans de travail gardent leur destination
+
+> **Les écrans de travail conservent leur destination principale. Lorsqu'ils
+> représentent un objet du graphe, ils offrent en plus un accès explicite à sa
+> fiche, sans remplacer le parcours métier.** (Vincent, 2026-07-20)
+
+Une liste n'est pas toujours un simple index. `/meetings` est un espace de travail :
+on y vient pour rédiger, relire ou compléter un compte-rendu. Détourner son lien
+principal vers la fiche casserait l'intention de celui qui l'ouvre.
+
+L'invariant n'en souffre pas — il demande que l'objet soit **ouvrable**, pas qu'il
+soit l'unique destination. La liste garde donc `/meetings/<id>` et ajoute un accès
+discret à la fiche. Deux usages, deux liens, aucune ambiguïté :
+
+- **usage métier** — ouvrir le compte-rendu pour travailler ;
+- **usage connaissance** — ouvrir la fiche pour comprendre les liens.
+
+Règle générale, pas un cas particulier : elle vaudra pour tout écran d'édition
+d'une Action, d'un Document ou d'un Contrat.
+
+**Seule exception, et elle se résout d'elle-même** : un objet sans fiche n'a pas de
+lien. On ne fabrique pas une porte vers ce qui n'existe pas encore ; le jour où la
+fiche existe, la règle s'applique. C'est aussi le cas d'un objet qui, ce jour-là,
+n'a pas d'adresse *dans ce contexte* — une réunion rattachée à un contrat plutôt
+qu'à un chantier n'a pas de fiche site-scopée, donc pas de lien.

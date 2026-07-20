@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { Mic, MapPin, Building2, ListTodo, AlertTriangle, FileText } from 'lucide-react'
+import { Mic, MapPin, Building2, ListTodo, AlertTriangle, FileText, Network } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listMeetings, type MeetingListRow } from '@/lib/db/site-reports'
 import { listOpenSiteActionsByReports, type SiteActionRow } from '@/lib/db/site-actions'
@@ -272,8 +272,25 @@ function MeetingRow({ m, todayIso }: { m: MeetingListRow; todayIso: string }) {
           </div>
         </div>
       </Link>
-      {/* Corbeille en overlay : surtout pour purger brouillons/échecs de test. */}
-      <div className="absolute right-2 top-2 z-10">
+      {/* « Toutes les portes » — l'écran de travail GARDE sa destination :
+          on vient ici pour rédiger, relire, compléter un compte-rendu, et le
+          lien principal de la carte y mène toujours. La fiche du graphe est un
+          SECOND accès, explicite et discret.
+          Absent quand la réunion n'a pas UN chantier unique (réunion de contrat,
+          ou plusieurs chantiers) : elle n'a alors pas de fiche site-scopée, et
+          on ne fabrique pas une porte vers ce qui n'existe pas. */}
+      <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
+        {m.ficheSiteId && (
+          <Link
+            href={`/sites/${m.ficheSiteId}/reunion/${m.id}`}
+            scroll={false}
+            title="Voir la fiche de la réunion"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Network className="h-3.5 w-3.5" aria-hidden />
+            <span className="sr-only">Voir la fiche de la réunion</span>
+          </Link>
+        )}
         <DeleteMeetingButton reportId={m.id} label={heading} />
       </div>
     </li>

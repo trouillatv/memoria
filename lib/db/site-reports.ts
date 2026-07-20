@@ -258,6 +258,10 @@ export interface MeetingListRow {
   contractId: string | null
   contractName: string | null
   siteNames: string[]
+  /** Le chantier de la réunion, quand elle en a UN SEUL : c'est la condition
+   *  pour qu'elle ait une fiche site-scopée. Plusieurs chantiers ou aucun
+   *  (réunion de contrat) → `null`, et aucun lien n'est proposé. */
+  ficheSiteId: string | null
   /** Décisions détectées (propositions, tous statuts). */
   decisionCount: number
   /** Actions encore ouvertes nées de cette réunion. */
@@ -354,6 +358,7 @@ export async function listMeetings(): Promise<MeetingListRow[]> {
       contractId: r.contract_id,
       contractName: r.contract_id ? contractName.get(r.contract_id) ?? null : null,
       siteNames: [...siteSet].map((id) => siteName.get(id) ?? '—'),
+      ficheSiteId: siteSet.size === 1 ? [...siteSet][0] : null,
       decisionCount: decisionCount.get(r.id) ?? 0,
       openActionCount: openActionCount.get(r.id) ?? 0,
       blockerCount: blockers.length,
