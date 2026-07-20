@@ -45,3 +45,26 @@ sont-ils d'accord ? » — celui qui code, celui qui vérifie, la suite de tests
 navigateur. Tant qu'ils ne le sont pas, il n'y a rien à livrer.
 
 C'est le processus qui devient digne de confiance, pas le rapporteur.
+
+## Les états d'un lot — quatre mots, pas de nuances
+
+Formalisés par Vincent le 2026-07-20 : *« un état unique, immédiatement lisible, qui
+évite toute ambiguïté entre "en cours de développement" et "en attente de preuves". »*
+
+| État | Ce qu'il dit exactement |
+|---|---|
+| `EN_EXECUTION` | Le code s'écrit. Rien n'est prouvé, rien n'est promis. |
+| `ATTENTE_ARBITRAGE` | Bloqué sur une décision que les doctrines ne tranchent pas. **Seul état où l'on sollicite Vincent.** |
+| `EN_VALIDATION_FINALE` | **Développement terminé, validation bloquante en cours.** Les fonctionnalités existent ; les preuves manquent. |
+| `TERMINE` | Les six preuves sont réunies, verdict du vérificateur favorable, recette exécutée. |
+
+Ce que ces états interdisent :
+
+- **« probablement bon »**, « ça devrait passer », « je pense que » — aucun n'est un état ;
+- confondre `EN_VALIDATION_FINALE` avec un retour en arrière : le développement ne
+  recommence pas, on élève le seuil de preuve ;
+- écrire `TERMINE` quand une seule preuve manque. Il n'existe pas de « terminé avec
+  réserve » : c'est `EN_VALIDATION_FINALE`.
+
+**Absence de preuve ≠ preuve de succès.** Une suite de tests non relancée ne dit rien —
+ni vert ni rouge. Le seul énoncé honnête est « je ne peux rien affirmer ».
