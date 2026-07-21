@@ -22,6 +22,7 @@ import {
   trackDebriefNarrativeDisplayedAction,
 } from '../debrief-actions'
 import type { VisitSummary, SummaryItem } from '@/lib/knowledge/visit-summary'
+import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { StakeholderProposals } from './StakeholderProposals'
 import type { StoredDebriefAnalysis, SnapshotDelta } from '@/lib/visits/debrief-analysis'
 
@@ -542,7 +543,9 @@ export function MemoriaRetained({
 function safeDate(iso: string): string | null {
   const t = Date.parse(iso)
   if (Number.isNaN(t)) return null
-  return new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+  return new Date(t).toLocaleDateString('fr-FR', {
+    timeZone: NOUMEA_TZ, day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+  })
 }
 
 function deltaTotal(d: SnapshotDelta): number { return d.photos + d.videos + d.vocals + d.notes }

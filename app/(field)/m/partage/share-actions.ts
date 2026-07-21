@@ -24,6 +24,7 @@
 //
 // Aucun second moteur : les photos passent par `ingestBatch` (le même que
 // l'import ZIP), les sources de réunion par `addReportAttachment` (le même que
+import { NOUMEA_TZ } from '@/lib/time/local-date'
 // l'audio capté dans l'app).
 
 import { randomUUID, createHash } from 'node:crypto'
@@ -559,6 +560,7 @@ export async function lastShareTargetAction(): Promise<LastShareTarget | null> {
 
   const isVisit = r.origin !== null
   const when = new Date(r.started_at ?? r.created_at).toLocaleDateString('fr-FR', {
+    timeZone: NOUMEA_TZ,
     day: 'numeric',
     month: 'long',
   })

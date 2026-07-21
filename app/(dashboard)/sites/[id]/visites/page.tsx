@@ -1,5 +1,6 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
+import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { Camera, StickyNote, ClipboardCheck, ListTodo, ChevronRight, MapPin } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
@@ -33,7 +34,11 @@ export default async function SiteVisitsPage({ params }: { params: Promise<{ id:
   if (!identity) notFound()
 
   const fr = (iso: string | null) =>
-    iso ? new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
+    iso
+      ? new Date(iso).toLocaleString('fr-FR', {
+          timeZone: NOUMEA_TZ, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+        })
+      : '—'
 
   return (
     <div className="max-w-3xl space-y-6 py-6">

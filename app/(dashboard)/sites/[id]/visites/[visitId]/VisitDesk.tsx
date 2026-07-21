@@ -23,6 +23,7 @@ import {
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { promoteEvidenceToCrAction } from '@/app/(field)/m/visite/[reportId]/cr/promotion-actions'
 import type { VisitNarrative, NarrativeCapture, NarrativeProposal } from '@/lib/db/visit-narrative'
+import { NOUMEA_TZ } from '@/lib/time/local-date'
 
 export type CaptureMedia = Record<string, { url: string; mime: string | null }>
 
@@ -601,9 +602,14 @@ export function origineDate(c: NarrativeCapture): string {
   }
 }
 
-const heure = (iso: string) => new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-const dateCourte = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+// Le rendu serveur tourne en UTC : sans `timeZone`, une capture de 09:15 à
+// Nouméa s'affichait 22:15 la veille. Le fuseau de l'organisation est donc
+// passé EXPLICITEMENT partout — c'est le meme ecueil que `todayLocalIso`.
+const heure = (iso: string) =>
+  new Date(iso).toLocaleTimeString('fr-FR', { timeZone: NOUMEA_TZ, hour: '2-digit', minute: '2-digit' })
+const dateCourte = (iso: string) =>
+  new Date(iso).toLocaleDateString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'long' })
 const dateHeure = (iso: string) =>
-  new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+  new Date(iso).toLocaleString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
 
 export { ChevronRight }

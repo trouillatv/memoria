@@ -137,3 +137,28 @@ describe('verser une pièce ne déclenche aucune analyse', () => {
     expect(actions).toContain('visit.organization_id !== orgId')
   })
 })
+
+// ── LE FUSEAU DE L'ORGANISATION, PARTOUT (Vincent, 2026-07-22) ─────────────
+//
+// Le rendu serveur tourne en UTC. Sans `timeZone`, une capture de 09:15 à
+// Nouméa s'affichait 22:15 la veille — une frise fausse d'un jour, sur l'écran
+// qui prétend justement dire quand les choses se sont passées.
+
+describe('toutes les heures d’une visite sont celles du chantier', () => {
+  const surfaces = [
+    ['app/(dashboard)/sites/[id]/visites/[visitId]/page.tsx', 'la page de la visite'],
+    ['app/(dashboard)/sites/[id]/visites/[visitId]/VisitDesk.tsx', 'le bureau de traitement'],
+    ['app/(dashboard)/sites/[id]/visites/page.tsx', 'la liste des visites'],
+    ['app/(field)/m/visite/[reportId]/recap/page.tsx', 'la récap mobile'],
+    ['app/(field)/m/visite/[reportId]/cr/MemoriaRetained.tsx', 'la synthèse mobile'],
+  ] as const
+
+  it.each(surfaces)('%s — %s ne formate aucune date en UTC', (fichier) => {
+    const src = readFileSync(join(process.cwd(), fichier), 'utf8')
+    const formatages = src.match(/toLocale(?:Date|Time)?String\([\s\S]{0,220}?\)/g) ?? []
+    for (const f of formatages) {
+      // Une date affichée sans fuseau prend celui du serveur, donc UTC.
+      expect(f, `${fichier} : ${f.slice(0, 60)}…`).toMatch(/timeZone/)
+    }
+  })
+})

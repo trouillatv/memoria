@@ -28,6 +28,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { buildVisitNarrative } from '@/lib/db/visit-narrative'
 import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { getVisitCapturePreviewUrls, type VisitCaptureRow } from '@/lib/db/visit-captures'
+import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { VisitShareButton } from '@/app/(field)/m/visite/[reportId]/VisitShareButton'
 import { VisitDesk, type CaptureMedia } from './VisitDesk'
 import { ReanalyseButton } from './ReanalyseButton'
@@ -385,8 +386,13 @@ async function resolveConducteur(userId: string | null): Promise<string | null> 
 }
 
 const plural = (n: number, un: string, plusieurs: string) => (n > 0 ? `${n} ${n > 1 ? plusieurs : un}` : '')
-const frHeure = (iso: string) => new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-const frDate = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+// Le rendu serveur tourne en UTC : sans `timeZone`, une capture de 09:15 à
+// Nouméa s'affichait 22:15 la veille. Le fuseau de l'organisation est donc
+// passé EXPLICITEMENT partout — c'est le meme ecueil que `todayLocalIso`.
+const frHeure = (iso: string) =>
+  new Date(iso).toLocaleTimeString('fr-FR', { timeZone: NOUMEA_TZ, hour: '2-digit', minute: '2-digit' })
+const frDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'long', year: 'numeric' })
 const frDateHeure = (iso: string) =>
-  new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+  new Date(iso).toLocaleString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
 const frDuree = (min: number) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`)

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { NOUMEA_TZ } from '@/lib/time/local-date'
 import {
   Camera, Video, Mic, Pencil, Target, MapPin, Star, Clock, FileText, ChevronRight,
 } from 'lucide-react'
@@ -70,6 +71,7 @@ export default async function VisitRecapPage({
 
   const startIso = visit.started_at ?? visit.created_at
   const dateLabel = new Date(startIso).toLocaleString('fr-FR', {
+    timeZone: NOUMEA_TZ,
     weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
   })
   const durMins = visit.started_at && visit.ended_at

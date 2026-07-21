@@ -64,6 +64,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
     narrative: { text: debrief?.summary ?? '', outdated: false },
   })
 
+  // Un CR exporté doit porter la date du chantier, pas celle du serveur.
   const exportDate = new Date().toLocaleDateString('fr-FR', {
     day: '2-digit',
     month: 'long',

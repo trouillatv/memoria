@@ -16,6 +16,7 @@
 // n'écrase rien, et ne recrée pas la visite.
 
 import { useMemo, useState, useTransition } from 'react'
+import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -50,7 +51,7 @@ function whenFr(iso: string): string {
   if (day(d) === day(today)) return 'Aujourd’hui'
   const yesterday = new Date(today.getTime() - 86_400_000)
   if (day(d) === day(yesterday)) return 'Hier'
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+  return d.toLocaleDateString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'long' })
 }
 
 export function SharePicker({
