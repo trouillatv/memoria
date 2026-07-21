@@ -124,6 +124,26 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
 
         <CrState visitId={visitId} doc={narrative.validated.document} />
 
+        {/* LE DOSSIER S'EST ENRICHI DEPUIS LA DERNIÈRE LECTURE — un constat, pas
+            un bouton. Réanalyser coûte un appel au modèle : le récit signale,
+            l'humain décide, et le geste reste à son seul endroit. */}
+        {narrative.enrichment.sinceLastAnalysis > 0 && (
+          <p className="rounded-lg border border-amber-300/70 bg-amber-50/70 px-3 py-2 text-[13px] dark:border-amber-900/50 dark:bg-amber-950/20">
+            <span className="font-medium">
+              {narrative.enrichment.sinceLastAnalysis} pièce
+              {narrative.enrichment.sinceLastAnalysis > 1 ? 's sont entrées' : ' est entrée'} au dossier depuis la
+              dernière lecture de MemorIA.
+            </span>{' '}
+            <span className="text-muted-foreground">
+              Ce qui est compris plus bas ne les prend pas encore en compte —{' '}
+              <Link href={`/m/visite/${visitId}/cr`} className="underline underline-offset-4">
+                relire la visite
+              </Link>{' '}
+              pour les intégrer.
+            </span>
+          </p>
+        )}
+
         {/* Quatre chiffres, et chacun dit de quelle couche il vient. */}
         <dl className="grid grid-cols-2 gap-x-6 gap-y-4 pt-2 sm:grid-cols-4">
           <Compteur

@@ -47,6 +47,14 @@ export interface NarrativeCapture {
   /** La pièce jointe, quand il y en a une : c'est elle qui permet d'écouter le
    *  vocal ou de revoir la photo. Simple plomberie d'affichage. */
   attachmentId: string | null
+  /** Quand la pièce est ENTRÉE au dossier — distinct de l'instant où le fait
+   *  s'est produit. Une visite est figée ; son dossier ne l'est pas. */
+  addedAt: string
+  /** Versée au dossier APRÈS la clôture de la visite. On ne réécrit pas le
+   *  passé : on le complète, et on le dit. */
+  addedAfterVisit: boolean
+  /** Entrée depuis la dernière analyse : MemorIA ne l'a pas encore lue. */
+  sinceLastAnalysis: boolean
 }
 
 export interface NarrativeProposal {
@@ -126,6 +134,16 @@ export interface VisitNarrative {
     /** Captures que le conducteur a sorties du compte-rendu. */
     captures: Array<{ id: string; kind: string; body: string | null; why: Reason }>
   }
+  /** LE DOSSIER S'EST-IL ENRICHI DEPUIS LA DERNIÈRE LECTURE ? (2026-07-22)
+   *  Un constat, jamais un déclenchement : réanalyser coûte un appel au modèle,
+   *  et c'est l'humain qui décide. Le récit signale, il n'agit pas. */
+  enrichment: {
+    /** Pièces entrées au dossier après la clôture de la visite. */
+    afterVisit: number
+    /** Pièces que la dernière analyse n'a pas pu lire. */
+    sinceLastAnalysis: number
+    lastAnalysisAt: string | null
+  }
   /** Ce que le récit ne sait pas — dit, jamais masqué. */
   limits: NarrativeLimits
 }
@@ -135,16 +153,21 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
 
   const { data: visit } = await db
     .from('site_reports')
-    .select('id, site_id')
+    .select('id, site_id, ended_at, debrief_analysis')
     .eq('id', reportId)
     .maybeSingle()
   if (!visit) return null
   const siteId = (visit as { site_id: string | null }).site_id
+  const clotureAt = (visit as { ended_at: string | null }).ended_at
+  // `generated_at` porte la date de la dernière synthèse ; sans analyse, aucune
+  // pièce n'est « en retard » — il n'y a simplement rien eu à rattraper.
+  const analyseAt =
+    ((visit as { debrief_analysis: { generated_at?: string } | null }).debrief_analysis?.generated_at) ?? null
 
   const [caps, props, doc] = await Promise.all([
     db
       .from('visit_capture')
-      .select('id, kind, body, created_at, lat, lng, status, triage_intent, attachment_id')
+      .select('id, kind, body, created_at, captured_at, lat, lng, status, triage_intent, attachment_id')
       .eq('report_id', reportId)
       .order('created_at', { ascending: true }),
     db
@@ -159,7 +182,8 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
     id: c.id as string,
     kind: c.kind as string,
     body: (c.body as string | null) ?? null,
-    capturedAt: c.created_at as string,
+    // L'instant RÉEL quand il est connu (import, EXIF) — sinon celui du dépôt.
+    capturedAt: ((c.captured_at as string | null) ?? (c.created_at as string)),
     lat: (c.lat as number | null) ?? null,
     lng: (c.lng as number | null) ?? null,
     // Une capture écartée n'est pas retirée du récit : elle y figure comme
@@ -167,6 +191,9 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
     kept: c.status !== 'discarded',
     intent: (c.triage_intent as string | null) ?? null,
     attachmentId: (c.attachment_id as string | null) ?? null,
+    addedAt: c.created_at as string,
+    addedAfterVisit: Boolean(clotureAt && (c.created_at as string) > clotureAt),
+    sinceLastAnalysis: Boolean(analyseAt && (c.created_at as string) > analyseAt),
     why: explainCapture({
       kept: c.status !== 'discarded',
       intent: (c.triage_intent as string | null) ?? null,
@@ -244,6 +271,11 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
       captures: captured
         .filter((c) => !c.kept)
         .map((c) => ({ id: c.id, kind: c.kind, body: c.body, why: c.why })),
+    },
+    enrichment: {
+      afterVisit: captured.filter((c) => c.addedAfterVisit).length,
+      sinceLastAnalysis: captured.filter((c) => c.sinceLastAnalysis).length,
+      lastAnalysisAt: analyseAt,
     },
     limits: { ...describeLimits(produced), historicalAttributions: historical.length },
   }

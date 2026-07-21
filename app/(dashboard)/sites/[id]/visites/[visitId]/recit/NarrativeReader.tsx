@@ -305,11 +305,22 @@ function Timeline({
 }) {
   return (
     <ol className="relative space-y-0.5 border-l pl-0">
-      {captures.map((c) => {
+      {captures.map((c, i) => {
+        // UNE VISITE EST FIGÉE, SON DOSSIER NE L'EST PAS. Une pièce versée après
+        // coup n'est pas une capture terrain : on ne la fond pas dans la frise,
+        // on ouvre un nouveau jour et on le dit.
+        const jour = frJour(c.addedAt)
+        const nouveauJour = i === 0 || frJour(captures[i - 1]!.addedAt) !== jour
         const Icon = KIND_ICON[c.kind] ?? FileText
         const hasMedia = Boolean(media[c.id])
         return (
           <li key={c.id} className="relative">
+            {nouveauJour && (
+              <p className="-ml-px mb-1 mt-3 border-t pl-5 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
+                {jour}
+                {c.addedAfterVisit && ' · versé au dossier après la visite'}
+              </p>
+            )}
             {/* Le point de la frise, posé SUR la ligne. */}
             <span
               aria-hidden
@@ -330,7 +341,14 @@ function Timeline({
                 <span className={`block truncate text-sm ${c.kept ? '' : 'text-muted-foreground line-through'}`}>
                   {c.body?.trim() || KIND_FR[c.kind] || 'Capture'}
                 </span>
-                <span className="block truncate text-[11px] text-muted-foreground">{c.why.label}</span>
+                <span className="block truncate text-[11px] text-muted-foreground">
+                  {c.addedAfterVisit && (
+                    <span className="mr-1.5 rounded border px-1 py-px text-[10px] uppercase tracking-wide">
+                      Ajouté après
+                    </span>
+                  )}
+                  {c.why.label}
+                </span>
               </span>
               {hasMedia && <Mic className="h-3 w-3 shrink-0 translate-y-0.5 text-muted-foreground" aria-hidden />}
             </button>
@@ -531,3 +549,5 @@ function sentences(text: string | null): string[] {
 
 const frHeure = (iso: string) => iso.slice(11, 16)
 const frDate = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/')
+const frJour = (iso: string) =>
+  new Date(iso).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })

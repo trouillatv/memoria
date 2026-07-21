@@ -25,6 +25,7 @@ const vide: VisitNarrative = {
   },
   produced: [],
   ignored: { byHuman: [], superseded: [], captures: [] },
+  enrichment: { afterVisit: 0, sinceLastAnalysis: 0, lastAnalysisAt: null },
   limits: { historicalAttributions: 0, intervenantProvenanceMissing: true },
 }
 
@@ -41,6 +42,9 @@ const peuple = (): VisitNarrative => ({
       kept: true,
       intent: null,
       attachmentId: 'att-1',
+      addedAt: '2026-07-20T07:12:00Z',
+      addedAfterVisit: false,
+      sinceLastAnalysis: false,
       why: { code: 'capture.kept', label: 'Retenue comme élément à conserver' },
     },
     {
@@ -53,6 +57,9 @@ const peuple = (): VisitNarrative => ({
       kept: false,
       intent: null,
       attachmentId: null,
+      addedAt: '2026-07-22T09:40:00Z',
+      addedAfterVisit: true,
+      sinceLastAnalysis: true,
       why: { code: 'capture.discarded', label: 'Écartée du compte-rendu par le conducteur' },
     },
   ],
@@ -138,5 +145,31 @@ describe('Replier une section', () => {
     fireEvent.click(entete)
     expect(entete).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByRole('button', { name: /La dépose du faux plafond/ })).not.toBeInTheDocument()
+  })
+})
+
+// ── UNE VISITE EST FIGÉE, SON DOSSIER NE L'EST PAS ──────────────────────────
+//
+// Une pièce versée après la clôture (photo oubliée, PDF reçu par mail, vocal
+// arrivé par WhatsApp) n'est pas une capture terrain. On ne la fond pas dans la
+// frise : on ouvre un nouveau jour et on le dit. On ne réécrit pas le passé, on
+// le complète.
+
+describe('les pièces versées après coup ne se déguisent pas en captures terrain', () => {
+  it('marque la pièce ajoutée après la clôture', () => {
+    render(<NarrativeReader narrative={peuple()} media={{}} canPromote={false} crHref={null} />)
+    expect(screen.getByText('Ajouté après')).toBeInTheDocument()
+  })
+
+  it('sépare les jours du dossier, et nomme celui d’après la visite', () => {
+    render(<NarrativeReader narrative={peuple()} media={{}} canPromote={false} crHref={null} />)
+    expect(screen.getByText(/versé au dossier après la visite/i)).toBeInTheDocument()
+  })
+
+  it('ne marque rien quand tout vient du terrain', () => {
+    const terrain = peuple()
+    terrain.captured = terrain.captured.filter((c) => !c.addedAfterVisit)
+    render(<NarrativeReader narrative={terrain} media={{}} canPromote={false} crHref={null} />)
+    expect(screen.queryByText('Ajouté après')).not.toBeInTheDocument()
   })
 })
