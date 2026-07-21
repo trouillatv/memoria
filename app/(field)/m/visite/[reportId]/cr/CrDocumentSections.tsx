@@ -27,7 +27,13 @@
 import { useState } from 'react'
 import { Pencil, RotateCcw, Check, X, Loader2, Lock } from 'lucide-react'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
-import { saveCrSectionAction, restoreCrSectionAction, type PersistedCrDocument } from './cr-document-actions'
+import {
+  saveCrSectionAction,
+  restoreCrSectionAction,
+  finalizeCrAction,
+  reopenCrAction,
+  type PersistedCrDocument,
+} from './cr-document-actions'
 
 export function CrDocumentSections({
   reportId,
@@ -90,7 +96,103 @@ export function CrDocumentSections({
           />
         ))}
       </div>
+
+      <Lifecycle reportId={reportId} status={status} onChanged={setStatus} />
     </section>
+  )
+}
+
+/**
+ * FINALISER, PUIS ROUVRIR SI BESOIN — deux gestes explicites.
+ *
+ * Concrétiser des objets ne finalise PAS le compte-rendu : on peut créer quatre
+ * actions et continuer à corriger le texte. Et rouvrir ne défait rien dans le
+ * chantier : c'est dit avant le clic, pas découvert après.
+ */
+function Lifecycle({
+  reportId,
+  status,
+  onChanged,
+}: {
+  reportId: string
+  status: ReportDocumentStatus
+  onChanged: (s: ReportDocumentStatus) => void
+}) {
+  const [pending, setPending] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const run = async (fn: () => Promise<{ ok: true; status: ReportDocumentStatus } | { ok: false; error: string }>) => {
+    if (pending) return
+    setPending(true)
+    setError(null)
+    const res = await fn()
+    setPending(false)
+    if (res.ok) {
+      onChanged(res.status)
+      setConfirming(false)
+    } else setError(res.error)
+  }
+
+  if (status === 'exported') return null
+
+  return (
+    <div className="mt-3.5 border-t pt-3">
+      {status === 'draft' ? (
+        <>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => run(() => finalizeCrAction(reportId))}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-foreground/20 px-3 py-2.5 text-[13px] font-semibold hover:bg-muted disabled:opacity-50"
+          >
+            {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Lock className="h-4 w-4" aria-hidden />}
+            Finaliser le compte-rendu
+          </button>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Il deviendra une lecture seule. Vous pourrez le rouvrir si besoin.
+          </p>
+        </>
+      ) : confirming ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 dark:border-amber-900/50 dark:bg-amber-950/25">
+          <p className="text-[13px] font-medium text-amber-900 dark:text-amber-200">
+            Rouvrir le compte-rendu ?
+          </p>
+          <p className="mt-1 text-[12px] text-amber-900/80 dark:text-amber-300/80">
+            Il repassera en brouillon et redeviendra modifiable. Les objets déjà créés dans le
+            chantier ne seront ni modifiés ni supprimés.
+          </p>
+          <div className="mt-2.5 flex gap-2">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => run(() => reopenCrAction(reportId))}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-700 px-2.5 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50"
+            >
+              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
+              Rouvrir le brouillon
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => setConfirming(false)}
+              className="rounded-lg px-2.5 py-1.5 text-[12px] text-muted-foreground hover:bg-muted disabled:opacity-50"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+        >
+          <RotateCcw className="h-3.5 w-3.5" aria-hidden /> Rouvrir le brouillon
+        </button>
+      )}
+      {error && <p className="mt-2 text-[12px] text-rose-600 dark:text-rose-400">{error}</p>}
+    </div>
   )
 }
 

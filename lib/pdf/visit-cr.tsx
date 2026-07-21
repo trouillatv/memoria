@@ -14,6 +14,7 @@ import React from 'react'
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import type { VisitCrDoc } from '@/lib/db/visits'
 import type { VisitSummary, SummarySection, SummaryItem } from '@/lib/knowledge/visit-summary'
+import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
 
 const COLORS = {
   text: '#0f172a',
@@ -56,6 +57,22 @@ const styles = StyleSheet.create({
   metaStrong: { fontFamily: 'Helvetica-Bold', color: COLORS.slate },
 
   section: { marginBottom: 13 },
+  // Bandeau BROUILLON — assez large et assez contrasté pour qu'une page isolée
+  // ne puisse pas être prise pour un rapport définitif.
+  draftBand: {
+    backgroundColor: '#b45309',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    marginBottom: 10,
+    borderRadius: 3,
+  },
+  draftBandText: {
+    fontSize: 9,
+    fontFamily: 'Helvetica-Bold',
+    color: '#ffffff',
+    textAlign: 'center',
+    letterSpacing: 1.2,
+  },
   titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
   dot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
   titleGreen: { fontSize: 11, fontFamily: 'Helvetica-Bold', color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -220,6 +237,53 @@ function ObservationMapSnapshot({ src, positions }: { src: string; positions: Vi
 }
 
 /** Une section n'existe que si elle a quelque chose à dire — validé OU proposé. */
+/** L'ORDRE DE L'ÉDITEUR, pas un autre. Ce que Guillaume lit de haut en bas à
+ *  l'écran, il doit le retrouver dans le même ordre sur le papier. */
+const DOC_ORDER = ['resume', 'decisions', 'actions', 'vigilances', 'a_savoir', 'echeances', 'intervenants']
+
+const DOC_COLOR: Record<string, string> = {
+  resume: COLORS.accent,
+  decisions: '#4f46e5',
+  actions: '#7c3aed',
+  vigilances: '#d97706',
+  a_savoir: COLORS.muted,
+  echeances: '#e11d48',
+  intervenants: COLORS.slate,
+}
+
+/** Le compte-rendu humain, imprimé tel qu'il est écrit. Les puces restent des
+ *  puces ; le reste est du texte. Une section vide ne s'imprime pas — le
+ *  document ne dit jamais « rien à ce sujet » à un client. */
+function DocumentSections({ sections }: { sections: ReportDocumentSection[] }) {
+  const byKey = new Map(sections.map((s) => [s.key, s]))
+  return (
+    <>
+      {DOC_ORDER.map((key) => {
+        const section = byKey.get(key)
+        const content = section?.content?.trim()
+        if (!section || !content) return null
+        const lines = content.split('\n').map((l) => l.trim()).filter(Boolean)
+        const bullets = lines.every((l) => l.startsWith('-') || l.startsWith('•'))
+        return (
+          <View key={key} style={styles.section}>
+            <SectionTitle text={section.title} color={DOC_COLOR[key] ?? COLORS.muted} important={key === 'resume'} />
+            {bullets
+              ? lines.map((line, i) => (
+                  <View key={i} style={styles.alertRow} wrap={false}>
+                    <View style={styles.alertDot} />
+                    <View style={styles.actionText}>
+                      <Text>{line.replace(/^[-•]\s*/, '')}</Text>
+                    </View>
+                  </View>
+                ))
+              : <Text style={styles.paragraph}>{content}</Text>}
+          </View>
+        )
+      })}
+    </>
+  )
+}
+
 function sectionHas(s: SummarySection): boolean {
   return s.confirmed.length + s.proposed.length > 0
 }
@@ -247,7 +311,21 @@ function ToConfirm({ items }: { items: SummaryItem[] }) {
  * sert plus » : il ne peut plus. Seul le read model connaît ce stockage, donc le
  * document ne peut plus diverger de l'écran par distraction.
  */
-export function VisitCrPdf({ doc, summary, exportDate, mapImage }: { doc: VisitCrDoc; summary: VisitSummary; exportDate: string; mapImage?: string | null }) {
+export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
+  doc: VisitCrDoc
+  summary: VisitSummary
+  exportDate: string
+  mapImage?: string | null
+  /** LE COMPTE-RENDU HUMAIN — quand il existe, c'est LUI qu'on imprime
+   *  (Vincent, 2026-07-21). Le PDF lisait `debrief_analysis` et le read model :
+   *  les corrections de Guillaume n'y entraient jamais. Elles n'étaient pas en
+   *  retard, elles étaient absentes. Désormais : ce qui est à l'écran est ce
+   *  qui s'imprime, à la mise en page près — et aucun récit parallèle ne
+   *  subsiste à côté. */
+  crDocument?: { sections: ReportDocumentSection[]; status: ReportDocumentStatus } | null
+}) {
+  const cr = crDocument ?? null
+  const isDraft = cr?.status === 'draft'
   // L'INTENTION spécialise le TITRE et quelques intitulés — mêmes données, cadrage
   // différent (première = référence · prévisite = appel d'offres · suivi = normal).
   const isPremiere = doc.motive === 'premiere'
@@ -319,6 +397,14 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage }: { doc: VisitC
   return (
     <Document title={title}>
       <Page size="A4" style={styles.page}>
+        {/* UNE PAGE IMPRIMÉE SEULE NE DOIT PAS POUVOIR PASSER POUR UN DÉFINITIF.
+            `fixed` répète le bandeau sur chaque page — pas une ligne discrète
+            sous le titre, que personne ne relit en bas d'une pile. */}
+        {isDraft && (
+          <View fixed style={styles.draftBand}>
+            <Text style={styles.draftBandText}>BROUILLON — NON FINALISÉ</Text>
+          </View>
+        )}
         {/* En-tête identité : qui / où / quand, avant même le résumé. */}
         <View style={styles.header} fixed>
           <View style={styles.headTop}>
@@ -337,7 +423,14 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage }: { doc: VisitC
           </View>
         </View>
 
+        {/* LE COMPTE-RENDU HUMAIN, quand il existe : sept sections, dans
+            l'ordre de l'éditeur. Aucun récit parallèle ne subsiste à côté —
+            imprimer à la fois le texte corrigé et l'analyse d'origine ferait
+            dire deux choses au même document. */}
+        {cr && <DocumentSections sections={cr.sections} />}
+
         {/* Ce que MemorIA a retenu — le RÉSULTAT de l'analyse, en premier. */}
+        {!cr && (
         <View style={styles.section} wrap={false}>
           <SectionTitle text="Ce que MemorIA a retenu" color={COLORS.accent} important />
           <View style={styles.card}>
@@ -346,6 +439,8 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage }: { doc: VisitC
             </Text>
           </View>
         </View>
+
+        )}
 
         {/* En bref — richesse de la visite en un coup d'œil. */}
         <View style={styles.section} wrap={false}>
@@ -372,7 +467,7 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage }: { doc: VisitC
         {/* Actions proposées — un bloc DÉDIÉ, en cases à cocher (à faire), plus
             noyées dans le texte. Issues de l'analyse (propositions), jamais des
             actions déjà validées. */}
-        {sectionHas(actionsSection) && (
+        {!cr && sectionHas(actionsSection) && (
           <View style={styles.section}>
             <SectionTitle text="Actions" color="#7c3aed" />
             {actionsSection.confirmed.map((a) => (
@@ -390,7 +485,7 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage }: { doc: VisitC
 
         {/* Points de vigilance — des FICHES exploitables (risque + impact +
             responsable + échéance), pas des paragraphes. */}
-        {sectionHas(watchpoints) && (
+        {!cr && sectionHas(watchpoints) && (
           <View style={styles.section}>
             <SectionTitle text="Points de vigilance" color="#d97706" />
             {watchpoints.confirmed.map((p) => (
@@ -407,7 +502,7 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage }: { doc: VisitC
         )}
 
         {/* Décisions prises — les ENGAGEMENTS actés (ni action, ni risque). */}
-        {sectionHas(decisions) && (
+        {!cr && sectionHas(decisions) && (
           <View style={styles.section}>
             <SectionTitle text="Décisions prises" color="#4f46e5" />
             {decisions.confirmed.map((d) => (
@@ -421,7 +516,7 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage }: { doc: VisitC
         )}
 
         {/* À savoir — le contexte important mais non actionnable. */}
-        {sectionHas(aSavoir) && (
+        {!cr && sectionHas(aSavoir) && (
           <View style={styles.section}>
             <SectionTitle text="À savoir" color={COLORS.muted} />
             <Bullets items={aSavoir.confirmed.map((k) => k.title)} />
@@ -430,7 +525,7 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage }: { doc: VisitC
         )}
 
         {/* Échéances — les délais isolés. */}
-        {sectionHas(echeances) && (
+        {!cr && sectionHas(echeances) && (
           <View style={styles.section}>
             <SectionTitle text="Échéances" color="#e11d48" />
             {/* Le document de preuve dit ce qui a été DIT : une date si elle a été
@@ -442,7 +537,7 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage }: { doc: VisitC
         )}
 
         {/* Intervenants — personnes/entreprises citées, réutilisables. */}
-        {sectionHas(intervenants) && (
+        {!cr && sectionHas(intervenants) && (
           <View style={styles.section}>
             <SectionTitle text="Intervenants" color={COLORS.slate} />
             <Bullets items={intervenants.confirmed.map((i) => i.title)} />

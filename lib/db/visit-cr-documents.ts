@@ -23,6 +23,7 @@ import {
 } from '@/lib/db/report-documents'
 import { CR_VISITE_TEMPLATE_KEY, buildVisitCrSections, type VisitCrAnalysis } from '@/lib/visits/cr-visite-sections'
 import { decideVisitCrDocument, restoreSectionProposal, withAiBaseline } from '@/lib/visits/cr-visite-policy'
+import { insertActivityLog } from '@/lib/db/activity-logs'
 import type { DbReportDocument } from '@/types/db'
 
 const COLS =
@@ -126,4 +127,72 @@ export async function restoreVisitCrSection(documentId: string, sectionKey: stri
   const doc = await getReportDocument(documentId)
   if (!doc) return
   await updateReportDocumentSections(documentId, restoreSectionProposal(doc.sections, sectionKey))
+}
+
+// ── LE CYCLE DE VIE DU COMPTE-RENDU (Étape C, Vincent 2026-07-21) ───────────
+//
+//   Brouillon éditable → Finaliser → Finalisé, lecture seule
+//                              ↑                    │
+//                              └──── Rouvrir ───────┘
+//
+// Deux gestes explicites, et aucun automatisme : concrétiser des objets ne
+// finalise PAS le compte-rendu — on peut vouloir créer quatre actions et
+// continuer à corriger le texte.
+//
+// Pas de versionnement : une seule vérité documentaire. Les questions
+// « laquelle est la référence, laquelle a été envoyée » n'ont pas encore de
+// raison d'être posées, et y répondre trop tôt coûterait plus que ça ne rend.
+
+/** Finalise le compte-rendu : il devient une lecture seule, signée et datée. */
+export async function finalizeVisitCr(reportId: string, userId: string | null): Promise<boolean> {
+  const doc = await getVisitCrDocument(reportId)
+  if (!doc || doc.status !== 'draft') return false
+  const { error } = await createAdminClient()
+    .from('report_documents')
+    .update({
+      status: 'validated',
+      validated_at: new Date().toISOString(),
+      validated_by: userId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', doc.id)
+    .eq('status', 'draft') // la base tranche la course, pas l'ordre des lignes
+  if (error) return false
+  await trace(userId, doc.id, 'report_document.finalized', { report_id: reportId })
+  return true
+}
+
+/** Rouvre le brouillon. Les objets DÉJÀ CRÉÉS dans le chantier ne bougent pas —
+ *  ni modifiés, ni supprimés. Corriger le récit ne réécrit pas le travail. */
+export async function reopenVisitCr(reportId: string, userId: string | null): Promise<boolean> {
+  const doc = await getVisitCrDocument(reportId)
+  if (!doc || doc.status !== 'validated') return false
+  const { error } = await createAdminClient()
+    .from('report_documents')
+    .update({
+      status: 'draft',
+      reopened_at: new Date().toISOString(),
+      reopened_by: userId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', doc.id)
+    .eq('status', 'validated')
+  if (error) return false
+  await trace(userId, doc.id, 'report_document.reopened', { report_id: reportId })
+  return true
+}
+
+/** La trace vit dans `activity_logs`, qui existe déjà : pas de second moteur
+ *  d'audit pour deux événements. Elle ne doit jamais faire échouer le geste. */
+async function trace(
+  userId: string | null,
+  documentId: string,
+  action: string,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await insertActivityLog({ userId, entityType: 'report_document', entityId: documentId, action, metadata })
+  } catch {
+    // Perdre une trace est ennuyeux ; perdre le geste serait pire.
+  }
 }

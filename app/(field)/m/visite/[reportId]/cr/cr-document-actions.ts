@@ -18,7 +18,7 @@
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getVisit } from '@/lib/db/visits'
 import { updateReportDocumentSections } from '@/lib/db/report-documents'
-import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
+import { getVisitCrDocument, finalizeVisitCr, reopenVisitCr } from '@/lib/db/visit-cr-documents'
 import { restoreSectionProposal } from '@/lib/visits/cr-visite-policy'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
 
@@ -113,4 +113,38 @@ async function reread(reportId: string, error: string): Promise<Result> {
     ok: true,
     document: { id: doc.id, status: doc.status, sections: doc.sections, updatedAt: doc.updated_at },
   }
+}
+
+// ── LE CYCLE DE VIE, CÔTÉ ÉCRAN ─────────────────────────────────────────────
+//
+// Deux gestes explicites, jamais automatiques. Concrétiser des objets ne
+// finalise pas le compte-rendu : on peut créer quatre actions et continuer à
+// corriger le texte.
+
+export type LifecycleResult = { ok: true; status: ReportDocumentStatus } | { ok: false; error: string }
+
+/** Brouillon → Finalisé. Le document devient une lecture seule, signée et datée. */
+export async function finalizeCrAction(reportId: string): Promise<LifecycleResult> {
+  const user = await getCurrentUserWithProfile()
+  if (!user) return { ok: false, error: 'Session expirée' }
+  const visit = await getVisit(reportId)
+  if (!visit) return { ok: false, error: 'Visite introuvable' }
+  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+    return { ok: false, error: 'Visite introuvable' }
+  }
+  const ok = await finalizeVisitCr(reportId, user.id)
+  return ok ? { ok: true, status: 'validated' } : { ok: false, error: 'Finalisation impossible' }
+}
+
+/** Finalisé → Brouillon. Les objets déjà créés dans le chantier ne bougent pas. */
+export async function reopenCrAction(reportId: string): Promise<LifecycleResult> {
+  const user = await getCurrentUserWithProfile()
+  if (!user) return { ok: false, error: 'Session expirée' }
+  const visit = await getVisit(reportId)
+  if (!visit) return { ok: false, error: 'Visite introuvable' }
+  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+    return { ok: false, error: 'Visite introuvable' }
+  }
+  const ok = await reopenVisitCr(reportId, user.id)
+  return ok ? { ok: true, status: 'draft' } : { ok: false, error: 'Réouverture impossible' }
 }
