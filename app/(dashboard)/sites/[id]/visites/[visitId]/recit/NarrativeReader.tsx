@@ -32,10 +32,23 @@ const PRODUCED_FR: Record<string, string> = {
   echeance: 'Échéance', memoire: 'Mémoire', intervenant: 'Intervenant',
 }
 
+const KIND_PLURAL: Record<string, [string, string]> = {
+  action: ['action', 'actions'],
+  reserve: ['réserve', 'réserves'],
+  decision: ['décision', 'décisions'],
+  echeance: ['échéance', 'échéances'],
+  memoire: ['élément à mémoriser', 'éléments à mémoriser'],
+  intervenant: ['intervenant', 'intervenants'],
+}
+
+// L'ORDRE DE LECTURE DU CONDUCTEUR (Vincent, 2026-07-22) : que s'est-il passé ?
+// → qu'en a compris MemorIA ? → qu'ai-je décidé ? → qu'est-ce que ça a produit ?
+// Ce que la visite a produit est la FIN de l'histoire, pas son début — c'est
+// pour ça que la répartition par type a quitté l'en-tête pour venir ici.
 const SOMMAIRE = [
-  { id: 'capte', label: 'Capté' },
+  { id: 'capte', label: 'Chronologie' },
   { id: 'compris', label: 'Compris' },
-  { id: 'tranche', label: 'Tranché' },
+  { id: 'tranche', label: 'Arbitrages' },
   { id: 'produit', label: 'Produit' },
   { id: 'ecarte', label: 'Écarté' },
 ] as const
@@ -80,7 +93,7 @@ export function NarrativeReader({
 
       <div className="min-w-0 flex-1 space-y-10 pb-24">
         {/* ── CAPTÉ — une frise, parce qu'une visite est un parcours ────────── */}
-        <Section id="capte" title="Ce qui a été capté" count={captured.length}>
+        <Section id="capte" title="Chronologie" count={captured.length}>
           {captured.length === 0 ? (
             <Empty
               title="Cette visite n’a rien laissé derrière elle."
@@ -118,7 +131,25 @@ export function NarrativeReader({
         </Section>
 
         {/* ── TRANCHÉ ───────────────────────────────────────────────────────── */}
-        <Section id="tranche" title="Ce que vous avez tranché" count={null}>
+        <Section id="tranche" title="Arbitrages" count={null}>
+          {/* CE QUI RESTE À TRANCHER D'ABORD — mais on ne l'annonce jamais sans
+              dire où le faire : « N propositions attendent » sans bouton est
+              exactement le défaut qu'on a corrigé sur les intervenants. */}
+          {validated.pendingProposals > 0 && (
+            <p className="mb-4 rounded-lg border px-3 py-2 text-[13px]">
+              <span className="font-medium">
+                {validated.pendingProposals} proposition{validated.pendingProposals > 1 ? 's attendent' : ' attend'} votre
+                arbitrage.
+              </span>{' '}
+              {crHref ? (
+                <a href={crHref} className="underline underline-offset-4">
+                  Les trancher dans le compte-rendu
+                </a>
+              ) : (
+                <span className="text-muted-foreground">Elles se tranchent depuis le compte-rendu.</span>
+              )}
+            </p>
+          )}
           <dl className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-3">
             <Stat label="Confirmées" value={validated.confirmedProposals} />
             <Stat label="Écartées" value={validated.ignoredProposals} />
@@ -142,7 +173,21 @@ export function NarrativeReader({
         </Section>
 
         {/* ── PRODUIT ───────────────────────────────────────────────────────── */}
-        <Section id="produit" title="Ce que cette visite a produit" count={produced.length}>
+        <Section id="produit" title="Cette visite a produit" count={produced.length}>
+          {produced.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-1.5 text-[13px]">
+              {Object.entries(
+                produced.reduce<Record<string, number>>((acc, p) => {
+                  acc[p.kind] = (acc[p.kind] ?? 0) + 1
+                  return acc
+                }, {}),
+              ).map(([kind, n]) => (
+                <span key={kind} className="rounded-full border px-2.5 py-0.5">
+                  {n} {KIND_PLURAL[kind]?.[n > 1 ? 1 : 0] ?? kind}
+                </span>
+              ))}
+            </div>
+          )}
           {produced.length === 0 ? (
             <Empty
               title="Rien n’est encore sorti de cette visite."
@@ -182,7 +227,7 @@ export function NarrativeReader({
         </Section>
 
         {/* ── ÉCARTÉ — montrer ses écarts, c'est ce qui rend crédible ───────── */}
-        <Section id="ecarte" title="Ce qui n’a pas été retenu" count={ecarteTotal}>
+        <Section id="ecarte" title="Ce qui n’a pas été retenu" count={ecarteTotal} replie>
           {ecarteTotal === 0 ? (
             <Empty
               title="Rien n’a été mis de côté."
@@ -262,14 +307,18 @@ function Section({
   id,
   title,
   count,
+  replie,
   children,
 }: {
   id: string
   title: string
   count: number | null
+  /** Replié d'entrée : ce qui n'a pas été retenu compte, mais ne doit pas
+   *  peser sur la lecture de ce qui l'a été. */
+  replie?: boolean
   children: React.ReactNode
 }) {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(!replie)
   return (
     <section id={id} className="scroll-mt-20">
       <button

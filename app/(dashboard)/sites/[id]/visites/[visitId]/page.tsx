@@ -25,17 +25,9 @@ import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { getVisitCapturePreviewUrls, type VisitCaptureRow } from '@/lib/db/visit-captures'
 import { VisitShareButton } from '@/app/(field)/m/visite/[reportId]/VisitShareButton'
 import { NarrativeReader, type CaptureMedia } from './recit/NarrativeReader'
+import { ReanalyseButton } from './ReanalyseButton'
 
 export const dynamic = 'force-dynamic'
-
-const KIND_PLURAL: Record<string, [string, string]> = {
-  action: ['action', 'actions'],
-  reserve: ['réserve', 'réserves'],
-  decision: ['décision', 'décisions'],
-  echeance: ['échéance', 'échéances'],
-  memoire: ['élément à mémoriser', 'éléments à mémoriser'],
-  intervenant: ['intervenant', 'intervenants'],
-}
 
 export default async function VisitPage({ params }: { params: Promise<{ id: string; visitId: string }> }) {
   const user = await getCurrentUserWithProfile()
@@ -82,11 +74,6 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
   const gestes = validated.confirmedProposals + validated.ignoredProposals
     + validated.correctedSections.length + validated.discardedCaptures
 
-  const parKind = produced.reduce<Record<string, number>>((acc, p) => {
-    acc[p.kind] = (acc[p.kind] ?? 0) + 1
-    return acc
-  }, {})
-
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
       <Link
@@ -124,63 +111,45 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
 
         <CrState visitId={visitId} doc={narrative.validated.document} />
 
-        {/* LE DOSSIER S'EST ENRICHI DEPUIS LA DERNIÈRE LECTURE — un constat, pas
-            un bouton. Réanalyser coûte un appel au modèle : le récit signale,
-            l'humain décide, et le geste reste à son seul endroit. */}
+        {/* DEPUIS CETTE ANALYSE — le seul endroit où le récit propose un geste
+            qui coûte : il n'apparaît QUE si des preuves sont réellement entrées
+            depuis la dernière lecture, et il ne part jamais tout seul. */}
         {narrative.enrichment.sinceLastAnalysis > 0 && (
-          <p className="rounded-lg border border-amber-300/70 bg-amber-50/70 px-3 py-2 text-[13px] dark:border-amber-900/50 dark:bg-amber-950/20">
-            <span className="font-medium">
-              {narrative.enrichment.sinceLastAnalysis} pièce
-              {narrative.enrichment.sinceLastAnalysis > 1 ? 's sont entrées' : ' est entrée'} au dossier depuis la
-              dernière lecture de MemorIA.
-            </span>{' '}
-            <span className="text-muted-foreground">
-              Ce qui est compris plus bas ne les prend pas encore en compte —{' '}
-              <Link href={`/m/visite/${visitId}/cr`} className="underline underline-offset-4">
-                relire la visite
-              </Link>{' '}
-              pour les intégrer.
-            </span>
-          </p>
+          <div className="rounded-lg border border-amber-300/70 bg-amber-50/70 px-3 py-2.5 dark:border-amber-900/50 dark:bg-amber-950/20">
+            <p className="text-[13px] font-medium">
+              {narrative.enrichment.sinceLastAnalysis} preuve
+              {narrative.enrichment.sinceLastAnalysis > 1 ? 's ont été versées' : ' a été versée'} au dossier depuis
+              cette analyse.
+            </p>
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
+              MemorIA ne les a pas encore lues — ce qui suit ne les prend pas en compte.
+            </p>
+            <div className="mt-2">
+              <ReanalyseButton reportId={visitId} />
+            </div>
+          </div>
         )}
 
         {/* Quatre chiffres, et chacun dit de quelle couche il vient. */}
         <dl className="grid grid-cols-2 gap-x-6 gap-y-4 pt-2 sm:grid-cols-4">
           <Compteur
             value={captured.length}
-            label="captures sur le terrain"
+            label="captures"
             sub={[plural(vocaux, 'vocal', 'vocaux'), plural(photos, 'photo', 'photos'), plural(notes, 'note', 'notes')]
               .filter(Boolean)
               .join(' · ')}
           />
-          <Compteur value={understood.length} label="éléments proposés par MemorIA" sub={plural(validated.pendingProposals, 'en attente', 'en attente')} />
+          <Compteur value={understood.length} label="propositions de MemorIA" sub={plural(validated.pendingProposals, 'en attente', 'en attente')} />
           <Compteur
             value={gestes}
-            label="gestes humains"
+            label="arbitrages"
             sub={[plural(validated.ignoredProposals, 'écarté', 'écartés'), plural(validated.correctedSections.length, 'section corrigée', 'sections corrigées')]
               .filter(Boolean)
               .join(' · ')}
           />
-          <Compteur value={produced.length} label="objets devenus permanents au chantier" />
+          <Compteur value={produced.length} label="objets produits" />
         </dl>
 
-        <div className="flex flex-wrap items-center gap-2 text-[13px]">
-          <span className="text-muted-foreground">Cette visite a produit :</span>
-          {produced.length === 0 ? (
-            <span className="text-muted-foreground">rien encore — aucune ligne du compte-rendu n’a été concrétisée.</span>
-          ) : (
-            Object.entries(parKind).map(([kind, n]) => (
-              <span key={kind} className="rounded-full border px-2.5 py-0.5">
-                {n} {KIND_PLURAL[kind]?.[n > 1 ? 1 : 0] ?? kind}
-              </span>
-            ))
-          )}
-          {validated.pendingProposals > 0 && (
-            <span className="rounded-full border border-dashed px-2.5 py-0.5 text-muted-foreground">
-              {validated.pendingProposals} restée{validated.pendingProposals > 1 ? 's' : ''} à l’état de proposition
-            </span>
-          )}
-        </div>
       </header>
 
       <div className="py-8">

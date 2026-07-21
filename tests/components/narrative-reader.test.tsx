@@ -81,7 +81,7 @@ describe('Le récit se lit sans rien avoir à deviner', () => {
   it('donne un sommaire qui couvre les cinq couches', () => {
     render(<NarrativeReader narrative={vide} media={{}} canPromote={false} crHref={null} />)
     const sommaire = screen.getByRole('navigation', { name: /sommaire/i })
-    for (const label of ['Capté', 'Compris', 'Tranché', 'Produit', 'Écarté']) {
+    for (const label of ['Chronologie', 'Compris', 'Arbitrages', 'Produit', 'Écarté']) {
       expect(sommaire).toHaveTextContent(label)
     }
   })
@@ -103,6 +103,8 @@ describe('Les états vides disent ce qui les remplirait', () => {
     expect(screen.getByText(/n’a rien laissé derrière elle/i)).toBeInTheDocument()
     expect(screen.getByText(/MemorIA n’a rien proposé/i)).toBeInTheDocument()
     expect(screen.getByText(/Rien n’est encore sorti de cette visite/i)).toBeInTheDocument()
+    // « Écarté » arrive replié : sa phrase existe, elle attend qu'on l'ouvre.
+    fireEvent.click(screen.getByRole('button', { name: /Ce qui n’a pas été retenu/ }))
     expect(screen.getByText(/Rien n’a été mis de côté/i)).toBeInTheDocument()
   })
 
@@ -140,7 +142,7 @@ describe('Explorer une preuve sans quitter sa place', () => {
 describe('Replier une section', () => {
   it('masque son contenu sans quitter la page', async () => {
     render(<NarrativeReader narrative={peuple()} media={{}} canPromote={false} crHref={null} />)
-    const entete = screen.getByRole('button', { name: /Ce qui a été capté/ })
+    const entete = screen.getByRole('button', { name: /Chronologie/ })
     expect(entete).toHaveAttribute('aria-expanded', 'true')
     fireEvent.click(entete)
     expect(entete).toHaveAttribute('aria-expanded', 'false')
@@ -171,5 +173,44 @@ describe('les pièces versées après coup ne se déguisent pas en captures terr
     terrain.captured = terrain.captured.filter((c) => !c.addedAfterVisit)
     render(<NarrativeReader narrative={terrain} media={{}} canPromote={false} crHref={null} />)
     expect(screen.queryByText('Ajouté après')).not.toBeInTheDocument()
+  })
+})
+
+// ── L'ORDRE DE LECTURE DU CONDUCTEUR (Vincent, 2026-07-22) ─────────────────
+//
+// « Que s'est-il passé ? → qu'en a compris MemorIA ? → qu'ai-je décidé ? →
+//   qu'est-ce que cela a produit ? » Le résultat est la FIN de l'histoire, pas
+// son début : la répartition par type a donc quitté l'en-tête pour rejoindre la
+// section qui la raconte.
+
+describe('la page se lit dans l’ordre où le conducteur pense', () => {
+  it('la répartition par type vit dans « Cette visite a produit »', () => {
+    const avecObjets = peuple()
+    render(<NarrativeReader narrative={avecObjets} media={{}} canPromote={false} crHref={null} />)
+    const section = screen.getByRole('button', { name: /Cette visite a produit/ }).parentElement!
+    expect(section).toHaveTextContent('1 action')
+  })
+
+  it('« ce qui n’a pas été retenu » arrive replié — il ne pèse pas sur la lecture', () => {
+    render(<NarrativeReader narrative={vide} media={{}} canPromote={false} crHref={null} />)
+    expect(screen.getByRole('button', { name: /Ce qui n’a pas été retenu/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+  })
+})
+
+describe('ce qui reste à arbitrer dit toujours où le faire', () => {
+  it('annonce les propositions en attente ET la route pour les trancher', () => {
+    const enAttente = peuple()
+    enAttente.validated = { ...enAttente.validated, pendingProposals: 5 }
+    render(<NarrativeReader narrative={enAttente} media={{}} canPromote crHref="/m/visite/visit-1/cr" />)
+    expect(screen.getByText(/5 propositions attendent votre arbitrage/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Les trancher dans le compte-rendu/i })).toBeInTheDocument()
+  })
+
+  it('ne réclame aucun arbitrage quand il n’y en a pas', () => {
+    render(<NarrativeReader narrative={vide} media={{}} canPromote={false} crHref={null} />)
+    expect(screen.queryByText(/attend votre arbitrage/i)).not.toBeInTheDocument()
   })
 })
