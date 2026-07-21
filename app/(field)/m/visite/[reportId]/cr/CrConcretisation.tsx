@@ -373,9 +373,24 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
                           <span className="mt-0.5 block text-[11px] text-muted-foreground">{item.owner}</span>
                         )}
 
-                        {item.alreadyCreated && (
+                        {item.alreadyCreated && !item.textChanged && (
                           <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
                             <Check className="h-3 w-3" aria-hidden /> Déjà créé
+                          </span>
+                        )}
+                        {item.alreadyCreated && item.textChanged && (
+                          // L'ÉCART SE DIT, IL NE SE RÉSOUT PAS TOUT SEUL.
+                          // Réécrire l'objet du chantier parce qu'un mot a bougé
+                          // dans le compte-rendu serait décider à la place de
+                          // l'humain. On l'informe ; le geste lui appartient.
+                          <span className="mt-1 flex flex-col gap-0.5">
+                            <span className="inline-flex w-fit items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                              <Check className="h-3 w-3" aria-hidden /> Déjà créé — texte modifié depuis
+                            </span>
+                            <span className="text-[11px] text-muted-foreground">
+                              L’objet du chantier garde son ancien texte. Il n’est pas mis à jour
+                              automatiquement.
+                            </span>
                           </span>
                         )}
                       </span>

@@ -218,3 +218,60 @@ export function toCreate(
   }
   return { create, skipped }
 }
+
+// ── L'IDENTITÉ DURABLE D'UN ÉLÉMENT CONCRÉTISÉ ──────────────────────────────
+//
+// Le libellé normalisé protège du double-clic et de la relance à l'identique.
+// Il ne protège PAS de la suite : corriger le texte d'une action déjà créée la
+// rendrait méconnaissable, et une relance la recréerait. Or corriger le CR est
+// justement la fonction centrale du produit — la faille est donc sur le chemin
+// le plus fréquenté.
+//
+// L'identité durable vit dans le REGISTRE porté par la section (jsonb, aucune
+// migration) : une clé stable, le type et l'identifiant de l'objet créé, et le
+// texte d'alors. La reconnaissance se fait en cascade :
+//
+//   1. même texte      → c'est le même élément, rien n'a bougé ;
+//   2. même clé stable → c'est le même élément, SON TEXTE A CHANGÉ ;
+//   3. rien            → élément neuf.
+//
+// Le cas 2 ne déclenche AUCUNE mise à jour automatique : on affiche l'écart et
+// on rend la main. Réécrire un objet du chantier parce qu'un mot a bougé dans un
+// compte-rendu serait une décision prise à la place de l'humain.
+
+import type { SectionConcretisation } from '@/types/db'
+
+export interface ConcretisationMatch {
+  entry: SectionConcretisation
+  /** Le texte du CR a changé depuis la création de l'objet. */
+  textChanged: boolean
+}
+
+/** Reconnaît un élément déjà concrétisé, par texte puis par clé stable. */
+export function matchConcretisation(
+  item: Pick<OperationalItem, 'kind' | 'label' | 'key'>,
+  registry: SectionConcretisation[] | undefined,
+): ConcretisationMatch | null {
+  const entries = (registry ?? []).filter((e) => e.entity_type === item.kind)
+  if (entries.length === 0) return null
+
+  const label = item.label.trim().toLowerCase()
+  const sameText = entries.find((e) => e.source_text.trim().toLowerCase() === label)
+  if (sameText) return { entry: sameText, textChanged: false }
+
+  const sameKey = entries.find((e) => e.item_key === item.key)
+  if (sameKey) return { entry: sameKey, textChanged: true }
+
+  return null
+}
+
+/** Inscrit une création au registre de sa section, sans toucher au texte. */
+export function withConcretisation(
+  sections: ReportDocumentSection[],
+  sectionKey: string,
+  entry: SectionConcretisation,
+): ReportDocumentSection[] {
+  return sections.map((s) =>
+    s.key === sectionKey ? { ...s, concretisations: [...(s.concretisations ?? []), entry] } : { ...s },
+  )
+}

@@ -20,12 +20,16 @@
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getVisit } from '@/lib/db/visits'
 import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
+import { updateReportDocumentSections } from '@/lib/db/report-documents'
+import type { SectionConcretisation } from '@/types/db'
 import {
   readOperationalItems,
   diffOperationalItems,
   asProposedSections,
   signatureOf,
   toCreate,
+  matchConcretisation,
+  withConcretisation,
   type OperationalItem,
   type OperationalDiff,
 } from '@/lib/visits/cr-concretisation'
@@ -63,6 +67,12 @@ async function existingTitles(reportId: string, siteId: string): Promise<Set<str
 
 /** Un élément prêt à créer, tel que l'écran de revue le montre. */
 export interface ReviewItem extends OperationalItem {
+  /** L'objet créé depuis cet élément — la preuve, pas une supposition. */
+  entityId?: string
+  /** Déjà créé, mais le texte du CR a changé depuis. On le DIT, on ne
+   *  réécrit rien : mettre à jour un objet du chantier parce qu'un mot a bougé
+   *  serait une décision prise à la place de l'humain. */
+  textChanged?: boolean
   /** Un objet portant déjà ce titre existe pour cette visite → on ne propose
    *  pas de le recréer. Revalider deux fois ne doit jamais doubler le chantier. */
   alreadyCreated: boolean
@@ -106,15 +116,24 @@ export async function prepareCrConcretisationAction(reportId: string): Promise<P
   // l'effet de son travail, il ne relit pas une liste sans repère.
   const diff = diffOperationalItems(readOperationalItems(asProposedSections(ctx.doc.sections)), items)
 
+  // Le REGISTRE de la section fait foi ; le libellé n'est plus qu'un second
+  // garde-fou, pour les objets créés avant l'existence du registre.
+  const bySection = new Map(ctx.doc.sections.map((s) => [s.key, s.concretisations]))
+
   return {
     ok: true,
     status: ctx.doc.status,
     diff,
-    items: items.map((i) => ({
-      ...i,
-      creatable: i.kind !== 'intervenant',
-      alreadyCreated: dejaCrees.has(signatureOf(i)),
-    })),
+    items: items.map((i) => {
+      const match = matchConcretisation(i, bySection.get(i.sourceSection))
+      return {
+        ...i,
+        creatable: i.kind !== 'intervenant',
+        alreadyCreated: match !== null || dejaCrees.has(signatureOf(i)),
+        entityId: match?.entry.entity_id,
+        textChanged: match?.textChanged ?? false,
+      }
+    }),
   }
 }
 
@@ -162,11 +181,15 @@ export async function createFromCrAction(reportId: string, keys: string[]): Prom
   const byKind: Record<string, number> = {}
   const failed: string[] = []
   const skipped = ignores.length
+  // Ce qui est né, à inscrire au registre du document une fois la boucle finie.
+  const registre: Array<{ section: string; entry: SectionConcretisation }> = []
+  const stamp = new Date().toISOString()
 
   for (const item of create) {
     try {
+      let entityId: string | null = null
       if (item.kind === 'action') {
-        await createSiteAction({
+        entityId = await createSiteAction({
           site_id: siteId,
           report_id: reportId,
           title: item.label,
@@ -177,7 +200,7 @@ export async function createFromCrAction(reportId: string, keys: string[]): Prom
           created_from: CREATED_FROM,
         })
       } else if (item.kind === 'echeance') {
-        await createSiteDeadline({
+        entityId = await createSiteDeadline({
           site_id: siteId,
           report_id: reportId,
           organization_id: ctx.visit.organization_id ?? null,
@@ -188,7 +211,7 @@ export async function createFromCrAction(reportId: string, keys: string[]): Prom
           created_from: CREATED_FROM,
         })
       } else if (item.kind === 'decision') {
-        await createSiteDecision({
+        entityId = await createSiteDecision({
           siteId,
           reportId,
           titre: item.label,
@@ -198,7 +221,7 @@ export async function createFromCrAction(reportId: string, keys: string[]): Prom
           confiance: 'à confirmer',
         })
       } else {
-        await addCapturedKnowledge({
+        entityId = await addCapturedKnowledge({
           siteId,
           sourceType: 'visit',
           sourceId: reportId,
@@ -208,11 +231,36 @@ export async function createFromCrAction(reportId: string, keys: string[]): Prom
         })
       }
       byKind[item.kind] = (byKind[item.kind] ?? 0) + 1
+      if (entityId) {
+        registre.push({
+          section: item.sourceSection,
+          entry: {
+            item_key: item.key,
+            entity_type: item.kind as SectionConcretisation['entity_type'],
+            entity_id: entityId,
+            created_at: stamp,
+            source_text: item.label,
+          },
+        })
+      }
     } catch {
       // Un échec n'annule pas les autres : perdre douze créations réussies
       // pour une qui a raté serait pire que le problème. On le NOMME, et
       // relancer est sans risque puisque l'anti-doublon protège.
       failed.push(item.label)
+    }
+  }
+
+  // LE REGISTRE S'ÉCRIT APRÈS LES CRÉATIONS, jamais avant : on n'inscrit que
+  // ce qui existe vraiment. Une écriture ratée ici ne perd rien — le garde-fou
+  // par libellé prend le relais jusqu'à la prochaine concrétisation.
+  if (registre.length > 0) {
+    try {
+      let sections = ctx.doc.sections
+      for (const r of registre) sections = withConcretisation(sections, r.section, r.entry)
+      await updateReportDocumentSections(ctx.doc.id, sections)
+    } catch {
+      // silencieux : ne jamais faire échouer une création réussie sur sa trace
     }
   }
 

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { readOperationalItems, diffOperationalItems, asProposedSections, toCreate } from '@/lib/visits/cr-concretisation'
+import {
+  readOperationalItems,
+  diffOperationalItems,
+  asProposedSections,
+  toCreate,
+  matchConcretisation,
+  withConcretisation,
+} from '@/lib/visits/cr-concretisation'
 import type { ReportDocumentSection } from '@/types/db'
 
 const s = (key: string, content: string, ai = 'TEXTE IA À NE JAMAIS LIRE'): ReportDocumentSection => ({
@@ -150,5 +157,73 @@ describe('toCreate — jamais deux fois le même objet', () => {
       new Set(),
     )
     expect(create).toHaveLength(2)
+  })
+})
+
+describe('matchConcretisation — l’identité survit à la correction du texte', () => {
+  const registre = [
+    {
+      item_key: 'action:0',
+      entity_type: 'action' as const,
+      entity_id: 'act-1',
+      created_at: '2026-07-21T06:00:00Z',
+      source_text: 'Relancer Yann pour les plans',
+    },
+  ]
+  const item = (label: string, key = 'action:0', kind = 'action') =>
+    ({ kind, label, key }) as never
+
+  it('reconnaît un élément au texte inchangé', () => {
+    const m = matchConcretisation(item('Relancer Yann pour les plans'), registre)
+    expect(m).toMatchObject({ textChanged: false })
+    expect(m!.entry.entity_id).toBe('act-1')
+  })
+
+  it('le reconnaît ENCORE quand son texte a été corrigé depuis', () => {
+    const m = matchConcretisation(item('Relancer Yann — plans du lot 2'), registre)
+    expect(m).toMatchObject({ textChanged: true })
+    expect(m!.entry.entity_id).toBe('act-1')
+  })
+
+  it('ne confond pas deux familles portant la même clé', () => {
+    expect(matchConcretisation(item('Relancer Yann pour les plans', 'action:0', 'echeance'), registre)).toBeNull()
+  })
+
+  it('ne reconnaît pas un élément réellement neuf', () => {
+    expect(matchConcretisation(item('Commander le tableau', 'action:7'), registre)).toBeNull()
+  })
+
+  it('n’invente rien quand le registre est vide ou absent', () => {
+    expect(matchConcretisation(item('Relancer Yann pour les plans'), [])).toBeNull()
+    expect(matchConcretisation(item('Relancer Yann pour les plans'), undefined)).toBeNull()
+  })
+})
+
+describe('withConcretisation — le registre n’abîme pas le document', () => {
+  const sections = [
+    { key: 'actions', title: 'Actions', kind: 'generative' as const, content: 'texte', ai_content: 'ia' },
+    { key: 'resume', title: 'Résumé', kind: 'generative' as const, content: 'r', ai_content: 'r' },
+  ]
+  const entry = {
+    item_key: 'action:0', entity_type: 'action' as const, entity_id: 'act-9',
+    created_at: '2026-07-21T06:00:00Z', source_text: 'Relancer Yann',
+  }
+
+  it('inscrit la création dans SA section, et n’écrit que là', () => {
+    const out = withConcretisation(sections, 'actions', entry)
+    expect(out[0]!.concretisations).toEqual([entry])
+    expect(out[1]!.concretisations).toBeUndefined()
+  })
+
+  it('ne touche ni au contenu ni à la proposition IA', () => {
+    const out = withConcretisation(sections, 'actions', entry)
+    expect(out[0]!.content).toBe('texte')
+    expect(out[0]!.ai_content).toBe('ia')
+  })
+
+  it('empile sans écraser les inscriptions précédentes', () => {
+    const once = withConcretisation(sections, 'actions', entry)
+    const twice = withConcretisation(once, 'actions', { ...entry, item_key: 'action:1', entity_id: 'act-10' })
+    expect(twice[0]!.concretisations).toHaveLength(2)
   })
 })

@@ -679,6 +679,24 @@ export interface ReportDocumentSection {
    *  section, et ce qui permet de savoir si un humain est déjà passé (mig 120 :
    *  `sections` est un jsonb, ce champ n'exige aucune migration). */
   ai_content?: string
+  /** REGISTRE DE CONCRÉTISATION — ce que cette section a déjà fait naître dans
+   *  le chantier. Métadonnée technique, tenue à l'écart du contenu documentaire :
+   *  le texte reste le texte. C'est l'identité DURABLE d'un élément concrétisé —
+   *  le libellé, lui, peut changer après coup. */
+  concretisations?: SectionConcretisation[]
+}
+
+/** Un élément de section devenu un objet du chantier. */
+export interface SectionConcretisation {
+  /** Clé stable de l'élément dans sa section (famille + rang à la création). */
+  item_key: string
+  entity_type: 'action' | 'echeance' | 'decision' | 'memoire'
+  /** La preuve : l'objet existe, et on sait lequel. */
+  entity_id: string
+  created_at: string
+  /** Le texte AU MOMENT de la création — pour dire « modifié depuis », jamais
+   *  pour réécrire quoi que ce soit. */
+  source_text: string
 }
 
 export interface DbReportDocument {
