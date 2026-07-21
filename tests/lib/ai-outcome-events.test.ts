@@ -156,6 +156,32 @@ describe('Vocabulaire FERMÉ — hors liste = refus silencieux, pas d’écritur
     expect(inserted?.event).toBe('ai_outcome:visit_debrief_understand:displayed')
     expect(inserted?.ai_dedupe_key).toBe('22222222-2222-2222-2222-222222222222:understand:v1')
   })
+
+  it('le devenir d’une proposition (5.1A-4) : acted_on et rejected sont écrits', async () => {
+    // Le combo exact émis par promoteActionProposalAction / dismissActionProposalAction.
+    // proposal_id = lien causal ; dédup par (proposition, devenir).
+    const PID = '33333333-3333-3333-3333-333333333333'
+    await trackAiOutcome({
+      capability: 'visit_action_proposal',
+      outcome: 'acted_on',
+      artifactType: 'action_proposal',
+      artifactId: PID,
+      dedupeKey: `${PID}:acted_on`,
+    })
+    expect(inserted?.event).toBe('ai_outcome:visit_action_proposal:acted_on')
+    expect(inserted?.ai_artifact_id).toBe(PID)
+    expect(inserted?.ai_dedupe_key).toBe(`${PID}:acted_on`)
+
+    await trackAiOutcome({
+      capability: 'visit_action_proposal',
+      outcome: 'rejected',
+      artifactType: 'action_proposal',
+      artifactId: PID,
+      dedupeKey: `${PID}:rejected`,
+    })
+    expect(inserted?.event).toBe('ai_outcome:visit_action_proposal:rejected')
+    expect(inserted?.ai_dedupe_key).toBe(`${PID}:rejected`)
+  })
 })
 
 describe('Nombres — bornés et propres', () => {

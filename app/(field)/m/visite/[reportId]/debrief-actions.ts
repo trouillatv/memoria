@@ -6,6 +6,7 @@
 
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { requireFieldAgent } from '@/lib/field/auth'
 import { getVisitSummary, type VisitSummary } from '@/lib/knowledge/visit-summary'
 import { getOrgId } from '@/lib/db/users'
@@ -385,6 +386,20 @@ export async function promoteActionProposalAction(input: unknown): Promise<{ ok:
     if (res.status !== 'promoted') return { ok: false, error: 'Promotion impossible' }
     // L'invalidation de la projection est portée par la MUTATION (createSiteAction,
     // appelée dans promoteProposal) — jamais par l'écran/l'action.
+    // TÉLÉMÉTRIE DE VALEUR (5.1A-4) : la proposition a AGI (acted_on). APRÈS le
+    // garde de succès — une promotion ratée ne compte pas. `after` : hors du
+    // chemin de réponse, jamais bloquant, la validation réussit même si le
+    // tracking échoue. Dédup par proposition → un retour idempotent ne compte
+    // qu'une fois. `proposal_id` EST la relation causale (proposition → action).
+    after(() =>
+      trackAiOutcome({
+        capability: 'visit_action_proposal',
+        outcome: 'acted_on',
+        artifactType: 'action_proposal',
+        artifactId: parsed.data.proposal_id,
+        dedupeKey: `${parsed.data.proposal_id}:acted_on`,
+      }),
+    )
     return { ok: true, objectId: res.objectId }
   } catch {
     return { ok: false, error: "Échec de la création de l'action" }
@@ -406,6 +421,18 @@ export async function dismissActionProposalAction(input: unknown): Promise<{ ok:
   try {
     // dismissProposal porte lui-même l'invalidation de la projection (la mutation invalide).
     await dismissProposal(parsed.data.proposal_id, auth.userId, undefined, orgId ?? visit.organization_id ?? null)
+    // TÉLÉMÉTRIE DE VALEUR (5.1A-4) : la proposition a été ÉCARTÉE (rejected).
+    // Même patron que la promotion — `after`, dédup par proposition, `proposal_id`
+    // comme lien causal. Un fait de valeur négatif est aussi un signal.
+    after(() =>
+      trackAiOutcome({
+        capability: 'visit_action_proposal',
+        outcome: 'rejected',
+        artifactType: 'action_proposal',
+        artifactId: parsed.data.proposal_id,
+        dedupeKey: `${parsed.data.proposal_id}:rejected`,
+      }),
+    )
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec' }
