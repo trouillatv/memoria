@@ -19,7 +19,7 @@ import { markWatchlistItemPromoted } from '@/lib/db/visit-watchlist'
 import { getVisit, deleteVisit, finalizeVisit } from '@/lib/db/visits'
 import { loadOrRunVisitDebrief, ensureActionProposalsProjected, ensureDeadlineProposalsProjected, type DebriefLoadResult, type StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 import { trackAiOutcome } from '@/lib/db/ai-outcome-events'
-import { promoteProposal, dismissProposal, getActionProposalStates, getDeadlineProposalStates } from '@/lib/db/knowledge-proposals'
+import { promoteProposal, dismissProposal, getActionProposalStates, getDeadlineProposalStates, type ProposalStatus } from '@/lib/db/knowledge-proposals'
 import {
   setCaptureTriage,
   listVisitCaptures,
@@ -328,7 +328,10 @@ export async function getVisitDebriefFieldAction(input: unknown): Promise<Debrie
 
 export type ActionProposalState = {
   proposalId: string
-  status: 'proposed' | 'confirmed' | 'dismissed' | 'superseded'
+  // La source unique du cycle de vie, jamais une copie : réécrire l'union ici
+  // l'a déjà fait diverger une fois — l'ajout de 'fulfilled' (mig 231) n'a été
+  // rattrapé que par le typecheck.
+  status: ProposalStatus
   promotedObjectType: string | null
   promotedObjectId: string | null
 }

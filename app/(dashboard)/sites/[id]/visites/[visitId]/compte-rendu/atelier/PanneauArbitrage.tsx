@@ -1,6 +1,6 @@
 'use client'
 
-// LES ARBITRAGES RESTANTS — la colonne de droite de l'atelier.
+// LE TRAVAIL RESTANT — la colonne de droite de l'atelier.
 //
 // LE DÉFAUT QU'IL CORRIGE : on lisait deux fois la même histoire. Le document
 // racontait la visite ; « Ce que MemorIA a retenu » la racontait à nouveau,
@@ -22,17 +22,30 @@
 // Ce sont deux ÉTAPES successives, pas deux mesures concurrentes. Elles n'ont
 // donc plus le même poids : ce panneau est une liste de choses à faire, pas un
 // résumé. D'où la disparition de la barre et du ratio — un « 0 / 17 » se lit
-// comme une note à remplir — et le mot « décisions », qui dit ce qu'on attend
-// du conducteur. Les deux compteurs n'ont plus à coïncider, et plus rien
-// n'invite à les comparer.
+// comme une note à remplir. Et il ne porte PLUS AUCUN TOTAL en tête : un nombre
+// global serait aussitôt rapproché de celui d'à côté, or c'est justement le
+// rapprochement qui n'a pas de sens. Chaque famille porte son propre compte.
+//
+// ── UNE FAMILLE TERMINÉE RESTE À L'ÉCRAN (Vincent, 2026-07-22) ──────────────
+//
+// Elle la faisait d'abord disparaître — « plus rien à demander ». Mais c'est la
+// LIGNE COCHÉE qui donne le sentiment d'avancer : la retirer efface la preuve
+// du travail accompli, et le panneau semble ne jamais bouger. Elle reste donc,
+// cochée et muette, jusqu'à la clôture — où une seule phrase la remplace.
+//
+// La nuance qui compte : n'avoir JAMAIS rien eu à trancher n'est pas « avoir
+// fini ». Une famille sans aucune proposition n'a pas de ligne du tout.
 //
 // CE PANNEAU NE MONTRE QUE CE QUI A UN GESTE. Actions, échéances, intervenants :
 // trois familles, trois verbes. Les décisions, vigilances et savoirs n'ont pas
 // de bouton ici — ils vivent dans le document et se concrétisent plus bas. Un
 // bloc qui n'aide pas à finir la visite n'a pas sa place dans cette colonne.
 //
-// UNE FAMILLE ENTIÈREMENT ARBITRÉE DISPARAÎT. Elle n'a plus rien à demander :
-// la garder à zéro ferait d'une liste de tâches un tableau de bord.
+// ── LE TRAVAIL DIMINUE AUSSI PAR L'AUTRE PORTE (mig 231) ────────────────────
+//
+// Créer depuis le compte-rendu referme les propositions satisfaites. Sans
+// `rechargerA`, ce panneau annoncerait le même nombre juste après le clic, et
+// le conducteur croirait que son geste n'a servi à rien.
 //
 // CE QU'IL NE FERA JAMAIS : « Créer toutes ». Arbitrer six actions d'un clic,
 // c'est acquitter, plus décider — exactement l'ambiguïté que la concrétisation
@@ -40,7 +53,7 @@
 // compteur. Cf. [[ia-ne-promeut-jamais-meme-sur-demande]].
 
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2, Check, X, ListTodo, CalendarClock, Users, ChevronDown } from 'lucide-react'
+import { Loader2, Check, CheckCircle2, X, ListTodo, CalendarClock, Users, ChevronDown } from 'lucide-react'
 import {
   getVisitSummaryAction,
   promoteActionProposalAction,
@@ -71,7 +84,18 @@ const FAMILLE: Record<Cle, { titre: string; Icon: typeof ListTodo; teinte: strin
   },
 }
 
-export function PanneauArbitrage({ reportId }: { reportId: string }) {
+export function PanneauArbitrage({
+  reportId,
+  rechargerA = 0,
+}: {
+  reportId: string
+  /**
+   * Change quand des objets viennent d'être créés depuis le compte-rendu.
+   * Créer referme les propositions satisfaites (mig 231) : sans cette relecture,
+   * le panneau annoncerait le même travail restant juste après le clic.
+   */
+  rechargerA?: number
+}) {
   const [summary, setSummary] = useState<VisitSummary | null>(null)
   const [phase, setPhase] = useState<'chargement' | 'prêt' | 'erreur'>('chargement')
   // Une seule famille dépliée à la fois — la grammaire du bureau de la visite.
@@ -87,7 +111,10 @@ export function PanneauArbitrage({ reportId }: { reportId: string }) {
     } else setPhase('erreur')
   }, [reportId])
 
-  useEffect(() => { void relire() }, [relire])
+  // `rechargerA` dans les dépendances : une création à gauche referme des
+  // propositions en base, et cet effet est le seul chemin par lequel le panneau
+  // l'apprend. Sans lui, le nombre resterait figé après le clic.
+  useEffect(() => { void relire() }, [relire, rechargerA])
 
   // Le serveur fait autorité après chaque geste : on relit le contrat plutôt que
   // de mimer localement un état qui dirait la même chose en moins sûr.
@@ -128,6 +155,10 @@ export function PanneauArbitrage({ reportId }: { reportId: string }) {
   const restant = groupes.reduce((n, g) => n + g.restants.length, 0)
   const arbitrés = groupes.reduce((n, g) => n + g.arbitrés, 0)
   const total = restant + arbitrés
+  // Une famille n'a sa ligne que si elle a EU du travail. Celle qui n'a jamais
+  // rien eu à trancher ne mérite pas un « ✓ » : n'avoir rien à faire n'est pas
+  // avoir fini.
+  const concernés = groupes.filter((g) => g.restants.length + g.arbitrés > 0)
 
   return (
     <PanneauCadre>
@@ -138,34 +169,31 @@ export function PanneauArbitrage({ reportId }: { reportId: string }) {
           MemorIA n’a rien proposé à arbitrer sur cette visite.
         </p>
       ) : restant === 0 ? (
-        <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-2.5 text-[13px] text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-200">
-          Plus rien à trancher. Le compte-rendu peut partir.
+        // LA CLÔTURE. Les lignes cochées ont fait leur travail — elles ont
+        // montré la progression ; à l'arrivée, une seule phrase suffit.
+        <p className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-2.5 text-[13px] font-medium text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-200">
+          <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+          Atelier terminé
         </p>
       ) : (
-        <>
-          {/* CE NOMBRE COMPTE DES GESTES HUMAINS, pas des objets du chantier —
-              c'est ce qui l'empêche d'être lu comme le total d'à côté. */}
-          <p className="mt-1 text-[13px]">
-            <span className="font-semibold tabular-nums">{restant}</span>{' '}
-            {restant > 1 ? 'décisions à prendre' : 'décision à prendre'}
-          </p>
-          <div className="mt-3 space-y-1.5">
-            {groupes
-              .filter((g) => g.restants.length > 0)
-              .map((g) => (
-                <Groupe
-                  key={g.cle}
-                  cle={g.cle}
-                  items={g.restants}
-                  ouverte={ouverte}
-                  setOuverte={setOuverte}
-                  busy={busy}
-                  reportId={reportId}
-                  agir={agir}
-                />
-              ))}
-          </div>
-        </>
+        // PAS DE TOTAL ICI, VOLONTAIREMENT. Un nombre global en tête serait
+        // aussitôt rapproché de celui de la concrétisation, à gauche — c'est
+        // exactement la comparaison qui n'a pas de sens. Les familles portent
+        // leur propre compte, et le titre dit ce qu'on regarde.
+        <div className="mt-2.5 space-y-1.5">
+          {concernés.map((g) => (
+            <Groupe
+              key={g.cle}
+              cle={g.cle}
+              items={g.restants}
+              ouverte={ouverte}
+              setOuverte={setOuverte}
+              busy={busy}
+              reportId={reportId}
+              agir={agir}
+            />
+          ))}
+        </div>
       )}
     </PanneauCadre>
   )
@@ -174,7 +202,7 @@ export function PanneauArbitrage({ reportId }: { reportId: string }) {
 function PanneauCadre({ children }: { children: React.ReactNode }) {
   return (
     <section className="rounded-2xl border bg-card p-3.5">
-      <h2 className="text-sm font-semibold">Arbitrages restants</h2>
+      <h2 className="text-sm font-semibold">Travail restant</h2>
       {children}
     </section>
   )
@@ -199,6 +227,24 @@ function Groupe({
 }) {
   const f = FAMILLE[cle]
   const open = ouverte === cle
+  // Cette famille n'attend plus rien. Elle RESTE à l'écran : c'est la ligne
+  // cochée qui donne le sentiment d'avancer — la faire disparaître effacerait
+  // justement la preuve du travail accompli.
+  const traitée = items.length === 0
+
+  if (traitée) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-emerald-200/70 bg-emerald-50/40 px-2.5 py-2 dark:border-emerald-900/40 dark:bg-emerald-950/15">
+        <span className="grid h-6 w-6 shrink-0 place-items-center rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+          <Check className="h-3.5 w-3.5" aria-hidden />
+        </span>
+        <span className="min-w-0 flex-1 text-[13px] font-medium text-emerald-900 dark:text-emerald-200">
+          {f.titre}
+        </span>
+      </div>
+    )
+  }
+
   return (
     <div className="rounded-xl border bg-background">
       <button

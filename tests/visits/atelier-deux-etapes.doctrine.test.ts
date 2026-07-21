@@ -21,7 +21,7 @@ import { describe, expect, it } from 'vitest'
 
 const atelier = join(process.cwd(), 'app/(dashboard)/sites/[id]/visites/[visitId]/compte-rendu/atelier')
 const panneau = readFileSync(join(atelier, 'PanneauArbitrage.tsx'), 'utf8')
-const colonne = readFileSync(join(atelier, 'ColonneDocument.tsx'), 'utf8')
+const colonne = readFileSync(join(atelier, 'AtelierColonnes.tsx'), 'utf8')
 const cr = join(process.cwd(), 'app/(field)/m/visite/[reportId]/cr')
 const concretisation = readFileSync(join(cr, 'CrConcretisation.tsx'), 'utf8')
 const documentSections = readFileSync(join(cr, 'CrDocumentSections.tsx'), 'utf8')
@@ -31,29 +31,43 @@ const documentSections = readFileSync(join(cr, 'CrDocumentSections.tsx'), 'utf8'
 const sansCommentaires = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
-describe('le panneau d’arbitrage compte des décisions, pas des objets', () => {
+describe('le panneau montre le travail restant, pas un résumé chiffré', () => {
   const rendu = sansCommentaires(panneau)
 
-  it('s’intitule « Arbitrages restants »', () => {
-    expect(rendu).toContain('Arbitrages restants')
-  })
-
-  it('parle de décisions à prendre, jamais de propositions à regarder', () => {
-    expect(rendu).toContain('décisions à prendre')
+  it('s’intitule « Travail restant »', () => {
+    expect(rendu).toContain('Travail restant')
     expect(rendu).not.toContain('propositions à regarder')
   })
 
-  it('n’affiche ni barre de progression ni ratio — c’est une liste, pas un score', () => {
-    // « 0 arbitrée sur 17 » se lit comme une note à remplir, et invite à
-    // comparer avec le total d'à côté.
+  it('ne porte AUCUN total en tête', () => {
+    // Un nombre global serait aussitôt rapproché de celui de la concrétisation,
+    // à gauche — et c'est précisément ce rapprochement qui n'a pas de sens.
+    // « 0 arbitrée sur 17 » se lisait en plus comme une note à remplir.
     expect(rendu).not.toMatch(/arbitrée?s? sur/)
+    expect(rendu).not.toMatch(/décisions? à prendre/)
     expect(rendu).not.toMatch(/style=\{\{\s*width:/)
   })
 
-  it('n’affiche que les familles qui ont encore quelque chose à trancher', () => {
-    // Une famille entièrement arbitrée disparaît : sinon la liste de tâches
-    // redevient un tableau de bord.
-    expect(rendu).toMatch(/filter\(\(g\) => g\.restants\.length > 0\)/)
+  it('garde à l’écran les familles terminées — c’est la preuve du travail fait', () => {
+    // La ligne cochée est ce qui donne le sentiment d'avancer. La retirer
+    // effaçait le travail accompli, et le panneau semblait ne jamais bouger.
+    expect(rendu).toMatch(/const traitée = items\.length === 0/)
+    expect(rendu).not.toMatch(/filter\(\(g\) => g\.restants\.length > 0\)/)
+  })
+
+  it('mais n’en invente pas une pour ce qui n’a jamais rien eu à trancher', () => {
+    // N'avoir rien à faire n'est pas avoir fini : pas de « ✓ » gratuit.
+    expect(rendu).toMatch(/g\.restants\.length \+ g\.arbitrés > 0/)
+  })
+
+  it('se referme sur « Atelier terminé »', () => {
+    expect(rendu).toContain('Atelier terminé')
+  })
+
+  it('se relit quand des objets viennent d’être créés par l’autre porte', () => {
+    // Créer depuis le compte-rendu referme les propositions satisfaites : sans
+    // cette dépendance, le panneau afficherait le même nombre après le clic.
+    expect(rendu).toMatch(/useEffect\(\(\) => \{ void relire\(\) \}, \[relire, rechargerA\]\)/)
   })
 })
 
@@ -119,7 +133,65 @@ describe('corriger le compte-rendu périme ce qui en avait été déduit', () =>
   })
 
   it('l’atelier relie les deux voisins — ailleurs, rien ne bouge', () => {
-    expect(sansCommentaires(colonne)).toMatch(/onEdited=\{\(\) => setRevision/)
-    expect(sansCommentaires(colonne)).toMatch(/documentRevision=\{revision\}/)
+    expect(sansCommentaires(colonne)).toMatch(/onEdited=\{\(\) => setRevisionTexte/)
+    expect(sansCommentaires(colonne)).toMatch(/documentRevision=\{revisionTexte\}/)
+  })
+})
+
+// ── LA BOUCLE SE REFERME (Vincent, 2026-07-22) ─────────────────────────────
+//
+// Deux portes mènent au chantier : arbitrer une proposition, ou concrétiser le
+// compte-rendu corrigé. Le journal empêchait déjà le doublon d'OBJET. Restait
+// un mensonge d'ÉCRAN — créer quatre actions laissait leurs propositions en
+// 'proposed', et le travail restant n'avait pas bougé d'un cran.
+//
+// « Je ne supprimerais pas la ligne, je changerais son état : l'historique
+// reste intact, la provenance reste démontrable, et le panneau ne les compte
+// plus. » (mig 231)
+
+describe('une proposition satisfaite cesse d’être du travail', () => {
+  const proposals = readFileSync(join(process.cwd(), 'lib/db/knowledge-proposals.ts'), 'utf8')
+  const creation = readFileSync(join(cr, 'cr-concretisation-actions.ts'), 'utf8')
+  const migration = readFileSync(
+    join(process.cwd(), 'supabase/migrations/231_proposals_fulfilled.sql'),
+    'utf8',
+  )
+
+  it('l’état existe, et n’efface rien', () => {
+    expect(migration).toMatch(/'fulfilled'/)
+    expect(proposals).toMatch(/export type ProposalStatus[^\n]*'fulfilled'/)
+    // Un état, pas une suppression : aucune ligne ne disparaît.
+    expect(proposals).not.toMatch(/\.delete\(\)[\s\S]{0,80}site_knowledge_proposals/)
+  })
+
+  it('« satisfaite » ne se confond pas avec « arbitrée par un humain »', () => {
+    // 'confirmed' pose `reviewed_by` : la décision a un auteur. 'fulfilled' n'en
+    // a pas — s'en inventer un ferait dire au système qu'un arbitrage a eu lieu.
+    const fn = proposals.split('fulfillProposalsFromConcretisation')[1] ?? ''
+    expect(fn).toMatch(/status: 'fulfilled'/)
+    expect(fn).not.toMatch(/reviewed_by:/)
+  })
+
+  it('ne referme que ce qui était encore à trancher', () => {
+    // Garde anti-concurrence : si un arbitrage a confirmé la proposition entre
+    // la lecture et l'écriture, on ne réécrit pas sa décision.
+    const fn = proposals.split('fulfillProposalsFromConcretisation')[1] ?? ''
+    expect(fn).toMatch(/\.eq\('status', 'proposed'\)/)
+  })
+
+  it('la création referme, APRÈS avoir écrit, et jamais à son détriment', () => {
+    expect(creation).toMatch(/fulfillProposalsFromConcretisation/)
+    // Best-effort : les objets existent déjà quand on arrive là.
+    expect(creation).toMatch(/try \{[\s\S]{0,200}fulfillProposalsFromConcretisation[\s\S]{0,200}catch/)
+  })
+
+  it('l’élargissement de l’énumération n’efface rien ailleurs', () => {
+    // Un statut de plus change le sens de TOUS les filtres existants. Les deux
+    // lectures qui parlent d'objets produits doivent inclure 'fulfilled', sans
+    // quoi des liens réels disparaîtraient du graphe et du récit.
+    const graphe = readFileSync(join(process.cwd(), 'lib/knowledge/site-graph.ts'), 'utf8')
+    const recit = readFileSync(join(process.cwd(), 'lib/db/visit-narrative.ts'), 'utf8')
+    expect(graphe).toMatch(/\['proposed', 'confirmed', 'fulfilled'\]/)
+    expect(recit).toMatch(/status === 'confirmed' \|\| p\.status === 'fulfilled'/)
   })
 })

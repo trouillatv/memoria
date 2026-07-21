@@ -55,8 +55,7 @@ import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
 import { getOrCreateVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { MemoriaRetained } from '@/app/(field)/m/visite/[reportId]/cr/MemoriaRetained'
-import { ColonneDocument } from './ColonneDocument'
-import { PanneauArbitrage } from './PanneauArbitrage'
+import { AtelierColonnes } from './AtelierColonnes'
 
 export const dynamic = 'force-dynamic'
 
@@ -125,40 +124,22 @@ export default async function VisitCrAtelierPage({
         </Link>
       </header>
 
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-        {/* ── LE DOCUMENT — ce que le chantier saura ───────────────────────── */}
-        <main className="min-w-0 flex-1 space-y-4 lg:order-1">
-          {crDocument ? (
-            <>
-              {/* MARCHES 1 ET 3, ET LE FIL ENTRE ELLES. Corriger une section
-                  périme ce que la concrétisation avait déduit du texte : elle
-                  le dit, et remet « Mettre à jour les propositions » en avant.
-                  Le fil vit côté client, d'où ce porteur. */}
-              <ColonneDocument reportId={visitId} sections={crDocument.sections} status={crDocument.status} />
-              {/* L'ANALYSE D'ORIGINE DEVIENT LA PROVENANCE. Elle ne charge rien
-                  tant qu'on ne la demande pas, et ne raconte plus l'histoire une
-                  seconde fois au-dessus du document. */}
-              <MemoriaRetained
-                reportId={visitId}
-                siteId={visit.site_id}
-                transcriptions={doc.transcriptions}
-                autoLoad={false}
-              />
-            </>
-          ) : (
-            // Aucun document : il n'y a rien à corriger ni à arbitrer tant que
-            // l'analyse n'a pas eu lieu. On retombe sur le parcours normal.
-            <MemoriaRetained reportId={visitId} siteId={visit.site_id} transcriptions={doc.transcriptions} />
-          )}
-        </main>
-
-        {/* ── LE RESTE À FAIRE ─────────────────────────────────────────────── */}
-        {crDocument && (
-          <aside className="lg:sticky lg:top-6 lg:order-2 lg:w-[360px] lg:shrink-0">
-            <PanneauArbitrage reportId={visitId} />
-          </aside>
-        )}
-      </div>
+      {crDocument ? (
+        // LES TROIS MARCHES ET LES FILS QUI LES RELIENT — côté client, parce
+        // qu'une correction et une création doivent se répercuter sur des blocs
+        // voisins sans refabriquer la page.
+        <AtelierColonnes
+          reportId={visitId}
+          siteId={visit.site_id}
+          sections={crDocument.sections}
+          status={crDocument.status}
+          transcriptions={doc.transcriptions}
+        />
+      ) : (
+        // Aucun document : il n'y a rien à corriger ni à arbitrer tant que
+        // l'analyse n'a pas eu lieu. On retombe sur le parcours normal.
+        <MemoriaRetained reportId={visitId} siteId={visit.site_id} transcriptions={doc.transcriptions} />
+      )}
     </div>
   )
 }

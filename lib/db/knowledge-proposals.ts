@@ -23,11 +23,27 @@ import { openSiteIntervenant } from '@/lib/db/site-intervenants'
 import { findOrCreateCompanyByName, findOrCreateCompanyContact } from '@/lib/db/companies'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import { findInLedger, recordPromotionInLedger } from '@/lib/db/concretisation-ledger'
+// Le pont de vocabulaire entre les deux portes : « deadline » (proposition) et
+// « echeance » (compte-rendu) désignent la même famille, et doivent porter la
+// même signature — sans quoi le rapprochement échouerait silencieusement.
+import { canonicalFamily, signatureOf } from '@/lib/visits/cr-concretisation'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 import { toDebriefEcheance } from '@/lib/visits/echeance-labels'
 
 export type ProposalKind = 'action' | 'vigilance' | 'decision' | 'knowledge' | 'stakeholder' | 'deadline'
-export type ProposalStatus = 'proposed' | 'confirmed' | 'dismissed' | 'superseded'
+/**
+ * `confirmed` et `fulfilled` disent tous deux « un objet du chantier existe pour
+ * cette proposition », et se distinguent par QUI l'a décidé :
+ *   · `confirmed` — un humain a tranché CETTE proposition (promotion). Il pose
+ *     `reviewed_by` : la décision a un auteur.
+ *   · `fulfilled` — l'objet est né de la concrétisation du compte-rendu corrigé.
+ *     La proposition est satisfaite sans avoir jamais été jugée en tant que
+ *     telle. Les confondre ferait dire au système qu'un arbitrage a eu lieu là
+ *     où il n'y en a pas eu.
+ * Aucun des deux n'attend plus de geste : ni l'un ni l'autre n'est du « travail
+ * restant ». (mig 231)
+ */
+export type ProposalStatus = 'proposed' | 'confirmed' | 'fulfilled' | 'dismissed' | 'superseded'
 export type ProposalPayload = Record<string, unknown>
 
 export interface DbKnowledgeProposal {
@@ -734,4 +750,89 @@ export async function promoteProposal(params: {
   // promue) n'écrivent rien : ils n'ont rien à invalider.
   invalidateSiteProjection(p.site_id)
   return { status: 'promoted', objectType: result.objectType, objectId: result.objectId }
+}
+
+// ── L'AUTRE PORTE REFERME AUSSI LA PROPOSITION (Vincent, 2026-07-22) ─────────
+//
+// Le journal de concrétisation empêchait déjà le doublon d'OBJET : promouvoir
+// une proposition déjà concrétisée rattache l'objet existant au lieu d'en créer
+// un jumeau. Restait un mensonge d'ÉCRAN — créer quatre actions depuis le
+// compte-rendu laissait leurs propositions en 'proposed', et le panneau
+// continuait d'annoncer « 7 actions à décider » pour du travail déjà fait. Le
+// conducteur avait l'impression que son clic n'avait servi à rien.
+//
+// LE RAPPROCHEMENT EST LEXICAL, ET C'EST SA LIMITE. On compare des signatures
+// (famille canonique + libellé normalisé) : le compte-rendu ayant été CORRIGÉ,
+// une action reformulée ne se reconnaîtra pas dans sa proposition d'origine et
+// restera à arbitrer. C'est le sens prudent de l'erreur : laisser une ligne de
+// trop dans le travail restant se répare d'un clic ; en retirer une à tort
+// ferait disparaître un arbitrage que personne n'a rendu.
+//
+// Rien n'est supprimé : la ligne garde son texte, sa version d'analyse et sa
+// provenance. Elle change d'état, et cesse simplement d'être du travail.
+
+/**
+ * Marque `fulfilled` les propositions de cette visite qu'une concrétisation
+ * vient de satisfaire. Best-effort : jamais au prix des objets créés, qui eux
+ * existent déjà quand on arrive ici.
+ *
+ * @returns le nombre de propositions refermées.
+ */
+export async function fulfillProposalsFromConcretisation(params: {
+  reportId: string
+  /** Ce qui vient d'être créé : famille d'origine et libellé, tels qu'écrits. */
+  created: Array<{ kind: string; label: string; entityId: string | null }>
+  userId: string | null
+}): Promise<number> {
+  if (params.created.length === 0) return 0
+  const supabase = createAdminClient()
+
+  const { data, error } = await supabase
+    .from('site_knowledge_proposals')
+    .select('id, kind, title')
+    .eq('report_id', params.reportId)
+    .eq('status', 'proposed')
+  if (error || !data) return 0
+
+  // Une signature → l'objet né pour elle. La première création gagne : deux
+  // lignes de même libellé sont le même fait, et le journal n'en a créé qu'un.
+  const nesPourSignature = new Map<string, string | null>()
+  for (const c of params.created) {
+    const famille = canonicalFamily(c.kind)
+    if (!famille) continue
+    const sig = signatureOf({ kind: famille, label: c.label })
+    if (!nesPourSignature.has(sig)) nesPourSignature.set(sig, c.entityId)
+  }
+
+  const aRefermer: Array<{ id: string; entityId: string | null }> = []
+  for (const p of data as Array<{ id: string; kind: string; title: string }>) {
+    const famille = canonicalFamily(p.kind)
+    if (!famille) continue // une vigilance ne se concrétise pas : elle raconte.
+    const sig = signatureOf({ kind: famille, label: p.title })
+    if (!nesPourSignature.has(sig)) continue
+    aRefermer.push({ id: p.id, entityId: nesPourSignature.get(sig) ?? null })
+  }
+  if (aRefermer.length === 0) return 0
+
+  const now = new Date().toISOString()
+  let refermees = 0
+  for (const cible of aRefermer) {
+    // `reviewed_by` reste NULL : personne n'a jugé CETTE proposition. Seul
+    // `updated_at` bouge — l'état dit ce qui s'est passé, il ne s'invente pas
+    // un auteur. La distinction 'confirmed' / 'fulfilled' n'aurait plus aucun
+    // sens si on posait ici le même réviseur qu'une promotion.
+    const { error: updErr } = await supabase
+      .from('site_knowledge_proposals')
+      .update({
+        status: 'fulfilled',
+        ...(cible.entityId ? { promoted_object_id: cible.entityId } : {}),
+        updated_at: now,
+      })
+      .eq('id', cible.id)
+      // Garde anti-concurrence : si un arbitrage a confirmé la proposition
+      // entre la lecture et ici, on ne réécrit pas sa décision.
+      .eq('status', 'proposed')
+    if (!updErr) refermees += 1
+  }
+  return refermees
 }

@@ -92,7 +92,9 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
       .eq('status', 'active').is('deleted_at', null).limit(CAP.watchpoints),
     db.from('site_knowledge_proposals')
       .select('id, kind, status, title, report_id, source_capture_ids, promoted_object_id')
-      .eq('site_id', siteId).in('status', ['proposed', 'confirmed']).limit(80),
+      // 'fulfilled' a produit un objet au même titre que 'confirmed' (mig 231) :
+      // l'omettre effacerait du graphe des liens qui existent bel et bien.
+      .eq('site_id', siteId).in('status', ['proposed', 'confirmed', 'fulfilled']).limit(80),
   ])
 
   const nodes: GraphNode[] = [{ id: 'site', type: 'site', label: siteName }]
@@ -171,10 +173,16 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
   const props = (proposals.data ?? []) as Prop[]
   const PREFIX: Record<string, string> = { action: 'a_', deadline: 'e_', decision: 'd_', vigilance: 'w_' }
   for (const p of props) {
-    if (p.status === 'confirmed' && p.promoted_object_id && PREFIX[p.kind]) {
+    if ((p.status === 'confirmed' || p.status === 'fulfilled') && p.promoted_object_id && PREFIX[p.kind]) {
       const objId = PREFIX[p.kind] + p.promoted_object_id
+      // LE LIEN EXISTE DANS LES DEUX CAS, MAIS PAS POUR LA MÊME RAISON — et le
+      // graphe est un moteur d'EXPLICATION : dire « confirmé par un humain »
+      // d'un objet né de la concrétisation inventerait un arbitrage.
+      const why = p.status === 'confirmed'
+        ? 'Extrait de cette transcription, confirmé par un humain'
+        : 'Extrait de cette transcription, créé depuis le compte-rendu corrigé'
       for (const capId of p.source_capture_ids ?? []) {
-        link({ a: `m_${capId}`, b: objId, type: (p.kind === 'deadline' ? 'ech' : p.kind === 'decision' ? 'dec' : p.kind) as GraphNodeType, why: 'Extrait de cette transcription, confirmé par un humain' })
+        link({ a: `m_${capId}`, b: objId, type: (p.kind === 'deadline' ? 'ech' : p.kind === 'decision' ? 'dec' : p.kind) as GraphNodeType, why })
       }
     }
   }

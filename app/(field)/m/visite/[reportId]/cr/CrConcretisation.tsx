@@ -88,8 +88,20 @@ export function CrConcretisation({
   reportId,
   asStep = false,
   documentRevision = 0,
+  onCreated,
 }: {
   reportId: string
+  /**
+   * DES OBJETS VIENNENT DE NAÎTRE DANS LE CHANTIER.
+   *
+   * Créer depuis le compte-rendu referme les propositions correspondantes
+   * (mig 231) : le travail restant, affiché ailleurs, vient donc de diminuer.
+   * Sans ce rappel, le panneau continuerait d'annoncer le même nombre juste
+   * après le clic — et le conducteur croirait que son geste n'a rien fait.
+   *
+   * OPTIONNEL : là où personne n'écoute, rien ne change.
+   */
+  onCreated?: () => void
   /**
    * COMBIEN DE FOIS LE COMPTE-RENDU A CHANGÉ DEPUIS L'OUVERTURE.
    *
@@ -164,6 +176,9 @@ export function CrConcretisation({
     setPending(false)
     if (!res.ok) return setError(res.error)
     setDone(res.summary)
+    // Les propositions satisfaites viennent d'être refermées côté serveur : le
+    // travail restant a changé, et lui seul sait l'afficher.
+    onCreated?.()
     void prepare() // on relit : ce qui vient d'être créé se marque comme tel
   }
 

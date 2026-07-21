@@ -262,7 +262,12 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
             correctedSections,
           }
         : null,
-      confirmedProposals: understood.filter((p) => p.status === 'confirmed').length,
+      // 'fulfilled' compte ici AUSSI : la proposition a bien produit un objet
+      // du chantier (mig 231). L'omettre laisserait des propositions comptées
+      // nulle part — ni confirmées, ni écartées, ni en attente — et le total du
+      // récit ne retomberait plus sur ses pieds. La NUANCE (qui a décidé) vit
+      // dans le statut lui-même, pas dans ce compteur.
+      confirmedProposals: understood.filter((p) => p.status === 'confirmed' || p.status === 'fulfilled').length,
       ignoredProposals: understood.filter((p) => p.status === 'dismissed').length,
       pendingProposals: understood.filter((p) => p.status === 'proposed').length,
       supersededProposals: understood.filter((p) => p.status === 'superseded').length,

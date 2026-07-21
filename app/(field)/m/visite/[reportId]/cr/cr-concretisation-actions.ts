@@ -36,6 +36,7 @@ import { createSiteAction, listSiteActionsByReport } from '@/lib/db/site-actions
 import { createSiteDeadline, listSiteDeadlines } from '@/lib/db/site-deadlines'
 import { createSiteDecision, listDecisionsByReport } from '@/lib/db/site-decisions'
 import { addCapturedKnowledge, listCapturedKnowledgeBySource } from '@/lib/db/captured-knowledge'
+import { fulfillProposalsFromConcretisation } from '@/lib/db/knowledge-proposals'
 
 /** Provenance unique : tout ce qui naît d'un CR de visite le dit. */
 const CREATED_FROM = 'cr_visite'
@@ -182,6 +183,8 @@ export async function createFromCrAction(reportId: string, keys: string[]): Prom
   const skipped = ignores.length
   // Ce qui est né, à inscrire au registre du document une fois la boucle finie.
   const registre: Array<{ section: string; entry: SectionConcretisation }> = []
+  // Ce qui est né, pour refermer les propositions que ça satisfait.
+  const nes: Array<{ kind: string; label: string; entityId: string | null }> = []
   const stamp = new Date().toISOString()
 
   for (const item of create) {
@@ -230,6 +233,7 @@ export async function createFromCrAction(reportId: string, keys: string[]): Prom
         })
       }
       byKind[item.kind] = (byKind[item.kind] ?? 0) + 1
+      nes.push({ kind: item.kind, label: item.label, entityId })
       if (entityId) {
         registre.push({
           section: item.sourceSection,
@@ -265,6 +269,22 @@ export async function createFromCrAction(reportId: string, keys: string[]): Prom
     } catch {
       // silencieux : ne jamais faire échouer une création réussie sur sa trace
     }
+  }
+
+  // ── LA PROPOSITION SATISFAITE CESSE D'ÊTRE DU TRAVAIL (mig 231) ───────────
+  //
+  // Le journal empêchait déjà le doublon d'OBJET. Restait un mensonge d'ÉCRAN :
+  // les propositions correspondantes restaient 'proposed', et le panneau
+  // annonçait « 7 actions à décider » juste après qu'on en ait créé quatre. Le
+  // clic semblait n'avoir servi à rien.
+  //
+  // Après l'écriture, jamais avant : on ne referme que ce qui existe vraiment.
+  // Best-effort — les objets, eux, sont déjà nés ; perdre ce rapprochement se
+  // rattrape d'un arbitrage, perdre une création serait grave.
+  try {
+    await fulfillProposalsFromConcretisation({ reportId, created: nes, userId })
+  } catch {
+    // silencieux : ne jamais faire échouer une création réussie sur son écho
   }
 
   const total = Object.values(byKind).reduce((n, v) => n + v, 0)
