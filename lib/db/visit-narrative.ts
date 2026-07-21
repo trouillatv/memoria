@@ -16,6 +16,8 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
+import { traceLine } from '@/lib/visits/promotion'
+import type { SectionPromotion } from '@/types/db'
 import {
   classifyProduced,
   describeLimits,
@@ -102,7 +104,13 @@ export interface VisitNarrative {
    *  journal de concrétisation, quelle que soit la porte utilisée. Un objet
    *  simplement rattaché par `report_id` n'y entre pas : il est compté dans
    *  les limites, parce qu'on ne peut pas prouver qu'il est né de ce récit. */
-  produced: Array<ProducedObject & { why: Reason }>
+  produced: Array<ProducedObject & {
+    why: Reason
+    /** LE 4ᵉ MAILLON, quand il existe : la preuve d'où vient la ligne du
+     *  compte-rendu qui a fait naître cet objet. `null` pour une ligne née de
+     *  l'analyse du corpus — et c'est la vérité, pas un trou à combler. */
+    evidence: SectionPromotion | null
+  }>
   /** CE QUI N'A PAS ÉTÉ RETENU — et pourquoi (N3.1). Beaucoup d'IA ne montrent
    *  que ce qu'elles ont gardé. Montrer les écarts rend le système crédible :
    *  MemorIA ne cherche pas à avoir eu raison. Les trois natures restent
@@ -179,7 +187,16 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
   // `produced` = le journal, et rien d'autre. Les objets seulement rattachés
   // par `report_id` sont comptés à part : ils existent, mais rien ne prouve
   // qu'ils sont nés de ce récit.
-  const produced = classifyProduced(registry, []).map((p) => ({ ...p, why: explainProduced(p) }))
+  // La chaîne complète : objet → ligne du compte-rendu → phrase promue → capture.
+  // `traceLine` ne devine rien : sans promotion, il répond null.
+  const produced = classifyProduced(registry, []).map((p) => ({
+    ...p,
+    why: explainProduced(p),
+    evidence: traceLine(
+      doc?.sections.find((s) => s.key === p.sourceSection),
+      p.label,
+    ),
+  }))
   const linked = siteId ? await readReportLinked(reportId) : []
   const provenIds = new Set(produced.map((p) => `${p.kind}:${p.id}`))
   const historical = linked.filter((l) => !provenIds.has(`${l.kind}:${l.id}`))

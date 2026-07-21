@@ -146,12 +146,20 @@ export default async function VisitDebriefPage({ params }: { params: Promise<{ i
                 Les photos, vocaux, videos, notes et positions restent consultables dans l experience mobile.
               </p>
             </div>
-            <Link
-              href={`/m/visite/${visit.id}/recap`}
-              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted"
-            >
-              <Images className="h-4 w-4" /> Ouvrir la visite mobile
-            </Link>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <Link
+                href={`/sites/${id}/visites/${visit.id}/recit`}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted"
+              >
+                <ClipboardCheck className="h-4 w-4" /> D ou vient chaque information
+              </Link>
+              <Link
+                href={`/m/visite/${visit.id}/recap`}
+                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted"
+              >
+                <Images className="h-4 w-4" /> Ouvrir la visite mobile
+              </Link>
+            </div>
           </div>
         </div>
 
