@@ -52,7 +52,7 @@
 // a supprimée. La compacité règle la fatigue ; le lot ne réglerait qu'un
 // compteur. Cf. [[ia-ne-promeut-jamais-meme-sur-demande]].
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2, Check, CheckCircle2, X, ListTodo, CalendarClock, Users, ChevronDown } from 'lucide-react'
 import {
   getVisitSummaryAction,
@@ -61,7 +61,8 @@ import {
   promoteStakeholderProposalAction,
 } from '@/app/(field)/m/visite/[reportId]/debrief-actions'
 import type { VisitSummary, SummaryItem } from '@/lib/knowledge/visit-summary'
-import { listOrgCompanyNamesAction } from './acteurs-actions'
+import { listOrgCompanyNamesAction, listActeursConnusAction } from './acteurs-actions'
+import { rapprocher, type ActeurConnu } from '@/lib/acteurs/resolution-identite'
 
 type Cle = 'action' | 'echeance' | 'intervenant'
 
@@ -107,6 +108,9 @@ export function PanneauArbitrage({
   // sans réinventer une orthographe. Chargées une fois : elles ne changent pas
   // pendant qu'on arbitre.
   const [entreprises, setEntreprises] = useState<string[]>([])
+  // Les personnes déjà enregistrées. Le rapprochement tourne ICI, dans un
+  // module pur : un aller-retour serveur, pas un par acteur.
+  const [connus, setConnus] = useState<ActeurConnu[]>([])
 
   const relire = useCallback(async () => {
     const res = await getVisitSummaryAction({ report_id: reportId })
@@ -126,6 +130,7 @@ export function PanneauArbitrage({
   useEffect(() => {
     let vivant = true
     void listOrgCompanyNamesAction().then((noms) => { if (vivant) setEntreprises(noms) })
+    void listActeursConnusAction().then((gens) => { if (vivant) setConnus(gens) })
     return () => { vivant = false }
   }, [])
 
@@ -205,6 +210,7 @@ export function PanneauArbitrage({
               reportId={reportId}
               agir={agir}
               entreprises={entreprises}
+              connus={connus}
             />
           ))}
         </div>
@@ -231,6 +237,7 @@ function Groupe({
   reportId,
   agir,
   entreprises,
+  connus,
 }: {
   cle: Cle
   items: SummaryItem[]
@@ -240,6 +247,7 @@ function Groupe({
   reportId: string
   agir: (id: string, fn: () => Promise<{ ok: boolean }>) => Promise<void>
   entreprises: string[]
+  connus: ActeurConnu[]
 }) {
   const f = FAMILLE[cle]
   const open = ouverte === cle
@@ -300,6 +308,7 @@ function Groupe({
                   ...items.filter((a) => a.id !== item.id).map((a) => a.title),
                   ...entreprises,
                 ]}
+                connus={connus}
               />
             ) : (
               <LigneProposition key={item.id} item={item} reportId={reportId} busy={busy} agir={agir} />
@@ -387,6 +396,7 @@ function LigneIntervenant({
   busy,
   agir,
   entreprises,
+  connus,
 }: {
   item: SummaryItem
   reportId: string
@@ -394,12 +404,31 @@ function LigneIntervenant({
   agir: (id: string, fn: () => Promise<{ ok: boolean }>) => Promise<void>
   /** Entreprises déjà connues + autres acteurs de la même visite. */
   entreprises: string[]
+  /** Les personnes déjà enregistrées, pour ne pas en créer une deuxième fois. */
+  connus: ActeurConnu[]
 }) {
   const pid = item.proposalId
+
+  // ── DÉJÀ CONNU ? (U15.1/U15.2) ───────────────────────────────────────────
+  // Avant de faire saisir, on regarde ce que l'organisation sait déjà. Le
+  // rapprochement est DÉTERMINISTE et explicable — aucun appel au modèle pour
+  // une question que trois règles tranchent. Calculé une fois : il ne dépend
+  // que du nom lu et de la liste, dont aucun ne bouge pendant l'arbitrage.
+  const reconnu = useMemo(
+    () => rapprocher(item.title, connus, { limite: 1 })[0] ?? null,
+    [item.title, connus],
+  )
+  // Sûr = on pré-remplit. Le prénom seul (70) ne l'est pas : deux Yann peuvent
+  // exister, et pré-remplir ferait valider une association que personne n'a
+  // vérifiée. On PROPOSE alors sans rien remplir.
+  const certain = reconnu !== null && reconnu.score >= 90
+
   // Le nom lu part dans l'entreprise : le cas courant, corrigible d'un geste.
-  const [entreprise, setEntreprise] = useState(item.title)
-  const [personne, setPersonne] = useState('')
-  const [estPersonne, setEstPersonne] = useState(false)
+  // Sauf si on RECONNAÎT quelqu'un — alors c'est une personne, et son
+  // entreprise est celle qu'on lui connaît.
+  const [entreprise, setEntreprise] = useState(certain ? reconnu!.candidat.entreprise ?? '' : item.title)
+  const [personne, setPersonne] = useState(certain ? reconnu!.candidat.nom : '')
+  const [estPersonne, setEstPersonne] = useState(certain)
   const [role, setRole] = useState('')
   const [erreur, setErreur] = useState<string | null>(null)
   if (!pid) return null
@@ -451,6 +480,20 @@ function LigneIntervenant({
           « Yann » arrivent dans la même liste, et rien dans le texte ne dit
           lequel est une société. Le type se choisit donc explicitement, et
           c'est lui qui commande les champs suivants. */}
+      {/* CE QUE LA MÉMOIRE SAIT DÉJÀ, ET POURQUOI ELLE LE CROIT. Un « déjà
+          connu » sans motif est un chiffre qu'on croit ou qu'on ignore ; avec
+          son motif, il se vérifie d'un coup d'œil. */}
+      {reconnu && (
+        <p
+          data-slot="acteur-deja-connu"
+          className={`mb-1 text-[11.5px] ${certain ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'}`}
+        >
+          {certain ? '✓ Déjà connu' : 'Peut-être'} : {reconnu.candidat.nom}
+          {reconnu.candidat.entreprise ? ` — ${reconnu.candidat.entreprise}` : ''}{' '}
+          <span className="text-muted-foreground">({reconnu.motif})</span>
+        </p>
+      )}
+
       <div className="mb-1 inline-flex rounded-md border p-0.5 text-[11px]">
         {([false, true] as const).map((personneChoisie) => (
           <button
