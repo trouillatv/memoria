@@ -437,7 +437,7 @@ async function IntervenantsView({ siteId }: { siteId: string }) {
   // Projection leaderboard depuis la MÊME lecture (pas de second fetch) : mêmes
   // personnes, même vérité que la fiche.
   const dashboard = buildIntervenantsDashboard(siteId, view.groups.flatMap((g) => g.people), view.toIdentifyCount, todayLocalIso())
-  return <IntervenantsLeaderboard dashboard={dashboard} toIdentify={view.toIdentify} />
+  return <IntervenantsLeaderboard siteId={siteId} dashboard={dashboard} toIdentify={view.toIdentify} />
 }
 
 async function ExplorerView({ siteId }: { siteId: string }) {

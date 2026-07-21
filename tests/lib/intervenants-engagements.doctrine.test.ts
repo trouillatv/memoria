@@ -46,3 +46,38 @@ describe('page Intervenants — projection + frontière proposé/validé', () =>
     expect(src).toContain('view.groups.flatMap')
   })
 })
+
+// ── « À identifier » doit rester un GESTE, pas une liste ────────────────────
+//
+// Défaut signalé par Vincent (2026-07-22, capture d'écran) : la bannière
+// annonçait « 7 personnes ont été citées et attendent validation » puis
+// n'offrait aucun moyen de les valider. Le geste existait — dans un onglet qui
+// n'était plus rendu depuis que le leaderboard avait pris sa place. Encore une
+// capacité devenue invisible, pas une capacité manquante.
+
+describe('bannière « À identifier » — citer sans pouvoir confirmer n’a aucun sens', () => {
+  const leaderboard = readFileSync(
+    join(process.cwd(), 'app/(dashboard)/sites/[id]/views/intervenants/IntervenantsLeaderboard.tsx'),
+    'utf8',
+  )
+
+  it('la bannière rend le geste d’identification, pas une simple ligne de texte', () => {
+    expect(leaderboard).toContain('<IdentifyCard')
+    expect(leaderboard).toMatch(/import \{ IdentifyCard \}/)
+  })
+
+  it('le geste reçoit le chantier — sans quoi la promotion ne saurait où écrire', () => {
+    expect(leaderboard).toMatch(/<IdentifyCard[^>]*siteId=\{siteId\}/)
+  })
+
+  it('un seul cycle de promotion, quelle que soit la surface', () => {
+    const card = readFileSync(
+      join(process.cwd(), 'app/(dashboard)/sites/[id]/views/intervenants/IdentifyCard.tsx'),
+      'utf8',
+    )
+    expect(card).toContain('promoteFromMemoryAction')
+    expect(card).toContain('dismissFromMemoryAction')
+    // Le composant est partagé : il ne doit pas être recopié dans le leaderboard.
+    expect(leaderboard).not.toContain('promoteFromMemoryAction')
+  })
+})

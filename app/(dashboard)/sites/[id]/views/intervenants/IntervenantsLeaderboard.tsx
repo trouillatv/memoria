@@ -8,11 +8,13 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useFicheHref } from '@/components/knowledge/use-fiche-href'
 import { Users, Clock, PauseCircle, Building2, UserPlus, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { IntervenantsDashboard, IntervenantRow } from '@/lib/knowledge/intervenants-dashboard-model'
 import type { ToIdentifyItem } from '@/lib/knowledge/site-intervenants-view'
+import { IdentifyCard } from './IdentifyCard'
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '·'
 function frDate(iso: string | null): string {
@@ -65,7 +67,8 @@ const CHIPS: Array<{ key: QuickFilter; label: string }> = [
   { key: 'late', label: 'En retard' }, { key: 'idle', label: 'Sans activité' }, { key: 'multi', label: 'Multi-chantiers' },
 ]
 
-export function IntervenantsLeaderboard({ dashboard, toIdentify }: { dashboard: IntervenantsDashboard; toIdentify: ToIdentifyItem[] }) {
+export function IntervenantsLeaderboard({ siteId, dashboard, toIdentify }: { siteId: string; dashboard: IntervenantsDashboard; toIdentify: ToIdentifyItem[] }) {
+  const router = useRouter()
   const { rows, kpis } = dashboard
   // Ouvrir une fiche personne garde l'onglet Intervenants derrière le panneau.
   const ficheHref = useFicheHref()
@@ -138,14 +141,11 @@ export function IntervenantsLeaderboard({ dashboard, toIdentify }: { dashboard: 
             </button>
           </div>
           {showToId && (
+            /* Le geste vient de l'onglet Intervenants : citer un nom ne sert à
+               rien si on ne peut pas le confirmer là où on le lit. */
             <ul className="space-y-1.5 border-t border-amber-200/70 px-4 py-2.5 dark:border-amber-900/40">
               {toIdentify.map((p) => (
-                <li key={p.proposalId} className="flex items-baseline gap-2 text-[13px]">
-                  <span className="font-medium">{p.title}</span>
-                  <span className="text-[11.5px] text-muted-foreground">
-                    cité{p.visitDates[0] ? ` — visite du ${frDate(p.visitDates[0])}` : ''}{p.suggestion ? ` · correspond peut-être à ${p.suggestion.name}` : ''}
-                  </span>
-                </li>
+                <IdentifyCard key={p.proposalId} siteId={siteId} item={p} onDone={() => router.refresh()} />
               ))}
             </ul>
           )}
