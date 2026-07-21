@@ -24,7 +24,7 @@ import {
 import { CR_VISITE_TEMPLATE_KEY, buildVisitCrSections, type VisitCrAnalysis } from '@/lib/visits/cr-visite-sections'
 import { decideVisitCrDocument, restoreSectionProposal, withAiBaseline } from '@/lib/visits/cr-visite-policy'
 import { insertActivityLog } from '@/lib/db/activity-logs'
-import type { DbReportDocument } from '@/types/db'
+import type { DbReportDocument, ReportDocumentSection } from '@/types/db'
 
 const COLS =
   'id, organization_id, report_id, site_id, template_key, sections, status, document_id, pdf_path, final_document_id, final_path, finalized_at, finalized_by, provider, model, prompt_version, created_by, created_at, updated_at'
@@ -195,4 +195,28 @@ async function trace(
   } catch {
     // Perdre une trace est ennuyeux ; perdre le geste serait pire.
   }
+}
+
+/**
+ * ÉCRIT LE REGISTRE DE CONCRÉTISATION, quel que soit le statut du document.
+ *
+ * `updateReportDocumentSections` refuse tout document non-brouillon — c'est
+ * juste pour le CONTENU : un CR finalisé ne se réécrit pas. Mais le registre
+ * n'est pas du contenu : c'est la trace de ce que le document a fait naître, et
+ * concrétiser reste permis après finalisation (le texte est figé, le travail
+ * qu'il engendre ne l'est pas).
+ *
+ * Sans cette porte, concrétiser un CR finalisé perdait la trace EN SILENCE :
+ * l'update ne touchait aucune ligne, aucune erreur n'était levée, et l'identité
+ * durable retombait sur le libellé — exactement la faille qu'on venait de fermer.
+ */
+export async function writeConcretisationRegistry(
+  documentId: string,
+  sections: ReportDocumentSection[],
+): Promise<void> {
+  const { error } = await createAdminClient()
+    .from('report_documents')
+    .update({ sections, updated_at: new Date().toISOString() })
+    .eq('id', documentId)
+  if (error) throw error
 }

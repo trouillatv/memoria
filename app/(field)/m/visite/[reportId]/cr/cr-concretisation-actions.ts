@@ -19,8 +19,7 @@
 
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getVisit } from '@/lib/db/visits'
-import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
-import { updateReportDocumentSections } from '@/lib/db/report-documents'
+import { getVisitCrDocument, writeConcretisationRegistry } from '@/lib/db/visit-cr-documents'
 import type { SectionConcretisation } from '@/types/db'
 import {
   readOperationalItems,
@@ -254,11 +253,15 @@ export async function createFromCrAction(reportId: string, keys: string[]): Prom
   // LE REGISTRE S'ÉCRIT APRÈS LES CRÉATIONS, jamais avant : on n'inscrit que
   // ce qui existe vraiment. Une écriture ratée ici ne perd rien — le garde-fou
   // par libellé prend le relais jusqu'à la prochaine concrétisation.
+  //
+  // Il passe par `writeConcretisationRegistry`, qui ignore le statut : un CR
+  // FINALISÉ ne se réécrit pas dans son contenu, mais il peut encore faire
+  // naître des objets, et cette trace-là doit s'inscrire.
   if (registre.length > 0) {
     try {
       let sections = ctx.doc.sections
       for (const r of registre) sections = withConcretisation(sections, r.section, r.entry)
-      await updateReportDocumentSections(ctx.doc.id, sections)
+      await writeConcretisationRegistry(ctx.doc.id, sections)
     } catch {
       // silencieux : ne jamais faire échouer une création réussie sur sa trace
     }
