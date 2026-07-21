@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   promoteIntoSection,
   traceLine,
+  traceRegistryLine,
   alreadyPromoted,
   notPromotedFrom,
   type PromotionRequest,
@@ -142,5 +143,38 @@ describe('Citer une preuve n’est pas rédiger le compte-rendu', () => {
 
   it('et le refus explique où faire le geste', () => {
     expect(src).toContain('se confirme depuis les propositions')
+  })
+})
+
+describe('Le 4e maillon resiste au libelle tronque du registre', () => {
+  // DÉFAUT TROUVÉ EN PRÉPARANT LA DÉMO : le registre de concrétisation
+  // n'inscrit pas la ligne, il inscrit son LIBELLÉ — et `readLine` coupe au
+  // tiret cadratin pour isoler le responsable et l'échéance. Une phrase promue
+  // qui contient « — » (la ponctuation même du produit) perdait donc sa preuve,
+  // silencieusement. On retrouve la ligne par son index, qui lui est exact.
+  const promue = 'Signalétique PMR manquante — circulation est, à commander'
+
+  it('retrouve la preuve quand le registre n’a gardé que la tête de ligne', () => {
+    const out = promoteIntoSection(sections(), req({ sectionKey: 'a_savoir', text: promue })).sections
+    const section = out.find((x) => x.key === 'a_savoir')
+    // Ce que la concrétisation inscrit réellement : la tête, pas la phrase.
+    expect(traceLine(section, 'Signalétique PMR manquante')).toBeNull()
+    // Ce que le récit doit trouver : la promotion, via l'index de la ligne.
+    expect(traceRegistryLine(section, 'memoire:1', 'Signalétique PMR manquante')).toMatchObject({
+      capture_id: 'cap-3',
+    })
+  })
+
+  it('ne rattache rien quand l’index ne pointe sur aucune ligne promue', () => {
+    const out = promoteIntoSection(sections(), req({ sectionKey: 'a_savoir', text: promue })).sections
+    const section = out.find((x) => x.key === 'a_savoir')
+    // Ligne 0 = « Le chantier ouvre à 7h », née de l'analyse. Rien à rattacher.
+    expect(traceRegistryLine(section, 'memoire:0', 'Le chantier ouvre à 7h')).toBeNull()
+  })
+
+  it('reste sans effet quand le registre ne porte pas d’index exploitable', () => {
+    const out = promoteIntoSection(sections(), req({ sectionKey: 'a_savoir', text: promue })).sections
+    const section = out.find((x) => x.key === 'a_savoir')
+    expect(traceRegistryLine(section, undefined, 'Signalétique PMR manquante')).toBeNull()
   })
 })

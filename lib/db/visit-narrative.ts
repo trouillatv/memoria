@@ -16,7 +16,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
-import { traceLine } from '@/lib/visits/promotion'
+import { traceRegistryLine } from '@/lib/visits/promotion'
 import type { SectionPromotion } from '@/types/db'
 import {
   classifyProduced,
@@ -192,12 +192,13 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
   // par `report_id` sont comptés à part : ils existent, mais rien ne prouve
   // qu'ils sont nés de ce récit.
   // La chaîne complète : objet → ligne du compte-rendu → phrase promue → capture.
-  // `traceLine` ne devine rien : sans promotion, il répond null.
+  // Rien n'est deviné : sans promotion sur cette ligne, la réponse est null.
   const produced = classifyProduced(registry, []).map((p) => ({
     ...p,
     why: explainProduced(p),
-    evidence: traceLine(
+    evidence: traceRegistryLine(
       doc?.sections.find((s) => s.key === p.sourceSection),
+      p.itemKey,
       p.label,
     ),
   }))

@@ -100,6 +100,41 @@ export function traceLine(
   return (section.promotions ?? []).find((p) => norm(p.text) === wanted) ?? null
 }
 
+/**
+ * La preuve derrière une ligne DU REGISTRE de concrétisation.
+ *
+ * Le registre n'inscrit pas la ligne, il inscrit son LIBELLÉ — et la lecture
+ * d'une ligne opérationnelle coupe au tiret cadratin pour isoler responsable et
+ * échéance. Une phrase promue contenant « — » perdait donc sa preuve, alors que
+ * le lien existait : trouvé en préparant la démonstration, pas en relisant.
+ *
+ * On repasse donc par l'INDEX porté par `item_key` (`kind:index`), qui désigne
+ * la ligne exacte. Aucune ressemblance de texte n'est tentée : si l'index ne
+ * mène nulle part, la réponse reste null.
+ */
+export function traceRegistryLine(
+  section: ReportDocumentSection | undefined,
+  itemKey: string | undefined,
+  label: string,
+): SectionPromotion | null {
+  if (!section) return null
+  const direct = traceLine(section, label)
+  if (direct) return direct
+  const index = Number(itemKey?.split(':').pop())
+  if (!Number.isInteger(index) || index < 0) return null
+  const line = bulletsOf(section.content ?? '')[index]
+  return line ? traceLine(section, line) : null
+}
+
+/** Les lignes d'une section, sans leur puce. Même lecture que la
+ *  concrétisation : les deux DOIVENT numéroter les lignes à l'identique. */
+export function bulletsOf(content: string): string[] {
+  return content
+    .split('\n')
+    .map((l) => l.replace(/^\s*[-•*]\s*/, '').trim())
+    .filter(Boolean)
+}
+
 /** Les phrases d'une preuve qui ne sont PAS entrées dans le compte-rendu.
  *  L'inverse de la question habituelle, et personne ne sait y répondre. */
 export function notPromotedFrom(

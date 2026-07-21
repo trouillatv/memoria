@@ -21,6 +21,7 @@
 //
 // Module PUR : aucune base, aucun réseau. Testable, et lisible des deux côtés.
 
+import { bulletsOf } from '@/lib/visits/promotion'
 import type { ReportDocumentSection } from '@/types/db'
 
 export type OperationalKind = 'decision' | 'action' | 'echeance' | 'intervenant' | 'memoire'
@@ -53,12 +54,9 @@ const CONCRETISABLE: Record<string, OperationalKind> = {
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 /** Les puces d'une section, nettoyées. Une ligne vide ne produit rien. */
-function bulletsOf(content: string): string[] {
-  return content
-    .split('\n')
-    .map((l) => l.replace(/^\s*[-•*]\s*/, '').trim())
-    .filter(Boolean)
-}
+// La numérotation des lignes vient de `promotion.ts` et n'est pas redéfinie
+// ici : c'est elle qui relie une entrée du registre à sa promotion. Deux
+// lectures divergentes rompraient le 4ᵉ maillon sans rien signaler.
 
 /**
  * Relit une ligne écrite par la conversion (`Titre — Responsable, pour le DATE`
