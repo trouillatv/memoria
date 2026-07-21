@@ -54,14 +54,21 @@ function bullets(lines: Array<string | null>): string {
   return kept.length > 0 ? kept.map((l) => `- ${l}`).join('\n') : ''
 }
 
+/** Une vraie date dite (AAAA-MM-JJ). Tout le reste est une CONTRAINTE dite
+ *  (« Avant le passage de la sécurité ») — et une contrainte ne se préfixe pas
+ *  de « pour le », sous peine d'écrire « pour le Avant le passage… ». */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
 /** « — Guillaume, pour le 2026-07-24 » : le complément ne s'écrit que si on le
- *  sait. Ni responsable ni date connus → la ligne dit juste ce qu'il y a à faire. */
+ *  sait. Ni responsable ni échéance connus → la ligne dit juste ce qu'il y a à
+ *  faire. Une contrainte est rendue telle qu'elle a été prononcée. */
 function withOwnerAndDue(label: string, owner: unknown, due: unknown): string | null {
   const head = clean(label)
   if (!head) return null
   const who = clean(owner)
   const when = clean(due)
-  const tail = [who, when ? `pour le ${when}` : ''].filter(Boolean).join(', ')
+  const whenLabel = when ? (ISO_DATE.test(when) ? `pour le ${when}` : when) : ''
+  const tail = [who, whenLabel].filter(Boolean).join(', ')
   return tail ? `${head} — ${tail}` : head
 }
 

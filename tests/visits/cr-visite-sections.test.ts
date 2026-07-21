@@ -44,6 +44,14 @@ describe('buildVisitCrSections', () => {
     expect(byKey.decisions).toBe('- Démarrer la dépose jeudi\n- Faire intervenir Clim Expert avant l’électricien')
     // Une action dit ce qu'il faut faire, puis qui et quand — quand on le sait.
     expect(byKey.actions).toContain('- Relancer Yann pour les plans — Guillaume, pour le 2026-07-24')
+    // Une contrainte dite n'est PAS une date : « pour le Avant le passage… » ne
+    // se dit pas. On rend la contrainte telle qu'elle a été prononcée.
+    expect(
+      buildVisitCrSections({
+        ...full,
+        actions: [{ title: 'Évacuer le stockage', rationale: '', priority: null, owner: '', due: 'Avant le passage de la sécurité' }],
+      }).find((s) => s.key === 'actions')!.content,
+    ).toBe('- Évacuer le stockage — Avant le passage de la sécurité')
     expect(byKey.actions).toContain('- Vérifier le TD')
     expect(byKey.actions).not.toContain('undefined')
     // Une échéance sans date garde SA contrainte, jamais une date devinée.

@@ -13,7 +13,7 @@
     "test:integration": "vitest run --project integration",
     "test:visit-cr": "vitest run --project unit tests/visits/cr-visite-policy.test.ts tests/visits/cr-visite-sections.test.ts tests/components/cr-document-sections.test.tsx",
     "test:doctrine:migrations": "vitest run --project unit tests/lib/migration-prefix.doctrine.test.ts",
-    "lint:visit-cr": "eslint \"app/(field)/m/visite/[reportId]/cr/\" lib/visits/cr-visite-policy.ts lib/visits/cr-visite-sections.ts lib/db/visit-cr-documents.ts",
+    "lint:visit-cr": "eslint \"app/(field)/m/visite/[[]reportId[]]/cr/page.tsx\" \"app/(field)/m/visite/[[]reportId[]]/cr/CrDocumentSections.tsx\" \"app/(field)/m/visite/[[]reportId[]]/cr/cr-document-actions.ts\" lib/visits/cr-visite-policy.ts lib/visits/cr-visite-sections.ts lib/db/visit-cr-documents.ts",
     "test:watch": "vitest",
     "db:push": "tsx scripts/db-push.ts",
     "db:bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
