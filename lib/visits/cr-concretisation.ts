@@ -1,0 +1,126 @@
+// CONCRÉTISER — transformer le récit approuvé en travail réel (Vincent, 2026-07-21).
+//
+//   Modifier   corrige le récit.
+//   Valider    approuve le récit.
+//   Concrétiser  transforme ce récit approuvé en objets du chantier.
+//
+// Ce module fait le premier temps de la concrétisation, et lui seul : LIRE le
+// document corrigé et en sortir la liste des éléments à créer. Il ne crée rien.
+// L'humain confirme d'abord, écran de revue à l'appui.
+//
+// LA RÈGLE CARDINALE : on lit `content`, JAMAIS `ai_content`, jamais l'ancien
+// débrief. La proposition d'origine peut être obsolète ; ce que Guillaume a
+// corrigé fait foi. Concrétiser depuis l'analyse initiale reviendrait à créer
+// dans le chantier ce qu'il vient précisément de corriger.
+//
+// Cinq familles concrétisables — et cinq seulement :
+//   décisions · actions · échéances · intervenants · mémoire (« à savoir »).
+// Le RÉSUMÉ et les VIGILANCES racontent ; ils ne créent rien. Un point de
+// vigilance qui mérite un objet doit devenir une action ou une réserve, par un
+// geste humain explicite — pas par une conversion automatique.
+//
+// Module PUR : aucune base, aucun réseau. Testable, et lisible des deux côtés.
+
+import type { ReportDocumentSection } from '@/types/db'
+
+export type OperationalKind = 'decision' | 'action' | 'echeance' | 'intervenant' | 'memoire'
+
+export interface OperationalItem {
+  /** Clé STABLE (famille + rang) : cocher/décocher doit survivre à un rendu. */
+  key: string
+  kind: OperationalKind
+  /** Ce qu'on lira dans le chantier — le texte corrigé, tel quel. */
+  label: string
+  /** Responsable dit. `null` si le texte n'en nomme pas : on n'attribue jamais. */
+  owner: string | null
+  /** Date DITE (AAAA-MM-JJ). Jamais déduite d'un délai. */
+  due: string | null
+  /** Contrainte dite (« Avant le démarrage ») quand il n'y a pas de date. */
+  constraint: string | null
+  /** D'où vient l'élément dans le document — la provenance ne se perd pas. */
+  sourceSection: string
+}
+
+/** Les sections qui produisent des objets, et ce qu'elles produisent. */
+const CONCRETISABLE: Record<string, OperationalKind> = {
+  decisions: 'decision',
+  actions: 'action',
+  echeances: 'echeance',
+  intervenants: 'intervenant',
+  a_savoir: 'memoire',
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+/** Les puces d'une section, nettoyées. Une ligne vide ne produit rien. */
+function bulletsOf(content: string): string[] {
+  return content
+    .split('\n')
+    .map((l) => l.replace(/^\s*[-•*]\s*/, '').trim())
+    .filter(Boolean)
+}
+
+/**
+ * Relit une ligne écrite par la conversion (`Titre — Responsable, pour le DATE`
+ * ou `Titre — Contrainte`) SANS jamais rien inventer : ce que le texte ne dit
+ * pas reste `null`. Une ligne corrigée à la main qui ne suit plus ce gabarit
+ * reste un libellé entier — on préfère un titre long à une donnée fabriquée.
+ */
+function readLine(raw: string): { label: string; owner: string | null; due: string | null; constraint: string | null } {
+  const [head, ...rest] = raw.split('—')
+  const label = (head ?? '').trim()
+  const tail = rest.join('—').trim()
+  if (!tail) return { label, owner: null, due: null, constraint: null }
+
+  let owner: string | null = null
+  let due: string | null = null
+  let constraint: string | null = null
+
+  for (const part of tail.split(',').map((p) => p.trim()).filter(Boolean)) {
+    const date = part.match(/^pour le\s+(\d{4}-\d{2}-\d{2})$/)
+    if (date) {
+      due = date[1]!
+      continue
+    }
+    if (ISO_DATE.test(part)) {
+      due = part
+      continue
+    }
+    if (owner === null && constraint === null && /^[A-ZÀ-Ý]/.test(part) === false) {
+      constraint = part
+      continue
+    }
+    // Un mot capitalisé isolé après le tiret : un nom. Une phrase : une
+    // contrainte dite. On ne tranche que sur ce que la forme montre.
+    if (owner === null && part.split(/\s+/).length <= 2 && /^[A-ZÀ-Ý]/.test(part)) owner = part
+    else constraint = constraint ? `${constraint}, ${part}` : part
+  }
+
+  return { label, owner, due, constraint }
+}
+
+/**
+ * Les éléments concrétisables du document CORRIGÉ, dans l'ordre de lecture.
+ * Ne crée rien : produit la matière de l'écran de revue, que l'humain confirme.
+ */
+export function readOperationalItems(sections: ReportDocumentSection[]): OperationalItem[] {
+  const items: OperationalItem[] = []
+  for (const section of sections ?? []) {
+    const kind = CONCRETISABLE[section.key]
+    if (!kind) continue // résumé et vigilances racontent — ils ne créent pas
+    bulletsOf(section.content ?? '').forEach((line, index) => {
+      const read = readLine(line)
+      if (!read.label) return
+      items.push({
+        key: `${kind}:${index}`,
+        kind,
+        label: read.label,
+        owner: read.owner,
+        due: read.due,
+        constraint: read.constraint,
+        sourceSection: section.key,
+      })
+    })
+  }
+  return items
+}

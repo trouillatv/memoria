@@ -221,23 +221,17 @@ export function MemoriaRetained({
   // rien, et n'occupe pas la place de la vérité principale.
   if (deferred) {
     return (
-      <section data-slot="analyse-initiale-repliee" className="rounded-2xl border bg-card p-3.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold">Analyse initiale MemorIA</p>
-            <p className="text-[12px] text-muted-foreground">
-              Les propositions relevées sur le terrain — actions, échéances, intervenants.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => { setDeferred(false); void load(false) }}
-            className="shrink-0 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium hover:bg-muted"
-          >
-            Afficher
-          </button>
-        </div>
-      </section>
+      // Discrète, et à sa place : elle sert à comprendre ce que MemorIA avait
+      // détecté et d'où ça vient — pas à concurrencer le document corrigé.
+      <div data-slot="analyse-initiale-repliee" className="px-1">
+        <button
+          type="button"
+          onClick={() => { setDeferred(false); void load(false) }}
+          className="text-[12px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+        >
+          Voir l’analyse d’origine
+        </button>
+      </div>
     )
   }
 

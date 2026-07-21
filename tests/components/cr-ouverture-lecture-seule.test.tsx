@@ -50,9 +50,9 @@ describe('Branche 1 — un document existe : l’ouverture est une LECTURE', () 
     render(<MemoriaRetained reportId="r1" siteId="s1" transcriptions={[]} autoLoad={false} />)
     expect(screen.queryByText(/MemorIA analyse/)).toBeNull()
     expect(screen.queryByText(/Ouverture du compte-rendu/)).toBeNull()
-    // Elle reste atteignable d'un geste, sous son vrai nom.
-    expect(screen.getByText('Analyse initiale MemorIA')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Afficher' })).toBeTruthy()
+    // Elle reste atteignable d'un geste, mais DISCRÈTE : elle ne concurrence
+    // plus le document corrigé, elle explique d'où il vient.
+    expect(screen.getByRole('button', { name: 'Voir l’analyse d’origine' })).toBeTruthy()
   })
 
   it('montre la correction humaine et son bouton Modifier, immédiatement', () => {

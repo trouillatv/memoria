@@ -49,6 +49,14 @@ export function CrDocumentSections({
     setStatus(doc.status)
   }
 
+  /** LE TEXTE S'AFFICHE AVANT LE RÉSEAU (Vincent, 2026-07-21). Attendre deux
+   *  secondes avant de voir sa propre correction donne l'impression d'un écran
+   *  figé. On applique localement tout de suite ; le serveur confirme ensuite,
+   *  et sa réponse fait autorité (ou rend la main en cas d'échec). */
+  const applyLocal = (key: string, content: string) => {
+    setSections((prev) => prev.map((s) => (s.key === key ? { ...s, content } : s)))
+  }
+
   return (
     <section className="rounded-2xl border bg-background p-3.5 shadow-sm">
       <div className="flex items-center justify-between gap-2">
@@ -78,6 +86,7 @@ export function CrDocumentSections({
             section={section}
             editable={editable}
             onPersisted={adopt}
+            onApplyLocal={applyLocal}
           />
         ))}
       </div>
@@ -90,17 +99,21 @@ function SectionRow({
   section,
   editable,
   onPersisted,
+  onApplyLocal,
 }: {
   reportId: string
   section: ReportDocumentSection
   editable: boolean
   onPersisted: (doc: PersistedCrDocument) => void
+  onApplyLocal: (key: string, content: string) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(section.content)
   const [error, setError] = useState<string | null>(null)
   // Le pending est PAR SECTION : corriger le résumé ne gèle pas les six autres.
   const [pending, setPending] = useState(false)
+  // « Enregistré » — la confirmation discrète que le serveur a bien pris.
+  const [justSaved, setJustSaved] = useState(false)
 
   // La restauration n'a de sens que si MemorIA a proposé un texte ET que ce
   // texte a été modifié depuis. Sinon : pas de bouton, pas de promesse creuse.
@@ -109,16 +122,27 @@ function SectionRow({
 
   const save = async () => {
     if (pending) return // anti double-clic : jamais deux écritures concurrentes
+    const previous = section.content
+    // 1. L'écran obéit TOUT DE SUITE : le texte corrigé s'affiche, la section
+    //    se referme, et l'attente réseau se dit à côté sans rien bloquer.
+    setEditing(false)
+    setJustSaved(false)
+    onApplyLocal(section.key, draft)
     setPending(true)
     setError(null)
+    // 2. Le serveur confirme — et sa réponse fait autorité.
     const res = await saveCrSectionAction(reportId, section.key, draft)
     setPending(false)
     if (res.ok) {
-      setEditing(false)
       onPersisted(res.document)
+      setJustSaved(true)
+      setTimeout(() => setJustSaved(false), 2500)
     } else {
-      // Le texte de l'utilisateur reste à l'écran : on n'efface jamais un
-      // travail parce que le serveur a refusé.
+      // 3. Échec : on rend la main sans rien perdre — le texte saisi retourne
+      //    dans l'éditeur ouvert, la section retrouve son état d'avant.
+      onApplyLocal(section.key, previous)
+      setDraft(draft)
+      setEditing(true)
       setError(res.error)
     }
   }
@@ -146,6 +170,11 @@ function SectionRow({
             {pending && (
               <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Enregistrement…
+              </span>
+            )}
+            {!pending && justSaved && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-400">
+                <Check className="h-3 w-3" aria-hidden /> Enregistré
               </span>
             )}
             <button
