@@ -257,28 +257,65 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
                       'rounded-lg border border-l-[3px] bg-card px-2.5 py-2 transition-opacity',
                       f.spine,
                       // Décoché = mis en retrait, jamais masqué : on doit voir
-                      // ce qu'on a écarté.
+                      // ce qu'on a écarté. Un intervenant, lui, n'est jamais
+                      // atténué : il n'est pas écarté, il relève d'ailleurs.
                       item.creatable && !item.alreadyCreated && !chosen.has(item.key) && 'opacity-55',
                     )}
                   >
                     <label className="flex items-start gap-2.5">
-                      <input
-                        type="checkbox"
-                        className={cn('mt-0.5 h-4 w-4 shrink-0 disabled:opacity-40', f.accent)}
-                        checked={chosen.has(item.key)}
-                        disabled={!item.creatable || item.alreadyCreated || pending}
-                        onChange={() => toggle(item.key)}
-                        aria-label={item.label}
-                      />
+                      {/* UNE CASE DÉCOCHÉE ET GRISE SE LIT COMME UN BUG (Vincent,
+                          2026-07-21). L'intervenant n'est pas « désactivé » : il
+                          est d'une AUTRE NATURE — il ne se crée pas ici. Il
+                          porte donc son propre signe, pas une case morte. */}
+                      {item.creatable ? (
+                        <input
+                          type="checkbox"
+                          className={cn('mt-0.5 h-4 w-4 shrink-0 disabled:opacity-40', f.accent)}
+                          checked={chosen.has(item.key)}
+                          disabled={item.alreadyCreated || pending}
+                          onChange={() => toggle(item.key)}
+                          aria-label={item.label}
+                        />
+                      ) : (
+                        <span
+                          aria-hidden
+                          className={cn(
+                            'mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full',
+                            f.chip,
+                          )}
+                        >
+                          <Users className="h-3 w-3" />
+                        </span>
+                      )}
                       <span className="min-w-0 flex-1">
                         <span className="block text-[13px] leading-snug">{item.label}</span>
-                        {(item.owner || item.due || item.constraint) && (
+
+                        {/* UNE ÉCHÉANCE EST UNE DATE AVANT D'ÊTRE UN TITRE. Sans
+                            ce repère, une échéance et une action se lisaient
+                            pareil, à la couleur près. */}
+                        {item.kind === 'echeance' && (item.due || item.constraint) && (
+                          <span
+                            className={cn(
+                              'mt-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium',
+                              f.chip,
+                            )}
+                          >
+                            <CalendarClock className="h-3 w-3" aria-hidden />
+                            {item.due ?? item.constraint}
+                          </span>
+                        )}
+
+                        {item.kind !== 'echeance' && (item.owner || item.due || item.constraint) && (
                           <span className="mt-0.5 block text-[11px] text-muted-foreground">
                             {[item.owner, item.due ? `pour le ${item.due}` : item.constraint]
                               .filter(Boolean)
                               .join(' · ')}
                           </span>
                         )}
+                        {item.kind === 'echeance' && item.owner && (
+                          <span className="mt-0.5 block text-[11px] text-muted-foreground">{item.owner}</span>
+                        )}
+
                         {item.alreadyCreated && (
                           <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
                             <Check className="h-3 w-3" aria-hidden /> Déjà créé
@@ -287,10 +324,14 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
                         {!item.creatable && (
                           // On ne fabrique pas une ligne de casting depuis un
                           // nom : le rôle et l'entreprise seraient inventés.
-                          <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                            Cité dans le compte-rendu. L’associer au chantier se fait depuis le
-                            casting — son rôle ne s’invente pas.
-                          </span>
+                          <>
+                            <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                              À traiter dans le casting
+                            </span>
+                            <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                              Son rôle et son entreprise ne s’inventent pas.
+                            </span>
+                          </>
                         )}
                       </span>
                     </label>
@@ -312,7 +353,10 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
           className="mt-3.5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-foreground px-3 py-2.5 text-[13px] font-semibold text-background disabled:opacity-50"
         >
           {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
-          Créer dans le chantier ({chosen.size})
+          {/* Le bouton dit CE QU'IL FAIT, pas un compte entre parenthèses. */}
+          {chosen.size === 0
+            ? 'Sélectionnez ce qui doit être créé'
+            : `Créer les ${chosen.size} élément${chosen.size > 1 ? 's' : ''} dans le chantier`}
         </button>
       )}
     </section>
