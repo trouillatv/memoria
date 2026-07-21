@@ -74,11 +74,9 @@ const styles = StyleSheet.create({
     color: '#eef1f5',
     letterSpacing: 6,
   },
-  // La mention, sous l'en-tête et UNE SEULE FOIS. Ambre discret : elle informe,
-  // elle ne crie pas. Pas de glyphe « ⚠ » — hors WinAnsi, il sortirait en tofu.
-  draftNote: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  draftNoteDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#d97706', marginRight: 6 },
-  draftNoteText: { fontSize: 9, color: '#b45309', fontFamily: 'Helvetica-Bold', letterSpacing: 0.3 },
+  // Puce d'une section du compte-rendu : petite, à la couleur de sa famille.
+  docBulletRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 3 },
+  docBulletDot: { width: 4, height: 4, borderRadius: 2, marginTop: 4.5, marginRight: 7 },
   titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
   dot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
   titleGreen: { fontSize: 11, fontFamily: 'Helvetica-Bold', color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -275,8 +273,12 @@ function DocumentSections({ sections }: { sections: ReportDocumentSection[] }) {
             <SectionTitle text={section.title} color={DOC_COLOR[key] ?? COLORS.muted} important={key === 'resume'} />
             {bullets
               ? lines.map((line, i) => (
-                  <View key={i} style={styles.alertRow} wrap={false}>
-                    <View style={styles.alertDot} />
+                  // La puce porte la couleur de SA famille. Elle utilisait le
+                  // point d'alerte orange, réservé aux vigilances : on avait
+                  // donc de l'orange devant des décisions et des intervenants,
+                  // comme si tout alertait. Une couleur qui dit tout ne dit rien.
+                  <View key={i} style={styles.docBulletRow} wrap={false}>
+                    <View style={[styles.docBulletDot, { backgroundColor: DOC_COLOR[key] ?? COLORS.muted }]} />
                     <View style={styles.actionText}>
                       <Text>{line.replace(/^[-•]\s*/, '')}</Text>
                     </View>
@@ -458,16 +460,9 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
           </View>
         </View>
 
-        {/* La mention, une seule fois : l'en-tête est `fixed` et se répète, pas
-            elle. Le lecteur sait dès la première page à quoi il a affaire ; le
-            redire trois fois ne l'informe plus, ça l'encombre. */}
-        {isDraft && (
-          <View style={styles.draftNote}>
-            <View style={styles.draftNoteDot} />
-            <Text style={styles.draftNoteText}>Brouillon de travail — non finalisé</Text>
-          </View>
-        )}
-
+        {/* Le brouillon se dit UNE FOIS, par le filigrane. Le répéter sous
+            l'en-tête n'ajoutait aucune information : le lecteur l'a déjà vu en
+            ouvrant la page. Un rappel qui n'apprend rien encombre. */}
         {/* LE COMPTE-RENDU HUMAIN, quand il existe : sept sections, dans
             l'ordre de l'éditeur. Aucun récit parallèle ne subsiste à côté —
             imprimer à la fois le texte corrigé et l'analyse d'origine ferait
