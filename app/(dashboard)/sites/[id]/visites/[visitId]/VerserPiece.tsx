@@ -33,6 +33,12 @@ const TYPES: Array<{ kind: Kind; label: string; icon: typeof Camera; accept?: st
  *  mauvaise question. On propose les réponses probables, pré-remplies. */
 type DateChoix = 'fichier' | 'visite' | 'aujourdhui' | 'autre'
 
+/** Le choix de l'humain devient une origine PERSISTÉE (mig 230) : l'écran
+ *  pourra dire « prise le … » ou « date déclarée … » sans supposer. */
+const SOURCE: Record<DateChoix, 'file' | 'visit' | 'today' | 'chosen'> = {
+  fichier: 'file', visite: 'visit', aujourdhui: 'today', autre: 'chosen',
+}
+
 export function VerserPiece({
   reportId,
   visitStartedAt,
@@ -109,7 +115,7 @@ export function VerserPiece({
         ...(storagePath ? { storage_path: storagePath } : {}),
         ...(fichier ? { filename: fichier.name, mime: fichier.type, size_bytes: fichier.size } : {}),
         ...(kind === 'note' ? { body: note.trim() } : {}),
-        ...(capturedAt ? { captured_at: capturedAt } : {}),
+        ...(capturedAt ? { captured_at: capturedAt, captured_at_source: SOURCE[choix] } : {}),
       })
       setBusy(false)
       if (!res.ok) { setError(res.error); return }

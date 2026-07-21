@@ -64,10 +64,15 @@ describe('les gestes de la page sont ceux de son récit', () => {
     expect(rendu).not.toMatch(/Ajouter une preuve/i)
   })
 
+  it('dit si l’analyse est à jour ou dépassée — l’absence laissait le doute', () => {
+    expect(rendu).toContain('Analyse à jour')
+    expect(rendu).toContain('Analyse dépassée')
+  })
+
   it('n’invente aucun historique d’analyse : il n’en existe pas', () => {
     // Une nouvelle analyse ECRASE l'ancienne. Afficher « v1 / v2 » raconterait
     // une histoire que la base ne sait pas démontrer (arbitrage 2026-07-22).
-    expect(rendu).toContain('Dernière analyse')
+    expect(rendu).toContain('dernière analyse du')
     expect(rendu).not.toMatch(/v1|v2/)
   })
 })

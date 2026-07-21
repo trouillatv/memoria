@@ -467,6 +467,15 @@ function Timeline({
                     )}
                   </span>
                   <span className="block truncate text-[11px] text-muted-foreground">{c.why.label}</span>
+                  {/* D'OÙ VIENT CETTE DATE. Une pièce versée après coup porte deux
+                      instants : celui du fait, et celui du dépôt. Les confondre,
+                      ou supposer que le premier vient toujours du fichier, serait
+                      un petit mensonge répété à chaque ligne. */}
+                  {c.addedAfterVisit && (
+                    <span className="block truncate text-[11px] text-muted-foreground">
+                      {origineDate(c)} · versée au dossier le {frDateHeureCourte(c.addedAt)}
+                    </span>
+                  )}
                 </button>
               </div>
             </li>
@@ -711,5 +720,26 @@ function sentences(text: string | null): string[] {
 
 const frHeure = (iso: string) => iso.slice(11, 16)
 const frDate = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/')
+/** La phrase exacte, selon ce que la base sait — jamais selon ce qu'on
+ *  suppose. Sans origine connue, on ne parle que du dépôt. */
+function origineDate(c: NarrativeCapture): string {
+  switch (c.dateSource) {
+    case 'file':
+      return `Prise le ${frDateHeureCourte(c.capturedAt)} (date du fichier)`
+    case 'visit':
+      return 'Date déclarée : jour de la visite'
+    case 'today':
+      return 'Date déclarée : jour du dépôt'
+    case 'chosen':
+      return `Date déclarée : ${frDateCourte(c.capturedAt)}`
+    default:
+      return 'Date d’origine inconnue'
+  }
+}
+
+const frDateCourte = (iso: string) =>
+  new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+const frDateHeureCourte = (iso: string) =>
+  new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
 const frJour = (iso: string) =>
   new Date(iso).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })

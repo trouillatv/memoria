@@ -25,6 +25,10 @@ const TERMINAL_STAGES: CaptureProcessingStage[] = ['ready', 'failed']
 // Suite décidée au débrief express (mig 168) : action | follow | null(=trace).
 export type CaptureTriageIntent = 'action' | 'follow' | 'reserve' | null
 
+/** Origine de `captured_at` (mig 230) : métadonnées du fichier, jour de la
+ *  visite, jour du dépôt, ou date saisie. NULL = inconnue, et on le dit. */
+export type CaptureDateSource = 'file' | 'visit' | 'today' | 'chosen'
+
 export interface VisitCaptureRow {
   id: string
   report_id: string
@@ -74,6 +78,9 @@ export interface AddVisitCaptureInput {
   /** Instant réel (mig 184) — posé à l'IMPORT pour reconstruire la chronologie.
    *  Laissé null en direct : created_at fait foi. */
   capturedAt?: string | null
+  /** D'OÙ vient `capturedAt` : sans elle, l'écran devrait supposer une
+   *  origine, et se tromperait dans trois cas sur quatre. */
+  capturedAtSource?: CaptureDateSource | null
   /** Reprise d'un point de repère (mig 195) — pointe la capture ancre. */
   viewpointOf?: string | null
   /** Photo clé dès la création (mig 174) — une photo ANNOTÉE l'est d'office :
@@ -129,6 +136,7 @@ export async function addVisitCapture(input: AddVisitCaptureInput): Promise<stri
       lat: input.lat ?? null,
       lng: input.lng ?? null,
       captured_at: input.capturedAt ?? null,
+      captured_at_source: input.capturedAtSource ?? null,
       viewpoint_of: input.viewpointOf ?? null,
       starred: input.starred ?? false,
       annotated_original_id: input.annotatedOriginalId ?? null,

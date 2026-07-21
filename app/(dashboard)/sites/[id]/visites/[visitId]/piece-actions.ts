@@ -92,6 +92,9 @@ const registerSchema = z.object({
   /** LA DATE RÉELLE de la pièce — celle du fichier, de la visite, ou choisie.
    *  Sans elle, la chronologie mentirait d'un ou deux jours. */
   captured_at: z.string().datetime().optional(),
+  /** ET D'OÙ ELLE VIENT — c'est ce qui permet d'écrire « prise le … »
+   *  plutôt que « date déclarée … » sans jamais se tromper. */
+  captured_at_source: z.enum(['file', 'visit', 'today', 'chosen']).optional(),
 })
 
 /**
@@ -142,6 +145,7 @@ export async function registerVisitPieceAction(
       // pièce est entrée au dossier aujourd'hui. Les deux sont vrais, et c'est
       // leur écart qui fait dire « versée après la visite ».
       capturedAt: d.captured_at ?? null,
+      capturedAtSource: d.captured_at_source ?? null,
       createdBy: ctx.userId,
     })
     return { ok: true, captureId }

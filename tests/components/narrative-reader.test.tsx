@@ -45,6 +45,7 @@ const peuple = (): VisitNarrative => ({
       addedAt: '2026-07-20T07:12:00Z',
       addedAfterVisit: false,
       sinceLastAnalysis: false,
+      dateSource: null,
       why: { code: 'capture.kept', label: 'Retenue comme élément à conserver' },
     },
     {
@@ -60,6 +61,7 @@ const peuple = (): VisitNarrative => ({
       addedAt: '2026-07-22T09:40:00Z',
       addedAfterVisit: true,
       sinceLastAnalysis: true,
+      dateSource: 'file' as const,
       why: { code: 'capture.discarded', label: 'Écartée du compte-rendu par le conducteur' },
     },
   ],
@@ -262,5 +264,40 @@ describe('les étiquettes de la frise viennent du modèle', () => {
   it('dit combien d’événements compte la frise', () => {
     render(<NarrativeReader narrative={peuple()} media={{}} canPromote={false} crHref={null} />)
     expect(screen.getByText(/2 événements au total/i)).toBeInTheDocument()
+  })
+})
+
+// ── D'OÙ VIENT LA DATE D'UNE PIÈCE (mig 230) ───────────────────────────────
+//
+// « Ne fais pas croire que toutes les dates historiques proviennent des
+//   métadonnées du fichier. » `captured_at` peut venir de quatre endroits, et
+// l'écran doit dire lequel — ou se taire quand il ne sait pas.
+
+describe('la provenance de la date est dite, jamais supposée', () => {
+  const versee = (source: 'file' | 'visit' | 'today' | 'chosen' | null) => {
+    const n = peuple()
+    n.captured = [{ ...n.captured[1]!, dateSource: source }]
+    return n
+  }
+
+  it('une date lue dans le fichier le dit', () => {
+    render(<NarrativeReader narrative={versee('file')} media={{}} canPromote={false} crHref={null} />)
+    expect(screen.getByText(/date du fichier/i)).toBeInTheDocument()
+  })
+
+  it('une date choisie ne se fait pas passer pour une métadonnée', () => {
+    render(<NarrativeReader narrative={versee('visit')} media={{}} canPromote={false} crHref={null} />)
+    expect(screen.getByText(/Date déclarée : jour de la visite/i)).toBeInTheDocument()
+    expect(screen.queryByText(/date du fichier/i)).not.toBeInTheDocument()
+  })
+
+  it('sans origine connue, on ne l’invente pas', () => {
+    render(<NarrativeReader narrative={versee(null)} media={{}} canPromote={false} crHref={null} />)
+    expect(screen.getByText(/Date d’origine inconnue/i)).toBeInTheDocument()
+  })
+
+  it('et l’instant du dépôt est toujours dit — ce sont deux faits distincts', () => {
+    render(<NarrativeReader narrative={versee('file')} media={{}} canPromote={false} crHref={null} />)
+    expect(screen.getByText(/versée au dossier le/i)).toBeInTheDocument()
   })
 })

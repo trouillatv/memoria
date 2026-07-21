@@ -152,19 +152,34 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                 <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   Analyse MemorIA
                 </h2>
-                {narrative.enrichment.lastAnalysisAt ? (
-                  <p className="mt-1.5 text-[13px]">
-                    Dernière analyse
-                    <span className="ml-1 font-medium">{frDateHeure(narrative.enrichment.lastAnalysisAt)}</span>
-                  </p>
-                ) : (
+                {/* Trois états, et AUCUN numéro de version : `analysis_version`
+                    mesure la dernière analyse ayant RECONDUIT une proposition,
+                    pas sa naissance. Numéroter les analyses raconterait donc une
+                    histoire que la base ne sait pas démontrer — une proposition
+                    née à la première et simplement redite serait comptée comme
+                    nouvelle (tranché 2026-07-22, pour la troisième fois). */}
+                {!narrative.enrichment.lastAnalysisAt ? (
                   <p className="mt-1.5 text-[13px] text-muted-foreground">Cette visite n’a pas encore été lue.</p>
-                )}
-                {narrative.enrichment.sinceLastAnalysis > 0 && (
+                ) : narrative.enrichment.sinceLastAnalysis === 0 ? (
                   <>
-                    <p className="mt-1.5 text-[13px] text-muted-foreground">
-                      +{narrative.enrichment.sinceLastAnalysis} preuve
-                      {narrative.enrichment.sinceLastAnalysis > 1 ? 's' : ''} depuis cette analyse
+                    <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-medium">
+                      <span aria-hidden className="h-2 w-2 rounded-full bg-emerald-500" />
+                      Analyse à jour
+                    </p>
+                    <p className="mt-0.5 text-[12px] text-muted-foreground">
+                      Dernière lecture {frDateHeure(narrative.enrichment.lastAnalysisAt)}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-medium">
+                      <span aria-hidden className="h-2 w-2 rounded-full bg-amber-500" />
+                      Analyse dépassée
+                    </p>
+                    <p className="mt-0.5 text-[12px] text-muted-foreground">
+                      {narrative.enrichment.sinceLastAnalysis} pièce
+                      {narrative.enrichment.sinceLastAnalysis > 1 ? 's ont été versées' : ' a été versée'} depuis la
+                      dernière analyse du {frDateHeure(narrative.enrichment.lastAnalysisAt)}.
                     </p>
                     <div className="mt-2">
                       <ReanalyseButton reportId={visitId} />

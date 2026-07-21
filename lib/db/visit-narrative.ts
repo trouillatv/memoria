@@ -55,6 +55,9 @@ export interface NarrativeCapture {
   addedAfterVisit: boolean
   /** Entrée depuis la dernière analyse : MemorIA ne l'a pas encore lue. */
   sinceLastAnalysis: boolean
+  /** D'où vient `capturedAt` (mig 230). NULL quand on ne sait pas — et on
+   *  ne le devine pas : l'écran dira alors seulement quand elle est entrée. */
+  dateSource: 'file' | 'visit' | 'today' | 'chosen' | null
 }
 
 export interface NarrativeProposal {
@@ -167,7 +170,7 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
   const [caps, props, doc] = await Promise.all([
     db
       .from('visit_capture')
-      .select('id, kind, body, created_at, captured_at, lat, lng, status, triage_intent, attachment_id')
+      .select('id, kind, body, created_at, captured_at, captured_at_source, lat, lng, status, triage_intent, attachment_id')
       .eq('report_id', reportId)
       .order('created_at', { ascending: true }),
     db
@@ -194,6 +197,7 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
     addedAt: c.created_at as string,
     addedAfterVisit: Boolean(clotureAt && (c.created_at as string) > clotureAt),
     sinceLastAnalysis: Boolean(analyseAt && (c.created_at as string) > analyseAt),
+    dateSource: (c.captured_at_source as NarrativeCapture['dateSource']) ?? null,
     why: explainCapture({
       kept: c.status !== 'discarded',
       intent: (c.triage_intent as string | null) ?? null,
