@@ -16,7 +16,7 @@
 
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, ChevronRight, FlaskConical } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
@@ -72,13 +72,25 @@ export default async function VisitCrDesktopPage({
         <p className="mt-1 text-[13px] text-muted-foreground">
           {identity.name} — {frDate(debut)}. Arbitrez ce que MemorIA propose, corrigez le texte si besoin, puis concrétisez ce qui doit vivre au chantier.
         </p>
-        <Link
-          href={`/sites/${id}/visites/${visitId}`}
-          className="mt-3 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden />
-          Retour à la visite
-        </Link>
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <Link
+            href={`/sites/${id}/visites/${visitId}`}
+            className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            Retour à la visite
+          </Link>
+          {/* ESSAI RÉVERSIBLE — une seconde mise en page, sur les mêmes données.
+              Cette ligne et le dossier `atelier/` sont tout ce qu'il y a à
+              retirer pour revenir en arrière. */}
+          <Link
+            href={`/sites/${id}/visites/${visitId}/compte-rendu/atelier`}
+            className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground"
+          >
+            <FlaskConical className="h-4 w-4" aria-hidden />
+            Essayer la nouvelle mise en page
+          </Link>
+        </div>
       </header>
 
       <div className="space-y-4">
