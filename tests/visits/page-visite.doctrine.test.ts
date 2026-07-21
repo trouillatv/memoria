@@ -198,3 +198,30 @@ describe('la visite desktop reste dans le bureau', () => {
     expect(cr).toContain('getOrCreateVisitCrDocument')
   })
 })
+
+// ── LE MOT DIT LES DEUX GESTES ─────────────────────────────────────────────
+//
+// « Commencer l'arbitrage » ne suggérait pas qu'on peut aussi corriger le texte.
+// Or c'est exactement ce qu'on fait en ouvrant le compte-rendu : on relit, on
+// rectifie, puis on tranche.
+
+describe('les libellés annoncent la relecture autant que la décision', () => {
+  const desk = readFileSync(join(dir, 'VisitDesk.tsx'), 'utf8')
+
+  it('le geste principal parle de relire ET d’arbitrer', () => {
+    expect(rendu).toContain('Relire et arbitrer')
+    expect(rendu).not.toMatch(/Commencer l’arbitrage/)
+  })
+
+  it('le renvoi vers les autres propositions aussi', () => {
+    expect(desk).toMatch(/Relire et arbitrer les \{restant\} autres propositions/)
+  })
+
+  it('les propositions sont prêtes en arrivant sur le compte-rendu', () => {
+    // Au bureau on ouvre le CR POUR arbitrer : différer leur chargement d'un
+    // clic était un obstacle sans raison. Aucun coût caché — cette branche
+    // n'existe que si l'analyse est déjà en cache.
+    const cr = readFileSync(join(dir, 'compte-rendu/page.tsx'), 'utf8')
+    expect(cr).not.toContain('autoLoad={false}')
+  })
+})

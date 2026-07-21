@@ -70,7 +70,7 @@ export default async function VisitCrDesktopPage({
       <header className="mb-6 mt-3">
         <h1 className="text-2xl font-semibold tracking-tight">Compte-rendu de la visite</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
-          {identity.name} — {frDate(debut)}. Corrigez le texte, puis concrétisez ce qui doit vivre au chantier.
+          {identity.name} — {frDate(debut)}. Arbitrez ce que MemorIA propose, corrigez le texte si besoin, puis concrétisez ce qui doit vivre au chantier.
         </p>
         <Link
           href={`/sites/${id}/visites/${visitId}`}
@@ -87,13 +87,15 @@ export default async function VisitCrDesktopPage({
             <CrDocumentSections reportId={visitId} sections={crDocument.sections} status={crDocument.status} />
             {/* On corrige, PUIS on transforme : la concrétisation vient après. */}
             <CrConcretisation reportId={visitId} />
-            {/* L'analyse initiale explique la provenance — elle reste atteignable,
-                mais ne charge rien tant qu'on ne la demande pas. */}
+            {/* LES PROPOSITIONS SONT PRÊTES EN ARRIVANT. Au terrain, on ouvre
+                le CR pour vérifier avant de repartir ; au bureau, on l'ouvre
+                POUR arbitrer — les faire attendre un clic de plus était un
+                obstacle sans raison. Aucun coût caché : cette branche n'existe
+                que si un document existe, donc si l'analyse est déjà en cache. */}
             <MemoriaRetained
               reportId={visitId}
               siteId={visit.site_id}
               transcriptions={doc.transcriptions}
-              autoLoad={false}
             />
           </>
         ) : (

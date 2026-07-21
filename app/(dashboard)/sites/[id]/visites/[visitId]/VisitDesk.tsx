@@ -358,7 +358,7 @@ function EnAttente({ propositions, crHref }: { propositions: NarrativeProposal[]
                   href={crHref}
                   className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground hover:opacity-90"
                 >
-                  Arbitrer
+                  Relire et arbitrer
                 </Link>
               )}
             </li>
@@ -367,7 +367,7 @@ function EnAttente({ propositions, crHref }: { propositions: NarrativeProposal[]
       </ul>
       {restant > 0 && crHref && (
         <p className="pt-3 text-center">
-          <Lien href={crHref}>Voir les {restant} autres propositions en attente →</Lien>
+          <Lien href={crHref}>Relire et arbitrer les {restant} autres propositions →</Lien>
         </p>
       )}
     </Carte>
