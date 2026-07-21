@@ -616,3 +616,69 @@ export async function trackDebriefNarrativeDisplayedAction(input: unknown): Prom
     // Best-effort : auth, lecture, réseau — on avale. La lecture du CR prime.
   }
 }
+
+// ── G2 + G3 — CONFIRMER UN INTERVENANT, EN POSANT LA QUESTION ────────────────
+//
+// Guillaume ne dit pas « l'IA s'est trompée ». Il dit « je suis bloqué ». Et il
+// avait raison : un intervenant exige un RÔLE (getPromotionCapability →
+// requiredInputs: ['role']), le moteur répondait donc `needs_input`, et l'écran
+// traduisait ça en « Promotion impossible ». La question n'était posée nulle
+// part — le geste ne pouvait aboutir, quoi qu'il fasse.
+//
+// Le moteur, lui, était complet : `PromotionInput` prévoit déjà le rôle,
+// l'entreprise et la personne. Il manquait la question.
+//
+// G3 vient avec : le prénom est bon, la société est fausse. Une proposition se
+// CORRIGE avant d'être validée — sinon l'humain n'a le choix qu'entre accepter
+// une erreur et tout perdre.
+
+const stakeholderSchema = z.object({
+  report_id: z.string().uuid(),
+  proposal_id: z.string().uuid(),
+  /** Le rôle sur le chantier. REQUIS : il ne se lit pas dans « Ginger ». */
+  role: z.string().trim().min(1).max(80),
+  /** L'entreprise, corrigée si MemorIA l'a mal lue. */
+  company_name: z.string().trim().max(160).optional(),
+  /** La PERSONNE, si le nom lu désigne quelqu'un et non une société. Exige une
+   *  entreprise : tout contact vit sous une entreprise (mig 137). */
+  person_name: z.string().trim().max(160).optional(),
+})
+
+export async function promoteStakeholderProposalAction(
+  input: unknown,
+): Promise<{ ok: true; objectId: string } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = stakeholderSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Précisez au moins le rôle sur le chantier.' }
+  const visit = await getVisit(parsed.data.report_id)
+  if (!visit) return { ok: false, error: 'Visite introuvable' }
+  const orgId = await getOrgId()
+  if (orgId && visit.organization_id && visit.organization_id !== orgId) {
+    return { ok: false, error: 'Visite hors organisation' }
+  }
+  // Une personne sans entreprise créerait une ENTREPRISE à son nom — le bug
+  // historique que `PromotionInput` documente. On refuse plutôt que de deviner.
+  if (parsed.data.person_name && !parsed.data.company_name) {
+    return { ok: false, error: 'Une personne doit être rattachée à une entreprise.' }
+  }
+  try {
+    const res = await promoteProposal({
+      id: parsed.data.proposal_id,
+      userId: auth.userId,
+      organizationId: orgId ?? visit.organization_id ?? null,
+      input: {
+        role: parsed.data.role,
+        companyName: parsed.data.company_name || undefined,
+        personName: parsed.data.person_name || undefined,
+      },
+    })
+    if (res.status !== 'promoted') {
+      return { ok: false, error: 'Il manque une information pour créer cet intervenant.' }
+    }
+    revalidatePath(`/m/visite/${parsed.data.report_id}/cr`)
+    return { ok: true, objectId: res.objectId }
+  } catch {
+    return { ok: false, error: 'Création impossible' }
+  }
+}

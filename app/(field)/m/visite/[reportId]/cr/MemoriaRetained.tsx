@@ -22,6 +22,7 @@ import {
   trackDebriefNarrativeDisplayedAction,
 } from '../debrief-actions'
 import type { VisitSummary, SummaryItem } from '@/lib/knowledge/visit-summary'
+import { StakeholderProposals } from './StakeholderProposals'
 import type { StoredDebriefAnalysis, SnapshotDelta } from '@/lib/visits/debrief-analysis'
 
 type Phase = 'loading' | 'generating' | 'ready' | 'error'
@@ -511,7 +512,11 @@ export function MemoriaRetained({
       {hasIntervenants && (
         <Block Icon={Users} cls="text-slate-600" title="Intervenants">
           <BulletList items={stake.confirmed.map((i) => i.title)} dot="bg-slate-500" />
-          <ToConfirm items={stake.proposed} />
+          {/* G2 — une proposition offre TOUJOURS trois issues : confirmer,
+              corriger, ignorer. Elle restait « À confirmer » sans aucun geste
+              possible, parce qu'un intervenant exige un rôle que rien ne
+              demandait. La liste en lecture seule cède la place aux cartes. */}
+          <StakeholderProposals reportId={reportId} items={stake.proposed} />
         </Block>
       )}
 
