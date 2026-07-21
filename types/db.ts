@@ -673,6 +673,12 @@ export interface ReportDocumentSection {
   content: string
   /** Traçabilité : extraits transcript/notes étayant la section (jamais inventé). */
   sources?: string[]
+  /** La PROPOSITION IA d'origine, figée à la création et jamais réécrite ensuite.
+   *  `content` porte la version humaine ; celle-ci porte ce que MemorIA avait
+   *  proposé. C'est ce qui rend « revenir à la proposition » possible section par
+   *  section, et ce qui permet de savoir si un humain est déjà passé (mig 120 :
+   *  `sections` est un jsonb, ce champ n'exige aucune migration). */
+  ai_content?: string
 }
 
 export interface DbReportDocument {
