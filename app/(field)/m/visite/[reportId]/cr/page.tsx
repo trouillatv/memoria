@@ -11,6 +11,8 @@ import { listDecisionsByReport } from '@/lib/db/site-decisions'
 import { CaptureMap } from '@/components/CaptureMap'
 import { CrMapSnapshotTrigger } from './CrMapSnapshotTrigger'
 import { MemoriaRetained } from './MemoriaRetained'
+import { CrDocumentSections } from './CrDocumentSections'
+import { getOrCreateVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { VisitShareButton } from '../VisitShareButton'
 
 export const dynamic = 'force-dynamic'
@@ -43,9 +45,13 @@ export default async function VisitCrPreviewPage({
     notFound()
   }
 
-  const [doc, decisions] = await Promise.all([
+  const [doc, decisions, crDocument] = await Promise.all([
     buildVisitCrDoc(reportId, user.id),
     listDecisionsByReport(reportId).catch(() => []),
+    // Le CR éditable. `null` = pas encore d'analyse (le débrief se lance à
+    // l'ouverture, côté client) : la page retombe alors sur l'affichage
+    // historique, sans un mot de plus. Une panne ici ne casse jamais le CR.
+    getOrCreateVisitCrDocument(reportId, user.id).catch(() => null),
   ])
   if (!doc) notFound()
 
@@ -146,6 +152,19 @@ export default async function VisitCrPreviewPage({
           proposées, points de vigilance), analysé automatiquement à l'ouverture
           (lazy-once + cache). La transcription brute est repliée dedans. */}
       <MemoriaRetained reportId={reportId} siteId={visit.site_id} transcriptions={doc.transcriptions} />
+
+      {/* LE CR ÉDITABLE (Étape A, Vincent 2026-07-21) — « MemorIA propose, je
+          corrige ». Cohabitation ASSUMÉE : ce bloc s'ajoute, il ne remplace
+          rien. Le PDF continue de sortir par l'ancien chemin, et si la visite
+          n'a pas encore d'analyse le document n'existe pas — la page reste
+          exactement celle d'avant. Aucune rupture possible. */}
+      {crDocument && (
+        <CrDocumentSections
+          reportId={reportId}
+          sections={crDocument.sections}
+          status={crDocument.status}
+        />
+      )}
 
       {/* Les observations brutes (constats, incl. transcriptions vocales) NE sont plus
           affichées ici : « Ce que MemorIA a retenu » ci-dessus EST la lecture. Le

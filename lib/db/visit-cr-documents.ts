@@ -81,17 +81,29 @@ export async function getOrCreateVisitCrDocument(
   const visit = await readVisitAndAnalysis(reportId)
   if (!visit || !visit.analysis) return null
 
-  const id = await createReportDocument({
-    report_id: reportId,
-    site_id: visit.siteId,
-    template_key: CR_VISITE_TEMPLATE_KEY,
-    sections: withAiBaseline(buildVisitCrSections(visit.analysis)),
-    provider: null,
-    model: null,
-    prompt_version: null,
-    created_by: userId,
-  })
-  return getReportDocument(id)
+  // LA COURSE. Deux appels rapprochés (double-tap, deux onglets, rechargement
+  // pendant la création) verraient tous deux « absent » et inséreraient chacun
+  // leur document : le conducteur corrigerait alors une version que la page
+  // suivante n'afficherait pas. L'index unique partiel (mig 227) fait échouer le
+  // second insert ; on relit alors le gagnant au lieu de propager l'erreur.
+  // La garantie vient de la BASE, pas de l'ordre des instructions ici.
+  try {
+    const id = await createReportDocument({
+      report_id: reportId,
+      site_id: visit.siteId,
+      template_key: CR_VISITE_TEMPLATE_KEY,
+      sections: withAiBaseline(buildVisitCrSections(visit.analysis)),
+      provider: null,
+      model: null,
+      prompt_version: null,
+      created_by: userId,
+    })
+    return getReportDocument(id)
+  } catch (err) {
+    const loser = await getVisitCrDocument(reportId)
+    if (loser) return loser
+    throw err
+  }
 }
 
 /**
