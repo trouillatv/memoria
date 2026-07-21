@@ -289,6 +289,22 @@ function sectionHas(s: SummarySection): boolean {
 }
 
 /**
+ * LE PIED DE PAGE DIT QUI SIGNE (Vincent, 2026-07-21).
+ *
+ * Tant que le compte-rendu est un brouillon, « généré par MemorIA » est
+ * honnête : le texte vient de l'IA et attend d'être corrigé. Une fois finalisé,
+ * il a été relu, corrigé et signé par un humain — c'est SON compte-rendu, et il
+ * part chez un client. La mention s'efface, parce qu'elle est devenue fausse.
+ *
+ * Exporté pour être tenu par un test : cette phrase engage le produit.
+ */
+export function pdfFooterLabel(input: { finalized: boolean; siteName: string; exportDate: string }): string {
+  return input.finalized
+    ? `${input.siteName} · Compte-rendu de visite · ${input.exportDate}`
+    : `Compte-rendu généré par MemorIA · ${input.exportDate}`
+}
+
+/**
  * Ce que MemorIA a compris mais que PERSONNE n'a encore validé.
  *
  * Dit explicitement, et à part. Un compte-rendu part chez un client : y glisser
@@ -326,6 +342,9 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
 }) {
   const cr = crDocument ?? null
   const isDraft = cr?.status === 'draft'
+  // Finalisé = relu, corrigé et signé par un humain. Sans document éditable, la
+  // notion n'existe pas : l'ancien chemin garde son comportement d'origine.
+  const finalized = cr !== null && cr.status !== 'draft'
   // L'INTENTION spécialise le TITRE et quelques intitulés — mêmes données, cadrage
   // différent (première = référence · prévisite = appel d'offres · suivi = normal).
   const isPremiere = doc.motive === 'premiere'
@@ -648,8 +667,10 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
           <Text style={styles.paragraph}><Text style={styles.metaStrong}>Suivi : </Text>{doc.resolutionLabel ?? 'non précisé'}</Text>
         </View>
 
+        {/* Un document finalisé n'est plus une sortie de machine — cf.
+            `pdfFooterLabel`, tenu par un test. */}
         <View style={styles.footer} fixed>
-          <Text>Compte-rendu généré par MemorIA · {exportDate}</Text>
+          <Text>{pdfFooterLabel({ finalized, siteName: doc.siteName, exportDate })}</Text>
           <Text render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} />
         </View>
       </Page>
