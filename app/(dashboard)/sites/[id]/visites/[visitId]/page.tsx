@@ -1,377 +1,253 @@
+// LA PAGE D'UNE VISITE — et il n'y en a plus qu'une (Vincent, 2026-07-22).
+//
+// Il existait deux pages pour une même visite : ce « Débrief de chantier », resté
+// au monde d'avant le compte-rendu documentaire, et le récit. Deux portes vers le
+// même objet suffisaient à rendre le produit illisible. Le débrief disparaît
+// comme vue ; cette adresse EST le récit.
+//
+// « Une page ne doit proposer que les gestes cohérents avec son récit. » Sur une
+// visite, ces gestes sont : écouter, comprendre, raconter, arbitrer, concrétiser.
+// Les tuiles « Créer une action » / « Créer une réserve » sont donc parties : pas
+// parce qu'elles ne marchaient pas, mais parce qu'elles rouvraient une DEUXIÈME
+// porte vers un objet — exactement le défaut qu'on a passé des semaines à
+// supprimer. Créer une action sans visite reste possible ailleurs, là où c'est
+// l'histoire de la page.
+
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import {
-  ArrowLeft,
-  Camera,
-  Check,
-  ClipboardCheck,
-  FileDown,
-  Home,
-  Images,
-  ListTodo,
-  Mic,
-  Share2,
-  StickyNote,
-  Video,
-  X,
-} from 'lucide-react'
+import { ArrowLeft, FileDown, FileText, Home, Images } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { gatherVisitDebriefContext } from '@/lib/db/visits'
-import { listVisitCaptures } from '@/lib/db/visit-captures'
-import { listWatchlist } from '@/lib/db/visit-watchlist'
-import { listCapturedKnowledgeBySource } from '@/lib/db/captured-knowledge'
-import { listVisitTouchedDossiers } from '@/lib/db/living-dossier'
-import {
-  buildVisitPreparationCopy,
-  buildVisitSourceItems,
-  describePreparationConfidence,
-  estimatePreparationQuality,
-} from '@/lib/visits/debrief-preparation'
+import { getVisit } from '@/lib/db/visits'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { buildVisitNarrative } from '@/lib/db/visit-narrative'
+import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
+import { getVisitCapturePreviewUrls, type VisitCaptureRow } from '@/lib/db/visit-captures'
 import { VisitShareButton } from '@/app/(field)/m/visite/[reportId]/VisitShareButton'
-import { VisitDebriefPanel } from './VisitDebriefPanel'
-import { CapturedKnowledgePanel } from './CapturedKnowledgePanel'
+import { NarrativeReader, type CaptureMedia } from './recit/NarrativeReader'
 
 export const dynamic = 'force-dynamic'
 
-const ORIGIN_LABEL: Record<string, string> = { planned: 'Planifiee', spontaneous: 'Spontanee', qr: 'QR', gps: 'GPS' }
-const STATE_FR: Record<string, string> = { 'bloqué': 'Bloque', en_attente: 'En attente', dormant: 'En sommeil', ouvert: 'Ouvert', clos: 'Clos' }
-const STATE_CLS: Record<string, string> = {
-  'bloqué': 'bg-rose-100 text-rose-700',
-  en_attente: 'bg-amber-100 text-amber-800',
-  dormant: 'bg-slate-100 text-slate-600',
-  ouvert: 'bg-sky-100 text-sky-700',
-  clos: 'bg-emerald-100 text-emerald-700',
-}
-const WATCH_FR: Record<string, string> = {
-  verified: 'Verifie',
-  to_follow: 'A suivre',
-  dismissed: 'Ecarte',
-  pending: 'Non traite',
-}
-const WATCH_CLS: Record<string, string> = {
-  verified: 'bg-emerald-100 text-emerald-700',
-  to_follow: 'bg-amber-100 text-amber-800',
-  dismissed: 'bg-slate-100 text-slate-500',
-  pending: 'bg-muted text-muted-foreground',
+const KIND_PLURAL: Record<string, [string, string]> = {
+  action: ['action', 'actions'],
+  reserve: ['réserve', 'réserves'],
+  decision: ['décision', 'décisions'],
+  echeance: ['échéance', 'échéances'],
+  memoire: ['élément à mémoriser', 'éléments à mémoriser'],
+  intervenant: ['intervenant', 'intervenants'],
 }
 
-export default async function VisitDebriefPage({ params }: { params: Promise<{ id: string; visitId: string }> }) {
+export default async function VisitPage({ params }: { params: Promise<{ id: string; visitId: string }> }) {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id, visitId } = await params
-  const [identity, ctx] = await Promise.all([getSiteIdentity(id), gatherVisitDebriefContext(visitId)])
-  if (!identity || !ctx || ctx.visit.site_id !== id) notFound()
+  const [identity, visit, narrative, doc] = await Promise.all([
+    getSiteIdentity(id),
+    getVisit(visitId),
+    buildVisitNarrative(visitId),
+    getVisitCrDocument(visitId).catch(() => null),
+  ])
+  if (!identity || !visit || visit.site_id !== id || !narrative) notFound()
+  // Isolation tenant : le service-role passe outre la RLS, le filtre est ICI.
+  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+    notFound()
+  }
 
-  const { visit } = ctx
-  const [knowledge, touchedDossiers, capturesAll, watchlist] = await Promise.all([
-    listCapturedKnowledgeBySource(visit.id).catch(() => []),
-    listVisitTouchedDossiers(visit.id).catch(() => []),
-    listVisitCaptures(visit.id).catch(() => []),
-    listWatchlist(visit.id).catch(() => []),
+  const [media, conducteur] = await Promise.all([
+    getVisitCapturePreviewUrls(
+      narrative.captured
+        .filter((c) => c.attachmentId)
+        .map((c) => ({ id: c.id, attachment_id: c.attachmentId }) as VisitCaptureRow),
+    ).catch((): CaptureMedia => ({})),
+    resolveConducteur(visit.created_by ?? null),
   ])
 
-  const captures = capturesAll.filter((capture) => capture.status !== 'discarded')
-  const photos = captures.filter((capture) => capture.kind === 'photo')
-  const videos = captures.filter((capture) => capture.kind === 'video')
-  const vocals = captures.filter((capture) => capture.kind === 'vocal')
-  const capNotes = captures.filter((capture) => capture.kind === 'note' && capture.body)
+  // Le récit introductif est celui que l'humain a sous les yeux dans son
+  // compte-rendu — jamais un second texte fabriqué pour l'occasion.
+  const resume = doc?.sections.find((s) => s.key === 'resume')?.content?.trim() || null
 
-  const preparationInput = {
-    photos: photos.length,
-    videos: videos.length,
-    vocals: vocals.length,
-    notes: capNotes.length,
-  }
-  const preparationCopy = buildVisitPreparationCopy(preparationInput)
-  const sourceItems = buildVisitSourceItems(preparationInput)
-  const qualityLevel = estimatePreparationQuality(preparationInput)
-  const preparationConfidence = describePreparationConfidence(qualityLevel)
+  const debut = visit.started_at ?? visit.created_at
+  const minutes = visit.started_at && visit.ended_at
+    ? Math.max(0, Math.round((new Date(visit.ended_at).getTime() - new Date(visit.started_at).getTime()) / 60000))
+    : null
 
-  const fr = (iso: string | null) =>
-    iso ? new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'
+  const { captured, understood, validated, produced } = narrative
+  const vocaux = captured.filter((c) => c.kind === 'vocal').length
+  const photos = captured.filter((c) => c.kind === 'photo').length
+  const notes = captured.filter((c) => c.kind === 'note').length
+  // Les gestes HUMAINS, et eux seuls : `superseded` n'en est pas un (personne
+  // n'a rien décidé, une analyse plus récente ne redit simplement plus le fait).
+  const gestes = validated.confirmedProposals + validated.ignoredProposals
+    + validated.correctedSections.length + validated.discardedCaptures
+
+  const parKind = produced.reduce<Record<string, number>>((acc, p) => {
+    acc[p.kind] = (acc[p.kind] ?? 0) + 1
+    return acc
+  }, {})
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 py-6">
-      <Link href={`/sites/${id}/visites`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" /> Visites
+    <div className="mx-auto max-w-5xl px-4 py-6">
+      <Link
+        href={`/sites/${id}/visites`}
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" aria-hidden /> Visites
       </Link>
 
-      <header className="space-y-2">
-        <p className="text-sm text-muted-foreground">{identity.name}</p>
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold">Debrief de chantier</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Visite terminee - {fr(visit.started_at ?? visit.created_at)} - {ORIGIN_LABEL[visit.origin ?? ''] ?? 'Visite'}
-              {visit.ended_at ? '' : ' - en cours'}
-            </p>
-          </div>
-          <Link
-            href={`/sites/${id}`}
-            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-          >
-            <Home className="h-4 w-4" /> Retour au chantier
-          </Link>
+      {/* ── L'IDENTITÉ DE LA VISITE — où suis-je, et dans quel état ? ───────── */}
+      <header className="mt-4 space-y-4 border-b pb-6">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            Visite de chantier
+          </p>
+          <h1 className="mt-1 text-balance text-3xl font-semibold tracking-tight">
+            {identity.name} — {frDate(debut)}
+          </h1>
+          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+            {conducteur && (
+              <span>
+                <span className="font-medium text-foreground">{conducteur}</span> · conducteur
+              </span>
+            )}
+            <span className="tabular-nums">
+              {frHeure(debut)}
+              {visit.ended_at ? ` → ${frHeure(visit.ended_at)}` : ''}
+            </span>
+            {minutes !== null && <span className="font-medium text-foreground">{frDuree(minutes)}</span>}
+            {!visit.ended_at && <span>visite en cours</span>}
+          </p>
+        </div>
+
+        {resume && <p className="max-w-prose text-[15px] leading-relaxed">{resume}</p>}
+
+        <CrState visitId={visitId} doc={narrative.validated.document} />
+
+        {/* Quatre chiffres, et chacun dit de quelle couche il vient. */}
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 pt-2 sm:grid-cols-4">
+          <Compteur
+            value={captured.length}
+            label="captures sur le terrain"
+            sub={[plural(vocaux, 'vocal', 'vocaux'), plural(photos, 'photo', 'photos'), plural(notes, 'note', 'notes')]
+              .filter(Boolean)
+              .join(' · ')}
+          />
+          <Compteur value={understood.length} label="éléments proposés par MemorIA" sub={plural(validated.pendingProposals, 'en attente', 'en attente')} />
+          <Compteur
+            value={gestes}
+            label="gestes humains"
+            sub={[plural(validated.ignoredProposals, 'écarté', 'écartés'), plural(validated.correctedSections.length, 'section corrigée', 'sections corrigées')]
+              .filter(Boolean)
+              .join(' · ')}
+          />
+          <Compteur value={produced.length} label="objets devenus permanents au chantier" />
+        </dl>
+
+        <div className="flex flex-wrap items-center gap-2 text-[13px]">
+          <span className="text-muted-foreground">Cette visite a produit :</span>
+          {produced.length === 0 ? (
+            <span className="text-muted-foreground">rien encore — aucune ligne du compte-rendu n’a été concrétisée.</span>
+          ) : (
+            Object.entries(parKind).map(([kind, n]) => (
+              <span key={kind} className="rounded-full border px-2.5 py-0.5">
+                {n} {KIND_PLURAL[kind]?.[n > 1 ? 1 : 0] ?? kind}
+              </span>
+            ))
+          )}
+          {validated.pendingProposals > 0 && (
+            <span className="rounded-full border border-dashed px-2.5 py-0.5 text-muted-foreground">
+              {validated.pendingProposals} restée{validated.pendingProposals > 1 ? 's' : ''} à l’état de proposition
+            </span>
+          )}
         </div>
       </header>
 
-      <nav className="grid gap-2 sm:grid-cols-4">
-        <StepPill number="1" label="Collecte" className="border-sky-200 bg-sky-50 text-sky-900" />
-        <StepPill number="2" label="Preparation" className="border-violet-200 bg-violet-50 text-violet-900" />
-        <StepPill number="3" label="Compte rendu" className="border-emerald-200 bg-emerald-50 text-emerald-900" />
-        <StepPill number="4" label="Retour chantier" className="border-orange-200 bg-orange-50 text-orange-900" />
-      </nav>
-
-      <StepCard
-        number="1"
-        title="Collecte"
-        kicker="Ce qui a ete enregistre"
-        tone="border-sky-200 bg-sky-50/50"
-      >
-        <div className="grid gap-3 sm:grid-cols-4">
-          <SummaryPill icon={<Camera className="h-4 w-4" />} label={`${photos.length} photo${photos.length > 1 ? 's' : ''}`} />
-          <SummaryPill icon={<Video className="h-4 w-4" />} label={`${videos.length} video${videos.length > 1 ? 's' : ''}`} />
-          <SummaryPill icon={<Mic className="h-4 w-4" />} label={`${vocals.length} vocal${vocals.length > 1 ? 's' : ''}`} />
-          <SummaryPill icon={<StickyNote className="h-4 w-4" />} label={`${capNotes.length} note${capNotes.length > 1 ? 's' : ''}`} />
-        </div>
-
-        <div className="rounded-xl border bg-background p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold">Captures de la visite</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Les photos, vocaux, videos, notes et positions restent consultables dans l experience mobile.
-              </p>
-            </div>
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <Link
-                href={`/sites/${id}/visites/${visit.id}/recit`}
-                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted"
-              >
-                <ClipboardCheck className="h-4 w-4" /> D ou vient chaque information
-              </Link>
-              <Link
-                href={`/m/visite/${visit.id}/recap`}
-                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted"
-              >
-                <Images className="h-4 w-4" /> Ouvrir la visite mobile
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        {watchlist.length > 0 && (
-          <div className="rounded-xl border bg-background p-4">
-            <h3 className="text-sm font-semibold">Points verifies</h3>
-            <ul className="mt-2 space-y-1.5">
-              {watchlist.map((item) => (
-                <li key={item.id} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
-                  <span className="min-w-0 truncate text-sm">{item.label}</span>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${WATCH_CLS[item.state] ?? 'bg-muted text-muted-foreground'}`}>
-                    {WATCH_FR[item.state] ?? item.state}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </StepCard>
-
-      <StepCard
-        number="2"
-        title="Preparation du compte rendu"
-        kicker={preparationCopy.title}
-        tone="border-violet-200 bg-violet-50/50"
-      >
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="rounded-xl border bg-background p-4">
-            <p className="text-sm leading-relaxed">{preparationCopy.body}</p>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <SourceList title="MemorIA utilisera" items={sourceItems.used} icon="check" />
-              <SourceList title="Ne sera pas utilise" items={sourceItems.missing} icon="x" muted />
-            </div>
-          </div>
-
-          <div className="rounded-xl border bg-background p-4">
-            <h3 className="text-sm font-semibold">Sources disponibles</h3>
-            <p className="mt-3 inline-flex rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800">
-              {preparationConfidence.label}
-            </p>
-            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-              {preparationConfidence.body}
-            </p>
-          </div>
-        </div>
-      </StepCard>
-
-      <StepCard
-        number="3"
-        title="Premiere version"
-        kicker="Relire puis valider"
-        tone="border-emerald-200 bg-emerald-50/50"
-      >
-        <VisitDebriefPanel
-          siteId={id}
-          reportId={visit.id}
-          openSubjects={ctx.openSubjects}
-          initial={{
-            objective: visit.objective ?? '',
-            outcome: visit.outcome,
-            resolution: visit.resolution,
-            targetSubjectId: visit.target_subject_id,
-          }}
+      <div className="py-8">
+        <NarrativeReader
+          narrative={narrative}
+          media={media}
+          canPromote={doc?.status === 'draft'}
+          crHref={doc ? `/m/visite/${visitId}/cr` : null}
         />
-      </StepCard>
-
-      <StepCard
-        number="4"
-        title="Retour chantier"
-        kicker="Apres validation"
-        tone="border-orange-200 bg-orange-50/50"
-      >
-        {touchedDossiers.length > 0 && (
-          <div className="rounded-xl border bg-background p-4">
-            <h3 className="text-sm font-semibold">Dossiers touches par cette visite</h3>
-            <ul className="mt-2 space-y-1.5">
-              {touchedDossiers.map((dossier) => (
-                <li key={dossier.id} className="rounded-lg border px-3 py-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <Link href={`/sites/${id}/subjects/${dossier.id}`} className="min-w-0 truncate text-sm font-medium hover:underline">
-                      {dossier.name}
-                    </Link>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATE_CLS[dossier.state] ?? 'bg-muted text-muted-foreground'}`}>
-                      {STATE_FR[dossier.state] ?? dossier.state}
-                    </span>
-                  </div>
-                  {dossier.cause && <p className="mt-0.5 text-[11px] text-muted-foreground">{dossier.cause}</p>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <CapturedKnowledgePanel
-          siteId={id}
-          reportId={visit.id}
-          openSubjects={ctx.openSubjects}
-          initial={knowledge}
-        />
-
-        <div className="rounded-xl border bg-background p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold">Debrief termine</h3>
-              <p className="mt-1 text-sm text-muted-foreground">Le chantier a ete mis a jour. Que souhaitez-vous faire maintenant ?</p>
-            </div>
-            <Link
-              href={`/sites/${id}`}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
-            >
-              <Home className="h-4 w-4" /> Retour au chantier
-            </Link>
-          </div>
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-xl border p-3">
-              <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
-                <Share2 className="h-4 w-4" /> Partager
-              </div>
-              <p className="mb-3 text-xs text-muted-foreground">Photos, vocal, video et compte rendu.</p>
-              <VisitShareButton reportId={visit.id} siteName={identity.name} />
-            </div>
-            <ActionTile href={`/m/visite/${visit.id}/pdf`} icon={<FileDown className="h-4 w-4" />} title="Telecharger le CR" newTab />
-            <ActionTile href={`/sites/${id}/actions`} icon={<ListTodo className="h-4 w-4" />} title="Creer une action" />
-            <ActionTile href={`/sites/${id}/reserves`} icon={<ClipboardCheck className="h-4 w-4" />} title="Creer une reserve" />
-          </div>
-
-          <details className="mt-4">
-            <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">Plus</summary>
-            <div className="mt-2">
-              <Link href={`/m/visite/${visit.id}/recap`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-                <Images className="h-4 w-4" /> Ouvrir la visite dans l experience mobile
-              </Link>
-            </div>
-          </details>
-        </div>
-      </StepCard>
-    </div>
-  )
-}
-
-function StepPill({ number, label, className }: { number: string; label: string; className: string }) {
-  return (
-    <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium ${className}`}>
-      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/80 text-xs font-bold">{number}</span>
-      {label}
-    </div>
-  )
-}
-
-function StepCard({
-  number,
-  title,
-  kicker,
-  tone,
-  children,
-}: {
-  number: string
-  title: string
-  kicker: string
-  tone: string
-  children: React.ReactNode
-}) {
-  return (
-    <section className={`space-y-4 rounded-2xl border p-4 ${tone}`}>
-      <div className="flex items-start gap-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-background text-sm font-bold">{number}</span>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{kicker}</p>
-          <h2 className="text-lg font-semibold">{title}</h2>
-        </div>
       </div>
-      {children}
-    </section>
-  )
-}
 
-function SummaryPill({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <div className="flex items-center gap-2 rounded-xl border bg-background px-3 py-2 text-sm font-medium">
-      {icon}
-      {label}
+      {/* ── LES GESTES PÉRIPHÉRIQUES — utiles, mais pas le cœur de la visite ── */}
+      <footer className="flex flex-wrap items-center gap-2 border-t pt-6">
+        <VisitShareButton reportId={visitId} siteName={identity.name} />
+        <FooterLink href={`/m/visite/${visitId}/pdf`} icon={<FileDown className="h-4 w-4" aria-hidden />} label="Télécharger le compte-rendu" newTab />
+        <FooterLink href={`/m/visite/${visitId}/recap`} icon={<Images className="h-4 w-4" aria-hidden />} label="Ouvrir sur mobile" />
+        <FooterLink href={`/sites/${id}`} icon={<Home className="h-4 w-4" aria-hidden />} label="Retour au chantier" />
+      </footer>
     </div>
   )
 }
 
-function SourceList({ title, items, icon, muted = false }: { title: string; items: Array<{ label: string }>; icon: 'check' | 'x'; muted?: boolean }) {
+/** L'état du compte-rendu, dit en clair — c'est la question qu'on se pose en
+ *  arrivant : puis-je encore l'enrichir, ou est-il figé ? */
+function CrState({ visitId, doc }: { visitId: string; doc: { status: string; validatedAt: string | null } | null }) {
+  if (!doc) {
+    return (
+      <p className="text-sm">
+        <span className="mr-2 rounded-full border border-dashed px-2.5 py-0.5 text-[13px] text-muted-foreground">
+          Aucun compte-rendu
+        </span>
+        <Link href={`/m/visite/${visitId}/cr`} className="underline underline-offset-4">
+          Le créer à partir de cette visite
+        </Link>
+      </p>
+    )
+  }
+  const brouillon = doc.status === 'draft'
+  return (
+    <p className="text-sm">
+      <span
+        className={`mr-2 rounded-full px-2.5 py-0.5 text-[13px] font-medium ${
+          brouillon
+            ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200'
+            : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200'
+        }`}
+      >
+        {brouillon ? 'Compte-rendu en brouillon' : `Compte-rendu finalisé${doc.validatedAt ? ` le ${frDate(doc.validatedAt)}` : ''}`}
+      </span>
+      <Link href={`/m/visite/${visitId}/cr`} className="inline-flex items-center gap-1 underline underline-offset-4">
+        <FileText className="h-3.5 w-3.5" aria-hidden />
+        {brouillon ? 'Ouvrir et compléter' : 'Ouvrir'}
+      </Link>
+    </p>
+  )
+}
+
+function Compteur({ value, label, sub }: { value: number; label: string; sub?: string }) {
   return (
     <div>
-      <h3 className="text-sm font-semibold">{title}</h3>
-      <ul className="mt-2 space-y-1.5">
-        {items.map((item) => (
-          <li key={item.label} className={`flex items-center gap-2 text-sm ${muted ? 'text-muted-foreground' : ''}`}>
-            {icon === 'check' ? <Check className="h-4 w-4 text-emerald-600" /> : <X className="h-4 w-4 text-muted-foreground" />}
-            {item.label}
-          </li>
-        ))}
-      </ul>
+      <dd className="text-3xl font-semibold tabular-nums">{value}</dd>
+      <dt className="mt-0.5 text-[13px] leading-snug text-muted-foreground">{label}</dt>
+      {sub && <p className="text-[12px] text-muted-foreground/80">{sub}</p>}
     </div>
   )
 }
 
-function ActionTile({ href, icon, title, newTab = false }: { href: string; icon: React.ReactNode; title: string; newTab?: boolean }) {
+function FooterLink({ href, icon, label, newTab }: { href: string; icon: React.ReactNode; label: string; newTab?: boolean }) {
   return (
     <Link
       href={href}
-      target={newTab ? '_blank' : undefined}
-      rel={newTab ? 'noopener noreferrer' : undefined}
-      className="flex min-h-28 flex-col justify-between rounded-xl border p-3 text-sm font-semibold hover:bg-muted/50"
+      {...(newTab ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+      className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm hover:bg-muted"
     >
-      <span className="flex items-center gap-2">{icon}{title}</span>
-      <span className="text-xs font-normal text-muted-foreground">Ouvrir</span>
+      {icon}
+      {label}
     </Link>
   )
 }
+
+async function resolveConducteur(userId: string | null): Promise<string | null> {
+  if (!userId) return null
+  const { data } = await createAdminClient().from('users').select('full_name').eq('id', userId).maybeSingle()
+  return (data as { full_name: string | null } | null)?.full_name?.trim() || null
+}
+
+const plural = (n: number, un: string, plusieurs: string) => (n > 0 ? `${n} ${n > 1 ? plusieurs : un}` : '')
+const frHeure = (iso: string) => new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+const frDate = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+const frDuree = (min: number) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`)
