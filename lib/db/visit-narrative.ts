@@ -44,6 +44,9 @@ export interface NarrativeCapture {
   intent: string | null
   /** Pourquoi cette ligne est là — dérivé d'un fait, jamais deviné. */
   why: Reason
+  /** La pièce jointe, quand il y en a une : c'est elle qui permet d'écouter le
+   *  vocal ou de revoir la photo. Simple plomberie d'affichage. */
+  attachmentId: string | null
 }
 
 export interface NarrativeProposal {
@@ -141,7 +144,7 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
   const [caps, props, doc] = await Promise.all([
     db
       .from('visit_capture')
-      .select('id, kind, body, created_at, lat, lng, status, triage_intent')
+      .select('id, kind, body, created_at, lat, lng, status, triage_intent, attachment_id')
       .eq('report_id', reportId)
       .order('created_at', { ascending: true }),
     db
@@ -163,6 +166,7 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
     // preuve, marquée. C'est ce qui permet de comprendre un choix six mois plus tard.
     kept: c.status !== 'discarded',
     intent: (c.triage_intent as string | null) ?? null,
+    attachmentId: (c.attachment_id as string | null) ?? null,
     why: explainCapture({
       kept: c.status !== 'discarded',
       intent: (c.triage_intent as string | null) ?? null,
