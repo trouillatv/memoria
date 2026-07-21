@@ -5,6 +5,7 @@
 // (action, lien sujet, projection) est faite au bureau. Cf. [[visite-trois-temps]].
 
 import { z } from 'zod'
+import { undoSuggestionsAfterDiscard } from '@/lib/visits/discard-effects'
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import { requireFieldAgent } from '@/lib/field/auth'
@@ -63,6 +64,23 @@ export async function triageCaptureAction(
       ...MAP[parsed.data.decision],
       ...(parsed.data.comment !== undefined ? { comment: parsed.data.comment } : {}),
     })
+
+    // G4 — ÉCARTER DÉFAIT CE QUE LA CAPTURE AVAIT SUGGÉRÉ. Sans cela, on
+    // retirait la matière et on gardait la lecture : Guillaume écartait un
+    // vocal, et les prénoms qu'il contenait restaient proposés comme
+    // intervenants. Les objets DÉJÀ CRÉÉS, eux, ne bougent pas — ils
+    // appartiennent au chantier, plus à la visite qui les a suggérés.
+    if (MAP[parsed.data.decision].status === 'discarded') {
+      const { data: cap } = await createAdminClient()
+        .from('visit_capture')
+        .select('report_id')
+        .eq('id', parsed.data.capture_id)
+        .maybeSingle()
+      const reportId = (cap as { report_id: string | null } | null)?.report_id
+      // Best-effort : défaire les suggestions ne doit jamais faire échouer le
+      // tri lui-même. Le conducteur a écarté sa capture ; c'est acquis.
+      if (reportId) await undoSuggestionsAfterDiscard(reportId).catch(() => null)
+    }
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec du tri' }
