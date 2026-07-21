@@ -70,6 +70,10 @@ export interface NarrativeProposal {
   status: string
   /** L'objet né de cette proposition, s'il existe. */
   createdEntityId: string | null
+  /** Combien de captures ont nourri cette proposition (`source_capture_ids`).
+   *  « Sources : 2 éléments » n'est pas décoratif : c'est ce qui distingue une
+   *  lecture appuyée d'une lecture isolée. */
+  sourceCount: number
   why: Reason
 }
 
@@ -175,7 +179,7 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
       .order('created_at', { ascending: true }),
     db
       .from('site_knowledge_proposals')
-      .select('id, kind, title, body, confidence, status, promoted_object_id, created_at')
+      .select('id, kind, title, body, confidence, status, promoted_object_id, source_capture_ids, created_at')
       .eq('report_id', reportId)
       .order('created_at', { ascending: true }),
     getVisitCrDocument(reportId).catch(() => null),
@@ -212,6 +216,7 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
     confidence: (p.confidence as number | null) ?? null,
     status: p.status as string,
     createdEntityId: (p.promoted_object_id as string | null) ?? null,
+    sourceCount: ((p.source_capture_ids as string[] | null) ?? []).length,
     why: explainProposal({ status: p.status as string }),
   }))
 

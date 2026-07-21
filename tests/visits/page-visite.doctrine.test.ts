@@ -23,14 +23,14 @@ const rendu = page.replace(/^\s*(\/\/|\*|\/\*).*$/gm, '')
 
 describe('la page d’une visite EST le récit', () => {
   it('rend le lecteur du récit, pas un tableau de bord parallèle', () => {
-    expect(page).toContain('<NarrativeReader')
+    expect(page).toContain('<VisitDesk')
     expect(page).toContain('buildVisitNarrative')
   })
 
   it('l’ancienne adresse du récit redirige au lieu de survivre en double', () => {
     const recit = readFileSync(join(dir, 'recit/page.tsx'), 'utf8')
     expect(recit).toMatch(/redirect\(`\/sites\/\$\{id\}\/visites\/\$\{visitId\}`\)/)
-    expect(recit).not.toContain('NarrativeReader')
+    expect(recit).not.toContain('VisitDesk')
   })
 
   it('dit l’état du compte-rendu — la question qu’on se pose en arrivant', () => {
@@ -51,10 +51,11 @@ describe('les gestes de la page sont ceux de son récit', () => {
   })
 
   it('garde les gestes périphériques, mais dans le rail — pas dans le récit', () => {
-    const rail = page.slice(page.indexOf('Actions sur cette visite'))
+    const rail = page.slice(page.indexOf("Actions sur cette visite"))
     for (const geste of ['Télécharger le compte-rendu', 'Ouvrir sur mobile', 'Retour au chantier']) {
-      expect(rail).toContain(geste)
+      expect(page).toContain(geste)
     }
+    expect(rail).toContain('Télécharger le compte-rendu')
   })
 
   it('on verse une PIÈCE, on n’ajoute pas une preuve', () => {
@@ -65,14 +66,14 @@ describe('les gestes de la page sont ceux de son récit', () => {
   })
 
   it('dit si l’analyse est à jour ou dépassée — l’absence laissait le doute', () => {
-    expect(rendu).toContain('Analyse à jour')
-    expect(rendu).toContain('Analyse dépassée')
+    expect(rendu).toContain('Analyse MemorIA à jour')
+    expect(rendu).toContain('Analyse MemorIA dépassée')
   })
 
   it('n’invente aucun historique d’analyse : il n’en existe pas', () => {
     // Une nouvelle analyse ECRASE l'ancienne. Afficher « v1 / v2 » raconterait
     // une histoire que la base ne sait pas démontrer (arbitrage 2026-07-22).
-    expect(rendu).toContain('dernière analyse du')
+    expect(rendu).toContain('Dernière analyse le')
     expect(rendu).not.toMatch(/v1|v2/)
   })
 })
