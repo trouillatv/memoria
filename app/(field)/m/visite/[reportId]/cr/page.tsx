@@ -151,19 +151,41 @@ export default async function VisitCrPreviewPage({
       {/* « Ce que MemorIA a retenu » — le RÉSULTAT en premier (résumé, actions
           proposées, points de vigilance), analysé automatiquement à l'ouverture
           (lazy-once + cache). La transcription brute est repliée dedans. */}
-      <MemoriaRetained reportId={reportId} siteId={visit.site_id} transcriptions={doc.transcriptions} />
+      {/* ── LA HIÉRARCHIE DE VÉRITÉ (Vincent, 2026-07-21) ────────────────────
+          Trois branches MUTUELLEMENT EXCLUSIVES, tranchées ici, côté serveur —
+          jamais deux composants qui décident chacun dans leur coin :
 
-      {/* LE CR ÉDITABLE (Étape A, Vincent 2026-07-21) — « MemorIA propose, je
-          corrige ». Cohabitation ASSUMÉE : ce bloc s'ajoute, il ne remplace
-          rien. Le PDF continue de sortir par l'ancien chemin, et si la visite
-          n'a pas encore d'analyse le document n'existe pas — la page reste
-          exactement celle d'avant. Aucune rupture possible. */}
-      {crDocument && (
-        <CrDocumentSections
-          reportId={reportId}
-          sections={crDocument.sections}
-          status={crDocument.status}
-        />
+            1. un `cr_visite.v1` existe   → il est LA vérité affichée en premier,
+                                            et rien n'est analysé à l'ouverture ;
+            2. pas de document, mais une analyse en cache → `getOrCreateVisit-
+                                            CrDocument` l'a créé ci-dessus depuis
+                                            ce cache, sans relance : on retombe
+                                            donc dans la branche 1 ;
+            3. ni document ni analyse     → alors SEULEMENT l'analyse initiale se
+                                            lance, et « MemorIA analyse… » est
+                                            honnête.
+
+          Ouvrir une URL n'a jamais voulu dire « régénère ». */}
+      {crDocument ? (
+        <>
+          <CrDocumentSections
+            reportId={reportId}
+            sections={crDocument.sections}
+            status={crDocument.status}
+          />
+          {/* L'analyse initiale reste atteignable — elle porte encore les
+              propositions (créer une action, écarter) que le document ne porte
+              pas. Mais elle passe APRÈS, et ne charge rien tant qu'on ne la
+              demande pas. */}
+          <MemoriaRetained
+            reportId={reportId}
+            siteId={visit.site_id}
+            transcriptions={doc.transcriptions}
+            autoLoad={false}
+          />
+        </>
+      ) : (
+        <MemoriaRetained reportId={reportId} siteId={visit.site_id} transcriptions={doc.transcriptions} />
       )}
 
       {/* Les observations brutes (constats, incl. transcriptions vocales) NE sont plus

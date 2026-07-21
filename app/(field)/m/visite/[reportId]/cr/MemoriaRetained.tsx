@@ -54,14 +54,24 @@ export function MemoriaRetained({
   reportId,
   siteId,
   transcriptions,
+  autoLoad = true,
 }: {
   reportId: string
   /** Le chantier de la visite — pour renvoyer vers son planning une fois confirmé. */
   siteId: string
   /** Transcriptions brutes (vocaux) — repliées derrière « Voir la transcription ». */
   transcriptions: string[]
+  /** LE CR ÉDITABLE EST DEVENU LA PREMIÈRE VÉRITÉ (Vincent, 2026-07-21).
+   *  Quand un `cr_visite.v1` existe, cette analyse initiale n'est plus le
+   *  parcours normal : elle ne doit RIEN charger à l'ouverture — pas de fetch,
+   *  pas d'attente, pas de mise en scène d'un travail qui n'a pas lieu. Elle
+   *  reste accessible d'un geste, pour les propositions qui vivent encore ici. */
+  autoLoad?: boolean
 }) {
   const [phase, setPhase] = useState<Phase>('loading')
+  // Chargement REPORTÉ : rien n'est demandé au serveur tant que le conducteur
+  // n'a pas ouvert cette analyse lui-même.
+  const [deferred, setDeferred] = useState(!autoLoad)
   const [analysis, setAnalysis] = useState<StoredDebriefAnalysis | null>(null)
   // LE CONTRAT UNIQUE — le même que le PDF. L'écran ne reconstruit plus son monde
   // depuis `debrief_analysis` : ce JSON ignore le cycle de vie et continuait
@@ -113,12 +123,14 @@ export function MemoriaRetained({
 
   useEffect(() => {
     aliveRef.current = true
+    // Le document éditable est déjà à l'écran : on ne va rien chercher.
+    if (!autoLoad) return () => { aliveRef.current = false }
     void load(false)
     return () => {
       aliveRef.current = false
       if (pollRef.current) clearTimeout(pollRef.current)
     }
-  }, [load])
+  }, [load, autoLoad])
 
   // Le résumé est RÉELLEMENT à l'écran : phase « ready » ET narration non vide —
   // exactement la condition qui rend le bloc « Résumé » plus bas. Ni « route
@@ -204,6 +216,31 @@ export function MemoriaRetained({
   // d'IA qui n'avait pas lieu. Dire « je réfléchis » quand on ne fait que relire,
   // c'est apprendre au conducteur à ne pas croire ce que l'écran raconte — et le
   // laisser penser qu'on rebrûle de l'IA à chaque ouverture.
+  // ── Reportée ────────────────────────────────────────────────────────────────
+  // Le CR éditable porte déjà le texte. Cette carte ne promet rien, ne charge
+  // rien, et n'occupe pas la place de la vérité principale.
+  if (deferred) {
+    return (
+      <section data-slot="analyse-initiale-repliee" className="rounded-2xl border bg-card p-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">Analyse initiale MemorIA</p>
+            <p className="text-[12px] text-muted-foreground">
+              Les propositions relevées sur le terrain — actions, échéances, intervenants.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => { setDeferred(false); void load(false) }}
+            className="shrink-0 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium hover:bg-muted"
+          >
+            Afficher
+          </button>
+        </div>
+      </section>
+    )
+  }
+
   if (phase === 'generating') {
     return (
       <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
