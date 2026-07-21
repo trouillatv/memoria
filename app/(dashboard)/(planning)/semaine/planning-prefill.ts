@@ -20,6 +20,8 @@ export interface RotationOption {
   siteId: string
   title: string
   label: string
+  /** Date de fin du rythme, utilisée par les lectures de planning. */
+  endsOn?: string | null
 }
 
 const fr = (a: string, b: string) => a.localeCompare(b, 'fr', { sensitivity: 'base' })

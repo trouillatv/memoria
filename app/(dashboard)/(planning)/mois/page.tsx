@@ -16,9 +16,9 @@
 
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { CalendarRange, ChevronLeft, ChevronRight } from 'lucide-react'
+import { AlertTriangle, Building2, CalendarCheck2, CalendarRange, ChevronLeft, ChevronRight } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { buildMonthRows, buildTeamMonthRows } from '@/lib/db/month-view'
+import { buildMonthRows, buildTeamMonthRows, type MonthRow } from '@/lib/db/month-view'
 import {
   monthVerdict,
   monthDays,
@@ -45,9 +45,22 @@ import { listKeptInterventionIds, listDecisions, type ClosureDecision } from '@/
 import { detectDeviations, hhmmOf } from '@/lib/planning/occurrence-exception'
 import { listTeams } from '@/lib/db/teams'
 import { parseViewMode } from '../semaine/view-mode-storage'
+import { PlanMenu } from '../semaine/PlanMenu'
+import {
+  fetchMissionOptions,
+  fetchSiteOptions,
+  fetchTeamMemberCounts,
+  fetchRotationOptions,
+} from '../semaine/plan-menu-data'
 import { MonthViewModeToggle } from './MonthViewModeToggle'
-import { PlanningGrid } from '../semaine/WeekGrid'
+import { MonthFilters } from './MonthFilters'
 import { WeekGridClient } from '../semaine/WeekGridClient'
+import { MonthCalendarGrid } from './MonthCalendarGrid'
+import { LecturePanel } from '../LecturePanel'
+import { DayFocusPanel } from '../DayFocusPanel'
+import { buildPlanningLectureInput } from '@/lib/planning/lecture-adapter'
+import { derivePlanningLecture } from '@/lib/planning/lecture'
+import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
@@ -189,10 +202,53 @@ const TEAM_CELL_BG: Record<TeamDayState, string> = {
   rest: 'bg-amber-50/70 dark:bg-amber-950/20',
 }
 
+/** Ne garder d'un chantier que les interventions d'une équipe donnée. Sert au
+ *  filtre « équipe » : on reconstruit une vue chantier limitée à cette équipe. */
+function filterSiteRowsByTeam(siteRows: SiteRow[], teamId: string): SiteRow[] {
+  return siteRows
+    .map((sr) => ({
+      ...sr,
+      days: Object.fromEntries(
+        Object.entries(sr.days).map(([d, cells]) => [d, cells.filter((c) => c.assigned_team_id === teamId)]),
+      ),
+    }))
+    .filter((sr) => Object.values(sr.days).some((cells) => cells.length > 0))
+}
+
+/** Reconstruit des lignes de MOIS depuis les interventions matérialisées — le
+ *  chemin du filtre « équipe » (les projections de roulement ne portent pas
+ *  d'équipe, elles sont donc écartées sous ce filtre, assumé). */
+function monthRowsFromSiteRows(
+  siteRows: SiteRow[],
+  closuresBySite: Record<string, Record<string, ProjectableClosure>>,
+  dates: string[],
+): MonthRow[] {
+  return siteRows
+    .map((sr): MonthRow => {
+      const daysFacts: Record<string, DayFacts> = {}
+      for (const d of dates) {
+        const cells = sr.days[d] ?? []
+        const expected = cells.filter((c) => c.status === 'planned').length
+        const done = cells.filter((c) => c.status !== 'planned' && c.status !== 'skipped').length
+        daysFacts[d] = {
+          expected,
+          done,
+          kept: 0,
+          projected: 0,
+          closed: Boolean(closuresBySite[sr.site_id]?.[d]),
+          hasException: false,
+          cycleCovers: false,
+        }
+      }
+      return { siteId: sr.site_id, siteName: sr.site_name, clientName: sr.client_name ?? null, days: daysFacts }
+    })
+    .filter((mr) => dates.some((d) => mr.days[d].expected + mr.days[d].done > 0 || mr.days[d].closed))
+}
+
 export default async function MoisPage({
   searchParams,
 }: {
-  searchParams: Promise<{ m?: string; view?: string; cell?: string }>
+  searchParams: Promise<{ m?: string; view?: string; cell?: string; focus?: string; site?: string; team?: string }>
 }) {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
@@ -201,6 +257,9 @@ export default async function MoisPage({
   const sp = await searchParams
   const todayIso = todayNoumeaIso()
   const month = /^\d{4}-\d{2}$/.test(sp.m ?? '') ? sp.m! : todayIso.slice(0, 7)
+  const focusDate = /^\d{4}-\d{2}-\d{2}$/.test(sp.focus ?? '') && sp.focus?.startsWith(month)
+    ? sp.focus
+    : undefined
   // Le même geste que la Semaine : Chantier × Jour par défaut, Équipe × Jour au
   // second plan. Un seul planning, deux axes de lecture.
   const view = parseViewMode(sp.view)
@@ -215,13 +274,47 @@ export default async function MoisPage({
   // VUE CHANTIER — les interventions RÉELLES du mois alimentent le MÊME tiroir
   // que la Semaine. Un seul loader, borné par la plage (31 jours ici).
   const range: WeekRange = { weekStart: from, weekEnd: to, weekNumber: 0, year: Number(month.slice(0, 4)) }
-  const [siteRows, allTeams] =
-    view === 'site'
-      ? await Promise.all([getWeekBySite(range), listTeams()])
-      : [[] as SiteRow[], [] as Awaited<ReturnType<typeof listTeams>>]
-  const teams = allTeams
-    .filter((t) => t.active && !t.deleted_at)
-    .map((t) => ({ id: t.id, name: t.name, color: t.color }))
+  // Le menu « Planifier » vit AUSSI ici (Vincent, 2026-07-21) : créer un
+  // roulement ne doit pas obliger à repasser par la Semaine. Mêmes options,
+  // même menu, même éditeur — jamais un second formulaire.
+  const orgId = user.organization_id ?? null
+  const [siteRows, allTeams, missionOptions, siteOptions, memberCounts] = await Promise.all([
+    view === 'site' ? getWeekBySite(range) : Promise.resolve([] as SiteRow[]),
+    listTeams(),
+    fetchMissionOptions(orgId),
+    fetchSiteOptions(orgId),
+    fetchTeamMemberCounts(orgId),
+  ])
+  const rotationOptions = await fetchRotationOptions(missionOptions).catch(() => [])
+  const monthCells = siteRows.flatMap((row) => Object.values(row.days).flat())
+  const lecture = view === 'site'
+    ? derivePlanningLecture(buildPlanningLectureInput({
+        scope: 'month',
+        anchorDate: from,
+        focusDate,
+        rows: siteRows,
+        missions: missionOptions,
+        rotations: rotationOptions,
+      }))
+    : null
+  // La descente : le point « jours sans équipe » de la Lecture ouvre la semaine
+  // du premier jour concerné — on ne reste pas sur le mois, on zoome dessus.
+  const firstGap = lecture?.primary.gapDates[0]
+  const lectureLinks = lecture
+    ? {
+        rotation: '/roulements',
+        gaps: firstGap ? `/semaine?week=${isoWeekParamOf(firstGap)}` : `/mois?m=${month}`,
+        missions: lecture.primary.missionIds.map((id) => `/missions/${id}`),
+      }
+    : null
+  const activeTeams = allTeams.filter((t) => t.active && !t.deleted_at)
+  const teams = activeTeams.map((t) => ({ id: t.id, name: t.name, color: t.color }))
+  const teamOptions = activeTeams.map((t) => ({
+    id: t.id,
+    name: t.name,
+    color: t.color,
+    memberCount: memberCounts.get(t.id) ?? 0,
+  }))
   const { conflictsBySite, closuresBySite, decisions, optionsBySite, exceptionsById } =
     view === 'site'
       ? await assembleMonthClosureContext(siteRows, from, to, todayIso)
@@ -232,6 +325,48 @@ export default async function MoisPage({
           optionsBySite: {} as Record<string, Record<string, ResolutionOption[]>>,
           exceptionsById: {} as Record<string, string[]>,
         }
+  const monthConflictCount = Object.values(conflictsBySite).reduce(
+    (total, byDate) => total + Object.keys(byDate).length,
+    0,
+  )
+
+  // ── FILTRES chantier / équipe ─────────────────────────────────────────────
+  // Ils restreignent le PÉRIMÈTRE lu (grille + détail du jour + repères), jamais
+  // la façon de lire. On valide contre les options réelles — un id inconnu = pas
+  // de filtre, jamais une page vide silencieuse.
+  const siteFilter = siteOptions.some((s) => s.id === sp.site) ? sp.site! : ''
+  const teamFilter = teamOptions.some((t) => t.id === sp.team) ? sp.team! : ''
+  const dates = days.map((d) => d.date)
+
+  let filteredSiteRows = siteRows
+  if (siteFilter) filteredSiteRows = filteredSiteRows.filter((r) => r.site_id === siteFilter)
+  if (teamFilter) filteredSiteRows = filterSiteRowsByTeam(filteredSiteRows, teamFilter)
+
+  const gridRows: MonthRow[] = teamFilter
+    ? monthRowsFromSiteRows(filteredSiteRows, closuresBySite, dates)
+    : siteFilter
+      ? rows.filter((r) => r.siteId === siteFilter)
+      : rows
+
+  // Les repères suivent le périmètre affiché.
+  const displayedCells = filteredSiteRows.flatMap((row) => Object.values(row.days).flat())
+  const displayedSiteCount = filteredSiteRows.length
+  const displayedConflictCount =
+    siteFilter || teamFilter
+      ? Object.entries(conflictsBySite)
+          .filter(([sid]) => filteredSiteRows.some((r) => r.site_id === sid))
+          .reduce((total, [, byDate]) => total + Object.keys(byDate).length, 0)
+      : monthConflictCount
+
+  // Les flèches de mois conservent la vue et les filtres en cours.
+  const monthNavSuffix = [
+    view === 'team' ? 'view=team' : '',
+    siteFilter ? `site=${siteFilter}` : '',
+    teamFilter ? `team=${teamFilter}` : '',
+  ]
+    .filter(Boolean)
+    .map((s) => `&${s}`)
+    .join('')
 
   // Le verdict : les faits de tous les chantiers, jour par jour. Il ne change
   // pas d'axe : le mois est bon ou non, quelle que soit la façon de le lire.
@@ -244,7 +379,7 @@ export default async function MoisPage({
   const teamPresence = teamPresenceByDay(teamByDay)
 
   return (
-    <div className="w-full max-w-6xl space-y-5">
+    <div className="w-full max-w-none space-y-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="inline-flex items-center gap-2 text-2xl font-semibold leading-tight">
@@ -256,9 +391,24 @@ export default async function MoisPage({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <MonthViewModeToggle mode={view} />
+          {view === 'site' && (
+            <MonthFilters
+              sites={siteOptions.map((s) => ({ id: s.id, name: s.name }))}
+              teams={teamOptions.map((t) => ({ id: t.id, name: t.name }))}
+              site={siteFilter}
+              team={teamFilter}
+            />
+          )}
+          <PlanMenu
+            missions={missionOptions}
+            sites={siteOptions}
+            teams={teamOptions}
+            rotations={rotationOptions}
+            defaultDate={from > todayIso ? from : todayIso}
+          />
           <nav className="inline-flex items-center gap-1">
             <Link
-              href={`/mois?m=${shiftMonth(month, -1)}${view === 'team' ? '&view=team' : ''}`}
+              href={`/mois?m=${shiftMonth(month, -1)}${monthNavSuffix}`}
               aria-label="Mois précédent"
               className="rounded-lg border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
             >
@@ -266,7 +416,7 @@ export default async function MoisPage({
             </Link>
             <span className="px-2 text-sm font-semibold capitalize">{monthLabel(month)}</span>
             <Link
-              href={`/mois?m=${shiftMonth(month, 1)}${view === 'team' ? '&view=team' : ''}`}
+              href={`/mois?m=${shiftMonth(month, 1)}${monthNavSuffix}`}
               aria-label="Mois suivant"
               className="rounded-lg border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
             >
@@ -280,6 +430,59 @@ export default async function MoisPage({
           bien, RIEN : « 31 jours sur 31 sans rien à traiter » n'apprenait rien
           et prenait la place de la grille. Quand des décisions attendent, une
           seule ligne discrète — jamais une barre de score. ─────────────────── */}
+      {/* ── LES REPÈRES — le même composant Card que le cockpit du matin, jamais
+          une carte inventée. Icône + chiffre + libellé. La couleur reste
+          EXCEPTIONNELLE : seul un conflit réel (>0) teinte son chiffre. ─────── */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card size="sm">
+          <CardContent className="flex items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted/50 text-muted-foreground">
+              <Building2 className="h-4 w-4" aria-hidden />
+            </span>
+            <div>
+              <p className="text-xl font-semibold leading-none tabular-nums text-foreground">{displayedSiteCount}</p>
+              <p className="mt-1 text-xs text-muted-foreground">chantiers couverts</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card size="sm">
+          <CardContent className="flex items-center gap-3">
+            <span
+              className={cn(
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-md',
+                displayedConflictCount > 0
+                  ? 'bg-rose-100 text-rose-600 dark:bg-rose-950/40'
+                  : 'bg-muted/50 text-muted-foreground',
+              )}
+            >
+              <AlertTriangle className="h-4 w-4" aria-hidden />
+            </span>
+            <div>
+              <p
+                className={cn(
+                  'text-xl font-semibold leading-none tabular-nums',
+                  displayedConflictCount > 0 ? 'text-rose-700 dark:text-rose-300' : 'text-foreground',
+                )}
+              >
+                {displayedConflictCount}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">conflits détectés</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card size="sm">
+          <CardContent className="flex items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted/50 text-muted-foreground">
+              <CalendarCheck2 className="h-4 w-4" aria-hidden />
+            </span>
+            <div>
+              <p className="text-xl font-semibold leading-none tabular-nums text-foreground">{displayedCells.length}</p>
+              <p className="mt-1 text-xs text-muted-foreground">interventions planifiées</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {v.conflicts + v.holes > 0 && (
         <p className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
           <span className="font-medium">
@@ -312,6 +515,8 @@ export default async function MoisPage({
       {/* ── LA GRILLE ────────────────────────────────────────────────────
           Chantier : la grille UNIQUE (PlanningGrid), le MÊME tiroir. Équipe :
           la même projection, regroupée sur l'axe équipe (T/R). ─────────────── */}
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <div>
       {rows.length === 0 ? (
         <p className="rounded-2xl border border-dashed bg-muted/20 p-6 text-center text-sm text-muted-foreground">
           Rien à projeter ce mois-ci : aucune intervention, aucun roulement, aucune fermeture.
@@ -437,7 +642,7 @@ export default async function MoisPage({
         // de table à lui : c'est PlanningGrid, resserré. Le clic sur un jour réel
         // ouvre le tiroir sur place ; un jour projeté ouvre « Roulement prévu ».
         <WeekGridClient
-          rows={siteRows}
+          rows={filteredSiteRows}
           todayIso={todayIso}
           teams={teams}
           conflictsBySite={conflictsBySite}
@@ -449,47 +654,54 @@ export default async function MoisPage({
         >
           {/* Un seul tiroir (CellDrawer) : jour réel → intervention, jour projeté
               → « Roulement prévu ». Plus de panneau propre au mois. */}
-          <PlanningGrid
-            scale="month"
-            range={range}
-            rows={siteRows}
-            monthRows={rows}
-            todayIso={todayIso}
-            conflictsBySite={conflictsBySite}
-            closuresBySite={closuresBySite}
-          />
+          <MonthCalendarGrid rows={gridRows} month={month} todayIso={todayIso} focusDate={focusDate} />
         </WeekGridClient>
       )}
 
-      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        {view === 'team' ? (
-          <>
-            <span>
-              <span className="mr-1 inline-block h-3 w-3 rounded bg-blue-50 align-[-2px] dark:bg-blue-950/20" />
-              <span className="font-medium text-foreground">T</span> travail
-            </span>
-            <span><span className="italic opacity-70">T</span> projeté par le roulement</span>
-            <span>
-              <span className="mr-1 inline-block h-3 w-3 rounded bg-amber-50 align-[-2px] dark:bg-amber-950/20" />
-              <span className="text-muted-foreground/70">R</span> repos
-            </span>
-            <span>
-              <span className="mr-1 inline-block h-3 w-3 rounded bg-rose-100 align-[-2px] dark:bg-rose-950/40" />
-              <span className="font-bold text-rose-700">T!</span> chantier fermé, équipe prévue
-            </span>
-            <span><span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-violet-600 align-[1px]" />exception</span>
-          </>
-        ) : (
-          <>
-            <span>chiffre = personnes prévues</span>
-            <span><span className="italic opacity-70">italique</span> = projeté par le roulement</span>
-            <span><span className="mr-1 inline-block h-3 w-3 rounded bg-sky-100 align-[-2px] dark:bg-sky-950/40" />fermé</span>
-            <span><span className="mr-1 inline-block h-3 w-3 rounded bg-rose-100 align-[-2px] dark:bg-rose-950/40" /><span className="font-bold text-rose-700">!</span> conflit</span>
-            <span><span className="font-bold text-rose-700/80">0</span> jour ouvert sans personne</span>
-            <span><span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-violet-600 align-[1px]" />exception</span>
-          </>
-        )}
-      </p>
+      {/* La légende n'est nécessaire que pour la vue Équipe (grille T/R) : la vue
+          Chantier (MonthCalendarGrid) porte déjà sa propre légende, exacte. */}
+      {view === 'team' && (
+        <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>
+            <span className="mr-1 inline-block h-3 w-3 rounded bg-blue-50 align-[-2px] dark:bg-blue-950/20" />
+            <span className="font-medium text-foreground">T</span> travail
+          </span>
+          <span><span className="italic opacity-70">T</span> projeté par le roulement</span>
+          <span>
+            <span className="mr-1 inline-block h-3 w-3 rounded bg-amber-50 align-[-2px] dark:bg-amber-950/20" />
+            <span className="text-muted-foreground/70">R</span> repos
+          </span>
+          <span>
+            <span className="mr-1 inline-block h-3 w-3 rounded bg-rose-100 align-[-2px] dark:bg-rose-950/40" />
+            <span className="font-bold text-rose-700">T!</span> chantier fermé, équipe prévue
+          </span>
+          <span><span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-violet-600 align-[1px]" />exception</span>
+        </p>
+      )}
+      </div>
+      {/* La Lecture a deux régimes : SANS clic, elle raconte le mois entier ;
+          AVEC un jour sélectionné, elle détaille ce jour (chantiers, interventions,
+          conflits). Le même emplacement, deux niveaux de zoom. */}
+      {focusDate ? (
+        <DayFocusPanel
+          date={focusDate}
+          month={month}
+          siteRows={filteredSiteRows}
+          conflictsBySite={conflictsBySite}
+          closuresBySite={closuresBySite}
+          weekHref={`/semaine?week=${isoWeekParamOf(focusDate)}`}
+        />
+      ) : (
+        <LecturePanel
+          lecture={lecture}
+          links={lectureLinks ?? { rotation: '/roulements', gaps: `/mois?m=${month}`, missions: [] }}
+          emptyContextLabel={`Planning · ${monthLabel(month)}`}
+          rotationCount={rotationOptions.length}
+          interventionCount={monthCells.length}
+          assignmentCount={monthCells.filter((cell) => Boolean(cell.assigned_team_id)).length}
+        />
+      )}
+      </div>
     </div>
   )
 }
