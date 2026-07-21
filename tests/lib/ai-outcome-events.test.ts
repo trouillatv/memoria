@@ -140,6 +140,22 @@ describe('Vocabulaire FERMÉ — hors liste = refus silencieux, pas d’écritur
     expect(AI_OUTCOMES).toContain('acted_on')
     expect(AI_ARTIFACT_TYPES).toContain('visit_report')
   })
+
+  it('la narration lue à l’écran (visit_debrief_understand) est un vocabulaire ACCEPTÉ', async () => {
+    // 5.1A-2 : la capacité réellement affichée au conducteur. Miroir du CHECK
+    // de la mig 226 — si l'une bouge sans l'autre, l'insert lèverait en prod.
+    expect(AI_CAPABILITIES).toContain('visit_debrief_understand')
+    await trackAiOutcome({
+      capability: 'visit_debrief_understand',
+      outcome: 'displayed',
+      artifactType: 'visit_report',
+      artifactId: '22222222-2222-2222-2222-222222222222',
+      dedupeKey: '22222222-2222-2222-2222-222222222222:understand:v1',
+    })
+    expect(inserted?.ai_capability).toBe('visit_debrief_understand')
+    expect(inserted?.event).toBe('ai_outcome:visit_debrief_understand:displayed')
+    expect(inserted?.ai_dedupe_key).toBe('22222222-2222-2222-2222-222222222222:understand:v1')
+  })
 })
 
 describe('Nombres — bornés et propres', () => {

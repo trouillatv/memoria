@@ -19,6 +19,7 @@ import {
   promoteActionProposalAction,
   dismissActionProposalAction,
   getVisitSummaryAction,
+  trackDebriefNarrativeDisplayedAction,
 } from '../debrief-actions'
 import type { VisitSummary, SummaryItem } from '@/lib/knowledge/visit-summary'
 import type { StoredDebriefAnalysis, SnapshotDelta } from '@/lib/visits/debrief-analysis'
@@ -72,6 +73,11 @@ export function MemoriaRetained({
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const aliveRef = useRef(true)
   const loadRef = useRef<(force: boolean) => void>(() => {})
+  // TÉLÉMÉTRIE (5.1A-2) : la narration a-t-elle été RENDUE ? On mémorise l'OBJET
+  // analyse déjà signalé (nouvelle instance à chaque chargement) pour ne PAS
+  // re-compter un rerender. Le composant ne lit AUCUN champ métier : c'est le
+  // serveur qui possède l'identité de version (frontière renderer/projection).
+  const displayedRef = useRef<StoredDebriefAnalysis | null>(null)
 
   const load = useCallback(async (force: boolean) => {
     setPhase('loading')
@@ -113,6 +119,21 @@ export function MemoriaRetained({
       if (pollRef.current) clearTimeout(pollRef.current)
     }
   }, [load])
+
+  // Le résumé est RÉELLEMENT à l'écran : phase « ready » ET narration non vide —
+  // exactement la condition qui rend le bloc « Résumé » plus bas. Ni « route
+  // ouverte », ni « données chargées » : le rendu perçu par le conducteur. On
+  // signale une fois par INSTANCE d'analyse : un rerender garde la même instance
+  // (pas de re-comptage), une régénération en produit une neuve (nouvelle
+  // observation légitime). Le serveur dérive la clé versionnée ; la base
+  // déduplique les réouvertures d'une même version.
+  useEffect(() => {
+    if (phase !== 'ready') return
+    if (!analysis?.summary?.trim()) return
+    if (displayedRef.current === analysis) return
+    displayedRef.current = analysis
+    void trackDebriefNarrativeDisplayedAction({ report_id: reportId })
+  }, [phase, analysis, reportId])
 
   function regenerate() {
     setConfirmRegen(false)

@@ -15,7 +15,8 @@ import { createSiteReserve } from '@/lib/db/site-reserve'
 import { curateProposal, markProposalCreated } from '@/lib/db/site-reports'
 import { markWatchlistItemPromoted } from '@/lib/db/visit-watchlist'
 import { getVisit, deleteVisit, finalizeVisit } from '@/lib/db/visits'
-import { loadOrRunVisitDebrief, ensureActionProposalsProjected, ensureDeadlineProposalsProjected, type DebriefLoadResult } from '@/lib/visits/debrief-analysis'
+import { loadOrRunVisitDebrief, ensureActionProposalsProjected, ensureDeadlineProposalsProjected, type DebriefLoadResult, type StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
+import { trackAiOutcome } from '@/lib/db/ai-outcome-events'
 import { promoteProposal, dismissProposal, getActionProposalStates, getDeadlineProposalStates } from '@/lib/db/knowledge-proposals'
 import {
   setCaptureTriage,
@@ -520,4 +521,53 @@ export async function getVisitSummaryAction(
     return { ok: false, error: 'Visite hors organisation' }
   }
   return { ok: true, summary: await getVisitSummary(parsed.data.report_id) }
+}
+
+/**
+ * TÉLÉMÉTRIE DE VALEUR (5.1A-2) — la narration de la synthèse a été RENDUE au
+ * conducteur. À appeler depuis le client SEULEMENT quand le bloc « Résumé » est
+ * effectivement affiché (pas au montage, pas au simple chargement des données).
+ *
+ * On mesure `visit_debrief_understand` (la narration « montré à l'UI »), pas
+ * `visit_summary` (repli PDF/markdown presque jamais affiché). La vérité du
+ * signal, c'est ce que le conducteur LIT — décision produit 2026-07-21.
+ *
+ * BEST-EFFORT total : ne renvoie rien, n'échoue jamais côté client, ne modifie
+ * jamais l'affichage. Un défaut de mesure ne casse pas la lecture du CR.
+ *
+ * DÉDUPLICATION par (rapport, version d'analyse) : une réouverture ou un rerender
+ * de la MÊME version ne compte qu'une fois (clé `<report>:understand:v<n>`) ;
+ * une synthèse régénérée (version + 1) produit une nouvelle observation
+ * légitime. Le signal répond « cette version a-t-elle été lue au moins une
+ * fois ? », pas « combien de fois » — la bonne unité d'adoption, immunisée
+ * contre les remontages React.
+ */
+export async function trackDebriefNarrativeDisplayedAction(input: unknown): Promise<void> {
+  try {
+    const auth = await requireFieldAgent()
+    if ('error' in auth) return
+    const parsed = z.object({ report_id: z.string().uuid() }).safeParse(input)
+    if (!parsed.success) return
+    const visit = await getVisit(parsed.data.report_id)
+    if (!visit) return
+    const orgId = await getOrgId()
+    if (orgId && visit.organization_id && visit.organization_id !== orgId) return
+
+    // La version vit dans l'analyse déjà portée par `visit` (getVisit lit `*`) :
+    // aucune lecture supplémentaire. Pas de narration → rien n'a été rendu → rien
+    // n'est écrit (le bloc « Résumé » ne s'affiche que si `summary` est non vide).
+    const analysis = (visit.debrief_analysis ?? null) as StoredDebriefAnalysis | null
+    if (!analysis || !analysis.summary?.trim()) return
+    const version = analysis.analysis_version ?? 1
+
+    await trackAiOutcome({
+      capability: 'visit_debrief_understand',
+      outcome: 'displayed',
+      artifactType: 'visit_report',
+      artifactId: parsed.data.report_id,
+      dedupeKey: `${parsed.data.report_id}:understand:v${version}`,
+    })
+  } catch {
+    // Best-effort : auth, lecture, réseau — on avale. La lecture du CR prime.
+  }
 }

@@ -28,6 +28,9 @@ export const AI_CAPABILITIES = [
   'visit_summary',
   'visit_debrief_extract',
   'visit_action_proposal',
+  // La narration « montré à l'UI » (visit-debrief.ts) — ce que le conducteur lit
+  // vraiment dans le CR, distinct du repli `visit_summary`. Ajoutée en 5.1A-2.
+  'visit_debrief_understand',
 ] as const
 export type AiCapability = (typeof AI_CAPABILITIES)[number]
 
