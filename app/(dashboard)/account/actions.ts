@@ -99,15 +99,24 @@ export async function updateHomePreferenceAction(
   return { ok: !error }
 }
 
-export async function applyHomePreferenceAndLogoutAction(
+/**
+ * CHANGER DE VUE NE DÉCONNECTE PLUS (G5, Guillaume 2026-07-21).
+ *
+ * Cette action faisait `signOut()` puis renvoyait au login — et le message le
+ * disait : « Reconnectez-vous pour ouvrir la vue choisie. » Aucune raison
+ * technique : la préférence est relue à chaud par `resolveHomeDestination`, à
+ * la connexion comme sur `/`. On déconnectait donc un conducteur en plein
+ * chantier pour un changement d'affichage.
+ *
+ * Bureau et Terrain sont deux vues d'une même application. On enregistre le
+ * choix, et on rend la destination — l'écran y navigue. La session ne bouge pas.
+ */
+export async function applyHomePreferenceAction(
   pref: 'dashboard' | 'terrain',
-): Promise<{ ok: boolean }> {
+): Promise<{ ok: boolean; destination?: '/m' | '/dashboard' }> {
   const result = await updateHomePreferenceAction(pref)
-  if (!result.ok) return result
-
-  const supabase = await createClient()
-  await supabase.auth.signOut()
-  redirect('/login')
+  if (!result.ok) return { ok: false }
+  return { ok: true, destination: pref === 'terrain' ? '/m' : '/dashboard' }
 }
 
 export async function updateThemePreferenceAction(theme: string): Promise<{ ok: boolean }> {

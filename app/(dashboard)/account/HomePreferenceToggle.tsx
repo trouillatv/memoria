@@ -1,16 +1,18 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { Check, Hammer, Monitor } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { applyHomePreferenceAndLogoutAction } from './actions'
+import { applyHomePreferenceAction } from './actions'
 
 interface Props {
   current: 'dashboard' | 'terrain'
 }
 
 export function HomePreferenceToggle({ current }: Props) {
+  const router = useRouter()
   const [selected, setSelected] = useState(current)
   const [isPending, startTransition] = useTransition()
   const hasChange = selected !== current
@@ -22,9 +24,12 @@ export function HomePreferenceToggle({ current }: Props) {
   const apply = () => {
     if (!hasChange || isPending) return
     startTransition(async () => {
-      const result = await applyHomePreferenceAndLogoutAction(selected)
-      if (result.ok) {
-        toast.success('Page d’accueil mise à jour. Reconnectez-vous pour ouvrir la vue choisie.')
+      // On enregistre, puis on OUVRE la vue choisie. Pas de déconnexion : c'est
+      // la même application, vue autrement.
+      const result = await applyHomePreferenceAction(selected)
+      if (result.ok && result.destination) {
+        router.push(result.destination)
+        router.refresh()
       } else {
         toast.error('Impossible de modifier la page d’accueil.')
       }
