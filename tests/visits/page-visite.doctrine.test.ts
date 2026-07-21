@@ -57,9 +57,11 @@ describe('les gestes de la page sont ceux de son récit', () => {
     }
   })
 
-  it('annonce « Ajouter une preuve » sans le simuler — le lot n’est pas ouvert', () => {
-    expect(rendu).toContain('Ajouter une preuve')
-    expect(rendu).toContain('à venir')
+  it('on verse une PIÈCE, on n’ajoute pas une preuve', () => {
+    // « Une preuve est une interprétation ; une pièce est simplement un élément
+    // versé au dossier. » Le fait et son traitement restent deux gestes.
+    expect(rendu).toContain('<VerserPiece')
+    expect(rendu).not.toMatch(/Ajouter une preuve/i)
   })
 
   it('n’invente aucun historique d’analyse : il n’en existe pas', () => {
@@ -87,5 +89,45 @@ describe('le vieux débrief ne survit pas en pièces détachées', () => {
     expect(
       readFileSync(join(process.cwd(), 'lib/visits/debrief-analysis.ts'), 'utf8'),
     ).toContain('runVisitDebriefAgent')
+  })
+})
+
+// ── VERSER UNE PIÈCE AU DOSSIER — lot A ────────────────────────────────────
+//
+// Le fait (une pièce entre au dossier) et son traitement (une analyse en tire
+// des propositions) sont deux gestes distincts. Verser ne déclenche rien.
+
+describe('verser une pièce ne déclenche aucune analyse', () => {
+  const actions = readFileSync(join(dir, 'piece-actions.ts'), 'utf8')
+  const geste = readFileSync(join(dir, 'VerserPiece.tsx'), 'utf8')
+
+  it('le dépôt n’appelle jamais la lecture par le modèle', () => {
+    for (const src of [actions, geste]) {
+      expect(src).not.toContain('loadOrRunVisitDebrief')
+      expect(src).not.toContain('getVisitDebriefFieldAction')
+    }
+  })
+
+  it('le fichier part DIRECTEMENT au stockage — un Server Action le rejetterait', () => {
+    expect(geste).toContain('uploadToSignedUrl')
+    expect(actions).toContain('createSignedUploadUrl')
+  })
+
+  it('la date réelle est proposée, jamais devinée', () => {
+    for (const reponse of ['Date du fichier', 'Date de la visite', 'Aujourd’hui', 'Autre']) {
+      expect(geste).toContain(reponse)
+    }
+    expect(actions).toContain('captured_at')
+  })
+
+  it('le lot A s’arrête aux pièces que le dossier sait déjà traiter', () => {
+    // Le document (PDF, mail) attend le lot B : il pose une question produit —
+    // pièce jointe seulement, ou pièce analysable ?
+    expect(actions).toMatch(/const KINDS = \['photo', 'vocal', 'video', 'note'\] as const/)
+    expect(actions).not.toMatch(/'document'/)
+  })
+
+  it('l’isolation tenant est vérifiée dans le code, la RLS étant contournée', () => {
+    expect(actions).toContain('visit.organization_id !== orgId')
   })
 })

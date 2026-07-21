@@ -15,7 +15,7 @@
 
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronRight, FileDown, FileText, Home, Images, Paperclip } from 'lucide-react'
+import { ChevronRight, FileDown, FileText, Home, Images } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getVisit } from '@/lib/db/visits'
@@ -26,6 +26,7 @@ import { getVisitCapturePreviewUrls, type VisitCaptureRow } from '@/lib/db/visit
 import { VisitShareButton } from '@/app/(field)/m/visite/[reportId]/VisitShareButton'
 import { NarrativeReader, type CaptureMedia } from './recit/NarrativeReader'
 import { ReanalyseButton } from './ReanalyseButton'
+import { VerserPiece } from './VerserPiece'
 
 export const dynamic = 'force-dynamic'
 
@@ -180,12 +181,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                   <VisitShareButton reportId={visitId} siteName={identity.name} />
                   <RailLink href={`/m/visite/${visitId}/pdf`} icon={<FileDown className="h-4 w-4" aria-hidden />} label="Télécharger le compte-rendu" newTab />
                   <RailLink href={`/m/visite/${visitId}/recap`} icon={<Images className="h-4 w-4" aria-hidden />} label="Ouvrir sur mobile" />
-                  {/* Annoncé, pas simulé : le lot n'est pas ouvert. */}
-                  <span className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground/70">
-                    <Paperclip className="h-4 w-4" aria-hidden />
-                    Ajouter une preuve
-                    <span className="ml-auto text-[11px]">à venir</span>
-                  </span>
+                  <VerserPiece reportId={visitId} visitStartedAt={debut} />
                   <RailLink href={`/sites/${id}`} icon={<Home className="h-4 w-4" aria-hidden />} label="Retour au chantier" />
                 </div>
               </section>
