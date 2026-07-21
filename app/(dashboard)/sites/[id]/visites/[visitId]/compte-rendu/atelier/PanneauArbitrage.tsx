@@ -61,6 +61,7 @@ import {
   promoteStakeholderProposalAction,
 } from '@/app/(field)/m/visite/[reportId]/debrief-actions'
 import type { VisitSummary, SummaryItem } from '@/lib/knowledge/visit-summary'
+import { listOrgCompanyNamesAction } from './acteurs-actions'
 
 type Cle = 'action' | 'echeance' | 'intervenant'
 
@@ -79,7 +80,7 @@ const FAMILLE: Record<Cle, { titre: string; Icon: typeof ListTodo; teinte: strin
     teinte: 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300',
   },
   intervenant: {
-    titre: 'Intervenants', Icon: Users,
+    titre: 'Acteurs', Icon: Users,
     teinte: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
   },
 }
@@ -102,6 +103,10 @@ export function PanneauArbitrage({
   // Six colonnes ouvertes redonneraient la liste à plat qu'on cherche à éviter.
   const [ouverte, setOuverte] = useState<Cle | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  // Les entreprises déjà connues de l'organisation, pour rattacher une personne
+  // sans réinventer une orthographe. Chargées une fois : elles ne changent pas
+  // pendant qu'on arbitre.
+  const [entreprises, setEntreprises] = useState<string[]>([])
 
   const relire = useCallback(async () => {
     const res = await getVisitSummaryAction({ report_id: reportId })
@@ -115,6 +120,14 @@ export function PanneauArbitrage({
   // propositions en base, et cet effet est le seul chemin par lequel le panneau
   // l'apprend. Sans lui, le nombre resterait figé après le clic.
   useEffect(() => { void relire() }, [relire, rechargerA])
+
+  // Indépendant du contrat : une liste d'entreprises indisponible n'empêche pas
+  // d'arbitrer, elle prive seulement de l'aide à la saisie.
+  useEffect(() => {
+    let vivant = true
+    void listOrgCompanyNamesAction().then((noms) => { if (vivant) setEntreprises(noms) })
+    return () => { vivant = false }
+  }, [])
 
   // Le serveur fait autorité après chaque geste : on relit le contrat plutôt que
   // de mimer localement un état qui dirait la même chose en moins sûr.
@@ -191,6 +204,7 @@ export function PanneauArbitrage({
               busy={busy}
               reportId={reportId}
               agir={agir}
+              entreprises={entreprises}
             />
           ))}
         </div>
@@ -216,6 +230,7 @@ function Groupe({
   busy,
   reportId,
   agir,
+  entreprises,
 }: {
   cle: Cle
   items: SummaryItem[]
@@ -224,6 +239,7 @@ function Groupe({
   busy: string | null
   reportId: string
   agir: (id: string, fn: () => Promise<{ ok: boolean }>) => Promise<void>
+  entreprises: string[]
 }) {
   const f = FAMILLE[cle]
   const open = ouverte === cle
@@ -270,7 +286,21 @@ function Groupe({
         <ul className="space-y-1 border-t p-1.5">
           {items.map((item) =>
             cle === 'intervenant' ? (
-              <LigneIntervenant key={item.id} item={item} reportId={reportId} busy={busy} agir={agir} />
+              <LigneIntervenant
+                key={item.id}
+                item={item}
+                reportId={reportId}
+                busy={busy}
+                agir={agir}
+                // Les autres acteurs de la MÊME visite sont des entreprises
+                // candidates : « Yann » se rattache le plus souvent à l'« AGP »
+                // citée deux lignes plus haut, pas à une société d'un autre
+                // chantier. On les propose donc avec celles déjà connues.
+                entreprises={[
+                  ...items.filter((a) => a.id !== item.id).map((a) => a.title),
+                  ...entreprises,
+                ]}
+              />
             ) : (
               <LigneProposition key={item.id} item={item} reportId={reportId} busy={busy} agir={agir} />
             ),
@@ -333,35 +363,74 @@ function LigneProposition({
 /**
  * UN INTERVENANT TIENT SUR UNE LIGNE — et se corrige SUR PLACE.
  *
- * L'écran mobile posait trois boutons (Confirmer / Corriger / Ignorer) et deux
- * champs empilés, répétés à chaque personne. « Corriger » disparaît ici : le nom
- * EST le champ. On écrit dedans, ou on n'y touche pas.
- *
- * Ce qui ne change pas, parce que c'est du domaine et non de la mise en page :
- * le rôle ne se devine JAMAIS. Sans rôle, pas de confirmation — un intervenant
+ * Le rôle ne se devine JAMAIS : sans rôle, pas de confirmation. Un intervenant
  * sans rôle n'existe pas sur un chantier (mig 137).
+ *
+ * ── « YANN » N'EST PAS UNE ENTREPRISE (Vincent, 2026-07-22) ─────────────────
+ *
+ * Ce que MemorIA lit est une CHAÎNE NUE : « Clim Expert », « Électricien »,
+ * « Yann ». Une société, un métier, un homme — et rien dans le texte ne dit
+ * lequel. La première version de cette ligne n'offrait qu'un champ, traité
+ * comme l'entreprise : confirmer « Yann » aurait donc créé une ENTREPRISE
+ * nommée Yann. C'est exactement le bug que `mig 137` avait fermé (« tout
+ * contact vit sous une entreprise »), et que le serveur refuse encore.
+ *
+ * On ne devine pas : on offre le geste. Par défaut le nom lu remplit
+ * l'entreprise — le cas le plus fréquent sur un chantier — et un lien bascule
+ * la ligne en « personne + entreprise » quand ce n'en est pas une. Le champ
+ * entreprise devient alors OBLIGATOIRE, et on le dit avant le clic plutôt que
+ * de laisser le serveur répondre par un refus.
  */
 function LigneIntervenant({
   item,
   reportId,
   busy,
   agir,
+  entreprises,
 }: {
   item: SummaryItem
   reportId: string
   busy: string | null
   agir: (id: string, fn: () => Promise<{ ok: boolean }>) => Promise<void>
+  /** Entreprises déjà connues + autres acteurs de la même visite. */
+  entreprises: string[]
 }) {
   const pid = item.proposalId
+  // Le nom lu part dans l'entreprise : le cas courant, corrigible d'un geste.
   const [entreprise, setEntreprise] = useState(item.title)
+  const [personne, setPersonne] = useState('')
+  const [estPersonne, setEstPersonne] = useState(false)
   const [role, setRole] = useState('')
   const [erreur, setErreur] = useState<string | null>(null)
   if (!pid) return null
   const enCours = busy === pid
 
+  /** Bascule société ↔ personne. Le nom lu SUIT le sens de la bascule : dire
+   *  « c'est une personne » doit déplacer « Yann » dans le champ personne, pas
+   *  obliger à le retaper puis à vider l'autre. */
+  const basculer = () => {
+    setErreur(null)
+    if (estPersonne) {
+      setEntreprise(personne.trim() || item.title)
+      setPersonne('')
+      setEstPersonne(false)
+    } else {
+      setPersonne(entreprise.trim() || item.title)
+      setEntreprise('')
+      setEstPersonne(true)
+    }
+  }
+
   const confirmer = () => {
     if (!role.trim()) {
       setErreur('Indiquez son rôle sur le chantier — il ne se devine pas.')
+      return
+    }
+    // Le serveur refuse déjà une personne sans entreprise. On le dit ICI, avant
+    // le clic : un refus après coup se lit comme une panne, pas comme une
+    // question qu'on avait oublié de poser.
+    if (estPersonne && !entreprise.trim()) {
+      setErreur('Une personne se rattache à une entreprise — laquelle ?')
       return
     }
     setErreur(null)
@@ -371,21 +440,72 @@ function LigneIntervenant({
         proposal_id: pid,
         role: role.trim(),
         company_name: entreprise.trim() || undefined,
+        person_name: estPersonne ? personne.trim() || undefined : undefined,
       }),
     )
   }
 
   return (
     <li className="rounded-lg px-2 py-1.5 hover:bg-muted/50">
+      {/* QUALIFIER AVANT DE CONFIRMER. « Clim Expert », « Électricien »,
+          « Yann » arrivent dans la même liste, et rien dans le texte ne dit
+          lequel est une société. Le type se choisit donc explicitement, et
+          c'est lui qui commande les champs suivants. */}
+      <div className="mb-1 inline-flex rounded-md border p-0.5 text-[11px]">
+        {([false, true] as const).map((personneChoisie) => (
+          <button
+            key={String(personneChoisie)}
+            type="button"
+            disabled={!!busy}
+            aria-pressed={estPersonne === personneChoisie}
+            onClick={() => { if (estPersonne !== personneChoisie) basculer() }}
+            className={`rounded px-1.5 py-0.5 font-medium disabled:opacity-50 ${
+              estPersonne === personneChoisie
+                ? 'bg-foreground text-background'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {personneChoisie ? 'Personne' : 'Entreprise'}
+          </button>
+        ))}
+      </div>
+
+      {/* EN MODE PERSONNE, LE NOM PASSE AU-DESSUS. Empiler n'est pas un aveu de
+          défaite : le rattachement à une entreprise est le fait qu'on est en
+          train d'établir, il mérite sa ligne — et il n'apparaît que là où on en
+          a besoin, jamais pour les sociétés d'à côté. */}
+      {estPersonne && (
+        <input
+          value={personne}
+          onChange={(e) => { setPersonne(e.target.value); if (erreur) setErreur(null) }}
+          placeholder="Prénom Nom"
+          aria-label="Personne"
+          className="mb-1 w-full rounded-md border bg-background px-1.5 py-1 text-[13px] font-medium focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      )}
       <div className="flex items-center gap-1.5">
         {/* Le nom lu par MemorIA est un texte, pas une vérité : il s'édite sur
             place, sans bouton « Corriger » et sans changer de mode. */}
         <input
           value={entreprise}
-          onChange={(e) => setEntreprise(e.target.value)}
+          onChange={(e) => { setEntreprise(e.target.value); if (erreur) setErreur(null) }}
+          placeholder={estPersonne ? 'son entreprise' : undefined}
           aria-label="Entreprise"
-          className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-1 text-[13px] font-medium hover:border-border focus:border-border focus:bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          // La liste AIDE, elle n'enferme pas : le champ reste libre, sinon il
+          // faudrait créer la fiche entreprise avant de pouvoir arbitrer.
+          list={`entreprises-${pid}`}
+          className={`min-w-0 flex-1 rounded-md px-1.5 py-1 text-[13px] font-medium focus:border-border focus:bg-background focus:outline-none focus:ring-1 focus:ring-ring ${
+            estPersonne
+              ? // Obligatoire ici : il porte le rattachement, il se voit.
+                'border bg-background'
+              : 'border border-transparent bg-transparent hover:border-border'
+          }`}
         />
+        <datalist id={`entreprises-${pid}`}>
+          {[...new Set(entreprises.map((n) => n.trim()).filter(Boolean))].map((n) => (
+            <option key={n} value={n} />
+          ))}
+        </datalist>
         <input
           value={role}
           onChange={(e) => { setRole(e.target.value); if (erreur) setErreur(null) }}

@@ -195,3 +195,49 @@ describe('une proposition satisfaite cesse d’être du travail', () => {
     expect(recit).toMatch(/status === 'confirmed' \|\| p\.status === 'fulfilled'/)
   })
 })
+
+// ── « YANN » N'EST PAS UNE ENTREPRISE (Vincent, 2026-07-22) ────────────────
+//
+// MemorIA lit des chaînes nues : « Clim Expert », « Électricien », « Yann ».
+// Une société, un métier, un homme — et rien dans le texte ne dit lequel. La
+// première version de la ligne compacte n'offrait qu'un champ, traité comme
+// l'entreprise : confirmer « Yann » aurait créé une ENTREPRISE nommée Yann.
+// C'est le bug que `mig 137` avait fermé (« tout contact vit sous une
+// entreprise ») et que le serveur refuse toujours — mais un refus après coup se
+// lit comme une panne, pas comme une question qu'on avait oublié de poser.
+
+describe('un acteur se QUALIFIE avant de se confirmer', () => {
+  const rendu = sansCommentaires(panneau)
+
+  it('la famille ne s’appelle plus « Intervenants » — le mot mêlait deux natures', () => {
+    expect(rendu).toContain("titre: 'Acteurs'")
+  })
+
+  it('le type est un choix explicite, jamais une déduction', () => {
+    expect(rendu).toMatch(/Personne.*:.*'Entreprise'|\{personneChoisie \? 'Personne' : 'Entreprise'\}/)
+    expect(rendu).toMatch(/estPersonne/)
+  })
+
+  it('une personne part avec son nom dans le champ personne, pas dans l’entreprise', () => {
+    // Basculer doit DÉPLACER le nom lu, sinon il faut le retaper puis vider
+    // l'autre champ — et l'entreprise garderait « Yann ».
+    expect(rendu).toMatch(/setPersonne\(entreprise\.trim\(\) \|\| item\.title\)/)
+    expect(rendu).toMatch(/setEntreprise\(''\)/)
+  })
+
+  it('et son entreprise est exigée AVANT l’envoi', () => {
+    expect(rendu).toMatch(/estPersonne && !entreprise\.trim\(\)/)
+    expect(rendu).toContain('Une personne se rattache à une entreprise')
+  })
+
+  it('`person_name` n’est transmis que si c’en est une', () => {
+    expect(rendu).toMatch(/person_name: estPersonne \? personne\.trim\(\) \|\| undefined : undefined/)
+  })
+
+  it('les entreprises proposées aident sans enfermer', () => {
+    // `list` = suggestion, le champ reste libre : refuser un nom absent
+    // obligerait à créer la fiche entreprise avant de pouvoir arbitrer.
+    expect(rendu).toMatch(/list=\{`entreprises-\$\{pid\}`\}/)
+    expect(rendu).toMatch(/<datalist id=\{`entreprises-\$\{pid\}`\}>/)
+  })
+})
