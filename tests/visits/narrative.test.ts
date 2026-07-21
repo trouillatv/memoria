@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   classifyProduced,
   describeLimits,
+  explainCapture,
+  explainProposal,
+  explainProduced,
   type RegistryEntry,
   type ReportLinkedObject,
 } from '@/lib/visits/narrative'
@@ -101,5 +104,60 @@ describe('Les limites se disent', () => {
 
   it('déclare que l’intervenant n’a pas encore de provenance (N2)', () => {
     expect(describeLimits([]).intervenantProvenanceMissing).toBe(true)
+  })
+})
+
+describe('Chaque élément dit pourquoi il est là', () => {
+  it('une capture écartée le dit, sans juger', () => {
+    expect(explainCapture({ kept: false, intent: null })).toMatchObject({
+      code: 'capture.discarded',
+      label: 'Écartée du compte-rendu par le conducteur',
+    })
+  })
+
+  it.each([
+    ['action', 'action à prévoir'],
+    ['reserve', 'réserve à lever'],
+    ['follow', 'point à surveiller'],
+  ])('une capture taguée « %s » cite le tag du conducteur', (intent, mot) => {
+    expect(explainCapture({ kept: true, intent }).label).toContain(mot)
+  })
+
+  it('une obsolescence n’est JAMAIS présentée comme un rejet humain', () => {
+    const r = explainProposal({ status: 'superseded' })
+    expect(r.label).toBe('Devenue obsolète après une nouvelle analyse')
+    expect(r.label).not.toMatch(/ignor|écart|refus/i)
+  })
+
+  it.each([
+    ['confirmed', 'Confirmée par un humain'],
+    ['dismissed', 'Écartée par un humain'],
+    ['proposed', 'Proposée par MemorIA, en attente d’arbitrage'],
+  ])('une proposition « %s » dit son sort', (status, attendu) => {
+    expect(explainProposal({ status }).label).toBe(attendu)
+  })
+
+  it('un objet né du compte-rendu cite SA section', () => {
+    expect(
+      explainProduced({
+        kind: 'action', id: 'a', label: 'x', createdAt: null,
+        provenance: 'registry', sourceSection: 'actions',
+      }).label,
+    ).toBe('Créé à partir de la section « Actions » du compte-rendu')
+  })
+
+  it('un objet né d’une proposition le dit autrement', () => {
+    expect(
+      explainProduced({
+        kind: 'intervenant', id: 'i', label: 'Clim Expert', createdAt: null,
+        provenance: 'registry', sourceSection: 'propositions',
+      }).code,
+    ).toBe('produced.fromProposal')
+  })
+
+  it('un simple rattachement AVOUE qu’il ne prouve rien', () => {
+    const r = explainProduced({ kind: 'action', id: 'a', label: 'x', createdAt: null, provenance: 'report' })
+    expect(r.code).toBe('produced.linked')
+    expect(r.label).toContain('n’est pas démontrable')
   })
 })

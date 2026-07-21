@@ -19,6 +19,10 @@ import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import {
   classifyProduced,
   describeLimits,
+  explainCapture,
+  explainProposal,
+  explainProduced,
+  type Reason,
   type NarrativeLimits,
   type ProducedObject,
   type RegistryEntry,
@@ -36,6 +40,8 @@ export interface NarrativeCapture {
   kept: boolean
   /** Ce que le conducteur en a dit au tri : action, réserve à lever, à surveiller. */
   intent: string | null
+  /** Pourquoi cette ligne est là — dérivé d'un fait, jamais deviné. */
+  why: Reason
 }
 
 export interface NarrativeProposal {
@@ -48,6 +54,7 @@ export interface NarrativeProposal {
   status: string
   /** L'objet né de cette proposition, s'il existe. */
   createdEntityId: string | null
+  why: Reason
 }
 
 export interface NarrativeDocument {
@@ -88,11 +95,14 @@ export interface VisitNarrative {
     /** Captures explicitement écartées par le conducteur. */
     discardedCaptures: number
   }
-  /** CE QUE LE SYSTÈME A EFFECTIVEMENT MATÉRIALISÉ. Lecture EXCLUSIVE du
+  /** Chaque objet porte SON motif : de quelle section il vient, ou de quelle
+   *  proposition. Un écran n'a plus rien à deviner.
+   *
+   *  CE QUE LE SYSTÈME A EFFECTIVEMENT MATÉRIALISÉ. Lecture EXCLUSIVE du
    *  journal de concrétisation, quelle que soit la porte utilisée. Un objet
    *  simplement rattaché par `report_id` n'y entre pas : il est compté dans
    *  les limites, parce qu'on ne peut pas prouver qu'il est né de ce récit. */
-  produced: ProducedObject[]
+  produced: Array<ProducedObject & { why: Reason }>
   /** Ce que le récit ne sait pas — dit, jamais masqué. */
   limits: NarrativeLimits
 }
@@ -133,6 +143,10 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
     // preuve, marquée. C'est ce qui permet de comprendre un choix six mois plus tard.
     kept: c.status !== 'discarded',
     intent: (c.triage_intent as string | null) ?? null,
+    why: explainCapture({
+      kept: c.status !== 'discarded',
+      intent: (c.triage_intent as string | null) ?? null,
+    }),
   }))
 
   const understood: NarrativeProposal[] = ((props.data ?? []) as Array<Record<string, unknown>>).map((p) => ({
@@ -143,6 +157,7 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
     confidence: (p.confidence as number | null) ?? null,
     status: p.status as string,
     createdEntityId: (p.promoted_object_id as string | null) ?? null,
+    why: explainProposal({ status: p.status as string }),
   }))
 
   // ── PRODUCED — la seule couche qui exige une PREUVE ───────────────────────
@@ -152,7 +167,7 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
   // `produced` = le journal, et rien d'autre. Les objets seulement rattachés
   // par `report_id` sont comptés à part : ils existent, mais rien ne prouve
   // qu'ils sont nés de ce récit.
-  const produced = classifyProduced(registry, [])
+  const produced = classifyProduced(registry, []).map((p) => ({ ...p, why: explainProduced(p) }))
   const linked = siteId ? await readReportLinked(reportId) : []
   const provenIds = new Set(produced.map((p) => `${p.kind}:${p.id}`))
   const historical = linked.filter((l) => !provenIds.has(`${l.kind}:${l.id}`))
