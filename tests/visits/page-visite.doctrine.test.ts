@@ -162,3 +162,39 @@ describe('toutes les heures d’une visite sont celles du chantier', () => {
     }
   })
 })
+
+// ── LE BUREAU NE RENVOIE PAS AU TÉLÉPHONE ──────────────────────────────────
+//
+// Le compte-rendu, la concrétisation et l'arbitrage n'existaient qu'à l'adresse
+// mobile : depuis le poste de travail, « Arbitrer » éjectait le conducteur dans
+// la coquille téléphone pour faire le travail de la visite. Un seul moteur,
+// deux surfaces — comme partout ailleurs ici.
+
+describe('la visite desktop reste dans le bureau', () => {
+  it('ne renvoie vers /m que là où c’est le geste demandé', () => {
+    const liens = [...rendu.matchAll(/href=\{`(\/m\/[^`]+)`\}/g)].map((m) => m[1]!)
+    for (const lien of liens) {
+      expect(lien, `lien mobile inattendu : ${lien}`).toContain('/recap')
+    }
+  })
+
+  it('le compte-rendu a sa propre adresse de bureau', () => {
+    expect(rendu).toContain('/compte-rendu')
+    expect(existsSync(join(dir, 'compte-rendu/page.tsx'))).toBe(true)
+  })
+
+  it('et le PDF aussi — sans dupliquer le générateur', () => {
+    expect(existsSync(join(dir, 'pdf/route.ts'))).toBe(true)
+    const route = readFileSync(join(dir, 'pdf/route.ts'), 'utf8')
+    expect(route).toContain("from '@/app/(field)/m/visite/[reportId]/pdf/route'")
+  })
+
+  it('la surface desktop du CR compose les MÊMES composants que le terrain', () => {
+    const cr = readFileSync(join(dir, 'compte-rendu/page.tsx'), 'utf8')
+    for (const composant of ['CrDocumentSections', 'CrConcretisation', 'MemoriaRetained']) {
+      expect(cr).toContain(`from '@/app/(field)/m/visite/[reportId]/cr/${composant}'`)
+    }
+    // Ouvrir n'a jamais voulu dire régénérer.
+    expect(cr).toContain('getOrCreateVisitCrDocument')
+  })
+})

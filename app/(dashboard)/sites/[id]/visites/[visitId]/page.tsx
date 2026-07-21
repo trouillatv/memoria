@@ -78,7 +78,10 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
   // Le résumé affiché est celui du compte-rendu HUMAIN — jamais un second texte
   // fabriqué pour l'en-tête.
   const resume = doc?.sections.find((s) => s.key === 'resume')?.content?.trim() || null
-  const crHref = doc ? `/m/visite/${visitId}/cr` : null
+  // LE COMPTE-RENDU RESTE DANS LE BUREAU. Il n'existait qu'à l'adresse mobile :
+  // « Arbitrer » éjectait donc le conducteur dans la coquille téléphone pour
+  // faire le travail de la visite. Même moteur, surface desktop.
+  const crHref = doc ? `/sites/${id}/visites/${visitId}/compte-rendu` : null
 
   const debut = visit.started_at ?? visit.created_at
   const minutes = visit.started_at && visit.ended_at
@@ -183,7 +186,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         <aside className="mt-4 space-y-4 lg:mt-0 lg:w-80 lg:shrink-0">
           <section className="rounded-xl border bg-card p-3">
             <h2 className="mb-2 text-[13px] font-semibold">Actions sur cette visite</h2>
-            <VisitShareButton reportId={visitId} siteName={identity.name} />
+            <VisitShareButton reportId={visitId} siteName={identity.name} pdfUrl={`/sites/${id}/visites/${visitId}/pdf`} />
             <div className="mt-1 divide-y">
               {enrichment.sinceLastAnalysis > 0 && (
                 <div className="py-1.5">
@@ -197,7 +200,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                 <VerserPiece reportId={visitId} visitStartedAt={debut} />
                 <p className="pl-8 text-[11.5px] text-muted-foreground">Photo, vocal, vidéo</p>
               </div>
-              <RailLink href={`/m/visite/${visitId}/pdf`} icon={<FileDown className="h-4 w-4" aria-hidden />} label="Télécharger le compte-rendu" sous="PDF" newTab />
+              <RailLink href={`/sites/${id}/visites/${visitId}/pdf`} icon={<FileDown className="h-4 w-4" aria-hidden />} label="Télécharger le compte-rendu" sous="PDF" newTab />
               <RailLink href={`/m/visite/${visitId}/recap`} icon={<Images className="h-4 w-4" aria-hidden />} label="Ouvrir sur mobile" />
             </div>
           </section>

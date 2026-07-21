@@ -142,21 +142,13 @@ function Chronologie({
   media: CaptureMedia
   onOuvrir: (c: NarrativeCapture) => void
 }) {
-  const [tout, setTout] = useState(false)
-  const APERCU = 4
-  const visibles = tout ? captures : captures.slice(0, APERCU)
-  const restant = captures.length - visibles.length
-
+  // La frise s'affiche ENTIÈRE. Un « voir tout » posé dans l'en-tête recouvrait
+  // les premiers moments — et masquer le début d'une chronologie est le contraire
+  // de ce que cette carte doit faire. Le défilement horizontal suffit.
   return (
     <Carte
       titre="Ce qui s’est passé pendant cette visite"
-      action={
-        captures.length > APERCU && !tout ? (
-          <button type="button" onClick={() => setTout(true)} className="text-[13px] font-medium text-primary hover:underline">
-            Voir toute la chronologie
-          </button>
-        ) : undefined
-      }
+      compte={captures.length > 0 ? `${captures.length} moment${captures.length > 1 ? 's' : ''}` : undefined}
     >
       {captures.length === 0 ? (
         <p className="text-[13px] text-muted-foreground">
@@ -164,19 +156,9 @@ function Chronologie({
         </p>
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-1">
-          {visibles.map((c) => (
+          {captures.map((c) => (
             <Moment key={c.id} capture={c} piece={media[c.id]} onOuvrir={onOuvrir} />
           ))}
-          {restant > 0 && (
-            <button
-              type="button"
-              onClick={() => setTout(true)}
-              className="flex w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-[12px] text-muted-foreground hover:bg-muted"
-            >
-              <span className="text-sm font-medium">+{restant}</span>
-              événement{restant > 1 ? 's' : ''} suivant{restant > 1 ? 's' : ''}
-            </button>
-          )}
         </div>
       )}
     </Carte>

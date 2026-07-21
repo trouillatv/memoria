@@ -8,9 +8,19 @@
 import { useState } from 'react'
 import { Share2, Loader2 } from 'lucide-react'
 
-export function VisitShareButton({ reportId, siteName }: { reportId: string; siteName: string }) {
+export function VisitShareButton({
+  reportId,
+  siteName,
+  pdfUrl,
+}: {
+  reportId: string
+  siteName: string
+  /** L'adresse du PDF. Le bureau passe la sienne : sans ça, « Partager » ouvre
+   *  une URL `/m/...` et donne l'impression d'être renvoyé dans le mobile. */
+  pdfUrl?: string
+}) {
   const [busy, setBusy] = useState(false)
-  const url = `/m/visite/${reportId}/pdf`
+  const url = pdfUrl ?? `/m/visite/${reportId}/pdf`
 
   async function share() {
     if (busy) return
