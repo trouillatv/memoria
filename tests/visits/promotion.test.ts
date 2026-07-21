@@ -7,6 +7,8 @@ import {
   type PromotionRequest,
 } from '@/lib/visits/promotion'
 import type { ReportDocumentSection } from '@/types/db'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
 
 // ── N3.1 — LA PROMOTION CRÉE DE LA PROVENANCE ───────────────────────────────
 //
@@ -117,5 +119,28 @@ describe('La question inverse — ce qui N’EST PAS entré dans le compte-rendu
     const out = promoteIntoSection(sections(), req()).sections
     expect(notPromotedFrom(out, 'cap-9', ['L’accès se fera par le portail, avec un cadenas à code']))
       .toHaveLength(1)
+  })
+})
+
+describe('Citer une preuve n’est pas rédiger le compte-rendu', () => {
+  const src = fs.readFileSync(
+    path.join(process.cwd(), 'app/(field)/m/visite/[reportId]/cr/promotion-actions.ts'),
+    'utf8',
+  )
+
+  it('seules deux sections accueillent une phrase promue', () => {
+    expect(src).toMatch(/const PROMOTABLE = \['resume', 'a_savoir'\] as const/)
+  })
+
+  it.each(['decisions', 'actions', 'echeances'])(
+    'la section « %s » reste fermée — un engagement n’est pas une citation',
+    (section) => {
+      const liste = src.slice(src.indexOf('const PROMOTABLE'), src.indexOf('as const'))
+      expect(liste).not.toContain(section)
+    },
+  )
+
+  it('et le refus explique où faire le geste', () => {
+    expect(src).toContain('se confirme depuis les propositions')
   })
 })

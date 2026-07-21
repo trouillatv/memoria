@@ -19,9 +19,23 @@ import { updateReportDocumentSections } from '@/lib/db/report-documents'
 import { promoteIntoSection } from '@/lib/visits/promotion'
 import type { ReportDocumentSection } from '@/types/db'
 
-/** Les sections où une phrase peut entrer. Les vigilances et les intervenants
- *  n'en sont pas : la première raconte, la seconde exige un rôle. */
-const PROMOTABLE = ['resume', 'decisions', 'actions', 'a_savoir', 'echeances'] as const
+/** DEUX SECTIONS, ET DEUX SEULEMENT (Vincent, 2026-07-22).
+ *
+ * « La promotion doit servir à CITER une preuve. Pas à écrire le compte-rendu. »
+ *
+ * Le résumé et « à savoir » accueillent un FAIT : on cite ce qui a été dit, et
+ * le conducteur réécrit autour. C'est un point de départ, pas une rédaction.
+ *
+ * Les décisions, les actions et les échéances en sont exclues, et ce n'est pas
+ * une limitation technique : ce sont des ENGAGEMENTS, pas des citations. Les
+ * fabriquer d'un clic reviendrait à construire le compte-rendu par boutons — et
+ * à perdre en six mois ce qui fait la valeur du document humain. Elles ont déjà
+ * leur chemin : la proposition, où l'humain tranche avec les champs qu'il faut
+ * (un rôle, une date), puis la concrétisation.
+ *
+ * Deux portes, deux natures : la preuve entre par le récit, l'engagement par
+ * l'arbitrage. */
+const PROMOTABLE = ['resume', 'a_savoir'] as const
 export type PromotableSection = (typeof PROMOTABLE)[number]
 
 export type PromotionResult =
@@ -37,7 +51,12 @@ export async function promoteEvidenceToCrAction(input: {
   const user = await getCurrentUserWithProfile()
   if (!user) return { ok: false, error: 'Session expirée' }
   if (!(PROMOTABLE as readonly string[]).includes(input.sectionKey)) {
-    return { ok: false, error: 'Cette section ne reçoit pas de phrase promue.' }
+    return {
+      ok: false,
+      error:
+        'On ne cite une preuve que dans le résumé ou « à savoir ». Une action, une décision '
+        + 'ou une échéance se confirme depuis les propositions.',
+    }
   }
   const text = input.text.trim()
   if (!text) return { ok: false, error: 'Sélectionnez une phrase.' }
