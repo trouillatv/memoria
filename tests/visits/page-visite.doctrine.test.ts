@@ -50,11 +50,23 @@ describe('les gestes de la page sont ceux de son récit', () => {
     expect(rendu).not.toContain(`/sites/${'${id}'}/reserves`)
   })
 
-  it('garde les gestes périphériques, mais en pied de page', () => {
-    const pied = page.slice(page.indexOf('<footer'))
+  it('garde les gestes périphériques, mais dans le rail — pas dans le récit', () => {
+    const rail = page.slice(page.indexOf('Actions sur cette visite'))
     for (const geste of ['Télécharger le compte-rendu', 'Ouvrir sur mobile', 'Retour au chantier']) {
-      expect(pied).toContain(geste)
+      expect(rail).toContain(geste)
     }
+  })
+
+  it('annonce « Ajouter une preuve » sans le simuler — le lot n’est pas ouvert', () => {
+    expect(rendu).toContain('Ajouter une preuve')
+    expect(rendu).toContain('à venir')
+  })
+
+  it('n’invente aucun historique d’analyse : il n’en existe pas', () => {
+    // Une nouvelle analyse ECRASE l'ancienne. Afficher « v1 / v2 » raconterait
+    // une histoire que la base ne sait pas démontrer (arbitrage 2026-07-22).
+    expect(rendu).toContain('Dernière analyse')
+    expect(rendu).not.toMatch(/v1|v2/)
   })
 })
 

@@ -12,7 +12,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import {
-  Camera, Check, ChevronDown, FileText, Loader2, MapPin, Mic, Plus, Video,
+  Camera, Check, ChevronDown, FileText, Loader2, MapPin, Mic, Pause, Play, Plus, Video,
 } from 'lucide-react'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { promoteEvidenceToCrAction } from '@/app/(field)/m/visite/[reportId]/cr/promotion-actions'
@@ -58,11 +58,15 @@ export function NarrativeReader({
   media,
   canPromote,
   crHref,
+  rail,
 }: {
   narrative: VisitNarrative
   media: CaptureMedia
   canPromote: boolean
   crHref: string | null
+  /** Les blocs du rail rendus par le serveur (analyse, actions, statuts). Ils
+   *  n'ont aucun état : ils voyagent en props plutôt que d'être réécrits ici. */
+  rail?: React.ReactNode
 }) {
   const [active, setActive] = useState<string>('capte')
   const [openCapture, setOpenCapture] = useState<NarrativeCapture | null>(null)
@@ -86,10 +90,22 @@ export function NarrativeReader({
 
   const { captured, understood, validated, produced, ignored, limits } = narrative
   const ecarteTotal = ignored.byHuman.length + ignored.superseded.length + ignored.captures.length
+  const counts: Record<string, number> = {
+    capte: captured.length,
+    compris: understood.length,
+    tranche: validated.pendingProposals,
+    produit: produced.length,
+    ecarte: ecarteTotal,
+  }
 
   return (
-    <div className="lg:flex lg:gap-10">
-      <Sommaire active={active} />
+    // Le rail est à DROITE et vient APRÈS dans le flux : sur mobile, le récit
+    // commence tout de suite ; le sommaire et les actions suivent.
+    <div className="lg:flex lg:flex-row-reverse lg:items-start lg:gap-8">
+      <aside className="mb-6 lg:sticky lg:top-6 lg:mb-0 lg:w-64 lg:shrink-0">
+        <Sommaire active={active} counts={counts} />
+        {rail}
+      </aside>
 
       <div className="min-w-0 flex-1 space-y-10 pb-24">
         {/* ── CAPTÉ — une frise, parce qu'une visite est un parcours ────────── */}
@@ -274,25 +290,35 @@ export function NarrativeReader({
 
 // ── SOMMAIRE — collant, il dit où on en est sans jamais reprendre la main ────
 
-function Sommaire({ active }: { active: string }) {
+function Sommaire({ active, counts }: { active: string; counts: Record<string, number> }) {
   return (
     <nav
       aria-label="Sommaire du récit"
-      className="sticky top-0 z-30 -mx-4 mb-6 border-b bg-background/90 px-4 py-2 backdrop-blur lg:top-6 lg:mx-0 lg:mb-0 lg:h-fit lg:w-40 lg:shrink-0 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:backdrop-blur-none"
+      className="sticky top-0 z-30 -mx-4 border-b bg-background/90 px-4 py-2 backdrop-blur lg:static lg:mx-0 lg:rounded-xl lg:border lg:bg-card lg:p-3 lg:backdrop-blur-none"
     >
+      <p className="hidden text-[11px] font-medium uppercase tracking-wider text-muted-foreground lg:mb-1.5 lg:block">
+        Visite
+      </p>
       <ul className="flex gap-1 overflow-x-auto lg:flex-col lg:gap-0.5 lg:overflow-visible">
         {SOMMAIRE.map((s) => (
           <li key={s.id}>
             <a
               href={`#${s.id}`}
               aria-current={active === s.id ? 'true' : undefined}
-              className={`block whitespace-nowrap rounded px-2 py-1 text-[13px] transition-colors lg:border-l-2 lg:px-3 ${
-                active === s.id
-                  ? 'font-medium text-foreground lg:border-foreground'
-                  : 'text-muted-foreground hover:text-foreground lg:border-transparent'
+              className={`flex items-center gap-2 whitespace-nowrap rounded px-2 py-1 text-[13px] transition-colors ${
+                active === s.id ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              {s.label}
+              <span
+                aria-hidden
+                className={`hidden h-1.5 w-1.5 shrink-0 rounded-full lg:block ${
+                  active === s.id ? 'bg-foreground' : 'bg-muted-foreground/30'
+                }`}
+              />
+              <span className="flex-1">{s.label}</span>
+              {counts[s.id] !== undefined && counts[s.id]! > 0 && (
+                <span className="tabular-nums text-[12px] text-muted-foreground">{counts[s.id]}</span>
+              )}
             </a>
           </li>
         ))}
@@ -341,6 +367,17 @@ function Section({
 
 // ── FRISE — le parcours de la visite, heure par heure ────────────────────────
 
+/** Ce que le conducteur a DIT de la pièce au tri. Trois intentions, et trois
+ *  seulement : le modèle ne connaît que celles-là, et l'écran ne montre que ce
+ *  que le modèle sait démontrer. */
+const INTENT_FR: Record<string, string> = {
+  action: 'Action', reserve: 'Réserve', follow: 'À suivre',
+}
+
+/** Au-delà, la frise devient un mur : on montre le début, et on dit combien il
+ *  reste. « Voir tout » n'ouvre pas une page — il déplie sur place. */
+const APERCU = 6
+
 function Timeline({
   captures,
   media,
@@ -352,59 +389,135 @@ function Timeline({
   lastSeen: string | null
   onOpen: (c: NarrativeCapture) => void
 }) {
+  const [tout, setTout] = useState(false)
+  const visibles = tout ? captures : captures.slice(0, APERCU)
+  const restant = captures.length - visibles.length
+
   return (
-    <ol className="relative space-y-0.5 border-l pl-0">
-      {captures.map((c, i) => {
-        // UNE VISITE EST FIGÉE, SON DOSSIER NE L'EST PAS. Une pièce versée après
-        // coup n'est pas une capture terrain : on ne la fond pas dans la frise,
-        // on ouvre un nouveau jour et on le dit.
-        const jour = frJour(c.addedAt)
-        const nouveauJour = i === 0 || frJour(captures[i - 1]!.addedAt) !== jour
-        const Icon = KIND_ICON[c.kind] ?? FileText
-        const hasMedia = Boolean(media[c.id])
-        return (
-          <li key={c.id} className="relative">
-            {nouveauJour && (
-              <p className="-ml-px mb-1 mt-3 border-t pl-5 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
-                {jour}
-                {c.addedAfterVisit && ' · versé au dossier après la visite'}
-              </p>
-            )}
-            {/* Le point de la frise, posé SUR la ligne. */}
-            <span
-              aria-hidden
-              className={`absolute -left-[5px] top-[15px] h-2 w-2 rounded-full ring-2 ring-background ${
-                c.kept ? 'bg-foreground/50' : 'bg-muted-foreground/30'
-              }`}
-            />
-            <button
-              type="button"
-              onClick={() => onOpen(c)}
-              className={`flex w-full items-baseline gap-3 rounded-r-lg py-2 pl-5 pr-2 text-left transition-colors hover:bg-muted/60 ${
-                lastSeen === c.id ? 'bg-muted/50' : ''
-              }`}
-            >
-              <span className="font-mono text-xs tabular-nums text-muted-foreground">{frHeure(c.capturedAt)}</span>
-              <Icon className="h-3.5 w-3.5 shrink-0 translate-y-0.5 text-muted-foreground" aria-hidden />
-              <span className="min-w-0 flex-1">
-                <span className={`block truncate text-sm ${c.kept ? '' : 'text-muted-foreground line-through'}`}>
-                  {c.body?.trim() || KIND_FR[c.kind] || 'Capture'}
+    <>
+      <ol className="relative space-y-0.5 border-l pl-0">
+        {visibles.map((c, i) => {
+          // UNE VISITE EST FIGÉE, SON DOSSIER NE L'EST PAS. Une pièce versée
+          // après coup n'est pas une capture terrain : on ne la fond pas dans la
+          // frise, on ouvre un nouveau jour et on le dit.
+          const jour = frJour(c.addedAt)
+          const nouveauJour = i === 0 || frJour(visibles[i - 1]!.addedAt) !== jour
+          const Icon = KIND_ICON[c.kind] ?? FileText
+          const piece = media[c.id]
+          const intent = c.intent ? INTENT_FR[c.intent] : null
+          return (
+            <li key={c.id} className="relative">
+              {nouveauJour && (
+                <p className="-ml-px mb-1 mt-3 border-t pl-5 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
+                  {jour}
+                  {c.addedAfterVisit && ' · versé au dossier après la visite'}
+                </p>
+              )}
+              {/* Le point de la frise, posé SUR la ligne. */}
+              <span
+                aria-hidden
+                className={`absolute -left-[5px] top-[19px] h-2 w-2 rounded-full ring-2 ring-background ${
+                  c.kept ? 'bg-foreground/50' : 'bg-muted-foreground/30'
+                }`}
+              />
+              <div
+                className={`flex items-start gap-2.5 rounded-r-lg py-2 pl-5 pr-2 transition-colors hover:bg-muted/60 ${
+                  lastSeen === c.id ? 'bg-muted/50' : ''
+                }`}
+              >
+                <span className="mt-0.5 shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+                  {frHeure(c.capturedAt)}
                 </span>
-                <span className="block truncate text-[11px] text-muted-foreground">
-                  {c.addedAfterVisit && (
-                    <span className="mr-1.5 rounded border px-1 py-px text-[10px] uppercase tracking-wide">
-                      Ajouté après
+
+                {/* La preuve se reconnaît d'un coup d'œil : la photo se voit, le
+                    vocal s'écoute sans quitter la frise. */}
+                {piece && c.kind === 'photo' ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={piece.url}
+                    alt=""
+                    className="h-9 w-12 shrink-0 rounded border object-cover"
+                  />
+                ) : piece && (c.kind === 'vocal' || c.kind === 'video') ? (
+                  <InlinePlayer url={piece.url} kind={c.kind} />
+                ) : (
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded border bg-muted/40">
+                    <Icon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+                  </span>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => onOpen(c)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <span className="flex flex-wrap items-baseline gap-x-2">
+                    <span className={`text-sm ${c.kept ? '' : 'text-muted-foreground line-through'}`}>
+                      {c.body?.trim() || KIND_FR[c.kind] || 'Capture'}
                     </span>
-                  )}
-                  {c.why.label}
-                </span>
-              </span>
-              {hasMedia && <Mic className="h-3 w-3 shrink-0 translate-y-0.5 text-muted-foreground" aria-hidden />}
-            </button>
-          </li>
-        )
-      })}
-    </ol>
+                    {intent && (
+                      <span className="shrink-0 rounded border px-1.5 py-px text-[10px] uppercase tracking-wide text-muted-foreground">
+                        {intent}
+                      </span>
+                    )}
+                    {c.addedAfterVisit && (
+                      <span className="shrink-0 rounded border px-1.5 py-px text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Ajouté après
+                      </span>
+                    )}
+                  </span>
+                  <span className="block truncate text-[11px] text-muted-foreground">{c.why.label}</span>
+                </button>
+              </div>
+            </li>
+          )
+        })}
+      </ol>
+
+      <div className="mt-2 flex items-center gap-3 pl-5 text-[12px] text-muted-foreground">
+        <span>{captures.length} événement{captures.length > 1 ? 's' : ''} au total</span>
+        {restant > 0 && (
+          <button type="button" onClick={() => setTout(true)} className="underline underline-offset-4">
+            Voir tout ({restant} de plus)
+          </button>
+        )}
+      </div>
+    </>
+  )
+}
+
+/** Écouter sans quitter la frise. Le panneau reste là pour la transcription et
+ *  la citation — ici, on veut juste entendre. */
+function InlinePlayer({ url, kind }: { url: string; kind: string }) {
+  const ref = useRef<HTMLAudioElement | null>(null)
+  const [joue, setJoue] = useState(false)
+
+  return (
+    <span className="relative shrink-0">
+      <audio
+        ref={ref}
+        src={url}
+        preload="none"
+        onEnded={() => setJoue(false)}
+        onPause={() => setJoue(false)}
+        onPlay={() => setJoue(true)}
+      >
+        <track kind="captions" />
+      </audio>
+      <button
+        type="button"
+        onClick={() => {
+          const el = ref.current
+          if (!el) return
+          if (el.paused) void el.play()
+          else el.pause()
+        }}
+        aria-label={joue ? 'Mettre en pause' : `Écouter le ${kind}`}
+        className="grid h-9 w-9 place-items-center rounded border bg-background hover:bg-muted"
+      >
+        {joue ? <Pause className="h-3.5 w-3.5" aria-hidden /> : <Play className="h-3.5 w-3.5" aria-hidden />}
+      </button>
+    </span>
   )
 }
 

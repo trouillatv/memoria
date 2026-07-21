@@ -15,7 +15,7 @@
 
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, FileDown, FileText, Home, Images } from 'lucide-react'
+import { ChevronRight, FileDown, FileText, Home, Images, Paperclip } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getVisit } from '@/lib/db/visits'
@@ -76,12 +76,15 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
-      <Link
-        href={`/sites/${id}/visites`}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" aria-hidden /> Visites
-      </Link>
+      <nav aria-label="Fil d’Ariane" className="flex flex-wrap items-center gap-1.5 text-[13px] text-muted-foreground">
+        <Link href="/sites" className="hover:text-foreground">Chantiers</Link>
+        <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+        <Link href={`/sites/${id}`} className="hover:text-foreground">{identity.name}</Link>
+        <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+        <Link href={`/sites/${id}/visites`} className="hover:text-foreground">Visites</Link>
+        <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+        <span className="font-medium text-foreground">Visite du {frDate(debut)}</span>
+      </nav>
 
       {/* ── L'IDENTITÉ DE LA VISITE — où suis-je, et dans quel état ? ───────── */}
       <header className="mt-4 space-y-4 border-b pb-6">
@@ -111,25 +114,6 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
 
         <CrState visitId={visitId} doc={narrative.validated.document} />
 
-        {/* DEPUIS CETTE ANALYSE — le seul endroit où le récit propose un geste
-            qui coûte : il n'apparaît QUE si des preuves sont réellement entrées
-            depuis la dernière lecture, et il ne part jamais tout seul. */}
-        {narrative.enrichment.sinceLastAnalysis > 0 && (
-          <div className="rounded-lg border border-amber-300/70 bg-amber-50/70 px-3 py-2.5 dark:border-amber-900/50 dark:bg-amber-950/20">
-            <p className="text-[13px] font-medium">
-              {narrative.enrichment.sinceLastAnalysis} preuve
-              {narrative.enrichment.sinceLastAnalysis > 1 ? 's ont été versées' : ' a été versée'} au dossier depuis
-              cette analyse.
-            </p>
-            <p className="mt-0.5 text-[13px] text-muted-foreground">
-              MemorIA ne les a pas encore lues — ce qui suit ne les prend pas en compte.
-            </p>
-            <div className="mt-2">
-              <ReanalyseButton reportId={visitId} />
-            </div>
-          </div>
-        )}
-
         {/* Quatre chiffres, et chacun dit de quelle couche il vient. */}
         <dl className="grid grid-cols-2 gap-x-6 gap-y-4 pt-2 sm:grid-cols-4">
           <Compteur
@@ -158,16 +142,72 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
           media={media}
           canPromote={doc?.status === 'draft'}
           crHref={doc ? `/m/visite/${visitId}/cr` : null}
+          rail={
+            <div className="mt-4 space-y-4">
+              {/* ANALYSE — ce que la base sait démontrer, et rien de plus. Pas de
+                  v1/v2 : il n'existe aucun historique des analyses, seulement la
+                  courante et un delta calculable (arbitrage 2026-07-22). */}
+              <section className="rounded-xl border bg-card p-3">
+                <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Analyse MemorIA
+                </h2>
+                {narrative.enrichment.lastAnalysisAt ? (
+                  <p className="mt-1.5 text-[13px]">
+                    Dernière analyse
+                    <span className="ml-1 font-medium">{frDateHeure(narrative.enrichment.lastAnalysisAt)}</span>
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-[13px] text-muted-foreground">Cette visite n’a pas encore été lue.</p>
+                )}
+                {narrative.enrichment.sinceLastAnalysis > 0 && (
+                  <>
+                    <p className="mt-1.5 text-[13px] text-muted-foreground">
+                      +{narrative.enrichment.sinceLastAnalysis} preuve
+                      {narrative.enrichment.sinceLastAnalysis > 1 ? 's' : ''} depuis cette analyse
+                    </p>
+                    <div className="mt-2">
+                      <ReanalyseButton reportId={visitId} />
+                    </div>
+                  </>
+                )}
+              </section>
+
+              <section className="rounded-xl border bg-card p-3">
+                <h2 className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Actions sur cette visite
+                </h2>
+                <div className="flex flex-col gap-1">
+                  <VisitShareButton reportId={visitId} siteName={identity.name} />
+                  <RailLink href={`/m/visite/${visitId}/pdf`} icon={<FileDown className="h-4 w-4" aria-hidden />} label="Télécharger le compte-rendu" newTab />
+                  <RailLink href={`/m/visite/${visitId}/recap`} icon={<Images className="h-4 w-4" aria-hidden />} label="Ouvrir sur mobile" />
+                  {/* Annoncé, pas simulé : le lot n'est pas ouvert. */}
+                  <span className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground/70">
+                    <Paperclip className="h-4 w-4" aria-hidden />
+                    Ajouter une preuve
+                    <span className="ml-auto text-[11px]">à venir</span>
+                  </span>
+                  <RailLink href={`/sites/${id}`} icon={<Home className="h-4 w-4" aria-hidden />} label="Retour au chantier" />
+                </div>
+              </section>
+
+              {/* COMPRENDRE LES STATUTS — de la pédagogie, pas de la décoration :
+                  chaque mot de cette page a un sens précis, autant l'écrire. */}
+              <section className="rounded-xl border bg-card p-3">
+                <h2 className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Comprendre les statuts
+                </h2>
+                <dl className="space-y-1.5 text-[12.5px] leading-snug">
+                  <Statut mot="Ajouté après" sens="preuve versée au dossier après la clôture de la visite." />
+                  <Statut mot="En attente" sens="proposition de MemorIA que personne n’a encore tranchée." />
+                  <Statut mot="Obsolète" sens="proposition qu’une analyse plus récente ne redit plus — ce n’est pas un refus." />
+                  <Statut mot="Produit" sens="objet dont la création par cette visite est démontrable." />
+                </dl>
+              </section>
+            </div>
+          }
         />
       </div>
 
-      {/* ── LES GESTES PÉRIPHÉRIQUES — utiles, mais pas le cœur de la visite ── */}
-      <footer className="flex flex-wrap items-center gap-2 border-t pt-6">
-        <VisitShareButton reportId={visitId} siteName={identity.name} />
-        <FooterLink href={`/m/visite/${visitId}/pdf`} icon={<FileDown className="h-4 w-4" aria-hidden />} label="Télécharger le compte-rendu" newTab />
-        <FooterLink href={`/m/visite/${visitId}/recap`} icon={<Images className="h-4 w-4" aria-hidden />} label="Ouvrir sur mobile" />
-        <FooterLink href={`/sites/${id}`} icon={<Home className="h-4 w-4" aria-hidden />} label="Retour au chantier" />
-      </footer>
     </div>
   )
 }
@@ -217,16 +257,25 @@ function Compteur({ value, label, sub }: { value: number; label: string; sub?: s
   )
 }
 
-function FooterLink({ href, icon, label, newTab }: { href: string; icon: React.ReactNode; label: string; newTab?: boolean }) {
+function RailLink({ href, icon, label, newTab }: { href: string; icon: React.ReactNode; label: string; newTab?: boolean }) {
   return (
     <Link
       href={href}
       {...(newTab ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-      className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm hover:bg-muted"
+      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-muted"
     >
       {icon}
       {label}
     </Link>
+  )
+}
+
+function Statut({ mot, sens }: { mot: string; sens: string }) {
+  return (
+    <div>
+      <dt className="inline font-medium">{mot}</dt>
+      <dd className="inline text-muted-foreground"> — {sens}</dd>
+    </div>
   )
 }
 
@@ -239,4 +288,6 @@ async function resolveConducteur(userId: string | null): Promise<string | null> 
 const plural = (n: number, un: string, plusieurs: string) => (n > 0 ? `${n} ${n > 1 ? plusieurs : un}` : '')
 const frHeure = (iso: string) => new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 const frDate = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+const frDateHeure = (iso: string) =>
+  new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
 const frDuree = (min: number) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`)

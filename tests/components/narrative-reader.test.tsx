@@ -214,3 +214,53 @@ describe('ce qui reste à arbitrer dit toujours où le faire', () => {
     expect(screen.queryByText(/attend votre arbitrage/i)).not.toBeInTheDocument()
   })
 })
+
+// ── N3.3 — HABILLAGE ÉDITORIAL ─────────────────────────────────────────────
+//
+// Le rail est un SOMMAIRE enrichi, pas une navigation métier : les sections
+// restent sur la même page. Et les étiquettes de la frise viennent du modèle —
+// le tri ne connaît que « action », « réserve » et « à suivre ».
+
+describe('le rail oriente sans jamais emmener ailleurs', () => {
+  it('chiffre chaque section et reste un lien interne', () => {
+    render(<NarrativeReader narrative={peuple()} media={{}} canPromote={false} crHref={null} />)
+    const sommaire = screen.getByRole('navigation', { name: /sommaire/i })
+    const lien = screen.getByRole('link', { name: /Chronologie/ })
+    expect(lien).toHaveAttribute('href', '#capte')
+    expect(sommaire).toHaveTextContent('2')
+  })
+
+  it('accueille les blocs du serveur sans les réécrire', () => {
+    render(
+      <NarrativeReader
+        narrative={vide}
+        media={{}}
+        canPromote={false}
+        crHref={null}
+        rail={<p>Analyse MemorIA</p>}
+      />,
+    )
+    expect(screen.getByText('Analyse MemorIA')).toBeInTheDocument()
+  })
+})
+
+describe('les étiquettes de la frise viennent du modèle', () => {
+  it('affiche l’intention réellement posée au tri', () => {
+    const trie = peuple()
+    trie.captured[0]!.intent = 'reserve'
+    render(<NarrativeReader narrative={trie} media={{}} canPromote={false} crHref={null} />)
+    expect(screen.getByText('Réserve')).toBeInTheDocument()
+  })
+
+  it('n’invente aucune catégorie que le tri ne connaît pas', () => {
+    render(<NarrativeReader narrative={peuple()} media={{}} canPromote={false} crHref={null} />)
+    for (const invente of ['Organisation', 'Point de vigilance', 'À confirmer']) {
+      expect(screen.queryByText(invente)).not.toBeInTheDocument()
+    }
+  })
+
+  it('dit combien d’événements compte la frise', () => {
+    render(<NarrativeReader narrative={peuple()} media={{}} canPromote={false} crHref={null} />)
+    expect(screen.getByText(/2 événements au total/i)).toBeInTheDocument()
+  })
+})
