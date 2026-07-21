@@ -6,6 +6,14 @@
 // deuxième temps, et lui seul. Les sept sections du compte-rendu deviennent
 // éditables, une par une, tant que le document est un BROUILLON.
 //
+// L'ÉDITION NE RECONSTRUIT PLUS LA PAGE (Vincent, 2026-07-21). Enregistrer
+// passait par `revalidatePath` : la page entière se refabriquait et le
+// conducteur repartait en haut — sur mobile, corriger la sixième section
+// devenait pénible, et le bloc semblait avoir disparu. Désormais les deux
+// gestes rendent le document PERSISTÉ, et l'écran adopte cette réponse
+// localement. Rien d'autre ne bouge : ni la position, ni les autres sections,
+// ni l'analyse (qui n'est plus montée en auto ici).
+//
 // Ce qu'il ne fait pas, volontairement :
 //   - il ne crée ni ne modifie AUCUN objet du chantier (une action corrigée ici
 //     reste du texte : le document raconte, les objets vivent ailleurs) ;
@@ -16,21 +24,30 @@
 // quelque chose pour cette section, et seulement si le texte a bougé depuis.
 // Un bouton qui ne restaurerait rien — ou qui ramènerait au vide — mentirait.
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 import { Pencil, RotateCcw, Check, X, Loader2, Lock } from 'lucide-react'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
-import { saveCrSectionAction, restoreCrSectionAction } from './cr-document-actions'
+import { saveCrSectionAction, restoreCrSectionAction, type PersistedCrDocument } from './cr-document-actions'
 
 export function CrDocumentSections({
   reportId,
-  sections,
-  status,
+  sections: initialSections,
+  status: initialStatus,
 }: {
   reportId: string
   sections: ReportDocumentSection[]
   status: ReportDocumentStatus
 }) {
+  // La vérité affichée vient du serveur, puis de CE QU'IL A ÉCRIT à chaque
+  // geste. Pas de rafraîchissement global, donc pas de saut en haut de page.
+  const [sections, setSections] = useState(initialSections)
+  const [status, setStatus] = useState(initialStatus)
   const editable = status === 'draft'
+
+  const adopt = (doc: PersistedCrDocument) => {
+    setSections(doc.sections)
+    setStatus(doc.status)
+  }
 
   return (
     <section className="rounded-2xl border bg-background p-3.5 shadow-sm">
@@ -55,7 +72,13 @@ export function CrDocumentSections({
 
       <div className="mt-3 space-y-2.5">
         {sections.map((section) => (
-          <SectionRow key={section.key} reportId={reportId} section={section} editable={editable} />
+          <SectionRow
+            key={section.key}
+            reportId={reportId}
+            section={section}
+            editable={editable}
+            onPersisted={adopt}
+          />
         ))}
       </div>
     </section>
@@ -66,39 +89,52 @@ function SectionRow({
   reportId,
   section,
   editable,
+  onPersisted,
 }: {
   reportId: string
   section: ReportDocumentSection
   editable: boolean
+  onPersisted: (doc: PersistedCrDocument) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(section.content)
   const [error, setError] = useState<string | null>(null)
-  const [pending, start] = useTransition()
+  // Le pending est PAR SECTION : corriger le résumé ne gèle pas les six autres.
+  const [pending, setPending] = useState(false)
 
   // La restauration n'a de sens que si MemorIA a proposé un texte ET que ce
   // texte a été modifié depuis. Sinon : pas de bouton, pas de promesse creuse.
   const canRestore =
     editable && section.ai_content !== undefined && section.ai_content !== section.content
 
-  const save = () => {
+  const save = async () => {
+    if (pending) return // anti double-clic : jamais deux écritures concurrentes
+    setPending(true)
     setError(null)
-    start(async () => {
-      const res = await saveCrSectionAction(reportId, section.key, draft)
-      if (res.ok) setEditing(false)
-      else setError(res.error)
-    })
+    const res = await saveCrSectionAction(reportId, section.key, draft)
+    setPending(false)
+    if (res.ok) {
+      setEditing(false)
+      onPersisted(res.document)
+    } else {
+      // Le texte de l'utilisateur reste à l'écran : on n'efface jamais un
+      // travail parce que le serveur a refusé.
+      setError(res.error)
+    }
   }
 
-  const restore = () => {
+  const restore = async () => {
+    if (pending) return
+    setPending(true)
     setError(null)
-    start(async () => {
-      const res = await restoreCrSectionAction(reportId, section.key)
-      if (res.ok) {
-        setDraft(section.ai_content ?? '')
-        setEditing(false)
-      } else setError(res.error)
-    })
+    const res = await restoreCrSectionAction(reportId, section.key)
+    setPending(false)
+    if (res.ok) {
+      setEditing(false)
+      onPersisted(res.document)
+    } else {
+      setError(res.error)
+    }
   }
 
   return (
@@ -107,10 +143,16 @@ function SectionRow({
         <h3 className="text-[13px] font-semibold">{section.title}</h3>
         {editable && !editing && (
           <div className="flex shrink-0 items-center gap-1">
+            {pending && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Enregistrement…
+              </span>
+            )}
             <button
               type="button"
+              disabled={pending}
               onClick={() => { setDraft(section.content); setEditing(true) }}
-              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium text-foreground hover:bg-muted"
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium text-foreground hover:bg-muted disabled:opacity-50"
             >
               <Pencil className="h-3.5 w-3.5" aria-hidden /> Modifier
             </button>
@@ -146,7 +188,7 @@ function SectionRow({
               className="inline-flex items-center gap-1 rounded-lg bg-foreground px-2.5 py-1.5 text-[12px] font-medium text-background disabled:opacity-50"
             >
               {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Check className="h-3.5 w-3.5" aria-hidden />}
-              Enregistrer
+              {pending ? 'Enregistrement…' : 'Enregistrer'}
             </button>
             <button
               type="button"

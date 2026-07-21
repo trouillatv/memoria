@@ -15,15 +15,25 @@
 // refusée ici, et `updateReportDocumentSections` la refuse une seconde fois côté
 // base (`.eq('status', 'draft')`). Aucun geste d'édition ne défige un CR.
 
-import { revalidatePath } from 'next/cache'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getVisit } from '@/lib/db/visits'
 import { updateReportDocumentSections } from '@/lib/db/report-documents'
 import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { restoreSectionProposal } from '@/lib/visits/cr-visite-policy'
-import type { ReportDocumentSection } from '@/types/db'
+import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
 
-type Result = { ok: true } | { ok: false; error: string }
+/** La réponse porte le document RÉELLEMENT PERSISTÉ. L'écran ne suppose donc
+ *  jamais ce que le serveur a fait : il adopte ce qu'il a écrit. C'est ce qui
+ *  permet de se passer d'un rafraîchissement global — et donc de ne pas
+ *  renvoyer le conducteur en haut de page à chaque enregistrement. */
+export interface PersistedCrDocument {
+  id: string
+  status: ReportDocumentStatus
+  sections: ReportDocumentSection[]
+  updatedAt: string
+}
+
+type Result = { ok: true; document: PersistedCrDocument } | { ok: false; error: string }
 
 type Opened =
   | { ok: false; error: string }
@@ -73,8 +83,7 @@ export async function saveCrSectionAction(
   } catch {
     return { ok: false, error: 'Enregistrement impossible' }
   }
-  revalidatePath(`/m/visite/${reportId}/cr`)
-  return { ok: true }
+  return reread(reportId, 'Enregistrement impossible')
 }
 
 /** Restaure la proposition MemorIA d'UNE section. Sans origine IA, rien ne bouge. */
@@ -90,6 +99,18 @@ export async function restoreCrSectionAction(reportId: string, sectionKey: strin
   } catch {
     return { ok: false, error: 'Restauration impossible' }
   }
-  revalidatePath(`/m/visite/${reportId}/cr`)
-  return { ok: true }
+  // On RELIT au lieu de renvoyer ce qu'on croit avoir écrit : « revenir à la
+  // proposition » doit rendre la section telle que la base la porte désormais.
+  return reread(reportId, 'Restauration impossible')
+}
+
+/** Relecture après écriture — la réponse est la vérité persistée, jamais une
+ *  supposition du client. */
+async function reread(reportId: string, error: string): Promise<Result> {
+  const doc = await getVisitCrDocument(reportId)
+  if (!doc) return { ok: false, error }
+  return {
+    ok: true,
+    document: { id: doc.id, status: doc.status, sections: doc.sections, updatedAt: doc.updated_at },
+  }
 }
