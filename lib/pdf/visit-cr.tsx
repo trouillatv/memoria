@@ -57,22 +57,28 @@ const styles = StyleSheet.create({
   metaStrong: { fontFamily: 'Helvetica-Bold', color: COLORS.slate },
 
   section: { marginBottom: 13 },
-  // Bandeau BROUILLON — assez large et assez contrasté pour qu'une page isolée
-  // ne puisse pas être prise pour un rapport définitif.
-  draftBand: {
-    backgroundColor: '#b45309',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    marginBottom: 10,
-    borderRadius: 3,
+  // Filigrane BROUILLON — la convention des logiciels de bureau : on le voit
+  // sans le lire, et il ne dispute jamais la place au contenu. Assez pâle pour
+  // qu'un paragraphe posé dessus reste net (~6 % d'encre).
+  watermark: {
+    position: 'absolute',
+    top: 300,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    transform: 'rotate(-32deg)',
   },
-  draftBandText: {
-    fontSize: 9,
+  watermarkText: {
+    fontSize: 78,
     fontFamily: 'Helvetica-Bold',
-    color: '#ffffff',
-    textAlign: 'center',
-    letterSpacing: 1.2,
+    color: '#eef1f5',
+    letterSpacing: 6,
   },
+  // La mention, sous l'en-tête et UNE SEULE FOIS. Ambre discret : elle informe,
+  // elle ne crie pas. Pas de glyphe « ⚠ » — hors WinAnsi, il sortirait en tofu.
+  draftNote: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  draftNoteDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#d97706', marginRight: 6 },
+  draftNoteText: { fontSize: 9, color: '#b45309', fontFamily: 'Helvetica-Bold', letterSpacing: 0.3 },
   titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
   dot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
   titleGreen: { fontSize: 11, fontFamily: 'Helvetica-Bold', color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -358,10 +364,18 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
   // portent le même titre et donnent l'impression d'ouvrir le même fichier.
   const title = `${kicker} — ${doc.siteName} · ${doc.dateLabel}`
 
-  const reserveLines = [
-    ...doc.reserves.map((r) => `${r.label}${r.location ? ` (${r.location})` : ''}`),
-    ...doc.points.reserve,
-  ]
+  // ── LE VERBATIM NE PART PAS CHEZ LE CLIENT (Vincent, 2026-07-21) ──────────
+  //
+  // `doc.points.reserve` n'est pas une liste de réserves : c'est le CORPS BRUT
+  // des captures taguées « réserve ». Pour un vocal, c'est la transcription mot
+  // pour mot — « on sait j'ai à peu près tout le monde… » — et elle s'imprimait
+  // telle quelle sous le titre « Réserves », dans un document qui engage.
+  //
+  // C'est la suite exacte de l'ambiguïté du mot « réserve » : Guillaume tague un
+  // vocal pour l'écarter, et le voilà cité comme un défaut constaté, chez le
+  // client. Une réserve est un OBJET, avec un libellé qu'un humain a écrit.
+  // Faute d'objet, la section n'existe pas — c'est honnête, et c'est tout.
+  const reserveLines = doc.reserves.map((r) => `${r.label}${r.location ? ` (${r.location})` : ''}`)
   const actionLines = [
     ...doc.actions.map((a) => `${a.corps_etat ? `(${a.corps_etat}) ` : ''}${a.title}`),
     ...doc.points.action,
@@ -416,12 +430,14 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
   return (
     <Document title={title}>
       <Page size="A4" style={styles.page}>
-        {/* UNE PAGE IMPRIMÉE SEULE NE DOIT PAS POUVOIR PASSER POUR UN DÉFINITIF.
-            `fixed` répète le bandeau sur chaque page — pas une ligne discrète
-            sous le titre, que personne ne relit en bas d'une pile. */}
+        {/* LE STATUT EST UNE MÉTADONNÉE, PAS LE TITRE (Vincent, 2026-07-21).
+            Le bandeau pleine largeur répété sur chaque page se lisait avant le
+            nom du chantier : l'état du document était devenu son sujet. Il
+            cède la place à la convention des logiciels de bureau — un filigrane
+            très pâle, qui protège la page imprimée seule sans rien écraser. */}
         {isDraft && (
-          <View fixed style={styles.draftBand}>
-            <Text style={styles.draftBandText}>BROUILLON — NON FINALISÉ</Text>
+          <View fixed style={styles.watermark}>
+            <Text style={styles.watermarkText}>BROUILLON</Text>
           </View>
         )}
         {/* En-tête identité : qui / où / quand, avant même le résumé. */}
@@ -441,6 +457,16 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
             {doc.durationLabel ? <Text style={styles.metaItem}><Text style={styles.metaStrong}>Durée : </Text>{doc.durationLabel}</Text> : null}
           </View>
         </View>
+
+        {/* La mention, une seule fois : l'en-tête est `fixed` et se répète, pas
+            elle. Le lecteur sait dès la première page à quoi il a affaire ; le
+            redire trois fois ne l'informe plus, ça l'encombre. */}
+        {isDraft && (
+          <View style={styles.draftNote}>
+            <View style={styles.draftNoteDot} />
+            <Text style={styles.draftNoteText}>Brouillon de travail — non finalisé</Text>
+          </View>
+        )}
 
         {/* LE COMPTE-RENDU HUMAIN, quand il existe : sept sections, dans
             l'ordre de l'éditeur. Aucun récit parallèle ne subsiste à côté —
