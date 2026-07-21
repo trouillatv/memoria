@@ -163,6 +163,16 @@ export function CaptureTriage({
   // Le SWIPE, lui, enchaîne (advance) — c'est le geste « aller vite » assumé.
   function decide(decision: TriageDecision, advance: boolean) {
     onDecide(capture, decision, canComment ? (commentRef.current?.value ?? undefined) : undefined)
+    // ÉCARTER A DES CONSÉQUENCES : on les dit (Vincent, 2026-07-21). Retirer une
+    // capture réinitialise les propositions non validées — mais laisse intact le
+    // compte-rendu déjà rédigé, parce qu'il appartient au conducteur. Sans ce
+    // message, l'écart entre les deux se lit comme une panne.
+    if (decision === 'delete') {
+      toast('Propositions réinitialisées', {
+        description: 'Le compte-rendu déjà rédigé n’est pas modifié — vos corrections restent.',
+        duration: 4000,
+      })
+    }
     if (advance) go(1)
   }
 

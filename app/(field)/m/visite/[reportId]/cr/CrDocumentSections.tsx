@@ -216,6 +216,8 @@ function SectionRow({
   const [pending, setPending] = useState(false)
   // « Enregistré » — la confirmation discrète que le serveur a bien pris.
   const [justSaved, setJustSaved] = useState(false)
+  // « Restaurer l'IA » demande confirmation : il écrase un texte humain.
+  const [confirmed, setConfirmed] = useState(false)
 
   // La restauration n'a de sens que si MemorIA a proposé un texte ET que ce
   // texte a été modifié depuis. Sinon : pas de bouton, pas de promesse creuse.
@@ -251,6 +253,15 @@ function SectionRow({
 
   const restore = async () => {
     if (pending) return
+    // ON DIT CE QU'ON VA PERDRE, AVANT (Vincent, 2026-07-21). Le geste écrase
+    // un texte relu par un humain : il mérite une phrase, pas une surprise.
+    // Et il dit VRAI — cette section revient à la proposition FIGÉE à la
+    // création, pas à une analyse recalculée depuis les captures restantes.
+    if (!confirmed) {
+      setConfirmed(true)
+      return
+    }
+    setConfirmed(false)
     setPending(true)
     setError(null)
     const res = await restoreCrSectionAction(reportId, section.key)
@@ -344,6 +355,17 @@ function SectionRow({
       ) : (
         // Le vide se dit, il ne s'invente pas : MemorIA n'a rien relevé ici.
         <p className="mt-1.5 text-[12px] italic text-muted-foreground">Rien à ce sujet.</p>
+      )}
+
+      {/* ON DIT CE QU'ON VA PERDRE, AVANT (Vincent, 2026-07-21). Le geste écrase
+          un texte relu par un humain : il mérite une phrase, pas une surprise.
+          Et il dit VRAI — la section revient à la proposition FIGÉE à la
+          création, pas à une analyse recalculée depuis les captures restantes. */}
+      {confirmed && (
+        <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          Cette section reviendra au texte proposé par MemorIA à la création du compte-rendu. Vos
+          corrections sur cette section seront perdues. Cliquez à nouveau pour confirmer.
+        </p>
       )}
 
       {error && <p className="mt-2 text-[12px] text-rose-600 dark:text-rose-400">{error}</p>}

@@ -100,13 +100,26 @@ describe('Un échec serveur ne mange pas le travail en cours', () => {
   })
 })
 
-describe('« Restaurer l’IA » suit aussi la réponse du serveur', () => {
-  it('adopte ce que la base porte, sans supposer côté client', async () => {
-    const corrige = sections.map((s) => (s.key === 'resume' ? { ...s, content: 'à jeter' } : s))
+describe('« Restaurer l’IA » prévient avant d’écraser', () => {
+  const corrige = sections.map((s) => (s.key === 'resume' ? { ...s, content: 'à jeter' } : s))
+
+  it('le premier clic AVERTIT, il ne restaure pas', async () => {
+    render(<CrDocumentSections reportId="r1" sections={corrige} status="draft" />)
+    fireEvent.click(within(row('resume')).getByRole('button', { name: /Restaurer l’IA/ }))
+
+    expect(within(row('resume')).getByText(/Vos corrections sur cette section seront perdues/)).toBeTruthy()
+    expect(restoreSpy).not.toHaveBeenCalled()
+    // Le texte humain est toujours là : rien n'a été touché.
+    expect(within(row('resume')).getByText('à jeter')).toBeTruthy()
+  })
+
+  it('le second clic restaure, et adopte ce que la base porte', async () => {
     saveResult = { ok: true, document: { id: 'doc-1', status: 'draft' as const, sections, updatedAt: 'x' } }
     render(<CrDocumentSections reportId="r1" sections={corrige} status="draft" />)
+    const bouton = within(row('resume')).getByRole('button', { name: /Restaurer l’IA/ })
+    fireEvent.click(bouton)
+    fireEvent.click(bouton)
 
-    fireEvent.click(within(row('resume')).getByRole('button', { name: /Restaurer l’IA/ }))
     await waitFor(() => expect(within(row('resume')).getByText('proposition resume')).toBeTruthy())
     expect(restoreSpy).toHaveBeenCalledWith('r1', 'resume')
     expect(refreshSpy).not.toHaveBeenCalled()
