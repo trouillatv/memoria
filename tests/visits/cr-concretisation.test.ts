@@ -6,6 +6,7 @@ import {
   toCreate,
   matchConcretisation,
   withConcretisation,
+  canonicalFamily,
 } from '@/lib/visits/cr-concretisation'
 import type { ReportDocumentSection } from '@/types/db'
 
@@ -225,5 +226,25 @@ describe('withConcretisation — le registre n’abîme pas le document', () => 
     const once = withConcretisation(sections, 'actions', entry)
     const twice = withConcretisation(once, 'actions', { ...entry, item_key: 'action:1', entity_id: 'act-10' })
     expect(twice[0]!.concretisations).toHaveLength(2)
+  })
+})
+
+describe('canonicalFamily — les deux portes se reconnaissent', () => {
+  it.each([
+    ['deadline', 'echeance'],
+    ['echeance', 'echeance'],
+    ['knowledge', 'memoire'],
+    ['memoire', 'memoire'],
+    ['stakeholder', 'intervenant'],
+    ['intervenant', 'intervenant'],
+    ['action', 'action'],
+    ['decision', 'decision'],
+  ])('%s → %s', (source, attendu) => {
+    expect(canonicalFamily(source)).toBe(attendu)
+  })
+
+  it('ne force pas une famille pour ce qui ne se concrétise pas', () => {
+    expect(canonicalFamily('vigilance')).toBeNull()
+    expect(canonicalFamily('inconnu')).toBeNull()
   })
 })

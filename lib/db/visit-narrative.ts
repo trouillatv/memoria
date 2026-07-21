@@ -67,9 +67,31 @@ export interface VisitNarrative {
   captured: NarrativeCapture[]
   /** Ce que MemorIA a proposé — jamais une vérité humaine. */
   understood: NarrativeProposal[]
-  /** Ce que l'humain a tranché, et où en est le document. */
-  validated: { document: NarrativeDocument | null; confirmed: number; ignored: number; pending: number }
-  /** Ce que la visite a fait naître, et à quel titre. */
+  /** LES ARBITRAGES HUMAINS — et eux seuls (Vincent, 2026-07-21).
+   *  `superseded` n'y figure pas : c'est une obsolescence ALGORITHMIQUE (une
+   *  analyse plus récente ne redit plus le fait), jamais un rejet. L'afficher
+   *  comme « ignoré par Guillaume » lui prêterait une décision qu'il n'a pas
+   *  prise. */
+  validated: {
+    document: NarrativeDocument | null
+    /** Propositions explicitement confirmées par un humain. */
+    confirmedProposals: number
+    /** Propositions explicitement écartées par un humain. */
+    ignoredProposals: number
+    /** Encore en attente d'un arbitrage. */
+    pendingProposals: number
+    /** Obsolètes par régénération — NI validées, NI rejetées. */
+    supersededProposals: number
+    /** Sections du compte-rendu corrigées à la main : une validation
+     *  éditoriale, même avant toute concrétisation. */
+    correctedSections: string[]
+    /** Captures explicitement écartées par le conducteur. */
+    discardedCaptures: number
+  }
+  /** CE QUE LE SYSTÈME A EFFECTIVEMENT MATÉRIALISÉ. Lecture EXCLUSIVE du
+   *  journal de concrétisation, quelle que soit la porte utilisée. Un objet
+   *  simplement rattaché par `report_id` n'y entre pas : il est compté dans
+   *  les limites, parce qu'on ne peut pas prouver qu'il est né de ce récit. */
   produced: ProducedObject[]
   /** Ce que le récit ne sait pas — dit, jamais masqué. */
   limits: NarrativeLimits
@@ -127,8 +149,13 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
   const registry: RegistryEntry[] = (doc?.sections ?? []).flatMap((s) =>
     (s.concretisations ?? []).map((c) => ({ ...c, sourceSection: s.key })),
   )
+  // `produced` = le journal, et rien d'autre. Les objets seulement rattachés
+  // par `report_id` sont comptés à part : ils existent, mais rien ne prouve
+  // qu'ils sont nés de ce récit.
+  const produced = classifyProduced(registry, [])
   const linked = siteId ? await readReportLinked(reportId) : []
-  const produced = classifyProduced(registry, linked)
+  const provenIds = new Set(produced.map((p) => `${p.kind}:${p.id}`))
+  const historical = linked.filter((l) => !provenIds.has(`${l.kind}:${l.id}`))
 
   const correctedSections = (doc?.sections ?? [])
     .filter((s) => s.ai_content !== undefined && s.ai_content !== s.content)
@@ -150,12 +177,15 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
             correctedSections,
           }
         : null,
-      confirmed: understood.filter((p) => p.status === 'confirmed').length,
-      ignored: understood.filter((p) => p.status === 'dismissed').length,
-      pending: understood.filter((p) => p.status === 'proposed').length,
+      confirmedProposals: understood.filter((p) => p.status === 'confirmed').length,
+      ignoredProposals: understood.filter((p) => p.status === 'dismissed').length,
+      pendingProposals: understood.filter((p) => p.status === 'proposed').length,
+      supersededProposals: understood.filter((p) => p.status === 'superseded').length,
+      correctedSections,
+      discardedCaptures: captured.filter((c) => !c.kept).length,
     },
     produced,
-    limits: describeLimits(produced),
+    limits: { ...describeLimits(produced), historicalAttributions: historical.length },
   }
 }
 

@@ -22,6 +22,7 @@ import { createKnowledgeEntry, createWatchpoint, isChoosableKnowledgeKind } from
 import { openSiteIntervenant } from '@/lib/db/site-intervenants'
 import { findOrCreateCompanyByName, findOrCreateCompanyContact } from '@/lib/db/companies'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
+import { findInLedger, recordPromotionInLedger } from '@/lib/db/concretisation-ledger'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 import { toDebriefEcheance } from '@/lib/visits/echeance-labels'
 
@@ -524,6 +525,29 @@ export async function promoteProposal(params: {
       : { status: 'not_found' }
   }
 
+  // ── DÉJÀ AU JOURNAL ? ──────────────────────────────────────────────────────
+  // La même chose a pu naître par l'autre porte — la concrétisation du
+  // compte-rendu. On relit le journal AVANT de créer : confirmer une
+  // proposition après avoir concrétisé la même ligne ne doit pas produire un
+  // jumeau. La proposition est alors close sur l'objet existant.
+  if (p.report_id) {
+    const existing = await findInLedger(p.report_id, p.kind, p.title)
+    if (existing) {
+      const nowDup = new Date().toISOString()
+      await supabase
+        .from('site_knowledge_proposals')
+        .update({
+          status: 'confirmed',
+          promoted_object_id: existing.entity_id,
+          reviewed_at: nowDup,
+          reviewed_by: params.userId,
+          updated_at: nowDup,
+        })
+        .eq('id', params.id)
+      return { status: 'promoted', objectType: existing.entity_type, objectId: existing.entity_id }
+    }
+  }
+
   // Ce qui manque se DEMANDE, avant tout travail : on ne crée pas une entreprise
   // pour découvrir ensuite qu'on n'a pas le rôle.
   const capability = getPromotionCapability(p.kind)
@@ -648,6 +672,24 @@ export async function promoteProposal(params: {
     result = { objectType: 'site_knowledge_entry', objectId: id }
   } else {
     return { status: 'unsupported', kind: p.kind }
+  }
+
+  // ── LE JOURNAL UNIQUE (Vincent, 2026-07-21) ───────────────────────────────
+  // La promotion inscrit ce qu'elle vient de créer là où la concrétisation du
+  // compte-rendu inscrit déjà : un seul journal, une seule preuve. C'est ce qui
+  // rend l'anti-doublon SYMÉTRIQUE — jusqu'ici la concrétisation voyait ce
+  // qu'une promotion avait créé (via report_id), l'inverse était aveugle.
+  //
+  // Et c'est ce qui referme la provenance de l'intervenant : sa création par une
+  // visite devient un ÉVÉNEMENT au journal, pas une propriété sur sa fiche.
+  if (p.report_id) {
+    await recordPromotionInLedger({
+      reportId: p.report_id,
+      kind: p.kind,
+      label: p.title,
+      entityId: result.objectId,
+      proposalId: params.id,
+    })
   }
 
   const now = new Date().toISOString()

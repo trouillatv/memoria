@@ -275,3 +275,35 @@ export function withConcretisation(
     s.key === sectionKey ? { ...s, concretisations: [...(s.concretisations ?? []), entry] } : { ...s },
   )
 }
+
+// ── UNE SEULE IDENTITÉ POUR LES DEUX PORTES (Vincent, 2026-07-21) ───────────
+//
+// Deux portes mènent au chantier : la concrétisation du compte-rendu, et la
+// promotion d'une proposition. Leur donner le même journal ne suffit pas — il
+// faut qu'elles s'y reconnaissent. Or leurs vocabulaires diffèrent :
+//
+//   compte-rendu : action · echeance · decision · memoire · intervenant
+//   propositions : action · deadline · decision · knowledge · stakeholder
+//
+// Sans cette table, écrire au registre laisserait l'asymétrie intacte : une
+// « deadline » promue et une « echeance » concrétisée porteraient deux
+// signatures différentes pour le même objet, et le doublon reviendrait par la
+// petite porte.
+
+const FAMILY_ALIASES: Record<string, OperationalKind> = {
+  action: 'action',
+  echeance: 'echeance',
+  deadline: 'echeance',
+  decision: 'decision',
+  memoire: 'memoire',
+  knowledge: 'memoire',
+  intervenant: 'intervenant',
+  stakeholder: 'intervenant',
+}
+
+/** La famille canonique d'un objet, quel que soit le vocabulaire d'origine.
+ *  `null` pour ce qui ne se concrétise pas (une vigilance raconte, elle ne crée
+ *  rien) : on ne force pas une famille qui n'existe pas. */
+export function canonicalFamily(kind: string): OperationalKind | null {
+  return FAMILY_ALIASES[kind] ?? null
+}

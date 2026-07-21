@@ -690,7 +690,11 @@ export interface ReportDocumentSection {
 export interface SectionConcretisation {
   /** Clé stable de l'élément dans sa section (famille + rang à la création). */
   item_key: string
-  entity_type: 'action' | 'echeance' | 'decision' | 'memoire'
+  /** L'INTERVENANT ENTRE ICI (Vincent, 2026-07-21). Sa provenance est un
+   *  ÉVÉNEMENT de concrétisation, pas une propriété sur sa fiche : un
+   *  intervenant appartient au chantier, pas à la visite qui l'a fait entrer.
+   *  C'est ce qui referme le trou du modèle sans table ni migration. */
+  entity_type: 'action' | 'echeance' | 'decision' | 'memoire' | 'intervenant'
   /** La preuve : l'objet existe, et on sait lequel. */
   entity_id: string
   created_at: string
