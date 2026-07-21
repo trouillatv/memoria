@@ -12,6 +12,7 @@ import { CaptureMap } from '@/components/CaptureMap'
 import { CrMapSnapshotTrigger } from './CrMapSnapshotTrigger'
 import { MemoriaRetained } from './MemoriaRetained'
 import { CrDocumentSections } from './CrDocumentSections'
+import { CrConcretisation } from './CrConcretisation'
 import { getOrCreateVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { VisitShareButton } from '../VisitShareButton'
 
@@ -173,10 +174,13 @@ export default async function VisitCrPreviewPage({
             sections={crDocument.sections}
             status={crDocument.status}
           />
-          {/* L'analyse initiale reste atteignable — elle porte encore les
-              propositions (créer une action, écarter) que le document ne porte
-              pas. Mais elle passe APRÈS, et ne charge rien tant qu'on ne la
-              demande pas. */}
+          {/* CONCRÉTISER — le récit corrigé prépare le travail réel. Il vient
+              juste après le document : on corrige, puis on transforme. */}
+          <CrConcretisation reportId={reportId} />
+
+          {/* L'analyse initiale reste atteignable — elle explique la provenance.
+              Mais elle passe APRÈS, et ne charge rien tant qu'on ne la demande
+              pas. */}
           <MemoriaRetained
             reportId={reportId}
             siteId={visit.site_id}
