@@ -6,8 +6,9 @@
 //     la suivante. Le conducteur reste maître d'avancer (bouton « Suivant » /
 //     swipe) — il peut corriger, commenter, changer d'avis avant de continuer.
 //   • SWIPE = décision RAPIDE : tague ET enchaîne (← Mémoire · ↑ À surveiller ·
-//     → Action · ↓ Réserve). L'accélérateur pour qui connaît les gestes.
-// Le tri ne supprime jamais ; 🗑 reste un geste volontaire. Cf. [[visite-trois-temps]].
+//     → Action · ↓ Réserve à lever). L'accélérateur pour qui connaît les gestes.
+// Le tri ne supprime jamais : « Ne pas retenir » écarte du compte-rendu, la
+// capture reste consultable. Cf. [[visite-trois-temps]].
 
 import { useRef, useState } from 'react'
 import { X, BookMarked, Eye, AlertTriangle, Check, Wrench, Trash2, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
@@ -40,7 +41,13 @@ const KEEP_TAGS: Array<{
 }> = [
   { decision: 'memoire', label: 'Un élément à conserver', icon: BookMarked, swipe: '←', cls: 'border-slate-300 text-slate-700 dark:text-slate-200' },
   { decision: 'surveiller', label: 'Un point à surveiller', icon: Eye, swipe: '↑', cls: 'border-amber-300 text-amber-700 dark:text-amber-300' },
-  { decision: 'reserve', label: 'Une réserve', icon: AlertTriangle, swipe: '↓', cls: 'border-rose-300 text-rose-700 dark:text-rose-300' },
+  // « Une réserve » etait le SEUL tag sans verbe — les trois autres disent « à
+  // conserver », « à surveiller », « à prévoir ». Dans un écran où tous les
+  // autres gestes trient des captures, un nom nu se lit « mettre en réserve »,
+  // c'est-à-dire « mets ça de côté ». Guillaume a tagué un vocal ainsi en
+  // pensant l'écarter ; MemorIA a compris « défaut à lever » et l'a gardé.
+  // Le verbe lève l'ambiguïté sans quitter le vocabulaire du métier.
+  { decision: 'reserve', label: 'Une réserve à lever', icon: AlertTriangle, swipe: '↓', cls: 'border-rose-300 text-rose-700 dark:text-rose-300' },
   { decision: 'action', label: 'Une action à prévoir', icon: Wrench, swipe: '→', cls: 'border-emerald-400 text-emerald-700 dark:text-emerald-300' },
 ]
 
@@ -97,7 +104,7 @@ export function CaptureTriage({
   // visible sur la photo, au lieu de laisser une « Action à préciser » vide.
   const needsTitle = chosen === 'action' || chosen === 'reserve'
   const commentLabel = chosen === 'action' ? 'Précisez l’action à réaliser'
-    : chosen === 'reserve' ? 'Précisez la réserve'
+    : chosen === 'reserve' ? 'Quel défaut faut-il lever ?'
     : null
   const commentPlaceholder = chosen === 'action' ? 'Ex. Reprendre l’étanchéité de la terrasse'
     : chosen === 'reserve' ? 'Ex. Fissure sur poteau — à traiter'
@@ -159,7 +166,7 @@ export function CaptureTriage({
     if (advance) go(1)
   }
 
-  // Swipe : ← Mémoire · ↑ Surveiller · → Action · ↓ Réserve. Seuil généreux pour
+  // Swipe : ← Mémoire · ↑ Surveiller · → Action · ↓ Réserve à lever. Seuil généreux pour
   // ne pas déclencher par erreur ; l'axe dominant l'emporte.
   function onTouchStart(e: React.TouchEvent) {
     const t = e.touches[0]
@@ -286,7 +293,11 @@ export function CaptureTriage({
             onClick={() => (chosen === 'delete' ? onUndo(capture) : decide('delete', false))}
             className={`inline-flex items-center gap-1.5 text-xs font-medium ${chosen === 'delete' ? 'text-destructive' : 'text-muted-foreground hover:text-destructive'}`}
           >
-            <Trash2 className="h-3.5 w-3.5" /> {chosen === 'delete' ? 'Supprimée' : 'Supprimer'}
+            {/* « Supprimer » décrivait mal ET faisait peur : le tri ne supprime
+                rien, la capture passe en `discarded` et reste consultable. Le
+                geste que le conducteur cherche ici, c'est « celle-ci n'entre pas
+                dans le compte-rendu ». On le dit. */}
+            <Trash2 className="h-3.5 w-3.5" /> {chosen === 'delete' ? 'Écartée du compte-rendu' : 'Ne pas retenir'}
           </button>
           {/* Avancer est un GESTE VOLONTAIRE : le tap sur un tag n'enchaîne plus. */}
           <button

@@ -19,7 +19,9 @@ type Kind = VisitSuiteProposal['kind']
 
 const KIND_META: Record<Kind, { label: string; verb: string; Icon: typeof ListTodo; chip: string }> = {
   action: { label: 'Action à réaliser', verb: 'Créer', Icon: ListTodo, chip: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' },
-  reserve: { label: 'Réserve', verb: 'Créer', Icon: AlertTriangle, chip: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' },
+  // Le meme mot qu au triage, au mot pres : « réserve à lever », jamais
+  // « réserve » seul — sinon on rouvre l ambiguite « mise de cote ».
+  reserve: { label: 'Réserve à lever', verb: 'Créer', Icon: AlertTriangle, chip: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' },
   surveiller: { label: 'À surveiller', verb: 'Suivre', Icon: Eye, chip: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' },
 }
 const ORDER: Kind[] = ['action', 'reserve', 'surveiller']
@@ -103,7 +105,7 @@ export function SuiteProposals({ initialSuites }: { initialSuites: VisitSuitePro
                       (le geste du conducteur), pas une tâche vide surgie de nulle part. */}
                   {s.source === 'tag' && !s.text.trim() && (
                     <p className="text-[11px] text-muted-foreground">
-                      Depuis une photo que vous avez taguée « {k === 'reserve' ? 'réserve' : 'à faire'} » — nommez-la ou ignorez-la.
+                      Depuis une photo que vous avez taguée « {k === 'reserve' ? 'réserve à lever' : 'à faire'} » — nommez-la ou ignorez-la.
                     </p>
                   )}
 
