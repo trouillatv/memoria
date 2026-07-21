@@ -679,11 +679,29 @@ export interface ReportDocumentSection {
    *  section, et ce qui permet de savoir si un humain est déjà passé (mig 120 :
    *  `sections` est un jsonb, ce champ n'exige aucune migration). */
   ai_content?: string
+  /** PROMOTIONS — les phrases qu'un humain a fait entrer dans cette section
+   *  DEPUIS une preuve. C'est ce qui crée la provenance : les sections nées de
+   *  l'analyse viennent du corpus entier et ne savent nommer aucune capture ;
+   *  une phrase promue, si. Le lien n'est pas déduit, il est DÉSIGNÉ. */
+  promotions?: SectionPromotion[]
   /** REGISTRE DE CONCRÉTISATION — ce que cette section a déjà fait naître dans
    *  le chantier. Métadonnée technique, tenue à l'écart du contenu documentaire :
    *  le texte reste le texte. C'est l'identité DURABLE d'un élément concrétisé —
    *  le libellé, lui, peut changer après coup. */
   concretisations?: SectionConcretisation[]
+}
+
+/** Une phrase entrée dans une section depuis une preuve nommée. */
+export interface SectionPromotion {
+  /** Le texte tel qu'il a été inséré — c'est lui qui relie la ligne à sa source. */
+  text: string
+  /** La capture d'où vient la phrase. Le maillon qui manquait. */
+  capture_id: string
+  /** Ce qu'était la capture — pour raconter sans relire la base. */
+  capture_kind: string
+  captured_at: string
+  promoted_at: string
+  promoted_by: string | null
 }
 
 /** Un élément de section devenu un objet du chantier. */

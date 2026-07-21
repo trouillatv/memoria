@@ -103,6 +103,18 @@ export interface VisitNarrative {
    *  simplement rattaché par `report_id` n'y entre pas : il est compté dans
    *  les limites, parce qu'on ne peut pas prouver qu'il est né de ce récit. */
   produced: Array<ProducedObject & { why: Reason }>
+  /** CE QUI N'A PAS ÉTÉ RETENU — et pourquoi (N3.1). Beaucoup d'IA ne montrent
+   *  que ce qu'elles ont gardé. Montrer les écarts rend le système crédible :
+   *  MemorIA ne cherche pas à avoir eu raison. Les trois natures restent
+   *  distinctes — un refus humain n'est pas une obsolescence de calcul. */
+  ignored: {
+    /** Propositions explicitement écartées par un humain. */
+    byHuman: Array<{ id: string; label: string; type: string; why: Reason }>
+    /** Propositions périmées par une analyse plus récente — aucune décision. */
+    superseded: Array<{ id: string; label: string; type: string; why: Reason }>
+    /** Captures que le conducteur a sorties du compte-rendu. */
+    captures: Array<{ id: string; kind: string; body: string | null; why: Reason }>
+  }
   /** Ce que le récit ne sait pas — dit, jamais masqué. */
   limits: NarrativeLimits
 }
@@ -200,6 +212,17 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
       discardedCaptures: captured.filter((c) => !c.kept).length,
     },
     produced,
+    ignored: {
+      byHuman: understood
+        .filter((p) => p.status === 'dismissed')
+        .map((p) => ({ id: p.id, label: p.label, type: p.type, why: p.why })),
+      superseded: understood
+        .filter((p) => p.status === 'superseded')
+        .map((p) => ({ id: p.id, label: p.label, type: p.type, why: p.why })),
+      captures: captured
+        .filter((c) => !c.kept)
+        .map((c) => ({ id: c.id, kind: c.kind, body: c.body, why: c.why })),
+    },
     limits: { ...describeLimits(produced), historicalAttributions: historical.length },
   }
 }
