@@ -418,10 +418,12 @@ function LigneIntervenant({
     () => rapprocher(item.title, connus, { limite: 1 })[0] ?? null,
     [item.title, connus],
   )
-  // Sûr = on pré-remplit. Le prénom seul (70) ne l'est pas : deux Yann peuvent
-  // exister, et pré-remplir ferait valider une association que personne n'a
-  // vérifiée. On PROPOSE alors sans rien remplir.
-  const certain = reconnu !== null && reconnu.score >= 90
+  // LA POLITIQUE N'EST PAS DÉCIDÉE ICI. Ce composant a longtemps écrit
+  // `score >= 90` au milieu de son rendu : une décision produit — « à partir de
+  // quand MemorIA remplit-il à la place de l'humain ? » — invisible, non
+  // testable, et impossible à ajuster sans relire du JSX. Elle vit désormais
+  // dans `lib/confiance`, et l'écran ne fait qu'obéir à ce qu'on lui dit.
+  const certain = reconnu?.action === 'pre-remplir'
 
   // Le nom lu part dans l'entreprise : le cas courant, corrigible d'un geste.
   // Sauf si on RECONNAÎT quelqu'un — alors c'est une personne, et son

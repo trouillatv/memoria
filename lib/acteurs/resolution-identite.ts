@@ -30,6 +30,37 @@
 // Chaque rapprochement porte donc la RÈGLE qui l'a produit, en toutes lettres,
 // pour que l'écran puisse dire pourquoi il propose ça.
 
+import { qualifier, SEUILS_CONFIANCE, type Suggestion } from '@/lib/confiance/suggestion'
+
+/** Le moteur qui produit ces suggestions, pour `Suggestion.origine`. */
+const ORIGINE = 'acteurs/identite'
+
+/**
+ * LES POIDS, EN UN SEUL ENDROIT — et volontairement SÉPARÉS des seuils.
+ *
+ * Ces nombres disent « à quel point cette règle-ci est convaincante ». Ils sont
+ * propres aux noms de PERSONNES : « prénom seul » n'a aucun sens pour une
+ * société ou une abréviation de glossaire. Les mêler à la politique commune
+ * (`SEUILS_CONFIANCE`) obligerait le prochain moteur à hériter de règles qui
+ * ne le concernent pas.
+ *
+ * Ce qui est commun est le SEUIL (à partir de quand on remplit) ; ce qui est
+ * propre est le POIDS (à quel point on y croit). Les deux s'ajustent
+ * séparément, sans toucher à un seul algorithme.
+ */
+export const POIDS_IDENTITE = {
+  identique: 100,
+  'initiale-et-nom': 90,
+  'orthographe-proche': 80,
+  'prenom-seul': 70,
+  /** L'entreprise fait PENCHER, elle ne tranche pas. */
+  bonusMemeEntreprise: 8,
+  /** Au-delà, la question « est-ce une faute de frappe » ne se pose plus. */
+  distanceMaxFaute: 1,
+  /** Sur un nom court, une lettre change la personne (« Luc » / « Duc »). */
+  longueurMinFaute: 5,
+} as const
+
 /** Comment deux noms se sont reconnus. L'ordre est celui de la certitude. */
 export type RegleRapprochement =
   /** Les deux noms sont le même, aux accents et à la casse près. */
@@ -41,13 +72,9 @@ export type RegleRapprochement =
   /** Une faute de frappe : une seule lettre les sépare. */
   | 'orthographe-proche'
 
-export interface Rapprochement<T> {
-  candidat: T
+/** Une suggestion d'identité : le contrat commun, plus la règle qui l'a produite. */
+export interface Rapprochement<T> extends Suggestion<T> {
   regle: RegleRapprochement
-  /** 0 à 100. Sert à ORDONNER et à afficher, jamais à décider seul. */
-  score: number
-  /** La phrase que l'écran peut montrer telle quelle. */
-  motif: string
 }
 
 /** Un acteur déjà connu, réduit à ce qui sert à le reconnaître. */
@@ -116,7 +143,7 @@ export function comparerNoms(a: string, b: string): { regle: RegleRapprochement;
   const na = normaliserNom(a)
   const nb = normaliserNom(b)
   if (!na || !nb) return null
-  if (na === nb) return { regle: 'identique', score: 100 }
+  if (na === nb) return { regle: 'identique', score: POIDS_IDENTITE.identique }
 
   const ma = mots(na)
   const mb = mots(nb)
@@ -129,23 +156,24 @@ export function comparerNoms(a: string, b: string): { regle: RegleRapprochement;
     if (familleA === familleB) {
       const prenomA = ma[0]!
       const prenomB = mb[0]!
-      if (prenomA === prenomB) return { regle: 'identique', score: 100 }
+      if (prenomA === prenomB) return { regle: 'identique', score: POIDS_IDENTITE.identique }
       const initialeSurUn = (prenomA.length === 1 && prenomB.startsWith(prenomA))
         || (prenomB.length === 1 && prenomA.startsWith(prenomB))
-      if (initialeSurUn) return { regle: 'initiale-et-nom', score: 90 }
+      if (initialeSurUn) return { regle: 'initiale-et-nom', score: POIDS_IDENTITE['initiale-et-nom'] }
     }
   }
 
   // « Yann » ↔ « Yann Martin » : un seul mot, qui EST le prénom de l'autre.
   const [court, long] = ma.length <= mb.length ? [ma, mb] : [mb, ma]
   if (court.length === 1 && long.length >= 2 && court[0] === long[0]) {
-    return { regle: 'prenom-seul', score: 70 }
+    return { regle: 'prenom-seul', score: POIDS_IDENTITE['prenom-seul'] }
   }
 
   // Faute de frappe. Exigence de longueur : sur des noms courts, une lettre
   // change tout — « Luc » et « Duc » ne sont pas la même personne.
-  if (na.length >= 5 && nb.length >= 5 && distance(na, nb, 1) <= 1) {
-    return { regle: 'orthographe-proche', score: 80 }
+  const { longueurMinFaute: mini, distanceMaxFaute: ecart } = POIDS_IDENTITE
+  if (na.length >= mini && nb.length >= mini && distance(na, nb, ecart) <= ecart) {
+    return { regle: 'orthographe-proche', score: POIDS_IDENTITE['orthographe-proche'] }
   }
 
   return null
@@ -171,7 +199,7 @@ export function rapprocher<T extends ActeurConnu>(
   connus: readonly T[],
   options: { entreprise?: string | null; minimum?: number; limite?: number } = {},
 ): Array<Rapprochement<T>> {
-  const minimum = options.minimum ?? 70
+  const minimum = options.minimum ?? SEUILS_CONFIANCE.proposer
   const entrepriseCherchee = options.entreprise ? normaliserNom(options.entreprise) : null
 
   const out: Array<Rapprochement<T>> = []
@@ -181,13 +209,17 @@ export function rapprocher<T extends ActeurConnu>(
     const memeEntreprise = Boolean(
       entrepriseCherchee && candidat.entreprise && normaliserNom(candidat.entreprise) === entrepriseCherchee,
     )
-    const score = Math.min(100, trouve.score + (memeEntreprise ? 8 : 0))
+    const score = Math.min(100, trouve.score + (memeEntreprise ? POIDS_IDENTITE.bonusMemeEntreprise : 0))
     if (score < minimum) continue
     out.push({
       candidat,
       regle: trouve.regle,
       score,
       motif: memeEntreprise ? `${MOTIFS[trouve.regle]}, et même entreprise` : MOTIFS[trouve.regle],
+      origine: ORIGINE,
+      // La politique n'est PAS décidée ici : le moteur dit à quel point il y
+      // croit, le contrat commun dit ce qu'on a le droit d'en faire.
+      ...qualifier(score),
     })
   }
 

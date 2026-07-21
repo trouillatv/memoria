@@ -3,9 +3,11 @@ import {
   comparerNoms,
   distance,
   normaliserNom,
+  POIDS_IDENTITE,
   rapprocher,
   type ActeurConnu,
 } from '@/lib/acteurs/resolution-identite'
+import { qualifier, SEUILS_CONFIANCE } from '@/lib/confiance/suggestion'
 
 // ── LA MÉMOIRE SE FRAGMENTE À LA SAISIE (Vincent, 2026-07-22) ──────────────
 //
@@ -138,5 +140,53 @@ describe('rapprocher — proposer, dans l’ordre, avec le motif', () => {
     const a = rapprocher('Yann', connus).map((x) => x.candidat.id)
     const b = rapprocher('Yann', connus).map((x) => x.candidat.id)
     expect(a).toEqual(b)
+  })
+})
+
+// ── LA POLITIQUE EST UNE DÉCISION PRODUIT, PAS UN DÉTAIL DE RENDU ──────────
+//
+// Le seuil de pré-remplissage a d'abord vécu dans un composant, écrit
+// `score >= 90` au milieu du JSX. « À partir de quand MemorIA remplit-il à la
+// place de l'humain ? » était donc invisible, non testable, et impossible à
+// ajuster sans relire du rendu. Ces tests protègent son nouvel emplacement.
+
+describe('chaque suggestion dit ce qu’on a le droit d’en faire', () => {
+  const connus: ActeurConnu[] = [
+    { id: '1', nom: 'Yann Martin', entreprise: 'AGP' },
+    { id: '2', nom: 'Yann Bernard', entreprise: 'Clim Expert' },
+  ]
+
+  it('un rapprochement sûr autorise le pré-remplissage', () => {
+    const [r] = rapprocher('Y. Martin', connus)
+    expect(r!.action).toBe('pre-remplir')
+    expect(r!.confiance).toBe('forte')
+  })
+
+  it('le prénom seul PROPOSE, il ne remplit pas', () => {
+    // Deux Yann existent ici : pré-remplir ferait valider une association que
+    // personne n'a vérifiée.
+    const r = rapprocher('Yann', connus)
+    expect(r.every((x) => x.action === 'demander')).toBe(true)
+  })
+
+  it('chaque suggestion porte le moteur qui l’a produite', () => {
+    const [r] = rapprocher('Y. Martin', connus)
+    expect(r!.origine).toBe('acteurs/identite')
+  })
+
+  it('les seuils et les poids sont nommés, jamais écrits en dur', () => {
+    // Le jour où « le prénom seul est trop permissif », on change un nombre —
+    // sans toucher à un seul algorithme.
+    expect(SEUILS_CONFIANCE.preRemplir).toBeGreaterThan(SEUILS_CONFIANCE.proposer)
+    expect(POIDS_IDENTITE['prenom-seul']).toBeLessThan(POIDS_IDENTITE['initiale-et-nom'])
+    // Et le poids du prénom seul reste SOUS le seuil de pré-remplissage :
+    // c'est ce qui garantit qu'il ne remplira jamais tout seul.
+    expect(POIDS_IDENTITE['prenom-seul']).toBeLessThan(SEUILS_CONFIANCE.preRemplir)
+  })
+
+  it('qualifier ne laisse passer aucun score sous le bruit de fond', () => {
+    expect(qualifier(95).action).toBe('pre-remplir')
+    expect(qualifier(75).action).toBe('demander')
+    expect(qualifier(40).action).toBe('ignorer')
   })
 })
