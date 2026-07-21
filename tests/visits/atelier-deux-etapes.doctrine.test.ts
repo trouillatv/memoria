@@ -19,7 +19,10 @@ import { describe, expect, it } from 'vitest'
 // vouloir : remettre un total « pour informer », rétablir une barre « pour
 // motiver », et les deux compteurs redeviennent comparables.
 
-const atelier = join(process.cwd(), 'app/(dashboard)/sites/[id]/visites/[visitId]/compte-rendu/atelier')
+// L'atelier a ete VALIDE : il n'est plus une experience a cote, il EST la page
+// du compte-rendu. Les fichiers ont donc remonte d'un cran ; `atelier/` ne
+// garde qu'une redirection.
+const atelier = join(process.cwd(), 'app/(dashboard)/sites/[id]/visites/[visitId]/compte-rendu')
 const panneau = readFileSync(join(atelier, 'PanneauArbitrage.tsx'), 'utf8')
 const colonne = readFileSync(join(atelier, 'AtelierColonnes.tsx'), 'utf8')
 const cr = join(process.cwd(), 'app/(field)/m/visite/[reportId]/cr')

@@ -199,9 +199,15 @@ describe('la visite desktop reste dans le bureau', () => {
   })
 
   it('la surface desktop du CR compose les MÊMES composants que le terrain', () => {
+    // UN SEUL MOTEUR, DEUX SURFACES : ce qui compte est que le bureau réutilise
+    // les composants du terrain, pas le fichier d'où il les importe. Depuis que
+    // l'atelier est devenu LA page, la page tient le cadre et `AtelierColonnes`
+    // tient les trois marches — on lit donc les deux comme une seule surface.
     const cr = readFileSync(join(dir, 'compte-rendu/page.tsx'), 'utf8')
+    const colonnes = readFileSync(join(dir, 'compte-rendu/AtelierColonnes.tsx'), 'utf8')
+    const surface = cr + colonnes
     for (const composant of ['CrDocumentSections', 'CrConcretisation', 'MemoriaRetained']) {
-      expect(cr).toContain(`from '@/app/(field)/m/visite/[reportId]/cr/${composant}'`)
+      expect(surface).toContain(`from '@/app/(field)/m/visite/[reportId]/cr/${composant}'`)
     }
     // Ouvrir n'a jamais voulu dire régénérer.
     expect(cr).toContain('getOrCreateVisitCrDocument')

@@ -1,30 +1,47 @@
-// LE COMPTE-RENDU, AU BUREAU (Vincent, 2026-07-22).
+// LE COMPTE-RENDU, AU BUREAU.
 //
 // Le CR éditable, la concrétisation et l'arbitrage n'existaient qu'à l'adresse
-// mobile `/m/visite/[reportId]/cr`. Depuis le poste de travail, « Arbitrer » ou
-// « Ouvrir le compte-rendu » éjectait donc le conducteur dans la coquille
-// téléphone — on quittait la visite pour faire le travail de la visite.
-//
-// UN SEUL MOTEUR, DEUX SURFACES. Cette page ne réécrit rien : elle compose
-// exactement les mêmes composants (`CrDocumentSections`, `CrConcretisation`,
-// `MemoriaRetained`) et le même `getOrCreateVisitCrDocument`. Ce qui change est
-// le contexte — on reste dans le chantier, avec son fil d'Ariane et le retour
-// vers la visite.
+// mobile `/m/visite/[reportId]/cr`. Depuis le poste de travail, « Arbitrer »
+// éjectait donc le conducteur dans la coquille téléphone — on quittait la
+// visite pour faire le travail de la visite. Un seul moteur, deux surfaces :
+// cette page compose les MÊMES composants que le terrain, dans le contexte du
+// chantier (fil d'Ariane, retour vers la visite).
 //
 // Ouvrir n'a jamais voulu dire régénérer : `getOrCreateVisitCrDocument` crée le
 // document depuis l'analyse EN CACHE, sans relancer le modèle.
+//
+// ── L'ATELIER DEVIENT LA PAGE (Vincent, 2026-07-22) ─────────────────────────
+//
+// Cette mise en page a vécu un temps à `compte-rendu/atelier`, en essai
+// réversible, le temps d'être jugée sur pièces. Elle est validée : elle
+// REMPLACE l'ancienne, et les deux liens de bascule disparaissent avec elle.
+// `atelier/` ne garde qu'une redirection, pour les adresses déjà ouvertes.
+//
+// CE QU'ELLE A CORRIGÉ, ET QU'IL NE FAUT PAS DÉFAIRE :
+//
+//   On lisait deux fois la même histoire. Le document racontait la visite, puis
+//   « Ce que MemorIA a retenu » la racontait à nouveau, juste en dessous, dans
+//   le même axe de lecture. Le conducteur se demandait pourquoi il relisait.
+//
+//   L'axe a donc changé : à GAUCHE le compte-rendu — ce que le chantier saura ;
+//   à DROITE le travail restant. L'analyse d'origine descend en bas, repliée :
+//   elle devient ce qu'elle est vraiment, la PROVENANCE, et non une seconde
+//   lecture.
+//
+//   Et les deux colonnes ne se concurrencent plus : ce sont trois MARCHES d'un
+//   même parcours — je corrige, je termine mes arbitrages, je vois ce qui sera
+//   créé. Le détail de cette grammaire vit dans `AtelierColonnes`.
 
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, ChevronRight, FlaskConical } from 'lucide-react'
+import { ArrowLeft, ChevronRight } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
 import { getOrCreateVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
-import { CrDocumentSections } from '@/app/(field)/m/visite/[reportId]/cr/CrDocumentSections'
-import { CrConcretisation } from '@/app/(field)/m/visite/[reportId]/cr/CrConcretisation'
 import { MemoriaRetained } from '@/app/(field)/m/visite/[reportId]/cr/MemoriaRetained'
+import { AtelierColonnes } from './AtelierColonnes'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,8 +64,8 @@ export default async function VisitCrDesktopPage({
 
   const [doc, crDocument] = await Promise.all([
     buildVisitCrDoc(visitId, user.id),
-    // `null` = pas encore d'analyse. La page retombe alors sur la synthèse, qui
-    // se charge côté client — exactement comme au terrain.
+    // `null` = pas encore d'analyse. Ouvrir n'a jamais voulu dire régénérer :
+    // le document est créé depuis le cache, sans rappeler le modèle.
     getOrCreateVisitCrDocument(visitId, user.id).catch(() => null),
   ])
   if (!doc) notFound()
@@ -56,7 +73,7 @@ export default async function VisitCrDesktopPage({
   const debut = visit.started_at ?? visit.created_at
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6">
+    <div className="mx-auto max-w-[1400px] px-4 py-6">
       <nav aria-label="Fil d’Ariane" className="flex flex-wrap items-center gap-1.5 text-[13px] text-muted-foreground">
         <Link href={`/sites/${id}`} className="hover:text-foreground">{identity.name}</Link>
         <ChevronRight className="h-3.5 w-3.5" aria-hidden />
@@ -67,53 +84,36 @@ export default async function VisitCrDesktopPage({
         <span className="font-medium text-foreground">Compte-rendu</span>
       </nav>
 
-      <header className="mb-6 mt-3">
+      <header className="mb-5 mt-3">
         <h1 className="text-2xl font-semibold tracking-tight">Compte-rendu de la visite</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
-          {identity.name} — {frDate(debut)}. Arbitrez ce que MemorIA propose, corrigez le texte si besoin, puis concrétisez ce qui doit vivre au chantier.
+          {identity.name} — {frDate(debut)}. Corrigez le texte à gauche, tranchez ce qui attend à droite.
         </p>
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <Link
-            href={`/sites/${id}/visites/${visitId}`}
-            className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden />
-            Retour à la visite
-          </Link>
-          {/* ESSAI RÉVERSIBLE — une seconde mise en page, sur les mêmes données.
-              Cette ligne et le dossier `atelier/` sont tout ce qu'il y a à
-              retirer pour revenir en arrière. */}
-          <Link
-            href={`/sites/${id}/visites/${visitId}/compte-rendu/atelier`}
-            className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground"
-          >
-            <FlaskConical className="h-4 w-4" aria-hidden />
-            Essayer la nouvelle mise en page
-          </Link>
-        </div>
+        <Link
+          href={`/sites/${id}/visites/${visitId}`}
+          className="mt-3 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          Retour à la visite
+        </Link>
       </header>
 
-      <div className="space-y-4">
-        {crDocument ? (
-          <>
-            <CrDocumentSections reportId={visitId} sections={crDocument.sections} status={crDocument.status} />
-            {/* On corrige, PUIS on transforme : la concrétisation vient après. */}
-            <CrConcretisation reportId={visitId} />
-            {/* LES PROPOSITIONS SONT PRÊTES EN ARRIVANT. Au terrain, on ouvre
-                le CR pour vérifier avant de repartir ; au bureau, on l'ouvre
-                POUR arbitrer — les faire attendre un clic de plus était un
-                obstacle sans raison. Aucun coût caché : cette branche n'existe
-                que si un document existe, donc si l'analyse est déjà en cache. */}
-            <MemoriaRetained
-              reportId={visitId}
-              siteId={visit.site_id}
-              transcriptions={doc.transcriptions}
-            />
-          </>
-        ) : (
-          <MemoriaRetained reportId={visitId} siteId={visit.site_id} transcriptions={doc.transcriptions} />
-        )}
-      </div>
+      {crDocument ? (
+        // LES TROIS MARCHES ET LES FILS QUI LES RELIENT — côté client, parce
+        // qu'une correction et une création doivent se répercuter sur des blocs
+        // voisins sans refabriquer la page.
+        <AtelierColonnes
+          reportId={visitId}
+          siteId={visit.site_id}
+          sections={crDocument.sections}
+          status={crDocument.status}
+          transcriptions={doc.transcriptions}
+        />
+      ) : (
+        // Aucun document : il n'y a rien à corriger ni à arbitrer tant que
+        // l'analyse n'a pas eu lieu. On retombe sur le parcours normal.
+        <MemoriaRetained reportId={visitId} siteId={visit.site_id} transcriptions={doc.transcriptions} />
+      )}
     </div>
   )
 }
