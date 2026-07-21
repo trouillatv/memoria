@@ -76,7 +76,11 @@ const FAMILLE: Record<string, FamilleStyle> = {
   },
 }
 
-const ORDRE = ['action', 'echeance', 'decision', 'memoire', 'intervenant']
+// LES FAMILLES QUI DEVIENNENT DES OBJETS. Les personnes n'y sont pas : elles
+// ne sont pas d'une autre couleur, elles sont d'une autre NATURE. Les mélanger
+// dans la même liste à cocher faisait chercher pourquoi certaines lignes ne se
+// cochaient pas. Elles ont leur encart, plus bas.
+const ORDRE = ['action', 'echeance', 'decision', 'memoire']
 
 export function CrConcretisation({ reportId }: { reportId: string }) {
   const [items, setItems] = useState<ReviewItem[] | null>(null)
@@ -148,6 +152,9 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
   }
 
   const aCreer = items.filter((i) => i.creatable && !i.alreadyCreated)
+  // Les personnes ne sont pas des objets à créer : elles se rangent à part.
+  const personnes = items.filter((i) => i.kind === 'intervenant')
+  const creables = items.filter((i) => i.creatable)
 
   return (
     <section data-slot="cr-concretisation" className="rounded-2xl border bg-background p-3.5 shadow-sm">
@@ -166,11 +173,29 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
         </button>
       </div>
 
-      {/* LE NOMBRE D'ABORD — c'est un résultat, pas une liste de corvées. */}
-      <p className="mt-2 text-[13px] text-muted-foreground">
-        À partir de vos corrections, MemorIA propose{' '}
-        <strong className="text-foreground">{items.length} élément{items.length > 1 ? 's' : ''}</strong> :
-      </p>
+      {/* LE COMPTE SE DIT EN ENTIER, OU IL INQUIÈTE (Vincent, 2026-07-21).
+          « 15 proposés » puis « créer les 13 » fait chercher les deux qui
+          manquent. On énonce donc les trois nombres d'un coup : ce qui est
+          proposé, ce qui sera créé, ce qui relève d'ailleurs. */}
+      <p className="mt-2 text-[13px] text-muted-foreground">À partir de vos corrections :</p>
+      <ul className="mt-1 space-y-0.5 text-[13px]">
+        <li className="text-foreground">
+          <strong>{items.length} élément{items.length > 1 ? 's' : ''}</strong> proposé{items.length > 1 ? 's' : ''}
+        </li>
+        {creables.length > 0 && (
+          <li className="text-muted-foreground">
+            <strong className="text-foreground">{creables.length}</strong> ser
+            {creables.length > 1 ? 'ont' : 'a'} créé{creables.length > 1 ? 's' : ''}
+          </li>
+        )}
+        {personnes.length > 0 && (
+          <li className="text-muted-foreground">
+            <strong className="text-foreground">{personnes.length}</strong> nécessite
+            {personnes.length > 1 ? 'nt' : ''} une association dans le casting
+          </li>
+        )}
+      </ul>
+
       <div className="mt-2 flex flex-wrap gap-1.5">
         {ORDRE.map((kind) => {
           const n = items.filter((i) => i.kind === kind).length
@@ -263,30 +288,18 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
                     )}
                   >
                     <label className="flex items-start gap-2.5">
-                      {/* UNE CASE DÉCOCHÉE ET GRISE SE LIT COMME UN BUG (Vincent,
-                          2026-07-21). L'intervenant n'est pas « désactivé » : il
-                          est d'une AUTRE NATURE — il ne se crée pas ici. Il
-                          porte donc son propre signe, pas une case morte. */}
-                      {item.creatable ? (
-                        <input
-                          type="checkbox"
-                          className={cn('mt-0.5 h-4 w-4 shrink-0 disabled:opacity-40', f.accent)}
-                          checked={chosen.has(item.key)}
-                          disabled={item.alreadyCreated || pending}
-                          onChange={() => toggle(item.key)}
-                          aria-label={item.label}
-                        />
-                      ) : (
-                        <span
-                          aria-hidden
-                          className={cn(
-                            'mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full',
-                            f.chip,
-                          )}
-                        >
-                          <Users className="h-3 w-3" />
-                        </span>
-                      )}
+                      {/* Toute ligne de cette liste EST créable — les personnes
+                          vivent dans leur propre encart. Une case décochée ne
+                          peut donc jamais vouloir dire « impossible », seulement
+                          « écarté ». C'est ce qui faisait lire un bug. */}
+                      <input
+                        type="checkbox"
+                        className={cn('mt-0.5 h-4 w-4 shrink-0 disabled:opacity-40', f.accent)}
+                        checked={chosen.has(item.key)}
+                        disabled={item.alreadyCreated || pending}
+                        onChange={() => toggle(item.key)}
+                        aria-label={item.label}
+                      />
                       <span className="min-w-0 flex-1">
                         <span className="block text-[13px] leading-snug">{item.label}</span>
 
@@ -321,18 +334,6 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
                             <Check className="h-3 w-3" aria-hidden /> Déjà créé
                           </span>
                         )}
-                        {!item.creatable && (
-                          // On ne fabrique pas une ligne de casting depuis un
-                          // nom : le rôle et l'entreprise seraient inventés.
-                          <>
-                            <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                              À traiter dans le casting
-                            </span>
-                            <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                              Son rôle et son entreprise ne s’inventent pas.
-                            </span>
-                          </>
-                        )}
                       </span>
                     </label>
                   </li>
@@ -342,6 +343,34 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
           )
         })}
       </div>
+
+      {/* LES PERSONNES DÉTECTÉES — un encart, pas une ligne de liste. Elles ne
+          se créent pas ici : leur rôle et leur entreprise ne s'inventent pas
+          depuis un nom cité dans un compte-rendu. */}
+      {personnes.length > 0 && (
+        <div data-slot="cr-personnes" className="mt-3.5 rounded-xl border bg-muted/30 px-3 py-2.5">
+          <p className="flex items-center gap-1.5 text-[12px] font-semibold">
+            <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+              <Users className="h-3 w-3" aria-hidden />
+            </span>
+            {personnes.length} personne{personnes.length > 1 ? 's' : ''} détectée
+            {personnes.length > 1 ? 's' : ''}
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Elles pourront être associées au casting du chantier.
+          </p>
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {personnes.map((p) => (
+              <span
+                key={p.key}
+                className="rounded-full bg-background px-2 py-0.5 text-[12px] ring-1 ring-border"
+              >
+                {p.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {error && <p className="mt-2 text-[12px] text-rose-600 dark:text-rose-400">{error}</p>}
 
