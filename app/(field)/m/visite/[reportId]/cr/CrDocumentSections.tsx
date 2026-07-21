@@ -39,10 +39,22 @@ export function CrDocumentSections({
   reportId,
   sections: initialSections,
   status: initialStatus,
+  onEdited,
 }: {
   reportId: string
   sections: ReportDocumentSection[]
   status: ReportDocumentStatus
+  /**
+   * LE TEXTE VIENT DE CHANGER, ET QUELQU'UN D'AUTRE DOIT LE SAVOIR.
+   *
+   * Ce qui se prépare à partir de ce document — la concrétisation — est calculé
+   * en relisant CE texte. Corriger une section après cette préparation la rend
+   * donc périmée, sans que rien ne le dise. Ce rappel laisse le voisin réagir.
+   *
+   * OPTIONNEL : là où personne n'écoute (mobile, ancienne page de bureau), rien
+   * ne change. Il ne porte pas le document — seulement le fait qu'il a bougé.
+   */
+  onEdited?: () => void
 }) {
   // La vérité affichée vient du serveur, puis de CE QU'IL A ÉCRIT à chaque
   // geste. Pas de rafraîchissement global, donc pas de saut en haut de page.
@@ -50,9 +62,13 @@ export function CrDocumentSections({
   const [status, setStatus] = useState(initialStatus)
   const editable = status === 'draft'
 
+  // Un seul point de passage : `adopt` est appelé aussi bien après une
+  // correction qu'après une restauration — les deux changent le texte, donc les
+  // deux périment ce qui en avait été déduit.
   const adopt = (doc: PersistedCrDocument) => {
     setSections(doc.sections)
     setStatus(doc.status)
+    onEdited?.()
   }
 
   /** LE TEXTE S'AFFICHE AVANT LE RÉSEAU (Vincent, 2026-07-21). Attendre deux

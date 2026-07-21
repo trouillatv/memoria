@@ -54,9 +54,8 @@ import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
 import { getOrCreateVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
-import { CrDocumentSections } from '@/app/(field)/m/visite/[reportId]/cr/CrDocumentSections'
-import { CrConcretisation } from '@/app/(field)/m/visite/[reportId]/cr/CrConcretisation'
 import { MemoriaRetained } from '@/app/(field)/m/visite/[reportId]/cr/MemoriaRetained'
+import { ColonneDocument } from './ColonneDocument'
 import { PanneauArbitrage } from './PanneauArbitrage'
 
 export const dynamic = 'force-dynamic'
@@ -131,12 +130,11 @@ export default async function VisitCrAtelierPage({
         <main className="min-w-0 flex-1 space-y-4 lg:order-1">
           {crDocument ? (
             <>
-              <CrDocumentSections reportId={visitId} sections={crDocument.sections} status={crDocument.status} />
-              {/* TROISIÈME MARCHE DU PARCOURS — `asStep` retire son total global.
-                  Il annonçait « 19 éléments proposés » face aux « 17 décisions »
-                  du panneau : deux totaux de la même visite, qui ne mesurent pas
-                  la même chose et que rien n'empêchait de comparer. */}
-              <CrConcretisation reportId={visitId} asStep />
+              {/* MARCHES 1 ET 3, ET LE FIL ENTRE ELLES. Corriger une section
+                  périme ce que la concrétisation avait déduit du texte : elle
+                  le dit, et remet « Mettre à jour les propositions » en avant.
+                  Le fil vit côté client, d'où ce porteur. */}
+              <ColonneDocument reportId={visitId} sections={crDocument.sections} status={crDocument.status} />
               {/* L'ANALYSE D'ORIGINE DEVIENT LA PROVENANCE. Elle ne charge rien
                   tant qu'on ne la demande pas, et ne raconte plus l'histoire une
                   seconde fois au-dessus du document. */}

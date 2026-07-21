@@ -87,8 +87,26 @@ const ORDRE = ['action', 'echeance', 'decision', 'memoire']
 export function CrConcretisation({
   reportId,
   asStep = false,
+  documentRevision = 0,
 }: {
   reportId: string
+  /**
+   * COMBIEN DE FOIS LE COMPTE-RENDU A CHANGÉ DEPUIS L'OUVERTURE.
+   *
+   * Ce bloc est calculé en RELISANT le texte du compte-rendu. Une fois préparé,
+   * il ne se recalcule plus : corriger une section ensuite laissait donc à
+   * l'écran une liste qui décrivait un texte qui n'existe plus — périmée, et
+   * silencieuse, puisque le bouton avait cédé la place à un discret « Relire ».
+   *
+   * Ce compteur n'est comparé qu'à lui-même : s'il a bougé depuis la dernière
+   * préparation, c'est que le document a bougé. On le DIT, et on remet le geste
+   * en avant ; on ne recalcule PAS tout seul — relire coûte un aller-retour
+   * serveur, et l'écran n'a pas à le décider pendant que le conducteur écrit.
+   *
+   * `0` par défaut : là où personne ne le fait varier (mobile, ancienne page de
+   * bureau), la comparaison est toujours vraie et rien ne change.
+   */
+  documentRevision?: number
   /**
    * DANS UN FLUX, CE BLOC NE COMPTE PLUS (Vincent, 2026-07-22).
    *
@@ -115,15 +133,22 @@ export function CrConcretisation({
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<CreationSummary | null>(null)
+  // La révision du document au moment où cette liste a été calculée.
+  const [prepareeALaRevision, setPrepareeALaRevision] = useState(0)
 
   const prepare = async () => {
     if (pending) return
     setPending(true)
     setError(null)
     setDone(null)
+    // On retient la révision d'AVANT l'appel : une correction enregistrée
+    // pendant la relecture doit périmer le résultat qui arrive, pas être
+    // avalée par lui.
+    const revisionLue = documentRevision
     const res = await prepareCrConcretisationAction(reportId)
     setPending(false)
     if (!res.ok) return setError(res.error)
+    setPrepareeALaRevision(revisionLue)
     setItems(res.items)
     setDiff(res.diff)
     // Tout ce qui est créable et pas déjà créé part coché : le cas courant est
@@ -181,6 +206,8 @@ export function CrConcretisation({
   // Les personnes ne sont pas des objets à créer : elles se rangent à part.
   const personnes = items.filter((i) => i.kind === 'intervenant')
   const creables = items.filter((i) => i.creatable)
+  // Le compte-rendu a changé depuis que cette liste a été calculée.
+  const perimee = documentRevision !== prepareeALaRevision
 
   return (
     <section data-slot="cr-concretisation" className="rounded-2xl border bg-background p-3.5 shadow-sm">
@@ -202,6 +229,36 @@ export function CrConcretisation({
           Relire
         </button>
       </div>
+
+      {/* LE TEXTE A BOUGÉ DEPUIS CE CALCUL — on le dit, et on remet le geste en
+          avant. Sans ce bandeau, la liste continuait de décrire un compte-rendu
+          qui n'existe plus, et le seul moyen de la rafraîchir était un « Relire »
+          discret en haut à droite que rien n'invitait à cliquer. On ne recalcule
+          pas tout seul : la relecture est un aller-retour serveur, et le
+          conducteur est peut-être encore en train de corriger la section
+          suivante. */}
+      {perimee && (
+        <div
+          data-slot="cr-concretisation-perimee"
+          className="mt-2.5 rounded-xl border border-amber-300/70 bg-amber-50/70 p-3 dark:border-amber-800 dark:bg-amber-950/20"
+        >
+          <p className="text-[13px] font-semibold text-amber-900 dark:text-amber-200">
+            Vous avez corrigé le compte-rendu depuis cette préparation.
+          </p>
+          <p className="mt-0.5 text-[12px] text-amber-800/80 dark:text-amber-300/80">
+            Ce qui suit décrit le texte d’avant vos corrections.
+          </p>
+          <button
+            type="button"
+            onClick={prepare}
+            disabled={pending}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-[13px] font-medium text-white active:brightness-95 disabled:opacity-50"
+          >
+            {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ArrowRight className="h-4 w-4" aria-hidden />}
+            Mettre à jour les propositions
+          </button>
+        </div>
+      )}
 
       {asStep ? (
         // ÉTAPE D'UN FLUX : aucun total. La phrase dit où l'on en est, les

@@ -21,11 +21,10 @@ import { describe, expect, it } from 'vitest'
 
 const atelier = join(process.cwd(), 'app/(dashboard)/sites/[id]/visites/[visitId]/compte-rendu/atelier')
 const panneau = readFileSync(join(atelier, 'PanneauArbitrage.tsx'), 'utf8')
-const page = readFileSync(join(atelier, 'page.tsx'), 'utf8')
-const concretisation = readFileSync(
-  join(process.cwd(), 'app/(field)/m/visite/[reportId]/cr/CrConcretisation.tsx'),
-  'utf8',
-)
+const colonne = readFileSync(join(atelier, 'ColonneDocument.tsx'), 'utf8')
+const cr = join(process.cwd(), 'app/(field)/m/visite/[reportId]/cr')
+const concretisation = readFileSync(join(cr, 'CrConcretisation.tsx'), 'utf8')
+const documentSections = readFileSync(join(cr, 'CrDocumentSections.tsx'), 'utf8')
 
 /** Ce que le fichier AFFICHE : les en-têtes racontent justement ce qui a été
  *  retiré, et ces phrases-là ne sont pas à l'écran. */
@@ -60,7 +59,7 @@ describe('le panneau d’arbitrage compte des décisions, pas des objets', () =>
 
 describe('la concrétisation est une étape du parcours, sans total global', () => {
   it('l’atelier la monte en mode étape', () => {
-    expect(sansCommentaires(page)).toMatch(/<CrConcretisation[^>]*asStep/)
+    expect(sansCommentaires(colonne)).toMatch(/<CrConcretisation[\s\S]*?asStep/)
   })
 
   it('le total global n’existe que hors flux — le mobile ne change pas', () => {
@@ -82,5 +81,45 @@ describe('la concrétisation est une étape du parcours, sans total global', () 
     expect(etape).not.toMatch(/creables\.length/)
     // …et le total reste bien disponible hors flux, pour le mobile.
     expect(concretisation).toMatch(/items\.length\} élément/)
+  })
+})
+
+// ── UNE LISTE PÉRIMÉE LE DIT (Vincent, 2026-07-22) ─────────────────────────
+//
+// « Mettre à jour les propositions » disparaissait après le premier clic et ne
+// revenait jamais. Or cette liste est DÉDUITE du texte du compte-rendu :
+// corriger une section ensuite laissait à l'écran la description d'un texte qui
+// n'existe plus — sans rien dire, et sans autre recours qu'un « Relire »
+// discret que rien n'invitait à cliquer.
+
+describe('corriger le compte-rendu périme ce qui en avait été déduit', () => {
+  it('le document signale ses corrections à qui veut l’entendre', () => {
+    // Un rappel OPTIONNEL : là où personne ne l'écoute, rien ne change.
+    expect(documentSections).toMatch(/onEdited\?:/)
+    // Posé sur `adopt`, donc déclenché par une correction ET par une
+    // restauration — les deux changent le texte.
+    expect(documentSections).toMatch(/setStatus\(doc\.status\)\s*\n\s*onEdited\?\.\(\)/)
+  })
+
+  it('la concrétisation compare la révision du texte à celle de son calcul', () => {
+    expect(concretisation).toMatch(/documentRevision\s*=\s*0/)
+    expect(concretisation).toMatch(/documentRevision !== prepareeALaRevision/)
+  })
+
+  it('elle remet « Mettre à jour les propositions » en avant, sans recalculer seule', () => {
+    const rendu = sansCommentaires(concretisation)
+    expect(rendu).toContain('Vous avez corrigé le compte-rendu depuis cette préparation.')
+    // Ancré sur le repère du bloc, pas sur une distance en caractères : une
+    // phrase reformulée ne doit pas casser un test de doctrine.
+    expect(rendu).toMatch(/perimee &&[\s\S]*?data-slot="cr-concretisation-perimee"/)
+    expect(rendu).toMatch(/data-slot="cr-concretisation-perimee"[\s\S]*?Mettre à jour les propositions/)
+    // Aucun effet ne relance la préparation : MemorIA signale, l'humain
+    // déclenche. Un recalcul automatique partirait pendant qu'on corrige.
+    expect(rendu).not.toMatch(/useEffect/)
+  })
+
+  it('l’atelier relie les deux voisins — ailleurs, rien ne bouge', () => {
+    expect(sansCommentaires(colonne)).toMatch(/onEdited=\{\(\) => setRevision/)
+    expect(sansCommentaires(colonne)).toMatch(/documentRevision=\{revision\}/)
   })
 })
