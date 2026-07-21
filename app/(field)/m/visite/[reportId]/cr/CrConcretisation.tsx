@@ -84,7 +84,31 @@ const FAMILLE: Record<string, FamilleStyle> = {
 // cochaient pas. Elles ont leur encart, plus bas.
 const ORDRE = ['action', 'echeance', 'decision', 'memoire']
 
-export function CrConcretisation({ reportId }: { reportId: string }) {
+export function CrConcretisation({
+  reportId,
+  asStep = false,
+}: {
+  reportId: string
+  /**
+   * DANS UN FLUX, CE BLOC NE COMPTE PLUS (Vincent, 2026-07-22).
+   *
+   * L'atelier place ce bloc APRÈS les arbitrages : « je corrige mon CR » →
+   * « je termine mes arbitrages » → « je vois ce qui sera créé ». Or il
+   * annonçait « 19 éléments proposés · 15 seront créés », pendant que le
+   * panneau d'arbitrage annonçait « 17 ». Deux totaux de la même visite,
+   * côte à côte, qui ne tombaient pas juste — parce qu'ils ne mesurent pas la
+   * même chose : l'un compte des DÉCISIONS à prendre, l'autre des OBJETS à
+   * créer. Le total global était donc l'invitation à une comparaison qui n'a
+   * aucun sens.
+   *
+   * Et personne ne travaille avec « 19 ». On travaille avec des actions, des
+   * échéances, des intervenants. Le total disparaît, les familles restent.
+   *
+   * Par défaut `false` : le mobile et l'ancienne page de bureau, où ce bloc
+   * est AUTONOME et non l'étape d'un flux, ne changent pas.
+   */
+  asStep?: boolean
+}) {
   const [items, setItems] = useState<ReviewItem[] | null>(null)
   const [diff, setDiff] = useState<OperationalDiff | null>(null)
   const [chosen, setChosen] = useState<Set<string>>(new Set())
@@ -161,9 +185,13 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
   return (
     <section data-slot="cr-concretisation" className="rounded-2xl border bg-background p-3.5 shadow-sm">
       <div className="flex items-start justify-between gap-2">
+        {/* DANS LE FLUX, LE TITRE NOMME L'ÉTAPE. « MemorIA a préparé votre
+            chantier » raconte un travail ; « Ce qui sera créé dans le
+            chantier » dit à quelle marche du parcours on se trouve — et c'est
+            justement ce qui le distingue des arbitrages, l'étape d'avant. */}
         <h2 className="flex items-center gap-1.5 text-sm font-semibold">
           <Sparkles className="h-4 w-4 shrink-0 text-violet-500" aria-hidden />
-          MemorIA a préparé votre chantier
+          {asStep ? 'Ce qui sera créé dans le chantier' : 'MemorIA a préparé votre chantier'}
         </h2>
         <button
           type="button"
@@ -175,28 +203,42 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
         </button>
       </div>
 
-      {/* LE COMPTE SE DIT EN ENTIER, OU IL INQUIÈTE (Vincent, 2026-07-21).
-          « 15 proposés » puis « créer les 13 » fait chercher les deux qui
-          manquent. On énonce donc les trois nombres d'un coup : ce qui est
-          proposé, ce qui sera créé, ce qui relève d'ailleurs. */}
-      <p className="mt-2 text-[13px] text-muted-foreground">À partir de vos corrections :</p>
-      <ul className="mt-1 space-y-0.5 text-[13px]">
-        <li className="text-foreground">
-          <strong>{items.length} élément{items.length > 1 ? 's' : ''}</strong> proposé{items.length > 1 ? 's' : ''}
-        </li>
-        {creables.length > 0 && (
-          <li className="text-muted-foreground">
-            <strong className="text-foreground">{creables.length}</strong> ser
-            {creables.length > 1 ? 'ont' : 'a'} créé{creables.length > 1 ? 's' : ''}
-          </li>
-        )}
-        {personnes.length > 0 && (
-          <li className="text-muted-foreground">
-            <strong className="text-foreground">{personnes.length}</strong> nécessite
-            {personnes.length > 1 ? 'nt' : ''} une association dans le casting
-          </li>
-        )}
-      </ul>
+      {asStep ? (
+        // ÉTAPE D'UN FLUX : aucun total. La phrase dit où l'on en est, les
+        // pastilles disent de quoi il s'agit. Le sort des personnes n'est pas
+        // perdu — leur encart, plus bas, le dit déjà en toutes lettres.
+        <>
+          <p className="mt-2 text-[13px] font-medium text-foreground">Votre compte-rendu est prêt.</p>
+          <p className="mt-0.5 text-[12px] text-muted-foreground">
+            Après vos corrections, MemorIA a préparé les éléments ci-dessous.
+          </p>
+        </>
+      ) : (
+        /* LE COMPTE SE DIT EN ENTIER, OU IL INQUIÈTE (Vincent, 2026-07-21).
+           « 15 proposés » puis « créer les 13 » fait chercher les deux qui
+           manquent. On énonce donc les trois nombres d'un coup : ce qui est
+           proposé, ce qui sera créé, ce qui relève d'ailleurs. */
+        <>
+          <p className="mt-2 text-[13px] text-muted-foreground">À partir de vos corrections :</p>
+          <ul className="mt-1 space-y-0.5 text-[13px]">
+            <li className="text-foreground">
+              <strong>{items.length} élément{items.length > 1 ? 's' : ''}</strong> proposé{items.length > 1 ? 's' : ''}
+            </li>
+            {creables.length > 0 && (
+              <li className="text-muted-foreground">
+                <strong className="text-foreground">{creables.length}</strong> ser
+                {creables.length > 1 ? 'ont' : 'a'} créé{creables.length > 1 ? 's' : ''}
+              </li>
+            )}
+            {personnes.length > 0 && (
+              <li className="text-muted-foreground">
+                <strong className="text-foreground">{personnes.length}</strong> nécessite
+                {personnes.length > 1 ? 'nt' : ''} une association dans le casting
+              </li>
+            )}
+          </ul>
+        </>
+      )}
 
       <div className="mt-2 flex flex-wrap gap-1.5">
         {ORDRE.map((kind) => {

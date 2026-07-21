@@ -17,11 +17,34 @@
 //   deux récits concurrents. L'analyse d'origine descend en bas, repliée : elle
 //   devient ce qu'elle est vraiment, la PROVENANCE, et non une seconde lecture.
 //
-// CE QU'ELLE NE TOUCHE PAS : `CrDocumentSections`, `CrConcretisation` et
-// `MemoriaRetained` sont partagés avec le mobile (`/m/visite/[reportId]/cr`).
-// Les modifier ferait muter le terrain en même temps, et le retour en arrière
-// ne serait plus gratuit. Ils sont donc réutilisés TELS QUELS ; seul le panneau
-// d'arbitrage est neuf.
+// ── TROIS MARCHES, PAS DEUX PANNEAUX CONCURRENTS (Vincent, 2026-07-22) ──────
+//
+//   Première version : la concrétisation annonçait « 19 éléments proposés · 15
+//   seront créés », le panneau d'arbitrage « 17 propositions à regarder ». Deux
+//   totaux de la même visite, côte à côte, qui ne tombaient pas juste — et rien
+//   n'expliquait pourquoi, donc on cherchait l'erreur.
+//
+//   Il n'y en avait pas : ils ne mesurent pas la même chose.
+//     · le panneau       → « qu'est-ce que MemorIA me demande encore de DÉCIDER ? »
+//     · la concrétisation → « si je valide, qu'est-ce qui SERA CRÉÉ ? »
+//
+//   Ce sont deux ÉTAPES successives d'un même parcours :
+//     1. je corrige mon compte-rendu ;
+//     2. je termine les arbitrages qui restent ;
+//     3. je vois ce qui sera créé dans le chantier.
+//
+//   Elles cessent donc d'avoir le même poids visuel. Le panneau compte des
+//   DÉCISIONS (et une famille entièrement arbitrée disparaît : c'est une liste
+//   de tâches, pas un tableau de bord) ; la concrétisation perd son total
+//   global — personne ne travaille avec « 19 », on travaille avec des actions
+//   et des échéances. Les deux compteurs n'ont plus à coïncider, et plus rien
+//   n'invite à les comparer.
+//
+// CE QU'ELLE NE TOUCHE PAS : `CrDocumentSections` et `MemoriaRetained` sont
+// partagés avec le mobile (`/m/visite/[reportId]/cr`) et réutilisés TELS QUELS.
+// `CrConcretisation` l'est aussi, mais reçoit ici `asStep` — un drapeau
+// OPTIONNEL, faux par défaut : le mobile et l'ancienne page de bureau, où ce
+// bloc est autonome et non l'étape d'un flux, gardent leur affichage.
 
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
@@ -109,8 +132,11 @@ export default async function VisitCrAtelierPage({
           {crDocument ? (
             <>
               <CrDocumentSections reportId={visitId} sections={crDocument.sections} status={crDocument.status} />
-              {/* On corrige, PUIS on transforme : la concrétisation vient après. */}
-              <CrConcretisation reportId={visitId} />
+              {/* TROISIÈME MARCHE DU PARCOURS — `asStep` retire son total global.
+                  Il annonçait « 19 éléments proposés » face aux « 17 décisions »
+                  du panneau : deux totaux de la même visite, qui ne mesurent pas
+                  la même chose et que rien n'empêchait de comparer. */}
+              <CrConcretisation reportId={visitId} asStep />
               {/* L'ANALYSE D'ORIGINE DEVIENT LA PROVENANCE. Elle ne charge rien
                   tant qu'on ne la demande pas, et ne raconte plus l'histoire une
                   seconde fois au-dessus du document. */}
