@@ -195,3 +195,57 @@ describe('les états vides parlent', () => {
     expect(screen.getByText(/Rien n’attend votre arbitrage/i)).toBeInTheDocument()
   })
 })
+
+// ── DÉPLIER UNE FAMILLE POUR LIRE SA LISTE ─────────────────────────────────
+//
+// Les cartes montrent quatre éléments : c'est ce qui évite la liste plate de 44
+// lignes. Mais « + 4 autres actions » doit pouvoir s'ouvrir — et se refermer dès
+// qu'on regarde ailleurs, parce qu'une carte dépliée est une consultation, pas
+// un état dans lequel on reste.
+
+const nombreux = (): VisitNarrative => {
+  const n = peuple()
+  n.understood = [
+    ...Array.from({ length: 6 }, (_, i) =>
+      prop({ id: `a-${i}`, type: 'action', label: `Action numéro ${i + 1}`, rationale: null }),
+    ),
+    prop({ id: 'e-1', type: 'deadline', label: 'Communication du planning', rationale: null }),
+  ]
+  return n
+}
+
+describe('déplier une famille', () => {
+  it('n’annonce que ce qui est caché', () => {
+    render(<VisitDesk narrative={nombreux()} media={{}} canPromote={false} crHref={null} />)
+    expect(screen.getByRole('button', { name: /\+ 2 autres actions/ })).toBeInTheDocument()
+    // Une famille de sept éléments n'a rien à replier au-delà de quatre… mais
+    // celle d'un seul n'affiche aucun bouton.
+    expect(screen.queryByRole('button', { name: /autres échéances/ })).not.toBeInTheDocument()
+  })
+
+  it('montre toute la liste une fois ouverte', () => {
+    render(<VisitDesk narrative={nombreux()} media={{}} canPromote={false} crHref={null} />)
+    expect(screen.queryByText('Action numéro 6')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /\+ 2 autres actions/ }))
+    expect(screen.getByText('Action numéro 6')).toBeInTheDocument()
+  })
+
+  it('se referme quand on clique ailleurs', () => {
+    render(<VisitDesk narrative={nombreux()} media={{}} canPromote={false} crHref={null} />)
+    fireEvent.click(screen.getByRole('button', { name: /\+ 2 autres actions/ }))
+    expect(screen.getByText('Action numéro 6')).toBeInTheDocument()
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByText('Action numéro 6')).not.toBeInTheDocument()
+  })
+
+  it('se referme aussi par Échap, et par « Réduire »', () => {
+    render(<VisitDesk narrative={nombreux()} media={{}} canPromote={false} crHref={null} />)
+    fireEvent.click(screen.getByRole('button', { name: /\+ 2 autres actions/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Réduire' }))
+    expect(screen.queryByText('Action numéro 6')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /\+ 2 autres actions/ }))
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByText('Action numéro 6')).not.toBeInTheDocument()
+  })
+})

@@ -14,7 +14,7 @@
 //   · aucun visage n'est inventé : la maquette empile des avatars par
 //     proposition, or rien ne relie une proposition à des personnes.
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   Camera, Check, ChevronDown, ChevronRight, FileText, Loader2, MapPin, Mic,
@@ -215,6 +215,30 @@ function Compris({ propositions, crHref }: { propositions: NarrativeProposal[]; 
     (x) => x.items.length > 0,
   )
 
+  // UNE SEULE FAMILLE OUVERTE À LA FOIS. On déplie pour lire les huit actions,
+  // pas pour ouvrir six colonnes en même temps — sinon on retombe sur la liste
+  // plate de 44 lignes que ces cartes servent justement à éviter.
+  const [ouverte, setOuverte] = useState<string | null>(null)
+  const grille = useRef<HTMLDivElement | null>(null)
+
+  // Cliquer ailleurs referme : la carte dépliée est une consultation, pas un
+  // état dans lequel on reste.
+  useEffect(() => {
+    if (!ouverte) return
+    const dehors = (e: MouseEvent) => {
+      if (grille.current && !grille.current.contains(e.target as Node)) setOuverte(null)
+    }
+    const echap = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOuverte(null)
+    }
+    document.addEventListener('mousedown', dehors)
+    document.addEventListener('keydown', echap)
+    return () => {
+      document.removeEventListener('mousedown', dehors)
+      document.removeEventListener('keydown', echap)
+    }
+  }, [ouverte])
+
   return (
     <Carte
       titre="Ce que MemorIA a compris"
@@ -226,33 +250,66 @@ function Compris({ propositions, crHref }: { propositions: NarrativeProposal[]; 
           MemorIA n’a rien proposé pour cette visite. Sans matière parlée ou écrite, il n’y a rien à comprendre.
         </p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {presentes.map(({ f, items }) => (
-            <div key={f.cle} className="rounded-lg border">
-              <div className="flex items-center gap-2 border-b px-3 py-2">
-                <f.icone className={`h-4 w-4 ${f.teinte}`} aria-hidden />
-                <span className="text-[13px] font-semibold">{f.label}</span>
-                <span className={`ml-auto rounded-full px-1.5 text-[12px] font-medium tabular-nums ${f.puce}`}>
-                  {items.length}
-                </span>
-              </div>
-              <ul className="space-y-1.5 px-3 py-2.5">
-                {items.slice(0, 4).map((p) => (
-                  <li key={p.id}>
-                    <span className="line-clamp-2 block text-[13px] leading-snug">{p.label}</span>
-                    {p.rationale && (
-                      <span className="line-clamp-1 block text-[11px] text-muted-foreground">{p.rationale}</span>
-                    )}
-                  </li>
-                ))}
-                {items.length > 4 && (
-                  <li className="text-[12px] text-muted-foreground">
-                    + {items.length - 4} autre{items.length - 4 > 1 ? 's' : ''} {f.pluriel}
-                  </li>
+        <div ref={grille} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {presentes.map(({ f, items }) => {
+            const depliee = ouverte === f.cle
+            const restant = items.length - 4
+            return (
+              <div
+                key={f.cle}
+                className={`rounded-lg border transition-colors ${
+                  depliee ? 'border-foreground/30 bg-muted/30 sm:col-span-2 xl:col-span-4' : ''
+                }`}
+              >
+                <div className="flex items-center gap-2 border-b px-3 py-2">
+                  <f.icone className={`h-4 w-4 ${f.teinte}`} aria-hidden />
+                  <span className="text-[13px] font-semibold">{f.label}</span>
+                  <span className={`ml-auto rounded-full px-1.5 text-[12px] font-medium tabular-nums ${f.puce}`}>
+                    {items.length}
+                  </span>
+                  {depliee && (
+                    <button
+                      type="button"
+                      onClick={() => setOuverte(null)}
+                      className="text-[12px] text-muted-foreground hover:text-foreground"
+                    >
+                      Réduire
+                    </button>
+                  )}
+                </div>
+                <ul
+                  className={
+                    depliee
+                      ? 'grid max-h-96 gap-x-6 gap-y-2 overflow-y-auto px-3 py-2.5 sm:grid-cols-2 xl:grid-cols-3'
+                      : 'space-y-1.5 px-3 py-2.5'
+                  }
+                >
+                  {(depliee ? items : items.slice(0, 4)).map((p) => (
+                    <li key={p.id}>
+                      <span className={`block text-[13px] leading-snug ${depliee ? '' : 'line-clamp-2'}`}>
+                        {p.label}
+                      </span>
+                      {p.rationale && (
+                        <span className={`block text-[11px] text-muted-foreground ${depliee ? '' : 'line-clamp-1'}`}>
+                          {p.rationale}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                {!depliee && restant > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setOuverte(f.cle)}
+                    aria-expanded={false}
+                    className="w-full border-t px-3 py-1.5 text-left text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    + {restant} autre{restant > 1 ? 's' : ''} {f.pluriel}
+                  </button>
                 )}
-              </ul>
-            </div>
-          ))}
+              </div>
+            )
+          })}
         </div>
       )}
     </Carte>
