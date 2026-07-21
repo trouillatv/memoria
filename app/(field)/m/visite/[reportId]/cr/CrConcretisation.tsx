@@ -1,6 +1,6 @@
 'use client'
 
-// « REPRENDRE LA SUITE DEPUIS MES CORRECTIONS » (Vincent, 2026-07-21).
+// « MEMORIA A PRÉPARÉ VOTRE CHANTIER » (Vincent, 2026-07-21).
 //
 //   Modifier   corrige le récit.
 //   Valider    approuve le récit.
@@ -10,22 +10,70 @@
 // CORRIGÉ — jamais la proposition d'origine — et montre ce que ce texte
 // produirait dans le chantier. Rien n'est créé tant qu'il n'a pas coché puis
 // cliqué : MemorIA propose, l'humain tranche.
+//
+// LE COMPTEUR EST LE HÉROS. Une liste de cases à cocher dit « voici du travail
+// à faire » ; un nombre annoncé dit « voici du travail DÉJÀ FAIT ». C'est la
+// même donnée, ce n'est pas la même chose à lire. Le détail vient après.
+//
+// La couleur ici ne dit pas un état métier — elle dit DE QUOI on parle. Une
+// teinte par famille, en pastille et en colonne à gauche, jamais en fond plein.
+// Et la colonne colorée n'est pas un ornement importé : c'est déjà la grammaire
+// du dépôt (la bande de lecture du LecturePanel).
 
 import { useState } from 'react'
-import { Loader2, Check, ListTodo, CalendarClock, Gavel, Users, BookOpen, ArrowRight } from 'lucide-react'
+import {
+  Loader2, Check, ListTodo, CalendarClock, Gavel, Users, BookOpen, ArrowRight, Sparkles,
+} from 'lucide-react'
 import {
   prepareCrConcretisationAction,
   createFromCrAction,
   type ReviewItem,
 } from './cr-concretisation-actions'
 import type { OperationalDiff } from '@/lib/visits/cr-concretisation'
+import { cn } from '@/lib/utils'
 
-const FAMILLE: Record<string, { label: string; Icon: typeof ListTodo }> = {
-  action: { label: 'Actions à créer', Icon: ListTodo },
-  echeance: { label: 'Échéances à ajouter', Icon: CalendarClock },
-  decision: { label: 'Décisions à enregistrer', Icon: Gavel },
-  memoire: { label: 'À retenir en mémoire', Icon: BookOpen },
-  intervenant: { label: 'Intervenants cités', Icon: Users },
+interface FamilleStyle {
+  label: string
+  court: string
+  pluriel: string
+  Icon: typeof ListTodo
+  spine: string
+  chip: string
+  dot: string
+  accent: string
+}
+
+const FAMILLE: Record<string, FamilleStyle> = {
+  action: {
+    label: 'Actions à créer', court: 'action', pluriel: 'actions', Icon: ListTodo,
+    spine: 'border-l-violet-400 dark:border-l-violet-500',
+    chip: 'bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300',
+    dot: 'bg-violet-500', accent: 'accent-violet-600',
+  },
+  echeance: {
+    label: 'Échéances à ajouter', court: 'échéance', pluriel: 'échéances', Icon: CalendarClock,
+    spine: 'border-l-rose-400 dark:border-l-rose-500',
+    chip: 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
+    dot: 'bg-rose-500', accent: 'accent-rose-600',
+  },
+  decision: {
+    label: 'Décisions à enregistrer', court: 'décision', pluriel: 'décisions', Icon: Gavel,
+    spine: 'border-l-emerald-400 dark:border-l-emerald-500',
+    chip: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
+    dot: 'bg-emerald-500', accent: 'accent-emerald-600',
+  },
+  memoire: {
+    label: 'À retenir en mémoire', court: 'à mémoriser', pluriel: 'à mémoriser', Icon: BookOpen,
+    spine: 'border-l-sky-400 dark:border-l-sky-500',
+    chip: 'bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300',
+    dot: 'bg-sky-500', accent: 'accent-sky-600',
+  },
+  intervenant: {
+    label: 'Intervenants cités', court: 'intervenant', pluriel: 'intervenants', Icon: Users,
+    spine: 'border-l-slate-300 dark:border-l-slate-600',
+    chip: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+    dot: 'bg-slate-400', accent: 'accent-slate-600',
+  },
 }
 
 const ORDRE = ['action', 'echeance', 'decision', 'memoire', 'intervenant']
@@ -72,13 +120,18 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
       return next
     })
 
+  // ── Avant la relecture ────────────────────────────────────────────────────
   if (items === null) {
     return (
       <section className="rounded-2xl border bg-background p-3.5 shadow-sm">
-        <h2 className="text-sm font-semibold">Et maintenant ?</h2>
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+          <Sparkles className="h-4 w-4 shrink-0 text-violet-500" aria-hidden />
+          Et maintenant ?
+        </h2>
         <p className="mt-1 text-[12px] text-muted-foreground">
-          MemorIA relit le compte-rendu <strong>tel que vous l’avez corrigé</strong>, dit ce que vos
-          corrections ont changé, et prépare ce qu’il faut créer dans le chantier.
+          MemorIA relit le compte-rendu <strong className="text-foreground">tel que vous l’avez
+          corrigé</strong>, dit ce que vos corrections ont changé, et prépare ce qu’il faut créer
+          dans le chantier.
         </p>
         <button
           type="button"
@@ -98,25 +151,52 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
 
   return (
     <section data-slot="cr-concretisation" className="rounded-2xl border bg-background p-3.5 shadow-sm">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">À créer dans le chantier</h2>
+      <div className="flex items-start justify-between gap-2">
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+          <Sparkles className="h-4 w-4 shrink-0 text-violet-500" aria-hidden />
+          MemorIA a préparé votre chantier
+        </h2>
         <button
           type="button"
           onClick={prepare}
           disabled={pending}
-          className="text-[12px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+          className="shrink-0 text-[12px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
         >
-          Relire mon texte
+          Relire
         </button>
       </div>
-      <p className="mt-1 text-[12px] text-muted-foreground">
-        Relu depuis votre texte corrigé. Décochez ce qui ne doit pas être créé.
-      </p>
 
-      {/* CE QUE MES CORRECTIONS ONT CHANGÉ — le repère qui manquait. Sans lui,
-          Guillaume relit une liste sans savoir ce que son travail a produit. */}
+      {/* LE NOMBRE D'ABORD — c'est un résultat, pas une liste de corvées. */}
+      <p className="mt-2 text-[13px] text-muted-foreground">
+        À partir de vos corrections, MemorIA propose{' '}
+        <strong className="text-foreground">{items.length} élément{items.length > 1 ? 's' : ''}</strong> :
+      </p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {ORDRE.map((kind) => {
+          const n = items.filter((i) => i.kind === kind).length
+          if (n === 0) return null
+          const f = FAMILLE[kind]!
+          return (
+            <span
+              key={kind}
+              className={cn('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-medium', f.chip)}
+            >
+              <span aria-hidden className={cn('h-1.5 w-1.5 rounded-full', f.dot)} />
+              {n} {n > 1 ? f.pluriel : f.court}
+            </span>
+          )
+        })}
+      </div>
+      {aCreer.length > 0 && (
+        <p className="mt-2 text-[12px] text-muted-foreground">
+          Tout est sélectionné. Décochez ce que vous ne voulez pas créer.
+        </p>
+      )}
+
+      {/* CE QUE MES CORRECTIONS ONT CHANGÉ — sans ce repère, on relit une liste
+          sans savoir ce que son propre travail a produit. */}
       {diff && !diff.unchanged && (
-        <ul data-slot="cr-diff" className="mt-2 space-y-0.5 rounded-lg bg-muted/50 px-2.5 py-2 text-[12px]">
+        <ul data-slot="cr-diff" className="mt-2.5 space-y-0.5 rounded-lg bg-muted/50 px-2.5 py-2 text-[12px]">
           {diff.added.length > 0 && (
             <li className="text-emerald-700 dark:text-emerald-400">
               + {diff.added.length} nouvelle{diff.added.length > 1 ? 's' : ''} depuis vos corrections
@@ -142,36 +222,49 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
       )}
 
       {done !== null && (
-        <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[12px] font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+        <p className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[12px] font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
           <Check className="h-3.5 w-3.5" aria-hidden />
           {done} élément{done > 1 ? 's' : ''} créé{done > 1 ? 's' : ''} dans le chantier.
         </p>
       )}
 
-      {aCreer.length === 0 && done === null && (
+      {items.length === 0 && (
         <p className="mt-3 text-[12px] italic text-muted-foreground">
           Rien à créer depuis ce compte-rendu.
         </p>
       )}
 
-      <div className="mt-3 space-y-3">
+      <div className="mt-3.5 space-y-3.5">
         {ORDRE.map((kind) => {
           const famille = items.filter((i) => i.kind === kind)
           if (famille.length === 0) return null
-          const { label, Icon } = FAMILLE[kind]!
+          const f = FAMILLE[kind]!
+          const { label, Icon } = f
           return (
             <div key={kind} data-famille={kind}>
-              <p className="flex items-center gap-1.5 text-[12px] font-semibold text-muted-foreground">
-                <Icon className="h-3.5 w-3.5" aria-hidden /> {label}
-                <span className="font-normal">({famille.length})</span>
+              <p className="flex items-center gap-1.5 text-[12px] font-semibold">
+                <span className={cn('inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full', f.chip)}>
+                  <Icon className="h-3 w-3" aria-hidden />
+                </span>
+                {label}
+                <span className="font-normal text-muted-foreground">({famille.length})</span>
               </p>
-              <ul className="mt-1 space-y-1">
+              <ul className="mt-1.5 space-y-1">
                 {famille.map((item) => (
-                  <li key={item.key} className="rounded-lg border bg-card px-2.5 py-2">
-                    <label className="flex items-start gap-2">
+                  <li
+                    key={item.key}
+                    className={cn(
+                      'rounded-lg border border-l-[3px] bg-card px-2.5 py-2 transition-opacity',
+                      f.spine,
+                      // Décoché = mis en retrait, jamais masqué : on doit voir
+                      // ce qu'on a écarté.
+                      item.creatable && !item.alreadyCreated && !chosen.has(item.key) && 'opacity-55',
+                    )}
+                  >
+                    <label className="flex items-start gap-2.5">
                       <input
                         type="checkbox"
-                        className="mt-0.5 h-4 w-4 shrink-0 accent-foreground disabled:opacity-40"
+                        className={cn('mt-0.5 h-4 w-4 shrink-0 disabled:opacity-40', f.accent)}
                         checked={chosen.has(item.key)}
                         disabled={!item.creatable || item.alreadyCreated || pending}
                         onChange={() => toggle(item.key)}
@@ -187,16 +280,16 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
                           </span>
                         )}
                         {item.alreadyCreated && (
-                          <span className="mt-0.5 block text-[11px] text-emerald-700 dark:text-emerald-400">
-                            Déjà créé depuis cette visite.
+                          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                            <Check className="h-3 w-3" aria-hidden /> Déjà créé
                           </span>
                         )}
                         {!item.creatable && (
                           // On ne fabrique pas une ligne de casting depuis un
                           // nom : le rôle et l'entreprise seraient inventés.
                           <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                            Cité dans le compte-rendu. L’associer au chantier se fait depuis le casting
-                            — son rôle ne s’invente pas.
+                            Cité dans le compte-rendu. L’associer au chantier se fait depuis le
+                            casting — son rôle ne s’invente pas.
                           </span>
                         )}
                       </span>
@@ -216,7 +309,7 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
           type="button"
           onClick={create}
           disabled={pending || chosen.size === 0}
-          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-foreground px-3 py-2.5 text-[13px] font-semibold text-background disabled:opacity-50"
+          className="mt-3.5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-foreground px-3 py-2.5 text-[13px] font-semibold text-background disabled:opacity-50"
         >
           {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
           Créer dans le chantier ({chosen.size})
