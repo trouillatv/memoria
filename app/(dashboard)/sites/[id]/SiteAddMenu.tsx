@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import Link from 'next/link'
 import { Camera, ChevronDown, FileText, Loader2, Mic, Video } from 'lucide-react'
@@ -20,19 +20,38 @@ export function SiteAddMenu({ siteId }: { siteId: string }) {
     setOpen(false)
   }
 
+  // ── LE MENU S'OUVRE AU CLIC, PLUS AU SURVOL (G1, Guillaume 2026-07-21) ────
+  //
+  // Il s'ouvrait sur `onMouseEnter` et se fermait sur le `onMouseLeave` du
+  // conteneur. Or le panneau est décollé du bouton de 8 px (`mt-2`) : en
+  // descendant vers une entrée, la souris traversait ce vide — qui n'appartient
+  // à aucun descendant — et le menu se refermait avant d'être atteint. Sur
+  // desktop, il était donc INUTILISABLE : il s'ouvrait, et rien n'était
+  // cliquable. Le bouton n'avait d'ailleurs aucun `onClick` : le menu
+  // n'existait qu'au survol, donc pas du tout au clavier ni au toucher.
+  //
+  // Un menu se pilote au clic. Il se ferme sur clic extérieur et sur Échap.
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (e: PointerEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
   return (
-    <div
-      ref={menuRef}
-      className="relative"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-      onFocus={() => setOpen(true)}
-      onBlur={(event) => {
-        if (!menuRef.current?.contains(event.relatedTarget)) setOpen(false)
-      }}
-    >
+    <div ref={menuRef} className="relative">
       <button
         type="button"
+        onClick={() => setOpen((v) => !v)}
         className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -41,13 +60,21 @@ export function SiteAddMenu({ siteId }: { siteId: string }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border bg-popover p-2 shadow-lg">
+        <div role="menu" className="absolute right-0 z-20 mt-2 w-72 rounded-xl border bg-popover p-2 shadow-lg">
           <MenuButton icon={<FileText className="h-4 w-4" />} label="Document PDF" onClick={() => openDialog('document')} />
           <MenuButton icon={<Camera className="h-4 w-4" />} label="Photos, vidéos, vocaux" onClick={() => openDialog('evidence')} />
-          <Link href={`/sites/${siteId}/actions`} className="block rounded-lg px-2.5 py-2 text-sm hover:bg-muted">
+          <Link
+            href={`/sites/${siteId}/actions`}
+            onClick={() => setOpen(false)}
+            className="block rounded-lg px-2.5 py-2 text-sm hover:bg-muted"
+          >
             Créer une action
           </Link>
-          <Link href={`/sites/${siteId}/reserves`} className="block rounded-lg px-2.5 py-2 text-sm hover:bg-muted">
+          <Link
+            href={`/sites/${siteId}/reserves`}
+            onClick={() => setOpen(false)}
+            className="block rounded-lg px-2.5 py-2 text-sm hover:bg-muted"
+          >
             Créer une réserve
           </Link>
         </div>
