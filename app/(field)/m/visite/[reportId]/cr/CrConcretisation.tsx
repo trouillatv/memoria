@@ -18,6 +18,7 @@ import {
   createFromCrAction,
   type ReviewItem,
 } from './cr-concretisation-actions'
+import type { OperationalDiff } from '@/lib/visits/cr-concretisation'
 
 const FAMILLE: Record<string, { label: string; Icon: typeof ListTodo }> = {
   action: { label: 'Actions à créer', Icon: ListTodo },
@@ -31,6 +32,7 @@ const ORDRE = ['action', 'echeance', 'decision', 'memoire', 'intervenant']
 
 export function CrConcretisation({ reportId }: { reportId: string }) {
   const [items, setItems] = useState<ReviewItem[] | null>(null)
+  const [diff, setDiff] = useState<OperationalDiff | null>(null)
   const [chosen, setChosen] = useState<Set<string>>(new Set())
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -45,6 +47,7 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
     setPending(false)
     if (!res.ok) return setError(res.error)
     setItems(res.items)
+    setDiff(res.diff)
     // Tout ce qui est créable et pas déjà créé part coché : le cas courant est
     // « je confirme », pas « je resélectionne tout ».
     setChosen(new Set(res.items.filter((i) => i.creatable && !i.alreadyCreated).map((i) => i.key)))
@@ -74,8 +77,8 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
       <section className="rounded-2xl border bg-background p-3.5 shadow-sm">
         <h2 className="text-sm font-semibold">Et maintenant ?</h2>
         <p className="mt-1 text-[12px] text-muted-foreground">
-          MemorIA relit le compte-rendu <strong>tel que vous l’avez corrigé</strong> et prépare ce
-          qu’il faut créer dans le chantier.
+          MemorIA relit le compte-rendu <strong>tel que vous l’avez corrigé</strong>, dit ce que vos
+          corrections ont changé, et prépare ce qu’il faut créer dans le chantier.
         </p>
         <button
           type="button"
@@ -84,7 +87,7 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
           className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-foreground px-3 py-2.5 text-[13px] font-semibold text-background disabled:opacity-50"
         >
           {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ArrowRight className="h-4 w-4" aria-hidden />}
-          Reprendre la suite depuis mes corrections
+          Mettre à jour les propositions
         </button>
         {error && <p className="mt-2 text-[12px] text-rose-600 dark:text-rose-400">{error}</p>}
       </section>
@@ -103,12 +106,40 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
           disabled={pending}
           className="text-[12px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
         >
-          Reprendre
+          Relire mon texte
         </button>
       </div>
       <p className="mt-1 text-[12px] text-muted-foreground">
         Relu depuis votre texte corrigé. Décochez ce qui ne doit pas être créé.
       </p>
+
+      {/* CE QUE MES CORRECTIONS ONT CHANGÉ — le repère qui manquait. Sans lui,
+          Guillaume relit une liste sans savoir ce que son travail a produit. */}
+      {diff && !diff.unchanged && (
+        <ul data-slot="cr-diff" className="mt-2 space-y-0.5 rounded-lg bg-muted/50 px-2.5 py-2 text-[12px]">
+          {diff.added.length > 0 && (
+            <li className="text-emerald-700 dark:text-emerald-400">
+              + {diff.added.length} nouvelle{diff.added.length > 1 ? 's' : ''} depuis vos corrections
+            </li>
+          )}
+          {diff.removed.length > 0 && (
+            <li className="text-muted-foreground">
+              − {diff.removed.length} que MemorIA proposait et que vous avez retirée
+              {diff.removed.length > 1 ? 's' : ''}
+            </li>
+          )}
+          {diff.changed.length > 0 && (
+            <li className="text-sky-700 dark:text-sky-400">
+              ~ {diff.changed.length} modifiée{diff.changed.length > 1 ? 's' : ''} (responsable ou date)
+            </li>
+          )}
+        </ul>
+      )}
+      {diff?.unchanged && (
+        <p className="mt-2 text-[12px] italic text-muted-foreground">
+          Vos corrections n’ont rien changé à ce qui sera créé.
+        </p>
+      )}
 
       {done !== null && (
         <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[12px] font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readOperationalItems } from '@/lib/visits/cr-concretisation'
+import { readOperationalItems, diffOperationalItems, asProposedSections } from '@/lib/visits/cr-concretisation'
 import type { ReportDocumentSection } from '@/types/db'
 
 const s = (key: string, content: string, ai = 'TEXTE IA À NE JAMAIS LIRE'): ReportDocumentSection => ({
@@ -78,5 +78,41 @@ describe('readOperationalItems — la concrétisation lit le TEXTE CORRIGÉ', ()
     const b = readOperationalItems(corrige).map((i) => i.key)
     expect(a).toEqual(b)
     expect(new Set(a).size).toBe(a.length)
+  })
+})
+
+describe('diffOperationalItems — ce que mes corrections ont changé', () => {
+  const proposé: ReportDocumentSection[] = [
+    { key: 'actions', title: 'Actions', kind: 'generative', content: '', ai_content: '- Relancer Yann — Guillaume, pour le 2026-07-24\n- Vérifier le TD' },
+    { key: 'echeances', title: 'Échéances', kind: 'generative', content: '', ai_content: '- Passage électricien — 2026-07-30' },
+  ]
+  const corrigé = proposé.map((s) =>
+    s.key === 'actions'
+      ? { ...s, content: '- Relancer Yann — Guillaume, pour le 2026-07-22\n- Commander le tableau' }
+      : { ...s, content: '' },
+  )
+
+  const before = readOperationalItems(asProposedSections(proposé))
+  const after = readOperationalItems(corrigé)
+  const diff = diffOperationalItems(before, after)
+
+  it('voit ce que le texte corrigé fait APPARAÎTRE', () => {
+    expect(diff.added.map((i) => i.label)).toEqual(['Commander le tableau'])
+  })
+
+  it('voit ce que les corrections ont fait DISPARAÎTRE', () => {
+    expect(diff.removed.map((i) => i.label).sort()).toEqual(['Passage électricien', 'Vérifier le TD'])
+  })
+
+  it('voit une date changée sans crier à la nouveauté', () => {
+    expect(diff.changed).toHaveLength(1)
+    expect(diff.changed[0]!.before.due).toBe('2026-07-24')
+    expect(diff.changed[0]!.after.due).toBe('2026-07-22')
+  })
+
+  it('dit franchement quand rien n’a bougé', () => {
+    const rien = diffOperationalItems(before, before)
+    expect(rien.unchanged).toBe(true)
+    expect(rien.added).toEqual([])
   })
 })

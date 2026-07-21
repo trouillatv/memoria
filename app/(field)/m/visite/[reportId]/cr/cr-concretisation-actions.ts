@@ -20,7 +20,13 @@
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getVisit } from '@/lib/db/visits'
 import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
-import { readOperationalItems, type OperationalItem } from '@/lib/visits/cr-concretisation'
+import {
+  readOperationalItems,
+  diffOperationalItems,
+  asProposedSections,
+  type OperationalItem,
+  type OperationalDiff,
+} from '@/lib/visits/cr-concretisation'
 import { createSiteAction, listSiteActionsByReport } from '@/lib/db/site-actions'
 import { createSiteDeadline } from '@/lib/db/site-deadlines'
 import { createSiteDecision } from '@/lib/db/site-decisions'
@@ -36,7 +42,7 @@ export interface ReviewItem extends OperationalItem {
 }
 
 export type PrepareResult =
-  | { ok: true; items: ReviewItem[]; status: string }
+  | { ok: true; items: ReviewItem[]; status: string; diff: OperationalDiff }
   | { ok: false; error: string }
 
 const norm = (s: string) => s.trim().toLowerCase()
@@ -69,9 +75,15 @@ export async function prepareCrConcretisationAction(reportId: string): Promise<P
   const existing = await listSiteActionsByReport(reportId).catch(() => [])
   const dejaCrees = new Set(existing.map((a) => norm(a.title)))
 
+  // CE QUE MES CORRECTIONS ONT CHANGÉ. On compare ce que produit le texte
+  // corrigé à ce que produisait la proposition d'origine : le conducteur voit
+  // l'effet de son travail, il ne relit pas une liste sans repère.
+  const diff = diffOperationalItems(readOperationalItems(asProposedSections(ctx.doc.sections)), items)
+
   return {
     ok: true,
     status: ctx.doc.status,
+    diff,
     items: items.map((i) => ({
       ...i,
       creatable: i.kind !== 'intervenant',

@@ -52,17 +52,17 @@ describe('CrDocumentSections — brouillon', () => {
 describe('CrDocumentSections — le bouton de restauration ne ment jamais', () => {
   it('apparaît quand une proposition MemorIA existe ET que le texte a bougé', () => {
     render(<CrDocumentSections reportId="r1" sections={sections} status="draft" />)
-    expect(within(row('resume')).getByRole('button', { name: /Proposition/ })).toBeTruthy()
+    expect(within(row('resume')).getByRole('button', { name: /Restaurer l’IA/ })).toBeTruthy()
   })
 
   it('reste absent quand le texte n’a pas bougé', () => {
     render(<CrDocumentSections reportId="r1" sections={sections} status="draft" />)
-    expect(within(row('decisions')).queryByRole('button', { name: /Proposition/ })).toBeNull()
+    expect(within(row('decisions')).queryByRole('button', { name: /Restaurer l’IA/ })).toBeNull()
   })
 
   it('reste absent sur une section écrite entièrement à la main', () => {
     render(<CrDocumentSections reportId="r1" sections={sections} status="draft" />)
-    expect(within(row('actions')).queryByRole('button', { name: /Proposition/ })).toBeNull()
+    expect(within(row('actions')).queryByRole('button', { name: /Restaurer l’IA/ })).toBeNull()
   })
 })
 
@@ -74,7 +74,7 @@ describe('CrDocumentSections — lecture seule', () => {
     render(<CrDocumentSections reportId="r1" sections={sections} status={status} />)
     expect(screen.getByText(label)).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Modifier/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Proposition/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Restaurer l’IA/ })).toBeNull()
     expect(screen.getByText(/ne se modifie plus/)).toBeTruthy()
   })
 })

@@ -164,19 +164,25 @@ function SectionRow({
   return (
     <div data-section={section.key} className="rounded-xl border bg-card p-3">
       <div className="flex items-start justify-between gap-2">
-        <h3 className="text-[13px] font-semibold">{section.title}</h3>
+        {/* L'ÉTAT DE SAUVEGARDE NE DÉPLACE RIEN (Vincent, 2026-07-21). Inséré
+            dans la ligne d'actions, il poussait « Restaurer l'IA » hors de
+            l'écran sur mobile. Il vit sous le titre, à gauche : il informe sans
+            bousculer la mise en page. */}
+        <div className="min-w-0">
+          <h3 className="text-[13px] font-semibold">{section.title}</h3>
+          {pending && (
+            <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Enregistrement…
+            </span>
+          )}
+          {!pending && justSaved && (
+            <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-400">
+              <Check className="h-3 w-3" aria-hidden /> Enregistré
+            </span>
+          )}
+        </div>
         {editable && !editing && (
           <div className="flex shrink-0 items-center gap-1">
-            {pending && (
-              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Enregistrement…
-              </span>
-            )}
-            {!pending && justSaved && (
-              <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-400">
-                <Check className="h-3 w-3" aria-hidden /> Enregistré
-              </span>
-            )}
             <button
               type="button"
               disabled={pending}
@@ -190,10 +196,10 @@ function SectionRow({
                 type="button"
                 onClick={restore}
                 disabled={pending}
-                title="Restaurer le texte proposé par MemorIA pour cette section"
+                title="Annuler mes corrections sur cette section et revenir au texte proposé par MemorIA"
                 className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] text-muted-foreground hover:bg-muted disabled:opacity-50"
               >
-                <RotateCcw className="h-3.5 w-3.5" aria-hidden /> Proposition
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden /> Restaurer l’IA
               </button>
             )}
           </div>

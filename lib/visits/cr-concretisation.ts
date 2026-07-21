@@ -124,3 +124,59 @@ export function readOperationalItems(sections: ReportDocumentSection[]): Operati
   }
   return items
 }
+
+// ── CE QUE MES CORRECTIONS ONT CHANGÉ ───────────────────────────────────────
+//
+// « Reprends mon texte et refais l'analyse » (Vincent, 2026-07-21). Le geste
+// utile n'est pas de restaurer l'ancienne proposition — c'est de RELIRE le
+// texte corrigé et de dire ce qui a bougé depuis. On compare donc ce que
+// produit `content` à ce que produisait la proposition d'origine (`ai_content`),
+// et on nomme la différence : nouvelles, disparues, modifiées.
+//
+// Déterministe et traçable : aucune inférence, aucun appel LLM. Chaque ligne du
+// diff vient d'un texte que Guillaume a sous les yeux.
+
+export interface OperationalDiff {
+  /** Ce que le texte corrigé fait apparaître et que l'IA n'avait pas proposé. */
+  added: OperationalItem[]
+  /** Ce que l'IA proposait et que les corrections ont fait disparaître. */
+  removed: OperationalItem[]
+  /** Même élément, complément changé (responsable, date, contrainte). */
+  changed: Array<{ before: OperationalItem; after: OperationalItem }>
+  /** Rien n'a bougé : le texte corrigé produit exactement la même chose. */
+  unchanged: boolean
+}
+
+const sameLabel = (a: OperationalItem, b: OperationalItem) =>
+  a.kind === b.kind && a.label.trim().toLowerCase() === b.label.trim().toLowerCase()
+
+const sameDetail = (a: OperationalItem, b: OperationalItem) =>
+  a.owner === b.owner && a.due === b.due && a.constraint === b.constraint
+
+/** Les sections telles que MemorIA les avait proposées — pour la comparaison. */
+export function asProposedSections(sections: ReportDocumentSection[]): ReportDocumentSection[] {
+  return sections.map((s) => ({ ...s, content: s.ai_content ?? s.content }))
+}
+
+/** Ce que les corrections ont changé, famille par famille. */
+export function diffOperationalItems(
+  before: OperationalItem[],
+  after: OperationalItem[],
+): OperationalDiff {
+  const added: OperationalItem[] = []
+  const changed: Array<{ before: OperationalItem; after: OperationalItem }> = []
+  const matched = new Set<OperationalItem>()
+
+  for (const item of after) {
+    const twin = before.find((b) => !matched.has(b) && sameLabel(b, item))
+    if (!twin) {
+      added.push(item)
+      continue
+    }
+    matched.add(twin)
+    if (!sameDetail(twin, item)) changed.push({ before: twin, after: item })
+  }
+
+  const removed = before.filter((b) => !matched.has(b))
+  return { added, removed, changed, unchanged: added.length + removed.length + changed.length === 0 }
+}

@@ -100,13 +100,13 @@ describe('Un échec serveur ne mange pas le travail en cours', () => {
   })
 })
 
-describe('« Revenir à la proposition » suit aussi la réponse du serveur', () => {
+describe('« Restaurer l’IA » suit aussi la réponse du serveur', () => {
   it('adopte ce que la base porte, sans supposer côté client', async () => {
     const corrige = sections.map((s) => (s.key === 'resume' ? { ...s, content: 'à jeter' } : s))
     saveResult = { ok: true, document: { id: 'doc-1', status: 'draft' as const, sections, updatedAt: 'x' } }
     render(<CrDocumentSections reportId="r1" sections={corrige} status="draft" />)
 
-    fireEvent.click(within(row('resume')).getByRole('button', { name: /Proposition/ }))
+    fireEvent.click(within(row('resume')).getByRole('button', { name: /Restaurer l’IA/ }))
     await waitFor(() => expect(within(row('resume')).getByText('proposition resume')).toBeTruthy())
     expect(restoreSpy).toHaveBeenCalledWith('r1', 'resume')
     expect(refreshSpy).not.toHaveBeenCalled()
