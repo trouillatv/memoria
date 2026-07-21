@@ -4,6 +4,7 @@
 import Link from 'next/link'
 import { ChevronRight, Camera, ListTodo } from 'lucide-react'
 import type { VisitWithCounts } from '@/lib/db/visits'
+import { NOUMEA_TZ } from '@/lib/time/local-date'
 
 const ORIGIN_LABEL: Record<string, string> = {
   planned: 'Planifiée',
@@ -12,9 +13,12 @@ const ORIGIN_LABEL: Record<string, string> = {
   gps: 'Sur place',
 }
 
+// Le rendu serveur tourne en UTC : une visite commencée à 10 h à Nouméa vaut
+// 23 h la VEILLE en UTC. Sans fuseau, la liste date la visite d'un jour trop
+// tôt — et rien à l'écran ne le signale.
 function fmtDate(iso: string | null): string {
   if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+  return new Date(iso).toLocaleDateString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function fmtDuration(started: string | null, ended: string | null): string | null {

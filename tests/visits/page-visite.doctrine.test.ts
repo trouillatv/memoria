@@ -151,6 +151,15 @@ describe('toutes les heures d’une visite sont celles du chantier', () => {
     ['app/(dashboard)/sites/[id]/visites/page.tsx', 'la liste des visites'],
     ['app/(field)/m/visite/[reportId]/recap/page.tsx', 'la récap mobile'],
     ['app/(field)/m/visite/[reportId]/cr/MemoriaRetained.tsx', 'la synthèse mobile'],
+    // Deuxième passe (Vincent, 2026-07-22) : la visite du 21/07 à 10 h s'affichait
+    // « 20 juillet » sur la fiche chantier ET dans le compte-rendu exporté.
+    ['app/(dashboard)/sites/[id]/SiteVisitsList.tsx', 'la liste des visites du chantier'],
+    ['app/(field)/m/reunion/[reportId]/page.tsx', 'la récap de réunion'],
+    ['app/(dashboard)/sites/[id]/visites/[visitId]/compte-rendu/page.tsx', 'le compte-rendu au bureau'],
+    ['app/(dashboard)/sites/[id]/visites/[visitId]/compte-rendu/atelier/page.tsx', 'l’atelier du compte-rendu'],
+    // Le producteur, pas seulement les écrans : `dateLabel` d'ici part dans le
+    // PDF et l'export markdown, où une date fausse devient un document faux.
+    ['lib/db/visits.ts', 'les libellés de date du moteur de visite'],
   ] as const
 
   it.each(surfaces)('%s — %s ne formate aucune date en UTC', (fichier) => {

@@ -27,6 +27,10 @@ import { listProposals, bulkInsertProposals } from '@/lib/db/site-reports'
 import { toProposalRows, proposalVisitKind, proposalCaptureId, proposalExcerpt } from '@/lib/visits/suite-proposals'
 import { visitIntentLabel } from '@/lib/field/visit-intents'
 import { listSubjectsBySite } from '@/lib/db/subjects'
+// Le chantier est à Nouméa, le serveur tourne en UTC. Toute date de visite
+// rendue sans fuseau recule d'un jour dès que la visite a commencé avant 11 h
+// locale — c'est-à-dire presque toujours. Cf. `lib/time/local-date.ts`.
+import { NOUMEA_TZ, localDateOf, todayLocalIso, yesterdayLocalIso } from '@/lib/time/local-date'
 import type {
   DbSiteReport,
   VisitMotive,
@@ -680,7 +684,7 @@ export async function buildVisitEvolution(reportId: string, siteId: string): Pro
   const prevVisit = prev as { id: string; started_at: string | null; ended_at: string | null; created_at: string } | null
   if (!prevVisit) return empty
   const since = prevVisit.ended_at ?? prevVisit.started_at ?? prevVisit.created_at
-  const prevDateLabel = new Date(since).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+  const prevDateLabel = new Date(since).toLocaleDateString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'long' })
 
   const [{ data: resRows }, photosRes, rec] = await Promise.all([
     supabase.from('site_reserve').select('label, location, status, created_at, lifted_at').eq('site_id', siteId),
@@ -725,7 +729,7 @@ export async function buildSitePatrimoine(siteId: string): Promise<SitePatrimoin
   const first = firstRes.data as { started_at: string | null; created_at: string } | null
   const firstIso = first?.started_at ?? first?.created_at ?? null
   return {
-    firstVisitLabel: firstIso ? new Date(firstIso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : null,
+    firstVisitLabel: firstIso ? new Date(firstIso).toLocaleDateString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'long', year: 'numeric' }) : null,
     photos: photosRes.count ?? 0,
     visits: visitsRes.count ?? 0,
     meetings: meetingsRes.count ?? 0,
@@ -803,7 +807,7 @@ export interface SiteStatusCell {
 function shortDate(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+  return d.toLocaleDateString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'short' })
 }
 
 export async function buildSiteStatusSummary(siteId: string): Promise<SiteStatusCell[]> {
@@ -875,15 +879,18 @@ export interface RecentSiteItem {
   openReserves: number
 }
 
+// « Aujourd'hui » et « Hier » se comptent en jours DU CHANTIER. Le minuit du
+// serveur (UTC) tombe à 11 h à Nouméa : une visite de 9 h était datée d'hier
+// jusqu'en fin de matinée, puis redevenait d'aujourd'hui. On compare donc des
+// dates civiles Nouméa (yyyy-mm-dd, comparables telles quelles), pas des
+// instants rapportés à un minuit qui n'est pas le nôtre.
 function relativeDayLabel(iso: string): string {
   const d = new Date(iso)
-  const now = new Date()
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-  const t = d.getTime()
-  if (Number.isNaN(t)) return ''
-  if (t >= startToday) return "Aujourd'hui"
-  if (t >= startToday - 86400000) return 'Hier'
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+  if (Number.isNaN(d.getTime())) return ''
+  const jour = localDateOf(d)
+  if (jour >= todayLocalIso()) return "Aujourd'hui"
+  if (jour === yesterdayLocalIso()) return 'Hier'
+  return d.toLocaleDateString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'short' })
 }
 
 export async function listRecentSitesForUser(userId: string, limit = 3): Promise<RecentSiteItem[]> {
@@ -1624,7 +1631,7 @@ export async function gatherVisitTextSuites(reportId: string, userId: string | n
 function frDate(iso: string | null): string {
   if (!iso) return '—'
   const d = new Date(iso)
-  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR', { timeZone: NOUMEA_TZ, day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 export interface SiteHistorySummary {
@@ -1990,7 +1997,10 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   }
 
   const startIso = visit.started_at ?? visit.created_at
-  const dateLabel = new Date(startIso).toLocaleString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  // CETTE DATE PART AUSSI DANS LE PDF ET L'EXPORT MARKDOWN. Un compte-rendu
+  // qui date la visite de la veille est un document faux, pas un affichage
+  // approximatif : il sort de MemorIA et vit ensuite chez le client.
+  const dateLabel = new Date(startIso).toLocaleString('fr-FR', { timeZone: NOUMEA_TZ, day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
   const durMins = visit.started_at && visit.ended_at
     ? Math.max(0, Math.round((new Date(visit.ended_at).getTime() - new Date(visit.started_at).getTime()) / 60000))
     : null

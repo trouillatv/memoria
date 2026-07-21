@@ -4,6 +4,7 @@ import { ArrowLeft, Gavel, Monitor, History } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
+import { NOUMEA_TZ } from '@/lib/time/local-date'
 import type { DbSiteReport } from '@/types/db'
 
 export const dynamic = 'force-dynamic'
@@ -48,7 +49,10 @@ export default async function MeetingRecapPage({
   const authorName = (author as { full_name: string | null } | null)?.full_name?.trim() || null
 
   const startIso = report.started_at ?? report.created_at
+  // Fuseau du chantier, pas du serveur : Vercel tourne en UTC et daterait la
+  // réunion de la veille (et l'heure de 11 h de trop).
   const dateLabel = new Date(startIso).toLocaleString('fr-FR', {
+    timeZone: NOUMEA_TZ,
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
   })
 
