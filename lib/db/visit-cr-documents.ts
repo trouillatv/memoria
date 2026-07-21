@@ -47,17 +47,23 @@ export async function getVisitCrDocument(reportId: string): Promise<DbReportDocu
 }
 
 /** La visite et l'analyse déjà EN CACHE. On ne déclenche aucune génération. */
-async function readVisitAndAnalysis(
-  reportId: string,
-): Promise<{ siteId: string | null; analysis: VisitCrAnalysis | null } | null> {
+async function readVisitAndAnalysis(reportId: string): Promise<{
+  siteId: string | null
+  orgId: string | null
+  analysis: VisitCrAnalysis | null
+} | null> {
   const { data } = await createAdminClient()
     .from('site_reports')
-    .select('id, site_id, debrief_analysis')
+    .select('id, site_id, organization_id, debrief_analysis')
     .eq('id', reportId)
     .maybeSingle()
   if (!data) return null
-  const row = data as { site_id: string | null; debrief_analysis: VisitCrAnalysis | null }
-  return { siteId: row.site_id, analysis: row.debrief_analysis ?? null }
+  const row = data as {
+    site_id: string | null
+    organization_id: string | null
+    debrief_analysis: VisitCrAnalysis | null
+  }
+  return { siteId: row.site_id, orgId: row.organization_id, analysis: row.debrief_analysis ?? null }
 }
 
 /**
@@ -91,6 +97,11 @@ export async function getOrCreateVisitCrDocument(
     const id = await createReportDocument({
       report_id: reportId,
       site_id: visit.siteId,
+      // L'organisation vient de LA VISITE, pas du contexte de requête :
+      // `organization_id` est NOT NULL en base, et un `getOrgId()` qui échoue
+      // ferait disparaître le CR editable sans un mot (defaut trouve en recette
+      // reelle, 2026-07-21).
+      organization_id: visit.orgId,
       template_key: CR_VISITE_TEMPLATE_KEY,
       sections: withAiBaseline(buildVisitCrSections(visit.analysis)),
       provider: null,

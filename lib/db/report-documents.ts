@@ -22,9 +22,15 @@ export async function createReportDocument(input: {
   model: string | null
   prompt_version: string | null
   created_by: string | null
+  /** Organisation PROPRIÉTAIRE du document. `organization_id` est NOT NULL en
+   *  base (mig 120) : sans elle, l'insert échoue. Quand l'appelant la connaît de
+   *  source sûre — celle du rapport lui-même — il la passe ici plutôt que de
+   *  dépendre du contexte de requête. Omise : on retombe sur `getOrgId()`,
+   *  comportement historique du PV, inchangé. */
+  organization_id?: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
-  const organization_id = await getOrgId().catch(() => null)
+  const organization_id = input.organization_id ?? (await getOrgId().catch(() => null))
   const { data, error } = await supabase
     .from('report_documents')
     .insert({
