@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readOperationalItems, diffOperationalItems, asProposedSections } from '@/lib/visits/cr-concretisation'
+import { readOperationalItems, diffOperationalItems, asProposedSections, toCreate } from '@/lib/visits/cr-concretisation'
 import type { ReportDocumentSection } from '@/types/db'
 
 const s = (key: string, content: string, ai = 'TEXTE IA À NE JAMAIS LIRE'): ReportDocumentSection => ({
@@ -114,5 +114,41 @@ describe('diffOperationalItems — ce que mes corrections ont changé', () => {
     const rien = diffOperationalItems(before, before)
     expect(rien.unchanged).toBe(true)
     expect(rien.added).toEqual([])
+  })
+})
+
+describe('toCreate — jamais deux fois le même objet', () => {
+  const item = (kind: string, label: string) =>
+    ({ key: `${kind}:${label}`, kind, label, owner: null, due: null, constraint: null, sourceSection: kind }) as never
+
+  it('écarte ce qui existe déjà dans le chantier', () => {
+    const { create, skipped } = toCreate(
+      [item('action', 'Relancer Yann'), item('action', 'Commander le tableau')],
+      new Set(['action:relancer yann']),
+    )
+    expect(create.map((i) => i.label)).toEqual(['Commander le tableau'])
+    expect(skipped.map((i) => i.label)).toEqual(['Relancer Yann'])
+  })
+
+  it('ignore la casse et les espaces — « Relancer Yann » ne revient pas deux fois', () => {
+    const { create } = toCreate([item('action', '  RELANCER yann ')], new Set(['action:relancer yann']))
+    expect(create).toEqual([])
+  })
+
+  it('dédoublonne AUSSI à l’intérieur du même envoi', () => {
+    const { create, skipped } = toCreate(
+      [item('action', 'Vérifier le TD'), item('action', 'Vérifier le TD')],
+      new Set(),
+    )
+    expect(create).toHaveLength(1)
+    expect(skipped).toHaveLength(1)
+  })
+
+  it('ne confond pas deux familles portant le même libellé', () => {
+    const { create } = toCreate(
+      [item('action', 'Passage électricien'), item('echeance', 'Passage électricien')],
+      new Set(),
+    )
+    expect(create).toHaveLength(2)
   })
 })

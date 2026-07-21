@@ -180,3 +180,41 @@ export function diffOperationalItems(
   const removed = before.filter((b) => !matched.has(b))
   return { added, removed, changed, unchanged: added.length + removed.length + changed.length === 0 }
 }
+
+// ── L'ANTI-DOUBLON ──────────────────────────────────────────────────────────
+//
+// Créer deux fois la même action parce qu'on a recliqué, ou parce qu'un second
+// onglet est passé avant, serait la pire trahison de ce parcours : le chantier
+// se remplirait de jumeaux que personne n'a demandés.
+//
+// La signature est le couple (famille, libellé normalisé). Elle vaut pour la
+// comparaison avec ce qui existe DÉJÀ dans le chantier, et à l'intérieur d'un
+// même envoi : deux lignes identiques ne créent qu'un objet.
+
+/** L'identité d'un élément aux yeux de l'anti-doublon. */
+export function signatureOf(item: Pick<OperationalItem, 'kind' | 'label'>): string {
+  return `${item.kind}:${item.label.trim().toLowerCase()}`
+}
+
+/**
+ * Ce qui reste à créer, une fois retiré ce qui existe déjà — et une fois retirés
+ * les doublons internes à la sélection elle-même.
+ */
+export function toCreate(
+  items: OperationalItem[],
+  existing: Set<string>,
+): { create: OperationalItem[]; skipped: OperationalItem[] } {
+  const seen = new Set(existing)
+  const create: OperationalItem[] = []
+  const skipped: OperationalItem[] = []
+  for (const item of items) {
+    const sig = signatureOf(item)
+    if (seen.has(sig)) {
+      skipped.push(item)
+      continue
+    }
+    seen.add(sig)
+    create.push(item)
+  }
+  return { create, skipped }
+}

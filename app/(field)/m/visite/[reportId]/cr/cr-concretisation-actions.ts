@@ -24,13 +24,42 @@ import {
   readOperationalItems,
   diffOperationalItems,
   asProposedSections,
+  signatureOf,
+  toCreate,
   type OperationalItem,
   type OperationalDiff,
 } from '@/lib/visits/cr-concretisation'
 import { createSiteAction, listSiteActionsByReport } from '@/lib/db/site-actions'
-import { createSiteDeadline } from '@/lib/db/site-deadlines'
-import { createSiteDecision } from '@/lib/db/site-decisions'
-import { addCapturedKnowledge } from '@/lib/db/captured-knowledge'
+import { createSiteDeadline, listSiteDeadlines } from '@/lib/db/site-deadlines'
+import { createSiteDecision, listDecisionsByReport } from '@/lib/db/site-decisions'
+import { addCapturedKnowledge, listCapturedKnowledgeBySource } from '@/lib/db/captured-knowledge'
+
+/** Provenance unique : tout ce qui naît d'un CR de visite le dit. */
+const CREATED_FROM = 'cr_visite'
+
+/**
+ * CE QUI EXISTE DÉJÀ POUR CETTE VISITE, famille par famille.
+ *
+ * L'anti-doublon ne peut pas venir d'un drapeau posé sur le document : le
+ * chantier est la seule vérité de ce qui a été créé. On regarde donc les objets
+ * eux-mêmes, filtrés sur la visite d'origine.
+ */
+async function existingTitles(reportId: string, siteId: string): Promise<Set<string>> {
+  const [actions, deadlines, decisions, knowledge] = await Promise.all([
+    listSiteActionsByReport(reportId).catch(() => []),
+    listSiteDeadlines(siteId).catch(() => []),
+    listDecisionsByReport(reportId).catch(() => []),
+    listCapturedKnowledgeBySource(reportId).catch(() => []),
+  ])
+  const set = new Set<string>()
+  for (const a of actions) set.add(signatureOf({ kind: 'action', label: a.title }))
+  for (const d of deadlines) {
+    if (d.report_id === reportId) set.add(signatureOf({ kind: 'echeance', label: d.title }))
+  }
+  for (const d of decisions) set.add(signatureOf({ kind: 'decision', label: d.titre }))
+  for (const k of knowledge) set.add(signatureOf({ kind: 'memoire', label: k.title }))
+  return set
+}
 
 /** Un élément prêt à créer, tel que l'écran de revue le montre. */
 export interface ReviewItem extends OperationalItem {
@@ -44,8 +73,6 @@ export interface ReviewItem extends OperationalItem {
 export type PrepareResult =
   | { ok: true; items: ReviewItem[]; status: string; diff: OperationalDiff }
   | { ok: false; error: string }
-
-const norm = (s: string) => s.trim().toLowerCase()
 
 async function open(reportId: string) {
   const user = await getCurrentUserWithProfile()
@@ -70,10 +97,9 @@ export async function prepareCrConcretisationAction(reportId: string): Promise<P
   if (!ctx.ok) return ctx
 
   const items = readOperationalItems(ctx.doc.sections)
-  // Déjà créé ? On regarde les ACTIONS du chantier nées de cette visite. C'est
-  // le garde-fou anti-doublon quand on revient sur un CR déjà concrétisé.
-  const existing = await listSiteActionsByReport(reportId).catch(() => [])
-  const dejaCrees = new Set(existing.map((a) => norm(a.title)))
+  // Déjà créé ? On regarde le CHANTIER, pour les quatre familles. C'est le
+  // garde-fou anti-doublon quand on revient sur un CR déjà concrétisé.
+  const dejaCrees = await existingTitles(reportId, ctx.visit.site_id!)
 
   // CE QUE MES CORRECTIONS ONT CHANGÉ. On compare ce que produit le texte
   // corrigé à ce que produisait la proposition d'origine : le conducteur voit
@@ -87,12 +113,25 @@ export async function prepareCrConcretisationAction(reportId: string): Promise<P
     items: items.map((i) => ({
       ...i,
       creatable: i.kind !== 'intervenant',
-      alreadyCreated: i.kind === 'action' && dejaCrees.has(norm(i.label)),
+      alreadyCreated: dejaCrees.has(signatureOf(i)),
     })),
   }
 }
 
-export type CreateResult = { ok: true; created: number } | { ok: false; error: string }
+/** Le compte-rendu de la transaction : ce qui est né, et ce qui a résisté. */
+export interface CreationSummary {
+  /** Nombre créé par famille — ce que l'écran annonce, ligne par ligne. */
+  byKind: Record<string, number>
+  total: number
+  /** Déjà présents : ignorés en silence, jamais recréés. */
+  skipped: number
+  /** Ce qui a échoué, nommé. On ne masque pas un échec. */
+  failed: string[]
+  /** Où aller ensuite. */
+  siteId: string
+}
+
+export type CreateResult = { ok: true; summary: CreationSummary } | { ok: false; error: string }
 
 /**
  * Crée dans le chantier les éléments COCHÉS, et eux seuls. Chaque objet garde
@@ -106,10 +145,25 @@ export async function createFromCrAction(reportId: string, keys: string[]): Prom
 
   const siteId = ctx.visit.site_id!
   const userId = ctx.user.id
-  const items = readOperationalItems(ctx.doc.sections).filter((i) => chosen.has(i.key))
+  const items = readOperationalItems(ctx.doc.sections).filter(
+    (i) => chosen.has(i.key) && i.kind !== 'intervenant',
+  )
 
-  let created = 0
-  for (const item of items) {
+  // L'IDEMPOTENCE SE VÉRIFIE ICI, PAS SEULEMENT À L'AFFICHAGE. Entre la
+  // préparation et le clic, un autre onglet a pu créer. On relit donc le
+  // chantier juste avant d'écrire : relancer la création est toujours sans
+  // danger — c'est ce qui remplace un rollback, et c'est mieux qu'un rollback,
+  // car un échec partiel ne détruit pas ce qui a réussi.
+  const deja = await existingTitles(reportId, siteId)
+  // La règle vit dans le module pur, sous test : elle écarte ce qui existe déjà
+  // ET les doublons internes à la sélection.
+  const { create, skipped: ignores } = toCreate(items, deja)
+
+  const byKind: Record<string, number> = {}
+  const failed: string[] = []
+  const skipped = ignores.length
+
+  for (const item of create) {
     try {
       if (item.kind === 'action') {
         await createSiteAction({
@@ -120,7 +174,7 @@ export async function createFromCrAction(reportId: string, keys: string[]): Prom
           // Une date DITE est explicite ; jamais estimée à notre initiative.
           due_date_status: item.due ? 'explicit' : null,
           created_by: userId,
-          created_from: 'report',
+          created_from: CREATED_FROM,
         })
       } else if (item.kind === 'echeance') {
         await createSiteDeadline({
@@ -131,7 +185,7 @@ export async function createFromCrAction(reportId: string, keys: string[]): Prom
           constraint_text: item.constraint,
           due_date: item.due,
           created_by: userId,
-          created_from: 'cr_visite',
+          created_from: CREATED_FROM,
         })
       } else if (item.kind === 'decision') {
         await createSiteDecision({
@@ -139,11 +193,11 @@ export async function createFromCrAction(reportId: string, keys: string[]): Prom
           reportId,
           titre: item.label,
           echeance: item.due,
-          // « à confirmer » : c'est un humain qui l'a écrite, mais elle n'a pas
-          // été actée en réunion. On ne surclasse jamais une source.
+          // « à confirmer » : un humain l'a écrite, mais elle n'a pas été actée
+          // en réunion. On ne surclasse jamais une source.
           confiance: 'à confirmer',
         })
-      } else if (item.kind === 'memoire') {
+      } else {
         await addCapturedKnowledge({
           siteId,
           sourceType: 'visit',
@@ -152,16 +206,19 @@ export async function createFromCrAction(reportId: string, keys: string[]): Prom
           title: item.label,
           createdBy: userId,
         })
-      } else {
-        continue // intervenant : jamais créé ici (cf. en-tête)
       }
-      created++
+      byKind[item.kind] = (byKind[item.kind] ?? 0) + 1
     } catch {
-      // Un échec sur un élément n'annule pas les autres : le conducteur voit
-      // ce qui est passé, et peut relancer le reste sans tout refaire.
+      // Un échec n'annule pas les autres : perdre douze créations réussies
+      // pour une qui a raté serait pire que le problème. On le NOMME, et
+      // relancer est sans risque puisque l'anti-doublon protège.
+      failed.push(item.label)
     }
   }
 
-  if (created === 0) return { ok: false, error: 'Aucun élément n’a pu être créé' }
-  return { ok: true, created }
+  const total = Object.values(byKind).reduce((n, v) => n + v, 0)
+  if (total === 0 && skipped === 0) {
+    return { ok: false, error: 'Aucun élément n’a pu être créé' }
+  }
+  return { ok: true, summary: { byKind, total, skipped, failed, siteId } }
 }

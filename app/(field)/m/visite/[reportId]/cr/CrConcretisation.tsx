@@ -24,10 +24,12 @@ import { useState } from 'react'
 import {
   Loader2, Check, ListTodo, CalendarClock, Gavel, Users, BookOpen, ArrowRight, Sparkles,
 } from 'lucide-react'
+import Link from 'next/link'
 import {
   prepareCrConcretisationAction,
   createFromCrAction,
   type ReviewItem,
+  type CreationSummary,
 } from './cr-concretisation-actions'
 import type { OperationalDiff } from '@/lib/visits/cr-concretisation'
 import { cn } from '@/lib/utils'
@@ -88,7 +90,7 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
   const [chosen, setChosen] = useState<Set<string>>(new Set())
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState<number | null>(null)
+  const [done, setDone] = useState<CreationSummary | null>(null)
 
   const prepare = async () => {
     if (pending) return
@@ -112,7 +114,7 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
     const res = await createFromCrAction(reportId, [...chosen])
     setPending(false)
     if (!res.ok) return setError(res.error)
-    setDone(res.created)
+    setDone(res.summary)
     void prepare() // on relit : ce qui vient d'être créé se marque comme tel
   }
 
@@ -246,11 +248,53 @@ export function CrConcretisation({ reportId }: { reportId: string }) {
         </p>
       )}
 
-      {done !== null && (
-        <p className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[12px] font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
-          <Check className="h-3.5 w-3.5" aria-hidden />
-          {done} élément{done > 1 ? 's' : ''} créé{done > 1 ? 's' : ''} dans le chantier.
-        </p>
+      {/* CE QUI VIENT D'ÊTRE CRÉÉ — nommé famille par famille, puis la porte
+          vers le chantier. Sans ce retour, le conducteur a lancé un traitement
+          invisible et doit aller vérifier lui-même. */}
+      {done && (
+        <div
+          data-slot="cr-cree"
+          className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/25"
+        >
+          <p className="flex items-center gap-1.5 text-[13px] font-semibold text-emerald-900 dark:text-emerald-200">
+            <Check className="h-4 w-4 shrink-0" aria-hidden />
+            {done.total > 0
+              ? `${done.total} élément${done.total > 1 ? 's' : ''} créé${done.total > 1 ? 's' : ''} dans le chantier`
+              : 'Tout était déjà dans le chantier'}
+          </p>
+          {done.total > 0 && (
+            <ul className="mt-1.5 space-y-0.5 text-[12px] text-emerald-800 dark:text-emerald-300">
+              {ORDRE.map((kind) => {
+                const n = done.byKind[kind] ?? 0
+                if (n === 0) return null
+                const f = FAMILLE[kind]!
+                return (
+                  <li key={kind}>
+                    ✓ {n} {n > 1 ? f.pluriel : f.court}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          {done.skipped > 0 && (
+            <p className="mt-1.5 text-[11px] text-emerald-800/80 dark:text-emerald-300/80">
+              {done.skipped} étai{done.skipped > 1 ? 'ent' : 't'} déjà là — rien n’a été dupliqué.
+            </p>
+          )}
+          {done.failed.length > 0 && (
+            // Un échec se dit. Relancer est sans risque : l'anti-doublon tient.
+            <p className="mt-1.5 text-[11px] font-medium text-rose-700 dark:text-rose-400">
+              {done.failed.length} n’a pas pu être créé ({done.failed.join(', ')}). Vous pouvez
+              relancer sans rien dupliquer.
+            </p>
+          )}
+          <Link
+            href={`/m/site/${done.siteId}`}
+            className="mt-2.5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-[13px] font-semibold text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+          >
+            Ouvrir le chantier <ArrowRight className="h-4 w-4" aria-hidden />
+          </Link>
+        </div>
       )}
 
       {items.length === 0 && (
