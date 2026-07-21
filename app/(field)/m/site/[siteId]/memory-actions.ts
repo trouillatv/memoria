@@ -62,6 +62,8 @@ const promoteSchema = baseSchema.extend({
    *  serveur répond needs_input:['company'] sinon, jamais une entreprise à son nom). */
   person_name: z.string().trim().max(200).optional(),
   contact_id: z.string().uuid().nullish(),
+  /** Rattacher à une entreprise connue : son id, jamais son libellé affiché. */
+  company_id: z.string().uuid().nullish(),
   /** REQUIS pour une information : périssable ou durable ? L'humain tranche. */
   knowledge_kind: z.enum(['current_information', 'durable_knowledge']).optional(),
 })
@@ -93,6 +95,7 @@ export async function promoteFromMemoryAction(
         companyName: parsed.data.company_name,
         personName: parsed.data.person_name,
         contactId: parsed.data.contact_id ?? null,
+        companyId: parsed.data.company_id ?? null,
         knowledgeKind: parsed.data.knowledge_kind,
       },
     })

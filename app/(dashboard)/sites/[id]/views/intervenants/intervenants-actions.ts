@@ -167,3 +167,110 @@ export async function associateContactAction(
     return { ok: false, error: 'Association impossible' }
   }
 }
+
+// ── RATTACHER UNE MENTION À UNE IDENTITÉ CONNUE (Vincent, 2026-07-22) ────────
+//
+// « À identifier » n'offrait que deux issues : confirmer comme NOUVEL
+// intervenant, ou ne pas retenir. L'écran poussait donc mécaniquement au
+// doublon : « Clim Expert », « AGP SARL » et « Yan » créaient des identités à
+// côté de celles qui existaient déjà.
+//
+// Trois cas, et ils ne se traitent pas pareil :
+//   · même identité, autre orthographe (« Yan » → Yann Leroy) ;
+//   · métier ou description (« l'électricien ») — rattachable, mais SEULEMENT
+//     par décision humaine, jamais par ressemblance ;
+//   · entreprise citée à la place d'une personne (« AGP ») → on rattache à
+//     l'ENTREPRISE, on ne fabrique pas un contact au nom de la société.
+//
+// D'où une recherche qui rend les DEUX natures, et dit lesquelles sont déjà sur
+// ce chantier — c'est presque toujours la bonne réponse.
+
+export interface IntervenantTarget {
+  kind: 'company' | 'contact'
+  /** L'entreprise visée ; pour un contact, celle sous laquelle il vit. */
+  companyId: string
+  companyName: string
+  /** Renseigné pour un contact seulement. */
+  contactId?: string
+  name: string
+  fonction: string | null
+  /** Déjà au casting de ce chantier — et sous quel(s) rôle(s). */
+  onThisSite: boolean
+  /** Le rôle déjà en vigueur : il évite de reposer la question. */
+  knownRole: string | null
+}
+
+export async function searchIntervenantTargetsAction(
+  input: z.input<typeof searchSchema>,
+): Promise<{ ok: true; hits: IntervenantTarget[] } | { ok: false; error: string }> {
+  try {
+    await requireManagerOrAdmin()
+  } catch {
+    return { ok: false, error: 'Non autorisé' }
+  }
+  const parsed = searchSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Recherche invalide' }
+  const orgId = await requireSiteInOrg(parsed.data.site_id)
+  if (!orgId) return { ok: false, error: 'Chantier introuvable' }
+
+  const db = createAdminClient()
+  const q = parsed.data.q
+  const { data: companies } = await db
+    .from('companies')
+    .select('id, name, short_name')
+    .eq('organization_id', orgId)
+    .is('deleted_at', null)
+  const rows = (companies ?? []) as Array<{ id: string; name: string; short_name: string | null }>
+  if (rows.length === 0) return { ok: true, hits: [] }
+  const labelById = new Map(rows.map((c) => [c.id, (c.short_name || c.name || '').trim()]))
+
+  // Le casting en vigueur : c'est lui qui distingue « déjà ici » de « ailleurs
+  // dans l'organisation », et qui donne le rôle sans le redemander.
+  const { data: casting } = await db
+    .from('site_intervenants')
+    .select('company_id, role')
+    .eq('site_id', parsed.data.site_id)
+    .is('effective_to', null)
+  const roleByCompany = new Map(
+    ((casting ?? []) as Array<{ company_id: string; role: string }>).map((c) => [c.company_id, c.role]),
+  )
+
+  const needle = q.toLowerCase()
+  const matchedCompanies = rows.filter(
+    (c) => (c.name ?? '').toLowerCase().includes(needle) || (c.short_name ?? '').toLowerCase().includes(needle),
+  )
+
+  const { data: contacts } = await db
+    .from('company_contacts')
+    .select('id, full_name, function, company_id')
+    .in('company_id', [...labelById.keys()])
+    .is('deleted_at', null)
+    .ilike('full_name', `%${q}%`)
+    .order('full_name', { ascending: true })
+    .limit(8)
+
+  const hits: IntervenantTarget[] = [
+    ...matchedCompanies.slice(0, 8).map((c) => ({
+      kind: 'company' as const,
+      companyId: c.id,
+      companyName: labelById.get(c.id) ?? c.name,
+      name: labelById.get(c.id) ?? c.name,
+      fonction: null,
+      onThisSite: roleByCompany.has(c.id),
+      knownRole: roleByCompany.get(c.id) ?? null,
+    })),
+    ...((contacts ?? []) as Array<{ id: string; full_name: string; function: string | null; company_id: string }>).map((c) => ({
+      kind: 'contact' as const,
+      companyId: c.company_id,
+      companyName: labelById.get(c.company_id) ?? '',
+      contactId: c.id,
+      name: c.full_name,
+      fonction: c.function,
+      onThisSite: roleByCompany.has(c.company_id),
+      knownRole: roleByCompany.get(c.company_id) ?? null,
+    })),
+  ]
+  // Ce qui est déjà sur ce chantier remonte : c'est la réponse la plus probable.
+  hits.sort((a, b) => Number(b.onThisSite) - Number(a.onThisSite))
+  return { ok: true, hits }
+}

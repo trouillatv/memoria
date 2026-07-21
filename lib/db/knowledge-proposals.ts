@@ -496,6 +496,14 @@ export interface PromotionInput {
   personName?: string
   /** Rattacher à un contact existant plutôt qu'au seul nom d'entreprise. */
   contactId?: string | null
+  /** RATTACHER À UNE ENTREPRISE DÉJÀ CONNUE, par son id (2026-07-22).
+   *
+   *  Le nom ne suffit pas : la recherche affiche `short_name || name`, et
+   *  `findOrCreateCompanyByName` compare sur `name`. Renvoyer le libellé affiché
+   *  aurait donc CRÉÉ « Clim Expert » à côté de « Clim'Expert SARL » — le
+   *  doublon même que le rattachement doit supprimer. L'humain désigne une
+   *  identité ; on la prend telle quelle. */
+  companyId?: string | null
   /** La NATURE d'une information. REQUIS pour 'knowledge' : « vraie maintenant »
    *  et « vraie durablement » ne se rangent pas au même endroit, et l'IA n'a pas
    *  à trancher. */
@@ -623,7 +631,10 @@ export async function promoteProposal(params: {
     if (personName && !companyName) return { status: 'needs_input', missing: ['company'] }
     // findOrCreateCompanyByName dédoublonne par nom normalisé : « Ginger » lu deux
     // fois sur deux visites ne crée pas deux entreprises.
-    const companyId = await findOrCreateCompanyByName(orgId, companyName ?? p.title)
+    // L'identité désignée l'emporte sur tout nom lu : rattacher, ce n'est pas
+    // renommer. La mention d'origine reste dans `title`, intacte.
+    const companyId = params.input?.companyId
+      ?? await findOrCreateCompanyByName(orgId, companyName ?? p.title)
     let contactId = params.input?.contactId ?? null
     if (!contactId && personName) contactId = await findOrCreateCompanyContact(orgId, companyId, personName)
     const intervenantId = await openSiteIntervenant({
