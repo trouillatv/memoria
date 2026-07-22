@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 
 /**
  * Progression d'onboarding d'un nouveau tenant — CHANTIER-CENTRIC (Vincent 2026-06-21).
@@ -22,18 +22,22 @@ export interface OnboardingProgress {
 
 export async function getOnboardingProgress(): Promise<OnboardingProgress> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  // M3 — AGRÉGATION multi-organisations. L'onboarding est ORGANISATIONNEL (la
+  // boucle chantier est-elle amorcée ?), mais le dashboard est PERSONNEL : une
+  // étape est acquise dès qu'elle est réalisée dans ≥1 organisation accessible.
+  // Un compte AGP + SERVINOR n'est donc jamais bloqué parce que SERVINOR est
+  // moins avancée. `.in([])` (aucune appartenance) ne matche rien → fail-closed.
+  const orgIds = await getOrgIdsOfUser()
 
-  // Chantiers de l'org (sert aussi à scoper les actions, qui n'ont pas d'org direct).
-  let sitesQ = supabase.from('sites').select('id').is('deleted_at', null)
-  if (orgId) sitesQ = sitesQ.eq('organization_id', orgId)
-  const { data: siteRows, error: sitesErr } = await sitesQ
+  // Chantiers des orgs (sert aussi à scoper les actions, qui n'ont pas d'org direct).
+  const { data: siteRows, error: sitesErr } = await supabase
+    .from('sites').select('id').is('deleted_at', null).in('organization_id', orgIds)
   if (sitesErr) throw sitesErr
   const siteIds = ((siteRows ?? []) as Array<{ id: string }>).map((s) => s.id)
   const hasSite = siteIds.length > 0
 
-  const rq = supabase.from('site_reports').select('id', { count: 'exact', head: true })
-  const reportsRes = await (orgId ? rq.eq('organization_id', orgId) : rq)
+  const reportsRes = await supabase
+    .from('site_reports').select('id', { count: 'exact', head: true }).in('organization_id', orgIds)
   if (reportsRes.error) throw reportsRes.error
   const hasMeeting = (reportsRes.count ?? 0) > 0
 

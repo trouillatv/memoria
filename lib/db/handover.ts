@@ -20,6 +20,7 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { isSystemMissionName } from '@/lib/db/system-missions'
 import { listTeamCompanions } from '@/lib/db/team-profile'
 import type {
@@ -758,7 +759,7 @@ export async function listSharedHandoverBriefsForChef(
 
 export async function countHandoverBriefsByStatus(): Promise<Record<HandoverStatus, number>> {
   const admin = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser() // M3 : agrégé sur les orgs de l'utilisateur
   const out: Record<HandoverStatus, number> = {
     draft: 0,
     shared: 0,
@@ -768,12 +769,12 @@ export async function countHandoverBriefsByStatus(): Promise<Record<HandoverStat
   const statuses: HandoverStatus[] = ['draft', 'shared', 'acknowledged', 'archived']
   await Promise.all(
     statuses.map(async (s) => {
-      let q = admin
+      const q = admin
         .from('handover_briefs')
         .select('id', { count: 'exact', head: true })
         .eq('status', s)
         .is('deleted_at', null)
-      if (orgId) q = q.eq('organization_id', orgId)
+        .in('organization_id', orgIds)
       const { count } = await q
       out[s] = count ?? 0
     }),

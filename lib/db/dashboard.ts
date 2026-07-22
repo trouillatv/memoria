@@ -17,7 +17,14 @@ import type { EngagementComplianceRatios } from '@/types/db'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
+
+// M3 (dashboard) — les loaders APPELÉS par /dashboard agrègent sur les
+// organisations de l'utilisateur : `getOrgIdsOfUser()` + `.in('organization_id',
+// ids)`. `.in([])` (aucune appartenance) ne matche rien → fail-closed. Les autres
+// fonctions de ce fichier (non appelées par le dashboard) restent sur `getOrgId`
+// et seront traitées dans un lot M3 ultérieur (/sites, /actions…).
 
 // ============================================================================
 // Bandeau — 4 stats du cockpit du matin
@@ -63,6 +70,8 @@ export interface TenderDueSoonRow {
   deadline: string
   daysUntilDeadline: number
   status: string
+  /** M3 — provenance pour le badge d'organisation (compte multi-org). */
+  organizationId: string
 }
 
 export interface OpenAnomaliesStats {
@@ -143,23 +152,22 @@ export async function getWeekPulse(): Promise<WeekPulse> {
 
 export async function getCapitalPreuves(): Promise<CapitalPreuves> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
-  // P1 isolation : FAIL-CLOSED — pas d'organisation → zéros, jamais les
-  // compteurs de tous les tenants.
-  if (!orgId) return { totalPhotos: 0, totalInterventionsExecuted: 0, totalContractsActive: 0 }
+  const orgIds = await getOrgIdsOfUser()
+  // FAIL-CLOSED — aucune appartenance → zéros, jamais les compteurs de tous les tenants.
+  if (orgIds.length === 0) return { totalPhotos: 0, totalInterventionsExecuted: 0, totalContractsActive: 0 }
 
   const [photosRes, interventionsRes, contractsRes] = await Promise.all([
     // intervention_photos n'a pas org_id — scope via le join interventions.
     supabase
       .from('intervention_photos')
       .select('id, intervention:interventions!inner(organization_id)', { count: 'exact', head: true })
-      .eq('intervention.organization_id', orgId),
+      .in('intervention.organization_id', orgIds),
     supabase.from('interventions').select('id', { count: 'exact', head: true })
       .in('status', EXECUTED_STATUSES as unknown as string[])
-      .eq('organization_id', orgId),
+      .in('organization_id', orgIds),
     supabase.from('contracts').select('id', { count: 'exact', head: true })
       .eq('status', 'active').is('deleted_at', null)
-      .eq('organization_id', orgId),
+      .in('organization_id', orgIds),
   ])
   if (photosRes.error) throw photosRes.error
   if (interventionsRes.error) throw interventionsRes.error
@@ -174,24 +182,24 @@ export async function getCapitalPreuves(): Promise<CapitalPreuves> {
 
 export async function getTenantCumulativeStats(): Promise<TenantCumulativeStats> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
-  // P1 isolation : FAIL-CLOSED — pas d'organisation → zéros.
-  if (!orgId) return { totalInterventions: 0, totalPhotos: 0, totalAnomaliesResolved: 0 }
+  const orgIds = await getOrgIdsOfUser()
+  // FAIL-CLOSED — aucune appartenance → zéros.
+  if (orgIds.length === 0) return { totalInterventions: 0, totalPhotos: 0, totalAnomaliesResolved: 0 }
 
   const [interventionsRes, photosRes, anomaliesRes] = await Promise.all([
     supabase.from('interventions').select('id', { count: 'exact', head: true })
       .in('status', EXECUTED_STATUSES as unknown as string[])
-      .eq('organization_id', orgId),
+      .in('organization_id', orgIds),
     // Tables sans org_id — scope via le join interventions.
     supabase
       .from('intervention_photos')
       .select('id, intervention:interventions!inner(organization_id)', { count: 'exact', head: true })
-      .eq('intervention.organization_id', orgId),
+      .in('intervention.organization_id', orgIds),
     supabase
       .from('intervention_anomalies')
       .select('id, intervention:interventions!inner(organization_id)', { count: 'exact', head: true })
       .not('resolved_at', 'is', null)
-      .eq('intervention.organization_id', orgId),
+      .in('intervention.organization_id', orgIds),
   ])
   if (interventionsRes.error) throw interventionsRes.error
   if (photosRes.error) throw photosRes.error
@@ -283,27 +291,25 @@ export async function getAOSnapshot(): Promise<AOSnapshot> {
 
 export async function listTendersDueSoon(days: number = 7): Promise<TenderDueSoonRow[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
   const today = todayLocalIso()
   const horizon = addDaysLocal(today, days)
 
-  let q = supabase
+  const { data, error } = await supabase
     .from('tenders')
-    .select('id, title, client_name, deadline, status')
+    .select('id, title, client_name, deadline, status, organization_id')
     .in('status', TENDER_ACTIVE_STATUSES as unknown as string[])
     .is('deleted_at', null)
     .or('outcome.is.null,outcome.eq.pending')
     .gte('deadline', today)
     .lte('deadline', horizon)
     .order('deadline', { ascending: true })
-  if (orgId) q = q.eq('organization_id', orgId)
-
-  const { data, error } = await q
+    .in('organization_id', orgIds)
   if (error) throw error
 
   const todayMs = new Date(today + 'T00:00:00Z').getTime()
   return (data ?? []).map((row) => {
-    const r = row as { id: string; title: string; client_name: string | null; deadline: string; status: string }
+    const r = row as { id: string; title: string; client_name: string | null; deadline: string; status: string; organization_id: string }
     const deadlineMs = new Date(r.deadline + 'T00:00:00Z').getTime()
     return {
       id: r.id,
@@ -312,6 +318,7 @@ export async function listTendersDueSoon(days: number = 7): Promise<TenderDueSoo
       deadline: r.deadline,
       daysUntilDeadline: Math.floor((deadlineMs - todayMs) / (24 * 60 * 60 * 1000)),
       status: r.status,
+      organizationId: r.organization_id,
     }
   })
 }
@@ -333,12 +340,13 @@ export async function getOpenAnomaliesStats(): Promise<OpenAnomaliesStats> {
 
 export async function getOpenAnomaliesStrict(): Promise<OpenAnomaliesStats> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId() // scope ORG (admin client bypasse les RLS)
+  const orgIds = await getOrgIdsOfUser() // scope multi-org (admin client bypasse les RLS)
   const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
-  let totalQ = supabase.from('intervention_anomalies').select('id', { count: 'exact', head: true }).eq('status', 'open')
-  let oldQ = supabase.from('intervention_anomalies').select('id', { count: 'exact', head: true })
-    .eq('status', 'open').lt('created_at', threeDaysAgo)
-  if (orgId) { totalQ = totalQ.eq('organization_id', orgId); oldQ = oldQ.eq('organization_id', orgId) }
+  // Toujours filtré (`.in([])` → 0) : jamais les anomalies de tous les tenants.
+  const totalQ = supabase.from('intervention_anomalies').select('id', { count: 'exact', head: true })
+    .eq('status', 'open').in('organization_id', orgIds)
+  const oldQ = supabase.from('intervention_anomalies').select('id', { count: 'exact', head: true })
+    .eq('status', 'open').lt('created_at', threeDaysAgo).in('organization_id', orgIds)
   const [totalRes, oldRes] = await Promise.all([totalQ, oldQ])
   if (totalRes.error) throw totalRes.error
   if (oldRes.error) throw oldRes.error
