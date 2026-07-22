@@ -8,6 +8,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { actionHealth, actionAttentionOf, noumeaDayOf, type ActionHealth } from '@/lib/actions/health'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import type { DbSiteAction, SiteActionStatus } from '@/types/db'
@@ -208,10 +209,9 @@ export async function listOpenSiteActions(opts?: {
     // Scope multi-org EXPLICITE (chemin /dashboard).
     sitesQ = sitesQ.in('organization_id', opts.orgIds)
   } else if (!opts?.siteIds) {
-    // Org-wide UNIQUEMENT (ni siteIds, ni orgIds) : surfaces hors Lot D encore
-    // mono-org. Un compte multi-org y verra `getOrgId()` lever, à traiter à part.
-    const orgId = await getOrgId()
-    if (orgId) sitesQ = sitesQ.eq('organization_id', orgId)
+    const orgIds = await getOrgIdsOfUser()
+    if (orgIds.length === 0) return []
+    sitesQ = sitesQ.in('organization_id', orgIds)
   }
   // M3-D — quand `siteIds` est fourni, il EST le scope (l'appelant a gardé
   // l'accès en amont, ex. /sites/[id] via getSiteIdentity) : aucun `getOrgId()`.
@@ -332,9 +332,9 @@ export async function getOpenActionsHealth(): Promise<OpenActionsHealth> {
   const empty = { total: 0, critique: 0, surveiller: 0, rythme: 0, attention: 0 }
   try {
     const supabase = createAdminClient()
-    const orgId = await getOrgId()
-    let sitesQ = supabase.from('sites').select('id').is('deleted_at', null)
-    if (orgId) sitesQ = sitesQ.eq('organization_id', orgId)
+    const orgIds = await getOrgIdsOfUser()
+    if (orgIds.length === 0) return empty
+    const sitesQ = supabase.from('sites').select('id').is('deleted_at', null).in('organization_id', orgIds)
     const { data: siteRows } = await sitesQ
     const siteIds = (siteRows ?? []).map((s) => (s as { id: string }).id)
     if (siteIds.length === 0) return empty

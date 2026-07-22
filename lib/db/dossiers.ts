@@ -12,6 +12,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId, getCurrentUserWithProfile } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { createSite, findOrCreateClientByName } from '@/lib/db/sites'
 import type { DbDossier, DossierPhase } from '@/types/db'
 
@@ -120,14 +121,15 @@ export interface OpportunityDossier {
 /** Les dossiers d'opportunité du tenant (prospect/en_ao), les plus récents d'abord. */
 export async function listOpportunityDossiers(): Promise<OpportunityDossier[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
-  let q = supabase
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
+  const q = supabase
     .from('dossiers')
     .select('id, label, phase, type, site_id, opened_at, site:sites(name), client:clients(name)')
     .is('deleted_at', null)
     .in('phase', ['prospect', 'en_ao'])
     .order('opened_at', { ascending: false })
-  if (orgId) q = q.eq('organization_id', orgId)
+    .in('organization_id', orgIds)
   const { data, error } = await q
   if (error) throw error
   const pick = (v: { name: string } | { name: string }[] | null): string | null =>
@@ -153,13 +155,14 @@ export interface DossierLite { id: string; label: string | null; site_name: stri
 /** Toutes les opportunités du tenant (léger) — pour rattacher un AO depuis l'écran tender. */
 export async function listDossiersLite(): Promise<DossierLite[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
-  let q = supabase
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
+  const q = supabase
     .from('dossiers')
     .select('id, label, phase, site:sites(name)')
     .is('deleted_at', null)
     .order('opened_at', { ascending: false })
-  if (orgId) q = q.eq('organization_id', orgId)
+    .in('organization_id', orgIds)
   const { data, error } = await q
   if (error) throw error
   return ((data ?? []) as Array<{ id: string; label: string | null; phase: DossierPhase; site: { name: string } | { name: string }[] | null }>)

@@ -26,6 +26,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 
 // ----------------------------------------------------------------------------
@@ -93,7 +94,8 @@ const MAX_LIMIT = 200
 
 export async function searchProofs(input: ProofSearchInput = {}): Promise<ProofSearchResult> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { items: [], total: 0 }
   const offset = Math.max(0, input.offset ?? 0)
   const limit = Math.min(MAX_LIMIT, Math.max(1, input.limit ?? DEFAULT_LIMIT))
 
@@ -174,7 +176,8 @@ export async function searchProofs(input: ProofSearchInput = {}): Promise<ProofS
         .from('sites')
         .select('id')
         .ilike('name', `%${escaped}%`)
-        .is('deleted_at', null),
+        .is('deleted_at', null)
+        .in('organization_id', orgIds),
     ])
     if (missionsRes.error) throw missionsRes.error
     if (sitesRes.error) throw sitesRes.error
@@ -228,9 +231,7 @@ export async function searchProofs(input: ProofSearchInput = {}): Promise<ProofS
   if (candidateMissionIds) {
     q = q.in('mission_id', candidateMissionIds)
   }
-  if (orgId) {
-    q = q.eq('organization_id', orgId)
-  }
+  q = q.in('organization_id', orgIds)
   if (input.status) {
     q = q.eq('status', input.status)
   }
