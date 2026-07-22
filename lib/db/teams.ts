@@ -27,6 +27,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import type { DbTeam, DbTeamMember } from '@/types/db'
 
 /**
@@ -73,11 +74,10 @@ export interface UpdateTeamInput {
 /** Liste toutes les équipes non archivées, triées par nom. */
 export async function listTeams(): Promise<DbTeam[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
-  // P1 isolation : FAIL-CLOSED — pas d'organisation → aucune équipe.
-  if (!orgId) return []
+  // M3 — agrégé. FAIL-CLOSED : `.in([])` (aucune appartenance) → aucune équipe.
+  const orgIds = await getOrgIdsOfUser()
   const q = supabase.from('teams').select('*').is('deleted_at', null)
-    .eq('organization_id', orgId).order('name', { ascending: true })
+    .in('organization_id', orgIds).order('name', { ascending: true })
   const { data, error } = await q
   if (error) throw error
   return data ?? []

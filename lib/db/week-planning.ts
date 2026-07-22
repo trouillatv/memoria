@@ -24,6 +24,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { enumerateRangeDays } from '@/lib/planning/scale'
 import type { ProjectableTemplate } from '@/lib/planning/projection'
 import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { isSystemMissionName, PONCTUEL_MISSION_NAME } from '@/lib/db/system-missions'
 
 // Types + helpers PURS (client-safe) extraits dans lib/week-planning-helpers.ts
@@ -270,21 +271,21 @@ export async function getWeekBySite(range: WeekRange, orgIds?: string[]): Promis
  */
 export async function getWeekByTeam(range: WeekRange): Promise<TeamRow[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
-  // P1 isolation : FAIL-CLOSED — pas d'organisation → aucune ligne, jamais
-  // les équipes de tous les tenants.
-  if (!orgId) return []
-  const cells = await listInterventionsForWeek(range)
+  // M3 — agrégé sur les organisations de l'utilisateur. FAIL-CLOSED : aucune
+  // appartenance → aucune ligne, jamais les équipes de tous les tenants.
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
+  const cells = await listInterventionsForWeek(range, orgIds)
   const days = enumerateWeekDays(range)
 
-  // 1) Fetch équipes actives DE L'ORGANISATION + comptage membres en parallèle
+  // 1) Fetch équipes actives DES ORGANISATIONS + comptage membres en parallèle
   const [teamsRes, membersRes] = await Promise.all([
     supabase
       .from('teams')
       .select('id, name, color')
       .is('deleted_at', null)
       .eq('active', true)
-      .eq('organization_id', orgId)
+      .in('organization_id', orgIds)
       .order('name', { ascending: true }),
     supabase
       .from('team_members')

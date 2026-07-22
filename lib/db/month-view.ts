@@ -2,16 +2,16 @@ import 'server-only'
 
 // L'ASSEMBLAGE des faits de la Vue Mois. Lecture seule, strictement.
 //
-// Cette couche ne décide de rien : elle rassemble ce que les autres savent déjà
-// (interventions matérialisées, rythmes actifs, fermetures, décisions,
-// exceptions) et laisse lib/planning/month-view.ts dire ce que ça SIGNIFIE.
+// Cette couche ne dÃ©cide de rien : elle rassemble ce que les autres savent dÃ©jÃ 
+// (interventions matÃ©rialisÃ©es, rythmes actifs, fermetures, dÃ©cisions,
+// exceptions) et laisse lib/planning/month-view.ts dire ce que Ã§a SIGNIFIE.
 //
-// Une occurrence n'est jamais comptée deux fois : si l'intervention existe en
-// base pour (rythme, jour), la projection de ce (rythme, jour) est ignorée.
-// L'identité d'occurrence (mig 198) est la même partout — une seule vérité.
+// Une occurrence n'est jamais comptÃ©e deux fois : si l'intervention existe en
+// base pour (rythme, jour), la projection de ce (rythme, jour) est ignorÃ©e.
+// L'identitÃ© d'occurrence (mig 198) est la mÃªme partout â une seule vÃ©ritÃ©.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { projectOccurrences, type ProjectableTemplate } from '@/lib/planning/projection'
 import { findClosureForDate } from '@/lib/planning/closures'
 import { isStillExpected } from '@/lib/planning/conflicts'
@@ -24,12 +24,12 @@ export interface MonthRow {
   siteId: string
   siteName: string
   /**
-   * Le client. Sans lui, « Pointière » ne désigne rien : il y a le magasin
-   * Discount de Pointière et la mairie de Pointière. C'est le couple
+   * Le client. Sans lui, Â« PointiÃ¨re Â» ne dÃ©signe rien : il y a le magasin
+   * Discount de PointiÃ¨re et la mairie de PointiÃ¨re. C'est le couple
    * client + lieu qui identifie un chantier (cf. lib/labels/site-label).
    */
   clientName: string | null
-  /** date → faits. Toutes les dates du mois sont présentes. */
+  /** date â faits. Toutes les dates du mois sont prÃ©sentes. */
   days: Record<string, DayFacts>
 }
 
@@ -50,9 +50,9 @@ export async function buildMonthRows(params: {
 }): Promise<MonthRow[]> {
   const { from, to } = params
   const db = createAdminClient()
-  const orgId = await getOrgId().catch(() => null)
+  const orgIds = await getOrgIdsOfUser() // M3 : agrégé, fail-closed (jamais null → tout)
 
-  // ── Les interventions MATÉRIALISÉES du mois ────────────────────────────────
+  // ââ Les interventions MATÃRIALISÃES du mois ââââââââââââââââââââââââââââââââ
   const { data: intvRows } = await db
     .from('interventions')
     .select(
@@ -74,13 +74,13 @@ export async function buildMonthRows(params: {
 
   const interventions: MonthIntervention[] = []
   const siteNames = new Map<string, string>()
-  // Le client du chantier — « Pointière » seul ne désigne rien.
+  // Le client du chantier â Â« PointiÃ¨re Â» seul ne dÃ©signe rien.
   const clientNames = new Map<string, string | null>()
   for (const r of ((intvRows ?? []) as unknown as Raw[])) {
     const site = r.missions?.sites
     if (!site?.id) continue
-    // Isolation : le service role contourne la RLS — le filtre org vit ici.
-    if (orgId && site.organization_id !== orgId) continue
+    // Isolation : le service role contourne la RLS â le filtre org vit ici.
+    if (!orgIds.includes(site.organization_id ?? '')) continue
     siteNames.set(site.id, site.name ?? 'Chantier')
     {
       const c = Array.isArray(site.client) ? site.client[0] : site.client
@@ -98,8 +98,8 @@ export async function buildMonthRows(params: {
     })
   }
 
-  // ── Les RYTHMES actifs (roulements publiés) — pour projeter au-delà de
-  //    l'horizon de génération, et savoir quels jours DEVAIENT être couverts. ──
+  // ââ Les RYTHMES actifs (roulements publiÃ©s) â pour projeter au-delÃ  de
+  //    l'horizon de gÃ©nÃ©ration, et savoir quels jours DEVAIENT Ãªtre couverts. ââ
   const { data: tplRows } = await db
     .from('intervention_templates')
     .select(
@@ -117,11 +117,11 @@ export async function buildMonthRows(params: {
   const templatesBySite = new Map<string, RawTpl[]>()
   const templatesById = new Map<string, RawTpl>()
   // Supabase type la jointure `missions` en tableau ; au runtime c'est un objet
-  // (relation N→1). Le passage par `unknown` est le constat, pas un contournement.
+  // (relation Nâ1). Le passage par `unknown` est le constat, pas un contournement.
   for (const t of ((tplRows ?? []) as unknown as RawTpl[])) {
     const site = t.missions?.sites
     if (!site?.id) continue
-    if (orgId && site.organization_id !== orgId) continue
+    if (!orgIds.includes(site.organization_id ?? '')) continue
     siteNames.set(site.id, site.name ?? 'Chantier')
     {
       const c = Array.isArray(site.client) ? site.client[0] : site.client
@@ -136,7 +136,7 @@ export async function buildMonthRows(params: {
   const siteIds = [...siteNames.keys()]
   if (siteIds.length === 0) return []
 
-  // ── Fermetures + décisions « maintenir » ──────────────────────────────────
+  // ââ Fermetures + dÃ©cisions Â« maintenir Â» ââââââââââââââââââââââââââââââââââ
   const [closuresBySite, keptIds] = await Promise.all([
     listActiveClosuresForSites(siteIds, from, to).catch(
       (): Record<string, SiteClosure[]> => ({}),
@@ -144,7 +144,7 @@ export async function buildMonthRows(params: {
     listKeptInterventionIds(interventions.map((i) => i.id)).catch(() => new Set<string>()),
   ])
 
-  // ── L'assemblage, chantier par chantier, jour par jour ────────────────────
+  // ââ L'assemblage, chantier par chantier, jour par jour ââââââââââââââââââââ
   const days: string[] = []
   {
     const start = new Date(`${from}T00:00:00.000Z`).getTime()
@@ -161,9 +161,9 @@ export async function buildMonthRows(params: {
     const closures = closuresBySite[siteId] ?? []
     const siteIntv = interventions.filter((i) => i.site_id === siteId)
 
-    // Ce que les rythmes PRODUIRAIENT sur le mois. Sert à deux choses :
-    // compléter au-delà de l'horizon de génération, et savoir quels jours
-    // devaient être couverts (le trou n'existe que là).
+    // Ce que les rythmes PRODUIRAIENT sur le mois. Sert Ã  deux choses :
+    // complÃ©ter au-delÃ  de l'horizon de gÃ©nÃ©ration, et savoir quels jours
+    // devaient Ãªtre couverts (le trou n'existe que lÃ ).
     const projected = siteTemplates.length
       ? projectOccurrences({ templates: siteTemplates, from, to })
       : []
@@ -178,25 +178,25 @@ export async function buildMonthRows(params: {
     for (const day of days) {
       const todays = siteIntv.filter((i) => i.scheduled_for === day)
 
-      // Attendu = encore planifié, HORS décisions « maintenir » déjà tranchées
-      // (elles restent du travail prévu, mais ne re-crient pas en conflit).
+      // Attendu = encore planifiÃ©, HORS dÃ©cisions Â« maintenir Â» dÃ©jÃ  tranchÃ©es
+      // (elles restent du travail prÃ©vu, mais ne re-crient pas en conflit).
       const expectedAll = todays.filter((i) => isStillExpected(i.status))
       const expected = expectedAll.filter((i) => !keptIds.has(i.id)).length
       const kept = expectedAll.length - expected
-      // Fait/en cours : le passé du mois se lit aussi.
+      // Fait/en cours : le passÃ© du mois se lit aussi.
       const done = todays.filter(
         (i) => i.status !== 'skipped' && !isStillExpected(i.status),
       ).length
 
-      // Projeté SANS doublon : un (rythme, jour) déjà matérialisé ne compte pas
-      // deux fois — l'identité d'occurrence est la même qu'en base (mig 198).
+      // ProjetÃ© SANS doublon : un (rythme, jour) dÃ©jÃ  matÃ©rialisÃ© ne compte pas
+      // deux fois â l'identitÃ© d'occurrence est la mÃªme qu'en base (mig 198).
       const materializedTpl = new Set(
         todays.map((i) => i.template_id).filter((v): v is string => !!v),
       )
       const projTpl = projectedByDay.get(day) ?? new Set<string>()
       const projectedCount = [...projTpl].filter((id) => !materializedTpl.has(id)).length
 
-      // Exceptions : une occurrence matérialisée qui dévie de son rythme.
+      // Exceptions : une occurrence matÃ©rialisÃ©e qui dÃ©vie de son rythme.
       const hasException = todays.some((i) => {
         if (!i.template_id) return false
         const tpl = templatesById.get(i.template_id)
@@ -241,34 +241,34 @@ export interface TeamMonthRow {
   teamId: string
   teamName: string
   /**
-   * Qui compose l'équipe. Vincent, 2026-07-14 : exception ASSUMÉE à la règle
-   * « nominatif seulement sur /equipes » — le conducteur doit savoir QUI tourne.
+   * Qui compose l'Ã©quipe. Vincent, 2026-07-14 : exception ASSUMÃE Ã  la rÃ¨gle
+   * Â« nominatif seulement sur /equipes Â» â le conducteur doit savoir QUI tourne.
    *
    * La limite tient : ces noms sont la COMPOSITION de la ligne, jamais des
-   * lignes eux-mêmes. Aucune grille de jours travaillés par personne, aucun
-   * total individuel — ce serait une feuille de présence, pas un planning.
+   * lignes eux-mÃªmes. Aucune grille de jours travaillÃ©s par personne, aucun
+   * total individuel â ce serait une feuille de prÃ©sence, pas un planning.
    */
   members: string[]
   days: Record<string, TeamDayFacts>
 }
 
 /**
- * LE MÊME MOIS, vu par équipe. Aucun second moteur : ce sont exactement les
- * mêmes faits (interventions matérialisées + projection des roulements +
- * fermetures + exceptions), regroupés sur l'axe équipe au lieu de l'axe
- * chantier. Une occurrence sans équipe affectée n'appartient à aucune ligne :
- * elle reste visible en mode chantier, là où le trou se traite.
+ * LE MÃME MOIS, vu par Ã©quipe. Aucun second moteur : ce sont exactement les
+ * mÃªmes faits (interventions matÃ©rialisÃ©es + projection des roulements +
+ * fermetures + exceptions), regroupÃ©s sur l'axe Ã©quipe au lieu de l'axe
+ * chantier. Une occurrence sans Ã©quipe affectÃ©e n'appartient Ã  aucune ligne :
+ * elle reste visible en mode chantier, lÃ  oÃ¹ le trou se traite.
  */
 export async function buildTeamMonthRows(params: {
   from: string
   to: string
-  /** Les lignes chantier déjà assemblées — la page les a pour le verdict : on ne
-   *  refait pas le travail, et surtout on ne recalcule pas les mêmes faits. */
+  /** Les lignes chantier dÃ©jÃ  assemblÃ©es â la page les a pour le verdict : on ne
+   *  refait pas le travail, et surtout on ne recalcule pas les mÃªmes faits. */
   siteRows?: MonthRow[]
 }): Promise<TeamMonthRow[]> {
   const { from, to } = params
   const db = createAdminClient()
-  const orgId = await getOrgId().catch(() => null)
+  const orgIds = await getOrgIdsOfUser() // M3 : agrégé, fail-closed (jamais null → tout)
 
   const [siteRows, teamRows] = await Promise.all([
     params.siteRows ?? buildMonthRows({ from, to }),
@@ -282,12 +282,12 @@ export async function buildTeamMonthRows(params: {
     name: string
     organization_id: string | null
   }>)) {
-    // Isolation : le service role contourne la RLS — le filtre org vit ici.
-    if (orgId && t.organization_id !== orgId) continue
+    // Isolation : le service role contourne la RLS â le filtre org vit ici.
+    if (!orgIds.includes(t.organization_id ?? '')) continue
     teamNames.set(t.id, t.name)
   }
 
-  // La composition des équipes actives (voir TeamMonthRow.members).
+  // La composition des Ã©quipes actives (voir TeamMonthRow.members).
   const membersByTeam = new Map<string, string[]>()
   if (teamNames.size > 0) {
     const { data: memberRows } = await db
@@ -320,7 +320,7 @@ export async function buildTeamMonthRows(params: {
     }
   }
 
-  // Ce que le mode chantier sait déjà : où c'est fermé, où ça dévie.
+  // Ce que le mode chantier sait dÃ©jÃ  : oÃ¹ c'est fermÃ©, oÃ¹ Ã§a dÃ©vie.
   const closedBySiteDay = new Set<string>()
   const exceptionBySiteDay = new Set<string>()
   for (const row of siteRows) {
@@ -354,7 +354,7 @@ export async function buildTeamMonthRows(params: {
     if (existing) return existing
     const created: TeamMonthRow = {
       teamId,
-      teamName: teamNames.get(teamId) ?? 'Équipe',
+      teamName: teamNames.get(teamId) ?? 'Ãquipe',
       members: membersByTeam.get(teamId) ?? [],
       days: Object.fromEntries(
         days.map((d) => [d, { worked: 0, projected: 0, conflicts: 0, hasException: false }]),
@@ -367,7 +367,7 @@ export async function buildTeamMonthRows(params: {
   for (const r of intv) {
     const site = r.missions?.sites
     if (!site?.id) continue
-    if (orgId && site.organization_id !== orgId) continue
+    if (!orgIds.includes(site.organization_id ?? '')) continue
     if (!r.assigned_team_id || !teamNames.has(r.assigned_team_id)) continue
     if (r.status === 'skipped') continue
 
@@ -378,8 +378,8 @@ export async function buildTeamMonthRows(params: {
     if (exceptionBySiteDay.has(`${site.id}::${r.scheduled_for}`)) facts.hasException = true
   }
 
-  // Ce que les roulements PROJETTENT au-delà de l'horizon de génération : sans
-  // eux, la fin du mois paraîtrait vide alors qu'elle est déjà engagée.
+  // Ce que les roulements PROJETTENT au-delÃ  de l'horizon de gÃ©nÃ©ration : sans
+  // eux, la fin du mois paraÃ®trait vide alors qu'elle est dÃ©jÃ  engagÃ©e.
   const { data: tplRows } = await db
     .from('intervention_templates')
     .select(
@@ -398,15 +398,15 @@ export async function buildTeamMonthRows(params: {
   for (const t of ((tplRows ?? []) as unknown as RawTpl[])) {
     const site = t.missions?.sites
     if (!site?.id) continue
-    if (orgId && site.organization_id !== orgId) continue
+    if (!orgIds.includes(site.organization_id ?? '')) continue
     if (!t.assigned_team_id || !teamNames.has(t.assigned_team_id)) continue
     templates.push({ ...t, mission_id: t.missions?.id ?? t.mission_id })
     siteOfTemplate.set(t.id, site.id)
   }
 
   if (templates.length > 0) {
-    // Jamais deux fois la même occurrence : si elle existe en base, elle est
-    // déjà comptée au-dessus (identité d'occurrence, mig 198).
+    // Jamais deux fois la mÃªme occurrence : si elle existe en base, elle est
+    // dÃ©jÃ  comptÃ©e au-dessus (identitÃ© d'occurrence, mig 198).
     const materialized = new Set(
       intv.filter((r) => r.template_id).map((r) => `${r.template_id}::${r.scheduled_for}`),
     )

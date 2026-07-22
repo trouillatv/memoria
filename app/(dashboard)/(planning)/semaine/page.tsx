@@ -19,7 +19,8 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Calendar, CalendarOff, FileDown, Info } from 'lucide-react'
-import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
+import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import {
   formatWeekParam,
   getWeekBySite,
@@ -148,18 +149,21 @@ export default async function SemainePage({ searchParams }: PageProps) {
   const range = parseWeekParam(params.week)
   const view = parseViewMode(params.view)
   const isDebug = params.debug === 'true'
-  const orgId = await getOrgId()
+  // M3 — agrégation multi-org : les lectures portent sur TOUTES les organisations
+  // de l'utilisateur (`.in(orgIds)`), jamais une seule org par défaut. `getOrgId()`
+  // levait `OrganisationAmbigueError` pour un compte multi-org.
+  const orgIds = await getOrgIdsOfUser()
 
   // On fetch UNIQUEMENT la vue active pour éviter du I/O inutile (la TeamRow
   // fait un appel supplémentaire à teams + team_members).
   const [siteRows, teamRows, allTeams, missionOptions, siteOptions, memberCounts, vigilance, memorySignals, weekSignals] =
     await Promise.all([
-      view === 'site' ? getWeekBySite(range) : Promise.resolve<SiteRow[]>([]),
+      view === 'site' ? getWeekBySite(range, orgIds) : Promise.resolve<SiteRow[]>([]),
       view === 'team' ? getWeekByTeam(range) : Promise.resolve<TeamRow[]>([]),
       listTeams(),
-      fetchMissionOptions(orgId),
-      fetchSiteOptions(orgId),
-      fetchTeamMemberCounts(orgId),
+      fetchMissionOptions(orgIds),
+      fetchSiteOptions(orgIds),
+      fetchTeamMemberCounts(orgIds),
       getWeekVigilance(range.weekStart, range.weekEnd),
       // Planning-1 : collecte UNE SEULE FOIS au niveau page (vue site uniquement).
       // La vue équipe viendra plus tard (sujet team non activé ici).

@@ -10,6 +10,7 @@
 //
 // Auth : admin OU manager (même garde que /semaine).
 
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { NextResponse, type NextRequest } from 'next/server'
 import ExcelJS from 'exceljs'
 import { createClient as createServerClient } from '@/lib/supabase/server'
@@ -112,8 +113,10 @@ export async function GET(req: NextRequest) {
 
   const weekParam = req.nextUrl.searchParams.get('week')
   const range = parseWeekParam(weekParam)
+  // M3 — agrégé sur les organisations de l'utilisateur (comme la page Semaine).
+  const orgIds = await getOrgIdsOfUser()
   const [cells, allTeams] = await Promise.all([
-    listInterventionsForWeek(range),
+    listInterventionsForWeek(range, orgIds),
     listTeamsWithMemberCount(),
   ])
 

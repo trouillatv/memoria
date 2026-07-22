@@ -39,7 +39,7 @@
 // chaque couche par cette liste.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import type { WeekRange } from '@/lib/week-planning-helpers'
 
 // Types + helpers PURS (client-safe) extraits dans week-operational-signals-helpers
@@ -108,7 +108,7 @@ export async function getWeekOperationalSignals(
   range: WeekRange
 ): Promise<SiteWeekSignals[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
   const { weekStart, weekEnd } = range
   const days = enumerateWeekDays(weekStart)
 
@@ -117,7 +117,7 @@ export async function getWeekOperationalSignals(
     .from('sites')
     .select('id, name, contract_id, contract:contracts(id, name)')
     .is('deleted_at', null)
-  if (orgId) sitesQ = sitesQ.eq('organization_id', orgId)
+  sitesQ = sitesQ.in('organization_id', orgIds)
   const { data: sitesData, error: sitesErr } = await sitesQ
   if (sitesErr) throw sitesErr
 

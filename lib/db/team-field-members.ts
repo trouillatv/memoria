@@ -103,14 +103,14 @@ export async function createFieldPersonInTeam(input: {
 
 /** Compte les personnes terrain ACTIVES par équipe. Descriptif (doctrine V2 :
  *  jamais un KPI). Fail-closed : sans org, une Map vide. */
-export async function countFieldMembersByTeam(orgId: string | null): Promise<Map<string, number>> {
-  if (!orgId) return new Map()
+export async function countFieldMembersByTeam(orgIds: string[]): Promise<Map<string, number>> {
+  if (orgIds.length === 0) return new Map()
   const db = createAdminClient()
   const { data, error } = await db
     .from('team_field_members')
     .select('team_id')
     .is('left_at', null)
-    .eq('organization_id', orgId)
+    .in('organization_id', orgIds)
   if (error) throw error
   const counts = new Map<string, number>()
   for (const row of (data ?? []) as Array<{ team_id: string }>) {

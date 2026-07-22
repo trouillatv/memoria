@@ -18,8 +18,8 @@ import type { RotationOption } from './planning-prefill'
  * picker du dialogue de planification. Requête admin (manager+ déjà vérifié plus
  * haut) — P1 isolation : FAIL-CLOSED sur l'organisation, comme
  * listInterventionsForWeek (jamais les missions de tous les tenants). */
-export async function fetchMissionOptions(orgId: string | null): Promise<MissionOption[]> {
-  if (!orgId) return []
+export async function fetchMissionOptions(orgIds: string[]): Promise<MissionOption[]> {
+  if (orgIds.length === 0) return []
   const supabase = createAdminClient()
   // Contrat en LEFT join (PR 2) : un chantier créé sans contrat (cas réel
   // « Pointière Discount », contract_id nullable dans CreateSiteDialog) doit
@@ -33,7 +33,7 @@ export async function fetchMissionOptions(orgId: string | null): Promise<Mission
     )
     .is('deleted_at', null)
     .eq('active', true)
-    .eq('organization_id', orgId)
+    .in('organization_id', orgIds)
   if (error) throw error
   type Named = { name: string }
   const out: MissionOption[] = []
@@ -68,14 +68,14 @@ export async function fetchMissionOptions(orgId: string | null): Promise<Mission
 
 /** Chantiers de l'org pour la création INLINE de mission dans le planificateur
  * (PR 2, lot Y « créer → rester → sélectionné »). Fail-closed org. */
-export async function fetchSiteOptions(orgId: string | null): Promise<SiteOption[]> {
-  if (!orgId) return []
+export async function fetchSiteOptions(orgIds: string[]): Promise<SiteOption[]> {
+  if (orgIds.length === 0) return []
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('sites')
     .select('id, name, client:clients(name), contract:contracts(name, deleted_at)')
     .is('deleted_at', null)
-    .eq('organization_id', orgId)
+    .in('organization_id', orgIds)
     .order('name')
   if (error) throw error
   type Named = { name: string }
@@ -101,16 +101,16 @@ export async function fetchSiteOptions(orgId: string | null): Promise<SiteOption
  * planificateur additionne les deux — la distinction se lit dans la composition,
  * page Équipes. Info descriptive, doctrine V2 : JAMAIS exploité comme KPI.
  * P1 isolation : fail-closed org. */
-export async function fetchTeamMemberCounts(orgId: string | null): Promise<Map<string, number>> {
-  if (!orgId) return new Map()
+export async function fetchTeamMemberCounts(orgIds: string[]): Promise<Map<string, number>> {
+  if (orgIds.length === 0) return new Map()
   const supabase = createAdminClient()
   const [{ data, error }, fieldCounts] = await Promise.all([
     supabase
       .from('team_members')
       .select('team_id')
       .is('left_at', null)
-      .eq('organization_id', orgId),
-    countFieldMembersByTeam(orgId),
+      .in('organization_id', orgIds),
+    countFieldMembersByTeam(orgIds),
   ])
   if (error) throw error
   const counts = new Map<string, number>(fieldCounts)

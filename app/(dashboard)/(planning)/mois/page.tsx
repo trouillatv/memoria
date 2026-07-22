@@ -18,6 +18,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { AlertTriangle, Building2, CalendarCheck2, CalendarRange, ChevronLeft, ChevronRight } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { buildMonthRows, buildTeamMonthRows, type MonthRow } from '@/lib/db/month-view'
 import {
   monthVerdict,
@@ -277,13 +278,15 @@ export default async function MoisPage({
   // Le menu « Planifier » vit AUSSI ici (Vincent, 2026-07-21) : créer un
   // roulement ne doit pas obliger à repasser par la Semaine. Mêmes options,
   // même menu, même éditeur — jamais un second formulaire.
-  const orgId = user.organization_id ?? null
+  // M3 — agrégation multi-org : `user.organization_id` (l'org PAR DÉFAUT) ne
+  // montrait qu'UNE organisation. On agrège sur toutes les appartenances.
+  const orgIds = await getOrgIdsOfUser()
   const [siteRows, allTeams, missionOptions, siteOptions, memberCounts] = await Promise.all([
-    view === 'site' ? getWeekBySite(range) : Promise.resolve([] as SiteRow[]),
+    view === 'site' ? getWeekBySite(range, orgIds) : Promise.resolve([] as SiteRow[]),
     listTeams(),
-    fetchMissionOptions(orgId),
-    fetchSiteOptions(orgId),
-    fetchTeamMemberCounts(orgId),
+    fetchMissionOptions(orgIds),
+    fetchSiteOptions(orgIds),
+    fetchTeamMemberCounts(orgIds),
   ])
   const rotationOptions = await fetchRotationOptions(missionOptions).catch(() => [])
   const monthCells = siteRows.flatMap((row) => Object.values(row.days).flat())
