@@ -9,8 +9,8 @@ import { undoSuggestionsAfterDiscard } from '@/lib/visits/discard-effects'
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import { requireFieldAgent } from '@/lib/field/auth'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getVisitSummary, type VisitSummary } from '@/lib/knowledge/visit-summary'
-import { getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createSiteAction } from '@/lib/db/site-actions'
 import { createSiteReserve } from '@/lib/db/site-reserve'
@@ -311,8 +311,8 @@ export async function getVisitDebriefFieldAction(input: unknown): Promise<Debrie
 
   const visit = await getVisit(parsed.data.report_id)
   if (!visit) return { ok: false, error: 'Visite introuvable' }
-  const orgId = await getOrgId()
-  if (orgId && visit.organization_id && visit.organization_id !== orgId) {
+  const access = await requireOrganizationMembership(visit.organization_id ?? '')
+  if (!access.ok) {
     return { ok: false, error: 'Visite hors organisation' }
   }
 
@@ -348,8 +348,8 @@ export async function getActionProposalStatesAction(input: unknown): Promise<Rec
   if (!parsed.success) return {}
   const visit = await getVisit(parsed.data.report_id)
   if (!visit || !visit.site_id) return {}
-  const orgId = await getOrgId()
-  if (orgId && visit.organization_id && visit.organization_id !== orgId) return {}
+  const access = await requireOrganizationMembership(visit.organization_id ?? '')
+  if (!access.ok) return {}
   try {
     const ledger = await ensureActionProposalsProjected(parsed.data.report_id, visit.site_id, visit.organization_id ?? null)
     return await getActionProposalStates(visit.site_id, ledger)
@@ -369,8 +369,8 @@ export async function getDeadlineProposalStatesAction(input: unknown): Promise<R
   if (!parsed.success) return {}
   const visit = await getVisit(parsed.data.report_id)
   if (!visit || !visit.site_id) return {}
-  const orgId = await getOrgId()
-  if (orgId && visit.organization_id && visit.organization_id !== orgId) return {}
+  const access = await requireOrganizationMembership(visit.organization_id ?? '')
+  if (!access.ok) return {}
   try {
     const echeances = await ensureDeadlineProposalsProjected(parsed.data.report_id, visit.site_id, visit.organization_id ?? null)
     return await getDeadlineProposalStates(visit.site_id, echeances)
@@ -391,15 +391,15 @@ export async function promoteActionProposalAction(input: unknown): Promise<{ ok:
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
   const visit = await getVisit(parsed.data.report_id)
   if (!visit) return { ok: false, error: 'Visite introuvable' }
-  const orgId = await getOrgId()
-  if (orgId && visit.organization_id && visit.organization_id !== orgId) {
+  const access = await requireOrganizationMembership(visit.organization_id ?? '')
+  if (!access.ok) {
     return { ok: false, error: 'Visite hors organisation' }
   }
   try {
     const res = await promoteProposal({
       id: parsed.data.proposal_id,
       userId: auth.userId,
-      organizationId: orgId ?? visit.organization_id ?? null,
+      organizationId: visit.organization_id ?? null,
     })
     // Depuis la synthèse, seules les actions sont promues : elles n'exigent aucune
     // saisie. Un needs_input ici signifierait qu'on a branché un type qui pose une
@@ -435,13 +435,13 @@ export async function dismissActionProposalAction(input: unknown): Promise<{ ok:
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
   const visit = await getVisit(parsed.data.report_id)
   if (!visit) return { ok: false, error: 'Visite introuvable' }
-  const orgId = await getOrgId()
-  if (orgId && visit.organization_id && visit.organization_id !== orgId) {
+  const access = await requireOrganizationMembership(visit.organization_id ?? '')
+  if (!access.ok) {
     return { ok: false, error: 'Visite hors organisation' }
   }
   try {
     // dismissProposal porte lui-même l'invalidation de la projection (la mutation invalide).
-    await dismissProposal(parsed.data.proposal_id, auth.userId, undefined, orgId ?? visit.organization_id ?? null)
+    await dismissProposal(parsed.data.proposal_id, auth.userId, undefined, visit.organization_id ?? null)
     // TÉLÉMÉTRIE DE VALEUR (5.1A-4) : la proposition a été ÉCARTÉE (rejected).
     // Même patron que la promotion — `after`, dédup par proposition, `proposal_id`
     // comme lien causal. Un fait de valeur négatif est aussi un signal.
@@ -488,8 +488,8 @@ export async function deleteVisitAction(input: unknown): Promise<{ ok: boolean; 
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
   const visit = await getVisit(parsed.data.report_id)
   if (!visit) return { ok: false, error: 'Visite introuvable' }
-  const orgId = await getOrgId()
-  if (orgId && visit.organization_id && visit.organization_id !== orgId) {
+  const access = await requireOrganizationMembership(visit.organization_id ?? '')
+  if (!access.ok) {
     return { ok: false, error: 'Visite hors organisation' }
   }
   try {
@@ -525,11 +525,11 @@ export async function finalizeVisitAction(input: unknown): Promise<{ ok: boolean
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
   const visit = await getVisit(parsed.data.report_id)
   if (!visit) return { ok: false, error: 'Visite introuvable' }
-  const orgId = await getOrgId()
-  // Scope organisation (le client admin bypasse les RLS → ce contrôle applicatif
-  // est LA barrière). Les null (visites/utilisateurs historiques d'avant le
-  // multi-org) passent : choix assumé, cohérent avec deleteVisitAction ci-dessus.
-  if (orgId && visit.organization_id && visit.organization_id !== orgId) {
+  // Frontière org depuis la RESSOURCE (M2C) : membership actif à l'org de la
+  // visite. Plus de getOrgId (qui levait en multi-org), plus de comparaison à
+  // l'org du caller. Le rôle terrain reste porté par requireFieldAgent.
+  const access = await requireOrganizationMembership(visit.organization_id ?? '')
+  if (!access.ok) {
     return { ok: false, error: 'Visite hors organisation' }
   }
   try {
@@ -564,8 +564,8 @@ export async function getVisitSummaryAction(
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
   const visit = await getVisit(parsed.data.report_id)
   if (!visit) return { ok: false, error: 'Visite introuvable' }
-  const orgId = await getOrgId()
-  if (orgId && visit.organization_id && visit.organization_id !== orgId) {
+  const access = await requireOrganizationMembership(visit.organization_id ?? '')
+  if (!access.ok) {
     return { ok: false, error: 'Visite hors organisation' }
   }
   return { ok: true, summary: await getVisitSummary(parsed.data.report_id) }
@@ -598,8 +598,8 @@ export async function trackDebriefNarrativeDisplayedAction(input: unknown): Prom
     if (!parsed.success) return
     const visit = await getVisit(parsed.data.report_id)
     if (!visit) return
-    const orgId = await getOrgId()
-    if (orgId && visit.organization_id && visit.organization_id !== orgId) return
+    const access = await requireOrganizationMembership(visit.organization_id ?? '')
+    if (!access.ok) return
 
     // La version vit dans l'analyse déjà portée par `visit` (getVisit lit `*`) :
     // aucune lecture supplémentaire. Pas de narration → rien n'a été rendu → rien
@@ -656,8 +656,8 @@ export async function promoteStakeholderProposalAction(
   if (!parsed.success) return { ok: false, error: 'Précisez au moins le rôle sur le chantier.' }
   const visit = await getVisit(parsed.data.report_id)
   if (!visit) return { ok: false, error: 'Visite introuvable' }
-  const orgId = await getOrgId()
-  if (orgId && visit.organization_id && visit.organization_id !== orgId) {
+  const access = await requireOrganizationMembership(visit.organization_id ?? '')
+  if (!access.ok) {
     return { ok: false, error: 'Visite hors organisation' }
   }
   // ON NE REFUSE PLUS (mig 232). Une personne sans entreprise ne crée toujours
@@ -669,7 +669,7 @@ export async function promoteStakeholderProposalAction(
     const res = await promoteProposal({
       id: parsed.data.proposal_id,
       userId: auth.userId,
-      organizationId: orgId ?? visit.organization_id ?? null,
+      organizationId: visit.organization_id ?? null,
       input: {
         role: parsed.data.role,
         companyName: parsed.data.company_name || undefined,
