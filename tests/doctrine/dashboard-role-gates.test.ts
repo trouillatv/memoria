@@ -34,6 +34,10 @@ const OPEN_ON_PURPOSE: Record<string, string> = {
   'preparation/page.tsx': 'Redirige vers /sites, qui est gardée.',
   'sites/[id]/ao/page.tsx': 'Redirige vers /dossiers ou /opportunites, qui sont gardées.',
   'sites/[id]/carte/page.tsx': 'Redirige vers la chronique du chantier, qui est gardée.',
+  'sites/[id]/visites/[visitId]/recit/page.tsx':
+    'Redirige vers la page de la visite, qui est gardée (le récit EST cette page depuis 78567aac).',
+  'sites/[id]/visites/[visitId]/compte-rendu/atelier/page.tsx':
+    "Redirige vers le compte-rendu, qui est gardée (l'atelier EST cette page depuis e3effc69).",
   // Ouvertes par nécessité — voir la note en fin de fichier.
   'interventions/[id]/page.tsx':
     "Atteignable depuis /planning, l'écran du chef d'équipe : la fermer casserait son parcours. Son accès doit se restreindre à SON intervention, pas à son rôle — question distincte, non résolue ici.",

@@ -94,16 +94,27 @@ une serait lui ouvrir un accès que personne ne lui a accordé.
 Le rôle n'est réécrit que s'il est fourni : réinviter quelqu'un ne doit pas lui
 retirer silencieusement des droits accordés par un administrateur.
 
-## 7. Dette transitoire assumée
+## 7. Dette transitoire — avec sa date de mort
 
-`users.organization_id` et `users.role` **survivent**.
+`users.organization_id` et `users.role` **survivent**, temporairement.
 
 | | |
 |---|---|
 | Qui **écrit** | `assignUserToOrg` (mono seulement), `updateUserProfileAsAdmin` |
 | Qui **lit** | `getOrgId()` — **193 appels** — et les gardes de rôle existantes |
-| Quand ça disparaît | Quand M2/M3 auront migré ces lecteurs |
 | Invariant anti-divergence | Pour un compte **mono**, colonne et appartenance coïncident (M1 écrit les deux). Pour un compte **multi**, la colonne cesse de faire autorité et `getOrgId()` refuse de répondre. |
+
+**Échéancier de mort** (Vincent, 2026-07-22 — « une dette avec une date
+disparaît ; une dette "temporaire" reste souvent un an ») :
+
+| Jalon | Obligation | Vérification |
+|---|---|---|
+| **Sortie de M2** | Plus **aucune lecture** de `users.role` pour un contrôle de droit ; plus aucune lecture de `users.organization_id` hors `getOrgId()` | grep de sortie de lot |
+| **Sortie de M3** | Plus **aucune écriture** des deux colonnes (`assignUserToOrg` et `updateUserProfileAsAdmin` ne touchent plus que les appartenances) | grep + test de doctrine |
+| **M4** | **Suppression** des deux colonnes (migration destructive → validation humaine explicite) | la migration elle-même |
+
+Chaque lot qui se termine sans tenir sa ligne de ce tableau doit le dire dans
+son rapport — le silence vaut dérive.
 
 Le claim JWT `app_metadata.organization_id` reste mono-organisation. **Il n'est
 pas une autorisation** — les gardes relisent l'appartenance en base.
