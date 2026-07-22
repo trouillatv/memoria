@@ -8,8 +8,12 @@
 import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import QRCode from 'qrcode'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
+
+// FRONTIÈRE M2C (5c). Avant : `site.org !== user.organization_id` — l'org par
+// défaut du profil, fausse en multi-org. Désormais l'org vient du chantier
+// (createDist : le site confié ; revoke : le site du lot résolu côté serveur).
 import {
   createActionDistribution,
   listDistributedActionIds,
@@ -27,12 +31,6 @@ export async function createActionDistributionAction(input: {
   | { ok: true; url: string; qrDataUrl: string; whatsappText: string; permanent: boolean }
   | { ok: false; error: string }
 > {
-  const user = await getCurrentUserWithProfile()
-  if (!user) return { ok: false, error: 'Non authentifié' }
-  if (user.role !== 'admin' && user.role !== 'manager' && user.role !== 'chef_equipe') {
-    return { ok: false, error: 'Accès refusé' }
-  }
-
   const recipientLabel = input.recipientLabel.trim()
   if (!recipientLabel) return { ok: false, error: 'Indiquez l\'entreprise destinataire' }
   if (recipientLabel.length > 80) return { ok: false, error: 'Nom d\'entreprise trop long' }
@@ -40,19 +38,18 @@ export async function createActionDistributionAction(input: {
   const requested = input.actions.filter((a) => a.actionId)
   if (requested.length === 0) return { ok: false, error: 'Sélectionnez au moins une action' }
 
-  const supabase = createAdminClient()
+  // Frontière : le chantier confié doit m'appartenir (membership + rôle terrain).
+  const access = await requireSiteWriteAccess(input.siteId)
+  if (!access.ok) return { ok: false, error: 'Chantier introuvable' }
 
-  // Le site appartient-il à l'org de l'utilisateur ?
+  const supabase = createAdminClient()
   const { data: site } = await supabase
     .from('sites')
-    .select('id, name, organization_id')
+    .select('id, name')
     .eq('id', input.siteId)
     .maybeSingle()
-  const siteRow = site as { id: string; name: string; organization_id: string | null } | null
+  const siteRow = site as { id: string; name: string } | null
   if (!siteRow) return { ok: false, error: 'Chantier introuvable' }
-  if (user.organization_id && siteRow.organization_id && siteRow.organization_id !== user.organization_id) {
-    return { ok: false, error: 'Accès refusé' }
-  }
 
   // Les actions appartiennent-elles bien à ce site ? (garde-fou périmètre)
   const requestedIds = requested.map((a) => a.actionId)
@@ -81,7 +78,7 @@ export async function createActionDistributionAction(input: {
       siteId: input.siteId,
       reportId: input.reportId,
       recipientLabel,
-      createdBy: user.id,
+      createdBy: access.userId,
       expiresAt,
       actions: freshActions.map((a) => ({ actionId: a.actionId, requiresProofPhoto: a.requiresProofPhoto })),
     })
@@ -119,13 +116,8 @@ export async function revokeActionDistributionAction(input: {
   distributionId: string
   reportId: string
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const user = await getCurrentUserWithProfile()
-  if (!user) return { ok: false, error: 'Non authentifié' }
-  if (user.role !== 'admin' && user.role !== 'manager' && user.role !== 'chef_equipe') {
-    return { ok: false, error: 'Accès refusé' }
-  }
-
-  // Le lot appartient-il bien à cette réunion + à l'org de l'utilisateur ?
+  // Le lot appartient-il bien à cette réunion ? On résout SON site côté serveur,
+  // puis la frontière porte sur ce site (jamais sur l'org par défaut du profil).
   const supabase = createAdminClient()
   const { data: dist } = await supabase
     .from('action_distributions')
@@ -135,18 +127,11 @@ export async function revokeActionDistributionAction(input: {
   const row = dist as { id: string; report_id: string | null; site_id: string } | null
   if (!row || row.report_id !== input.reportId) return { ok: false, error: 'Lot introuvable' }
 
-  if (user.organization_id) {
-    const { data: site } = await supabase
-      .from('sites')
-      .select('organization_id')
-      .eq('id', row.site_id)
-      .maybeSingle()
-    const orgId = (site as { organization_id: string | null } | null)?.organization_id
-    if (orgId && orgId !== user.organization_id) return { ok: false, error: 'Accès refusé' }
-  }
+  const access = await requireSiteWriteAccess(row.site_id)
+  if (!access.ok) return { ok: false, error: 'Lot introuvable' }
 
   try {
-    await revokeActionDistribution(input.distributionId, user.id)
+    await revokeActionDistribution(input.distributionId, access.userId)
   } catch {
     return { ok: false, error: 'Échec de la révocation' }
   }

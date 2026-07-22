@@ -8,6 +8,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
+import { requireSiteReportWriteAccess } from '@/lib/auth/site-write-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/lib/audit/log'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -56,27 +57,23 @@ export async function deleteMeetingAction(
   reportId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!IdSchema.safeParse(reportId).success) return { ok: false, error: 'Réunion invalide' }
-  const user = await getCurrentUserWithProfile()
-  if (!user) return { ok: false, error: 'Non authentifié' }
-  if (user.role !== 'admin' && user.role !== 'manager') return { ok: false, error: 'Accès refusé' }
+
+  // Frontière M2C : le CR appartient à l'org du chantier ; suppression réservée
+  // au superviseur (managerOrAdmin), inchangée. L'org vient de la ressource.
+  const access = await requireSiteReportWriteAccess(reportId, 'managerOrAdmin')
+  if (!access.ok) return { ok: false, error: 'Réunion introuvable' }
 
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
   const { data: rep } = await supabase
     .from('site_reports')
-    .select('id, organization_id, origin, title')
+    .select('id, origin, title')
     .eq('id', reportId)
     .maybeSingle()
   if (!rep) return { ok: false, error: 'Réunion introuvable' }
 
   const report = rep as {
-    organization_id: string | null
     origin: string | null
     title: string | null
-  }
-
-  if (orgId && report.organization_id && report.organization_id !== orgId) {
-    return { ok: false, error: 'Accès refusé' }
   }
 
   // VERROU 1 — ce n'est pas une réunion : c'est une visite terrain.
@@ -110,7 +107,7 @@ export async function deleteMeetingAction(
   // VERROU 3 — la suppression la plus destructive de l'application ne peut pas
   // rester muette.
   await logAuditEvent({
-    userId: user.id,
+    userId: access.userId,
     entityType: 'report',
     entityId: reportId,
     action: 'removed',
@@ -134,6 +131,10 @@ export async function cleanupDraftMeetingsAction(): Promise<
   if (!auth.ok) return auth
 
   const supabase = createAdminClient()
+  // ⚠️ M3 (non migré). Opération de maintenance SANS ressource (signature `()`) :
+  // elle nettoie les brouillons de TOUTE l'org du caller. Aucun chantier de
+  // contexte → aucune org à résoudre depuis une ressource. Un compte multi-org y
+  // verra `getOrgId()` lever → à traiter en vue agrégée (M3), pas ici.
   const orgId = await getOrgId()
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   let q = supabase
