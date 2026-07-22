@@ -22,6 +22,7 @@ import {
   type SiteEventRow,
 } from '@/lib/knowledge/repository'
 import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { listSiteDeadlines } from '@/lib/db/site-deadlines'
 import { echeanceDateLabel, A_PLANIFIER_LABEL } from '@/lib/visits/echeance-labels'
 import { todayLocalIso } from '@/lib/time/local-date'
@@ -338,10 +339,10 @@ function firstNames(rows: Array<{ id: string; full_name: string | null }>): Map<
  * Silence total quand rien n'a bougé : un accueil qui invente du mouvement ment.
  */
 export async function getVisitImpact(): Promise<VisitImpact> {
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser() // M3 : agrégé sur les orgs de l'utilisateur
   const now = new Date()
   const from = new Date(now.getTime() - LOOKBACK_DAYS * 86_400_000).toISOString()
-  const rows = await readEvents(from, now.toISOString(), orgId).catch(() => [] as SiteEventRow[])
+  const rows = await readEvents(from, now.toISOString(), orgIds).catch(() => [] as SiteEventRow[])
   if (rows.length === 0) return emptyVisitImpact()
 
   const bySite = new Map<string, SiteEventRow[]>()

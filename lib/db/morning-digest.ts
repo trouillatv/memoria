@@ -14,7 +14,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { SCENE_ORDER } from '@/lib/scene'
 import type { MemorySignal, SignalKind } from '@/lib/db/site-memory-signals'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { todayLocalIso } from '@/lib/time/local-date'
 
 export interface SiteMorningDigestRow {
@@ -32,6 +32,12 @@ export interface OrgMorningDigest {
   totalSignals: number
   /** Dernier calcul (max computed_at) — « relu cette nuit à 06h02 ». */
   computedAt: string | null
+  /** M3 — l'organisation PROPRIÉTAIRE du digest affiché (badge du HERO). Présent
+   *  seulement via `getMyOrgMorningDigest` (compte multi-org). */
+  organizationId?: string
+  /** M3 — les AUTRES organisations de l'utilisateur qui ont aussi un digest
+   *  aujourd'hui (« Voir les N autres organisations »). Jamais une org active. */
+  otherOrgIds?: string[]
 }
 
 /** Ordre éditorial du MATIN — vit désormais dans la MISE EN SCÈNE
@@ -108,12 +114,81 @@ export async function getOrgMorningDigest(orgId: string, date = todayLocalIso())
   }
 }
 
-/** Le digest du matin pour MON organisation (résolution getOrgId, pattern
- *  maison — le client admin bypasse les RLS, on re-scope par org). */
+/**
+ * Mesure de PERTINENCE d'un digest — pour choisir, en multi-org, LEQUEL montrer.
+ * Uniquement des données déjà présentes ; aucun appel IA, aucun score pondéré.
+ */
+export interface DigestRelevance {
+  /** Éléments nécessitant une attention : les items du signal le plus pressant
+   *  de chaque chantier (cf. `topMorningSignal`). */
+  attentionItems: number
+  /** Nombre total de signaux affichables. */
+  signalCount: number
+  /** Instant de génération (ms) — « le plus récent ». */
+  computedAtMs: number
+  /** Départage STABLE — jamais un hasard à données égales. */
+  organizationId: string
+}
+
+export function digestRelevance(digest: OrgMorningDigest, organizationId: string): DigestRelevance {
+  let attentionItems = 0
+  for (const s of digest.sites) {
+    const top = topMorningSignal(s.signals)
+    if (top) attentionItems += top.items.length
+  }
+  return {
+    attentionItems,
+    signalCount: digest.totalSignals,
+    computedAtMs: digest.computedAt ? Date.parse(digest.computedAt) : 0,
+    organizationId,
+  }
+}
+
+/**
+ * Comparaison LEXICOGRAPHIQUE déterministe (aucun poids arbitraire). Rend > 0 si
+ * `a` est PLUS pertinent que `b`. L'ordre : attention → signaux → fraîcheur →
+ * puis `organization_id` (le plus petit id gagne) comme départage STABLE, pour
+ * qu'à données parfaitement égales le HERO ne change jamais aléatoirement.
+ */
+export function compareDigestRelevance(a: DigestRelevance, b: DigestRelevance): number {
+  if (a.attentionItems !== b.attentionItems) return a.attentionItems - b.attentionItems
+  if (a.signalCount !== b.signalCount) return a.signalCount - b.signalCount
+  if (a.computedAtMs !== b.computedAtMs) return a.computedAtMs - b.computedAtMs
+  return b.organizationId.localeCompare(a.organizationId)
+}
+
+/**
+ * Le HERO du matin pour un compte multi-organisations. Décision produit
+ * (2026-07-22) : « le plus pertinent ». Ce n'est PAS « le digest de
+ * l'utilisateur », mais *le digest organisationnel jugé le plus utile ce matin
+ * parmi les organisations auxquelles il appartient* — jamais une organisation
+ * active implicite.
+ *
+ *   0 digest → null (l'appelant garde son HERO de repli) ;
+ *   1 digest → celui-là ;
+ *   plusieurs → le plus pertinent (règle déterministe ci-dessus), badgé, les
+ *   autres accessibles via `otherOrgIds`.
+ */
 export async function getMyOrgMorningDigest(date = todayLocalIso()): Promise<OrgMorningDigest | null> {
-  const orgId = await getOrgId()
-  if (!orgId) return null
-  return getOrgMorningDigest(orgId, date)
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return null
+
+  const found: Array<{ org: string; digest: OrgMorningDigest }> = []
+  for (const org of orgIds) {
+    const d = await getOrgMorningDigest(org, date)
+    if (d) found.push({ org, digest: d })
+  }
+  if (found.length === 0) return null
+
+  found.sort((a, b) =>
+    compareDigestRelevance(digestRelevance(b.digest, b.org), digestRelevance(a.digest, a.org)),
+  )
+  const winner = found[0]
+  return {
+    ...winner.digest,
+    organizationId: winner.org,
+    otherOrgIds: found.slice(1).map((d) => d.org),
+  }
 }
 
 /** Le digest du matin restreint à DES chantiers (le Matin sur /m : les

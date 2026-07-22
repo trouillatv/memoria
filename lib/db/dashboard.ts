@@ -361,12 +361,14 @@ export interface RecentAnomalyItem {
   description: string | null
   siteName: string | null
   createdAt: string
+  /** M3 — provenance pour le badge d'organisation. */
+  organizationId: string
 }
 
 export async function getRecentAnomalies(windowHours = 24): Promise<RecentAnomalyItem[]> {
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
   const since = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString()
 
   // intervention_anomalies n'a pas org_id — on filtre via le JOIN intervention
@@ -385,16 +387,17 @@ export async function getRecentAnomalies(windowHours = 24): Promise<RecentAnomal
     .order('created_at', { ascending: false })
     .limit(10)
 
-  // Si orgId disponible, on filtre via les interventions pour l'isolation
-  if (orgId) {
-    const { data: intvIds } = await supabase
-      .from('interventions')
-      .select('id')
-      .eq('organization_id', orgId)
-    const ids = (intvIds ?? []).map((i: { id: string }) => i.id)
-    if (ids.length === 0) return []
-    q = q.in('intervention_id', ids)
-  }
+  // Isolation multi-org : on filtre via les interventions des orgs de l'utilisateur.
+  // La map intervention → org sert aussi de provenance (badge) par anomalie.
+  const { data: intvRows } = await supabase
+    .from('interventions')
+    .select('id, organization_id')
+    .in('organization_id', orgIds)
+  const orgByIntervention = new Map(
+    ((intvRows ?? []) as Array<{ id: string; organization_id: string }>).map((i) => [i.id, i.organization_id]),
+  )
+  if (orgByIntervention.size === 0) return []
+  q = q.in('intervention_id', [...orgByIntervention.keys()])
 
   const { data, error } = await q
   if (error) { console.error('[getRecentAnomalies]', error); return [] }
@@ -415,6 +418,7 @@ export async function getRecentAnomalies(windowHours = 24): Promise<RecentAnomal
       description: r.description,
       siteName: (siteRow?.name as string | null) ?? null,
       createdAt: r.created_at,
+      organizationId: orgByIntervention.get(r.intervention_id as string) ?? '',
     }
   })
 }
@@ -426,6 +430,8 @@ export interface AtRiskEngagement {
   contract_name: string
   reason: 'no_intervention_recent' | 'deadline_close' | 'high_skip_rate'
   reasonDetail: string
+  /** M3 — provenance pour le badge d'organisation. */
+  organizationId: string
 }
 
 const ATRISK_NO_INTERVENTION_DAYS = 7
@@ -433,19 +439,20 @@ const ATRISK_LIMIT = 5
 
 export async function getAtRiskEngagements(): Promise<AtRiskEngagement[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
 
-  let contractsQ = supabase.from('contracts').select('id, name').eq('status', 'active').is('deleted_at', null)
-  if (orgId) contractsQ = contractsQ.eq('organization_id', orgId)
-  const { data: contracts, error: cErr } = await contractsQ
+  const { data: contracts, error: cErr } = await supabase
+    .from('contracts').select('id, name, organization_id').eq('status', 'active').is('deleted_at', null)
+    .in('organization_id', orgIds)
   if (cErr) throw cErr
-  const activeContracts = contracts ?? []
+  const activeContracts = (contracts ?? []) as Array<{ id: string; name: string; organization_id: string }>
   if (activeContracts.length === 0) return []
-  const contractById = new Map(activeContracts.map((c) => [c.id as string, c.name as string]))
+  const contractById = new Map(activeContracts.map((c) => [c.id, c.name]))
+  const orgByContract = new Map(activeContracts.map((c) => [c.id, c.organization_id]))
 
   let engQ = supabase.from('engagements').select('id, contract_id, short_label')
     .in('status', ['active', 'curated']).in('contract_id', Array.from(contractById.keys()))
-  if (orgId) engQ = engQ.eq('organization_id', orgId)
+  if (orgIds.length) engQ = engQ.in('organization_id', orgIds)
   const { data: engagements, error: eErr } = await engQ
   if (eErr) throw eErr
   const allEngagements = (engagements ?? []) as Array<{ id: string; contract_id: string; short_label: string }>
@@ -453,7 +460,7 @@ export async function getAtRiskEngagements(): Promise<AtRiskEngagement[]> {
 
   const engagementIds = allEngagements.map((e) => e.id)
   let mQ = supabase.from('missions').select('id, engagement_ids').overlaps('engagement_ids', engagementIds).is('deleted_at', null)
-  if (orgId) mQ = mQ.eq('organization_id', orgId)
+  if (orgIds.length) mQ = mQ.in('organization_id', orgIds)
   const { data: missions, error: mErr } = await mQ
   if (mErr) throw mErr
   const allMissions = (missions ?? []) as Array<{ id: string; engagement_ids: string[] }>
@@ -473,7 +480,7 @@ export async function getAtRiskEngagements(): Promise<AtRiskEngagement[]> {
   if (allMissionIds.length > 0) {
     let iQ = supabase.from('interventions').select('mission_id, executed_at, status')
       .in('mission_id', allMissionIds).in('status', EXECUTED_STATUSES as unknown as string[]).gte('executed_at', cutoffIso)
-    if (orgId) iQ = iQ.eq('organization_id', orgId)
+    if (orgIds.length) iQ = iQ.in('organization_id', orgIds)
     const { data: recentInterventions, error: riErr } = await iQ
     if (riErr) throw riErr
     for (const intv of recentInterventions ?? []) {
@@ -487,7 +494,7 @@ export async function getAtRiskEngagements(): Promise<AtRiskEngagement[]> {
     let lQ = supabase.from('interventions').select('mission_id, executed_at')
       .in('mission_id', allMissionIds).in('status', EXECUTED_STATUSES as unknown as string[])
       .order('executed_at', { ascending: false }).limit(500)
-    if (orgId) lQ = lQ.eq('organization_id', orgId)
+    if (orgIds.length) lQ = lQ.in('organization_id', orgIds)
     const { data: lastExec, error: leErr } = await lQ
     if (leErr) throw leErr
     for (const row of lastExec ?? []) {
@@ -516,6 +523,7 @@ export async function getAtRiskEngagements(): Promise<AtRiskEngagement[]> {
     candidates.push({
       engagement_id: e.id, short_label: e.short_label, contract_id: e.contract_id,
       contract_name: contractById.get(e.contract_id) ?? '', reason: 'no_intervention_recent', reasonDetail,
+      organizationId: orgByContract.get(e.contract_id) ?? '',
     })
   }
 

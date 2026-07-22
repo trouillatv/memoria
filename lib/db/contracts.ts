@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { todayLocalIso, localDateOf } from '@/lib/time/local-date'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { canViewDocument } from '@/lib/documents/access'
@@ -207,10 +208,10 @@ export async function getContract(id: string): Promise<DbContract | null> {
 
 export async function listContracts(): Promise<DbContract[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
-  let q = supabase.from('contracts').select('*').is('deleted_at', null).order('created_at', { ascending: false })
-  if (orgId) q = q.eq('organization_id', orgId)
-  const { data, error } = await q
+  const orgIds = await getOrgIdsOfUser() // M3 : agrégé sur les orgs de l'utilisateur (fail-closed sur [])
+  const { data, error } = await supabase
+    .from('contracts').select('*').is('deleted_at', null).order('created_at', { ascending: false })
+    .in('organization_id', orgIds)
   if (error) throw error
   return data ?? []
 }

@@ -961,6 +961,8 @@ export interface RecentPassationEntry {
   targetTeamName: string | null
   /** True si archivé (soft-deleted) → pas de lien vers le détail. */
   isArchived: boolean
+  /** M3 — provenance pour le badge d'organisation. */
+  organizationId: string
 }
 
 /**
@@ -969,16 +971,15 @@ export interface RecentPassationEntry {
  */
 export async function listRecentPassations(limit = 6): Promise<RecentPassationEntry[]> {
   const admin = createAdminClient()
-  const orgId = await getOrgId()
-  let qPassations = admin
+  const orgIds = await getOrgIdsOfUser()
+  const { data } = await admin
     .from('handover_briefs')
     .select(
-      'id, title, kind, status, created_at, deleted_at, access_count, acknowledged_by, acknowledged_at, target_team_id, payload',
+      'id, title, kind, status, created_at, deleted_at, access_count, acknowledged_by, acknowledged_at, target_team_id, payload, organization_id',
     )
     .order('created_at', { ascending: false })
     .limit(limit)
-  if (orgId) qPassations = qPassations.eq('organization_id', orgId)
-  const { data } = await qPassations
+    .in('organization_id', orgIds)
 
   type Row = {
     id: string
@@ -992,6 +993,7 @@ export async function listRecentPassations(limit = 6): Promise<RecentPassationEn
     acknowledged_at: string | null
     target_team_id: string | null
     payload: HandoverPayload | null
+    organization_id: string
   }
   const rows = (data ?? []) as Row[]
   if (rows.length === 0) return []
@@ -1031,6 +1033,7 @@ export async function listRecentPassations(limit = 6): Promise<RecentPassationEn
     acknowledgedAt: r.acknowledged_at,
     targetTeamName: r.target_team_id ? teamById.get(r.target_team_id) ?? null : null,
     isArchived: r.status === 'archived' || r.deleted_at !== null,
+    organizationId: r.organization_id,
   }))
 }
 
@@ -1041,6 +1044,8 @@ export interface LivingASavoirCard {
   site_name: string
   body: string
   notedAt: string
+  /** M3 — provenance pour le badge d'organisation. */
+  organizationId: string
 }
 
 /**
@@ -1049,23 +1054,23 @@ export interface LivingASavoirCard {
  */
 export async function listLivingASavoir(limit = 4): Promise<LivingASavoirCard[]> {
   const admin = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
   const today = new Date().toISOString().slice(0, 10)
-  let qASavoir = admin
+  const { data } = await admin
     .from('site_notes')
-    .select('id, body, created_at, kind, active_until, site:sites!inner(id, name, deleted_at)')
+    .select('id, body, created_at, kind, active_until, organization_id, site:sites!inner(id, name, deleted_at)')
     .eq('kind', 'a_savoir')
     .is('deleted_at', null)
     .or(`active_until.is.null,active_until.gte.${today}`)
     .order('created_at', { ascending: false })
     .limit(limit * 4)
-  if (orgId) qASavoir = qASavoir.eq('organization_id', orgId)
-  const { data } = await qASavoir
+    .in('organization_id', orgIds)
 
   type Row = {
     id: string
     body: string
     created_at: string
+    organization_id: string
     site: { id: string; name: string; deleted_at: string | null } | { id: string; name: string; deleted_at: string | null }[] | null
   }
   const out: LivingASavoirCard[] = []
@@ -1081,6 +1086,7 @@ export async function listLivingASavoir(limit = 4): Promise<LivingASavoirCard[]>
       site_name: site.name,
       body: r.body,
       notedAt: r.created_at,
+      organizationId: r.organization_id,
     })
     if (out.length >= limit) break
   }

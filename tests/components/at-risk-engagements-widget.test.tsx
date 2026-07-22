@@ -11,6 +11,7 @@ function makeEngagement(p: Partial<AtRiskEngagement> = {}): AtRiskEngagement {
     contract_name: 'CHU Régional',
     reason: 'no_intervention_recent',
     reasonDetail: 'Aucune intervention exécutée depuis 4 jours',
+    organizationId: 'org-1',
     ...p,
   }
 }

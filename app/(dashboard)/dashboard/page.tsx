@@ -32,6 +32,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getVisitImpact, emptyVisitImpact } from '@/lib/knowledge/site-events'
 import { VisitImpactCard } from './VisitImpactCard'
 import { getMyOrgMorningDigest, type OrgMorningDigest } from '@/lib/db/morning-digest'
@@ -131,8 +132,12 @@ export default async function DashboardPage() {
 
   const continuityEnabled = isContinuityFeatureEnabled()
 
+  // M3 — les organisations de l'utilisateur (agrégation multi-org). Sert l'inbox
+  // et, plus bas, la résolution des noms d'organisation pour les badges.
+  const orgIds = await getOrgIdsOfUser()
+
   // Couche « Nouveau depuis hier » — déclarations QR fraîches depuis last_seen_at.
-  const inbox = await getInboxFeed(user.id, user.organization_id ?? null)
+  const inbox = await getInboxFeed(user.id, orgIds)
 
   // Socle notifications (mig 159) — surfacé au chargement (bandeau).
   const notifications = await getMyUnreadNotifications()

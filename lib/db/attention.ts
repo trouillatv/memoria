@@ -9,7 +9,7 @@
 // Chaque item répond à : QUOI · POURQUOI maintenant · OÙ cliquer. Plafonné.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { listOpenSiteActions, actionHealth, type SiteActionRow } from '@/lib/db/site-actions'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { getWeekRange } from '@/lib/week-planning-helpers'
@@ -55,11 +55,12 @@ function trunc(s: string, n = 48): string {
 
 export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
   const sb = createAdminClient()
-  const orgId = await getOrgId().catch(() => null)
+  // M3 — était `getOrgId().catch(() => null)` : en multi-org, `null` → AUCUN
+  // filtre → lecture INTER-TENANTS (fuite). Désormais agrégé + fail-closed.
+  const orgIds = await getOrgIdsOfUser()
 
-  let sitesQ = sb.from('sites').select('id, name').is('deleted_at', null)
-  if (orgId) sitesQ = sitesQ.eq('organization_id', orgId)
-  const { data: siteRows } = await sitesQ
+  const { data: siteRows } = await sb
+    .from('sites').select('id, name').is('deleted_at', null).in('organization_id', orgIds)
   const sites = (siteRows ?? []) as Array<{ id: string; name: string }>
   const totalSites = sites.length
   if (totalSites === 0)

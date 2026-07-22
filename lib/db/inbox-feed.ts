@@ -33,10 +33,10 @@ export async function getLastSeen(userId: string): Promise<string | null> {
   return (data?.last_seen_at as string | null) ?? null
 }
 
-export async function getInboxFeed(userId: string, orgId: string | null): Promise<InboxFeed> {
+export async function getInboxFeed(userId: string, orgIds: string[]): Promise<InboxFeed> {
   const since = (await getLastSeen(userId)) ?? new Date(Date.now() - DEFAULT_WINDOW_MS).toISOString()
   const empty: InboxFeed = { since, items: [], doneCount: 0, blockedCount: 0, photoCount: 0 }
-  if (!orgId) return empty
+  if (orgIds.length === 0) return empty // M3 : agrégé sur les orgs de l'utilisateur
 
   const sb = createAdminClient()
   // 1) déclarations fraîches (Fait/Bloqué) depuis `since`
@@ -69,7 +69,7 @@ export async function getInboxFeed(userId: string, orgId: string | null): Promis
     const dist = distById.get(r.distribution_id as string)
     if (!dist) continue
     const site = siteById.get(dist.site_id as string)
-    if (!site || site.organization_id !== orgId) continue // RLS-like : org only
+    if (!site || !orgIds.includes(site.organization_id as string)) continue // RLS-like : orgs de l'utilisateur
     items.push({
       actionId: r.action_id as string,
       company: (dist.recipient_label as string) ?? 'Entreprise',

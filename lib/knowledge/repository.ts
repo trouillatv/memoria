@@ -216,7 +216,8 @@ export interface SiteEventRow {
 export async function readEvents(
   from: string,
   to: string,
-  orgId: string | null,
+  /** Une org (fiche/historique) OU plusieurs (dashboard agrégé multi-org, M3). */
+  orgId: string | string[] | null,
   /** Restreint à un chantier — l'Historique d'une fiche ne lit pas tout le parc. */
   siteId?: string,
 ): Promise<SiteEventRow[]> {
@@ -243,7 +244,7 @@ export async function readEvents(
     .not('ended_at', 'is', null)
     .gte('ended_at', from)
     .lte('ended_at', to)
-  if (orgId) rq = rq.eq('organization_id', orgId)
+  if (orgId) rq = Array.isArray(orgId) ? rq.in('organization_id', orgId) : rq.eq('organization_id', orgId)
   if (siteId) rq = rq.eq('site_id', siteId)
   const { data: reports } = await rq
   for (const r of (reports ?? []) as Array<{ id: string; site_id: string; started_at: string | null; ended_at: string; debrief_analysis: { generated_at?: string } | null }>) {
@@ -261,7 +262,7 @@ export async function readEvents(
     .eq('status', 'proposed')
     .gte('created_at', from)
     .lte('created_at', to)
-  if (orgId) pq = pq.eq('organization_id', orgId)
+  if (orgId) pq = Array.isArray(orgId) ? pq.in('organization_id', orgId) : pq.eq('organization_id', orgId)
   if (siteId) pq = pq.eq('site_id', siteId)
   const { data: props } = await pq
   for (const p of (props ?? []) as Array<{ site_id: string; kind: string; created_at: string; report_id: string | null; title: string | null }>) {
@@ -278,7 +279,7 @@ export async function readEvents(
     .not('reviewed_at', 'is', null)
     .gte('reviewed_at', from)
     .lte('reviewed_at', to)
-  if (orgId) cq = cq.eq('organization_id', orgId)
+  if (orgId) cq = Array.isArray(orgId) ? cq.in('organization_id', orgId) : cq.eq('organization_id', orgId)
   if (siteId) cq = cq.eq('site_id', siteId)
   const { data: confirmed } = await cq
   for (const c of (confirmed ?? []) as Array<{ site_id: string; kind: string; reviewed_at: string; report_id: string | null; title: string | null; reviewed_by: string | null }>) {
