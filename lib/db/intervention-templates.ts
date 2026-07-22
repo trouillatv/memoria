@@ -146,7 +146,7 @@ export async function createTemplate(input: CreateTemplateInput): Promise<DbInte
     .select('organization_id')
     .eq('id', input.mission_id)
     .maybeSingle()
-  const orgId = missionOrg?.organization_id ?? (await getOrgId())
+  const orgId = missionOrg?.organization_id ?? null
   if (!orgId) throw new Error('Mission sans organisation — création de rythme impossible')
   const { data, error } = await supabase
     .from('intervention_templates')

@@ -1,5 +1,4 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { listSiteNotes } from '@/lib/db/sites'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
@@ -315,7 +314,7 @@ export async function createIntervention(input: {
       .select('organization_id')
       .eq('id', input.mission_id)
       .maybeSingle()
-    orgId = mission?.organization_id ?? (await getOrgId())
+    orgId = mission?.organization_id ?? null
   }
   if (!orgId) throw new Error('Mission sans organisation — création d’intervention impossible')
   const { data, error } = await supabase

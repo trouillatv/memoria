@@ -30,7 +30,6 @@
 // l'intervention.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
 import { ensureSystemMission } from '@/lib/db/system-missions'
 import { listActiveTeamIdsForUser } from '@/lib/db/teams'
 import { todayLocalIso } from '@/lib/time/local-date'
@@ -125,7 +124,7 @@ export async function findOrCreateSpontaneousIntervention(
     .select('organization_id')
     .eq('id', systemMission.id)
     .maybeSingle()
-  const orgId = sysMissionOrg?.organization_id ?? (await getOrgId())
+  const orgId = sysMissionOrg?.organization_id ?? null
   if (!orgId) throw new Error('Mission système sans organisation — intervention spontanée impossible')
   const { data: inserted, error: insertErr } = await supabase
     .from('interventions')

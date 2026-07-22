@@ -144,7 +144,7 @@ export async function createMission(input: {
     .select('organization_id')
     .eq('id', input.site_id)
     .maybeSingle()
-  const orgId = site?.organization_id ?? (await getOrgId())
+  const orgId = site?.organization_id ?? null
   if (!orgId) throw new Error('Chantier sans organisation — création de mission impossible')
   const { data, error } = await supabase
     .from('missions')

@@ -10,7 +10,8 @@
 // jamais de recommandation. Sujet = sites/traces, jamais une personne.
 
 import { z } from 'zod'
-import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
+import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { logUsageEvent } from '@/lib/db/usage-events'
 import { getAIProvider } from '@/services/ai/factory'
 import { withAITracking } from '@/services/ai/tracking'
@@ -223,24 +224,21 @@ const TERM_STOPWORDS = new Set([
  *  des pistes ANCRÉES (qui existent vraiment) au lieu d'exemples génériques codés. */
 export async function getOrgMemoryTermsAction(): Promise<{ ok: true; terms: { term: string; count: number }[] } | { ok: false; error: string }> {
   if (!(await requireOperator())) return { ok: false, error: 'Accès refusé' }
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { ok: true, terms: [] }
   const supabase = createAdminClient()
   const sites = await listSites().catch(() => [])
   const orgSiteIds = sites.map((s) => s.id)
 
   const [notes, actions, reserves, anomalies] = await Promise.all([
-    orgId
-      ? supabase.from('site_notes').select('body').eq('organization_id', orgId).limit(600).then((r) => r.data ?? [], () => [])
-      : Promise.resolve([] as Array<{ body: string | null }>),
+    supabase.from('site_notes').select('body').in('organization_id', orgIds).limit(600).then((r) => r.data ?? [], () => []),
     orgSiteIds.length
       ? supabase.from('site_actions').select('title, body').in('site_id', orgSiteIds).limit(600).then((r) => r.data ?? [], () => [])
       : Promise.resolve([] as Array<{ title: string | null; body: string | null }>),
     orgSiteIds.length
       ? supabase.from('site_reserve').select('label, location, lift_note').in('site_id', orgSiteIds).limit(600).then((r) => r.data ?? [], () => [])
       : Promise.resolve([] as Array<{ label: string | null; location: string | null; lift_note: string | null }>),
-    orgId
-      ? supabase.from('intervention_anomalies').select('description, interventions!inner(organization_id)').eq('interventions.organization_id', orgId).limit(600).then((r) => r.data ?? [], () => [])
-      : Promise.resolve([] as Array<{ description: string | null }>),
+    supabase.from('intervention_anomalies').select('description, interventions!inner(organization_id)').in('interventions.organization_id', orgIds).limit(600).then((r) => r.data ?? [], () => []),
   ])
 
   const counts = new Map<string, number>()
@@ -275,7 +273,9 @@ export async function askOrgMemoryAction(
   const q = (question ?? '').trim().slice(0, 200)
   if (q.length < 2) return { ok: true, hits: [], summary: null }
 
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { ok: true, hits: [], summary: null }
+  const orgId = orgIds[0] // tenantId lookup est mono-org — multi-org sémantique différé
 
   // Carte siteId → nom (attribution par site). Calculée une fois, en parallèle.
   const queryEmbedding = await getEmbedding(q).catch(() => null)

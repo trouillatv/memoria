@@ -6,7 +6,7 @@
 //   clients ↔ contracts (matching par client_name ILIKE — pas de FK)
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getSiteRecentRhythm, type SiteRhythmDay } from '@/lib/db/site-cockpit'
 
 const EMPTY_UUID = '00000000-0000-0000-0000-000000000000'
@@ -135,14 +135,15 @@ export interface ClientDetail extends ClientRow {
 /** Liste tous les clients avec le compte de sites et de contrats. */
 export async function listClientsWithStats(): Promise<ClientWithStats[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
 
-  let clientQ = supabase
+  const clientQ = supabase
     .from('clients')
     .select('id, name, contact_name, contact_email, contact_phone, address, notes')
     .is('deleted_at', null)
     .order('name')
-  if (orgId) clientQ = clientQ.eq('organization_id', orgId)
+    .in('organization_id', orgIds)
   const { data: clients, error } = await clientQ
   if (error) throw error
   if (!clients || clients.length === 0) return []
