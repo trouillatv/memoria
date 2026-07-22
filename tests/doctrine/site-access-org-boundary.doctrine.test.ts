@@ -41,14 +41,32 @@ describe('la garde suit la doctrine d’ownership du dépôt', () => {
     expect(helper).toMatch(/requireOrganizationMembership\(orgId\)/)
   })
 
-  it('elle exempte le super-admin, comme decideOwnership', () => {
-    // La doctrine centrale (`lib/auth/ownership.ts`) laisse passer role==='admin'.
-    expect(helper).toMatch(/user\.role === 'admin'/)
-    expect(helper).toMatch(/return true/)
+  it('le rôle plateforme n’ouvre PAS les données métier — aucune exemption', () => {
+    // Doctrine (Vincent, 2026-07-22) : `users.role === 'admin'` administre
+    // MemorIA, il ne donne AUCUN accès aux chantiers. L'accès métier passe
+    // toujours par l'appartenance. La ligne `if (user.role === 'admin') return
+    // true` a été RETIRÉE — la remettre rouvrirait la porte universelle.
+    // On lit le CODE, commentaires retirés : l'en-tête explique justement
+    // pourquoi l'exemption a disparu, et ces phrases-là ne s'exécutent pas.
+    const codeSeul = helper.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    const corps = codeSeul.slice(codeSeul.indexOf('export async function userCanAccessSite'))
+    expect(corps).not.toContain("role === 'admin'")
+    // La seule décision d'accès est l'appartenance à l'org du site.
+    expect(corps).toContain('requireOrganizationMembership(orgId)')
+  })
+
+  it('le seul return true est le chantier sans organisation, pas un rôle', () => {
+    // Un chantier orphelin ne peut pas fuiter entre orgs. Tout autre chemin
+    // d'accès passe par l'appartenance : aucun `return true` conditionné à un
+    // rôle ne doit exister.
+    const corps = helper.slice(helper.indexOf('export async function userCanAccessSite'))
+    const returnsTrue = corps.match(/return true/g) ?? []
+    expect(returnsTrue.length).toBe(1)
+    expect(corps).toMatch(/if \(!orgId\) return true/)
   })
 
   it('elle est fail-closed : sans session, aucun accès', () => {
-    expect(helper).toMatch(/if \(!user\) return false/)
+    expect(helper).toMatch(/if \(!\(await getCurrentUserWithProfile\(\)\)\) return false/)
     expect(helper).toMatch(/if \(error\) return false/)
   })
 

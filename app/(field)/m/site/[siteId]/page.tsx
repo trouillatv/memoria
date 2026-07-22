@@ -1,3 +1,4 @@
+import { userCanAccessSite } from '@/lib/auth/site-access'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireSiteAccess } from '@/lib/field/site-access'
@@ -137,6 +138,13 @@ export default async function FieldSitePage({
   // Un chantier d'une autre organisation doit être indiscernable d'un chantier
   // inexistant : la garde rend 404, jamais « accès refusé ».
   const { user } = await requireSiteAccess(siteId)
+
+  // FRONTIÈRE D'ORGANISATION, SANS EXEMPTION DE RÔLE. `requireSiteAccess`
+  // ci-dessus passe par `requireOwned`, qui exempte l'admin plateforme — et le
+  // mobile lit `sites` en direct juste après. Un administrateur sans membership
+  // de l'org verrait donc le chantier. `userCanAccessSite` n'exempte aucun
+  // rôle : l'accès métier exige une appartenance, ici comme au bureau.
+  if (!(await userCanAccessSite(siteId))) notFound()
 
   const supabase = createAdminClient()
   const { data: site } = await supabase

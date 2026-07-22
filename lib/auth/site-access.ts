@@ -19,24 +19,35 @@ import 'server-only'
 // structurel (les 4 tables sans `organization_id`, la garde par objet enfant)
 // reste le travail de M2.
 //
-// ── EXEMPTION SUPER-ADMIN : ON SUIT LA DOCTRINE CENTRALE DU DÉPÔT ───────────
+// ── LE RÔLE PLATEFORME N'OUVRE PAS LES DONNÉES MÉTIER (Vincent, 2026-07-22) ─
 //
-// `lib/auth/ownership.ts` (`decideOwnership`), utilisé par la garde mobile
-// `requireSiteAccess`, laisse passer `role === 'admin'` SANS lire l'objet : le
-// super-admin plateforme n'est scopé à aucune organisation. C'est la doctrine
-// réelle et centrale du dépôt — on l'épouse plutôt que d'en inventer une
-// deuxième. (Le garde du CR de visite ne l'exempte pas, mais c'est un cas
-// isolé, pas la primitive d'ownership.)
+// Version précédente : `if (user.role === 'admin') return true`. Elle
+// transformait l'administration TECHNIQUE de MemorIA en accès UNIVERSEL aux
+// données de toutes les entreprises clientes. C'est la faute que ce prolongement
+// P0 corrige, et elle est plus profonde que la fuite initiale :
+//
+//   · pouvoir PLATEFORME (`users.role === 'admin'`) → administrer MemorIA
+//     (la console `/admin/*`). Ce pouvoir NE donne AUCUN accès métier.
+//   · accès MÉTIER à un chantier → appartenance active à SON organisation,
+//     TOUJOURS, y compris pour un super-admin plateforme.
+//
+// Conséquence voulue : pour déboguer comme Guillaume, un administrateur doit
+// avoir les MÊMES appartenances que lui — pas contourner la frontière par son
+// rôle. Son compte est puissant parce qu'il CUMULE (admin plateforme + ses
+// memberships), jamais parce que le rôle ignore la frontière.
+//
+// Un mode support explicite (organisation choisie, journalisé, borné dans le
+// temps) reste possible plus tard — mais séparé, visible, et ce n'est pas ici.
 //
 // ── POURQUOI PAS `requireOwned` DIRECTEMENT ────────────────────────────────
 //
 // `requireOwned` compare l'org de l'objet à `getOrgId()` — l'organisation
-// UNIQUE du caller. Pour un compte multi-organisations, `getOrgId()` LÈVE
-// (M1) : le mobile héritera de ce comportement en M2. Mais le P0 doit
-// permettre au compte multi-org d'ouvrir SES chantiers (AGP et SERVINOR) sans
-// lever. On vérifie donc l'APPARTENANCE à l'org du site — vrai pour mono comme
-// pour multi — au lieu de l'égalité à une org unique. C'est la version
-// multi-org-ready de la même frontière ; M2 unifiera les deux gardes.
+// UNIQUE du caller — et exempte `role === 'admin'`. Deux raisons de ne pas s'en
+// servir ici : (1) `getOrgId()` LÈVE en multi-org (M1) ; (2) son exemption
+// admin est justement ce qu'on refuse. On vérifie donc l'APPARTENANCE à l'org
+// du site — vraie pour mono comme pour multi, sans exemption de rôle. M2/M8
+// réexamineront l'exemption admin transversale de `requireOwned`, qui sert
+// encore d'autres surfaces (clients, contrats, planning…).
 //
 // ── LE REFUS NE RÉVÈLE RIEN ────────────────────────────────────────────────
 //
@@ -64,10 +75,13 @@ import { requireOrganizationMembership } from '@/lib/auth/memberships'
 export async function userCanAccessSite(siteId: string): Promise<boolean> {
   if (!siteId) return false
 
-  // Super-admin plateforme : passe sans lire l'objet (doctrine `decideOwnership`).
-  const user = await getCurrentUserWithProfile()
-  if (!user) return false
-  if (user.role === 'admin') return true
+  // Session obligatoire (fail-closed) — même pour un chantier sans org, plus bas.
+  if (!(await getCurrentUserWithProfile())) return false
+
+  // AUCUNE EXEMPTION DE RÔLE ICI. Ni `users.role === 'admin'` (plateforme), ni
+  // un rôle d'appartenance. L'accès à un chantier passe TOUJOURS par
+  // l'appartenance à son organisation. Un administrateur plateforme sans
+  // membership de l'org du chantier reçoit le même refus que n'importe qui.
 
   const { data, error } = await createAdminClient()
     .from('sites')
