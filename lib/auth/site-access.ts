@@ -97,6 +97,11 @@ export async function userCanAccessOrgRow(
     .maybeSingle()
   if (error || !data) return false
   const orgId = (data as { organization_id: string | null }).organization_id ?? null
+  // DETTE-M2 (Vincent, 2026-07-22) : un objet sans organisation ne peut pas
+  // fuiter ENTRE organisations, donc on ne le refuse pas — PONT DE MIGRATION
+  // le temps que M2 rattache les 4 tables enfants. Après M2, l'invariant
+  // s'inverse : « pas d'organization_id ⇒ ERREUR », jamais `true`. Cette ligne
+  // doit disparaître avec la normalisation. Grep : DETTE-M2.
   if (!orgId) return true
   return (await requireOrganizationMembership(orgId)).ok
 }
@@ -122,6 +127,8 @@ export async function userCanAccessSite(siteId: string): Promise<boolean> {
   // rendra `notFound` de toute façon. On n'ouvre pas l'accès pour autant.
   if (error) return false
   const orgId = (data as { organization_id: string | null } | null)?.organization_id ?? null
+  // DETTE-M2 : voir userCanAccessOrgRow. Pont de migration ; après le
+  // rattachement structurel, « pas d'organization_id ⇒ ERREUR ». Grep : DETTE-M2.
   if (!orgId) return true
   const res = await requireOrganizationMembership(orgId)
   return res.ok
