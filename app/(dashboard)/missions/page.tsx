@@ -9,7 +9,8 @@ import { TeamBadge } from '@/components/ui/team-badge'
 import { HealthRing } from '@/components/ui/health-ring'
 import { listMissionsCockpit } from '@/lib/db/missions-cockpit'
 import { listTeams } from '@/lib/db/teams'
-import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
+import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import {
   buildMissionHealth as computeMissionHealth,
   scoreMissionSeverity,
@@ -88,14 +89,14 @@ export default async function MissionsPage({
     listMissionsCockpit(),
     (async () => {
       const supabase = createAdminClient()
-      const orgId = await getOrgId()
-      let q = supabase
+      const orgIds = await getOrgIdsOfUser()
+      if (orgIds.length === 0) return []
+      const { data } = await supabase
         .from('sites')
         .select('id, name, client:clients(name), contract:contracts(id, name)')
         .is('deleted_at', null)
         .order('name')
-      if (orgId) q = q.eq('organization_id', orgId)
-      const { data } = await q
+        .in('organization_id', orgIds)
       type ContractRow = { id: string; name: string }
       type ClientRow = { name: string }
       return ((data ?? []) as Array<{

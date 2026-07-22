@@ -6,7 +6,7 @@
 // équipe affectée, anomalies ouvertes. Pas d'informations par agent individuel.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { anomalyLabel } from '@/lib/anomaly-labels'
 import type { MissionCadence } from '@/types/db'
@@ -43,16 +43,17 @@ export async function listMissionsCockpit(): Promise<{
   stats: MissionCockpitStats
 }> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
   const today = todayLocalIso()
 
-  // 1. Sites de l'organisation (avec infos contrat)
-  let sitesQ = supabase
+  if (orgIds.length === 0) return { missions: [], stats: { total: 0, withoutNextIntervention: 0, withoutTeam: 0, withAnomalies: 0 } }
+
+  // 1. Sites des organisations de l'utilisateur (M3 : agrégé)
+  const { data: siteRows } = await supabase
     .from('sites')
     .select('id, name, contract:contracts(id, name)')
     .is('deleted_at', null)
-  if (orgId) sitesQ = sitesQ.eq('organization_id', orgId)
-  const { data: siteRows } = await sitesQ
+    .in('organization_id', orgIds)
 
   const siteIds = (siteRows ?? []).map((s) => (s as { id: string }).id)
   if (siteIds.length === 0) {

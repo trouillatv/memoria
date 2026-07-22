@@ -2,6 +2,7 @@ import { resolveResourceAccess } from '@/lib/auth/resource-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
 import { todayLocalIso } from '@/lib/time/local-date'
 import type { DbSite, DbSiteNote, SitePhase } from '@/types/db'
@@ -112,7 +113,8 @@ export interface SiteForMatching {
  */
 export async function listSitesForMatching(): Promise<SiteForMatching[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
 
   // Tente d'abord avec les nouvelles colonnes (post-migration 062)
   let baseQ = supabase
@@ -120,7 +122,7 @@ export async function listSitesForMatching(): Promise<SiteForMatching[]> {
     .select('id, name, normalized_name, canonical_site_key, client_id, client:clients(name)')
     .is('deleted_at', null)
     .order('name')
-  if (orgId) baseQ = baseQ.eq('organization_id', orgId)
+    .in('organization_id', orgIds)
   const { data, error } = await baseQ
 
   // Si 42703 (colonne absente) : migration pas encore appliquée → fallback sans ces colonnes
@@ -131,7 +133,7 @@ export async function listSitesForMatching(): Promise<SiteForMatching[]> {
         .select('id, name, client_id, client:clients(name)')
         .is('deleted_at', null)
         .order('name')
-      if (orgId) fallbackQ = fallbackQ.eq('organization_id', orgId)
+      fallbackQ = fallbackQ.in('organization_id', orgIds)
       const { data: fallback, error: fallbackErr } = await fallbackQ
       if (fallbackErr) throw fallbackErr
       return (fallback ?? []).map((s) => {
@@ -168,10 +170,9 @@ export interface ClientLite { id: string; name: string }
 
 export async function listClients(): Promise<ClientLite[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
-  let q = supabase.from('clients').select('id, name').is('deleted_at', null).order('name')
-  if (orgId) q = q.eq('organization_id', orgId)
-  const { data, error } = await q
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
+  const { data, error } = await supabase.from('clients').select('id, name').is('deleted_at', null).order('name').in('organization_id', orgIds)
   if (error) throw error
   return (data ?? []) as ClientLite[]
 }
@@ -185,10 +186,9 @@ export interface ContractLite {
 
 export async function listActiveContractsLite(): Promise<ContractLite[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
-  let q = supabase.from('contracts').select('id, name, client_name').is('deleted_at', null).neq('status', 'archived').order('name')
-  if (orgId) q = q.eq('organization_id', orgId)
-  const { data, error } = await q
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
+  const { data, error } = await supabase.from('contracts').select('id, name, client_name').is('deleted_at', null).neq('status', 'archived').order('name').in('organization_id', orgIds)
   if (error) throw error
   // contracts n'a pas encore de FK client_id directe — on expose null
   return (data ?? []).map((c) => ({
@@ -201,10 +201,9 @@ export async function listActiveContractsLite(): Promise<ContractLite[]> {
 
 export async function listSites(): Promise<DbSite[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
-  let q = supabase.from('sites').select('*').is('deleted_at', null).order('name')
-  if (orgId) q = q.eq('organization_id', orgId)
-  const { data, error } = await q
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
+  const { data, error } = await supabase.from('sites').select('*').is('deleted_at', null).order('name').in('organization_id', orgIds)
   if (error) throw error
   return data ?? []
 }
@@ -277,9 +276,10 @@ export interface SiteWithStats extends DbSite {
 /** Liste tous les sites actifs du tenant, enrichis pour l'affichage global. */
 export async function listSitesGlobal(): Promise<SiteWithStats[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
 
-  let qSites = supabase
+  const qSites = supabase
     .from('sites')
     .select('*, contract:contracts(name, status), client:clients(name)')
     .is('deleted_at', null)
@@ -287,7 +287,7 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
     // — elles vivent dans /opportunites. Seuls les dossiers gagnés y figurent.
     .not('phase', 'in', '(prospect,en_ao,perdu)')
     .order('name')
-  if (orgId) qSites = qSites.eq('organization_id', orgId)
+    .in('organization_id', orgIds)
   const { data: sites, error } = await qSites
   if (error) throw error
   const rows = (sites ?? []) as Array<
