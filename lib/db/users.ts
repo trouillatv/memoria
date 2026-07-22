@@ -1,6 +1,7 @@
 import { cache } from 'react'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { OrganisationAmbigueError } from '@/lib/auth/organisation-ambigue'
 import type { DbUser, UserRole } from '@/types/db'
 
 /**
@@ -30,12 +31,47 @@ export const getCurrentUserWithProfile = cache(async (): Promise<DbUser | null> 
  * Utilise getCurrentUserWithProfile() — dédupliqué par React cache().
  */
 export async function getOrgId(): Promise<string | null> {
+  let user: Awaited<ReturnType<typeof getCurrentUserWithProfile>>
   try {
-    const user = await getCurrentUserWithProfile()
-    return user?.organization_id ?? null
+    user = await getCurrentUserWithProfile()
   } catch {
+    // Lecture de session en échec : aucune organisation, donc aucun accès.
+    // Les appelants traitent `null` en fail-closed.
     return null
   }
+  if (!user) return null
+
+  // ── ON REFUSE DE CHOISIR (M1, mig 233) ────────────────────────────────────
+  //
+  // `users.organization_id` n'est plus qu'une organisation PAR DÉFAUT dès qu'un
+  // compte appartient à plusieurs entreprises. La rendre quand même ferait
+  // écrire dans AGP une donnée saisie pour SERVINOR — sans erreur, sans trace,
+  // et invisible jusqu'à l'audit.
+  //
+  // ⚠️ CE `throw` NE DOIT JAMAIS ÊTRE AVALÉ. La version précédente enveloppait
+  // toute la fonction dans un `catch { return null }` : l'ambiguïté serait
+  // devenue un `null`, or de nombreuses gardes s'écrivent
+  // `if (orgId && objet.organization_id !== orgId) notFound()`. Un `null` y
+  // DÉSACTIVE le contrôle. L'erreur doit donc traverser.
+  const orgIds = await activeOrgIdsOf(user.id)
+  if (orgIds.length > 1) throw new OrganisationAmbigueError(orgIds)
+
+  // Mono-organisation : comportement rigoureusement inchangé. L'appartenance
+  // fait foi ; la colonne historique sert de repli tant que M2/M3 n'ont pas
+  // migré les lecteurs.
+  return orgIds[0] ?? user.organization_id ?? null
+}
+
+/** Les organisations où ce compte est membre ACTIF. Lecture directe : passer
+ *  par `lib/auth/memberships` créerait un cycle d'imports. */
+async function activeOrgIdsOf(userId: string): Promise<string[]> {
+  const { data, error } = await createAdminClient()
+    .from('organization_memberships')
+    .select('organization_id')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+  if (error || !data) return []
+  return (data as Array<{ organization_id: string }>).map((r) => r.organization_id)
 }
 
 /**
