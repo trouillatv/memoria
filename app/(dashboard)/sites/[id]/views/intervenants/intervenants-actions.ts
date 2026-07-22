@@ -6,28 +6,17 @@
 // un seul cycle de promotion, jamais un second mécanisme.
 
 import { z } from 'zod'
-import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
 import { openSiteIntervenant } from '@/lib/db/site-intervenants'
 import { logUsageEvent } from '@/lib/db/usage-events'
 
-async function requireManagerOrAdmin() {
-  const user = await getCurrentUserWithProfile()
-  if (!user) throw new Error('Not authenticated')
-  if (user.role !== 'admin' && user.role !== 'manager') throw new Error('Forbidden')
-  return user
-}
-
-/** Le chantier appartient-il à l'org de l'appelant ? Fail-closed : le
- *  service-role bypasse la RLS, la garde vit dans le code. */
-async function requireSiteInOrg(siteId: string): Promise<string | null> {
-  const orgId = await getOrgId()
-  if (!orgId) return null
-  const { data } = await createAdminClient()
-    .from('sites').select('id, organization_id').eq('id', siteId).maybeSingle()
-  if (!data || (data as { organization_id: string | null }).organization_id !== orgId) return null
-  return orgId
-}
+// FRONTIÈRE M2C. Avant : `requireManagerOrAdmin` (rôle du profil) + `requireSiteInOrg`
+// (org du caller via `getOrgId`). Ces deux gestes reposaient sur l'org PAR DÉFAUT
+// du profil — cassés en multi-org. Désormais tout passe par `requireSiteWriteAccess(
+// siteId, 'managerOrAdmin')` : org DU CHANTIER → membership actif → rôle. Les
+// recherches d'aide en héritent : le `site_id` reçu EST leur contexte métier (on
+// cherche dans l'organisation qui possède ce chantier), résolu côté serveur.
 
 const ficheOpenedSchema = z.object({
   site_id: z.string().uuid(),
@@ -86,15 +75,11 @@ const searchSchema = z.object({ site_id: z.string().uuid(), q: z.string().trim()
 export async function searchOrgContactsAction(
   input: z.input<typeof searchSchema>,
 ): Promise<{ ok: true; hits: OrgContactHit[] } | { ok: false; error: string }> {
-  try {
-    await requireManagerOrAdmin()
-  } catch {
-    return { ok: false, error: 'Non autorisé' }
-  }
   const parsed = searchSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Recherche invalide' }
-  const orgId = await requireSiteInOrg(parsed.data.site_id)
-  if (!orgId) return { ok: false, error: 'Chantier introuvable' }
+  const access = await requireSiteWriteAccess(parsed.data.site_id, 'managerOrAdmin')
+  if (!access.ok) return { ok: false, error: 'Chantier introuvable' }
+  const orgId = access.organizationId
 
   const db = createAdminClient()
   const { data: companies } = await db
@@ -134,15 +119,11 @@ const associateSchema = z.object({
 export async function associateContactAction(
   input: z.input<typeof associateSchema>,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  try {
-    await requireManagerOrAdmin()
-  } catch {
-    return { ok: false, error: 'Non autorisé' }
-  }
   const parsed = associateSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
-  const orgId = await requireSiteInOrg(parsed.data.site_id)
-  if (!orgId) return { ok: false, error: 'Chantier introuvable' }
+  const access = await requireSiteWriteAccess(parsed.data.site_id, 'managerOrAdmin')
+  if (!access.ok) return { ok: false, error: 'Chantier introuvable' }
+  const orgId = access.organizationId
 
   const db = createAdminClient()
   // Le contact doit appartenir à une entreprise de NOTRE org (garde IDOR).
@@ -203,15 +184,11 @@ export interface IntervenantTarget {
 export async function searchIntervenantTargetsAction(
   input: z.input<typeof searchSchema>,
 ): Promise<{ ok: true; hits: IntervenantTarget[] } | { ok: false; error: string }> {
-  try {
-    await requireManagerOrAdmin()
-  } catch {
-    return { ok: false, error: 'Non autorisé' }
-  }
   const parsed = searchSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Recherche invalide' }
-  const orgId = await requireSiteInOrg(parsed.data.site_id)
-  if (!orgId) return { ok: false, error: 'Chantier introuvable' }
+  const access = await requireSiteWriteAccess(parsed.data.site_id, 'managerOrAdmin')
+  if (!access.ok) return { ok: false, error: 'Chantier introuvable' }
+  const orgId = access.organizationId
 
   const db = createAdminClient()
   const q = parsed.data.q
