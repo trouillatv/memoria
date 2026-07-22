@@ -109,7 +109,7 @@ export async function trackAiOutcome(input: AiOutcomeInput): Promise<void> {
     // filtrer, ou resterait un poids mort invisible. La télémétrie est
     // best-effort : perdre un événement sur une session illisible est acceptable,
     // écrire une ligne inter-tenant ne l'est pas.
-    const orgId = await getOrgId().catch(() => null)
+    const orgId = await getOrgId().catch(() => null) // M3_TELEMETRY_EXCEPTION — log/tracking, org null accepté
     if (!orgId) return
 
     const row = {

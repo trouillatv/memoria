@@ -19,7 +19,7 @@ import 'server-only'
 // (re)générées.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { todayLocalIso } from '@/lib/time/local-date'
 import {
   derivedClosuresFor,
@@ -59,16 +59,19 @@ function isMissing(error: { code?: string; message?: string }): boolean {
  *  existeraient encore. */
 export async function listPeriods(kind?: CalendarKind): Promise<SchoolPeriod[]> {
   const db = createAdminClient()
-  const orgId = await getOrgId().catch(() => null)
+  // M3 — multi-org : on lit les périodes globales (NULL) + celles des orgs de
+  // l'utilisateur courant. Fail-closed : si l'utilisateur n'a aucune org lisible,
+  // on renvoie [] plutôt que de laisser fuiter des données inter-tenant.
+  const orgIds = await getOrgIdsOfUser().catch(() => [] as string[])
+  if (orgIds.length === 0) return []
 
   let q = db
     .from('school_calendar_period')
     .select('id, kind, label, starts_on, ends_on')
     .is('deleted_at', null)
     .order('starts_on', { ascending: true })
-  q = orgId
-    ? q.or(`organization_id.is.null,organization_id.eq.${orgId}`)
-    : q.is('organization_id', null)
+  const orgFilter = ['organization_id.is.null', ...orgIds.map((id) => `organization_id.eq.${id}`)].join(',')
+  q = q.or(orgFilter)
   if (kind) q = q.eq('kind', kind)
 
   const { data, error } = await q

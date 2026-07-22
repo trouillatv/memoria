@@ -61,7 +61,7 @@ export async function logAIUsage(entry: AIUsageEntry): Promise<void> {
     // (filtrées par org depuis la mise en multi-entreprises, migration 089)
     // l'excluent → « Dépenses IA » apparaît vide alors que les appels ont eu
     // lieu. getOrgId() = org de l'utilisateur courant (null hors requête).
-    const orgId = await getOrgId().catch(() => null)
+    const orgId = await getOrgId().catch(() => null) // M3_TELEMETRY_EXCEPTION — log/tracking, org null accepté
     const { error } = await supabase
       .from('ai_usage')
       .insert({ ...entry, organization_id: orgId })

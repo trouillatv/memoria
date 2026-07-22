@@ -34,7 +34,7 @@ const EMPTY: TerrainTestSnapshot = {
 export async function getTerrainTestSnapshot(days = 7): Promise<TerrainTestSnapshot> {
   try {
     const supabase = createAdminClient()
-    const orgId = await getOrgId().catch(() => null)
+    const orgId = await getOrgId().catch(() => null) // M3_TELEMETRY_EXCEPTION — log/tracking, org null accepté
     if (!orgId) return { ...EMPTY, days }
     const since = new Date(Date.now() - days * 86_400_000).toISOString()
     const today = todayLocalIso()

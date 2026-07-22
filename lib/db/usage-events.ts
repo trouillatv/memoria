@@ -34,7 +34,7 @@ export async function logUsageEvent(input: {
   try {
     const [user, orgId] = await Promise.all([
       getCurrentUserWithProfile().catch(() => null),
-      getOrgId().catch(() => null),
+      getOrgId().catch(() => null), // M3_TELEMETRY_EXCEPTION — log/tracking, org null accepté
     ])
 
     const trimmed = typeof input.query === 'string' ? input.query.trim().slice(0, 200) : ''
