@@ -10,8 +10,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 
-let mockOrgId: string | null = 'org-1'
-vi.mock('@/lib/db/users', () => ({ getOrgId: async () => mockOrgId }))
+// M3-D — le graphe est RESSOURCE-scopé : l'accès vient de l'appartenance à l'org
+// DU chantier (site.organization_id), plus de `getOrgId()`. Le fail-closed
+// cross-tenant se joue donc sur `requireOrganizationMembership`.
+let memberOrgs = new Set<string>(['org-1'])
+vi.mock('@/lib/auth/memberships', () => ({
+  requireOrganizationMembership: async (orgId: string) =>
+    memberOrgs.has(orgId) ? { ok: true } : { ok: false, error: 'not-member' },
+}))
 
 vi.mock('@/lib/db/visit-captures', () => ({
   // Les miniatures signées : hors sujet pour ces tests — on renvoie vide.
@@ -41,7 +47,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 import { getSiteGraph } from '@/lib/knowledge/site-graph'
 
 beforeEach(() => {
-  mockOrgId = 'org-1'
+  memberOrgs = new Set<string>(['org-1'])
   siteRow = { id: 's-1', name: 'Petro Attiti', organization_id: 'org-1' }
   tables.site_reports = [{ id: 'r-1', started_at: '2026-07-15T02:07:00Z' }]
   tables.visit_capture = [

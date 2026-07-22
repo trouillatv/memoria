@@ -11,7 +11,7 @@ import 'server-only'
 //   · conséquence = l'action liée (action_id, 1:1 assumé).
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getSiteDecision } from '@/lib/db/site-decisions'
 import { STATUT_LABEL, IMPACT_LABEL, type DecisionStatut } from '@/lib/db/decision-constants'
 import { actionStatusLabel } from '@/lib/knowledge/action-fiche'
@@ -69,21 +69,18 @@ export async function getSiteDecisionFiche(siteId: string, decisionId: string): 
   // SIMULTANÉS coûtent le prix d'un seul. Ce qui se paie n'est donc pas le
   // nombre de requêtes, c'est le nombre de VAGUES.
   //
-  // `getOrgId()` en est une à lui seul — deux, même : vérifier le jeton, puis
-  // lire le profil. Il était attendu AVANT que la moindre lecture ne parte,
-  // alors qu'il ne dépend d'aucune d'elles. Il part maintenant avec elles.
-  //
-  // La garde reste fail-closed et décide toujours : on ne l'a pas affaiblie,
-  // on a seulement cessé de faire la queue derrière elle. Les résultats des
-  // lectures lancées en parallèle sont jetés si elle refuse.
-  const [orgId, siteRes, d] = await Promise.all([
-    getOrgId(),
+  // M3-D — l'accès vient de l'org DE LA RESSOURCE (le chantier), jamais de
+  // `getOrgId()` (qui lèverait en multi-org). L'appartenance se lit APRÈS le
+  // chantier (elle dépend de son `organization_id`) ; la garde reste fail-closed,
+  // les lectures lancées en parallèle sont jetées si elle refuse.
+  const [siteRes, d] = await Promise.all([
     db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle(),
     getSiteDecision(siteId, decisionId),
   ])
-  if (!orgId) return null
   const site = siteRes.data
-  if (!site || (site as { organization_id: string | null }).organization_id !== orgId) return null
+  if (!site) return null
+  const siteOrgId = (site as { organization_id: string | null }).organization_id
+  if (!siteOrgId || !(await requireOrganizationMembership(siteOrgId)).ok) return null
   if (!d) return null
 
   // Niveau 2 — décideur, casting, réunion source et action ne dépendent QUE de la

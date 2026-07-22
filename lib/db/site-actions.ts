@@ -205,11 +205,16 @@ export async function listOpenSiteActions(opts?: {
   let siteIds = opts?.siteIds ?? null
   let sitesQ = supabase.from('sites').select('id, name, contract_id').is('deleted_at', null)
   if (opts?.orgIds) {
+    // Scope multi-org EXPLICITE (chemin /dashboard).
     sitesQ = sitesQ.in('organization_id', opts.orgIds)
-  } else {
+  } else if (!opts?.siteIds) {
+    // Org-wide UNIQUEMENT (ni siteIds, ni orgIds) : surfaces hors Lot D encore
+    // mono-org. Un compte multi-org y verra `getOrgId()` lever, à traiter à part.
     const orgId = await getOrgId()
     if (orgId) sitesQ = sitesQ.eq('organization_id', orgId)
   }
+  // M3-D — quand `siteIds` est fourni, il EST le scope (l'appelant a gardé
+  // l'accès en amont, ex. /sites/[id] via getSiteIdentity) : aucun `getOrgId()`.
   if (siteIds) sitesQ = sitesQ.in('id', siteIds)
   const { data: siteRows } = await sitesQ
   const sites = (siteRows ?? []) as Array<{ id: string; name: string; contract_id: string | null }>

@@ -18,7 +18,7 @@ import 'server-only'
 // plafonnées, et le plafond est DIT dans le nœud de groupe.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getVisitCapturePreviewUrls, type VisitCaptureRow } from '@/lib/db/visit-captures'
 import { listSiteIntervenants } from '@/lib/db/site-intervenants'
 
@@ -63,16 +63,19 @@ const dayFmt = new Intl.DateTimeFormat('fr-FR', {
 })
 const fr = (iso: string | null | undefined) => (iso ? dayFmt.format(new Date(iso)) : null)
 
-/** Le graphe d'un chantier. `null` si le chantier n'appartient pas à
- *  l'organisation de l'appelant (fail-closed). */
+/** Le graphe d'un chantier. `null` si l'appelant n'est pas MEMBRE de
+ *  l'organisation DU chantier (fail-closed, résource-scopé). */
 export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
-  const orgId = await getOrgId()
-  if (!orgId) return null
   const db = createAdminClient()
 
+  // M3-D — l'accès vient de l'org DE LA RESSOURCE (le chantier), jamais de
+  // `getOrgId()` (qui lèverait pour un compte multi-org). Toutes les lectures
+  // ci-dessous sont déjà `.eq('site_id', siteId)` : le siteId fait le scope.
   const { data: site } = await db
     .from('sites').select('id, name, organization_id').eq('id', siteId).maybeSingle()
-  if (!site || (site as { organization_id: string | null }).organization_id !== orgId) return null
+  if (!site) return null
+  const siteOrgId = (site as { organization_id: string | null }).organization_id
+  if (!siteOrgId || !(await requireOrganizationMembership(siteOrgId)).ok) return null
   const siteName = (site as { name: string }).name
 
   // Le casting confirmé part en parallèle des lectures Supabase ci-dessous.

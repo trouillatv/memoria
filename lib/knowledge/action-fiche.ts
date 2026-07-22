@@ -10,7 +10,7 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { todayLocalIso } from '@/lib/time/local-date'
 import type { DbSiteAction, SiteActionStatus } from '@/types/db'
 import {
@@ -158,11 +158,12 @@ function unavailable(type: ProvenanceType): ActionFicheSource {
 }
 
 export async function getSiteActionFiche(siteId: string, actionId: string): Promise<ActionFicheData | null> {
-  const orgId = await getOrgId()
-  if (!orgId) return null
   const db = createAdminClient()
+  // M3-D — accès par l'org DE LA RESSOURCE (le chantier), jamais `getOrgId()`.
   const { data: site } = await db.from('sites').select('id, organization_id, name').eq('id', siteId).maybeSingle()
-  if (!site || (site as { organization_id: string | null }).organization_id !== orgId) return null
+  if (!site) return null
+  const siteOrgId = (site as { organization_id: string | null }).organization_id
+  if (!siteOrgId || !(await requireOrganizationMembership(siteOrgId)).ok) return null
   const siteName = (site as { name: string | null }).name ?? 'Chantier'
 
   const { data } = await db.from('site_actions').select('*').eq('id', actionId).eq('site_id', siteId).maybeSingle()

@@ -82,7 +82,10 @@ export async function listInterventionsSupervisor(
   query: SupervisorInterventionsQuery = {},
 ): Promise<SupervisorInterventionsResult> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  // M3-D — quand un `siteId` est fourni (ex. /sites/[id], accès gardé en amont),
+  // les missions du chantier font le scope : aucun `getOrgId()`. Sinon (org-wide,
+  // ex. /planning), on scope par l'org du caller — surface encore mono-org hors Lot D.
+  const orgId = query.siteId ? null : await getOrgId()
 
   // Compute date lower bound from dateRange
   const dateRange = query.dateRange ?? 'all'

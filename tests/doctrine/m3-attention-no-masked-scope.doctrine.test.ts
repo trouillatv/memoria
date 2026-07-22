@@ -35,7 +35,7 @@ describe('getAttentionDigest : le scope est passé, jamais masqué', () => {
 describe('les helpers acceptent un scope multi-org explicite', () => {
   it('listOpenSiteActions : orgIds fourni → .in(organization_id), pas getOrgId', () => {
     const i = siteActions.indexOf('export async function listOpenSiteActions')
-    const corps = siteActions.slice(i, i + 900)
+    const corps = siteActions.slice(i, i + 1400)
     expect(corps).toMatch(/orgIds\?: string\[\]/)
     expect(corps).toMatch(/if \(opts\?\.orgIds\)[^]*\.in\('organization_id', opts\.orgIds\)/)
   })

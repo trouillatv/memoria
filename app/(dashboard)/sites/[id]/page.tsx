@@ -238,8 +238,8 @@ async function FicheSlot({
   // Les trois paramètres sont mutuellement exclusifs : au plus UNE requête.
   const [person, action, decision] = await Promise.all([
     personId ? getSiteIntervenantFiche(siteId, { intervenantId: personId }).catch(() => null) : null,
-    actionId ? getSiteActionFiche(siteId, actionId).catch(() => null) : null,
-    decisionId ? getSiteDecisionFiche(siteId, decisionId).catch(() => null) : null,
+    actionId ? getSiteActionFiche(siteId, actionId).catch((e) => { console.error('[sites/[id]] action-fiche', e); return null }) : null,
+    decisionId ? getSiteDecisionFiche(siteId, decisionId).catch((e) => { console.error('[sites/[id]] decision-fiche', e); return null }) : null,
   ])
   // La mesure « par quelle porte ouvre-t-on une fiche Intervenant ? » vivait
   // ici, dérivée de `person_source` dans l'URL. La migration des adresses l'a
@@ -261,10 +261,10 @@ async function TravailView({ siteId }: { siteId: string }) {
   // read model que l'Aperçu : une action proposée est la même sur les deux
   // onglets, ou le chantier se contredit.
   const [actions, blocages, missions, interventions, deadlines, overview] = await Promise.all([
-    listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
+    listOpenSiteActions({ siteIds: [siteId] }).catch((e) => { console.error('[sites/[id]] actions', e); return [] }),
     listBlocagesBySite(siteId).catch(() => []),
     listMissionsBySite(siteId).catch(() => []),
-    listInterventionsSupervisor({ siteId, dateRange: 'all', limit: 80 }).catch(() => ({ items: [], total: 0 })),
+    listInterventionsSupervisor({ siteId, dateRange: 'all', limit: 80 }).catch((e) => { console.error('[sites/[id]] interventions', e); return { items: [], total: 0 } }),
     listSiteDeadlines(siteId).catch(() => []),
     getSiteOverview(siteId).catch(() => emptySiteOverview(siteId)),
   ])
@@ -291,9 +291,9 @@ async function ChronologieView({ siteId }: { siteId: string }) {
     getLastEndedVisitForSite(siteId).catch(() => null),
     listSiteDeadlines(siteId).catch(() => []),
     listSiteVisitsWithCounts(siteId, 8).catch(() => []),
-    listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
+    listOpenSiteActions({ siteIds: [siteId] }).catch((e) => { console.error('[sites/[id]] actions', e); return [] }),
     listBlocagesBySite(siteId).catch(() => []),
-    listInterventionsSupervisor({ siteId, dateRange: 'all', limit: 80 }).catch(() => ({ items: [], total: 0 })),
+    listInterventionsSupervisor({ siteId, dateRange: 'all', limit: 80 }).catch((e) => { console.error('[sites/[id]] interventions', e); return { items: [], total: 0 } }),
   ])
   const sinceIso = lastVisit?.endedAt ?? lastVisit?.startedAt ?? null
   const changes = selectRecentChanges(toOverviewChanges(recentActivity), { sinceIso, limit: 5 })
@@ -321,7 +321,7 @@ async function PlanningView({ siteId }: { siteId: string }) {
 
   const [currentState, interventions, missions, blocages, cycles, deadlines, teams, timeline] = await Promise.all([
     getSiteCurrentState(siteId).catch(() => null),
-    listInterventionsSupervisor({ siteId, dateRange: 'all', limit: 80 }).catch(() => ({ items: [], total: 0 })),
+    listInterventionsSupervisor({ siteId, dateRange: 'all', limit: 80 }).catch((e) => { console.error('[sites/[id]] interventions', e); return { items: [], total: 0 } }),
     listMissionsBySite(siteId).catch(() => []),
     listBlocagesBySite(siteId).catch(() => []),
     listCyclesBySite(siteId).catch(() => []),
