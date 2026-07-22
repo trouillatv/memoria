@@ -90,3 +90,20 @@ export function requireSiteWriteAccess(siteId: string, policy: WritePolicy = 'op
 export function requireSiteActionWriteAccess(actionId: string, policy: WritePolicy = 'operator'): Promise<SiteWriteAccess> {
   return decide({ kind: 'site_action', id: actionId }, policy)
 }
+
+/**
+ * Droit d'écrire SUR UN COMPTE-RENDU (pièces, transcription, analyse, curation,
+ * matérialisation…). L'org du CR est résolue depuis SA ligne — jamais depuis le
+ * `tenant_id` legacy, ni depuis un `site_id` renvoyé par le client.
+ */
+export function requireSiteReportWriteAccess(reportId: string, policy: WritePolicy = 'operator'): Promise<SiteWriteAccess> {
+  return decide({ kind: 'site_report', id: reportId }, policy)
+}
+
+/**
+ * Droit d'écrire à propos d'un CONTRAT (ici : ouvrir un CR de réunion « contrat »).
+ * La racine est le contrat ; son organisation est autoritaire (M2B).
+ */
+export function requireContractWriteAccess(contractId: string, policy: WritePolicy = 'operator'): Promise<SiteWriteAccess> {
+  return decide({ kind: 'contract', id: contractId }, policy)
+}

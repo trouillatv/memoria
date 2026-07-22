@@ -47,7 +47,7 @@ export type OrganizationMembershipRole = UserRole
  *  `organization_id` (M2A), donc son propriétaire se résout sans jointure. La
  *  résolution est commune lecture/écriture ; seule la POLITIQUE diffère (elle
  *  vit dans `site-write-access.ts`). */
-export type ResourceKind = 'site' | 'client' | 'mission' | 'intervention' | 'contract' | 'site_action'
+export type ResourceKind = 'site' | 'client' | 'mission' | 'intervention' | 'contract' | 'site_action' | 'site_report'
 
 /** M2B ne traite que la LECTURE : pas de champ `permission`. M2C étendra aux
  *  écritures avec une politique explicite. */
@@ -103,7 +103,7 @@ const ORG_TABLES = {
  *   · string      = l'organisation propriétaire.
  */
 async function selectOrganizationIdFromKnownTable(
-  table: (typeof ORG_TABLES)[ResourceKind],
+  table: (typeof ORG_TABLES)[keyof typeof ORG_TABLES],
   id: string,
 ): Promise<string | null | undefined> {
   const { data, error } = await createAdminClient()
@@ -123,6 +123,26 @@ async function resolveInterventionOrganization(id: string) { return selectOrgani
 async function resolveContractOrganization(id: string) { return selectOrganizationIdFromKnownTable(ORG_TABLES.contract, id) }
 async function resolveSiteActionOrganization(id: string) { return selectOrganizationIdFromKnownTable(ORG_TABLES.site_action, id) }
 
+/**
+ * L'organisation d'un compte-rendu. Cas particulier : `site_reports` porte une
+ * colonne `organization_id` (peuplée, cohérente) MAIS aussi un `tenant_id`
+ * LEGACY qui n'est PAS l'organisation — ne jamais s'en servir. On lit d'abord
+ * `organization_id` ; s'il manquait (ancien enregistrement, création future
+ * incomplète), on retombe sur le PARENT autoritaire : le site (M2A, NOT NULL) ou,
+ * pour un CR de contrat, le contrat. Ainsi la frontière ne dépend jamais d'une
+ * colonne facultative.
+ */
+async function resolveSiteReportOrganization(id: string): Promise<string | null | undefined> {
+  const { data, error } = await createAdminClient()
+    .from('site_reports').select('organization_id, site_id, contract_id').eq('id', id).maybeSingle()
+  if (error || !data) return undefined
+  const r = data as { organization_id: string | null; site_id: string | null; contract_id: string | null }
+  if (r.organization_id) return r.organization_id
+  if (r.site_id) return resolveSiteOrganization(r.site_id)
+  if (r.contract_id) return resolveContractOrganization(r.contract_id)
+  return null
+}
+
 const resourceResolvers = {
   site: resolveSiteOrganization,
   client: resolveClientOrganization,
@@ -130,6 +150,7 @@ const resourceResolvers = {
   intervention: resolveInterventionOrganization,
   contract: resolveContractOrganization,
   site_action: resolveSiteActionOrganization,
+  site_report: resolveSiteReportOrganization,
 } satisfies Record<ResourceKind, (id: string) => Promise<string | null | undefined>>
 
 // ── LE CŒUR ─────────────────────────────────────────────────────────────────

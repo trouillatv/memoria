@@ -12,7 +12,20 @@ import { z } from 'zod'
 import { createHash } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { requireFieldAgent } from '@/lib/field/auth'
+import {
+  requireSiteWriteAccess,
+  requireSiteReportWriteAccess,
+  requireContractWriteAccess,
+  requireSiteActionWriteAccess,
+} from '@/lib/auth/site-write-access'
+
+// FRONTIÈRE M2C (surface 5b). Tout le pipeline de CR terrain reposait sur
+// `requireFieldAgent()` — le RÔLE, jamais l'appartenance. Un agent d'une
+// organisation pouvait matérialiser, transcrire, clôturer sur le chantier d'une
+// autre. Chaque geste passe désormais la frontière de SA ressource (CR, site,
+// action ou contrat), politique `operator` (= l'ancien ensemble field agent :
+// admin/manager/chef_equipe), inchangée. L'org du CR vient de sa ligne (jamais
+// du `tenant_id` legacy).
 import { mimeToExt, transcribeAudio, transcriptionProvider } from '@/lib/ai/transcribe'
 import { logAIUsageDirect } from '@/services/ai/tracking'
 import { runSiteReportAnalysisAgent } from '@/services/ai/site-report-analysis'
@@ -110,9 +123,6 @@ const draftSchema = z.object({
 export async function createReportDraftAction(formData: FormData): Promise<
   { ok: true; reportId: string; hasAudio: boolean } | { ok: false; error: string }
 > {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
-
   const parsed = draftSchema.safeParse({
     report_type: formData.get('report_type') ?? undefined,
     site_id: formData.get('site_id') ?? undefined,
@@ -128,6 +138,12 @@ export async function createReportDraftAction(formData: FormData): Promise<
   if (type === 'site' && !parsed.data.site_id) return { ok: false, error: 'Site manquant' }
   if (type === 'contract' && !parsed.data.contract_id) return { ok: false, error: 'Contrat manquant' }
 
+  // Frontière : la ressource ouverte (le site, ou le contrat) doit m'appartenir.
+  const access = type === 'site'
+    ? await requireSiteWriteAccess(parsed.data.site_id!)
+    : await requireContractWriteAccess(parsed.data.contract_id!)
+  if (!access.ok) return { ok: false, error: type === 'contract' ? 'Contrat manquant' : 'Site introuvable' }
+
   const ctx = await resolveReportTenant({
     type,
     site_id: parsed.data.site_id,
@@ -142,7 +158,7 @@ export async function createReportDraftAction(formData: FormData): Promise<
     contract_id: type === 'contract' ? parsed.data.contract_id : null,
     title: parsed.data.title ?? null,
     tenant_id: ctx.tenant_id,
-    created_by: auth.userId,
+    created_by: access.userId,
     text_input: parsed.data.text_input ?? null,
   })
   // Réunion site : le site est touché d'office (visible au journal dès le départ).
@@ -208,14 +224,17 @@ const startMeetingSchema = z.object({
 export async function startMeetingAction(
   input: z.input<typeof startMeetingSchema>,
 ): Promise<{ ok: true; reportId: string } | { ok: false; error: string }> {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
   const parsed = startMeetingSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
 
   const type = parsed.data.report_type
   if (type === 'site' && !parsed.data.site_id) return { ok: false, error: 'Site manquant' }
   if (type === 'contract' && !parsed.data.contract_id) return { ok: false, error: 'Contrat manquant' }
+
+  const access = type === 'site'
+    ? await requireSiteWriteAccess(parsed.data.site_id!)
+    : await requireContractWriteAccess(parsed.data.contract_id!)
+  if (!access.ok) return { ok: false, error: type === 'contract' ? 'Contrat manquant' : 'Site introuvable' }
 
   const ctx = await resolveReportTenant({
     type,
@@ -230,7 +249,7 @@ export async function startMeetingAction(
     contract_id: type === 'contract' ? parsed.data.contract_id : null,
     title: parsed.data.title ?? null,
     tenant_id: ctx.tenant_id,
-    created_by: auth.userId,
+    created_by: access.userId,
   })
   if (type === 'site' && parsed.data.site_id) {
     await addReportSites(reportId, [parsed.data.site_id])
@@ -248,10 +267,10 @@ const textPatchSchema = z.object({
 export async function setReportTextInputAction(
   input: z.input<typeof textPatchSchema>,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
   const parsed = textPatchSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const access = await requireSiteReportWriteAccess(parsed.data.report_id)
+  if (!access.ok) return { ok: false, error: 'Compte-rendu introuvable' }
   try {
     await setReportText(parsed.data.report_id, { text_input: parsed.data.text_input ?? null })
     return { ok: true }
@@ -274,10 +293,10 @@ const audioPrepSchema = z.object({
 export async function createReportAudioUploadAction(
   input: z.input<typeof audioPrepSchema>,
 ): Promise<{ ok: true; storagePath: string; token: string } | { ok: false; error: string }> {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
   const parsed = audioPrepSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const access = await requireSiteReportWriteAccess(parsed.data.report_id)
+  if (!access.ok) return { ok: false, error: 'Compte-rendu introuvable' }
 
   const report = await getSiteReport(parsed.data.report_id)
   if (!report) return { ok: false, error: 'Compte-rendu introuvable' }
@@ -315,11 +334,11 @@ const audioRegSchema = z.object({
 export async function attachReportAudioAction(
   input: z.input<typeof audioRegSchema>,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
   const parsed = audioRegSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
   const d = parsed.data
+  const access = await requireSiteReportWriteAccess(d.report_id)
+  if (!access.ok) return { ok: false, error: 'Compte-rendu introuvable' }
 
   const report = await getSiteReport(d.report_id)
   if (!report) return { ok: false, error: 'Compte-rendu introuvable' }
@@ -371,15 +390,14 @@ const attachmentSchema = z.object({
 export async function uploadReportAttachmentAction(formData: FormData): Promise<
   { ok: true; attachmentId: string; idempotent: boolean } | { ok: false; error: string }
 > {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
-
   const parsed = attachmentSchema.safeParse({
     report_id: formData.get('report_id'),
     kind: formData.get('kind'),
     client_uuid: formData.get('client_uuid') ?? undefined,
   })
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const access = await requireSiteReportWriteAccess(parsed.data.report_id)
+  if (!access.ok) return { ok: false, error: 'Compte-rendu introuvable' }
 
   const file = formData.get('file')
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: 'Fichier manquant' }
@@ -452,18 +470,17 @@ export async function uploadReportAttachmentAction(formData: FormData): Promise<
 export async function transcribeReportAction(
   reportId: string,
 ): Promise<{ ok: true; transcript: string } | { ok: false; error: string }> {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
-
   if (!z.string().uuid().safeParse(reportId).success) {
     return { ok: false, error: 'Identifiant invalide' }
   }
+  const access = await requireSiteReportWriteAccess(reportId)
+  if (!access.ok) return { ok: false, error: 'Compte-rendu introuvable' }
   const report = await getSiteReport(reportId)
   if (!report) return { ok: false, error: 'Compte-rendu introuvable' }
 
   const supabase = createAdminClient()
   const startedAt = Date.now()
-  const userId = auth.userId
+  const userId = access.userId
 
   // Trace de coût, une fois par run (tokens non disponibles via REST audio).
   async function logUsage(status: 'success' | 'error', errorMsg: string | null) {
@@ -557,9 +574,9 @@ const analyzeSchema = z.object({
 export async function listSiteMissionsForReportAction(
   siteId: string,
 ): Promise<Array<{ id: string; name: string }>> {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return []
   if (!z.string().uuid().safeParse(siteId).success) return []
+  const access = await requireSiteWriteAccess(siteId)
+  if (!access.ok) return []
   const { listMissionsBySite } = await import('@/lib/db/missions')
   const missions = await listMissionsBySite(siteId)
   return missions.map((m) => ({ id: m.id, name: m.name }))
@@ -577,9 +594,9 @@ interface CurationContext {
 /** Contexte de curation, sensible au type de réunion (site vs contrat). */
 export async function getReportCurationContextAction(reportId: string): Promise<CurationContext> {
   const empty: CurationContext = { missions: [], meetingNumber: 1, openActions: [], reportDates: [], candidateSites: [] }
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return empty
   if (!z.string().uuid().safeParse(reportId).success) return empty
+  const access = await requireSiteReportWriteAccess(reportId)
+  if (!access.ok) return empty
 
   const report = await getSiteReport(reportId)
   if (!report) return empty
@@ -639,15 +656,14 @@ export async function analyzeReportAction(formData: FormData): Promise<
     }
   | { ok: false; error: string }
 > {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
-
   const parsed = analyzeSchema.safeParse({
     report_id: formData.get('report_id'),
     transcript_corrected: formData.get('transcript_corrected') ?? undefined,
     text_input: formData.get('text_input') ?? undefined,
   })
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const access = await requireSiteReportWriteAccess(parsed.data.report_id)
+  if (!access.ok) return { ok: false, error: 'Compte-rendu introuvable' }
 
   const report = await getSiteReport(parsed.data.report_id)
   if (!report) return { ok: false, error: 'Compte-rendu introuvable' }
@@ -701,7 +717,7 @@ export async function analyzeReportAction(formData: FormData): Promise<
       candidateSites,
       defaultSiteId,
       meetingDateLabel: report.created_at,
-      userId: auth.userId,
+      userId: access.userId,
     })
     const inserted = await bulkInsertProposals({
       report_id: parsed.data.report_id,
@@ -748,9 +764,6 @@ const curateSchema = z.object({
 export async function curateProposalAction(formData: FormData): Promise<
   { ok: true } | { ok: false; error: string }
 > {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
-
   const parsed = curateSchema.safeParse({
     proposal_id: formData.get('proposal_id'),
     short_label: formData.get('short_label') ?? undefined,
@@ -761,6 +774,14 @@ export async function curateProposalAction(formData: FormData): Promise<
     payload_patch: formData.get('payload_patch') ?? undefined,
   })
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+
+  // Racine : la proposition → son compte-rendu → l'org de celui-ci.
+  const { data: prop } = await createAdminClient()
+    .from('site_report_proposals').select('report_id').eq('id', parsed.data.proposal_id).maybeSingle()
+  const propReportId = (prop as { report_id: string } | null)?.report_id
+  if (!propReportId) return { ok: false, error: 'Proposition introuvable' }
+  const access = await requireSiteReportWriteAccess(propReportId)
+  if (!access.ok) return { ok: false, error: 'Proposition introuvable' }
 
   let payload: Record<string, unknown> | undefined
   if (parsed.data.payload_patch) {
@@ -819,11 +840,11 @@ export async function createValidatedProposalsAction(reportId: string): Promise<
   | { ok: true; created: number; skipped: number; hasTomorrowIntervention: boolean }
   | { ok: false; error: string }
 > {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
   if (!z.string().uuid().safeParse(reportId).success) {
     return { ok: false, error: 'Identifiant invalide' }
   }
+  const access = await requireSiteReportWriteAccess(reportId)
+  if (!access.ok) return { ok: false, error: 'Compte-rendu introuvable' }
 
   const report = await getSiteReport(reportId)
   if (!report) return { ok: false, error: 'Compte-rendu introuvable' }
@@ -879,12 +900,12 @@ export async function createValidatedProposalsAction(reportId: string): Promise<
         }
         case 'anomaly': {
           try {
-            const { intervention } = await findOrCreateSpontaneousIntervention(auth.userId, siteId)
+            const { intervention } = await findOrCreateSpontaneousIntervention(access.userId, siteId)
             const anomalyId = await createAnomaly({
               intervention_id: intervention.id,
               category: (p.category as AnomalyCategory) ?? 'autre',
               description: p.short_label,
-              reported_by: auth.userId,
+              reported_by: access.userId,
             })
             await markProposalCreated(p.id, 'anomaly', anomalyId)
           } catch (err) {
@@ -896,7 +917,7 @@ export async function createValidatedProposalsAction(reportId: string): Promise<
                 title: p.short_label,
                 corps_etat: p.corps_etat,
                 assigned_to: p.assigned_to,
-                created_by: auth.userId,
+                created_by: access.userId,
               })
               await markProposalCreated(p.id, 'site_action', actionId)
             } else {
@@ -910,19 +931,19 @@ export async function createValidatedProposalsAction(reportId: string): Promise<
             site_id: siteId,
             name: p.short_label.slice(0, 120),
             cadence: asCadence(p.payload?.cadence),
-            created_by: auth.userId,
+            created_by: access.userId,
           })
           await markProposalCreated(p.id, 'mission', missionId)
           break
         }
         case 'intervention': {
-          const missionId = await resolveMission(p, siteId, auth.userId)
+          const missionId = await resolveMission(p, siteId, access.userId)
           const when = scheduledFor ?? todayLocalIso()
           const interventionId = await createIntervention({
             mission_id: missionId,
             scheduled_for: when,
             slot: 'morning',
-            created_by: auth.userId,
+            created_by: access.userId,
           })
           await markProposalCreated(p.id, 'intervention', interventionId)
           if (when === tomorrow) hasTomorrowIntervention = true
@@ -937,16 +958,16 @@ export async function createValidatedProposalsAction(reportId: string): Promise<
             corps_etat: p.corps_etat,
             assigned_to: p.assigned_to,
             due_date: scheduledFor,
-            created_by: auth.userId,
+            created_by: access.userId,
           })
           if (outcome === 'intervention') {
-            const missionId = await resolveMission(p, siteId, auth.userId)
+            const missionId = await resolveMission(p, siteId, access.userId)
             const when = scheduledFor ?? todayLocalIso()
             const interventionId = await createIntervention({
               mission_id: missionId,
               scheduled_for: when,
               slot: 'morning',
-              created_by: auth.userId,
+              created_by: access.userId,
             })
             await markSiteActionPlanned(actionId, 'intervention', interventionId)
             if (when === tomorrow) hasTomorrowIntervention = true
@@ -955,7 +976,7 @@ export async function createValidatedProposalsAction(reportId: string): Promise<
               site_id: siteId,
               name: p.short_label.slice(0, 120),
               cadence: asCadence(p.payload?.cadence),
-              created_by: auth.userId,
+              created_by: access.userId,
             })
             await markSiteActionPlanned(actionId, 'mission', missionId)
           }
@@ -989,9 +1010,9 @@ export async function createValidatedProposalsAction(reportId: string): Promise<
 export async function markPriorActionDoneAction(
   actionId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
   if (!z.string().uuid().safeParse(actionId).success) return { ok: false, error: 'Identifiant invalide' }
+  const access = await requireSiteActionWriteAccess(actionId)
+  if (!access.ok) return { ok: false, error: 'Action introuvable' }
   await markSiteActionDone(actionId)
   return { ok: true }
 }
@@ -1006,13 +1027,13 @@ const vigilanceSchema = z.object({
 export async function createVigilanceFromRiskAction(
   formData: FormData,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
   const parsed = vigilanceSchema.safeParse({
     site_id: formData.get('site_id'),
     label: formData.get('label'),
   })
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const access = await requireSiteWriteAccess(parsed.data.site_id)
+  if (!access.ok) return { ok: false, error: 'Chantier introuvable' }
   await createSiteNote({ siteId: parsed.data.site_id, body: clip140(parsed.data.label), kind: 'a_savoir' })
   revalidatePath(`/sites/${parsed.data.site_id}`)
   return { ok: true }
@@ -1034,10 +1055,10 @@ const nextMeetingSchema = z.object({
 export async function setNextMeetingAction(
   input: z.input<typeof nextMeetingSchema>,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
   const parsed = nextMeetingSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const access = await requireSiteReportWriteAccess(parsed.data.report_id)
+  if (!access.ok) return { ok: false, error: 'Compte-rendu introuvable' }
   try {
     const supabase = createAdminClient()
     const { data, error } = await supabase
