@@ -42,8 +42,12 @@ import type { UserRole } from '@/types/db'
 /** Le rôle DANS l'organisation de la ressource — jamais le rôle plateforme. */
 export type OrganizationMembershipRole = UserRole
 
-/** Liste FERMÉE. Aucun nom de table ne circule hors de ce module. */
-export type ResourceKind = 'site' | 'client' | 'mission' | 'intervention' | 'contract'
+/** Liste FERMÉE. Aucun nom de table ne circule hors de ce module.
+ *  `site_action` sert la FRONTIÈRE D'ÉCRITURE (M2C) : une action porte son
+ *  `organization_id` (M2A), donc son propriétaire se résout sans jointure. La
+ *  résolution est commune lecture/écriture ; seule la POLITIQUE diffère (elle
+ *  vit dans `site-write-access.ts`). */
+export type ResourceKind = 'site' | 'client' | 'mission' | 'intervention' | 'contract' | 'site_action'
 
 /** M2B ne traite que la LECTURE : pas de champ `permission`. M2C étendra aux
  *  écritures avec une politique explicite. */
@@ -56,6 +60,9 @@ export interface ResourceAccessContext {
   resourceId: string
   organizationId: string
   membershipRole: OrganizationMembershipRole
+  /** L'utilisateur résolu — évite à l'appelant (notamment la frontière
+   *  d'écriture M2C) de relire la session pour un `created_by`/`actor`. */
+  userId: string
 }
 
 /**
@@ -86,6 +93,7 @@ const ORG_TABLES = {
   mission: 'missions',
   intervention: 'interventions',
   contract: 'contracts',
+  site_action: 'site_actions',
 } as const
 
 /**
@@ -113,6 +121,7 @@ async function resolveClientOrganization(id: string) { return selectOrganization
 async function resolveMissionOrganization(id: string) { return selectOrganizationIdFromKnownTable(ORG_TABLES.mission, id) }
 async function resolveInterventionOrganization(id: string) { return selectOrganizationIdFromKnownTable(ORG_TABLES.intervention, id) }
 async function resolveContractOrganization(id: string) { return selectOrganizationIdFromKnownTable(ORG_TABLES.contract, id) }
+async function resolveSiteActionOrganization(id: string) { return selectOrganizationIdFromKnownTable(ORG_TABLES.site_action, id) }
 
 const resourceResolvers = {
   site: resolveSiteOrganization,
@@ -120,6 +129,7 @@ const resourceResolvers = {
   mission: resolveMissionOrganization,
   intervention: resolveInterventionOrganization,
   contract: resolveContractOrganization,
+  site_action: resolveSiteActionOrganization,
 } satisfies Record<ResourceKind, (id: string) => Promise<string | null | undefined>>
 
 // ── LE CŒUR ─────────────────────────────────────────────────────────────────
@@ -155,7 +165,7 @@ export async function resolveResourceAccess(req: ResourceAccessRequest): Promise
   const m = data as { role: UserRole; status: string }
   if (m.status !== 'active') return { ok: false, reason: 'membership_inactive' }
 
-  return { ok: true, context: { resourceId: req.id, organizationId: orgId, membershipRole: m.role } }
+  return { ok: true, context: { resourceId: req.id, organizationId: orgId, membershipRole: m.role, userId: user.id } }
 }
 
 /**

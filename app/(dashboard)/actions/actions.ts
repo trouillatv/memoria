@@ -9,6 +9,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
+import { requireSiteWriteAccess, requireSiteActionWriteAccess } from '@/lib/auth/site-write-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logUsageEvent } from '@/lib/db/usage-events'
 import { createSiteAction, markSiteActionDone, markSiteActionProgress, setSiteActionSnooze, cancelSiteAction, markSiteActionPlanned } from '@/lib/db/site-actions'
@@ -59,10 +60,10 @@ const SnoozeSchema = z.object({
 export async function markActionProgressAction(
   input: z.input<typeof ProgressSchema>,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const auth = await requireOperator()
-  if (!auth.ok) return auth
   const parsed = ProgressSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const access = await requireSiteActionWriteAccess(parsed.data.id)
+  if (!access.ok) return access
   try {
     await markSiteActionProgress(parsed.data.id, parsed.data.on)
     revalidateActionSurfaces(parsed.data.site_id)
@@ -77,10 +78,10 @@ export async function markActionProgressAction(
 export async function snoozeActionAction(
   input: z.input<typeof SnoozeSchema>,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const auth = await requireOperator()
-  if (!auth.ok) return auth
   const parsed = SnoozeSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const access = await requireSiteActionWriteAccess(parsed.data.id)
+  if (!access.ok) return access
   try {
     await setSiteActionSnooze(parsed.data.id, parsed.data.reason)
     revalidateActionSurfaces(parsed.data.site_id)
@@ -95,17 +96,14 @@ export async function snoozeActionAction(
 // volée. On NE demande PAS « est-ce un sujet ? » mais « concerne-t-elle un élément
 // durable ? ». Déterministe (humain choisit/crée), anti-doublon réutilisé, jamais auto.
 // Manager/admin seulement (cohérent avec la doctrine sujets).
-async function requireManagerOrAdmin(): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
-  const user = await getCurrentUserWithProfile()
-  if (!user) return { ok: false, error: 'Non authentifié' }
-  if (user.role !== 'admin' && user.role !== 'manager') return { ok: false, error: 'Accès refusé' }
-  return { ok: true, userId: user.id }
-}
+// Manager/admin porté par la frontière d'écriture SITE (`requireSiteWriteAccess`,
+// politique `managerOrAdmin`) : membership actif à l'org du site + rôle, en UN point.
 
 /** Éléments à mémoriser (sujets non clos) d'un site — pour « utiliser un élément existant ». */
 export async function listSiteSubjectsForAssociationAction(siteId: string): Promise<Array<{ id: string; name: string }>> {
-  const auth = await requireManagerOrAdmin()
-  if (!auth.ok || !IdSchema.safeParse(siteId).success) return []
+  if (!IdSchema.safeParse(siteId).success) return []
+  const access = await requireSiteWriteAccess(siteId, 'managerOrAdmin')
+  if (!access.ok) return []
   const { data } = await createAdminClient().from('subjects').select('id, name').eq('site_id', siteId).neq('status', 'closed').order('name')
   return (data ?? []) as Array<{ id: string; name: string }>
 }
@@ -120,8 +118,6 @@ const AssociateSchema = z.object({
 
 /** Rattache une action à un élément : existant (subjectId) ou nouveau (name, anti-doublon). */
 export async function associateActionToElementAction(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
-  const auth = await requireManagerOrAdmin()
-  if (!auth.ok) return auth
   const parsed = AssociateSchema.safeParse({
     actionId: formData.get('actionId'),
     siteId: formData.get('siteId'),
@@ -131,6 +127,16 @@ export async function associateActionToElementAction(formData: FormData): Promis
   })
   if (!parsed.success) return { ok: false, error: 'Saisie invalide' }
   const { actionId, siteId, mode, subjectId, name } = parsed.data
+  // Ce geste touche DEUX ressources : l'action (on pose son `subject_id`) et le
+  // site (on peut y créer un sujet). On exige donc les deux, et qu'elles soient
+  // de la MÊME organisation — sinon un couple (mon action, site étranger) ou
+  // (action étrangère, mon site) passerait la frontière.
+  const access = await requireSiteActionWriteAccess(actionId, 'managerOrAdmin')
+  if (!access.ok) return access
+  const siteAccess = await requireSiteWriteAccess(siteId, 'managerOrAdmin')
+  if (!siteAccess.ok || siteAccess.organizationId !== access.organizationId) {
+    return { ok: false, error: 'Accès refusé' }
+  }
   try {
     let targetSubjectId: string
     if (mode === 'existing') {
@@ -139,7 +145,7 @@ export async function associateActionToElementAction(formData: FormData): Promis
     } else {
       const clean = (name ?? '').trim()
       if (!clean) return { ok: false, error: 'Nom de l’élément requis.' }
-      targetSubjectId = await findOrCreateSubjectByName(siteId, clean, auth.userId)
+      targetSubjectId = await findOrCreateSubjectByName(siteId, clean, access.userId)
     }
     await attachToSubject('site_actions', actionId, targetSubjectId)
     revalidateActionSurfaces(siteId)
@@ -164,8 +170,8 @@ export async function closeActionAction(
   const cParsed = CommentSchema.safeParse(formData.get('comment'))
   if (!cParsed.success) return { ok: false, error: cParsed.error.issues[0]?.message ?? 'Commentaire requis' }
 
-  const auth = await requireOperator()
-  if (!auth.ok) return auth
+  const access = await requireSiteActionWriteAccess(id)
+  if (!access.ok) return access
 
   // Photo optionnelle → upload bucket privé.
   let photoPath: string | null = null
@@ -185,9 +191,8 @@ export async function closeActionAction(
     photoPath = path
   }
 
-  const actor = await getCurrentUserWithProfile()
   try {
-    await markSiteActionDone(id, { comment: cParsed.data, photoPath }, actor?.id ?? null)
+    await markSiteActionDone(id, { comment: cParsed.data, photoPath }, access.userId)
   } catch {
     return { ok: false, error: 'Échec de la clôture' }
   }
@@ -217,16 +222,15 @@ export async function reopenActionAction(
   const siteId = typeof formData.get('site_id') === 'string' ? (formData.get('site_id') as string) : undefined
   const reason = typeof formData.get('reason') === 'string' ? (formData.get('reason') as string).trim() || null : null
 
-  const auth = await requireOperator()
-  if (!auth.ok) return auth
-  const actor = await getCurrentUserWithProfile()
+  const access = await requireSiteActionWriteAccess(id)
+  if (!access.ok) return access
 
   // Réouverture ATOMIQUE : repasse open/done_at=null ET journalise l'événement
   // `reopened` dans la même transaction (mig 221). L'événement `completed` antérieur
   // reste dans le journal → l'histoire de clôture n'est plus détruite. No-op si
   // l'action n'est pas terminée.
   const supabase = createAdminClient()
-  const { error } = await supabase.rpc('fn_reopen_action', { p_id: id, p_actor_id: actor?.id ?? null, p_reason: reason })
+  const { error } = await supabase.rpc('fn_reopen_action', { p_id: id, p_actor_id: access.userId, p_reason: reason })
   if (error) return { ok: false, error: 'Échec de la réouverture' }
 
   revalidateActionSurfaces(siteId)
@@ -238,15 +242,24 @@ export async function listSiteMissionsForPlanningAction(
   siteId: string,
 ): Promise<Array<{ id: string; name: string; cadence: string }>> {
   if (!IdSchema.safeParse(siteId).success) return []
-  const auth = await requireOperator()
-  if (!auth.ok) return []
+  const access = await requireSiteWriteAccess(siteId)
+  if (!access.ok) return []
   const missions = await listMissionsBySite(siteId).catch(() => [])
   return missions
     .filter((m) => m.active !== false)
     .map((m) => ({ id: m.id, name: m.name, cadence: m.cadence }))
 }
 
-/** Équipes actives de l'org — pour attribuer une action planifiée directement. */
+/**
+ * Équipes actives de l'org — pour attribuer une action planifiée directement.
+ *
+ * ⚠️ SEUL point de ce fichier qui dépend encore de `getOrgId()`. C'est DÉLIBÉRÉ :
+ * la fonction n'a AUCUN contexte de ressource (signature `()`), donc aucune
+ * organisation ne peut en être déduite. La contextualiser exigerait de changer sa
+ * signature (recevoir un `siteId`) — hors périmètre M2C. Elle est CLASSÉE M3 (vue
+ * agrégée : équipes de `getOrgIdsOfUser()`). Tant que M3 n'est pas fait, un compte
+ * multi-org y verra `getOrgId()` lever — comportement inchangé, assumé.
+ */
 export async function listActiveTeamsForPlanningAction(): Promise<
   Array<{ id: string; name: string; color: string | null }>
 > {
@@ -276,16 +289,20 @@ const SlotSchema = z.enum(['morning', 'afternoon', 'evening'])
 export async function planActionAction(
   formData: FormData,
 ): Promise<{ ok: true; interventionId: string } | { ok: false; error: string }> {
-  const user = await getCurrentUserWithProfile()
-  if (!user) return { ok: false, error: 'Non authentifié' }
-  if (user.role !== 'admin' && user.role !== 'manager' && user.role !== 'chef_equipe') {
-    return { ok: false, error: 'Accès refusé' }
-  }
-
   const id = formData.get('id')
   if (typeof id !== 'string' || !IdSchema.safeParse(id).success) return { ok: false, error: 'Action invalide' }
   const siteId = formData.get('site_id')
   if (typeof siteId !== 'string' || !IdSchema.safeParse(siteId).success) return { ok: false, error: 'Site invalide' }
+
+  // L'action est la racine (elle passe en 'planned') ; la mission/intervention
+  // naît sur le site. On exige les deux, MÊME organisation — la hiérarchie va du
+  // site vers l'org, jamais de `user.organization_id`.
+  const access = await requireSiteActionWriteAccess(id)
+  if (!access.ok) return access
+  const siteAccess = await requireSiteWriteAccess(siteId)
+  if (!siteAccess.ok || siteAccess.organizationId !== access.organizationId) {
+    return { ok: false, error: 'Accès refusé' }
+  }
 
   const dParsed = DateSchema.safeParse(formData.get('scheduled_for'))
   if (!dParsed.success) return { ok: false, error: 'Date invalide' }
@@ -307,7 +324,7 @@ export async function planActionAction(
     } else {
       const rawName = formData.get('new_mission_name')
       const name = (typeof rawName === 'string' && rawName.trim() ? rawName.trim() : 'Intervention').slice(0, 120)
-      missionId = await createMission({ site_id: siteId, name, cadence: 'on_demand', created_by: user.id })
+      missionId = await createMission({ site_id: siteId, name, cadence: 'on_demand', created_by: access.userId })
     }
 
     // Résolution de l'équipe (même logique que la vue Semaine) :
@@ -332,7 +349,7 @@ export async function planActionAction(
         .eq('id', teamChoice)
         .maybeSingle()
       const team = t as { active: boolean; deleted_at: string | null; organization_id: string } | null
-      if (!team || team.deleted_at !== null || team.active === false || team.organization_id !== user.organization_id) {
+      if (!team || team.deleted_at !== null || team.active === false || team.organization_id !== access.organizationId) {
         return { ok: false, error: 'Équipe inconnue ou archivée' }
       }
       finalTeamId = teamChoice
@@ -342,7 +359,7 @@ export async function planActionAction(
       mission_id: missionId,
       scheduled_for: dParsed.data,
       slot: sParsed.data,
-      created_by: user.id,
+      created_by: access.userId,
     })
     // L'intervention naît directement affectée (assigned_team_id), pas besoin de
     // passer par le drag & drop de la Semaine.
@@ -364,8 +381,8 @@ export async function cancelActionAction(
   siteId?: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!IdSchema.safeParse(id).success) return { ok: false, error: 'Action invalide' }
-  const auth = await requireOperator()
-  if (!auth.ok) return auth
+  const access = await requireSiteActionWriteAccess(id)
+  if (!access.ok) return access
   try {
     await cancelSiteAction(id)
   } catch {
@@ -390,16 +407,16 @@ const VALID_SOURCES = ['mobile_site', 'desktop_site', 'actions_list'] as const
 export async function createQuickActionAction(
   formData: FormData,
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
-  const user = await getCurrentUserWithProfile()
-  if (!user) return { ok: false, error: 'Non authentifié' }
-  if (user.role !== 'admin' && user.role !== 'manager' && user.role !== 'chef_equipe') {
-    return { ok: false, error: 'Accès refusé' }
-  }
-
-  const siteId = formData.get('site_id')
-  if (typeof siteId !== 'string' || !IdSchema.safeParse(siteId).success) {
+  const siteIdRaw = formData.get('site_id')
+  if (typeof siteIdRaw !== 'string' || !IdSchema.safeParse(siteIdRaw).success) {
     return { ok: false, error: 'Site requis' }
   }
+  const siteId = siteIdRaw
+
+  // Frontière d'écriture SITE : membership actif à l'org du site + rôle terrain.
+  // Remplace `getOrgId()` (org du caller) + la comparaison scalaire.
+  const access = await requireSiteWriteAccess(siteId)
+  if (!access.ok) return access
 
   const tParsed = TitleSchema.safeParse(formData.get('title'))
   if (!tParsed.success) return { ok: false, error: tParsed.error.issues[0]?.message ?? 'Titre requis' }
@@ -417,24 +434,23 @@ export async function createQuickActionAction(
     ? rawFrom
     : null
 
-  // Garde-fou : le site doit exister et appartenir à l'organisation de l'utilisateur.
+  // Règle métier distincte de la frontière d'org : un site archivé n'accepte
+  // pas de nouvelle action. `requireSiteWriteAccess` a déjà garanti l'existence
+  // et l'appartenance ; il reste à écarter l'archivé.
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
   const { data: site } = await supabase
     .from('sites')
-    .select('organization_id, deleted_at')
+    .select('deleted_at')
     .eq('id', siteId)
     .maybeSingle()
-  const siteRow = site as { organization_id: string | null; deleted_at: string | null } | null
-  if (!siteRow || siteRow.deleted_at) return { ok: false, error: 'Site introuvable' }
-  if (orgId && siteRow.organization_id !== orgId) return { ok: false, error: 'Accès refusé' }
+  if ((site as { deleted_at: string | null } | null)?.deleted_at) return { ok: false, error: 'Site introuvable' }
 
   try {
     const id = await createSiteAction({
       site_id: siteId,
       title: tParsed.data,
       due_date: dueDate,
-      created_by: user.id,
+      created_by: access.userId,
       created_from: createdFrom,
     })
     // Usage produit (best-effort) — sert la corrélation brief → action.
