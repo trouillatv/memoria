@@ -1,7 +1,7 @@
-import { userCanAccessSite } from '@/lib/auth/site-access'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { requireSiteAccess } from '@/lib/field/site-access'
+import { requireSiteAccess as requireFieldSiteAccess } from '@/lib/field/site-access'
+import { requireSiteAccess } from '@/lib/auth/resource-access'
 import { getSiteResumeContext } from '@/lib/db/interventions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
@@ -137,14 +137,15 @@ export default async function FieldSitePage({
   const liveVisitId = typeof sp.live === 'string' && sp.live.length > 0 ? sp.live : null
   // Un chantier d'une autre organisation doit être indiscernable d'un chantier
   // inexistant : la garde rend 404, jamais « accès refusé ».
-  const { user } = await requireSiteAccess(siteId)
+  const { user } = await requireFieldSiteAccess(siteId)
 
-  // FRONTIÈRE D'ORGANISATION, SANS EXEMPTION DE RÔLE. `requireSiteAccess`
+  // FRONTIÈRE D'ORGANISATION, SANS EXEMPTION DE RÔLE (M2B). `requireFieldSiteAccess`
   // ci-dessus passe par `requireOwned`, qui exempte l'admin plateforme — et le
-  // mobile lit `sites` en direct juste après. Un administrateur sans membership
-  // de l'org verrait donc le chantier. `userCanAccessSite` n'exempte aucun
-  // rôle : l'accès métier exige une appartenance, ici comme au bureau.
-  if (!(await userCanAccessSite(siteId))) notFound()
+  // mobile lit `sites` en direct juste après. La façade M2B `requireSiteAccess`
+  // n'exempte aucun rôle : l'accès métier exige une appartenance, ici comme au
+  // bureau. Elle rend `notFound()` sur refus, `redirect('/login')` si la session
+  // manque.
+  await requireSiteAccess(siteId)
 
   const supabase = createAdminClient()
   const { data: site } = await supabase

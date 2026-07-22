@@ -1,4 +1,4 @@
-import { userCanAccessOrgRow } from '@/lib/auth/site-access'
+import { requireInterventionAccess } from '@/lib/auth/resource-access'
 import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import Link from 'next/link'
@@ -60,7 +60,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
   const { id } = await params
   // P0.5 : même frontière que les chantiers. `getIntervention` charge par ID
   // sans scope org — un non-membre l'ouvrirait par URL.
-  if (!(await userCanAccessOrgRow('interventions', id))) notFound()
+  await requireInterventionAccess(id)
   const intervention = await getIntervention(id)
   if (!intervention) notFound()
 

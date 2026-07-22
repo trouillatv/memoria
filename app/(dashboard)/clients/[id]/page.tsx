@@ -1,4 +1,4 @@
-import { userCanAccessOrgRow } from '@/lib/auth/site-access'
+import { requireClientAccess } from '@/lib/auth/resource-access'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -75,7 +75,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   const { id } = await params
   // P0.5 : frontière d'organisation sur l'accès direct par ID (fuite
   // démontrée — un membre d'une autre entreprise voyait le nom du client).
-  if (!(await userCanAccessOrgRow('clients', id))) notFound()
+  await requireClientAccess(id)
   const client = await getClientDetail(id)
   if (!client) notFound()
 

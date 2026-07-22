@@ -1,4 +1,4 @@
-import { userCanAccessSite } from '@/lib/auth/site-access'
+import { resolveResourceAccess } from '@/lib/auth/resource-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/db/users'
@@ -27,10 +27,10 @@ export interface SiteIdentity {
 
 export async function getSiteIdentity(siteId: string): Promise<SiteIdentity | null> {
   const supabase = createAdminClient()
-  // P0 IDOR — même frontière que la version de `site-cockpit`. Cette variante
-  // sert le MOBILE et `site-overview` : la laisser ouverte serait un
-  // contournement de la garde par une seconde porte. Cf. `lib/auth/site-access`.
-  if (!(await userCanAccessSite(siteId))) return null
+  // Même frontière que la version de `site-cockpit` (M2B). Cette variante sert
+  // le MOBILE et `site-overview` : la laisser ouverte serait un contournement
+  // par une seconde porte. Cf. `lib/auth/resource-access`.
+  if (!(await resolveResourceAccess({ kind: 'site', id: siteId })).ok) return null
   const { data: site } = await supabase
     .from('sites')
     .select('name, address, client_id, access_hours, access_instructions')

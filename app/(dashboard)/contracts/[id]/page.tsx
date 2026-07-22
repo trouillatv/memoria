@@ -1,4 +1,4 @@
-import { userCanAccessOrgRow } from '@/lib/auth/site-access'
+import { requireContractAccess } from '@/lib/auth/resource-access'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { FileBarChart, AlertTriangle, ListChecks } from 'lucide-react'
@@ -36,7 +36,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   await requireDeskUser()
   const { id } = await params
   // P0.5 : frontière d'organisation sur l'accès direct par ID.
-  if (!(await userCanAccessOrgRow('contracts', id))) notFound()
+  await requireContractAccess(id)
   const contract = await getContract(id)
   if (!contract) notFound()
 
