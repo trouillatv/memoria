@@ -55,6 +55,14 @@ export async function readAllProposedRows(siteId: string): Promise<Array<Proposa
   return (data ?? []) as Array<ProposalRow & { kind: ProposalKind }>
 }
 
+/** L'organisation de chaque chantier — provenance pour les badges du dashboard
+ *  (M3). UNE lecture pour tous les siteIds, jamais une requête par carte. */
+export async function readSiteOrganizations(siteIds: string[]): Promise<Map<string, string>> {
+  if (siteIds.length === 0) return new Map()
+  const { data } = await createAdminClient().from('sites').select('id, organization_id').in('id', siteIds)
+  return new Map(((data ?? []) as Array<{ id: string; organization_id: string }>).map((s) => [s.id, s.organization_id]))
+}
+
 /** Lignes brutes des actions métier d'un chantier (statut + échéance). */
 export async function readSiteActionRows(siteId: string): Promise<ActionRow[]> {
   const { data, error } = await createAdminClient()

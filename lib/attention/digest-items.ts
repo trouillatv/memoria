@@ -37,6 +37,7 @@ const plural = (n: number, one: string, many: string): string => (n > 1 ? many :
 export function buildConflictItems(
   conflictsBySite: Record<string, Record<string, ClosureConflict>>,
   nameOf: Map<string, string>,
+  orgOf?: Map<string, string>,
 ): AttentionItem[] {
   const out: AttentionItem[] = []
 
@@ -59,6 +60,7 @@ export function buildConflictItems(
           ? `le ${frDay(dates[0])} — ${raison.toLowerCase()}`
           : `${dates.length} jours concernés, à partir du ${frDay(dates[0])}`,
       href: '/semaine',
+      organizationId: orgOf?.get(siteId) ?? '',
     })
   }
 
@@ -85,6 +87,7 @@ export function buildDebriefItems(
   pending: PendingDebrief[],
   nameOf: Map<string, string>,
   todayIso: string,
+  orgOf?: Map<string, string>,
 ): AttentionItem[] {
   const bySite = new Map<string, PendingDebrief[]>()
   for (const p of pending) {
@@ -111,6 +114,7 @@ export function buildDebriefItems(
           : `la plus ancienne date d’il y a ${jours} j — ${captures} ${plural(captures, 'élément', 'éléments')} en attente`,
       // Le débrief se reprend là où il s'est arrêté.
       href: `/sites/${siteId}/visites/${oldest.reportId}`,
+      organizationId: orgOf?.get(siteId) ?? '',
     })
   }
 

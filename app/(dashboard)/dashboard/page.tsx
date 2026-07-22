@@ -33,6 +33,8 @@ import {
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { getOrganizationLabels } from '@/lib/db/organisations'
+import { OrgBadge, orgLabelOf, type OrgLabels } from '@/components/dashboard/OrgBadge'
 import { getVisitImpact, emptyVisitImpact } from '@/lib/knowledge/site-events'
 import { VisitImpactCard } from './VisitImpactCard'
 import { getMyOrgMorningDigest, type OrgMorningDigest } from '@/lib/db/morning-digest'
@@ -133,8 +135,11 @@ export default async function DashboardPage() {
   const continuityEnabled = isContinuityFeatureEnabled()
 
   // M3 — les organisations de l'utilisateur (agrégation multi-org). Sert l'inbox
-  // et, plus bas, la résolution des noms d'organisation pour les badges.
+  // et la résolution des libellés pour les badges.
   const orgIds = await getOrgIdsOfUser()
+  // Provenance : UNE résolution partagée, uniquement en multi-org. En mono-org →
+  // `null` → les widgets n'affichent aucun badge (interface inchangée).
+  const orgLabels: OrgLabels = orgIds.length > 1 ? await getOrganizationLabels(orgIds) : null
 
   // Couche « Nouveau depuis hier » — déclarations QR fraîches depuis last_seen_at.
   const inbox = await getInboxFeed(user.id, orgIds)
@@ -237,11 +242,11 @@ export default async function DashboardPage() {
 
       {/* Ce que la journée a produit. Avant tout le reste : on lit d'abord ce qui
           vient de se passer, on fouille ensuite. Silencieux si rien n'a bougé. */}
-      <VisitImpactCard changes={todayChanges} />
+      <VisitImpactCard changes={todayChanges} orgLabels={orgLabels} />
 
       {/* Temps 2 — « Ce qui mérite votre attention » : le système décide des
           priorités du jour (5 max), l'utilisateur ne fouille pas. Déterministe. */}
-      <AttentionBlock digest={attention} />
+      <AttentionBlock digest={attention} orgLabels={orgLabels} />
 
       {/* Notifications (socle mig 159) — réponse à un retour, etc. Au chargement,
           pas seulement si l'utilisateur ouvre le bouton feedback. */}
@@ -253,7 +258,7 @@ export default async function DashboardPage() {
 
       {/* Couche « Nouveau depuis hier » (Vincent) — ce qui s'est passé pendant votre
           absence : déclarations QR des entreprises. Silencieux si rien de neuf. */}
-      <DashboardInbox feed={inbox} />
+      <DashboardInbox feed={inbox} orgLabels={orgLabels} />
 
       <Hero
         morningDigest={morningDigest}
@@ -264,6 +269,7 @@ export default async function DashboardPage() {
         urgentPassations={continuity.counts.j7}
         sharedAwaitingAck={handoverCounts.shared}
         continuityEnabled={continuityEnabled}
+        orgLabels={orgLabels}
       />
 
       {/* Ligne mémoire — 3 condensations du moteur (jamais des KPI). */}
@@ -287,6 +293,7 @@ export default async function DashboardPage() {
         attentionCount={attentionCount}
         recentPassations={recentPassations}
         aSavoir={aSavoir}
+        orgLabels={orgLabels}
       />
 
       <ReservoirEtDefense
@@ -553,6 +560,7 @@ function Hero({
   urgentPassations,
   sharedAwaitingAck,
   continuityEnabled,
+  orgLabels,
 }: {
   morningDigest: OrgMorningDigest | null
   morningReading: TenantMorningReading
@@ -562,11 +570,12 @@ function Hero({
   urgentPassations: number
   sharedAwaitingAck: number
   continuityEnabled: boolean
+  orgLabels: OrgLabels
 }) {
   // LE MATIN (Vincent 2026-07-09) : quand la Nuit a produit un digest pour
   // aujourd'hui, il EST le hero — jamais deux heros empilés. Pas de digest
   // (première nuit, chantier créé aujourd'hui) → le hero historique ci-dessous.
-  if (morningDigest) return <MorningHero digest={morningDigest} />
+  if (morningDigest) return <MorningHero digest={morningDigest} orgLabels={orgLabels} />
 
   const signals: HeroSignal[] = []
 
@@ -772,6 +781,8 @@ interface FilItem {
   href?: string
   /** Densité variable : 'normal' = signal individuel, 'compact' = résumé. */
   weight: 'normal' | 'compact'
+  /** M3 — provenance PAR ÉLÉMENT (badge multi-org). Absent → pas de badge. */
+  organizationId?: string
 }
 
 type Family = 'attention' | 'continuite' | 'ao' | 'memoire'
@@ -830,6 +841,7 @@ function VieDuSysteme({
   attentionCount,
   recentPassations,
   aSavoir,
+  orgLabels,
 }: {
   memorySignals: MemorySignal[]
   recentAnomalies: RecentAnomalyItem[]
@@ -840,6 +852,7 @@ function VieDuSysteme({
   attentionCount: number
   recentPassations: RecentPassationEntry[]
   aSavoir: LivingASavoirCard[]
+  orgLabels: OrgLabels
 }) {
   // Regroupement par FAMILLE connue (pas par importance calculée). Densité
   // variable : signal individuel = ligne normale, résumé = ligne compacte.
@@ -874,6 +887,7 @@ function VieDuSysteme({
       sub: [a.siteName, relTime(a.createdAt)].filter(Boolean).join(' · ') || undefined,
       href: `/interventions/${a.interventionId}`,
       weight: 'normal',
+      organizationId: a.organizationId,
     })
   }
   for (const e of atRiskEngagements.slice(0, 3)) {
@@ -883,6 +897,7 @@ function VieDuSysteme({
       sub: e.contract_name,
       href: `/contracts/${e.contract_id}`,
       weight: 'normal',
+      organizationId: e.organizationId,
     })
   }
   if (openAnomaliesCount > 0) {
@@ -921,6 +936,7 @@ function VieDuSysteme({
       sub,
       href: `/handovers/${p.id}`,
       weight: 'normal',
+      organizationId: p.organizationId,
     })
   }
   if (continuite.length > 0) families.push({ family: 'continuite', items: continuite })
@@ -934,6 +950,7 @@ function VieDuSysteme({
       sub: t.client_name ?? undefined,
       href: `/tenders/${t.id}`,
       weight: 'normal',
+      organizationId: t.organizationId,
     })
   }
   if (ao.length > 0) families.push({ family: 'ao', items: ao })
@@ -947,6 +964,7 @@ function VieDuSysteme({
       sub: `${c.site_name} · noté ${relTime(c.notedAt)}`,
       href: `/sites/${c.site_id}`,
       weight: 'normal',
+      organizationId: c.organizationId,
     })
   }
   if (memoire.length > 0) families.push({ family: 'memoire', items: memoire })
@@ -981,6 +999,8 @@ function VieDuSysteme({
                               : `text-sm leading-snug ${meta.textColor}`
                           }
                         >
+                          <OrgBadge label={orgLabelOf(orgLabels, it.organizationId)} />
+                          {orgLabelOf(orgLabels, it.organizationId) ? ' ' : ''}
                           {it.text}
                         </p>
                         {it.sub && (

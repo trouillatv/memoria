@@ -3,6 +3,7 @@ import { CalendarClock, Check, ChevronRight, HardHat, RefreshCw, Sparkles } from
 import type { SiteImpact, VisitImpact } from '@/lib/knowledge/site-events'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { cn } from '@/lib/utils'
+import { OrgBadge, orgLabelOf, type OrgLabels } from '@/components/dashboard/OrgBadge'
 
 // ── « IL S'EST PASSÉ QUELQUE CHOSE AUJOURD'HUI » ─────────────────────────────
 // L'accueil ne dit plus « 15 actions ouvertes » (une statistique, vraie hier comme
@@ -15,7 +16,7 @@ import { cn } from '@/lib/utils'
 
 const heureFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: NOUMEA_TZ, hour: '2-digit', minute: '2-digit' })
 
-export function VisitImpactCard({ changes }: { changes: VisitImpact }) {
+export function VisitImpactCard({ changes, orgLabels = null }: { changes: VisitImpact; orgLabels?: OrgLabels }) {
   if (changes.sites.length === 0) return null
 
   return (
@@ -31,7 +32,7 @@ export function VisitImpactCard({ changes }: { changes: VisitImpact }) {
 
       <div className="mt-3 space-y-4">
         {changes.sites.map((site) => (
-          <SiteBlock key={site.siteId} site={site} />
+          <SiteBlock key={site.siteId} site={site} orgLabels={orgLabels} />
         ))}
       </div>
 
@@ -55,11 +56,12 @@ export function VisitImpactCard({ changes }: { changes: VisitImpact }) {
   )
 }
 
-function SiteBlock({ site }: { site: SiteImpact }) {
+function SiteBlock({ site, orgLabels = null }: { site: SiteImpact; orgLabels?: OrgLabels }) {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <HardHat className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <OrgBadge label={orgLabelOf(orgLabels, site.organizationId)} />
         <Link href={`/sites/${site.siteId}`} className="text-base font-semibold hover:underline">
           {site.siteName}
         </Link>

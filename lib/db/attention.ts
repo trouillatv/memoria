@@ -36,6 +36,9 @@ export interface AttentionItem {
   /** POURQUOI maintenant — « la plus en retard : « … » (+12 j) ». */
   why: string
   href: string
+  /** M3 — provenance PAR ÉLÉMENT (compte multi-org). Deux actions de deux
+   *  organisations dans le même bloc gardent chacune la leur. */
+  organizationId: string
 }
 export interface AttentionDigest {
   red: AttentionItem[]
@@ -61,14 +64,15 @@ export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
   const orgIds = await getOrgIdsOfUser()
 
   const { data: siteRows } = await sb
-    .from('sites').select('id, name').is('deleted_at', null).in('organization_id', orgIds)
-  const sites = (siteRows ?? []) as Array<{ id: string; name: string }>
+    .from('sites').select('id, name, organization_id').is('deleted_at', null).in('organization_id', orgIds)
+  const sites = (siteRows ?? []) as Array<{ id: string; name: string; organization_id: string }>
   const totalSites = sites.length
   if (totalSites === 0)
     return { red: [], orange: [], greenSites: 0, totalSites: 0, closedToday: [] }
 
   const siteIds = sites.map((s) => s.id)
   const nameOf = new Map(sites.map((s) => [s.id, s.name]))
+  const orgOf = new Map(sites.map((s) => [s.id, s.organization_id])) // provenance par chantier
   const today = todayLocalIso()
 
   // La semaine en cours : c'est l'horizon du matin. Un conflit dans trois
@@ -124,15 +128,16 @@ export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
     closuresBySite,
     keptInterventionIds,
   })
-  for (const item of buildConflictItems(conflictsBySite, nameOf)) red.push(item)
+  for (const item of buildConflictItems(conflictsBySite, nameOf, orgOf)) red.push(item)
   for (const siteId of Object.keys(conflictsBySite)) flagged.add(siteId)
 
   // 🟠 DÉBRIEFS EN ATTENTE — une visite finie dont les captures dorment.
-  for (const item of buildDebriefItems(pendingDebriefs, nameOf, today)) orange.push(item)
+  for (const item of buildDebriefItems(pendingDebriefs, nameOf, today, orgOf)) orange.push(item)
   for (const p of pendingDebriefs) if (p.remaining > 0) flagged.add(p.siteId)
 
   for (const [siteId, a] of agg) {
     const where = nameOf.get(siteId) ?? '—'
+    const organizationId = orgOf.get(siteId) ?? ''
 
     // 🔴 Actions en retard.
     if (a.overdue.length > 0) {
@@ -145,6 +150,7 @@ export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
         where,
         why: `la plus en retard : « ${trunc(oldest.title)} » (+${late} j)`,
         href: `/sites/${siteId}/actions`,
+        organizationId,
       })
     }
 
@@ -159,6 +165,7 @@ export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
         where,
         why: `la plus ancienne depuis ${age} j`,
         href: `/sites/${siteId}/reserves`,
+        organizationId,
       }
       ;(item.tier === 'red' ? red : orange).push(item)
     }
@@ -173,6 +180,7 @@ export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
         where,
         why: `ouverte depuis ${ageDays(oldest.created_at)} j`,
         href: `/sites/${siteId}/actions`,
+        organizationId,
       })
     }
   }

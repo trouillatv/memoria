@@ -9,6 +9,7 @@ import Link from 'next/link'
 import { CheckCircle2, AlertTriangle, Camera, Inbox, Check, Loader2 } from 'lucide-react'
 import { markInboxSeenAction } from './inbox-actions'
 import type { InboxFeed } from '@/lib/db/inbox-feed'
+import { OrgBadge, orgLabelOf, type OrgLabels } from '@/components/dashboard/OrgBadge'
 
 function timeAgo(iso: string): string {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
@@ -19,7 +20,7 @@ function timeAgo(iso: string): string {
   return `il y a ${d} j`
 }
 
-export function DashboardInbox({ feed }: { feed: InboxFeed }) {
+export function DashboardInbox({ feed, orgLabels = null }: { feed: InboxFeed; orgLabels?: OrgLabels }) {
   const router = useRouter()
   const [pending, start] = useTransition()
   if (feed.items.length === 0) return null
@@ -56,6 +57,7 @@ export function DashboardInbox({ feed }: { feed: InboxFeed }) {
                 <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${tone}`} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm">
+                    {orgLabelOf(orgLabels, it.organizationId) && <><OrgBadge label={orgLabelOf(orgLabels, it.organizationId)} /> </>}
                     <span className="font-medium">{it.company}</span>
                     {it.status === 'blocked' ? ' signale un blocage : ' : ' a déclaré : '}
                     <span className="font-medium">{it.actionTitle}</span>

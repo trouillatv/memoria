@@ -18,7 +18,7 @@ import 'server-only'
 
 import { getSiteOverview, type KnowledgeItem, type SynthesisStatus } from '@/lib/knowledge/site-overview'
 import {
-  readEvents, readVisitCaptureCounts, readFirstVisitId, readUserNames,
+  readEvents, readVisitCaptureCounts, readFirstVisitId, readUserNames, readSiteOrganizations,
   type SiteEventRow,
 } from '@/lib/knowledge/repository'
 import { getOrgId } from '@/lib/db/users'
@@ -93,6 +93,8 @@ export interface DeadlineAhead {
 export interface SiteImpact {
   siteId: string
   siteName: string
+  /** M3 — provenance pour le badge d'organisation (compte multi-org). */
+  organizationId: string
   synthesisStatus: SynthesisStatus
   /** Ce que le chantier attend — l'accueil doit être ACTIONNABLE, pas un journal.
    *  La prochaine datée d'abord ; sinon ce qui reste à planifier. */
@@ -351,6 +353,8 @@ export async function getVisitImpact(): Promise<VisitImpact> {
     list.push(r)
     bySite.set(r.site_id, list)
   }
+  // Provenance par chantier (badge multi-org) — UNE lecture pour tous les sites.
+  const orgOf = await readSiteOrganizations([...bySite.keys()])
 
   // UN getSiteOverview par chantier RÉELLEMENT touché — donc les mêmes nombres
   // que sa fiche, par construction. Borné à ce qui a bougé, pas au portefeuille.
@@ -388,6 +392,7 @@ export async function getVisitImpact(): Promise<VisitImpact> {
       const site: SiteImpact = {
         siteId,
         siteName: overview.identity.name,
+        organizationId: orgOf.get(siteId) ?? '',
         synthesisStatus: overview.synthesis.status,
         deadlines,
         added: {

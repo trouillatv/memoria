@@ -1,12 +1,15 @@
 import Link from 'next/link'
 import { AlertTriangle, Eye, CheckCircle2, ChevronRight, Lock } from 'lucide-react'
 import type { AttentionDigest, AttentionItem } from '@/lib/db/attention'
+import { OrgBadge, orgLabelOf, type OrgLabels } from '@/components/dashboard/OrgBadge'
 
-function Row({ it }: { it: AttentionItem }) {
+function Row({ it, orgLabels }: { it: AttentionItem; orgLabels: OrgLabels }) {
+  const badge = orgLabelOf(orgLabels, it.organizationId)
   return (
     <Link href={it.href} className="flex items-start gap-2 rounded-lg px-2 py-1.5 hover:bg-muted/40 transition-colors">
       <span className="min-w-0 flex-1">
         <span className="text-sm font-medium">
+          {badge && <><OrgBadge label={badge} /> </>}
           {it.what} <span className="font-normal text-muted-foreground">— {it.where}</span>
         </span>
         <span className="block text-xs text-muted-foreground">{it.why}</span>
@@ -18,7 +21,7 @@ function Row({ it }: { it: AttentionItem }) {
 
 /** « Ce qui mérite votre attention » — bloc de surfaçage déterministe (Temps 2).
  *  Le système décide des priorités du jour ; l'utilisateur ne fouille pas 150 actions. */
-export function AttentionBlock({ digest }: { digest: AttentionDigest }) {
+export function AttentionBlock({ digest, orgLabels = null }: { digest: AttentionDigest; orgLabels?: OrgLabels }) {
   const { red, orange, greenSites, totalSites, closedToday = [] } = digest
   if (totalSites === 0) return null
   const nothing = red.length === 0 && orange.length === 0
@@ -60,7 +63,7 @@ export function AttentionBlock({ digest }: { digest: AttentionDigest }) {
               <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-700">
                 <AlertTriangle className="h-3.5 w-3.5" /> À traiter
               </p>
-              <ul>{red.map((it, i) => <li key={i}><Row it={it} /></li>)}</ul>
+              <ul>{red.map((it, i) => <li key={i}><Row it={it} orgLabels={orgLabels} /></li>)}</ul>
             </div>
           )}
           {orange.length > 0 && (
@@ -68,7 +71,7 @@ export function AttentionBlock({ digest }: { digest: AttentionDigest }) {
               <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700">
                 <Eye className="h-3.5 w-3.5" /> À surveiller
               </p>
-              <ul>{orange.map((it, i) => <li key={i}><Row it={it} /></li>)}</ul>
+              <ul>{orange.map((it, i) => <li key={i}><Row it={it} orgLabels={orgLabels} /></li>)}</ul>
             </div>
           )}
           {greenSites > 0 && (

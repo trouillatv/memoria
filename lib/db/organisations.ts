@@ -28,6 +28,22 @@ export function slugify(name: string): string {
     .replace(/^-|-$/g, '')
 }
 
+/**
+ * M3 — libellés d'organisation pour les badges du dashboard. UNE lecture pour
+ * tous les ids → map `id → libellé court` (slug si présent, sinon nom). Zéro N+1.
+ * Le dashboard n'appelle ceci QUE pour un compte multi-organisations.
+ */
+export async function getOrganizationLabels(orgIds: string[]): Promise<Record<string, string>> {
+  if (orgIds.length === 0) return {}
+  const { data } = await createAdminClient()
+    .from('organizations').select('id, name, slug').in('id', orgIds)
+  const out: Record<string, string> = {}
+  for (const o of (data ?? []) as Array<{ id: string; name: string; slug: string | null }>) {
+    out[o.id] = (o.slug || o.name || '').trim()
+  }
+  return out
+}
+
 export async function listOrganisations(): Promise<DbOrganisation[]> {
   const sb = createAdminClient()
   const [{ data: orgs, error }, { data: users }] = await Promise.all([

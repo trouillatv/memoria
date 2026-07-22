@@ -23,6 +23,7 @@ import {
   type OrgMorningDigest,
   type MorningFocusItem,
 } from '@/lib/db/morning-digest'
+import { OrgBadge, orgLabelOf, type OrgLabels } from '@/components/dashboard/OrgBadge'
 
 const NOUMEA = 'Pacific/Noumea'
 const WORDS = ['Aucun', 'Un', 'Deux', 'Trois', 'Quatre', 'Cinq', 'Six', 'Sept', 'Huit', 'Neuf', 'Dix']
@@ -51,6 +52,9 @@ function provenanceLine(digest: OrgMorningDigest): string {
 
 interface MorningHeroProps {
   digest: OrgMorningDigest
+  /** M3 — libellés d'organisation (compte multi-org). Le HERO montre le digest
+   *  d'UNE organisation (la plus pertinente) : on badge SA provenance. */
+  orgLabels?: OrgLabels
   /** Base des liens chantier — '/sites' (dashboard) ou '/m/site' (terrain). */
   siteHrefBase?: string
   /** Destination du CTA. Défaut dashboard : premier chantier focus, sinon
@@ -63,6 +67,7 @@ interface MorningHeroProps {
 
 export function MorningHero({
   digest,
+  orgLabels = null,
   siteHrefBase = '/sites',
   ctaHref: ctaHrefProp,
   ctaLabel: ctaLabelProp,
@@ -70,6 +75,12 @@ export function MorningHero({
 }: MorningHeroProps) {
   const totalSites = digest.sites.length
   const chantiersRelus = totalSites === 1 ? 'ton chantier' : `tes ${totalSites} chantiers`
+  const orgBadge = orgLabelOf(orgLabels, digest.organizationId)
+  // Les AUTRES organisations qui ont aussi un résumé ce matin (provenance, pas un
+  // sélecteur : afficher leur digest demanderait de le charger — hors lot UI).
+  const autresOrgs = (digest.otherOrgIds ?? [])
+    .map((id) => orgLabelOf(orgLabels, id))
+    .filter((l): l is string => !!l)
 
   if (isQuietMorning(digest)) {
     // Silence vert compact : la nuit a tourné, rien à signaler — c'est une
@@ -83,6 +94,7 @@ export function MorningHero({
           <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
           <div className="min-w-0">
             <p className="text-base sm:text-lg leading-snug">
+              {orgBadge && <><OrgBadge label={orgBadge} /> </>}
               Cette nuit, MemorIA a relu {chantiersRelus}. Rien n&apos;a été oublié.
             </p>
             <p className="text-sm text-muted-foreground mt-0.5">
@@ -133,9 +145,13 @@ export function MorningHero({
         <Sunrise className="h-5 w-5 text-muted-foreground shrink-0 mt-1" />
         <div className="min-w-0 flex-1">
           <p className="text-base sm:text-lg leading-snug font-medium">
+            {orgBadge && <><OrgBadge label={orgBadge} /> </>}
             Cette nuit, MemorIA a relu {chantiersRelus}. {attention}
           </p>
-          <p className="text-sm text-muted-foreground mt-0.5">{provenanceLine(digest)}</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {provenanceLine(digest)}
+            {autresOrgs.length > 0 && ` · ${autresOrgs.join(', ')} ${autresOrgs.length > 1 ? 'ont' : 'a'} aussi un résumé ce matin`}
+          </p>
         </div>
       </div>
 

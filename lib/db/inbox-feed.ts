@@ -17,6 +17,8 @@ export interface InboxItem {
   comment: string | null
   hasPhoto: boolean
   declaredAt: string
+  /** M3 — provenance pour le badge d'organisation (compte multi-org). */
+  organizationId: string
 }
 
 export interface InboxFeed {
@@ -80,6 +82,7 @@ export async function getInboxFeed(userId: string, orgIds: string[]): Promise<In
       comment: (r.declared_comment as string | null) ?? null,
       hasPhoto: !!r.declared_photo_path,
       declaredAt: r.declared_at as string,
+      organizationId: site.organization_id as string,
     })
   }
 
