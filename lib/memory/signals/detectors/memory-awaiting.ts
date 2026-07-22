@@ -5,22 +5,22 @@
 
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import type { MemorySignal } from '../types'
 import type { HandoverPayload } from '@/types/db'
 import { buildMemoryAwaitingSignals, type AwaitingBriefInput } from './memory-awaiting.logic'
 
 export async function detectMemoryAwaiting(): Promise<MemorySignal[]> {
   const sb = createAdminClient()
-  const orgId = await getOrgId().catch(() => null)
-  if (!orgId) return []
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
 
   // status='shared' = partagé mais PAS encore reconnu (la reconnaissance fait
   // passer à 'acknowledged'). On exclut les archivés (deleted_at).
   const { data } = await sb
     .from('handover_briefs')
     .select('id, shared_at, access_count, payload')
-    .eq('organization_id', orgId)
+    .in('organization_id', orgIds)
     .eq('status', 'shared')
     .is('deleted_at', null)
     .not('shared_at', 'is', null)

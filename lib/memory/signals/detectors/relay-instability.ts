@@ -2,7 +2,7 @@
 
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import type { MemorySignal } from '../types'
 import {
   buildRelayInstabilitySignals,
@@ -21,8 +21,8 @@ function pickOne<T>(v: T | T[] | null | undefined): T | null {
 
 export async function detectRelayInstability(): Promise<MemorySignal[]> {
   const sb = createAdminClient()
-  const orgId = await getOrgId().catch(() => null)
-  if (!orgId) return []
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
   const sinceIso = new Date(Date.now() - INSTABILITY_WINDOW_DAYS * 86_400_000)
     .toISOString()
     .slice(0, 10)
@@ -30,7 +30,7 @@ export async function detectRelayInstability(): Promise<MemorySignal[]> {
   const { data } = await sb
     .from('interventions')
     .select('assigned_team_id, scheduled_for, status, mission:missions!inner(site:sites!inner(id, name, deleted_at))')
-    .eq('organization_id', orgId)
+    .in('organization_id', orgIds)
     .in('status', ROTATION_STATUSES as unknown as string[])
     .gte('scheduled_for', sinceIso)
     .not('assigned_team_id', 'is', null)

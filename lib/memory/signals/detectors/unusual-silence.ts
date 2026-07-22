@@ -2,7 +2,7 @@
 
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import type { MemorySignal } from '../types'
 import {
   buildUnusualSilenceSignals,
@@ -21,14 +21,14 @@ export async function detectUnusualSilence(): Promise<MemorySignal[]> {
   const sb = createAdminClient()
   // Scope ORG (createAdminClient bypasse les RLS → re-filtrer obligatoire, sinon
   // fuite cross-organisation sur le dashboard).
-  const orgId = await getOrgId().catch(() => null)
-  if (!orgId) return []
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
 
   // Sites actifs (contrat actif, non supprimés).
   const { data: sitesRaw } = await sb
     .from('sites')
     .select('id, name, contract:contracts(status)')
-    .eq('organization_id', orgId)
+    .in('organization_id', orgIds)
     .is('deleted_at', null)
   const sites: SiteInput[] = ((sitesRaw ?? []) as Array<{
     id: string
@@ -43,7 +43,7 @@ export async function detectUnusualSilence(): Promise<MemorySignal[]> {
   const { data: rows } = await sb
     .from('interventions')
     .select('scheduled_for, status, mission:missions!inner(site_id)')
-    .eq('organization_id', orgId)
+    .in('organization_id', orgIds)
     .in('status', DOCUMENTED_STATUSES as unknown as string[])
 
   const traces: TraceInput[] = []
