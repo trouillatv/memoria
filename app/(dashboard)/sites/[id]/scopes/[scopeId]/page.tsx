@@ -47,6 +47,13 @@ export default async function ScopePage({
   const scope = await getScope(scopeId, orgId)
   if (!scope || scope.siteId !== id) notFound()
 
+  // P0 IDOR : cette page affichait `identity?.name ?? 'Site'` et RENDAIT les
+  // données du scope même quand l'identité était refusée. `getSiteIdentity`
+  // rend désormais `null` pour un non-membre — on transforme ce refus en
+  // notFound plutôt que de servir le scope sous le libellé « Site ».
+  const identityGuard = await getSiteIdentity(id)
+  if (!identityGuard) notFound()
+
   const [identity, actions, anomalies, siteActions, siteAnomalies, anomalyCat] = await Promise.all([
     getSiteIdentity(id),
     listScopeActions(scopeId),

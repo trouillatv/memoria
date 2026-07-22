@@ -18,6 +18,7 @@
 //   - Pas de %, pas de scores, pas de KPI agent, pas de comparaisons inter-sites
 //   - Pas de cards colorées, pas de donuts — typographie + blanc + hiérarchie + silence
 
+import { userCanAccessSite } from '@/lib/auth/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { todayLocalIso, addDaysLocal, localDateOf } from '@/lib/time/local-date'
@@ -322,6 +323,14 @@ export async function getSiteHubCounts(siteId: string): Promise<{
 
 export async function getSiteIdentity(siteId: string): Promise<SiteIdentity | null> {
   const supabase = createAdminClient()
+
+  // P0 IDOR — FRONTIÈRE D'ORGANISATION, AVANT TOUT (2026-07-22).
+  // Cette primitive est LA voie de lecture d'un chantier par son ID (40
+  // appelants). Sans ce garde, un membre d'une autre entreprise ouvrait le
+  // chantier par URL et en voyait le contenu — fuite prouvée dynamiquement. Le
+  // refus prend la forme d'un `null`, indistinct d'un chantier inexistant : les
+  // appelants rendent `notFound()`, et rien ne confirme l'existence ni le nom.
+  if (!(await userCanAccessSite(siteId))) return null
 
   const { data: site } = await supabase
     .from('sites')

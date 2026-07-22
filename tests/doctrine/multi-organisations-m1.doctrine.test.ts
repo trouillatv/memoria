@@ -23,7 +23,7 @@ describe('l’invariant fondamental : jamais choisir une organisation à la plac
   it('getOrgId LÈVE quand le compte appartient à plusieurs entreprises', () => {
     // Rendre l'organisation « par défaut » ferait écrire dans AGP une donnée
     // saisie pour SERVINOR — sans erreur, sans trace, invisible jusqu'à l'audit.
-    expect(users).toMatch(/orgIds\.length > 1.*throw new OrganisationAmbigueError/s)
+    expect(users).toMatch(/orgIds\.length > 1[\s\S]*throw new OrganisationAmbigueError/)
   })
 
   it('et cette erreur n’est JAMAIS avalée par un catch', () => {
