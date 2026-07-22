@@ -15,7 +15,7 @@
 
 import { randomBytes } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import {
   getContractMonthlyReport,
   type MonthlyReportData,
@@ -154,7 +154,15 @@ export async function createShareToken(
   input: CreateShareTokenInput,
 ): Promise<ProofShareToken> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+
+  const { data: intervention } = await supabase
+    .from('interventions')
+    .select('organization_id')
+    .eq('id', input.interventionId)
+    .maybeSingle()
+  if (!intervention) throw new Error('Intervention introuvable')
+  const membership = await requireOrganizationMembership(intervention.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
 
   const days = clampDurationDays(input.durationDays)
   const token = generateToken()
@@ -167,7 +175,7 @@ export async function createShareToken(
       expires_at: expiresAtFromNow(days),
       include_identities: input.includeIdentities ?? false,
       created_by: input.createdBy ?? null,
-      ...(orgId ? { organization_id: orgId } : {}),
+      organization_id: intervention.organization_id,
     })
     .select('*')
     .single()
@@ -309,7 +317,16 @@ export async function createMonthlyReportToken(
   const tokenValue = generateToken()
 
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+
+  const { data: contract } = await supabase
+    .from('contracts')
+    .select('organization_id')
+    .eq('id', input.contractId)
+    .maybeSingle()
+  if (!contract) throw new Error('Contrat introuvable')
+  const membership = await requireOrganizationMembership(contract.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
+
   const { data, error } = await supabase
     .from('proof_share_tokens')
     .insert({
@@ -322,7 +339,7 @@ export async function createMonthlyReportToken(
       expires_at: expiresAtFromNow(days),
       include_identities: input.includeIdentities ?? false,
       created_by: input.createdBy ?? null,
-      ...(orgId ? { organization_id: orgId } : {}),
+      organization_id: contract.organization_id,
     })
     .select('*')
     .single()

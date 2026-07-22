@@ -5,7 +5,9 @@
 // directe). Garde-fou : manager ou admin uniquement. Écriture service-role ;
 // scoping org assuré par le site rattaché.
 import { revalidatePath } from 'next/cache'
-import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
+import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getSiteReport } from '@/lib/db/site-reports'
 import {
   createSiteBlocage,
@@ -60,6 +62,11 @@ export async function declareSiteBlocageAction(
   try {
     const user = await requireManagerOrAdmin()
     if (!input.title?.trim()) return { ok: false, error: 'Titre requis' }
+    const supabase = createAdminClient()
+    const { data: site } = await supabase.from('sites').select('organization_id').eq('id', siteId).maybeSingle()
+    if (!site) throw new Error('Chantier introuvable')
+    const membership = await requireOrganizationMembership(site.organization_id)
+    if (!membership.ok) throw new Error(membership.error)
     const type = coerceType(input.type)
     await createSiteBlocage({
       siteId,
@@ -71,7 +78,7 @@ export async function declareSiteBlocageAction(
       dateEnd: input.dateEnd ?? null,
       dayLogId: await resolveWeatherDayLogId(type, siteId, input.dateStart),
       sourceType: 'human',
-      organizationId: await getOrgId(),
+      organizationId: site.organization_id,
       createdBy: user.id,
     })
     revalidatePath(`/sites/${siteId}`)
@@ -92,6 +99,11 @@ export async function addBlocageFromReportAction(
     const report = await getSiteReport(reportId)
     if (!report?.site_id) return { ok: false, error: 'Réunion sans chantier rattaché' }
     if (!input.title?.trim()) return { ok: false, error: 'Titre requis' }
+    const supabase = createAdminClient()
+    const { data: site } = await supabase.from('sites').select('organization_id').eq('id', report.site_id).maybeSingle()
+    if (!site) throw new Error('Chantier introuvable')
+    const membership = await requireOrganizationMembership(site.organization_id)
+    if (!membership.ok) throw new Error(membership.error)
     const type = coerceType(input.type)
     // Par défaut : daté au jour du CR (mémoire de contexte cohérente).
     const dateStart = input.dateStart ?? report.created_at?.slice(0, 10) ?? null
@@ -106,7 +118,7 @@ export async function addBlocageFromReportAction(
       dayLogId: await resolveWeatherDayLogId(type, report.site_id, dateStart),
       sourceType: input.sourceType ?? 'meeting',
       sourceReportId: reportId,
-      organizationId: await getOrgId(),
+      organizationId: site.organization_id,
       createdBy: user.id,
     })
     revalidatePath(`/meetings/${reportId}`)

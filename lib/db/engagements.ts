@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
-import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { getOrgIdsOfUser, requireOrganizationMembership } from '@/lib/auth/memberships'
 import type {
   DbEngagement,
   EngagementCategory,
@@ -84,7 +84,10 @@ export async function bulkInsertEngagements(input: {
 }): Promise<DbEngagement[]> {
   if (input.engagements.length === 0) return []
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const { data: tender } = await supabase.from('tenders').select('organization_id').eq('id', input.tender_id).maybeSingle()
+  if (!tender) throw new Error('AO introuvable')
+  const membership = await requireOrganizationMembership(tender.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
   const rows = input.engagements.map((e) => ({
     tender_id: input.tender_id,
     created_by: input.created_by,
@@ -108,7 +111,7 @@ export async function bulkInsertEngagements(input: {
       shortLabel: e.short_label,
       kind: e.kind ?? null,
     }).destination,
-    ...(orgId ? { organization_id: orgId } : {}),
+    organization_id: tender.organization_id,
   }))
   const { data, error } = await supabase.from('engagements').insert(rows).select('*')
   if (error) throw error

@@ -7,7 +7,8 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { requireManagerOrAdmin } from '@/lib/auth/require'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { logUsageEvent } from '@/lib/db/usage-events'
 import {
   createScope,
@@ -42,17 +43,21 @@ export async function createScopeAction(input: {
 }): Promise<Result> {
   const auth = await requireManagerOrAdmin()
   if (!auth.ok) return { ok: false, error: auth.error }
-  const orgId = await getOrgId()
-  if (!orgId) return { ok: false, error: 'Organisation introuvable' }
 
   const parsed = createSchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
 
+  const supabase = createAdminClient()
+  const { data: site } = await supabase.from('sites').select('organization_id').eq('id', parsed.data.siteId).maybeSingle()
+  if (!site) return { ok: false, error: 'Chantier introuvable' }
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) return { ok: false, error: membership.error }
+
   try {
     await createScope({
-      orgId,
+      orgId: site.organization_id,
       siteId: parsed.data.siteId,
       label: parsed.data.label,
       scopeTypeKey: parsed.data.scopeTypeKey ?? null,
@@ -77,14 +82,18 @@ export async function deleteScopeAction(input: {
 }): Promise<Result> {
   const auth = await requireManagerOrAdmin()
   if (!auth.ok) return { ok: false, error: auth.error }
-  const orgId = await getOrgId()
-  if (!orgId) return { ok: false, error: 'Organisation introuvable' }
 
   const parsed = deleteSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Champs invalides' }
 
+  const supabase = createAdminClient()
+  const { data: site } = await supabase.from('sites').select('organization_id').eq('id', parsed.data.siteId).maybeSingle()
+  if (!site) return { ok: false, error: 'Chantier introuvable' }
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) return { ok: false, error: membership.error }
+
   try {
-    await softDeleteScope(parsed.data.scopeId, orgId)
+    await softDeleteScope(parsed.data.scopeId, site.organization_id)
     revalidatePath(`/sites/${parsed.data.siteId}`)
     return { ok: true }
   } catch (e) {
@@ -105,17 +114,21 @@ export async function setActionScopeAction(input: {
 }): Promise<Result> {
   const auth = await requireManagerOrAdmin()
   if (!auth.ok) return { ok: false, error: auth.error }
-  const orgId = await getOrgId()
-  if (!orgId) return { ok: false, error: 'Organisation introuvable' }
 
   const parsed = attachSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Champs invalides' }
+
+  const supabase = createAdminClient()
+  const { data: site } = await supabase.from('sites').select('organization_id').eq('id', parsed.data.siteId).maybeSingle()
+  if (!site) return { ok: false, error: 'Chantier introuvable' }
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) return { ok: false, error: membership.error }
 
   try {
     await setActionScope({
       actionId: parsed.data.actionId,
       scopeId: parsed.data.scopeId,
-      orgId,
+      orgId: site.organization_id,
     })
     revalidatePath(`/sites/${parsed.data.siteId}`)
     if (parsed.data.scopeId) revalidatePath(`/sites/${parsed.data.siteId}/scopes/${parsed.data.scopeId}`)
@@ -138,17 +151,21 @@ export async function setAnomalyScopeAction(input: {
 }): Promise<Result> {
   const auth = await requireManagerOrAdmin()
   if (!auth.ok) return { ok: false, error: auth.error }
-  const orgId = await getOrgId()
-  if (!orgId) return { ok: false, error: 'Organisation introuvable' }
 
   const parsed = attachAnomalySchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Champs invalides' }
+
+  const supabase = createAdminClient()
+  const { data: site } = await supabase.from('sites').select('organization_id').eq('id', parsed.data.siteId).maybeSingle()
+  if (!site) return { ok: false, error: 'Chantier introuvable' }
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) return { ok: false, error: membership.error }
 
   try {
     await setAnomalyScope({
       anomalyId: parsed.data.anomalyId,
       scopeId: parsed.data.scopeId,
-      orgId,
+      orgId: site.organization_id,
     })
     revalidatePath(`/sites/${parsed.data.siteId}`)
     if (parsed.data.scopeId) revalidatePath(`/sites/${parsed.data.siteId}/scopes/${parsed.data.scopeId}`)
@@ -171,17 +188,21 @@ export async function setPhotoScopeAction(input: {
 }): Promise<Result> {
   const auth = await requireManagerOrAdmin()
   if (!auth.ok) return { ok: false, error: auth.error }
-  const orgId = await getOrgId()
-  if (!orgId) return { ok: false, error: 'Organisation introuvable' }
 
   const parsed = attachPhotoSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Champs invalides' }
+
+  const supabase = createAdminClient()
+  const { data: site } = await supabase.from('sites').select('organization_id').eq('id', parsed.data.siteId).maybeSingle()
+  if (!site) return { ok: false, error: 'Chantier introuvable' }
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) return { ok: false, error: membership.error }
 
   try {
     await setPhotoScope({
       photoId: parsed.data.photoId,
       scopeId: parsed.data.scopeId,
-      orgId,
+      orgId: site.organization_id,
     })
     revalidatePath(`/sites/${parsed.data.siteId}`)
     if (parsed.data.scopeId) revalidatePath(`/sites/${parsed.data.siteId}/scopes/${parsed.data.scopeId}`)

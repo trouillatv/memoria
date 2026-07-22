@@ -1,6 +1,6 @@
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import type { DbAgentAnalysis, ChatAgentName, AgentAnalysisStatus } from '@/types/db'
 
 export async function listAgentAnalyses(tenderId: string): Promise<DbAgentAnalysis[]> {
@@ -36,7 +36,10 @@ export async function upsertAgentAnalysis(input: {
   error_msg?: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const { data: tender } = await supabase.from('tenders').select('organization_id').eq('id', input.tender_id).maybeSingle()
+  if (!tender) throw new Error('AO introuvable')
+  const membership = await requireOrganizationMembership(tender.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
   const { data, error } = await supabase
     .from('tender_agent_analyses')
     .upsert(
@@ -50,7 +53,7 @@ export async function upsertAgentAnalysis(input: {
         metadata: input.metadata ?? null,
         error_msg: input.error_msg ?? null,
         updated_at: new Date().toISOString(),
-        ...(orgId ? { organization_id: orgId } : {}),
+        organization_id: tender.organization_id,
       },
       { onConflict: 'tender_id,agent_name' }
     )

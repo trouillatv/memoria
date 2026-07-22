@@ -13,7 +13,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
-import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { getOrgIdsOfUser, requireOrganizationMembership } from '@/lib/auth/memberships'
 import type {
   DbDocument,
   DbDocumentCollection,
@@ -146,7 +146,16 @@ export async function createDocument(input: {
   created_by: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  // Doctrine M3 : org de la COLLECTION, jamais de la session.
+  const { data: coll } = await supabase
+    .from('document_collections')
+    .select('organization_id')
+    .eq('id', input.collection_id)
+    .maybeSingle()
+  if (!coll?.organization_id) throw new Error('Collection introuvable ou sans organisation')
+  const orgId = coll.organization_id
+  const membership = await requireOrganizationMembership(orgId)
+  if (!membership.ok) throw new Error(membership.error)
   const { data, error } = await supabase
     .from('documents')
     .insert({
@@ -165,7 +174,7 @@ export async function createDocument(input: {
       memory_tier: input.memory_tier ?? null,
       analysis_status: input.analysis_status ?? 'pending',
       created_by: input.created_by,
-      ...(orgId ? { organization_id: orgId } : {}),
+      organization_id: orgId,
     })
     .select('id')
     .single()

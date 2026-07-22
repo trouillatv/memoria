@@ -15,7 +15,6 @@
 //     (cf. doctrine planning §1-6 — signaux ROUGE STOP).
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import { projectOccurrences } from '@/lib/planning/projection'
 import type {
@@ -275,7 +274,6 @@ export async function generateInterventionsFromTemplates(params: {
   }
 
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
 
   // 3. Résoudre la liste des mission_id ciblées (si siteId fourni)
   let scopedMissionIds: string[] | null = null
@@ -380,9 +378,9 @@ export async function generateInterventionsFromTemplates(params: {
     const inheritedTeam = teamByMission.get(occ.missionId) ?? []
     const inheritedAssignedTeamId =
       teamByTemplate.get(occ.templateId) ?? assignedTeamByMission.get(occ.missionId) ?? null
-    // P1 isolation : FAIL-CLOSED — mission sans org (et pas de session) →
+    // P1 isolation : FAIL-CLOSED — mission sans org →
     // on saute cette occurrence plutôt que de générer une intervention orpheline.
-    const rowOrgId = orgByMission.get(occ.missionId) ?? orgId
+    const rowOrgId = orgByMission.get(occ.missionId) ?? null
     if (!rowOrgId) continue
 
     rowsToInsert.push({

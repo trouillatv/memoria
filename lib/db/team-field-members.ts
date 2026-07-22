@@ -17,7 +17,7 @@ import 'server-only'
 // Les gardes ici donnent des messages clairs ; la base donne l'impossibilité.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { findOrCreateCompanyByName } from '@/lib/db/companies'
 
 export interface FieldMember {
@@ -49,14 +49,20 @@ export async function createFieldPersonInTeam(input: {
   companyName?: string | null
   createdBy: string | null
 }): Promise<AddFieldPersonResult> {
-  const orgId = await getOrgId()
-  // Fail-closed : le service-role bypasse la RLS — sans org, on refuse.
-  if (!orgId) return { ok: false, error: 'Organisation introuvable' }
+  const db = createAdminClient()
+  // Doctrine M3 : org de l'ÉQUIPE, jamais de la session. Fail-closed.
+  const { data: teamRow } = await db
+    .from('teams')
+    .select('organization_id')
+    .eq('id', input.teamId)
+    .maybeSingle()
+  if (!teamRow?.organization_id) return { ok: false, error: 'Équipe introuvable ou sans organisation' }
+  const orgId = teamRow.organization_id
+  const membership = await requireOrganizationMembership(orgId)
+  if (!membership.ok) return { ok: false, error: membership.error }
 
   const fullName = input.fullName.trim()
   if (!fullName) return { ok: false, error: 'Le nom est requis' }
-
-  const db = createAdminClient()
 
   // L'entreprise, si donnée, passe par le geste canonique (dédup par nom
   // normalisé, scopé org) — jamais une insertion parallèle.

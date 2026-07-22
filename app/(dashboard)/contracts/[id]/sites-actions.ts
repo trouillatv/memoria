@@ -3,7 +3,8 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
-import { getUserRoleById, getOrgId } from '@/lib/db/users'
+import { getUserRoleById } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { createSite, updateSite } from '@/lib/db/sites'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -54,13 +55,15 @@ function pickSiteFields(formData: FormData) {
  */
 async function ensureClientForContract(contractId: string): Promise<string> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
   const { data: contract } = await supabase
     .from('contracts')
-    .select('client_name')
+    .select('client_name, organization_id')
     .eq('id', contractId)
     .maybeSingle()
   if (!contract) throw new Error('Contract not found')
+  const membership = await requireOrganizationMembership(contract.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
+  const orgId = contract.organization_id
 
   // Try to find existing (scoped to org)
   let qExisting = supabase

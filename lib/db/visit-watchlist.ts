@@ -7,7 +7,7 @@
 // est un geste HUMAIN explicite (debrief-actions), jamais automatique.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import type { DbVisitWatchlistItem, WatchlistItemState } from '@/types/db'
 import type { WatchlistProposal } from '@/lib/visits/watchlist-proposals'
 
@@ -39,11 +39,14 @@ export async function seedWatchlist(input: {
     .select('id', { count: 'exact', head: true })
     .eq('report_id', input.reportId)
   if ((count ?? 0) > 0) return
-  const orgId = await getOrgId()
+  const { data: site } = await supabase.from('sites').select('organization_id').eq('id', input.siteId).maybeSingle()
+  if (!site) throw new Error('Chantier introuvable')
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
   const rows = input.proposals.map((p, i) => ({
     report_id: input.reportId,
     site_id: input.siteId,
-    organization_id: orgId,
+    organization_id: site.organization_id,
     label: p.label,
     position: i,
     source_kind: p.source_kind,
@@ -69,13 +72,16 @@ export async function addWatchlistItem(input: {
     .order('position', { ascending: false })
     .limit(1)
     .maybeSingle()
-  const orgId = await getOrgId()
+  const { data: site } = await supabase.from('sites').select('organization_id').eq('id', input.siteId).maybeSingle()
+  if (!site) throw new Error('Chantier introuvable')
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
   const { data, error } = await supabase
     .from('visit_watchlist_item')
     .insert({
       report_id: input.reportId,
       site_id: input.siteId,
-      organization_id: orgId,
+      organization_id: site.organization_id,
       label: input.label,
       position: ((last as { position: number } | null)?.position ?? -1) + 1,
       source_kind: 'manual',

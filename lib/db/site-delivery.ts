@@ -8,7 +8,7 @@
 // Sécurité : admin client + scoping `organization_id` (comme les autres helpers).
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 
 // Bucket existant réutilisé pour les photos de BL (cf. migration site-reports /
 // intervention-photos). Le binaire ne transite jamais par Postgres.
@@ -99,12 +99,15 @@ export interface CreateSiteDeliveryInput {
 /** Crée une livraison et retourne son id. */
 export async function createSiteDelivery(input: CreateSiteDeliveryInput): Promise<string> {
   const sb = createAdminClient()
-  const orgId = await getOrgId()
+  const { data: siteRow } = await sb.from('sites').select('organization_id').eq('id', input.siteId).maybeSingle()
+  if (!siteRow) throw new Error('Chantier introuvable')
+  const membership = await requireOrganizationMembership((siteRow as { organization_id: string }).organization_id)
+  if (!membership.ok) throw new Error(membership.error)
   const { data, error } = await sb
     .from('site_delivery')
     .insert({
       site_id: input.siteId,
-      organization_id: orgId,
+      organization_id: (siteRow as { organization_id: string }).organization_id,
       delivered_on: input.deliveredOn,
       supplier: input.supplier,
       reference: input.reference,

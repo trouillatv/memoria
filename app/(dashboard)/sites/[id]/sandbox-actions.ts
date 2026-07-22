@@ -8,7 +8,9 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
-import { getUserRoleById, getOrgId } from '@/lib/db/users'
+import { getUserRoleById } from '@/lib/db/users'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { resetSandboxSite, type SandboxResetResult } from '@/lib/db/sandbox'
 
 const schema = z.object({ site_id: z.string().uuid() })
@@ -25,8 +27,13 @@ export async function resetSandboxSiteAction(
   const role = await getUserRoleById(user.id)
   if (role !== 'admin' && role !== 'manager') return { ok: false, error: 'Non autorisé' }
 
-  const orgId = await getOrgId()
-  const deleted = await resetSandboxSite(parsed.data.site_id, orgId)
+  const admin = createAdminClient()
+  const { data: site } = await admin.from('sites').select('organization_id').eq('id', parsed.data.site_id).maybeSingle()
+  if (!site) return { ok: false, error: "Ce chantier n'est pas un chantier de recette." }
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) return { ok: false, error: 'Non autorisé' }
+
+  const deleted = await resetSandboxSite(parsed.data.site_id, site.organization_id)
   // null = pas un bac à sable de cette organisation. On ne dit pas pourquoi : rien
   // n'a été supprimé, c'est la seule chose qui compte.
   if (!deleted) return { ok: false, error: "Ce chantier n'est pas un chantier de recette." }

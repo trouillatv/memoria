@@ -16,9 +16,9 @@
 
 import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/auth/require'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisit } from '@/lib/db/visits'
-import { getOrgId } from '@/lib/db/users'
 import { addReportAttachment } from '@/lib/db/site-reports'
 import { addVisitCapture, findVisitCaptureIdByClientUuid } from '@/lib/db/visit-captures'
 
@@ -38,10 +38,9 @@ async function ouvrir(reportId: string) {
   if ('error' in auth) return { ok: false as const, error: 'Non autorisé' }
   const visit = await getVisit(reportId)
   if (!visit || !visit.site_id) return { ok: false as const, error: 'Visite introuvable' }
-  const orgId = await getOrgId()
-  if (orgId && visit.organization_id && visit.organization_id !== orgId) {
-    return { ok: false as const, error: 'Visite introuvable' }
-  }
+  if (!visit.organization_id) return { ok: false as const, error: 'Visite introuvable' }
+  const membership = await requireOrganizationMembership(visit.organization_id)
+  if (!membership.ok) return { ok: false as const, error: membership.error }
   return { ok: true as const, userId: auth.userId, visit }
 }
 

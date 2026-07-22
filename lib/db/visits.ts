@@ -13,7 +13,7 @@
 // Invariant : un résultat qualifie le LIEU/OUVRAGE/SUJET, jamais la personne.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
 import { listVisitCaptures, getVisitCapturePreviewUrls, listSiteViewpointRows, type VisitCaptureKind, type CaptureTriageIntent, type VisitCaptureRow } from '@/lib/db/visit-captures'
 import { groupViewpointChains, sampleSerie } from '@/lib/visits/viewpoints'
@@ -71,13 +71,13 @@ export async function createVisit(input: CreateVisitInput): Promise<string> {
 
   const { data: site } = await supabase
     .from('sites')
-    .select('tenant_id')
+    .select('tenant_id, organization_id')
     .eq('id', input.siteId)
     .maybeSingle()
-  const tenantId = (site as { tenant_id: string } | null)?.tenant_id
-  if (!tenantId) throw new Error('Site introuvable ou sans tenant')
-
-  const orgId = await getOrgId()
+  const siteRow = site as { tenant_id: string; organization_id: string } | null
+  if (!siteRow?.tenant_id) throw new Error('Site introuvable ou sans tenant')
+  const membership = await requireOrganizationMembership(siteRow.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
   // Rattache la visite au dossier d'opération ouvert du lieu (null si lieu legacy).
   const dossierId = await getOpenDossierIdForSite(input.siteId).catch(() => null)
 
@@ -87,8 +87,8 @@ export async function createVisit(input: CreateVisitInput): Promise<string> {
       type: 'site',
       site_id: input.siteId,
       dossier_id: dossierId,
-      tenant_id: tenantId,
-      organization_id: orgId,
+      tenant_id: siteRow.tenant_id,
+      organization_id: siteRow.organization_id,
       status: 'draft',
       created_by: input.createdBy,
       origin: input.origin ?? 'spontaneous',

@@ -11,6 +11,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById, getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import {
   updateSite,
   softDeleteSite,
@@ -106,7 +107,11 @@ export async function attachClientToSiteAction(
   if (!client_id && !client_name_new) return { error: 'Choisissez un client ou créez-en un.' }
 
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const { data: siteRow } = await supabase.from('sites').select('organization_id').eq('id', site_id).maybeSingle()
+  if (!siteRow) return { error: 'Chantier introuvable' }
+  const membership = await requireOrganizationMembership(siteRow.organization_id)
+  if (!membership.ok) return { error: membership.error }
+  const orgId = siteRow.organization_id
 
   let resolvedId: string
   let resolvedName: string

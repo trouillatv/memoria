@@ -11,7 +11,7 @@
 // bureau, lors du Débrief complet — pas ici.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 
 export type VisitCaptureKind = 'photo' | 'vocal' | 'note' | 'verification' | 'position' | 'video'
 export type VisitCaptureStatus = 'captured' | 'kept' | 'discarded' | 'processed'
@@ -107,19 +107,21 @@ export async function addVisitCapture(input: AddVisitCaptureInput): Promise<stri
     if (existing) return (existing as { id: string }).id
   }
 
-  const orgId = await getOrgId()
-  // Hérite le dossier d'opération de la visite (un seul point de vérité : le report).
+  // Hérite l'organisation et le dossier d'opération de la visite (un seul point de vérité : le report).
   const { data: rep } = await supabase
     .from('site_reports')
-    .select('dossier_id')
+    .select('organization_id, dossier_id')
     .eq('id', input.reportId)
     .maybeSingle()
-  const dossierId = (rep as { dossier_id: string | null } | null)?.dossier_id ?? null
+  if (!rep) throw new Error('Rapport introuvable')
+  const membership = await requireOrganizationMembership(rep.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
+  const dossierId = (rep as { dossier_id: string | null }).dossier_id ?? null
 
   const { data, error } = await supabase
     .from('visit_capture')
     .insert({
-      organization_id: orgId,
+      organization_id: rep.organization_id,
       report_id: input.reportId,
       site_id: input.siteId,
       dossier_id: dossierId,

@@ -11,7 +11,7 @@
 
 import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listTeams } from '@/lib/db/teams'
 import { ensurePonctuelMission } from '@/lib/db/system-missions'
@@ -54,7 +54,6 @@ export async function createPonctuelInterventionAction(
   const { siteId, teamId, date, slot, hhmm, label, comment } = parsed.data
 
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
 
   // Scope org : le chantier ET l'équipe doivent appartenir à l'organisation.
   const [{ data: site }, { data: team }] = await Promise.all([
@@ -62,11 +61,11 @@ export async function createPonctuelInterventionAction(
     supabase.from('teams').select('id, organization_id').eq('id', teamId).is('deleted_at', null).maybeSingle(),
   ])
   if (!site) return { ok: false, error: 'Chantier introuvable' }
+  if (!site.organization_id) return { ok: false, error: 'Chantier introuvable' }
   if (!team) return { ok: false, error: 'Équipe introuvable' }
-  if (orgId && (site as { organization_id: string | null }).organization_id && (site as { organization_id: string }).organization_id !== orgId) {
-    return { ok: false, error: 'Chantier hors organisation' }
-  }
-  if (orgId && (team as { organization_id: string | null }).organization_id && (team as { organization_id: string }).organization_id !== orgId) {
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) return { ok: false, error: membership.error }
+  if (team.organization_id && team.organization_id !== site.organization_id) {
     return { ok: false, error: 'Équipe hors organisation' }
   }
 

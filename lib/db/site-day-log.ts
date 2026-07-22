@@ -9,7 +9,7 @@
 // admin client + scoping `organization_id` (comme les autres helpers).
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import type { JournalEntry } from '@/lib/db/site-journal'
 import { WEATHER_META, weatherLabel, type WeatherCode } from '@/lib/db/site-day-log-meta'
 
@@ -164,7 +164,10 @@ export async function enrichSiteDayLogWeather(input: {
   userId?: string | null
 }): Promise<string> {
   const sb = createAdminClient()
-  const orgId = await getOrgId()
+  const { data: siteRow } = await sb.from('sites').select('organization_id').eq('id', input.siteId).maybeSingle()
+  if (!siteRow) throw new Error('Chantier introuvable')
+  const membership = await requireOrganizationMembership((siteRow as { organization_id: string }).organization_id)
+  if (!membership.ok) throw new Error(membership.error)
   const weatherFields = {
     weather: input.weather,
     precipitation_mm: input.precipitationMm,
@@ -198,7 +201,7 @@ export async function enrichSiteDayLogWeather(input: {
     .from('site_day_log')
     .insert({
       site_id: input.siteId,
-      organization_id: orgId,
+      organization_id: (siteRow as { organization_id: string }).organization_id,
       log_date: input.logDate,
       intemperie: false, // suggestion seulement — jamais auto-cochée ici
       created_by: input.userId ?? null,
@@ -223,13 +226,16 @@ export async function upsertSiteDayLog(input: {
   userId: string | null
 }): Promise<void> {
   const sb = createAdminClient()
-  const orgId = await getOrgId()
+  const { data: siteRow } = await sb.from('sites').select('organization_id').eq('id', input.siteId).maybeSingle()
+  if (!siteRow) throw new Error('Chantier introuvable')
+  const membership = await requireOrganizationMembership((siteRow as { organization_id: string }).organization_id)
+  if (!membership.ok) throw new Error(membership.error)
   const { error } = await sb
     .from('site_day_log')
     .upsert(
       {
         site_id: input.siteId,
-        organization_id: orgId,
+        organization_id: (siteRow as { organization_id: string }).organization_id,
         log_date: input.logDate,
         weather: input.weather,
         intemperie: input.intemperie,

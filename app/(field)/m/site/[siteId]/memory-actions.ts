@@ -14,7 +14,8 @@
 import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
 import { requireOwned } from '@/lib/auth/ownership'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
+import { createAdminClient } from '@/lib/supabase/admin'
 import {
   promoteProposal, dismissProposal, getPromotionCapability,
   type PromotionInputName,
@@ -45,10 +46,15 @@ async function guard(input: unknown): Promise<Guard> {
   // Jamais promouvoir une proposition sur le chantier d'un autre tenant.
   const owned = await requireOwned(auth.role, 'sites', parsed.data.site_id)
   if (!owned.allowed) return { ok: false, error: owned.error ?? 'Accès refusé' }
+  const supabase = createAdminClient()
+  const { data: site } = await supabase.from('sites').select('organization_id').eq('id', parsed.data.site_id).maybeSingle()
+  if (!site || !site.organization_id) return { ok: false, error: 'Chantier introuvable' }
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) return { ok: false, error: membership.error }
   return {
     ok: true,
     userId: auth.userId,
-    orgId: await getOrgId(),
+    orgId: site.organization_id,
     siteId: parsed.data.site_id,
     proposalId: parsed.data.proposal_id,
   }

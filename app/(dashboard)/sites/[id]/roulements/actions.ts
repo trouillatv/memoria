@@ -15,7 +15,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { requireManagerOrAdmin } from '@/lib/auth/require'
 import { requireOwned } from '@/lib/auth/ownership'
-import { getOrgId } from '@/lib/db/users'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { findOrCreateMissionByName } from '@/lib/db/missions'
 import {
   createCycle,
@@ -113,6 +113,11 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
   const ownedSite = await requireOwned(auth.role, 'sites', d.siteId)
   if (!ownedSite.allowed) return { error: ownedSite.error }
 
+  // Organisation du chantier — lue en base pour ne jamais l'accepter du client.
+  const supabase = createAdminClient()
+  const { data: siteRow } = await supabase.from('sites').select('organization_id').eq('id', d.siteId).maybeSingle()
+  if (!siteRow) return { error: 'Chantier introuvable' }
+
   // La prestation : celle qu'il a choisie, ou celle qu'il vient d'écrire.
   // On la crée sur CE chantier, APRÈS avoir vérifié qu'il lui appartient.
   let missionId: string
@@ -149,7 +154,7 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
   const payload = {
     siteId: d.siteId,
     missionId,
-    organizationId: await getOrgId(),
+    organizationId: siteRow.organization_id,
     name: d.name,
     cycleLengthWeeks: d.cycleLengthWeeks,
     anchorDate: d.anchorDate,
