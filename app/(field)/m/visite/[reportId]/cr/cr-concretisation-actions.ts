@@ -18,6 +18,7 @@
 // inventerait le rôle. Il est donc listé, expliqué, et laissé au casting.
 
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getVisit } from '@/lib/db/visits'
 import { getVisitCrDocument, writeConcretisationRegistry } from '@/lib/db/visit-cr-documents'
 import type { SectionConcretisation } from '@/types/db'
@@ -89,8 +90,13 @@ async function open(reportId: string) {
   if (!user) return { ok: false as const, error: 'Session expirée' }
   const visit = await getVisit(reportId)
   if (!visit?.site_id) return { ok: false as const, error: 'Visite introuvable' }
-  // Isolation tenant : le service-role passe outre la RLS, le filtre est ICI.
-  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+  // FRONTIÈRE ORG DEPUIS LA RESSOURCE (M2C). Avant : comparaison à
+  // `user.organization_id` — l'org PAR DÉFAUT du profil, fausse dès qu'un compte
+  // appartient à deux entreprises (elle refusait à tort une visite SERVINOR
+  // pour un profil AGP). Désormais : membership actif à l'org de la visite,
+  // sans exemption de rôle. Le service-role passe outre la RLS, le filtre est ICI.
+  const access = await requireOrganizationMembership(visit.organization_id ?? '')
+  if (!access.ok) {
     return { ok: false as const, error: 'Visite introuvable' }
   }
   const doc = await getVisitCrDocument(reportId)
