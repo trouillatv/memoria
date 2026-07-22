@@ -228,9 +228,18 @@ describe('un acteur se QUALIFIE avant de se confirmer', () => {
     expect(rendu).toMatch(/setEntreprise\(''\)/)
   })
 
-  it('et son entreprise est exigée AVANT l’envoi', () => {
-    expect(rendu).toMatch(/estPersonne && !entreprise\.trim\(\)/)
-    expect(rendu).toContain('Une personne se rattache à une entreprise')
+  it('mais son entreprise est OPTIONNELLE — « À identifier » plus tard, jamais bloquante', () => {
+    // Doctrine mise à jour (mig 232) : on ne bloque plus sur l'entreprise. Sur un
+    // chantier, on croise quelqu'un avant de savoir pour qui il travaille ; sans
+    // entreprise, la personne rejoint « À identifier », et la rattacher pour de
+    // bon devient le travail restant.
+    // 1. L'UI annonce que le champ est facultatif.
+    expect(rendu).toContain('si vous la connaissez')
+    // 2. `estPersonne && !entreprise.trim()` n'est plus une GARDE de blocage mais
+    //    un REPÈRE : il informe que la personne ira dans « À identifier ».
+    expect(rendu).toMatch(/estPersonne && !entreprise\.trim\(\)[\s\S]{0,160}À identifier/)
+    // 3. L'envoi transmet l'entreprise seulement si elle est renseignée (jamais exigée).
+    expect(rendu).toMatch(/company_name: entreprise\.trim\(\) \|\| undefined/)
   })
 
   it('`person_name` n’est transmis que si c’en est une', () => {

@@ -28,11 +28,15 @@ describe('Confirmer une personne crée une personne, jamais une entreprise à so
     expect(src).toContain('findOrCreateCompanyContact')
   })
 
-  it("une personne sans entreprise est une QUESTION posée, pas une entreprise inventée", () => {
-    // Le schéma rattache tout contact à une entreprise : si l'humain déclare une
-    // personne sans dire l'entreprise, on demande (needs_input) — on ne crée
-    // jamais une entreprise au nom de la personne.
-    expect(src).toMatch(/personName && !companyName[\s\S]*?needs_input[\s\S]*?company/)
+  it("une personne sans entreprise est rattachée à l'entreprise placeholder « À identifier », jamais à une société inventée à son nom", () => {
+    // Doctrine mise à jour (mig 232) : REFUSER n'était pas la bonne réponse — sur
+    // un chantier on croise quelqu'un avant de savoir pour qui il travaille.
+    // Désormais, une personne sans société nommée rejoint l'entreprise d'ATTENTE
+    // « À identifier » (findOrCreatePlaceholderCompany). L'invariant de mig 137
+    // tient toujours : on ne fabrique JAMAIS une entreprise au nom de la personne
+    // (`p.title`), ce serait recréer le bug.
+    expect(src).toContain('findOrCreatePlaceholderCompany')
+    expect(src).toMatch(/personName[\s\S]{0,320}?findOrCreatePlaceholderCompany\(orgId\)/)
   })
 
   it('la promotion trace le LIEN exact du casting, plus seulement l’entreprise', () => {

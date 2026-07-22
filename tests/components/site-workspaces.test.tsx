@@ -160,8 +160,11 @@ describe('site workspaces', () => {
     expect(screen.getByRole('heading', { name: 'Documents & preuves' })).toBeInTheDocument()
     expect(screen.getByText('Ici, je peux retrouver ou recevoir une preuve.')).toBeInTheDocument()
 
-    expect(screen.getByRole('link', { name: /Plan toiture.pdf/ })).toHaveAttribute('href', '/documents/doc-1')
-    expect(screen.getByRole('link', { name: /photo-fuite-local-technique.jpg/ })).toHaveAttribute('href', '/documents/doc-2')
+    // Porte UNIQUE et gardée par chantier (« une seule porte pour un document,
+    // et un garde qui tourne vraiment ») : le document s'ouvre dans SON contexte
+    // de chantier, plus par une URL globale `/documents/<id>`.
+    expect(screen.getByRole('link', { name: /Plan toiture.pdf/ })).toHaveAttribute('href', '/sites/site-1/document/doc-1')
+    expect(screen.getByRole('link', { name: /photo-fuite-local-technique.jpg/ })).toHaveAttribute('href', '/sites/site-1/document/doc-2')
     fireEvent.click(screen.getByRole('button', { name: 'Photos' }))
     expect(screen.queryByRole('link', { name: /Plan toiture.pdf/ })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /photo-fuite-local-technique.jpg/ })).toBeInTheDocument()
