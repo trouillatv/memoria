@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
 import {
   createSiteReserve,
   liftReserve,
@@ -11,6 +11,21 @@ import {
 } from '@/lib/db/site-reserve'
 import { createSiteAction } from '@/lib/db/site-actions'
 import { addDocumentLink } from '@/lib/db/documents'
+
+// FRONTIÈRE M2C (surface 5a). Ces quatre gestes n'avaient AUCUNE frontière d'org :
+// rôle seul (`chef_equipe` interdit), aucun contrôle d'appartenance. Un manager
+// d'une organisation pouvait créer/lever une réserve sur le chantier d'une autre.
+// Désormais chacun passe par `requireSiteWriteAccess(siteId, 'managerOrAdmin')`
+// (org DU chantier → membership actif → rôle superviseur, l'ensemble inchangé) ;
+// et une réserve/un document désigné doit appartenir à CE chantier / cette org,
+// pour qu'un identifiant étranger ne se glisse pas sous un siteId légitime.
+
+/** La réserve désignée appartient-elle bien à ce chantier ? Fail-closed. */
+async function reserveOnSite(reserveId: string, siteId: string): Promise<boolean> {
+  const { data } = await createAdminClient()
+    .from('site_reserves').select('site_id').eq('id', reserveId).maybeSingle()
+  return (data as { site_id: string } | null)?.site_id === siteId
+}
 
 // Server actions — Réserves / levée de réserves (Tier 1 BTP).
 //
@@ -67,11 +82,6 @@ async function uploadReservePhoto(
 }
 
 export async function createReserveAction(formData: FormData): Promise<ActionResult> {
-  const user = await getCurrentUserWithProfile()
-  if (!user) return { error: 'Non authentifié' }
-  // Les réserves sont pilotées côté superviseur (réception MOE), pas le terrain.
-  if (user.role === 'chef_equipe') return { error: 'Non autorisé' }
-
   const issuedOnRaw = (formData.get('issuedOn') as string | null) ?? ''
   const parsed = createSchema.safeParse({
     siteId: formData.get('siteId'),
@@ -82,13 +92,17 @@ export async function createReserveAction(formData: FormData): Promise<ActionRes
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Saisie invalide' }
 
+  // Superviseur (réception MOE), pas le terrain → politique managerOrAdmin.
+  const access = await requireSiteWriteAccess(parsed.data.siteId, 'managerOrAdmin')
+  if (!access.ok) return { error: 'Chantier introuvable' }
+
   const { id } = await createSiteReserve({
     siteId: parsed.data.siteId,
     label: parsed.data.label,
     location: parsed.data.location,
     issuedBy: parsed.data.issuedBy,
     issuedOn: parsed.data.issuedOn,
-    userId: user.id,
+    userId: access.userId,
   })
 
   // Photo de constat (avant) optionnelle.
@@ -104,16 +118,16 @@ export async function createReserveAction(formData: FormData): Promise<ActionRes
 }
 
 export async function liftReserveAction(formData: FormData): Promise<ActionResult> {
-  const user = await getCurrentUserWithProfile()
-  if (!user) return { error: 'Non authentifié' }
-  if (user.role === 'chef_equipe') return { error: 'Non autorisé' }
-
   const parsed = liftSchema.safeParse({
     id: formData.get('id'),
     siteId: formData.get('siteId'),
     liftNote: ((formData.get('liftNote') as string | null) ?? '').trim() || null,
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Saisie invalide' }
+
+  const access = await requireSiteWriteAccess(parsed.data.siteId, 'managerOrAdmin')
+  if (!access.ok) return { error: 'Chantier introuvable' }
+  if (!(await reserveOnSite(parsed.data.id, parsed.data.siteId))) return { error: 'Réserve introuvable' }
 
   // Photo de preuve de levée (après) optionnelle.
   let photoAfterPath: string | null = null
@@ -128,7 +142,7 @@ export async function liftReserveAction(formData: FormData): Promise<ActionResul
     id: parsed.data.id,
     liftNote: parsed.data.liftNote,
     photoAfterPath,
-    userId: user.id,
+    userId: access.userId,
   })
 
   revalidatePath(`/sites/${parsed.data.siteId}/reserves`)
@@ -146,10 +160,6 @@ const correctiveSchema = z.object({
 
 /** Crée une action corrective rattachée à une réserve (site_actions.reserve_id). */
 export async function addCorrectiveActionAction(formData: FormData): Promise<ActionResult> {
-  const user = await getCurrentUserWithProfile()
-  if (!user) return { error: 'Non authentifié' }
-  if (user.role === 'chef_equipe') return { error: 'Non autorisé' }
-
   const parsed = correctiveSchema.safeParse({
     siteId: formData.get('siteId'),
     reserveId: formData.get('reserveId'),
@@ -158,12 +168,16 @@ export async function addCorrectiveActionAction(formData: FormData): Promise<Act
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Saisie invalide' }
 
+  const access = await requireSiteWriteAccess(parsed.data.siteId, 'managerOrAdmin')
+  if (!access.ok) return { error: 'Chantier introuvable' }
+  if (!(await reserveOnSite(parsed.data.reserveId, parsed.data.siteId))) return { error: 'Réserve introuvable' }
+
   await createSiteAction({
     site_id: parsed.data.siteId,
     title: parsed.data.title,
     assigned_to: parsed.data.assignedTo,
     reserve_id: parsed.data.reserveId,
-    created_by: user.id,
+    created_by: access.userId,
     created_from: 'reserve',
   })
   revalidatePath(`/sites/${parsed.data.siteId}/reserves`)
@@ -178,16 +192,23 @@ const linkDocSchema = z.object({
 
 /** Lie un document existant à une réserve (document_links target='reserve'). */
 export async function linkDocumentToReserveAction(formData: FormData): Promise<ActionResult> {
-  const user = await getCurrentUserWithProfile()
-  if (!user) return { error: 'Non authentifié' }
-  if (user.role === 'chef_equipe') return { error: 'Non autorisé' }
-
   const parsed = linkDocSchema.safeParse({
     siteId: formData.get('siteId'),
     reserveId: formData.get('reserveId'),
     documentId: formData.get('documentId'),
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Saisie invalide' }
+
+  const access = await requireSiteWriteAccess(parsed.data.siteId, 'managerOrAdmin')
+  if (!access.ok) return { error: 'Chantier introuvable' }
+  if (!(await reserveOnSite(parsed.data.reserveId, parsed.data.siteId))) return { error: 'Réserve introuvable' }
+  // Le document lié doit appartenir à la MÊME organisation que le chantier —
+  // sinon on rattacherait la pièce d'une autre entreprise à cette réserve.
+  const { data: doc } = await createAdminClient()
+    .from('documents').select('organization_id').eq('id', parsed.data.documentId).maybeSingle()
+  if ((doc as { organization_id: string | null } | null)?.organization_id !== access.organizationId) {
+    return { error: 'Document introuvable' }
+  }
 
   await addDocumentLink(parsed.data.documentId, 'reserve', parsed.data.reserveId)
   revalidatePath(`/sites/${parsed.data.siteId}/reserves`)
