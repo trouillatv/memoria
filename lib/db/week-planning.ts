@@ -78,13 +78,24 @@ function pickOne<T>(value: T | T[] | null | undefined): T | null {
  *   (on ne veut pas exposer une mission archivée dans la grille semaine).
  */
 export async function listInterventionsForWeek(
-  range: WeekRange
+  range: WeekRange,
+  /** M3 — scope multi-org EXPLICITE (chemin /dashboard). Fourni → on n'appelle
+   *  PAS `getOrgId()` (qui lèverait pour un compte multi-org) ; on agrège sur ces
+   *  organisations. Omis → comportement historique (une org via `getOrgId`),
+   *  inchangé pour /semaine et /mois. */
+  orgIds?: string[],
 ): Promise<WeekInterventionCell[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
-  // P1 isolation : FAIL-CLOSED — pas d'organisation → semaine vide, jamais
-  // les interventions de tous les tenants.
-  if (!orgId) return []
+  // FAIL-CLOSED : aucune org → semaine vide, jamais les interventions de tous les tenants.
+  let scopeOrgIds: string[]
+  if (orgIds) {
+    scopeOrgIds = orgIds
+  } else {
+    const orgId = await getOrgId()
+    if (!orgId) return []
+    scopeOrgIds = [orgId]
+  }
+  if (scopeOrgIds.length === 0) return []
   const qWeek = supabase
     .from('interventions')
     .select(
@@ -123,7 +134,7 @@ export async function listInterventionsForWeek(
     // depuis le backfill migration 071. Fallback NULLS LAST pour les
     // éventuelles legacy qui auraient échappé.
     .order('planned_start', { ascending: true, nullsFirst: false })
-    .eq('organization_id', orgId)
+    .in('organization_id', scopeOrgIds)
 
   const { data, error } = await qWeek
   if (error) throw error
@@ -213,8 +224,8 @@ function enumerateWeekDays(range: WeekRange): string[] {
  *
  * Tri : contract_name ASC, puis site_name ASC.
  */
-export async function getWeekBySite(range: WeekRange): Promise<SiteRow[]> {
-  const cells = await listInterventionsForWeek(range)
+export async function getWeekBySite(range: WeekRange, orgIds?: string[]): Promise<SiteRow[]> {
+  const cells = await listInterventionsForWeek(range, orgIds)
   const days = enumerateWeekDays(range)
 
   // group by site_id

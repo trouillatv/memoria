@@ -10,6 +10,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { OrganisationAmbigueError } from '@/lib/auth/organisation-ambigue'
 import { listOpenSiteActions, actionHealth, type SiteActionRow } from '@/lib/db/site-actions'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { getWeekRange } from '@/lib/week-planning-helpers'
@@ -74,14 +75,22 @@ export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
   // semaines n'a rien à faire ici.
   const week = getWeekRange(new Date())
 
+  // M3 — on PASSE `orgIds` aux helpers qui, sinon, appelleraient `getOrgId()` et
+  // lèveraient `OrganisationAmbigueError` en multi-org. Après cette transmission,
+  // l'erreur de PORTÉE est IMPOSSIBLE sur ce chemin : si elle réapparaissait, elle
+  // doit REMONTER (échec franc, régression visible), jamais devenir une liste vide.
+  // Le catch n'absorbe qu'une VRAIE panne technique, et la trace.
+  const guard = <T>(label: string, fallback: T) => (e: unknown): T => {
+    if (e instanceof OrganisationAmbigueError) throw e // faute de portée → jamais masquée
+    console.error(`[attention] ${label}`, e)
+    return fallback
+  }
   const [actions, reservesRes, weekRows, closuresBySite, pendingDebriefs] = await Promise.all([
-    listOpenSiteActions({ siteIds }).catch(() => [] as SiteActionRow[]),
+    listOpenSiteActions({ siteIds, orgIds }).catch(guard('actions', [] as SiteActionRow[])),
     sb.from('site_reserve').select('site_id, label, created_at').in('site_id', siteIds).eq('status', 'open'),
-    getWeekBySite(week).catch(() => []),
-    listActiveClosuresForSites(siteIds, week.weekStart, week.weekEnd).catch(
-      (): Record<string, SiteClosure[]> => ({}),
-    ),
-    listPendingDebriefs(siteIds).catch(() => [] as PendingDebrief[]),
+    getWeekBySite(week, orgIds).catch(guard('semaine', [] as Awaited<ReturnType<typeof getWeekBySite>>)),
+    listActiveClosuresForSites(siteIds, week.weekStart, week.weekEnd).catch(guard('clôtures', {} as Record<string, SiteClosure[]>)),
+    listPendingDebriefs(siteIds).catch(guard('débriefs', [] as PendingDebrief[])),
   ])
 
   type Agg = { overdue: SiteActionRow[]; oldOpen: SiteActionRow[]; reserves: Array<{ created_at: string }> }

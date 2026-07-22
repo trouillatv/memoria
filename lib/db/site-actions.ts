@@ -193,6 +193,10 @@ export async function listOpenSiteActions(opts?: {
   statuses?: SiteActionStatus[]
   /** Restreindre à ces sites (sinon : tous les sites de l'organisation). */
   siteIds?: string[]
+  /** M3 — scope multi-org EXPLICITE (compte à plusieurs organisations). Quand il
+   *  est fourni (chemin /dashboard), on n'appelle PAS `getOrgId()` (qui lèverait) :
+   *  on agrège sur ces organisations. Les autres appelants gardent `getOrgId()`. */
+  orgIds?: string[]
 }): Promise<SiteActionRow[]> {
   const supabase = createAdminClient()
   const statuses = opts?.statuses ?? ['open']
@@ -200,8 +204,12 @@ export async function listOpenSiteActions(opts?: {
   // Résoudre les sites (scope organisation) + leurs métadonnées.
   let siteIds = opts?.siteIds ?? null
   let sitesQ = supabase.from('sites').select('id, name, contract_id').is('deleted_at', null)
-  const orgId = await getOrgId()
-  if (orgId) sitesQ = sitesQ.eq('organization_id', orgId)
+  if (opts?.orgIds) {
+    sitesQ = sitesQ.in('organization_id', opts.orgIds)
+  } else {
+    const orgId = await getOrgId()
+    if (orgId) sitesQ = sitesQ.eq('organization_id', orgId)
+  }
   if (siteIds) sitesQ = sitesQ.in('id', siteIds)
   const { data: siteRows } = await sitesQ
   const sites = (siteRows ?? []) as Array<{ id: string; name: string; contract_id: string | null }>

@@ -117,3 +117,28 @@ Affichage :
   au composant — **jamais** une organisation active globale.
 
 Tests exigés : **0, 1, 2, 3** organisations avec digest, **+ égalités parfaites** entre deux digests (le départage stable doit trancher).
+
+## Fermeture de l'AttentionBlock (helpers transitifs) — FAIT, borné
+
+`getAttentionDigest` appelait des helpers qui font `getOrgId()` (donc lèvent en
+multi-org), enveloppés dans `.catch(() => [])` → l'AttentionBlock pouvait afficher
+« rien » alors que des actions existent (dégradation SILENCIEUSE, inacceptable).
+
+Correctif **borné** (le contexte vient de l'appelant qui le possède) :
+`getAttentionDigest` **transmet ses `orgIds`** à `listOpenSiteActions(opts.orgIds)`
+et `getWeekBySite(range, orgIds)` → `listInterventionsForWeek(range, orgIds)`.
+Fournis → `.in('organization_id', orgIds)` ; omis → `getOrgId()` **inchangé**.
+Les `catch` **re-lèvent** `OrganisationAmbigueError` (faute de portée jamais
+masquée) et n'absorbent qu'une vraie panne, tracée. `listActiveClosuresForSites`
+et `listPendingDebriefs` scopent déjà par `siteIds` → **non touchés**.
+
+Prouvé : compte AGP+SERVINOR → 2 actions ouvertes réellement renvoyées, 0
+`OrganisationAmbigueError`, aucun tableau vide dû à une erreur de portée.
+
+### ⚠️ DETTE M3 planning (explicite)
+
+`/semaine` et `/mois` appellent `getWeekBySite` / `listInterventionsForWeek`
+**sans** `orgIds` → ils gardent `getOrgId()` et **lèveront `OrganisationAmbigueError`
+pour un compte multi-org** — comportement **inchangé** et **honnête** (page
+d'erreur, pas d'écran vide silencieux). C'est un lot M3 **planning** séparé, à
+traiter après le dashboard. On ne l'a délibérément PAS élargi ici.
