@@ -11,8 +11,8 @@
 // Cf. [[dossier-opportunite-colonne-vertebrale]].
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId, getCurrentUserWithProfile } from '@/lib/db/users'
-import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getOrgIdsOfUser, requireOrganizationMembership } from '@/lib/auth/memberships'
 import { createSite, findOrCreateClientByName } from '@/lib/db/sites'
 import type { DbDossier, DossierPhase } from '@/types/db'
 
@@ -41,7 +41,11 @@ export async function createDossier(input: {
   label?: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId().catch(() => null)
+  const { data: site } = await supabase.from('sites').select('organization_id').eq('id', input.siteId).maybeSingle()
+  if (!site?.organization_id) throw new Error('Chantier introuvable ou sans organisation')
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
+  const orgId = site.organization_id
   const user = await getCurrentUserWithProfile().catch(() => null)
   const { data, error } = await supabase
     .from('dossiers')

@@ -1,6 +1,7 @@
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import type {
   DbTender,
   DbTenderDocument,
@@ -118,16 +119,16 @@ export async function listTendersByDossier(dossierId: string): Promise<TenderLit
 /** Les AO non encore rattachés (pour le sélecteur « Rattacher un AO » côté dossier). */
 export async function listAttachableTenders(limit = 50): Promise<TenderLite[]> {
   const supabase = createAdminClient()
-  let q = supabase
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
+  const { data, error } = await supabase
     .from('tenders')
     .select('id, title, status, deadline')
     .is('deleted_at', null)
     .is('dossier_id', null)
+    .in('organization_id', orgIds)
     .order('created_at', { ascending: false })
     .limit(limit)
-  const orgId = await getOrgId().catch(() => null)
-  if (orgId) q = q.eq('organization_id', orgId)
-  const { data, error } = await q
   if (error) throw error
   return (data ?? []) as TenderLite[]
 }

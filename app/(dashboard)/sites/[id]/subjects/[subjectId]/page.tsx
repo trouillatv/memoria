@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { Layers, ListTodo, ClipboardCheck, FileCheck2, FileText, Gavel, History, CalendarClock, AlertTriangle, Target, Quote, Lightbulb, Camera } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getLivingDossier } from '@/lib/db/living-dossier'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getSubjectOrgHistory } from '@/lib/db/ao-experience'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -33,7 +33,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   const { identity, timeline, relations, openLoops, evidence } = dossier
   const { thread, insights } = dossier.detail
   // Niveau 3 — le même sujet canonique à l'échelle de l'org (du local au collectif).
-  const orgHistory = await getSubjectOrgHistory(await getOrgId().catch(() => null), thread.subject.name).catch(() => null)
+  const orgHistory = await getSubjectOrgHistory((await getOrgIdsOfUser())[0] ?? null, thread.subject.name).catch(() => null) // M3_TEMP — multi-org sémantique différé
   const { subject, actions, reserves, decisions, siteDecisions, anomalies, documents } = thread
   const fr = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : null
 
