@@ -7,7 +7,7 @@ import {
   rapprocher,
   type ActeurConnu,
 } from '@/lib/acteurs/resolution-identite'
-import { qualifier, SEUILS_CONFIANCE } from '@/lib/confiance/suggestion'
+import { confianceDe, decider, qualifier, POLITIQUE_PAR_DEFAUT, SEUILS_CONFIANCE } from '@/lib/confiance/suggestion'
 
 // ── LA MÉMOIRE SE FRAGMENTE À LA SAISIE (Vincent, 2026-07-22) ──────────────
 //
@@ -167,6 +167,9 @@ describe('chaque suggestion dit ce qu’on a le droit d’en faire', () => {
     // personne n'a vérifiée.
     const r = rapprocher('Yann', connus)
     expect(r.every((x) => x.action === 'demander')).toBe(true)
+    // …et sa confiance est MOYENNE, pas « faible » : « on montre sans remplir »
+    // n'est pas « on se tait ». La première version confondait les deux.
+    expect(r.every((x) => x.confiance === 'moyenne')).toBe(true)
   })
 
   it('chaque suggestion porte le moteur qui l’a produite', () => {
@@ -188,5 +191,42 @@ describe('chaque suggestion dit ce qu’on a le droit d’en faire', () => {
     expect(qualifier(95).action).toBe('pre-remplir')
     expect(qualifier(75).action).toBe('demander')
     expect(qualifier(40).action).toBe('ignorer')
+  })
+})
+
+// ── DEUX AXES, PAS UN (Vincent, 2026-07-22) ────────────────────────────────
+//
+// « À quel point suis-je sûr ? » et « qu'ai-je le droit d'en faire ? » sont
+// deux questions distinctes. La premiere version les rendait d'un bloc, si bien
+// qu'aucun appelant ne pouvait appliquer sa propre politique — et que « faible »
+// couvrait à la fois « on demande » et « on ignore ».
+
+describe('la confiance ne dépend pas de la décision', () => {
+  it('les trois niveaux de confiance sont réellement distincts', () => {
+    expect(confianceDe(95)).toBe('forte')
+    expect(confianceDe(75)).toBe('moyenne')
+    expect(confianceDe(40)).toBe('faible')
+  })
+
+  it('une politique plus stricte change l’ACTION, jamais la confiance', () => {
+    // C'est tout l'intérêt de la séparation : le rapprochement vaut ce qu'il
+    // vaut ; seul le droit d'agir se négocie selon le contexte.
+    const strict = { preRemplir: 99, proposer: 95 }
+    expect(decider(95, strict)).toBe('demander')
+    expect(decider(95)).toBe('pre-remplir')
+    expect(confianceDe(95)).toBe('forte') // inchangée par la politique
+  })
+
+  it('une politique permissive n’invente pas de la certitude', () => {
+    const permissif = { preRemplir: 50, proposer: 10 }
+    expect(decider(60, permissif)).toBe('pre-remplir')
+    // …mais on reste honnête sur ce qu'on sait : 60, c'est faible.
+    expect(confianceDe(60)).toBe('faible')
+  })
+
+  it('la politique par défaut reste celle du produit', () => {
+    expect(POLITIQUE_PAR_DEFAUT.preRemplir).toBe(90)
+    expect(POLITIQUE_PAR_DEFAUT.proposer).toBe(70)
+    expect(SEUILS_CONFIANCE).toBe(POLITIQUE_PAR_DEFAUT)
   })
 })

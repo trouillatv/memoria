@@ -43,24 +43,70 @@ export type ActionSuggeree =
   | 'ignorer'
 
 /**
- * LA POLITIQUE, EN UN SEUL ENDROIT.
+ * ── DEUX AXES, PAS UN (Vincent, 2026-07-22) ────────────────────────────────
  *
- * Ces deux nombres ne sont pas des détails d'implémentation : ils disent à
- * partir de quand MemorIA agit à la place de quelqu'un. Les déplacer change le
- * produit, pas le code — c'est pour ça qu'ils sont nommés, exportés et testés.
+ * La CONFIANCE et la DÉCISION ne sont pas la même chose, et la première
+ * version les confondait : `qualifier()` rendait les deux d'un bloc, si bien
+ * qu'aucun appelant ne pouvait appliquer une autre politique. Le niveau
+ * « faible » couvrait même à la fois « on demande » et « on ignore » — deux
+ * situations opposées sous un seul mot.
+ *
+ *   · la CONFIANCE est une propriété du rapprochement : « à quel point
+ *     suis-je sûr ? ». Elle ne dépend de personne, et ne change pas selon
+ *     l'écran qui la lit.
+ *   · la DÉCISION est une politique métier : « qu'a-t-on le droit d'en
+ *     faire ? ». Elle dépend du contexte, et elle a vocation à diverger —
+ *     un même 97 peut pré-remplir ici, et ailleurs pré-remplir ET lier ET
+ *     notifier.
+ *
+ * Les séparer maintenant coûte quinze lignes. Les séparer quand cinq moteurs
+ * en dépendront coûterait une refonte.
  */
-export const SEUILS_CONFIANCE = {
-  /** ≥ : l'écran peut pré-remplir. En dessous, il demande. */
-  preRemplir: 90,
-  /** ≥ : on propose. En dessous, on se tait plutôt que de faire du bruit. */
-  proposer: 70,
-} as const
 
-/** Traduit un score en ce qu'on a le droit d'en faire. */
-export function qualifier(score: number): { confiance: NiveauConfiance; action: ActionSuggeree } {
-  if (score >= SEUILS_CONFIANCE.preRemplir) return { confiance: 'forte', action: 'pre-remplir' }
-  if (score >= SEUILS_CONFIANCE.proposer) return { confiance: 'faible', action: 'demander' }
-  return { confiance: 'faible', action: 'ignorer' }
+/** La politique : à partir de quel score agit-on ? Remplaçable par contexte. */
+export interface PolitiqueDecision {
+  /** ≥ : on peut remplir à la place de l'humain. */
+  preRemplir: number
+  /** ≥ : on propose. En dessous, on se tait plutôt que de faire du bruit. */
+  proposer: number
+}
+
+/**
+ * La politique par défaut. Ces deux nombres disent à partir de quand MemorIA
+ * agit à la place de quelqu'un : les déplacer change le produit, pas le code.
+ */
+export const POLITIQUE_PAR_DEFAUT: PolitiqueDecision = {
+  preRemplir: 90,
+  proposer: 70,
+}
+
+/** Conservé sous son ancien nom : la politique par défaut EST le seuil commun. */
+export const SEUILS_CONFIANCE = POLITIQUE_PAR_DEFAUT
+
+/**
+ * À quel point est-on sûr — indépendamment de ce qu'on en fera. Trois niveaux
+ * réellement distincts : « moyenne » n'est pas « faible », c'est justement le
+ * cas où l'on montre sans remplir.
+ */
+export function confianceDe(score: number): NiveauConfiance {
+  if (score >= POLITIQUE_PAR_DEFAUT.preRemplir) return 'forte'
+  if (score >= POLITIQUE_PAR_DEFAUT.proposer) return 'moyenne'
+  return 'faible'
+}
+
+/** Ce qu'on a le droit d'en faire — la politique, pas la certitude. */
+export function decider(score: number, politique: PolitiqueDecision = POLITIQUE_PAR_DEFAUT): ActionSuggeree {
+  if (score >= politique.preRemplir) return 'pre-remplir'
+  if (score >= politique.proposer) return 'demander'
+  return 'ignorer'
+}
+
+/** Les deux d'un coup, pour les appelants qui n'ont pas de politique propre. */
+export function qualifier(
+  score: number,
+  politique: PolitiqueDecision = POLITIQUE_PAR_DEFAUT,
+): { confiance: NiveauConfiance; action: ActionSuggeree } {
+  return { confiance: confianceDe(score), action: decider(score, politique) }
 }
 
 /**
