@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import type { DbMission, MissionCadence, ChecklistTemplateItem } from '@/types/db'
 import { normalizePrestation } from '@/lib/planning/prestation-name'
 
@@ -62,10 +62,10 @@ export async function getMission(id: string): Promise<DbMission | null> {
  */
 export async function listPrestationNamesForOrg(): Promise<string[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId().catch(() => null)
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
 
-  let q = supabase.from('missions').select('name').is('deleted_at', null)
-  if (orgId) q = q.eq('organization_id', orgId)
+  const q = supabase.from('missions').select('name').is('deleted_at', null).in('organization_id', orgIds)
 
   const { data, error } = await q
   if (error) return []

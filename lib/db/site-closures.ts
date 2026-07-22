@@ -9,7 +9,7 @@
 // d'appartenance passe donc par le SITE parent, dans la server action.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import type {
   ClosureReasonKind,
   ClosureResolution,
@@ -207,7 +207,8 @@ export interface UpcomingClosure extends SiteClosure {
  */
 export async function listUpcomingClosuresForOrg(limit = 30): Promise<UpcomingClosure[]> {
   const db = createAdminClient()
-  const orgId = await getOrgId().catch(() => null)
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
   const today = new Date().toISOString().slice(0, 10)
 
   const { data, error } = await db
@@ -221,9 +222,9 @@ export async function listUpcomingClosuresForOrg(limit = 30): Promise<UpcomingCl
 
   const rows = (data ?? []) as Array<Record<string, unknown>>
   // Isolation : le service role contourne la RLS — le filtre org vit dans le code.
-  const scoped = orgId
-    ? rows.filter((r) => (r.sites as { organization_id?: string })?.organization_id === orgId)
-    : rows
+  const scoped = rows.filter((r) =>
+    orgIds.includes((r.sites as { organization_id?: string })?.organization_id ?? ''),
+  )
 
   return scoped.slice(0, limit).map((r) => ({
     ...rowToClosure(r),

@@ -12,7 +12,7 @@ import 'server-only'
 // Une preuve n'est jamais détruite par un geste de rangement.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { slotFromUtcHour } from '@/lib/time/prestation-slot'
 import { previousDayIso } from '@/lib/planning/cycle-effect'
 
@@ -149,10 +149,11 @@ export async function listCyclesForOrg(): Promise<CycleOverview[]> {
   if (rows.length === 0) return []
 
   // Isolation : le service role contourne la RLS — le filtre org vit dans le code.
-  const orgId = await getOrgId().catch(() => null)
-  const scoped = orgId
-    ? rows.filter((r) => (r.sites as { organization_id?: string })?.organization_id === orgId)
-    : rows
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
+  const scoped = rows.filter((r) =>
+    orgIds.includes((r.sites as { organization_id?: string })?.organization_id ?? ''),
+  )
 
   const { data: slotRows } = await db
     .from('planning_cycle_slots')

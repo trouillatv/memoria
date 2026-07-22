@@ -18,7 +18,7 @@
 
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { isSystemMissionName } from '@/lib/db/system-missions'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import type { DbUser } from '@/types/db'
@@ -779,12 +779,13 @@ export async function listIntervenantsForList(viewer?: {
   email: string
 } | null): Promise<IntervenantListRow[]> {
   const admin = createAdminClient()
-  const [scopedUserIds, orgId] = await Promise.all([
+  const [scopedUserIds, orgIds] = await Promise.all([
     viewer
       ? resolveIntervenantScopeUserIds({ viewerId: viewer.id, viewerEmail: viewer.email })
       : Promise.resolve(null),
-    getOrgId(),
+    getOrgIdsOfUser(),
   ])
+  if (orgIds.length === 0) return []
 
   // 1) Users actifs intervenants — managers + chefs_equipe (les chefs_equipe
   //    sont aussi des intervenants). L'admin (compte système) est EXCLU : ce
@@ -796,7 +797,7 @@ export async function listIntervenantsForList(viewer?: {
     .is('deleted_at', null)
     .neq('role', 'admin')
     .order('full_name', { ascending: true, nullsFirst: false })
-  if (orgId) usersQuery = usersQuery.eq('organization_id', orgId)
+  usersQuery = usersQuery.in('organization_id', orgIds)
   if (scopedUserIds) {
     const ids = Array.from(scopedUserIds)
     if (ids.length === 0) return []
