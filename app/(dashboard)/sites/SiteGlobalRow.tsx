@@ -263,6 +263,24 @@ export function SiteGlobalRow({ site, inactive }: Props) {
 
       {/* Cluster C — Méta-données : counts + dernière intervention */}
       <div className="border-t px-4 py-2 text-[11px] text-muted-foreground tabular-nums flex items-center gap-3 flex-wrap">
+        {/* LES VISITES D'ABORD, ET EN ÉVIDENCE (Vincent, 2026-07-22).
+            Cette ligne annonçait « 0 mission · 0 intervention · 0 note ·
+            Dernière interv. jamais » sur un chantier qui portait trois visites
+            et treize captures. Aucun de ces zéros n'était faux — ils comptent
+            les dépendances qui décident si un site est supprimable, le
+            vocabulaire du contrat de maintenance. Mais quatre zéros de suite ne
+            se lisent pas « rien à supprimer » : ils se lisent « chantier mort ».
+            Le compteur de l'usage réel passe donc devant, et en couleur. */}
+        {site.visites_count > 0 && (
+          <>
+            <span className="font-medium text-foreground">
+              {site.visites_count} visite{site.visites_count > 1 ? 's' : ''}
+            </span>
+            <span aria-hidden>·</span>
+            <span>Dernière visite {formatLastDate(site.last_visit_at)}</span>
+            <span aria-hidden>·</span>
+          </>
+        )}
         <span>{site.missions_count} mission{site.missions_count > 1 ? 's' : ''}</span>
         <span aria-hidden>·</span>
         <span>
@@ -271,8 +289,15 @@ export function SiteGlobalRow({ site, inactive }: Props) {
         </span>
         <span aria-hidden>·</span>
         <span>{site.site_notes_count} note{site.site_notes_count > 1 ? 's' : ''}</span>
-        <span aria-hidden>·</span>
-        <span>Dernière interv. {formatLastDate(site.last_intervention_at)}</span>
+        {/* « Dernière interv. » n'a de sens que s'il y a des interventions.
+            Sur un chantier suivi par des visites, « jamais » était vrai et
+            inutile — il annonçait l'absence de ce qu'on n'y fait pas. */}
+        {site.interventions_count > 0 && (
+          <>
+            <span aria-hidden>·</span>
+            <span>Dernière interv. {formatLastDate(site.last_intervention_at)}</span>
+          </>
+        )}
       </div>
     </li>
   )

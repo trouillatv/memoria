@@ -262,6 +262,11 @@ export interface SiteWithStats extends DbSite {
   missions_count: number
   interventions_count: number
   site_notes_count: number
+  /** Visites terrain (`site_reports` à `origin` non nul) — les réunions ne
+   *  comptent pas ici : ce sont deux gestes différents. */
+  visites_count: number
+  /** La plus récente, par sa date de CHANTIER (`started_at`). */
+  last_visit_at: string | null
 }
 
 /** Liste tous les sites actifs du tenant, enrichis pour l'affichage global. */
@@ -292,7 +297,7 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
 
   // Charge en parallèle : missions par site (1 query), interventions exécutées
   // par site (via missions), site_notes par site.
-  const [missionsRes, notesRes] = await Promise.all([
+  const [missionsRes, notesRes, visitesRes] = await Promise.all([
     supabase
       .from('missions')
       .select('id, site_id, deleted_at')
@@ -303,9 +308,18 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
       .select('site_id, deleted_at')
       .in('site_id', siteIds)
       .is('deleted_at', null),
+    // LES VISITES — voir plus bas pourquoi elles manquaient.
+    // `origin` non nul = visite terrain ; nul = réunion. Les mêler ferait dire
+    // « 5 visites » là où il y a eu trois visites et deux réunions.
+    supabase
+      .from('site_reports')
+      .select('site_id, started_at, created_at, origin')
+      .in('site_id', siteIds)
+      .not('origin', 'is', null),
   ])
   if (missionsRes.error) throw missionsRes.error
   if (notesRes.error) throw notesRes.error
+  if (visitesRes.error) throw visitesRes.error
 
   const missionsBySite = new Map<string, string[]>()
   for (const m of (missionsRes.data ?? []) as Array<{ id: string; site_id: string }>) {
@@ -349,6 +363,28 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
     notesBySite.set(n.site_id, (notesBySite.get(n.site_id) ?? 0) + 1)
   }
 
+  // ── POURQUOI LES VISITES MANQUAIENT (Vincent, 2026-07-22) ──────────────────
+  //
+  // Cette ligne annonçait « 0 mission · 0 intervention · 0 note · Dernière
+  // interv. jamais » sur un chantier qui portait TROIS visites et treize
+  // captures. Aucun de ces zéros n'était faux : ils comptaient les dépendances
+  // qui décident si un site est supprimable — le vocabulaire du contrat de
+  // maintenance. Mais sur un chantier suivi par des VISITES, ils décrivaient
+  // très exactement tout ce qui ne s'y passait pas.
+  //
+  // Quatre zéros de suite ne se lisent pas « rien à supprimer », ils se lisent
+  // « chantier mort ». Le compteur qui manquait est celui de l'usage réel.
+  const visitesBySite = new Map<string, number>()
+  const derniereVisiteBySite = new Map<string, string>()
+  for (const v of (visitesRes.data ?? []) as Array<{ site_id: string; started_at: string | null; created_at: string }>) {
+    visitesBySite.set(v.site_id, (visitesBySite.get(v.site_id) ?? 0) + 1)
+    // La date du CHANTIER, pas celle de l'enregistrement : une visite du matin
+    // saisie le soir reste une visite du matin.
+    const quand = v.started_at ?? v.created_at
+    const prec = derniereVisiteBySite.get(v.site_id)
+    if (quand && (!prec || quand > prec)) derniereVisiteBySite.set(v.site_id, quand)
+  }
+
   return rows.map((s) => {
     const c = Array.isArray(s.contract) ? s.contract[0] ?? null : s.contract
     const cl = Array.isArray(s.client) ? s.client[0] ?? null : s.client
@@ -375,6 +411,8 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
       missions_count: missionsBySite.get(s.id)?.length ?? 0,
       interventions_count: interventionsBySite.get(s.id) ?? 0,
       site_notes_count: notesBySite.get(s.id) ?? 0,
+      visites_count: visitesBySite.get(s.id) ?? 0,
+      last_visit_at: derniereVisiteBySite.get(s.id) ?? null,
     }
   })
 }

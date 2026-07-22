@@ -21,7 +21,12 @@ export const runtime = 'nodejs'
 export const maxDuration = 300
 
 const BUCKET = 'db-backups'
-const RETENTION_DAYS = 14
+// 10 JOURS GLISSANTS (Vincent, 2026-07-22). Descendu de 14 à 10 : la fenêtre
+// utile n'est pas « le plus longtemps possible », c'est « assez pour qu'une
+// bêtise soit remarquée ». Au-delà d'une dizaine de jours, un dump quotidien
+// ne sert plus à rattraper une erreur — personne ne revient en arrière de deux
+// semaines sur des données d'exploitation — il ne fait qu'accumuler.
+const RETENTION_DAYS = 10
 
 // ÉNUMÉRATION DYNAMIQUE (mig 192, Vincent 2026-07-09) : la liste en dur avait
 // dérivé (~80 migrations de retard — site_actions, site_decisions, dossiers…
