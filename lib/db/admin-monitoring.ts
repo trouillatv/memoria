@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import type { DeviceKind } from '@/lib/navigation/device'
 
 // Monitoring admin — exception doctrinale assumée.
@@ -118,14 +118,23 @@ function isDetailRoute(route: string, prefix: string): boolean {
 
 export async function getAdoptionStats(period: PeriodDays): Promise<AdoptionStats> {
   const sb = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) {
+    return {
+      users: [],
+      breakdown: { interventions_created: 0, photos_uploaded: 0, anomalies_reported: 0, validations_done: 0, password_resets: 0 },
+      pilotHealth: getPilotHealth([]),
+      memoryMoments: summarizeMemoryMoments({ notes: 0, briefs: 0, documents: 0, anomalies: 0 }),
+      guillaumeLastActivityAt: null,
+    }
+  }
   const since = cutoff(period)
   const since30 = cutoff(30)
 
   // Charge tous les utilisateurs, isole les admins → exclus du dataset adoption
   // (leurs actions sont du tooling/hygiène, pas un signal d'adoption produit).
   let qUsers = sb.from('users').select('id, email, full_name, role').is('deleted_at', null)
-  if (orgId) qUsers = qUsers.eq('organization_id', orgId)
+  qUsers = qUsers.in('organization_id', orgIds)
   const { data: allUsers } = await qUsers
   const adminIds = (allUsers ?? []).filter((u) => u.role === 'admin').map((u) => u.id)
   const monitoredUsers = (allUsers ?? []).filter((u) => u.role !== 'admin')

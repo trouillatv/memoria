@@ -29,7 +29,7 @@ import 'server-only'
 // une projection : elle n'existe pas par construction.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { documentHref } from '@/lib/knowledge/document-href'
 
 const DATE_FMT = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long', year: 'numeric' })
@@ -101,8 +101,8 @@ export async function getSiteObservationFiche(siteId: string, captureId: string)
   const db = createAdminClient()
 
   // UNE SEULE VAGUE — la garde d'organisation part avec les lectures (fail-closed).
-  const [orgId, siteRes, capRes, routesRes] = await Promise.all([
-    getOrgId(),
+  const [orgIds, siteRes, capRes, routesRes] = await Promise.all([
+    getOrgIdsOfUser(),
     db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle(),
     db.from('visit_capture')
       .select('id, report_id, kind, status, body, transcript_status, attachment_id, captured_at, created_at')
@@ -113,9 +113,9 @@ export async function getSiteObservationFiche(siteId: string, captureId: string)
       .eq('capture_id', captureId).not('target_id', 'is', null),
   ])
 
-  if (!orgId) return null
+  if (orgIds.length === 0) return null
   const site = siteRes.data as { organization_id: string | null } | null
-  if (!site || site.organization_id !== orgId) return null
+  if (!site || !orgIds.includes(site.organization_id ?? '')) return null
 
   const c = capRes.data as {
     id: string; report_id: string; kind: string; status: string

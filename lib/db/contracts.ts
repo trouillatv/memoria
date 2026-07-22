@@ -234,13 +234,14 @@ export interface ContractListResult {
  */
 export async function listContractsPaged(query: ContractListQuery = {}): Promise<ContractListResult> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { items: [], total: 0 }
   let q = supabase
     .from('contracts')
     .select('*', { count: 'exact' })
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
-  if (orgId) q = q.eq('organization_id', orgId)
+    .in('organization_id', orgIds)
 
   if (query.status) q = q.eq('status', query.status)
   if (query.search) {

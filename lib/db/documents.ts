@@ -13,6 +13,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import type {
   DbDocument,
   DbDocumentCollection,
@@ -46,10 +47,11 @@ export async function createDocumentCollection(input: {
 
 export async function listDocumentCollections(): Promise<DbDocumentCollection[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
   let q = supabase.from('document_collections').select('*').is('deleted_at', null)
     .order('position', { ascending: true }).order('name', { ascending: true })
-  if (orgId) q = q.eq('organization_id', orgId)
+  q = q.in('organization_id', orgIds)
   const { data, error } = await q
   if (error) throw error
   return (data ?? []) as DbDocumentCollection[]
@@ -108,9 +110,10 @@ export async function deleteDocumentCollection(
 /** Documents sans collection (orphelins) — groupe « Sans collection ». */
 export async function listOrphanDocuments(): Promise<DbDocument[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
   let q = supabase.from('documents').select('*').is('collection_id', null).is('deleted_at', null).order('created_at', { ascending: false })
-  if (orgId) q = q.eq('organization_id', orgId)
+  q = q.in('organization_id', orgIds)
   const { data, error } = await q
   if (error) throw error
   return (data ?? []) as DbDocument[]

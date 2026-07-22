@@ -17,7 +17,7 @@ import 'server-only'
 // pas aux actions ouvertes — c'est l'écran qui les met côte à côte, dans deux
 // blocs, avec deux mots différents : « à confirmer » n'est pas « ouvert ».
 
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { unwrap } from '@/lib/knowledge/read-guard'
 import { getPromotionCapability, type PromotionCapability } from '@/lib/db/knowledge-proposals'
@@ -57,7 +57,7 @@ const EMPTY: PendingWork = { actions: [], deadlines: [] }
  * tout ce qui traîne.
  */
 export async function getPendingWork(opts: { siteIds?: string[] } = {}): Promise<PendingWork> {
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
   const db = createAdminClient()
 
   let q = db
@@ -67,7 +67,7 @@ export async function getPendingWork(opts: { siteIds?: string[] } = {}): Promise
     .in('kind', ['action', 'deadline'])
     .order('created_at', { ascending: true })
   // Garde fail-closed : le service-role bypasse la RLS, l'org se filtre ici.
-  if (orgId) q = q.eq('organization_id', orgId)
+  if (orgIds.length > 0) q = q.in('organization_id', orgIds)
   if (opts.siteIds?.length) q = q.in('site_id', opts.siteIds)
 
   const rows = unwrap<{

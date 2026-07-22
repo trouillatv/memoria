@@ -21,7 +21,6 @@ import {
   readEvents, readVisitCaptureCounts, readFirstVisitId, readUserNames, readSiteOrganizations,
   type SiteEventRow,
 } from '@/lib/knowledge/repository'
-import { getOrgId } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { listSiteDeadlines } from '@/lib/db/site-deadlines'
 import { echeanceDateLabel, A_PLANIFIER_LABEL } from '@/lib/visits/echeance-labels'
@@ -219,10 +218,10 @@ function countKind(rows: SiteEventRow[], kind: string): number {
  * n'était pas vide — elle était branchée ailleurs.
  */
 export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promise<HistoryEntry[]> {
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
   const now = new Date()
   const from = new Date(now.getTime() - days * 86_400_000).toISOString()
-  const rows = await readEvents(from, now.toISOString(), orgId, siteId).catch(() => [] as SiteEventRow[])
+  const rows = await readEvents(from, now.toISOString(), orgIds.length > 0 ? orgIds : null, siteId).catch(() => [] as SiteEventRow[])
   if (rows.length === 0) return []
 
   const entries: HistoryEntry[] = []

@@ -3,7 +3,8 @@ import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getUserRoleById, getOrgId } from '@/lib/db/users'
+import { getUserRoleById } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getDocument, getDocumentLinkLabels } from '@/lib/db/documents'
 import { listContracts } from '@/lib/db/contracts'
 import { listSites, listClients } from '@/lib/db/sites'
@@ -68,8 +69,8 @@ export default async function DocumentViewerPage({
   // P1 isolation : un document d'un autre tenant n'existe pas pour ce user.
   // Rôle admin = super-admin plateforme, seule exception.
   if (role !== 'admin') {
-    const orgId = await getOrgId()
-    if (!orgId || doc.organization_id !== orgId) notFound()
+    const orgIds = await getOrgIdsOfUser()
+    if (orgIds.length === 0 || !doc.organization_id || !orgIds.includes(doc.organization_id)) notFound()
   }
 
   // URL signée courte (jamais le storage_path côté client). Aperçu inline :

@@ -23,7 +23,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { enumerateRangeDays } from '@/lib/planning/scale'
 import type { ProjectableTemplate } from '@/lib/planning/projection'
-import { getOrgId } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { isSystemMissionName, PONCTUEL_MISSION_NAME } from '@/lib/db/system-missions'
 
@@ -80,10 +79,9 @@ function pickOne<T>(value: T | T[] | null | undefined): T | null {
  */
 export async function listInterventionsForWeek(
   range: WeekRange,
-  /** M3 — scope multi-org EXPLICITE (chemin /dashboard). Fourni → on n'appelle
-   *  PAS `getOrgId()` (qui lèverait pour un compte multi-org) ; on agrège sur ces
-   *  organisations. Omis → comportement historique (une org via `getOrgId`),
-   *  inchangé pour /semaine et /mois. */
+  /** M3 — scope multi-org. Fourni : agrège sur ces organisations (chemin /dashboard).
+   *  Omis : résolu via `getOrgIdsOfUser()` — agrège aussi sur toutes les orgs de
+   *  l'utilisateur (/semaine, /mois). Fail-closed sur liste vide. */
   orgIds?: string[],
 ): Promise<WeekInterventionCell[]> {
   const supabase = createAdminClient()
@@ -92,9 +90,9 @@ export async function listInterventionsForWeek(
   if (orgIds) {
     scopeOrgIds = orgIds
   } else {
-    const orgId = await getOrgId()
-    if (!orgId) return []
-    scopeOrgIds = [orgId]
+    const oids = await getOrgIdsOfUser()
+    if (oids.length === 0) return []
+    scopeOrgIds = oids
   }
   if (scopeOrgIds.length === 0) return []
   const qWeek = supabase

@@ -16,7 +16,7 @@
 // par Vincent dans S2). Le DG signera manuellement le PDF reçu.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import type {
   DbTenderChatMessage,
   DbTenderChatAttachment,
@@ -294,7 +294,8 @@ async function aggregateForces(
   // Garde fail-closed : le service-role bypasse la RLS. Sans ce filtre, le
   // « capital de preuves » comptait la plateforme ENTIÈRE — les photos des
   // autres clients incluses. (Cf. isolation-tenants-fail-closed.)
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { activeContractsCount: 0, totalPhotos: 0, totalInterventions: 0, daysSinceFirstContract: null, firstContractStartDate: null }
 
   // Contrats actifs
   let cq = supabase
@@ -302,7 +303,7 @@ async function aggregateForces(
     .select('id', { count: 'exact', head: true })
     .eq('status', 'active')
     .is('deleted_at', null)
-  if (orgId) cq = cq.eq('organization_id', orgId)
+  cq = cq.in('organization_id', orgIds)
   const { count: activeContractsCount } = await cq
 
   // ── LES PREUVES ───────────────────────────────────────────────────────────
@@ -312,7 +313,7 @@ async function aggregateForces(
   // La preuve d'aujourd'hui est une CAPTURE DE VISITE — photo, vocal, vidéo. On
   // ignore les captures écartées au tri : une photo jetée n'a rien prouvé.
   let sq = supabase.from('sites').select('id').is('deleted_at', null)
-  if (orgId) sq = sq.eq('organization_id', orgId)
+  sq = sq.in('organization_id', orgIds)
   const { data: sites } = await sq
   const siteIds = ((sites ?? []) as Array<{ id: string }>).map((s) => s.id)
 

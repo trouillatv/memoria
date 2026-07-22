@@ -7,7 +7,7 @@ import 'server-only'
 // de deux read models — et que le bug 'watchpoint', où un écran raisonnait sur
 // un mot que la base ne connaissait pas.
 
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   listProposalsBySite, getPromotionCapability,
@@ -83,7 +83,7 @@ export interface MemoryReview {
 const MEMORY_KINDS: ProposalKind[] = ['knowledge', 'stakeholder', 'decision', 'vigilance']
 
 export async function getMemoryReview(siteId: string): Promise<MemoryReview> {
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
   // Chaque lecture se protège seule : un objet indisponible ne doit pas rendre
   // toute la Mémoire muette.
   const [rows, entries, watchpoints, decisions, intervenants] = await Promise.all([
@@ -95,7 +95,7 @@ export async function getMemoryReview(siteId: string): Promise<MemoryReview> {
   ])
   // Garde fail-closed : le service-role bypasse la RLS, l'org se filtre ici.
   const proposed = rows.filter(
-    (r) => MEMORY_KINDS.includes(r.kind) && (!orgId || !r.organization_id || r.organization_id === orgId),
+    (r) => MEMORY_KINDS.includes(r.kind) && (!orgIds.length || !r.organization_id || orgIds.includes(r.organization_id)),
   )
   const provenance = await readProvenance([...new Set(proposed.map((r) => r.report_id).filter((id): id is string => !!id))])
 

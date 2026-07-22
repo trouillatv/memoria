@@ -17,7 +17,7 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { listSiteIntervenants, type SiteIntervenant } from '@/lib/db/site-intervenants'
 import { splitPersonCompany } from '@/lib/knowledge/person-name'
 import { assignedActionsByContact, type AssignedAction, type RawAssignedActionRow } from '@/lib/knowledge/assigned-actions'
@@ -123,7 +123,7 @@ type StakeholderProp = {
  *  a été retiré (Slice 0 du P2). La lecture par personne arrivera avec la FK
  *  assigned_contact_id. */
 async function buildIntervenantPeople(
-  db: Db, orgId: string, siteId: string, intervenants: SiteIntervenant[],
+  db: Db, orgIds: string[], siteId: string, intervenants: SiteIntervenant[],
 ): Promise<IntervenantPerson[]> {
   if (intervenants.length === 0) return []
 
@@ -184,7 +184,7 @@ async function buildIntervenantPeople(
     if (otherSiteIds.length > 0) {
       // Fail-closed : uniquement les chantiers de NOTRE organisation.
       const { data: siteRows } = await db
-        .from('sites').select('id, name').in('id', otherSiteIds).eq('organization_id', orgId).is('deleted_at', null)
+        .from('sites').select('id, name').in('id', otherSiteIds).in('organization_id', orgIds).is('deleted_at', null)
       const siteName = new Map((siteRows ?? []).map((s) => [s.id as string, s.name as string]))
       for (const r of (rows ?? []) as Array<{ site_id: string; role: string; company_id: string; main_contact_id: string | null }>) {
         const name = siteName.get(r.site_id)
@@ -284,21 +284,21 @@ async function buildIntervenantPeople(
   })
 }
 
-/** Le chantier appartient-il à l'org de l'appelant ? Fail-closed : le
- *  service-role bypasse la RLS, la garde vit dans le code. Retourne l'orgId. */
-async function siteOrgId(db: Db, siteId: string): Promise<string | null> {
-  const orgId = await getOrgId()
-  if (!orgId) return null
+/** Le chantier appartient-il à une org de l'appelant ? Fail-closed : le
+ *  service-role bypasse la RLS, la garde vit dans le code. Retourne les orgIds. */
+async function siteOrgId(db: Db, siteId: string): Promise<string[] | null> {
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return null
   const { data: site } = await db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle()
-  if (!site || (site as { organization_id: string | null }).organization_id !== orgId) return null
-  return orgId
+  if (!site || !orgIds.includes((site as { organization_id: string | null }).organization_id ?? '')) return null
+  return orgIds
 }
 
 /** La vue Intervenants d'un chantier (onglet). `null` si hors org (fail-closed). */
 export async function getSiteIntervenantsView(siteId: string): Promise<SiteIntervenantsView | null> {
   const db = createAdminClient()
-  const orgId = await siteOrgId(db, siteId)
-  if (!orgId) return null
+  const orgIds = await siteOrgId(db, siteId)
+  if (!orgIds) return null
 
   const [intervenants, proposedRes] = await Promise.all([
     listSiteIntervenants(siteId).catch(() => [] as SiteIntervenant[]),
@@ -309,7 +309,7 @@ export async function getSiteIntervenantsView(siteId: string): Promise<SiteInter
   ])
   const proposed = (proposedRes.data ?? []) as StakeholderProp[]
 
-  const people = await buildIntervenantPeople(db, orgId, siteId, intervenants)
+  const people = await buildIntervenantPeople(db, orgIds, siteId, intervenants)
 
   // ── Groupé par entreprise (« qui est chez PAVE ? ») ──
   const groupByCompany = new Map<string, IntervenantGroup>()
@@ -339,7 +339,7 @@ export async function getSiteIntervenantsView(siteId: string): Promise<SiteInter
   let contactsIndex: Array<{ id: string; name: string; norm: string; companyName: string }> = []
   if (proposed.length > 0) {
     const { data: orgCompanies } = await db
-      .from('companies').select('id, name, short_name').eq('organization_id', orgId).is('deleted_at', null)
+      .from('companies').select('id, name, short_name').in('organization_id', orgIds).is('deleted_at', null)
     const companyName = new Map((orgCompanies ?? []).map((c) => [
       c.id as string, ((c.short_name as string | null) || (c.name as string)) ?? '',
     ]))
@@ -396,8 +396,8 @@ export async function getSiteIntervenantFiche(
   key: { intervenantId?: string | null; contactId?: string | null },
 ): Promise<IntervenantPerson | null> {
   const db = createAdminClient()
-  const orgId = await siteOrgId(db, siteId)
-  if (!orgId) return null
+  const orgIds = await siteOrgId(db, siteId)
+  if (!orgIds) return null
   if (!key.intervenantId && !key.contactId) return null
 
   const intervenants = await listSiteIntervenants(siteId).catch(() => [] as SiteIntervenant[])
@@ -407,6 +407,6 @@ export async function getSiteIntervenantFiche(
   )
   if (!picked) return null
 
-  const people = await buildIntervenantPeople(db, orgId, siteId, [picked])
+  const people = await buildIntervenantPeople(db, orgIds, siteId, [picked])
   return people[0] ?? null
 }

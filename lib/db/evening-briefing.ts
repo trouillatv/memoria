@@ -16,7 +16,7 @@
 //   - Pas de score qualité, pas de classement.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { todayLocalIso, tomorrowLocalIso, addDaysLocal } from '@/lib/time/local-date'
 
 export interface EveningBriefing {
@@ -112,12 +112,12 @@ export interface EveningBriefing {
 
 export async function buildEveningBriefing(targetDate: string): Promise<EveningBriefing> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
   // P1 isolation : FAIL-CLOSED — pas d'organisation → briefing vide, jamais
   // les sites/contrats/anomalies de tous les tenants. ⚠️ Si ce helper est un
   // jour câblé en cron (docs/dev/evening-briefing-cron.md), il n'y a pas de
   // session → le refondre pour itérer PAR organisation, jamais tel quel.
-  if (!orgId) {
+  if (orgIds.length === 0) {
     return {
       date: targetDate,
       interventionsCount: 0,
@@ -142,7 +142,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     )
     .eq('scheduled_for', targetDate)
     .in('status', ['planned', 'in_progress'])
-    .eq('organization_id', orgId)
+    .in('organization_id', orgIds)
   const { data: rows, error } = await qEvening
   if (error) throw error
 
@@ -275,7 +275,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     .from('sites')
     .select('id, name, contract:contracts(id, name, end_date)')
     .is('deleted_at', null)
-    .eq('organization_id', orgId)
+    .in('organization_id', orgIds)
   const sitesWithoutCoverage: EveningBriefing['sitesWithoutCoverage'] = []
   const today = todayLocalIso()
   for (const s of (allActiveSites ?? []) as Array<{
@@ -384,7 +384,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     .gte('end_date', todayShort)
     .lte('end_date', horizonIso)
     .in('status', ['active', 'paused'])
-    .eq('organization_id', orgId)
+    .in('organization_id', orgIds)
     .order('end_date', { ascending: true })
   const contractsExpiringSoon = ((expiringRows ?? []) as Array<{
     id: string
@@ -423,7 +423,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
       )
     `)
     .eq('status', 'open')
-    .eq('intervention.organization_id', orgId)
+    .in('intervention.organization_id', orgIds)
     .lt('created_at', threeDaysAgo)
     .order('created_at', { ascending: true })
     .limit(20)
@@ -469,7 +469,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     .from('teams')
     .select('id, name, color')
     .is('deleted_at', null)
-    .eq('organization_id', orgId)
+    .in('organization_id', orgIds)
     .order('name')
   const { data: allOrgTeams } = await allOrgTeamsQ
 

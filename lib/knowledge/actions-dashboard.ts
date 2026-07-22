@@ -9,7 +9,7 @@ import 'server-only'
 // n'interroge aucune table.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { todayLocalIso } from '@/lib/time/local-date'
 import type { DbSiteAction } from '@/types/db'
 import { primaryProvenanceKind } from '@/lib/knowledge/action-provenance'
@@ -45,12 +45,12 @@ const SHORT = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day
 const shortDate = (iso: string | null | undefined): string | null => (iso ? SHORT.format(new Date(iso)) : null)
 
 export async function getActionsDashboard(opts?: { siteId?: string }): Promise<ActionsDashboard> {
-  const orgId = await getOrgId()
-  if (!orgId) return EMPTY
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return EMPTY
   const db = createAdminClient()
 
   // Sites de l'organisation (garde tenant).
-  let sitesQ = db.from('sites').select('id, name').is('deleted_at', null).eq('organization_id', orgId)
+  let sitesQ = db.from('sites').select('id, name').is('deleted_at', null).in('organization_id', orgIds)
   if (opts?.siteId) sitesQ = sitesQ.eq('id', opts.siteId)
   const { data: siteRows } = await sitesQ
   const sites = (siteRows ?? []) as Array<{ id: string; name: string }>
@@ -64,7 +64,7 @@ export async function getActionsDashboard(opts?: { siteId?: string }): Promise<A
   const actionIds = actions.map((a) => a.id)
 
   // « À confirmer » = propositions encore proposées, comptées par nature.
-  let propQ = db.from('site_knowledge_proposals').select('kind').eq('organization_id', orgId).eq('status', 'proposed')
+  let propQ = db.from('site_knowledge_proposals').select('kind').in('organization_id', orgIds).eq('status', 'proposed')
   if (opts?.siteId) propQ = propQ.eq('site_id', opts.siteId)
   const { data: propRows } = await propQ
   const propByKind = { action: 0, deadline: 0, decision: 0, knowledge: 0, stakeholder: 0, vigilance: 0 } as Record<string, number>

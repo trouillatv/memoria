@@ -10,7 +10,7 @@
 //   - À risque = non-affectée OU annulée. Signaux logistiques, pas alarmes.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { todayLocalIso } from '@/lib/time/local-date'
 
 export type TodaySlot = 'morning' | 'afternoon' | 'evening' | 'none'
@@ -104,7 +104,17 @@ const SLOT_ORDER: TodaySlot[] = ['morning', 'afternoon', 'evening', 'none']
 
 export async function buildTodayView(date: string): Promise<TodayView> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) {
+    return {
+      date,
+      stats: { planned: 0, inProgress: 0, completed: 0, atRisk: 0 },
+      bySlot: [],
+      overdue: [],
+      unassignedRecent: [],
+      externalSummary: { confirmed: 0, accessed: 0, notOpened: 0, notOpenedList: [] },
+    }
+  }
 
   let q = supabase
     .from('interventions')
@@ -124,7 +134,7 @@ export async function buildTodayView(date: string): Promise<TodayView> {
     // précise) plutôt que slot grossier. Vue aujourd'hui plus fidèle
     // à la réalité métier : une 06h30 vient avant 07h00 ancrage matin.
     .order('planned_start', { ascending: true, nullsFirst: false })
-  if (orgId) q = q.eq('organization_id', orgId)
+  q = q.in('organization_id', orgIds)
   const { data: rows } = await q
 
   type Row = {
@@ -321,7 +331,8 @@ async function getUnassignedRecent(
   daysBack: number,
 ): Promise<UnassignedRecent[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
   const [y, m, d] = todayIso.split('-').map(Number)
   const today = new Date(Date.UTC(y, m - 1, d))
   const start = new Date(today)
@@ -342,7 +353,7 @@ async function getUnassignedRecent(
     .gte('scheduled_for', startIso)
     .lte('scheduled_for', todayIso)
     .order('scheduled_for', { ascending: false })
-  if (orgId) qUnassigned = qUnassigned.eq('organization_id', orgId)
+  qUnassigned = qUnassigned.in('organization_id', orgIds)
   const { data: rows } = await qUnassigned
 
   type Row = {
@@ -380,7 +391,8 @@ async function getOverdueInterventions(
   daysBack: number,
 ): Promise<OverdueIntervention[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
   // Calcule la date "7 jours avant" en raisonnant en date civile (pas de
   // dépendance fuseau côté serveur — on manipule yyyy-mm-dd directement).
   const [y, m, d] = todayIso.split('-').map(Number)
@@ -405,7 +417,7 @@ async function getOverdueInterventions(
     .gte('scheduled_for', startIso)
     .lte('scheduled_for', yesterdayIso)
     .order('scheduled_for', { ascending: true })
-  if (orgId) qOverdue = qOverdue.eq('organization_id', orgId)
+  qOverdue = qOverdue.in('organization_id', orgIds)
   const { data: rows } = await qOverdue
 
   type Row = {

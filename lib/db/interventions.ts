@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { listSiteNotes } from '@/lib/db/sites'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import { buildScheduledAt, slotFromScheduledAt, buildPlannedTimestamp } from '@/lib/time/prestation-slot'
@@ -82,10 +83,13 @@ export async function listInterventionsSupervisor(
   query: SupervisorInterventionsQuery = {},
 ): Promise<SupervisorInterventionsResult> {
   const supabase = createAdminClient()
-  // M3-D — quand un `siteId` est fourni (ex. /sites/[id], accès gardé en amont),
-  // les missions du chantier font le scope : aucun `getOrgId()`. Sinon (org-wide,
-  // ex. /planning), on scope par l'org du caller — surface encore mono-org hors Lot D.
-  const orgId = query.siteId ? null : await getOrgId()
+  // M3 — quand un `siteId` est fourni (ex. /sites/[id]), les missions du chantier
+  // font le scope. Sinon (org-wide, ex. /planning) : agrégé par orgIds, fail-closed.
+  let orgIds: string[] | null = null
+  if (!query.siteId) {
+    orgIds = await getOrgIdsOfUser()
+    if (orgIds.length === 0) return { items: [], total: 0 }
+  }
 
   // Compute date lower bound from dateRange
   const dateRange = query.dateRange ?? 'all'
@@ -131,7 +135,7 @@ export async function listInterventionsSupervisor(
   if (query.status) q = q.eq('status', query.status)
   if (missionIdsForSite) q = q.in('mission_id', missionIdsForSite)
   if (query.missionId) q = q.eq('mission_id', query.missionId)
-  if (orgId) q = q.eq('organization_id', orgId)
+  if (orgIds) q = q.in('organization_id', orgIds)
 
   const offset = Math.max(0, query.offset ?? 0)
   const limit = Math.max(1, query.limit ?? 50)

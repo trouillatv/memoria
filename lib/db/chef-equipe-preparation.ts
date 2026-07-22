@@ -21,7 +21,7 @@
 // `userId` d'un chef d'équipe n'apparaît jamais dans une comparaison.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { slotReferenceLabelFr } from '@/lib/time/prestation-slot'
 import type { InterventionSlot, DbSiteNote } from '@/types/db'
 
@@ -105,7 +105,8 @@ export async function generateChefEquipePreparations(
   forDate: string,
 ): Promise<ChefEquipePreparation[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
 
   // 1) Toutes les interventions planifiées (planned / in_progress) à la date cible.
   let qIntv = supabase
@@ -119,7 +120,7 @@ export async function generateChefEquipePreparations(
     )
     .eq('scheduled_for', forDate)
     .in('status', ['planned', 'in_progress'])
-  if (orgId) qIntv = qIntv.eq('organization_id', orgId)
+  qIntv = qIntv.in('organization_id', orgIds)
   const { data: interventions, error: iErr } = await qIntv
   if (iErr) throw iErr
 

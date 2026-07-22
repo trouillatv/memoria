@@ -527,7 +527,8 @@ export async function buildTeamTakesSitePayload(
   // chantier doivent donc être filtrés sur l'organisation DANS LE CODE, sinon
   // un manager peut compiler la mémoire d'un chantier d'une autre entreprise en
   // passant un identifiant à la main.
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) throw new Error('Équipe ou site introuvable')
 
   let teamQuery = admin.from('teams').select('id, name').eq('id', input.targetTeamId).is('deleted_at', null)
   let siteQuery = admin
@@ -535,10 +536,8 @@ export async function buildTeamTakesSitePayload(
     .select('id, name, contract:contracts(id, name), client:clients(name)')
     .eq('id', input.siteId)
     .is('deleted_at', null)
-  if (orgId) {
-    teamQuery = teamQuery.eq('organization_id', orgId)
-    siteQuery = siteQuery.eq('organization_id', orgId)
-  }
+  teamQuery = teamQuery.in('organization_id', orgIds)
+  siteQuery = siteQuery.in('organization_id', orgIds)
 
   const [{ data: team }, { data: site }] = await Promise.all([
     teamQuery.maybeSingle(),
@@ -681,7 +680,8 @@ export async function listHandoverBriefs(
   filter: HandoverListFilter = {},
 ): Promise<DbHandoverBrief[]> {
   const admin = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
   let q = admin
     .from('handover_briefs')
     .select('*')
@@ -689,7 +689,7 @@ export async function listHandoverBriefs(
     .order('created_at', { ascending: false })
   if (filter.status) q = q.eq('status', filter.status)
   if (filter.limit) q = q.limit(filter.limit)
-  if (orgId) q = q.eq('organization_id', orgId)
+  q = q.in('organization_id', orgIds)
   const { data, error } = await q
   if (error) throw error
   return (data ?? []) as DbHandoverBrief[]
@@ -706,13 +706,13 @@ export async function listHandoverBriefsBySite(
   limit = 5,
 ): Promise<DbHandoverBrief[]> {
   const admin = createAdminClient()
-  const orgId = await getOrgId()
-  if (!orgId) return []
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
   const { data, error } = await admin
     .from('handover_briefs')
     .select('*')
     .eq('site_id', siteId)
-    .eq('organization_id', orgId)
+    .in('organization_id', orgIds)
     .is('deleted_at', null)
     .neq('status', 'archived')
     .order('created_at', { ascending: false })
@@ -909,7 +909,8 @@ export interface MemoryTransmittedSummary {
  */
 export async function getMemoryTransmittedThisMonth(): Promise<MemoryTransmittedSummary> {
   const admin = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { briefsCount: 0, sitesCovered: 0, anomalies: 0, documents: 0, aSavoir: 0, relayTeams: 0 }
   const start = new Date()
   start.setUTCDate(1)
   start.setUTCHours(0, 0, 0, 0)
@@ -918,7 +919,7 @@ export async function getMemoryTransmittedThisMonth(): Promise<MemoryTransmitted
     .from('handover_briefs')
     .select('payload, created_at')
     .gte('created_at', start.toISOString())
-  if (orgId) qMem = qMem.eq('organization_id', orgId)
+  qMem = qMem.in('organization_id', orgIds)
   const { data } = await qMem
 
   const briefs = (data ?? []) as Array<{ payload: HandoverPayload | null }>

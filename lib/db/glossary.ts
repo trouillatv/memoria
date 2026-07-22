@@ -6,6 +6,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { DEFAULT_GLOSSARY } from './glossary-seed'
 
 // Re-export pour compat (les appelants serveur peuvent garder l'import depuis ici).
@@ -80,12 +81,13 @@ export async function buildGlossaryPromptBlock(maxChars = 2500): Promise<string>
 
 export async function listGlossaryTerms(): Promise<GlossaryTerm[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
   let q = supabase
     .from('glossary_terms')
     .select('id, term, definition, category, aliases, created_at')
     .order('term', { ascending: true })
-  q = orgId ? q.eq('organization_id', orgId) : q.is('organization_id', null)
+  q = q.in('organization_id', orgIds)
   const { data, error } = await q
   if (error) throw error
   return ((data ?? []) as Array<{ id: string; term: string; definition: string | null; category: string | null; aliases: string[] | null; created_at: string }>)

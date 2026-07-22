@@ -26,7 +26,7 @@ import 'server-only'
 // Les objets restent spécialisés en ÉCRITURE ; la timeline les unifie en LECTURE.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { listSiteDeadlines } from '@/lib/db/site-deadlines'
 import { listBlocagesBySite } from '@/lib/db/site-blocages'
 import { listActiveClosuresForSites, type SiteClosure } from '@/lib/db/site-closures'
@@ -60,7 +60,8 @@ export async function getPlanningTimeline(
   filters: PlanningFilters = {},
 ): Promise<PlanningTimelineEvent[]> {
   const db = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
   const { from, to } = bounds(range)
   const today = todayLocalIso()
   const out: PlanningTimelineEvent[] = []
@@ -68,7 +69,7 @@ export async function getPlanningTimeline(
   // Les chantiers du périmètre — fail-closed sur l'organisation (le service-role
   // bypasse la RLS : sans ce filtre, un id suffirait à lire chez un autre client).
   let sq = db.from('sites').select('id, name').is('deleted_at', null)
-  if (orgId) sq = sq.eq('organization_id', orgId)
+  sq = sq.in('organization_id', orgIds)
   if (filters.siteIds?.length) sq = sq.in('id', filters.siteIds)
   const { data: siteRows } = await sq
   const sites = (siteRows ?? []) as Array<{ id: string; name: string }>

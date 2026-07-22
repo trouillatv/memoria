@@ -5,6 +5,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import type {
   DbSiteReport,
   DbSiteReportAttachment,
@@ -276,7 +277,8 @@ export interface MeetingListRow {
  *  Résilient : si le socle compte-rendu n'est pas encore migré, renvoie []. */
 export async function listMeetings(): Promise<MeetingListRow[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
 
   // Réunion = site_reports SANS origin (les visites terrain — origin
   // 'planned'/'spontaneous'/'qr'/'gps', mig 162 — ont leurs propres écrans et
@@ -288,7 +290,7 @@ export async function listMeetings(): Promise<MeetingListRow[]> {
     .is('origin', null)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
-  if (orgId) q = q.eq('organization_id', orgId)
+  q = q.in('organization_id', orgIds)
   const { data, error } = await q
   if (error) return [] // socle non migré → cockpit vide plutôt que crash
   const reports = (data ?? []) as DbSiteReport[]

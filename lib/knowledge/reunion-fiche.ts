@@ -17,7 +17,7 @@ import 'server-only'
 // compte-rendu de `report_documents`. Rien n'est inféré.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
 import { STATUT_LABEL, type DecisionStatut } from '@/lib/db/decision-constants'
 
@@ -84,8 +84,8 @@ export async function getSiteReunionFiche(siteId: string, reportId: string): Pro
   // lise, mais N simultanés coûtent le prix d'un seul. La garde d'organisation ne
   // dépend d'aucune lecture : elle part avec elles et décide toujours (fail-closed,
   // les résultats sont jetés si elle refuse).
-  const [orgId, siteRes, reportRes, decisions, crRes] = await Promise.all([
-    getOrgId(),
+  const [orgIds, siteRes, reportRes, decisions, crRes] = await Promise.all([
+    getOrgIdsOfUser(),
     db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle(),
     db.from('site_reports').select('id, origin, title, started_at, created_at, participants')
       .eq('id', reportId).eq('site_id', siteId).is('deleted_at', null).maybeSingle(),
@@ -94,9 +94,9 @@ export async function getSiteReunionFiche(siteId: string, reportId: string): Pro
       .order('created_at', { ascending: false }).limit(1).maybeSingle(),
   ])
 
-  if (!orgId) return null
+  if (orgIds.length === 0) return null
   const site = siteRes.data as { organization_id: string | null } | null
-  if (!site || site.organization_id !== orgId) return null
+  if (!site || !orgIds.includes(site.organization_id ?? '')) return null
   const r = reportRes.data as {
     id: string; origin: string | null; title: string | null
     started_at: string | null; created_at: string; participants: unknown

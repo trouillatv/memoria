@@ -21,7 +21,7 @@ import 'server-only'
 // annoncer une preuve sans la montrer serait pire que se taire.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { actionStatusLabel } from '@/lib/knowledge/action-fiche'
 
 const DATE_FMT = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long', year: 'numeric' })
@@ -65,8 +65,8 @@ export async function getSiteReserveFiche(siteId: string, reserveId: string): Pr
   const db = createAdminClient()
 
   // UNE SEULE VAGUE — la garde d'organisation part avec les lectures (fail-closed).
-  const [orgId, siteRes, reserveRes, actionsRes] = await Promise.all([
-    getOrgId(),
+  const [orgIds, siteRes, reserveRes, actionsRes] = await Promise.all([
+    getOrgIdsOfUser(),
     db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle(),
     db.from('site_reserve')
       .select('id, label, location, issued_by, issued_on, status, lifted_at, lift_note, subject_id, photo_before_path, photo_after_path')
@@ -76,9 +76,9 @@ export async function getSiteReserveFiche(siteId: string, reserveId: string): Pr
       .order('created_at', { ascending: true }),
   ])
 
-  if (!orgId) return null
+  if (orgIds.length === 0) return null
   const site = siteRes.data as { organization_id: string | null } | null
-  if (!site || site.organization_id !== orgId) return null
+  if (!site || !orgIds.includes(site.organization_id ?? '')) return null
 
   const r = reserveRes.data as {
     id: string; label: string; location: string | null

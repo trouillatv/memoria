@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import type {
   DbEngagement,
   EngagementCategory,
@@ -38,9 +39,10 @@ export async function listEngagementsByContract(contractId: string): Promise<DbE
 export async function listAllEngagements(): Promise<DbEngagement[]> {
   // Used by debug page only
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
   let q = supabase.from('engagements').select('*').order('created_at', { ascending: false }).limit(200)
-  if (orgId) q = q.eq('organization_id', orgId)
+  q = q.in('organization_id', orgIds)
   const { data, error } = await q
   if (error) throw error
   return data ?? []

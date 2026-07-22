@@ -10,7 +10,8 @@
 
 import { redirect } from 'next/navigation'
 import { Users, AlertCircle } from 'lucide-react'
-import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
+import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listTeamsWithMemberCount, listOrphanUsers } from '@/lib/db/teams'
 import { Card, CardContent } from '@/components/ui/card'
@@ -32,7 +33,7 @@ async function listAssignableMembers(): Promise<MemberLite[]> {
   // Scope org OBLIGATOIRE : createAdminClient() bypasse la RLS, donc sans ce
   // filtre le sélecteur remonte les personnes de TOUTES les organisations
   // (cf. le reste de lib/db/teams.ts qui scope déjà via getOrgId()).
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
   const [{ data: users, error: uErr }, { data: memberships, error: mErr }] =
     await Promise.all([
       (() => {
@@ -41,13 +42,13 @@ async function listAssignableMembers(): Promise<MemberLite[]> {
         // membre d'une équipe — le planning affecte des équipes, pas des rôles.
         // P1 isolation : FAIL-CLOSED — pas d'organisation → sélecteur vide,
         // jamais les personnes d'un autre tenant.
-        if (!orgId) return Promise.resolve({ data: [], error: null })
+        if (orgIds.length === 0) return Promise.resolve({ data: [], error: null })
         return supabase
           .from('users')
           .select('id, full_name, email, role')
           .neq('role', 'admin')
           .is('deleted_at', null)
-          .eq('organization_id', orgId)
+          .in('organization_id', orgIds)
           .order('full_name', { ascending: true })
       })(),
       // Memberships actives + nom de l'équipe associée — pour signaler dans

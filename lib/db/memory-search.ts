@@ -9,7 +9,7 @@
 // lieux, événements.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 
 export type MemoryHitType =
   | 'anomaly' | 'site_note' | 'intervention' | 'photo'
@@ -63,27 +63,16 @@ export async function searchMemory(opts: SearchMemoryOptions): Promise<MemoryHit
   if (q.length < 2) return []
 
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
-  // ⚠️ FAIL-CLOSED. Le client admin contourne la RLS, et cote SQL `p_org_id is
-  // null` signifie AUCUN filtre tenant : sans cette garde, une session illisible
-  // (ou une exception avalee par getOrgId) rendait la memoire de TOUTES les
-  // organisations. Depuis la mig 223 le corpus contient des noms de personnes.
-  if (!orgId) return []
-  const { data, error } = await supabase.rpc('search_memory', {
-    p_q: q,
-    p_contract_id: opts.contractId ?? null,
-    p_site_id: opts.siteId ?? null,
-    p_period_days: opts.periodDays ?? 365,
-    p_limit: opts.limit ?? 50,
-    p_org_id: orgId ?? null,
-  })
+  const orgIds = await getOrgIdsOfUser()
+  // ⚠️ FAIL-CLOSED. Le client admin contourne la RLS, et `p_org_id is null`
+  // côté SQL signifie AUCUN filtre tenant : sans cette garde, une session sans
+  // appartenance rendrait la mémoire de TOUTES les organisations.
+  // Depuis la mig 223 le corpus contient des noms de personnes.
+  if (orgIds.length === 0) return []
 
-  if (error) {
-    console.error('[searchMemory]', error)
-    return []
-  }
-
-  return (data ?? []).map((row: {
+  // Multi-org : le RPC n'accepte qu'un seul p_org_id — on l'appelle une fois
+  // par organisation et on fusionne les résultats (déduplication par id, tri rank desc).
+  type RpcRow = {
     type: MemoryHitType
     id: string
     title: string | null
@@ -93,7 +82,30 @@ export async function searchMemory(opts: SearchMemoryOptions): Promise<MemoryHit
     contract_id: string | null
     rank: number
     subject_id: string | null
-  }) => ({
+  }
+  const rpcParams = {
+    p_q: q,
+    p_contract_id: opts.contractId ?? null,
+    p_site_id: opts.siteId ?? null,
+    p_period_days: opts.periodDays ?? 365,
+    p_limit: opts.limit ?? 50,
+  }
+  const results = await Promise.all(
+    orgIds.map((orgId) => supabase.rpc('search_memory', { ...rpcParams, p_org_id: orgId })),
+  )
+
+  const seen = new Set<string>()
+  const merged: RpcRow[] = []
+  for (const { data, error } of results) {
+    if (error) { console.error('[searchMemory]', error); continue }
+    for (const row of (data ?? []) as RpcRow[]) {
+      if (!seen.has(row.id)) { seen.add(row.id); merged.push(row) }
+    }
+  }
+  merged.sort((a, b) => b.rank - a.rank)
+  const limited = merged.slice(0, opts.limit ?? 50)
+
+  return limited.map((row) => ({
     type: row.type,
     id: row.id,
     title: row.title ?? '',

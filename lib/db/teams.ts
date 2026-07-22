@@ -277,11 +277,11 @@ export interface TeamWithMemberCount extends DbTeam {
  */
 export async function listTeamsWithMemberCount(): Promise<TeamWithMemberCount[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
   // P1 isolation : FAIL-CLOSED — pas d'organisation → aucune équipe.
-  if (!orgId) return []
+  if (orgIds.length === 0) return []
   const tQ = supabase.from('teams').select('*').is('deleted_at', null)
-    .eq('organization_id', orgId).order('name', { ascending: true })
+    .in('organization_id', orgIds).order('name', { ascending: true })
   const { data: teams, error: tErr } = await tQ
   if (tErr) throw tErr
   if (!teams || teams.length === 0) return []
@@ -467,15 +467,15 @@ export interface OrphanUser {
  */
 export async function listOrphanUsers(): Promise<OrphanUser[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
   // P1 isolation : FAIL-CLOSED — pas d'organisation → personne (jamais les
   // gens d'un autre tenant).
-  if (!orgId) return []
+  if (orgIds.length === 0) return []
 
   // 1) Toutes les personnes non archivées de l'org, hors compte système admin.
   const uQ = supabase.from('users').select('id, full_name, email, role')
     .neq('role', SYSTEM_ROLE_EXCLUDED_FROM_TEAMS).is('deleted_at', null)
-    .eq('organization_id', orgId)
+    .in('organization_id', orgIds)
   const { data: users, error: uErr } = await uQ
   if (uErr) throw uErr
   if (!users || users.length === 0) return []

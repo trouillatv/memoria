@@ -8,7 +8,7 @@ import 'server-only'
 // (pur, testé) ; ici on ne fait que RÉSOUDRE les parts et composer.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { actionStatusLabel } from '@/lib/knowledge/action-fiche'
 import { assembleThread, type CausalThread, type CausalNode } from '@/lib/knowledge/causal-threads-model'
 
@@ -16,11 +16,11 @@ const DATE = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day:
 const frShort = (iso: string | null | undefined): string | null => (iso ? DATE.format(new Date(iso)) : null)
 
 export async function getSiteCausalThreads(siteId: string): Promise<CausalThread[] | null> {
-  const orgId = await getOrgId()
-  if (!orgId) return null
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return null
   const db = createAdminClient()
   const { data: site } = await db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle()
-  if (!site || (site as { organization_id: string | null }).organization_id !== orgId) return null
+  if (!site || !orgIds.includes((site as { organization_id: string | null }).organization_id ?? '')) return null
 
   const { data: actRows } = await db.from('site_actions')
     .select('id, title, status, done_at, report_id, reserve_id')

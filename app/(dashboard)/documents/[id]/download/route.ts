@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getUserRoleById, getOrgId } from '@/lib/db/users'
+import { getUserRoleById } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getDocument } from '@/lib/db/documents'
 import { canViewDocument } from '@/lib/documents/access'
 import { logAuditEvent } from '@/lib/audit/log'
@@ -33,8 +34,8 @@ export async function GET(
   // P1 isolation : un document d'un autre tenant n'existe pas pour ce user
   // (404, jamais 403). Le rôle admin = super-admin plateforme, seule exception.
   if (role !== 'admin') {
-    const orgId = await getOrgId()
-    if (!orgId || doc.organization_id !== orgId) return notFound()
+    const orgIds = await getOrgIdsOfUser()
+    if (orgIds.length === 0 || !doc.organization_id || !orgIds.includes(doc.organization_id)) return notFound()
   }
 
   const admin = createAdminClient()

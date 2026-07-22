@@ -14,7 +14,7 @@ import 'server-only'
 // rendre lisible. Il servira tel quel à l'onglet Explorer.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 
 export type ProvenanceObjectType = 'action' | 'deadline' | 'decision'
 
@@ -56,8 +56,8 @@ export async function getProvenance(
   type: ProvenanceObjectType,
   id: string,
 ): Promise<ProvenanceChain | null> {
-  const orgId = await getOrgId()
-  if (!orgId) return null
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return null
 
   const db = createAdminClient()
   const { table, titleCol } = TABLES[type]
@@ -79,7 +79,7 @@ export async function getProvenance(
     .select('id, name, organization_id')
     .eq('id', siteId)
     .maybeSingle()
-  if (!site || (site as { organization_id: string | null }).organization_id !== orgId) return null
+  if (!site || !orgIds.includes((site as { organization_id: string | null }).organization_id ?? '')) return null
 
   // La proposition qui a porté l'objet (mig 212) : c'est elle qui connaît les
   // captures d'origine. Son absence n'est pas une erreur — un objet saisi à la

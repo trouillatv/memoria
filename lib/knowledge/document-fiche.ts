@@ -23,7 +23,7 @@ import 'server-only'
 // recherche (mig 204), appliquée ici à la navigation.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { canViewDocument } from '@/lib/documents/access'
 import { DOCUMENT_TYPE_OPTIONS } from '@/lib/documents/labels'
 import type { UserRole, DocumentVisibility, DocumentType } from '@/types/db'
@@ -86,8 +86,8 @@ export async function getSiteDocumentFiche(
 
   // UNE SEULE VAGUE. La garde d'organisation ne dépend d'aucune lecture : elle
   // part avec elles et décide toujours (fail-closed).
-  const [orgId, siteRes, docRes, lienSiteRes] = await Promise.all([
-    getOrgId(),
+  const [orgIds, siteRes, docRes, lienSiteRes] = await Promise.all([
+    getOrgIdsOfUser(),
     db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle(),
     db.from('documents')
       .select('id, filename, document_type, visibility_level, effective_date, created_at, organization_id, deleted_at')
@@ -103,9 +103,9 @@ export async function getSiteDocumentFiche(
       .eq('document_id', documentId),
   ])
 
-  if (!orgId) return null
+  if (orgIds.length === 0) return null
   const site = siteRes.data as { organization_id: string | null } | null
-  if (!site || site.organization_id !== orgId) return null
+  if (!site || !orgIds.includes(site.organization_id ?? '')) return null
 
   const d = docRes.data as {
     id: string; filename: string; document_type: DocumentType
@@ -113,7 +113,7 @@ export async function getSiteDocumentFiche(
     created_at: string; organization_id: string | null; deleted_at: string | null
   } | null
   if (!d || d.deleted_at) return null
-  if (d.organization_id !== orgId) return null
+  if (!orgIds.includes(d.organization_id ?? '')) return null
   // Rattachement direct, ou indirect via un objet DE CE CHANTIER.
   const liens = (lienSiteRes.data ?? []) as Array<{ target_type: string; target_id: string }>
   if (!(await documentAppartientAuChantier(db, liens, siteId))) return null

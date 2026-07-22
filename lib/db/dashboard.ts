@@ -16,15 +16,12 @@ import type { EngagementComplianceRatios } from '@/types/db'
 //   4. Mon capital de preuves grandit-il ? (capital depuis démarrage)
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 
-// M3 (dashboard) — les loaders APPELÉS par /dashboard agrègent sur les
-// organisations de l'utilisateur : `getOrgIdsOfUser()` + `.in('organization_id',
-// ids)`. `.in([])` (aucune appartenance) ne matche rien → fail-closed. Les autres
-// fonctions de ce fichier (non appelées par le dashboard) restent sur `getOrgId`
-// et seront traitées dans un lot M3 ultérieur (/sites, /actions…).
+// M3 — toutes les lectures agrègent sur les organisations de l'utilisateur :
+// `getOrgIdsOfUser()` + `.in('organization_id', ids)`.
+// `.in([])` (aucune appartenance) ne matche rien → fail-closed.
 
 // ============================================================================
 // Bandeau — 4 stats du cockpit du matin
@@ -92,7 +89,8 @@ function startOfWeekIso(now: Date = new Date()): string {
 
 export async function getWeekPulse(): Promise<WeekPulse> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { interventionsExecuted: 0, photosCount: 0, validationsCount: 0, unassignedCount: 0, conflictCount: 0 }
   const since = startOfWeekIso()
 
   const sinceDate = new Date(since)
@@ -107,7 +105,7 @@ export async function getWeekPulse(): Promise<WeekPulse> {
     .select('id')
     .in('status', EXECUTED_STATUSES as unknown as string[])
     .gte('executed_at', since)
-  if (orgId) q = q.eq('organization_id', orgId)
+  q = q.in('organization_id', orgIds)
   const { data: interventions, error: intErr } = await q
   if (intErr) throw intErr
 
@@ -216,18 +214,19 @@ const TENDER_ACTIVE_STATUSES = ['draft', 'extracting', 'analyzing', 'ready', 'su
 
 export async function getAOPipeline(): Promise<AOPipeline> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { analyzing: 0, ready: 0, submitted: 0, renewalsDue: 0 }
   const today = todayLocalIso()
   const horizonIso = addDaysLocal(today, 60)
 
   const base = () => {
     let q = supabase.from('tenders').select('id', { count: 'exact', head: true }).is('deleted_at', null)
-    if (orgId) q = q.eq('organization_id', orgId)
+    q = q.in('organization_id', orgIds)
     return q
   }
   const baseContracts = () => {
     let q = supabase.from('contracts').select('id', { count: 'exact', head: true })
-    if (orgId) q = q.eq('organization_id', orgId)
+    q = q.in('organization_id', orgIds)
     return q
   }
 
@@ -252,7 +251,8 @@ export async function getAOPipeline(): Promise<AOPipeline> {
 
 export async function getAOSnapshot(): Promise<AOSnapshot> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { activeCount: 0, dueSoonCount: 0, wonThisMonthCount: 0 }
   const today = todayLocalIso()
   const dueSoonHorizon = addDaysLocal(today, 7)
   const now = new Date()
@@ -263,7 +263,7 @@ export async function getAOSnapshot(): Promise<AOSnapshot> {
       .in('status', TENDER_ACTIVE_STATUSES as unknown as string[])
       .is('deleted_at', null)
       .or('outcome.is.null,outcome.eq.pending')
-    if (orgId) q = q.eq('organization_id', orgId)
+    q = q.in('organization_id', orgIds)
     return q
   }
 
@@ -273,7 +273,7 @@ export async function getAOSnapshot(): Promise<AOSnapshot> {
     (() => {
       let q = supabase.from('tenders').select('id', { count: 'exact', head: true })
         .eq('outcome', 'won').gte('outcome_at', monthStartIso).is('deleted_at', null)
-      if (orgId) q = q.eq('organization_id', orgId)
+      q = q.in('organization_id', orgIds)
       return q
     })(),
   ])
@@ -325,13 +325,15 @@ export async function listTendersDueSoon(days: number = 7): Promise<TenderDueSoo
 
 export async function getOpenAnomaliesStats(): Promise<OpenAnomaliesStats> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId() // scope ORG (admin client bypasse les RLS)
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { total: 0, oldCount: 0 }
   const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
 
   let totalQ = supabase.from('intervention_anomalies').select('id', { count: 'exact', head: true }).is('resolved_at', null)
   let oldQ = supabase.from('intervention_anomalies').select('id', { count: 'exact', head: true })
     .is('resolved_at', null).lt('created_at', threeDaysAgo)
-  if (orgId) { totalQ = totalQ.eq('organization_id', orgId); oldQ = oldQ.eq('organization_id', orgId) }
+  totalQ = totalQ.in('organization_id', orgIds)
+  oldQ = oldQ.in('organization_id', orgIds)
   const [totalRes, oldRes] = await Promise.all([totalQ, oldQ])
   if (totalRes.error) throw totalRes.error
   if (oldRes.error) throw oldRes.error
@@ -551,10 +553,11 @@ const TENSION_LIMIT = 5
 
 export async function getContractsUnderTension(): Promise<ContractUnderTension[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
 
   let cQ = supabase.from('contracts').select('id, name').eq('status', 'active').is('deleted_at', null)
-  if (orgId) cQ = cQ.eq('organization_id', orgId)
+  cQ = cQ.in('organization_id', orgIds)
   const { data: contracts, error: cErr } = await cQ
   if (cErr) throw cErr
   const activeContracts = (contracts ?? []) as Array<{ id: string; name: string }>
@@ -563,7 +566,7 @@ export async function getContractsUnderTension(): Promise<ContractUnderTension[]
   const contractIds = activeContracts.map((c) => c.id)
 
   let eQ = supabase.from('engagements').select('id, contract_id').in('contract_id', contractIds).in('status', ['active', 'curated'])
-  if (orgId) eQ = eQ.eq('organization_id', orgId)
+  eQ = eQ.in('organization_id', orgIds)
   const { data: engagements, error: eErr } = await eQ
   if (eErr) throw eErr
   const engagementsByContract = new Map<string, string[]>()
@@ -578,7 +581,7 @@ export async function getContractsUnderTension(): Promise<ContractUnderTension[]
   let missionIdsCovering: string[] = []
   if (allEngagementIds.length > 0) {
     let mQ = supabase.from('missions').select('id, engagement_ids').overlaps('engagement_ids', allEngagementIds).is('deleted_at', null)
-    if (orgId) mQ = mQ.eq('organization_id', orgId)
+    mQ = mQ.in('organization_id', orgIds)
     const { data: missions, error: mErr } = await mQ
     if (mErr) throw mErr
     for (const m of missions ?? []) {
@@ -595,7 +598,7 @@ export async function getContractsUnderTension(): Promise<ContractUnderTension[]
   if (missionIdsCovering.length > 0) {
     let iQ = supabase.from('interventions').select('id, mission_id, status, executed_at')
       .in('mission_id', missionIdsCovering).in('status', EXECUTED_STATUSES as unknown as string[]).gte('executed_at', cutoffIso)
-    if (orgId) iQ = iQ.eq('organization_id', orgId)
+    iQ = iQ.in('organization_id', orgIds)
     const { data: interventions, error: iErr } = await iQ
     if (iErr) throw iErr
     for (const row of interventions ?? []) {
@@ -675,7 +678,8 @@ const RECENT_LOOKBACK_DAYS = 30
 
 export async function getRecentActivity(limit = RECENT_DEFAULT_LIMIT): Promise<RecentActivityEvent[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return []
   const cutoffIso = new Date(Date.now() - RECENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
   const fetchLimit = Math.max(limit * 2, 30)
 
@@ -690,7 +694,7 @@ export async function getRecentActivity(limit = RECENT_DEFAULT_LIMIT): Promise<R
     .gte('executed_at', cutoffIso)
     .order('executed_at', { ascending: false })
     .limit(fetchLimit)
-  if (orgId) intvQ = intvQ.eq('organization_id', orgId)
+  intvQ = intvQ.in('organization_id', orgIds)
   const { data: intvData } = await intvQ
 
   function pickOne<T>(value: unknown): T | null {
@@ -743,7 +747,7 @@ export async function getRecentActivity(limit = RECENT_DEFAULT_LIMIT): Promise<R
   const ctxByIntv = new Map<string, { siteName: string; contractName: string }>()
   if (anomIntvIds.length > 0) {
     let cQ = supabase.from('interventions').select(`id, mission:missions(site:sites(name, contract:contracts(name)))`).in('id', anomIntvIds)
-    if (orgId) cQ = cQ.eq('organization_id', orgId)
+    cQ = cQ.in('organization_id', orgIds)
     const { data: intvForAnom } = await cQ
     for (const row of (intvForAnom ?? []) as unknown as Array<{ id: string; mission?: unknown }>) {
       const missionRaw = pickOne<{ site?: unknown }>(row.mission)
@@ -761,7 +765,7 @@ export async function getRecentActivity(limit = RECENT_DEFAULT_LIMIT): Promise<R
   let tendQ = supabase.from('tenders').select('id, title, client_name, created_at')
     .eq('status', 'ready').gte('created_at', cutoffIso).is('deleted_at', null)
     .order('created_at', { ascending: false }).limit(fetchLimit)
-  if (orgId) tendQ = tendQ.eq('organization_id', orgId)
+  tendQ = tendQ.in('organization_id', orgIds)
   const { data: tendersReady } = await tendQ
   for (const t of (tendersReady ?? []) as Array<{ id: string; title: string; client_name: string | null; created_at: string }>) {
     events.push({ type: 'tender_ready', occurredAt: t.created_at,
@@ -772,7 +776,7 @@ export async function getRecentActivity(limit = RECENT_DEFAULT_LIMIT): Promise<R
   let contrQ = supabase.from('contracts').select('id, name, client_name, created_at')
     .eq('status', 'active').is('deleted_at', null).gte('created_at', cutoffIso)
     .order('created_at', { ascending: false }).limit(fetchLimit)
-  if (orgId) contrQ = contrQ.eq('organization_id', orgId)
+  contrQ = contrQ.in('organization_id', orgIds)
   const { data: contractsRecent } = await contrQ
   for (const c of (contractsRecent ?? []) as Array<{ id: string; name: string; client_name: string; created_at: string }>) {
     events.push({ type: 'contract_activated', occurredAt: c.created_at,
@@ -782,7 +786,7 @@ export async function getRecentActivity(limit = RECENT_DEFAULT_LIMIT): Promise<R
   let engQ2 = supabase.from('engagements').select('id, short_label, contract_id, updated_at, status')
     .eq('status', 'active').gte('updated_at', cutoffIso)
     .order('updated_at', { ascending: false }).limit(fetchLimit)
-  if (orgId) engQ2 = engQ2.eq('organization_id', orgId)
+  engQ2 = engQ2.in('organization_id', orgIds)
   const { data: engagementsActivated } = await engQ2
   const engContractIds = Array.from(new Set(((engagementsActivated ?? []) as Array<{ contract_id: string | null }>)
     .map((e) => e.contract_id).filter((id): id is string => !!id)))

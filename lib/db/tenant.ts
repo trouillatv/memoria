@@ -22,7 +22,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 
 export interface TenantCtx {
   db: SupabaseClient
@@ -35,9 +35,12 @@ export interface TenantCtx {
  * jamais en élargissant la requête.
  */
 export async function tenantCtx(): Promise<TenantCtx | null> {
-  const orgId = await getOrgId()
-  if (!orgId) return null
-  return { db: createAdminClient(), orgId }
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return null
+  // Multi-org : TenantCtx porte un seul orgId. Pour les comptes multi-org,
+  // seule la première organisation est exposée via ce helper. Les surfaces
+  // multi-org utilisent getOrgIdsOfUser() directement (M3).
+  return { db: createAdminClient(), orgId: orgIds[0] }
 }
 
 /**
