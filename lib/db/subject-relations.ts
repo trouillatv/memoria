@@ -6,7 +6,7 @@
 // Création = acte HUMAIN (created_by). reason obligatoire, importance critique|normal.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import type { SubjectStatus } from '@/types/db'
 
 export type RelationImportance = 'critique' | 'normal'
@@ -38,7 +38,11 @@ export async function createSubjectRelation(input: {
   const reason = input.reason.trim()
   if (!reason) throw new Error('La raison du blocage est obligatoire.')
   const supabase = createAdminClient()
-  const organization_id = await getOrgId().catch(() => null)
+  const { data: subject } = await supabase.from('subjects').select('organization_id').eq('id', input.fromSubjectId).maybeSingle()
+  if (!subject?.organization_id) throw new Error('Sujet introuvable ou sans organisation')
+  const membership = await requireOrganizationMembership(subject.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
+  const organization_id = subject.organization_id
   const { data, error } = await supabase
     .from('subject_relation')
     .insert({

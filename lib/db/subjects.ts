@@ -7,7 +7,7 @@
 // jugement IA. Statut open→dormant→closed (manuel au MVP).
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { getSubjectImpactCounts, type SubjectImpact } from '@/lib/db/subject-relations'
 import { normalizeSubjectName, subjectDedupKey } from '@/lib/db/subject-doctrine'
@@ -91,7 +91,11 @@ export async function createSubject(input: {
   userId: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
-  const organization_id = await getOrgId().catch(() => null)
+  const { data: site } = await supabase.from('sites').select('organization_id').eq('id', input.siteId).maybeSingle()
+  if (!site?.organization_id) throw new Error('Chantier introuvable ou sans organisation')
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
+  const organization_id = site.organization_id
   const { data, error } = await supabase
     .from('subjects')
     .insert({

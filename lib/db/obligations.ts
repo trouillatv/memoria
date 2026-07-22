@@ -6,7 +6,7 @@
 // parsing CCTP. L'IA propose la liste standard, l'humain valide (non_applicable = écarter).
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership, getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { findOrCreateSubjectByName } from '@/lib/db/subjects'
 import { listLinkedDocumentsForTargets } from '@/lib/db/documents'
 import type { MemorySignal } from '@/lib/db/site-memory-signals'
@@ -89,9 +89,11 @@ function mapTemplate(r: Record<string, unknown>): ObligationTemplate {
 /** Catalogue applicable à une org : modèles SYSTÈME (livrés) + ajouts de l'org. */
 export async function listObligationTemplates(): Promise<ObligationTemplate[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId().catch(() => null)
+  const orgIds = await getOrgIdsOfUser().catch(() => [] as string[])
   let q = supabase.from('obligation_template').select('*').eq('is_active', true)
-  q = orgId ? q.or(`organization_id.is.null,organization_id.eq.${orgId}`) : q.is('organization_id', null)
+  q = orgIds.length > 0
+    ? q.or('organization_id.is.null,' + orgIds.map((id) => `organization_id.eq.${id}`).join(','))
+    : q.is('organization_id', null)
   const { data } = await q.order('sort_order', { ascending: true })
   return ((data ?? []) as Record<string, unknown>[]).map(mapTemplate)
 }
@@ -103,7 +105,11 @@ export async function listObligationTemplates(): Promise<ObligationTemplate[]> {
 export async function instantiateObligations(siteId: string, templateIds: string[], userId: string | null): Promise<number> {
   if (templateIds.length === 0) return 0
   const supabase = createAdminClient()
-  const orgId = await getOrgId().catch(() => null)
+  const { data: site } = await supabase.from('sites').select('organization_id').eq('id', siteId).maybeSingle()
+  if (!site?.organization_id) throw new Error('Chantier introuvable ou sans organisation')
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
+  const orgId = site.organization_id
   const { data: tpls } = await supabase.from('obligation_template').select('*').in('id', templateIds)
   // PONT obligation↔sujet (Vincent) : chaque obligation EST un sujet permanent. On
   // crée/rejoint le sujet par son nom court → la recherche par sujet (Build A) rendra
@@ -178,8 +184,11 @@ export async function countMaterializableEngagements(siteId: string): Promise<nu
  *  provenance (origine CCTP) + rattachement au sujet. Idempotent (skip déjà matérialisés). */
 export async function materializeEngagementsAsObligations(siteId: string, userId: string | null): Promise<MaterializeResult> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId().catch(() => null)
-  const { data: site } = await supabase.from('sites').select('contract_id').eq('id', siteId).maybeSingle()
+  const { data: site } = await supabase.from('sites').select('organization_id, contract_id').eq('id', siteId).maybeSingle()
+  if (!site?.organization_id) throw new Error('Chantier introuvable ou sans organisation')
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
+  const orgId = site.organization_id
   const contractId = (site?.contract_id as string | null) ?? null
   if (!contractId) return { created: 0, alreadyDone: 0, skipped: 0 }
 

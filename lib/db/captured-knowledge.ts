@@ -4,7 +4,7 @@
 // tentative de lien. V1 = saisie manuelle (l'IA proposera plus tard).
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
 
 export type KnowledgeSourceType = 'visit' | 'meeting' | 'call' | 'manual'
@@ -45,7 +45,11 @@ export interface AddCapturedKnowledgeInput {
 
 export async function addCapturedKnowledge(input: AddCapturedKnowledgeInput): Promise<string> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId().catch(() => null)
+  const { data: site } = await supabase.from('sites').select('organization_id').eq('id', input.siteId).maybeSingle()
+  if (!site?.organization_id) throw new Error('Chantier introuvable ou sans organisation')
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
+  const orgId = site.organization_id
   // Rattache l'info au dossier d'opération ouvert du lieu (null si lieu legacy).
   const dossierId = await getOpenDossierIdForSite(input.siteId).catch(() => null)
   const { data, error } = await supabase

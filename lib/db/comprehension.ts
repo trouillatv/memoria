@@ -7,7 +7,7 @@
 // run + affirmations ; l'humain note chaque affirmation (grille 4 classes).
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import type { TenderReading } from '@/lib/db/dossier-readings'
 import type { ResolvedQuestion } from '@/lib/db/previsite-synthesis'
 import type { ComprehensionAffirmation } from '@/services/ai/comprehension'
@@ -75,7 +75,11 @@ export async function createComprehensionRun(input: {
   affirmations: ComprehensionAffirmation[]
 }): Promise<string> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId().catch(() => null)
+  const { data: dossier } = await supabase.from('dossiers').select('organization_id').eq('id', input.dossierId).maybeSingle()
+  if (!dossier?.organization_id) throw new Error('Dossier introuvable ou sans organisation')
+  const membership = await requireOrganizationMembership(dossier.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
+  const orgId = dossier.organization_id
 
   const { data: run, error } = await supabase
     .from('comprehension_runs')
