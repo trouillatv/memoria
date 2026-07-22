@@ -1,3 +1,4 @@
+import { userCanAccessOrgRow } from '@/lib/auth/site-access'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -72,6 +73,9 @@ function TodaySignal({ tone, label, dot, icon }: {
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireDeskUser()
   const { id } = await params
+  // P0.5 : frontière d'organisation sur l'accès direct par ID (fuite
+  // démontrée — un membre d'une autre entreprise voyait le nom du client).
+  if (!(await userCanAccessOrgRow('clients', id))) notFound()
   const client = await getClientDetail(id)
   if (!client) notFound()
 

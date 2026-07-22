@@ -13,6 +13,7 @@
 //
 // Doctrine : on construit des objets métier que les écrans projettent.
 
+import { userCanAccessOrgRow } from '@/lib/auth/site-access'
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, MapPin, Repeat } from 'lucide-react'
@@ -42,6 +43,9 @@ export default async function MissionPage({
   if (user.role !== 'admin' && user.role !== 'manager') redirect('/planning')
 
   const { missionId } = await params
+  // P0.5 : `getMission` charge par ID sans scope org, et la page rend la
+  // mission même quand `getSiteIdentity` du chantier lié échoue. Garde directe.
+  if (!(await userCanAccessOrgRow('missions', missionId))) notFound()
   const mission = await getMission(missionId)
   if (!mission) notFound()
 

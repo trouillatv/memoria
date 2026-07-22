@@ -75,3 +75,35 @@ describe('la garde suit la doctrine d’ownership du dépôt', () => {
     expect(helper).toMatch(/if \(!orgId\) return true/)
   })
 })
+
+describe('P0.5 — la frontière s’étend aux autres objets accédés par ID', () => {
+  it('userCanAccessOrgRow applique la même règle sans exemption de rôle', () => {
+    expect(helper).toMatch(/export async function userCanAccessOrgRow/)
+    const i = helper.indexOf('export async function userCanAccessOrgRow')
+    const corps = helper.slice(i, helper.indexOf('export async function userCanAccessSite'))
+    expect(corps).not.toContain("role === 'admin'")
+    expect(corps).toMatch(/requireOrganizationMembership\(orgId\)/)
+  })
+
+  it('les pages [id] des familles critiques gardent l’accès avant de charger', () => {
+    // Fuite démontrée sur `clients` (le nom d'un client d'une autre entreprise
+    // était rendu). Même pattern de chargement par ID sans scope org sur les
+    // trois autres — fermées par la même garde de page.
+    // [page, famille, loader précis dont la garde doit précéder l'appel]
+    const pages: Array<[string, 'clients' | 'interventions' | 'missions' | 'contracts', string]> = [
+      ['app/(dashboard)/clients/[id]/page.tsx', 'clients', 'getClientDetail(id)'],
+      ['app/(dashboard)/interventions/[id]/page.tsx', 'interventions', 'getIntervention(id)'],
+      ['app/(dashboard)/missions/[missionId]/page.tsx', 'missions', 'getMission(missionId)'],
+      ['app/(dashboard)/contracts/[id]/page.tsx', 'contracts', 'getContract(id)'],
+    ]
+    for (const [chemin, famille, loader] of pages) {
+      const src = readFileSync(join(racine, chemin), 'utf8')
+      const garde = src.indexOf(`userCanAccessOrgRow('${famille}'`)
+      expect(garde, `${chemin} : garde absente`).toBeGreaterThan(-1)
+      // La garde précède l'appel au loader de l'objet.
+      const charge = src.indexOf(`await ${loader}`)
+      expect(charge, `${chemin} : loader ${loader} introuvable`).toBeGreaterThan(-1)
+      expect(garde, `${chemin} : garde après le chargement`).toBeLessThan(charge)
+    }
+  })
+})

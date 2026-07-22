@@ -72,6 +72,35 @@ import { requireOrganizationMembership } from '@/lib/auth/memberships'
  * restriction — le P0 ferme la frontière inter-organisations, il n'invente pas
  * d'autres refus. (Mesuré : 0 chantier sans organisation aujourd'hui.)
  */
+/**
+ * L'utilisateur courant est-il membre de l'organisation propriétaire de CETTE
+ * ligne (`table`.`id`) ? Généralise la frontière du chantier aux autres objets
+ * accédés par ID depuis une URL (clients, interventions, missions, contrats…).
+ *
+ * MÊME DOCTRINE, MÊME ABSENCE D'EXEMPTION : le rôle plateforme n'ouvre pas les
+ * données métier. `table` est une liste fermée — on ne lit l'organisation que
+ * de tables connues pour la porter.
+ */
+export async function userCanAccessOrgRow(
+  table: 'clients' | 'interventions' | 'missions' | 'contracts',
+  id: string,
+): Promise<boolean> {
+  if (!id) return false
+  if (!(await getCurrentUserWithProfile())) return false
+
+  // `interventions` ne porte pas toujours `organization_id` directement selon
+  // les versions — on lit la colonne, `undefined` ⇒ ligne absente ⇒ refus.
+  const { data, error } = await createAdminClient()
+    .from(table)
+    .select('organization_id')
+    .eq('id', id)
+    .maybeSingle()
+  if (error || !data) return false
+  const orgId = (data as { organization_id: string | null }).organization_id ?? null
+  if (!orgId) return true
+  return (await requireOrganizationMembership(orgId)).ok
+}
+
 export async function userCanAccessSite(siteId: string): Promise<boolean> {
   if (!siteId) return false
 
