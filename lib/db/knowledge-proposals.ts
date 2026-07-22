@@ -20,7 +20,7 @@ import { createSiteDeadline } from '@/lib/db/site-deadlines'
 import { createSiteDecision } from '@/lib/db/site-decisions'
 import { createKnowledgeEntry, createWatchpoint, isChoosableKnowledgeKind } from '@/lib/db/site-memory-entries'
 import { openSiteIntervenant } from '@/lib/db/site-intervenants'
-import { findOrCreateCompanyByName, findOrCreateCompanyContact } from '@/lib/db/companies'
+import { findOrCreateCompanyByName, findOrCreateCompanyContact, findOrCreatePlaceholderCompany } from '@/lib/db/companies'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import { findInLedger, recordPromotionInLedger } from '@/lib/db/concretisation-ledger'
 // Le pont de vocabulaire entre les deux portes : « deadline » (proposition) et
@@ -640,17 +640,32 @@ export async function promoteProposal(params: {
     if (!orgId) return { status: 'not_found' }
     const personName = params.input?.personName?.trim() || null
     const companyName = params.input?.companyName?.trim() || null
-    // Une PERSONNE exige son entreprise : le schéma (mig 137) rattache tout
-    // contact à une entreprise, et créer une entreprise au nom d'une personne
-    // est exactement le bug que cette branche corrige. Le manque est un état
-    // métier — l'écran pose la question, il ne récolte pas une exception.
-    if (personName && !companyName) return { status: 'needs_input', missing: ['company'] }
+    // ── UNE PERSONNE SANS ENTREPRISE CONNUE (mig 232) ────────────────────
+    //
+    // Le schéma rattache tout contact à une entreprise (mig 137), et créer une
+    // société au nom d'une personne reste le bug que cette branche corrige.
+    // Mais REFUSER n'était pas la bonne réponse : sur un chantier on croise
+    // quelqu'un avant de savoir pour qui il travaille, et l'écran exigeait donc
+    // une information que le terrain n'a pas encore.
+    //
+    // La personne se rattache à l'entreprise d'ATTENTE de l'organisation. Elle
+    // existe, elle est visible, elle porte le nom « À identifier » — et le
+    // travail restant, c'est de la rattacher pour de bon.
+    //
+    // On ne fabrique toujours PAS d'entreprise à son nom : c'est la différence,
+    // et c'est celle qui compte.
     // findOrCreateCompanyByName dédoublonne par nom normalisé : « Ginger » lu deux
     // fois sur deux visites ne crée pas deux entreprises.
     // L'identité désignée l'emporte sur tout nom lu : rattacher, ce n'est pas
     // renommer. La mention d'origine reste dans `title`, intacte.
     const companyId = params.input?.companyId
-      ?? await findOrCreateCompanyByName(orgId, companyName ?? p.title)
+      ?? (companyName
+        ? await findOrCreateCompanyByName(orgId, companyName)
+        : personName
+          // Une personne sans société nommée → l'entreprise d'attente. Jamais
+          // `p.title`, qui EST son nom : ce serait recréer le bug.
+          ? await findOrCreatePlaceholderCompany(orgId)
+          : await findOrCreateCompanyByName(orgId, p.title))
     let contactId = params.input?.contactId ?? null
     if (!contactId && personName) contactId = await findOrCreateCompanyContact(orgId, companyId, personName)
     const intervenantId = await openSiteIntervenant({

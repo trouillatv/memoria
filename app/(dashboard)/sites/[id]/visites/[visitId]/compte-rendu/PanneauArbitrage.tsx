@@ -457,13 +457,11 @@ function LigneIntervenant({
       setErreur('Indiquez son rôle sur le chantier — il ne se devine pas.')
       return
     }
-    // Le serveur refuse déjà une personne sans entreprise. On le dit ICI, avant
-    // le clic : un refus après coup se lit comme une panne, pas comme une
-    // question qu'on avait oublié de poser.
-    if (estPersonne && !entreprise.trim()) {
-      setErreur('Une personne se rattache à une entreprise — laquelle ?')
-      return
-    }
+    // ON NE BLOQUE PLUS SUR L'ENTREPRISE (mig 232). Sur un chantier, on croise
+    // quelqu'un avant de savoir pour qui il travaille : exiger l'employeur ici
+    // revenait à demander au terrain une information qu'il n'a pas encore.
+    // Sans entreprise, la personne rejoint « À identifier », et la rattacher
+    // pour de bon devient le travail restant.
     setErreur(null)
     void agir(pid, () =>
       promoteStakeholderProposalAction({
@@ -534,7 +532,7 @@ function LigneIntervenant({
         <input
           value={entreprise}
           onChange={(e) => { setEntreprise(e.target.value); if (erreur) setErreur(null) }}
-          placeholder={estPersonne ? 'son entreprise' : undefined}
+          placeholder={estPersonne ? 'son entreprise — si vous la connaissez' : undefined}
           aria-label="Entreprise"
           // La liste AIDE, elle n'enferme pas : le champ reste libre, sinon il
           // faudrait créer la fiche entreprise avant de pouvoir arbitrer.
@@ -585,6 +583,14 @@ function LigneIntervenant({
           <X className="h-3.5 w-3.5" aria-hidden />
         </button>
       </div>
+      {/* DIRE CE QU'ON S'APPRÊTE À FAIRE, PAS LE FAIRE DÉCOUVRIR. Confirmer
+          sans entreprise n'est ni une erreur ni un échec — c'est un état du
+          chantier. Mais il doit être choisi en connaissance de cause. */}
+      {estPersonne && !entreprise.trim() && (
+        <p className="mt-1 pl-1.5 text-[11.5px] text-amber-700 dark:text-amber-400">
+          Sans entreprise, cette personne sera rangée dans « À identifier » — à rattacher plus tard.
+        </p>
+      )}
       {erreur && <p className="mt-1 pl-1.5 text-[11.5px] text-rose-600 dark:text-rose-400">{erreur}</p>}
     </li>
   )

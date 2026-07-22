@@ -660,11 +660,11 @@ export async function promoteStakeholderProposalAction(
   if (orgId && visit.organization_id && visit.organization_id !== orgId) {
     return { ok: false, error: 'Visite hors organisation' }
   }
-  // Une personne sans entreprise créerait une ENTREPRISE à son nom — le bug
-  // historique que `PromotionInput` documente. On refuse plutôt que de deviner.
-  if (parsed.data.person_name && !parsed.data.company_name) {
-    return { ok: false, error: 'Une personne doit être rattachée à une entreprise.' }
-  }
+  // ON NE REFUSE PLUS (mig 232). Une personne sans entreprise ne crée toujours
+  // PAS une société à son nom — le bug historique reste fermé — mais elle se
+  // rattache désormais à l'entreprise d'attente « À identifier ». Exiger
+  // l'employeur au moment de l'arbitrage revenait à demander au terrain une
+  // information qu'il n'a souvent pas encore.
   try {
     const res = await promoteProposal({
       id: parsed.data.proposal_id,

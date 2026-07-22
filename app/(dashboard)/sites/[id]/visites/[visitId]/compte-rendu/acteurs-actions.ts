@@ -30,7 +30,12 @@ export async function listOrgCompanyNamesAction(): Promise<string[]> {
   if (!user?.organization_id) return []
   try {
     const companies = await listCompanies(user.organization_id)
-    return companies.map((c) => c.name).filter((n): n is string => Boolean(n?.trim()))
+    return companies
+      // « À identifier » ne se CHOISIT pas : on y arrive en laissant le champ
+      // vide. La proposer ferait d'une absence de réponse une réponse.
+      .filter((c) => !c.isPlaceholder)
+      .map((c) => c.name)
+      .filter((n): n is string => Boolean(n?.trim()))
   } catch {
     // Une liste indisponible ne doit jamais empêcher d'arbitrer : le champ
     // libre suffit à travailler.
@@ -66,7 +71,7 @@ export async function listActeursConnusAction(): Promise<ActeurConnu[]> {
   try {
     const { data, error } = await createAdminClient()
       .from('company_contacts')
-      .select('id, full_name, companies(name)')
+      .select('id, full_name, companies(name, is_placeholder)')
       .eq('organization_id', user.organization_id)
       .is('deleted_at', null)
       .order('full_name', { ascending: true })
@@ -79,8 +84,14 @@ export async function listActeursConnusAction(): Promise<ActeurConnu[]> {
     // ne pencherait plus jamais du bon côté.
     const nomEntreprise = (v: unknown): string | null => {
       const cible = Array.isArray(v) ? v[0] : v
-      const nom = (cible as { name?: string | null } | null | undefined)?.name
-      return nom?.trim() || null
+      const c = cible as { name?: string | null; is_placeholder?: boolean } | null | undefined
+      // L'ENTREPRISE D'ATTENTE N'EN EST PAS UNE (mig 232). Rendre son nom ferait
+      // de tous ses contacts des collègues aux yeux du moteur de rapprochement,
+      // qui majore le score sur « même entreprise » : dix personnes « À
+      // identifier » deviendraient dix doublons présumés. Le moteur doit donc
+      // recevoir `null` — l'absence d'employeur, pas un employeur commun.
+      if (c?.is_placeholder) return null
+      return c?.name?.trim() || null
     }
     return (data as unknown as Jointure[])
       .filter((r) => Boolean(r.full_name?.trim()))

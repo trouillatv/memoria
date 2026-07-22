@@ -230,3 +230,37 @@ describe('la confiance ne dépend pas de la décision', () => {
     expect(SEUILS_CONFIANCE).toBe(POLITIQUE_PAR_DEFAUT)
   })
 })
+
+// ── L'ENTREPRISE D'ATTENTE N'EST PAS UNE ENTREPRISE (mig 232) ──────────────
+//
+// Une personne dont on ignore l'employeur rejoint « À identifier ». Si cette
+// entreprise remontait au moteur comme une vraie, tous ses contacts
+// passeraient pour des collegues : le bonus « meme entreprise » ferait de dix
+// inconnus dix doublons presumes. C'est le piege le moins visible du choix.
+
+describe('« À identifier » ne fabrique pas de collègues', () => {
+  const connus: ActeurConnu[] = [
+    // Ce que renvoie la lecture serveur pour un contact sans employeur connu :
+    // `entreprise: null`, jamais le libellé de l'entreprise d'attente.
+    { id: '1', nom: 'Yann Martin', entreprise: null },
+    { id: '2', nom: 'Yann Bernard', entreprise: null },
+  ]
+
+  it('deux inconnus sans employeur ne se majorent pas l’un l’autre', () => {
+    const r = rapprocher('Yann', connus, { entreprise: null })
+    expect(r).toHaveLength(2)
+    // Aucun bonus : le motif ne mentionne jamais une entreprise commune.
+    for (const x of r) {
+      expect(x.motif).not.toContain('même entreprise')
+      expect(x.score).toBe(POIDS_IDENTITE['prenom-seul'])
+      expect(x.action).toBe('demander')
+    }
+  })
+
+  it('et l’absence d’employeur ne vaut pas employeur commun', () => {
+    // Deux `null` ne se rencontrent pas : sans cette garde, `null === null`
+    // suffirait à declencher le bonus.
+    const [r] = rapprocher('Y. Martin', connus, { entreprise: null })
+    expect(r!.motif).toBe('même nom de famille, prénom en initiale')
+  })
+})

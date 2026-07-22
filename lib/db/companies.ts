@@ -17,10 +17,14 @@ export interface Company {
   email: string | null
   website: string | null
   notes: string | null
+  /** Entreprise d'ATTENTE (« À identifier »), pas une société réelle (mig 232).
+   *  À exclure des sélecteurs, des statistiques et de tout rapprochement
+   *  d'identité — ses contacts ne sont pas des collègues. */
+  isPlaceholder: boolean
 }
 
 const SELECT =
-  'id, organization_id, name, short_name, logo_url, siret, address, postal_code, city, country, phone, email, website, notes'
+  'id, organization_id, name, short_name, logo_url, siret, address, postal_code, city, country, phone, email, website, notes, is_placeholder'
 
 function rowToCompany(r: Record<string, unknown>): Company {
   return {
@@ -38,6 +42,7 @@ function rowToCompany(r: Record<string, unknown>): Company {
     email: (r.email as string | null) ?? null,
     website: (r.website as string | null) ?? null,
     notes: (r.notes as string | null) ?? null,
+    isPlaceholder: (r.is_placeholder as boolean | null) ?? false,
   }
 }
 
@@ -157,4 +162,57 @@ export async function updateCompany(orgId: string, id: string, patch: Partial<Co
   if (Object.keys(row).length === 0) return
   const { error } = await createAdminClient().from('companies').update(row).eq('id', id).eq('organization_id', orgId)
   if (error) throw new Error(error.message)
+}
+
+// ── L'ENTREPRISE D'ATTENTE (mig 232) ───────────────────────────────────────
+//
+// Sur un chantier, on croise quelqu'un avant de savoir pour qui il travaille.
+// Le schéma l'interdisait : tout contact vit sous une entreprise (mig 137).
+// Plutôt que de refuser — donc d'exiger une information que le terrain n'a pas
+// encore — on rattache la personne à une entreprise d'ATTENTE, une par
+// organisation, reconnaissable par son drapeau et non par son nom.
+//
+// CE N'EST PAS UNE SOCIÉTÉ. Elle ne doit apparaître ni dans les sélecteurs, ni
+// dans les statistiques, et surtout jamais comme entreprise commune dans un
+// rapprochement d'identité : ses contacts ne sont pas des collègues.
+
+/** Le libellé montré à l'humain. Le CODE, lui, ne s'y fie jamais : il lit
+ *  `is_placeholder`. Un nom se traduit et se corrige ; un drapeau non. */
+export const ENTREPRISE_A_IDENTIFIER = 'À identifier'
+
+/**
+ * L'entreprise d'attente de cette organisation, créée à la première demande.
+ *
+ * L'index unique partiel (mig 232) garantit qu'il n'en existe qu'une : deux
+ * appels concurrents ne peuvent pas en fabriquer deux. En cas de collision, on
+ * relit plutôt que d'échouer — la course est gagnée par l'autre, pas perdue
+ * par nous.
+ */
+export async function findOrCreatePlaceholderCompany(orgId: string): Promise<string> {
+  const db = createAdminClient()
+  const lire = async () => {
+    const { data } = await db
+      .from('companies')
+      .select('id')
+      .eq('organization_id', orgId)
+      .eq('is_placeholder', true)
+      .is('deleted_at', null)
+      .maybeSingle()
+    return (data?.id as string | undefined) ?? null
+  }
+
+  const existant = await lire()
+  if (existant) return existant
+
+  const { data, error } = await db
+    .from('companies')
+    .insert({ organization_id: orgId, name: ENTREPRISE_A_IDENTIFIER, is_placeholder: true })
+    .select('id')
+    .single()
+  if (!error && data?.id) return data.id as string
+
+  // Course perdue contre un appel concurrent : l'index a fait son travail.
+  const apres = await lire()
+  if (apres) return apres
+  throw new Error(error?.message ?? 'Entreprise d’attente introuvable')
 }
