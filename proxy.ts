@@ -13,6 +13,10 @@ import { createServerClient } from '@supabase/ssr'
 export async function proxy(request: NextRequest) {
   const url = new URL(request.url)
   const pathname = url.pathname
+  const isAuthPage = pathname.startsWith('/login')
+                  || pathname.startsWith('/accept-invite')
+                  || pathname.startsWith('/change-password')
+                  || pathname.startsWith('/forgot-password')
 
   // Header x-pathname pour Server Components.
   const requestHeaders = new Headers(request.headers)
@@ -28,6 +32,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/h/') ||
     pathname.startsWith('/qr/') ||
     pathname.startsWith('/auth/') ||
+    isAuthPage ||
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next/') ||
     pathname === '/favicon.ico'
@@ -55,11 +60,6 @@ export async function proxy(request: NextRequest) {
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-
-  const isAuthPage = pathname.startsWith('/login')
-                  || pathname.startsWith('/accept-invite')
-                  || pathname.startsWith('/change-password')
-                  || pathname.startsWith('/forgot-password')
 
   const isProtectedPage = !isAuthPage
                        && (pathname.startsWith('/admin')

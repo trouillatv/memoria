@@ -8,7 +8,7 @@
 
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
-import { requireManagerOrAdmin } from '@/lib/auth/require'
+import { requireManagerOrAdmin, requireSharedCalendarManager } from '@/lib/auth/require'
 import { requireOwned } from '@/lib/auth/ownership'
 import {
   createPeriod,
@@ -40,7 +40,8 @@ const periodSchema = z
 export async function savePeriodAction(
   input: unknown,
 ): Promise<{ ok: true; sites: number } | { error: string }> {
-  const auth = await requireManagerOrAdmin()
+  // Calendriers GLOBAUX (mig 226) : l'écriture est réservée à la plateforme.
+  const auth = await requireSharedCalendarManager()
   if (!auth.ok) return { error: auth.error }
 
   const parsed = periodSchema.safeParse(input)
@@ -80,7 +81,7 @@ export async function savePeriodAction(
 export async function importNcCalendar2026Action(): Promise<
   { ok: true; created: number; alreadyThere: number; sites: number } | { error: string }
 > {
-  const auth = await requireManagerOrAdmin()
+  const auth = await requireSharedCalendarManager()
   if (!auth.ok) return { error: auth.error }
 
   const existing = await listPeriods()
@@ -124,7 +125,7 @@ export async function importNcCalendar2026Action(): Promise<
 export async function removePeriodAction(
   id: string,
 ): Promise<{ ok: true } | { error: string }> {
-  const auth = await requireManagerOrAdmin()
+  const auth = await requireSharedCalendarManager()
   if (!auth.ok) return { error: auth.error }
   if (!z.string().uuid().safeParse(id).success) return { error: 'Identifiant invalide' }
 

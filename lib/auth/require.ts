@@ -13,9 +13,10 @@
 //     compte soft-deleted, etc.).
 
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { canManageSharedCalendars } from '@/lib/auth/shared-calendars'
 import type { UserRole } from '@/types/db'
 
-export type AuthOk = { ok: true; userId: string; role: UserRole }
+export type AuthOk = { ok: true; userId: string; role: UserRole; email?: string | null }
 export type AuthFail = { ok: false; error: string }
 export type AuthResult = AuthOk | AuthFail
 
@@ -34,7 +35,7 @@ async function readCurrentRole(): Promise<AuthResult> {
   if (error || !data) return { ok: false, error: 'Not authenticated' }
   if (data.deleted_at) return { ok: false, error: 'Account deleted' }
 
-  return { ok: true, userId: user.id, role: data.role as UserRole }
+  return { ok: true, userId: user.id, role: data.role as UserRole, email: user.email ?? null }
 }
 
 export async function requireAdmin(): Promise<AuthResult> {
@@ -62,4 +63,14 @@ export async function requireFieldAgent(): Promise<AuthResult> {
 
 export async function requireAuthenticated(): Promise<AuthResult> {
   return readCurrentRole()
+}
+
+/** L'écriture des CALENDRIERS COMMUNS (fériés, scolaire — globaux depuis la
+ *  mig 226) : admin, ou le compte plateforme. La règle vit dans
+ *  lib/auth/shared-calendars.ts — une seule source, page et actions. */
+export async function requireSharedCalendarManager(): Promise<AuthResult> {
+  const r = await readCurrentRole()
+  if (!r.ok) return r
+  if (!canManageSharedCalendars(r.role, r.email)) return { ok: false, error: 'Forbidden' }
+  return r
 }

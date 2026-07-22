@@ -18,6 +18,7 @@ export function CalendarEditor({
   periods,
   followingCount,
   kind = 'scolaire',
+  canEdit = false,
   placeholder = 'ex : Vacances de juillet',
   emptyText = 'Aucune période. Saisissez-les depuis le calendrier officiel — MemorIA n’en invente aucune.',
 }: {
@@ -25,6 +26,8 @@ export function CalendarEditor({
   followingCount: number
   /** Vacances scolaires ou jours fériés — même mécanique, deux calendriers. */
   kind?: 'scolaire' | 'ferie'
+  /** Seuls admin et le compte plateforme peuvent modifier les calendriers globaux. */
+  canEdit?: boolean
   placeholder?: string
   emptyText?: string
 }) {
@@ -130,33 +133,35 @@ export function CalendarEditor({
                     {periodRangeFr(p)} · {n} jour{n > 1 ? 's' : ''}
                   </span>
                 </span>
-                <span className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                  <button
-                    type="button"
-                    onClick={() => edit(p)}
-                    disabled={pending}
-                    aria-label={`Modifier ${p.label}`}
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => remove(p)}
-                    disabled={pending}
-                    aria-label={`Retirer ${p.label}`}
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-rose-700"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </span>
+                {canEdit && (
+                  <span className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                    <button
+                      type="button"
+                      onClick={() => edit(p)}
+                      disabled={pending}
+                      aria-label={`Modifier ${p.label}`}
+                      className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => remove(p)}
+                      disabled={pending}
+                      aria-label={`Retirer ${p.label}`}
+                      className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-rose-700"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </span>
+                )}
               </li>
             )
           })}
         </ul>
       )}
 
-      {open ? (
+      {canEdit && open ? (
         <div className="space-y-2 rounded-xl border border-dashed p-3">
           <input
             value={label}
@@ -204,7 +209,7 @@ export function CalendarEditor({
             )}
           </div>
         </div>
-      ) : (
+      ) : canEdit ? (
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -228,6 +233,10 @@ export function CalendarEditor({
             Importer le calendrier 2026 (Nouvelle-Calédonie)
           </button>
         </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Calendrier commun géré par l’administrateur et Vincent Trouillat.
+        </p>
       )}
     </section>
   )

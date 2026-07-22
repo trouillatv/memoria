@@ -1,6 +1,10 @@
 import 'server-only'
 
-// LE CALENDRIER SCOLAIRE (mig 203) — un fait d'ORGANISATION, pas de chantier.
+// LE CALENDRIER SCOLAIRE (mig 203) — devenu GLOBAL avec la mig 226 : jours
+// fériés et vacances scolaires sont les MÊMES dates pour tous les tenants
+// (organization_id NULL). Seule la plateforme les écrit (admin ou
+// vincent.trouillat@memoria.nc — cf. requireSharedCalendarManager) ; chaque
+// organisation les LIT, et décide par chantier de l'effet (mig 208).
 //
 // INVARIANT : le calendrier est la SOURCE. Les fermetures qu'il produit
 // (`site_closures.calendar_period_id` non nul) en sont une PROJECTION : on ne
@@ -49,18 +53,22 @@ function isMissing(error: { code?: string; message?: string }): boolean {
   return error.code === '42P01' || (error.message ?? '').includes('school_calendar_period')
 }
 
-/** Les périodes du calendrier de l'organisation, de la plus proche à la plus lointaine. */
+/** Les périodes des calendriers communs, de la plus proche à la plus lointaine.
+ *  Depuis la mig 226 elles sont GLOBALES (organization_id NULL) ; le `.or`
+ *  tolère la fenêtre de transition où d'anciennes lignes par organisation
+ *  existeraient encore. */
 export async function listPeriods(kind?: CalendarKind): Promise<SchoolPeriod[]> {
   const db = createAdminClient()
   const orgId = await getOrgId().catch(() => null)
-  if (!orgId) return []
 
   let q = db
     .from('school_calendar_period')
     .select('id, kind, label, starts_on, ends_on')
-    .eq('organization_id', orgId)
     .is('deleted_at', null)
     .order('starts_on', { ascending: true })
+  q = orgId
+    ? q.or(`organization_id.is.null,organization_id.eq.${orgId}`)
+    : q.is('organization_id', null)
   if (kind) q = q.eq('kind', kind)
 
   const { data, error } = await q
@@ -81,13 +89,12 @@ export interface PeriodInput {
 
 export async function createPeriod(input: PeriodInput): Promise<string> {
   const db = createAdminClient()
-  const orgId = await getOrgId()
-  if (!orgId) throw new Error('Organisation introuvable')
 
   const { data, error } = await db
     .from('school_calendar_period')
     .insert({
-      organization_id: orgId,
+      // GLOBALE (mig 226) : la période vaut pour toutes les organisations.
+      organization_id: null,
       kind: input.kind,
       label: input.label,
       starts_on: input.startsOn,
@@ -102,7 +109,6 @@ export async function createPeriod(input: PeriodInput): Promise<string> {
 
 export async function updatePeriod(id: string, input: PeriodInput): Promise<void> {
   const db = createAdminClient()
-  const orgId = await getOrgId()
   const { error } = await db
     .from('school_calendar_period')
     .update({
@@ -113,7 +119,6 @@ export async function updatePeriod(id: string, input: PeriodInput): Promise<void
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
-    .eq('organization_id', orgId ?? '')
     .is('deleted_at', null)
   if (error) throw new Error(error.message)
 }
@@ -122,14 +127,12 @@ export async function updatePeriod(id: string, input: PeriodInput): Promise<void
  *  produites sont retirées elles aussi — logiquement, jamais effacées. */
 export async function removePeriod(id: string): Promise<void> {
   const db = createAdminClient()
-  const orgId = await getOrgId()
   const now = new Date().toISOString()
 
   const { error } = await db
     .from('school_calendar_period')
     .update({ deleted_at: now })
     .eq('id', id)
-    .eq('organization_id', orgId ?? '')
     .is('deleted_at', null)
   if (error) throw new Error(error.message)
 
@@ -200,19 +203,17 @@ export async function setSiteCalendarEffect(
   await syncSiteClosures(siteId)
 }
 
-/** Les chantiers de l'organisation qui suivent le calendrier. */
+/** Les chantiers qui suivent un calendrier commun — TOUTES organisations
+ *  confondues : depuis la mig 226 le calendrier est global, une modification
+ *  doit se propager chez tous les tenants qui l'ont adopté. */
 export async function listFollowingSiteIds(): Promise<string[]> {
   const db = createAdminClient()
-  const orgId = await getOrgId().catch(() => null)
 
-  let q = db
+  const { data, error } = await db
     .from('sites')
     .select('id')
     .or('school_calendar_effect.neq.none,public_holidays_effect.neq.none')
     .is('deleted_at', null)
-  if (orgId) q = q.eq('organization_id', orgId)
-
-  const { data, error } = await q
   if (error) return []
   return ((data ?? []) as Array<{ id: string }>).map((r) => r.id)
 }

@@ -26,6 +26,7 @@ import { listUpcomingClosuresForOrg } from '@/lib/db/site-closures'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { frDayMonthLocal } from '@/lib/time/local-date'
 import { CLOSURE_REASON_FR } from '@/lib/planning/closures'
+import { canManageSharedCalendars } from '@/lib/auth/shared-calendars'
 import { CalendarEditor } from '../calendrier-scolaire/CalendarEditor'
 
 export const dynamic = 'force-dynamic'
@@ -34,6 +35,7 @@ export default async function CalendrierPage() {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
   if (user.role === 'chef_equipe') redirect('/m')
+  const canEditSharedCalendars = canManageSharedCalendars(user.role, user.email)
 
   const [periods, upcoming] = await Promise.all([
     listPeriods().catch(() => []),
@@ -99,6 +101,7 @@ export default async function CalendrierPage() {
             periods={scolaires}
             followingCount={following.filter((s) => s.school_calendar_effect === 'closed').length}
             kind="scolaire"
+            canEdit={canEditSharedCalendars}
           />
         </div>
 
@@ -110,6 +113,7 @@ export default async function CalendrierPage() {
             periods={feries}
             followingCount={following.filter((s) => s.public_holidays_effect === 'closed').length}
             kind="ferie"
+            canEdit={canEditSharedCalendars}
             placeholder="ex : Fête de la citoyenneté"
             emptyText="Aucun jour férié saisi. Entrez ceux du calendrier officiel — MemorIA n’en invente aucun."
           />
