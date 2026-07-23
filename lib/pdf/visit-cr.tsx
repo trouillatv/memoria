@@ -143,7 +143,16 @@ const styles = StyleSheet.create({
     position: 'absolute', bottom: 24, left: 40, right: 40, flexDirection: 'row', justifyContent: 'space-between',
     borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 6, fontSize: 8, color: COLORS.faint,
   },
+  // M4a — badge organisation dans l'en-tête du CR.
+  orgLogoImg: { width: 22, height: 22, objectFit: 'contain' as const, borderRadius: 3, marginBottom: 4 },
+  orgDot: { width: 22, height: 22, borderRadius: 3, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  orgInitials: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#ffffff' },
 })
+
+function orgInitials(label: string | null): string {
+  if (!label) return '?'
+  return label.split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('')
+}
 
 function SectionTitle({ text, color, important, sub }: { text: string; color: string; important?: boolean; sub?: string }) {
   return (
@@ -449,7 +458,16 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
               <Text style={styles.kicker}>{kicker}</Text>
               <Text style={styles.siteName}>{doc.siteName}</Text>
             </View>
-            <Text style={styles.badge}>{doc.typeLabel}</Text>
+            <View style={{ alignItems: 'flex-end' }}>
+              {doc.orgLogoUrl ? (
+                <Image src={doc.orgLogoUrl} style={styles.orgLogoImg} />
+              ) : doc.orgColor ? (
+                <View style={[styles.orgDot, { backgroundColor: doc.orgColor }]}>
+                  <Text style={styles.orgInitials}>{orgInitials(doc.orgLabel)}</Text>
+                </View>
+              ) : null}
+              <Text style={styles.badge}>{doc.typeLabel}</Text>
+            </View>
           </View>
           <View style={styles.metaRow}>
             <Text style={styles.metaItem}>{doc.dateLabel}</Text>

@@ -1903,6 +1903,10 @@ export interface VisitCrDoc {
   }
   outcomeLabel: string | null
   resolutionLabel: string | null
+  /** M4a — branding de l'organisation propriétaire du chantier. */
+  orgLogoUrl: string | null
+  orgColor: string | null
+  orgLabel: string | null
 }
 
 /**
@@ -1973,10 +1977,10 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   // commune se déduit de l'adresse (« …98800 Nouméa » → « Nouméa »).
   const { data: site } = await supabase
     .from('sites')
-    .select('name, address, client_id')
+    .select('name, address, client_id, organization_id')
     .eq('id', visit.site_id!)
     .maybeSingle()
-  const s = site as { name: string | null; address: string | null; client_id: string | null } | null
+  const s = site as { name: string | null; address: string | null; client_id: string | null; organization_id: string | null } | null
   const siteName = s?.name?.trim() || 'Chantier'
   const address = s?.address?.trim() || null
   const city = address ? (/\b\d{4,6}\s+(.+)$/.exec(address)?.[1]?.trim() || null) : null
@@ -1984,6 +1988,22 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   if (s?.client_id) {
     const { data: cl } = await supabase.from('clients').select('name').eq('id', s.client_id).maybeSingle()
     clientName = (cl as { name: string | null } | null)?.name?.trim() || null
+  }
+  let orgLogoUrl: string | null = null
+  let orgColor: string | null = null
+  let orgLabel: string | null = null
+  if (s?.organization_id) {
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('name, logo_url, color')
+      .eq('id', s.organization_id)
+      .maybeSingle()
+    if (org) {
+      const o = org as { name: string | null; logo_url: string | null; color: string | null }
+      orgLabel = o.name?.trim() || null
+      orgLogoUrl = o.logo_url?.trim() || null
+      orgColor = o.color?.trim() || null
+    }
   }
   const subjectName = visit.target_subject_id
     ? ctx.openSubjects.find((s) => s.id === visit.target_subject_id)?.name ?? null
@@ -2146,6 +2166,9 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     points,
     outcomeLabel: visit.outcome ? OUTCOME_FR[visit.outcome] ?? visit.outcome : null,
     resolutionLabel: visit.resolution ? RESOLUTION_FR[visit.resolution] ?? visit.resolution : null,
+    orgLogoUrl,
+    orgColor,
+    orgLabel,
   }
 }
 
