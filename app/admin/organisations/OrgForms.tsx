@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { createOrgAction, createUserInOrgAction, assignUserToOrgAction, createOrgWithUserAction } from './actions'
+import { createOrgAction, createUserInOrgAction, assignUserToOrgAction, createOrgWithUserAction, updateOrgBrandingAction } from './actions'
 import { toast } from 'sonner'
 
 function Submit({ label, pendingLabel }: { label: string; pendingLabel: string }) {
@@ -165,6 +165,54 @@ export function CreateUserInOrgForm({ orgId, orgName }: { orgId: string; orgName
       <div className="md:col-span-5 flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>Annuler</Button>
         <Submit label="Créer" pendingLabel="Création…" />
+      </div>
+    </form>
+  )
+}
+
+/** M4a — formulaire inline pour le logo_url + color d'une organisation. */
+export function UpdateOrgBrandingForm({
+  orgId,
+  currentLogoUrl,
+  currentColor,
+}: {
+  orgId: string
+  currentLogoUrl?: string | null
+  currentColor?: string | null
+}) {
+  const [open, setOpen] = useState(false)
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+      >
+        {currentLogoUrl || currentColor ? 'Modifier' : 'Ajouter logo'}
+      </button>
+    )
+  }
+  return (
+    <form
+      action={async (fd) => {
+        const r = await updateOrgBrandingAction(fd)
+        if (r?.error) toast.error(r.error)
+        else { toast.success('Branding mis à jour'); setOpen(false) }
+      }}
+      className="flex flex-col gap-2 pt-1"
+    >
+      <input type="hidden" name="org_id" value={orgId} />
+      <div className="flex items-center gap-2">
+        <Label className="text-xs w-16 shrink-0">Logo URL</Label>
+        <Input name="logo_url" defaultValue={currentLogoUrl ?? ''} placeholder="https://..." className="h-7 text-xs" />
+      </div>
+      <div className="flex items-center gap-2">
+        <Label className="text-xs w-16 shrink-0">Couleur</Label>
+        <Input name="color" defaultValue={currentColor ?? ''} placeholder="#3b82f6" className="h-7 text-xs w-28 font-mono" />
+      </div>
+      <div className="flex gap-2">
+        <Submit label="Enregistrer" pendingLabel="..." />
+        <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>Annuler</Button>
       </div>
     </form>
   )

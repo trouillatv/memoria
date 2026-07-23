@@ -12,7 +12,7 @@ import { listOrganisations } from '@/lib/db/organisations'
 import { getUsersActivitySummary } from '@/lib/db/admin-monitoring'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CreateUserForm } from '../users/CreateUserForm'
-import { CreateOrgForm } from '../organisations/OrgForms'
+import { CreateOrgForm, UpdateOrgBrandingForm } from '../organisations/OrgForms'
 import { PersonnesTable, type PersonneRow } from './PersonnesTable'
 
 export const dynamic = 'force-dynamic'
@@ -97,16 +97,29 @@ export default async function AdminPersonnesPage() {
                 <tr>
                   <th className="px-3 py-2 text-left">Entreprise</th>
                   <th className="px-3 py-2 text-left">Slug</th>
+                  <th className="px-3 py-2 text-left">Branding</th>
                   <th className="px-3 py-2 text-right">Personnes</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {orgs.length === 0 ? (
-                  <tr><td colSpan={3} className="px-3 py-6 text-center text-xs text-muted-foreground">Aucune entreprise.</td></tr>
+                  <tr><td colSpan={4} className="px-3 py-6 text-center text-xs text-muted-foreground">Aucune entreprise.</td></tr>
                 ) : orgs.map((o) => (
-                  <tr key={o.id} className="hover:bg-muted/20">
+                  <tr key={o.id} className="hover:bg-muted/20 align-top">
                     <td className="px-3 py-2 font-medium">{o.name}</td>
                     <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{o.slug}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        {o.logo_url && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={o.logo_url} alt="" className="h-5 w-5 rounded-sm object-contain" />
+                        )}
+                        {o.color && (
+                          <span className="inline-block h-4 w-4 rounded-sm border border-border" style={{ backgroundColor: o.color }} />
+                        )}
+                        <UpdateOrgBrandingForm orgId={o.id} currentLogoUrl={o.logo_url} currentColor={o.color} />
+                      </div>
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums">{memberCount.get(o.id) ?? 0}</td>
                   </tr>
                 ))}

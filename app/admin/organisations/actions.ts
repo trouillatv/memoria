@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById, updateUserProfileAsAdmin } from '@/lib/db/users'
-import { createOrganisation, assignUserToOrg } from '@/lib/db/organisations'
+import { createOrganisation, assignUserToOrg, updateOrganisationBranding } from '@/lib/db/organisations'
 import { logAuditEvent } from '@/lib/audit/log'
 import type { UserRole } from '@/types/db'
 
@@ -159,6 +159,30 @@ export async function createOrgWithUserAction(formData: FormData) {
   })
 
   revalidatePath('/admin/organisations')
+  return { ok: true as const }
+}
+
+const updateOrgBrandingSchema = z.object({
+  org_id:   z.string().uuid(),
+  logo_url: z.string().url().optional().or(z.literal('')),
+  color:    z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().or(z.literal('')),
+})
+
+export async function updateOrgBrandingAction(formData: FormData) {
+  await requireAdmin()
+  const parsed = updateOrgBrandingSchema.safeParse({
+    org_id:   formData.get('org_id'),
+    logo_url: formData.get('logo_url') ?? '',
+    color:    formData.get('color') ?? '',
+  })
+  if (!parsed.success) return { error: 'Données invalides' }
+
+  await updateOrganisationBranding(parsed.data.org_id, {
+    logo_url: parsed.data.logo_url || null,
+    color:    parsed.data.color || null,
+  })
+
+  revalidatePath('/admin/personnes')
   return { ok: true as const }
 }
 

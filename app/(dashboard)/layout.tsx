@@ -2,6 +2,8 @@ import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getOpenActionsHealth } from '@/lib/db/site-actions'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { getOrganizationsMeta } from '@/lib/db/organisations'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { AppTopbar } from '@/components/layout/AppTopbar'
 import { BreadcrumbProvider } from '@/components/layout/BreadcrumbProvider'
@@ -29,6 +31,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
     user.role === 'admin' || user.role === 'manager'
       ? await getOpenActionsHealth()
       : { total: 0, critique: 0, surveiller: 0, rythme: 0 }
+
+  // M4a — indicateur multi-org dans la sidebar. Ne charge que si multi-org.
+  const orgIds = await getOrgIdsOfUser()
+  const orgsMeta = orgIds.length > 1 ? await getOrganizationsMeta(orgIds) : undefined
+
   return (
     <div className="min-h-screen bg-muted/20">
       {/* Skip-link RGAA — invisible jusqu'au focus clavier */}
@@ -44,6 +51,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           fullName={fullName}
           actionsCount={actionsHealth.total}
           actionsCritical={actionsHealth.critique}
+          orgs={orgsMeta}
         />
         <div className="md:pl-60">
           <AppTopbar fullName={fullName} role={user.role} />

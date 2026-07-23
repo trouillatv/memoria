@@ -17,6 +17,18 @@ export interface DbOrganisation {
   slug: string
   created_at: string
   user_count: number
+  /** M4a — URL publique du logo (favicon 32 px recommandé). */
+  logo_url?: string | null
+  /** M4a — couleur hexadécimale (#RRGGBB) pour le badge/dot. */
+  color?: string | null
+}
+
+/** M4a — métadonnées de branding pour un badge enrichi (logo + couleur). */
+export interface OrgMeta {
+  id: string
+  label: string
+  logoUrl: string | null
+  color: string | null
 }
 
 export function slugify(name: string): string {
@@ -44,10 +56,41 @@ export async function getOrganizationLabels(orgIds: string[]): Promise<Record<st
   return out
 }
 
+/**
+ * M4a — métadonnées de branding (label + logo + couleur). UNE lecture pour tous
+ * les ids. Utilisé par le layout et les badges enrichis. En mono-org, ne pas
+ * appeler (interface inchangée).
+ */
+export async function getOrganizationsMeta(orgIds: string[]): Promise<OrgMeta[]> {
+  if (orgIds.length === 0) return []
+  const { data } = await createAdminClient()
+    .from('organizations').select('id, name, slug, logo_url, color').in('id', orgIds)
+  return ((data ?? []) as Array<{
+    id: string; name: string; slug: string | null
+    logo_url: string | null; color: string | null
+  }>).map((o) => ({
+    id: o.id,
+    label: (o.slug || o.name || '').trim(),
+    logoUrl: o.logo_url ?? null,
+    color: o.color ?? null,
+  }))
+}
+
+export async function updateOrganisationBranding(orgId: string, branding: {
+  logo_url?: string | null
+  color?: string | null
+}): Promise<void> {
+  const { error } = await createAdminClient()
+    .from('organizations')
+    .update(branding)
+    .eq('id', orgId)
+  if (error) throw error
+}
+
 export async function listOrganisations(): Promise<DbOrganisation[]> {
   const sb = createAdminClient()
   const [{ data: orgs, error }, { data: users }] = await Promise.all([
-    sb.from('organizations').select('id, name, slug, created_at').order('created_at', { ascending: true }),
+    sb.from('organizations').select('id, name, slug, created_at, logo_url, color').order('created_at', { ascending: true }),
     sb.from('users').select('organization_id').is('deleted_at', null),
   ])
   if (error) throw error

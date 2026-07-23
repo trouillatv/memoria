@@ -11,9 +11,11 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Minimize2, Maximize2 } from 'lucide-react'
 import type { UserRole } from '@/types/db'
+import type { OrgMeta } from '@/lib/db/organisations'
 import { cn } from '@/lib/utils'
 import { NAV, isActive } from './nav-items'
 import { BrandLegalDialog } from './BrandLegalDialog'
+import { OrgBadgeRich } from '@/components/dashboard/OrgBadge'
 
 const NAV_MODE_KEY = 'memoria.navMode'
 
@@ -22,6 +24,7 @@ export function AppSidebar({
   fullName,
   actionsCount = 0,
   actionsCritical = 0,
+  orgs,
 }: {
   role: UserRole
   fullName: string
@@ -29,6 +32,8 @@ export function AppSidebar({
   actionsCount?: number
   /** Actions critiques (≥ 14 j) → pastille rouge. */
   actionsCritical?: number
+  /** M4a — métadonnées de branding des orgs de l'utilisateur. Absent en mono-org. */
+  orgs?: OrgMeta[]
 }) {
   const pathname = usePathname() ?? ''
   // Mode simplifié « chargé d'affaires » : ne garder que le cœur (Sites, Réunions,
@@ -61,6 +66,18 @@ export function AppSidebar({
       <div className="flex h-16 items-center border-b px-4">
         <BrandLegalDialog />
       </div>
+      {orgs && orgs.length > 1 && (
+        <div className="border-b px-4 py-2.5 bg-muted/20">
+          <p className="text-[9.5px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-1.5">
+            Toutes mes organisations
+          </p>
+          <div className="flex flex-col gap-1">
+            {orgs.map((o) => (
+              <OrgBadgeRich key={o.id} meta={o} size="md" />
+            ))}
+          </div>
+        </div>
+      )}
       <nav className="flex-1 min-h-0 overflow-y-auto px-2 py-4 space-y-1">
         {visible.map(({ href, label, icon: Icon, groupStart }) => {
           const active = isActive(pathname, href)
