@@ -48,6 +48,9 @@ export async function loginAction(formData: FormData) {
     const jar = await cookies()
     const ua = (await headers()).get('user-agent')
     const isPwa = jar.get(COOKIE_PWA_STANDALONE)?.value === '1'
+    // PWA standalone → toujours /m, même si un paramètre `next` est présent
+    // (ex. session expirée depuis /dashboard → /login?next=/dashboard).
+    if (isPwa) redirect('/m')
     redirect(parsed.data.next ?? resolveHomeDestination(profile, isMobileUserAgent(ua), isPwa))
   }
 

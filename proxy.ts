@@ -5,7 +5,8 @@ import { COOKIE_PWA_STANDALONE } from '@/lib/navigation/pwa-mode'
 // Middleware (renommé "proxy" en Next 16). Trois rôles :
 //  1. Exposer pathname aux Server Components via header `x-pathname` (utilisé
 //     par (dashboard)/layout.tsx pour le cas /account, accessible à tous rôles).
-//  2. Rediriger /login vers /missions si l'utilisateur est déjà authentifié,
+//  2. Rediriger /login vers la destination principale si l'utilisateur est déjà
+//     authentifié (PWA → /m, classique → / qui résout via resolveHomeDestination),
 //     et bloquer l'accès aux routes protégées si non authentifié.
 //  3. Enforce le flag must_change_password depuis app_metadata du JWT (posé
 //     par app/admin/users/actions.ts, effacé par change-password/actions.ts).
@@ -25,6 +26,8 @@ export async function proxy(request: NextRequest) {
 
   // Bypass : routes publiques + assets internes Next. Pas besoin d'aller
   // chercher la session pour ces URLs.
+  // Note : /login n'est PAS dans ce bypass — on a besoin de vérifier la session
+  // pour rediriger les utilisateurs déjà authentifiés (voir bloc ci-dessous).
   if (
     pathname === '/' ||
     pathname.startsWith('/p/') ||
@@ -33,7 +36,9 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/h/') ||
     pathname.startsWith('/qr/') ||
     pathname.startsWith('/auth/') ||
-    isAuthPage ||
+    pathname.startsWith('/accept-invite') ||
+    pathname.startsWith('/change-password') ||
+    pathname.startsWith('/forgot-password') ||
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next/') ||
     pathname === '/favicon.ico'
@@ -78,9 +83,10 @@ export async function proxy(request: NextRequest) {
     loginUrl.searchParams.set('next', pathname)
     return NextResponse.redirect(loginUrl)
   }
-  if (user && pathname === '/login') {
+  if (user && pathname.startsWith('/login')) {
     const isPwa = request.cookies.get(COOKIE_PWA_STANDALONE)?.value === '1'
-    const dest = isPwa ? '/m' : '/missions'
+    // PWA standalone → toujours /m. Classique → / (app/page.tsx résout via resolveHomeDestination).
+    const dest = isPwa ? '/m' : '/'
     return NextResponse.redirect(new URL(dest, request.url))
   }
 

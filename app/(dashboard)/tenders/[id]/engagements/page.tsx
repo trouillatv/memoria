@@ -16,7 +16,7 @@ export default async function TenderEngagementsPage({ params }: { params: Promis
   // A3 — confronte les libellés de cet AO à l'expérience accumulée (sujets de l'org).
   // TODO M3 : prend la première org de l'utilisateur — à adapter quand getAoExperience
   // acceptera plusieurs orgs.
-  const orgId = (await getOrgIdsOfUser().catch(() => [])) [0] ?? null // M3_TEMP — première org uniquement
+  const orgId = (await getOrgIdsOfUser().catch(() => [])) [0] ?? null // TODO M4-UX-multiorg : getAoExperience ne supporte pas encore plusieurs orgs
   const experience = engagements.length > 0
     ? await getAoExperience(orgId, engagements.map((e) => e.short_label)).catch(() => [])
     : []

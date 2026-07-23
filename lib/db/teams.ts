@@ -54,6 +54,12 @@ export interface CreateTeamInput {
   /** Migration 077 — icône lucide (kebab-case). */
   icon?: string | null
   created_by?: string | null
+  /**
+   * Obligatoire dans le code applicatif (enforçé par `createTeamAction` avant
+   * d'appeler cette fonction). Optionnel uniquement pour les scripts et tests de
+   * seed : une équipe sans org est invisible pour tous les tenants (fail-closed
+   * via `.in('organization_id', orgIds)`). Ne pas omettre en dehors des scripts.
+   */
   organization_id?: string | null
 }
 

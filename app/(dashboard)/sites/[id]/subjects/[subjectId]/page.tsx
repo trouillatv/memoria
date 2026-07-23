@@ -33,7 +33,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   const { identity, timeline, relations, openLoops, evidence } = dossier
   const { thread, insights } = dossier.detail
   // Niveau 3 — le même sujet canonique à l'échelle de l'org (du local au collectif).
-  const orgHistory = await getSubjectOrgHistory((await getOrgIdsOfUser())[0] ?? null, thread.subject.name).catch(() => null) // M3_TEMP — multi-org sémantique différé
+  const orgHistory = await getSubjectOrgHistory((await getOrgIdsOfUser())[0] ?? null, thread.subject.name).catch(() => null) // TODO M4-UX-multiorg : getSubjectOrgHistory multi-org sémantique différé
   const { subject, actions, reserves, decisions, siteDecisions, anomalies, documents } = thread
   const fr = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : null
 
