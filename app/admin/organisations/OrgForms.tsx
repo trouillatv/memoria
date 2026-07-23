@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { createOrgAction, createUserInOrgAction, assignUserToOrgAction, createOrgWithUserAction, updateOrgBrandingAction } from './actions'
+import { createOrgAction, createUserInOrgAction, assignUserToOrgAction, createOrgWithUserAction, updateOrgBrandingAction, uploadOrgLogoAction, removeOrgLogoAction } from './actions'
 import { toast } from 'sonner'
 
 function Submit({ label, pendingLabel }: { label: string; pendingLabel: string }) {
@@ -170,14 +170,74 @@ export function CreateUserInOrgForm({ orgId, orgName }: { orgId: string; orgName
   )
 }
 
-/** M4a — formulaire inline pour le logo_url + color d'une organisation. */
+/** M4a — upload de logo pour une organisation (fichier → bucket entity-logos). */
+export function UploadOrgLogoForm({
+  orgId,
+  logoPath,
+  hasLogo,
+}: {
+  orgId: string
+  logoPath?: string | null
+  hasLogo?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+      >
+        {hasLogo ? 'Remplacer' : 'Importer un logo'}
+      </button>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-2 pt-1">
+      <form
+        action={async (fd) => {
+          const r = await uploadOrgLogoAction(fd)
+          if (r?.error) toast.error(r.error)
+          else { toast.success('Logo mis à jour'); setOpen(false) }
+        }}
+        className="flex items-center gap-2"
+      >
+        <input type="hidden" name="org_id" value={orgId} />
+        <Input
+          name="logo"
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          required
+          className="h-7 text-xs"
+        />
+        <Submit label="Importer" pendingLabel="..." />
+      </form>
+      {hasLogo && logoPath && (
+        <form
+          action={async (fd) => {
+            const r = await removeOrgLogoAction(fd)
+            if (r?.error) toast.error(r.error)
+            else { toast.success('Logo supprimé'); setOpen(false) }
+          }}
+        >
+          <input type="hidden" name="org_id" value={orgId} />
+          <input type="hidden" name="logo_path" value={logoPath} />
+          <Button type="submit" size="sm" variant="ghost" className="h-7 text-xs text-destructive">
+            Supprimer le logo
+          </Button>
+        </form>
+      )}
+      <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>Annuler</Button>
+    </div>
+  )
+}
+
+/** M4a — formulaire couleur de fallback (#RRGGBB) pour une organisation. */
 export function UpdateOrgBrandingForm({
   orgId,
-  currentLogoUrl,
   currentColor,
 }: {
   orgId: string
-  currentLogoUrl?: string | null
   currentColor?: string | null
 }) {
   const [open, setOpen] = useState(false)
@@ -188,7 +248,7 @@ export function UpdateOrgBrandingForm({
         onClick={() => setOpen(true)}
         className="text-xs text-muted-foreground underline-offset-2 hover:underline"
       >
-        {currentLogoUrl || currentColor ? 'Modifier' : 'Ajouter logo'}
+        {currentColor ? 'Couleur' : 'Ajouter couleur'}
       </button>
     )
   }
@@ -197,23 +257,14 @@ export function UpdateOrgBrandingForm({
       action={async (fd) => {
         const r = await updateOrgBrandingAction(fd)
         if (r?.error) toast.error(r.error)
-        else { toast.success('Branding mis à jour'); setOpen(false) }
+        else { toast.success('Couleur mise à jour'); setOpen(false) }
       }}
-      className="flex flex-col gap-2 pt-1"
+      className="flex items-center gap-2 pt-1"
     >
       <input type="hidden" name="org_id" value={orgId} />
-      <div className="flex items-center gap-2">
-        <Label className="text-xs w-16 shrink-0">Logo URL</Label>
-        <Input name="logo_url" defaultValue={currentLogoUrl ?? ''} placeholder="https://..." className="h-7 text-xs" />
-      </div>
-      <div className="flex items-center gap-2">
-        <Label className="text-xs w-16 shrink-0">Couleur</Label>
-        <Input name="color" defaultValue={currentColor ?? ''} placeholder="#3b82f6" className="h-7 text-xs w-28 font-mono" />
-      </div>
-      <div className="flex gap-2">
-        <Submit label="Enregistrer" pendingLabel="..." />
-        <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>Annuler</Button>
-      </div>
+      <Input name="color" defaultValue={currentColor ?? ''} placeholder="#3b82f6" className="h-7 text-xs w-28 font-mono" />
+      <Submit label="OK" pendingLabel="..." />
+      <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>Annuler</Button>
     </form>
   )
 }

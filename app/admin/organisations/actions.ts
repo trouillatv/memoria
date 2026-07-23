@@ -5,7 +5,8 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById, updateUserProfileAsAdmin } from '@/lib/db/users'
-import { createOrganisation, assignUserToOrg, updateOrganisationBranding } from '@/lib/db/organisations'
+import { createOrganisation, assignUserToOrg, updateOrganisationBranding, setOrganisationLogo } from '@/lib/db/organisations'
+import { uploadOrgLogo, deleteLogoFile } from '@/lib/storage/entity-logos'
 import { logAuditEvent } from '@/lib/audit/log'
 import type { UserRole } from '@/types/db'
 
@@ -162,27 +163,55 @@ export async function createOrgWithUserAction(formData: FormData) {
   return { ok: true as const }
 }
 
-const updateOrgBrandingSchema = z.object({
-  org_id:   z.string().uuid(),
-  // Accepte uniquement https:// pour éviter les URLs locales / tracking externe.
-  logo_url: z.string().regex(/^https:\/\/.+/).optional().or(z.literal('')),
-  color:    z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().or(z.literal('')),
+const updateOrgColorSchema = z.object({
+  org_id: z.string().uuid(),
+  color:  z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().or(z.literal('')),
 })
 
 export async function updateOrgBrandingAction(formData: FormData) {
   await requireAdmin()
-  const parsed = updateOrgBrandingSchema.safeParse({
-    org_id:   formData.get('org_id'),
-    logo_url: formData.get('logo_url') ?? '',
-    color:    formData.get('color') ?? '',
+  const parsed = updateOrgColorSchema.safeParse({
+    org_id: formData.get('org_id'),
+    color:  formData.get('color') ?? '',
   })
-  if (!parsed.success) return { error: 'Données invalides' }
+  if (!parsed.success) return { error: 'Couleur invalide (format #RRGGBB attendu)' }
 
   await updateOrganisationBranding(parsed.data.org_id, {
-    logo_url: parsed.data.logo_url || null,
-    color:    parsed.data.color || null,
+    color: parsed.data.color || null,
   })
 
+  revalidatePath('/admin/personnes')
+  return { ok: true as const }
+}
+
+export async function uploadOrgLogoAction(formData: FormData) {
+  await requireAdmin()
+  const orgId = formData.get('org_id')
+  if (typeof orgId !== 'string' || !orgId) return { error: 'org_id manquant' }
+  const file = formData.get('logo') as File | null
+  if (!file || file.size === 0) return { error: 'Fichier manquant' }
+
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const path = await uploadOrgLogo(orgId, buffer, file.type)
+    await setOrganisationLogo(orgId, path)
+    revalidatePath('/admin/personnes')
+    return { ok: true as const }
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
+}
+
+export async function removeOrgLogoAction(formData: FormData) {
+  await requireAdmin()
+  const orgId = formData.get('org_id')
+  const logoPath = formData.get('logo_path')
+  if (typeof orgId !== 'string' || !orgId) return { error: 'org_id manquant' }
+
+  if (typeof logoPath === 'string' && logoPath) {
+    await deleteLogoFile(logoPath).catch(() => { /* silencieux si déjà absent */ })
+  }
+  await setOrganisationLogo(orgId, null)
   revalidatePath('/admin/personnes')
   return { ok: true as const }
 }

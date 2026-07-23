@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getSignedLogoUrls } from '@/lib/storage/entity-logos'
 import type { UserRole } from '@/types/db'
 
 /** Le rôle du PROFIL, repli quand l'appelant n'en impose pas. Tant que M2/M3
@@ -17,9 +18,12 @@ export interface DbOrganisation {
   slug: string
   created_at: string
   user_count: number
-  /** M4a — URL publique du logo (favicon 32 px recommandé). */
+  /** M4a — chemin bucket entity-logos (ex. organizations/{id}/logo.png). */
+  logo_path?: string | null
+  logo_updated_at?: string | null
+  /** DEPRECATED — remplacé par logo_path. */
   logo_url?: string | null
-  /** M4a — couleur hexadécimale (#RRGGBB) pour le badge/dot. */
+  /** M4a — couleur hexadécimale (#RRGGBB) pour le badge/dot fallback. */
   color?: string | null
 }
 
@@ -64,20 +68,23 @@ export async function getOrganizationLabels(orgIds: string[]): Promise<Record<st
 export async function getOrganizationsMeta(orgIds: string[]): Promise<OrgMeta[]> {
   if (orgIds.length === 0) return []
   const { data } = await createAdminClient()
-    .from('organizations').select('id, name, slug, logo_url, color').in('id', orgIds).order('name')
-  return ((data ?? []) as Array<{
+    .from('organizations').select('id, name, slug, logo_path, color').in('id', orgIds).order('name')
+  const rows = (data ?? []) as Array<{
     id: string; name: string; slug: string | null
-    logo_url: string | null; color: string | null
-  }>).map((o) => ({
+    logo_path: string | null; color: string | null
+  }>
+  const paths = rows.filter((o) => o.logo_path).map((o) => o.logo_path!)
+  const signedUrls = await getSignedLogoUrls(paths)
+  return rows.map((o) => ({
     id: o.id,
     label: (o.slug || o.name || '').trim(),
-    logoUrl: o.logo_url ?? null,
+    logoUrl: o.logo_path ? (signedUrls[o.logo_path] ?? null) : null,
     color: o.color ?? null,
   }))
 }
 
+/** Met à jour la couleur hexadécimale de l'organisation. */
 export async function updateOrganisationBranding(orgId: string, branding: {
-  logo_url?: string | null
   color?: string | null
 }): Promise<void> {
   const { error } = await createAdminClient()
@@ -87,10 +94,19 @@ export async function updateOrganisationBranding(orgId: string, branding: {
   if (error) throw error
 }
 
+/** Enregistre le chemin bucket du logo après un upload réussi, ou null à la suppression. */
+export async function setOrganisationLogo(orgId: string, path: string | null): Promise<void> {
+  const { error } = await createAdminClient()
+    .from('organizations')
+    .update({ logo_path: path, logo_updated_at: path ? new Date().toISOString() : null })
+    .eq('id', orgId)
+  if (error) throw error
+}
+
 export async function listOrganisations(): Promise<DbOrganisation[]> {
   const sb = createAdminClient()
   const [{ data: orgs, error }, { data: users }] = await Promise.all([
-    sb.from('organizations').select('id, name, slug, created_at, logo_url, color').order('created_at', { ascending: true }),
+    sb.from('organizations').select('id, name, slug, created_at, logo_path, logo_updated_at, color').order('created_at', { ascending: true }),
     sb.from('users').select('organization_id').is('deleted_at', null),
   ])
   if (error) throw error

@@ -8,11 +8,12 @@
 import Link from 'next/link'
 import { AlertTriangle } from 'lucide-react'
 import { listUsersForAdmin, getCurrentUserWithProfile } from '@/lib/db/users'
-import { listOrganisations } from '@/lib/db/organisations'
+import { listOrganisations, getOrganizationsMeta } from '@/lib/db/organisations'
+import { EntityLogo } from '@/components/ui/EntityLogo'
 import { getUsersActivitySummary } from '@/lib/db/admin-monitoring'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CreateUserForm } from '../users/CreateUserForm'
-import { CreateOrgForm, UpdateOrgBrandingForm } from '../organisations/OrgForms'
+import { CreateOrgForm, UpdateOrgBrandingForm, UploadOrgLogoForm } from '../organisations/OrgForms'
 import { PersonnesTable, type PersonneRow } from './PersonnesTable'
 
 export const dynamic = 'force-dynamic'
@@ -24,6 +25,8 @@ export default async function AdminPersonnesPage() {
     listOrganisations(),
     getUsersActivitySummary(),
   ])
+  const orgsMeta = orgs.length > 0 ? await getOrganizationsMeta(orgs.map((o) => o.id)) : []
+  const orgsMetaById = new Map(orgsMeta.map((m) => [m.id, m]))
 
   const orgList = orgs.map((o) => ({ id: o.id, name: o.name }))
   const orgNameById = new Map(orgs.map((o) => [o.id, o.name]))
@@ -109,15 +112,20 @@ export default async function AdminPersonnesPage() {
                     <td className="px-3 py-2 font-medium">{o.name}</td>
                     <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{o.slug}</td>
                     <td className="px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        {o.logo_url && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={o.logo_url} alt="" className="h-5 w-5 rounded-sm object-contain" />
-                        )}
-                        {o.color && (
-                          <span className="inline-block h-4 w-4 rounded-sm border border-border" style={{ backgroundColor: o.color }} />
-                        )}
-                        <UpdateOrgBrandingForm orgId={o.id} currentLogoUrl={o.logo_url} currentColor={o.color} />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <EntityLogo
+                          src={orgsMetaById.get(o.id)?.logoUrl ?? null}
+                          label={o.name}
+                          size="md"
+                          variant="rounded"
+                          fallbackColor={o.color}
+                        />
+                        <UploadOrgLogoForm
+                          orgId={o.id}
+                          logoPath={o.logo_path}
+                          hasLogo={!!orgsMetaById.get(o.id)?.logoUrl}
+                        />
+                        <UpdateOrgBrandingForm orgId={o.id} currentColor={o.color} />
                       </div>
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{memberCount.get(o.id) ?? 0}</td>
