@@ -2,27 +2,50 @@
 //
 // La PWA est une interface terrain (destination par défaut : /m). L'utilisateur
 // peut basculer sur le bureau pour une tâche ponctuelle — ce choix est valide
-// 15 minutes et expire silencieusement. À chaque navigation dans le bureau,
-// l'expiration est repoussée (fenêtre glissante). Quand la fenêtre se ferme ou
-// que la session dépasse 15 min sans navigation, la prochaine ouverture de la
-// PWA revient automatiquement sur /m.
+// 15 minutes et expire silencieusement. À chaque navigation côté dashboard,
+// l'expiration est repoussée (fenêtre glissante). Quand la fenêtre expire,
+// la prochaine ouverture de la PWA revient automatiquement sur /m.
 //
-// Deux cookies (lisibles côté JS pour SwitchToDesktopLink) :
-//   pwa_standalone   = "1"                   (pose par PwaStandaloneDetector)
-//   pwa_desktop_until = ISO string            (pose par SwitchToDesktopLink)
+// Stockage :
+//   localStorage `memoria:pwa-mode:<userId>`  → { mode, expiresAt }
+//   cookie `pwa_standalone` = "1"              → lisible côté serveur (routing)
 
 export const COOKIE_PWA_STANDALONE = 'pwa_standalone'
-export const COOKIE_PWA_DESKTOP_UNTIL = 'pwa_desktop_until'
 
 export const PWA_DESKTOP_TTL_MS = 15 * 60 * 1000 // 15 minutes
 
-/** Retourne true si la fenêtre bureau est encore valide. */
-export function isPwaDesktopActive(desktopUntilValue: string | undefined | null): boolean {
-  if (!desktopUntilValue) return false
-  return new Date(desktopUntilValue).getTime() > Date.now()
+export interface PwaDesktopPreference {
+  mode: 'desktop'
+  expiresAt: string
 }
 
-/** Valeur ISO à poser dans le cookie lors d'une bascule ou d'un renouvellement. */
-export function makePwaDesktopUntilValue(): string {
-  return new Date(Date.now() + PWA_DESKTOP_TTL_MS).toISOString()
+export function pwaDesktopLsKey(userId: string): string {
+  return `memoria:pwa-mode:${userId}`
+}
+
+export function readPwaDesktopPreference(userId: string): PwaDesktopPreference | null {
+  try {
+    const raw = localStorage.getItem(pwaDesktopLsKey(userId))
+    if (!raw) return null
+    return JSON.parse(raw) as PwaDesktopPreference
+  } catch {
+    return null
+  }
+}
+
+export function isPwaDesktopPreferenceActive(pref: PwaDesktopPreference | null): boolean {
+  if (!pref) return false
+  return new Date(pref.expiresAt).getTime() > Date.now()
+}
+
+export function writePwaDesktopPreference(userId: string): void {
+  const pref: PwaDesktopPreference = {
+    mode: 'desktop',
+    expiresAt: new Date(Date.now() + PWA_DESKTOP_TTL_MS).toISOString(),
+  }
+  localStorage.setItem(pwaDesktopLsKey(userId), JSON.stringify(pref))
+}
+
+export function clearPwaDesktopPreference(userId: string): void {
+  localStorage.removeItem(pwaDesktopLsKey(userId))
 }

@@ -1,20 +1,19 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { COOKIE_PWA_DESKTOP_UNTIL, makePwaDesktopUntilValue } from '@/lib/navigation/pwa-mode'
+import { writePwaDesktopPreference } from '@/lib/navigation/pwa-mode'
 
 /**
- * Échappatoire bureau depuis la PWA terrain. Pose un cookie temporaire
- * (15 min, glissant à chaque navigation) qui signale au routing serveur
- * d'envoyer vers /dashboard plutôt que /m. La préférence utilisateur
- * en base n'est PAS modifiée : ce choix est ponctuel, pas permanent.
- * La prochaine ouverture de la PWA après expiration revient sur /m.
+ * Échappatoire bureau depuis la PWA terrain. Écrit la préférence temporaire
+ * (15 min, glissante à chaque navigation dans le dashboard) dans localStorage,
+ * liée au userId pour éviter qu'un utilisateur B hérite du choix de l'utilisateur A
+ * sur un téléphone partagé. La préférence utilisateur en base n'est PAS modifiée.
  */
-export function SwitchToDesktopLink() {
+export function SwitchToDesktopLink({ userId }: { userId: string }) {
   const router = useRouter()
 
   function handleClick() {
-    document.cookie = `${COOKIE_PWA_DESKTOP_UNTIL}=${makePwaDesktopUntilValue()}; path=/; SameSite=Lax`
+    writePwaDesktopPreference(userId)
     router.push('/dashboard')
   }
 

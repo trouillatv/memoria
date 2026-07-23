@@ -1,13 +1,8 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import {
-  COOKIE_PWA_STANDALONE,
-  COOKIE_PWA_DESKTOP_UNTIL,
-  isPwaDesktopActive,
-  makePwaDesktopUntilValue,
-} from '@/lib/navigation/pwa-mode'
+import { COOKIE_PWA_STANDALONE } from '@/lib/navigation/pwa-mode'
 
-// Middleware (renommé "proxy" en Next 16). Quatre rôles :
+// Middleware (renommé "proxy" en Next 16). Trois rôles :
 //  1. Exposer pathname aux Server Components via header `x-pathname` (utilisé
 //     par (dashboard)/layout.tsx pour le cas /account, accessible à tous rôles).
 //  2. Rediriger /login vers /missions si l'utilisateur est déjà authentifié,
@@ -15,10 +10,6 @@ import {
 //  3. Enforce le flag must_change_password depuis app_metadata du JWT (posé
 //     par app/admin/users/actions.ts, effacé par change-password/actions.ts).
 //     Aucune query DB par requête — tout est lu depuis le JWT.
-//  4. Fenêtre bureau PWA glissante : si pwa_desktop_until est actif, le
-//     renouveler à chaque requête non-auth (15 min supplémentaires). Si la
-//     fenêtre a expiré, le cookie est retiré pour que la prochaine ouverture
-//     de la PWA revienne sur /m.
 
 export async function proxy(request: NextRequest) {
   const url = new URL(request.url)
@@ -89,8 +80,7 @@ export async function proxy(request: NextRequest) {
   }
   if (user && pathname === '/login') {
     const isPwa = request.cookies.get(COOKIE_PWA_STANDALONE)?.value === '1'
-    const desktopActive = isPwaDesktopActive(request.cookies.get(COOKIE_PWA_DESKTOP_UNTIL)?.value)
-    const dest = isPwa ? (desktopActive ? '/dashboard' : '/m') : '/missions'
+    const dest = isPwa ? '/m' : '/missions'
     return NextResponse.redirect(new URL(dest, request.url))
   }
 
@@ -101,27 +91,6 @@ export async function proxy(request: NextRequest) {
     const mustChange = user.app_metadata?.must_change_password === true
     if (mustChange) {
       return NextResponse.redirect(new URL('/change-password', request.url))
-    }
-  }
-
-  // Fenêtre bureau PWA — expiration glissante.
-  // Si pwa_desktop_until est encore valide, le renouveler (15 min depuis maintenant).
-  // Si expiré, le retirer explicitement pour que la prochaine ouverture de la PWA
-  // revienne sur /m sans attendre l'effacement côté client.
-  if (user) {
-    const isPwa = request.cookies.get(COOKIE_PWA_STANDALONE)?.value === '1'
-    if (isPwa) {
-      const desktopUntil = request.cookies.get(COOKIE_PWA_DESKTOP_UNTIL)?.value
-      if (isPwaDesktopActive(desktopUntil)) {
-        response.cookies.set(COOKIE_PWA_DESKTOP_UNTIL, makePwaDesktopUntilValue(), {
-          path: '/', sameSite: 'lax', httpOnly: false,
-        })
-      } else if (desktopUntil) {
-        // Cookie présent mais expiré : le retirer pour éviter des comparaisons inutiles.
-        response.cookies.set(COOKIE_PWA_DESKTOP_UNTIL, '', {
-          path: '/', sameSite: 'lax', maxAge: 0,
-        })
-      }
     }
   }
 

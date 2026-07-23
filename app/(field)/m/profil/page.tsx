@@ -59,7 +59,7 @@ export default async function ProfilPage() {
 
       {(user.role === 'admin' || user.role === 'manager') && (
         <div className="rounded-xl border bg-card px-3.5 py-3 text-sm">
-          <SwitchToDesktopLink />
+          <SwitchToDesktopLink userId={user.id} />
         </div>
       )}
 
