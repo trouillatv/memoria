@@ -1,7 +1,6 @@
 import { resolveResourceAccess } from '@/lib/auth/resource-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/db/users'
 import { getOrgIdsOfUser, requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
 import { todayLocalIso } from '@/lib/time/local-date'
@@ -612,19 +611,22 @@ export async function createSite(input: {
 // =================================
 
 /** Trouve (par nom, dans l'org) ou crée un client léger. Pour le donneur d'ordre d'un AO. */
-export async function findOrCreateClientByName(name: string): Promise<string> {
+export async function findOrCreateClientByName(name: string, organizationId: string): Promise<string> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
   const trimmed = name.trim()
-  let findQ = supabase.from('clients').select('id').ilike('name', trimmed).is('deleted_at', null).limit(1)
-  if (orgId) findQ = findQ.eq('organization_id', orgId)
-  const { data: existing } = await findQ
+  const { data: existing } = await supabase
+    .from('clients')
+    .select('id')
+    .ilike('name', trimmed)
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .limit(1)
   const hit = (existing ?? [])[0] as { id: string } | undefined
   if (hit) return hit.id
 
   const { data, error } = await supabase
     .from('clients')
-    .insert({ name: trimmed, ...(orgId ? { organization_id: orgId } : {}) })
+    .insert({ name: trimmed, organization_id: organizationId })
     .select('id')
     .single()
   if (error) throw error

@@ -1,4 +1,4 @@
-// Glossaire métier (mig 150) — référentiel terme / définition / alias, par org.
+﻿// Glossaire métier (mig 150) — référentiel terme / définition / alias, par org.
 // Géré à la main, destiné à nourrir les corrections de transcription. Pas de LLM.
 
 export const dynamic = 'force-dynamic'
@@ -7,6 +7,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listGlossaryTerms } from '@/lib/db/glossary'
 import { GlossaryManager } from './GlossaryManager'
+import { getOrgsForSelector } from '@/components/ui/org-selector'
 
 export default async function GlossairePage() {
   const user = await getCurrentUserWithProfile()
@@ -15,7 +16,10 @@ export default async function GlossairePage() {
   // parler le même vocabulaire. ÉDITION réservée aux admins (référentiel partagé).
   const canEdit = user.role === 'admin'
 
-  const terms = await listGlossaryTerms()
+  const [terms, orgs] = await Promise.all([
+    listGlossaryTerms(),
+    canEdit ? getOrgsForSelector() : Promise.resolve([]),
+  ])
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-5">
@@ -30,10 +34,10 @@ export default async function GlossairePage() {
         <p className="text-xs text-muted-foreground/80">
           {canEdit
             ? 'Termes de démarrage fournis — à adapter, compléter ou supprimer selon votre vocabulaire.'
-            : 'Consultable par tous ; l’édition est réservée aux administrateurs.'}
+            : "Consultable par tous ; l'édition est réservée aux administrateurs."}
         </p>
       </header>
-      <GlossaryManager terms={terms} canEdit={canEdit} />
+      <GlossaryManager terms={terms} canEdit={canEdit} orgs={orgs} />
     </div>
   )
 }

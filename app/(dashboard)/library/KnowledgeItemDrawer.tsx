@@ -31,6 +31,7 @@ import {
 } from './actions'
 import { toast } from 'sonner'
 import type { DbKnowledgeItem, KnowledgeCategory } from '@/types/db'
+import type { OrgOption } from '@/components/ui/org-selector-client'
 
 const CATEGORY_LABELS: Record<KnowledgeCategory, string> = {
   references_clients: 'Références clients',
@@ -45,10 +46,12 @@ export function KnowledgeItemDrawer({
   trigger,
   item,
   defaultCategory,
+  orgs,
 }: {
   trigger: React.ReactElement
   item?: DbKnowledgeItem
   defaultCategory?: KnowledgeCategory
+  orgs?: OrgOption[]
 }) {
   const isEdit = !!item
   const [open, setOpen] = useState(false)
@@ -63,6 +66,7 @@ export function KnowledgeItemDrawer({
   const [filePath, setFilePath] = useState<string | null>(
     item?.file_path ?? null,
   )
+  const [selectedOrgId, setSelectedOrgId] = useState(orgs?.[0]?.id ?? '')
   const [pending, setPending] = useState(false)
 
   // Helper: apply template for a given category
@@ -132,6 +136,7 @@ export function KnowledgeItemDrawer({
     fd.set('file_path', filePath ?? '')
     fd.set('tags', JSON.stringify(tags))
     if (isEdit && item) fd.set('id', item.id)
+    if (!isEdit && selectedOrgId) fd.set('organization_id', selectedOrgId)
 
     const r = isEdit
       ? await updateKnowledgeItemAction(fd)
@@ -244,6 +249,22 @@ export function KnowledgeItemDrawer({
               </div>
             )}
           </div>
+
+          {!isEdit && orgs && orgs.length > 1 && (
+            <div className="space-y-2">
+              <Label htmlFor="kd-org">Organisation</Label>
+              <select
+                id="kd-org"
+                value={selectedOrgId}
+                onChange={(e) => setSelectedOrgId(e.target.value)}
+                required
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Sélectionner une organisation</option>
+                {orgs.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="file">Fichier joint (optionnel, max 10 MB)</Label>

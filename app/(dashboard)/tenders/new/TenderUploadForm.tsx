@@ -9,6 +9,8 @@ import { createTenderAction } from './actions'
 import { toast } from 'sonner'
 import { Upload, FileText, X } from 'lucide-react'
 import { detectPieceKind, tenderPieceLabel } from '@/lib/tenders/pieces'
+import { OrgSelectorClient } from '@/components/ui/org-selector-client'
+import type { OrgOption } from '@/components/ui/org-selector-client'
 
 const MAX_PIECES = 12
 
@@ -17,7 +19,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`
 }
 
-export function TenderUploadForm({ dossierId }: { dossierId?: string }) {
+export function TenderUploadForm({ dossierId, orgs }: { dossierId?: string; orgs?: OrgOption[] }) {
   const [pending, setPending] = useState(false)
   // Un appel d'offres est un DOSSIER : RC, CCAP, CCTP, DPGF, BPU, plans. On en
   // accepte plusieurs — une seule pièce reste un dépôt valide.
@@ -109,6 +111,7 @@ export function TenderUploadForm({ dossierId }: { dossierId?: string }) {
         <form onSubmit={onSubmit} className="space-y-4">
           {/* AO créé DEPUIS une affaire → rattachement auto (pas de manip). */}
           {dossierId && <input type="hidden" name="dossier_id" value={dossierId} />}
+          {orgs && <OrgSelectorClient orgs={orgs} />}
           <div className="space-y-2">
             <Label htmlFor="title">Titre du dossier</Label>
             <Input id="title" name="title" required maxLength={200} placeholder="Ex. Marché d'entretien et de travaux 2026" />

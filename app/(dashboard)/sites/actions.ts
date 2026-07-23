@@ -10,8 +10,8 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getUserRoleById, getOrgId } from '@/lib/db/users'
-import { requireOrganizationMembership } from '@/lib/auth/memberships'
+import { getUserRoleById } from '@/lib/db/users'
+import { requireOrganizationMembership, getOrgIdsOfUser } from '@/lib/auth/memberships'
 import {
   updateSite,
   softDeleteSite,
@@ -186,6 +186,7 @@ const createSiteGlobalSchema = z.object({
   contact_phone: z.string().max(50).optional(),
   access_hours: z.string().max(200).optional(),
   access_instructions: z.string().max(1000).optional(),
+  organization_id: z.string().uuid().optional(),
 })
 
 export interface SimilarSiteResult {
@@ -228,12 +229,13 @@ export async function createSiteGlobalAction(
     contact_phone: formData.get('contact_phone') || undefined,
     access_hours: formData.get('access_hours') || undefined,
     access_instructions: formData.get('access_instructions') || undefined,
+    organization_id: formData.get('organization_id') || undefined,
   }
 
   const parsed = createSiteGlobalSchema.safeParse(raw)
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Données invalides' }
 
-  const { name, client_id, client_name_new, no_client, contract_id, force, ...rest } = parsed.data
+  const { name, client_id, client_name_new, no_client, contract_id, force, organization_id, ...rest } = parsed.data
 
   // Le « sans client » est un CHOIX, jamais un champ vide : un formulaire qu'on
   // valide sans y penser ne distingue plus l'oubli de la décision.
@@ -244,8 +246,19 @@ export async function createSiteGlobalAction(
     }
   }
 
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { error: 'Aucune organisation active' }
+  let organizationId: string
+  if (orgIds.length === 1) {
+    organizationId = orgIds[0]
+  } else {
+    if (!organization_id || !orgIds.includes(organization_id)) {
+      return { error: 'Sélectionnez une organisation' }
+    }
+    organizationId = organization_id
+  }
+
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
   let resolvedClientId: string | null = null
   let resolvedClientName: string | null = null
 
@@ -262,20 +275,20 @@ export async function createSiteGlobalAction(
     // Création ou lookup du client par nom (scoped to org). Un client ne naît
     // JAMAIS d'une déduction : ce nom a été saisi et confirmé par un humain.
     const trimmedClientName = client_name_new.trim()
-    let qExisting = supabase
+    const { data: existing } = await supabase
       .from('clients')
       .select('id, name')
       .ilike('name', trimmedClientName)
+      .eq('organization_id', organizationId)
       .is('deleted_at', null)
-    if (orgId) qExisting = qExisting.eq('organization_id', orgId)
-    const { data: existing } = await qExisting.maybeSingle()
+      .maybeSingle()
     if (existing) {
       resolvedClientId = existing.id
       resolvedClientName = existing.name
     } else {
       const { data: created, error: createErr } = await supabase
         .from('clients')
-        .insert({ name: trimmedClientName, ...(orgId ? { organization_id: orgId } : {}) })
+        .insert({ name: trimmedClientName, organization_id: organizationId })
         .select('id, name')
         .single()
       if (createErr || !created) return { error: 'Impossible de créer le client' }
@@ -304,7 +317,6 @@ export async function createSiteGlobalAction(
     if (similar.length > 0) return { similar }
   }
 
-  // M3_TEMP_B — B-formulaire : orgId (getOrgId() ligne 248) jusqu'au sélecteur multi-org
   const siteId = await createSite({
     client_id: resolvedClientId,
     contract_id: contract_id ?? null,
@@ -318,7 +330,7 @@ export async function createSiteGlobalAction(
     contact_phone: rest.contact_phone ?? null,
     access_hours: rest.access_hours ?? null,
     access_instructions: rest.access_instructions ?? null,
-    organization_id: orgId ?? undefined,
+    organization_id: organizationId,
   })
 
   revalidatePath('/sites')

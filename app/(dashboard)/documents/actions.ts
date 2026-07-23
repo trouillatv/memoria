@@ -12,7 +12,8 @@ import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/lib/audit/log'
-import { getUserRoleById, getOrgId } from '@/lib/db/users'
+import { getUserRoleById } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import {
   createDocument,
   addDocumentLink,
@@ -95,13 +96,24 @@ export async function createDocumentCollectionAction(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { ok: false, error: 'Aucune organisation active' }
+  let organizationId: string
+  if (orgIds.length === 1) {
+    organizationId = orgIds[0]
+  } else {
+    const rawOrgId = formData.get('organization_id') as string | null
+    if (!rawOrgId || !orgIds.includes(rawOrgId)) {
+      return { ok: false, error: 'Sélectionnez une organisation' }
+    }
+    organizationId = rawOrgId
+  }
   try {
-    const orgId = await getOrgId() // M3_TEMP_B — B-formulaire : getOrgId() jusqu'au sélecteur multi-org
     const collectionId = await createDocumentCollection({
       name: parsed.data.name,
       scope_type: parsed.data.scope_type ?? null,
       scope_id: parsed.data.scope_id ?? null,
-      organization_id: orgId ?? undefined,
+      organization_id: organizationId,
     })
     return { ok: true, collectionId }
   } catch (e) {

@@ -7,20 +7,22 @@ import { createGlossaryTermAction, deleteGlossaryTermAction, loadDefaultGlossary
 import { GLOSSARY_CATEGORIES } from '@/lib/db/glossary-constants'
 import { DEFAULT_GLOSSARY } from '@/lib/db/glossary-seed'
 import type { GlossaryTerm } from '@/lib/db/glossary'
+import type { OrgOption } from '@/components/ui/org-selector-client'
 
-export function GlossaryManager({ terms, canEdit = false }: { terms: GlossaryTerm[]; canEdit?: boolean }) {
+export function GlossaryManager({ terms, canEdit = false, orgs }: { terms: GlossaryTerm[]; canEdit?: boolean; orgs?: OrgOption[] }) {
   const router = useRouter()
   const [term, setTerm] = useState('')
   const [definition, setDefinition] = useState('')
   const [category, setCategory] = useState('')
   const [aliases, setAliases] = useState('')
+  const [orgId, setOrgId] = useState(orgs?.[0]?.id ?? '')
   const [error, setError] = useState<string | null>(null)
   const [pending, start] = useTransition()
 
   function add() {
     setError(null)
     start(async () => {
-      const res = await createGlossaryTermAction({ term, definition, category, aliases })
+      const res = await createGlossaryTermAction({ term, definition, category, aliases, organization_id: orgId || undefined })
       if (res.ok) { setTerm(''); setDefinition(''); setCategory(''); setAliases(''); router.refresh() }
       else setError(res.error ?? 'Échec')
     })
@@ -36,7 +38,7 @@ export function GlossaryManager({ terms, canEdit = false }: { terms: GlossaryTer
   function loadDefaults() {
     setError(null)
     start(async () => {
-      const res = await loadDefaultGlossaryAction()
+      const res = await loadDefaultGlossaryAction({ organization_id: orgId || undefined })
       if (res.ok) router.refresh()
       else setError(res.error ?? 'Échec')
     })
@@ -88,6 +90,17 @@ export function GlossaryManager({ terms, canEdit = false }: { terms: GlossaryTer
           placeholder="Définition (optionnel)"
           className="w-full rounded-lg border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
         />
+        {orgs && orgs.length > 1 && (
+          <select
+            value={orgId}
+            onChange={(e) => setOrgId(e.target.value)}
+            required
+            className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">Sélectionner une organisation</option>
+            {orgs.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+        )}
         {error && <p className="text-xs text-rose-700">{error}</p>}
         <button
           type="button" onClick={add} disabled={pending || !term.trim()}

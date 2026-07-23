@@ -13,6 +13,7 @@ import { MapPin, ChevronRight, Building2 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listSitesGlobal, isSiteInactive, listClients, listSitesForMatching } from '@/lib/db/sites'
 import { listActiveContractsLite } from '@/lib/db/sites'
+import { getOrgsForSelector } from '@/components/ui/org-selector'
 import { SiteGlobalRow } from './SiteGlobalRow'
 import { CreateSiteDialog } from './CreateSiteDialog'
 
@@ -24,11 +25,12 @@ export default async function SitesGlobalPage() {
   if (!user) redirect('/login')
   if (user.role !== 'admin' && user.role !== 'manager') redirect('/m')
 
-  const [sites, clients, contracts, allSites] = await Promise.all([
+  const [sites, clients, contracts, allSites, orgs] = await Promise.all([
     listSitesGlobal(),
     listClients(),
     listActiveContractsLite(),
     listSitesForMatching(),
+    getOrgsForSelector(),
   ])
 
   // Grouper par client
@@ -59,7 +61,7 @@ export default async function SitesGlobalPage() {
             6 mois sans intervention.
           </p>
         </div>
-        <CreateSiteDialog clients={clients} contracts={contracts} allSites={allSites} />
+        <CreateSiteDialog clients={clients} contracts={contracts} allSites={allSites} orgs={orgs} />
       </header>
 
       {sites.length === 0 ? (

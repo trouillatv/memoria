@@ -13,6 +13,7 @@ import {
   getKnowledgeItem,
 } from '@/lib/db/knowledge'
 import { getUserRoleById } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { embedKnowledgeItemChunks } from '@/lib/ai/embed-knowledge-chunks'
 
 async function requireManagerOrAdmin() {
@@ -45,6 +46,20 @@ const idSchema = z.object({ id: z.string().uuid() })
 
 export async function createKnowledgeItemAction(formData: FormData) {
   const userId = await requireManagerOrAdmin()
+
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { error: 'Aucune organisation active' }
+  let organizationId: string
+  if (orgIds.length === 1) {
+    organizationId = orgIds[0]
+  } else {
+    const rawOrgId = formData.get('organization_id') as string | null
+    if (!rawOrgId || !orgIds.includes(rawOrgId)) {
+      return { error: 'Sélectionnez une organisation' }
+    }
+    organizationId = rawOrgId
+  }
+
   const tagsRaw = formData.get('tags')
   const parsed = upsertSchema.safeParse({
     title: formData.get('title'),
@@ -55,7 +70,7 @@ export async function createKnowledgeItemAction(formData: FormData) {
   })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
-  const id = await createKnowledgeItem(parsed.data)
+  const id = await createKnowledgeItem({ ...parsed.data, organization_id: organizationId })
   await logAuditEvent({
     userId, entityType: 'knowledge_item', entityId: id,
     action: 'created',

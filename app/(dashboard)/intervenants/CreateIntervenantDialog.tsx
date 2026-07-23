@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { createIntervenantAction } from './actions'
+import type { OrgOption } from '@/components/ui/org-selector-client'
 
 type Role = 'admin' | 'manager' | 'chef_equipe'
 type Employment = 'cdi' | 'cdd' | 'cdi_chantier'
@@ -37,7 +38,7 @@ const EMPLOYMENT_LABELS: Record<Employment, string> = {
   cdi_chantier: 'CDI Chantier',
 }
 
-export function CreateIntervenantDialog() {
+export function CreateIntervenantDialog({ orgs }: { orgs?: OrgOption[] }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
@@ -49,6 +50,7 @@ export function CreateIntervenantDialog() {
   const [role, setRole] = useState<Role>('chef_equipe')
   const [employment, setEmployment] = useState<Employment | ''>('')
   const [contractEndDate, setContractEndDate] = useState('')
+  const [orgId, setOrgId] = useState(orgs?.[0]?.id ?? '')
 
   // Un CDD / CDI Chantier a une fin attendue → on exige la date (Continuité).
   const needsEndDate = employment === 'cdd' || employment === 'cdi_chantier'
@@ -61,6 +63,7 @@ export function CreateIntervenantDialog() {
     setRole('chef_equipe')
     setEmployment('')
     setContractEndDate('')
+    setOrgId(orgs?.[0]?.id ?? '')
   }
 
   const canSubmit =
@@ -80,6 +83,7 @@ export function CreateIntervenantDialog() {
         commune: commune.trim() === '' ? null : commune.trim(),
         employment_type: employment === '' ? null : employment,
         contract_end_date: needsEndDate && contractEndDate !== '' ? contractEndDate : null,
+        organization_id: orgId || undefined,
       })
       if (!r.ok) {
         toast.error(r.error)
@@ -172,6 +176,22 @@ export function CreateIntervenantDialog() {
               className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
+
+          {orgs && orgs.length > 1 && (
+            <Field label="Organisation *" htmlFor="cri-org">
+              <select
+                id="cri-org"
+                value={orgId}
+                onChange={(e) => setOrgId(e.target.value)}
+                required
+                disabled={pending}
+                className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">Sélectionner une organisation</option>
+                {orgs.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </Field>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Rôle *" htmlFor="cri-role">

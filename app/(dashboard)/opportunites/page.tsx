@@ -4,6 +4,7 @@ import { Compass, MapPin, ChevronRight, Plus } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listOpportunityDossiers } from '@/lib/db/dossiers'
 import { createProspectAction } from './actions'
+import { OrgSelector } from '@/components/ui/org-selector'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -59,6 +60,7 @@ export default async function OpportunitesPage() {
             />
           </label>
         </div>
+        <OrgSelector />
         <button
           type="submit"
           className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background hover:opacity-90"

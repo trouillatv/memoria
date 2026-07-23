@@ -187,22 +187,19 @@ export async function createProspectDossier(input: {
   clientName?: string | null    // donneur d'ordre — OPTIONNEL (terrain mobile)
   siteName?: string | null      // nom du LIEU — défaut = name (desktop)
   address?: string | null
+  organizationId: string        // organisation propriétaire du dossier
 }): Promise<{ dossierId: string; siteId: string }> {
   // Client optionnel : à défaut, on rattache un client provisoire nommé comme
   // l'affaire (le donneur d'ordre sera précisé au bureau). sites.client_id est NOT NULL.
   const clientLabel = input.clientName?.trim() || input.name.trim()
-  const clientId = await findOrCreateClientByName(clientLabel)
-  // M3_TEMP_B — pas de contrat parent : l'org vient de la session jusqu'au sélecteur multi-org
-  const orgIds = await getOrgIdsOfUser()
-  if (orgIds.length !== 1) throw new Error('Organisation indéterminée pour créer le dossier prospect')
-  const orgId = orgIds[0]
+  const clientId = await findOrCreateClientByName(clientLabel, input.organizationId)
   const siteId = await createSite({
     client_id: clientId,
     contract_id: null,
     name: (input.siteName?.trim() || input.name).trim(),
     address: input.address ?? null,
     phase: 'prospect',
-    organization_id: orgId,
+    organization_id: input.organizationId,
   })
   const dossierId = await createDossier({
     siteId,

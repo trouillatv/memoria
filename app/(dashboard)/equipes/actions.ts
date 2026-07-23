@@ -16,6 +16,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import {
   createTeam,
   updateTeam,
@@ -148,9 +149,22 @@ export async function createTeamAction(input: {
   name: string
   color?: string | null
   icon?: string | null
+  organization_id?: string
 }): Promise<CreateTeamResult> {
   const auth = await requireManagerOrAdmin()
   if ('error' in auth) return { ok: false, error: auth.error }
+
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { ok: false, error: 'Aucune organisation active' }
+  let organizationId: string
+  if (orgIds.length === 1) {
+    organizationId = orgIds[0]
+  } else {
+    if (!input.organization_id || !orgIds.includes(input.organization_id)) {
+      return { ok: false, error: 'Sélectionnez une organisation' }
+    }
+    organizationId = input.organization_id
+  }
 
   const parsed = createSchema.safeParse(input)
   if (!parsed.success) {
@@ -163,6 +177,7 @@ export async function createTeamAction(input: {
       color: parsed.data.color ?? null,
       icon: parsed.data.icon ?? null,
       created_by: auth.userId,
+      organization_id: organizationId,
     })
     await logAuditEvent({
       userId: auth.userId,

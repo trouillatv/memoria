@@ -5,8 +5,7 @@
 // (« finisher » → « finisseur »). Pas de LLM, pas de RAG.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
-import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { getOrgIdsOfUser, requireOrganizationMembership } from '@/lib/auth/memberships'
 import { DEFAULT_GLOSSARY } from './glossary-seed'
 
 // Re-export pour compat (les appelants serveur peuvent garder l'import depuis ici).
@@ -100,13 +99,13 @@ export async function createGlossaryTerm(input: {
   category?: string | null
   aliases?: string[]
   createdBy: string | null
+  organization_id: string
 }): Promise<string> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
   const { data, error } = await supabase
     .from('glossary_terms')
     .insert({
-      organization_id: orgId,
+      organization_id: input.organization_id,
       term: input.term,
       definition: input.definition ?? null,
       category: input.category ?? null,
@@ -124,16 +123,18 @@ export async function createGlossaryTerm(input: {
  * courante. IDEMPOTENT : ne réinsère pas un terme déjà présent (comparaison
  * insensible à la casse). Renvoie le nombre de termes effectivement ajoutés.
  */
-export async function seedDefaultGlossary(createdBy: string | null): Promise<{ inserted: number; skipped: number }> {
+export async function seedDefaultGlossary(
+  createdBy: string | null,
+  organization_id: string,
+): Promise<{ inserted: number; skipped: number }> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
   const existing = await listGlossaryTerms()
   const have = new Set(existing.map((t) => t.term.trim().toLowerCase()))
   const toInsert = DEFAULT_GLOSSARY.filter((t) => !have.has(t.term.trim().toLowerCase()))
   if (toInsert.length === 0) return { inserted: 0, skipped: DEFAULT_GLOSSARY.length }
   const { error } = await supabase.from('glossary_terms').insert(
     toInsert.map((t) => ({
-      organization_id: orgId,
+      organization_id,
       term: t.term,
       definition: t.definition,
       category: t.category,
@@ -145,12 +146,17 @@ export async function seedDefaultGlossary(createdBy: string | null): Promise<{ i
   return { inserted: toInsert.length, skipped: DEFAULT_GLOSSARY.length - toInsert.length }
 }
 
-/** Suppression — gardée scopée à l'organisation de l'utilisateur courant. */
+/** Suppression — vérifie que l'utilisateur est membre de l'org du terme. */
 export async function deleteGlossaryTerm(id: string): Promise<void> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
-  let q = supabase.from('glossary_terms').delete().eq('id', id)
-  if (orgId) q = q.eq('organization_id', orgId)
-  const { error } = await q
+  const { data: term } = await supabase
+    .from('glossary_terms')
+    .select('organization_id')
+    .eq('id', id)
+    .maybeSingle()
+  if (!term?.organization_id) throw new Error('Terme introuvable')
+  const membership = await requireOrganizationMembership(term.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
+  const { error } = await supabase.from('glossary_terms').delete().eq('id', id)
   if (error) throw error
 }

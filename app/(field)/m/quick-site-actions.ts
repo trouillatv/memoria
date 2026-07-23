@@ -8,7 +8,7 @@
 
 import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
-import { getOrgId } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { createSite, findOrCreateClientByName, buildCanonicalSiteKey } from '@/lib/db/sites'
 import { createVisit } from '@/lib/db/visits'
 
@@ -16,6 +16,7 @@ const schema = z.object({
   name: z.string().trim().min(1).max(200),
   address: z.string().trim().max(500).optional(),
   clientName: z.string().trim().max(200).optional(),
+  organizationId: z.string().uuid().optional(),
 })
 
 /** Client de repli quand aucun n'est précisé — « on rattachera plus tard ». */
@@ -31,18 +32,30 @@ export async function quickCreateSiteVisitAction(
   if (!parsed.success) return { ok: false, error: 'Le nom du chantier est requis' }
   const { name, address, clientName } = parsed.data
 
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { ok: false, error: 'Aucune organisation active' }
+  let organizationId: string
+  if (orgIds.length === 1) {
+    organizationId = orgIds[0]
+  } else {
+    const rawOrgId = parsed.data.organizationId
+    if (!rawOrgId || !orgIds.includes(rawOrgId)) {
+      return { ok: false, error: 'Sélectionnez une organisation' }
+    }
+    organizationId = rawOrgId
+  }
+
   try {
     const resolvedClientName = clientName || UNASSIGNED_CLIENT
-    const clientId = await findOrCreateClientByName(resolvedClientName)
+    const clientId = await findOrCreateClientByName(resolvedClientName, organizationId)
     const canonicalKey = buildCanonicalSiteKey(resolvedClientName, name)
-    const orgId = await getOrgId() // M3_TEMP_B — B-technique : getOrgId() jusqu'au sélecteur multi-org
     const siteId = await createSite({
       client_id: clientId,
       contract_id: null,
       name,
       address: address ?? null,
       canonical_site_key: canonicalKey,
-      organization_id: orgId ?? undefined,
+      organization_id: organizationId,
     })
 
     // Première visite lancée tout de suite — le panier terrain s'ouvre au retour
@@ -69,18 +82,30 @@ export async function quickCreateSiteAction(
   if (!parsed.success) return { ok: false, error: 'Le nom du chantier est requis' }
   const { name, address, clientName } = parsed.data
 
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { ok: false, error: 'Aucune organisation active' }
+  let organizationId: string
+  if (orgIds.length === 1) {
+    organizationId = orgIds[0]
+  } else {
+    const rawOrgId = parsed.data.organizationId
+    if (!rawOrgId || !orgIds.includes(rawOrgId)) {
+      return { ok: false, error: 'Sélectionnez une organisation' }
+    }
+    organizationId = rawOrgId
+  }
+
   try {
     const resolvedClientName = clientName || UNASSIGNED_CLIENT
-    const clientId = await findOrCreateClientByName(resolvedClientName)
+    const clientId = await findOrCreateClientByName(resolvedClientName, organizationId)
     const canonicalKey = buildCanonicalSiteKey(resolvedClientName, name)
-    const orgId2 = await getOrgId() // M3_TEMP_B — B-technique : getOrgId() jusqu'au sélecteur multi-org
     const siteId = await createSite({
       client_id: clientId,
       contract_id: null,
       name,
       address: address ?? null,
       canonical_site_key: canonicalKey,
-      organization_id: orgId2 ?? undefined,
+      organization_id: organizationId,
     })
     return { ok: true, siteId, siteName: name }
   } catch {

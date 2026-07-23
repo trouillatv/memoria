@@ -29,13 +29,15 @@ import { TeamBadge } from '@/components/ui/team-badge'
 import { TeamColorPicker } from '@/components/ui/team-color-picker'
 import { TeamIconPicker, type TeamIconName } from '@/components/ui/team-icon-picker'
 import { createTeamAction } from './actions'
+import type { OrgOption } from '@/components/ui/org-selector-client'
 
-export function CreateTeamButton() {
+export function CreateTeamButton({ orgs }: { orgs?: OrgOption[] }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [color, setColor] = useState<string | null>(null)
   const [icon, setIcon] = useState<TeamIconName | null>(null)
+  const [orgId, setOrgId] = useState(orgs?.[0]?.id ?? '')
   const [pending, startTransition] = useTransition()
 
   const trimmed = name.trim()
@@ -45,6 +47,7 @@ export function CreateTeamButton() {
     setName('')
     setColor(null)
     setIcon(null)
+    setOrgId(orgs?.[0]?.id ?? '')
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -55,6 +58,7 @@ export function CreateTeamButton() {
         name: trimmed,
         color,
         icon,
+        organization_id: orgId || undefined,
       })
       if (result.ok) {
         toast.success('Équipe créée')
@@ -141,6 +145,23 @@ export function CreateTeamButton() {
               Trois rendus selon le contexte&nbsp;: chip colorée · point compact · monochrome (N&B / contraste).
             </p>
           </div>
+
+          {orgs && orgs.length > 1 && (
+            <div className="space-y-1.5">
+              <Label htmlFor="team-org">Organisation</Label>
+              <select
+                id="team-org"
+                value={orgId}
+                onChange={(e) => setOrgId(e.target.value)}
+                required
+                disabled={pending}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Sélectionner une organisation</option>
+                {orgs.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label>Couleur</Label>

@@ -17,7 +17,8 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { logAuditEvent } from '@/lib/audit/log'
-import { updateUserProfileAsAdmin, getUserRoleById, getOrgId } from '@/lib/db/users'
+import { updateUserProfileAsAdmin, getUserRoleById } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { assignUserToOrg } from '@/lib/db/organisations'
 import { updateContractEndDate } from '@/lib/db/continuity'
 
@@ -33,6 +34,7 @@ const createSchema = z
     commune:          z.string().max(120).optional().nullable(),
     employment_type:  z.enum(['cdi', 'cdd', 'cdi_chantier']).optional().nullable(),
     contract_end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide').optional().nullable(),
+    organization_id:  z.string().uuid().optional(),
   })
   // CDD / CDI Chantier → on doit savoir QUAND le contrat se termine (pour
   // anticiper la passation de mémoire). Un CDI n'a pas de fin attendue.
@@ -110,7 +112,18 @@ export async function createIntervenantAction(
   // Sans ça, organization_id reste null (ni le trigger DB ni createUser ne le
   // posent) et l'intervenant n'apparaît jamais dans la liste ni dans le
   // sélecteur d'équipe, tous deux scopés par org.
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  let orgId: string | null = null
+  if (orgIds.length === 1) {
+    orgId = orgIds[0]
+  } else if (orgIds.length > 1) {
+    const rawOrgId = parsed.data.organization_id
+    if (rawOrgId && orgIds.includes(rawOrgId)) {
+      orgId = rawOrgId
+    } else {
+      return { ok: false, error: 'Sélectionnez une organisation' }
+    }
+  }
   if (orgId) {
     await assignUserToOrg(data.user.id, orgId)
   }

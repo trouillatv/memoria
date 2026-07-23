@@ -14,6 +14,7 @@ import {
   applySiteExtendedToFormData,
 } from './SiteExtendedFields'
 import type { ClientLite, ContractLite, SiteForMatching } from '@/lib/db/sites'
+import type { OrgOption } from '@/components/ui/org-selector-client'
 
 // ---------------------------------------------------------------------------
 // Similarité trigram côté client — même algorithme que le serveur.
@@ -52,6 +53,7 @@ interface Props {
   clients: ClientLite[]
   contracts: ContractLite[]
   allSites: SiteForMatching[]
+  orgs?: OrgOption[]
 }
 
 type DialogStep = 'closed' | 'form' | 'dup_warning'
@@ -59,10 +61,11 @@ type DialogStep = 'closed' | 'form' | 'dup_warning'
 const INPUT = 'w-full rounded border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 disabled:opacity-50'
 const SELECT = 'w-full rounded border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 disabled:opacity-50 appearance-none'
 
-export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
+export function CreateSiteDialog({ clients, contracts, allSites, orgs }: Props) {
   const router = useRouter()
   const [step, setStep] = useState<DialogStep>('closed')
   const [pending, startTransition] = useTransition()
+  const [selectedOrgId, setSelectedOrgId] = useState(orgs?.[0]?.id ?? '')
 
   // Champs du formulaire
   const [name, setName] = useState('')
@@ -88,6 +91,7 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
     setContractId(''); setAddress(''); setNotes('')
     setExtended(emptySiteExtendedState())
     setLiveSimilar([]); setServerSimilar([])
+    setSelectedOrgId(orgs?.[0]?.id ?? '')
   }
 
   function close() { setStep('closed'); reset() }
@@ -122,6 +126,7 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
     if (address.trim()) fd.set('address', address.trim())
     if (notes.trim()) fd.set('notes', notes.trim())
     fd.set('force', force ? 'true' : 'false')
+    if (selectedOrgId) fd.set('organization_id', selectedOrgId)
     applySiteExtendedToFormData(fd, extended)
 
     startTransition(async () => {
@@ -371,6 +376,23 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
                 disabled={pending}
               />
             </div>
+
+            {/* Organisation (multi-org seulement) */}
+            {orgs && orgs.length > 1 && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Organisation *</label>
+                <select
+                  value={selectedOrgId}
+                  onChange={(e) => setSelectedOrgId(e.target.value)}
+                  required
+                  disabled={pending}
+                  className={SELECT}
+                >
+                  <option value="">Sélectionner une organisation</option>
+                  {orgs.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+              </div>
+            )}
 
             {/* Champs pratiques repliables */}
             <SiteExtendedFields

@@ -1,6 +1,5 @@
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import type {
   DbTender,
@@ -138,9 +137,9 @@ export async function createTender(input: {
   client_name?: string | null
   deadline?: string | null
   created_by: string
+  organization_id: string
 }): Promise<string> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
   const { data, error } = await supabase
     .from('tenders')
     .insert({
@@ -149,7 +148,7 @@ export async function createTender(input: {
       deadline: input.deadline ?? null,
       status: 'draft',
       created_by: input.created_by,
-      ...(orgId ? { organization_id: orgId } : {}),
+      organization_id: input.organization_id,
     })
     .select('id')
     .single()

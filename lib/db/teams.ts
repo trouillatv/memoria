@@ -26,7 +26,6 @@
 //  « charge équipe » ou « % complétion équipe » → refus immédiat.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import type { DbTeam, DbTeamMember } from '@/types/db'
 
@@ -55,6 +54,7 @@ export interface CreateTeamInput {
   /** Migration 077 — icône lucide (kebab-case). */
   icon?: string | null
   created_by?: string | null
+  organization_id?: string | null
 }
 
 export interface UpdateTeamInput {
@@ -99,7 +99,6 @@ export async function getTeam(id: string): Promise<DbTeam | null> {
 /** Crée une team. Le contrôle d'unicité de nom est délégué à la DB (idx_teams_name_active). */
 export async function createTeam(input: CreateTeamInput): Promise<DbTeam> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
   const { data, error } = await supabase
     .from('teams')
     .insert({
@@ -107,7 +106,7 @@ export async function createTeam(input: CreateTeamInput): Promise<DbTeam> {
       color: input.color ?? null,
       icon: input.icon ?? null,
       created_by: input.created_by ?? null,
-      ...(orgId ? { organization_id: orgId } : {}),
+      organization_id: input.organization_id,
     })
     .select('*')
     .single()

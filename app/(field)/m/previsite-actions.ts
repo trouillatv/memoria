@@ -1,4 +1,4 @@
-'use server'
+﻿'use server'
 
 // Démarrage TERRAIN d'une prévisite AO depuis l'accueil /m (Vincent 2026-06-29) :
 // créer vite l'affaire + le lieu, lancer la visite, filer capturer. Le bureau sert
@@ -7,6 +7,7 @@
 
 import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { createProspectDossier } from '@/lib/db/dossiers'
 import { createVisit } from '@/lib/db/visits'
 
@@ -14,6 +15,7 @@ const schema = z.object({
   affaireName: z.string().trim().min(1).max(200),
   siteName: z.string().trim().min(1).max(200),
   clientName: z.string().trim().max(200).optional(),
+  organizationId: z.string().uuid().optional(),
 })
 
 export async function startPrevisiteAoAction(
@@ -22,12 +24,27 @@ export async function startPrevisiteAoAction(
   const auth = await requireFieldAgent()
   if ('error' in auth) return { ok: false, error: 'Non autorisé' }
   const parsed = schema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'Nom de l’affaire et du site requis' }
+  if (!parsed.success) return { ok: false, error: "Nom de l'affaire et du site requis" }
+
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { ok: false, error: 'Aucune organisation active' }
+  let organizationId: string
+  if (orgIds.length === 1) {
+    organizationId = orgIds[0]
+  } else {
+    const rawOrgId = parsed.data.organizationId
+    if (!rawOrgId || !orgIds.includes(rawOrgId)) {
+      return { ok: false, error: 'Sélectionnez une organisation' }
+    }
+    organizationId = rawOrgId
+  }
+
   try {
     const { siteId } = await createProspectDossier({
       name: parsed.data.affaireName,
       siteName: parsed.data.siteName,
       clientName: parsed.data.clientName || null,
+      organizationId,
     })
     // Lance la visite tout de suite : le dossier (phase prospect) est stampé
     // automatiquement sur le report → la capture nourrit l'affaire. Cf. mig 172.

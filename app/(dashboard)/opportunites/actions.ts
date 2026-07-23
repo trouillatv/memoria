@@ -1,8 +1,9 @@
-'use server'
+﻿'use server'
 
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { createProspectDossier } from '@/lib/db/dossiers'
 
 // Crée une opportunité = un LIEU + un DOSSIER (opération) en phase 'prospect', et
@@ -12,11 +13,22 @@ export async function createProspectAction(formData: FormData): Promise<void> {
   const user = await getCurrentUserWithProfile()
   if (!user || (user.role !== 'admin' && user.role !== 'manager')) throw new Error('Non autorisé')
 
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) throw new Error('Aucune organisation active')
+  let organizationId: string
+  if (orgIds.length === 1) {
+    organizationId = orgIds[0]
+  } else {
+    const rawOrgId = String(formData.get('organization_id') ?? '').trim()
+    if (!rawOrgId || !orgIds.includes(rawOrgId)) throw new Error('Sélectionnez une organisation')
+    organizationId = rawOrgId
+  }
+
   const name = String(formData.get('name') ?? '').trim()
   const clientName = String(formData.get('clientName') ?? '').trim()
-  if (!name || !clientName) throw new Error('Nom du dossier et donneur d’ordre requis')
+  if (!name || !clientName) throw new Error("Nom du dossier et donneur d'ordre requis")
 
-  const { dossierId } = await createProspectDossier({ name, clientName })
+  const { dossierId } = await createProspectDossier({ name, clientName, organizationId })
   revalidatePath('/opportunites')
   redirect(`/dossiers/${dossierId}`)
 }

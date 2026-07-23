@@ -12,6 +12,7 @@ import { redirect } from 'next/navigation'
 import { Users, AlertCircle } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { getOrgsForSelector } from '@/components/ui/org-selector'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listTeamsWithMemberCount, listOrphanUsers } from '@/lib/db/teams'
 import { Card, CardContent } from '@/components/ui/card'
@@ -89,10 +90,11 @@ export default async function EquipesPage() {
   // Belt + suspenders : le layout (dashboard) redirige déjà chef_equipe vers /m.
   if (user.role !== 'admin' && user.role !== 'manager') redirect('/m')
 
-  const [teams, orphans, availableUsers] = await Promise.all([
+  const [teams, orphans, availableUsers, orgs] = await Promise.all([
     listTeamsWithMemberCount(),
     listOrphanUsers(),
     listAssignableMembers(),
+    getOrgsForSelector(),
   ])
 
   return (
@@ -108,7 +110,7 @@ export default async function EquipesPage() {
             On organise, on ne mesure pas.
           </p>
         </div>
-        <CreateTeamButton />
+        <CreateTeamButton orgs={orgs} />
       </header>
 
       <Card>

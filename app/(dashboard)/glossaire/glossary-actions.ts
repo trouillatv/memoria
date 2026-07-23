@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { createGlossaryTerm, deleteGlossaryTerm, seedDefaultGlossary } from '@/lib/db/glossary'
 
 const TermSchema = z.object({
@@ -10,7 +11,21 @@ const TermSchema = z.object({
   definition: z.string().trim().max(1000).optional(),
   category: z.string().trim().max(40).optional(),
   aliases: z.string().trim().max(500).optional(), // saisie « a, b, c »
+  organization_id: z.string().uuid().optional(),
 })
+
+// Helper partagé : résout l'org de l'utilisateur courant.
+async function resolveOrgId(
+  explicitId?: string,
+): Promise<{ organizationId: string } | { ok: false; error: string }> {
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { ok: false, error: 'Aucune organisation active' }
+  if (orgIds.length === 1) return { organizationId: orgIds[0] }
+  if (!explicitId || !orgIds.includes(explicitId)) {
+    return { ok: false, error: 'Sélectionnez une organisation' }
+  }
+  return { organizationId: explicitId }
+}
 
 // Admin uniquement (Vincent 2026-06-24) — le glossaire passe sous Admin.
 async function requireAdmin() {
@@ -28,6 +43,9 @@ export async function createGlossaryTermAction(
   const parsed = TermSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
 
+  const orgRes = await resolveOrgId(parsed.data.organization_id)
+  if ('ok' in orgRes) return orgRes
+
   const aliases = (parsed.data.aliases ?? '')
     .split(',')
     .map((a) => a.trim())
@@ -41,6 +59,7 @@ export async function createGlossaryTermAction(
       category: parsed.data.category || null,
       aliases,
       createdBy: auth.user.id,
+      organization_id: orgRes.organizationId,
     })
     revalidatePath('/glossaire')
     return { ok: true }
@@ -50,11 +69,15 @@ export async function createGlossaryTermAction(
 }
 
 /** Charge le vocabulaire de démarrage (BTP/VRD + MOE). Idempotent. Admin only. */
-export async function loadDefaultGlossaryAction(): Promise<{ ok: boolean; inserted?: number; error?: string }> {
+export async function loadDefaultGlossaryAction(
+  input?: { organization_id?: string },
+): Promise<{ ok: boolean; inserted?: number; error?: string }> {
   const auth = await requireAdmin()
   if (!auth.ok) return auth
+  const orgRes = await resolveOrgId(input?.organization_id)
+  if ('ok' in orgRes) return orgRes
   try {
-    const r = await seedDefaultGlossary(auth.user.id)
+    const r = await seedDefaultGlossary(auth.user.id, orgRes.organizationId)
     revalidatePath('/glossaire')
     return { ok: true, inserted: r.inserted }
   } catch (e) {

@@ -3,10 +3,11 @@ import { AlertTriangle } from 'lucide-react'
 import { requireDeskUser } from '@/lib/auth/page-guard'
 import { listKnowledgeItems } from '@/lib/db/knowledge'
 import { TenderUploadForm } from './TenderUploadForm'
+import { getOrgsForSelector } from '@/components/ui/org-selector'
 
 export default async function NewTenderPage({ searchParams }: { searchParams: Promise<{ dossier_id?: string }> }) {
   await requireDeskUser()
-  const items = await listKnowledgeItems({})
+  const [items, orgs] = await Promise.all([listKnowledgeItems({}), getOrgsForSelector()])
   const { dossier_id: dossierId } = await searchParams
 
   return (
@@ -29,7 +30,7 @@ export default async function NewTenderPage({ searchParams }: { searchParams: Pr
         </div>
       )}
 
-      <TenderUploadForm dossierId={dossierId} />
+      <TenderUploadForm dossierId={dossierId} orgs={orgs} />
     </div>
   )
 }

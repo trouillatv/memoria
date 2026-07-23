@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { requireDeskUser } from '@/lib/auth/page-guard'
 import { listKnowledgeItems, listAllTags } from '@/lib/db/knowledge'
+import { getOrgsForSelector } from '@/components/ui/org-selector'
 import { getLibraryUsageCounts, countTendersUsingLibraryThisMonth } from '@/lib/db/library-usage'
 import { KnowledgeCategoryFilter } from './KnowledgeCategoryFilter'
 import { KnowledgeTagsFilter } from './KnowledgeTagsFilter'
@@ -23,11 +24,12 @@ export default async function LibraryPage({
   const tags = params.tags ? params.tags.split(',').filter(Boolean) : undefined
   const search = params.search
 
-  const [items, allTags, usageCountsMap, totalTendersWithLibrary] = await Promise.all([
+  const [items, allTags, usageCountsMap, totalTendersWithLibrary, orgs] = await Promise.all([
     listKnowledgeItems({ category, tags, search }),
     listAllTags(),
     getLibraryUsageCounts({ sinceDays: 30 }),
     countTendersUsingLibraryThisMonth(),
+    getOrgsForSelector(),
   ])
 
   // Top 3 cités (intersection avec items visibles)
@@ -60,6 +62,7 @@ export default async function LibraryPage({
           </p>
         </div>
         <KnowledgeItemDrawer
+          orgs={orgs}
           trigger={
             <Button>
               <Plus className="h-4 w-4 mr-1" />

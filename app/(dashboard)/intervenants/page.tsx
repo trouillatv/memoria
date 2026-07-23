@@ -15,6 +15,7 @@ import Link from 'next/link'
 import { Users, ArrowRight, MapPin, BriefcaseBusiness, KeyRound } from 'lucide-react'
 import { checkIntervenantsPageAccess } from '@/lib/intervenants/access'
 import { listIntervenantsForList } from '@/lib/db/intervenants'
+import { getOrgsForSelector } from '@/components/ui/org-selector'
 import { Card } from '@/components/ui/card'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { CreateIntervenantDialog } from './CreateIntervenantDialog'
@@ -66,10 +67,13 @@ export default async function IntervenantsListPage() {
   }
   if (!access.access.isPrivileged) notFound()
 
-  const intervenants = await listIntervenantsForList({
-    id: access.access.viewer.id,
-    email: access.access.viewer.email,
-  })
+  const [intervenants, orgs] = await Promise.all([
+    listIntervenantsForList({
+      id: access.access.viewer.id,
+      email: access.access.viewer.email,
+    }),
+    getOrgsForSelector(),
+  ])
 
   const neverOpenedCount = intervenants.filter((i) => i.neverOpened).length
 
@@ -88,7 +92,7 @@ export default async function IntervenantsListPage() {
             Vue descriptive, sans classement — tri alphabétique. Chaque consultation d&apos;une fiche est tracée.
           </p>
         </div>
-        <CreateIntervenantDialog />
+        <CreateIntervenantDialog orgs={orgs} />
       </header>
 
       {/* Créer un compte ne suffit pas : encore faut-il qu'il arrive. Tant que la

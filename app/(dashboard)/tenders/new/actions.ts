@@ -7,6 +7,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/lib/audit/log'
 import { getUserRoleById } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import {
   createTender,
   createTenderDocument,
@@ -40,6 +41,19 @@ const createSchema = z.object({
 export async function createTenderAction(formData: FormData) {
   const userId = await requireManagerOrAdmin()
 
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { error: 'Aucune organisation active' }
+  let organizationId: string
+  if (orgIds.length === 1) {
+    organizationId = orgIds[0]
+  } else {
+    const rawOrgId = formData.get('organization_id') as string | null
+    if (!rawOrgId || !orgIds.includes(rawOrgId)) {
+      return { error: 'Sélectionnez une organisation' }
+    }
+    organizationId = rawOrgId
+  }
+
   // Un AO n'est pas un document : c'est un dossier de pièces (RC, CCAP, CCTP,
   // DPGF, BPU, plans). On accepte donc N fichiers — un seul reste valide.
   const files = formData.getAll('file').filter((f): f is File => f instanceof File && f.size > 0)
@@ -71,6 +85,7 @@ export async function createTenderAction(formData: FormData) {
     client_name: parsed.data.client_name,
     deadline: parsed.data.deadline,
     created_by: userId,
+    organization_id: organizationId,
   })
 
   // Rattachement auto à l'affaire si l'AO est créé depuis une affaire (best-effort).
