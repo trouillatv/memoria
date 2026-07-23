@@ -1,4 +1,4 @@
-import { headers } from 'next/headers'
+import { headers, cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -14,7 +14,8 @@ export default async function Home() {
     const profile = await getCurrentUserWithProfile()
     if (profile) {
       const ua = (await headers()).get('user-agent')
-      redirect(resolveHomeDestination(profile, isMobileUserAgent(ua)))
+      const isPwa = (await cookies()).get('pwa_standalone')?.value === '1'
+      redirect(resolveHomeDestination(profile, isMobileUserAgent(ua), isPwa))
     }
     redirect('/dashboard')
   }

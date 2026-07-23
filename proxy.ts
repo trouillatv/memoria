@@ -78,7 +78,8 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
   if (user && pathname === '/login') {
-    return NextResponse.redirect(new URL('/missions', request.url))
+    const isPwa = request.cookies.get('pwa_standalone')?.value === '1'
+    return NextResponse.redirect(new URL(isPwa ? '/m' : '/missions', request.url))
   }
 
   // Enforce must_change_password : si le flag est dans app_metadata, on
