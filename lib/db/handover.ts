@@ -19,8 +19,7 @@
 
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
-import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { getOrgIdsOfUser, requireOrganizationMembership } from '@/lib/auth/memberships'
 import { isSystemMissionName } from '@/lib/db/system-missions'
 import { listTeamCompanions } from '@/lib/db/team-profile'
 import type {
@@ -623,7 +622,46 @@ export async function createHandoverBrief(
   input: CreateHandoverBriefInput,
 ): Promise<DbHandoverBrief> {
   const admin = createAdminClient()
-  const orgId = await getOrgId()
+
+  // M3-Écriture A2 — org dérivée des ressources parentes (site → équipe source → équipe cible).
+  const orgCandidates: { source: string; orgId: string }[] = []
+
+  if (input.siteId) {
+    const { data: site } = await admin
+      .from('sites')
+      .select('organization_id')
+      .eq('id', input.siteId)
+      .maybeSingle()
+    if (site?.organization_id) orgCandidates.push({ source: 'site', orgId: site.organization_id })
+  }
+  if (input.sourceTeamId) {
+    const { data: team } = await admin
+      .from('teams')
+      .select('organization_id')
+      .eq('id', input.sourceTeamId)
+      .maybeSingle()
+    if (team?.organization_id) orgCandidates.push({ source: 'sourceTeam', orgId: team.organization_id })
+  }
+  if (input.targetTeamId) {
+    const { data: team } = await admin
+      .from('teams')
+      .select('organization_id')
+      .eq('id', input.targetTeamId)
+      .maybeSingle()
+    if (team?.organization_id) orgCandidates.push({ source: 'targetTeam', orgId: team.organization_id })
+  }
+
+  if (orgCandidates.length === 0)
+    throw new Error("Aucun parent (site ou équipe) pour dériver l'organisation du passage de témoin")
+
+  const uniqueOrgs = [...new Set(orgCandidates.map((c) => c.orgId))]
+  if (uniqueOrgs.length > 1)
+    throw new Error('Les ressources du passage de témoin appartiennent à des organisations différentes')
+
+  const orgId = uniqueOrgs[0]
+  const membership = await requireOrganizationMembership(orgId)
+  if (!membership.ok) throw new Error(membership.error)
+
   const { data, error } = await admin
     .from('handover_briefs')
     .insert({
@@ -637,7 +675,7 @@ export async function createHandoverBrief(
       status: 'draft',
       effective_date: input.effectiveDate ?? null,
       created_by: input.createdBy,
-      ...(orgId ? { organization_id: orgId } : {}),
+      organization_id: orgId,
     })
     .select('*')
     .single()

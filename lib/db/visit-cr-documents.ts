@@ -98,11 +98,7 @@ export async function getOrCreateVisitCrDocument(
     const id = await createReportDocument({
       report_id: reportId,
       site_id: visit.siteId,
-      // L'organisation vient de LA VISITE, pas du contexte de requête :
-      // `organization_id` est NOT NULL en base, et un `getOrgId()` qui échoue
-      // ferait disparaître le CR editable sans un mot (defaut trouve en recette
-      // reelle, 2026-07-21).
-      organization_id: visit.orgId,
+      // M3-Écriture A2 — organization_id dérivé côté serveur depuis site_reports.
       template_key: CR_VISITE_TEMPLATE_KEY,
       sections: withAiBaseline(buildVisitCrSections(visit.analysis)),
       provider: null,
