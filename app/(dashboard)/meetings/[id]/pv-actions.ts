@@ -1065,11 +1065,15 @@ export async function savePvSectionsAction(
   }
 }
 
-async function getOrCreateCrCollection(): Promise<string> {
+async function getOrCreateCrCollection(reportId: string): Promise<string> {
   const cols = await listDocumentCollections()
   const existing = cols.find((c) => c.name === CR_COLLECTION_NAME)
   if (existing) return existing.id
-  return createDocumentCollection({ name: CR_COLLECTION_NAME })
+  return createDocumentCollection({
+    name: CR_COLLECTION_NAME,
+    scope_type: 'report',
+    scope_id: reportId,
+  })
 }
 
 /**
@@ -1100,7 +1104,7 @@ export async function validatePvAction(reportId: string): Promise<{ ok: boolean;
       .upload(storagePath, new Uint8Array(pdfBuffer), { contentType: 'application/pdf', upsert: false })
     if (upErr) return { ok: false, error: `Upload PDF échoué : ${upErr.message}` }
 
-    const collectionId = await getOrCreateCrCollection()
+    const collectionId = await getOrCreateCrCollection(reportId)
     const filename = `${title}.pdf`.replace(/[/\\]/g, '-')
     const documentId = await createDocument({
       collection_id: collectionId,

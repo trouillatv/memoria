@@ -17,10 +17,14 @@ export const revalidate = 0
 const CR_COLLECTION_NAME = 'Comptes-rendus de chantier'
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
-async function getOrCreateCrCollection(): Promise<string> {
+async function getOrCreateCrCollection(reportId: string): Promise<string> {
   const cols = await listDocumentCollections()
   const existing = cols.find((c) => c.name === CR_COLLECTION_NAME)
-  return existing ? existing.id : createDocumentCollection({ name: CR_COLLECTION_NAME })
+  return existing ? existing.id : createDocumentCollection({
+    name: CR_COLLECTION_NAME,
+    scope_type: 'report',
+    scope_id: reportId,
+  })
 }
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -54,7 +58,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       .upload(storagePath, bytes, { contentType: format === 'pdf' ? 'application/pdf' : DOCX_MIME, upsert: false })
     if (upErr) return NextResponse.json({ error: `Upload échoué : ${upErr.message}` }, { status: 500 })
 
-    const collectionId = await getOrCreateCrCollection()
+    const collectionId = await getOrCreateCrCollection(id)
     const title = report.title || 'Compte-rendu'
     const documentId = await createDocument({
       collection_id: collectionId,

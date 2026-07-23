@@ -12,7 +12,6 @@
 // Discipline coût IA : analysé UNE fois (analysis_status), jamais au render.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
 import { getOrgIdsOfUser, requireOrganizationMembership } from '@/lib/auth/memberships'
 import type {
   DbDocument,
@@ -28,16 +27,29 @@ export async function createDocumentCollection(input: {
   name: string
   scope_type?: string | null
   scope_id?: string | null
+  /** L'org peut être dérivée du scope (site ou report) ou passée explicitement. */
+  organization_id?: string
 }): Promise<string> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  let orgId: string | null = input.organization_id ?? null
+  if (!orgId && input.scope_id && input.scope_type === 'site') {
+    const { data: site } = await supabase.from('sites').select('organization_id').eq('id', input.scope_id).maybeSingle()
+    orgId = site?.organization_id ?? null
+  }
+  if (!orgId && input.scope_id && input.scope_type === 'report') {
+    const { data: report } = await supabase.from('site_reports').select('organization_id').eq('id', input.scope_id).maybeSingle()
+    orgId = report?.organization_id ?? null
+  }
+  if (!orgId) throw new Error('Organisation requise pour créer une collection de documents')
+  const membership = await requireOrganizationMembership(orgId)
+  if (!membership.ok) throw new Error(membership.error)
   const { data, error } = await supabase
     .from('document_collections')
     .insert({
       name: input.name,
       scope_type: input.scope_type ?? null,
       scope_id: input.scope_id ?? null,
-      ...(orgId ? { organization_id: orgId } : {}),
+      organization_id: orgId,
     })
     .select('id')
     .single()

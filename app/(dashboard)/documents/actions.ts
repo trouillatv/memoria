@@ -12,7 +12,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/lib/audit/log'
-import { getUserRoleById } from '@/lib/db/users'
+import { getUserRoleById, getOrgId } from '@/lib/db/users'
 import {
   createDocument,
   addDocumentLink,
@@ -96,10 +96,12 @@ export async function createDocumentCollectionAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
   try {
+    const orgId = await getOrgId() // M3_TEMP_B — B-formulaire : getOrgId() jusqu'au sélecteur multi-org
     const collectionId = await createDocumentCollection({
       name: parsed.data.name,
       scope_type: parsed.data.scope_type ?? null,
       scope_id: parsed.data.scope_id ?? null,
+      organization_id: orgId ?? undefined,
     })
     return { ok: true, collectionId }
   } catch (e) {
