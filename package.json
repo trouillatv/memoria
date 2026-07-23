@@ -23,6 +23,7 @@
     "db:scope-stats": "tsx scripts/dev/scope-stats.ts",
     "db:reset-and-seed-nc-demo": "tsx scripts/dev/reset-and-seed-nc-demo.ts",
     "db:seed-demo-tenant": "tsx scripts/dev/reset-and-seed-demo-tenant.ts",
+    "db:seed-capse-demo": "tsx scripts/dev/seed-capse-demo.ts",
     "db:restore-backup": "tsx scripts/dev/restore-backup.ts",
     "gen:icons": "tsx scripts/gen-icons.ts",
     "docs:emploi": "python scripts/dev/md-to-docx.py"
