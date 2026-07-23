@@ -7,7 +7,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
+import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { requireSiteReportWriteAccess } from '@/lib/auth/site-write-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/lib/audit/log'
@@ -131,20 +132,16 @@ export async function cleanupDraftMeetingsAction(): Promise<
   if (!auth.ok) return auth
 
   const supabase = createAdminClient()
-  // ⚠️ M3 (non migré). Opération de maintenance SANS ressource (signature `()`) :
-  // elle nettoie les brouillons de TOUTE l'org du caller. Aucun chantier de
-  // contexte → aucune org à résoudre depuis une ressource. Un compte multi-org y
-  // verra `getOrgId()` lever → à traiter en vue agrégée (M3), pas ici.
-  const orgId = await getOrgId()
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { ok: true, deleted: 0 }
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-  let q = supabase
+  const { data } = await supabase
     .from('site_reports')
     .select('id')
     .in('status', ['draft', 'failed'])
     .is('origin', null)
     .lt('created_at', cutoff)
-  if (orgId) q = q.eq('organization_id', orgId)
-  const { data } = await q
+    .in('organization_id', orgIds)
   const ids = ((data ?? []) as Array<{ id: string }>).map((r) => r.id)
   try {
     await deleteReportRows(supabase, ids)

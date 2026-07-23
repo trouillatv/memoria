@@ -1,6 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
-import { getOrgId } from '@/lib/db/users'
 import type { DbActivityLog } from '@/types/db'
 
 export interface ActivityLogQuery {
@@ -77,6 +76,51 @@ export async function getProfileConsultationSummary(userId: string): Promise<{
   }
 }
 
+async function deriveOrgForLog(
+  supabase: ReturnType<typeof createAdminClient>,
+  entityType: string,
+  entityId: string | null
+): Promise<string | null> {
+  if (!entityId) return null
+  switch (entityType) {
+    case 'site': {
+      const { data } = await supabase.from('sites').select('organization_id').eq('id', entityId).maybeSingle()
+      return (data as { organization_id: string } | null)?.organization_id ?? null
+    }
+    case 'tender': {
+      const { data } = await supabase.from('tenders').select('organization_id').eq('id', entityId).maybeSingle()
+      return (data as { organization_id: string } | null)?.organization_id ?? null
+    }
+    case 'mission': {
+      const { data } = await supabase.from('missions').select('organization_id').eq('id', entityId).maybeSingle()
+      return (data as { organization_id: string } | null)?.organization_id ?? null
+    }
+    case 'report': {
+      const { data } = await supabase.from('site_reports').select('organization_id').eq('id', entityId).maybeSingle()
+      return (data as { organization_id: string } | null)?.organization_id ?? null
+    }
+    case 'client': {
+      const { data } = await supabase.from('clients').select('organization_id').eq('id', entityId).maybeSingle()
+      return (data as { organization_id: string } | null)?.organization_id ?? null
+    }
+    case 'document': {
+      const { data } = await supabase.from('document_collections').select('organization_id').eq('id', entityId).maybeSingle()
+      return (data as { organization_id: string } | null)?.organization_id ?? null
+    }
+    case 'knowledge_item': {
+      const { data } = await supabase.from('knowledge_items').select('organization_id').eq('id', entityId).maybeSingle()
+      return (data as { organization_id: string } | null)?.organization_id ?? null
+    }
+    case 'organization': {
+      // entityId IS the org id — direct
+      return entityId
+    }
+    default:
+      // 'user', 'feedback' et types inconnus → event global, org null acceptable
+      return null
+  }
+}
+
 export async function insertActivityLog(input: {
   userId: string | null
   entityType: string
@@ -85,7 +129,7 @@ export async function insertActivityLog(input: {
   metadata?: Record<string, unknown>
 }): Promise<void> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  const orgId = await deriveOrgForLog(supabase, input.entityType, input.entityId)
   const { error } = await supabase
     .from('activity_logs')
     .insert({
