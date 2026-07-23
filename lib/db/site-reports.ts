@@ -4,8 +4,7 @@
 // Doctrine : l'artefact brut n'est jamais supprimé ; l'IA propose, l'humain valide.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
-import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { getOrgIdsOfUser, requireOrganizationMembership } from '@/lib/auth/memberships'
 import type {
   DbSiteReport,
   DbSiteReportAttachment,
@@ -35,7 +34,17 @@ export async function createSiteReport(input: {
   transcript_status?: SiteReportTranscriptStatus
 }): Promise<string> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  let orgId: string | null = null
+  if (input.site_id) {
+    const { data: site } = await supabase.from('sites').select('organization_id').eq('id', input.site_id).maybeSingle()
+    orgId = site?.organization_id ?? null
+  } else if (input.contract_id) {
+    const { data: contract } = await supabase.from('contracts').select('organization_id').eq('id', input.contract_id).maybeSingle()
+    orgId = contract?.organization_id ?? null
+  }
+  if (!orgId) throw new Error('Impossible de dériver l\'organisation du CR (aucun site ni contrat valide)')
+  const membership = await requireOrganizationMembership(orgId)
+  if (!membership.ok) throw new Error(membership.error)
   const { data, error } = await supabase
     .from('site_reports')
     .insert({

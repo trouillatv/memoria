@@ -1,6 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
-import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { getOrgIdsOfUser, requireOrganizationMembership } from '@/lib/auth/memberships'
 import { todayLocalIso, localDateOf } from '@/lib/time/local-date'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { canViewDocument } from '@/lib/documents/access'
@@ -270,7 +269,12 @@ export async function createContract(input: {
   created_by: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  if (!input.tender_id) throw new Error('Création de contrat sans AO non autorisée')
+  const { data: tender } = await supabase.from('tenders').select('organization_id').eq('id', input.tender_id).maybeSingle()
+  if (!tender?.organization_id) throw new Error('AO introuvable ou sans organisation')
+  const membership = await requireOrganizationMembership(tender.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
+  const orgId = tender.organization_id
   const { data, error } = await supabase
     .from('contracts')
     .insert({
@@ -281,7 +285,7 @@ export async function createContract(input: {
       end_date: input.end_date ?? null,
       status: 'active' as ContractStatus,
       created_by: input.created_by,
-      ...(orgId ? { organization_id: orgId } : {}),
+      organization_id: orgId,
     })
     .select('id')
     .single()

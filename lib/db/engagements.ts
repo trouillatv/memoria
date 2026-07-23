@@ -1,5 +1,4 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
 import { getOrgIdsOfUser, requireOrganizationMembership } from '@/lib/auth/memberships'
 import type {
   DbEngagement,
@@ -167,7 +166,24 @@ export async function createEngagementManual(input: {
   created_by: string | null
 }): Promise<DbEngagement> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  let orgId: string | null = null
+  if (input.tender_id && input.contract_id) {
+    const [{ data: tender }, { data: contract }] = await Promise.all([
+      supabase.from('tenders').select('organization_id').eq('id', input.tender_id).maybeSingle(),
+      supabase.from('contracts').select('organization_id').eq('id', input.contract_id).maybeSingle(),
+    ])
+    if (tender?.organization_id !== contract?.organization_id) throw new Error('AO et contrat n\'appartiennent pas à la même organisation')
+    orgId = tender?.organization_id ?? null
+  } else if (input.tender_id) {
+    const { data: tender } = await supabase.from('tenders').select('organization_id').eq('id', input.tender_id).maybeSingle()
+    orgId = tender?.organization_id ?? null
+  } else if (input.contract_id) {
+    const { data: contract } = await supabase.from('contracts').select('organization_id').eq('id', input.contract_id).maybeSingle()
+    orgId = contract?.organization_id ?? null
+  }
+  if (!orgId) throw new Error('Impossible de dériver l\'organisation de l\'engagement (aucun AO ni contrat)')
+  const membership = await requireOrganizationMembership(orgId)
+  if (!membership.ok) throw new Error(membership.error)
   // status is 'active' when directly linked to a contract, otherwise 'extracted'
   const status: EngagementStatus = input.contract_id ? 'active' : 'extracted'
   const kind = input.kind ?? null
@@ -192,7 +208,7 @@ export async function createEngagementManual(input: {
       proof_requirement: defaultProofForKind(kind),
       destination: suggestDestination({ category: input.category, sourceExcerpt: source_excerpt, shortLabel: input.short_label, kind }).destination,
       created_by: input.created_by,
-      ...(orgId ? { organization_id: orgId } : {}),
+      organization_id: orgId,
     })
     .select('*')
     .single()
