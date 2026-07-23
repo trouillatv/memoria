@@ -104,6 +104,8 @@ export async function getSitesDashboard(orgIds: string[]): Promise<SiteDashboard
     const reserve = reserveCount.get(site.id) ?? 0
     const last = lastActivity.get(site.id) ?? null
     const next = nextPassage.get(site.id) ?? null
+    // Catégorie d'affichage déterministe — pas un score métier ni une inférence IA.
+    // Règle : overdue ou réserve ouverte → critical ; actions actives seules → warning.
     const status: SiteStatus = overdue > 0 || reserve > 0 ? 'critical' : active > 0 ? 'warning' : 'normal'
 
     return {

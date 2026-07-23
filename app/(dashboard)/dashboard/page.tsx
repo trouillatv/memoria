@@ -23,7 +23,6 @@ import { redirect } from 'next/navigation'
 import { after } from 'next/server'
 import { insertActivityLog } from '@/lib/db/activity-logs'
 import {
-  ShieldCheck,
   AlertTriangle,
   ArrowRightLeft,
   FileText,
@@ -37,8 +36,6 @@ import { getOrganizationLabels } from '@/lib/db/organisations'
 import { OrgBadge, orgLabelOf, type OrgLabels } from '@/components/dashboard/OrgBadge'
 import { getVisitImpact, emptyVisitImpact } from '@/lib/knowledge/site-events'
 import { VisitImpactCard } from './VisitImpactCard'
-import { getMyOrgMorningDigest, type OrgMorningDigest } from '@/lib/db/morning-digest'
-import { MorningHero } from './MorningHero'
 import { getInboxFeed } from '@/lib/db/inbox-feed'
 import { DashboardInbox } from './DashboardInbox'
 import { listContracts } from '@/lib/db/contracts'
@@ -59,12 +56,9 @@ import { anomalyLabel } from '@/lib/anomaly-labels'
 import {
   listRecentPassations,
   listLivingASavoir,
-  countHandoverBriefsByStatus,
   type RecentPassationEntry,
   type LivingASavoirCard,
 } from '@/lib/db/handover'
-import { listContinuityRisks } from '@/lib/db/continuity'
-import { isContinuityFeatureEnabled } from '@/lib/continuity/access'
 import { collectMemorySignals } from '@/lib/memory/signals/collect'
 import { forSurface } from '@/lib/memory/signals/surface'
 import { renderSignal } from '@/lib/memory/signals/render'
@@ -72,7 +66,6 @@ import { SIGNAL_REGISTRY } from '@/lib/memory/signals/registry'
 import type { MemorySignal } from '@/lib/memory/signals/types'
 import { getMemoryHeatmap, type HeatmapCell, type MemoryTone } from '@/lib/memory/heatmap'
 import { ContinuityWidget } from '@/components/dashboard/ContinuityWidget'
-import { getTenantTopMorningReading, type TenantMorningReading } from '@/lib/db/site-cockpit'
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardHeader } from './DashboardHeader'
 import { AttentionBlock } from './AttentionBlock'
@@ -137,8 +130,6 @@ export default async function DashboardPage() {
     )
   }
 
-  const continuityEnabled = isContinuityFeatureEnabled()
-
   // M3 — les organisations de l'utilisateur (agrégation multi-org). Sert l'inbox
   // et la résolution des libellés pour les badges.
   const orgIds = await getOrgIdsOfUser()
@@ -162,14 +153,10 @@ export default async function DashboardPage() {
     recentAnomalies,
     atRiskEngagements,
     tenantCumulative,
-    morningReading,
     recentPassations,
     aSavoir,
-    handoverCounts,
-    continuity,
     memorySignalsRaw,
     heatmap,
-    morningDigest,
     upcoming,
     sitesDashboard,
   ] = await Promise.all([
@@ -180,16 +167,10 @@ export default async function DashboardPage() {
     getRecentAnomalies(24),
     getAtRiskEngagements(),
     getTenantCumulativeStats(),
-    getTenantTopMorningReading(),
     listRecentPassations(6),
     listLivingASavoir(4),
-    countHandoverBriefsByStatus(),
-    continuityEnabled
-      ? listContinuityRisks({ horizonDays: 7, viewerUserId: user.id })
-      : Promise.resolve({ entries: [], counts: { j7: 0, j14: 0, j30: 0 } }),
     collectMemorySignals(),
     getMemoryHeatmap(84),
-    getMyOrgMorningDigest(),
     getUpcomingItems(orgIds),
     getSitesDashboard(orgIds),
   ])
@@ -231,6 +212,8 @@ export default async function DashboardPage() {
     (c) => c.status === 'active' && summaryMap.get(c.id)?.needsAttention,
   ).length
 
+  const firstName = user.full_name?.split(' ')[0] ?? ''
+
   // Temps 2 — bloc « Ce qui mérite votre attention » : agrégation déterministe
   // transverse des détecteurs (actions en retard/anciennes, réserves), plafonnée.
   const attention = await getAttentionDigest(5)
@@ -242,12 +225,8 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6 w-full">
-      {/* Zone 1 — En-tête : neutre, ou MorningHero si disponible (jamais les deux). */}
-      {morningDigest ? (
-        <MorningHero digest={morningDigest} orgLabels={orgLabels} />
-      ) : (
-        <DashboardHeader orgNames={orgNames} />
-      )}
+      {/* Zone 1 — En-tête personnel. */}
+      <DashboardHeader firstName={firstName} orgNames={orgNames} />
 
       {/* Zone 2 — Attention opérationnelle : le système décide des priorités (5 max). */}
       <AttentionBlock digest={attention} orgLabels={orgLabels} />
@@ -274,21 +253,6 @@ export default async function DashboardPage() {
 
       {inbox.items.length > 0 && (
         <DashboardInbox feed={inbox} orgLabels={orgLabels} />
-      )}
-
-      {/* Hero BTP fallback (AO / continuité / signaux mémoire) — sans morningDigest. */}
-      {!morningDigest && (
-        <Hero
-          morningDigest={null}
-          morningReading={morningReading}
-          tendersDueSoon={tendersDueSoon}
-          recentAnomalies={recentAnomalies}
-          memorySignals={memorySignals}
-          urgentPassations={continuity.counts.j7}
-          sharedAwaitingAck={handoverCounts.shared}
-          continuityEnabled={continuityEnabled}
-          orgLabels={orgLabels}
-        />
       )}
 
       {/* Ligne mémoire — 3 condensations du moteur (jamais des KPI). */}
@@ -559,238 +523,6 @@ function MemoryHeatmap({ cells }: { cells: HeatmapCell[] }) {
   )
 }
 
-// ----------------------------------------------------------------------------
-// 1. HERO unique — « Mémoire active ce matin »
-// ----------------------------------------------------------------------------
-
-interface HeroSignal {
-  tone: 'continuity' | 'ao' | 'memory' | 'field'
-  title: string
-  body?: string
-  href?: string
-  linkLabel?: string
-}
-
-function Hero({
-  morningDigest,
-  morningReading,
-  tendersDueSoon,
-  recentAnomalies,
-  memorySignals,
-  urgentPassations,
-  sharedAwaitingAck,
-  continuityEnabled,
-  orgLabels,
-}: {
-  morningDigest: OrgMorningDigest | null
-  morningReading: TenantMorningReading
-  tendersDueSoon: TenderDueSoonRow[]
-  recentAnomalies: RecentAnomalyItem[]
-  memorySignals: MemorySignal[]
-  urgentPassations: number
-  sharedAwaitingAck: number
-  continuityEnabled: boolean
-  orgLabels: OrgLabels
-}) {
-  // LE MATIN (Vincent 2026-07-09) : quand la Nuit a produit un digest pour
-  // aujourd'hui, il EST le hero — jamais deux heros empilés. Pas de digest
-  // (première nuit, chantier créé aujourd'hui) → le hero historique ci-dessous.
-  if (morningDigest) return <MorningHero digest={morningDigest} orgLabels={orgLabels} />
-
-  const signals: HeroSignal[] = []
-
-  // Continuité (état le plus critique : rupture de mémoire) — gated.
-  if (continuityEnabled && (urgentPassations > 0 || sharedAwaitingAck > 0)) {
-    const parts: string[] = []
-    if (urgentPassations > 0) {
-      parts.push(
-        `${urgentPassations} passation${urgentPassations > 1 ? 's' : ''} à préparer cette semaine`,
-      )
-    }
-    if (sharedAwaitingAck > 0) {
-      parts.push(
-        `${sharedAwaitingAck} passation${sharedAwaitingAck > 1 ? 's' : ''} en attente de reconnaissance`,
-      )
-    }
-    signals.push({
-      tone: 'continuity',
-      title: capitalizeFirst(parts.join(' · ') + '.'),
-      href: '/continuite',
-      linkLabel: 'Voir la continuité',
-    })
-  }
-
-  // AO daté (signal actionnable).
-  if (tendersDueSoon.length > 0) {
-    const nearest = tendersDueSoon.reduce((a, b) =>
-      b.daysUntilDeadline < a.daysUntilDeadline ? b : a,
-    )
-    signals.push({
-      tone: 'ao',
-      title:
-        tendersDueSoon.length === 1
-          ? `Un dossier de démarrage doit être remis ${relDays(nearest.daysUntilDeadline)}.`
-          : `${tendersDueSoon.length} dossiers de démarrage à rendre cette semaine.`,
-      body:
-        tendersDueSoon.length === 1
-          ? nearest.client_name
-            ? `« ${nearest.title} » — ${nearest.client_name}`
-            : `« ${nearest.title} »`
-          : `Le plus proche : « ${nearest.title} » ${relDays(nearest.daysUntilDeadline)}.`,
-      href: '/tenders',
-      linkLabel: 'Voir les dossiers',
-    })
-  }
-
-  // Mémoire terrain (résonance existante — jamais inventée).
-  if (morningReading.reading) {
-    const fragments =
-      morningReading.reading.fragments && morningReading.reading.fragments.length > 0
-        ? ' ' + morningReading.reading.fragments.slice(0, 4).join(' · ')
-        : ''
-    signals.push({
-      tone: 'memory',
-      title: morningReading.reading.text + fragments,
-      href: morningReading.siteId ? `/sites/${morningReading.siteId}` : undefined,
-      linkLabel: morningReading.siteName ? `— ${morningReading.siteName}` : undefined,
-    })
-  }
-
-  // Signalements terrain frais (24h) — en dernier dans le hero (souvent
-  // nombreux) pour ne pas recréer l'alarme « 17 anomalies » : le détail vit
-  // dans le fil. Mais leur présence empêche un faux « les lieux sont calmes ».
-  if (recentAnomalies.length > 0) {
-    const n = recentAnomalies.length
-    const first = recentAnomalies[0]!
-    signals.push({
-      tone: 'field',
-      title: `${n} signalement${n > 1 ? 's' : ''} terrain ces dernières 24h.`,
-      body:
-        n === 1
-          ? anomalyLabel(first.description, first.categoryOther, first.category) +
-            (first.siteName ? ` — ${first.siteName}` : '')
-          : undefined,
-      href: n === 1 ? `/interventions/${first.interventionId}` : undefined,
-      linkLabel: n === 1 ? 'Voir le signalement' : undefined,
-    })
-  }
-
-  // Moteur d'états de mémoire : fragilité de SITE (silence inhabituel /
-  // instabilité de relais). En dernier candidat — ne crie pas par-dessus une
-  // résonance ou un signalement, mais empêche un faux « les lieux sont calmes »
-  // quand un lieu mérite l'attention. memory_awaiting est déjà couvert par le
-  // bloc continuité ci-dessus → exclu ici (pas de doublon).
-  const engineFrag = memorySignals.find(
-    (s) => s.kind === 'unusual_silence' || s.kind === 'relay_instability',
-  )
-  if (engineFrag) {
-    const r = renderSignal(engineFrag)
-    const fam = SIGNAL_REGISTRY[engineFrag.kind].family
-    signals.push({
-      tone: fam === 'continuite' ? 'continuity' : 'memory',
-      title: r.text,
-      body: r.detail,
-      href: r.href,
-      linkLabel: 'Voir le site',
-    })
-  }
-
-  const primary = signals[0] ?? null
-  const secondary = signals[1] ?? null
-
-  return (
-    <section
-      aria-label="Mémoire active ce matin"
-      className={`rounded-xl border p-5 sm:p-6 ${
-        primary
-          ? primary.tone === 'continuity'
-            ? 'border-amber-300 bg-amber-50/50 dark:bg-amber-950/20'
-            : primary.tone === 'field'
-              ? 'border-red-300 bg-red-50/60 dark:bg-red-950/20'
-              : primary.tone === 'ao'
-                ? 'border-brand-200 bg-brand-50/40 dark:bg-brand-950/20'
-                : 'border-foreground/10 bg-[#fafaf7] dark:bg-muted/20'
-          : 'border-emerald-200 bg-emerald-50/40 dark:bg-emerald-950/15'
-      }`}
-    >
-      <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground mb-3">
-        Mémoire active ce matin
-      </h2>
-
-      {!primary ? (
-        <div className="flex items-start gap-3">
-          <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-base sm:text-lg leading-snug">
-              Les lieux sont calmes ce matin.
-            </p>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Aucune continuité fragile détectée, aucune échéance proche.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <HeroLine signal={primary} primary />
-          {secondary && (
-            <div className="pt-2 border-t border-border/60">
-              <HeroLine signal={secondary} />
-            </div>
-          )}
-        </div>
-      )}
-    </section>
-  )
-}
-
-function HeroLine({ signal, primary }: { signal: HeroSignal; primary?: boolean }) {
-  const Icon =
-    signal.tone === 'continuity'
-      ? ArrowRightLeft
-      : signal.tone === 'field'
-        ? AlertTriangle
-        : signal.tone === 'ao'
-          ? FileText
-          : Sparkles
-  const iconColor =
-    signal.tone === 'continuity'
-      ? 'text-amber-600'
-      : signal.tone === 'field'
-        ? 'text-red-600'
-        : signal.tone === 'ao'
-          ? 'text-brand-600'
-          : 'text-muted-foreground'
-
-  return (
-    <div className="flex items-start gap-3">
-      <Icon className={`${primary ? 'h-5 w-5' : 'h-4 w-4'} shrink-0 mt-0.5 ${iconColor}`} />
-      <div className="min-w-0 flex-1">
-        <p className={primary ? 'text-base sm:text-lg leading-snug' : 'text-sm leading-snug'}>
-          {signal.title}
-          {signal.tone === 'memory' && signal.href && signal.linkLabel && (
-            <Link
-              href={signal.href}
-              className="text-sm text-muted-foreground hover:text-foreground ml-2"
-            >
-              {signal.linkLabel}
-            </Link>
-          )}
-        </p>
-        {signal.body && <p className="text-sm text-muted-foreground mt-0.5">{signal.body}</p>}
-        {signal.tone !== 'memory' && signal.href && signal.linkLabel && (
-          <Link
-            href={signal.href}
-            className="text-sm font-medium underline underline-offset-2 hover:no-underline mt-1 inline-block"
-          >
-            {signal.linkLabel}
-          </Link>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ----------------------------------------------------------------------------
 // 2. FIL unique — « Vie du système » (hiérarchisé, pas un activity log)
 // ----------------------------------------------------------------------------
 

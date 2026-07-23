@@ -35,23 +35,23 @@ function makeAnomalies(p: Partial<OpenAnomaliesStats> = {}): OpenAnomaliesStats 
 }
 
 describe('DashboardHeader', () => {
-  it('shows the neutral greeting', () => {
-    render(<DashboardHeader orgNames={[]} />)
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Bonjour,')
+  it('greets the user by first name', () => {
+    render(<DashboardHeader firstName="Aurélie" orgNames={[]} />)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Bonjour Aurélie.')
   })
 
-  it('shows org name when provided', () => {
-    render(<DashboardHeader orgNames={['CAPSE NC']} />)
-    expect(screen.getByText('CAPSE NC')).toBeInTheDocument()
+  it('shows the attention subtitle', () => {
+    render(<DashboardHeader firstName="Aurélie" orgNames={[]} />)
+    expect(screen.getByText(/votre attention aujourd/i)).toBeInTheDocument()
   })
 
-  it('shows multiple org names joined by ·', () => {
-    render(<DashboardHeader orgNames={['CAPSE NC', 'AGP']} />)
+  it('shows multiple org names joined by · in multi-org', () => {
+    render(<DashboardHeader firstName="Élodie" orgNames={['CAPSE NC', 'AGP']} />)
     expect(screen.getByText('CAPSE NC · AGP')).toBeInTheDocument()
   })
 
   it('renders a date label in French (capitalized weekday + month + year)', () => {
-    const { container } = render(<DashboardHeader orgNames={[]} />)
+    const { container } = render(<DashboardHeader firstName="Élodie" orgNames={[]} />)
     const header = container.querySelector('[data-slot="dashboard-header"]')
     expect(header).not.toBeNull()
     const year = String(new Date().getFullYear())
