@@ -164,7 +164,8 @@ export async function createOrgWithUserAction(formData: FormData) {
 
 const updateOrgBrandingSchema = z.object({
   org_id:   z.string().uuid(),
-  logo_url: z.string().url().optional().or(z.literal('')),
+  // Accepte uniquement https:// pour éviter les URLs locales / tracking externe.
+  logo_url: z.string().regex(/^https:\/\/.+/).optional().or(z.literal('')),
   color:    z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().or(z.literal('')),
 })
 

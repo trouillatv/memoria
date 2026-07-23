@@ -27,6 +27,7 @@ import { listProposals, bulkInsertProposals } from '@/lib/db/site-reports'
 import { toProposalRows, proposalVisitKind, proposalCaptureId, proposalExcerpt } from '@/lib/visits/suite-proposals'
 import { visitIntentLabel } from '@/lib/field/visit-intents'
 import { listSubjectsBySite } from '@/lib/db/subjects'
+import { getOrganizationsMeta } from '@/lib/db/organisations'
 // Le chantier est à Nouméa, le serveur tourne en UTC. Toute date de visite
 // rendue sans fuseau recule d'un jour dès que la visite a commencé avant 11 h
 // locale — c'est-à-dire presque toujours. Cf. `lib/time/local-date.ts`.
@@ -1993,16 +1994,11 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   let orgColor: string | null = null
   let orgLabel: string | null = null
   if (s?.organization_id) {
-    const { data: org } = await supabase
-      .from('organizations')
-      .select('name, logo_url, color')
-      .eq('id', s.organization_id)
-      .maybeSingle()
-    if (org) {
-      const o = org as { name: string | null; logo_url: string | null; color: string | null }
-      orgLabel = o.name?.trim() || null
-      orgLogoUrl = o.logo_url?.trim() || null
-      orgColor = o.color?.trim() || null
+    const [meta] = await getOrganizationsMeta([s.organization_id])
+    if (meta) {
+      orgLabel = meta.label || null
+      orgLogoUrl = meta.logoUrl
+      orgColor = meta.color
     }
   }
   const subjectName = visit.target_subject_id

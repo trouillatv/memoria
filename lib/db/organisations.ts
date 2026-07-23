@@ -64,7 +64,7 @@ export async function getOrganizationLabels(orgIds: string[]): Promise<Record<st
 export async function getOrganizationsMeta(orgIds: string[]): Promise<OrgMeta[]> {
   if (orgIds.length === 0) return []
   const { data } = await createAdminClient()
-    .from('organizations').select('id, name, slug, logo_url, color').in('id', orgIds)
+    .from('organizations').select('id, name, slug, logo_url, color').in('id', orgIds).order('name')
   return ((data ?? []) as Array<{
     id: string; name: string; slug: string | null
     logo_url: string | null; color: string | null

@@ -69,12 +69,17 @@ export function AppSidebar({
       {orgs && orgs.length > 1 && (
         <div className="border-b px-4 py-2.5 bg-muted/20">
           <p className="text-[9.5px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-1.5">
-            Toutes mes organisations
+            Espace multi-organisation
           </p>
           <div className="flex flex-col gap-1">
-            {orgs.map((o) => (
+            {[...orgs].sort((a, b) => a.label.localeCompare(b.label, 'fr')).slice(0, 3).map((o) => (
               <OrgBadgeRich key={o.id} meta={o} size="md" />
             ))}
+            {orgs.length > 3 && (
+              <p className="text-[9px] text-muted-foreground/60 pl-1">
+                + {orgs.length - 3} autre{orgs.length - 3 > 1 ? 's' : ''}
+              </p>
+            )}
           </div>
         </div>
       )}
