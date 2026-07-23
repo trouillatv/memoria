@@ -201,6 +201,7 @@ async function ensureSite(
   clientId: string,
   contractId: string,
   site: (typeof BATISUD_SITES)[number],
+  organizationId?: string,
 ): Promise<{ id: string; created: boolean }> {
   const { data: existing, error: fetchErr } = await supabase
     .from('sites')
@@ -229,6 +230,7 @@ async function ensureSite(
     contract_id: contractId,
     name: site.name,
     ...patch,
+    ...(organizationId ? { organization_id: organizationId } : {}),
   })
   return { id, created: true }
 }
@@ -1104,7 +1106,7 @@ async function main() {
 
   const siteIds = new Map<string, string>()
   for (const siteSeed of BATISUD_SITES) {
-    const site = await ensureSite(supabase, summary.clientId, summary.contractId, siteSeed)
+    const site = await ensureSite(supabase, summary.clientId, summary.contractId, siteSeed, organizationId)
     siteIds.set(siteSeed.name, site.id)
     if (site.created) summary.sitesCreated += 1
     await generateQrToken(site.id, adminId)

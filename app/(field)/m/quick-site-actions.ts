@@ -8,6 +8,7 @@
 
 import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
+import { getOrgId } from '@/lib/db/users'
 import { createSite, findOrCreateClientByName, buildCanonicalSiteKey } from '@/lib/db/sites'
 import { createVisit } from '@/lib/db/visits'
 
@@ -34,13 +35,14 @@ export async function quickCreateSiteVisitAction(
     const resolvedClientName = clientName || UNASSIGNED_CLIENT
     const clientId = await findOrCreateClientByName(resolvedClientName)
     const canonicalKey = buildCanonicalSiteKey(resolvedClientName, name)
-
+    const orgId = await getOrgId() // M3_TEMP_B — B-technique : getOrgId() jusqu'au sélecteur multi-org
     const siteId = await createSite({
       client_id: clientId,
       contract_id: null,
       name,
       address: address ?? null,
       canonical_site_key: canonicalKey,
+      organization_id: orgId ?? undefined,
     })
 
     // Première visite lancée tout de suite — le panier terrain s'ouvre au retour
@@ -71,12 +73,14 @@ export async function quickCreateSiteAction(
     const resolvedClientName = clientName || UNASSIGNED_CLIENT
     const clientId = await findOrCreateClientByName(resolvedClientName)
     const canonicalKey = buildCanonicalSiteKey(resolvedClientName, name)
+    const orgId2 = await getOrgId() // M3_TEMP_B — B-technique : getOrgId() jusqu'au sélecteur multi-org
     const siteId = await createSite({
       client_id: clientId,
       contract_id: null,
       name,
       address: address ?? null,
       canonical_site_key: canonicalKey,
+      organization_id: orgId2 ?? undefined,
     })
     return { ok: true, siteId, siteName: name }
   } catch {

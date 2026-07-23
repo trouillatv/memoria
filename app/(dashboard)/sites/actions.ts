@@ -304,6 +304,7 @@ export async function createSiteGlobalAction(
     if (similar.length > 0) return { similar }
   }
 
+  // M3_TEMP_B — B-formulaire : orgId (getOrgId() ligne 248) jusqu'au sélecteur multi-org
   const siteId = await createSite({
     client_id: resolvedClientId,
     contract_id: contract_id ?? null,
@@ -317,6 +318,7 @@ export async function createSiteGlobalAction(
     contact_phone: rest.contact_phone ?? null,
     access_hours: rest.access_hours ?? null,
     access_instructions: rest.access_instructions ?? null,
+    organization_id: orgId ?? undefined,
   })
 
   revalidatePath('/sites')

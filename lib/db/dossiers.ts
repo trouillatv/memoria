@@ -192,12 +192,17 @@ export async function createProspectDossier(input: {
   // l'affaire (le donneur d'ordre sera précisé au bureau). sites.client_id est NOT NULL.
   const clientLabel = input.clientName?.trim() || input.name.trim()
   const clientId = await findOrCreateClientByName(clientLabel)
+  // M3_TEMP_B — pas de contrat parent : l'org vient de la session jusqu'au sélecteur multi-org
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length !== 1) throw new Error('Organisation indéterminée pour créer le dossier prospect')
+  const orgId = orgIds[0]
   const siteId = await createSite({
     client_id: clientId,
     contract_id: null,
     name: (input.siteName?.trim() || input.name).trim(),
     address: input.address ?? null,
     phase: 'prospect',
+    organization_id: orgId,
   })
   const dossierId = await createDossier({
     siteId,

@@ -2,7 +2,7 @@ import { resolveResourceAccess } from '@/lib/auth/resource-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/db/users'
-import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { getOrgIdsOfUser, requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
 import { todayLocalIso } from '@/lib/time/local-date'
 import type { DbSite, DbSiteNote, SitePhase } from '@/types/db'
@@ -551,9 +551,19 @@ export async function createSite(input: {
   canonical_site_key?: string | null
   /** Phase de vie (mig 171). Par défaut 'actif' = un chantier réel. */
   phase?: SitePhase
+  /** L'org peut être dérivée du contrat parent (si fourni) ou passée explicitement. */
+  organization_id?: string
 }): Promise<string> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  // L'org peut être dérivée du contrat parent (si fourni) ou passée explicitement.
+  let orgId: string | null = input.organization_id ?? null
+  if (!orgId && input.contract_id) {
+    const { data: contract } = await supabase.from('contracts').select('organization_id').eq('id', input.contract_id).maybeSingle()
+    orgId = contract?.organization_id ?? null
+  }
+  if (!orgId) throw new Error('Organisation requise pour créer un chantier')
+  const membership = await requireOrganizationMembership(orgId)
+  if (!membership.ok) throw new Error(membership.error)
   const baseFields = {
     client_id: input.client_id,
     contract_id: input.contract_id,
@@ -567,7 +577,7 @@ export async function createSite(input: {
     access_hours: input.access_hours ?? null,
     access_instructions: input.access_instructions ?? null,
     phase: input.phase ?? 'actif',
-    ...(orgId ? { organization_id: orgId } : {}),
+    organization_id: orgId,
   }
   const { data, error } = await supabase
     .from('sites')
