@@ -8,10 +8,11 @@ export function isMobileUserAgent(ua: string | null): boolean {
 export function resolveHomeDestination(user: {
   role: UserRole
   home_preference: 'dashboard' | 'terrain'
-}, isMobile: boolean, isPwa: boolean = false): '/dashboard' | '/m' {
-  // Mode PWA standalone : priorité absolue sur home_preference.
-  // La PWA = usage terrain par définition.
-  if (isPwa) return '/m'
+}, isMobile: boolean, isPwa: boolean = false, isPwaDesktopActive: boolean = false): '/dashboard' | '/m' {
+  if (isPwa) {
+    // PWA standalone : terrain par défaut ; bureau si fenêtre temporaire active.
+    return isPwaDesktopActive ? '/dashboard' : '/m'
+  }
   if (!isMobile) return '/dashboard'
   if (user.role === 'chef_equipe') return '/m'
   return user.home_preference === 'terrain' ? '/m' : '/dashboard'

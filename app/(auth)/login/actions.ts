@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUserMiniProfile } from '@/lib/db/users'
 import { headers, cookies } from 'next/headers'
 import { resolveHomeDestination, isMobileUserAgent } from '@/lib/navigation/home'
+import { COOKIE_PWA_STANDALONE, COOKIE_PWA_DESKTOP_UNTIL, isPwaDesktopActive } from '@/lib/navigation/pwa-mode'
 
 const schema = z.object({
   email: z.string().email(),
@@ -44,9 +45,11 @@ export async function loginAction(formData: FormData) {
     // - chef_equipe (agent terrain) → /m (route mobile bornée, Slice 3.0)
     // - admin / manager → /dashboard (cockpit mémoriel = vitrine du produit ;
     //   /missions est une liste ERP, mauvaise porte d'entrée — audit live 2026-05-26)
+    const jar = await cookies()
     const ua = (await headers()).get('user-agent')
-    const isPwa = (await cookies()).get('pwa_standalone')?.value === '1'
-    redirect(parsed.data.next ?? resolveHomeDestination(profile, isMobileUserAgent(ua), isPwa))
+    const isPwa = jar.get(COOKIE_PWA_STANDALONE)?.value === '1'
+    const desktopActive = isPwaDesktopActive(jar.get(COOKIE_PWA_DESKTOP_UNTIL)?.value)
+    redirect(parsed.data.next ?? resolveHomeDestination(profile, isMobileUserAgent(ua), isPwa, desktopActive))
   }
 
   redirect('/dashboard')

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { resolveHomeDestination, isMobileUserAgent } from '@/lib/navigation/home'
+import { COOKIE_PWA_STANDALONE, COOKIE_PWA_DESKTOP_UNTIL, isPwaDesktopActive } from '@/lib/navigation/pwa-mode'
 import LandingPage from './LandingPage'
 
 export default async function Home() {
@@ -13,9 +14,11 @@ export default async function Home() {
   if (user) {
     const profile = await getCurrentUserWithProfile()
     if (profile) {
+      const jar = await cookies()
       const ua = (await headers()).get('user-agent')
-      const isPwa = (await cookies()).get('pwa_standalone')?.value === '1'
-      redirect(resolveHomeDestination(profile, isMobileUserAgent(ua), isPwa))
+      const isPwa = jar.get(COOKIE_PWA_STANDALONE)?.value === '1'
+      const desktopActive = isPwaDesktopActive(jar.get(COOKIE_PWA_DESKTOP_UNTIL)?.value)
+      redirect(resolveHomeDestination(profile, isMobileUserAgent(ua), isPwa, desktopActive))
     }
     redirect('/dashboard')
   }

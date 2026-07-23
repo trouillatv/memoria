@@ -1,35 +1,30 @@
 'use client'
 
-import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { updateHomePreferenceAction } from '@/app/(dashboard)/account/actions'
+import { COOKIE_PWA_DESKTOP_UNTIL, makePwaDesktopUntilValue } from '@/lib/navigation/pwa-mode'
 
 /**
- * Échappatoire bureau depuis le terrain. Bascule aussi la préférence d'accueil
- * (`home_preference`) sur `dashboard` : cliquer « Vue bureau » vaut choisir le
- * bureau comme surface par défaut, donc le toggle du menu compte reste aligné.
- * Best-effort : on navigue même si la persistance échoue (jamais coincé sur /m).
+ * Échappatoire bureau depuis la PWA terrain. Pose un cookie temporaire
+ * (15 min, glissant à chaque navigation) qui signale au routing serveur
+ * d'envoyer vers /dashboard plutôt que /m. La préférence utilisateur
+ * en base n'est PAS modifiée : ce choix est ponctuel, pas permanent.
+ * La prochaine ouverture de la PWA après expiration revient sur /m.
  */
 export function SwitchToDesktopLink() {
   const router = useRouter()
-  const [pending, startTransition] = useTransition()
 
   function handleClick() {
-    startTransition(async () => {
-      await updateHomePreferenceAction('dashboard')
-      router.push('/dashboard')
-      router.refresh()
-    })
+    document.cookie = `${COOKIE_PWA_DESKTOP_UNTIL}=${makePwaDesktopUntilValue()}; path=/; SameSite=Lax`
+    router.push('/dashboard')
   }
 
   return (
     <button
       type="button"
       onClick={handleClick}
-      disabled={pending}
-      className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+      className="text-xs text-muted-foreground hover:text-foreground"
     >
-      {pending ? 'Ouverture...' : 'Vue bureau'}
+      Vue bureau
     </button>
   )
 }
