@@ -80,6 +80,11 @@ import { getAttentionDigest } from '@/lib/db/attention'
 import { StartBar } from './StartBar'
 import { NotificationsBar } from './NotificationsBar'
 import { getMyUnreadNotifications } from '@/lib/db/notifications'
+import { getUpcomingItems } from '@/lib/db/upcoming-items'
+import { getSitesDashboard } from '@/lib/db/sites-dashboard'
+import { UpcomingPassages } from './UpcomingPassages'
+import { WatchedSites } from './WatchedSites'
+import { KnowledgeHighlights } from './KnowledgeHighlights'
 
 export const dynamic = 'force-dynamic'
 
@@ -137,9 +142,11 @@ export default async function DashboardPage() {
   // M3 — les organisations de l'utilisateur (agrégation multi-org). Sert l'inbox
   // et la résolution des libellés pour les badges.
   const orgIds = await getOrgIdsOfUser()
+  const rawOrgLabels = await getOrganizationLabels(orgIds)
   // Provenance : UNE résolution partagée, uniquement en multi-org. En mono-org →
   // `null` → les widgets n'affichent aucun badge (interface inchangée).
-  const orgLabels: OrgLabels = orgIds.length > 1 ? await getOrganizationLabels(orgIds) : null
+  const orgLabels: OrgLabels = orgIds.length > 1 ? rawOrgLabels : null
+  const orgNames = Object.values(rawOrgLabels)
 
   // Couche « Nouveau depuis hier » — déclarations QR fraîches depuis last_seen_at.
   const inbox = await getInboxFeed(user.id, orgIds)
@@ -163,6 +170,8 @@ export default async function DashboardPage() {
     memorySignalsRaw,
     heatmap,
     morningDigest,
+    upcoming,
+    sitesDashboard,
   ] = await Promise.all([
     listContracts(),
     getCapitalPreuves(),
@@ -181,6 +190,8 @@ export default async function DashboardPage() {
     collectMemorySignals(),
     getMemoryHeatmap(84),
     getMyOrgMorningDigest(),
+    getUpcomingItems(orgIds),
+    getSitesDashboard(orgIds),
   ])
 
   // Moteur d'états de mémoire (Temps 2) : contextualisé pour le dashboard.
@@ -220,9 +231,6 @@ export default async function DashboardPage() {
     (c) => c.status === 'active' && summaryMap.get(c.id)?.needsAttention,
   ).length
 
-  const firstName = user.full_name?.split(' ')[0] ?? 'là'
-  const active = contracts.filter((c) => c.status === 'active')
-
   // Temps 2 — bloc « Ce qui mérite votre attention » : agrégation déterministe
   // transverse des détecteurs (actions en retard/anciennes, réserves), plafonnée.
   const attention = await getAttentionDigest(5)
@@ -234,43 +242,54 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6 w-full">
-      <DashboardHeader
-        firstName={firstName}
-        activeContractsCount={active.length}
-        activeContracts={active.map((c) => ({ id: c.id, name: c.name }))}
-      />
+      {/* Zone 1 — En-tête : neutre, ou MorningHero si disponible (jamais les deux). */}
+      {morningDigest ? (
+        <MorningHero digest={morningDigest} orgLabels={orgLabels} />
+      ) : (
+        <DashboardHeader orgNames={orgNames} />
+      )}
 
-      {/* Ce que la journée a produit. Avant tout le reste : on lit d'abord ce qui
-          vient de se passer, on fouille ensuite. Silencieux si rien n'a bougé. */}
-      <VisitImpactCard changes={todayChanges} orgLabels={orgLabels} />
-
-      {/* Temps 2 — « Ce qui mérite votre attention » : le système décide des
-          priorités du jour (5 max), l'utilisateur ne fouille pas. Déterministe. */}
+      {/* Zone 2 — Attention opérationnelle : le système décide des priorités (5 max). */}
       <AttentionBlock digest={attention} orgLabels={orgLabels} />
 
-      {/* Notifications (socle mig 159) — réponse à un retour, etc. Au chargement,
-          pas seulement si l'utilisateur ouvre le bouton feedback. */}
+      {/* Zone 3 — Prochains passages planifiés (30j). */}
+      <UpcomingPassages items={upcoming} />
+
+      {/* Zone 4 — Sites à surveiller : agrégation par site, triée par criticité. */}
+      <WatchedSites sites={sitesDashboard} />
+
+      {/* Zone 5 — À savoir : capsules mémoire utiles, une par site. */}
+      <KnowledgeHighlights items={aSavoir} />
+
+      {/* Notifications (socle mig 159). */}
       <NotificationsBar notifications={notifications} />
 
-      {/* Barre « Démarrer » sobre & repliable — raccourcis de création + invite
-          d'installation mobile. Se masque (mémorisé par appareil). */}
+      {/* Barre « Démarrer » sobre & repliable. */}
       <StartBar />
 
-      {/* Couche « Nouveau depuis hier » (Vincent) — ce qui s'est passé pendant votre
-          absence : déclarations QR des entreprises. Silencieux si rien de neuf. */}
-      <DashboardInbox feed={inbox} orgLabels={orgLabels} />
+      {/* Modules BTP — conditionnels : silencieux si rien à montrer. */}
+      {todayChanges.sites.length > 0 && (
+        <VisitImpactCard changes={todayChanges} orgLabels={orgLabels} />
+      )}
 
-      <Hero
-        morningDigest={morningDigest}
-        morningReading={morningReading}
-        tendersDueSoon={tendersDueSoon}
-        recentAnomalies={recentAnomalies}
-        memorySignals={memorySignals}
-        urgentPassations={continuity.counts.j7}
-        sharedAwaitingAck={handoverCounts.shared}
-        continuityEnabled={continuityEnabled}
-        orgLabels={orgLabels}
-      />
+      {inbox.items.length > 0 && (
+        <DashboardInbox feed={inbox} orgLabels={orgLabels} />
+      )}
+
+      {/* Hero BTP fallback (AO / continuité / signaux mémoire) — sans morningDigest. */}
+      {!morningDigest && (
+        <Hero
+          morningDigest={null}
+          morningReading={morningReading}
+          tendersDueSoon={tendersDueSoon}
+          recentAnomalies={recentAnomalies}
+          memorySignals={memorySignals}
+          urgentPassations={continuity.counts.j7}
+          sharedAwaitingAck={handoverCounts.shared}
+          continuityEnabled={continuityEnabled}
+          orgLabels={orgLabels}
+        />
+      )}
 
       {/* Ligne mémoire — 3 condensations du moteur (jamais des KPI). */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -279,8 +298,7 @@ export default async function DashboardPage() {
         <DerniereMemoireUtile events={memoryEvents} />
       </div>
 
-      {/* Continuité — prévient si une fin de contrat approche (passation à
-          préparer). Silence positif : rien si aucune échéance dans 30j. */}
+      {/* Continuité — prévient si une fin de contrat approche. */}
       <ContinuityWidget />
 
       <VieDuSysteme
@@ -296,10 +314,12 @@ export default async function DashboardPage() {
         orgLabels={orgLabels}
       />
 
-      <ReservoirEtDefense
-        interventions={tenantCumulative.totalInterventions}
-        preuves={capital.totalPhotos}
-      />
+      {(tenantCumulative.totalInterventions > 0 || capital.totalPhotos > 0) && (
+        <ReservoirEtDefense
+          interventions={tenantCumulative.totalInterventions}
+          preuves={capital.totalPhotos}
+        />
+      )}
     </div>
   )
 }

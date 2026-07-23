@@ -35,30 +35,25 @@ function makeAnomalies(p: Partial<OpenAnomaliesStats> = {}): OpenAnomaliesStats 
 }
 
 describe('DashboardHeader', () => {
-  it('greets the user by first name', () => {
-    render(<DashboardHeader firstName="Aurélie" activeContractsCount={3} />)
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Bonjour Aurélie.')
+  it('shows the neutral greeting', () => {
+    render(<DashboardHeader orgNames={[]} />)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Bonjour,')
   })
 
-  it('uses plural for activeContractsCount > 1', () => {
-    render(<DashboardHeader firstName="Aurélie" activeContractsCount={3} />)
-    expect(screen.getByText(/3 contrats actifs\./i)).toBeInTheDocument()
+  it('shows org name when provided', () => {
+    render(<DashboardHeader orgNames={['CAPSE NC']} />)
+    expect(screen.getByText('CAPSE NC')).toBeInTheDocument()
   })
 
-  it('uses singular for activeContractsCount = 1', () => {
-    render(<DashboardHeader firstName="Aurélie" activeContractsCount={1} />)
-    expect(screen.getByText(/1 contrat actif\./i)).toBeInTheDocument()
-    // Doit afficher singulier strict — pas "1 contrats actifs"
-    expect(screen.queryByText(/1 contrats actifs/i)).toBeNull()
+  it('shows multiple org names joined by ·', () => {
+    render(<DashboardHeader orgNames={['CAPSE NC', 'AGP']} />)
+    expect(screen.getByText('CAPSE NC · AGP')).toBeInTheDocument()
   })
 
   it('renders a date label in French (capitalized weekday + month + year)', () => {
-    const { container } = render(
-      <DashboardHeader firstName="Aurélie" activeContractsCount={2} />,
-    )
+    const { container } = render(<DashboardHeader orgNames={[]} />)
     const header = container.querySelector('[data-slot="dashboard-header"]')
     expect(header).not.toBeNull()
-    // Le format FR contient l'année à 4 chiffres et un nom de mois en lettres.
     const year = String(new Date().getFullYear())
     expect(header?.textContent ?? '').toContain(year)
   })

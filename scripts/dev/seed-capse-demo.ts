@@ -376,7 +376,7 @@ async function main() {
       'Zone commerciale Katiramona, Dumbéa',
       'Entrepôt de transit. Flux quotidien élevé (chariots élévateurs). Mission CAPSE : inspection trimestrielle + formation CACES.'))
 
-  await step('Site — Centrale Prony (Enercal)', () =>
+  const centrale = await step('Site — Centrale Prony (Enercal)', () =>
     insertSite(c, clients.get('Enercal')!,
       'Centrale hydroélectrique de Yaté',
       'Prony, Province Sud',
@@ -647,15 +647,18 @@ async function main() {
     }))
 
   // ── CAPSULES / À SAVOIR ──────────────────────────────────────────────────
-  await step('Capsules mémoire (5 notes À savoir)', async () => {
-    const capsules = [
+  await step('Capsules mémoire (5 Ducos + 1 par site secondaire)', async () => {
+    const capsulesducos = [
       "Badge securite niveau 2 requis a l'entree principale — retrait obligatoire a la guerite.",
       "Batiment C : casque, lunettes de protection et gants chimiques obligatoires des l'entree.",
       'Référent sécurité sur site : Élodie Wénéhoua — disponible sur place 7h-17h les jours ouvrés.',
       'Prochain contrôle électrique réglementaire (HTA/BT) : avant le 30/09/2026.',
       'Accès interdit entre 22h et 6h sauf autorisation écrite du Directeur HSE.',
     ]
-    for (const body of capsules) await insertNote(c, ducos, body, 'a_savoir')
+    for (const body of capsulesducos) await insertNote(c, ducos, body, 'a_savoir')
+    if (depot) await insertNote(c, depot, "Accès périmètre ICPE : badge opérateur obligatoire ou accompagnement depuis le portique nord. Pas d'accès autonome.", 'a_savoir')
+    if (fret) await insertNote(c, fret, "Responsable sécurité absent le vendredi — contacter le chef de quai en cas d'urgence ou d'accès hors horaires.", 'a_savoir')
+    if (centrale) await insertNote(c, centrale, "Accès centrale Yaté : demande à adresser 48h à l'avance à la sécurité Enercal. Habilitation H0B0 minimum obligatoire.", 'a_savoir')
   })
 
   // ── ÉVÉNEMENTS FUTURS ────────────────────────────────────────────────────
