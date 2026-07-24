@@ -52,14 +52,20 @@ export function EntityLogo({
 
   if (src && !imgError) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={src}
-        alt={alt}
+      <span
+        className={`${cls} inline-flex items-center justify-center border-2 p-0.5`}
+        style={{ borderColor: fallbackColor ?? 'transparent' }}
         aria-hidden={alt ? undefined : true}
-        className={`${cls} object-contain`}
-        onError={() => setImgError(true)}
-      />
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={alt}
+          aria-hidden={alt ? undefined : true}
+          className="h-full w-full object-contain"
+          onError={() => setImgError(true)}
+        />
+      </span>
     )
   }
 

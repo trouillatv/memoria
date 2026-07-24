@@ -62,7 +62,7 @@ export function OrgBadgeRich({ meta, size = 'sm' }: {
         variant="rounded"
         fallbackColor={meta.color}
       />
-      <span className={textClass}>{meta.label}</span>
+      <span className={textClass} style={{ color: meta.color ?? undefined }}>{meta.label}</span>
     </span>
   )
 }

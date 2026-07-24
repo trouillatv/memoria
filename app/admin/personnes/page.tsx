@@ -130,7 +130,7 @@ export default async function AdminPersonnesPage() {
                   <tr><td colSpan={4} className="px-3 py-6 text-center text-xs text-muted-foreground">Aucune entreprise.</td></tr>
                 ) : orgs.map((o) => (
                   <tr key={o.id} className="hover:bg-muted/20 align-top">
-                    <td className="px-3 py-2 font-medium">{o.name}</td>
+                    <td className="px-3 py-2 font-medium" style={{ color: o.color ?? undefined }}>{o.name}</td>
                     <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{o.slug}</td>
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap items-center gap-2">

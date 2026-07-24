@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import { OrgBadge, orgLabelOf, type OrgLabels } from '@/components/dashboard/OrgBadge'
+import { render, screen } from '@testing-library/react'
+import { OrgBadge, orgLabelOf, OrgBadgeRich, type OrgLabels } from '@/components/dashboard/OrgBadge'
 
 // M3 — le contrat du badge d'organisation :
 //   · mono-org (labels = null) → AUCUN badge, interface inchangée ;
@@ -35,5 +35,23 @@ describe('OrgBadge — présentation', () => {
     const { getByText, getByTitle } = render(<OrgBadge label="SERVINOR" />)
     expect(getByText('SERVINOR')).toBeTruthy()
     expect(getByTitle('Organisation : SERVINOR')).toBeTruthy()
+  })
+})
+
+describe('OrgBadgeRich', () => {
+  it('conserve la couleur du libellé quand un logo est présent', () => {
+    render(
+      <OrgBadgeRich
+        meta={{
+          id: 'agp',
+          label: 'AGP',
+          logoUrl: 'https://example.com/agp.jpg',
+          color: '#274DF5',
+        }}
+        size="md"
+      />,
+    )
+
+    expect(screen.getByText('AGP')).toHaveStyle({ color: '#274DF5' })
   })
 })
