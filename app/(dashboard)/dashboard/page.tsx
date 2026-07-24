@@ -10,9 +10,7 @@ import { listLivingASavoir } from '@/lib/db/handover'
 import { getUpcomingItems } from '@/lib/db/upcoming-items'
 import { getSitesDashboard } from '@/lib/db/sites-dashboard'
 import { getNowDashboard } from '@/lib/db/now-dashboard'
-import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { getMemoryReview, type MemoryReview } from '@/lib/knowledge/memory-review'
-import { getPendingWork, type PendingWork } from '@/lib/knowledge/pending-work'
 import { getDashboardDeadlinesToPlan } from '@/lib/db/dashboard-deadlines'
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardPremium } from './DashboardPremium'
@@ -50,13 +48,9 @@ export default async function DashboardPage() {
     getDashboardDeadlinesToPlan(orgIds, organizationMap ?? {}),
   ])
   const visitSiteId = visit.sites[0]?.siteId
-  const [visitActions, visitReview, visitPending] = visitSiteId
-    ? await Promise.all([
-        listOpenSiteActions({ statuses: ['open', 'planned'], siteIds: [visitSiteId] }).catch(() => []),
-        getMemoryReview(visitSiteId, { includeWork: true }).catch(() => ({ confirmed: [], toReview: [] }) as MemoryReview),
-        getPendingWork({ siteIds: [visitSiteId] }).catch(() => ({ actions: [], deadlines: [] }) as PendingWork),
-      ])
-    : [[], { confirmed: [], toReview: [] } as MemoryReview, { actions: [], deadlines: [] } as PendingWork]
+  const visitReview = visitSiteId
+    ? await getMemoryReview(visitSiteId, { includeWork: true }).catch(() => ({ confirmed: [], toReview: [] }) as MemoryReview)
+    : { confirmed: [], toReview: [] } as MemoryReview
   const now = await getNowDashboard(orgIds, upcoming, organizationMap ?? {})
 
   return (
@@ -71,9 +65,7 @@ export default async function DashboardPage() {
       orgLabels={orgLabels}
       organizationMap={organizationMap ?? {}}
       now={now}
-      visitActions={visitActions}
       visitReview={visitReview}
-      visitPending={visitPending}
       deadlinesToPlan={deadlinesToPlan}
     />
   )

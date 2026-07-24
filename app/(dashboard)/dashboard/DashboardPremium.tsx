@@ -18,14 +18,12 @@ import type { AttentionDigest, AttentionItem } from '@/lib/db/attention'
 import type { UpcomingDashboardItem } from '@/lib/db/upcoming-items'
 import type { SiteDashboardItem } from '@/lib/db/sites-dashboard'
 import type { LivingASavoirCard } from '@/lib/db/handover'
-import type { SiteActionRow } from '@/lib/db/site-actions'
 import type { NowDashboardItem, NowDashboardSummary } from '@/lib/db/now-dashboard'
 import type { MemoryReview } from '@/lib/knowledge/memory-review'
-import type { PendingWork } from '@/lib/knowledge/pending-work'
 import type { DashboardDeadlineToPlan } from '@/lib/db/dashboard-deadlines'
+import type { SiteActionRow } from '@/lib/db/site-actions'
 import { OrganizationBadge, type OrgLabels } from '@/components/dashboard/OrgBadge'
 import type { OrganizationIdentityMap } from '@/lib/db/organisations'
-import { ActionCheckbox } from './ActionCheckbox'
 import { CockpitNow, PriorityActionList } from './CockpitNow'
 import { MemoryInbox } from '@/app/(field)/m/site/[siteId]/MemoryReviewPanel'
 
@@ -40,9 +38,7 @@ type Props = {
   orgLabels: OrgLabels
   organizationMap: OrganizationIdentityMap
   now: { items: NowDashboardItem[]; summary: NowDashboardSummary; actions: SiteActionRow[] }
-  visitActions: SiteActionRow[]
   visitReview: MemoryReview
-  visitPending: PendingWork
   deadlinesToPlan: DashboardDeadlineToPlan[]
 }
 
@@ -89,7 +85,43 @@ function AttentionPanel({ digest, organizationMap }: { digest: AttentionDigest; 
   )
 }
 
-function VisitSummary({ site, organizationMap, actions, review, pending }: { site: SiteImpact; organizationMap: OrganizationIdentityMap; actions: SiteActionRow[]; review: MemoryReview; pending: PendingWork }) {
+function VisitSummary({ site, organizationMap, review }: { site: SiteImpact; organizationMap: OrganizationIdentityMap; review: MemoryReview }) {
+  // Toute proposition encore non traitée passe par le même centre d'action :
+  // action, échéance, intervenant, décision, connaissance ou vigilance.
+  const toPlan = review.toReview
+  return (
+    <section className={`${surface} p-5 sm:p-6`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">Depuis votre dernière visite</p>
+          <h2 className="mt-2 text-lg font-semibold text-[#101a35]">{site.siteName}</h2>
+          <p className="mt-1 flex items-center gap-1 text-xs text-[#65718b]">{organizationMap[site.organizationId] && <OrganizationBadge organization={organizationMap[site.organizationId]} size="xs" />} Synthèse à jour</p>
+        </div>
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#eee9ff] text-[#7857d4]"><Sparkles className="h-4 w-4" /></span>
+      </div>
+      <div className="mt-6 grid gap-4 sm:grid-cols-5">{[
+        { icon: FileText, value: site.added.actions, label: 'actions proposées', tone: 'bg-[#eee9ff] text-[#7959d8]' },
+        { icon: ShieldAlert, value: site.added.watchpoints, label: 'points de vigilance', tone: 'bg-[#fff0e7] text-[#ef8e45]' },
+        { icon: Calendar, value: site.added.deadlines, label: 'échéances détectées', tone: 'bg-[#e8f0ff] text-[#4178db]' },
+        { icon: Users, value: site.added.stakeholders, label: 'intervenants identifiés', tone: 'bg-[#e8faf4] text-[#26a67b]' },
+        { icon: Info, value: site.added.knowledge, label: 'informations à savoir', tone: 'bg-[#fff7dc] text-[#dca82b]' },
+      ].map((metric) => <Metric key={metric.label} {...metric} />)}</div>
+      <details className="mt-5 rounded-2xl bg-[#f8faff] p-3">
+        <summary className="cursor-pointer list-none text-xs font-semibold text-[#1463e8]">Ouvrir tout ce qui reste à traiter</summary>
+        <div className="mt-4 space-y-4">
+          <p className="text-[11px] text-[#65718b]">{toPlan.length} proposition{toPlan.length !== 1 ? 's' : ''} à traiter</p>
+          {toPlan.length > 0 && <details className="rounded-xl border border-[#f1dfb1] bg-[#fffaf0] px-3 py-2"><summary className="cursor-pointer list-none text-xs font-semibold text-[#9b6b1d]">À planifier / traiter ({toPlan.length})</summary><div className="mt-2"><MemoryInbox siteId={site.siteId} items={toPlan} withFilters /></div></details>}
+          <Link href={`/sites/${site.siteId}`} className="inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8]">Ouvrir le chantier <ArrowRight className="h-3.5 w-3.5" /></Link>
+        </div>
+      </details>
+    </section>
+  )
+}
+
+/* Deprecated duplicate implementation kept out of the dashboard render path during the cockpit transition.
+function LegacyVisitSummary({ site, organizationMap, actions, review, pending }: { site: SiteImpact; organizationMap: OrganizationIdentityMap; actions: SiteActionRow[]; review: MemoryReview; pending: PendingWork }) {
+  const toPlan = review.toReview.filter((item) => item.kind === 'action' || item.kind === 'deadline')
+  const toArbitrate = review.toReview.filter((item) => item.kind !== 'action' && item.kind !== 'deadline')
   const metrics = [
     { icon: FileText, value: site.added.actions, label: 'actions proposées', tone: 'bg-[#eee9ff] text-[#7959d8]' },
     { icon: ShieldAlert, value: site.added.watchpoints, label: 'points de vigilance', tone: 'bg-[#fff0e7] text-[#ef8e45]' },
@@ -116,6 +148,7 @@ function VisitSummary({ site, organizationMap, actions, review, pending }: { sit
   )
 }
 
+*/
 function Agenda({ items, organizationMap, deadlinesToPlan }: { items: UpcomingDashboardItem[]; organizationMap: OrganizationIdentityMap; deadlinesToPlan: DashboardDeadlineToPlan[] }) {
   return <section className={`${surface} p-5 sm:p-6`}><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">Votre journée</p><h2 className="mt-2 text-lg font-semibold text-[#101a35]">Passages et échéances à organiser</h2><div className="mt-5"><p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#65718b]">Planifiés</p>{items.length === 0 ? <p className="rounded-xl bg-[#f8faff] px-3 py-3 text-xs italic text-[#73809a]">Aucun passage planifié dans les 30 prochains jours.</p> : <ul className="space-y-3">{items.slice(0, 5).map((item) => <li key={`${item.sourceType}:${item.id}`}><Link href={item.href} className="group flex items-start gap-3"><span className="rounded-lg bg-[#edf3ff] px-2 py-1 text-[10px] font-bold text-[#3c67b3]">{item.isToday ? "Aujourd'hui" : dateLabel(item.startsAt)}</span><span className="min-w-0 flex-1"><strong className="block truncate text-xs font-semibold text-[#17213a]">{item.title}</strong><span className="mt-1 flex items-center gap-1 truncate text-[11px] text-[#748098]">{item.siteName} · {timeLabel(item.startsAt)}{organizationMap[item.organization.id] && <> · <OrganizationBadge organization={item.organization} size="xs" /></>}</span></span><ChevronRight className="mt-1 h-3.5 w-3.5 text-[#a4afc0]" /></Link></li>)}</ul>}</div><div className="mt-5"><p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#65718b]">À planifier</p>{deadlinesToPlan.length === 0 ? <p className="rounded-xl bg-[#f3fbf6] px-3 py-3 text-xs text-[#258657]">Aucune échéance à organiser.</p> : <ul className="space-y-2">{deadlinesToPlan.slice(0, 5).map((deadline) => <li key={deadline.id} className="rounded-xl bg-[#fff9ed] px-3 py-2.5"><div className="flex items-start gap-2"><span className="min-w-0 flex-1"><strong className="block text-xs font-semibold text-[#34415c]">{deadline.title}</strong><span className="mt-1 flex items-center gap-1 text-[10px] text-[#7b879d]"><OrganizationBadge organization={deadline.organization} size="xs" /> {deadline.siteName}</span><span className="mt-1 block text-[10px] text-[#c4872a]">{deadline.constraintText || 'Date à choisir'}</span></span><Link href={deadline.href} className="shrink-0 rounded-lg bg-white px-2 py-1 text-[10px] font-semibold text-[#c4872a] ring-1 ring-[#f1d494]">Planifier</Link></div></li>)}</ul>}</div><Link href="/mois" className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8]">Voir le planning complet <ArrowRight className="h-3.5 w-3.5" /></Link></section>
 }
@@ -132,14 +165,14 @@ function MemoryCards({ items, organizationMap }: { items: LivingASavoirCard[]; o
   return <section className={`${surface} p-5 sm:p-6`}><div className="flex items-center justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">Connaissances du terrain</p><h2 className="mt-2 text-lg font-semibold text-[#101a35]">Mémoire utile pour aujourd&apos;hui</h2></div><Info className="h-5 w-5 text-[#5e7bd3]" /></div>{items.length === 0 ? <p className="mt-6 text-sm italic text-[#73809a]">Aucune capsule disponible pour le moment.</p> : <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{items.slice(0, 4).map((item, index) => <Link key={item.id} href={`/sites/${item.site_id}`} className="group rounded-2xl border border-[#e8edf5] bg-[#fbfcff] p-4 transition-all hover:-translate-y-0.5 hover:border-[#cbd9f7] hover:shadow-sm"><span className={`flex h-9 w-9 items-center justify-center rounded-xl ${['bg-[#e5f8ef] text-[#2ba577]', 'bg-[#eee8ff] text-[#7756d7]', 'bg-[#fff0df] text-[#ed8b43]', 'bg-[#e8f0ff] text-[#4779dc]'][index]}`}><Sparkles className="h-4 w-4" /></span><p className="mt-3 line-clamp-3 text-xs font-medium leading-relaxed text-[#27334e]">{item.body}</p><p className="mt-4 flex items-center gap-1 truncate text-[10px] text-[#7b879d]">{item.site_name} · {organizationMap[item.organizationId] && <OrganizationBadge organization={organizationMap[item.organizationId]} size="xs" />}</p></Link>)}</div>}<Link href="/memoire" className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8]">Voir toutes les capsules <ArrowRight className="h-3.5 w-3.5" /></Link></section>
 }
 
-export function DashboardPremium({ firstName, orgNames, attention, visit, upcoming, sites, aSavoir, organizationMap, now, visitActions, visitReview, visitPending, deadlinesToPlan }: Props) {
+export function DashboardPremium({ firstName, orgNames, attention, visit, upcoming, sites, aSavoir, organizationMap, now, visitReview, deadlinesToPlan }: Props) {
   const rawSite = visit.sites[0]
   const site = rawSite
   return <div className="min-h-screen w-full bg-[#f8fafc] px-1 pb-12 pt-1 sm:px-2"><div className="w-full space-y-5">
     <header className="flex items-end justify-between gap-5 px-1 py-4 sm:px-2"><div><h1 className="text-3xl font-semibold tracking-[-0.035em] text-[#101a35]">Bonjour {firstName} 👋</h1><p className="mt-1 text-sm text-[#68758d]">Voici ce qui demande votre attention aujourd&apos;hui.</p>{orgNames.length > 1 && <p className="mt-3 text-xs font-medium text-[#6b7891]">{orgNames.join(' · ')}</p>}</div><div className="hidden items-center gap-2 text-xs text-[#7a879f] lg:flex"><span className="rounded-full border border-[#e2e8f2] bg-white px-4 py-2">Rechercher un chantier, une action, un document…</span><span className="flex h-10 w-10 items-center justify-center rounded-full border border-[#e2e8f2] bg-white"><Info className="h-4 w-4" /></span></div></header>
     <AttentionPanel digest={attention} organizationMap={organizationMap} />
     <CockpitNow items={now.items} summary={now.summary} showOrganizationBadge={Object.keys(organizationMap).length > 1} />
-    <div className="grid gap-5 xl:grid-cols-[1.28fr_0.72fr]">{site ? <VisitSummary site={site} organizationMap={organizationMap} actions={visitActions} review={visitReview} pending={visitPending} /> : <section className={`${surface} p-6`}><h2 className="text-lg font-semibold text-[#101a35]">Depuis votre dernière visite</h2><p className="mt-4 text-sm text-[#73809a]">Aucune évolution récente à afficher.</p></section>}<Agenda items={upcoming} organizationMap={organizationMap} deadlinesToPlan={deadlinesToPlan} /></div>
+    <div className="grid gap-5 xl:grid-cols-[1.28fr_0.72fr]">{site ? <VisitSummary site={site} organizationMap={organizationMap} review={visitReview} /> : <section className={`${surface} p-6`}><h2 className="text-lg font-semibold text-[#101a35]">Depuis votre dernière visite</h2><p className="mt-4 text-sm text-[#73809a]">Aucune évolution récente à afficher.</p></section>}<Agenda items={upcoming} organizationMap={organizationMap} deadlinesToPlan={deadlinesToPlan} /></div>
     <div className="grid gap-5 xl:grid-cols-2"><SitesTable sites={sites} organizationMap={organizationMap} /><PriorityActionList actions={now.actions} organizationMap={organizationMap} /></div>
     <MemoryCards items={aSavoir} organizationMap={organizationMap} />
     <div className="grid gap-5 md:grid-cols-3"><section className={`${surface} p-5`}><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6a7892]">État de la continuité</p><p className="mt-4 flex items-center gap-2 text-sm font-medium text-[#21845c]"><CheckCircle2 className="h-4 w-4" /> Continuité stable — rien à signaler</p></section><section className={`${surface} p-5 md:col-span-2`}><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6a7892]">Mémoire opérationnelle</p><div className="mt-4 flex items-center gap-2 text-xs text-[#65718b]"><span className="h-3 w-3 rounded-[3px] bg-[#61c98b]" /><span className="h-3 w-3 rounded-[3px] bg-[#f4c95e]" /><span className="h-3 w-3 rounded-[3px] bg-[#72a5ed]" /> Les traces récentes restent disponibles dans les fiches des lieux.</div></section></div>
