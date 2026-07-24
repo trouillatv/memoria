@@ -1,11 +1,12 @@
 import Link from 'next/link'
-import { Calendar, ClipboardCheck, Truck, ChevronRight } from 'lucide-react'
+import { Calendar, ClipboardCheck, Truck, MapPin, ChevronRight } from 'lucide-react'
 import type { UpcomingDashboardItem, UpcomingItemKind } from '@/lib/db/upcoming-items'
 
 const KIND_ICON: Record<UpcomingItemKind, React.ComponentType<{ className?: string }>> = {
   inspection: ClipboardCheck,
   meeting: Calendar,
   delivery: Truck,
+  visit: MapPin,
   other: Calendar,
 }
 
@@ -13,6 +14,7 @@ const KIND_LABEL: Record<UpcomingItemKind, string> = {
   inspection: 'Inspection',
   meeting: 'Réunion',
   delivery: 'Livraison',
+  visit: 'Visite',
   other: 'Évènement',
 }
 
@@ -46,7 +48,7 @@ export function UpcomingPassages({ items }: UpcomingPassagesProps) {
           {items.map((item) => {
             const Icon = KIND_ICON[item.kind]
             return (
-              <li key={item.id}>
+              <li key={`${item.sourceType}:${item.id}`}>
                 <Link
                   href={item.href}
                   className="group flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors"

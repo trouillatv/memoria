@@ -41,7 +41,9 @@ export async function getSitesDashboard(orgIds: string[]): Promise<SiteDashboard
     }
   }
 
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Noumea' }).format(new Date())
+  const now = new Date()
+  const nowIso = now.toISOString()
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Noumea' }).format(now)
 
   const [actionRes, reserveRes, reportRes, eventRes] = await Promise.all([
     supabase
@@ -56,11 +58,11 @@ export async function getSitesDashboard(orgIds: string[]): Promise<SiteDashboard
       .eq('status', 'open'),
     supabase
       .from('site_reports')
-      .select('site_id, ended_at')
+      .select('site_id, ended_at, planned_at')
       .in('site_id', siteIds)
-      .not('ended_at', 'is', null)
-      .order('ended_at', { ascending: false })
-      .limit(siteIds.length * 3),
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(siteIds.length * 10),
     supabase
       .from('site_scheduled_events')
       .select('site_id, planned_start')
@@ -88,14 +90,26 @@ export async function getSitesDashboard(orgIds: string[]): Promise<SiteDashboard
     reserveCount.set(r.site_id, (reserveCount.get(r.site_id) ?? 0) + 1)
   }
 
+  const nextPassage = new Map<string, string>()
   const lastActivity = new Map<string, string>()
-  for (const r of (reportRes.data ?? []) as Array<{ site_id: string; ended_at: string }>) {
-    if (!lastActivity.has(r.site_id)) lastActivity.set(r.site_id, r.ended_at)
+  for (const r of (reportRes.data ?? []) as Array<{
+    site_id: string
+    ended_at: string | null
+    planned_at: string | null
+  }>) {
+    if (r.ended_at) {
+      const current = lastActivity.get(r.site_id)
+      if (!current || r.ended_at > current) lastActivity.set(r.site_id, r.ended_at)
+    }
+    if (r.planned_at && r.planned_at > nowIso) {
+      const current = nextPassage.get(r.site_id)
+      if (!current || r.planned_at < current) nextPassage.set(r.site_id, r.planned_at)
+    }
   }
 
-  const nextPassage = new Map<string, string>()
   for (const e of (eventRes.data ?? []) as Array<{ site_id: string; planned_start: string }>) {
-    if (!nextPassage.has(e.site_id)) nextPassage.set(e.site_id, e.planned_start)
+    const current = nextPassage.get(e.site_id)
+    if (!current || e.planned_start < current) nextPassage.set(e.site_id, e.planned_start)
   }
 
   const items: SiteDashboardItem[] = sites.map((site) => {

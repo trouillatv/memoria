@@ -1,10 +1,10 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export type UpcomingItemKind = 'inspection' | 'meeting' | 'delivery' | 'other'
+export type UpcomingItemKind = 'inspection' | 'meeting' | 'delivery' | 'visit' | 'other'
 
 export type UpcomingDashboardItem = {
   id: string
-  sourceType: 'scheduled_event'
+  sourceType: 'scheduled_event' | 'visit'
   organizationId: string
   siteId: string
   siteName: string
@@ -50,17 +50,31 @@ export async function getUpcomingItems(
   const horizon = new Date(now.getTime() + horizonDays * 86_400_000)
   const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Noumea' }).format(now)
 
-  const { data: evRows } = await supabase
-    .from('site_scheduled_events')
-    .select('id, site_id, type, title, planned_start')
-    .in('site_id', siteIds)
-    .gt('planned_start', now.toISOString())
-    .lte('planned_start', horizon.toISOString())
-    .order('planned_start', { ascending: true })
-    .limit(50)
+  const [eventsRes, visitsRes] = await Promise.all([
+    supabase
+      .from('site_scheduled_events')
+      .select('id, site_id, type, title, planned_start')
+      .in('site_id', siteIds)
+      .gt('planned_start', now.toISOString())
+      .lte('planned_start', horizon.toISOString())
+      .order('planned_start', { ascending: true })
+      .limit(50),
+    supabase
+      .from('site_reports')
+      .select('id, site_id, title, planned_at')
+      .in('site_id', siteIds)
+      .eq('origin', 'planned')
+      .is('deleted_at', null)
+      .is('ended_at', null)
+      .not('planned_at', 'is', null)
+      .gt('planned_at', now.toISOString())
+      .lte('planned_at', horizon.toISOString())
+      .order('planned_at', { ascending: true })
+      .limit(50),
+  ])
 
   const items: UpcomingDashboardItem[] = []
-  for (const ev of (evRows ?? []) as Array<{
+  for (const ev of (eventsRes.data ?? []) as Array<{
     id: string
     site_id: string
     type: string
@@ -90,5 +104,31 @@ export async function getUpcomingItems(
     })
   }
 
+  for (const visit of (visitsRes.data ?? []) as Array<{
+    id: string
+    site_id: string
+    title: string | null
+    planned_at: string
+  }>) {
+    const site = siteMap.get(visit.site_id)
+    if (!site) continue
+    const visitDay = visit.planned_at.slice(0, 10)
+    items.push({
+      id: visit.id,
+      sourceType: 'visit',
+      organizationId: site.organization_id,
+      siteId: site.id,
+      siteName: site.name,
+      clientName: site.client_id ? (clientNames.get(site.client_id) ?? null) : null,
+      title: visit.title?.trim() || 'Visite planifiée',
+      kind: 'visit',
+      startsAt: visit.planned_at,
+      isToday: visitDay === todayStr,
+      isOverdue: false,
+      href: `/sites/${site.id}`,
+    })
+  }
+
+  items.sort((a, b) => a.startsAt.localeCompare(b.startsAt))
   return items.slice(0, 10)
 }
