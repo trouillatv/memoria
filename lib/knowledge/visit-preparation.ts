@@ -8,6 +8,29 @@ export interface VisitPreparationFacts {
   isFinished: boolean
 }
 
+export type VisitPreparationActivityStatus = 'validated' | 'in_progress' | 'very_recent'
+
+export interface VisitPreparationActivityFacts {
+  endedAt: string | null
+  startedAt: string | null
+  now?: string
+}
+
+/**
+ * Une activité ouverte n'est jamais masquée : elle est rendue comme « en cours ».
+ * Une activité clôturée aujourd'hui reste « très récente » pour ne pas perdre le
+ * signal terrain, tandis qu'une activité clôturée plus ancienne est validée.
+ */
+export function classifyVisitPreparationActivity(
+  facts: VisitPreparationActivityFacts,
+): VisitPreparationActivityStatus {
+  if (!facts.endedAt) return 'in_progress'
+  const now = new Date(facts.now ?? new Date().toISOString()).getTime()
+  const ended = new Date(facts.endedAt).getTime()
+  if (!Number.isFinite(now) || !Number.isFinite(ended)) return 'validated'
+  return now - ended < 86_400_000 ? 'very_recent' : 'validated'
+}
+
 export function resolveVisitPreparationPhase(facts: VisitPreparationFacts): VisitPreparationPhase {
   if (facts.isFinished) return 'history'
   if (facts.hasActiveTender) return 'previsit_ao'

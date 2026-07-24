@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildVisitPreparationSummary,
+  classifyVisitPreparationActivity,
   resolveVisitPreparationPhase,
   type VisitPreparationFacts,
 } from '@/lib/knowledge/visit-preparation'
@@ -31,5 +32,19 @@ describe('visit preparation read model', () => {
       'Prochain passage : jeudi à 8 h 30.',
       'Point critique : Vérifier les consignations électriques.',
     ])
+  })
+
+  it('keeps open activities visible and distinguishes recent from validated ones', () => {
+    expect(classifyVisitPreparationActivity({ endedAt: null, startedAt: '2026-07-25T08:00:00Z' })).toBe('in_progress')
+    expect(classifyVisitPreparationActivity({
+      endedAt: '2026-07-25T08:00:00Z',
+      startedAt: '2026-07-25T07:00:00Z',
+      now: '2026-07-25T12:00:00Z',
+    })).toBe('very_recent')
+    expect(classifyVisitPreparationActivity({
+      endedAt: '2026-07-23T08:00:00Z',
+      startedAt: '2026-07-23T07:00:00Z',
+      now: '2026-07-25T12:00:00Z',
+    })).toBe('validated')
   })
 })

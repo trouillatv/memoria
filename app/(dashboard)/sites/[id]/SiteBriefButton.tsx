@@ -131,6 +131,9 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
       const r = await getSiteBriefAction(sid)
       if (r.ok) {
         setBrief(r.brief)
+        if (mode === 'visit' && !initialMotive) {
+          setMotive(r.brief.phase === 'first_visit' ? 'premiere' : r.brief.phase === 'previsit_ao' ? 'previsite_ao' : 'avancement')
+        }
         setLoadedSite(sid)
       } else {
         toast.error(r.error)
@@ -228,7 +231,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
               </button>
             </div>
 
-            <div className="px-4 py-4 space-y-5">
+            <div className="px-4 py-4 flex flex-col gap-5">
               {needsSitePick && (
                 <div className="space-y-1">
                   <label htmlFor="brief-site" className="text-xs text-muted-foreground">Site</label>
@@ -280,7 +283,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
               {/* Priorité C — LLM encadré (sources affichées dessous). Réunion =
                   « Points à discuter » · Visite = « Objectif de la visite ». */}
               {brief && (
-                <section className="rounded-xl border border-sky-200 bg-sky-50/40 p-3 space-y-2">
+                <section className="order-last rounded-xl border border-sky-200 bg-sky-50/40 p-3 space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="text-sm font-semibold inline-flex items-center gap-1.5">
                       <Sparkles className="h-3.5 w-3.5 text-sky-600" />
@@ -450,6 +453,8 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
     urgentItems,
     blockedItems,
     lastPresence,
+    activities,
+    persistedNarrative,
   } = brief
 
   const nextLabel = formatDate(situation.nextScheduledAt)
@@ -469,6 +474,8 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
     missionNames.length > 0 ||
     recentPhotosCount > 0 ||
     meetings.length > 0
+    || activities.length > 0
+    || persistedNarrative != null
 
   const sections: Record<string, React.ReactNode> = {
     followedPoints: followedPoints.length === 0 ? null : (
@@ -762,6 +769,54 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
             {lastPresence.actor ? ` · ${lastPresence.actor}` : ''}
             {lastPresence.photoCount > 0 ? ` · ${lastPresence.photoCount} photo${lastPresence.photoCount > 1 ? 's' : ''}` : ''}
           </p>
+        </section>
+      )}
+
+      {activities.length > 0 && (
+        <section className="space-y-2.5">
+          <SectionTitle icon={<History className="h-3.5 w-3.5 text-sky-600" />}>Activité récente du chantier</SectionTitle>
+          <div className="space-y-2">
+            {activities.slice(0, 5).map((activity) => {
+              const statusLabel = activity.status === 'in_progress'
+                ? 'En cours'
+                : activity.status === 'very_recent' ? 'Très récent' : 'Validé'
+              const statusClass = activity.status === 'in_progress'
+                ? 'bg-amber-50 text-amber-700'
+                : activity.status === 'very_recent' ? 'bg-sky-50 text-sky-700' : 'bg-emerald-50 text-emerald-700'
+              return (
+                <article key={activity.id} className="rounded-xl border bg-background p-3 space-y-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                        {activity.kind === 'visit' ? 'Visite' : 'Réunion'}
+                      </p>
+                      <p className="text-sm font-medium">{activity.title}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${statusClass}`}>{statusLabel}</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {formatDate(activity.startedAt)}
+                    {activity.photoCount > 0 ? ` · ${activity.photoCount} photo${activity.photoCount > 1 ? 's' : ''}` : ''}
+                    {activity.memoCount > 0 ? ` · ${activity.memoCount} note${activity.memoCount > 1 ? 's' : ''}` : ''}
+                    {activity.status === 'in_progress' ? ' · compte-rendu non finalisé' : ''}
+                  </p>
+                  {activity.narrative && (
+                    <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/85">{activity.narrative}</p>
+                  )}
+                  <a href={activity.href} className="inline-flex text-xs font-medium text-sky-700 hover:underline">
+                    Voir la source <ChevronRight className="ml-0.5 h-3.5 w-3.5" />
+                  </a>
+                </article>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {persistedNarrative && activities.length === 0 && (
+        <section className="rounded-xl border bg-muted/20 p-3.5 space-y-2">
+          <SectionTitle icon={<History className="h-3.5 w-3.5 text-sky-600" />}>Dernier résumé enregistré</SectionTitle>
+          <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/85">{persistedNarrative}</p>
         </section>
       )}
 

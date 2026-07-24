@@ -18,6 +18,7 @@
 // qu'une seule source en panne ne casse pas tout le brief.
 
 import { z } from 'zod'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { logUsageEvent } from '@/lib/db/usage-events'
 import { listOpenSiteActions, listSiteActionsBySite, listSiteActionsByReport } from '@/lib/db/site-actions'
@@ -41,6 +42,8 @@ import {
   buildVisitPreparationSummary,
   resolveVisitPreparationPhase,
   type VisitPreparationPhase,
+  classifyVisitPreparationActivity,
+  type VisitPreparationActivityStatus,
 } from '@/lib/knowledge/visit-preparation'
 
 const IdSchema = z.string().uuid()
@@ -108,6 +111,19 @@ export interface SiteBriefPresence {
   occurredAt: string
   actor: string | null
   photoCount: number
+}
+
+export interface SiteBriefActivity {
+  id: string
+  kind: 'visit' | 'meeting'
+  title: string
+  startedAt: string | null
+  endedAt: string | null
+  status: VisitPreparationActivityStatus
+  href: string
+  photoCount: number
+  memoCount: number
+  narrative: string | null
 }
 
 /** Réserve non levée (point à lever) — preuve d'exécution restant due. */
@@ -179,6 +195,8 @@ export interface SiteBrief {
   urgentItems: string[]
   blockedItems: string[]
   lastPresence: SiteBriefPresence | null
+  activities: SiteBriefActivity[]
+  persistedNarrative: string | null
 }
 
 export type SiteBriefResult =
@@ -219,6 +237,8 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
   const auth = await requireOperator()
   if (!auth.ok) return auth
 
+  const db = createAdminClient()
+
   // Toutes les sources en parallèle ; chacune tolère sa propre panne.
   const [
     identity,
@@ -234,6 +254,9 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     meetings,
     reserves,
     watched,
+    preparationReports,
+    sitePhase,
+    dossierPhase,
   ] = await Promise.all([
     getSiteIdentity(siteId).catch(() => null),
     getSiteCurrentState(siteId).catch(() => null),
@@ -248,7 +271,74 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     listReportsBySite(siteId).catch(() => []),
     getSiteReserves(siteId).catch(() => []),
     listSiteSubjectsToWatch(siteId, 5).catch(() => []),
+    (async () => {
+      const { data } = await db
+        .from('site_reports')
+        .select('id, title, origin, started_at, ended_at, created_at, status, debrief_analysis')
+        .eq('site_id', siteId)
+        .is('deleted_at', null)
+        .order('started_at', { ascending: false })
+        .limit(8)
+      return (data ?? []) as Array<Record<string, unknown>>
+    })().catch(() => [] as Array<Record<string, unknown>>),
+    (async () => {
+      const { data } = await db.from('sites').select('phase').eq('id', siteId).maybeSingle()
+      return (data as { phase?: string } | null)?.phase ?? null
+    })().catch(() => null as string | null),
+    (async () => {
+      const { data } = await db.from('dossiers').select('phase').eq('site_id', siteId).is('deleted_at', null)
+        .in('phase', ['prospect', 'en_ao', 'actif', 'perdu', 'archive'])
+        .order('updated_at', { ascending: false }).limit(1)
+      return ((data?.[0] as { phase?: string } | undefined)?.phase ?? null)
+    })().catch(() => null as string | null),
   ])
+
+  const reportIds = preparationReports.map((r) => String(r.id)).filter(Boolean)
+  const captureCounts = new Map<string, { photos: number; memos: number }>()
+  if (reportIds.length > 0) {
+    const { data: captures } = await db
+      .from('visit_capture')
+      .select('report_id, kind')
+      .in('report_id', reportIds)
+    for (const capture of (captures ?? []) as Array<{ report_id: string; kind: string | null }>) {
+      const current = captureCounts.get(capture.report_id) ?? { photos: 0, memos: 0 }
+      if (capture.kind === 'photo' || capture.kind === 'image') current.photos += 1
+      else current.memos += 1
+      captureCounts.set(capture.report_id, current)
+    }
+  }
+
+  const preparationActivities: SiteBriefActivity[] = preparationReports
+    .filter((r) => r.origin != null || r.status === 'draft')
+    .map((r) => {
+      const id = String(r.id)
+      const counts = captureCounts.get(id) ?? { photos: 0, memos: 0 }
+      const analysis = (r.debrief_analysis as { summary?: unknown } | null) ?? null
+      const narrative = typeof analysis?.summary === 'string' && analysis.summary.trim()
+        ? analysis.summary.trim()
+        : null
+      const isVisit = r.origin != null
+      return {
+        id,
+        kind: isVisit ? ('visit' as const) : ('meeting' as const),
+        title: typeof r.title === 'string' && r.title.trim()
+          ? r.title
+          : isVisit ? 'Visite terrain' : 'Réunion de chantier',
+        startedAt: (r.started_at as string | null) ?? (r.created_at as string | null) ?? null,
+        endedAt: (r.ended_at as string | null) ?? null,
+        status: classifyVisitPreparationActivity({
+          startedAt: (r.started_at as string | null) ?? null,
+          endedAt: (r.ended_at as string | null) ?? null,
+        }),
+        href: isVisit ? `/sites/${siteId}/visites/${id}` : `/sites/${siteId}?reprendre=${id}`,
+        photoCount: counts.photos,
+        memoCount: counts.memos,
+        narrative,
+      }
+    })
+    .sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''))
+
+  const latestNarrative = preparationActivities.find((activity) => activity.narrative)?.narrative ?? null
 
   const openAnomalies = anomalies.filter((a) => a.status === 'open')
   const followedPoints: SiteBriefFollowedPoint[] = watched.map((w) => ({
@@ -388,8 +478,8 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
 
   const phase = resolveVisitPreparationPhase({
     hasCompletedVisit: Boolean(currentState?.lastPassageAt),
-    hasActiveTender: false,
-    isFinished: false,
+    hasActiveTender: dossierPhase === 'prospect' || dossierPhase === 'en_ao' || sitePhase === 'prospect' || sitePhase === 'en_ao',
+    isFinished: dossierPhase === 'perdu' || dossierPhase === 'archive' || sitePhase === 'perdu' || sitePhase === 'archive',
   })
   const phaseLabel: Record<VisitPreparationPhase, string> = {
     first_visit: 'Première visite',
@@ -451,6 +541,8 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
             photoCount: currentState.lastPassagePhotoCount,
           }
         : null,
+      activities: preparationActivities,
+      persistedNarrative: latestNarrative,
     },
   }
 }
