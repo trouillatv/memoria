@@ -335,7 +335,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
                   )}
                   {points && points.length > 0 && (
                     <>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Priorité de la visite</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Priorité complémentaire suggérée par MemorIA</p>
                     <ul className="space-y-1">
                       {[...points].sort((a, b) => Number(b.priority === 'high') - Number(a.priority === 'high')).map((p, i) => (
                         <li key={i} className="flex gap-1.5 text-sm text-sky-950">
@@ -403,6 +403,13 @@ function SectionTitle({
       )}
     </h3>
   )
+}
+
+function formatDateTime(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
 }
 
 function FactLines({ items, empty = 'Rien à signaler.' }: { items: SiteBriefFactLine[]; empty?: string }) {
@@ -494,6 +501,7 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
     narratives,
     proofs,
     objective,
+    confirmedFacts,
     rememberToday,
     completedSinceVenue,
     atRiskOfForgetting,
@@ -774,7 +782,7 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[11px] font-medium uppercase tracking-wide text-sky-700">
-                {objective.kind === 'scheduled' ? 'Passage planifié' : 'Motif principal déterminé'}
+                {objective.kind === 'scheduled' ? 'Motif du passage planifié' : 'Motif opérationnel principal'}
               </p>
               <p className="mt-1 text-sm font-medium">{objective.sourceHref ? <a href={objective.sourceHref} className="hover:underline">{objective.text}</a> : objective.text}</p>
             </div>
@@ -787,7 +795,9 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
 
       <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
         <SectionTitle icon={<Brain className="h-3.5 w-3.5 text-sky-600" />}>Ce que je dois retenir aujourd&apos;hui</SectionTitle>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Situation connue</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">État confirmé aujourd&apos;hui</p>
+        <FactLines items={confirmedFacts} />
+        <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dernier état rapporté</p>
         <FactLines items={rememberToday.filter((item) => item.sourceType !== 'deadline')} empty="Aucun fait consolidé à retenir pour le moment." />
         {rememberToday.some((item) => item.sourceType === 'deadline') && (
           <>
@@ -800,7 +810,11 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
       <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
           <SectionTitle icon={<History className="h-3.5 w-3.5 text-sky-600" />}>Ce qui a changé depuis votre venue</SectionTitle>
           <p className="text-xs text-muted-foreground">
-            Depuis {sinceLastVenue?.dateLabel ?? 'votre dernière venue personnelle'}
+            {sinceLastVenue
+              ? `Depuis votre dernière venue personnelle du ${formatDateTime(sinceLastVenue.at) ?? sinceLastVenue.dateLabel}`
+              : activities[0]?.startedAt
+                ? `Aucune présence personnelle antérieure identifiée. Comparaison depuis la dernière activité connue du chantier (${formatDateTime(activities[0].startedAt)}).`
+                : 'Aucune présence personnelle antérieure identifiée.'}
           </p>
           <FactLines items={changedSinceVenue} empty="Aucun changement enregistré depuis cette venue." />
       </section>

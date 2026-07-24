@@ -6,6 +6,7 @@ import {
   selectPreparationObjective,
   selectNarrativeHighlights,
   buildVisitObjectiveContextLines,
+  buildUnconfirmedQuestion,
   resolveVisitPreparationPhase,
   type VisitPreparationFacts,
 } from '@/lib/knowledge/visit-preparation'
@@ -100,5 +101,11 @@ describe('visit preparation read model', () => {
     expect(lines.join('\n')).toContain('Activité en cours')
     expect(lines.join('\n')).toContain('Vérification électrique — à planifier')
     expect(lines.join('\n')).toContain('Photo des panneaux électriques')
+  })
+
+  it('turns historical announcements into natural field questions', () => {
+    expect(buildUnconfirmedQuestion('L’accès sera communiqué sous peu.')).toBe('L’accès sécurisé a-t-il été communiqué ?')
+    expect(buildUnconfirmedQuestion('Clim Expert interviendra jeudi et vendredi.')).toBe('Clim Expert est-il effectivement intervenu ?')
+    expect(buildUnconfirmedQuestion('Le planning sera diffusé vendredi.')).toBe('Le planning annoncé a-t-il été diffusé et est-il à jour ?')
   })
 })

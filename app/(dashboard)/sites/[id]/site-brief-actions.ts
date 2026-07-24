@@ -54,6 +54,7 @@ import {
   type PreparationObjective,
   selectNarrativeHighlights,
   buildVisitObjectiveContextLines,
+  buildUnconfirmedQuestion,
   type VisitPreparationActivityStatus,
 } from '@/lib/knowledge/visit-preparation'
 
@@ -251,6 +252,7 @@ export interface SiteBrief {
   narratives: SiteBriefNarrative[]
   proofs: SiteBriefProof[]
   objective: PreparationObjective | null
+  confirmedFacts: SiteBriefFactLine[]
   rememberToday: SiteBriefFactLine[]
   completedSinceVenue: SiteBriefFactLine[]
   atRiskOfForgetting: SiteBriefFactLine[]
@@ -684,10 +686,15 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
   })
 
   const narrativeHighlights = selectNarrativeHighlights(narratives.map((narrative) => narrative.text), 3)
+  const confirmedFacts: SiteBriefFactLine[] = [
+    { text: `${openActionRows.length} action${openActionRows.length > 1 ? 's' : ''} ouverte${openActionRows.length > 1 ? 's' : ''}`, sourceType: 'action', sourceId: null, sourceHref: `/sites/${siteId}?tab=travail`, status: 'validated' },
+    ...(deadlineItems.filter((deadline) => deadline.status === 'to_plan').length > 0 ? [{ text: `${deadlineItems.filter((deadline) => deadline.status === 'to_plan').length} échéance${deadlineItems.filter((deadline) => deadline.status === 'to_plan').length > 1 ? 's' : ''} à planifier`, sourceType: 'deadline' as const, sourceId: null, sourceHref: `/sites/${siteId}/planning`, status: 'validated' as const }] : []),
+    { text: openReserves.length === 0 ? 'Aucune réserve ouverte' : `${openReserves.length} réserve${openReserves.length > 1 ? 's' : ''} ouverte${openReserves.length > 1 ? 's' : ''}`, sourceType: 'reserve', sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' },
+  ]
   const rememberToday: SiteBriefFactLine[] = narrativeHighlights.map((text) => {
     const source = narratives.find((narrative) => narrative.text.includes(text)) ?? narratives[0]
     return {
-      text,
+      text: `${source.sourceType === 'visit' ? 'Visite' : 'Réunion'} du ${new Date(source.occurredAt).toLocaleDateString('fr-FR')} — ${text}`,
       sourceType: source.sourceType,
       sourceId: source.sourceId,
       sourceHref: source.sourceHref,
@@ -706,7 +713,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
   const changedActivityFacts: SiteBriefFactLine[] = narratives
     .filter((narrative) => sinceLastVenue && narrative.occurredAt > sinceLastVenue.at)
     .flatMap((narrative) => selectNarrativeHighlights([narrative.text], 1).map((text) => ({
-      text,
+      text: `${narrative.sourceType === 'visit' ? 'Visite' : 'Réunion'} du ${new Date(narrative.occurredAt).toLocaleDateString('fr-FR')} — ${text}`,
       sourceType: narrative.sourceType,
       sourceId: narrative.sourceId,
       sourceHref: narrative.sourceHref,
@@ -739,7 +746,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     ...narratives.flatMap((narrative) => selectNarrativeHighlights([narrative.text], 4)
       .filter((text) => /\b(devait|interviendra|sera|prévu|annoncé|sous peu|semaine prochaine|à organiser|reste à)\b/i.test(text))
       .map((text) => ({
-        text: `Cette information est-elle toujours d'actualité : ${text}`,
+        text: buildUnconfirmedQuestion(text),
         sourceType: narrative.sourceType,
         sourceId: narrative.sourceId,
         sourceHref: narrative.sourceHref,
@@ -795,6 +802,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       narratives,
       proofs,
       objective,
+      confirmedFacts,
       rememberToday,
       completedSinceVenue,
       atRiskOfForgetting,

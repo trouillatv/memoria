@@ -150,6 +150,19 @@ export function buildVisitObjectiveContextLines(facts: PreparationAIContextFacts
   return lines
 }
 
+/** Reformule une annonce historique en question concrète pour le terrain. */
+export function buildUnconfirmedQuestion(text: string): string {
+  const value = text.toLocaleLowerCase('fr-FR')
+  if (value.includes('clim expert')) return 'Clim Expert est-il effectivement intervenu ?'
+  if (value.includes('accès') || value.includes('code')) return 'L’accès sécurisé a-t-il été communiqué ?'
+  if (value.includes('planning')) return 'Le planning annoncé a-t-il été diffusé et est-il à jour ?'
+  if (value.includes('électric') || value.includes('consignation')) return 'L’intervention électrique et les consignations ont-elles été programmées ?'
+  if (value.includes('coffret')) return 'La pose du coffret électrique a-t-elle été réalisée ou programmée ?'
+  if (value.includes('pave')) return 'La visite PAVE est-elle programmée ?'
+  if (value.includes('suie') || value.includes('panneau')) return 'Le dépôt de suie sur les panneaux électriques a-t-il été nettoyé ?'
+  return `Le point suivant est-il toujours d’actualité : ${text}`
+}
+
 /** Sélectionne les rappels « Avant de partir » sans score opaque ni IA. */
 export function selectPreparationReminders(
   facts: PreparationReminderFacts,
