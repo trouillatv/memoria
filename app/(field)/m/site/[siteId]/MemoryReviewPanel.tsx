@@ -175,8 +175,8 @@ function ReviewCard({
 }) {
   const [pending, start] = useTransition()
   const [error, setError] = useState<string | null>(null)
-  // Le détail (extrait complet + Écarter) est replié : la carte reste une LIGNE
-  // dense — deux à trois propositions par écran, c'était trop peu.
+  // Le détail est replié : la carte reste une LIGNE dense. L'écartement reste
+  // toujours visible comme geste principal, sans dépendre du détail.
   const [open, setOpen] = useState(false)
   // Ce que l'écran doit DEMANDER — il ne le devine pas, la capability le dit.
   const [asking, setAsking] = useState<'role' | 'who' | 'nature' | 'date' | null>(null)
@@ -508,13 +508,13 @@ function ReviewCard({
               </Link>
             </div>
           )}
-          {/* Le détail (extrait, Écarter) derrière un CHEVRON — « ⋯ » était trop
-              cryptique, écarter doit rester facile à trouver. */}
+          {/* Le détail (extrait) derrière un CHEVRON ; « Écarter » reste une
+              action principale visible, indépendante de ce bouton. */}
           {item.kind !== 'stakeholder' && (
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
-              aria-label={open ? 'Replier les détails' : 'Détails et écarter'}
+              aria-label={open ? 'Replier les détails' : 'Détails'}
               className="inline-flex items-center rounded-lg border px-2 py-1.5 text-muted-foreground active:brightness-95"
             >
               <ChevronDown className={cn('h-4 w-4 transition-transform', open && 'rotate-180')} />
