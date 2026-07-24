@@ -7,7 +7,6 @@
 // "Réunion chantier #N" = une vue sur ces actions (ouvertes vs clôturées).
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getOrgId } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { actionHealth, actionAttentionOf, noumeaDayOf, type ActionHealth } from '@/lib/actions/health'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
@@ -165,6 +164,7 @@ export interface SiteActionRow {
   corps_etat: string | null
   assigned_to: string | null
   status: SiteActionStatus
+  kind: 'one_shot' | 'deadline' | 'recurring_until_done'
   created_at: string
   due_date: string | null
   report_id: string | null
@@ -246,6 +246,7 @@ export async function listOpenSiteActions(opts?: {
       corps_etat: a.corps_etat,
       assigned_to: a.assigned_to,
       status: a.status,
+      kind: a.kind,
       created_at: a.created_at,
       due_date: a.due_date,
       report_id: a.report_id,
@@ -298,6 +299,7 @@ export async function listOpenSiteActionsByReports(reportIds: string[]): Promise
       corps_etat: a.corps_etat,
       assigned_to: a.assigned_to,
       status: a.status,
+      kind: a.kind,
       created_at: a.created_at,
       due_date: a.due_date,
       report_id: a.report_id,

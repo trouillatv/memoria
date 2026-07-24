@@ -9,6 +9,7 @@ import { getVisitImpact, emptyVisitImpact } from '@/lib/knowledge/site-events'
 import { listLivingASavoir } from '@/lib/db/handover'
 import { getUpcomingItems } from '@/lib/db/upcoming-items'
 import { getSitesDashboard } from '@/lib/db/sites-dashboard'
+import { getNowDashboard } from '@/lib/db/now-dashboard'
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardPremium } from './DashboardPremium'
 
@@ -40,6 +41,7 @@ export default async function DashboardPage() {
     getUpcomingItems(orgIds),
     getSitesDashboard(orgIds),
   ])
+  const now = await getNowDashboard(orgIds, upcoming)
 
   return (
     <DashboardPremium
@@ -51,6 +53,7 @@ export default async function DashboardPage() {
       sites={sites}
       aSavoir={aSavoir}
       orgLabels={orgLabels}
+      now={now}
     />
   )
 }
