@@ -1,6 +1,7 @@
 import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
 import type { UpcomingDashboardItem } from '@/lib/db/upcoming-items'
 import { todayLocalIso } from '@/lib/time/local-date'
+import type { OrganizationIdentity, OrganizationIdentityMap } from '@/lib/db/organisations'
 
 export type NowItemSource = 'action' | 'deadline' | 'passage'
 export type NowItemPriority = 'urgent' | 'today' | 'soon'
@@ -11,6 +12,7 @@ export type NowDashboardItem = {
   title: string
   siteId: string
   siteName: string
+  organization: OrganizationIdentity
   href: string
   dueDate: string | null
   startsAt: string | null
@@ -28,8 +30,17 @@ export type NowDashboardSummary = {
 export async function getNowDashboard(
   orgIds: string[],
   upcoming: UpcomingDashboardItem[],
+  organizationMap: OrganizationIdentityMap = {},
 ): Promise<{ items: NowDashboardItem[]; summary: NowDashboardSummary; actions: SiteActionRow[] }> {
   const actions = await listOpenSiteActions({ orgIds, statuses: ['open', 'planned'] })
+  const organizationFor = (organizationId: string): OrganizationIdentity => organizationMap[organizationId] ?? {
+    id: organizationId,
+    name: organizationId,
+    slug: organizationId,
+    logoPath: null,
+    logoUrl: null,
+    brandColor: null,
+  }
   const today = todayLocalIso()
   const horizon = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10)
   const overdue = actions.filter((a) => !!a.due_date && a.due_date < today)
@@ -44,6 +55,7 @@ export async function getNowDashboard(
       title: action.title,
       siteId: action.site_id,
       siteName: action.site_name,
+      organization: organizationFor(action.organizationId),
       href: `/sites/${action.site_id}/actions`,
       dueDate: action.due_date,
       startsAt: null,
@@ -58,6 +70,7 @@ export async function getNowDashboard(
     title: item.title,
     siteId: item.siteId,
     siteName: item.siteName,
+    organization: item.organization,
     href: item.href,
     dueDate: null,
     startsAt: item.startsAt,

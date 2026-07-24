@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { OrgBadge, orgLabelOf, OrgBadgeRich, type OrgLabels } from '@/components/dashboard/OrgBadge'
+import { OrgBadge, orgLabelOf, OrgBadgeRich, OrganizationBadge, type OrgLabels } from '@/components/dashboard/OrgBadge'
 
 // M3 — le contrat du badge d'organisation :
 //   · mono-org (labels = null) → AUCUN badge, interface inchangée ;
@@ -53,5 +53,26 @@ describe('OrgBadgeRich', () => {
     )
 
     expect(screen.getByText('AGP')).toHaveStyle({ color: '#274DF5' })
+  })
+})
+
+describe('OrganizationBadge', () => {
+  it('affiche l’organisation canonique avec son nom complet en tooltip', () => {
+    render(
+      <OrganizationBadge
+        organization={{
+          id: 'agp',
+          name: 'AGP Nettoyage',
+          slug: 'agp',
+          logoPath: null,
+          logoUrl: null,
+          brandColor: '#274DF5',
+        }}
+        size="sm"
+      />,
+    )
+
+    expect(screen.getByText('agp')).toBeInTheDocument()
+    expect(screen.getByTitle('Organisation : AGP Nettoyage')).toBeInTheDocument()
   })
 })

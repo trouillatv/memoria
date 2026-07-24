@@ -27,11 +27,22 @@ export interface DbOrganisation {
   color?: string | null
 }
 
-/** M4a — métadonnées de branding pour un badge enrichi (logo + couleur). */
-export interface OrgMeta {
+/** Identité publique d'une organisation propriétaire d'un objet métier. */
+export interface OrganizationIdentity {
   id: string
-  label: string
+  name: string
+  slug: string
+  logoPath: string | null
   logoUrl: string | null
+  brandColor: string | null
+}
+
+export type OrganizationIdentityMap = Record<string, OrganizationIdentity>
+
+/** M4a — métadonnées de branding pour un badge enrichi (logo + couleur). */
+export interface OrgMeta extends OrganizationIdentity {
+  label: string
+  /** Alias historique de brandColor. */
   color: string | null
 }
 
@@ -77,10 +88,29 @@ export async function getOrganizationsMeta(orgIds: string[]): Promise<OrgMeta[]>
   const signedUrls = await getSignedLogoUrls(paths)
   return rows.map((o) => ({
     id: o.id,
+    name: o.name,
+    slug: o.slug ?? '',
+    logoPath: o.logo_path ?? null,
     label: (o.slug || o.name || '').trim(),
     logoUrl: o.logo_path ? (signedUrls[o.logo_path] ?? null) : null,
     color: o.color ?? null,
+    brandColor: o.color ?? null,
   }))
+}
+
+/** Résolution groupée des identités, destinée aux read models multi-org. */
+export async function getOrganizationIdentityMap(
+  orgIds: string[],
+): Promise<Record<string, OrganizationIdentity>> {
+  const metas = await getOrganizationsMeta(orgIds)
+  return Object.fromEntries(metas.map((meta) => [meta.id, {
+    id: meta.id,
+    name: meta.name,
+    slug: meta.slug,
+    logoPath: meta.logoPath,
+    logoUrl: meta.logoUrl,
+    brandColor: meta.brandColor,
+  }]))
 }
 
 /** Met à jour la couleur hexadécimale de l'organisation. */

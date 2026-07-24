@@ -7,12 +7,41 @@
 // multi-organisations (la page ne construit la map que dans ce cas) → en mono-org
 // l'interface est visuellement inchangée, sans aucune condition dans les widgets.
 
-import type { OrgMeta } from '@/lib/db/organisations'
+import type { OrganizationIdentity, OrgMeta } from '@/lib/db/organisations'
 import { EntityLogo } from '@/components/ui/EntityLogo'
 
 // Objet SIMPLE (pas une Map) : ces libellés traversent la frontière serveur →
 // client (DashboardInbox), et une Map n'est pas sérialisable dans les props RSC.
 export type OrgLabels = Record<string, string> | null
+
+export function OrganizationBadge({ organization, size = 'sm' }: {
+  organization: OrganizationIdentity
+  size?: 'xs' | 'sm' | 'md'
+}) {
+  const label = organization.slug || organization.name
+  const logoSize = size === 'md' ? 'md' : size === 'xs' ? 'xs' : 'sm'
+  const textClass = size === 'md'
+    ? 'text-xs font-semibold'
+    : size === 'xs'
+      ? 'text-[9.5px] font-semibold uppercase tracking-wide'
+      : 'text-[10px] font-semibold uppercase tracking-wide'
+
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 ${size === 'md' ? '' : 'rounded border border-border/70 bg-muted/40 px-1.5 py-0.5 align-middle'}`}
+      title={`Organisation : ${organization.name}`}
+    >
+      <EntityLogo
+        src={organization.logoUrl}
+        label={label}
+        size={logoSize}
+        variant="rounded"
+        fallbackColor={organization.brandColor}
+      />
+      <span className={textClass} style={{ color: organization.brandColor ?? undefined }}>{label}</span>
+    </span>
+  )
+}
 
 /** Le libellé d'une organisation (ou `undefined` en mono-org / id inconnu). */
 export function orgLabelOf(labels: OrgLabels, organizationId: string | null | undefined): string | undefined {
@@ -45,24 +74,12 @@ export function OrgBadgeRich({ meta, size = 'sm' }: {
   /** sm = badge inline (cartes), md = indicateur layout */
   size?: 'sm' | 'md'
 }) {
-  const isMd = size === 'md'
-  const textClass = isMd
-    ? 'text-xs font-semibold text-foreground'
-    : 'text-[9.5px] font-semibold uppercase tracking-wide text-muted-foreground'
-
-  return (
-    <span
-      className={`inline-flex shrink-0 items-center gap-1 ${isMd ? '' : 'rounded border border-border/70 bg-muted/40 px-1.5 py-0.5 align-middle'}`}
-      title={`Organisation : ${meta.label}`}
-    >
-      <EntityLogo
-        src={meta.logoUrl}
-        label={meta.label}
-        size={isMd ? 'md' : 'xs'}
-        variant="rounded"
-        fallbackColor={meta.color}
-      />
-      <span className={textClass} style={{ color: meta.color ?? undefined }}>{meta.label}</span>
-    </span>
-  )
+  return <OrganizationBadge organization={{
+    id: meta.id,
+    name: meta.label,
+    slug: meta.label,
+    logoPath: null,
+    logoUrl: meta.logoUrl,
+    brandColor: meta.color,
+  }} size={size === 'md' ? 'md' : 'xs'} />
 }

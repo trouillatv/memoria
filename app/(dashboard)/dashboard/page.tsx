@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getOnboardingProgress } from '@/lib/db/onboarding'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
-import { getOrganizationLabels } from '@/lib/db/organisations'
+import { getOrganizationIdentityMap } from '@/lib/db/organisations'
 import type { OrgLabels } from '@/components/dashboard/OrgBadge'
 import { getAttentionDigest } from '@/lib/db/attention'
 import { getVisitImpact, emptyVisitImpact } from '@/lib/knowledge/site-events'
@@ -30,7 +30,10 @@ export default async function DashboardPage() {
   }
 
   const orgIds = await getOrgIdsOfUser()
-  const rawOrgLabels = orgIds.length > 1 ? await getOrganizationLabels(orgIds) : null
+  const organizationMap = orgIds.length > 1 ? await getOrganizationIdentityMap(orgIds) : null
+  const rawOrgLabels = organizationMap
+    ? Object.fromEntries(Object.values(organizationMap).map((organization) => [organization.id, organization.slug || organization.name]))
+    : null
   const orgLabels: OrgLabels = rawOrgLabels
   const orgNames = rawOrgLabels ? Object.values(rawOrgLabels) : []
 
@@ -38,10 +41,10 @@ export default async function DashboardPage() {
     getAttentionDigest(5),
     getVisitImpact().catch(() => emptyVisitImpact()),
     listLivingASavoir(4),
-    getUpcomingItems(orgIds),
-    getSitesDashboard(orgIds),
+    getUpcomingItems(orgIds, 30, organizationMap ?? undefined),
+    getSitesDashboard(orgIds, organizationMap ?? undefined),
   ])
-  const now = await getNowDashboard(orgIds, upcoming)
+  const now = await getNowDashboard(orgIds, upcoming, organizationMap ?? {})
 
   return (
     <DashboardPremium
@@ -53,6 +56,7 @@ export default async function DashboardPage() {
       sites={sites}
       aSavoir={aSavoir}
       orgLabels={orgLabels}
+      organizationMap={organizationMap ?? {}}
       now={now}
     />
   )

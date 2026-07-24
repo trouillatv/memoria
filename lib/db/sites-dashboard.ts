@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { OrganizationIdentity, OrganizationIdentityMap } from '@/lib/db/organisations'
 
 export type SiteStatus = 'critical' | 'warning' | 'normal'
 
@@ -6,6 +7,7 @@ export type SiteDashboardItem = {
   id: string
   name: string
   organizationId: string
+  organization: OrganizationIdentity
   clientName: string | null
   activeActionCount: number
   overdueActionCount: number
@@ -16,9 +18,18 @@ export type SiteDashboardItem = {
   href: string
 }
 
-export async function getSitesDashboard(orgIds: string[]): Promise<SiteDashboardItem[]> {
+export async function getSitesDashboard(orgIds: string[], organizationMap?: OrganizationIdentityMap): Promise<SiteDashboardItem[]> {
   if (orgIds.length === 0) return []
   const supabase = createAdminClient()
+  const organizations = organizationMap ?? {}
+  const organizationFor = (organizationId: string): OrganizationIdentity => organizations[organizationId] ?? {
+    id: organizationId,
+    name: organizationId,
+    slug: organizationId,
+    logoPath: null,
+    logoUrl: null,
+    brandColor: null,
+  }
 
   const { data: siteRows } = await supabase
     .from('sites')
@@ -126,6 +137,7 @@ export async function getSitesDashboard(orgIds: string[]): Promise<SiteDashboard
       id: site.id,
       name: site.name,
       organizationId: site.organization_id,
+      organization: organizationFor(site.organization_id),
       clientName: site.client_id ? (clientNames.get(site.client_id) ?? null) : null,
       activeActionCount: active,
       overdueActionCount: overdue,

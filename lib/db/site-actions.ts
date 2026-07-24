@@ -171,6 +171,7 @@ export interface SiteActionRow {
   converted_to_type: string | null
   converted_to_id: string | null
   site_id: string
+  organizationId: string
   site_name: string
   contract_id: string | null
   contract_name: string | null
@@ -204,7 +205,7 @@ export async function listOpenSiteActions(opts?: {
 
   // Résoudre les sites (scope organisation) + leurs métadonnées.
   let siteIds = opts?.siteIds ?? null
-  let sitesQ = supabase.from('sites').select('id, name, contract_id').is('deleted_at', null)
+  let sitesQ = supabase.from('sites').select('id, name, organization_id, contract_id').is('deleted_at', null)
   if (opts?.orgIds) {
     // Scope multi-org EXPLICITE (chemin /dashboard).
     sitesQ = sitesQ.in('organization_id', opts.orgIds)
@@ -217,7 +218,7 @@ export async function listOpenSiteActions(opts?: {
   // l'accès en amont, ex. /sites/[id] via getSiteIdentity) : aucun `getOrgId()`.
   if (siteIds) sitesQ = sitesQ.in('id', siteIds)
   const { data: siteRows } = await sitesQ
-  const sites = (siteRows ?? []) as Array<{ id: string; name: string; contract_id: string | null }>
+  const sites = (siteRows ?? []) as Array<{ id: string; name: string; organization_id: string; contract_id: string | null }>
   if (sites.length === 0) return []
   siteIds = sites.map((s) => s.id)
 
@@ -253,6 +254,7 @@ export async function listOpenSiteActions(opts?: {
       converted_to_type: a.converted_to_type,
       converted_to_id: a.converted_to_id,
       site_id: a.site_id,
+      organizationId: s?.organization_id ?? '',
       site_name: s?.name ?? '—',
       contract_id: s?.contract_id ?? null,
       contract_name: s?.contract_id ? contractName.get(s.contract_id) ?? null : null,
@@ -280,8 +282,8 @@ export async function listOpenSiteActionsByReports(reportIds: string[]): Promise
   if (rows.length === 0) return []
 
   const siteIds = [...new Set(rows.map((a) => a.site_id))]
-  const { data: siteRows } = await supabase.from('sites').select('id, name, contract_id').in('id', siteIds)
-  const sites = (siteRows ?? []) as Array<{ id: string; name: string; contract_id: string | null }>
+  const { data: siteRows } = await supabase.from('sites').select('id, name, organization_id, contract_id').in('id', siteIds)
+  const sites = (siteRows ?? []) as Array<{ id: string; name: string; organization_id: string; contract_id: string | null }>
   const siteById = new Map(sites.map((s) => [s.id, s]))
   const contractIds = [...new Set(sites.map((s) => s.contract_id).filter((v): v is string => !!v))]
   const contractName = new Map<string, string>()
@@ -306,6 +308,7 @@ export async function listOpenSiteActionsByReports(reportIds: string[]): Promise
       converted_to_type: a.converted_to_type,
       converted_to_id: a.converted_to_id,
       site_id: a.site_id,
+      organizationId: s?.organization_id ?? '',
       site_name: s?.name ?? '—',
       contract_id: s?.contract_id ?? null,
       contract_name: s?.contract_id ? contractName.get(s.contract_id) ?? null : null,

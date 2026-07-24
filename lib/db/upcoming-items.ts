@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { OrganizationIdentity, OrganizationIdentityMap } from '@/lib/db/organisations'
 
 export type UpcomingItemKind = 'inspection' | 'meeting' | 'delivery' | 'visit' | 'other'
 
@@ -6,6 +7,7 @@ export type UpcomingDashboardItem = {
   id: string
   sourceType: 'scheduled_event' | 'visit'
   organizationId: string
+  organization: OrganizationIdentity
   siteId: string
   siteName: string
   clientName: string | null
@@ -20,9 +22,19 @@ export type UpcomingDashboardItem = {
 export async function getUpcomingItems(
   orgIds: string[],
   horizonDays = 30,
+  organizationMap?: OrganizationIdentityMap,
 ): Promise<UpcomingDashboardItem[]> {
   if (orgIds.length === 0) return []
   const supabase = createAdminClient()
+  const organizations = organizationMap ?? {}
+  const organizationFor = (organizationId: string): OrganizationIdentity => organizations[organizationId] ?? {
+    id: organizationId,
+    name: organizationId,
+    slug: organizationId,
+    logoPath: null,
+    logoUrl: null,
+    brandColor: null,
+  }
 
   const { data: siteRows } = await supabase
     .from('sites')
@@ -92,6 +104,7 @@ export async function getUpcomingItems(
       id: ev.id,
       sourceType: 'scheduled_event',
       organizationId: site.organization_id,
+      organization: organizationFor(site.organization_id),
       siteId: site.id,
       siteName: site.name,
       clientName: site.client_id ? (clientNames.get(site.client_id) ?? null) : null,
@@ -117,6 +130,7 @@ export async function getUpcomingItems(
       id: visit.id,
       sourceType: 'visit',
       organizationId: site.organization_id,
+      organization: organizationFor(site.organization_id),
       siteId: site.id,
       siteName: site.name,
       clientName: site.client_id ? (clientNames.get(site.client_id) ?? null) : null,
