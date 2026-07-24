@@ -465,6 +465,8 @@ function ReviewCard({
                 if (item.kind === 'deadline') {
                   setDueDate('')
                   setAsking('date')
+                } else if (item.kind === 'knowledge') {
+                  setAsking('nature')
                 } else {
                   promote()
                 }
@@ -482,6 +484,16 @@ function ReviewCard({
           ) : (
             // Un type sans geste ne reste pas muet : il dit pourquoi.
             <p className="text-[12px] text-muted-foreground">{item.capability.explanation}</p>
+          )}
+          {item.kind !== 'stakeholder' && item.capability.available && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={dismiss}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+            >
+              <X className="h-3.5 w-3.5" /> Écarter
+            </button>
           )}
           {item.kind === 'action' && (
             <div className="flex basis-full flex-wrap gap-1.5 pt-0.5">
@@ -506,16 +518,6 @@ function ReviewCard({
               className="inline-flex items-center rounded-lg border px-2 py-1.5 text-muted-foreground active:brightness-95"
             >
               <ChevronDown className={cn('h-4 w-4 transition-transform', open && 'rotate-180')} />
-            </button>
-          )}
-          {item.kind !== 'stakeholder' && open && (
-            <button
-              type="button"
-              disabled={pending}
-              onClick={dismiss}
-              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] text-muted-foreground active:brightness-95 disabled:opacity-50"
-            >
-              <X className="h-3.5 w-3.5" /> Écarter
             </button>
           )}
         </div>

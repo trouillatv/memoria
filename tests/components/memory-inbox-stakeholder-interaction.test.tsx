@@ -28,6 +28,21 @@ const ginger: ReviewItem = {
   provenance: { reportId: '22222222-2222-4222-8222-222222222222', visitedAt: '2026-07-15T10:00:00Z', photos: 0, vocals: 0 },
 }
 
+function proposal(kind: ReviewItem['kind'], label: string): ReviewItem {
+  const requiredInputs = kind === 'knowledge' ? ['nature' as const] : []
+  return {
+    id: `${kind}-11111111-1111-4111-8111-111111111111`,
+    kind,
+    title: `${kind} de recette`,
+    body: 'Élément issu de la visite de recette.',
+    createdAt: '2026-07-15T10:00:00Z',
+    capability: { available: true, label, requiredInputs, explanation: null },
+    confidence: null,
+    sourceCaptureIds: [],
+    provenance: { reportId: '22222222-2222-4222-8222-222222222222', visitedAt: '2026-07-15T10:00:00Z', photos: 0, vocals: 0 },
+  }
+}
+
 describe('MemoryInbox stakeholder workflow', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -69,5 +84,43 @@ describe('MemoryInbox stakeholder workflow', () => {
     expect(await screen.findByText('Ginger')).toBeInTheDocument()
     const result = screen.getAllByText('Ginger').at(-1)!.closest('li')!
     expect(within(result).getByText('Entreprise')).toBeInTheDocument()
+  })
+
+  it('reuses the action workflow gestures and keeps dismiss visible once', () => {
+    render(<MemoryInbox siteId="44444444-4444-4444-8444-444444444444" items={[proposal('action', "Créer l'action")]} />)
+
+    expect(screen.getByRole('button', { name: "Créer l'action" })).toBeInTheDocument()
+    expect(screen.getByText('+ Affecter un responsable')).toBeInTheDocument()
+    expect(screen.getByText('+ Ajouter une échéance')).toBeInTheDocument()
+    expect(screen.getByText("Planifier l'intervention")).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Écarter' })).toHaveLength(1)
+  })
+
+  it('asks for the date before promoting an échéance', () => {
+    render(<MemoryInbox siteId="44444444-4444-4444-8444-444444444444" items={[proposal('deadline', "Ajouter l'échéance au planning")]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: "Ajouter l'échéance au planning" }))
+    expect(screen.getByLabelText("Date de l'échéance")).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Ajouter au planning' })).toBeInTheDocument()
+  })
+
+  it('asks for the nature before confirming une information', () => {
+    render(<MemoryInbox siteId="44444444-4444-4444-8444-444444444444" items={[proposal('knowledge', 'Confirmer cette information')]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer cette information' }))
+    expect(screen.getByText('Cette information est…')).toBeInTheDocument()
+    expect(screen.getByText('Vraie en ce moment')).toBeInTheDocument()
+    expect(screen.getByText('Vraie durablement')).toBeInTheDocument()
+  })
+
+  it('uses the same visible confirmation and dismissal contract for décision and vigilance', () => {
+    render(<MemoryInbox siteId="44444444-4444-4444-8444-444444444444" items={[
+      proposal('decision', 'Acter la décision'),
+      proposal('vigilance', 'Retenir le point de vigilance'),
+    ]} />)
+
+    expect(screen.getByRole('button', { name: 'Acter la décision' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retenir le point de vigilance' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Écarter' })).toHaveLength(2)
   })
 })
