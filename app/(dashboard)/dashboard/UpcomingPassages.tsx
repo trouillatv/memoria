@@ -38,7 +38,8 @@ export function UpcomingPassages({ items }: UpcomingPassagesProps) {
 
       {items.length === 0 ? (
         <p className="px-4 pb-4 text-sm text-muted-foreground italic">
-          Aucun passage planifié dans les 30 prochains jours.
+          Aucun passage planifié dans les 30 prochains jours. Ajoutez des événements
+          depuis la fiche d&apos;un site pour les voir apparaître ici.
         </p>
       ) : (
         <ul className="divide-y divide-border/40">

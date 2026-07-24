@@ -46,7 +46,11 @@ export function WatchedSites({ sites }: WatchedSitesProps) {
 
       {sites.length === 0 ? (
         <p className="px-4 pb-4 text-sm text-muted-foreground italic">
-          Aucun site actif.
+          Aucun site actif à surveiller pour le moment.{' '}
+          <Link href="/sites" className="not-italic underline underline-offset-2 hover:text-foreground">
+            Voir les sites
+          </Link>
+          .
         </p>
       ) : (
         <ul className="divide-y divide-border/40">

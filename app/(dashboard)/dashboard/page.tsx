@@ -110,10 +110,6 @@ function relTime(iso: string | null): string {
   return months <= 1 ? 'il y a 1 mois' : `il y a ${months} mois`
 }
 
-function capitalizeFirst(s: string): string {
-  return s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) : s
-}
-
 export default async function DashboardPage() {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
@@ -133,11 +129,10 @@ export default async function DashboardPage() {
   // M3 — les organisations de l'utilisateur (agrégation multi-org). Sert l'inbox
   // et la résolution des libellés pour les badges.
   const orgIds = await getOrgIdsOfUser()
-  const rawOrgLabels = await getOrganizationLabels(orgIds)
-  // Provenance : UNE résolution partagée, uniquement en multi-org. En mono-org →
-  // `null` → les widgets n'affichent aucun badge (interface inchangée).
-  const orgLabels: OrgLabels = orgIds.length > 1 ? rawOrgLabels : null
-  const orgNames = Object.values(rawOrgLabels)
+  // Provenance : résolution uniquement en multi-org — 0 requête en mono-org.
+  const rawOrgLabels = orgIds.length > 1 ? await getOrganizationLabels(orgIds) : null
+  const orgLabels: OrgLabels = rawOrgLabels
+  const orgNames = rawOrgLabels ? Object.values(rawOrgLabels) : []
 
   // Couche « Nouveau depuis hier » — déclarations QR fraîches depuis last_seen_at.
   const inbox = await getInboxFeed(user.id, orgIds)

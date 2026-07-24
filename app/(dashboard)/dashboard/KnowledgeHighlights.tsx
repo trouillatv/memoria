@@ -17,7 +17,11 @@ export function KnowledgeHighlights({ items }: KnowledgeHighlightsProps) {
 
       {items.length === 0 ? (
         <p className="px-4 pb-4 text-sm text-muted-foreground italic">
-          Aucune capsule mémoire disponible.
+          Aucune capsule mémoire disponible pour le moment.{' '}
+          <Link href="/memoire" className="not-italic underline underline-offset-2 hover:text-foreground">
+            Ouvrir la mémoire
+          </Link>
+          pour en créer ou en consulter.
         </p>
       ) : (
         <ul className="divide-y divide-border/40">
