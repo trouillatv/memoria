@@ -47,10 +47,12 @@ export default async function DashboardPage() {
     getSitesDashboard(orgIds, organizationMap ?? undefined),
     getDashboardDeadlinesToPlan(orgIds, organizationMap ?? {}),
   ])
-  const visitSiteId = visit.sites[0]?.siteId
-  const visitReview = visitSiteId
-    ? await getMemoryReview(visitSiteId, { includeWork: true }).catch(() => ({ confirmed: [], toReview: [] }) as MemoryReview)
-    : { confirmed: [], toReview: [] } as MemoryReview
+  const visitReviews = Object.fromEntries(await Promise.all(
+    visit.sites.map(async (site) => [
+      site.siteId,
+      await getMemoryReview(site.siteId, { includeWork: true }).catch(() => ({ confirmed: [], toReview: [] }) as MemoryReview),
+    ] as const),
+  )) as Record<string, MemoryReview>
   const now = await getNowDashboard(orgIds, upcoming, organizationMap ?? {})
 
   return (
@@ -65,7 +67,7 @@ export default async function DashboardPage() {
       orgLabels={orgLabels}
       organizationMap={organizationMap ?? {}}
       now={now}
-      visitReview={visitReview}
+      visitReviews={visitReviews}
       deadlinesToPlan={deadlinesToPlan}
     />
   )
