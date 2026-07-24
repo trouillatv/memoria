@@ -106,11 +106,11 @@ function VisitSummary({ site, organizationMap, review }: { site: SiteImpact; org
         { icon: Users, value: site.added.stakeholders, label: 'intervenants identifiés', tone: 'bg-[#e8faf4] text-[#26a67b]' },
         { icon: Info, value: site.added.knowledge, label: 'informations à savoir', tone: 'bg-[#fff7dc] text-[#dca82b]' },
       ].map((metric) => <Metric key={metric.label} {...metric} />)}</div>
-      <details className="mt-5 rounded-2xl bg-[#f8faff] p-3">
-        <summary className="cursor-pointer list-none text-xs font-semibold text-[#1463e8]">Ouvrir tout ce qui reste à traiter</summary>
+      <details open className="mt-5 rounded-2xl bg-[#f8faff] p-3">
+        <summary className="cursor-pointer list-none text-xs font-semibold text-[#1463e8]">Tout ce qui reste à traiter</summary>
         <div className="mt-4 space-y-4">
           <p className="text-[11px] text-[#65718b]">{toPlan.length} proposition{toPlan.length !== 1 ? 's' : ''} à traiter</p>
-          {toPlan.length > 0 && <details className="rounded-xl border border-[#f1dfb1] bg-[#fffaf0] px-3 py-2"><summary className="cursor-pointer list-none text-xs font-semibold text-[#9b6b1d]">À planifier / traiter ({toPlan.length})</summary><div className="mt-2"><MemoryInbox siteId={site.siteId} items={toPlan} withFilters /></div></details>}
+          {toPlan.length > 0 && <details open className="rounded-xl border border-[#f1dfb1] bg-[#fffaf0] px-3 py-2"><summary className="cursor-pointer list-none text-xs font-semibold text-[#9b6b1d]">À planifier / traiter ({toPlan.length})</summary><div className="mt-2"><MemoryInbox siteId={site.siteId} items={toPlan} withFilters /></div></details>}
           <Link href={`/sites/${site.siteId}`} className="inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8]">Ouvrir le chantier <ArrowRight className="h-3.5 w-3.5" /></Link>
         </div>
       </details>
