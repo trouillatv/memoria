@@ -478,6 +478,7 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
     activities,
     persistedNarrative,
     sinceLastVenue,
+    changedSinceVenue,
     beforeLeaving,
     verificationQuestions,
     deadlines,
@@ -763,8 +764,13 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
         <SectionTitle icon={<CalendarClock className="h-3.5 w-3.5 text-sky-700" />}>Pourquoi je vais sur ce chantier</SectionTitle>
         {objective ? (
           <div className="flex items-start justify-between gap-3">
-            <p className="text-sm font-medium">{objective.sourceHref ? <a href={objective.sourceHref} className="hover:underline">{objective.text}</a> : objective.text}</p>
-            <span className="shrink-0 text-[10px] text-emerald-700">Fait métier</span>
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-sky-700">
+                {objective.kind === 'scheduled' ? 'Passage planifié' : 'Objectif proposé à partir des éléments prioritaires'}
+              </p>
+              <p className="mt-1 text-sm font-medium">{objective.sourceHref ? <a href={objective.sourceHref} className="hover:underline">{objective.text}</a> : objective.text}</p>
+            </div>
+            <span className="shrink-0 text-[10px] text-emerald-700">Déterminé</span>
           </div>
         ) : (
           <p className="text-sm italic text-muted-foreground">Aucun objectif déterminé. Une recommandation IA peut être demandée.</p>
@@ -780,7 +786,7 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
         <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
           <SectionTitle icon={<History className="h-3.5 w-3.5 text-sky-600" />}>Ce qui a changé depuis votre venue</SectionTitle>
           <p className="text-xs text-muted-foreground">Depuis {sinceLastVenue.dateLabel}</p>
-          <FactLines items={rememberToday.filter((item) => item.sourceType === 'chronology')} />
+          <FactLines items={changedSinceVenue} empty="Aucun changement enregistré depuis cette venue." />
         </section>
       )}
 
@@ -861,7 +867,7 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
 
 
       <details className="rounded-xl border bg-background">
-        <summary className="cursor-pointer list-none px-3.5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Données détaillées</summary>
+        <summary className="cursor-pointer list-none px-3.5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Voir toutes les données du chantier</summary>
         <div className="space-y-5 border-t px-3.5 py-3.5">
       <section className="rounded-xl border bg-background p-3.5 space-y-3">
         <div className="flex items-center justify-between gap-3">

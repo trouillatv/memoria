@@ -4,6 +4,7 @@ import {
   classifyVisitPreparationActivity,
   selectPreparationReminders,
   selectPreparationObjective,
+  selectNarrativeHighlights,
   resolveVisitPreparationPhase,
   type VisitPreparationFacts,
 } from '@/lib/knowledge/visit-preparation'
@@ -67,5 +68,16 @@ describe('visit preparation read model', () => {
     const deadline = { kind: 'deadline' as const, text: 'Vérifier les lignes', sourceId: 'd1', sourceHref: '/d1' }
     expect(selectPreparationObjective({ scheduled: null, action, deadline, reserve: null, watchpoint: null, decision: null })).toEqual(action)
     expect(selectPreparationObjective({ scheduled: null, action: null, deadline, reserve: null, watchpoint: null, decision: null })).toEqual(deadline)
+  })
+
+  it('selects short non-duplicated narrative facts instead of concatenating reports', () => {
+    expect(selectNarrativeHighlights([
+      'La dépose du matériel est engagée. Le planning reste à diffuser.',
+      'Le planning reste à diffuser. Une vigilance subsiste sur les panneaux électriques.',
+    ], 4)).toEqual([
+      'La dépose du matériel est engagée.',
+      'Le planning reste à diffuser.',
+      'Une vigilance subsiste sur les panneaux électriques.',
+    ])
   })
 })

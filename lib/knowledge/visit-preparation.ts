@@ -88,6 +88,35 @@ export function selectPreparationObjective(
   return facts.scheduled ?? facts.action ?? facts.deadline ?? facts.reserve ?? facts.watchpoint ?? facts.decision ?? null
 }
 
+/**
+ * Extrait quelques faits courts des récits persistés sans les réécrire.
+ * La fonction ne produit aucune inférence : elle découpe, déduplique et borne
+ * les phrases afin que l'écran de préparation reste lisible.
+ */
+export function selectNarrativeHighlights(narratives: string[], limit = 5): string[] {
+  const seen = new Set<string>()
+  const highlights: string[] = []
+  for (const narrative of narratives) {
+    const sentences = narrative
+      .split(/(?<=[.!?])\s+|\n+/)
+      .map((sentence) => sentence.trim().replace(/^[-•]\s*/, ''))
+      .filter(Boolean)
+    for (const sentence of sentences) {
+      const key = sentence
+        .toLocaleLowerCase('fr-FR')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      highlights.push(sentence)
+      if (highlights.length >= limit) return highlights
+    }
+  }
+  return highlights
+}
+
 /** Sélectionne les rappels « Avant de partir » sans score opaque ni IA. */
 export function selectPreparationReminders(
   facts: PreparationReminderFacts,

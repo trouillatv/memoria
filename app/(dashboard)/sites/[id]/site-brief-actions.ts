@@ -52,6 +52,7 @@ import {
   type PreparationReminder,
   selectPreparationObjective,
   type PreparationObjective,
+  selectNarrativeHighlights,
   type VisitPreparationActivityStatus,
 } from '@/lib/knowledge/visit-preparation'
 
@@ -241,6 +242,7 @@ export interface SiteBrief {
   activities: SiteBriefActivity[]
   persistedNarrative: string | null
   sinceLastVenue: SinceLastVisitSummary | null
+  changedSinceVenue: SiteBriefFactLine[]
   beforeLeaving: PreparationReminder[]
   verificationQuestions: SiteBriefVerificationQuestion[]
   deadlines: Array<Pick<SiteDeadline, 'id' | 'title' | 'due_date' | 'constraint_text' | 'status' | 'report_id'>>
@@ -575,7 +577,8 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
   }
 
   const phase = resolveVisitPreparationPhase({
-    hasCompletedVisit: Boolean(currentState?.lastPassageAt),
+    // Les visites terrain clôturées définissent la phase du briefing.
+    hasCompletedVisit: preparationActivities.some((activity) => activity.kind === 'visit' && activity.status === 'validated'),
     hasActiveTender: dossierPhase === 'prospect' || dossierPhase === 'en_ao' || sitePhase === 'prospect' || sitePhase === 'en_ao',
     isFinished: dossierPhase === 'perdu' || dossierPhase === 'archive' || sitePhase === 'perdu' || sitePhase === 'archive',
   })
@@ -619,10 +622,12 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     proofs: [],
   })
 
+  // Une question de préparation doit décrire un contrôle terrain, jamais une
+  // opération administrative comme « planifier une échéance ».
   const verificationQuestions: SiteBriefVerificationQuestion[] = [
-    ...openReserves.map((item) => ({ text: `La réserve « ${item.label} » est-elle toujours présente ?`, sourceType: 'reserve' as const, sourceId: item.id, sourceHref: `/sites/${siteId}/reserves` })),
-    ...vigilance.slice(0, 3).map((item) => ({ text: `Le point « ${item.title} » est-il toujours d'actualité ?`, sourceType: 'action' as const, sourceId: item.id, sourceHref: `/sites/${siteId}?action=${item.id}` })),
-    ...deadlineItems.filter((item) => item.status === 'to_plan').slice(0, 2).map((item) => ({ text: `L'échéance « ${item.title} » peut-elle être planifiée ?`, sourceType: 'deadline' as const, sourceId: item.id, sourceHref: `/sites/${siteId}/planning` })),
+    ...openReserves.map((item) => ({ text: `La réserve « ${item.label} » est-elle toujours visible sur place ?`, sourceType: 'reserve' as const, sourceId: item.id, sourceHref: `/sites/${siteId}/reserves` })),
+    ...vigilance.slice(0, 3).map((item) => ({ text: `Le point « ${item.title} » est-il toujours visible ou à traiter sur place ?`, sourceType: 'action' as const, sourceId: item.id, sourceHref: `/sites/${siteId}?action=${item.id}` })),
+    ...deadlineItems.filter((item) => item.status !== 'to_plan').slice(0, 2).map((item) => ({ text: `La réalisation de « ${item.title} » est-elle confirmée sur place ?`, sourceType: 'deadline' as const, sourceId: item.id, sourceHref: `/sites/${siteId}/planning` })),
   ].slice(0, 6)
 
   const proofs: SiteBriefProof[] = [
@@ -677,17 +682,32 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     } : null,
   })
 
-  const rememberToday: SiteBriefFactLine[] = [
-    ...narratives.slice(0, 2).map((narrative) => ({
-      text: narrative.text,
-      sourceType: narrative.sourceType,
-      sourceId: narrative.sourceId,
-      sourceHref: narrative.sourceHref,
-      status: narrative.status === 'validated' ? 'validated' as const : 'in_progress' as const,
-    })),
-    ...(sinceLastVenue?.newPhotos ? [{ text: `${sinceLastVenue.newPhotos} nouvelle${sinceLastVenue.newPhotos > 1 ? 's' : ''} preuve${sinceLastVenue.newPhotos > 1 ? 's' : ''} photo${sinceLastVenue.newPhotos > 1 ? 's' : ''} depuis votre venue`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const }] : []),
+  const narrativeHighlights = selectNarrativeHighlights(narratives.map((narrative) => narrative.text), 3)
+  const rememberToday: SiteBriefFactLine[] = narrativeHighlights.map((text) => {
+    const source = narratives.find((narrative) => narrative.text.includes(text)) ?? narratives[0]
+    return {
+      text,
+      sourceType: source.sourceType,
+      sourceId: source.sourceId,
+      sourceHref: source.sourceHref,
+      status: source.status === 'validated' ? 'validated' as const : 'in_progress' as const,
+    }
+  })
+  for (const item of [
+    ...deadlineItems.filter((deadline) => deadline.status === 'to_plan').map((deadline) => ({ text: `${deadline.title} reste à planifier`, sourceType: 'deadline' as const, sourceId: deadline.id, sourceHref: `/sites/${siteId}/planning`, status: 'validated' as const })),
+    ...openReserves.map((reserve) => ({ text: `${reserve.label} reste à lever`, sourceType: 'reserve' as const, sourceId: reserve.id, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' as const })),
+  ]) {
+    if (rememberToday.length >= 5 || rememberToday.some((existing) => existing.text === item.text)) continue
+    rememberToday.push(item)
+  }
+
+  const changedSinceVenue: SiteBriefFactLine[] = [
+    ...(sinceLastVenue?.actionsDone ? [{ text: `${sinceLastVenue.actionsDone} action${sinceLastVenue.actionsDone > 1 ? 's' : ''} terminée${sinceLastVenue.actionsDone > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/travail`, status: 'validated' as const }] : []),
+    ...(sinceLastVenue?.newReserves ? [{ text: `${sinceLastVenue.newReserves} nouvelle${sinceLastVenue.newReserves > 1 ? 's' : ''} réserve${sinceLastVenue.newReserves > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' as const }] : []),
+    ...(sinceLastVenue?.liftedReserves ? [{ text: `${sinceLastVenue.liftedReserves} réserve${sinceLastVenue.liftedReserves > 1 ? 's' : ''} levée${sinceLastVenue.liftedReserves > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' as const }] : []),
     ...(sinceLastVenue?.meetings ? [{ text: `${sinceLastVenue.meetings} réunion${sinceLastVenue.meetings > 1 ? 's' : ''} depuis votre venue`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const }] : []),
-  ].slice(0, 5)
+    ...(sinceLastVenue?.newPhotos ? [{ text: `${sinceLastVenue.newPhotos} nouvelle${sinceLastVenue.newPhotos > 1 ? 's' : ''} photo${sinceLastVenue.newPhotos > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const }] : []),
+  ]
 
   const completedSinceVenue: SiteBriefFactLine[] = [
     ...(sinceLastVenue?.actionsDone ? [{ text: `${sinceLastVenue.actionsDone} action${sinceLastVenue.actionsDone > 1 ? 's' : ''} terminée${sinceLastVenue.actionsDone > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/travail`, status: 'validated' as const }] : []),
@@ -697,11 +717,10 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
   const atRiskOfForgetting: SiteBriefFactLine[] = [
     ...vigilance.filter((item) => item.overdue || item.ageDays >= 7).slice(0, 3).map((item) => ({ text: item.title, sourceType: 'action' as const, sourceId: item.id, sourceHref: `/sites/${siteId}?action=${item.id}`, status: 'validated' as const })),
     ...deadlineItems.filter((item) => item.status === 'to_plan').slice(0, 2).map((item) => ({ text: `${item.title} — encore à planifier`, sourceType: 'deadline' as const, sourceId: item.id, sourceHref: `/sites/${siteId}/planning`, status: 'validated' as const })),
-    ...(sinceLastVenue?.doubts ?? []).map((text) => ({ text, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const })),
   ].slice(0, 5)
 
   const unknowns: SiteBriefFactLine[] = [
-    ...verificationQuestions.map((question) => ({ text: question.text, sourceType: question.sourceType, sourceId: question.sourceId, sourceHref: question.sourceHref, status: 'validated' as const })),
+    ...(sinceLastVenue?.doubts ?? []).map((text) => ({ text, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const })),
     ...followedPoints.filter((point) => point.openQuestion).map((point) => ({ text: point.openQuestion!, sourceType: 'watchpoint' as const, sourceId: point.id, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const })),
   ].slice(0, 5)
 
@@ -745,6 +764,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       activities: preparationActivities,
       persistedNarrative: latestNarrative,
       sinceLastVenue,
+      changedSinceVenue,
       beforeLeaving,
       verificationQuestions,
       deadlines: deadlineItems,
