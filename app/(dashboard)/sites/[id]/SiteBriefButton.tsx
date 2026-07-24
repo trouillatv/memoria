@@ -202,7 +202,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
           role="presentation"
         >
           <div
-            className="w-full sm:max-w-lg max-h-[88vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border bg-card shadow-xl"
+            className="w-full sm:max-w-3xl lg:max-w-5xl max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border bg-card shadow-xl"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -502,6 +502,9 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
     proofs,
     objective,
     confirmedFacts,
+    estimatedPhase,
+    freshness,
+    coherenceInsights,
     rememberToday,
     completedSinceVenue,
     atRiskOfForgetting,
@@ -797,6 +800,10 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
         <SectionTitle icon={<Brain className="h-3.5 w-3.5 text-sky-600" />}>Ce que je dois retenir aujourd&apos;hui</SectionTitle>
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">État confirmé aujourd&apos;hui</p>
         <FactLines items={confirmedFacts} />
+        <div className="flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 text-[11px] text-muted-foreground">
+          <span>Phase estimée : <strong className="font-semibold text-foreground">{estimatedPhase}</strong></span>
+          <span>Mémoire : <strong className={freshness.level === 'stale' ? 'font-semibold text-amber-700' : 'font-semibold text-foreground'}>{freshness.label}</strong></span>
+        </div>
         <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dernier état rapporté</p>
         <FactLines items={rememberToday.filter((item) => item.sourceType !== 'deadline')} empty="Aucun fait consolidé à retenir pour le moment." />
         {rememberToday.some((item) => item.sourceType === 'deadline') && (
@@ -806,6 +813,13 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
           </>
         )}
       </section>
+
+      {coherenceInsights.length > 0 && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-3.5 space-y-2.5">
+          <SectionTitle icon={<AlertTriangle className="h-3.5 w-3.5 text-amber-700" />}>Ce qui n&apos;est plus cohérent</SectionTitle>
+          <FactLines items={coherenceInsights} />
+        </section>
+      )}
 
       <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
           <SectionTitle icon={<History className="h-3.5 w-3.5 text-sky-600" />}>Ce qui a changé depuis votre venue</SectionTitle>
@@ -818,6 +832,13 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
           </p>
           <FactLines items={changedSinceVenue} empty="Aucun changement enregistré depuis cette venue." />
       </section>
+
+      {coherenceInsights.length > 0 && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-3.5 space-y-2.5">
+          <SectionTitle icon={<AlertTriangle className="h-3.5 w-3.5 text-amber-700" />}>Ce qui n&apos;est plus cohérent</SectionTitle>
+          <FactLines items={coherenceInsights} />
+        </section>
+      )}
 
       {completedSinceVenue.length > 0 && (
         <section className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3.5 space-y-2.5">

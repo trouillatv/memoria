@@ -163,6 +163,30 @@ export function buildUnconfirmedQuestion(text: string): string {
   return `Le point suivant est-il toujours d’actualité : ${text}`
 }
 
+export type PreparationFreshness = { days: number; label: string; level: 'recent' | 'watch' | 'stale' }
+
+export function getPreparationFreshness(lastActivityAt: string | null, now = new Date().toISOString()): PreparationFreshness {
+  if (!lastActivityAt) return { days: 0, label: 'aucune activité récente', level: 'stale' }
+  const days = Math.max(0, Math.floor((new Date(now).getTime() - new Date(lastActivityAt).getTime()) / 86_400_000))
+  return {
+    days,
+    label: days === 0 ? "aujourd'hui" : days === 1 ? 'il y a 1 jour' : `il y a ${days} jours`,
+    level: days <= 7 ? 'recent' : days <= 30 ? 'watch' : 'stale',
+  }
+}
+
+export function estimatePreparationPhase(facts: {
+  actionTitles: string[]
+  deadlineTitles: string[]
+  openReserveCount: number
+}): 'Préparation' | 'Dépose' | 'Levée des réserves' | 'Suivi' {
+  const all = [...facts.actionTitles, ...facts.deadlineTitles].join(' ').toLocaleLowerCase('fr-FR')
+  if (facts.openReserveCount > 0) return 'Levée des réserves'
+  if (/dépose|démolition|déblai|évacuation/.test(all)) return 'Dépose'
+  if (/planif|prépar|visite|accès|pave/.test(all)) return 'Préparation'
+  return 'Suivi'
+}
+
 /** Sélectionne les rappels « Avant de partir » sans score opaque ni IA. */
 export function selectPreparationReminders(
   facts: PreparationReminderFacts,

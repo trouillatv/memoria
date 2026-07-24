@@ -55,6 +55,9 @@ import {
   selectNarrativeHighlights,
   buildVisitObjectiveContextLines,
   buildUnconfirmedQuestion,
+  getPreparationFreshness,
+  estimatePreparationPhase,
+  type PreparationFreshness,
   type VisitPreparationActivityStatus,
 } from '@/lib/knowledge/visit-preparation'
 
@@ -253,6 +256,9 @@ export interface SiteBrief {
   proofs: SiteBriefProof[]
   objective: PreparationObjective | null
   confirmedFacts: SiteBriefFactLine[]
+  estimatedPhase: string
+  freshness: PreparationFreshness
+  coherenceInsights: SiteBriefFactLine[]
   rememberToday: SiteBriefFactLine[]
   completedSinceVenue: SiteBriefFactLine[]
   atRiskOfForgetting: SiteBriefFactLine[]
@@ -691,6 +697,22 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     ...(deadlineItems.filter((deadline) => deadline.status === 'to_plan').length > 0 ? [{ text: `${deadlineItems.filter((deadline) => deadline.status === 'to_plan').length} échéance${deadlineItems.filter((deadline) => deadline.status === 'to_plan').length > 1 ? 's' : ''} à planifier`, sourceType: 'deadline' as const, sourceId: null, sourceHref: `/sites/${siteId}/planning`, status: 'validated' as const }] : []),
     { text: openReserves.length === 0 ? 'Aucune réserve ouverte' : `${openReserves.length} réserve${openReserves.length > 1 ? 's' : ''} ouverte${openReserves.length > 1 ? 's' : ''}`, sourceType: 'reserve', sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' },
   ]
+  const freshness = getPreparationFreshness(preparationActivities[0]?.startedAt ?? null)
+  const estimatedPhase = estimatePreparationPhase({
+    actionTitles: openActionRows.map((action) => action.title),
+    deadlineTitles: deadlineItems.map((deadline) => deadline.title),
+    openReserveCount: openReserves.length,
+  })
+  const coherenceInsights: SiteBriefFactLine[] = narratives
+    .filter((narrative) => narrative.status === 'validated' && getPreparationFreshness(narrative.occurredAt).level !== 'recent')
+    .slice(0, 3)
+    .map((narrative) => ({
+      text: `Information probablement obsolète ou à reconfirmer : récit du ${new Date(narrative.occurredAt).toLocaleDateString('fr-FR')}.`,
+      sourceType: narrative.sourceType,
+      sourceId: narrative.sourceId,
+      sourceHref: narrative.sourceHref,
+      status: 'interpretation' as const,
+    }))
   const rememberToday: SiteBriefFactLine[] = narrativeHighlights.map((text) => {
     const source = narratives.find((narrative) => narrative.text.includes(text)) ?? narratives[0]
     return {
@@ -803,6 +825,9 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       proofs,
       objective,
       confirmedFacts,
+      estimatedPhase,
+      freshness,
+      coherenceInsights,
       rememberToday,
       completedSinceVenue,
       atRiskOfForgetting,

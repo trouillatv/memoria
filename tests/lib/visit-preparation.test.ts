@@ -7,6 +7,8 @@ import {
   selectNarrativeHighlights,
   buildVisitObjectiveContextLines,
   buildUnconfirmedQuestion,
+  getPreparationFreshness,
+  estimatePreparationPhase,
   resolveVisitPreparationPhase,
   type VisitPreparationFacts,
 } from '@/lib/knowledge/visit-preparation'
@@ -107,5 +109,13 @@ describe('visit preparation read model', () => {
     expect(buildUnconfirmedQuestion('L’accès sera communiqué sous peu.')).toBe('L’accès sécurisé a-t-il été communiqué ?')
     expect(buildUnconfirmedQuestion('Clim Expert interviendra jeudi et vendredi.')).toBe('Clim Expert est-il effectivement intervenu ?')
     expect(buildUnconfirmedQuestion('Le planning sera diffusé vendredi.')).toBe('Le planning annoncé a-t-il été diffusé et est-il à jour ?')
+  })
+
+  it('estimates memory freshness and chantier phase deterministically', () => {
+    expect(getPreparationFreshness('2026-07-21T10:00:00Z', '2026-07-25T10:00:00Z')).toEqual({ days: 4, label: 'il y a 4 jours', level: 'recent' })
+    expect(getPreparationFreshness('2026-06-01T10:00:00Z', '2026-07-25T10:00:00Z').level).toBe('stale')
+    expect(estimatePreparationPhase({ actionTitles: ['Dépose des hottes'], deadlineTitles: [], openReserveCount: 0 })).toBe('Dépose')
+    expect(estimatePreparationPhase({ actionTitles: [], deadlineTitles: ['Planifier la visite'], openReserveCount: 0 })).toBe('Préparation')
+    expect(estimatePreparationPhase({ actionTitles: [], deadlineTitles: [], openReserveCount: 2 })).toBe('Levée des réserves')
   })
 })
