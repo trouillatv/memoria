@@ -3,6 +3,7 @@ import {
   buildVisitPreparationSummary,
   classifyVisitPreparationActivity,
   selectPreparationReminders,
+  selectPreparationObjective,
   resolveVisitPreparationPhase,
   type VisitPreparationFacts,
 } from '@/lib/knowledge/visit-preparation'
@@ -59,5 +60,12 @@ describe('visit preparation read model', () => {
       openActivities: [],
       proofs: [],
     })).toHaveLength(2)
+  })
+
+  it('selects the travel objective by business priority, never by free generation', () => {
+    const action = { kind: 'action' as const, text: 'Clôturer le plan', sourceId: 'a1', sourceHref: '/a1' }
+    const deadline = { kind: 'deadline' as const, text: 'Vérifier les lignes', sourceId: 'd1', sourceHref: '/d1' }
+    expect(selectPreparationObjective({ scheduled: null, action, deadline, reserve: null, watchpoint: null, decision: null })).toEqual(action)
+    expect(selectPreparationObjective({ scheduled: null, action: null, deadline, reserve: null, watchpoint: null, decision: null })).toEqual(deadline)
   })
 })

@@ -50,6 +50,8 @@ import {
   classifyVisitPreparationActivity,
   selectPreparationReminders,
   type PreparationReminder,
+  selectPreparationObjective,
+  type PreparationObjective,
   type VisitPreparationActivityStatus,
 } from '@/lib/knowledge/visit-preparation'
 
@@ -159,6 +161,14 @@ export interface SiteBriefProof {
   reason: 'latest_key_photo' | 'new_since_last_visit' | 'latest_report'
 }
 
+export interface SiteBriefFactLine {
+  text: string
+  sourceType: 'visit' | 'meeting' | 'action' | 'deadline' | 'reserve' | 'watchpoint' | 'decision' | 'chronology'
+  sourceId: string | null
+  sourceHref: string | null
+  status: 'validated' | 'in_progress' | 'interpretation'
+}
+
 /** Réserve non levée (point à lever) — preuve d'exécution restant due. */
 export interface SiteBriefReserve {
   id: string
@@ -237,6 +247,11 @@ export interface SiteBrief {
   decisions: Array<Pick<SiteDecision, 'id' | 'titre' | 'description' | 'dateDecision' | 'statut' | 'reportId'>>
   narratives: SiteBriefNarrative[]
   proofs: SiteBriefProof[]
+  objective: PreparationObjective | null
+  rememberToday: SiteBriefFactLine[]
+  completedSinceVenue: SiteBriefFactLine[]
+  atRiskOfForgetting: SiteBriefFactLine[]
+  unknowns: SiteBriefFactLine[]
 }
 
 export type SiteBriefResult =
@@ -638,6 +653,58 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     }] : []),
   ]
 
+  const objective = selectPreparationObjective({
+    scheduled: currentState?.nextScheduledAt ? {
+      kind: 'scheduled',
+      text: `Préparer le prochain passage prévu ${nextPassageLabel ? `le ${nextPassageLabel}` : ''}`.trim(),
+      sourceId: null,
+      sourceHref: `/sites/${siteId}/planning`,
+    } : null,
+    action: vigilance[0] ? {
+      kind: 'action', text: vigilance[0].title, sourceId: vigilance[0].id, sourceHref: `/sites/${siteId}?action=${vigilance[0].id}`,
+    } : null,
+    deadline: deadlineItems[0] ? {
+      kind: 'deadline', text: deadlineItems[0].title, sourceId: deadlineItems[0].id, sourceHref: `/sites/${siteId}/planning`,
+    } : null,
+    reserve: openReserves[0] ? {
+      kind: 'reserve', text: `Vérifier la réserve « ${openReserves[0].label} »`, sourceId: openReserves[0].id, sourceHref: `/sites/${siteId}/reserves`,
+    } : null,
+    watchpoint: followedPoints[0] ? {
+      kind: 'watchpoint', text: followedPoints[0].openQuestion ?? followedPoints[0].name, sourceId: followedPoints[0].id, sourceHref: `/sites/${siteId}/chronologie`,
+    } : null,
+    decision: decisionItems[0] ? {
+      kind: 'decision', text: decisionItems[0].titre, sourceId: decisionItems[0].id, sourceHref: decisionItems[0].reportId ? `/sites/${siteId}/visites/${decisionItems[0].reportId}` : `/sites/${siteId}/chronologie`,
+    } : null,
+  })
+
+  const rememberToday: SiteBriefFactLine[] = [
+    ...narratives.slice(0, 2).map((narrative) => ({
+      text: narrative.text,
+      sourceType: narrative.sourceType,
+      sourceId: narrative.sourceId,
+      sourceHref: narrative.sourceHref,
+      status: narrative.status === 'validated' ? 'validated' as const : 'in_progress' as const,
+    })),
+    ...(sinceLastVenue?.newPhotos ? [{ text: `${sinceLastVenue.newPhotos} nouvelle${sinceLastVenue.newPhotos > 1 ? 's' : ''} preuve${sinceLastVenue.newPhotos > 1 ? 's' : ''} photo${sinceLastVenue.newPhotos > 1 ? 's' : ''} depuis votre venue`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const }] : []),
+    ...(sinceLastVenue?.meetings ? [{ text: `${sinceLastVenue.meetings} réunion${sinceLastVenue.meetings > 1 ? 's' : ''} depuis votre venue`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const }] : []),
+  ].slice(0, 5)
+
+  const completedSinceVenue: SiteBriefFactLine[] = [
+    ...(sinceLastVenue?.actionsDone ? [{ text: `${sinceLastVenue.actionsDone} action${sinceLastVenue.actionsDone > 1 ? 's' : ''} terminée${sinceLastVenue.actionsDone > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/travail`, status: 'validated' as const }] : []),
+    ...(sinceLastVenue?.liftedReserves ? [{ text: `${sinceLastVenue.liftedReserves} réserve${sinceLastVenue.liftedReserves > 1 ? 's' : ''} levée${sinceLastVenue.liftedReserves > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' as const }] : []),
+  ]
+
+  const atRiskOfForgetting: SiteBriefFactLine[] = [
+    ...vigilance.filter((item) => item.overdue || item.ageDays >= 7).slice(0, 3).map((item) => ({ text: item.title, sourceType: 'action' as const, sourceId: item.id, sourceHref: `/sites/${siteId}?action=${item.id}`, status: 'validated' as const })),
+    ...deadlineItems.filter((item) => item.status === 'to_plan').slice(0, 2).map((item) => ({ text: `${item.title} — encore à planifier`, sourceType: 'deadline' as const, sourceId: item.id, sourceHref: `/sites/${siteId}/planning`, status: 'validated' as const })),
+    ...(sinceLastVenue?.doubts ?? []).map((text) => ({ text, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const })),
+  ].slice(0, 5)
+
+  const unknowns: SiteBriefFactLine[] = [
+    ...verificationQuestions.map((question) => ({ text: question.text, sourceType: question.sourceType, sourceId: question.sourceId, sourceHref: question.sourceHref, status: 'validated' as const })),
+    ...followedPoints.filter((point) => point.openQuestion).map((point) => ({ text: point.openQuestion!, sourceType: 'watchpoint' as const, sourceId: point.id, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const })),
+  ].slice(0, 5)
+
   return {
     ok: true,
     brief: {
@@ -684,6 +751,11 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       decisions: decisionItems,
       narratives,
       proofs,
+      objective,
+      rememberToday,
+      completedSinceVenue,
+      atRiskOfForgetting,
+      unknowns,
     },
   }
 }

@@ -33,7 +33,7 @@ import {
   Layers,
   ChevronRight,
 } from 'lucide-react'
-import { getSiteBriefAction, logBriefOpenAction, generateDiscussionPointsAction, type SiteBrief, type DiscussionPoint } from './site-brief-actions'
+import { getSiteBriefAction, logBriefOpenAction, generateDiscussionPointsAction, type SiteBrief, type SiteBriefFactLine, type DiscussionPoint } from './site-brief-actions'
 import { VISIT_INTENTS, type VisitIntent } from '@/lib/field/visit-intents'
 
 interface Props {
@@ -262,7 +262,11 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
               {brief && mode === 'visit' && (
                 <div className="space-y-1.5">
                   <div className="flex w-full gap-0.5 rounded-xl border bg-muted/40 p-0.5 text-xs font-medium">
-                    {VISIT_INTENTS.map((it) => {
+                    {VISIT_INTENTS.filter((it) => {
+                      if (brief.phase === 'first_visit') return it.slug === 'premiere' || it.slug === 'previsite_ao'
+                      if (brief.phase === 'previsit_ao') return it.slug === 'previsite_ao'
+                      return it.slug === 'avancement'
+                    }).map((it) => {
                       const active = motive === it.slug
                       return (
                         <button
@@ -394,6 +398,24 @@ function SectionTitle({
   )
 }
 
+function FactLines({ items, empty = 'Rien à signaler.' }: { items: SiteBriefFactLine[]; empty?: string }) {
+  if (items.length === 0) return <p className="text-sm italic text-muted-foreground">{empty}</p>
+  return (
+    <ul className="space-y-2">
+      {items.map((item, index) => (
+        <li key={`${item.sourceType}:${item.sourceId ?? item.text}:${index}`} className="flex items-start gap-2 text-sm">
+          <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.status === 'in_progress' ? 'bg-amber-500' : item.status === 'interpretation' ? 'bg-violet-500' : 'bg-emerald-500'}`} aria-hidden />
+          <span className="min-w-0 flex-1">
+            {item.sourceHref ? <a href={item.sourceHref} className="hover:underline">{item.text}</a> : item.text}
+          </span>
+          {item.status === 'in_progress' && <span className="shrink-0 text-[10px] text-amber-700">En cours</span>}
+          {item.status === 'interpretation' && <span className="shrink-0 text-[10px] text-violet-700">Interprétation</span>}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 // Hiérarchie par paliers (Vincent 2026-06-16) : le cerveau hiérarchise, pas une
 // liste plate. Du plus urgent au contexte. Un palier sans contenu disparaît.
 // L'ORDRE dépend du MODE (sinon visite et réunion sont identiques) :
@@ -462,6 +484,11 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
     decisions,
     narratives,
     proofs,
+    objective,
+    rememberToday,
+    completedSinceVenue,
+    atRiskOfForgetting,
+    unknowns,
   } = brief
 
   const nextLabel = formatDate(situation.nextScheduledAt)
@@ -732,6 +759,55 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
 
   return (
     <div className="space-y-5">
+      <section className="rounded-xl border border-sky-200 bg-sky-50/40 p-3.5 space-y-2.5">
+        <SectionTitle icon={<CalendarClock className="h-3.5 w-3.5 text-sky-700" />}>Pourquoi je vais sur ce chantier</SectionTitle>
+        {objective ? (
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm font-medium">{objective.sourceHref ? <a href={objective.sourceHref} className="hover:underline">{objective.text}</a> : objective.text}</p>
+            <span className="shrink-0 text-[10px] text-emerald-700">Fait métier</span>
+          </div>
+        ) : (
+          <p className="text-sm italic text-muted-foreground">Aucun objectif déterminé. Une recommandation IA peut être demandée.</p>
+        )}
+      </section>
+
+      <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
+        <SectionTitle icon={<Brain className="h-3.5 w-3.5 text-sky-600" />}>Ce que je dois retenir aujourd&apos;hui</SectionTitle>
+        <FactLines items={rememberToday} empty="Aucun changement consolidé à retenir pour le moment." />
+      </section>
+
+      {sinceLastVenue && (
+        <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
+          <SectionTitle icon={<History className="h-3.5 w-3.5 text-sky-600" />}>Ce qui a changé depuis votre venue</SectionTitle>
+          <p className="text-xs text-muted-foreground">Depuis {sinceLastVenue.dateLabel}</p>
+          <FactLines items={rememberToday.filter((item) => item.sourceType === 'chronology')} />
+        </section>
+      )}
+
+      {completedSinceVenue.length > 0 && (
+        <section className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3.5 space-y-2.5">
+          <SectionTitle icon={<CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" />}>Ce qui semble terminé</SectionTitle>
+          <FactLines items={completedSinceVenue} />
+        </section>
+      )}
+
+      {atRiskOfForgetting.length > 0 && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-3.5 space-y-2.5">
+          <SectionTitle icon={<BellRing className="h-3.5 w-3.5 text-amber-700" />}>Ce que je risque d&apos;oublier</SectionTitle>
+          <FactLines items={atRiskOfForgetting} />
+        </section>
+      )}
+
+      {unknowns.length > 0 && (
+        <section className="rounded-xl border border-violet-200 bg-violet-50/40 p-3.5 space-y-2.5">
+          <SectionTitle icon={<Info className="h-3.5 w-3.5 text-violet-700" />}>Ce que je ne sais pas encore</SectionTitle>
+          <FactLines items={unknowns} />
+        </section>
+      )}
+
+      <details className="rounded-xl border bg-background">
+        <summary className="cursor-pointer list-none px-3.5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Données détaillées</summary>
+        <div className="space-y-5 border-t px-3.5 py-3.5">
       <section className="rounded-xl border bg-background p-3.5 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -971,6 +1047,8 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
         </p>
       )}
         </div>
+      </details>
+      </div>
       </details>
     </div>
   )

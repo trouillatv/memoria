@@ -63,6 +63,31 @@ export interface PreparationReminderFacts {
   proofs: PreparationReminder[]
 }
 
+export type PreparationObjectiveKind = 'scheduled' | 'action' | 'deadline' | 'reserve' | 'watchpoint' | 'decision'
+
+export interface PreparationObjective {
+  kind: PreparationObjectiveKind
+  text: string
+  sourceId: string | null
+  sourceHref: string | null
+}
+
+export interface PreparationObjectiveFacts {
+  scheduled: PreparationObjective | null
+  action: PreparationObjective | null
+  deadline: PreparationObjective | null
+  reserve: PreparationObjective | null
+  watchpoint: PreparationObjective | null
+  decision: PreparationObjective | null
+}
+
+/** Pourquoi le conducteur se déplace : règle métier, sans génération. */
+export function selectPreparationObjective(
+  facts: PreparationObjectiveFacts,
+): PreparationObjective | null {
+  return facts.scheduled ?? facts.action ?? facts.deadline ?? facts.reserve ?? facts.watchpoint ?? facts.decision ?? null
+}
+
 /** Sélectionne les rappels « Avant de partir » sans score opaque ni IA. */
 export function selectPreparationReminders(
   facts: PreparationReminderFacts,
