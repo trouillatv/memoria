@@ -13,6 +13,7 @@ import { getNowDashboard } from '@/lib/db/now-dashboard'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { getMemoryReview, type MemoryReview } from '@/lib/knowledge/memory-review'
 import { getPendingWork, type PendingWork } from '@/lib/knowledge/pending-work'
+import { getDashboardDeadlinesToPlan } from '@/lib/db/dashboard-deadlines'
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardPremium } from './DashboardPremium'
 
@@ -40,12 +41,13 @@ export default async function DashboardPage() {
   const orgLabels: OrgLabels = rawOrgLabels
   const orgNames = rawOrgLabels ? Object.values(rawOrgLabels) : []
 
-  const [attention, visit, aSavoir, upcoming, sites] = await Promise.all([
+  const [attention, visit, aSavoir, upcoming, sites, deadlinesToPlan] = await Promise.all([
     getAttentionDigest(5),
     getVisitImpact().catch(() => emptyVisitImpact()),
     listLivingASavoir(4),
     getUpcomingItems(orgIds, 30, organizationMap ?? undefined),
     getSitesDashboard(orgIds, organizationMap ?? undefined),
+    getDashboardDeadlinesToPlan(orgIds, organizationMap ?? {}),
   ])
   const visitSiteId = visit.sites[0]?.siteId
   const [visitActions, visitReview, visitPending] = visitSiteId
@@ -72,6 +74,7 @@ export default async function DashboardPage() {
       visitActions={visitActions}
       visitReview={visitReview}
       visitPending={visitPending}
+      deadlinesToPlan={deadlinesToPlan}
     />
   )
 }

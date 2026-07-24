@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { Calendar, ClipboardCheck, Truck, MapPin, ChevronRight } from 'lucide-react'
 import type { UpcomingDashboardItem, UpcomingItemKind } from '@/lib/db/upcoming-items'
+import type { DashboardDeadlineToPlan } from '@/lib/db/dashboard-deadlines'
+import { OrganizationBadge } from '@/components/dashboard/OrgBadge'
 
 const KIND_ICON: Record<UpcomingItemKind, React.ComponentType<{ className?: string }>> = {
   inspection: ClipboardCheck,
@@ -26,25 +28,23 @@ function formatPassageDate(iso: string, isToday: boolean): string {
 
 interface UpcomingPassagesProps {
   items: UpcomingDashboardItem[]
+  deadlinesToPlan: DashboardDeadlineToPlan[]
 }
 
-export function UpcomingPassages({ items }: UpcomingPassagesProps) {
+export function UpcomingPassages({ items, deadlinesToPlan }: UpcomingPassagesProps) {
   return (
     <section className="h-full rounded-3xl border border-slate-200/80 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
       <div className="flex items-center justify-between px-5 pb-4 pt-5">
         <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          Prochains passages
+          Passages et échéances à organiser
         </h2>
         {items.length === 0 && null}
       </div>
 
-      {items.length === 0 ? (
-        <p className="px-4 pb-4 text-sm text-muted-foreground italic">
-          Aucun passage planifié dans les 30 prochains jours. Ajoutez des événements
-          depuis la fiche d&apos;un site pour les voir apparaître ici.
-        </p>
-      ) : (
-        <ul className="space-y-2 px-4 pb-4">
+      <div className="space-y-4 px-4 pb-4">
+        <div>
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Planifiés</p>
+          {items.length === 0 ? <p className="rounded-2xl bg-slate-50 px-3 py-3 text-xs italic text-muted-foreground">Aucun passage planifié dans les 30 prochains jours.</p> : <ul className="space-y-2">
           {items.map((item) => {
             const Icon = KIND_ICON[item.kind]
             return (
@@ -74,8 +74,13 @@ export function UpcomingPassages({ items }: UpcomingPassagesProps) {
               </li>
             )
           })}
-        </ul>
-      )}
+          </ul>}
+        </div>
+        <div>
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">À planifier</p>
+          {deadlinesToPlan.length === 0 ? <p className="rounded-2xl bg-emerald-50 px-3 py-3 text-xs text-emerald-700">Aucune échéance à organiser.</p> : <ul className="space-y-2">{deadlinesToPlan.map((deadline) => <li key={deadline.id} className="rounded-2xl border border-amber-100 bg-amber-50/50 px-3 py-3"><div className="flex items-start gap-2"><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-slate-900">{deadline.title}</p><p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground"><OrganizationBadge organization={deadline.organization} size="xs" /> {deadline.siteName}{deadline.clientName ? ` · ${deadline.clientName}` : ''}</p><p className="mt-1 text-xs text-amber-700">{deadline.constraintText || 'Date à choisir'}</p></div><Link href={deadline.href} className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-[10px] font-semibold text-amber-700 shadow-sm ring-1 ring-amber-200 hover:bg-amber-50">Planifier</Link></div></li>)}</ul>}
+        </div>
+      </div>
     </section>
   )
 }
