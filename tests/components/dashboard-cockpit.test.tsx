@@ -54,8 +54,8 @@ describe('DashboardHeader', () => {
     const { container } = render(<DashboardHeader firstName="Élodie" orgNames={[]} />)
     const header = container.querySelector('[data-slot="dashboard-header"]')
     expect(header).not.toBeNull()
-    const year = String(new Date().getFullYear())
-    expect(header?.textContent ?? '').toContain(year)
+    expect(header?.textContent ?? '').not.toMatch(/\b20\d{2}\b/)
+    expect(header?.textContent ?? '').not.toMatch(/\d{1,2}h\d{2}/i)
   })
 })
 

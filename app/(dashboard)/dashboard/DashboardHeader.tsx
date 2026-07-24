@@ -4,14 +4,6 @@ interface DashboardHeaderProps {
 }
 
 export function DashboardHeader({ firstName, orgNames }: DashboardHeaderProps) {
-  const today = new Date()
-  const dateLabel = today.toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
-
   return (
     <header
       data-slot="dashboard-header"
@@ -27,7 +19,6 @@ export function DashboardHeader({ firstName, orgNames }: DashboardHeaderProps) {
           <p className="text-xs text-muted-foreground/70 mt-0.5">{orgNames.join(' · ')}</p>
         )}
       </div>
-      <div className="hidden text-right text-xs font-medium capitalize text-slate-400 sm:block">{dateLabel}</div>
     </header>
   )
 }
