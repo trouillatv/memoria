@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { ComponentType } from 'react'
-import { AlertTriangle, CalendarClock, Check, ChevronRight, Footprints, Info, RefreshCw, ShieldAlert, Sparkles, Users } from 'lucide-react'
+import { AlertTriangle, CalendarClock, Check, ChevronRight, Footprints, Info, RefreshCw, ShieldAlert, Sparkles } from 'lucide-react'
 import type { SiteOverview } from '@/lib/knowledge/site-overview'
 import { sourceLabels, visitDateLabel, durationLabel, synthesisLabel } from '@/lib/chantier/overview-labels'
 
@@ -22,10 +22,9 @@ export function VisitKnowledgeCard({
   overview: SiteOverview
   synthesisHref?: string
 }) {
-  const { activity, synthesis, stakeholders, deadlines, knowledge, watchpoints } = overview
+  const { activity, synthesis, deadlines, knowledge, watchpoints } = overview
   const lastVisit = activity.lastVisit
-  const retainedTotal = stakeholders.summary.proposed + stakeholders.summary.confirmed
-    + deadlines.summary.proposed + deadlines.summary.confirmed
+  const retainedTotal = deadlines.summary.proposed + deadlines.summary.confirmed
     + knowledge.summary.proposed + knowledge.summary.confirmed
     + watchpoints.summary.proposed + watchpoints.summary.confirmed
 
@@ -81,7 +80,6 @@ export function VisitKnowledgeCard({
             </h2>
           </div>
           <div className="mt-2 space-y-3">
-            <KnowledgeGroup title="Intervenants" icon={Users} section={stakeholders} />
             <KnowledgeGroup title="Échéances" icon={CalendarClock} section={deadlines} />
             <KnowledgeGroup title="À savoir" icon={Info} section={knowledge} />
             <KnowledgeGroup title="Points de vigilance" icon={ShieldAlert} section={watchpoints} />
