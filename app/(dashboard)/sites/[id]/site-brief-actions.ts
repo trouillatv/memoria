@@ -702,7 +702,18 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     rememberToday.push(item)
   }
 
+  const changedActivityFacts: SiteBriefFactLine[] = narratives
+    .filter((narrative) => sinceLastVenue && narrative.occurredAt > sinceLastVenue.at)
+    .flatMap((narrative) => selectNarrativeHighlights([narrative.text], 1).map((text) => ({
+      text,
+      sourceType: narrative.sourceType,
+      sourceId: narrative.sourceId,
+      sourceHref: narrative.sourceHref,
+      status: narrative.status === 'validated' ? 'validated' as const : 'in_progress' as const,
+    })))
+
   const changedSinceVenue: SiteBriefFactLine[] = [
+    ...changedActivityFacts,
     ...(sinceLastVenue?.actionsDone ? [{ text: `${sinceLastVenue.actionsDone} action${sinceLastVenue.actionsDone > 1 ? 's' : ''} terminée${sinceLastVenue.actionsDone > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/travail`, status: 'validated' as const }] : []),
     ...(sinceLastVenue?.newReserves ? [{ text: `${sinceLastVenue.newReserves} nouvelle${sinceLastVenue.newReserves > 1 ? 's' : ''} réserve${sinceLastVenue.newReserves > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' as const }] : []),
     ...(sinceLastVenue?.liftedReserves ? [{ text: `${sinceLastVenue.liftedReserves} réserve${sinceLastVenue.liftedReserves > 1 ? 's' : ''} levée${sinceLastVenue.liftedReserves > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' as const }] : []),
@@ -791,11 +802,15 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
 //   - si rien à présenter ou échec → dégradation propre (liste vide).
 
 const discussionSchema = z.object({
-  points: z.array(z.object({ text: z.string().min(1).max(280) })).max(6),
+  points: z.array(z.object({
+    text: z.string().min(1).max(280),
+    priority: z.enum(['high', 'normal']).default('normal'),
+  })).max(6),
 })
 
 export interface DiscussionPoint {
   text: string
+  priority: 'high' | 'normal'
 }
 
 export async function generateDiscussionPointsAction(
@@ -871,12 +886,14 @@ export async function generateDiscussionPointsAction(
     'Distingue toujours les faits validés des éléments en cours — non consolidés.',
     'Ne transforme pas une interprétation en fait et ne crée aucune information absente des éléments fournis.',
   ]
+  const priorityRule = 'Classe un seul sujet essentiel, au maximum deux, avec priority="high". Les autres sujets sont priority="normal".'
   const systemPrompt = (
     mode === 'visit'
       ? [
           "Tu prépares une VISITE de chantier. À partir UNIQUEMENT des éléments fournis, tu listes 3 à 6 raisons probables de cette visite — CE QU'IL Y A À FAIRE OU À VÉRIFIER sur place (l'objectif de la visite). Couvre les différents sujets présents (sécurité/contrôles, livraisons, fuites/infiltrations, points récurrents), n'en oublie pas.",
           ...COMMON_RULES,
           ...contextRule,
+          priorityRule,
           '- Priorise ce qui est en retard, bloquant, ou une anomalie/réserve ouverte. Formule comme des choses à vérifier/contrôler/confirmer sur site.',
           "- Inclus AUSSI les contraintes PRATIQUES et d'ACCÈS à anticiper quand elles figurent dans les éléments (fenêtres/horaires d'accès, circulation, livraisons à coordonner, matériel à prévoir) — une visite se prépare physiquement, pas seulement par les problèmes.",
         ]
@@ -884,6 +901,7 @@ export async function generateDiscussionPointsAction(
           'Tu es un secrétaire de réunion de chantier. À partir UNIQUEMENT des éléments fournis, tu listes 3 à 6 POINTS À DISCUTER ou À ARBITRER en réunion. Couvre les différents sujets présents (actions en retard, réserves, livraisons, sujets récurrents), n\'en oublie pas.',
           ...COMMON_RULES,
           ...contextRule,
+          priorityRule,
           '- Formule des points à DISCUTER / ARBITRER / TRANCHER. Priorise ce qui traîne, ce qui bloque, ce qui est nouveau.',
           "- N'inclus PAS la logistique pure ni les contraintes d'accès terrain (horaires, circulation, matériel) : une réunion porte sur les décisions et arbitrages, pas la préparation physique.",
         ]

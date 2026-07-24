@@ -334,10 +334,13 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
                   )}
                   {points && points.length > 0 && (
                     <ul className="space-y-1">
-                      {points.map((p, i) => (
+                      {[...points].sort((a, b) => Number(b.priority === 'high') - Number(a.priority === 'high')).map((p, i) => (
                         <li key={i} className="flex gap-1.5 text-sm text-sky-950">
                           <span aria-hidden className="text-sky-500">•</span>
-                          <span className="min-w-0">{p.text}</span>
+                          <span className="min-w-0">
+                            {p.priority === 'high' && <strong className="mr-1 text-[10px] uppercase tracking-wide text-rose-700">Priorité</strong>}
+                            {p.text}
+                          </span>
                         </li>
                       ))}
                     </ul>
