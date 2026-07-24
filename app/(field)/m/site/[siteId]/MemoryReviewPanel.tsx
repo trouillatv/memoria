@@ -179,6 +179,7 @@ function ReviewCard({
   const [open, setOpen] = useState(false)
   // Ce que l'écran doit DEMANDER — il ne le devine pas, la capability le dit.
   const [asking, setAsking] = useState<'role' | 'who' | 'nature' | 'date' | null>(null)
+  const [entityType, setEntityType] = useState<'person' | 'company' | null>(null)
   const [role, setRole] = useState<string | null>(null)
   const [dueDate, setDueDate] = useState('')
   const guess = splitPersonCompany(item.title)
@@ -250,32 +251,67 @@ function ReviewCard({
               créait une ENTREPRISE « Vincent Milon ». L'humain déclare, le
               titre ne fait que préremplir. */}
           <p className="text-[12px] text-muted-foreground">Qui ajoutez-vous{role ? ` comme ${role}` : ''} ?</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                setEntityType('person')
+                setPersonName(guess.person ?? item.title)
+                setCompanyName(guess.company ?? '')
+              }}
+              className={cn('rounded-lg border px-2.5 py-2 text-left text-[12px]', entityType === 'person' ? 'border-primary bg-primary/10 font-semibold text-primary' : 'bg-background')}
+            >
+              Individu
+              <span className="block text-[11px] font-normal text-muted-foreground">Personne + entreprise</span>
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                setEntityType('company')
+                setPersonName('')
+                setCompanyName(guess.company ?? item.title)
+              }}
+              className={cn('rounded-lg border px-2.5 py-2 text-left text-[12px]', entityType === 'company' ? 'border-primary bg-primary/10 font-semibold text-primary' : 'bg-background')}
+            >
+              Entreprise
+              <span className="block text-[11px] font-normal text-muted-foreground">Société intervenante</span>
+            </button>
+          </div>
           <div className="space-y-1.5">
-            <input
+            {entityType === 'person' && <input
               type="text"
               value={personName}
               onChange={(e) => setPersonName(e.target.value)}
-              placeholder="Personne (laisser vide si entreprise seule)"
+              placeholder="Nom de la personne"
               className="block w-full rounded-lg border bg-background px-2.5 py-1.5 text-[13px]"
-            />
-            <input
+            />}
+            {entityType === 'person' && <input
               type="text"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
-              placeholder="Entreprise"
+              placeholder="Entreprise de rattachement"
               className="block w-full rounded-lg border bg-background px-2.5 py-1.5 text-[13px]"
-            />
-            {personName.trim() && !companyName.trim() && (
-              <p className="text-[12px] text-muted-foreground">Une personne s’ajoute avec son entreprise.</p>
+            />}
+            {entityType === 'company' && <input
+              type="text"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              placeholder="Nom de l'entreprise"
+              className="block w-full rounded-lg border bg-background px-2.5 py-1.5 text-[13px]"
+            />}
+            {entityType === 'person' && personName.trim() && !companyName.trim() && (
+              <p className="text-[12px] text-muted-foreground">Une personne doit être rattachée à une entreprise.</p>
             )}
           </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={pending || (!personName.trim() && !companyName.trim()) || (!!personName.trim() && !companyName.trim())}
+              disabled={pending || !entityType || (entityType === 'company' ? !companyName.trim() : !personName.trim() || !companyName.trim())}
               onClick={() => promote({
                 role: role ?? undefined,
-                person_name: personName.trim() || undefined,
+                person_name: entityType === 'person' ? personName.trim() : undefined,
                 company_name: companyName.trim() || undefined,
               })}
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground active:opacity-80 disabled:opacity-50"
