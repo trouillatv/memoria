@@ -445,6 +445,11 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
     lastReport,
     changeSinceLastReport,
     followedPoints,
+    phaseLabel,
+    minuteSummary,
+    urgentItems,
+    blockedItems,
+    lastPresence,
   } = brief
 
   const nextLabel = formatDate(situation.nextScheduledAt)
@@ -713,6 +718,53 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
 
   return (
     <div className="space-y-5">
+      <section className="rounded-xl border bg-background p-3.5 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Préparation de visite</p>
+            <p className="mt-0.5 text-sm font-semibold">{phaseLabel}</p>
+          </div>
+          <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-700">En une minute</span>
+        </div>
+        <ul className="space-y-1 text-sm text-muted-foreground">
+          {minuteSummary.map((line) => <li key={line}>{line}</li>)}
+        </ul>
+      </section>
+
+      {urgentItems.length > 0 && (
+        <section className="rounded-xl border border-rose-200 bg-rose-50/50 p-3.5 space-y-2">
+          <SectionTitle icon={<BellRing className="h-3.5 w-3.5 text-rose-600" />}>À faire avant la visite</SectionTitle>
+          <ul className="space-y-1.5">
+            {urgentItems.map((item) => (
+              <li key={item} className="flex items-start gap-2 text-sm text-rose-950">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-600" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {blockedItems.length > 0 && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-3.5 space-y-2">
+          <SectionTitle icon={<Flag className="h-3.5 w-3.5 text-amber-600" />}>En attente</SectionTitle>
+          <ul className="space-y-1 text-sm text-amber-950">
+            {blockedItems.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </section>
+      )}
+
+      {lastPresence && (
+        <section className="rounded-xl border bg-muted/20 p-3.5 space-y-2">
+          <SectionTitle icon={<Camera className="h-3.5 w-3.5 text-sky-600" />}>Dernière présence terrain</SectionTitle>
+          <p className="text-sm">
+            {formatDate(lastPresence.occurredAt) ?? 'Dernier passage'}
+            {lastPresence.actor ? ` · ${lastPresence.actor}` : ''}
+            {lastPresence.photoCount > 0 ? ` · ${lastPresence.photoCount} photo${lastPresence.photoCount > 1 ? 's' : ''}` : ''}
+          </p>
+        </section>
+      )}
+
       {/* Situation — chips de synthèse (toujours en tête) */}
       <section className="space-y-2">
         <SectionTitle icon={<Info className="h-3.5 w-3.5" />}>En un coup d&apos;œil</SectionTitle>

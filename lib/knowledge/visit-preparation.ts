@@ -1,0 +1,37 @@
+/** Pure rules shared by the visit-preparation read model and its UI. */
+
+export type VisitPreparationPhase = 'first_visit' | 'follow_up' | 'previsit_ao' | 'history'
+
+export interface VisitPreparationFacts {
+  hasCompletedVisit: boolean
+  hasActiveTender: boolean
+  isFinished: boolean
+}
+
+export function resolveVisitPreparationPhase(facts: VisitPreparationFacts): VisitPreparationPhase {
+  if (facts.isFinished) return 'history'
+  if (facts.hasActiveTender) return 'previsit_ao'
+  if (facts.hasCompletedVisit) return 'follow_up'
+  return 'first_visit'
+}
+
+export interface VisitPreparationSummaryFacts {
+  openActions: number
+  openReserves: number
+  nextPassageLabel: string | null
+  criticalPoint: string | null
+}
+
+export function buildVisitPreparationSummary(facts: VisitPreparationSummaryFacts): string[] {
+  const lines: string[] = []
+  if (facts.openActions > 0) {
+    lines.push(`${facts.openActions} action${facts.openActions > 1 ? 's' : ''} reste${facts.openActions > 1 ? 'nt' : ''} ouverte${facts.openActions > 1 ? 's' : ''}.`)
+  }
+  if (facts.openReserves > 0) {
+    lines.push(`${facts.openReserves} réserve${facts.openReserves > 1 ? 's' : ''} reste${facts.openReserves > 1 ? 'nt' : ''} à lever.`)
+  }
+  if (facts.nextPassageLabel) lines.push(`Prochain passage : ${facts.nextPassageLabel}.`)
+  if (facts.criticalPoint) lines.push(`Point critique : ${facts.criticalPoint}.`)
+  if (lines.length === 0) lines.push('Aucun point bloquant identifié pour le moment.')
+  return lines
+}

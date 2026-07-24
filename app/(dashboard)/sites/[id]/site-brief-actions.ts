@@ -37,6 +37,11 @@ import { listReportsBySite } from '@/lib/db/site-reports'
 import { isSystemMissionName } from '@/lib/db/system-missions'
 import { getAIProvider } from '@/services/ai/factory'
 import { withAITracking } from '@/services/ai/tracking'
+import {
+  buildVisitPreparationSummary,
+  resolveVisitPreparationPhase,
+  type VisitPreparationPhase,
+} from '@/lib/knowledge/visit-preparation'
 
 const IdSchema = z.string().uuid()
 
@@ -97,6 +102,12 @@ export interface SiteBriefMeeting {
   id: string
   title: string | null
   createdAt: string
+}
+
+export interface SiteBriefPresence {
+  occurredAt: string
+  actor: string | null
+  photoCount: number
 }
 
 /** Réserve non levée (point à lever) — preuve d'exécution restant due. */
@@ -162,6 +173,12 @@ export interface SiteBrief {
   changeSinceLastReport: SiteBriefChange | null
   // Points suivis (dossiers vivants) qui appellent l'attention — pour la réunion.
   followedPoints: SiteBriefFollowedPoint[]
+  phase: VisitPreparationPhase
+  phaseLabel: string
+  minuteSummary: string[]
+  urgentItems: string[]
+  blockedItems: string[]
+  lastPresence: SiteBriefPresence | null
 }
 
 export type SiteBriefResult =
@@ -369,6 +386,34 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     }
   }
 
+  const phase = resolveVisitPreparationPhase({
+    hasCompletedVisit: Boolean(currentState?.lastPassageAt),
+    hasActiveTender: false,
+    isFinished: false,
+  })
+  const phaseLabel: Record<VisitPreparationPhase, string> = {
+    first_visit: 'Première visite',
+    follow_up: 'Suivi de chantier',
+    previsit_ao: 'Prévisite AO',
+    history: 'Historique',
+  }
+  const nextPassageLabel = currentState?.nextScheduledAt
+    ? new Date(currentState.nextScheduledAt).toLocaleDateString('fr-FR', {
+        weekday: 'long', day: 'numeric', month: 'long',
+      })
+    : null
+  const criticalPoint = vigilance[0]?.title ?? openReserves[0]?.label ?? anomaliesOpen[0]?.description ?? null
+  const urgentItems = [
+    ...vigilance.map((item) => item.title),
+    ...openReserves.map((item) => item.label),
+  ].slice(0, 5)
+  const blockedItems = [
+    ...openReserves.map((item) => item.label),
+    ...followedPoints
+      .filter((item) => item.state === 'bloqué' || item.state === 'en_attente')
+      .map((item) => item.name),
+  ].slice(0, 5)
+
   return {
     ok: true,
     brief: {
@@ -389,6 +434,23 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       lastReport,
       changeSinceLastReport,
       followedPoints,
+      phase,
+      phaseLabel: phaseLabel[phase],
+      minuteSummary: buildVisitPreparationSummary({
+        openActions: situation.openActions,
+        openReserves: openReserves.length,
+        nextPassageLabel,
+        criticalPoint,
+      }),
+      urgentItems,
+      blockedItems,
+      lastPresence: currentState?.lastPassageAt
+        ? {
+            occurredAt: currentState.lastPassageAt,
+            actor: currentState.lastPassageActor,
+            photoCount: currentState.lastPassagePhotoCount,
+          }
+        : null,
     },
   }
 }
