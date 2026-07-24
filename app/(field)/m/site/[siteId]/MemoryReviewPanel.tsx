@@ -12,7 +12,7 @@
 //   · les propositions ne sont JAMAIS mélangées aux connaissances validées.
 
 import { useMemo, useState, useTransition } from 'react'
-import { CalendarDays, Check, ChevronDown, ChevronRight, Loader2, MapPin, X } from 'lucide-react'
+import { CalendarDays, Check, ChevronRight, Loader2, MapPin, X } from 'lucide-react'
 import Link from 'next/link'
 import { promoteFromMemoryAction, dismissFromMemoryAction } from './memory-actions'
 import { WhyButton } from '@/components/provenance/WhyButton'
@@ -175,9 +175,6 @@ function ReviewCard({
 }) {
   const [pending, start] = useTransition()
   const [error, setError] = useState<string | null>(null)
-  // Le détail est replié : la carte reste une LIGNE dense. L'écartement reste
-  // toujours visible comme geste principal, sans dépendre du détail.
-  const [open, setOpen] = useState(false)
   // Ce que l'écran doit DEMANDER — il ne le devine pas, la capability le dit.
   const [asking, setAsking] = useState<'role' | 'who' | 'nature' | 'date' | null>(null)
   const [stakeholderMode, setStakeholderMode] = useState<'new' | 'attach' | null>(null)
@@ -234,8 +231,6 @@ function ReviewCard({
       </div>
       <Provenance item={item} />
       {item.confidence && <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground" title="Niveau de confiance de l'analyse">{'★'.repeat(confidenceStars(item.confidence))}{'☆'.repeat(5 - confidenceStars(item.confidence))} <span>{confidenceLabel(item.confidence)}</span></span>}
-
-      {open && item.body && <p className="mt-1.5 text-[13px] text-muted-foreground">{item.body}</p>}
 
       {asking === 'role' && (
         <div className="mt-2 rounded-lg bg-muted/50 p-2">
@@ -507,18 +502,6 @@ function ReviewCard({
                 Planifier l&apos;intervention
               </Link>
             </div>
-          )}
-          {/* Le détail (extrait) derrière un CHEVRON ; « Écarter » reste une
-              action principale visible, indépendante de ce bouton. */}
-          {item.kind !== 'stakeholder' && (
-            <button
-              type="button"
-              onClick={() => setOpen((v) => !v)}
-              aria-label={open ? 'Replier les détails' : 'Détails'}
-              className="inline-flex items-center rounded-lg border px-2 py-1.5 text-muted-foreground active:brightness-95"
-            >
-              <ChevronDown className={cn('h-4 w-4 transition-transform', open && 'rotate-180')} />
-            </button>
           )}
         </div>
       )}
