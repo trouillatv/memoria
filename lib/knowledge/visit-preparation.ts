@@ -117,6 +117,39 @@ export function selectNarrativeHighlights(narratives: string[], limit = 5): stri
   return highlights
 }
 
+export interface PreparationAIContextFacts {
+  narratives: Array<{ text: string; status: 'draft' | 'validated'; occurredAt: string }>
+  activities: Array<{ kind: 'visit' | 'meeting'; title: string; status: string; photoCount: number; memoCount: number }>
+  changedSinceVenue: string[]
+  openActions: string[]
+  overdueActions: string[]
+  deadlines: string[]
+  decisions: string[]
+  reserves: string[]
+  watchpoints: string[]
+  proofs: string[]
+}
+
+/** Sérialise le contexte déjà calculé pour l'IA, sans nouvelle lecture ni inférence. */
+export function buildVisitObjectiveContextLines(facts: PreparationAIContextFacts): string[] {
+  const lines: string[] = []
+  if (facts.narratives.length) {
+    lines.push(...facts.narratives.map((narrative) => `Résumé persisté (${narrative.status}, ${narrative.occurredAt}) : ${narrative.text}`))
+  }
+  if (facts.activities.length) {
+    lines.push(...facts.activities.map((activity) => `Activité ${activity.status === 'in_progress' ? 'en cours — non consolidé' : activity.status} (${activity.kind}) : ${activity.title} · ${activity.photoCount} photo(s) · ${activity.memoCount} note(s)`))
+  }
+  if (facts.changedSinceVenue.length) lines.push(`Changements depuis la dernière venue : ${facts.changedSinceVenue.join(' ; ')}`)
+  if (facts.openActions.length) lines.push(`Actions ouvertes : ${facts.openActions.join(' ; ')}`)
+  if (facts.overdueActions.length) lines.push(`Actions en retard : ${facts.overdueActions.join(' ; ')}`)
+  if (facts.deadlines.length) lines.push(`Échéances : ${facts.deadlines.join(' ; ')}`)
+  if (facts.decisions.length) lines.push(`Décisions : ${facts.decisions.join(' ; ')}`)
+  if (facts.reserves.length) lines.push(`Réserves : ${facts.reserves.join(' ; ')}`)
+  if (facts.watchpoints.length) lines.push(`Points de vigilance : ${facts.watchpoints.join(' ; ')}`)
+  if (facts.proofs.length) lines.push(`Preuves récentes : ${facts.proofs.join(' ; ')}`)
+  return lines
+}
+
 /** Sélectionne les rappels « Avant de partir » sans score opaque ni IA. */
 export function selectPreparationReminders(
   facts: PreparationReminderFacts,

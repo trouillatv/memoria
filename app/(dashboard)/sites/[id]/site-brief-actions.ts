@@ -53,6 +53,7 @@ import {
   selectPreparationObjective,
   type PreparationObjective,
   selectNarrativeHighlights,
+  buildVisitObjectiveContextLines,
   type VisitPreparationActivityStatus,
 } from '@/lib/knowledge/visit-preparation'
 
@@ -833,6 +834,24 @@ export async function generateDiscussionPointsAction(
   if (b.aSavoir.length) lines.push(`À savoir (notes du site) : ${b.aSavoir.map((n) => n.body).join(' ; ')}`)
   if (b.recurring.length) lines.push(`Sujets récurrents (reviennent souvent) : ${b.recurring.map((r) => r.text).join(' ; ')}`)
 
+  // Même contexte vivant que le briefing déterministe : récits persistés,
+  // activités ouvertes, changements postérieurs, échéances, décisions et preuves.
+  lines.push(...buildVisitObjectiveContextLines({
+    narratives: b.narratives.map((narrative) => ({ text: narrative.text, status: narrative.status, occurredAt: narrative.occurredAt })),
+    activities: b.activities.map((activity) => ({ kind: activity.kind, title: activity.title, status: activity.status, photoCount: activity.photoCount, memoCount: activity.memoCount })),
+    changedSinceVenue: [
+      ...b.changedSinceVenue.map((item) => item.text),
+      ...b.completedSinceVenue.map((item) => `Terminé : ${item.text}`),
+    ],
+    openActions: b.openActions.map((action) => action.title),
+    overdueActions: b.vigilance.filter((item) => item.overdue).map((item) => item.title),
+    deadlines: b.deadlines.map((deadline) => `${deadline.title} — ${deadline.status}${deadline.due_date ? ` — ${deadline.due_date}` : ''}`),
+    decisions: b.decisions.map((decision) => `${decision.titre} — ${decision.statut}`),
+    reserves: b.openReserves.map((reserve) => reserve.label),
+    watchpoints: b.followedPoints.map((point) => point.openQuestion ? `${point.name} — ${point.openQuestion}` : point.name),
+    proofs: b.proofs.map((proof) => `${proof.title} (${proof.reason})`),
+  }))
+
   const provider = getAIProvider()
   if (lines.length === 0) return { ok: true, points: [], mock: provider.name === 'mock', hadInput: false }
 
@@ -846,17 +865,25 @@ export async function generateDiscussionPointsAction(
     // qui nomme ses champs dans le prompt, ne souffre pas de ce bug.
     '- Réponds STRICTEMENT en JSON de la forme {"points":[{"text":"…"}]} — entre 3 et 6 entrées, et rien d\'autre.',
   ]
+  const contextRule = [
+    'Le contexte contient un historique consolidé : ne te limite jamais au dernier compte-rendu.',
+    'Utilise aussi les activités et modifications postérieures, y compris les visites ou réunions non clôturées.',
+    'Distingue toujours les faits validés des éléments en cours — non consolidés.',
+    'Ne transforme pas une interprétation en fait et ne crée aucune information absente des éléments fournis.',
+  ]
   const systemPrompt = (
     mode === 'visit'
       ? [
           "Tu prépares une VISITE de chantier. À partir UNIQUEMENT des éléments fournis, tu listes 3 à 6 raisons probables de cette visite — CE QU'IL Y A À FAIRE OU À VÉRIFIER sur place (l'objectif de la visite). Couvre les différents sujets présents (sécurité/contrôles, livraisons, fuites/infiltrations, points récurrents), n'en oublie pas.",
           ...COMMON_RULES,
+          ...contextRule,
           '- Priorise ce qui est en retard, bloquant, ou une anomalie/réserve ouverte. Formule comme des choses à vérifier/contrôler/confirmer sur site.',
           "- Inclus AUSSI les contraintes PRATIQUES et d'ACCÈS à anticiper quand elles figurent dans les éléments (fenêtres/horaires d'accès, circulation, livraisons à coordonner, matériel à prévoir) — une visite se prépare physiquement, pas seulement par les problèmes.",
         ]
       : [
           'Tu es un secrétaire de réunion de chantier. À partir UNIQUEMENT des éléments fournis, tu listes 3 à 6 POINTS À DISCUTER ou À ARBITRER en réunion. Couvre les différents sujets présents (actions en retard, réserves, livraisons, sujets récurrents), n\'en oublie pas.',
           ...COMMON_RULES,
+          ...contextRule,
           '- Formule des points à DISCUTER / ARBITRER / TRANCHER. Priorise ce qui traîne, ce qui bloque, ce qui est nouveau.',
           "- N'inclus PAS la logistique pure ni les contraintes d'accès terrain (horaires, circulation, matériel) : une réunion porte sur les décisions et arbitrages, pas la préparation physique.",
         ]

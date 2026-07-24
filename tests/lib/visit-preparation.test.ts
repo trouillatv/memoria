@@ -5,6 +5,7 @@ import {
   selectPreparationReminders,
   selectPreparationObjective,
   selectNarrativeHighlights,
+  buildVisitObjectiveContextLines,
   resolveVisitPreparationPhase,
   type VisitPreparationFacts,
 } from '@/lib/knowledge/visit-preparation'
@@ -79,5 +80,25 @@ describe('visit preparation read model', () => {
       'Le planning reste à diffuser.',
       'Une vigilance subsiste sur les panneaux électriques.',
     ])
+  })
+
+  it('builds the AI context from persisted narratives and post-visit facts', () => {
+    const lines = buildVisitObjectiveContextLines({
+      narratives: [{ text: 'La dépose est engagée.', status: 'validated', occurredAt: '2026-07-21' }],
+      activities: [{ kind: 'visit', title: 'Visite du 25 juillet', status: 'in_progress', photoCount: 4, memoCount: 2 }],
+      changedSinceVenue: ['2 nouvelles photos'],
+      openActions: ['Communiquer les accès'],
+      overdueActions: ['Programmer la visite PAVE'],
+      deadlines: ['Vérification électrique — à planifier'],
+      decisions: ['Accès par portail et cadenas à code'],
+      reserves: ['Panneaux électriques'],
+      watchpoints: ['Le planning reste à confirmer'],
+      proofs: ['Photo des panneaux électriques'],
+    })
+
+    expect(lines.join('\n')).toContain('Résumé persisté')
+    expect(lines.join('\n')).toContain('Activité en cours')
+    expect(lines.join('\n')).toContain('Vérification électrique — à planifier')
+    expect(lines.join('\n')).toContain('Photo des panneaux électriques')
   })
 })
