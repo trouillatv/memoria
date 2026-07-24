@@ -131,7 +131,88 @@ export async function createOrganisation(name: string): Promise<DbOrganisation> 
   return { ...data, user_count: 0 }
 }
 
-export async function assignUserToOrg(userId: string, orgId: string, role?: UserRole): Promise<void> {
+export interface AdminOrganizationMembership {
+  userId: string
+  organizationId: string
+  role: UserRole
+  status: 'active'
+}
+
+/** Les appartenances actives, pour la console plateforme uniquement. */
+export async function listActiveOrganizationMembershipsForAdmin(): Promise<AdminOrganizationMembership[]> {
+  const { data, error } = await createAdminClient()
+    .from('organization_memberships')
+    .select('user_id, organization_id, role, status')
+    .eq('status', 'active')
+
+  if (error) throw error
+  return (data ?? []).map((row) => ({
+    userId: row.user_id,
+    organizationId: row.organization_id,
+    role: row.role as UserRole,
+    status: 'active' as const,
+  }))
+}
+
+/**
+ * Modifie uniquement le rôle d'un membership existant.
+ *
+ * Ce chemin ne réactive jamais une appartenance suspendue et ne remplace pas
+ * la ligne : `created_at`, `status` et les autres métadonnées sont conservés.
+ */
+export async function updateOrganizationMembershipRole(
+  userId: string,
+  orgId: string,
+  role: UserRole,
+): Promise<void> {
+  const { data, error } = await createAdminClient()
+    .from('organization_memberships')
+    .update({ role, updated_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('organization_id', orgId)
+    .select('id')
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) throw new Error('Membership organisationnel introuvable')
+}
+
+/** Change explicitement le statut, sans modifier le rôle ni les métadonnées. */
+export async function suspendOrganizationMembership(
+  userId: string,
+  orgId: string,
+): Promise<void> {
+  const { data, error } = await createAdminClient()
+    .from('organization_memberships')
+    .update({ status: 'suspended', updated_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('organization_id', orgId)
+    .eq('status', 'active')
+    .select('id')
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) throw new Error('Membership organisationnel actif introuvable')
+}
+
+/** Supprime explicitement un membership, sous protection du trigger SQL. */
+export async function removeOrganizationMembership(
+  userId: string,
+  orgId: string,
+): Promise<void> {
+  const { data, error } = await createAdminClient()
+    .from('organization_memberships')
+    .delete()
+    .eq('user_id', userId)
+    .eq('organization_id', orgId)
+    .select('id')
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) throw new Error('Membership organisationnel introuvable')
+}
+
+export async function assignUserToOrg(userId: string, orgId: string, role?: UserRole): Promise<UserRole> {
   const sb = createAdminClient()
 
   // ── L'APPARTENANCE S'AJOUTE, ELLE NE REMPLACE PAS (M1, mig 233) ──────────
@@ -179,4 +260,6 @@ export async function assignUserToOrg(userId: string, orgId: string, role?: User
       app_metadata: { ...(existing.user.app_metadata ?? {}), organization_id: orgId },
     })
   }
+
+  return roleAPoser
 }

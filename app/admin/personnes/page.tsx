@@ -8,34 +8,49 @@
 import Link from 'next/link'
 import { AlertTriangle } from 'lucide-react'
 import { listUsersForAdmin, getCurrentUserWithProfile } from '@/lib/db/users'
-import { listOrganisations, getOrganizationsMeta } from '@/lib/db/organisations'
+import { listOrganisations, getOrganizationsMeta, listActiveOrganizationMembershipsForAdmin } from '@/lib/db/organisations'
 import { EntityLogo } from '@/components/ui/EntityLogo'
 import { getUsersActivitySummary } from '@/lib/db/admin-monitoring'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CreateUserForm } from '../users/CreateUserForm'
-import { CreateOrgForm, UpdateOrgBrandingForm, UploadOrgLogoForm } from '../organisations/OrgForms'
+import { AssignUserOrganizationRoleForm, CreateOrgForm, UpdateOrgBrandingForm, UploadOrgLogoForm } from '../organisations/OrgForms'
 import { PersonnesTable, type PersonneRow } from './PersonnesTable'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AdminPersonnesPage() {
-  const [me, users, orgs, activity] = await Promise.all([
+  const [me, users, orgs, activity, memberships] = await Promise.all([
     getCurrentUserWithProfile(),
     listUsersForAdmin(),
     listOrganisations(),
     getUsersActivitySummary(),
+    listActiveOrganizationMembershipsForAdmin(),
   ])
   const orgsMeta = orgs.length > 0 ? await getOrganizationsMeta(orgs.map((o) => o.id)) : []
   const orgsMetaById = new Map(orgsMeta.map((m) => [m.id, m]))
 
   const orgList = orgs.map((o) => ({ id: o.id, name: o.name }))
   const orgNameById = new Map(orgs.map((o) => [o.id, o.name]))
+  const membershipsByUser = new Map<string, typeof memberships>()
+  for (const membership of memberships) {
+    const current = membershipsByUser.get(membership.userId) ?? []
+    current.push(membership)
+    membershipsByUser.set(membership.userId, current)
+  }
   const memberCount = new Map<string, number>()
+  for (const membership of memberships) {
+    memberCount.set(membership.organizationId, (memberCount.get(membership.organizationId) ?? 0) + 1)
+  }
   for (const u of users) {
     const oid = (u as { organization_id?: string | null }).organization_id
-    if (oid) memberCount.set(oid, (memberCount.get(oid) ?? 0) + 1)
+    if (oid && !membershipsByUser.has(u.id)) {
+      memberCount.set(oid, (memberCount.get(oid) ?? 0) + 1)
+    }
   }
-  const unassigned = users.filter((u) => !(u as { organization_id?: string | null }).organization_id)
+  const unassigned = users.filter((u) => {
+    const legacyOrgId = (u as { organization_id?: string | null }).organization_id
+    return !legacyOrgId && !membershipsByUser.has(u.id)
+  })
 
   // Chefs d'équipe sans téléphone (ex-onglet Préparation : prérequis WhatsApp).
   const chefsNoPhone = users.filter((u) => u.role === 'chef_equipe' && !u.phone)
@@ -43,12 +58,18 @@ export default async function AdminPersonnesPage() {
   const rows: PersonneRow[] = users.map((u) => {
     const oid = (u as { organization_id?: string | null }).organization_id ?? null
     const act = activity[u.id]
+    const userMemberships = membershipsByUser.get(u.id) ?? []
     return {
       id: u.id,
       full_name: u.full_name,
       email: u.email,
       role: u.role,
       organization_id: oid,
+      organizationMemberships: userMemberships.map((membership) => ({
+        organizationId: membership.organizationId,
+        organizationName: orgNameById.get(membership.organizationId) ?? membership.organizationId,
+        role: membership.role,
+      })),
       orgName: oid ? orgNameById.get(oid) ?? null : null,
       orgKnown: oid ? orgNameById.has(oid) : true,
       phone: u.phone,
@@ -128,7 +149,19 @@ export default async function AdminPersonnesPage() {
                         <UpdateOrgBrandingForm orgId={o.id} currentColor={o.color} />
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{memberCount.get(o.id) ?? 0}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      <div className="flex flex-col items-end gap-2">
+                        <span>{memberCount.get(o.id) ?? 0}</span>
+                        <AssignUserOrganizationRoleForm
+                          orgId={o.id}
+                          users={users.map((u) => ({
+                            id: u.id,
+                            full_name: u.full_name ?? '',
+                            email: u.email,
+                          }))}
+                        />
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -22,6 +22,11 @@ export type PersonneRow = {
   email: string
   role: UserRole
   organization_id: string | null
+  organizationMemberships: Array<{
+    organizationId: string
+    organizationName: string
+    role: UserRole
+  }>
   orgName: string | null
   orgKnown: boolean
   phone: string | null
@@ -188,10 +193,27 @@ export function PersonnesTable({
                 </div>
               </td>
               <td className="px-3 py-2">
-                <MoveUserOrgForm userId={u.id} currentOrgId={u.organization_id} orgs={orgs} />
-                {u.organization_id && !u.orgKnown && (
-                  <span className="text-xs text-muted-foreground">Inconnue</span>
-                )}
+                <div className="flex flex-col items-start gap-1.5">
+                  {u.organizationMemberships.length > 0 ? (
+                    u.organizationMemberships.map((membership) => (
+                      <span
+                        key={membership.organizationId}
+                        data-testid="organization-membership"
+                        className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-2 py-1 text-xs"
+                      >
+                        <span className="font-medium">{membership.organizationName}</span>
+                        <span className="text-muted-foreground">· {ROLE_LABEL[membership.role]}</span>
+                      </span>
+                    ))
+                  ) : u.organization_id ? (
+                    <span className="text-xs text-muted-foreground">
+                      {u.orgName ?? (u.orgKnown ? 'Organisation' : 'Inconnue')}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Aucune</span>
+                  )}
+                  <MoveUserOrgForm userId={u.id} currentOrgId={u.organization_id} orgs={orgs} />
+                </div>
               </td>
               <td className="px-3 py-2">
                 <UserPhoneEdit userId={u.id} currentPhone={u.phone} />
