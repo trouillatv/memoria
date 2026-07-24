@@ -69,6 +69,7 @@ export function MemoryInbox({ siteId, items, withFilters = false }: {
 }) {
   const [done, setDone] = useState<Set<string>>(new Set())
   const [family, setFamily] = useState<Family | null>(null)
+  const [source, setSource] = useState<'cr' | 'meeting' | null>(null)
 
   const remaining = items.filter((i) => !done.has(i.id))
   const counts = useMemo(() => {
@@ -77,8 +78,14 @@ export function MemoryInbox({ siteId, items, withFilters = false }: {
     return c
   }, [remaining])
   const visible = family ? remaining.filter((i) => (FAMILY_OF[i.kind] ?? 'connaissances') === family) : remaining
+  const sourceOf = (item: ReviewItem) => item.provenance.sourceType ?? (item.provenance.reportId ? 'cr' : 'unknown')
+  const sourceCounts = useMemo(() => ({
+    cr: remaining.filter((item) => sourceOf(item) === 'cr').length,
+    meeting: remaining.filter((item) => sourceOf(item) === 'meeting').length,
+  }), [remaining])
+  const filtered = source ? visible.filter((item) => sourceOf(item) === source) : visible
   // Tri par poids de conséquence, ordre stable à l'intérieur d'une famille.
-  const ordered = [...visible].sort((a, b) =>
+  const ordered = [...filtered].sort((a, b) =>
     FAMILY_ORDER.indexOf(FAMILY_OF[a.kind] ?? 'connaissances') - FAMILY_ORDER.indexOf(FAMILY_OF[b.kind] ?? 'connaissances'))
 
   if (remaining.length === 0) return <p className="text-[13px] text-muted-foreground">Rien à confirmer pour l’instant.</p>
@@ -99,6 +106,18 @@ export function MemoryInbox({ siteId, items, withFilters = false }: {
               {FAMILY_LABEL[f]} {counts[f]}
             </button>
           ))}
+          {sourceCounts.cr > 0 && (
+            <button type="button" onClick={() => setSource(source === 'cr' ? null : 'cr')}
+              className={cn('rounded-full border px-3 py-1 text-[12px]', source === 'cr' ? 'border-foreground bg-foreground font-semibold text-background shadow-sm' : 'bg-card text-muted-foreground hover:text-foreground')}>
+              CR {sourceCounts.cr}
+            </button>
+          )}
+          {sourceCounts.meeting > 0 && (
+            <button type="button" onClick={() => setSource(source === 'meeting' ? null : 'meeting')}
+              className={cn('rounded-full border px-3 py-1 text-[12px]', source === 'meeting' ? 'border-foreground bg-foreground font-semibold text-background shadow-sm' : 'bg-card text-muted-foreground hover:text-foreground')}>
+              Réunions {sourceCounts.meeting}
+            </button>
+          )}
         </div>
       )}
       <ul className="space-y-1.5">

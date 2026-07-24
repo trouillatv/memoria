@@ -25,6 +25,8 @@ import type { KnowledgeEntry, Watchpoint } from '@/lib/db/site-memory-entries'
 /** D'où vient un élément — « Mentionné dans la visite du 15 juillet · 2 mémos ». */
 export interface ProposalProvenance {
   reportId: string | null
+  /** Source métier du compte-rendu : un CR terrain ou une réunion. */
+  sourceType?: 'cr' | 'meeting' | 'unknown'
   /** La date de la VISITE (pas celle de la proposition : c'est le terrain qui
    *  fait foi, l'analyse a pu tourner trois jours plus tard). */
   visitedAt: string | null
@@ -150,12 +152,18 @@ async function readProvenance(reportIds: string[]): Promise<Map<string, Proposal
   if (reportIds.length === 0) return out
   const db = createAdminClient()
   const [{ data: reports }, { data: caps }] = await Promise.all([
-    db.from('site_reports').select('id, started_at, ended_at').in('id', reportIds),
+    db.from('site_reports').select('id, origin, started_at, ended_at').in('id', reportIds),
     db.from('visit_capture').select('report_id, kind').in('report_id', reportIds)
       .in('kind', ['photo', 'vocal']).neq('status', 'discarded'),
   ])
-  for (const r of (reports ?? []) as Array<{ id: string; started_at: string | null; ended_at: string | null }>) {
-    out.set(r.id, { reportId: r.id, visitedAt: r.started_at ?? r.ended_at, photos: 0, vocals: 0 })
+  for (const r of (reports ?? []) as Array<{ id: string; origin: string | null; started_at: string | null; ended_at: string | null }>) {
+    out.set(r.id, {
+      reportId: r.id,
+      sourceType: r.origin ? 'cr' : 'meeting',
+      visitedAt: r.started_at ?? r.ended_at,
+      photos: 0,
+      vocals: 0,
+    })
   }
   for (const c of (caps ?? []) as Array<{ report_id: string; kind: string }>) {
     const p = out.get(c.report_id)

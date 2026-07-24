@@ -28,7 +28,7 @@ const ginger: ReviewItem = {
   provenance: { reportId: '22222222-2222-4222-8222-222222222222', visitedAt: '2026-07-15T10:00:00Z', photos: 0, vocals: 0 },
 }
 
-function proposal(kind: ReviewItem['kind'], label: string): ReviewItem {
+function proposal(kind: ReviewItem['kind'], label: string, sourceType: 'cr' | 'meeting' = 'cr'): ReviewItem {
   const requiredInputs = kind === 'knowledge' ? ['nature' as const] : []
   return {
     id: `${kind}-11111111-1111-4111-8111-111111111111`,
@@ -39,7 +39,7 @@ function proposal(kind: ReviewItem['kind'], label: string): ReviewItem {
     capability: { available: true, label, requiredInputs, explanation: null },
     confidence: null,
     sourceCaptureIds: [],
-    provenance: { reportId: '22222222-2222-4222-8222-222222222222', visitedAt: '2026-07-15T10:00:00Z', photos: 0, vocals: 0 },
+    provenance: { reportId: '22222222-2222-4222-8222-222222222222', sourceType, visitedAt: '2026-07-15T10:00:00Z', photos: 0, vocals: 0 },
   }
 }
 
@@ -122,5 +122,18 @@ describe('MemoryInbox stakeholder workflow', () => {
     expect(screen.getByRole('button', { name: 'Acter la décision' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retenir le point de vigilance' })).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Écarter' })).toHaveLength(2)
+  })
+
+  it('filters proposals by CR or réunion without changing the shared workflow', () => {
+    render(<MemoryInbox siteId="44444444-4444-4444-8444-444444444444" withFilters items={[
+      proposal('action', 'Action issue du CR', 'cr'),
+      proposal('decision', 'Décision issue de la réunion', 'meeting'),
+    ]} />)
+
+    expect(screen.getByRole('button', { name: 'CR 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Réunions 1' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Réunions 1' }))
+    expect(screen.getByText('Décision issue de la réunion')).toBeInTheDocument()
+    expect(screen.queryByText('Action issue du CR')).not.toBeInTheDocument()
   })
 })
