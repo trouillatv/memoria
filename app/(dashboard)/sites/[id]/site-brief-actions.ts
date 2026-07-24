@@ -728,6 +728,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
 
   const atRiskOfForgetting: SiteBriefFactLine[] = [
     ...vigilance.filter((item) => item.overdue || item.ageDays >= 7).slice(0, 3).map((item) => ({ text: item.title, sourceType: 'action' as const, sourceId: item.id, sourceHref: `/sites/${siteId}?action=${item.id}`, status: 'validated' as const })),
+    ...openActionRows.filter((action) => !vigilance.some((item) => item.id === action.id)).slice(0, 3).map((action) => ({ text: action.title, sourceType: 'action' as const, sourceId: action.id, sourceHref: `/sites/${siteId}?action=${action.id}`, status: 'validated' as const })),
     ...deadlineItems.filter((item) => item.status === 'to_plan').slice(0, 2).map((item) => ({ text: `${item.title} — encore à planifier`, sourceType: 'deadline' as const, sourceId: item.id, sourceHref: `/sites/${siteId}/planning`, status: 'validated' as const })),
   ].slice(0, 5)
 

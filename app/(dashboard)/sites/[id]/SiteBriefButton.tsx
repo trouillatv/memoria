@@ -35,6 +35,7 @@ import {
 } from 'lucide-react'
 import { getSiteBriefAction, logBriefOpenAction, generateDiscussionPointsAction, type SiteBrief, type SiteBriefFactLine, type DiscussionPoint } from './site-brief-actions'
 import { VISIT_INTENTS, type VisitIntent } from '@/lib/field/visit-intents'
+import { selectNarrativeHighlights } from '@/lib/knowledge/visit-preparation'
 
 interface Props {
   /** Site fixé par le contexte (fiche site / mobile site). */
@@ -291,7 +292,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="text-sm font-semibold inline-flex items-center gap-1.5">
                       <Sparkles className="h-3.5 w-3.5 text-sky-600" />
-                      {mode === 'meeting' ? 'Points à discuter' : 'Objectif de la visite'}
+                      {mode === 'meeting' ? 'Points à discuter' : 'Recommandations MemorIA'}
                       <span className="rounded bg-sky-100 px-1 text-[9px] font-medium text-sky-700">IA</span>
                     </h3>
                     {confirmGen ? (
@@ -333,17 +334,20 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
                     </p>
                   )}
                   {points && points.length > 0 && (
+                    <>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Priorité de la visite</p>
                     <ul className="space-y-1">
                       {[...points].sort((a, b) => Number(b.priority === 'high') - Number(a.priority === 'high')).map((p, i) => (
                         <li key={i} className="flex gap-1.5 text-sm text-sky-950">
                           <span aria-hidden className="text-sky-500">•</span>
                           <span className="min-w-0">
-                            {p.priority === 'high' && <strong className="mr-1 text-[10px] uppercase tracking-wide text-rose-700">Priorité</strong>}
+                            {(p.priority === 'high' || i === 0) && <strong className="mr-1 text-[10px] uppercase tracking-wide text-rose-700">Priorité</strong>}
                             {p.text}
                           </span>
                         </li>
                       ))}
                     </ul>
+                    </>
                   )}
                   {points && points.length === 0 && !genPending && (
                     pointsMock ? (
@@ -769,7 +773,7 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[11px] font-medium uppercase tracking-wide text-sky-700">
-                {objective.kind === 'scheduled' ? 'Passage planifié' : 'Objectif proposé à partir des éléments prioritaires'}
+                {objective.kind === 'scheduled' ? 'Passage planifié' : 'Motif principal déterminé'}
               </p>
               <p className="mt-1 text-sm font-medium">{objective.sourceHref ? <a href={objective.sourceHref} className="hover:underline">{objective.text}</a> : objective.text}</p>
             </div>
@@ -785,13 +789,13 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
         <FactLines items={rememberToday} empty="Aucun changement consolidé à retenir pour le moment." />
       </section>
 
-      {sinceLastVenue && (
-        <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
+      <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
           <SectionTitle icon={<History className="h-3.5 w-3.5 text-sky-600" />}>Ce qui a changé depuis votre venue</SectionTitle>
-          <p className="text-xs text-muted-foreground">Depuis {sinceLastVenue.dateLabel}</p>
+          <p className="text-xs text-muted-foreground">
+            Depuis {sinceLastVenue?.dateLabel ?? 'votre dernière venue personnelle'}
+          </p>
           <FactLines items={changedSinceVenue} empty="Aucun changement enregistré depuis cette venue." />
-        </section>
-      )}
+      </section>
 
       {completedSinceVenue.length > 0 && (
         <section className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3.5 space-y-2.5">
@@ -819,6 +823,7 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
           <SectionTitle icon={<History className="h-3.5 w-3.5 text-sky-600" />}>Activité récente</SectionTitle>
           <div className="space-y-2">
             {activities.slice(0, 5).map((activity) => {
+              const excerpt = activity.narrative ? selectNarrativeHighlights([activity.narrative], 1)[0] : null
               const statusLabel = activity.status === 'in_progress'
                 ? 'En cours — non consolidé'
                 : activity.status === 'very_recent' ? 'Très récent' : 'Validé'
@@ -841,11 +846,11 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
                     {activity.photoCount > 0 ? ` · ${activity.photoCount} photo${activity.photoCount > 1 ? 's' : ''}` : ''}
                     {activity.memoCount > 0 ? ` · ${activity.memoCount} note${activity.memoCount > 1 ? 's' : ''}` : ''}
                   </p>
-                  {activity.narrative && (
-                    <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/85">{activity.narrative}</p>
+                  {excerpt && (
+                    <p className="text-sm leading-relaxed text-foreground/85">{excerpt}</p>
                   )}
                   <a href={activity.href} className="inline-flex text-xs font-medium text-sky-700 hover:underline">
-                    Voir la source <ChevronRight className="ml-0.5 h-3.5 w-3.5" />
+                    Voir le résumé complet <ChevronRight className="ml-0.5 h-3.5 w-3.5" />
                   </a>
                 </article>
               )
@@ -860,7 +865,12 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
           <ul className="space-y-1.5">
             {proofs.slice(0, 5).map((proof) => (
               <li key={`${proof.type}:${proof.id}`} className="flex items-center justify-between gap-2 text-sm">
-                <span className="min-w-0 truncate">{proof.title}</span>
+                <span className="min-w-0">
+                  <span className="block truncate">{proof.title}</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    {proof.reason === 'new_since_last_visit' ? 'Nouveau depuis votre venue' : proof.reason === 'latest_report' ? 'Dernière source enregistrée' : 'Photo clé du chantier'}
+                  </span>
+                </span>
                 <a href={proof.href} className="shrink-0 text-xs font-medium text-sky-700 hover:underline">Ouvrir</a>
               </li>
             ))}
