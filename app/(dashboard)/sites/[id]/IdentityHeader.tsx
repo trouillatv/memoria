@@ -1,5 +1,6 @@
 import { Building2 } from 'lucide-react'
 import type { SiteIdentity } from '@/lib/db/site-cockpit'
+import { EntityLogo } from '@/components/ui/EntityLogo'
 
 function formatStartedAt(iso: string | null): string | null {
   if (!iso) return null
@@ -22,7 +23,15 @@ export function IdentityHeader({ site }: { site: SiteIdentity }) {
           sans client est une décision assumée (prévisite, repérage, urgence),
           pas un oubli à masquer. Le rattachement reste possible à tout moment. */}
       {site.clientName ? (
-        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-muted/60 border text-xs text-muted-foreground">
+        <div className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <EntityLogo
+            src={site.clientLogoUrl}
+            label={site.clientName}
+            size="sm"
+            variant="rounded"
+            fallbackColor="#dbeafe"
+            alt={site.clientName}
+          />
           <Building2 className="h-3 w-3 shrink-0" aria-hidden />
           {site.clientName}
         </div>

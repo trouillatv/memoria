@@ -77,6 +77,7 @@ export function CreateSiteDialog({ clients, contracts, allSites, orgs }: Props) 
   const [contractId, setContractId] = useState('')
   const [address, setAddress] = useState('')
   const [notes, setNotes] = useState('')
+  const [clientLogo, setClientLogo] = useState<File | null>(null)
   const [extended, setExtended] = useState(emptySiteExtendedState())
 
   // Similarité live
@@ -89,6 +90,7 @@ export function CreateSiteDialog({ clients, contracts, allSites, orgs }: Props) 
   function reset() {
     setName(''); setClientId(''); setClientNameNew(''); setShowNewClient(false); setNoClient(false)
     setContractId(''); setAddress(''); setNotes('')
+    setClientLogo(null)
     setExtended(emptySiteExtendedState())
     setLiveSimilar([]); setServerSimilar([])
     setSelectedOrgId(orgs?.[0]?.id ?? '')
@@ -125,6 +127,7 @@ export function CreateSiteDialog({ clients, contracts, allSites, orgs }: Props) 
     if (contractId) fd.set('contract_id', contractId)
     if (address.trim()) fd.set('address', address.trim())
     if (notes.trim()) fd.set('notes', notes.trim())
+    if (clientLogo) fd.set('client_logo', clientLogo)
     fd.set('force', force ? 'true' : 'false')
     if (selectedOrgId) fd.set('organization_id', selectedOrgId)
     applySiteExtendedToFormData(fd, extended)
@@ -319,6 +322,18 @@ export function CreateSiteDialog({ clients, contracts, allSites, orgs }: Props) 
                   >
                     ← Choisir un client existant
                   </button>
+                </div>
+              )}
+              {!noClient && (
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">Logo du client (PNG, JPEG ou WebP, 2 Mo max)</label>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(e) => setClientLogo(e.target.files?.[0] ?? null)}
+                    className="w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs"
+                    disabled={pending}
+                  />
                 </div>
               )}
             </div>

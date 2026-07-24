@@ -44,7 +44,9 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
     knowledge, stakeholders, deadlines, watchpoints, decisions,
   } = overview
   // La synthèse de la dernière visite est l'endroit où l'on confirme les propositions.
-  const synthesisHref = activity.lastVisit ? `/m/visite/${activity.lastVisit.reportId}/cr` : undefined
+  const synthesisHref = activity.lastVisit
+    ? `/sites/${siteId}/visites/${activity.lastVisit.reportId}`
+    : undefined
   const retainedTotal = stakeholders.summary.proposed + stakeholders.summary.confirmed
     + deadlines.summary.proposed + deadlines.summary.confirmed
     + knowledge.summary.proposed + knowledge.summary.confirmed

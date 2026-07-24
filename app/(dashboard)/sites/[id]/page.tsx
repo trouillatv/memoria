@@ -280,7 +280,7 @@ async function TravailView({ siteId }: { siteId: string }) {
       deadlines={deadlines}
       deadlinesProposed={overview.deadlines.summary.proposed}
       completedRecent={overview.actions.completedRecent}
-      synthesisHref={overview.activity.lastVisit ? `/m/visite/${overview.activity.lastVisit.reportId}/cr` : undefined}
+      synthesisHref={overview.activity.lastVisit ? `/sites/${siteId}/visites/${overview.activity.lastVisit.reportId}` : undefined}
     />
   )
 }

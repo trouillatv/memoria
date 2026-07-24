@@ -4,6 +4,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getOrgIdsOfUser, requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
 import { todayLocalIso } from '@/lib/time/local-date'
+import { getSignedLogoUrls } from '@/lib/storage/entity-logos'
 import type { DbSite, DbSiteNote, SitePhase } from '@/types/db'
 
 // ── Identité du chantier : dossier métier + LIEU (support) ───────────────────
@@ -165,7 +166,7 @@ export async function listSitesForMatching(): Promise<SiteForMatching[]> {
   })
 }
 
-export interface ClientLite { id: string; name: string }
+export interface ClientLite { id: string; name: string; logo_path?: string | null }
 
 export async function listClients(): Promise<ClientLite[]> {
   const supabase = createAdminClient()
@@ -261,6 +262,7 @@ export interface SiteWithStats extends DbSite {
   contract_status: string | null
   /** Nom du client (CHT, OPT…) pour le regroupement dans la liste. */
   client_display_name: string | null
+  client_logo_url: string | null
   last_intervention_at: string | null
   missions_count: number
   interventions_count: number
@@ -280,7 +282,7 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
 
   const qSites = supabase
     .from('sites')
-    .select('*, contract:contracts(name, status), client:clients(name)')
+    .select('*, contract:contracts(name, status), client:clients(name, logo_path)')
     .is('deleted_at', null)
     // Les opportunités (prospect/en_ao/perdu) ne polluent pas la grille chantier
     // — elles vivent dans /opportunites. Seuls les dossiers gagnés y figurent.
@@ -292,11 +294,15 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
   const rows = (sites ?? []) as Array<
     DbSite & {
       contract: { name: string; status: string } | { name: string; status: string }[] | null
-      client: { name: string } | { name: string }[] | null
+      client: { name: string; logo_path: string | null } | { name: string; logo_path: string | null }[] | null
     }
   >
 
   if (rows.length === 0) return []
+  const clientLogoPaths = rows
+    .map((row) => Array.isArray(row.client) ? row.client[0]?.logo_path : row.client?.logo_path)
+    .filter((path): path is string => Boolean(path))
+  const signedClientLogos = await getSignedLogoUrls(clientLogoPaths)
   const siteIds = rows.map((s) => s.id)
 
   // Charge en parallèle : missions par site (1 query), interventions exécutées
@@ -411,6 +417,9 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
       contract_name: c?.name ?? null,
       contract_status: c?.status ?? null,
       client_display_name: cl?.name ?? null,
+      client_logo_url: (Array.isArray(s.client) ? s.client[0]?.logo_path : s.client?.logo_path)
+        ? signedClientLogos[(Array.isArray(s.client) ? s.client[0]?.logo_path : s.client?.logo_path)!] ?? null
+        : null,
       last_intervention_at: lastBySite.get(s.id) ?? null,
       missions_count: missionsBySite.get(s.id)?.length ?? 0,
       interventions_count: interventionsBySite.get(s.id) ?? 0,

@@ -12,6 +12,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { requireOrganizationMembership, getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { uploadClientLogo } from '@/lib/storage/entity-logos'
 import {
   updateSite,
   softDeleteSite,
@@ -64,6 +65,16 @@ export async function updateSiteGlobalAction(formData: FormData) {
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
 
+  const supabase = createAdminClient()
+  const { data: siteRow } = await supabase
+    .from('sites')
+    .select('organization_id, client_id')
+    .eq('id', parsed.data.site_id)
+    .maybeSingle()
+  if (!siteRow) return { error: 'Chantier introuvable' }
+  const membership = await requireOrganizationMembership(siteRow.organization_id)
+  if (!membership.ok) return { error: membership.error }
+
   await updateSite(parsed.data.site_id, {
     name: parsed.data.name,
     address: parsed.data.address ?? null,
@@ -76,7 +87,28 @@ export async function updateSiteGlobalAction(formData: FormData) {
     access_instructions: parsed.data.access_instructions ?? null,
   })
 
+  const logoFile = formData.get('client_logo')
+  if (siteRow.client_id && logoFile instanceof File && logoFile.size > 0) {
+    try {
+      const logoPath = await uploadClientLogo(
+        siteRow.organization_id,
+        siteRow.client_id,
+        Buffer.from(await logoFile.arrayBuffer()),
+        logoFile.type,
+      )
+      const { error } = await supabase
+        .from('clients')
+        .update({ logo_path: logoPath, logo_updated_at: new Date().toISOString() })
+        .eq('id', siteRow.client_id)
+        .eq('organization_id', siteRow.organization_id)
+      if (error) return { error: 'Logo client impossible à enregistrer' }
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Logo client invalide' }
+    }
+  }
+
   revalidatePath('/sites')
+  revalidatePath(`/sites/${parsed.data.site_id}`)
   return { ok: true as const }
 }
 
@@ -297,6 +329,26 @@ export async function createSiteGlobalAction(
     }
   }
 
+  const logoFile = formData.get('client_logo')
+  if (resolvedClientId && logoFile instanceof File && logoFile.size > 0) {
+    try {
+      const logoPath = await uploadClientLogo(
+        organizationId,
+        resolvedClientId,
+        Buffer.from(await logoFile.arrayBuffer()),
+        logoFile.type,
+      )
+      const { error: logoUpdateError } = await supabase
+        .from('clients')
+        .update({ logo_path: logoPath, logo_updated_at: new Date().toISOString() })
+        .eq('id', resolvedClientId)
+        .eq('organization_id', organizationId)
+      if (logoUpdateError) return { error: 'Logo client impossible à enregistrer' }
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Logo client invalide' }
+    }
+  }
+
   const normalizedName = normalizeSiteName(name)
   const canonicalKey = buildCanonicalSiteKey(resolvedClientName ?? '', name)
 
@@ -373,5 +425,6 @@ export async function deleteSiteAction(formData: FormData) {
 
   await softDeleteSite(parsed.data.site_id)
   revalidatePath('/sites')
+  revalidatePath(`/sites/${parsed.data.site_id}`)
   return { ok: true as const }
 }

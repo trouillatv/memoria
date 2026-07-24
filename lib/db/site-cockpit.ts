@@ -29,6 +29,7 @@ import {
   getSignedPhotoUrlsMedium,
   getSignedPhotoUrlsThumb,
 } from '@/lib/storage/intervention-photos'
+import { getSignedLogoUrls } from '@/lib/storage/entity-logos'
 
 // =============================================================================
 // Types
@@ -42,6 +43,7 @@ export interface SiteIdentity {
   contractName: string | null
   clientId: string | null
   clientName: string | null
+  clientLogoUrl: string | null
   contractStartedAt: string | null
   teamsSucceeded: number
   /** Chantier de recette : tout y est jetable, et lui seul peut être réinitialisé. */
@@ -340,6 +342,7 @@ export async function getSiteIdentity(siteId: string): Promise<SiteIdentity | nu
 
   let contractName: string | null = null
   let clientName: string | null = null
+  let clientLogoUrl: string | null = null
   const clientId: string | null = (site as { client_id?: string | null }).client_id ?? null
   let contractStartedAt: string | null = null
 
@@ -347,10 +350,16 @@ export async function getSiteIdentity(siteId: string): Promise<SiteIdentity | nu
   if (clientId) {
     const { data: clientRow } = await supabase
       .from('clients')
-      .select('name')
+      .select('name, logo_path')
       .eq('id', clientId)
       .maybeSingle()
-    if (clientRow) clientName = (clientRow as { name: string }).name
+    if (clientRow) {
+      const row = clientRow as { name: string; logo_path: string | null }
+      clientName = row.name
+      if (row.logo_path) {
+        clientLogoUrl = (await getSignedLogoUrls([row.logo_path]))[row.logo_path] ?? null
+      }
+    }
   }
 
   if (site.contract_id) {
@@ -397,6 +406,7 @@ export async function getSiteIdentity(siteId: string): Promise<SiteIdentity | nu
     contractName,
     clientId,
     clientName,
+    clientLogoUrl,
     contractStartedAt,
     teamsSucceeded,
     isSandbox: (site.is_sandbox as boolean | null) === true,
