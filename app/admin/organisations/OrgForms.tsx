@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { createOrgAction, createUserInOrgAction, assignUserToOrgAction, createOrgWithUserAction, updateOrgBrandingAction, uploadOrgLogoAction, removeOrgLogoAction } from './actions'
+import { createOrgAction, createUserInOrgAction, assignUserToOrgAction, assignOrganizationRoleAction, createOrgWithUserAction, updateOrgBrandingAction, uploadOrgLogoAction, removeOrgLogoAction } from './actions'
 import { toast } from 'sonner'
 
 function Submit({ label, pendingLabel }: { label: string; pendingLabel: string }) {
@@ -63,6 +63,7 @@ export function CreateOrgWithUserForm() {
                 <Select name="role" defaultValue="manager">
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="admin">Administrateur organisationnel</SelectItem>
                     <SelectItem value="manager">Manager</SelectItem>
                     <SelectItem value="chef_equipe">Chef d&apos;équipe</SelectItem>
                   </SelectContent>
@@ -147,6 +148,7 @@ export function CreateUserInOrgForm({ orgId, orgName }: { orgId: string; orgName
         <Select name="role" defaultValue="manager">
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
+            <SelectItem value="admin">Administrateur organisationnel</SelectItem>
             <SelectItem value="manager">Manager</SelectItem>
             <SelectItem value="chef_equipe">Chef d&apos;équipe</SelectItem>
           </SelectContent>
@@ -166,6 +168,61 @@ export function CreateUserInOrgForm({ orgId, orgName }: { orgId: string; orgName
         <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>Annuler</Button>
         <Submit label="Créer" pendingLabel="Création…" />
       </div>
+    </form>
+  )
+}
+
+export function AssignUserOrganizationRoleForm({
+  orgId,
+  users,
+}: {
+  orgId: string
+  users: Array<{ id: string; full_name: string; email: string }>
+}) {
+  const [open, setOpen] = useState(false)
+  if (!open) {
+    return (
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        + Affecter un rôle organisationnel
+      </Button>
+    )
+  }
+  return (
+    <form
+      action={async (fd) => {
+        const r = await assignOrganizationRoleAction(fd)
+        if (r?.error) toast.error(r.error)
+        else { toast.success('Rôle organisationnel enregistré'); setOpen(false) }
+      }}
+      className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border bg-muted/30 p-3"
+    >
+      <input type="hidden" name="org_id" value={orgId} />
+      <div className="min-w-56 flex-1">
+        <Label className="text-xs">Personne</Label>
+        <Select name="user_id" required>
+          <SelectTrigger><SelectValue placeholder="Choisir une personne" /></SelectTrigger>
+          <SelectContent>
+            {users.map((user) => (
+              <SelectItem key={user.id} value={user.id}>
+                {user.full_name || user.email}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="min-w-48">
+        <Label className="text-xs">Rôle dans cette organisation</Label>
+        <Select name="role" defaultValue="manager" required>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="admin">Administrateur organisationnel</SelectItem>
+            <SelectItem value="manager">Manager</SelectItem>
+            <SelectItem value="chef_equipe">Chef d&apos;équipe</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <Submit label="Enregistrer" pendingLabel="Enregistrement…" />
+      <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>Annuler</Button>
     </form>
   )
 }
