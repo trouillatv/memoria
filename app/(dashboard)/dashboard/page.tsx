@@ -70,7 +70,6 @@ import { WelcomeCard } from './WelcomeCard'
 import { DashboardHeader } from './DashboardHeader'
 import { AttentionBlock } from './AttentionBlock'
 import { getAttentionDigest } from '@/lib/db/attention'
-import { StartBar } from './StartBar'
 import { NotificationsBar } from './NotificationsBar'
 import { getMyUnreadNotifications } from '@/lib/db/notifications'
 import { getUpcomingItems } from '@/lib/db/upcoming-items'
@@ -219,7 +218,8 @@ export default async function DashboardPage() {
   const todayChanges = await getVisitImpact().catch(() => emptyVisitImpact())
 
   return (
-    <div className="mx-auto w-full max-w-[1480px] space-y-7 pb-10">
+    <div className="-mt-6 min-h-screen bg-[#f8fafc] px-1 pb-10 pt-6 sm:px-2">
+      <div className="mx-auto w-full max-w-[1480px] space-y-7">
       {/* Zone 1 — En-tête personnel. */}
       <DashboardHeader firstName={firstName} orgNames={orgNames} />
 
@@ -242,9 +242,6 @@ export default async function DashboardPage() {
 
       {/* Notifications (socle mig 159). */}
       <NotificationsBar notifications={notifications} />
-
-      {/* Barre « Démarrer » sobre & repliable. */}
-      <StartBar />
 
       {/* Modules BTP — conditionnels : silencieux si rien à montrer. */}
       {inbox.items.length > 0 && (
@@ -280,6 +277,7 @@ export default async function DashboardPage() {
           preuves={capital.totalPhotos}
         />
       )}
+      </div>
     </div>
   )
 }
