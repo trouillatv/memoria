@@ -219,21 +219,26 @@ export default async function DashboardPage() {
   const todayChanges = await getVisitImpact().catch(() => emptyVisitImpact())
 
   return (
-    <div className="space-y-6 w-full">
+    <div className="mx-auto w-full max-w-[1480px] space-y-7 pb-10">
       {/* Zone 1 — En-tête personnel. */}
       <DashboardHeader firstName={firstName} orgNames={orgNames} />
 
       {/* Zone 2 — Attention opérationnelle : le système décide des priorités (5 max). */}
       <AttentionBlock digest={attention} orgLabels={orgLabels} />
 
-      {/* Zone 3 — Prochains passages planifiés (30j). */}
-      <UpcomingPassages items={upcoming} />
+      {/* Les données de la visite restent visibles dans le même espace que l'agenda. */}
+      <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+        {todayChanges.sites.length > 0 && (
+          <VisitImpactCard changes={todayChanges} orgLabels={orgLabels} />
+        )}
+        <UpcomingPassages items={upcoming} />
+      </div>
 
-      {/* Zone 4 — Sites à surveiller : agrégation par site, triée par criticité. */}
-      <WatchedSites sites={sitesDashboard} />
-
-      {/* Zone 5 — À savoir : capsules mémoire utiles, une par site. */}
-      <KnowledgeHighlights items={aSavoir} />
+      {/* Sites à surveiller + mémoire : deux surfaces de travail complémentaires. */}
+      <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+        <WatchedSites sites={sitesDashboard} />
+        <KnowledgeHighlights items={aSavoir} />
+      </div>
 
       {/* Notifications (socle mig 159). */}
       <NotificationsBar notifications={notifications} />
@@ -242,16 +247,12 @@ export default async function DashboardPage() {
       <StartBar />
 
       {/* Modules BTP — conditionnels : silencieux si rien à montrer. */}
-      {todayChanges.sites.length > 0 && (
-        <VisitImpactCard changes={todayChanges} orgLabels={orgLabels} />
-      )}
-
       {inbox.items.length > 0 && (
         <DashboardInbox feed={inbox} orgLabels={orgLabels} />
       )}
 
       {/* Ligne mémoire — 3 condensations du moteur (jamais des KPI). */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
         <ContinuityStateWidget state={continuityState} />
         <MemoryHeatmap cells={heatmap} />
         <DerniereMemoireUtile events={memoryEvents} />
@@ -319,7 +320,7 @@ function ContinuityStateWidget({
   }
 
   return (
-    <section className="rounded-lg border bg-card p-4">
+    <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
       <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground mb-2.5">
         État de la continuité
       </h2>
@@ -384,7 +385,7 @@ function DerniereMemoireUtile({ events }: { events: MemoryEventItem[] }) {
     attention: 'text-red-500',
   }
   return (
-    <section className="rounded-lg border bg-card p-4">
+    <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
       <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground mb-2.5">
         Dernière mémoire utile
       </h2>
@@ -471,7 +472,7 @@ function MemoryHeatmap({ cells }: { cells: HeatmapCell[] }) {
   const weeks = chunkDays(padded, 7)
 
   return (
-    <section className="rounded-lg border bg-card p-4">
+    <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
       <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground mb-2.5">
         Temps mémoriel
       </h2>

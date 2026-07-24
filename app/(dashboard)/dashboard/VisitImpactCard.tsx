@@ -20,12 +20,12 @@ export function VisitImpactCard({ changes, orgLabels = null }: { changes: VisitI
   if (changes.sites.length === 0) return null
 
   return (
-    <section className="rounded-[18px] border bg-card p-4 shadow-sm sm:p-5">
+    <section className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.04)] sm:p-7">
       {/* Le titre suit le RÉCIT, pas le calendrier : « Depuis votre visite d'hier ».
           C'est ce que le conducteur a en tête en ouvrant MemorIA — pas « aujourd'hui ». */}
-      <div className="flex items-center gap-2">
-        <Sparkles className="h-4 w-4 text-muted-foreground" />
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-600"><Sparkles className="h-5 w-5" /></span>
+        <h2 className="text-xl font-semibold tracking-[-0.02em] text-slate-950">
           {changes.sites[0]?.sinceLabel ?? "Aujourd'hui"}
         </h2>
       </div>

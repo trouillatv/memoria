@@ -37,8 +37,8 @@ interface WatchedSitesProps {
 
 export function WatchedSites({ sites }: WatchedSitesProps) {
   return (
-    <section className="rounded-lg border bg-card">
-      <div className="px-4 pt-3 pb-2">
+    <section className="rounded-3xl border border-slate-200/80 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
+      <div className="px-5 pb-4 pt-5">
         <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
           Sites à surveiller
         </h2>
@@ -53,19 +53,19 @@ export function WatchedSites({ sites }: WatchedSitesProps) {
           .
         </p>
       ) : (
-        <ul className="divide-y divide-border/40">
+        <ul className="space-y-2 px-4 pb-4">
           {sites.map((site) => (
             <li key={site.id}>
               <Link
                 href={site.href}
-                className="group flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors"
+                className="group flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 px-3 py-3 transition-all hover:border-slate-200 hover:bg-white hover:shadow-sm"
               >
                 <span
                   title={STATUS_LABEL[site.status]}
-                  className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[site.status]}`}
+                  className={`h-3 w-3 shrink-0 rounded-full ring-4 ring-white ${STATUS_DOT[site.status]}`}
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium leading-snug truncate">{site.name}</p>
+                  <p className="truncate text-sm font-semibold leading-snug text-slate-900">{site.name}</p>
                   <p className="text-[11px] text-muted-foreground">
                     {site.clientName ? `${site.clientName} · ` : ''}
                     {site.overdueActionCount > 0 && (

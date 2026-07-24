@@ -30,8 +30,8 @@ interface UpcomingPassagesProps {
 
 export function UpcomingPassages({ items }: UpcomingPassagesProps) {
   return (
-    <section className="rounded-lg border bg-card">
-      <div className="flex items-center justify-between px-4 pt-3 pb-2">
+    <section className="h-full rounded-3xl border border-slate-200/80 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
+      <div className="flex items-center justify-between px-5 pb-4 pt-5">
         <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
           Prochains passages
         </h2>
@@ -44,18 +44,18 @@ export function UpcomingPassages({ items }: UpcomingPassagesProps) {
           depuis la fiche d&apos;un site pour les voir apparaître ici.
         </p>
       ) : (
-        <ul className="divide-y divide-border/40">
+        <ul className="space-y-2 px-4 pb-4">
           {items.map((item) => {
             const Icon = KIND_ICON[item.kind]
             return (
               <li key={`${item.sourceType}:${item.id}`}>
                 <Link
                   href={item.href}
-                  className="group flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors"
+                  className="group flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 px-3 py-3 transition-all hover:border-slate-200 hover:bg-white hover:shadow-sm"
                 >
-                  <Icon className="h-4 w-4 shrink-0 text-muted-foreground/60" />
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-600"><Icon className="h-4 w-4" /></span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm leading-snug truncate">
+                    <p className="truncate text-sm font-semibold leading-snug text-slate-900">
                       {item.title}
                     </p>
                     <p className="text-[11px] text-muted-foreground">
