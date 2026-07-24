@@ -50,6 +50,7 @@ import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbPr
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import { SiteReportLauncher } from '@/app/(field)/m/site/[siteId]/SiteReportLauncher'
 import { IdentityHeader } from './IdentityHeader'
+import { EntityLogo } from '@/components/ui/EntityLogo'
 import { AttachClientButton } from './AttachClientButton'
 import { listClients } from '@/lib/db/sites'
 import { SiteBriefButton } from './SiteBriefButton'
@@ -122,6 +123,16 @@ export default async function SitePage({ params, searchParams }: PageProps) {
                   <span>Chantiers</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
+                  {identity.clientName && (
+                    <EntityLogo
+                      src={identity.clientLogoUrl}
+                      label={identity.clientName}
+                      size="lg"
+                      variant="rounded"
+                      fallbackColor="#dbeafe"
+                      alt={identity.clientName}
+                    />
+                  )}
                   <h1 className="text-3xl font-semibold tracking-tight text-foreground">{identity.name}</h1>
                   <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 ring-1 ring-sky-100 dark:bg-sky-950/30 dark:text-sky-300 dark:ring-sky-900">
                     Chantier

@@ -100,7 +100,6 @@ export async function updateSiteGlobalAction(formData: FormData) {
         .from('clients')
         .update({ logo_path: logoPath, logo_updated_at: new Date().toISOString() })
         .eq('id', siteRow.client_id)
-        .eq('organization_id', siteRow.organization_id)
       if (error) return { error: 'Logo client impossible à enregistrer' }
     } catch (error) {
       return { error: error instanceof Error ? error.message : 'Logo client invalide' }
