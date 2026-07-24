@@ -341,8 +341,8 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
                         <li key={i} className="flex gap-1.5 text-sm text-sky-950">
                           <span aria-hidden className="text-sky-500">•</span>
                           <span className="min-w-0">
-                            {(p.priority === 'high' || i === 0) && <strong className="mr-1 text-[10px] uppercase tracking-wide text-rose-700">Priorité</strong>}
-                            {p.text}
+                            {(p.priority === 'high' || i === 0) && <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-rose-700">Priorité</span>}
+                            <span>{p.text}</span>
                           </span>
                         </li>
                       ))}
@@ -411,11 +411,12 @@ function FactLines({ items, empty = 'Rien à signaler.' }: { items: SiteBriefFac
     <ul className="space-y-2">
       {items.map((item, index) => (
         <li key={`${item.sourceType}:${item.sourceId ?? item.text}:${index}`} className="flex items-start gap-2 text-sm">
-          <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.status === 'in_progress' ? 'bg-amber-500' : item.status === 'interpretation' ? 'bg-violet-500' : 'bg-emerald-500'}`} aria-hidden />
+          <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.status === 'in_progress' || item.status === 'unconfirmed' ? 'bg-amber-500' : item.status === 'interpretation' ? 'bg-violet-500' : 'bg-emerald-500'}`} aria-hidden />
           <span className="min-w-0 flex-1">
             {item.sourceHref ? <a href={item.sourceHref} className="hover:underline">{item.text}</a> : item.text}
           </span>
           {item.status === 'in_progress' && <span className="shrink-0 text-[10px] text-amber-700">En cours</span>}
+          {item.status === 'unconfirmed' && <span className="shrink-0 text-[10px] text-amber-700">Non confirmé</span>}
           {item.status === 'interpretation' && <span className="shrink-0 text-[10px] text-violet-700">Interprétation</span>}
         </li>
       ))}
@@ -786,7 +787,14 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
 
       <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
         <SectionTitle icon={<Brain className="h-3.5 w-3.5 text-sky-600" />}>Ce que je dois retenir aujourd&apos;hui</SectionTitle>
-        <FactLines items={rememberToday} empty="Aucun changement consolidé à retenir pour le moment." />
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Situation connue</p>
+        <FactLines items={rememberToday.filter((item) => item.sourceType !== 'deadline')} empty="Aucun fait consolidé à retenir pour le moment." />
+        {rememberToday.some((item) => item.sourceType === 'deadline') && (
+          <>
+            <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">À organiser</p>
+            <FactLines items={rememberToday.filter((item) => item.sourceType === 'deadline')} />
+          </>
+        )}
       </section>
 
       <section className="rounded-xl border bg-background p-3.5 space-y-2.5">

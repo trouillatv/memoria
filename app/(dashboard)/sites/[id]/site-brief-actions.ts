@@ -168,7 +168,7 @@ export interface SiteBriefFactLine {
   sourceType: 'visit' | 'meeting' | 'action' | 'deadline' | 'reserve' | 'watchpoint' | 'decision' | 'chronology'
   sourceId: string | null
   sourceHref: string | null
-  status: 'validated' | 'in_progress' | 'interpretation'
+  status: 'validated' | 'in_progress' | 'interpretation' | 'unconfirmed'
 }
 
 /** Réserve non levée (point à lever) — preuve d'exécution restant due. */
@@ -652,7 +652,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     ...(preparationActivities[0] ? [{
       id: preparationActivities[0].id,
       type: 'report' as const,
-      title: preparationActivities[0].title,
+      title: `${preparationActivities[0].kind === 'visit' ? 'Compte-rendu de visite' : 'Compte-rendu de réunion'} du ${preparationActivities[0].startedAt ? new Date(preparationActivities[0].startedAt).toLocaleDateString('fr-FR') : 'dernier passage'}`,
       href: preparationActivities[0].href,
       occurredAt: preparationActivities[0].startedAt,
       reason: 'latest_report' as const,
@@ -691,7 +691,8 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       sourceType: source.sourceType,
       sourceId: source.sourceId,
       sourceHref: source.sourceHref,
-      status: source.status === 'validated' ? 'validated' as const : 'in_progress' as const,
+      // Un récit validé conserve l'histoire, mais ne prouve pas l'état présent.
+      status: source.status === 'validated' ? 'unconfirmed' as const : 'in_progress' as const,
     }
   })
   for (const item of [
@@ -709,7 +710,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       sourceType: narrative.sourceType,
       sourceId: narrative.sourceId,
       sourceHref: narrative.sourceHref,
-      status: narrative.status === 'validated' ? 'validated' as const : 'in_progress' as const,
+      status: narrative.status === 'validated' ? 'unconfirmed' as const : 'in_progress' as const,
     })))
 
   const changedSinceVenue: SiteBriefFactLine[] = [
@@ -727,14 +728,23 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
   ]
 
   const atRiskOfForgetting: SiteBriefFactLine[] = [
-    ...vigilance.filter((item) => item.overdue || item.ageDays >= 7).slice(0, 3).map((item) => ({ text: item.title, sourceType: 'action' as const, sourceId: item.id, sourceHref: `/sites/${siteId}?action=${item.id}`, status: 'validated' as const })),
-    ...openActionRows.filter((action) => !vigilance.some((item) => item.id === action.id)).slice(0, 3).map((action) => ({ text: action.title, sourceType: 'action' as const, sourceId: action.id, sourceHref: `/sites/${siteId}?action=${action.id}`, status: 'validated' as const })),
+    ...vigilance.filter((item) => item.overdue || item.ageDays >= 7).slice(0, 3).map((item) => ({ text: `${item.title} — ouverte depuis ${item.ageDays} j`, sourceType: 'action' as const, sourceId: item.id, sourceHref: `/sites/${siteId}?action=${item.id}`, status: 'validated' as const })),
+    ...openActionRows.filter((action) => !vigilance.some((item) => item.id === action.id)).slice(0, 3).map((action) => ({ text: `${action.title} — ouverte depuis ${Math.max(0, Math.floor((now - new Date(action.created_at).getTime()) / 86_400_000))} j`, sourceType: 'action' as const, sourceId: action.id, sourceHref: `/sites/${siteId}?action=${action.id}`, status: 'validated' as const })),
     ...deadlineItems.filter((item) => item.status === 'to_plan').slice(0, 2).map((item) => ({ text: `${item.title} — encore à planifier`, sourceType: 'deadline' as const, sourceId: item.id, sourceHref: `/sites/${siteId}/planning`, status: 'validated' as const })),
   ].slice(0, 5)
 
   const unknowns: SiteBriefFactLine[] = [
     ...(sinceLastVenue?.doubts ?? []).map((text) => ({ text, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const })),
     ...followedPoints.filter((point) => point.openQuestion).map((point) => ({ text: point.openQuestion!, sourceType: 'watchpoint' as const, sourceId: point.id, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const })),
+    ...narratives.flatMap((narrative) => selectNarrativeHighlights([narrative.text], 4)
+      .filter((text) => /\b(devait|interviendra|sera|prévu|annoncé|sous peu|semaine prochaine|à organiser|reste à)\b/i.test(text))
+      .map((text) => ({
+        text: `Cette information est-elle toujours d'actualité : ${text}`,
+        sourceType: narrative.sourceType,
+        sourceId: narrative.sourceId,
+        sourceHref: narrative.sourceHref,
+        status: 'unconfirmed' as const,
+      }))),
   ].slice(0, 5)
 
   return {
@@ -887,7 +897,7 @@ export async function generateDiscussionPointsAction(
     'Distingue toujours les faits validés des éléments en cours — non consolidés.',
     'Ne transforme pas une interprétation en fait et ne crée aucune information absente des éléments fournis.',
   ]
-  const priorityRule = 'Classe un seul sujet essentiel, au maximum deux, avec priority="high". Les autres sujets sont priority="normal".'
+  const priorityRule = 'Classe un seul sujet essentiel, au maximum deux, avec priority="high". Les autres sujets sont priority="normal". Fusionne les points qui concernent le même objectif ou la même personne.'
   const systemPrompt = (
     mode === 'visit'
       ? [
