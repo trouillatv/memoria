@@ -13,6 +13,7 @@ const SIZE_MAP: Record<string, string> = {
   sm: 'h-5 w-5 text-[7px]',
   md: 'h-6 w-6 text-[8px]',
   lg: 'h-8 w-8 text-[10px]',
+  xl: 'h-14 w-14 text-base',
 }
 
 const VARIANT_MAP: Record<string, string> = {
@@ -39,7 +40,7 @@ export function EntityLogo({
   src: string | null
   /** Nom de l'entité — sert de fallback initiales et d'alt par défaut. */
   label: string
-  size?: 'xs' | 'sm' | 'md' | 'lg'
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
   /** square = org-like ■ ; circle = avatar ● ; rounded = intermédiaire. */
   variant?: 'square' | 'rounded' | 'circle'
   /** Couleur du fallback. Défaut : gris neutre #6b7280. */

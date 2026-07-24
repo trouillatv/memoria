@@ -127,7 +127,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
                     <EntityLogo
                       src={identity.clientLogoUrl}
                       label={identity.clientName}
-                      size="lg"
+                      size="xl"
                       variant="rounded"
                       fallbackColor="#dbeafe"
                       alt={identity.clientName}

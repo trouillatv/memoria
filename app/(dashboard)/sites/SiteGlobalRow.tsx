@@ -217,7 +217,7 @@ export function SiteGlobalRow({ site, inactive }: Props) {
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
             {site.client_display_name && (
-              <EntityLogo src={site.client_logo_url} label={site.client_display_name} size="lg" variant="rounded" fallbackColor="#dbeafe" alt={site.client_display_name} />
+              <EntityLogo src={site.client_logo_url} label={site.client_display_name} size="xl" variant="rounded" fallbackColor="#dbeafe" alt={site.client_display_name} />
             )}
             <Link
               href={`/sites/${site.id}`}
