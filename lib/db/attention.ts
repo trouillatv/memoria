@@ -158,7 +158,7 @@ export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
         href: `/sites/${siteId}/actions`,
         organizationId,
         signal: {
-          category: 'priority', trigger: 'old_action', actionability: 'direct', origin: 'rules',
+          category: 'priority', trigger: { type: 'old_action', reason: 'deadline_overdue' }, actionability: 'direct', origin: 'rules',
           dedupeKey: `overdue-action:${siteId}:${oldest.id}`,
           sources: [{ type: 'action', id: oldest.id, href: `/sites/${siteId}/actions`, label: oldest.title }],
         },
@@ -179,7 +179,7 @@ export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
         href: `/sites/${siteId}/reserves`,
         organizationId,
         signal: {
-          category: 'fragility', trigger: 'open_reserve', actionability: 'investigate', origin: 'rules',
+          category: 'fragility', trigger: { type: 'open_reserve', reason: 'object_aging' }, actionability: 'investigate', origin: 'rules',
           dedupeKey: `open-reserve:${siteId}:${oldest.created_at}`,
           sources: [{ type: 'reserve', id: siteId, href: `/sites/${siteId}/reserves`, label: 'Réserve ouverte' }],
         },
@@ -200,7 +200,7 @@ export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
         href: `/sites/${siteId}/actions`,
         organizationId,
         signal: {
-          category: 'staleness', trigger: 'old_action', actionability: 'direct', origin: 'rules',
+          category: 'staleness', trigger: { type: 'old_action', reason: 'object_aging' }, actionability: 'direct', origin: 'rules',
           dedupeKey: `old-action:${siteId}:${oldest.id}`,
           sources: [{ type: 'action', id: oldest.id, href: `/sites/${siteId}/actions`, label: oldest.title }],
         },

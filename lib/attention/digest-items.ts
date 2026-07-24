@@ -63,7 +63,7 @@ export function buildConflictItems(
       href: '/semaine',
       organizationId: orgOf?.get(siteId) ?? '',
       signal: {
-        category: 'fragility', trigger: 'planning_conflict', actionability: 'direct', origin: 'rules',
+        category: 'fragility', trigger: { type: 'planning_conflict', reason: 'planning_conflict' }, actionability: 'direct', origin: 'rules',
         dedupeKey: `planning-conflict:${siteId}:${dates.join(',')}`,
         sources: [{ type: 'planning', id: siteId, href: '/semaine', label: 'Conflit de planning' }],
       },
@@ -123,7 +123,7 @@ export function buildDebriefItems(
       href: `/sites/${siteId}/visites/${oldest.reportId}`,
       organizationId: orgOf?.get(siteId) ?? '',
       signal: {
-        category: 'priority', trigger: 'missing_attachment', actionability: 'direct', origin: 'rules',
+        category: 'priority', trigger: { type: 'missing_attachment', reason: 'attachment_missing' }, actionability: 'direct', origin: 'rules',
         dedupeKey: `pending-debrief:${siteId}:${oldest.reportId}`,
         sources: [{ type: 'visit', id: oldest.reportId, href: `/sites/${siteId}/visites/${oldest.reportId}`, label: 'Visite à débriefer' }],
       },

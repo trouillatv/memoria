@@ -217,3 +217,24 @@ par surface et peut être vide au niveau du moteur. `actions[]` remplace
 `trigger` explique la cause métier du signal. `importance` et `urgency` sont
 séparées : un sujet peut être important sans être urgent, ou urgent sans être
 stratégique. `resolvedBy` explique toujours la disparition d'un signal.
+
+## 11. Raffinements avant les détecteurs avancés
+
+Un `SignalFact` porte son type, sa confiance, sa date de détection et sa date
+de validité éventuelle. Une promesse annoncée pour demain peut ainsi devenir
+périmée sans réécrire l'historique.
+
+Le signal ne porte pas de présentation d'écran. Les présentations sont calculées
+par un presenter de surface à partir des faits, règles et sources.
+
+Le `trigger` est structuré en deux dimensions :
+
+```text
+type   = old_action
+reason = object_aging
+```
+
+`MemoryEvent` est le contrat futur des événements métier qui alimenteront les
+détecteurs : visite validée, action créée ou terminée, photo ajoutée, réunion
+clôturée, entreprise reliée ou décision enregistrée. Sa conception est préparée
+maintenant, mais aucun bus, job ou stockage événementiel n'est créé dans ce lot.

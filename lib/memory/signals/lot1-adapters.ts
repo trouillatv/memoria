@@ -28,15 +28,14 @@ export function attentionItemToMemorySignal(
     actionability: meta.actionability,
     origin: meta.origin,
     facts: [
-      { key: 'what', value: item.what, sourceIds: meta.sources.map((source) => source.id) },
-      { key: 'why', value: item.why, sourceIds: meta.sources.map((source) => source.id) },
+      { type: 'attention_item', key: 'what', value: item.what, confidence: null, sourceIds: meta.sources.map((source) => source.id), detectedAt: now, validUntil: null },
+      { type: 'attention_reason', key: 'why', value: item.why, confidence: null, sourceIds: meta.sources.map((source) => source.id), detectedAt: now, validUntil: null },
     ],
-    rules: [{ id: meta.trigger, version: '1' }],
+    rules: [{ id: meta.trigger.type, version: '1' }],
     sources: meta.sources,
     actions: meta.actionability === 'direct'
       ? [{ kind: 'open', label: 'Ouvrir', href: item.href }]
       : [],
-    presentations: [],
     confidence: null,
     dedupeKey: meta.dedupeKey,
     detectedAt: now,
@@ -53,10 +52,10 @@ export function nowItemToMemorySignal(
   const category = 'priority' as const
   const dedupeKey = `now:${item.id}`
   const trigger = item.sourceType === 'passage'
-    ? 'imminent_passage' as const
+    ? { type: 'imminent_passage' as const, reason: 'passage_imminent' as const }
     : item.sourceType === 'deadline'
-      ? 'overdue_deadline' as const
-      : 'old_action' as const
+      ? { type: 'overdue_deadline' as const, reason: 'deadline_overdue' as const }
+      : { type: 'old_action' as const, reason: 'object_aging' as const }
   return {
     id: dedupeKey,
     organizationId: item.organization.id,
@@ -69,11 +68,10 @@ export function nowItemToMemorySignal(
     state: 'active',
     actionability: 'direct',
     origin: 'rules',
-    facts: [{ key: 'title', value: item.title, sourceIds: [item.id] }],
-    rules: [{ id: trigger, version: '1' }],
+    facts: [{ type: item.sourceType, key: 'title', value: item.title, confidence: null, sourceIds: [item.id], detectedAt: now, validUntil: item.dueDate ?? item.startsAt }],
+    rules: [{ id: trigger.type, version: '1' }],
     sources: [{ type: item.sourceType, id: item.id, href: item.href, label: item.title }],
     actions: [{ kind: item.actionId ? 'complete' : 'prepare', label: item.actionId ? 'Traiter' : 'Préparer', href: item.href }],
-    presentations: [],
     confidence: null,
     dedupeKey,
     detectedAt: now,

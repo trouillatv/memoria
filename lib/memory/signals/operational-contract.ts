@@ -13,7 +13,7 @@ export type OperationalSignalSeverity = 'info' | 'warning' | 'critical'
 export type OperationalSignalState = 'active' | 'acknowledged' | 'resolved' | 'dismissed' | 'expired'
 export type OperationalActionability = 'direct' | 'investigate' | 'observe'
 export type OperationalSignalOrigin = 'rules' | 'mixed' | 'ai'
-export type OperationalSignalTrigger =
+export type OperationalSignalTriggerType =
   | 'old_action'
   | 'open_reserve'
   | 'missing_company'
@@ -27,6 +27,22 @@ export type OperationalSignalTrigger =
   | 'health'
   | 'imminent_passage'
   | 'overdue_deadline'
+
+export type OperationalSignalReason =
+  | 'company_not_linked'
+  | 'company_not_created'
+  | 'company_archived'
+  | 'contact_not_identified'
+  | 'attachment_missing'
+  | 'planning_conflict'
+  | 'promise_expired'
+  | 'question_unanswered'
+  | 'facts_incompatible'
+  | 'object_aging'
+  | 'activity_missing'
+  | 'deadline_overdue'
+  | 'passage_imminent'
+  | 'other'
 
 export type OperationalImportance = 'critical' | 'high' | 'normal' | 'low'
 export type OperationalUrgency = 'now' | 'today' | 'week' | 'later'
@@ -45,9 +61,13 @@ export type SuggestedAction = {
 }
 
 export type SignalFact = {
+  type: string
   key: string
   value: string | number | boolean | null
+  confidence: number | null
   sourceIds: string[]
+  detectedAt: string
+  validUntil: string | null
 }
 
 export type SignalRule = {
@@ -74,7 +94,10 @@ export type MemorySignal = {
   organizationId: string
   siteId: string
   category: OperationalSignalCategory
-  trigger: OperationalSignalTrigger
+  trigger: {
+    type: OperationalSignalTriggerType
+    reason: OperationalSignalReason
+  }
   severity: OperationalSignalSeverity
   importance: OperationalImportance
   urgency: OperationalUrgency
@@ -85,7 +108,6 @@ export type MemorySignal = {
   rules: SignalRule[]
   sources: SourceRef[]
   actions: SuggestedAction[]
-  presentations: SignalPresentation[]
   confidence: number | null
   dedupeKey: string
   detectedAt: string
@@ -97,9 +119,33 @@ export type MemorySignal = {
 /** Annotation portée par les anciens read models pendant la migration. */
 export type OperationalSignalMeta = {
   category: OperationalSignalCategory
-  trigger: OperationalSignalTrigger
+  trigger: {
+    type: OperationalSignalTriggerType
+    reason: OperationalSignalReason
+  }
   actionability: OperationalActionability
   origin: OperationalSignalOrigin
   dedupeKey: string
   sources: SourceRef[]
+}
+
+export type MemoryEvent = {
+  id: string
+  organizationId: string
+  siteId: string
+  type:
+    | 'action_created'
+    | 'action_completed'
+    | 'visit_validated'
+    | 'meeting_closed'
+    | 'photo_added'
+    | 'proof_added'
+    | 'company_linked'
+    | 'stakeholder_created'
+    | 'decision_recorded'
+    | 'deadline_changed'
+  occurredAt: string
+  sourceType: string
+  sourceId: string
+  payload: Record<string, string | number | boolean | null>
 }

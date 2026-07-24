@@ -13,7 +13,7 @@ const attention: AttentionItem = {
   organizationId: 'org-1',
   signal: {
     category: 'fragility',
-    trigger: 'planning_conflict',
+    trigger: { type: 'planning_conflict', reason: 'planning_conflict' },
     actionability: 'direct',
     origin: 'rules',
     dedupeKey: 'planning-conflict:site-1:2026-07-25',
