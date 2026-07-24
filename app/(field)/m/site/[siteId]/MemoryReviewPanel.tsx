@@ -220,7 +220,9 @@ function ReviewCard({
 
   function startNewStakeholder() {
     setStakeholderMode('new')
-    setAsking('role')
+    // La nature de l'intervenant est la première décision visible. Le rôle
+    // vient ensuite dans le même formulaire, sans déduction automatique.
+    setAsking('who')
   }
 
   return (
@@ -280,6 +282,7 @@ function ReviewCard({
             <button
               type="button"
               disabled={pending}
+              aria-label="Individu"
               onClick={() => {
                 setEntityType('person')
                 setPersonName(guess.person ?? item.title)
@@ -293,6 +296,7 @@ function ReviewCard({
             <button
               type="button"
               disabled={pending}
+              aria-label="Entreprise"
               onClick={() => {
                 setEntityType('company')
                 setPersonName('')
@@ -303,6 +307,16 @@ function ReviewCard({
               Entreprise
               <span className="block text-[11px] font-normal text-muted-foreground">Société intervenante</span>
             </button>
+          </div>
+          <div>
+            <p className="mb-1 text-[12px] text-muted-foreground">Rôle sur le chantier</p>
+            <div className="flex flex-wrap gap-1.5">
+              {ROLES.map((candidate) => (
+                <button key={candidate} type="button" disabled={pending} onClick={() => setRole(candidate)} className={cn('rounded-full border px-2.5 py-1 text-[12px]', role === candidate ? 'border-primary bg-primary text-primary-foreground' : 'bg-background')}>
+                  {candidate}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="space-y-1.5">
             {entityType === 'person' && <input
@@ -333,7 +347,7 @@ function ReviewCard({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={pending || !entityType || (entityType === 'company' ? !companyName.trim() : !personName.trim() || !companyName.trim())}
+              disabled={pending || !role || !entityType || (entityType === 'company' ? !companyName.trim() : !personName.trim())}
               onClick={() => promote({
                 role: role ?? undefined,
                 person_name: entityType === 'person' ? personName.trim() : undefined,
@@ -352,6 +366,9 @@ function ReviewCard({
             >
               Changer le rôle
             </button>
+            <button type="button" disabled={pending} onClick={() => { setAsking(null); setStakeholderMode(null) }} className="rounded-lg border px-3 py-1.5 text-[13px] text-muted-foreground">
+              Annuler
+            </button>
           </div>
         </div>
       )}
@@ -361,6 +378,7 @@ function ReviewCard({
           {/* Deux choix, pas trois : une HABITUDE se constate sur plusieurs visites.
               L'offrir ici ferait d'une circonstance ponctuelle une règle générale. */}
           <p className="text-[12px] text-muted-foreground">Cette information est…</p>
+          {item.kind !== 'stakeholder' && (<>
           <button
             type="button"
             disabled={pending}
@@ -379,6 +397,7 @@ function ReviewCard({
             <span className="font-medium">Vraie durablement</span>
             <span className="block text-[12px] text-muted-foreground">À savoir aux prochaines visites</span>
           </button>
+          </>)}
         </div>
       )}
 
@@ -479,15 +498,17 @@ function ReviewCard({
           )}
           {/* Le détail (extrait, Écarter) derrière un CHEVRON — « ⋯ » était trop
               cryptique, écarter doit rester facile à trouver. */}
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            aria-label={open ? 'Replier les détails' : 'Détails et écarter'}
-            className="inline-flex items-center rounded-lg border px-2 py-1.5 text-muted-foreground active:brightness-95"
-          >
-            <ChevronDown className={cn('h-4 w-4 transition-transform', open && 'rotate-180')} />
-          </button>
-          {open && (
+          {item.kind !== 'stakeholder' && (
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              aria-label={open ? 'Replier les détails' : 'Détails et écarter'}
+              className="inline-flex items-center rounded-lg border px-2 py-1.5 text-muted-foreground active:brightness-95"
+            >
+              <ChevronDown className={cn('h-4 w-4 transition-transform', open && 'rotate-180')} />
+            </button>
+          )}
+          {item.kind !== 'stakeholder' && open && (
             <button
               type="button"
               disabled={pending}
