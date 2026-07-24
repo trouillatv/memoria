@@ -76,10 +76,10 @@ export function OrgBadgeRich({ meta, size = 'sm' }: {
 }) {
   return <OrganizationBadge organization={{
     id: meta.id,
-    name: meta.label,
-    slug: meta.label,
-    logoPath: null,
+    name: meta.name ?? meta.label,
+    slug: meta.slug ?? meta.label,
+    logoPath: meta.logoPath ?? null,
     logoUrl: meta.logoUrl,
-    brandColor: meta.color,
+    brandColor: meta.brandColor ?? meta.color,
   }} size={size === 'md' ? 'md' : 'xs'} />
 }
