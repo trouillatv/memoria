@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import type { MemoryReview, ReviewItem } from '@/lib/knowledge/memory-review'
 import { frDayMonthLocal } from '@/lib/time/local-date'
 import { splitPersonCompany, looksLikePerson } from '@/lib/knowledge/person-name'
+import { searchIntervenantTargetsAction, type IntervenantTarget } from '@/app/(dashboard)/sites/[id]/views/intervenants/intervenants-actions'
 
 /** Les rôles courants du chantier. Libre : le métier varie (mig 137). */
 const ROLES = ['MOA', 'MOE', 'BET', 'ETV', 'OPC', 'CSPS', 'PAVE', 'PLANIF']
@@ -179,6 +180,7 @@ function ReviewCard({
   const [open, setOpen] = useState(false)
   // Ce que l'écran doit DEMANDER — il ne le devine pas, la capability le dit.
   const [asking, setAsking] = useState<'role' | 'who' | 'nature' | 'date' | null>(null)
+  const [stakeholderMode, setStakeholderMode] = useState<'new' | 'attach' | null>(null)
   const [entityType, setEntityType] = useState<'person' | 'company' | null>(null)
   const [role, setRole] = useState<string | null>(null)
   const [dueDate, setDueDate] = useState('')
@@ -190,6 +192,8 @@ function ReviewCard({
     role?: string
     person_name?: string
     company_name?: string
+    contact_id?: string | null
+    company_id?: string | null
     knowledge_kind?: 'current_information' | 'durable_knowledge'
     due_date?: string
   } = {}) {
@@ -212,6 +216,11 @@ function ReviewCard({
       if (res.ok) return onDone()
       setError(res.error)
     })
+  }
+
+  function startNewStakeholder() {
+    setStakeholderMode('new')
+    setAsking('role')
   }
 
   return (
@@ -243,6 +252,22 @@ function ReviewCard({
             ))}
           </div>
         </div>
+      )}
+
+      {item.kind === 'stakeholder' && stakeholderMode === 'attach' && (
+        <StakeholderAttachPanel
+          siteId={siteId}
+          initialQuery={item.title}
+          pending={pending}
+          onCancel={() => setStakeholderMode(null)}
+          onPromote={(target, selectedRole) => promote({
+            role: selectedRole,
+            company_name: target.companyName,
+            person_name: target.kind === 'contact' ? target.name : undefined,
+            contact_id: target.kind === 'contact' ? target.contactId : undefined,
+            company_id: target.companyId,
+          })}
+        />
       )}
 
       {asking === 'who' && (
@@ -401,7 +426,19 @@ function ReviewCard({
               intervenant ou acter une décision ENGAGE le chantier → bouton plein ;
               confirmer une information l'ENRICHIT → bouton tonal. Quatre cartes
               bleues d'affilée attiraient plus que leur contenu. */}
-          {item.capability.available ? (
+          {item.kind === 'stakeholder' ? (
+            <>
+              <button type="button" disabled={pending} onClick={startNewStakeholder} className="rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground disabled:opacity-50">
+                Nouvel intervenant
+              </button>
+              <button type="button" disabled={pending} onClick={() => setStakeholderMode('attach')} className="rounded-lg border px-3 py-1.5 text-[13px] font-medium hover:bg-muted disabled:opacity-50">
+                Rattacher
+              </button>
+              <button type="button" disabled={pending} onClick={dismiss} className="rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground hover:text-foreground disabled:opacity-50">
+                Écarter
+              </button>
+            </>
+          ) : item.capability.available ? (
             <button
               type="button"
               disabled={pending}
@@ -463,6 +500,65 @@ function ReviewCard({
         </div>
       )}
     </li>
+  )
+}
+
+function StakeholderAttachPanel({
+  siteId,
+  initialQuery,
+  pending,
+  onCancel,
+  onPromote,
+}: {
+  siteId: string
+  initialQuery: string
+  pending: boolean
+  onCancel: () => void
+  onPromote: (target: IntervenantTarget, role: string) => void
+}) {
+  const [query, setQuery] = useState(initialQuery)
+  const [hits, setHits] = useState<IntervenantTarget[] | null>(null)
+  const [selected, setSelected] = useState<IntervenantTarget | null>(null)
+  const [role, setRole] = useState('')
+  const [searching, setSearching] = useState(false)
+
+  async function search() {
+    if (query.trim().length < 2) return
+    setSearching(true)
+    const result = await searchIntervenantTargetsAction({ site_id: siteId, q: query.trim() })
+    setSearching(false)
+    if (result.ok) setHits(result.hits)
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded-lg bg-muted/50 p-2">
+      <p className="text-[12px] text-muted-foreground">Rechercher un intervenant existant</p>
+      <div className="flex gap-1.5">
+        <input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void search() } }} className="min-w-0 flex-1 rounded-lg border bg-background px-2.5 py-1.5 text-[13px]" aria-label="Rechercher un intervenant existant" />
+        <button type="button" disabled={searching || pending || query.trim().length < 2} onClick={() => void search()} className="rounded-lg border bg-background px-3 py-1.5 text-[12.5px] font-semibold disabled:opacity-50">{searching ? 'Recherche…' : 'Chercher'}</button>
+      </div>
+      {hits !== null && hits.length === 0 && <p className="text-[12px] text-muted-foreground">Aucun intervenant trouvé dans cette organisation.</p>}
+      {hits && hits.length > 0 && (
+        <ul className="space-y-1">
+          {hits.map((hit) => (
+            <li key={`${hit.kind}:${hit.contactId ?? hit.companyId}`}>
+              <button type="button" onClick={() => { setSelected(hit); if (hit.knownRole) setRole(hit.knownRole) }} className={cn('w-full rounded-lg border px-2.5 py-2 text-left text-[12.5px]', selected?.companyId === hit.companyId && selected?.contactId === hit.contactId ? 'border-primary bg-primary/10' : 'bg-background')}>
+                <span className="font-medium">{hit.kind === 'contact' ? hit.name : hit.companyName}</span>
+                <span className="block text-[11px] text-muted-foreground">{hit.kind === 'contact' ? hit.companyName : 'Entreprise'}{hit.onThisSite ? ' · déjà sur ce chantier' : ''}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {selected && (
+        <div className="space-y-1.5">
+          <label className="text-[12px] text-muted-foreground" htmlFor={`attach-role-${selected.companyId}`}>Rôle sur le chantier</label>
+          <input id={`attach-role-${selected.companyId}`} value={role} onChange={(event) => setRole(event.target.value)} placeholder="MOA, BET, PAVE…" className="w-full rounded-lg border bg-background px-2.5 py-1.5 text-[13px]" />
+          <button type="button" disabled={pending || !role.trim()} onClick={() => onPromote(selected, role.trim())} className="rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground disabled:opacity-50">Rattacher</button>
+        </div>
+      )}
+      <button type="button" disabled={pending} onClick={onCancel} className="rounded-lg border px-3 py-1.5 text-[12.5px] text-muted-foreground">Annuler</button>
+    </div>
   )
 }
 
