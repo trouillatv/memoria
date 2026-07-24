@@ -40,6 +40,8 @@ export interface ReviewItem {
   body: string | null
   createdAt: string
   capability: PromotionCapability
+  confidence: string | null
+  sourceCaptureIds: string[]
   provenance: ProposalProvenance
 }
 
@@ -82,7 +84,7 @@ export interface MemoryReview {
  */
 const MEMORY_KINDS: ProposalKind[] = ['knowledge', 'stakeholder', 'decision', 'vigilance']
 
-export async function getMemoryReview(siteId: string): Promise<MemoryReview> {
+export async function getMemoryReview(siteId: string, options?: { includeWork?: boolean }): Promise<MemoryReview> {
   const orgIds = await getOrgIdsOfUser()
   // Chaque lecture se protège seule : un objet indisponible ne doit pas rendre
   // toute la Mémoire muette.
@@ -94,8 +96,9 @@ export async function getMemoryReview(siteId: string): Promise<MemoryReview> {
     listSiteIntervenants(siteId).catch(() => [] as SiteIntervenant[]),
   ])
   // Garde fail-closed : le service-role bypasse la RLS, l'org se filtre ici.
+  const allowedKinds = options?.includeWork ? [...MEMORY_KINDS, 'action' as const, 'deadline' as const] : MEMORY_KINDS
   const proposed = rows.filter(
-    (r) => MEMORY_KINDS.includes(r.kind) && (!orgIds.length || !r.organization_id || orgIds.includes(r.organization_id)),
+    (r) => allowedKinds.includes(r.kind) && (!orgIds.length || !r.organization_id || orgIds.includes(r.organization_id)),
   )
   const provenance = await readProvenance([...new Set(proposed.map((r) => r.report_id).filter((id): id is string => !!id))])
 
@@ -128,6 +131,8 @@ export async function getMemoryReview(siteId: string): Promise<MemoryReview> {
       body: r.body,
       createdAt: r.created_at,
       capability: getPromotionCapability(r.kind),
+      confidence: r.confidence,
+      sourceCaptureIds: r.source_capture_ids ?? [],
       provenance: provenance.get(r.report_id ?? '') ?? { reportId: r.report_id, visitedAt: null, photos: 0, vocals: 0 },
     })),
   }

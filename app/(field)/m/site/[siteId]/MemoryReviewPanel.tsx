@@ -24,10 +24,20 @@ import { splitPersonCompany, looksLikePerson } from '@/lib/knowledge/person-name
 const ROLES = ['MOA', 'MOE', 'BET', 'ETV', 'OPC', 'CSPS', 'PAVE', 'PLANIF']
 
 const KIND_LABEL: Record<string, string> = {
+  action: 'Action',
+  deadline: 'Échéance',
   knowledge: 'Information',
   stakeholder: 'Intervenant',
   decision: 'Décision',
   vigilance: 'Vigilance',
+}
+const KIND_TONE: Record<string, string> = {
+  action: 'border-blue-200 bg-blue-50 text-blue-700',
+  deadline: 'border-amber-200 bg-amber-50 text-amber-700',
+  stakeholder: 'border-violet-200 bg-violet-50 text-violet-700',
+  decision: 'border-indigo-200 bg-indigo-50 text-indigo-700',
+  vigilance: 'border-rose-200 bg-rose-50 text-rose-700',
+  knowledge: 'border-emerald-200 bg-emerald-50 text-emerald-700',
 }
 
 // La FAMILLE = la conséquence de la validation, déduite du type (jamais inventée) :
@@ -204,10 +214,11 @@ function ReviewCard({
     <li className="rounded-xl border bg-card px-3 py-2">
       {/* La ligne dense : nature · contenu · provenance — tout visible sans ouvrir. */}
       <div className="flex items-baseline gap-2">
-        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">{KIND_LABEL[item.kind] ?? item.kind}</span>
+        <span className={cn('shrink-0 rounded border px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide', KIND_TONE[item.kind] ?? 'border-border bg-muted text-muted-foreground')}>{KIND_LABEL[item.kind] ?? item.kind}</span>
         <p className="min-w-0 text-[13px] font-medium leading-snug text-foreground/90">{item.title}</p>
       </div>
       <Provenance item={item} />
+      {item.confidence && <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground" title="Niveau de confiance de l'analyse">{'★'.repeat(confidenceStars(item.confidence))}{'☆'.repeat(5 - confidenceStars(item.confidence))} <span>{confidenceLabel(item.confidence)}</span></span>}
 
       {open && item.body && <p className="mt-1.5 text-[13px] text-muted-foreground">{item.body}</p>}
 
@@ -359,6 +370,21 @@ function ReviewCard({
       )}
     </li>
   )
+}
+
+function confidenceStars(value: string): number {
+  if (['high', 'forte', 'certain', 'very_high'].includes(value)) return 5
+  if (['medium', 'moyenne', 'probable'].includes(value)) return 4
+  if (['low', 'faible', 'uncertain'].includes(value)) return 2
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? Math.max(1, Math.min(5, Math.round(numeric <= 1 ? numeric * 5 : numeric))) : 3
+}
+
+function confidenceLabel(value: string): string {
+  if (['high', 'forte', 'certain', 'very_high'].includes(value)) return 'Très certain'
+  if (['medium', 'moyenne', 'probable'].includes(value)) return 'Probable'
+  if (['low', 'faible', 'uncertain'].includes(value)) return 'À confirmer'
+  return 'Confiance'
 }
 
 /** Provenance COMPACTE : « ↳ Visite du 15 juillet · 6 traces » — elle garantit

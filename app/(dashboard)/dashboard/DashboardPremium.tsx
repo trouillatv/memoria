@@ -28,6 +28,7 @@ import { OrganizationBadge, type OrgLabels } from '@/components/dashboard/OrgBad
 import type { OrganizationIdentityMap } from '@/lib/db/organisations'
 import { ActionCheckbox } from './ActionCheckbox'
 import { CockpitNow, PriorityActionList } from './CockpitNow'
+import { MemoryInbox } from '@/app/(field)/m/site/[siteId]/MemoryReviewPanel'
 
 type Props = {
   firstName: string
@@ -108,7 +109,7 @@ function VisitSummary({ site, organizationMap, actions, review, pending }: { sit
           <p className="text-[11px] text-[#65718b]">{actions.length} action{actions.length !== 1 ? 's' : ''} ouverte{actions.length !== 1 ? 's' : ''} · {pending.deadlines.length} échéance{pending.deadlines.length !== 1 ? 's' : ''} à planifier · {review.toReview.length} proposition{review.toReview.length !== 1 ? 's' : ''} à arbitrer</p>
           {actions.length > 0 && <div><h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#65718b]">Déjà dans le chantier</h3><ul className="mt-2 space-y-2">{actions.map((action) => <li key={action.id} className="flex items-center gap-2"><ActionCheckbox actionId={action.id} siteId={action.site_id} label={action.title} /><Link href={`/sites/${action.site_id}/actions`} className="text-xs text-[#34415c] hover:text-[#1463e8]">{action.title}</Link></li>)}</ul></div>}
           {pending.deadlines.length > 0 && <div><h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#65718b]">À planifier</h3><ul className="mt-2 space-y-2">{pending.deadlines.map((item) => <li key={item.proposalId} className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 text-xs text-[#34415c]"><span>{item.title}</span><span className="shrink-0 text-[10px] font-semibold text-[#e39a35]">Ajouter au planning</span></li>)}</ul></div>}
-          {review.toReview.length > 0 && <div><h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#65718b]">À arbitrer</h3><ul className="mt-2 space-y-2">{review.toReview.map((item) => <li key={item.id} className="flex items-start justify-between gap-3 rounded-xl bg-white px-3 py-2 text-xs text-[#34415c]"><span><strong className="block font-medium">{item.title}</strong><span className="text-[10px] text-[#8b96aa]">{item.kind}</span></span><span className="shrink-0 text-[10px] font-semibold text-[#1463e8]">{item.capability.label ?? 'Examiner'}</span></li>)}</ul></div>}
+          {review.toReview.length > 0 && <div><h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#65718b]">À arbitrer</h3><div className="mt-2"><MemoryInbox siteId={site.siteId} items={review.toReview} withFilters /></div></div>}
           <Link href={`/sites/${site.siteId}`} className="inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8]">Ouvrir le chantier <ArrowRight className="h-3.5 w-3.5" /></Link>
         </div>
       </details>

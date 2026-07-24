@@ -53,7 +53,7 @@ export default async function DashboardPage() {
   const [visitActions, visitReview, visitPending] = visitSiteId
     ? await Promise.all([
         listOpenSiteActions({ statuses: ['open', 'planned'], siteIds: [visitSiteId] }).catch(() => []),
-        getMemoryReview(visitSiteId).catch(() => ({ confirmed: [], toReview: [] }) as MemoryReview),
+        getMemoryReview(visitSiteId, { includeWork: true }).catch(() => ({ confirmed: [], toReview: [] }) as MemoryReview),
         getPendingWork({ siteIds: [visitSiteId] }).catch(() => ({ actions: [], deadlines: [] }) as PendingWork),
       ])
     : [[], { confirmed: [], toReview: [] } as MemoryReview, { actions: [], deadlines: [] } as PendingWork]
