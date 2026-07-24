@@ -20,21 +20,29 @@ export function attentionItemToMemorySignal(
     organizationId: item.organizationId,
     siteId: item.siteId ?? siteIdFromHref(item.href),
     category: meta.category,
+    trigger: meta.trigger,
     severity: item.tier === 'red' ? 'critical' : 'warning',
+    importance: item.tier === 'red' ? 'critical' : 'high',
+    urgency: item.tier === 'red' ? 'now' : 'today',
     state: 'active',
     actionability: meta.actionability,
     origin: meta.origin,
-    title: item.what,
-    explanation: item.why,
+    facts: [
+      { key: 'what', value: item.what, sourceIds: meta.sources.map((source) => source.id) },
+      { key: 'why', value: item.why, sourceIds: meta.sources.map((source) => source.id) },
+    ],
+    rules: [{ id: meta.trigger, version: '1' }],
     sources: meta.sources,
-    suggestedAction: meta.actionability === 'direct'
-      ? { kind: 'open', label: 'Ouvrir', href: item.href }
-      : null,
+    actions: meta.actionability === 'direct'
+      ? [{ kind: 'open', label: 'Ouvrir', href: item.href }]
+      : [],
+    presentations: [],
     confidence: null,
     dedupeKey: meta.dedupeKey,
     detectedAt: now,
     acknowledgedAt: null,
     resolvedAt: null,
+    resolvedBy: null,
   }
 }
 
@@ -44,24 +52,34 @@ export function nowItemToMemorySignal(
 ): MemorySignal {
   const category = 'priority' as const
   const dedupeKey = `now:${item.id}`
+  const trigger = item.sourceType === 'passage'
+    ? 'imminent_passage' as const
+    : item.sourceType === 'deadline'
+      ? 'overdue_deadline' as const
+      : 'old_action' as const
   return {
     id: dedupeKey,
     organizationId: item.organization.id,
     siteId: item.siteId,
     category,
+    trigger,
     severity: item.priority === 'urgent' ? 'critical' : item.priority === 'today' ? 'warning' : 'info',
+    importance: item.priority === 'urgent' ? 'high' : 'normal',
+    urgency: item.priority === 'urgent' ? 'now' : item.priority === 'today' ? 'today' : 'week',
     state: 'active',
     actionability: 'direct',
     origin: 'rules',
-    title: item.title,
-    explanation: item.sourceType === 'passage' ? 'Passage imminent à préparer.' : 'Action directement réalisable.',
+    facts: [{ key: 'title', value: item.title, sourceIds: [item.id] }],
+    rules: [{ id: trigger, version: '1' }],
     sources: [{ type: item.sourceType, id: item.id, href: item.href, label: item.title }],
-    suggestedAction: { kind: item.actionId ? 'complete' : 'prepare', label: item.actionId ? 'Traiter' : 'Préparer', href: item.href },
+    actions: [{ kind: item.actionId ? 'complete' : 'prepare', label: item.actionId ? 'Traiter' : 'Préparer', href: item.href }],
+    presentations: [],
     confidence: null,
     dedupeKey,
     detectedAt: now,
     acknowledgedAt: null,
     resolvedAt: null,
+    resolvedBy: null,
   }
 }
 

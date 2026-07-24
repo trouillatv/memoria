@@ -172,3 +172,48 @@ Une personne extérieure au développement doit pouvoir répondre sans ambiguït
 La prochaine étape est l'inventaire des consommateurs de l'ancien moteur, puis
 la construction d'un adaptateur déterministe pour `attention.ts` et
 `now-dashboard.ts`. Aucun nouveau détecteur IA ne doit être ajouté avant cela.
+
+## 10. Raffinement du contrat avant le Lot 2
+
+Le contrat cible ne doit pas enfermer le métier dans un titre, une explication
+ou une action unique d'interface. La version de référence ajoute :
+
+```ts
+type OperationalSignal = {
+  id: string
+  organizationId: string
+  siteId: string
+  category: SignalCategory
+  trigger:
+    | 'old_action' | 'open_reserve' | 'missing_company' | 'missing_contact'
+    | 'missing_attachment' | 'planning_conflict' | 'promise' | 'question'
+    | 'contradiction' | 'staleness' | 'health' | 'imminent_passage'
+    | 'overdue_deadline'
+  severity: 'info' | 'warning' | 'critical'
+  importance: 'critical' | 'high' | 'normal' | 'low'
+  urgency: 'now' | 'today' | 'week' | 'later'
+  state: SignalState
+  actionability: 'direct' | 'investigate' | 'observe'
+  origin: 'rules' | 'mixed' | 'ai'
+  facts: SignalFact[]
+  rules: SignalRule[]
+  sources: SourceRef[]
+  actions: SuggestedAction[]
+  presentations: SignalPresentation[]
+  confidence: number | null
+  dedupeKey: string
+  detectedAt: string
+  acknowledgedAt: string | null
+  resolvedAt: string | null
+  resolvedBy: SignalResolution | null
+}
+```
+
+`facts` et `rules` sont la matière métier. `presentations` est une projection
+par surface et peut être vide au niveau du moteur. `actions[]` remplace
+`suggestedAction` afin qu'un signal puisse proposer plusieurs gestes : traiter,
+écarter, reporter, comparer, rattacher ou ouvrir une source.
+
+`trigger` explique la cause métier du signal. `importance` et `urgency` sont
+séparées : un sujet peut être important sans être urgent, ou urgent sans être
+stratégique. `resolvedBy` explique toujours la disparition d'un signal.

@@ -13,6 +13,7 @@ const attention: AttentionItem = {
   organizationId: 'org-1',
   signal: {
     category: 'fragility',
+    trigger: 'planning_conflict',
     actionability: 'direct',
     origin: 'rules',
     dedupeKey: 'planning-conflict:site-1:2026-07-25',
@@ -60,7 +61,7 @@ describe('Lot 1 — adaptateurs MemorySignal', () => {
     expect(nowItemToMemorySignal(item, '2026-07-25T08:00:00.000Z')).toMatchObject({
       category: 'priority',
       actionability: 'direct',
-      suggestedAction: { kind: 'complete', label: 'Traiter' },
+      actions: [{ kind: 'complete', label: 'Traiter' }],
       confidence: null,
     })
   })
