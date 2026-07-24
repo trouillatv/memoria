@@ -45,6 +45,46 @@ export interface VisitPreparationSummaryFacts {
   criticalPoint: string | null
 }
 
+export type PreparationReminderKind = 'blockage' | 'overdue_action' | 'deadline' | 'watchpoint' | 'open_activity' | 'proof'
+
+export interface PreparationReminder {
+  kind: PreparationReminderKind
+  text: string
+  sourceId: string | null
+  sourceHref: string | null
+}
+
+export interface PreparationReminderFacts {
+  blockages: PreparationReminder[]
+  overdueActions: PreparationReminder[]
+  imminentDeadlines: PreparationReminder[]
+  watchpoints: PreparationReminder[]
+  openActivities: PreparationReminder[]
+  proofs: PreparationReminder[]
+}
+
+/** Sélectionne les rappels « Avant de partir » sans score opaque ni IA. */
+export function selectPreparationReminders(
+  facts: PreparationReminderFacts,
+  limit = 5,
+): PreparationReminder[] {
+  const ordered = [
+    ...facts.blockages,
+    ...facts.overdueActions,
+    ...facts.imminentDeadlines,
+    ...facts.watchpoints,
+    ...facts.openActivities,
+    ...facts.proofs,
+  ]
+  const seen = new Set<string>()
+  return ordered.filter((item) => {
+    const key = item.sourceId ?? item.text
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  }).slice(0, limit)
+}
+
 export function buildVisitPreparationSummary(facts: VisitPreparationSummaryFacts): string[] {
   const lines: string[] = []
   if (facts.openActions > 0) {

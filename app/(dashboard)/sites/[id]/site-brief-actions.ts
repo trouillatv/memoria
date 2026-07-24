@@ -35,6 +35,11 @@ import { getSiteTeamsKnowledge } from '@/lib/db/site-team-knowledge'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listMissionsBySite } from '@/lib/db/missions'
 import { listReportsBySite } from '@/lib/db/site-reports'
+import { listSiteDeadlines, type SiteDeadline } from '@/lib/db/site-deadlines'
+import { listDecisionsBySite, type SiteDecision } from '@/lib/db/site-decisions'
+import { buildSinceLastVisitSummary, type SinceLastVisitSummary } from '@/lib/db/visits'
+import { listSitePhotos, type SitePhoto } from '@/lib/db/site-photos'
+import { listDocumentsForTarget } from '@/lib/db/documents'
 import { isSystemMissionName } from '@/lib/db/system-missions'
 import { getAIProvider } from '@/services/ai/factory'
 import { withAITracking } from '@/services/ai/tracking'
@@ -43,6 +48,8 @@ import {
   resolveVisitPreparationPhase,
   type VisitPreparationPhase,
   classifyVisitPreparationActivity,
+  selectPreparationReminders,
+  type PreparationReminder,
   type VisitPreparationActivityStatus,
 } from '@/lib/knowledge/visit-preparation'
 
@@ -126,6 +133,32 @@ export interface SiteBriefActivity {
   narrative: string | null
 }
 
+export interface SiteBriefNarrative {
+  sourceType: 'visit' | 'meeting'
+  sourceId: string
+  sourceHref: string
+  occurredAt: string
+  generatedAt: string | null
+  status: 'draft' | 'validated'
+  text: string
+}
+
+export interface SiteBriefVerificationQuestion {
+  text: string
+  sourceType: 'action' | 'deadline' | 'reserve' | 'watchpoint' | 'decision'
+  sourceId: string | null
+  sourceHref: string | null
+}
+
+export interface SiteBriefProof {
+  id: string
+  type: 'photo' | 'document' | 'report'
+  title: string
+  href: string
+  occurredAt: string | null
+  reason: 'latest_key_photo' | 'new_since_last_visit' | 'latest_report'
+}
+
 /** Réserve non levée (point à lever) — preuve d'exécution restant due. */
 export interface SiteBriefReserve {
   id: string
@@ -197,6 +230,13 @@ export interface SiteBrief {
   lastPresence: SiteBriefPresence | null
   activities: SiteBriefActivity[]
   persistedNarrative: string | null
+  sinceLastVenue: SinceLastVisitSummary | null
+  beforeLeaving: PreparationReminder[]
+  verificationQuestions: SiteBriefVerificationQuestion[]
+  deadlines: Array<Pick<SiteDeadline, 'id' | 'title' | 'due_date' | 'constraint_text' | 'status' | 'report_id'>>
+  decisions: Array<Pick<SiteDecision, 'id' | 'titre' | 'description' | 'dateDecision' | 'statut' | 'reportId'>>
+  narratives: SiteBriefNarrative[]
+  proofs: SiteBriefProof[]
 }
 
 export type SiteBriefResult =
@@ -205,13 +245,13 @@ export type SiteBriefResult =
 
 // ── Auth (miroir de requireOperator dans actions/actions.ts) ────────────────
 
-async function requireOperator(): Promise<{ ok: true } | { ok: false; error: string }> {
+async function requireOperator(): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
   const user = await getCurrentUserWithProfile()
   if (!user) return { ok: false, error: 'Non authentifié' }
   if (user.role !== 'admin' && user.role !== 'manager' && user.role !== 'chef_equipe') {
     return { ok: false, error: 'Accès refusé' }
   }
-  return { ok: true }
+  return { ok: true, userId: user.id }
 }
 
 /**
@@ -257,6 +297,11 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     preparationReports,
     sitePhase,
     dossierPhase,
+    sinceLastVenue,
+    deadlineRows,
+    decisionRows,
+    sitePhotos,
+    siteDocuments,
   ] = await Promise.all([
     getSiteIdentity(siteId).catch(() => null),
     getSiteCurrentState(siteId).catch(() => null),
@@ -291,6 +336,11 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
         .order('updated_at', { ascending: false }).limit(1)
       return ((data?.[0] as { phase?: string } | undefined)?.phase ?? null)
     })().catch(() => null as string | null),
+    buildSinceLastVisitSummary(siteId, auth.userId).catch(() => null),
+    listSiteDeadlines(siteId).catch(() => []),
+    listDecisionsBySite(siteId).catch(() => []),
+    listSitePhotos(siteId).catch(() => []),
+    listDocumentsForTarget('site', siteId).catch(() => []),
   ])
 
   const reportIds = preparationReports.map((r) => String(r.id)).filter(Boolean)
@@ -339,6 +389,39 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     .sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''))
 
   const latestNarrative = preparationActivities.find((activity) => activity.narrative)?.narrative ?? null
+  const narratives: SiteBriefNarrative[] = preparationActivities
+    .filter((activity) => activity.narrative)
+    .slice(0, 3)
+    .map((activity) => {
+      const report = preparationReports.find((row) => String(row.id) === activity.id)
+      const analysis = (report?.debrief_analysis as { generated_at?: unknown } | null) ?? null
+      return {
+        sourceType: activity.kind,
+        sourceId: activity.id,
+        sourceHref: activity.href,
+        occurredAt: activity.startedAt ?? new Date().toISOString(),
+        generatedAt: typeof analysis?.generated_at === 'string' ? analysis.generated_at : null,
+        status: activity.status === 'in_progress' ? 'draft' : 'validated',
+        text: activity.narrative!,
+      }
+    })
+
+  const deadlineItems = deadlineRows.slice(0, 8).map((deadline) => ({
+    id: deadline.id,
+    title: deadline.title,
+    due_date: deadline.due_date,
+    constraint_text: deadline.constraint_text,
+    status: deadline.status,
+    report_id: deadline.report_id,
+  }))
+  const decisionItems = decisionRows.slice(0, 8).map((decision) => ({
+    id: decision.id,
+    titre: decision.titre,
+    description: decision.description,
+    dateDecision: decision.dateDecision,
+    statut: decision.statut,
+    reportId: decision.reportId,
+  }))
 
   const openAnomalies = anomalies.filter((a) => a.status === 'open')
   const followedPoints: SiteBriefFollowedPoint[] = watched.map((w) => ({
@@ -504,6 +587,57 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       .map((item) => item.name),
   ].slice(0, 5)
 
+  const beforeLeaving = selectPreparationReminders({
+    blockages: blockedItems.map((text) => ({ kind: 'blockage' as const, text, sourceId: null, sourceHref: null })),
+    overdueActions: vigilance.filter((item) => item.overdue).map((item) => ({
+      kind: 'overdue_action' as const, text: item.title, sourceId: item.id, sourceHref: `/sites/${siteId}?action=${item.id}`,
+    })),
+    imminentDeadlines: deadlineItems.filter((item) => item.due_date).slice(0, 3).map((item) => ({
+      kind: 'deadline' as const, text: item.title, sourceId: item.id, sourceHref: `/sites/${siteId}/planning`,
+    })),
+    watchpoints: followedPoints.slice(0, 3).map((item) => ({
+      kind: 'watchpoint' as const, text: item.openQuestion ?? item.name, sourceId: item.id, sourceHref: `/sites/${siteId}?person=${item.id}`,
+    })),
+    openActivities: preparationActivities.filter((item) => item.status === 'in_progress').slice(0, 2).map((item) => ({
+      kind: 'open_activity' as const, text: `${item.kind === 'visit' ? 'Visite' : 'Réunion'} en cours : ${item.title}`, sourceId: item.id, sourceHref: item.href,
+    })),
+    proofs: [],
+  })
+
+  const verificationQuestions: SiteBriefVerificationQuestion[] = [
+    ...openReserves.map((item) => ({ text: `La réserve « ${item.label} » est-elle toujours présente ?`, sourceType: 'reserve' as const, sourceId: item.id, sourceHref: `/sites/${siteId}/reserves` })),
+    ...vigilance.slice(0, 3).map((item) => ({ text: `Le point « ${item.title} » est-il toujours d'actualité ?`, sourceType: 'action' as const, sourceId: item.id, sourceHref: `/sites/${siteId}?action=${item.id}` })),
+    ...deadlineItems.filter((item) => item.status === 'to_plan').slice(0, 2).map((item) => ({ text: `L'échéance « ${item.title} » peut-elle être planifiée ?`, sourceType: 'deadline' as const, sourceId: item.id, sourceHref: `/sites/${siteId}/planning` })),
+  ].slice(0, 6)
+
+  const proofs: SiteBriefProof[] = [
+    ...(sitePhotos as SitePhoto[]).slice(0, 3).map((photo) => ({
+      id: photo.id,
+      type: 'photo' as const,
+      title: photo.legende || 'Photo récente du chantier',
+      href: `/sites/${siteId}?tab=documents-preuves`,
+      occurredAt: photo.takenAt,
+      reason: sinceLastVenue && photo.takenAt && photo.takenAt > sinceLastVenue.at
+        ? 'new_since_last_visit' as const : 'latest_key_photo' as const,
+    })),
+    ...(siteDocuments as Array<{ id: string; filename: string; created_at: string }>).slice(0, 2).map((document) => ({
+      id: document.id,
+      type: 'document' as const,
+      title: document.filename,
+      href: `/sites/${siteId}?tab=documents-preuves`,
+      occurredAt: document.created_at,
+      reason: 'latest_report' as const,
+    })),
+    ...(preparationActivities[0] ? [{
+      id: preparationActivities[0].id,
+      type: 'report' as const,
+      title: preparationActivities[0].title,
+      href: preparationActivities[0].href,
+      occurredAt: preparationActivities[0].startedAt,
+      reason: 'latest_report' as const,
+    }] : []),
+  ]
+
   return {
     ok: true,
     brief: {
@@ -543,6 +677,13 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
         : null,
       activities: preparationActivities,
       persistedNarrative: latestNarrative,
+      sinceLastVenue,
+      beforeLeaving,
+      verificationQuestions,
+      deadlines: deadlineItems,
+      decisions: decisionItems,
+      narratives,
+      proofs,
     },
   }
 }

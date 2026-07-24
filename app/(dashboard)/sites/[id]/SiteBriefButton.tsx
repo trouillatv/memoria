@@ -455,6 +455,13 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
     lastPresence,
     activities,
     persistedNarrative,
+    sinceLastVenue,
+    beforeLeaving,
+    verificationQuestions,
+    deadlines,
+    decisions,
+    narratives,
+    proofs,
   } = brief
 
   const nextLabel = formatDate(situation.nextScheduledAt)
@@ -820,6 +827,103 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
         </section>
       )}
 
+      {beforeLeaving.length > 0 && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50/60 p-3.5 space-y-2.5">
+          <SectionTitle icon={<Flag className="h-3.5 w-3.5 text-amber-700" />}>Avant de partir</SectionTitle>
+          <ul className="space-y-2">
+            {beforeLeaving.map((item) => (
+              <li key={`${item.kind}:${item.sourceId ?? item.text}`} className="flex items-start gap-2 text-sm text-amber-950">
+                <span aria-hidden className="mt-0.5 text-amber-700">•</span>
+                {item.sourceHref ? <a href={item.sourceHref} className="hover:underline">{item.text}</a> : <span>{item.text}</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {sinceLastVenue && (
+        <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
+          <SectionTitle icon={<History className="h-3.5 w-3.5 text-sky-600" />}>
+            {sinceLastVenue.personal ? 'Depuis votre dernière venue' : 'Depuis la dernière venue'}
+            <span className="font-normal normal-case"> · {sinceLastVenue.dateLabel}</span>
+          </SectionTitle>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            {sinceLastVenue.actionsDone > 0 && <span>✓ {sinceLastVenue.actionsDone} action{sinceLastVenue.actionsDone > 1 ? 's' : ''} terminée{sinceLastVenue.actionsDone > 1 ? 's' : ''}</span>}
+            {sinceLastVenue.newReserves > 0 && <span>+ {sinceLastVenue.newReserves} réserve{sinceLastVenue.newReserves > 1 ? 's' : ''}</span>}
+            {sinceLastVenue.liftedReserves > 0 && <span>✓ {sinceLastVenue.liftedReserves} réserve{sinceLastVenue.liftedReserves > 1 ? 's' : ''} levée{sinceLastVenue.liftedReserves > 1 ? 's' : ''}</span>}
+            {sinceLastVenue.meetings > 0 && <span>+ {sinceLastVenue.meetings} réunion{sinceLastVenue.meetings > 1 ? 's' : ''}</span>}
+            {sinceLastVenue.newPhotos > 0 && <span>+ {sinceLastVenue.newPhotos} photo{sinceLastVenue.newPhotos > 1 ? 's' : ''}</span>}
+          </div>
+          {sinceLastVenue.doubts.length > 0 && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              À ne pas oublier : {sinceLastVenue.doubts.join(' · ')}
+            </p>
+          )}
+        </section>
+      )}
+
+      {verificationQuestions.length > 0 && (
+        <section className="rounded-xl border border-violet-200 bg-violet-50/40 p-3.5 space-y-2.5">
+          <SectionTitle icon={<CheckCircle2 className="h-3.5 w-3.5 text-violet-700" />}>À vérifier sur place</SectionTitle>
+          <ul className="space-y-2">
+            {verificationQuestions.map((question) => (
+              <li key={`${question.sourceType}:${question.sourceId ?? question.text}`} className="flex items-start gap-2 text-sm text-violet-950">
+                <span className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border border-violet-400 bg-white" aria-hidden />
+                <span>{question.text}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {(narratives.length > 0 || deadlines.length > 0 || decisions.length > 0) && (
+        <section className="rounded-xl border bg-background p-3.5 space-y-3">
+          <SectionTitle icon={<Brain className="h-3.5 w-3.5 text-sky-600" />}>Le fil du chantier</SectionTitle>
+          {narratives.slice(0, 2).map((narrative) => (
+            <article key={narrative.sourceId} className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                <span>{narrative.sourceType === 'visit' ? 'Résumé de visite' : 'Résumé de réunion'} · {formatDate(narrative.occurredAt)}</span>
+                <span className={narrative.status === 'validated' ? 'text-emerald-700' : 'text-amber-700'}>
+                  {narrative.status === 'validated' ? 'Validé' : 'En cours — non consolidé'}
+                </span>
+              </div>
+              <p className="whitespace-pre-line text-sm leading-relaxed">{narrative.text}</p>
+              <a href={narrative.sourceHref} className="inline-flex text-xs font-medium text-sky-700 hover:underline">Ouvrir la source <ChevronRight className="ml-0.5 h-3.5 w-3.5" /></a>
+            </article>
+          ))}
+          {deadlines.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Échéances</p>
+              {deadlines.slice(0, 4).map((deadline) => <p key={deadline.id} className="text-sm">{deadline.title}{deadline.constraint_text ? ` · ${deadline.constraint_text}` : ''}{deadline.due_date ? ` · ${formatDate(deadline.due_date)}` : ' · À planifier'}</p>)}
+            </div>
+          )}
+          {decisions.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Décisions récentes</p>
+              {decisions.slice(0, 4).map((decision) => <p key={decision.id} className="text-sm">{decision.titre} <span className="text-xs text-muted-foreground">· {decision.statut}</span></p>)}
+            </div>
+          )}
+        </section>
+      )}
+
+      {proofs.length > 0 && (
+        <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
+          <SectionTitle icon={<Camera className="h-3.5 w-3.5 text-violet-600" />}>Preuves et sources</SectionTitle>
+          <ul className="space-y-1.5">
+            {proofs.slice(0, 5).map((proof) => (
+              <li key={`${proof.type}:${proof.id}`} className="flex items-center justify-between gap-2 text-sm">
+                <span className="min-w-0 truncate">{proof.title}</span>
+                <a href={proof.href} className="shrink-0 text-xs font-medium text-sky-700 hover:underline">Ouvrir</a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <details className="rounded-xl border bg-background">
+        <summary className="cursor-pointer list-none px-3.5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contexte détaillé</summary>
+        <div className="space-y-5 border-t px-3.5 py-3.5">
+
       {/* Situation — chips de synthèse (toujours en tête) */}
       <section className="space-y-2">
         <SectionTitle icon={<Info className="h-3.5 w-3.5" />}>En un coup d&apos;œil</SectionTitle>
@@ -866,6 +970,8 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
           Pas encore de mémoire notable sur ce site. Les premières traces apparaîtront ici.
         </p>
       )}
+        </div>
+      </details>
     </div>
   )
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildVisitPreparationSummary,
   classifyVisitPreparationActivity,
+  selectPreparationReminders,
   resolveVisitPreparationPhase,
   type VisitPreparationFacts,
 } from '@/lib/knowledge/visit-preparation'
@@ -46,5 +47,17 @@ describe('visit preparation read model', () => {
       startedAt: '2026-07-23T07:00:00Z',
       now: '2026-07-25T12:00:00Z',
     })).toBe('validated')
+  })
+
+  it('selects before-leaving reminders in a deterministic order without duplicates', () => {
+    const item = (kind: 'blockage' | 'overdue_action' | 'deadline' | 'watchpoint', text: string, sourceId: string) => ({ kind, text, sourceId, sourceHref: null })
+    expect(selectPreparationReminders({
+      blockages: [],
+      overdueActions: [item('overdue_action', 'Appeler Vincent', 'a1')],
+      imminentDeadlines: [item('deadline', 'Vérifier le coffret', 'd1')],
+      watchpoints: [item('watchpoint', 'Vérifier le coffret', 'd1')],
+      openActivities: [],
+      proofs: [],
+    })).toHaveLength(2)
   })
 })
