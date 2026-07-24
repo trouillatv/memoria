@@ -762,14 +762,21 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
   })
   const coherenceInsights: SiteBriefFactLine[] = narratives
     .filter((narrative) => narrative.status === 'validated' && getPreparationFreshness(narrative.occurredAt).level !== 'recent')
-    .slice(0, 3)
-    .map((narrative) => ({
-      text: `Information probablement obsolète ou à reconfirmer : récit du ${new Date(narrative.occurredAt).toLocaleDateString('fr-FR')}.`,
-      sourceType: narrative.sourceType,
-      sourceId: narrative.sourceId,
-      sourceHref: narrative.sourceHref,
-      status: 'interpretation' as const,
-    }))
+    .flatMap((narrative) => {
+      const sourceLabel = narrative.sourceType === 'visit' ? 'visite' : 'réunion'
+      const sourceDate = new Date(narrative.occurredAt).toLocaleDateString('fr-FR')
+      const staleStatements = selectNarrativeHighlights([narrative.text], 4).filter((text) =>
+        /\b(devait|interviendra|sera|prévu|annoncé|sous peu|semaine prochaine|à organiser|reste à)\b/i.test(text),
+      )
+      return staleStatements.slice(0, 2).map((text) => ({
+        text: `À reconfirmer : « ${text} » — annoncé lors de la ${sourceLabel} du ${sourceDate} ; aucune confirmation plus récente.`,
+        sourceType: narrative.sourceType,
+        sourceId: narrative.sourceId,
+        sourceHref: narrative.sourceHref,
+        status: 'interpretation' as const,
+      }))
+    })
+    .slice(0, 5)
   const rememberToday: SiteBriefFactLine[] = narrativeHighlights.map((text) => {
     const source = narratives.find((narrative) => narrative.text.includes(text)) ?? narratives[0]
     return {
