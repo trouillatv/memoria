@@ -70,6 +70,8 @@ const promoteSchema = baseSchema.extend({
   contact_id: z.string().uuid().nullish(),
   /** Rattacher à une entreprise connue : son id, jamais son libellé affiché. */
   company_id: z.string().uuid().nullish(),
+  /** Date choisie par l'utilisateur pour une échéance détectée. */
+  due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   /** REQUIS pour une information : périssable ou durable ? L'humain tranche. */
   knowledge_kind: z.enum(['current_information', 'durable_knowledge']).optional(),
 })
@@ -102,6 +104,7 @@ export async function promoteFromMemoryAction(
         personName: parsed.data.person_name,
         contactId: parsed.data.contact_id ?? null,
         companyId: parsed.data.company_id ?? null,
+        dueDate: parsed.data.due_date,
         knowledgeKind: parsed.data.knowledge_kind,
       },
     })

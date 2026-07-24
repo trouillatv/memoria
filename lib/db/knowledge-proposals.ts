@@ -520,6 +520,8 @@ export interface PromotionInput {
    *  doublon même que le rattachement doit supprimer. L'humain désigne une
    *  identité ; on la prend telle quelle. */
   companyId?: string | null
+  /** Date explicitement choisie pour une échéance, jamais déduite par l'IA. */
+  dueDate?: string
   /** La NATURE d'une information. REQUIS pour 'knowledge' : « vraie maintenant »
    *  et « vraie durablement » ne se rangent pas au même endroit, et l'IA n'a pas
    *  à trancher. */
@@ -597,12 +599,12 @@ export async function promoteProposal(params: {
     })
     result = { objectType: 'site_action', objectId: id }
   } else if (p.kind === 'deadline') {
-    // On ne demande PAS la date pour confirmer. Le conducteur confirme qu'il s'agit
-    // bien d'une échéance ; si le débrief n'a donné qu'une contrainte, elle naît
-    // « à planifier » et attend sa date dans le Planning. Exiger une date ici
-    // ferait renoncer — et l'échéance retournerait au néant dont on l'a tirée.
+    // La date peut venir du débrief, ou être choisie explicitement dans l'inbox.
+    // Une échéance sans date reste possible pour les autres portes de promotion,
+    // mais le dashboard demande désormais la date avant de l'ajouter au planning.
     const payload = (p.payload ?? {}) as { date?: string | null; constraint?: string | null }
-    const due = typeof payload.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(payload.date) ? payload.date : null
+    const due = params.input?.dueDate
+      ?? (typeof payload.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(payload.date) ? payload.date : null)
     const id = await createSiteDeadline({
       site_id: p.site_id,
       report_id: p.report_id ?? null,

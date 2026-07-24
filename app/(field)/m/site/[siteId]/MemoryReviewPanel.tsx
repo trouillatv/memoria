@@ -12,7 +12,8 @@
 //   · les propositions ne sont JAMAIS mélangées aux connaissances validées.
 
 import { useMemo, useState, useTransition } from 'react'
-import { Check, ChevronDown, ChevronRight, Loader2, MapPin, X } from 'lucide-react'
+import { CalendarDays, Check, ChevronDown, ChevronRight, Loader2, MapPin, X } from 'lucide-react'
+import Link from 'next/link'
 import { promoteFromMemoryAction, dismissFromMemoryAction } from './memory-actions'
 import { WhyButton } from '@/components/provenance/WhyButton'
 import { cn } from '@/lib/utils'
@@ -177,8 +178,9 @@ function ReviewCard({
   // dense — deux à trois propositions par écran, c'était trop peu.
   const [open, setOpen] = useState(false)
   // Ce que l'écran doit DEMANDER — il ne le devine pas, la capability le dit.
-  const [asking, setAsking] = useState<'role' | 'who' | 'nature' | null>(null)
+  const [asking, setAsking] = useState<'role' | 'who' | 'nature' | 'date' | null>(null)
   const [role, setRole] = useState<string | null>(null)
+  const [dueDate, setDueDate] = useState('')
   const guess = splitPersonCompany(item.title)
   const [personName, setPersonName] = useState(guess.person ?? (looksLikePerson(item.title) ? item.title : ''))
   const [companyName, setCompanyName] = useState(guess.company ?? '')
@@ -188,6 +190,7 @@ function ReviewCard({
     person_name?: string
     company_name?: string
     knowledge_kind?: 'current_information' | 'durable_knowledge'
+    due_date?: string
   } = {}) {
     setError(null)
     start(async () => {
@@ -318,6 +321,41 @@ function ReviewCard({
         </div>
       )}
 
+      {asking === 'date' && (
+        <div className="mt-2 space-y-2 rounded-lg bg-muted/50 p-2">
+          <p className="text-[12px] text-muted-foreground">
+            À quelle date cette échéance doit-elle être tenue ?
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="sr-only" htmlFor={`deadline-date-${item.id}`}>Date de l&apos;échéance</label>
+            <input
+              id={`deadline-date-${item.id}`}
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="rounded-lg border bg-background px-2.5 py-1.5 text-[13px]"
+            />
+            <button
+              type="button"
+              disabled={pending || !dueDate}
+              onClick={() => promote({ due_date: dueDate })}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground disabled:opacity-50"
+            >
+              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarDays className="h-3.5 w-3.5" />}
+              Ajouter au planning
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => setAsking(null)}
+              className="rounded-lg border px-3 py-1.5 text-[13px] text-muted-foreground disabled:opacity-50"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+
       {error && <p className="mt-2 text-[12px] text-rose-600">{error}</p>}
 
       {!asking && (
@@ -331,7 +369,14 @@ function ReviewCard({
             <button
               type="button"
               disabled={pending}
-              onClick={() => promote()}
+              onClick={() => {
+                if (item.kind === 'deadline') {
+                  setDueDate('')
+                  setAsking('date')
+                } else {
+                  promote()
+                }
+              }}
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium active:opacity-80 disabled:opacity-50',
                 (FAMILY_OF[item.kind] ?? 'connaissances') === 'connaissances'
@@ -345,6 +390,19 @@ function ReviewCard({
           ) : (
             // Un type sans geste ne reste pas muet : il dit pourquoi.
             <p className="text-[12px] text-muted-foreground">{item.capability.explanation}</p>
+          )}
+          {item.kind === 'action' && (
+            <div className="flex basis-full flex-wrap gap-1.5 pt-0.5">
+              <Link href={`/sites/${siteId}/actions`} className="text-[11.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+                + Affecter un responsable
+              </Link>
+              <Link href={`/sites/${siteId}/actions`} className="text-[11.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+                + Ajouter une échéance
+              </Link>
+              <Link href={`/semaine?site=${siteId}`} className="text-[11.5px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+                Planifier l&apos;intervention
+              </Link>
+            </div>
           )}
           {/* Le détail (extrait, Écarter) derrière un CHEVRON — « ⋯ » était trop
               cryptique, écarter doit rester facile à trouver. */}
