@@ -21,6 +21,8 @@ import type { SiteDashboardItem } from '@/lib/db/sites-dashboard'
 import type { LivingASavoirCard } from '@/lib/db/handover'
 import type { SiteActionRow } from '@/lib/db/site-actions'
 import type { NowDashboardItem, NowDashboardSummary } from '@/lib/db/now-dashboard'
+import type { MemoryReview } from '@/lib/knowledge/memory-review'
+import type { PendingWork } from '@/lib/knowledge/pending-work'
 import { OrganizationBadge, type OrgLabels } from '@/components/dashboard/OrgBadge'
 import type { OrganizationIdentityMap } from '@/lib/db/organisations'
 import { ActionCheckbox } from './ActionCheckbox'
@@ -37,6 +39,9 @@ type Props = {
   orgLabels: OrgLabels
   organizationMap: OrganizationIdentityMap
   now: { items: NowDashboardItem[]; summary: NowDashboardSummary; actions: SiteActionRow[] }
+  visitActions: SiteActionRow[]
+  visitReview: MemoryReview
+  visitPending: PendingWork
 }
 
 const surface = 'rounded-[24px] border border-[#e5eaf3] bg-white shadow-[0_10px_35px_rgba(23,39,74,0.045)]'
@@ -82,8 +87,7 @@ function AttentionPanel({ digest, organizationMap }: { digest: AttentionDigest; 
   )
 }
 
-function VisitSummary({ site, organizationMap }: { site: SiteImpact & { visitActions?: SiteActionRow[] }; organizationMap: OrganizationIdentityMap }) {
-  const actions = site.visitActions ?? []
+function VisitSummary({ site, organizationMap, actions, review, pending }: { site: SiteImpact; organizationMap: OrganizationIdentityMap; actions: SiteActionRow[]; review: MemoryReview; pending: PendingWork }) {
   const metrics = [
     { icon: FileText, value: site.added.actions, label: 'actions proposées', tone: 'bg-[#eee9ff] text-[#7959d8]' },
     { icon: ShieldAlert, value: site.added.watchpoints, label: 'points de vigilance', tone: 'bg-[#fff0e7] text-[#ef8e45]' },
@@ -97,9 +101,12 @@ function VisitSummary({ site, organizationMap }: { site: SiteImpact & { visitAct
       <div className="mt-6 grid gap-4 sm:grid-cols-5">{metrics.map((metric) => <Metric key={metric.label} {...metric} />)}</div>
       {site.deadlines.length > 0 && <div className="mt-6 border-t border-[#edf0f6] pt-5"><h3 className="text-xs font-bold uppercase tracking-[0.14em] text-[#65718b]">Échéances</h3><ul className="mt-3 space-y-2">{site.deadlines.slice(0, 3).map((deadline) => <li key={deadline.id} className="flex items-start gap-2 text-xs text-[#34415c]"><Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#e9a33d]" /><span className="min-w-0 flex-1">{deadline.title}</span><span className="shrink-0 text-[#8b96aa]">{deadline.when}</span></li>)}</ul></div>}
       <details className="mt-5 rounded-2xl bg-[#f8faff] p-3">
-        <summary className="cursor-pointer list-none text-xs font-semibold text-[#1463e8]">Afficher les {actions.length} actions ouvertes et les {site.deadlines.length} échéances</summary>
+        <summary className="cursor-pointer list-none text-xs font-semibold text-[#1463e8]">Ouvrir tout ce qui reste à traiter</summary>
         <div className="mt-4 space-y-4">
-          {actions.length > 0 && <ul className="space-y-2">{actions.map((action) => <li key={action.id} className="flex items-center gap-2"><ActionCheckbox actionId={action.id} siteId={action.site_id} label={action.title} /><span className="text-xs text-[#34415c]">{action.title}</span></li>)}</ul>}
+          <p className="text-[11px] text-[#65718b]">{actions.length} action{actions.length !== 1 ? 's' : ''} ouverte{actions.length !== 1 ? 's' : ''} · {pending.deadlines.length} échéance{pending.deadlines.length !== 1 ? 's' : ''} à planifier · {review.toReview.length} proposition{review.toReview.length !== 1 ? 's' : ''} à arbitrer</p>
+          {actions.length > 0 && <div><h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#65718b]">Déjà dans le chantier</h3><ul className="mt-2 space-y-2">{actions.map((action) => <li key={action.id} className="flex items-center gap-2"><ActionCheckbox actionId={action.id} siteId={action.site_id} label={action.title} /><Link href={`/sites/${action.site_id}/actions`} className="text-xs text-[#34415c] hover:text-[#1463e8]">{action.title}</Link></li>)}</ul></div>}
+          {pending.deadlines.length > 0 && <div><h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#65718b]">À planifier</h3><ul className="mt-2 space-y-2">{pending.deadlines.map((item) => <li key={item.proposalId} className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 text-xs text-[#34415c]"><span>{item.title}</span><span className="shrink-0 text-[10px] font-semibold text-[#e39a35]">Ajouter au planning</span></li>)}</ul></div>}
+          {review.toReview.length > 0 && <div><h3 className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#65718b]">À arbitrer</h3><ul className="mt-2 space-y-2">{review.toReview.map((item) => <li key={item.id} className="flex items-start justify-between gap-3 rounded-xl bg-white px-3 py-2 text-xs text-[#34415c]"><span><strong className="block font-medium">{item.title}</strong><span className="text-[10px] text-[#8b96aa]">{item.kind}</span></span><span className="shrink-0 text-[10px] font-semibold text-[#1463e8]">{item.capability.label ?? 'Examiner'}</span></li>)}</ul></div>}
           <Link href={`/sites/${site.siteId}`} className="inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8]">Ouvrir le chantier <ArrowRight className="h-3.5 w-3.5" /></Link>
         </div>
       </details>
@@ -123,14 +130,14 @@ function MemoryCards({ items, organizationMap }: { items: LivingASavoirCard[]; o
   return <section className={`${surface} p-5 sm:p-6`}><div className="flex items-center justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">Connaissances du terrain</p><h2 className="mt-2 text-lg font-semibold text-[#101a35]">Mémoire utile pour aujourd&apos;hui</h2></div><Info className="h-5 w-5 text-[#5e7bd3]" /></div>{items.length === 0 ? <p className="mt-6 text-sm italic text-[#73809a]">Aucune capsule disponible pour le moment.</p> : <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{items.slice(0, 4).map((item, index) => <Link key={item.id} href={`/sites/${item.site_id}`} className="group rounded-2xl border border-[#e8edf5] bg-[#fbfcff] p-4 transition-all hover:-translate-y-0.5 hover:border-[#cbd9f7] hover:shadow-sm"><span className={`flex h-9 w-9 items-center justify-center rounded-xl ${['bg-[#e5f8ef] text-[#2ba577]', 'bg-[#eee8ff] text-[#7756d7]', 'bg-[#fff0df] text-[#ed8b43]', 'bg-[#e8f0ff] text-[#4779dc]'][index]}`}><Sparkles className="h-4 w-4" /></span><p className="mt-3 line-clamp-3 text-xs font-medium leading-relaxed text-[#27334e]">{item.body}</p><p className="mt-4 flex items-center gap-1 truncate text-[10px] text-[#7b879d]">{item.site_name} · {organizationMap[item.organizationId] && <OrganizationBadge organization={organizationMap[item.organizationId]} size="xs" />}</p></Link>)}</div>}<Link href="/memoire" className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8]">Voir toutes les capsules <ArrowRight className="h-3.5 w-3.5" /></Link></section>
 }
 
-export function DashboardPremium({ firstName, orgNames, attention, visit, upcoming, sites, aSavoir, organizationMap, now }: Props) {
+export function DashboardPremium({ firstName, orgNames, attention, visit, upcoming, sites, aSavoir, organizationMap, now, visitActions, visitReview, visitPending }: Props) {
   const rawSite = visit.sites[0]
-  const site = rawSite ? { ...rawSite, visitActions: now.actions.filter((action) => action.site_id === rawSite.siteId) } : null
+  const site = rawSite
   return <div className="min-h-screen w-full bg-[#f8fafc] px-1 pb-12 pt-1 sm:px-2"><div className="w-full space-y-5">
     <header className="flex items-end justify-between gap-5 px-1 py-4 sm:px-2"><div><p className="text-xs font-medium text-[#7a879f]">{new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · 06h42</p><h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em] text-[#101a35]">Bonjour {firstName} 👋</h1><p className="mt-1 text-sm text-[#68758d]">Voici ce qui demande votre attention aujourd&apos;hui.</p>{orgNames.length > 1 && <p className="mt-3 text-xs font-medium text-[#6b7891]">{orgNames.join(' · ')}</p>}</div><div className="hidden items-center gap-2 text-xs text-[#7a879f] lg:flex"><span className="rounded-full border border-[#e2e8f2] bg-white px-4 py-2">Rechercher un chantier, une action, un document…</span><span className="flex h-10 w-10 items-center justify-center rounded-full border border-[#e2e8f2] bg-white"><Info className="h-4 w-4" /></span></div></header>
     <AttentionPanel digest={attention} organizationMap={organizationMap} />
     <CockpitNow items={now.items} summary={now.summary} showOrganizationBadge={Object.keys(organizationMap).length > 1} />
-    <div className="grid gap-5 xl:grid-cols-[1.28fr_0.72fr]">{site ? <VisitSummary site={site} organizationMap={organizationMap} /> : <section className={`${surface} p-6`}><h2 className="text-lg font-semibold text-[#101a35]">Depuis votre dernière visite</h2><p className="mt-4 text-sm text-[#73809a]">Aucune évolution récente à afficher.</p></section>}<Agenda items={upcoming} organizationMap={organizationMap} /></div>
+    <div className="grid gap-5 xl:grid-cols-[1.28fr_0.72fr]">{site ? <VisitSummary site={site} organizationMap={organizationMap} actions={visitActions} review={visitReview} pending={visitPending} /> : <section className={`${surface} p-6`}><h2 className="text-lg font-semibold text-[#101a35]">Depuis votre dernière visite</h2><p className="mt-4 text-sm text-[#73809a]">Aucune évolution récente à afficher.</p></section>}<Agenda items={upcoming} organizationMap={organizationMap} /></div>
     <section className={`${surface} p-5 sm:p-6`}><div className="flex items-center gap-2"><ClipboardCheck className="h-4 w-4 text-[#5674c9]" /><h2 className="text-xs font-bold uppercase tracking-[0.16em] text-[#6a7892]">Vos prochains passages</h2></div><div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{upcoming.slice(0, 4).map((item) => <Link key={`rhythm-${item.id}`} href={item.href} className="rounded-2xl border border-[#e9edf5] bg-[#fbfcff] p-4 transition hover:border-[#cbd9f7] hover:bg-white"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#e8f0ff] text-[#4e75d0]"><Calendar className="h-4 w-4" /></span><strong className="mt-3 block line-clamp-2 text-xs leading-relaxed text-[#1c2740]">{item.title}</strong><span className="mt-3 block text-[11px] text-[#7b879d]">{dateLabel(item.startsAt)} · {timeLabel(item.startsAt)}</span></Link>)}</div></section>
     <div className="grid gap-5 xl:grid-cols-2"><SitesTable sites={sites} organizationMap={organizationMap} /><PriorityActionList actions={now.actions} organizationMap={organizationMap} /></div>
     <MemoryCards items={aSavoir} organizationMap={organizationMap} />
