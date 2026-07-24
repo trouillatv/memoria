@@ -25,6 +25,7 @@ import {
   Camera,
   MessagesSquare,
   CalendarClock,
+  Clock3,
   BellRing,
   Flag,
   History,
@@ -440,14 +441,14 @@ function FactLines({ items, empty = 'Rien à signaler.' }: { items: SiteBriefFac
 //    changé depuis la dernière réunion + réserves + actions (qui doit quoi) en tête.
 type Tier = { label: string; dot: string; keys: string[] }
 const TIERS_VISIT: Tier[] = [
-  { label: 'Ce qui nécessite mon attention', dot: 'bg-rose-500',    keys: ['followedPoints', 'vigilance', 'anomalies', 'reserves', 'actions'] },
+  { label: 'Ce qui nécessite mon attention', dot: 'bg-rose-500',    keys: ['followedPoints', 'vigilance', 'anomalies', 'reserves', 'actions', 'openActivityItems'] },
   { label: 'Ce qui a changé',                dot: 'bg-amber-500',   keys: ['change'] },
   { label: "Ce qu'il faut savoir",           dot: 'bg-emerald-500', keys: ['aSavoir', 'recurring'] },
   { label: "Qui peut m'aider",               dot: 'bg-sky-500',     keys: ['teams'] },
   { label: 'Historique',                     dot: 'bg-slate-400',   keys: ['recentDone', 'missions', 'meetings', 'photos'] },
 ]
 const TIERS_MEETING: Tier[] = [
-  { label: 'À aborder / arbitrer',           dot: 'bg-rose-500',    keys: ['followedPoints', 'change', 'reserves', 'actions'] },
+  { label: 'À aborder / arbitrer',           dot: 'bg-rose-500',    keys: ['followedPoints', 'change', 'reserves', 'actions', 'openActivityItems'] },
   { label: 'Points de vigilance',            dot: 'bg-amber-500',   keys: ['vigilance', 'anomalies'] },
   { label: "Ce qu'il faut savoir",           dot: 'bg-emerald-500', keys: ['aSavoir', 'recurring'] },
   { label: "Qui peut m'aider",               dot: 'bg-sky-500',     keys: ['teams'] },
@@ -670,6 +671,38 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
         </ul>
       </section>
     ),
+    openActivityItems: brief.openActivityItems.length === 0 ? null : (
+      <section className="space-y-2">
+        <SectionTitle icon={<Clock3 className="h-3.5 w-3.5 text-amber-600" />} count={brief.openActivityItems.reduce((total, item) => total + item.proposals.length, 0)}>
+          Activité en cours · à confirmer
+        </SectionTitle>
+        <div className="space-y-2">
+          {brief.openActivityItems.map((activity) => (
+            <div key={activity.sourceId} className="rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-amber-950">
+                    {activity.sourceType === 'visit' ? 'Visite' : 'Réunion'} en cours · {activity.title}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-amber-800">
+                    Non consolidée · {activity.photoCount} photo{activity.photoCount > 1 ? 's' : ''} · {activity.memoCount} mémo{activity.memoCount > 1 ? 's' : ''}
+                  </p>
+                </div>
+                <a href={activity.sourceHref} className="shrink-0 text-[11px] font-medium text-amber-800 hover:underline">Ouvrir</a>
+              </div>
+              <ul className="mt-2 space-y-1 border-t border-amber-200/70 pt-2">
+                {activity.proposals.map((proposal) => (
+                  <li key={proposal.id} className="flex items-start gap-2 text-sm text-amber-950">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden />
+                    <span><span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">{proposal.type}</span> · {proposal.title}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </section>
+    ),
     anomalies: anomaliesOpen.length === 0 ? null : (
       <section className="space-y-2">
         <SectionTitle icon={<AlertTriangle className="h-3.5 w-3.5" />} count={anomaliesOpen.length}>
@@ -813,13 +846,6 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
           </>
         )}
       </section>
-
-      {coherenceInsights.length > 0 && (
-        <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-3.5 space-y-2.5">
-          <SectionTitle icon={<AlertTriangle className="h-3.5 w-3.5 text-amber-700" />}>Ce qui n&apos;est plus cohérent</SectionTitle>
-          <FactLines items={coherenceInsights} />
-        </section>
-      )}
 
       <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
           <SectionTitle icon={<History className="h-3.5 w-3.5 text-sky-600" />}>Ce qui a changé depuis votre venue</SectionTitle>

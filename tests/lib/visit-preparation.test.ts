@@ -10,6 +10,7 @@ import {
   getPreparationFreshness,
   estimatePreparationPhase,
   resolveVisitPreparationPhase,
+  groupOpenActivityProposals,
   type VisitPreparationFacts,
 } from '@/lib/knowledge/visit-preparation'
 
@@ -53,6 +54,21 @@ describe('visit preparation read model', () => {
       startedAt: '2026-07-23T07:00:00Z',
       now: '2026-07-25T12:00:00Z',
     })).toBe('validated')
+  })
+
+  it('keeps proposals from open activities separate from confirmed actions', () => {
+    const groups = groupOpenActivityProposals([
+      { id: 'visit-open', kind: 'visit', title: 'Visite en cours', href: '/visites/1', status: 'in_progress', photoCount: 3, memoCount: 2, proposals: [] },
+      { id: 'visit-closed', kind: 'visit', title: 'Visite validée', href: '/visites/2', status: 'validated', photoCount: 1, memoCount: 0, proposals: [] },
+    ], [
+      { id: 'p1', reportId: 'visit-open', kind: 'action', title: 'Vérifier le coffret' },
+      { id: 'p2', reportId: 'visit-open', kind: 'deadline', title: 'Planifier le contrôle électrique' },
+      { id: 'p3', reportId: 'visit-closed', kind: 'action', title: 'Ne doit pas remonter ici' },
+    ])
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({ id: 'visit-open', status: 'in_progress', photoCount: 3, memoCount: 2 })
+    expect(groups[0].proposals.map((item) => item.title)).toEqual(['Vérifier le coffret', 'Planifier le contrôle électrique'])
   })
 
   it('selects before-leaving reminders in a deterministic order without duplicates', () => {

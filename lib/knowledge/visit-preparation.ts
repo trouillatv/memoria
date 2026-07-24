@@ -10,6 +10,48 @@ export interface VisitPreparationFacts {
 
 export type VisitPreparationActivityStatus = 'validated' | 'in_progress' | 'very_recent'
 
+export interface OpenActivityProposalFacts {
+  id: string
+  reportId: string | null
+  kind: 'action' | 'vigilance' | 'decision' | 'knowledge' | 'stakeholder' | 'deadline'
+  title: string
+}
+
+export interface OpenActivityGroupFacts {
+  id: string
+  kind: 'visit' | 'meeting'
+  title: string
+  href: string
+  status: VisitPreparationActivityStatus
+  photoCount: number
+  memoCount: number
+  proposals: OpenActivityProposalFacts[]
+}
+
+/**
+ * Propositions encore non consolidées d'activités ouvertes.
+ * Elles restent séparées des actions métier réellement créées : aucune
+ * proposition n'est promue ici, on ne fait que les rendre visibles avec leur
+ * activité source.
+ */
+export function groupOpenActivityProposals(
+  activities: OpenActivityGroupFacts[],
+  proposals: OpenActivityProposalFacts[],
+): OpenActivityGroupFacts[] {
+  const byReport = new Map<string, OpenActivityGroupFacts>()
+  for (const activity of activities) {
+    if (activity.status !== 'in_progress') continue
+    byReport.set(activity.id, { ...activity, status: 'in_progress', proposals: [] })
+  }
+  for (const proposal of proposals) {
+    if (!proposal.reportId) continue
+    const group = byReport.get(proposal.reportId)
+    if (!group || group.proposals.some((item) => item.id === proposal.id)) continue
+    group.proposals.push(proposal)
+  }
+  return [...byReport.values()].filter((group) => group.proposals.length > 0)
+}
+
 export interface VisitPreparationActivityFacts {
   endedAt: string | null
   startedAt: string | null

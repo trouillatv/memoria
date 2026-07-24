@@ -40,6 +40,7 @@ import { listDecisionsBySite, type SiteDecision } from '@/lib/db/site-decisions'
 import { buildSinceLastVisitSummary, type SinceLastVisitSummary } from '@/lib/db/visits'
 import { listSitePhotos, type SitePhoto } from '@/lib/db/site-photos'
 import { listDocumentsForTarget } from '@/lib/db/documents'
+import { listProposalsBySite, type DbKnowledgeProposal } from '@/lib/db/knowledge-proposals'
 import { isSystemMissionName } from '@/lib/db/system-missions'
 import { getAIProvider } from '@/services/ai/factory'
 import { withAITracking } from '@/services/ai/tracking'
@@ -57,6 +58,7 @@ import {
   buildUnconfirmedQuestion,
   getPreparationFreshness,
   estimatePreparationPhase,
+  groupOpenActivityProposals,
   type PreparationFreshness,
   type VisitPreparationActivityStatus,
 } from '@/lib/knowledge/visit-preparation'
@@ -175,6 +177,23 @@ export interface SiteBriefFactLine {
   status: 'validated' | 'in_progress' | 'interpretation' | 'unconfirmed'
 }
 
+export interface SiteBriefOpenActivityProposal {
+  id: string
+  type: DbKnowledgeProposal['kind']
+  title: string
+}
+
+export interface SiteBriefOpenActivity {
+  sourceType: 'visit' | 'meeting'
+  sourceId: string
+  sourceHref: string
+  title: string
+  status: 'in_progress'
+  photoCount: number
+  memoCount: number
+  proposals: SiteBriefOpenActivityProposal[]
+}
+
 /** Réserve non levée (point à lever) — preuve d'exécution restant due. */
 export interface SiteBriefReserve {
   id: string
@@ -263,6 +282,7 @@ export interface SiteBrief {
   completedSinceVenue: SiteBriefFactLine[]
   atRiskOfForgetting: SiteBriefFactLine[]
   unknowns: SiteBriefFactLine[]
+  openActivityItems: SiteBriefOpenActivity[]
 }
 
 export type SiteBriefResult =
@@ -328,6 +348,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     decisionRows,
     sitePhotos,
     siteDocuments,
+    proposedRows,
   ] = await Promise.all([
     getSiteIdentity(siteId).catch(() => null),
     getSiteCurrentState(siteId).catch(() => null),
@@ -367,6 +388,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     listDecisionsBySite(siteId).catch(() => []),
     listSitePhotos(siteId).catch(() => []),
     listDocumentsForTarget('site', siteId).catch(() => []),
+    listProposalsBySite(siteId, { status: ['proposed'] }).catch(() => [] as DbKnowledgeProposal[]),
   ])
 
   const reportIds = preparationReports.map((r) => String(r.id)).filter(Boolean)
@@ -413,6 +435,38 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       }
     })
     .sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''))
+
+  const openActivityItems: SiteBriefOpenActivity[] = groupOpenActivityProposals(
+    preparationActivities.map((activity) => ({
+      id: activity.id,
+      kind: activity.kind,
+      title: activity.title,
+      href: activity.href,
+      status: activity.status,
+      photoCount: activity.photoCount,
+      memoCount: activity.memoCount,
+      proposals: [],
+    })),
+    proposedRows.map((proposal) => ({
+      id: proposal.id,
+      reportId: proposal.report_id,
+      kind: proposal.kind,
+      title: proposal.title,
+    })),
+  ).map((group) => ({
+    sourceType: group.kind,
+    sourceId: group.id,
+    sourceHref: group.href,
+    title: group.title,
+    status: 'in_progress' as const,
+    photoCount: group.photoCount,
+    memoCount: group.memoCount,
+    proposals: group.proposals.map((proposal) => ({
+      id: proposal.id,
+      type: proposal.kind,
+      title: proposal.title,
+    })),
+  }))
 
   const latestNarrative = preparationActivities.find((activity) => activity.narrative)?.narrative ?? null
   const narratives: SiteBriefNarrative[] = preparationActivities
@@ -462,7 +516,10 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     passagesThisMonth: currentState?.passagesThisMonth ?? 0,
   }
 
-  const briefOpenActions: SiteBriefAction[] = openActionRows.slice(0, 5).map((a) => ({
+  // Toutes les actions métier ouvertes du site sont confirmées et doivent
+  // rester visibles ici, quelle que soit leur origine (visite, réunion ou
+  // création manuelle). La limitation est réservée aux blocs de synthèse.
+  const briefOpenActions: SiteBriefAction[] = openActionRows.map((a) => ({
     id: a.id,
     title: a.title,
     dueDate: a.due_date,
@@ -832,6 +889,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       completedSinceVenue,
       atRiskOfForgetting,
       unknowns,
+      openActivityItems,
     },
   }
 }
