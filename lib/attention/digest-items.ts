@@ -52,6 +52,7 @@ export function buildConflictItems(
     const raison = first?.closure?.reason ?? CLOSURE_REASON_FR[first?.closure?.reasonKind ?? 'other']
 
     out.push({
+      siteId,
       tier: 'red',
       what: `${expected} ${plural(expected, 'prestation prévue', 'prestations prévues')} un jour de fermeture`,
       where: nameOr(nameOf, siteId),
@@ -61,6 +62,11 @@ export function buildConflictItems(
           : `${dates.length} jours concernés, à partir du ${frDay(dates[0])}`,
       href: '/semaine',
       organizationId: orgOf?.get(siteId) ?? '',
+      signal: {
+        category: 'fragility', actionability: 'direct', origin: 'rules',
+        dedupeKey: `planning-conflict:${siteId}:${dates.join(',')}`,
+        sources: [{ type: 'planning', id: siteId, href: '/semaine', label: 'Conflit de planning' }],
+      },
     })
   }
 
@@ -105,6 +111,7 @@ export function buildDebriefItems(
     const captures = list.reduce((s, x) => s + x.remaining, 0)
 
     out.push({
+      siteId,
       tier: 'orange',
       what: `${n} ${plural(n, 'visite à débriefer', 'visites à débriefer')}`,
       where: nameOr(nameOf, siteId),
@@ -115,6 +122,11 @@ export function buildDebriefItems(
       // Le débrief se reprend là où il s'est arrêté.
       href: `/sites/${siteId}/visites/${oldest.reportId}`,
       organizationId: orgOf?.get(siteId) ?? '',
+      signal: {
+        category: 'priority', actionability: 'direct', origin: 'rules',
+        dedupeKey: `pending-debrief:${siteId}:${oldest.reportId}`,
+        sources: [{ type: 'visit', id: oldest.reportId, href: `/sites/${siteId}/visites/${oldest.reportId}`, label: 'Visite à débriefer' }],
+      },
     })
   }
 

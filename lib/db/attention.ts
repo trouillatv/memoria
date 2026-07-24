@@ -18,6 +18,7 @@ import { getWeekBySite } from '@/lib/db/week-planning'
 import { listActiveClosuresForSites, type SiteClosure } from '@/lib/db/site-closures'
 import { detectClosureConflicts } from '@/lib/planning/conflicts'
 import { listKeptInterventionIds } from '@/lib/db/closure-decisions'
+import type { OperationalSignalMeta } from '@/lib/memory/signals/operational-contract'
 import {
   buildConflictItems,
   buildDebriefItems,
@@ -28,6 +29,8 @@ import {
 
 export type AttentionTier = 'red' | 'orange'
 export interface AttentionItem {
+  /** Identifiant du chantier, porté explicitement pour les adaptateurs. */
+  siteId?: string
   tier: AttentionTier
   /** QUOI — « 2 actions en retard ». */
   what: string
@@ -39,6 +42,8 @@ export interface AttentionItem {
   /** M3 — provenance PAR ÉLÉMENT (compte multi-org). Deux actions de deux
    *  organisations dans le même bloc gardent chacune la leur. */
   organizationId: string
+  /** Annotation explicite pour l'adaptateur MemorySignal. */
+  signal?: OperationalSignalMeta
 }
 export interface AttentionDigest {
   red: AttentionItem[]
@@ -145,12 +150,18 @@ export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
       const oldest = a.overdue.reduce((o, x) => ((x.due_date ?? '') < (o.due_date ?? '') ? x : o))
       const late = oldest.due_date ? ageDays(oldest.due_date) : 0
       red.push({
+        siteId,
         tier: 'red',
         what: `${a.overdue.length} action${a.overdue.length > 1 ? 's' : ''} en retard`,
         where,
         why: `la plus en retard : « ${trunc(oldest.title)} » (+${late} j)`,
         href: `/sites/${siteId}/actions`,
         organizationId,
+        signal: {
+          category: 'priority', actionability: 'direct', origin: 'rules',
+          dedupeKey: `overdue-action:${siteId}:${oldest.id}`,
+          sources: [{ type: 'action', id: oldest.id, href: `/sites/${siteId}/actions`, label: oldest.title }],
+        },
       })
     }
 
@@ -160,12 +171,18 @@ export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
       const oldest = a.reserves.reduce((o, x) => (x.created_at < o.created_at ? x : o))
       const age = ageDays(oldest.created_at)
       const item: AttentionItem = {
+        siteId,
         tier: age >= 30 ? 'red' : 'orange',
         what: `${a.reserves.length} réserve${a.reserves.length > 1 ? 's' : ''} ouverte${a.reserves.length > 1 ? 's' : ''}`,
         where,
         why: `la plus ancienne depuis ${age} j`,
         href: `/sites/${siteId}/reserves`,
         organizationId,
+        signal: {
+          category: 'fragility', actionability: 'investigate', origin: 'rules',
+          dedupeKey: `open-reserve:${siteId}:${oldest.created_at}`,
+          sources: [{ type: 'reserve', id: siteId, href: `/sites/${siteId}/reserves`, label: 'Réserve ouverte' }],
+        },
       }
       ;(item.tier === 'red' ? red : orange).push(item)
     }
@@ -175,12 +192,18 @@ export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
       flagged.add(siteId)
       const oldest = a.oldOpen.reduce((o, x) => (x.created_at < o.created_at ? x : o))
       orange.push({
+        siteId,
         tier: 'orange',
         what: `${a.oldOpen.length} action${a.oldOpen.length > 1 ? 's' : ''} ancienne${a.oldOpen.length > 1 ? 's' : ''}`,
         where,
         why: `ouverte depuis ${ageDays(oldest.created_at)} j`,
         href: `/sites/${siteId}/actions`,
         organizationId,
+        signal: {
+          category: 'staleness', actionability: 'direct', origin: 'rules',
+          dedupeKey: `old-action:${siteId}:${oldest.id}`,
+          sources: [{ type: 'action', id: oldest.id, href: `/sites/${siteId}/actions`, label: oldest.title }],
+        },
       })
     }
   }
