@@ -53,8 +53,7 @@ export function EntityLogo({
   if (src && !imgError) {
     return (
       <span
-        className={`${cls} inline-flex items-center justify-center border-2 p-0.5`}
-        style={{ borderColor: fallbackColor ?? 'transparent' }}
+        className={`${cls} inline-flex items-center justify-center`}
         aria-hidden={alt ? undefined : true}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -71,7 +70,7 @@ export function EntityLogo({
 
   return (
     <span
-      className={`${cls} inline-flex items-center justify-center font-bold text-white`}
+      className={`${cls} inline-flex items-center justify-center font-bold text-[#111827]`}
       style={{ backgroundColor: fallbackColor ?? '#6b7280' }}
       aria-hidden={alt ? undefined : true}
     >

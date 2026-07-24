@@ -21,14 +21,14 @@ export function OrganizationBadge({ organization, size = 'sm' }: {
   const label = organization.slug || organization.name
   const logoSize = size === 'md' ? 'md' : size === 'xs' ? 'xs' : 'sm'
   const textClass = size === 'md'
-    ? 'text-xs font-semibold'
+    ? 'text-xs font-semibold text-[#111827]'
     : size === 'xs'
-      ? 'text-[9.5px] font-semibold uppercase tracking-wide'
-      : 'text-[10px] font-semibold uppercase tracking-wide'
+      ? 'text-[9.5px] font-semibold uppercase tracking-wide text-[#111827]'
+      : 'text-[10px] font-semibold uppercase tracking-wide text-[#111827]'
 
   return (
     <span
-      className={`inline-flex shrink-0 items-center gap-1 ${size === 'md' ? '' : 'rounded border border-border/70 bg-muted/40 px-1.5 py-0.5 align-middle'}`}
+      className="inline-flex shrink-0 items-center gap-1.5 align-middle"
       title={`Organisation : ${organization.name}`}
     >
       <EntityLogo
@@ -38,7 +38,7 @@ export function OrganizationBadge({ organization, size = 'sm' }: {
         variant="rounded"
         fallbackColor={organization.brandColor}
       />
-      <span className={textClass} style={{ color: organization.brandColor ?? undefined }}>{label}</span>
+      <span className={textClass}>{label}</span>
     </span>
   )
 }
@@ -57,7 +57,7 @@ export function OrgBadge({ label }: { label?: string | null }) {
   if (!label) return null
   return (
     <span
-      className="inline-flex shrink-0 items-center rounded border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wide text-muted-foreground align-middle"
+      className="inline-flex shrink-0 items-center text-[9.5px] font-semibold uppercase tracking-wide text-[#111827] align-middle"
       title={`Organisation : ${label}`}
     >
       {label}

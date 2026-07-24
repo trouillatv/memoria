@@ -39,7 +39,7 @@ describe('OrgBadge — présentation', () => {
 })
 
 describe('OrgBadgeRich', () => {
-  it('conserve la couleur du libellé quand un logo est présent', () => {
+  it('utilise la couleur uniquement pour la vignette, pas pour le texte', () => {
     render(
       <OrgBadgeRich
         meta={{
@@ -52,7 +52,7 @@ describe('OrgBadgeRich', () => {
       />,
     )
 
-    expect(screen.getByText('AGP')).toHaveStyle({ color: '#274DF5' })
+    expect(screen.getByText('AGP')).toHaveClass('text-[#111827]')
   })
 })
 
