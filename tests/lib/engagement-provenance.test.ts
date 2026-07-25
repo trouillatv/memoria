@@ -211,7 +211,7 @@ describe('resolveVerifiedEngagementProvenance', () => {
     ).toEqual({ tender_document_id: null, page_number: null })
   })
 
-  it.each(['[[page 0]]', '[[page -2]]', '[[page Infinity]]'])
+  it.each(['[[page 0]]', '[[page -2]]', '[[page 1.5]]', '[[page Infinity]]'])
     ('leaves both fields null for an invalid page marker %s', (marker) => {
       expect(
         resolveVerifiedEngagementProvenance({

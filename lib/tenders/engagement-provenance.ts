@@ -144,7 +144,10 @@ export function resolveVerifiedEngagementProvenance({
 
     const markerValue = pageMarkerBeforeQuote(document.extractedText, normalizedNeedle)
     const pageNumber = located.page ?? (markerValue === null ? null : Number(markerValue))
-    if (pageNumber !== null && (!Number.isFinite(pageNumber) || pageNumber <= 0)) return []
+    if (
+      pageNumber !== null &&
+      (!Number.isFinite(pageNumber) || !Number.isInteger(pageNumber) || pageNumber <= 0)
+    ) return []
 
     return [{
       tender_document_id: document.id,
