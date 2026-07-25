@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import type { EngagementProvenanceState } from '@/types/db'
 
 import {
   deriveEngagementProvenanceState,
+  deriveEngagementProvenanceReadRow,
   resolveTenderDocumentReference,
 } from '@/lib/tenders/engagement-provenance'
 
@@ -24,6 +26,64 @@ describe('deriveEngagementProvenanceState', () => {
 
   it('rejects the impossible page-without-document state', () => {
     expect(() => deriveEngagementProvenanceState({ tenderDocumentId: null, pageNumber: 12 })).toThrow()
+  })
+})
+
+describe('deriveEngagementProvenanceReadRow', () => {
+  const baseRow = {
+    engagementId: 'engagement-1',
+    tenderId: 'tender-1',
+    sourceRef: null,
+  }
+
+  it('returns exact with the structured document, filename, page, and state', () => {
+    const state: EngagementProvenanceState = 'exact'
+    expect(
+      deriveEngagementProvenanceReadRow({
+        ...baseRow,
+        tenderDocumentId: 'doc-1',
+        pageNumber: 12,
+        document: { id: 'doc-1', filename: 'CCAP.pdf' },
+      }),
+    ).toMatchObject({
+      documentId: 'doc-1',
+      filename: 'CCAP.pdf',
+      pageNumber: 12,
+      state,
+    })
+  })
+
+  it('returns document_only when the structured page is null', () => {
+    expect(
+      deriveEngagementProvenanceReadRow({
+        ...baseRow,
+        tenderDocumentId: 'doc-1',
+        pageNumber: null,
+        document: { id: 'doc-1', filename: 'CCAP.pdf' },
+      }),
+    ).toMatchObject({
+      documentId: 'doc-1',
+      filename: 'CCAP.pdf',
+      pageNumber: null,
+      state: 'document_only',
+    })
+  })
+
+  it('returns unavailable when only legacy source_ref.page is present', () => {
+    expect(
+      deriveEngagementProvenanceReadRow({
+        ...baseRow,
+        sourceRef: { page: 12 },
+        tenderDocumentId: null,
+        pageNumber: null,
+        document: null,
+      }),
+    ).toMatchObject({
+      documentId: null,
+      filename: null,
+      pageNumber: null,
+      state: 'unavailable',
+    })
   })
 })
 

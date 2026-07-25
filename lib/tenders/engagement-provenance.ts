@@ -1,8 +1,29 @@
-export type EngagementProvenanceState = 'exact' | 'document_only' | 'unavailable'
+import type { EngagementProvenanceState } from '@/types/db'
+
+export type { EngagementProvenanceState } from '@/types/db'
 
 export type TenderDocumentReferenceCandidate = {
   id: string
   filename: string
+}
+
+export type EngagementProvenanceReadInput = {
+  engagementId: string
+  tenderId: string
+  sourceRef: Record<string, unknown> | null
+  tenderDocumentId: string | null
+  pageNumber: number | null
+  document: { id: string; filename: string } | null
+}
+
+export type EngagementProvenanceReadRow = {
+  engagementId: string
+  tenderId: string
+  sourceRef: Record<string, unknown> | null
+  documentId: string | null
+  filename: string | null
+  pageNumber: number | null
+  state: EngagementProvenanceState
 }
 
 type ProvenanceFields = {
@@ -29,6 +50,31 @@ export function deriveEngagementProvenanceState({
   if (tenderDocumentId === null) return 'unavailable'
   if (pageNumber === null) return 'document_only'
   return 'exact'
+}
+
+export function deriveEngagementProvenanceReadRow({
+  engagementId,
+  tenderId,
+  sourceRef,
+  tenderDocumentId,
+  pageNumber,
+  document,
+}: EngagementProvenanceReadInput): EngagementProvenanceReadRow {
+  const state = deriveEngagementProvenanceState({
+    tenderDocumentId,
+    pageNumber,
+  })
+  const joinedDocument = document?.id === tenderDocumentId ? document : null
+
+  return {
+    engagementId,
+    tenderId,
+    sourceRef,
+    documentId: tenderDocumentId,
+    filename: joinedDocument?.filename ?? null,
+    pageNumber,
+    state,
+  }
 }
 
 export function resolveTenderDocumentReference(

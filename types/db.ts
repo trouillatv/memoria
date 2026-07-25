@@ -261,6 +261,8 @@ export type EngagementStatus =
   | 'completed'
   | 'archived'
 
+export type EngagementProvenanceState = 'exact' | 'document_only' | 'unavailable'
+
 // Phase 4.1 (migration 046) — Niveau de preuve attendu pour considérer
 // l'engagement comme exécuté de façon défendable.
 export type EngagementProofRequirement = 'photo' | 'anomaly_documented' | 'none'
@@ -281,6 +283,8 @@ export interface DbEngagement {
   source_type: EngagementSourceType
   source_excerpt: string
   source_ref: Record<string, unknown> | null
+  tender_document_id: string | null
+  page_number: number | null
   category: EngagementCategory
   kind: EngagementKind | null
   short_label: string
