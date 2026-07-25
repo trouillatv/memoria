@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { detectPromiseNeedsConfirmationSignals, type PromiseDetectionContext } from '@/lib/memory/signals/promise-follow-up-detector'
+import { detectPromiseNeedsConfirmationSignals } from '@/lib/memory/signals/promise-follow-up-detector'
+import type { PromiseDetectionContext } from '@/lib/memory/signals/promise-detector'
 
 const source = { type: 'visit' as const, id: 'report-1', href: '/sites/site-1/visites/report-1', label: 'Visite du 21 juillet' }
 
@@ -33,7 +34,8 @@ describe('PromiseNeedsConfirmationDetector', () => {
     expect(signal.facts).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: 'promise_text', value: 'Le planning sera diffusé prochainement.', dueAt: null }),
     ]))
-    expect(signal.explanation ?? '').not.toMatch(/retard|échéance dépassée|en retard|délai dépassé/i)
+    const actionLabels = signal.actions.map((action) => action.label).join(' ')
+    expect(actionLabels).not.toMatch(/retard|échéance dépassée|en retard|délai dépassé/i)
   })
 
   it('ne produit aucun signal si la promesse est trop récente', () => {

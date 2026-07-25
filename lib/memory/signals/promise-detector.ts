@@ -35,7 +35,7 @@ function dueTimestamp(value: string): number | null {
  * échéance résolue. La résolution des expressions (« vendredi », « sous peu »)
  * appartient au read model qui construit PromiseCandidate.
  */
-export function detectPromiseSignals(
+export function detectPromiseExpiredSignals(
   context: PromiseDetectionContext,
   now = new Date().toISOString(),
 ): MemorySignal[] {
@@ -78,3 +78,6 @@ export function detectPromiseSignals(
     } satisfies MemorySignal]
   })
 }
+
+/** Nom historique conservé pour les consommateurs existants. */
+export const detectPromiseSignals = detectPromiseExpiredSignals

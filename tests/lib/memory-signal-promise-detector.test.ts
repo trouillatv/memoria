@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectPromiseSignals, type PromiseDetectionContext } from '@/lib/memory/signals/promise-detector'
+import { detectPromiseExpiredSignals, detectPromiseSignals, type PromiseDetectionContext } from '@/lib/memory/signals/promise-detector'
 
 const source = { type: 'visit', id: 'report-1', href: '/sites/site-1/visites/report-1', label: 'Visite du 21 juillet' }
 
@@ -14,7 +14,7 @@ const context = (overrides: Partial<PromiseDetectionContext> = {}): PromiseDetec
 
 describe('PromiseExpiredDetector', () => {
   it('produit un signal pour une promesse échue sans confirmation', () => {
-    const [signal] = detectPromiseSignals(context(), '2026-07-28T08:00:00.000Z')
+    const [signal] = detectPromiseExpiredSignals(context(), '2026-07-28T08:00:00.000Z')
 
     expect(signal).toMatchObject({
       category: 'promise',
@@ -53,5 +53,11 @@ describe('PromiseExpiredDetector', () => {
 
     expect(detectPromiseSignals(context({ promises: [{ ...promise, replacedAt: '2026-07-26T00:00:00.000Z' }] }), '2026-07-28T08:00:00.000Z')).toHaveLength(0)
     expect(detectPromiseSignals(context({ promises: [{ ...promise, cancelledAt: '2026-07-26T00:00:00.000Z' }] }), '2026-07-28T08:00:00.000Z')).toHaveLength(0)
+  })
+
+  it('conserve le wrapper historique avec le mÃªme rÃ©sultat', () => {
+    expect(detectPromiseSignals(context(), '2026-07-28T08:00:00.000Z')).toEqual(
+      detectPromiseExpiredSignals(context(), '2026-07-28T08:00:00.000Z'),
+    )
   })
 })
