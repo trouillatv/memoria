@@ -23,10 +23,13 @@ export type PromiseDetectionContext = {
   promises: PromiseCandidate[]
 }
 
+function hasExplicitTimezone(value: string): boolean {
+  return /T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value))
+}
+
 function dueTimestamp(value: string): number | null {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
-  const normalized = value
-  const timestamp = Date.parse(normalized)
+  if (!hasExplicitTimezone(value)) return null
+  const timestamp = Date.parse(value)
   return Number.isFinite(timestamp) ? timestamp : null
 }
 

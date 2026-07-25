@@ -34,6 +34,7 @@ describe('PromiseExpiredDetector', () => {
   it('ignore une promesse future, sans date résolue ou déjà confirmée', () => {
     expect(detectPromiseSignals(context(), '2026-07-25T08:00:00+11:00')).toHaveLength(0)
     expect(detectPromiseSignals(context({ promises: [{ ...context().promises[0], dueAt: '2026-07-25' }] }), '2026-07-28T08:00:00.000Z')).toHaveLength(0)
+    expect(detectPromiseSignals(context({ promises: [{ ...context().promises[0], dueAt: '2026-07-25T23:59:59.000' }] }), '2026-07-28T08:00:00.000Z')).toHaveLength(0)
     expect(detectPromiseSignals(context({ promises: [{ ...context().promises[0], confirmedAt: '2026-07-26T08:00:00.000Z' }] }), '2026-07-28T08:00:00.000Z')).toHaveLength(0)
   })
 

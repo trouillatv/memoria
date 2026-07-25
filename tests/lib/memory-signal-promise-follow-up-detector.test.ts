@@ -42,6 +42,14 @@ describe('PromiseNeedsConfirmationDetector', () => {
     expect(detectPromiseNeedsConfirmationSignals(context({ promises: [{ ...context().promises[0], occurredAt: '2026-07-24T09:00:00.000Z' }] }), '2026-07-28T08:00:00.000Z')).toHaveLength(0)
   })
 
+  it('produit un signal exactement au seuil de 7 jours', () => {
+    expect(detectPromiseNeedsConfirmationSignals(context(), '2026-07-28T09:00:00.000Z')).toHaveLength(1)
+  })
+
+  it('n’en produit pas juste avant le seuil de 7 jours', () => {
+    expect(detectPromiseNeedsConfirmationSignals(context(), '2026-07-28T08:59:59.999Z')).toHaveLength(0)
+  })
+
   it('ignore une confirmation, un remplacement ou une annulation', () => {
     const promise = context().promises[0]
     expect(detectPromiseNeedsConfirmationSignals(context({ promises: [{ ...promise, confirmedAt: '2026-07-26T00:00:00.000Z' }] }), '2026-07-28T08:00:00.000Z')).toHaveLength(0)
