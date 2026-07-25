@@ -1,20 +1,20 @@
 import type { AttentionItem } from '@/lib/db/attention'
 import type { NowDashboardItem } from '@/lib/db/now-dashboard'
 import type { OrganizationIdentity, OrganizationIdentityMap } from '@/lib/db/organisations'
-import type { MemorySignal, SignalFact } from './operational-contract'
-
-function fact(signal: MemorySignal, key: string): SignalFact | undefined {
-  return signal.facts.find((item) => item.key === key)
-}
-
-function stringFact(signal: MemorySignal, key: string): string | null {
-  const value = fact(signal, key)?.value
-  return typeof value === 'string' ? value : null
-}
-
-function booleanFact(signal: MemorySignal, key: string): boolean {
-  return fact(signal, key)?.value === true
-}
+import type { MemorySignal } from './operational-contract'
+import {
+  factActionId,
+  factCanComplete,
+  factDueAt,
+  factPriority,
+  factSiteName,
+  factSourceType,
+  factStartsAt,
+  factTitle,
+  factWhat,
+  factWhere,
+  factWhy,
+} from './fact-selectors'
 
 function organizationFor(signal: MemorySignal, organizationMap: OrganizationIdentityMap): OrganizationIdentity {
   return organizationMap[signal.organizationId] ?? {
@@ -34,9 +34,9 @@ export function presentAttentionSignals(signals: MemorySignal[]): AttentionItem[
     .map((signal) => ({
       siteId: signal.siteId,
       tier: signal.severity === 'critical' ? 'red' : 'orange',
-      what: stringFact(signal, 'what') ?? stringFact(signal, 'title') ?? signal.trigger.type,
-      where: stringFact(signal, 'where') ?? signal.siteId,
-      why: stringFact(signal, 'why') ?? signal.trigger.reason,
+      what: factWhat(signal) ?? factTitle(signal) ?? signal.trigger.type,
+      where: factWhere(signal) ?? signal.siteId,
+      why: factWhy(signal) ?? signal.trigger.reason,
       href: signal.sources[0]?.href ?? `/sites/${signal.siteId}`,
       organizationId: signal.organizationId,
       signal: {
@@ -55,21 +55,21 @@ export function presentNowSignals(signals: MemorySignal[], organizationMap: Orga
   return signals
     .filter((signal) => signal.state === 'active' && signal.category === 'priority' && signal.actionability === 'direct')
     .map((signal) => {
-      const sourceType = (stringFact(signal, 'source_type') ?? signal.sources[0]?.type ?? 'action') as NowDashboardItem['sourceType']
-      const priority = (stringFact(signal, 'priority') ?? 'today') as NowDashboardItem['priority']
-      const actionId = stringFact(signal, 'action_id')
+      const sourceType = factSourceType(signal) ?? (signal.sources[0]?.type as NowDashboardItem['sourceType'] | undefined) ?? 'action'
+      const priority = factPriority(signal) ?? 'today'
+      const actionId = factActionId(signal)
       return {
         id: signal.id,
         sourceType,
-        title: stringFact(signal, 'title') ?? signal.sources[0]?.label ?? signal.id,
+        title: factTitle(signal) ?? signal.sources[0]?.label ?? signal.id,
         siteId: signal.siteId,
-        siteName: stringFact(signal, 'site_name') ?? signal.siteId,
+        siteName: factSiteName(signal) ?? signal.siteId,
         organization: organizationFor(signal, organizationMap),
         href: signal.sources[0]?.href ?? `/sites/${signal.siteId}`,
-        dueDate: fact(signal, 'title')?.dueAt ?? null,
-        startsAt: stringFact(signal, 'starts_at'),
+        dueDate: factDueAt(signal),
+        startsAt: factStartsAt(signal),
         priority,
-        canComplete: booleanFact(signal, 'can_complete'),
+        canComplete: factCanComplete(signal),
         actionId,
       }
     })
