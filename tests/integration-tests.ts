@@ -58,6 +58,7 @@ export const INTEGRATION_TESTS: string[] = [
   'tests/lib/sites.test.ts',
   'tests/lib/teams-db.test.ts',
   'tests/lib/teams.test.ts',
+  'tests/lib/team-members-org-integrity.test.ts',
   'tests/lib/template-stats.test.ts',
   'tests/lib/tender-memory-list.test.ts',
   'tests/lib/tender-memory.test.ts',

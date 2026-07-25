@@ -408,9 +408,40 @@ export async function listMembersOfTeam(teamId: string): Promise<TeamMemberWithU
  */
 export async function addMemberToTeam(teamId: string, userId: string): Promise<DbTeamMember> {
   const supabase = createAdminClient()
+
+  // La frontière d'organisation vient de l'équipe, jamais de
+  // users.organization_id (qui n'est plus qu'un champ historique dès qu'un
+  // compte possède plusieurs appartenances).
+  const { data: team, error: teamError } = await supabase
+    .from('teams')
+    .select('id, organization_id')
+    .eq('id', teamId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (teamError) throw teamError
+  if (!team?.organization_id) {
+    throw new Error('Équipe sans organisation')
+  }
+
+  const { data: organizationMembership, error: membershipError } = await supabase
+    .from('organization_memberships')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('organization_id', team.organization_id)
+    .eq('status', 'active')
+    .maybeSingle()
+  if (membershipError) throw membershipError
+  if (!organizationMembership) {
+    throw new Error("Cette personne n'est pas membre actif de l'organisation de l'équipe")
+  }
+
   const { data, error } = await supabase
     .from('team_members')
-    .insert({ team_id: teamId, user_id: userId })
+    .insert({
+      team_id: teamId,
+      user_id: userId,
+      organization_id: team.organization_id,
+    })
     .select('*')
     .single()
   if (error) throw error

@@ -389,6 +389,15 @@ export async function addMemberToTeamAction(input: {
     if (msg.includes('duplicate') || msg.includes('unique')) {
       return { ok: false, error: 'Cette personne est déjà membre de l’équipe' }
     }
+    if (msg.includes('team_member: user has no active organization membership')) {
+      return {
+        ok: false,
+        error: "Cette personne n'est pas membre actif de l'organisation de l'équipe",
+      }
+    }
+    if (msg.includes('team_member: team and membership organizations must match')) {
+      return { ok: false, error: "L'équipe et l'organisation du membre ne correspondent pas" }
+    }
     return { ok: false, error: msg }
   }
 }
