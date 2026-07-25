@@ -14,7 +14,7 @@
 
 ## File map
 
-- Create `supabase/migrations/240_tender_engagement_provenance.sql`: columns, checks, composite key, trigger, and RLS-compatible database objects.
+- Create `supabase/migrations/241_tender_engagement_provenance.sql`: columns, checks, composite key, trigger, and RLS-compatible database objects.
 - Modify `types/db.ts`: `DbEngagement` fields and provenance state types.
 - Create `lib/tenders/engagement-provenance.ts`: pure state derivation and strict document-reference resolution helpers.
 - Modify `services/ai/engagement-extraction.ts` only if the extracted result type needs an explicit provenance hand-off; do not make the model authoritative for document or page.
@@ -100,7 +100,7 @@ git commit -m "Add engagement provenance state contract"
 ### Task 2: Add the database schema and direct SQL tests
 
 **Files:**
-- Create: `supabase/migrations/240_tender_engagement_provenance.sql`
+- Create: `supabase/migrations/241_tender_engagement_provenance.sql`
 - Create: `tests/lib/tender-engagement-provenance.integration.test.ts`
 - Modify: `tests/integration-tests.ts`
 
@@ -153,7 +153,7 @@ deleting the source document keeps the engagement and sets both provenance field
 - [ ] **Step 4: Commit the migration and SQL tests.**
 
 ```text
-git add supabase/migrations/240_tender_engagement_provenance.sql tests/lib/tender-engagement-provenance.integration.test.ts tests/integration-tests.ts
+git add supabase/migrations/241_tender_engagement_provenance.sql tests/lib/tender-engagement-provenance.integration.test.ts tests/integration-tests.ts
 git commit -m "Enforce tender engagement provenance integrity"
 ```
 
