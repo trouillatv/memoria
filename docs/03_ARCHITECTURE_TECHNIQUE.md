@@ -90,6 +90,15 @@ Pattern principal de mutation. Chaque dossier de page a son fichier `actions.ts`
 
 ---
 
+## Moteur de signaux mémoire
+
+Carte graphique de la chaîne `read model -> builder -> détecteurs -> runner -> MemorySignal[]` :
+[docs/architecture/memory-signal-pipeline-graph.md](architecture/memory-signal-pipeline-graph.md)
+
+Elle sert de repère pour les familles de signaux futures (`Question`, `Contradiction`, `Staleness`, `Health`, etc.) sans exposer la logique métier dans le dashboard.
+
+---
+
 ## Service IA (`services/ai/`)
 
 Architecture factory multi-provider :

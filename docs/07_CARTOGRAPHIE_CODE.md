@@ -33,8 +33,12 @@ Pour chaque domaine fonctionnel, les fichiers clés qui le portent. Les chemins 
 | `app/(dashboard)/dashboard/TenantMorningReadingCard.tsx` | Lecture mémoire du matin |
 | `app/(dashboard)/dashboard/inbox-actions.ts` | Server actions inbox |
 | `app/(dashboard)/dashboard/notifications-actions.ts` | Server actions notifications |
+| `app/(dashboard)/dashboard/page.tsx` | Point de composition du dashboard, consomme `MemorySignal[]` |
 | `lib/db/dashboard.ts` | Requêtes cockpit (getWeekPulse, getCapitalPreuves…) |
 | `lib/db/inbox-feed.ts` | Flux inbox unifié |
+| `lib/db/promise-candidates.ts` | Read model promesses structurées |
+| `lib/memory/signals/promise-pipeline.ts` | Composition promesse -> builder -> détecteurs -> runner |
+| `docs/architecture/memory-signal-pipeline-graph.md` | Carte graphique du moteur de signaux |
 | `app/(dashboard)/aujourdhui/page.tsx` | Vue « Aujourd'hui » |
 
 ---
