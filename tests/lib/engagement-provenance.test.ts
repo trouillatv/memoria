@@ -199,6 +199,28 @@ describe('resolveVerifiedEngagementProvenance', () => {
     ).toEqual({ tender_document_id: null, page_number: null })
   })
 
+  it('leaves both fields null when the located filename has duplicate candidates', () => {
+    expect(
+      resolveVerifiedEngagementProvenance({
+        sourceExcerpt: 'nettoyage quotidien des locaux',
+        documents: [
+          document('doc-1', 'CCAP.pdf', '[[page 7]]\nNettoyage quotidien des locaux.'),
+          document('doc-2', ' ccap.pdf ', 'A duplicate filename with no citation.'),
+        ],
+      }),
+    ).toEqual({ tender_document_id: null, page_number: null })
+  })
+
+  it.each(['[[page 0]]', '[[page -2]]', '[[page Infinity]]'])
+    ('leaves both fields null for an invalid page marker %s', (marker) => {
+      expect(
+        resolveVerifiedEngagementProvenance({
+          sourceExcerpt: 'nettoyage quotidien des locaux',
+          documents: [document('doc-1', 'CCAP.pdf', `${marker}\nNettoyage quotidien des locaux.`)],
+        }),
+      ).toEqual({ tender_document_id: null, page_number: null })
+    })
+
   it('leaves both fields null when the citation is missing', () => {
     expect(
       resolveVerifiedEngagementProvenance({

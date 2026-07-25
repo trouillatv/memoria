@@ -97,6 +97,22 @@ function normalizeLocatedQuote(value: string): string {
   return value.replace(/\s+/gu, ' ').trim().toLowerCase()
 }
 
+function pageMarkerBeforeQuote(
+  text: string,
+  normalizedNeedle: string,
+): string | null {
+  const normalizedText = normalizeLocatedQuote(text)
+  const quoteIndex = normalizedText.indexOf(normalizedNeedle)
+  if (quoteIndex < 0) return null
+
+  const markerStart = normalizedText.lastIndexOf('[[page ', quoteIndex)
+  if (markerStart < 0) return null
+
+  const markerEnd = normalizedText.indexOf(']]', markerStart)
+  if (markerEnd < 0 || markerEnd > quoteIndex) return null
+  return normalizedText.slice(markerStart + '[[page '.length, markerEnd).trim()
+}
+
 export function resolveVerifiedEngagementProvenance({
   sourceExcerpt,
   documents,
@@ -120,9 +136,19 @@ export function resolveVerifiedEngagementProvenance({
     const expectedLabel = `${tenderPieceLabel(document.kind)} — ${document.filename}`
     if (located.document !== expectedLabel) return []
 
+    const verifiedReference = resolveTenderDocumentReference(
+      document.filename,
+      documents,
+    )
+    if (!verifiedReference || verifiedReference.documentId !== document.id) return []
+
+    const markerValue = pageMarkerBeforeQuote(document.extractedText, normalizedNeedle)
+    const pageNumber = located.page ?? (markerValue === null ? null : Number(markerValue))
+    if (pageNumber !== null && (!Number.isFinite(pageNumber) || pageNumber <= 0)) return []
+
     return [{
       tender_document_id: document.id,
-      page_number: located.page ?? null,
+      page_number: pageNumber,
     }]
   })
 
