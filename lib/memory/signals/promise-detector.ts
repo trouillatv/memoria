@@ -13,6 +13,8 @@ export type PromiseCandidate = {
   confirmedAt: string | null
   confirmationSourceIds: string[]
   relatedProofSourceIds: string[]
+  replacedAt?: string | null
+  cancelledAt?: string | null
   importance: 'critical' | 'high' | 'normal' | 'low'
   blocking: boolean
 }
@@ -41,7 +43,7 @@ export function detectPromiseSignals(
   if (!Number.isFinite(nowTimestamp)) return []
 
   return context.promises.flatMap((promise) => {
-    if (!promise.dueAt || promise.confirmedAt || promise.confirmationSourceIds.length > 0) return []
+    if (!promise.dueAt || promise.confirmedAt || promise.replacedAt || promise.cancelledAt || promise.confirmationSourceIds.length > 0) return []
     const dueTimestampValue = dueTimestamp(promise.dueAt)
     if (dueTimestampValue === null || dueTimestampValue >= nowTimestamp) return []
 

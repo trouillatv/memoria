@@ -7,12 +7,12 @@ const context = (overrides: Partial<PromiseDetectionContext> = {}): PromiseDetec
   promises: [{
     id: 'promise-1', organizationId: 'org-1', siteId: 'site-1',
     text: 'Le planning sera diffusé vendredi.', source, occurredAt: '2026-07-21T09:00:00.000Z', dueAt: '2026-07-25T23:59:59+11:00',
-    confirmedAt: null, confirmationSourceIds: [], relatedProofSourceIds: [], importance: 'normal', blocking: false,
+    confirmedAt: null, confirmationSourceIds: [], relatedProofSourceIds: [], replacedAt: null, cancelledAt: null, importance: 'normal', blocking: false,
   }],
   ...overrides,
 })
 
-describe('PromiseDetector', () => {
+describe('PromiseExpiredDetector', () => {
   it('produit un signal pour une promesse échue sans confirmation', () => {
     const [signal] = detectPromiseSignals(context(), '2026-07-28T08:00:00.000Z')
 
@@ -43,8 +43,15 @@ describe('PromiseDetector', () => {
     expect(detectPromiseSignals(context({ promises: [{ ...promise, confirmationSourceIds: ['photo-1'] }] }), '2026-07-28T08:00:00.000Z')).toHaveLength(0)
   })
 
-  it('porte l’importance métier du contexte et élève la sévérité si la promesse est bloquante', () => {
+  it('conserve l’importance métier et respecte blocking', () => {
     const [signal] = detectPromiseSignals(context({ promises: [{ ...context().promises[0], importance: 'high', blocking: true }] }), '2026-07-26T00:00:01+11:00')
     expect(signal).toMatchObject({ importance: 'high', severity: 'critical', urgency: 'now' })
+  })
+
+  it('ignore une promesse remplacée ou annulée', () => {
+    const promise = context().promises[0]
+
+    expect(detectPromiseSignals(context({ promises: [{ ...promise, replacedAt: '2026-07-26T00:00:00.000Z' }] }), '2026-07-28T08:00:00.000Z')).toHaveLength(0)
+    expect(detectPromiseSignals(context({ promises: [{ ...promise, cancelledAt: '2026-07-26T00:00:00.000Z' }] }), '2026-07-28T08:00:00.000Z')).toHaveLength(0)
   })
 })
