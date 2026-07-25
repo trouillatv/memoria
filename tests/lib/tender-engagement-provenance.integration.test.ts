@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { randomUUID } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-const TEST_TAG = '__test_tender_engagement_provenance__'
+const TEST_TAG = `__test_tender_engagement_provenance__${randomUUID().replaceAll('-', '').slice(0, 12)}`
+const createdTenderIds: string[] = []
+const createdDocumentIds: string[] = []
+const createdEngagementIds: string[] = []
 
 async function getAdminUserId(): Promise<string> {
   const supabase = createAdminClient()
@@ -29,6 +33,7 @@ async function createTender(adminId: string, suffix: string): Promise<string> {
     .single()
 
   if (error || !data) throw error ?? new Error('Insert tender failed')
+  createdTenderIds.push(data.id)
   return data.id
 }
 
@@ -45,6 +50,7 @@ async function createDocument(tenderId: string, suffix: string): Promise<string>
     .single()
 
   if (error || !data) throw error ?? new Error('Insert tender document failed')
+  createdDocumentIds.push(data.id)
   return data.id
 }
 
@@ -61,7 +67,7 @@ async function createEngagement(
       source_type: 'manual',
       source_excerpt: `${TEST_TAG} source excerpt`,
       category: 'quality',
-      short_label: `${TEST_TAG} label ${provenance.tender_document_id ?? 'none'} ${provenance.page_number ?? 'none'}`,
+      short_label: `${TEST_TAG} label ${provenance.tender_document_id?.slice(0, 8) ?? 'none'} ${provenance.page_number ?? 'none'}`,
       created_by: adminId,
       ...provenance,
     })
@@ -69,7 +75,16 @@ async function createEngagement(
     .single()
 
   if (error || !data) throw error ?? new Error('Insert engagement failed')
+  createdEngagementIds.push(data.id)
   return data.id
+}
+
+async function deleteCreatedRows(table: string, ids: string[]): Promise<void> {
+  if (ids.length === 0) return
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from(table).delete().in('id', ids)
+  if (error) throw new Error(`Cleanup failed for ${table}: ${error.message}`)
 }
 
 describe('tender engagement provenance', () => {
@@ -80,10 +95,9 @@ describe('tender engagement provenance', () => {
   })
 
   afterAll(async () => {
-    const supabase = createAdminClient()
-    await supabase.from('engagements').delete().like('source_excerpt', `${TEST_TAG}%`)
-    await supabase.from('tender_documents').delete().like('storage_path', `${TEST_TAG}/%`)
-    await supabase.from('tenders').delete().like('title', `${TEST_TAG}%`)
+    await deleteCreatedRows('engagements', createdEngagementIds)
+    await deleteCreatedRows('tender_documents', createdDocumentIds)
+    await deleteCreatedRows('tenders', createdTenderIds)
   })
 
   it('allows a nullable document/page pair and rejects a page without a document', async () => {
