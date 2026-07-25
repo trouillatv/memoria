@@ -100,12 +100,13 @@ function blockingOf(payload: UnknownRecord | null): boolean {
 function capturedRecord(row: UnknownRecord): StructuredPromiseRecord | null {
   const organizationId = stringValue(row.organization_id)
   const siteId = stringValue(row.site_id)
+  const id = stringValue(row.id)
   const title = stringValue(row.title)
   const source = sourceRefFor(siteId ?? '', row.source_type, row.source_id)
-  if (!organizationId || !siteId || row.kind !== 'promise' || row.status !== 'active' || !title || !source) return null
+  if (!organizationId || !siteId || !id || row.kind !== 'promise' || row.status !== 'active' || !title || !source) return null
 
   return {
-    id: stringValue(row.id) ?? '',
+    id,
     organizationId,
     siteId,
     kind: 'promise',
@@ -170,6 +171,12 @@ function recordOrder(a: StructuredPromiseRecord, b: StructuredPromiseRecord): nu
   )
 }
 
+function recordKey(record: StructuredPromiseRecord, row: UnknownRecord): string {
+  const dedupeKey = stringValue(row.dedupe_key)
+  if (dedupeKey) return `dedupe:${record.organizationId}:${record.siteId}:${dedupeKey}`
+  return `id:${record.organizationId}:${record.siteId}:${record.id}`
+}
+
 /**
  * Read model structuré : il ne reconnaît jamais une promesse depuis du texte.
  * Les deux tables sont filtrées par tenant avant toute projection métier.
@@ -202,21 +209,27 @@ export async function getStructuredPromiseRecords(
   if (capturedError) throw capturedError
   if (proposalError) throw proposalError
 
-  const byId = new Map<string, StructuredPromiseRecord>()
+  const byKey = new Map<string, StructuredPromiseRecord>()
   for (const row of (capturedRows ?? []) as unknown[]) {
     if (!isRecord(row) || TERMINAL_CAPTURED_STATUSES.has(String(row.status))) continue
+    if (!organizationIds.includes(String(row.organization_id))) continue
+    if (siteIds && !siteIds.includes(String(row.site_id))) continue
     const record = capturedRecord(row)
     if (!record) continue
-    const previous = byId.get(record.id)
-    if (!previous || recordOrder(record, previous) < 0) byId.set(record.id, record)
+    const key = recordKey(record, row)
+    const previous = byKey.get(key)
+    if (!previous || recordOrder(record, previous) < 0) byKey.set(key, record)
   }
   for (const row of (proposalRows ?? []) as unknown[]) {
     if (!isRecord(row) || TERMINAL_PROPOSAL_STATUSES.has(String(row.status))) continue
+    if (!organizationIds.includes(String(row.organization_id))) continue
+    if (siteIds && !siteIds.includes(String(row.site_id))) continue
     const record = proposalRecord(row)
     if (!record) continue
-    const previous = byId.get(record.id)
-    if (!previous || recordOrder(record, previous) < 0) byId.set(record.id, record)
+    const key = recordKey(record, row)
+    const previous = byKey.get(key)
+    if (!previous || recordOrder(record, previous) < 0) byKey.set(key, record)
   }
 
-  return [...byId.values()].sort(recordOrder)
+  return [...byKey.values()].sort(recordOrder)
 }

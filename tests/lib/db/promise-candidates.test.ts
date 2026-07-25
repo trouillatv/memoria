@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const queries: Array<{ table: string; select: string; filters: Array<{ method: string; args: unknown[] }> }> = []
 let rowsByTable: Record<string, unknown[]> = {}
+let queryError: Error | null = null
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
@@ -22,7 +23,7 @@ vi.mock('@/lib/supabase/admin', () => ({
           return query
         },
         then(resolve: (value: { data: unknown[]; error: null }) => unknown) {
-          return Promise.resolve(resolve({ data: rowsByTable[table] ?? [], error: null }))
+          return Promise.resolve(resolve({ data: rowsByTable[table] ?? [], error: queryError }))
         },
       }
       return query
@@ -73,6 +74,7 @@ function proposal(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   queries.length = 0
   rowsByTable = { captured_knowledge: [], site_knowledge_proposals: [] }
+  queryError = null
 })
 
 describe('getStructuredPromiseRecords', () => {
@@ -118,6 +120,24 @@ describe('getStructuredPromiseRecords', () => {
     ]
 
     await expect(getStructuredPromiseRecords([orgId])).resolves.toEqual([])
+  })
+
+  it('ne restitue pas une ligne étrangère même si le mock renvoie des données hors filtre', async () => {
+    rowsByTable.captured_knowledge = [captured({ organization_id: 'org-b' })]
+
+    await expect(getStructuredPromiseRecords([orgId])).resolves.toEqual([])
+  })
+
+  it('rejette une ligne captured sans identifiant persistant', async () => {
+    rowsByTable.captured_knowledge = [captured({ id: null })]
+
+    await expect(getStructuredPromiseRecords([orgId])).resolves.toEqual([])
+  })
+
+  it('propage les erreurs Supabase', async () => {
+    queryError = new Error('database unavailable')
+
+    await expect(getStructuredPromiseRecords([orgId])).rejects.toThrow('database unavailable')
   })
 
   it('mappe une deadline explicitement qualifiée comme engagement avec dueAt timezone-aware', async () => {
@@ -173,12 +193,15 @@ describe('getStructuredPromiseRecords', () => {
   })
 
   it('déduplique par identité persistante de manière déterministe', async () => {
-    rowsByTable.captured_knowledge = [captured(), captured({ title: 'Version dupliquée' })]
+    rowsByTable.site_knowledge_proposals = [
+      proposal({ id: 'proposal-a' }),
+      proposal({ id: 'proposal-b', title: 'Version dupliquée' }),
+    ]
 
     const records = await getStructuredPromiseRecords([orgId])
 
     expect(records).toHaveLength(1)
-    expect(records[0].title).toBe('Le planning sera diffusé vendredi')
+    expect(records[0].title).toBe('L’électricien interviendra le 30 juillet')
   })
 
   it('n’analyse ni le texte, ni les preuves liées, et ne produit aucune confirmation', async () => {
