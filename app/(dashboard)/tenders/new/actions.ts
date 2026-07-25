@@ -18,6 +18,7 @@ import {
   attachTenderToDossier,
 } from '@/lib/db/tenders'
 import { detectPieceKind } from '@/lib/tenders/pieces'
+import { canAccessTenderForUpload } from '@/lib/tenders/upload-access'
 
 async function requireManagerOrAdmin() {
   const supabase = await createServerClient()
@@ -31,6 +32,39 @@ async function requireManagerOrAdmin() {
 const MAX_PDF_BYTES = 20 * 1024 * 1024 // 20 MB
 /** Un dossier d'AO tient en une dizaine de pièces ; au-delà, c'est une erreur de dépôt. */
 const MAX_PIECES = 12
+
+type UploadTenderRow = {
+  id: string
+  organization_id: string | null
+  created_by: string
+  deleted_at: string | null
+}
+
+async function getUploadTender(id: string, userId: string): Promise<UploadTenderRow | null> {
+  const organizationIds = await getOrgIdsOfUser()
+  const { data, error } = await createAdminClient()
+    .from('tenders')
+    .select('id, organization_id, created_by, deleted_at')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) {
+    console.error('[tender-upload] tender lookup failed:', error.message)
+    return null
+  }
+  const tender = data as UploadTenderRow | null
+  if (!tender || !canAccessTenderForUpload(tender, userId, organizationIds)) return null
+  return tender
+}
+
+async function listUploadDocuments(tenderId: string) {
+  const { data, error } = await createAdminClient()
+    .from('tender_documents')
+    .select('id, size_bytes')
+    .eq('tender_id', tenderId)
+    .order('uploaded_at', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
 
 const createSchema = z.object({
   title: z.string().min(1).max(200),
@@ -88,10 +122,10 @@ export async function createTenderDraftAction(formData: FormData) {
 
 /** Envoie exactement une pièce : la requête reste sous la limite Vercel. */
 export async function uploadTenderPieceAction(formData: FormData) {
-  await requireManagerOrAdmin()
+  const userId = await requireManagerOrAdmin()
   const parsed = tenderIdSchema.safeParse({ id: formData.get('id') })
   if (!parsed.success) return { error: 'Dossier invalide' }
-  const tender = await getTender(parsed.data.id)
+  const tender = await getUploadTender(parsed.data.id, userId)
   if (!tender) return { error: 'Dossier introuvable' }
 
   const files = formData.getAll('file').filter((f): f is File => f instanceof File && f.size > 0)
@@ -99,7 +133,7 @@ export async function uploadTenderPieceAction(formData: FormData) {
   const file = files[0]
   if (file.type !== 'application/pdf') return { error: `Format PDF requis : ${file.name}` }
   if (file.size > MAX_PDF_BYTES) return { error: `Pièce trop lourde (> 20 Mo) : ${file.name}` }
-  const existing = await listTenderDocuments(parsed.data.id)
+  const existing = await listUploadDocuments(parsed.data.id)
   if (existing.length >= MAX_PIECES) return { error: `Le dossier dépasserait ${MAX_PIECES} pièces.` }
 
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100)
@@ -116,6 +150,7 @@ export async function uploadTenderPieceAction(formData: FormData) {
     storage_path: storagePath,
     filename: file.name,
     size_bytes: file.size,
+    organization_id: tender.organization_id,
     page_count: 0,
     extracted_text: null,
     kind: detectPieceKind(file.name),
@@ -128,9 +163,9 @@ export async function finalizeTenderUploadAction(formData: FormData) {
   const userId = await requireManagerOrAdmin()
   const parsed = tenderIdSchema.safeParse({ id: formData.get('id') })
   if (!parsed.success) return { error: 'Dossier invalide' }
-  const tender = await getTender(parsed.data.id)
+  const tender = await getUploadTender(parsed.data.id, userId)
   if (!tender) return { error: 'Dossier introuvable' }
-  const pieces = await listTenderDocuments(parsed.data.id)
+  const pieces = await listUploadDocuments(parsed.data.id)
   if (pieces.length === 0) return { error: 'Aucune pièce n’a été enregistrée' }
 
   await updateTenderStatus(parsed.data.id, 'extracting')

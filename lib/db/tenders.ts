@@ -339,6 +339,7 @@ export async function createTenderDocument(input: {
   storage_path: string
   filename: string
   size_bytes: number
+  organization_id?: string | null
   page_count?: number | null
   extracted_text?: string | null
   extraction_source?: 'native' | 'ocr'
