@@ -199,7 +199,6 @@ type OperationalSignal = {
   rules: SignalRule[]
   sources: SourceRef[]
   actions: SuggestedAction[]
-  presentations: SignalPresentation[]
   confidence: number | null
   dedupeKey: string
   detectedAt: string
@@ -233,6 +232,26 @@ Le `trigger` est structuré en deux dimensions :
 type   = old_action
 reason = object_aging
 ```
+
+### 11.1 Invariants temporels et provenance
+
+Un `SignalFact` distingue `occurredAt` (moment du fait), `dueAt` (échéance
+métier) et `validUntil` (fin de validité de l'affirmation). Une échéance
+dépassée reste donc un fait métier ; elle ne devient pas automatiquement un
+fait invalide.
+
+Pour un fait produit par `rules`, `confidence` vaut toujours `null`. Une
+confiance chiffrée est réservée aux faits extraits ou rapprochés par `mixed`
+ou `ai`.
+
+Les couples `trigger.type/reason` sont contrôlés par le catalogue discriminé du
+contrat : un détecteur ne doit pas fabriquer librement une combinaison
+incohérente.
+
+`MemoryEvent.payload` reste minimal et contient uniquement les changements
+utiles à l'audit (`previousStatus`, `newStatus`, `dueAt`, etc.), jamais une
+copie complète de l'objet métier. `SignalPresentation` est une projection
+externe calculée par chaque presenter et ne fait pas partie de `MemorySignal`.
 
 `MemoryEvent` est le contrat futur des événements métier qui alimenteront les
 détecteurs : visite validée, action créée ou terminée, photo ajoutée, réunion

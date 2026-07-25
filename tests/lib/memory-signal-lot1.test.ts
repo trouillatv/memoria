@@ -35,6 +35,12 @@ describe('Lot 1 — adaptateurs MemorySignal', () => {
       confidence: null,
       state: 'active',
     })
+    expect(signal?.facts[0]).toMatchObject({
+      confidence: null,
+      occurredAt: null,
+      dueAt: null,
+      validUntil: null,
+    })
   })
 
   it('refuse de classer une ancienne ligne non annotée par son libellé', () => {
@@ -58,10 +64,17 @@ describe('Lot 1 — adaptateurs MemorySignal', () => {
       actionId: 'action-1',
     }
 
-    expect(nowItemToMemorySignal(item, '2026-07-25T08:00:00.000Z')).toMatchObject({
+    const signal = nowItemToMemorySignal(item, '2026-07-25T08:00:00.000Z')
+    expect(signal).toMatchObject({
       category: 'priority',
       actionability: 'direct',
       actions: [{ kind: 'complete', label: 'Traiter' }],
+      confidence: null,
+    })
+    expect(signal.facts[0]).toMatchObject({
+      dueAt: '2026-07-25',
+      occurredAt: null,
+      validUntil: null,
       confidence: null,
     })
   })

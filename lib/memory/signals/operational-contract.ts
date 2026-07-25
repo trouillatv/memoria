@@ -13,36 +13,24 @@ export type OperationalSignalSeverity = 'info' | 'warning' | 'critical'
 export type OperationalSignalState = 'active' | 'acknowledged' | 'resolved' | 'dismissed' | 'expired'
 export type OperationalActionability = 'direct' | 'investigate' | 'observe'
 export type OperationalSignalOrigin = 'rules' | 'mixed' | 'ai'
-export type OperationalSignalTriggerType =
-  | 'old_action'
-  | 'open_reserve'
-  | 'missing_company'
-  | 'missing_contact'
-  | 'missing_attachment'
-  | 'planning_conflict'
-  | 'promise'
-  | 'question'
-  | 'contradiction'
-  | 'staleness'
-  | 'health'
-  | 'imminent_passage'
-  | 'overdue_deadline'
+export type OperationalSignalTrigger =
+  | { type: 'old_action'; reason: 'object_aging' | 'deadline_overdue' }
+  | { type: 'open_reserve'; reason: 'object_aging' }
+  | { type: 'missing_company'; reason: 'company_not_linked' | 'company_not_created' | 'company_archived' }
+  | { type: 'missing_contact'; reason: 'contact_not_identified' }
+  | { type: 'missing_attachment'; reason: 'attachment_missing' }
+  | { type: 'planning_conflict'; reason: 'planning_conflict' }
+  | { type: 'promise'; reason: 'promise_expired' }
+  | { type: 'question'; reason: 'question_unanswered' }
+  | { type: 'contradiction'; reason: 'facts_incompatible' }
+  | { type: 'staleness'; reason: 'object_aging' | 'activity_missing' }
+  | { type: 'health'; reason: 'activity_missing' }
+  | { type: 'imminent_passage'; reason: 'passage_imminent' }
+  | { type: 'overdue_deadline'; reason: 'deadline_overdue' }
 
-export type OperationalSignalReason =
-  | 'company_not_linked'
-  | 'company_not_created'
-  | 'company_archived'
-  | 'contact_not_identified'
-  | 'attachment_missing'
-  | 'planning_conflict'
-  | 'promise_expired'
-  | 'question_unanswered'
-  | 'facts_incompatible'
-  | 'object_aging'
-  | 'activity_missing'
-  | 'deadline_overdue'
-  | 'passage_imminent'
-  | 'other'
+/** Union de compatibilité pour les catalogues et métadonnées de migration. */
+export type OperationalSignalTriggerType = OperationalSignalTrigger['type']
+export type OperationalSignalReason = OperationalSignalTrigger['reason']
 
 export type OperationalImportance = 'critical' | 'high' | 'normal' | 'low'
 export type OperationalUrgency = 'now' | 'today' | 'week' | 'later'
@@ -67,6 +55,8 @@ export type SignalFact = {
   confidence: number | null
   sourceIds: string[]
   detectedAt: string
+  occurredAt: string | null
+  dueAt: string | null
   validUntil: string | null
 }
 
@@ -94,10 +84,7 @@ export type MemorySignal = {
   organizationId: string
   siteId: string
   category: OperationalSignalCategory
-  trigger: {
-    type: OperationalSignalTriggerType
-    reason: OperationalSignalReason
-  }
+  trigger: OperationalSignalTrigger
   severity: OperationalSignalSeverity
   importance: OperationalImportance
   urgency: OperationalUrgency
@@ -119,10 +106,7 @@ export type MemorySignal = {
 /** Annotation portée par les anciens read models pendant la migration. */
 export type OperationalSignalMeta = {
   category: OperationalSignalCategory
-  trigger: {
-    type: OperationalSignalTriggerType
-    reason: OperationalSignalReason
-  }
+  trigger: OperationalSignalTrigger
   actionability: OperationalActionability
   origin: OperationalSignalOrigin
   dedupeKey: string
