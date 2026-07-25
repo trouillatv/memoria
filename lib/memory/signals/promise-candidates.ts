@@ -33,7 +33,7 @@ export function buildPromiseCandidates(records: StructuredPromiseRecord[]): Prom
   const candidates: PromiseCandidate[] = []
   for (const record of records) {
     if (record.kind !== 'promise' || seen.has(record.id) || !record.title.trim()) continue
-    if (!record.dueAt || !hasExplicitTimezone(record.dueAt)) continue
+    if (record.dueAt !== null && !hasExplicitTimezone(record.dueAt)) continue
     seen.add(record.id)
     candidates.push({
       id: record.id,

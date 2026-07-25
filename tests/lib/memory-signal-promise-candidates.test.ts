@@ -23,6 +23,23 @@ describe('PromiseCandidateBuilder', () => {
     expect(buildPromiseCandidates([record({ kind: 'question' })])).toHaveLength(0)
   })
 
+  it('construit un candidat sans échéance pour une promesse explicitement qualifiée', () => {
+    expect(buildPromiseCandidates([record({ dueAt: null })])).toEqual([expect.objectContaining({
+      id: 'promise-1', text: 'Le planning sera diffusé vendredi.', dueAt: null,
+    })])
+  })
+
+  it('n’interprète pas le texte pour fabriquer une échéance', () => {
+    expect(buildPromiseCandidates([record({ dueAt: null, body: 'vendredi prochain' })])).toEqual([expect.objectContaining({
+      dueAt: null,
+    })])
+  })
+
+  it('ignore une date fournie qui est invalide ou sans fuseau', () => {
+    expect(buildPromiseCandidates([record({ dueAt: '2026-07-25T23:59:59' })])).toHaveLength(0)
+    expect(buildPromiseCandidates([record({ dueAt: 'not-a-date' })])).toHaveLength(0)
+  })
+
   it('ne crée pas un nouvel identifiant quand la même ligne est répétée', () => {
     expect(buildPromiseCandidates([record(), record({ title: 'Planning diffusé vendredi.' })])).toHaveLength(1)
   })
