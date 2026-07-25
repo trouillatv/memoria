@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react'
+import { useRef, useState, type DragEvent, type FormEvent } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { createTenderAction } from './actions'
+import { createTenderDraftAction, uploadTenderPieceAction, finalizeTenderUploadAction } from './actions'
 import { toast } from 'sonner'
 import { Upload, FileText, X } from 'lucide-react'
 import { detectPieceKind, tenderPieceLabel } from '@/lib/tenders/pieces'
@@ -20,21 +21,17 @@ function formatSize(bytes: number): string {
 }
 
 export function TenderUploadForm({ dossierId, orgs }: { dossierId?: string; orgs?: OrgOption[] }) {
+  const router = useRouter()
   const [pending, setPending] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [draftTenderId, setDraftTenderId] = useState<string | null>(null)
+  const [uploadedCount, setUploadedCount] = useState(0)
+  const [activeUploadIndex, setActiveUploadIndex] = useState<number | null>(null)
   // Un appel d'offres est un DOSSIER : RC, CCAP, CCTP, DPGF, BPU, plans. On en
   // accepte plusieurs — une seule pièce reste un dépôt valide.
   const [files, setFiles] = useState<File[]>([])
   const [dragOver, setDragOver] = useState(false)
-  const [elapsed, setElapsed] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
-
-  // Compteur de temps pendant l'envoi (alimente la barre de progression).
-  useEffect(() => {
-    if (!pending) return
-    setElapsed(0)
-    const t = setInterval(() => setElapsed((e) => e + 1), 1000)
-    return () => clearInterval(t)
-  }, [pending])
 
   /** L'input réel porte les fichiers dans le FormData : on le tient synchronisé. */
   function syncInput(next: File[]) {
@@ -95,11 +92,53 @@ export function TenderUploadForm({ dossierId, orgs }: { dossierId?: string; orgs
       return
     }
     setPending(true)
-    const fd = new FormData(e.currentTarget)
-    const r = await createTenderAction(fd)
-    setPending(false)
-    if (r && 'error' in r) toast.error(r.error)
-    // success → redirect happens server-side
+    setSubmitError(null)
+    try {
+      let tenderId = draftTenderId
+      if (!tenderId) {
+        const draftFd = new FormData(e.currentTarget)
+        draftFd.delete('file')
+        const draft = await createTenderDraftAction(draftFd)
+        if ('error' in draft) {
+          setSubmitError(draft.error ?? 'Création du dossier impossible')
+          toast.error(draft.error ?? 'Création du dossier impossible')
+          return
+        }
+        tenderId = draft.tenderId
+        setDraftTenderId(tenderId)
+      }
+
+      for (let index = uploadedCount; index < files.length; index += 1) {
+        setActiveUploadIndex(index)
+        const pieceFd = new FormData()
+        pieceFd.set('id', tenderId)
+        pieceFd.set('file', files[index])
+        const uploaded = await uploadTenderPieceAction(pieceFd)
+        if ('error' in uploaded) {
+          setSubmitError(uploaded.error ?? 'Envoi de la pièce impossible')
+          toast.error(uploaded.error ?? 'Envoi de la pièce impossible')
+          return
+        }
+        setUploadedCount(index + 1)
+      }
+
+      const finalizeFd = new FormData()
+      finalizeFd.set('id', tenderId)
+      const finalized = await finalizeTenderUploadAction(finalizeFd)
+      if ('error' in finalized) {
+        setSubmitError(finalized.error ?? 'Finalisation impossible')
+        toast.error(finalized.error ?? 'Finalisation impossible')
+        return
+      }
+      router.push(`/tenders/${tenderId}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erreur inattendue pendant l’envoi'
+      setSubmitError(message)
+      toast.error(message)
+    } finally {
+      setPending(false)
+      setActiveUploadIndex(null)
+    }
   }
 
   return (
@@ -215,13 +254,21 @@ export function TenderUploadForm({ dossierId, orgs }: { dossierId?: string; orgs
                   className="h-full rounded-full bg-primary transition-[width] duration-700 ease-out"
                   // Envoi des pièces (~10 s typiques) : progresse vers ~90 % puis
                   // la page redirige vers le dossier où l'analyse continue.
-                  style={{ width: `${Math.min(90, Math.round((1 - Math.exp(-elapsed / 6)) * 100))}%` }}
+                  style={{ width: `${files.length ? Math.round((uploadedCount / files.length) * 100) : 0}%` }}
                 />
               </div>
               <p className="text-[11px] text-muted-foreground text-center">
-                Envoi des pièces puis redirection vers le dossier — l&apos;analyse s&apos;y poursuit.
+                {activeUploadIndex === null
+                  ? 'Préparation du dossier…'
+                  : `Envoi de la pièce ${activeUploadIndex + 1} sur ${files.length}…`}
               </p>
             </div>
+          )}
+
+          {submitError && (
+            <p role="alert" className="text-sm text-rose-700">
+              {submitError} — vérifiez votre connexion puis réessayez.
+            </p>
           )}
         </form>
       </CardContent>
