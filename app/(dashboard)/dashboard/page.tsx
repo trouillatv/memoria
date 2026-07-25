@@ -12,7 +12,9 @@ import { getSitesDashboard } from '@/lib/db/sites-dashboard'
 import { getNowDashboard } from '@/lib/db/now-dashboard'
 import { getMemoryReview, type MemoryReview } from '@/lib/knowledge/memory-review'
 import { getDashboardDeadlinesToPlan } from '@/lib/db/dashboard-deadlines'
+import { getStructuredPromiseRecords } from '@/lib/db/promise-candidates'
 import { attentionItemToMemorySignal, nowItemToMemorySignal } from '@/lib/memory/signals/lot1-adapters'
+import { detectPromiseSignalsFromRecords } from '@/lib/memory/signals/promise-pipeline'
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardPremium } from './DashboardPremium'
 
@@ -40,13 +42,14 @@ export default async function DashboardPage() {
   const orgLabels: OrgLabels = rawOrgLabels
   const orgNames = rawOrgLabels ? Object.values(rawOrgLabels) : []
 
-  const [attention, visit, aSavoir, upcoming, sites, deadlinesToPlan] = await Promise.all([
+  const [attention, visit, aSavoir, upcoming, sites, deadlinesToPlan, promiseRecords] = await Promise.all([
     getAttentionDigest(5),
     getVisitImpact().catch(() => emptyVisitImpact()),
     listLivingASavoir(4),
     getUpcomingItems(orgIds, 30, organizationMap ?? undefined),
     getSitesDashboard(orgIds, organizationMap ?? undefined),
     getDashboardDeadlinesToPlan(orgIds, organizationMap ?? {}),
+    getStructuredPromiseRecords(orgIds),
   ])
   const visitReviews = Object.fromEntries(await Promise.all(
     visit.sites.map(async (site) => [
@@ -54,10 +57,13 @@ export default async function DashboardPage() {
       await getMemoryReview(site.siteId, { includeWork: true }).catch(() => ({ confirmed: [], toReview: [] }) as MemoryReview),
     ] as const),
   )) as Record<string, MemoryReview>
+  const promiseSignals = detectPromiseSignalsFromRecords(promiseRecords)
   const now = await getNowDashboard(orgIds, upcoming, organizationMap ?? {})
-  const attentionSignals = [...attention.red, ...attention.orange]
-    .map((item) => attentionItemToMemorySignal(item))
-    .filter((signal): signal is NonNullable<typeof signal> => signal !== null)
+  const attentionSignals = [
+    ...attention.red.map((item) => attentionItemToMemorySignal(item)),
+    ...attention.orange.map((item) => attentionItemToMemorySignal(item)),
+    ...promiseSignals,
+  ].filter((signal): signal is NonNullable<typeof signal> => signal !== null)
   const nowSignals = now.items.map((item) => nowItemToMemorySignal(item))
 
   return (
