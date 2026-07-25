@@ -15,9 +15,8 @@
 ## File map
 
 - Modify `app/(dashboard)/tenders/[id]/audit/page.tsx`: load the full tender document list and the provenance read model for the current tender.
-- Modify `app/(dashboard)/tenders/[id]/audit/DocumentAudit.tsx`: render the six document selector, the selected PDF, and the engagement provenance states.
+- Modify `app/(dashboard)/tenders/[id]/audit/DocumentAudit.tsx`: render the full document selector, the selected PDF, and the engagement provenance states.
 - Create or modify audit helpers as needed in `app/(dashboard)/tenders/[id]/audit/` to keep the page thin.
-- Modify `app/(dashboard)/tenders/[id]/engagement-curation-view.tsx` in a second sub-tranche after audit validation.
 - Add focused tests for the audit read model consumer and the provenance-driven navigation.
 - Add doctrine guards for any residual UI use of `source_ref.page` as authoritative provenance.
 
@@ -39,6 +38,7 @@ unavailable    → explicit "Source non localisée" + no arbitrary document sele
 ```
 
 Add a test that proves legacy `source_ref.page` alone does not promote an engagement to a navigable source.
+Add a test that proves the audit opens with a document chosen only as the initial consultation target, not as a demonstrated source.
 
 - [ ] **Step 2: Branch the audit page onto the structured read model.**
 
@@ -49,10 +49,11 @@ The audit page must read:
 - `listTenderEngagementProvenance(tenderId)`.
 
 It must pass the read-model rows to the audit component instead of the legacy raw engagement rows.
+The audit page must not fabricate a fixed document count; it consumes the complete tender document list for the current tender.
 
-- [ ] **Step 3: Render the six documents as a selector.**
+- [ ] **Step 3: Render the documents as a selector.**
 
-The audit UI must display the six tender documents as a first-class list and allow manual selection of a document even when no engagement is selected.
+The audit UI must display the complete tender document list as a first-class selector and allow manual selection of a document even when no engagement is selected.
 
 Selection should be explicit and stable:
 
@@ -61,6 +62,15 @@ document list
 → selected document
 → selected page if provenance is exact
 ```
+
+Initial selection rules:
+
+- if documents exist, select the first document only as the initial consultation target;
+- the initial selection is never presented as demonstrated provenance;
+- if no document exists, show an empty state;
+- `unavailable` never changes the currently selected document;
+- `document_only` selects its document and clears the page;
+- `exact` selects its document and its page.
 
 - [ ] **Step 4: Navigate from provenance states without inventing anything.**
 
@@ -72,6 +82,14 @@ Behavior:
 
 Never pick a fallback PDF by recency, order, or filename similarity.
 
+PDF URL strategy:
+
+- inspect the existing reader mechanism first;
+- prefer a signed URL only for the currently selected document if the bucket/privacy model allows it;
+- if pre-signing multiple URLs is acceptable, make that choice explicit in the implementation and tests;
+- never expose a raw Storage path as a usable URL;
+- keep document changes client-side when the reader supports it.
+
 - [ ] **Step 5: Verify the audit consumer tests.**
 
 Run the focused audit tests that exercise the read-model consumption and the three provenance states.
@@ -80,17 +98,16 @@ Run the focused audit tests that exercise the read-model consumption and the thr
 
 Commit only the audit read-model consumer changes and tests once they pass.
 
-### Task 2: Remove legacy UI authority from `source_ref.page`
+### Task 2: Remove legacy UI authority from `source_ref.page` in the audit screen
 
 **Files:**
 - Modify `app/(dashboard)/tenders/[id]/audit/page.tsx`
 - Modify `app/(dashboard)/tenders/[id]/audit/DocumentAudit.tsx`
-- Modify `app/(dashboard)/tenders/[id]/engagement-curation-view.tsx`
 - Add doctrine coverage if needed
 
 - [ ] **Step 1: Identify every UI read of `source_ref.page` that acts as authority.**
 
-The UI may still display `source_ref` as historical context in non-source-critical places, but it must not use it as the source of truth for page navigation or source selection.
+The UI may still display historical context from `source_ref` in non-source-critical places, but it must not use `source_ref.page` as the source of truth for page navigation or source selection.
 
 - [ ] **Step 2: Replace authoritative `source_ref.page` reads with structured provenance.**
 
@@ -100,9 +117,9 @@ Display the persisted provenance state and structured page from the read model. 
 
 Guard that the audit UI and curation UI do not treat `source_ref.page` as the authoritative source of navigation.
 
-- [ ] **Step 4: Verify no residual UI dependency remains.**
+- [ ] **Step 4: Verify no residual audit dependency remains.**
 
-Run the focused audit and curation tests that cover the visible provenance states and navigation behaviors.
+Run the focused audit tests that cover the visible provenance states and navigation behaviors.
 
 - [ ] **Step 5: Commit the UI authority cleanup.**
 
@@ -132,7 +149,11 @@ Do not change grouping, editing, bulk actions, or status transitions. This sub-t
 
 Ensure the rendered labels come from structured provenance and not from legacy page heuristics.
 
-- [ ] **Step 4: Commit the curation display update.**
+- [ ] **Step 4: Add doctrine guards for the curation screen.**
+
+Guard that curation does not reintroduce `source_ref.page` as navigable authority.
+
+- [ ] **Step 5: Commit the curation display update.**
 
 Commit only the display changes and tests after verification.
 
@@ -143,7 +164,7 @@ Commit only the display changes and tests after verification.
 
 - [ ] **Step 1: Create a recipe on a fresh tender with structured provenance.**
 
-Use a newly extracted tender where at least one engagement has `exact` provenance and at least one has `document_only` or `unavailable`.
+Use a newly extracted tender fixture where at least one engagement has `exact` provenance and verify any additional states that naturally exist in the data. Do not alter a real engagement just to manufacture a state.
 
 - [ ] **Step 2: Verify audit navigation end to end.**
 
