@@ -6,6 +6,8 @@
 
 **Architecture:** Add nullable structured provenance to `engagements`, enforce the document/tender relationship in PostgreSQL, and derive the three-state provenance value from the two nullable columns. During engagement extraction, the server validates the citation, resolves a uniquely matching document in the same tender, and writes the structured provenance; the audit read model only reads these persisted fields and never infers from `source_ref.page`.
 
+**Boundary:** A future validator may carry `tender_document_id` directly, but this tranche must not depend on that contract or modify the validator for it. The current implementation resolves the uniquely matching filename deterministically at the server boundary.
+
 **Tech Stack:** Supabase PostgreSQL migrations, TypeScript, Zod/AI extraction services, Vitest unit tests, Supabase integration tests.
 
 ---
