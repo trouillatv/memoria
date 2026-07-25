@@ -61,6 +61,7 @@ export const INTEGRATION_TESTS: string[] = [
   'tests/lib/template-stats.test.ts',
   'tests/lib/tender-memory-list.test.ts',
   'tests/lib/tender-memory.test.ts',
+  'tests/lib/tender-engagement-provenance.integration.test.ts',
   'tests/lib/tender-outcome.test.ts',
   'tests/lib/tender-voice-note.test.ts',
   'tests/lib/visit-finalize.test.ts',
