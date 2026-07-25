@@ -2,7 +2,7 @@
 
 ## Objectif
 
-Faire apparaître dans « Ce qui mérite votre attention aujourd’hui » les engagements futurs structurés, échus et non confirmés, sans nouvelle analyse IA et sans transformer automatiquement une échéance en promesse.
+Faire apparaître dans « Ce qui mérite votre attention aujourd’hui » les engagements futurs structurés qui sont soit échus, soit suffisamment anciens pour nécessiter une confirmation, sans nouvelle analyse IA et sans transformer automatiquement une échéance en promesse.
 
 ## Périmètre validé
 
@@ -19,6 +19,40 @@ sources persistées structurées
 
 `À faire maintenant` ne consomme un signal de promesse que lorsqu’une action directe, réelle et suffisamment prioritaire existe. Il ne doit pas reproduire la formulation diagnostique du panneau Attention.
 
+## Deux niveaux de signaux
+
+Une date structurée est obligatoire pour diagnostiquer un retard, mais elle ne doit pas conditionner l’existence d’un signal de suivi.
+
+### `PromiseExpired`
+
+Produit par `PromiseDetector` lorsque :
+
+- la promesse est explicitement qualifiée ;
+- `dueAt` est connu, valide et porte un fuseau ;
+- la date est dépassée ;
+- aucune confirmation plus récente n’existe.
+
+Le signal peut parler d’échéance dépassée ou de retard. Il ne doit jamais inventer une date.
+
+### `PromiseNeedsConfirmation`
+
+Produit par un détecteur indépendant lorsque :
+
+- la ligne est explicitement qualifiée comme `promise` ;
+- aucune confirmation plus récente n’existe ;
+- l’engagement est suffisamment ancien selon une règle déterministe ;
+- `dueAt` est absent ou non résolu.
+
+Ce signal ne parle jamais de retard. Il utilise un vocabulaire de suivi : « Annonce à confirmer », « Engagement sans retour » ou « Information en attente ». Il permet de faire remonter « Le planning sera diffusé prochainement » ou « L’accès sera communiqué sous peu » sans déduire de date.
+
+Il porte le même type métier `promise`, mais un déclencheur distinct :
+
+```ts
+{ type: 'promise', reason: 'promise_without_due_date' }
+```
+
+et reste `actionability: 'investigate'`.
+
 ## Sources admissibles
 
 ### `captured_knowledge`
@@ -31,7 +65,7 @@ Source principale lorsque :
 - un `dueAt` structuré avec fuseau est fourni par le read model ;
 - la source d’origine peut être résolue vers un `SourceRef`.
 
-Le schéma actuel de `captured_knowledge` ne possède pas de colonne `dueAt`. Le read model ne doit donc pas lire la date dans `title` ou `body`, ni interpréter une phrase libre. Tant qu’aucune échéance structurée liée n’est disponible, la ligne ne produit aucun candidat de promesse.
+Le schéma actuel de `captured_knowledge` ne possède pas de colonne `dueAt`. Le read model ne doit donc pas lire la date dans `title` ou `body`, ni interpréter une phrase libre. Sans `dueAt`, la ligne ne produit pas de signal `PromiseExpired`, mais elle peut produire un signal `PromiseNeedsConfirmation` si elle est suffisamment ancienne et explicitement qualifiée.
 
 ### `site_knowledge_proposals`
 
@@ -50,7 +84,7 @@ Une échéance générique telle que « vérifier les installations électriques
 
 | Source | Colonnes / métadonnées | Qualification | Identité stable | `dueAt` | Source | Confirmation recherchée |
 |---|---|---|---|---|---|---|
-| `captured_knowledge` | `id`, `organization_id`, `site_id`, `kind`, `status`, `title`, `source_type`, `source_id`, `created_at` | `kind = 'promise'` | `captured_knowledge.id` | fourni par relation structurée, jamais extrait du texte | `source_type + source_id` | capture, visite, réunion ou objet métier postérieur explicitement confirmant |
+| `captured_knowledge` | `id`, `organization_id`, `site_id`, `kind`, `status`, `title`, `source_type`, `source_id`, `created_at` | `kind = 'promise'` | `captured_knowledge.id` | optionnel ; fourni par relation structurée, jamais extrait du texte | `source_type + source_id` | capture, visite, réunion ou objet métier postérieur explicitement confirmant |
 | `site_knowledge_proposals` | `id`, `organization_id`, `site_id`, `kind`, `status`, `title`, `body`, `payload`, `report_id`, `source_capture_ids`, `dedupe_key`, `promoted_object_id` | `kind = 'deadline'` + `payload.commitment = true` ou `payload.temporalNature = 'promise'` | `site_knowledge_proposals.id` | `payload.dueAt` ISO avec fuseau | `report_id` ou capture source | proposition promue, preuve qualifiée confirmante ou objet métier postérieur |
 
 ## Règles du read model
@@ -60,7 +94,7 @@ Une échéance générique telle que « vérifier les installations électriques
 1. filtrer par organisation et chantier autorisés ;
 2. conserver l’identifiant persistant de la ligne source ;
 3. construire une `SourceRef` cliquable ;
-4. refuser toute date sans fuseau ou invalide ;
+4. refuser toute date sans fuseau ou invalide pour `PromiseExpired` ;
 5. ne jamais reconnaître une promesse depuis `title` ou `body` ;
 6. séparer les preuves liées des preuves confirmantes ;
 7. rechercher les confirmations plus récentes ;
@@ -68,7 +102,7 @@ Une échéance générique telle que « vérifier les installations électriques
 9. dédupliquer une même promesse provenant des deux sources ;
 10. ne lancer aucun appel IA.
 
-Si les données actuelles ne fournissent pas de `dueAt` structuré, le résultat vide est attendu et préférable à une inférence silencieuse.
+Si les données actuelles ne fournissent pas de `dueAt` structuré, le résultat doit rester exploitable via `PromiseNeedsConfirmation`, sans jamais produire un diagnostic de retard.
 
 ## Déduplication
 
@@ -102,7 +136,18 @@ Une promesse échue et non confirmée produit un signal :
 }
 ```
 
-Le Presenter Attention affiche :
+Une promesse ancienne sans date produit un signal distinct :
+
+```ts
+{
+  category: 'promise',
+  trigger: { type: 'promise', reason: 'promise_without_due_date' },
+  actionability: 'investigate',
+  origin: 'rules',
+}
+```
+
+Le Presenter Attention affiche, pour `PromiseExpired` :
 
 - « Promesse non confirmée » ;
 - le sujet précis ;
@@ -110,6 +155,14 @@ Le Presenter Attention affiche :
 - le retard ;
 - la dernière information ;
 - la raison de remontée ;
+- les gestes effectivement disponibles.
+
+Pour `PromiseNeedsConfirmation`, il affiche à la place :
+
+- « Annonce à confirmer » ou « Engagement sans retour » ;
+- la dernière mention et sa date ;
+- l’absence de confirmation plus récente ;
+- aucun retard et aucune date inventée ;
 - les gestes effectivement disponibles.
 
 Le texte complet du compte-rendu n’est pas recopié dans la carte.
@@ -148,10 +201,12 @@ Les tests doivent couvrir :
 4. échéance générique sans qualification → aucun signal de promesse ;
 5. preuve liée uniquement → signal conservé ;
 6. preuve confirmante → signal absent ;
-7. proposition rejetée, promue ou remplacée → aucun signal ;
-8. identité stable conservée après modification du texte ;
-9. organisation étrangère → aucun candidat ;
-10. absence de `dueAt` structuré sur `captured_knowledge` → aucun signal et aucune analyse libre.
+7. promesse ancienne sans date → `PromiseNeedsConfirmation` ;
+8. proposition rejetée, promue ou remplacée → aucun signal ;
+9. identité stable conservée après modification du texte ;
+10. organisation étrangère → aucun candidat ;
+11. absence de `dueAt` structuré sur `captured_knowledge` → aucun `PromiseExpired`, mais possibilité d’un `PromiseNeedsConfirmation` ;
+12. `PromiseNeedsConfirmation` ne mentionne jamais de retard ni de date inventée.
 
 ## Hors périmètre
 
