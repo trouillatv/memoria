@@ -15,6 +15,7 @@ import { getDashboardDeadlinesToPlan } from '@/lib/db/dashboard-deadlines'
 import { getStructuredPromiseRecords } from '@/lib/db/promise-candidates'
 import { attentionItemToMemorySignal, nowItemToMemorySignal } from '@/lib/memory/signals/lot1-adapters'
 import { detectPromiseSignalsFromRecords } from '@/lib/memory/signals/promise-pipeline'
+import { composeAttentionCardsFromSignals } from '@/lib/situations/attention/compose'
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardPremium } from './DashboardPremium'
 
@@ -59,18 +60,19 @@ export default async function DashboardPage() {
   )) as Record<string, MemoryReview>
   const promiseSignals = detectPromiseSignalsFromRecords(promiseRecords)
   const now = await getNowDashboard(orgIds, upcoming, organizationMap ?? {})
-  const attentionSignals = [
+  const legacyAttentionSignals = [
     ...attention.red.map((item) => attentionItemToMemorySignal(item)),
     ...attention.orange.map((item) => attentionItemToMemorySignal(item)),
-    ...promiseSignals,
   ].filter((signal): signal is NonNullable<typeof signal> => signal !== null)
+  const attentionCards = composeAttentionCardsFromSignals(promiseSignals)
   const nowSignals = now.items.map((item) => nowItemToMemorySignal(item))
 
   return (
     <DashboardPremium
       firstName={user.full_name?.split(' ')[0] ?? ''}
       orgNames={orgNames}
-      attentionSignals={attentionSignals}
+      attentionSignals={legacyAttentionSignals}
+      attentionCards={attentionCards}
       visit={visit}
       upcoming={upcoming}
       sites={sites}
