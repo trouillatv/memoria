@@ -60,19 +60,21 @@ export function deriveEngagementProvenanceReadRow({
   pageNumber,
   document,
 }: EngagementProvenanceReadInput): EngagementProvenanceReadRow {
+  const hasMatchingDocument = document !== null && document.id === tenderDocumentId
+  const safeTenderDocumentId = hasMatchingDocument ? tenderDocumentId : null
+  const safePageNumber = hasMatchingDocument ? pageNumber : null
   const state = deriveEngagementProvenanceState({
-    tenderDocumentId,
-    pageNumber,
+    tenderDocumentId: safeTenderDocumentId,
+    pageNumber: safePageNumber,
   })
-  const joinedDocument = document?.id === tenderDocumentId ? document : null
 
   return {
     engagementId,
     tenderId,
     sourceRef,
-    documentId: tenderDocumentId,
-    filename: joinedDocument?.filename ?? null,
-    pageNumber,
+    documentId: safeTenderDocumentId,
+    filename: hasMatchingDocument ? document.filename : null,
+    pageNumber: safePageNumber,
     state,
   }
 }

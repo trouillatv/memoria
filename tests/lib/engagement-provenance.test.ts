@@ -38,14 +38,19 @@ describe('deriveEngagementProvenanceReadRow', () => {
 
   it('returns exact with the structured document, filename, page, and state', () => {
     const state: EngagementProvenanceState = 'exact'
+    const sourceRef = { section: '4.2' }
     expect(
       deriveEngagementProvenanceReadRow({
         ...baseRow,
+        sourceRef,
         tenderDocumentId: 'doc-1',
         pageNumber: 12,
         document: { id: 'doc-1', filename: 'CCAP.pdf' },
       }),
     ).toMatchObject({
+      engagementId: 'engagement-1',
+      tenderId: 'tender-1',
+      sourceRef,
       documentId: 'doc-1',
       filename: 'CCAP.pdf',
       pageNumber: 12,
@@ -54,18 +59,61 @@ describe('deriveEngagementProvenanceReadRow', () => {
   })
 
   it('returns document_only when the structured page is null', () => {
+    const sourceRef = { section: '5.1' }
     expect(
       deriveEngagementProvenanceReadRow({
         ...baseRow,
+        sourceRef,
         tenderDocumentId: 'doc-1',
         pageNumber: null,
         document: { id: 'doc-1', filename: 'CCAP.pdf' },
       }),
     ).toMatchObject({
+      engagementId: 'engagement-1',
+      tenderId: 'tender-1',
+      sourceRef,
       documentId: 'doc-1',
       filename: 'CCAP.pdf',
       pageNumber: null,
       state: 'document_only',
+    })
+  })
+
+  it('returns unavailable when a structured document has no joined document', () => {
+    expect(
+      deriveEngagementProvenanceReadRow({
+        ...baseRow,
+        tenderDocumentId: 'doc-1',
+        pageNumber: 12,
+        document: null,
+      }),
+    ).toMatchObject({
+      engagementId: 'engagement-1',
+      tenderId: 'tender-1',
+      sourceRef: null,
+      documentId: null,
+      filename: null,
+      pageNumber: null,
+      state: 'unavailable',
+    })
+  })
+
+  it('returns unavailable when the joined document id mismatches', () => {
+    expect(
+      deriveEngagementProvenanceReadRow({
+        ...baseRow,
+        tenderDocumentId: 'doc-1',
+        pageNumber: null,
+        document: { id: 'doc-2', filename: 'other.pdf' },
+      }),
+    ).toMatchObject({
+      engagementId: 'engagement-1',
+      tenderId: 'tender-1',
+      sourceRef: null,
+      documentId: null,
+      filename: null,
+      pageNumber: null,
+      state: 'unavailable',
     })
   })
 
@@ -79,6 +127,9 @@ describe('deriveEngagementProvenanceReadRow', () => {
         document: null,
       }),
     ).toMatchObject({
+      engagementId: 'engagement-1',
+      tenderId: 'tender-1',
+      sourceRef: { page: 12 },
       documentId: null,
       filename: null,
       pageNumber: null,
