@@ -7,10 +7,14 @@ export type PromiseCandidate = {
   text: string
   source: SourceRef
   occurredAt: string | null
-  /** Date déjà résolue par le read model ; le détecteur ne parse pas le texte. */
+  /** Identifiant persistant : jamais un index de phrase ou de tableau. */
+  /** Date ISO déjà résolue avec le fuseau du contexte ; le détecteur ne l'invente pas. */
   dueAt: string | null
   confirmedAt: string | null
-  proofSourceIds: string[]
+  confirmationSourceIds: string[]
+  relatedProofSourceIds: string[]
+  importance: 'critical' | 'high' | 'normal' | 'low'
+  blocking: boolean
 }
 
 export type PromiseDetectionContext = {
@@ -18,7 +22,8 @@ export type PromiseDetectionContext = {
 }
 
 function dueTimestamp(value: string): number | null {
-  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
+  const normalized = value
   const timestamp = Date.parse(normalized)
   return Number.isFinite(timestamp) ? timestamp : null
 }
@@ -36,13 +41,11 @@ export function detectPromiseSignals(
   if (!Number.isFinite(nowTimestamp)) return []
 
   return context.promises.flatMap((promise) => {
-    if (!promise.dueAt || promise.confirmedAt || promise.proofSourceIds.length > 0) return []
+    if (!promise.dueAt || promise.confirmedAt || promise.confirmationSourceIds.length > 0) return []
     const dueTimestampValue = dueTimestamp(promise.dueAt)
     if (dueTimestampValue === null || dueTimestampValue >= nowTimestamp) return []
 
-    const ageDays = Math.max(1, Math.floor((nowTimestamp - dueTimestampValue) / 86_400_000))
-    const critical = ageDays >= 7
-    const sourceIds = [promise.source.id, ...promise.proofSourceIds]
+    const critical = promise.blocking
     return [{
       id: `promise-expired:${promise.siteId}:${promise.id}`,
       organizationId: promise.organizationId,
@@ -50,7 +53,7 @@ export function detectPromiseSignals(
       category: 'promise',
       trigger: { type: 'promise', reason: 'promise_expired' },
       severity: critical ? 'critical' : 'warning',
-      importance: critical ? 'critical' : 'high',
+      importance: promise.importance,
       urgency: critical ? 'now' : 'today',
       state: 'active',
       actionability: 'investigate',
@@ -58,7 +61,7 @@ export function detectPromiseSignals(
       facts: [
         {
           type: 'promise', key: 'promise_text', value: promise.text, confidence: null,
-          sourceIds, detectedAt: now, occurredAt: promise.occurredAt, dueAt: promise.dueAt, validUntil: null,
+        sourceIds: [promise.source.id, ...promise.confirmationSourceIds, ...promise.relatedProofSourceIds], detectedAt: now, occurredAt: promise.occurredAt, dueAt: promise.dueAt, validUntil: null,
         },
       ],
       rules: [{ id: 'promise_expired', version: '1' }],
