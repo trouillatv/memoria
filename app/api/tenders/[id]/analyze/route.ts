@@ -19,7 +19,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   try {
     id = (await ctx.params).id
 
-    const { getTender } = await import('@/lib/db/tenders')
+    const { getTender, getTenderByIdAdmin } = await import('@/lib/db/tenders')
     const { getUserRoleById } = await import('@/lib/db/users')
 
     let userId: string | null = null
@@ -27,7 +27,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const trigger = req.headers.get('x-internal-trigger')
 
     if (internal && trigger === internal) {
-      const tender = await getTender(id)
+      const tender = await getTenderByIdAdmin(id)
       userId = tender?.created_by ?? null
     } else {
       const { createClient: createServerClient } = await import('@/lib/supabase/server')

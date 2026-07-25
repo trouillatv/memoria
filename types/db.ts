@@ -80,6 +80,7 @@ export interface DbKnowledgeItem {
 
 export interface DbTender {
   id: string
+  organization_id?: string | null
   title: string
   client_name: string | null
   deadline: string | null
@@ -944,6 +945,7 @@ export interface DbTeamMember {
   id: string
   team_id: string
   user_id: string
+  organization_id: string
   joined_at: string
   left_at: string | null
 }

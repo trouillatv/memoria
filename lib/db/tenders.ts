@@ -1,6 +1,7 @@
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { getCurrentUserWithProfile } from '@/lib/db/users'
 import type {
   DbTender,
   DbTenderDocument,
@@ -78,10 +79,25 @@ export async function listTenders(query: TenderListQuery = {}): Promise<DbTender
 }
 
 export async function getTender(id: string): Promise<DbTender | null> {
-  const supabase = await createServerClient()
-  const { data, error } = await supabase
+  const user = await getCurrentUserWithProfile()
+  if (!user || (user.role !== 'admin' && user.role !== 'manager')) return null
+  const organizationIds = await getOrgIdsOfUser()
+  const { data, error } = await createAdminClient()
     .from('tenders')
-    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, dossier_id, created_by, created_at, updated_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by, voice_note_path, voice_note_duration_seconds, voice_note_recorded_at, voice_note_recorded_by')
+    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, dossier_id, organization_id, created_by, created_at, updated_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by, voice_note_path, voice_note_duration_seconds, voice_note_recorded_at, voice_note_recorded_by')
+    .eq('id', id)
+    .maybeSingle()
+  if (error || !data) return null
+  const row = data as DbTender & { organization_id: string | null }
+  if (row.deleted_at || (row.created_by !== user.id && (!row.organization_id || !organizationIds.includes(row.organization_id)))) return null
+  return data as DbTender
+}
+
+/** Lecture réservée aux déclencheurs internes déjà authentifiés par secret. */
+export async function getTenderByIdAdmin(id: string): Promise<DbTender | null> {
+  const { data, error } = await createAdminClient()
+    .from('tenders')
+    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, dossier_id, organization_id, created_by, created_at, updated_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by, voice_note_path, voice_note_duration_seconds, voice_note_recorded_at, voice_note_recorded_by')
     .eq('id', id)
     .maybeSingle()
   if (error || !data) return null
