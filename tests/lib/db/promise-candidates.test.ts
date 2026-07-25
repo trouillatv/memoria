@@ -22,7 +22,7 @@ vi.mock('@/lib/supabase/admin', () => ({
           record.filters.push({ method: 'in', args: [methodValue, ...args] })
           return query
         },
-        then(resolve: (value: { data: unknown[]; error: null }) => unknown) {
+        then(resolve: (value: { data: unknown[]; error: Error | null }) => unknown) {
           return Promise.resolve(resolve({ data: rowsByTable[table] ?? [], error: queryError }))
         },
       }
