@@ -61,7 +61,7 @@ async function createEngagement(
       source_type: 'manual',
       source_excerpt: `${TEST_TAG} source excerpt`,
       category: 'quality',
-      short_label: `${TEST_TAG} label ${provenance.page_number ?? 'none'}`,
+      short_label: `${TEST_TAG} label ${provenance.tender_document_id ?? 'none'} ${provenance.page_number ?? 'none'}`,
       created_by: adminId,
       ...provenance,
     })
@@ -88,17 +88,25 @@ describe('tender engagement provenance', () => {
 
   it('allows a nullable document/page pair and rejects a page without a document', async () => {
     const tenderId = await createTender(adminId, 'nullable')
+    const documentId = await createDocument(tenderId, 'nullable')
     const withoutProvenance = await createEngagement(tenderId, adminId)
+    const withDocumentOnly = await createEngagement(tenderId, adminId, {
+      tender_document_id: documentId,
+      page_number: null,
+    })
 
     const supabase = createAdminClient()
     const { data, error } = await supabase
       .from('engagements')
       .select('tender_document_id, page_number')
-      .eq('id', withoutProvenance)
-      .single()
+      .in('id', [withoutProvenance, withDocumentOnly])
+      .order('tender_document_id', { ascending: true, nullsFirst: true })
 
     expect(error).toBeNull()
-    expect(data).toEqual({ tender_document_id: null, page_number: null })
+    expect(data).toEqual([
+      { tender_document_id: null, page_number: null },
+      { tender_document_id: documentId, page_number: null },
+    ])
 
     await expect(createEngagement(tenderId, adminId, { page_number: 1 })).rejects.toThrow()
   })
@@ -110,6 +118,9 @@ describe('tender engagement provenance', () => {
 
     await expect(
       createEngagement(tenderId, adminId, { page_number: 0 }),
+    ).rejects.toThrow()
+    await expect(
+      createEngagement(tenderId, adminId, { page_number: -1 }),
     ).rejects.toThrow()
     await expect(
       createEngagement(tenderId, adminId, { tender_document_id: documentId, page_number: 1 }),
