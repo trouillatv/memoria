@@ -19,6 +19,47 @@ sources persistées structurées
 
 `À faire maintenant` ne consomme un signal de promesse que lorsqu’une action directe, réelle et suffisamment prioritaire existe. Il ne doit pas reproduire la formulation diagnostique du panneau Attention.
 
+## Protocole commun des détecteurs
+
+Le read model, le builder et les détecteurs restent des responsabilités séparées. Aucun détecteur ne lit la base, n’appelle l’IA, n’écrit en base ou ne construit une carte d’interface.
+
+```ts
+export interface MemorySignalDetector<TContext> {
+  id: string
+  version: string
+
+  detect(context: TContext, now?: string): MemorySignal[]
+}
+```
+
+Le pipeline d’exécution est :
+
+```text
+données persistées
+→ read model
+→ builder de contexte
+→ détecteurs purs
+→ merge
+→ déduplication par dedupeKey
+→ filtrage organisation / droits / état
+→ MemorySignal[]
+→ presenters
+→ surfaces
+```
+
+L’orchestrateur exécute des détecteurs déjà alimentés. Il ne construit pas leur contexte et ne connaît pas les tables métier.
+
+```ts
+export function runSignalDetectors(
+  registrations: DetectorRegistration[],
+  now: string,
+): MemorySignal[]
+```
+
+La V1 enregistre deux détecteurs sur le même `PromiseDetectionContext` : `PromiseExpired` et `PromiseNeedsConfirmation`. Un test transversal vérifie qu’un même candidat ne produit jamais les deux signaux.
+
+La déduplication utilise uniquement `signal.dedupeKey`. Elle ne fusionne jamais à partir du titre, du texte ou d’une proximité sémantique. En cas de collision exacte, elle conserve la gravité la plus élevée et fait l’union des sources et actions ; aucune fusion de faits incompatibles n’est autorisée.
+
 ## Deux niveaux de signaux
 
 Une date structurée est obligatoire pour diagnostiquer un retard, mais elle ne doit pas conditionner l’existence d’un signal de suivi.
@@ -216,3 +257,4 @@ Les tests doivent couvrir :
 - déduire un fuseau ou une date depuis une expression relative ;
 - construire un nouveau workflow propre au dashboard ;
 - ajouter les notifications ou la persistance des signaux.
+- historiser une résolution via `MemoryEvent` ; cette extension sera traitée avec le stockage réel de la résolution.
