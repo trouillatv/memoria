@@ -1,9 +1,17 @@
 import type { MemorySignalDetector } from './detector'
 import type { MemorySignal } from './operational-contract'
 
-export type SignalDetectorRegistration<TContext = unknown> = {
-  detector: MemorySignalDetector<TContext>
-  context: TContext
+export type SignalDetectorRegistration = {
+  execute(now?: string): MemorySignal[]
+}
+
+export function createSignalDetectorRegistration<TContext>(
+  detector: MemorySignalDetector<TContext>,
+  context: TContext,
+): SignalDetectorRegistration {
+  return {
+    execute: (now) => detector.detect(context, now),
+  }
 }
 
 const severityRank: Record<MemorySignal['severity'], number> = {
@@ -48,19 +56,21 @@ function isBetterDuplicate(candidate: MemorySignal, current: MemorySignal): bool
     (severityRank[candidate.severity] === severityRank[current.severity] &&
       (importanceRank[candidate.importance] > importanceRank[current.importance] ||
         (importanceRank[candidate.importance] === importanceRank[current.importance] &&
-          timestamp(candidate.detectedAt) > timestamp(current.detectedAt))))
+          (timestamp(candidate.detectedAt) > timestamp(current.detectedAt) ||
+            (timestamp(candidate.detectedAt) === timestamp(current.detectedAt) &&
+              candidate.id.localeCompare(current.id) < 0)))))
   )
 }
 
 /** Exécute des détecteurs déjà alimentés et projette leurs signaux sans les modifier. */
 export function runSignalDetectors(
-  registrations: readonly SignalDetectorRegistration<any>[],
+  registrations: readonly SignalDetectorRegistration[],
   now?: string,
 ): MemorySignal[] {
   const uniqueSignals = new Map<string, MemorySignal>()
 
-  for (const { detector, context } of registrations) {
-    for (const signal of detector.detect(context, now)) {
+  for (const registration of registrations) {
+    for (const signal of registration.execute(now)) {
       const existing = uniqueSignals.get(signal.dedupeKey)
       if (!existing || isBetterDuplicate(signal, existing)) {
         uniqueSignals.set(signal.dedupeKey, signal)

@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import type { MemorySignalDetector } from '@/lib/memory/signals/detector'
 import type { MemorySignal } from '@/lib/memory/signals/operational-contract'
-import { runSignalDetectors } from '@/lib/memory/signals/detector-runner'
+import {
+  createSignalDetectorRegistration,
+  runSignalDetectors,
+} from '@/lib/memory/signals/detector-runner'
 
 const source = {
   type: 'test',
@@ -71,7 +74,7 @@ describe('runSignalDetectors', () => {
     }
 
     const result = runSignalDetectors(
-      [{ detector: registered, context: { siteId: 'site-1' } }],
+      [createSignalDetectorRegistration(registered, { siteId: 'site-1' })],
       '2026-07-25T09:00:00+11:00',
     )
 
@@ -95,11 +98,12 @@ describe('runSignalDetectors', () => {
 
     const result = runSignalDetectors(
       [
-        { detector: detector('expired', [promiseExpired]), context: { kind: 'promise' } },
-        {
-          detector: detector('follow-up', [promiseNeedsConfirmation]),
-          context: { kind: 'promise' },
-        },
+        createSignalDetectorRegistration(detector('expired', [promiseExpired]), {
+          kind: 'promise',
+        }),
+        createSignalDetectorRegistration(detector('follow-up', [promiseNeedsConfirmation]), {
+          kind: 'promise',
+        }),
       ],
       '2026-07-25T09:00:00+11:00',
     )
@@ -122,7 +126,12 @@ describe('runSignalDetectors', () => {
     })
 
     const result = runSignalDetectors(
-      [{ detector: detector('duplicates', [warning, critical, sameTitleDifferentKey]), context: null }],
+      [
+        createSignalDetectorRegistration(
+          detector('duplicates', [warning, critical, sameTitleDifferentKey]),
+          null,
+        ),
+      ],
       '2026-07-25T09:00:00+11:00',
     )
 
@@ -151,7 +160,12 @@ describe('runSignalDetectors', () => {
 
     expect(
       runSignalDetectors(
-        [{ detector: detector('ranking', [normal, high, highRecent]), context: undefined }],
+        [
+          createSignalDetectorRegistration(
+            detector('ranking', [normal, high, highRecent]),
+            undefined,
+          ),
+        ],
         '2026-07-25T12:00:00+11:00',
       ),
     ).toEqual([highRecent])
@@ -164,11 +178,11 @@ describe('runSignalDetectors', () => {
     const before = structuredClone(input)
 
     const firstRun = runSignalDetectors(
-      [{ detector: detector('stable', input), context: null }],
+      [createSignalDetectorRegistration(detector('stable', input), null)],
       '2026-07-25T09:00:00+11:00',
     )
     const secondRun = runSignalDetectors(
-      [{ detector: detector('stable', input), context: null }],
+      [createSignalDetectorRegistration(detector('stable', input), null)],
       '2026-07-25T09:00:00+11:00',
     )
 
@@ -184,10 +198,22 @@ describe('runSignalDetectors', () => {
     const before = structuredClone(produced)
 
     runSignalDetectors(
-      [{ detector: detector('immutable', [produced]), context: null }],
+      [createSignalDetectorRegistration(detector('immutable', [produced]), null)],
       '2026-07-25T09:00:00+11:00',
     )
 
     expect(produced).toEqual(before)
+  })
+
+  it('choisit le même doublon selon son identifiant en cas d’égalité complète', () => {
+    const first = signal({ id: 'z-signal', dedupeKey: 'same' })
+    const second = signal({ id: 'a-signal', dedupeKey: 'same' })
+
+    const result = runSignalDetectors(
+      [createSignalDetectorRegistration(detector('tie', [first, second]), null)],
+      '2026-07-25T09:00:00+11:00',
+    )
+
+    expect(result).toEqual([second])
   })
 })
