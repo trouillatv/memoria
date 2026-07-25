@@ -20,7 +20,7 @@ export type OperationalSignalTrigger =
   | { type: 'missing_contact'; reason: 'contact_not_identified' }
   | { type: 'missing_attachment'; reason: 'attachment_missing' }
   | { type: 'planning_conflict'; reason: 'planning_conflict' }
-  | { type: 'promise'; reason: 'promise_expired' }
+  | { type: 'promise'; reason: 'promise_expired' | 'promise_without_due_date' }
   | { type: 'question'; reason: 'question_unanswered' }
   | { type: 'contradiction'; reason: 'facts_incompatible' }
   | { type: 'staleness'; reason: 'object_aging' | 'activity_missing' }
