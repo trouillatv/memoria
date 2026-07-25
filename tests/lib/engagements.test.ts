@@ -1,4 +1,13 @@
-import { describe, it, expect, beforeAll, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest'
+
+// Keep DB writes real while bypassing only the request-scoped auth lookup.
+vi.mock('@/lib/auth/memberships', () => ({
+  requireOrganizationMembership: async (organizationId: string) => ({
+    ok: true,
+    context: { userId: 'task4-test-user', organizationId, role: 'admin' },
+  }),
+}))
+
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   listEngagementsByTender,
@@ -23,27 +32,47 @@ import {
 
 const TEST_TENDER_TITLE = '__test_engagement_phase1_tender__'
 
-async function getOrCreateTestTender(): Promise<string> {
+async function getAdminFixture(): Promise<{ id: string; organization_id: string }> {
   const supabase = createAdminClient()
-  // Find admin user to satisfy created_by
   const { data: admin } = await supabase
     .from('users')
-    .select('id')
+    .select('id, organization_id')
     .eq('role', 'admin')
+    .not('organization_id', 'is', null)
     .limit(1)
     .maybeSingle()
-  if (!admin) throw new Error('No admin user found for test setup')
+  if (!admin?.organization_id) throw new Error('No admin user with organization_id found for test setup')
+  return { id: admin.id, organization_id: admin.organization_id }
+}
+
+async function getOrCreateTestTender(): Promise<string> {
+  const supabase = createAdminClient()
+  const admin = await getAdminFixture()
 
   const { data: existing } = await supabase
     .from('tenders')
-    .select('id')
+    .select('id, organization_id')
     .eq('title', TEST_TENDER_TITLE)
     .maybeSingle()
-  if (existing) return existing.id
+  if (existing) {
+    if (!existing.organization_id) {
+      const { error } = await supabase
+        .from('tenders')
+        .update({ organization_id: admin.organization_id })
+        .eq('id', existing.id)
+      if (error) throw error
+    }
+    return existing.id
+  }
 
   const { data, error } = await supabase
     .from('tenders')
-    .insert({ title: TEST_TENDER_TITLE, status: 'ready', created_by: admin.id })
+    .insert({
+      title: TEST_TENDER_TITLE,
+      status: 'ready',
+      created_by: admin.id,
+      organization_id: admin.organization_id,
+    })
     .select('id')
     .single()
   if (error) throw error
@@ -248,24 +277,32 @@ describe('engagements DB helpers', () => {
 async function ensureTenderExists(prefix: string): Promise<{ id: string }> {
   const title = `__test_${prefix}__`
   const supabase = createAdminClient()
-  const { data: admin } = await supabase
-    .from('users')
-    .select('id')
-    .eq('role', 'admin')
-    .limit(1)
-    .maybeSingle()
-  if (!admin) throw new Error('No admin user')
+  const admin = await getAdminFixture()
 
   const { data: existing } = await supabase
     .from('tenders')
-    .select('id')
+    .select('id, organization_id')
     .eq('title', title)
     .maybeSingle()
-  if (existing) return { id: existing.id }
+  if (existing) {
+    if (!existing.organization_id) {
+      const { error } = await supabase
+        .from('tenders')
+        .update({ organization_id: admin.organization_id })
+        .eq('id', existing.id)
+      if (error) throw error
+    }
+    return { id: existing.id }
+  }
 
   const { data, error } = await supabase
     .from('tenders')
-    .insert({ title, status: 'ready', created_by: admin.id })
+    .insert({
+      title,
+      status: 'ready',
+      created_by: admin.id,
+      organization_id: admin.organization_id,
+    })
     .select('id')
     .single()
   if (error) throw error
