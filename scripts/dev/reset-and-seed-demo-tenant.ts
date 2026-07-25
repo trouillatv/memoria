@@ -38,6 +38,11 @@ function loadEnvLocal() {
 loadEnvLocal()
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getStructuredPromiseRecords } from '@/lib/db/promise-candidates'
+import { buildPromiseCandidates } from '@/lib/memory/signals/promise-candidates'
+import { detectPromiseExpiredSignals } from '@/lib/memory/signals/promise-detector'
+import { detectPromiseNeedsConfirmationSignals } from '@/lib/memory/signals/promise-follow-up-detector'
+import { detectPromiseSignalsFromRecords } from '@/lib/memory/signals/promise-pipeline'
 
 type Admin = ReturnType<typeof createAdminClient>
 
@@ -51,6 +56,14 @@ const DEMO_ACCOUNTS = [
   { email: 'demo@memoria.nc', fullName: 'Guillaume Démo', role: 'manager' },
   { email: 'demo-chef@memoria.nc', fullName: 'Sylvain Chef', role: 'chef_equipe' },
 ] as const
+
+const PROMISE_SCENARIO = {
+  reportId: '9aa3c5b5-7b8b-4e48-9d3e-1f6d70db7a01',
+  capturedId: '9aa3c5b5-7b8b-4e48-9d3e-1f6d70db7a02',
+  expiredId: '9aa3c5b5-7b8b-4e48-9d3e-1f6d70db7a03',
+  futureId: '9aa3c5b5-7b8b-4e48-9d3e-1f6d70db7a04',
+  confirmedId: '9aa3c5b5-7b8b-4e48-9d3e-1f6d70db7a05',
+} as const
 
 // Jour civil Nouméa (+11, pas de DST) décalé de `off` jours.
 function d(off: number): string {
@@ -201,12 +214,14 @@ async function insertSite(c: Ctx, clientId: string, name: string, address: strin
 }
 
 async function insertReport(c: Ctx, input: {
+  id?: string
   siteId: string; title: string; createdAt: string; text: string
   origin?: string | null; nextMeeting?: string | null; status?: string
 }): Promise<string> {
   const { data, error } = await c.supabase
     .from('site_reports')
     .insert({
+      ...(input.id ? { id: input.id } : {}),
       type: 'site', site_id: input.siteId, tenant_id: c.orgId, organization_id: c.orgId,
       created_by: c.managerId, status: input.status ?? 'curated', title: input.title,
       text_input: input.text, transcript_status: 'none',
@@ -356,6 +371,93 @@ async function insertDecision(c: Ctx, input: {
     decisionnaire_contact_id: input.decisionnaireContactId ?? null,
   })
   if (error) throw error
+}
+
+async function seedPromiseSignals(c: Ctx, siteId: string): Promise<{ reportId: string; inserted: number }> {
+  const reportId = PROMISE_SCENARIO.reportId
+  const { error: reportErr } = await c.supabase.from('site_reports').upsert({
+    id: reportId,
+    type: 'site',
+    site_id: siteId,
+    tenant_id: c.orgId,
+    organization_id: c.orgId,
+    created_by: c.managerId,
+    status: 'curated',
+    title: 'Recette promesses structurées',
+    text_input: 'Scénario contrôlé de promesses structurées pour le dashboard MemorIA.',
+    transcript_status: 'none',
+    origin: 'spontaneous',
+    created_at: t(-8, '08:00'),
+  })
+  if (reportErr) throw reportErr
+
+  const { error: capturedErr } = await c.supabase.from('captured_knowledge').upsert({
+    id: PROMISE_SCENARIO.capturedId,
+    organization_id: c.orgId,
+    site_id: siteId,
+    kind: 'promise',
+    status: 'active',
+    title: 'L’accès sécurisé sera communiqué sous peu.',
+    body: 'Scénario de démo : annonce à confirmer, sans date structurée.',
+    source_type: 'visit',
+    source_id: reportId,
+    created_at: t(-8, '09:00'),
+  })
+  if (capturedErr) throw capturedErr
+
+  const promisedBody = 'Scénario de démo : promesse structurée qualifiée, sans analyse textuelle.'
+  const promiseRows = [
+    {
+      id: PROMISE_SCENARIO.expiredId,
+      organization_id: c.orgId,
+      site_id: siteId,
+      kind: 'deadline',
+      status: 'proposed',
+      title: 'Le planning sera diffusé vendredi.',
+      body: promisedBody,
+      payload: { commitment: true, dueAt: t(-1, '12:00') },
+      report_id: reportId,
+      source_capture_ids: [],
+      dedupe_key: 'demo-promise-expired',
+      promoted_object_id: null,
+      created_at: t(-8, '10:00'),
+    },
+    {
+      id: PROMISE_SCENARIO.futureId,
+      organization_id: c.orgId,
+      site_id: siteId,
+      kind: 'deadline',
+      status: 'proposed',
+      title: 'Le DOE sera transmis la semaine prochaine.',
+      body: promisedBody,
+      payload: { commitment: true, dueAt: t(3, '12:00') },
+      report_id: reportId,
+      source_capture_ids: [],
+      dedupe_key: 'demo-promise-future',
+      promoted_object_id: null,
+      created_at: t(-8, '10:30'),
+    },
+    {
+      id: PROMISE_SCENARIO.confirmedId,
+      organization_id: c.orgId,
+      site_id: siteId,
+      kind: 'deadline',
+      status: 'confirmed',
+      title: 'La liste des tâches sera transmise à Ginger.',
+      body: promisedBody,
+      payload: { commitment: true, dueAt: t(1, '12:00') },
+      report_id: reportId,
+      source_capture_ids: [],
+      dedupe_key: 'demo-promise-confirmed',
+      promoted_object_id: null,
+      created_at: t(-8, '11:00'),
+    },
+  ]
+
+  const { error: proposalErr } = await c.supabase.from('site_knowledge_proposals').upsert(promiseRows)
+  if (proposalErr) throw proposalErr
+
+  return { reportId, inserted: 4 }
 }
 
 // ── LE CASTING — entreprise, personne, rôle sur le chantier (mig 137) ────────
@@ -653,6 +755,38 @@ async function main() {
   // La démo n'est pas un décor : c'est le jeu de données fonctionnel. Si l'un de
   // ces quatre cas disparaît, le parcours correspondant devient intestable — et
   // dans six mois personne ne saurait pourquoi. Le seed le dit tout de suite.
+  await step('Petro — promesses structurées (1 expirée, 1 à confirmer, 1 future, 1 confirmée)', async () => {
+    if (!petro) throw new Error('Petro Atiti manquant')
+    const seeded = await seedPromiseSignals(c, petro)
+    console.log(`      promesses injectées : ${seeded.inserted}`)
+  })
+
+  await step('Vérification du pipeline MemorySignal promesses', async () => {
+    if (!petro) throw new Error('Petro Atiti manquant')
+    const now = new Date().toISOString()
+    const records = await getStructuredPromiseRecords([orgId], [petro])
+    const candidates = buildPromiseCandidates(records)
+    const expiredSignals = detectPromiseExpiredSignals({ promises: candidates }, now)
+    const followUpSignals = detectPromiseNeedsConfirmationSignals({ promises: candidates }, now)
+    const dashboardSignals = detectPromiseSignalsFromRecords(records, now)
+
+    console.log(`      records lus           : ${records.length}`)
+    console.log(`      candidats construits  : ${candidates.length}`)
+    console.log(`      PromiseExpired        : ${expiredSignals.length}`)
+    console.log(`      PromiseNeedsConf.     : ${followUpSignals.length}`)
+    console.log(`      signaux dashboard     : ${dashboardSignals.length}`)
+
+    if (
+      records.length !== 3 ||
+      candidates.length !== 3 ||
+      expiredSignals.length !== 1 ||
+      followUpSignals.length !== 1 ||
+      dashboardSignals.length !== 2
+    ) {
+      throw new Error('Recette promesses invalide : le pipeline ne produit pas les 2 signaux attendus.')
+    }
+  })
+
   await step('Vérification du GRAPHE de recette (Petro Atiti)', async () => {
     const { data: decs } = await supabase.from('site_decisions').select('titre, action_id, decisionnaire_contact_id').eq('site_id', petro)
     const { data: acts } = await supabase.from('site_actions').select('id, title, assigned_contact_id').eq('site_id', petro)

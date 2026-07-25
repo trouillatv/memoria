@@ -19,6 +19,49 @@ raison de douter de tout le reste. La confiance se perd une fois.
 `Lycée PETRO ATTITI` (tenant AGP) est le chantier de **démonstration** : rendu PDF,
 qualité des synthèses, captures, comparaisons avant/après. On le lit, on n'y mute rien.
 
+## Recette de démonstration du tenant `demo`
+
+La démo `demo@memoria.nc` est le seul environnement qui peut être réinitialisé.
+Le reset démarre toujours par un backup de sécurité, puis reconstruit un scénario
+reproductible et vérifié en fin de seed.
+
+```text
+backup-export.ts
+      ↓
+reset-and-seed-demo-tenant.ts
+  ├─ seed base du tenant
+  ├─ seedPromiseSignals()
+  ├─ validation du pipeline MemorySignal
+  └─ graphe de recette Petro Atiti
+```
+
+Le module `seedPromiseSignals()` injecte quatre cas contrôlés :
+
+| Cas | Donnée | Signal attendu |
+|---|---|---|
+| 1 | promesse datée échue et non confirmée | `PromiseExpired` |
+| 2 | promesse ancienne sans date, non confirmée | `PromiseNeedsConfirmation` |
+| 3 | promesse future | aucun signal |
+| 4 | promesse confirmée | aucun signal |
+
+La validation du reset logge systématiquement :
+
+```text
+records lus
+candidats construits
+PromiseExpired
+PromiseNeedsConfirmation
+signaux dashboard
+```
+
+Le résultat attendu est stable :
+
+- 4 records lus ;
+- 4 candidats ;
+- 1 `PromiseExpired` ;
+- 1 `PromiseNeedsConfirmation` ;
+- 2 signaux finalement envoyés au dashboard.
+
 ## Le chantier de recette
 
 `🧪 Recette` vit dans le tenant démo et porte `sites.is_sandbox = true` (mig 214).
