@@ -12,6 +12,7 @@ import { getSitesDashboard } from '@/lib/db/sites-dashboard'
 import { getNowDashboard } from '@/lib/db/now-dashboard'
 import { getMemoryReview, type MemoryReview } from '@/lib/knowledge/memory-review'
 import { getDashboardDeadlinesToPlan } from '@/lib/db/dashboard-deadlines'
+import { attentionItemToMemorySignal, nowItemToMemorySignal } from '@/lib/memory/signals/lot1-adapters'
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardPremium } from './DashboardPremium'
 
@@ -54,12 +55,16 @@ export default async function DashboardPage() {
     ] as const),
   )) as Record<string, MemoryReview>
   const now = await getNowDashboard(orgIds, upcoming, organizationMap ?? {})
+  const attentionSignals = [...attention.red, ...attention.orange]
+    .map((item) => attentionItemToMemorySignal(item))
+    .filter((signal): signal is NonNullable<typeof signal> => signal !== null)
+  const nowSignals = now.items.map((item) => nowItemToMemorySignal(item))
 
   return (
     <DashboardPremium
       firstName={user.full_name?.split(' ')[0] ?? ''}
       orgNames={orgNames}
-      attention={attention}
+      attentionSignals={attentionSignals}
       visit={visit}
       upcoming={upcoming}
       sites={sites}
@@ -67,6 +72,7 @@ export default async function DashboardPage() {
       orgLabels={orgLabels}
       organizationMap={organizationMap ?? {}}
       now={now}
+      nowSignals={nowSignals}
       visitReviews={visitReviews}
       deadlinesToPlan={deadlinesToPlan}
     />
