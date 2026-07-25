@@ -90,6 +90,57 @@ describe('engagements DB helpers', () => {
     expect(inserted[0].ai_confidence).toBe(0.92)
   })
 
+  it('bulkInsert persists structured tender document provenance', async () => {
+    const tag = `__task4_provenance_${crypto.randomUUID()}`
+    const supabase = createAdminClient()
+    const { data: document, error: documentError } = await supabase
+      .from('tender_documents')
+      .insert({
+        tender_id: tenderId,
+        storage_path: `${tag}.pdf`,
+        filename: `${tag}.pdf`,
+        size_bytes: 1,
+        page_count: 4,
+        extracted_text: 'Task 4 provenance fixture',
+        kind: 'ccap',
+      })
+      .select('id')
+      .single()
+    if (documentError) throw documentError
+
+    let engagementId: string | null = null
+    try {
+      const inserted = await bulkInsertEngagements({
+        tender_id: tenderId,
+        created_by: null,
+        engagements: [{
+          source_type: 'ao_clause',
+          source_excerpt: `${tag} excerpt`,
+          source_ref: { page: 99 },
+          category: 'compliance',
+          short_label: `${tag} engagement`,
+          measurable: false,
+          ai_confidence: 0.8,
+          tender_document_id: document.id,
+          page_number: 4,
+        }],
+      })
+      engagementId = inserted[0]?.id ?? null
+      expect(inserted[0]).toMatchObject({
+        tender_id: tenderId,
+        tender_document_id: document.id,
+        page_number: 4,
+      })
+    } finally {
+      if (engagementId) {
+        const { error } = await supabase.from('engagements').delete().eq('id', engagementId)
+        if (error) throw error
+      }
+      const { error } = await supabase.from('tender_documents').delete().eq('id', document.id)
+      if (error) throw error
+    }
+  })
+
   it('bulkInsert with empty array returns empty', async () => {
     const inserted = await bulkInsertEngagements({
       tender_id: tenderId,

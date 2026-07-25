@@ -31,7 +31,6 @@ export type EngagementProvenanceReadRow = {
 
 export type VerifiedEngagementProvenanceInput = {
   sourceExcerpt: string
-  sourceRef?: Record<string, unknown> | null
   documents: ReadonlyArray<{
     id: string
     filename: string
@@ -39,6 +38,19 @@ export type VerifiedEngagementProvenanceInput = {
     extractedText: string | null
   }>
 }
+
+type PreparedVerifiedDocument = {
+  id: string
+  filename: string
+  extractedText: string
+  corpus: string
+  expectedLabel: string
+  verifiedReference: { documentId: string } | null
+}
+
+export type VerifiedEngagementProvenanceResolver = (
+  sourceExcerpt: string,
+) => { tender_document_id: string | null; page_number: number | null }
 
 type ProvenanceFields = {
   tenderDocumentId: string | null
@@ -113,6 +125,52 @@ function pageMarkerBeforeQuote(
   return normalizedText.slice(markerStart + '[[page '.length, markerEnd).trim()
 }
 
+export function createVerifiedEngagementProvenanceResolver({
+  documents,
+}: Omit<VerifiedEngagementProvenanceInput, 'sourceExcerpt'>): VerifiedEngagementProvenanceResolver {
+  const preparedDocuments: PreparedVerifiedDocument[] = documents.flatMap((document) => {
+    if (!document.extractedText?.trim()) return []
+
+    return [{
+      id: document.id,
+      filename: document.filename,
+      extractedText: document.extractedText,
+      corpus: buildTenderCorpus(
+        [{ kind: document.kind, filename: document.filename, text: document.extractedText }],
+        Number.MAX_SAFE_INTEGER,
+      ),
+      expectedLabel: `${tenderPieceLabel(document.kind)} — ${document.filename}`,
+      verifiedReference: resolveTenderDocumentReference(document.filename, documents),
+    }]
+  })
+
+  return (sourceExcerpt) => {
+    const normalizedNeedle = normalizeLocatedQuote(sourceExcerpt)
+    if (normalizedNeedle === '') {
+      return { tender_document_id: null, page_number: null }
+    }
+
+    const matches = preparedDocuments.flatMap((document) => {
+      const located = locateQuote(document.corpus, normalizedNeedle)
+      if (located.document !== document.expectedLabel) return []
+      if (!document.verifiedReference || document.verifiedReference.documentId !== document.id) return []
+
+      const markerValue = pageMarkerBeforeQuote(document.extractedText, normalizedNeedle)
+      const pageNumber = located.page ?? (markerValue === null ? null : Number(markerValue))
+      if (
+        pageNumber !== null &&
+        (!Number.isFinite(pageNumber) || !Number.isInteger(pageNumber) || pageNumber <= 0)
+      ) return []
+
+      return [{ tender_document_id: document.id, page_number: pageNumber }]
+    })
+
+    return matches.length === 1
+      ? matches[0]!
+      : { tender_document_id: null, page_number: null }
+  }
+}
+
 export function resolveVerifiedEngagementProvenance({
   sourceExcerpt,
   documents,
@@ -120,44 +178,7 @@ export function resolveVerifiedEngagementProvenance({
   tender_document_id: string | null
   page_number: number | null
 } {
-  const normalizedNeedle = normalizeLocatedQuote(sourceExcerpt)
-  if (normalizedNeedle === '') {
-    return { tender_document_id: null, page_number: null }
-  }
-
-  const matches = documents.flatMap((document) => {
-    if (!document.extractedText?.trim()) return []
-
-    const corpus = buildTenderCorpus(
-      [{ kind: document.kind, filename: document.filename, text: document.extractedText }],
-      Number.MAX_SAFE_INTEGER,
-    )
-    const located = locateQuote(corpus, normalizedNeedle)
-    const expectedLabel = `${tenderPieceLabel(document.kind)} — ${document.filename}`
-    if (located.document !== expectedLabel) return []
-
-    const verifiedReference = resolveTenderDocumentReference(
-      document.filename,
-      documents,
-    )
-    if (!verifiedReference || verifiedReference.documentId !== document.id) return []
-
-    const markerValue = pageMarkerBeforeQuote(document.extractedText, normalizedNeedle)
-    const pageNumber = located.page ?? (markerValue === null ? null : Number(markerValue))
-    if (
-      pageNumber !== null &&
-      (!Number.isFinite(pageNumber) || !Number.isInteger(pageNumber) || pageNumber <= 0)
-    ) return []
-
-    return [{
-      tender_document_id: document.id,
-      page_number: pageNumber,
-    }]
-  })
-
-  return matches.length === 1
-    ? matches[0]!
-    : { tender_document_id: null, page_number: null }
+  return createVerifiedEngagementProvenanceResolver({ documents })(sourceExcerpt)
 }
 
 export function resolveTenderDocumentReference(

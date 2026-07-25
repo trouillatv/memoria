@@ -16,7 +16,7 @@ import {
 import { createContract } from '@/lib/db/contracts'
 import { getTender, listTenderDocuments, getLatestTenderAnalysis } from '@/lib/db/tenders'
 import { buildTenderCorpus } from '@/lib/tenders/pieces'
-import { resolveVerifiedEngagementProvenance } from '@/lib/tenders/engagement-provenance'
+import { createVerifiedEngagementProvenanceResolver } from '@/lib/tenders/engagement-provenance'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
 
@@ -58,6 +58,15 @@ export async function extractEngagementsAction(formData: FormData) {
   // Toute exception (parse IA, contrainte DB…) est CAPTURÉE et renvoyée comme
   // erreur lisible inline. Sans ce filet, un throw remonte à la page d'erreur
   // globale (« Quelque chose s'est passé ») au lieu d'un message exploitable.
+  const resolveEngagementProvenance = createVerifiedEngagementProvenanceResolver({
+    documents: docs.map((document) => ({
+      id: document.id,
+      filename: document.filename,
+      kind: document.kind,
+      extractedText: document.extracted_text,
+    })),
+  })
+
   let count = 0
   try {
     const result = await runEngagementExtractionAgent({
@@ -75,16 +84,7 @@ export async function extractEngagementsAction(formData: FormData) {
       created_by: auth.userId,
       engagements: result.engagements.map((engagement) => ({
         ...engagement,
-        ...resolveVerifiedEngagementProvenance({
-          sourceExcerpt: engagement.source_excerpt,
-          sourceRef: engagement.source_ref,
-          documents: docs.map((document) => ({
-            id: document.id,
-            filename: document.filename,
-            kind: document.kind,
-            extractedText: document.extracted_text,
-          })),
-        }),
+        ...resolveEngagementProvenance(engagement.source_excerpt),
       })),
     })
     count = result.engagements.length

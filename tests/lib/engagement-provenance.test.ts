@@ -178,7 +178,6 @@ describe('resolveVerifiedEngagementProvenance', () => {
     expect(
       resolveVerifiedEngagementProvenance({
         sourceExcerpt: 'nettoyage quotidien des locaux',
-        sourceRef: { page: 99 },
         documents: [
           document('doc-1', 'CCAP.pdf', '[[page 7]]\nNettoyage quotidien des locaux.'),
         ],
@@ -190,7 +189,6 @@ describe('resolveVerifiedEngagementProvenance', () => {
     expect(
       resolveVerifiedEngagementProvenance({
         sourceExcerpt: 'nettoyage quotidien des locaux',
-        sourceRef: { page: 99 },
         documents: [
           document('doc-1', 'CCAP.pdf', '[[page 7]]\nNettoyage quotidien des locaux.'),
           document('doc-2', 'CCTP.pdf', '[[page 3]]\nNettoyage quotidien des locaux.'),
@@ -225,7 +223,6 @@ describe('resolveVerifiedEngagementProvenance', () => {
     expect(
       resolveVerifiedEngagementProvenance({
         sourceExcerpt: 'clause absente du corpus',
-        sourceRef: { page: 99 },
         documents: [
           document('doc-1', 'CCAP.pdf', '[[page 7]]\nUne autre clause.'),
         ],
