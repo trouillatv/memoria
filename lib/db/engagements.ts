@@ -79,6 +79,8 @@ export async function bulkInsertEngagements(input: {
     short_label: string
     measurable: boolean
     ai_confidence: number | null
+    tender_document_id?: string | null
+    page_number?: number | null
   }>
 }): Promise<DbEngagement[]> {
   if (input.engagements.length === 0) return []
@@ -99,6 +101,8 @@ export async function bulkInsertEngagements(input: {
     short_label: e.short_label,
     measurable: e.measurable,
     ai_confidence: e.ai_confidence,
+    tender_document_id: e.tender_document_id ?? null,
+    page_number: e.page_number ?? null,
     // Pré-remplissage déterministe selon la NATURE (Sprint 1.3) — l'humain
     // ajuste à la curation. Un contrôle attend une preuve photo par défaut.
     proof_requirement: defaultProofForKind(e.kind ?? null),

@@ -16,6 +16,7 @@ import {
 import { createContract } from '@/lib/db/contracts'
 import { getTender, listTenderDocuments, getLatestTenderAnalysis } from '@/lib/db/tenders'
 import { buildTenderCorpus } from '@/lib/tenders/pieces'
+import { resolveVerifiedEngagementProvenance } from '@/lib/tenders/engagement-provenance'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
 
@@ -72,7 +73,19 @@ export async function extractEngagementsAction(formData: FormData) {
     await bulkInsertEngagements({
       tender_id: parsed.data.tender_id,
       created_by: auth.userId,
-      engagements: result.engagements,
+      engagements: result.engagements.map((engagement) => ({
+        ...engagement,
+        ...resolveVerifiedEngagementProvenance({
+          sourceExcerpt: engagement.source_excerpt,
+          sourceRef: engagement.source_ref,
+          documents: docs.map((document) => ({
+            id: document.id,
+            filename: document.filename,
+            kind: document.kind,
+            extractedText: document.extracted_text,
+          })),
+        }),
+      })),
     })
     count = result.engagements.length
   } catch (e) {

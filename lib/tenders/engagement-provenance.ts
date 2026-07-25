@@ -1,4 +1,7 @@
 import type { EngagementProvenanceState } from '@/types/db'
+import type { TenderPieceKind } from '@/types/db'
+import { locateQuote } from '@/services/ai/source-validation'
+import { buildTenderCorpus, tenderPieceLabel } from '@/lib/tenders/pieces'
 
 export type { EngagementProvenanceState } from '@/types/db'
 
@@ -24,6 +27,17 @@ export type EngagementProvenanceReadRow = {
   filename: string | null
   pageNumber: number | null
   state: EngagementProvenanceState
+}
+
+export type VerifiedEngagementProvenanceInput = {
+  sourceExcerpt: string
+  sourceRef?: Record<string, unknown> | null
+  documents: ReadonlyArray<{
+    id: string
+    filename: string
+    kind: TenderPieceKind | null
+    extractedText: string | null
+  }>
 }
 
 type ProvenanceFields = {
@@ -77,6 +91,44 @@ export function deriveEngagementProvenanceReadRow({
     pageNumber: safePageNumber,
     state,
   }
+}
+
+function normalizeLocatedQuote(value: string): string {
+  return value.replace(/\s+/gu, ' ').trim().toLowerCase()
+}
+
+export function resolveVerifiedEngagementProvenance({
+  sourceExcerpt,
+  documents,
+}: VerifiedEngagementProvenanceInput): {
+  tender_document_id: string | null
+  page_number: number | null
+} {
+  const normalizedNeedle = normalizeLocatedQuote(sourceExcerpt)
+  if (normalizedNeedle === '') {
+    return { tender_document_id: null, page_number: null }
+  }
+
+  const matches = documents.flatMap((document) => {
+    if (!document.extractedText?.trim()) return []
+
+    const corpus = buildTenderCorpus(
+      [{ kind: document.kind, filename: document.filename, text: document.extractedText }],
+      Number.MAX_SAFE_INTEGER,
+    )
+    const located = locateQuote(corpus, normalizedNeedle)
+    const expectedLabel = `${tenderPieceLabel(document.kind)} — ${document.filename}`
+    if (located.document !== expectedLabel) return []
+
+    return [{
+      tender_document_id: document.id,
+      page_number: located.page ?? null,
+    }]
+  })
+
+  return matches.length === 1
+    ? matches[0]!
+    : { tender_document_id: null, page_number: null }
 }
 
 export function resolveTenderDocumentReference(

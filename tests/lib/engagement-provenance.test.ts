@@ -4,6 +4,7 @@ import type { EngagementProvenanceState } from '@/types/db'
 import {
   deriveEngagementProvenanceState,
   deriveEngagementProvenanceReadRow,
+  resolveVerifiedEngagementProvenance,
   resolveTenderDocumentReference,
 } from '@/lib/tenders/engagement-provenance'
 
@@ -162,5 +163,51 @@ describe('resolveTenderDocumentReference', () => {
   it('normalizes Unicode filenames without applying approximate matching', () => {
     expect(resolveTenderDocumentReference('cafe\u0301.pdf', [doc('d1', 'CAFÉ.pdf')])).toEqual({ documentId: 'd1' })
     expect(resolveTenderDocumentReference('CCAP-final.pdf', [doc('d1', 'CCAP.pdf')])).toBeNull()
+  })
+})
+
+describe('resolveVerifiedEngagementProvenance', () => {
+  const document = (id: string, filename: string, extractedText: string) => ({
+    id,
+    filename,
+    kind: 'ccap' as const,
+    extractedText,
+  })
+
+  it('resolves a uniquely located citation to its document and marker page', () => {
+    expect(
+      resolveVerifiedEngagementProvenance({
+        sourceExcerpt: 'nettoyage quotidien des locaux',
+        sourceRef: { page: 99 },
+        documents: [
+          document('doc-1', 'CCAP.pdf', '[[page 7]]\nNettoyage quotidien des locaux.'),
+        ],
+      }),
+    ).toEqual({ tender_document_id: 'doc-1', page_number: 7 })
+  })
+
+  it('leaves both fields null for an ambiguous document match', () => {
+    expect(
+      resolveVerifiedEngagementProvenance({
+        sourceExcerpt: 'nettoyage quotidien des locaux',
+        sourceRef: { page: 99 },
+        documents: [
+          document('doc-1', 'CCAP.pdf', '[[page 7]]\nNettoyage quotidien des locaux.'),
+          document('doc-2', 'CCTP.pdf', '[[page 3]]\nNettoyage quotidien des locaux.'),
+        ],
+      }),
+    ).toEqual({ tender_document_id: null, page_number: null })
+  })
+
+  it('leaves both fields null when the citation is missing', () => {
+    expect(
+      resolveVerifiedEngagementProvenance({
+        sourceExcerpt: 'clause absente du corpus',
+        sourceRef: { page: 99 },
+        documents: [
+          document('doc-1', 'CCAP.pdf', '[[page 7]]\nUne autre clause.'),
+        ],
+      }),
+    ).toEqual({ tender_document_id: null, page_number: null })
   })
 })
