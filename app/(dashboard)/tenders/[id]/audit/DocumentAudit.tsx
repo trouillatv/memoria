@@ -37,6 +37,8 @@ export interface AuditEngagement {
   occurrences: number[]    // pages où le terme canonique apparaît aussi dans le doc
   /** Provenance structurée persistée — la SEULE autorité de navigation. */
   provenance: AuditProvenance
+  /** Affichage de la source — presenter partagé (badge, libellé, valeur de filtre). */
+  sourceDisplay: EngagementSourceDisplay
 }
 
 const MIN_LEFT = 260
@@ -61,6 +63,7 @@ export function DocumentAudit({ documents, engagements }: {
   const containerRef = useRef<HTMLDivElement>(null)
   const [leftWidth, setLeftWidth] = useState(DEFAULT_LEFT)
   const [dragging, setDragging] = useState(false)
+  const [filterValue, setFilterValue] = useState<string>(ALL_FILTER_VALUE)
 
   const clamp = useCallback((px: number) => {
     const c = containerRef.current
@@ -129,35 +132,60 @@ export function DocumentAudit({ documents, engagements }: {
   const selectedDoc = documents.find((d) => d.id === sel.documentId) ?? null
   const url = selectedDoc?.url ?? null
   const src = url ? (sel.pageNumber !== null ? `${url}#page=${sel.pageNumber}&view=FitH` : `${url}#view=FitH`) : null
-  const go = (d: number) => selectEngagement(Math.min(engagements.length - 1, Math.max(0, (i ?? (d > 0 ? -1 : 1)) + d)))
   const viewerKey = `${sel.documentId ?? 'none'}-${sel.pageNumber ?? 'whole'}`
   const curUnavailable = cur !== null && cur.provenance.state === 'unavailable'
+
+  const filterOptions = buildDocumentFilterOptions(engagements.map(e => e.sourceDisplay))
+  const filtered = filterValue === ALL_FILTER_VALUE ? engagements : engagements.filter(e => e.sourceDisplay.filterValue === filterValue)
+  const filteredIdx = cur ? filtered.findIndex(e => e.id === cur.id) : null
+  const go = (d: number) => {
+    if (filtered.length === 0) return
+    const fi = (filteredIdx !== null && filteredIdx >= 0) ? filteredIdx : (d > 0 ? -1 : filtered.length)
+    const target = filtered[Math.min(filtered.length - 1, Math.max(0, fi + d))]
+    if (target) selectEngagement(engagements.findIndex(e => e.id === target.id))
+  }
 
   return (
     <div ref={containerRef} className="flex flex-col lg:flex-row lg:items-stretch gap-0 min-h-[480px]">
       {/* GAUCHE — liste navigable (largeur redimensionnable en desktop). */}
       <aside style={{ width: leftWidth }} className="max-lg:!w-full lg:shrink-0 space-y-2">
         <div className="flex items-center justify-between rounded-lg border bg-card px-2 py-1.5">
-          <button type="button" onClick={() => go(-1)} disabled={i === 0 || engagements.length === 0}
+          <button type="button" onClick={() => go(-1)} disabled={filteredIdx === 0 || filtered.length === 0}
             className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-muted/50 disabled:opacity-40">
             <ChevronLeft className="h-4 w-4" /> Précédent
           </button>
-          <span className="text-xs tabular-nums text-muted-foreground">{i !== null ? i + 1 : '—'} / {engagements.length}</span>
-          <button type="button" onClick={() => go(1)} disabled={i === engagements.length - 1 || engagements.length === 0}
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {filteredIdx !== null && filteredIdx >= 0 ? filteredIdx + 1 : '—'} / {filtered.length}
+          </span>
+          <button type="button" onClick={() => go(1)} disabled={filteredIdx === filtered.length - 1 || filtered.length === 0}
             className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-muted/50 disabled:opacity-40">
             Suivant <ChevronRight className="h-4 w-4" />
           </button>
         </div>
 
-        {engagements.length === 0 ? (
+        {filterOptions.length > 2 && (
+          <select
+            value={filterValue}
+            onChange={(ev) => { setFilterValue(ev.target.value); setI(null) }}
+            className="w-full rounded-lg border bg-card px-2 py-1.5 text-xs"
+          >
+            {filterOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        )}
+
+        {filtered.length === 0 ? (
+          <p className="text-sm text-muted-foreground italic px-1">Aucun engagement pour ce filtre.</p>
+        ) : engagements.length === 0 ? (
           <p className="text-sm text-muted-foreground italic px-1">Aucun engagement détecté dans ce dossier.</p>
         ) : (
         <ul className="space-y-1 max-h-[calc(100vh-13rem)] overflow-auto pr-1">
-          {engagements.map((e, idx) => {
-            const active = idx === i
+          {filtered.map((e) => {
+            const active = e.id === (i !== null ? engagements[i]?.id : null)
             return (
               <li key={e.id}>
-                <button type="button" onClick={() => selectEngagement(idx)}
+                <button type="button" onClick={() => selectEngagement(engagements.findIndex(x => x.id === e.id))}
                   className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${active ? 'border-sky-400 bg-sky-50/60' : 'bg-card hover:border-foreground/30'}`}>
                   <span className="flex items-center gap-1.5 mb-0.5">
                     {/* LE MÊME numéro que sur le PDF (marge + début du surlignage) :
@@ -166,10 +194,10 @@ export function DocumentAudit({ documents, engagements }: {
                       className="inline-flex min-w-5 items-center justify-center rounded-md border px-1 py-0.5 text-[10px] font-bold tabular-nums"
                       style={{ borderColor: e.kind ? KIND_COLOR[e.kind] ?? '#64748b' : '#64748b', color: e.kind ? KIND_COLOR[e.kind] ?? '#64748b' : '#64748b' }}
                     >
-                      {idx + 1}
+                      {engagements.findIndex(x => x.id === e.id) + 1}
                     </span>
                     {e.kind && <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${KIND_META[e.kind].badge}`}>{KIND_META[e.kind].label}</span>}
-                    <span className="text-[10px] text-muted-foreground tabular-nums">{provenancePageBadge(e.provenance)}</span>
+                    <span className="text-[10px] text-muted-foreground tabular-nums">{engagementSourceBadge(e.sourceDisplay)}</span>
                   </span>
                   <span className="block text-sm font-medium">{e.shortLabel}</span>
                   {active && e.excerpt && (
@@ -235,7 +263,7 @@ export function DocumentAudit({ documents, engagements }: {
                 <FileText className="h-3.5 w-3.5" />
                 {/* Engagement sélectionné → la provenance persistée fait foi.
                     Sinon → simple consultation, jamais présentée comme source. */}
-                {cur ? provenanceSourceLabel(cur.provenance) : `${selectedDoc.filename} — consultation`}
+                {cur ? cur.sourceDisplay.label : `${selectedDoc.filename} — consultation`}
               </span>
               <a href={src} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-sky-700 hover:underline shrink-0">
                 <ExternalLink className="h-3.5 w-3.5" /> Onglet

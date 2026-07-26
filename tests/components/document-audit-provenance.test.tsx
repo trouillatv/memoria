@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { DocumentAudit, type AuditEngagement } from '@/app/(dashboard)/tenders/[id]/audit/DocumentAudit'
 import type { AuditProvenance } from '@/app/(dashboard)/tenders/[id]/audit/audit-provenance'
+import { engagementSourceDisplay } from '@/lib/tenders/engagement-source-display'
 
 // pdf.js n'existe pas en jsdom — le viewer est remplacé par un témoin qui
 // expose l'URL et la page reçues (ce que le contrat de navigation décide).
@@ -20,6 +21,8 @@ vi.mock('@/app/(dashboard)/tenders/[id]/audit/PdfAuditViewer', () => ({
 const DOC_A = { id: 'doc-a', filename: 'CCAP.pdf', url: 'https://signed/ccap' }
 const DOC_B = { id: 'doc-b', filename: 'CCTP.pdf', url: 'https://signed/cctp' }
 
+const UNLOCATED_DISPLAY = engagementSourceDisplay({ sourceType: null, tenderDocumentId: null, documentExists: false, documentFilename: null, page: null })
+
 function engagement(p: Partial<AuditEngagement> & { provenance: AuditProvenance }): AuditEngagement {
   return {
     id: p.id ?? 'e-1',
@@ -29,20 +32,24 @@ function engagement(p: Partial<AuditEngagement> & { provenance: AuditProvenance 
     context: p.context ?? null,
     occurrences: p.occurrences ?? [],
     provenance: p.provenance,
+    sourceDisplay: p.sourceDisplay ?? UNLOCATED_DISPLAY,
   }
 }
 
 const exactEng = engagement({
   id: 'e-exact', shortLabel: 'Pénalité de retard',
   provenance: { state: 'exact', documentId: 'doc-b', pageNumber: 12, filename: 'CCTP.pdf' },
+  sourceDisplay: engagementSourceDisplay({ sourceType: null, tenderDocumentId: 'doc-b', documentExists: true, documentFilename: 'CCTP.pdf', page: 12 }),
 })
 const documentOnlyEng = engagement({
   id: 'e-doc-only', shortLabel: 'Contrôle mensuel',
   provenance: { state: 'document_only', documentId: 'doc-b', pageNumber: null, filename: 'CCTP.pdf' },
+  sourceDisplay: engagementSourceDisplay({ sourceType: null, tenderDocumentId: 'doc-b', documentExists: true, documentFilename: 'CCTP.pdf', page: null }),
 })
 const unavailableEng = engagement({
   id: 'e-unavailable', shortLabel: 'Obligation héritée',
   provenance: { state: 'unavailable', documentId: null, pageNumber: null, filename: null },
+  sourceDisplay: UNLOCATED_DISPLAY,
 })
 
 const tab = (name: string) => screen.getByRole('tab', { name })
@@ -77,7 +84,7 @@ describe('DocumentAudit — navigation par état de provenance', () => {
     render(<DocumentAudit documents={[DOC_A, DOC_B]} engagements={[exactEng]} />)
     fireEvent.click(screen.getByText('Pénalité de retard'))
     expect(tab('CCTP.pdf')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText('CCTP.pdf — page 12')).toBeInTheDocument()
+    expect(screen.getByText('📘 Exigence AO — CCTP.pdf — page 12')).toBeInTheDocument()
     const v = await screen.findByTestId('pdf-viewer')
     expect(v.dataset.url).toBe(DOC_B.url)
     expect(v.dataset.page).toBe('12')
@@ -87,7 +94,7 @@ describe('DocumentAudit — navigation par état de provenance', () => {
     render(<DocumentAudit documents={[DOC_A, DOC_B]} engagements={[documentOnlyEng]} />)
     fireEvent.click(screen.getByText('Contrôle mensuel'))
     expect(tab('CCTP.pdf')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText('CCTP.pdf — page non localisée')).toBeInTheDocument()
+    expect(screen.getByText('📘 Exigence AO — CCTP.pdf — page non localisée')).toBeInTheDocument()
     expect((await screen.findByTestId('pdf-viewer')).dataset.page).toBe('')
   })
 
@@ -96,7 +103,7 @@ describe('DocumentAudit — navigation par état de provenance', () => {
     fireEvent.click(screen.getByText('Obligation héritée'))
     // Aucun repli : la pièce consultée reste la première, sans page.
     expect(tab('CCAP.pdf')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText('Source non localisée')).toBeInTheDocument()
+    expect(screen.getByText('⚠️ Source non localisée')).toBeInTheDocument()
     const v = await screen.findByTestId('pdf-viewer')
     expect(v.dataset.url).toBe(DOC_A.url)
     expect(v.dataset.page).toBe('')
@@ -106,6 +113,6 @@ describe('DocumentAudit — navigation par état de provenance', () => {
     render(<DocumentAudit documents={[DOC_A, DOC_B]} engagements={[exactEng, documentOnlyEng, unavailableEng]} />)
     expect(screen.getByText('p.12')).toBeInTheDocument()
     expect(screen.getByText('page non localisée')).toBeInTheDocument()
-    expect(screen.getByText('source non localisée')).toBeInTheDocument()
+    expect(screen.getByText('⚠️ non localisée')).toBeInTheDocument()
   })
 })

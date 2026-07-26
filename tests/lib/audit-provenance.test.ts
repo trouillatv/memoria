@@ -7,8 +7,6 @@ import { describe, expect, it } from 'vitest'
 import {
   applyProvenanceSelection,
   initialAuditSelection,
-  provenancePageBadge,
-  provenanceSourceLabel,
   type AuditProvenance,
 } from '@/app/(dashboard)/tenders/[id]/audit/audit-provenance'
 import { deriveEngagementProvenanceReadRow } from '@/lib/tenders/engagement-provenance'
@@ -75,19 +73,3 @@ describe('source_ref.page seul ne promeut JAMAIS un engagement en source navigab
   })
 })
 
-describe('libellés — le vrai contrat Document → Page → État', () => {
-  it('exact → « CCTP.pdf — page 12 »', () => {
-    expect(provenanceSourceLabel(exact)).toBe('CCTP.pdf — page 12')
-    expect(provenancePageBadge(exact)).toBe('p.12')
-  })
-
-  it('document_only → « CCTP.pdf — page non localisée »', () => {
-    expect(provenanceSourceLabel(documentOnly)).toBe('CCTP.pdf — page non localisée')
-    expect(provenancePageBadge(documentOnly)).toBe('page non localisée')
-  })
-
-  it('unavailable → « Source non localisée »', () => {
-    expect(provenanceSourceLabel(unavailable)).toBe('Source non localisée')
-    expect(provenancePageBadge(unavailable)).toBe('source non localisée')
-  })
-})
