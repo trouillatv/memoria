@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { EngagementSourceType } from '@/types/db'
 import {
   deriveEngagementProvenanceReadRow,
   type EngagementProvenanceReadRow,
@@ -8,6 +9,7 @@ type TenderEngagementProvenanceQueryRow = {
   id: string
   tender_id: string
   source_ref: Record<string, unknown> | null
+  source_type: EngagementSourceType | null
   tender_document_id: string | null
   page_number: number | null
   tender_document: { id: string; filename: string } | null
@@ -17,6 +19,7 @@ const TENDER_ENGAGEMENT_PROVENANCE_SELECT = [
   'id',
   'tender_id',
   'source_ref',
+  'source_type',
   'tender_document_id',
   'page_number',
   'tender_document:tender_documents!engagements_tender_document_tender_id_fkey(id, filename)',
@@ -43,6 +46,7 @@ export async function listTenderEngagementProvenance(
       engagementId: row.id,
       tenderId: row.tender_id,
       sourceRef: row.source_ref,
+      sourceType: row.source_type,
       tenderDocumentId: row.tender_document_id,
       pageNumber: row.page_number,
       document: row.tender_document,
