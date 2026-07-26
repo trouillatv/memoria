@@ -24,8 +24,10 @@ afterEach(() => {
 describe('runEngagementExtractionAgent', () => {
   it('returns extracted engagements from mock provider', async () => {
     const r = await runEngagementExtractionAgent({
-      aoText: 'AO test content',
-      memoireTechniqueText: 'Mémoire technique content',
+      sourceText: 'AO test content',
+      sourceType: 'ao_clause',
+      tenderDocumentId: 'doc-1',
+      sourceLabel: 'CCAP — ccap.pdf',
       userId: null,
     })
     expect(r.engagements.length).toBeGreaterThanOrEqual(3)
@@ -39,8 +41,10 @@ describe('runEngagementExtractionAgent', () => {
 
   it('engagements have all required fields', async () => {
     const r = await runEngagementExtractionAgent({
-      aoText: 'AO',
-      memoireTechniqueText: null,
+      sourceText: 'AO',
+      sourceType: 'ao_clause',
+      tenderDocumentId: null,
+      sourceLabel: 'Test',
       userId: null,
     })
     for (const e of r.engagements) {

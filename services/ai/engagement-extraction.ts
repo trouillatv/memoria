@@ -4,7 +4,6 @@ import { withAITracking } from './tracking'
 import type { AIProviderName } from './index'
 import type { EngagementCategory, EngagementKind, EngagementSourceType } from '@/types/db'
 import { ENGAGEMENT_EXTRACTOR_V1 } from './prompts/engagement-extractor.v1'
-import { TENDER_CORPUS_BUDGET } from '@/lib/tenders/pieces'
 
 // ---------------------------------------------------------------------------
 // Output schema
@@ -31,6 +30,7 @@ const extractedSchema = z.object({
 })
 
 export interface ExtractedEngagement {
+  /** IMPOSÉ par l'appelant selon la source lue — jamais deviné par l'IA. */
   source_type: EngagementSourceType
   source_excerpt: string
   source_ref: Record<string, unknown> | null
@@ -39,6 +39,8 @@ export interface ExtractedEngagement {
   short_label: string
   measurable: boolean
   ai_confidence: number
+  /** IMPOSÉ : la pièce d'origine (source AO), ou null (mémoire technique). */
+  tender_document_id: string | null
 }
 
 export interface EngagementExtractionResult {
@@ -47,42 +49,36 @@ export interface EngagementExtractionResult {
 }
 
 export interface EngagementExtractionInput {
-  aoText: string
-  memoireTechniqueText: string | null
+  /** Le texte COMPLET d'UNE source : une pièce d'AO, OU le mémoire technique. */
+  sourceText: string
+  /** Nature de la source — IMPOSÉE par l'appelant, jamais devinée par l'IA. */
+  sourceType: EngagementSourceType
+  /** Pièce d'origine (id) pour une source AO ; null pour le mémoire technique. */
+  tenderDocumentId: string | null
+  /** Libellé lisible de la source (contexte du prompt + traçabilité). */
+  sourceLabel: string
   userId: string | null
 }
 
-// Fenêtre de lecture de l'agent — ALIGNÉE sur le budget de buildTenderCorpus.
-// Historique : la valeur était 12 000, héritée de l'époque mono-document
-// (« limit 1 »). Depuis que l'AO est lu comme un DOSSIER (buildTenderCorpus,
-// 30 000, part équitable par pièce, PR #174), tronquer à 12 000 rejetait par
-// POSITION les pièces déposées en fin de corpus : l'IA n'en voyait que 2-3 et
-// n'extrayait des engagements que de celles-là. On lit donc tout le budget du
-// corpus (qui plafonne déjà à TENDER_CORPUS_BUDGET) pour que CHAQUE pièce ait
-// sa part dans la fenêtre du modèle.
-const MEMOIRE_TECHNIQUE_BUDGET = 8_000
-
 /**
- * Compose le message utilisateur soumis à l'agent d'extraction. Extrait pour
- * être TESTABLE : on doit pouvoir démontrer que les en-têtes de chaque pièce
- * (`=== … ===`) survivent jusqu'à l'entrée du LLM, sans passer par un provider.
+ * Compose le message soumis à l'agent pour UNE source (une pièce d'AO OU le
+ * mémoire technique). Texte INTÉGRAL : c'est ce qui permet d'atteindre les
+ * clauses profondes (articles, pénalités, réception) situées après les
+ * sommaires et préambules — l'ancien partage d'un corpus commun tronquait les
+ * gros documents à leur seule ouverture. Pas de plafond métier ici : le
+ * découpage par sections des documents exceptionnels viendra si un test réel le
+ * démontre. Extrait pour être testable sans passer par un provider.
  */
-export function buildEngagementExtractionMessage(
-  aoText: string,
-  memoireTechniqueText: string | null,
-): string {
+export function buildEngagementExtractionMessage(sourceText: string, sourceLabel: string): string {
   return [
-    '=== AO source (texte extrait) ===',
-    aoText.slice(0, TENDER_CORPUS_BUDGET),
-    '',
-    '=== Mémoire technique (si disponible) ===',
-    memoireTechniqueText?.slice(0, MEMOIRE_TECHNIQUE_BUDGET) ?? '(non fourni)',
+    `=== Source : ${sourceLabel} ===`,
+    sourceText,
     '',
     'Extrais les engagements au format JSON :',
     '{',
     '  "engagements": [',
-    '    { "source_type": "...", "source_excerpt": "...", "source_ref": { "page": N, "section": "..." },',
-    '      "category": "...", "short_label": "...", "measurable": bool, "confidence": 0.X },',
+    '    { "source_excerpt": "...", "source_ref": { "page": N, "section": "..." },',
+    '      "category": "...", "kind": "...", "short_label": "...", "measurable": bool, "confidence": 0.X },',
     '    ...',
     '  ]',
     '}',
@@ -218,7 +214,7 @@ export async function runEngagementExtractionAgent(
     if (provider.name === 'mock') {
       userMessage = `__MOCK_FIXTURE__:${JSON.stringify(MOCK_FIXTURE)}`
     } else {
-      userMessage = buildEngagementExtractionMessage(input.aoText, input.memoireTechniqueText)
+      userMessage = buildEngagementExtractionMessage(input.sourceText, input.sourceLabel)
     }
 
     const output = await provider.complete({
@@ -283,7 +279,11 @@ export async function runEngagementExtractionAgent(
       let source_excerpt = (e.source_excerpt ?? '').trim().slice(0, 2000)
       if (source_excerpt.length < 5) source_excerpt = short_label
       return {
-        source_type: e.source_type,
+        // La nature de la source et la pièce d'origine sont IMPOSÉES par
+        // l'appelant : l'IA lit le contenu, elle ne choisit ni le type de
+        // source ni le document. C'est ce qui garantit qu'une exigence d'AO
+        // n'est jamais confondue avec une proposition du mémoire technique.
+        source_type: input.sourceType,
         source_excerpt,
         source_ref: e.source_ref ?? null,
         category: e.category,
@@ -291,13 +291,20 @@ export async function runEngagementExtractionAgent(
         short_label,
         measurable: e.measurable,
         ai_confidence: e.confidence,
+        tender_document_id: input.tenderDocumentId,
       }
     })
     .filter((e) => e.short_label.length >= 3 && e.source_excerpt.length >= 5)
 
+  // Traçabilité de coût par passe (une passe = une source).
   const metadata: Record<string, unknown> = {
     provider: provider.name,
     prompt_version: ENGAGEMENT_EXTRACTOR_V1.version,
+    source_type: input.sourceType,
+    source_label: input.sourceLabel,
+    tender_document_id: input.tenderDocumentId,
+    source_chars: input.sourceText.length,
+    engagements_count: engagements.length,
   }
 
   return { engagements, metadata }

@@ -15,7 +15,7 @@ import {
   rejectEngagements,
 } from '@/lib/db/engagements'
 import { createContract } from '@/lib/db/contracts'
-import { getTender, listTenderDocuments, getLatestTenderAnalysis } from '@/lib/db/tenders'
+import { getTender, listTenderDocuments } from '@/lib/db/tenders'
 import { buildTenderCorpus } from '@/lib/tenders/pieces'
 import { createVerifiedEngagementProvenanceResolver } from '@/lib/tenders/engagement-provenance'
 import { createClient as createServerClient } from '@/lib/supabase/server'
@@ -48,10 +48,9 @@ export async function extractEngagementsAction(formData: FormData) {
 
   // Les engagements vivent dans le CCAP et le CCTP — pas dans « le » document.
   // Extraire depuis une seule pièce laisserait passer l'essentiel des obligations.
-  const [docs, analysis] = await Promise.all([
-    listTenderDocuments(parsed.data.tender_id),
-    getLatestTenderAnalysis(parsed.data.tender_id),
-  ])
+  // (Le mémoire technique — getLatestTenderAnalysis — redevient une passe dédiée
+  //  au commit 2 de l'extraction par pièce.)
+  const docs = await listTenderDocuments(parsed.data.tender_id)
   const aoText = buildTenderCorpus(
     docs.map((d) => ({ kind: d.kind, filename: d.filename, text: d.extracted_text ?? '' })),
   )
@@ -71,9 +70,15 @@ export async function extractEngagementsAction(formData: FormData) {
 
   let count = 0
   try {
+    // Transitionnel (commit 1) : un seul appel sur le corpus AO combiné, type
+    // imposé. L'orchestration par pièce + la passe mémoire arrivent au commit 2 ;
+    // c'est pourquoi cette branche n'est pas mergée seule (sinon on perdrait
+    // temporairement les engagements du mémoire technique).
     const result = await runEngagementExtractionAgent({
-      aoText,
-      memoireTechniqueText: analysis?.technical_memo ?? null,
+      sourceText: aoText,
+      sourceType: 'ao_clause',
+      tenderDocumentId: null,
+      sourceLabel: 'Dossier AO',
       userId: auth.userId,
     })
 
