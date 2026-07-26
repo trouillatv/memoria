@@ -16,6 +16,7 @@ import { getStructuredPromiseRecords } from '@/lib/db/promise-candidates'
 import { attentionItemToMemorySignal, nowItemToMemorySignal } from '@/lib/memory/signals/lot1-adapters'
 import { detectPromiseSignalsFromRecords } from '@/lib/memory/signals/promise-pipeline'
 import { composeAttentionCardsFromSignals } from '@/lib/situations/attention/compose'
+import { composeNowCardsFromSignals } from '@/lib/situations/now/compose'
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardPremium } from './DashboardPremium'
 
@@ -65,6 +66,7 @@ export default async function DashboardPage() {
     ...attention.orange.map((item) => attentionItemToMemorySignal(item)),
   ].filter((signal): signal is NonNullable<typeof signal> => signal !== null)
   const attentionCards = composeAttentionCardsFromSignals(promiseSignals)
+  const nowCards = composeNowCardsFromSignals(promiseSignals)
   const nowSignals = now.items.map((item) => nowItemToMemorySignal(item))
 
   return (
@@ -73,6 +75,7 @@ export default async function DashboardPage() {
       orgNames={orgNames}
       attentionSignals={legacyAttentionSignals}
       attentionCards={attentionCards}
+      nowCards={nowCards}
       visit={visit}
       upcoming={upcoming}
       sites={sites}
