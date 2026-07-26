@@ -7,6 +7,7 @@ import {
   buildDocumentFilterOptions,
   classifyEngagementSource,
   engagementSourceDisplay,
+  summarizeEngagementSources,
   ALL_FILTER_VALUE,
   MEMOIRE_FILTER_VALUE,
   UNLOCATED_FILTER_VALUE,
@@ -84,6 +85,25 @@ describe('engagementSourceDisplay — libellés & valeurs de filtre', () => {
     const b = engagementSourceDisplay(input({ tenderDocumentId: 'id-B', documentExists: true, documentFilename: 'Annexe.pdf', page: 2 }))
     expect(a.filterValue).not.toBe(b.filterValue)
     expect(a.documentLabel).toBe(b.documentLabel) // même nom affiché
+  })
+})
+
+describe('summarizeEngagementSources — KPI qualité', () => {
+  const ao = (docId: string, page: number | null) =>
+    engagementSourceDisplay(input({ tenderDocumentId: docId, documentExists: true, documentFilename: 'X.pdf', page }))
+  const memo = () => engagementSourceDisplay(input({ sourceType: 'memoire_engagement' }))
+  const manual = () => engagementSourceDisplay(input({ sourceType: 'manual', tenderDocumentId: null }))
+  const unloc = () => engagementSourceDisplay(input({ tenderDocumentId: null }))
+  const ghost = () => engagementSourceDisplay(input({ tenderDocumentId: 'gone', documentExists: false }))
+
+  it('ne compte en « nonLocalises » que les VRAIS non localisés', () => {
+    const s = summarizeEngagementSources([ao('d', 12), ao('d', null), memo(), manual(), ghost(), unloc()])
+    expect(s).toEqual({ total: 6, aoLocalises: 2, memoire: 1, manuel: 1, documentIndisponible: 1, nonLocalises: 1 })
+  })
+
+  it('mémoire et manuel ne gonflent PAS le KPI', () => {
+    const s = summarizeEngagementSources([memo(), memo(), manual()])
+    expect(s.nonLocalises).toBe(0)
   })
 })
 

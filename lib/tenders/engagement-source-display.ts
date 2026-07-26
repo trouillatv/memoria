@@ -68,6 +68,39 @@ export interface DocumentFilterOption {
   count: number
 }
 
+/**
+ * KPI qualité de la provenance d'un dossier. « nonLocalises » est le SEUL vrai
+ * indicateur de faiblesse (ni mémoire, ni manuel, ni document indisponible) :
+ * sur un dossier extrait par le pipeline per-pièce, il doit être à 0.
+ */
+export interface SourceQualitySummary {
+  total: number
+  /** Rattachés à une pièce connue (page exacte ou à confirmer). */
+  aoLocalises: number
+  memoire: number
+  manuel: number
+  documentIndisponible: number
+  /** ⚠️ Le KPI : engagements sans aucun document connu. */
+  nonLocalises: number
+}
+
+export function summarizeEngagementSources(
+  displays: ReadonlyArray<EngagementSourceDisplay>,
+): SourceQualitySummary {
+  const s: SourceQualitySummary = { total: displays.length, aoLocalises: 0, memoire: 0, manuel: 0, documentIndisponible: 0, nonLocalises: 0 }
+  for (const d of displays) {
+    switch (d.kind) {
+      case 'ao_exact':
+      case 'ao_document_only': s.aoLocalises += 1; break
+      case 'memoire': s.memoire += 1; break
+      case 'manual': s.manuel += 1; break
+      case 'document_unavailable': s.documentIndisponible += 1; break
+      case 'unlocated': s.nonLocalises += 1; break
+    }
+  }
+  return s
+}
+
 function filterRank(kind: EngagementSourceKind): number {
   if (kind === 'memoire') return 2
   if (kind === 'manual') return 3

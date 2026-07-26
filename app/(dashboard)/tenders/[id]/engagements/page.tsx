@@ -5,7 +5,7 @@ import { listEngagementsByTender } from '@/lib/db/engagements'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getAoExperience } from '@/lib/db/ao-experience'
 import { listTenderEngagementProvenance } from '@/lib/db/tender-engagement-provenance'
-import { engagementSourceDisplay, type EngagementSourceDisplay } from '@/lib/tenders/engagement-source-display'
+import { engagementSourceDisplay, summarizeEngagementSources, type EngagementSourceDisplay } from '@/lib/tenders/engagement-source-display'
 import { EngagementCurationView } from '../engagement-curation-view'
 import { AoExperiencePanel } from './AoExperiencePanel'
 import { ExtractEngagementsButton } from './ExtractEngagementsButton'
@@ -65,6 +65,24 @@ export default async function TenderEngagementsPage({ params }: { params: Promis
         </p>
       ) : (
         <>
+          {(() => {
+            // KPI qualité de la provenance — « ⚠️ non localisé » est le SEUL vrai
+            // indicateur de faiblesse (sur un dossier extrait par pièce, il doit
+            // être à 0). Mémoire / manuel sont informatifs, pas des échecs.
+            const q = summarizeEngagementSources(Object.values(sourceDisplays))
+            return (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-muted/20 px-3 py-2 text-[11px]">
+                <span className="font-semibold text-muted-foreground uppercase tracking-widest">Provenance</span>
+                <span>📘 {q.aoLocalises} rattaché{q.aoLocalises > 1 ? 's' : ''} à une pièce</span>
+                {q.memoire > 0 && <span>✍️ {q.memoire} mémoire</span>}
+                {q.manuel > 0 && <span>✏️ {q.manuel} manuel{q.manuel > 1 ? 's' : ''}</span>}
+                {q.documentIndisponible > 0 && <span className="text-amber-700">📕 {q.documentIndisponible} document indisponible</span>}
+                <span className={q.nonLocalises > 0 ? 'font-semibold text-rose-700' : 'text-emerald-700'}>
+                  {q.nonLocalises > 0 ? `⚠️ ${q.nonLocalises} source${q.nonLocalises > 1 ? 's' : ''} non localisée${q.nonLocalises > 1 ? 's' : ''}` : '✓ 0 source non localisée'}
+                </span>
+              </div>
+            )
+          })()}
           <AoExperiencePanel terms={experience} />
           <EngagementCurationView engagements={engagements} sourceDisplays={sourceDisplays} />
         </>
