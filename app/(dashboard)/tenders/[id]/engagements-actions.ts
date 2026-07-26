@@ -20,6 +20,7 @@ import { buildTenderCorpus } from '@/lib/tenders/pieces'
 import { createVerifiedEngagementProvenanceResolver } from '@/lib/tenders/engagement-provenance'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
+import { readableError } from '@/lib/errors'
 
 const extractSchema = z.object({ tender_id: z.string().uuid() })
 
@@ -91,8 +92,7 @@ export async function extractEngagementsAction(formData: FormData) {
     count = result.engagements.length
   } catch (e) {
     console.error('[extractEngagementsAction] échec extraction/insertion:', e)
-    const msg = e instanceof Error ? e.message : String(e)
-    return { error: `Extraction impossible : ${msg.slice(0, 200)}` }
+    return { error: `Extraction impossible : ${readableError(e).slice(0, 300)}` }
   }
 
   revalidatePath(`/tenders/${parsed.data.tender_id}/engagements`)
