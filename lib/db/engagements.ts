@@ -23,6 +23,30 @@ export async function listEngagementsByTender(tenderId: string): Promise<DbEngag
   return data ?? []
 }
 
+/**
+ * Réinitialisation pour ré-extraction : supprime les engagements EXTRAITS d'un
+ * dossier (ceux qui ne sont pas encore rattachés à un contrat). Fail-closed :
+ * `contract_id IS NULL` garantit qu'un engagement converti en contrat — un vrai
+ * engagement, plus un brouillon — n'est JAMAIS détruit, même si l'appelant
+ * oublie de le vérifier. Scopé à l'organisation du dossier (service-role bypasse
+ * la RLS). Retourne le nombre de lignes supprimées.
+ */
+export async function deleteExtractedEngagementsByTender(tenderId: string): Promise<number> {
+  const supabase = createAdminClient()
+  const { data: tender } = await supabase.from('tenders').select('organization_id').eq('id', tenderId).maybeSingle()
+  if (!tender) throw new Error('AO introuvable')
+  const membership = await requireOrganizationMembership(tender.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
+  const { data, error } = await supabase
+    .from('engagements')
+    .delete()
+    .eq('tender_id', tenderId)
+    .is('contract_id', null)
+    .select('id')
+  if (error) throw error
+  return data?.length ?? 0
+}
+
 export async function listEngagementsByContract(contractId: string): Promise<DbEngagement[]> {
   const supabase = createAdminClient()
   const { data, error } = await supabase

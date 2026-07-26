@@ -9,6 +9,7 @@ import { provenanceSourceLabel } from '@/lib/tenders/provenance-label'
 import { EngagementCurationView } from '../engagement-curation-view'
 import { AoExperiencePanel } from './AoExperiencePanel'
 import { ExtractEngagementsButton } from './ExtractEngagementsButton'
+import { ResetEngagementsButton } from './ResetEngagementsButton'
 import { BackButton } from './BackButton'
 
 export default async function TenderEngagementsPage({ params }: { params: Promise<{ id: string }> }) {
@@ -42,10 +43,13 @@ export default async function TenderEngagementsPage({ params }: { params: Promis
         </div>
         {engagements.length === 0 && <ExtractEngagementsButton tenderId={id} />}
         {engagements.length > 0 && (
-          <Link href={`/tenders/${id}/audit`}
-            className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted/40 shrink-0">
-            <ScanSearch className="h-3.5 w-3.5" /> Audit documentaire
-          </Link>
+          <div className="flex items-center gap-2 shrink-0">
+            <ResetEngagementsButton tenderId={id} />
+            <Link href={`/tenders/${id}/audit`}
+              className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted/40">
+              <ScanSearch className="h-3.5 w-3.5" /> Audit documentaire
+            </Link>
+          </div>
         )}
       </div>
 
