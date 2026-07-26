@@ -1,6 +1,7 @@
 import { Search, ChevronDown, FileText, BookOpen, Sparkles, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
 import type { Source } from '@/types/db'
+import { deriveSynthesisSourceState, provenanceSourceLabel } from '@/lib/tenders/provenance-label'
 
 export function SourceList({ sources }: { sources: Source[] }) {
   if (!sources || sources.length === 0) return null
@@ -19,10 +20,15 @@ export function SourceList({ sources }: { sources: Source[] }) {
               {s.type === 'pdf' && (
                 // « Page 7 » ne veut rien dire quand le dossier compte huit pièces
                 // et que chacune redémarre à la page 1. On nomme la pièce d'abord.
+                // Et une page non vérifiée n'est JAMAIS présentée comme un fait :
+                // même vocabulaire que l'audit (exact / document_only / unavailable).
                 <span className="inline-flex items-center gap-1">
                   <FileText className="h-2.5 w-2.5" />
-                  {s.document ?? 'PDF'}
-                  {typeof s.page === 'number' ? ` · page ${s.page}` : ''}
+                  {provenanceSourceLabel({
+                    state: deriveSynthesisSourceState({ document: s.document, page: s.page, verified: s.verified }),
+                    filename: s.document ?? null,
+                    pageNumber: s.page ?? null,
+                  })}
                 </span>
               )}
               {s.type === 'library' && (
@@ -44,7 +50,10 @@ export function SourceList({ sources }: { sources: Source[] }) {
                   Analyse
                 </span>
               )}
-              {s.verified === false && (
+              {/* Pour un PDF, l'état structuré porte déjà l'honnêteté (« page non
+                  localisée ») — pas de tag redondant. Le warning reste pour les
+                  autres types de source (bibliothèque, analyse). */}
+              {s.type !== 'pdf' && s.verified === false && (
                 <span className="inline-flex items-center gap-1 text-amber-700">
                   <AlertCircle className="h-2.5 w-2.5" />
                   non vérifiée
