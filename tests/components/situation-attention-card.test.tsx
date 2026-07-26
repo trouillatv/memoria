@@ -18,6 +18,8 @@ const card: AttentionCard = {
   secondaryActions: [
     { kind: 'open_source', label: 'Ouvrir la visite', href: '/visites/visit-1' },
   ],
+  subject: null,
+  resolutions: [],
 }
 
 describe('SituationAttentionCard', () => {

@@ -64,6 +64,11 @@ export function projectSituationForAttention(situation: Situation | null): Atten
   })
   const [primaryAction, ...secondaryActions] = actions
 
+  // Gestes de MUTATION : portés à part (avec le subject), jamais comme des liens.
+  const resolutions = situation.capabilities.flatMap((capability) =>
+    capability.kind === 'open_source' ? [] : [{ kind: capability.kind, label: capability.label }],
+  )
+
   return {
     id: situation.id,
     icon: iconOfSituation(situation),
@@ -76,6 +81,9 @@ export function projectSituationForAttention(situation: Situation | null): Atten
     sourceLabel: situation.source?.label ?? undefined,
     primaryAction,
     secondaryActions,
+    // Résoluble seulement si un subject est présent ET des gestes existent.
+    subject: resolutions.length > 0 ? situation.subject : null,
+    resolutions,
   }
 }
 

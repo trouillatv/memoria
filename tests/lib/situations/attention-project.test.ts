@@ -58,6 +58,8 @@ describe('projectSituationForAttention', () => {
       sourceLabel: 'Visite du 21 juillet',
       primaryAction: { kind: 'open_source', label: 'Voir la source', href: '/visites/visit-1' },
       secondaryActions: [],
+      subject: null,
+      resolutions: [],
     })
 
     expect(situation).toEqual(snapshot)
@@ -99,6 +101,8 @@ describe('projectSituationForAttention', () => {
       timingLabel: 'Aucune confirmation depuis 15 jours',
       primaryAction: undefined,
       secondaryActions: [],
+      subject: null,
+      resolutions: [],
     })
     expect(card?.title).not.toMatch(/retard|échue/i)
     expect(card?.timingLabel).not.toMatch(/retard|échue/i)
@@ -131,6 +135,7 @@ describe('projectSituationForAttention', () => {
 describe('sortAttentionCardsBySeverity', () => {
   const card = (id: string, tone: AttentionTone): AttentionCard => ({
     id, icon: 'warning', tone, title: id, description: null, siteLabel: 'site', secondaryActions: [],
+    subject: null, resolutions: [],
   })
 
   it('rouge → ambre → neutre, tri STABLE (ordre d\'origine à sévérité égale)', () => {

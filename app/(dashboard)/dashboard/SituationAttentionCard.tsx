@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { AlertTriangle, Calendar, FileText, HelpCircle, ChevronRight } from 'lucide-react'
 import type { AttentionCard } from '@/lib/situations/attention/types'
+import { AttentionCardResolutions } from './PromiseActions'
 
 const iconByName = {
   calendar: Calendar,
@@ -66,6 +67,9 @@ export function SituationAttentionCard({ card }: { card: AttentionCard }) {
               ))}
             </div>
           )}
+
+          {/* Gestes de RÉSOLUTION (T4) — mutations avec confirmation inline. */}
+          <AttentionCardResolutions card={card} />
         </div>
       </div>
     </article>

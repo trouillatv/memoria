@@ -1,6 +1,6 @@
 import type { MemorySignal, SignalFact } from '@/lib/memory/signals/operational-contract'
 import type { Situation, SituationKind, SituationSource } from './situation'
-import { openSourceCapability } from './capabilities'
+import { openSourceCapability, promiseResolutionCapabilities } from './capabilities'
 
 function factString(signal: MemorySignal, key: string): string | null {
   const fact = signal.facts.find((item: SignalFact) => item.key === key)
@@ -84,7 +84,7 @@ function promiseExpiredSituation(signal: MemorySignal, now: string): Situation {
     },
     source,
     subject: signal.subject ?? null,
-    capabilities: openSourceCapability(source),
+    capabilities: [...openSourceCapability(source), ...promiseResolutionCapabilities(signal.subject ?? null)],
   }
 }
 
@@ -120,7 +120,7 @@ function promiseWithoutDueDateSituation(signal: MemorySignal, now: string): Situ
     },
     source,
     subject: signal.subject ?? null,
-    capabilities: openSourceCapability(source),
+    capabilities: [...openSourceCapability(source), ...promiseResolutionCapabilities(signal.subject ?? null)],
   }
 }
 

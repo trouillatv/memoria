@@ -18,11 +18,17 @@ export type SituationSource = {
   href: string
 }
 
-export type SituationCapability = {
-  kind: 'open_source'
-  label: string
-  href: string
-}
+/** Gestes possibles sur une situation. `open_source` est un lien ; les autres
+ *  sont des MUTATIONS déclenchées avec le `subject` de la situation (T3/T4). */
+export type SituationResolutionKind =
+  | 'fulfill_promise'
+  | 'cancel_promise'
+  | 'replace_promise'
+  | 'create_follow_up_action'
+
+export type SituationCapability =
+  | { kind: 'open_source'; label: string; href: string }
+  | { kind: SituationResolutionKind; label: string }
 
 export type SituationTiming = {
   occurredAt: string | null

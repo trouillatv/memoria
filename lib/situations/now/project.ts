@@ -28,12 +28,20 @@ function isPromiseSituation(situation: Situation): boolean {
   return situation.kind === 'expired_promise' || situation.kind === 'unconfirmed_promise'
 }
 
+// Gestes reconnus comme « À faire maintenant ». VIDE pour l'instant : la règle de
+// projection directe des promesses vers Now n'est PAS encore définie — les gestes
+// de résolution (T4 : réalisée/annulée/remplacée/suivi) vivent dans ATTENTION,
+// pas dans Now. Une promesse reste donc hors de Now (comportement inchangé).
+// Ajouter un kind ici — le jour où la règle existe — y fera entrer la famille.
+const NOW_GESTURE_KINDS: ReadonlyArray<SituationCapability['kind']> = []
+
 function isDirectCapability(capability: SituationCapability): boolean {
-  return capability.kind !== 'open_source'
+  return NOW_GESTURE_KINDS.includes(capability.kind)
 }
 
 function actionFromCapability(capability: SituationCapability): NowAction | null {
-  if (!isDirectCapability(capability)) return null
+  // Seule une capacité Now-directe ET porteuse d'un lien produit une action Now.
+  if (!isDirectCapability(capability) || !('href' in capability)) return null
   return {
     kind: capability.kind,
     label: capability.label,
