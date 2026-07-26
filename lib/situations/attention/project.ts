@@ -19,6 +19,8 @@ function iconOfSituation(situation: Situation): AttentionIcon {
       return 'calendar'
     case 'unconfirmed_promise':
       return 'question'
+    case 'stale_action':
+      return 'warning'
     default:
       return 'warning'
   }
@@ -38,7 +40,9 @@ function actionFromCapability(capability: SituationCapability): AttentionAction 
 }
 
 function isSupportedSituation(situation: Situation): boolean {
-  return situation.kind === 'expired_promise' || situation.kind === 'unconfirmed_promise'
+  return situation.kind === 'expired_promise'
+    || situation.kind === 'unconfirmed_promise'
+    || situation.kind === 'stale_action'
 }
 
 export function projectSituationForAttention(situation: Situation | null): AttentionCard | null {

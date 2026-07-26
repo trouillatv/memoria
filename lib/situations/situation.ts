@@ -1,6 +1,7 @@
 export type SituationKind =
   | 'expired_promise'
   | 'unconfirmed_promise'
+  | 'stale_action'
 
 export type SituationSeverity = 'info' | 'warning' | 'critical'
 

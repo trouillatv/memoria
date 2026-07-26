@@ -126,7 +126,47 @@ function isPromiseSignal(signal: MemorySignal): boolean {
   return signal.category === 'promise' && signal.trigger.type === 'promise'
 }
 
+function isStaleActionSignal(signal: MemorySignal): boolean {
+  return signal.trigger.type === 'old_action' && signal.trigger.reason === 'object_aging'
+}
+
+// Migration progressive « action ancienne » : le signal existe déjà (staleness,
+// old_action, via lot1-adapters) mais n'était rendu qu'en AttentionRow legacy.
+// On le présente désormais comme une Situation — mêmes faits (what/why/where),
+// juste réexprimés dans le contrat commun. Minimal : pas d'enrichissement du
+// signal à la source (nom d'organisation absent → pas de badge org pour l'instant).
+function staleActionSituation(signal: MemorySignal): Situation {
+  const source = sourceFromSignal(signal)
+  return {
+    id: signal.id,
+    signalId: signal.id,
+    kind: 'stale_action',
+    severity: signal.severity,
+    title: factString(signal, 'what') ?? 'Action ancienne',
+    explanation: null,
+    site: {
+      id: signal.siteId,
+      // `where` porte déjà le nom lisible du chantier (cf. digest legacy).
+      name: factString(signal, 'where') ?? siteName(signal),
+      organizationId: signal.organizationId,
+      organizationName: organizationName(signal),
+    },
+    timing: {
+      occurredAt: null,
+      dueAt: null,
+      detectedAt: signal.detectedAt,
+      // L'âge est déjà narré par `why` (« ouverte depuis X j ») — on ne recalcule
+      // pas un ageDays qui ferait double emploi.
+      ageDays: null,
+      label: factString(signal, 'why'),
+    },
+    source,
+    capabilities: openSourceCapability(source),
+  }
+}
+
 export function presentSituation(signal: MemorySignal, now = new Date().toISOString()): Situation | null {
+  if (isStaleActionSignal(signal)) return staleActionSituation(signal)
   if (!isPromiseSignal(signal)) return null
 
   switch (signal.trigger.reason) {
