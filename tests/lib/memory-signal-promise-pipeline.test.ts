@@ -18,6 +18,7 @@ const record = (overrides: Partial<StructuredPromiseRecord> = {}): StructuredPro
   title: 'Le planning sera diffuse vendredi.',
   body: null,
   source,
+  subject: { table: 'captured_knowledge', id: 'promise-1', organizationId: 'org-1', siteId: 'site-1' },
   occurredAt: '2026-07-20T08:00:00+11:00',
   dueAt: null,
   confirmedAt: null,

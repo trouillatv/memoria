@@ -5,7 +5,9 @@ const source = { type: 'visit', id: 'report-1', href: '/sites/site-1/visites/rep
 
 const record = (overrides: Partial<StructuredPromiseRecord> = {}): StructuredPromiseRecord => ({
   id: 'promise-1', organizationId: 'org-1', siteId: 'site-1', kind: 'promise',
-  title: 'Le planning sera diffusé vendredi.', body: null, source, occurredAt: '2026-07-21T09:00:00.000Z',
+  title: 'Le planning sera diffusé vendredi.', body: null, source,
+  subject: { table: 'captured_knowledge', id: 'promise-1', organizationId: 'org-1', siteId: 'site-1' },
+  occurredAt: '2026-07-21T09:00:00.000Z',
   dueAt: '2026-07-25T23:59:59+11:00', confirmedAt: null, confirmationSourceIds: [], relatedProofSourceIds: [],
   importance: 'normal', blocking: false, ...overrides,
 })

@@ -1,4 +1,4 @@
-import type { SourceRef } from './operational-contract'
+import type { SourceRef, PromiseSubjectRef } from './operational-contract'
 import type { PromiseCandidate } from './promise-detector'
 
 export type StructuredPromiseRecord = {
@@ -10,6 +10,8 @@ export type StructuredPromiseRecord = {
   title: string
   body: string | null
   source: SourceRef
+  /** Objet persistant résoluble : quelle TABLE porte cette promesse (T2). */
+  subject: PromiseSubjectRef
   occurredAt: string | null
   /** ISO avec fuseau déjà résolu par le read model. */
   dueAt: string | null
@@ -41,6 +43,7 @@ export function buildPromiseCandidates(records: StructuredPromiseRecord[]): Prom
       siteId: record.siteId,
       text: record.title.trim(),
       source: record.source,
+      subject: record.subject,
       occurredAt: record.occurredAt,
       dueAt: record.dueAt,
       confirmedAt: record.confirmedAt,

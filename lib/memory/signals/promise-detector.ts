@@ -1,4 +1,4 @@
-import type { MemorySignal, SourceRef } from './operational-contract'
+import type { MemorySignal, SourceRef, PromiseSubjectRef } from './operational-contract'
 
 export type PromiseCandidate = {
   id: string
@@ -6,6 +6,8 @@ export type PromiseCandidate = {
   siteId: string
   text: string
   source: SourceRef
+  /** Objet persistant résoluble (T2) — porté jusqu'au signal, puis à la Situation. */
+  subject: PromiseSubjectRef
   occurredAt: string | null
   /** Identifiant persistant : jamais un index de phrase ou de tableau. */
   /** Date ISO déjà résolue avec le fuseau du contexte ; le détecteur ne l'invente pas. */
@@ -71,6 +73,7 @@ export function detectPromiseExpiredSignals(
       ],
       rules: [{ id: 'promise_expired', version: '1' }],
       sources: [promise.source],
+      subject: promise.subject,
       actions: [{ kind: 'investigate', label: 'Vérifier', href: promise.source.href }],
       confidence: null,
       dedupeKey: `promise-expired:${promise.siteId}:${promise.id}`,

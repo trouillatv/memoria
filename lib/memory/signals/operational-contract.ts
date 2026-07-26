@@ -42,6 +42,20 @@ export type SourceRef = {
   label: string
 }
 
+/**
+ * Référence TECHNIQUE vers l'objet persistant qu'une situation pourra résoudre
+ * (T3 : tenue / annulée / remplacée). DISTINCTE de `sources` — qui est la preuve
+ * CONSULTABLE (visite, capture…). Le `table` dit à la mutation OÙ écrire ; ce
+ * champ n'est JAMAIS affiché. Pour l'instant, seules les promesses le portent
+ * (deux tables sources), d'où le nom.
+ */
+export type PromiseSubjectRef = {
+  table: 'captured_knowledge' | 'site_knowledge_proposals'
+  id: string
+  organizationId: string
+  siteId: string
+}
+
 export type SuggestedAction = {
   kind: string
   label: string
@@ -101,6 +115,12 @@ export type MemorySignal = {
   acknowledgedAt: string | null
   resolvedAt: string | null
   resolvedBy: SignalResolution | null
+  /**
+   * Objet persistant résoluble (T2) — présent uniquement quand le signal désigne
+   * une ligne mutable (promesses). Optionnel : les signaux legacy/agrégats n'en
+   * portent pas. Autorité de MUTATION (T3), jamais d'affichage.
+   */
+  subject?: PromiseSubjectRef | null
 }
 
 /** Annotation portée par les anciens read models pendant la migration. */

@@ -31,6 +31,7 @@ function baseSituation(overrides: Partial<Situation> = {}): Situation {
       label: 'Visite du 21 juillet',
       href: '/visites/visit-1',
     },
+    subject: null,
     capabilities: [
       { kind: 'open_source', label: 'Voir la source', href: '/visites/visit-1' },
     ],
