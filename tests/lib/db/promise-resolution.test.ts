@@ -91,6 +91,8 @@ describe('cancelPromise — ANNULÉE avec motif', () => {
     seedCaptured()
     await cancelPromise({ subject: capturedSubject, userId: 'user-1', allowedOrgIds: ORG, reason: 'plus attendue' })
     expect(row('captured_knowledge', 'cap-1')).toMatchObject({ status: 'dismissed', dismiss_reason: 'plus attendue', resolved_by: 'user-1' })
+    // Point 6 : la date d'audit est posée AUSSI pour un statut terminal 'dismissed'.
+    expect(row('captured_knowledge', 'cap-1').resolved_at).toBeTruthy()
   })
 })
 
@@ -101,15 +103,34 @@ describe('replacePromise — remplaçante créée dans la MÊME table + lien + t
     expect(r.status).toBe('resolved')
     const newId = (r as { replacementId: string }).replacementId
     expect(row('captured_knowledge', 'cap-1')).toMatchObject({ status: 'obsolete', replaced_by: newId })
-    expect(row('captured_knowledge', newId)).toMatchObject({ status: 'active', kind: 'promise', source_type: 'manual', title: 'Nouvel engagement' })
+    // Point 6 : audit posé aussi sur 'obsolete'.
+    expect(row('captured_knowledge', 'cap-1')).toMatchObject({ resolved_by: 'user-1' })
+    expect(row('captured_knowledge', 'cap-1').resolved_at).toBeTruthy()
+    // Point 2 : la remplaçante hérite de l'org et du chantier de l'ANCIENNE (rechargés
+    // en base), jamais de valeurs fournies par le client.
+    expect(row('captured_knowledge', newId)).toMatchObject({
+      status: 'active', kind: 'promise', source_type: 'manual', title: 'Nouvel engagement',
+      organization_id: 'org-1', site_id: 'site-1',
+    })
   })
 
   it('proposal → nouvelle proposed, ancienne superseded + superseded_by', async () => {
     seedProposal()
     const r = await replacePromise({ subject: proposalSubject, userId: 'user-1', allowedOrgIds: ORG, replacement: { title: 'Nouvelle échéance' } })
     const newId = (r as { replacementId: string }).replacementId
-    expect(row('site_knowledge_proposals', 'prop-1')).toMatchObject({ status: 'superseded', superseded_by: newId })
-    expect(row('site_knowledge_proposals', newId)).toMatchObject({ status: 'proposed', kind: 'deadline' })
+    expect(row('site_knowledge_proposals', 'prop-1')).toMatchObject({ status: 'superseded', superseded_by: newId, reviewed_by: 'user-1' })
+    expect(row('site_knowledge_proposals', 'prop-1').reviewed_at).toBeTruthy() // point 6
+    expect(row('site_knowledge_proposals', newId)).toMatchObject({ status: 'proposed', kind: 'deadline', organization_id: 'org-1', site_id: 'site-1' })
+  })
+
+  it('point 3 — double replace séquentiel : une seule remplaçante, pas deux', async () => {
+    seedCaptured()
+    expect((await replacePromise({ subject: capturedSubject, userId: 'user-1', allowedOrgIds: ORG, replacement: { title: 'V2' } })).status).toBe('resolved')
+    // La 2ᵉ passe voit l'ancienne déjà 'obsolete' → refus, remplaçante non conservée.
+    expect((await replacePromise({ subject: capturedSubject, userId: 'user-1', allowedOrgIds: ORG, replacement: { title: 'V3' } })).status).toBe('already_terminal')
+    // Exactement 2 lignes : l'ancienne (obsolete) + l'unique remplaçante.
+    expect(store.captured_knowledge).toHaveLength(2)
+    expect(store.captured_knowledge.filter((x) => x.status === 'active')).toHaveLength(1)
   })
 })
 
@@ -129,6 +150,10 @@ describe('idempotence & sécurité', () => {
     expect(r.status).toBe('already_terminal')
     // Compensation : aucune promesse active fabriquée.
     expect(store.captured_knowledge.filter((x) => x.status === 'active')).toHaveLength(0)
+    // Point 4 : la compensation supprime UNIQUEMENT la remplaçante ; la ligne
+    // préexistante est intacte (jamais supprimée), et reste seule en base.
+    expect(store.captured_knowledge).toHaveLength(1)
+    expect(row('captured_knowledge', 'cap-1').status).toBe('resolved')
   })
 
   it('garde org fail-closed : sujet hors des organisations autorisées → not_found, aucune mutation', async () => {
