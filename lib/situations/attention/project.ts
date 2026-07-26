@@ -19,6 +19,8 @@ function iconOfSituation(situation: Situation): AttentionIcon {
       return 'calendar'
     case 'unconfirmed_promise':
       return 'question'
+    case 'stale_action':
+      return 'warning'
     default:
       return 'warning'
   }
@@ -38,7 +40,9 @@ function actionFromCapability(capability: SituationCapability): AttentionAction 
 }
 
 function isSupportedSituation(situation: Situation): boolean {
-  return situation.kind === 'expired_promise' || situation.kind === 'unconfirmed_promise'
+  return situation.kind === 'expired_promise'
+    || situation.kind === 'unconfirmed_promise'
+    || situation.kind === 'stale_action'
 }
 
 export function projectSituationForAttention(situation: Situation | null): AttentionCard | null {
@@ -70,4 +74,16 @@ export function projectAttentionCards(situations: Array<Situation | null>): Atte
     const card = projectSituationForAttention(situation)
     return card ? [card] : []
   })
+}
+
+// Priorité d'affichage : critique (rouge) d'abord, puis ambre, puis neutre.
+const CARD_TONE_RANK: Record<AttentionTone, number> = { red: 0, amber: 1, neutral: 2 }
+
+/**
+ * Trie les cards par SÉVÉRITÉ (rouge → ambre → neutre). Tri STABLE : à sévérité
+ * égale, l'ordre d'origine est conservé (promesses avant actions anciennes, etc.).
+ * Ne mute pas le tableau d'entrée.
+ */
+export function sortAttentionCardsBySeverity(cards: ReadonlyArray<AttentionCard>): AttentionCard[] {
+  return [...cards].sort((a, b) => CARD_TONE_RANK[a.tone] - CARD_TONE_RANK[b.tone])
 }

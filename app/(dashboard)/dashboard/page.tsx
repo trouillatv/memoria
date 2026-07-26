@@ -61,11 +61,19 @@ export default async function DashboardPage() {
   )) as Record<string, MemoryReview>
   const promiseSignals = detectPromiseSignalsFromRecords(promiseRecords)
   const now = await getNowDashboard(orgIds, upcoming, organizationMap ?? {})
-  const legacyAttentionSignals = [
+  const allLegacyAttentionSignals = [
     ...attention.red.map((item) => attentionItemToMemorySignal(item)),
     ...attention.orange.map((item) => attentionItemToMemorySignal(item)),
   ].filter((signal): signal is NonNullable<typeof signal> => signal !== null)
-  const attentionCards = composeAttentionCardsFromSignals(promiseSignals)
+  // Migration progressive : « action ancienne » (staleness/old_action, object_aging)
+  // passe désormais par la chaîne Situation → AttentionCard. Le reste des alertes
+  // (réserves, conflits, débriefs, actions EN RETARD) reste sur le chemin legacy
+  // le temps d'être migré à son tour — une famille à la fois.
+  const isStaleActionSignal = (s: (typeof allLegacyAttentionSignals)[number]) =>
+    s.trigger.type === 'old_action' && s.trigger.reason === 'object_aging'
+  const staleActionSignals = allLegacyAttentionSignals.filter(isStaleActionSignal)
+  const legacyAttentionSignals = allLegacyAttentionSignals.filter((s) => !isStaleActionSignal(s))
+  const attentionCards = composeAttentionCardsFromSignals([...promiseSignals, ...staleActionSignals])
   const nowCards = composeNowCardsFromSignals(promiseSignals)
   const nowSignals = now.items.map((item) => nowItemToMemorySignal(item))
 
