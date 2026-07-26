@@ -45,7 +45,11 @@ describe('OrgBadgeRich', () => {
         meta={{
           id: 'agp',
           label: 'AGP',
+          name: 'AGP',
+          slug: 'AGP',
+          logoPath: null,
           logoUrl: 'https://example.com/agp.jpg',
+          brandColor: '#274DF5',
           color: '#274DF5',
         }}
         size="md"

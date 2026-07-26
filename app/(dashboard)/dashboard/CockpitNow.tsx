@@ -81,7 +81,7 @@ export function CockpitNow({
                   {item.sourceType === 'passage' ? 'Préparer' : item.siteName}
                   {showOrganizationBadge && (
                     <>
-                      · <OrganizationBadge organization={organizationMap[item.organization]} size="xs" />
+                      · <OrganizationBadge organization={item.organization} size="xs" />
                     </>
                   )}
                 </span>

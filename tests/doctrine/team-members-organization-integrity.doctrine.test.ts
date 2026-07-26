@@ -32,7 +32,9 @@ describe('team_members organisation integrity', () => {
   it('writes the team organization and validates the target user membership', () => {
     expect(teams).toMatch(/organization_id\s*:/)
     expect(teams).toMatch(/organization_memberships/)
-    expect(teams).toMatch(/status.*active|active.*status/s)
+    // `[\s\S]` plutôt que le flag `s` (dotAll) : ce dernier exige un target
+    // es2018+, et le reste du fichier suit déjà cette convention (cf. l. 40).
+    expect(teams).toMatch(/status[\s\S]*active|active[\s\S]*status/)
   })
 
   it('loads team candidates from organization memberships, not the legacy user column', () => {
