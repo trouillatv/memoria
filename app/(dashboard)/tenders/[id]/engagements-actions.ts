@@ -9,6 +9,7 @@ import {
   bulkInsertEngagements,
   createEngagementManual,
   curateEngagement,
+  deleteExtractedEngagementsByTender,
   hasLinkedInterventions,
   listEngagementsByTender,
   rejectEngagements,
@@ -96,6 +97,32 @@ export async function extractEngagementsAction(formData: FormData) {
 
   revalidatePath(`/tenders/${parsed.data.tender_id}/engagements`)
   return { ok: true as const, count }
+}
+
+// Réinitialise les engagements EXTRAITS d'un dossier pour permettre une nouvelle
+// extraction (l'extraction refuse tant qu'il en existe). Réservé admin/manager.
+// Garde : refuse si un engagement est déjà rattaché à un contrat — on ne détruit
+// pas un vrai engagement pour relancer l'IA.
+export async function resetEngagementsAction(formData: FormData) {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return auth
+
+  const parsed = extractSchema.safeParse({ tender_id: formData.get('tender_id') })
+  if (!parsed.success) return { error: 'Invalid input' }
+
+  const existing = await listEngagementsByTender(parsed.data.tender_id)
+  const activated = existing.filter((e) => e.contract_id !== null)
+  if (activated.length > 0) {
+    return { error: `Réinitialisation impossible : ${activated.length} engagement${activated.length > 1 ? 's' : ''} déjà rattaché${activated.length > 1 ? 's' : ''} à un contrat. Elle est réservée aux dossiers non convertis.` }
+  }
+
+  try {
+    const count = await deleteExtractedEngagementsByTender(parsed.data.tender_id)
+    revalidatePath(`/tenders/${parsed.data.tender_id}/engagements`)
+    return { ok: true as const, count }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'reset failed' }
+  }
 }
 
 const curateSchema = z.object({
