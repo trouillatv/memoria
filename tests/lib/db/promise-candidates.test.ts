@@ -111,6 +111,10 @@ describe('getStructuredPromiseRecords', () => {
       href: `/sites/${siteId}/visites/report-1`,
       label: 'Visite report-1',
     })
+    // T2 : le record sait de quelle TABLE il vient (autorité de mutation).
+    expect(records[0].subject).toEqual({
+      table: 'captured_knowledge', id: 'captured-1', organizationId: orgId, siteId,
+    })
   })
 
   it('exclut les captured inactives et les captured sans source', async () => {
@@ -153,6 +157,10 @@ describe('getStructuredPromiseRecords', () => {
       occurredAt: '2026-07-21T08:00:00.000Z',
     })
     expect(records[0].source.href).toBe(`/sites/${siteId}/visites/report-2`)
+    // T2 : une promesse issue d'une proposition sait qu'elle vit dans l'autre table.
+    expect(records[0].subject).toEqual({
+      table: 'site_knowledge_proposals', id: 'proposal-1', organizationId: orgId, siteId,
+    })
   })
 
   it('exclut une deadline normale même si son texte ressemble à une promesse', async () => {

@@ -7,6 +7,7 @@ const source = { type: 'visit' as const, id: 'report-1', href: '/sites/site-1/vi
 const context = (overrides: Partial<PromiseDetectionContext> = {}): PromiseDetectionContext => ({
   promises: [{
     id: 'promise-1', organizationId: 'org-1', siteId: 'site-1',
+    subject: { table: 'captured_knowledge', id: 'promise-1', organizationId: 'org-1', siteId: 'site-1' },
     text: 'Le planning sera diffusé prochainement.', source, occurredAt: '2026-07-21T09:00:00.000Z', dueAt: null,
     confirmedAt: null, confirmationSourceIds: [], relatedProofSourceIds: [], replacedAt: null, cancelledAt: null, importance: 'normal', blocking: false,
   }],

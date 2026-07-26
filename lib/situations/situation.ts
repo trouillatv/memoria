@@ -1,3 +1,5 @@
+import type { PromiseSubjectRef } from '@/lib/memory/signals/operational-contract'
+
 export type SituationKind =
   | 'expired_promise'
   | 'unconfirmed_promise'
@@ -45,5 +47,12 @@ export type Situation = {
   }
   timing: SituationTiming
   source: SituationSource | null
+  /**
+   * Objet persistant résoluble (T2), propagé depuis le signal. DISTINCT de
+   * `source` (la preuve consultable) : `subject` dit à une future mutation OÙ
+   * écrire. `null` pour les situations sans objet mutable (legacy, agrégats).
+   * Jamais affiché.
+   */
+  subject: PromiseSubjectRef | null
   capabilities: SituationCapability[]
 }

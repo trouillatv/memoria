@@ -35,6 +35,7 @@ function buildSignal(promise: PromiseCandidate, now: string, urgency: 'now' | 't
     }],
     rules: [{ id: 'promise_needs_confirmation', version: '1' }],
     sources: [promise.source],
+    subject: promise.subject,
     actions: [
       { kind: 'investigate', label: 'Confirmer', href: promise.source.href },
       { kind: 'create_action', label: 'Créer une action', href: promise.source.href },

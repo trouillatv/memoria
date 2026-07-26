@@ -83,6 +83,7 @@ function promiseExpiredSituation(signal: MemorySignal, now: string): Situation {
       label: dueLabel,
     },
     source,
+    subject: signal.subject ?? null,
     capabilities: openSourceCapability(source),
   }
 }
@@ -118,6 +119,7 @@ function promiseWithoutDueDateSituation(signal: MemorySignal, now: string): Situ
       label,
     },
     source,
+    subject: signal.subject ?? null,
     capabilities: openSourceCapability(source),
   }
 }
@@ -178,6 +180,8 @@ function legacyAttentionSituation(signal: MemorySignal, kind: SituationKind, fal
       label: factString(signal, 'why'),
     },
     source,
+    // Familles legacy : pas encore d'objet mutable rattaché (viendra plus tard).
+    subject: signal.subject ?? null,
     capabilities: openSourceCapability(source),
   }
 }
