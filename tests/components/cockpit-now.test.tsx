@@ -18,7 +18,7 @@ const nowCard: NowCard = {
 }
 
 describe('CockpitNow', () => {
-  it('rend les cartes Now à côté des priorités existantes', () => {
+  it('rend les cartes Now sans afficher le message vide', () => {
     render(
       <CockpitNow
         signals={[]}
@@ -30,6 +30,19 @@ describe('CockpitNow', () => {
 
     expect(screen.getByText('Situations avec geste direct')).toBeInTheDocument()
     expect(screen.getByText('Annonce à confirmer')).toBeInTheDocument()
+    expect(screen.queryByText('Rien ne demande une intervention immédiate.')).not.toBeInTheDocument()
+  })
+
+  it('affiche le message vide uniquement quand il n’y a ni NowCard ni priorité existante', () => {
+    render(
+      <CockpitNow
+        signals={[]}
+        nowCards={[]}
+        summary={{ overdueActions: 0, imminentPassages: 0, weekDeadlines: 0 }}
+        organizationMap={{}}
+      />,
+    )
+
     expect(screen.getByText('Rien ne demande une intervention immédiate.')).toBeInTheDocument()
   })
 })

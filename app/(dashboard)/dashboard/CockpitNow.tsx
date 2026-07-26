@@ -59,7 +59,7 @@ export function CockpitNow({
         </div>
       )}
 
-      {items.length === 0 ? (
+      {nowCards.length === 0 && items.length === 0 ? (
         <p className="mt-5 rounded-xl bg-[#f3fbf6] px-3 py-3 text-xs text-[#258657]">
           Rien ne demande une intervention immédiate.
         </p>
