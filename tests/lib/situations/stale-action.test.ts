@@ -111,11 +111,11 @@ describe('stale_action — compose end-to-end', () => {
   })
 
   it('les familles NON migrées ne deviennent PAS des cards (migration une à une)', () => {
-    // Un conflit de planning n'est pas migré → reste en AttentionRow, aucune card.
-    const conflict = staleActionSignal({
-      id: 'attention:planning-conflict:site-1',
-      trigger: { type: 'planning_conflict', reason: 'planning_conflict' } as MemorySignal['trigger'],
+    // Un débrief en attente n'est pas encore migré → reste en AttentionRow, aucune card.
+    const debrief = staleActionSignal({
+      id: 'attention:pending-debrief:site-1',
+      trigger: { type: 'missing_attachment', reason: 'attachment_missing' } as MemorySignal['trigger'],
     })
-    expect(composeAttentionCardsFromSignals([conflict])).toEqual([])
+    expect(composeAttentionCardsFromSignals([debrief])).toEqual([])
   })
 })

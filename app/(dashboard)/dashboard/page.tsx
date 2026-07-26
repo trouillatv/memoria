@@ -67,10 +67,11 @@ export default async function DashboardPage() {
     ...attention.orange.map((item) => attentionItemToMemorySignal(item)),
   ].filter((signal): signal is NonNullable<typeof signal> => signal !== null)
   // Migration progressive : les familles d'alertes MIGRÉES (action ancienne,
-  // action en retard, réserve ouverte) passent par la chaîne Situation →
-  // AttentionCard et sortent de la liste AttentionRow legacy (pas de doublon).
-  // Le reste (conflits, débriefs…) reste legacy en attendant sa migration. La
-  // liste des familles migrées vit dans le presenter (source unique de vérité).
+  // action en retard, réserve ouverte, conflit de planning) passent par la
+  // chaîne Situation → AttentionCard et sortent de la liste AttentionRow legacy
+  // (pas de doublon). Le reste (débriefs en attente…) reste legacy en attendant
+  // sa migration. La liste des familles migrées vit dans le presenter (source
+  // unique de vérité).
   const migratedAttentionSignals = allLegacyAttentionSignals.filter(isMigratedLegacyAttention)
   const legacyAttentionSignals = allLegacyAttentionSignals.filter((s) => !isMigratedLegacyAttention(s))
   const attentionCards = composeAttentionCardsFromSignals([...promiseSignals, ...migratedAttentionSignals])
