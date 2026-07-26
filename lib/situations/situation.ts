@@ -2,6 +2,8 @@ export type SituationKind =
   | 'expired_promise'
   | 'unconfirmed_promise'
   | 'stale_action'
+  | 'overdue_action'
+  | 'open_reserve'
 
 export type SituationSeverity = 'info' | 'warning' | 'critical'
 

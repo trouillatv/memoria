@@ -16,6 +16,7 @@ import { getStructuredPromiseRecords } from '@/lib/db/promise-candidates'
 import { attentionItemToMemorySignal, nowItemToMemorySignal } from '@/lib/memory/signals/lot1-adapters'
 import { detectPromiseSignalsFromRecords } from '@/lib/memory/signals/promise-pipeline'
 import { composeAttentionCardsFromSignals } from '@/lib/situations/attention/compose'
+import { isMigratedLegacyAttention } from '@/lib/situations/presenter'
 import { composeNowCardsFromSignals } from '@/lib/situations/now/compose'
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardPremium } from './DashboardPremium'
@@ -65,15 +66,14 @@ export default async function DashboardPage() {
     ...attention.red.map((item) => attentionItemToMemorySignal(item)),
     ...attention.orange.map((item) => attentionItemToMemorySignal(item)),
   ].filter((signal): signal is NonNullable<typeof signal> => signal !== null)
-  // Migration progressive : « action ancienne » (staleness/old_action, object_aging)
-  // passe désormais par la chaîne Situation → AttentionCard. Le reste des alertes
-  // (réserves, conflits, débriefs, actions EN RETARD) reste sur le chemin legacy
-  // le temps d'être migré à son tour — une famille à la fois.
-  const isStaleActionSignal = (s: (typeof allLegacyAttentionSignals)[number]) =>
-    s.trigger.type === 'old_action' && s.trigger.reason === 'object_aging'
-  const staleActionSignals = allLegacyAttentionSignals.filter(isStaleActionSignal)
-  const legacyAttentionSignals = allLegacyAttentionSignals.filter((s) => !isStaleActionSignal(s))
-  const attentionCards = composeAttentionCardsFromSignals([...promiseSignals, ...staleActionSignals])
+  // Migration progressive : les familles d'alertes MIGRÉES (action ancienne,
+  // action en retard, réserve ouverte) passent par la chaîne Situation →
+  // AttentionCard et sortent de la liste AttentionRow legacy (pas de doublon).
+  // Le reste (conflits, débriefs…) reste legacy en attendant sa migration. La
+  // liste des familles migrées vit dans le presenter (source unique de vérité).
+  const migratedAttentionSignals = allLegacyAttentionSignals.filter(isMigratedLegacyAttention)
+  const legacyAttentionSignals = allLegacyAttentionSignals.filter((s) => !isMigratedLegacyAttention(s))
+  const attentionCards = composeAttentionCardsFromSignals([...promiseSignals, ...migratedAttentionSignals])
   const nowCards = composeNowCardsFromSignals(promiseSignals)
   const nowSignals = now.items.map((item) => nowItemToMemorySignal(item))
 

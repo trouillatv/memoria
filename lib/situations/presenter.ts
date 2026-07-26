@@ -126,27 +126,43 @@ function isPromiseSignal(signal: MemorySignal): boolean {
   return signal.category === 'promise' && signal.trigger.type === 'promise'
 }
 
-function isStaleActionSignal(signal: MemorySignal): boolean {
-  return signal.trigger.type === 'old_action' && signal.trigger.reason === 'object_aging'
+// Familles d'alertes legacy migrées vers la chaîne Situation → AttentionCard.
+// Le signal existe déjà (via lot1-adapters, facts what/why/where) mais n'était
+// rendu qu'en AttentionRow. On le présente comme une Situation — mêmes faits,
+// juste réexprimés dans le contrat commun. Une famille = un couple (type, reason).
+const LEGACY_ATTENTION_KINDS: Record<string, { kind: SituationKind; fallbackTitle: string }> = {
+  'old_action:object_aging': { kind: 'stale_action', fallbackTitle: 'Action ancienne' },
+  'old_action:deadline_overdue': { kind: 'overdue_action', fallbackTitle: 'Action en retard' },
+  'open_reserve:object_aging': { kind: 'open_reserve', fallbackTitle: 'Réserve ouverte' },
 }
 
-// Migration progressive « action ancienne » : le signal existe déjà (staleness,
-// old_action, via lot1-adapters) mais n'était rendu qu'en AttentionRow legacy.
-// On le présente désormais comme une Situation — mêmes faits (what/why/where),
-// juste réexprimés dans le contrat commun. Minimal : pas d'enrichissement du
-// signal à la source (nom d'organisation absent → pas de badge org pour l'instant).
-function staleActionSituation(signal: MemorySignal): Situation {
+function legacyAttentionEntry(signal: MemorySignal): { kind: SituationKind; fallbackTitle: string } | null {
+  return LEGACY_ATTENTION_KINDS[`${signal.trigger.type}:${signal.trigger.reason}`] ?? null
+}
+
+/**
+ * Un signal d'alerte legacy est-il MIGRÉ vers la chaîne Situation → AttentionCard ?
+ * Source unique de vérité pour le dashboard : les familles migrées passent en
+ * cards et sortent de la liste AttentionRow (pas de doublon). Ajouter une famille
+ * à LEGACY_ATTENTION_KINDS suffit à l'inclure partout.
+ */
+export function isMigratedLegacyAttention(signal: MemorySignal): boolean {
+  return legacyAttentionEntry(signal) !== null
+}
+
+// Mapping commun : `what` → titre, `where` → chantier, `why` → timing. Minimal :
+// pas d'enrichissement à la source (nom d'organisation absent → pas de badge org).
+function legacyAttentionSituation(signal: MemorySignal, kind: SituationKind, fallbackTitle: string): Situation {
   const source = sourceFromSignal(signal)
   return {
     id: signal.id,
     signalId: signal.id,
-    kind: 'stale_action',
+    kind,
     severity: signal.severity,
-    title: factString(signal, 'what') ?? 'Action ancienne',
+    title: factString(signal, 'what') ?? fallbackTitle,
     explanation: null,
     site: {
       id: signal.siteId,
-      // `where` porte déjà le nom lisible du chantier (cf. digest legacy).
       name: factString(signal, 'where') ?? siteName(signal),
       organizationId: signal.organizationId,
       organizationName: organizationName(signal),
@@ -155,8 +171,7 @@ function staleActionSituation(signal: MemorySignal): Situation {
       occurredAt: null,
       dueAt: null,
       detectedAt: signal.detectedAt,
-      // L'âge est déjà narré par `why` (« ouverte depuis X j ») — on ne recalcule
-      // pas un ageDays qui ferait double emploi.
+      // L'âge est déjà narré par `why` — on ne recalcule pas un ageDays redondant.
       ageDays: null,
       label: factString(signal, 'why'),
     },
@@ -166,7 +181,8 @@ function staleActionSituation(signal: MemorySignal): Situation {
 }
 
 export function presentSituation(signal: MemorySignal, now = new Date().toISOString()): Situation | null {
-  if (isStaleActionSignal(signal)) return staleActionSituation(signal)
+  const legacy = legacyAttentionEntry(signal)
+  if (legacy) return legacyAttentionSituation(signal, legacy.kind, legacy.fallbackTitle)
   if (!isPromiseSignal(signal)) return null
 
   switch (signal.trigger.reason) {
