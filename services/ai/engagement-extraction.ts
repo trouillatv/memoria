@@ -4,6 +4,7 @@ import { withAITracking } from './tracking'
 import type { AIProviderName } from './index'
 import type { EngagementCategory, EngagementKind, EngagementSourceType } from '@/types/db'
 import { ENGAGEMENT_EXTRACTOR_V1 } from './prompts/engagement-extractor.v1'
+import { TENDER_CORPUS_BUDGET } from '@/lib/tenders/pieces'
 
 // ---------------------------------------------------------------------------
 // Output schema
@@ -49,6 +50,43 @@ export interface EngagementExtractionInput {
   aoText: string
   memoireTechniqueText: string | null
   userId: string | null
+}
+
+// Fenêtre de lecture de l'agent — ALIGNÉE sur le budget de buildTenderCorpus.
+// Historique : la valeur était 12 000, héritée de l'époque mono-document
+// (« limit 1 »). Depuis que l'AO est lu comme un DOSSIER (buildTenderCorpus,
+// 30 000, part équitable par pièce, PR #174), tronquer à 12 000 rejetait par
+// POSITION les pièces déposées en fin de corpus : l'IA n'en voyait que 2-3 et
+// n'extrayait des engagements que de celles-là. On lit donc tout le budget du
+// corpus (qui plafonne déjà à TENDER_CORPUS_BUDGET) pour que CHAQUE pièce ait
+// sa part dans la fenêtre du modèle.
+const MEMOIRE_TECHNIQUE_BUDGET = 8_000
+
+/**
+ * Compose le message utilisateur soumis à l'agent d'extraction. Extrait pour
+ * être TESTABLE : on doit pouvoir démontrer que les en-têtes de chaque pièce
+ * (`=== … ===`) survivent jusqu'à l'entrée du LLM, sans passer par un provider.
+ */
+export function buildEngagementExtractionMessage(
+  aoText: string,
+  memoireTechniqueText: string | null,
+): string {
+  return [
+    '=== AO source (texte extrait) ===',
+    aoText.slice(0, TENDER_CORPUS_BUDGET),
+    '',
+    '=== Mémoire technique (si disponible) ===',
+    memoireTechniqueText?.slice(0, MEMOIRE_TECHNIQUE_BUDGET) ?? '(non fourni)',
+    '',
+    'Extrais les engagements au format JSON :',
+    '{',
+    '  "engagements": [',
+    '    { "source_type": "...", "source_excerpt": "...", "source_ref": { "page": N, "section": "..." },',
+    '      "category": "...", "short_label": "...", "measurable": bool, "confidence": 0.X },',
+    '    ...',
+    '  ]',
+    '}',
+  ].join('\n')
 }
 
 // ---------------------------------------------------------------------------
@@ -180,22 +218,7 @@ export async function runEngagementExtractionAgent(
     if (provider.name === 'mock') {
       userMessage = `__MOCK_FIXTURE__:${JSON.stringify(MOCK_FIXTURE)}`
     } else {
-      userMessage = [
-        '=== AO source (texte extrait) ===',
-        input.aoText.slice(0, 12000),
-        '',
-        '=== Mémoire technique (si disponible) ===',
-        input.memoireTechniqueText?.slice(0, 8000) ?? '(non fourni)',
-        '',
-        'Extrais les engagements au format JSON :',
-        '{',
-        '  "engagements": [',
-        '    { "source_type": "...", "source_excerpt": "...", "source_ref": { "page": N, "section": "..." },',
-        '      "category": "...", "short_label": "...", "measurable": bool, "confidence": 0.X },',
-        '    ...',
-        '  ]',
-        '}',
-      ].join('\n')
+      userMessage = buildEngagementExtractionMessage(input.aoText, input.memoireTechniqueText)
     }
 
     const output = await provider.complete({
