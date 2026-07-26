@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { SituationAttentionCard } from '@/app/(dashboard)/dashboard/SituationAttentionCard'
 import type { AttentionCard } from '@/lib/situations/attention/types'
@@ -24,25 +24,35 @@ const card: AttentionCard = {
 }
 
 describe('SituationAttentionCard', () => {
-  it('rend la carte sans lire de propriétés techniques', () => {
+  it('rend le titre et les métadonnées compactes sans interaction', () => {
     render(<SituationAttentionCard card={card} />)
 
     expect(screen.getByText('Planning toujours non diffusé')).toBeInTheDocument()
+    expect(screen.getByText(/Lycée PETRO ATTITI/)).toBeInTheDocument()
+    expect(screen.getByText(/Échéance dépassée depuis 19 jours/)).toBeInTheDocument()
+  })
+
+  it("rend la description, l'organisation et les liens après expansion", () => {
+    render(<SituationAttentionCard card={card} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /plus d'actions/i }))
+
     expect(screen.getByText('Annonce faite lors de la visite du 21 juillet.')).toBeInTheDocument()
-    expect(screen.getByText('Lycée PETRO ATTITI')).toBeInTheDocument()
     expect(screen.getByText('Demo Org')).toBeInTheDocument()
-    expect(screen.getByText('Échéance dépassée depuis 19 jours')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Voir la source' })).toHaveAttribute('href', '/visites/visit-1')
     expect(screen.getByRole('link', { name: 'Ouvrir la visite' })).toHaveAttribute('href', '/visites/visit-1')
   })
 
-  it('n’invente pas de bouton source quand la source manque', () => {
-    render(<SituationAttentionCard card={{ ...card, sourceLabel: undefined, primaryAction: undefined, secondaryActions: [] }} />)
+  it("n'invente pas de lien source quand la source manque", () => {
+    render(<SituationAttentionCard card={{ ...card, primaryAction: undefined, secondaryActions: [] }} />)
+    const btn = screen.queryByRole('button', { name: /plus d'actions/i })
+    if (btn) fireEvent.click(btn)
     expect(screen.queryByRole('link', { name: 'Voir la source' })).not.toBeInTheDocument()
   })
 
-  it('n’affiche pas d’organisation quand elle manque', () => {
+  it("n'affiche pas l'organisation quand elle manque", () => {
     render(<SituationAttentionCard card={{ ...card, organizationLabel: undefined }} />)
+    fireEvent.click(screen.getByRole('button', { name: /plus d'actions/i }))
     expect(screen.queryByText('Demo Org')).not.toBeInTheDocument()
   })
 

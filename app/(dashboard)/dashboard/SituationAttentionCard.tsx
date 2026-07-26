@@ -1,7 +1,10 @@
+'use client'
+
+import { useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, Calendar, FileText, HelpCircle, ChevronRight } from 'lucide-react'
+import { AlertTriangle, Calendar, FileText, HelpCircle, ChevronDown } from 'lucide-react'
 import type { AttentionCard } from '@/lib/situations/attention/types'
-import { AttentionCardResolutions } from './PromiseActions'
+import { PromiseActions } from './PromiseActions'
 
 const iconByName = {
   calendar: Calendar,
@@ -25,51 +28,81 @@ const toneClasses = {
   },
 } as const
 
-function ActionLink({ label, href, primary }: { label: string; href: string; primary?: boolean }) {
-  const className = primary
-    ? 'inline-flex items-center justify-center rounded-xl bg-[#1463e8] px-3 py-2 text-xs font-semibold text-white hover:bg-[#0c4dbd]'
-    : 'inline-flex items-center justify-center rounded-xl border border-[#dbe2ef] bg-white px-3 py-2 text-xs font-semibold text-[#33415c] hover:bg-[#f7f9fd]'
-
-  return <Link href={href} className={className}>{label}</Link>
-}
-
 export function SituationAttentionCard({ card }: { card: AttentionCard }) {
+  const [expanded, setExpanded] = useState(false)
   const Icon = iconByName[card.icon]
   const palette = toneClasses[card.tone]
 
+  const quickResolutions = card.resolutions.filter((r) => r.kind === 'fulfill_promise')
+  const deepResolutions = card.resolutions.filter((r) => r.kind !== 'fulfill_promise')
+
+  const hasExpandable =
+    !!card.description
+    || !!card.organizationLabel
+    || !!card.primaryAction
+    || card.secondaryActions.length > 0
+    || (!!card.subject && deepResolutions.length > 0)
+
   return (
-    <article className={`rounded-2xl border px-4 py-4 shadow-sm ${palette.shell}`}>
-      <div className="flex items-start gap-4">
-        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${palette.icon}`}>
-          <Icon className="h-5 w-5" />
+    <article className={`rounded-2xl border px-4 py-3 shadow-sm ${palette.shell}`}>
+      <div className="flex items-start gap-3">
+        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${palette.icon}`}>
+          <Icon className="h-4 w-4" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-[#17213a]">{card.title}</h3>
-              {card.description && <p className="mt-1 text-xs leading-relaxed text-[#5f6c84]">{card.description}</p>}
-            </div>
-            <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-[#9aa7be]" />
-          </div>
+          <h3 className="text-sm font-semibold leading-snug text-[#17213a]">{card.title}</h3>
+          <p className="mt-0.5 text-xs text-[#65718b]">
+            {card.siteLabel}{card.timingLabel ? ` · ${card.timingLabel}` : ''}
+          </p>
 
-          <div className="mt-3 space-y-1 text-xs text-[#65718b]">
-            <p className="font-medium text-[#34415c]">{card.siteLabel}</p>
-            {card.organizationLabel && <p>{card.organizationLabel}</p>}
-            {card.timingLabel && <p>{card.timingLabel}</p>}
-            {card.sourceLabel && <p>{card.sourceLabel}</p>}
-          </div>
-
-          {(card.primaryAction || card.secondaryActions.length > 0) && (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {card.primaryAction && <ActionLink label={card.primaryAction.label} href={card.primaryAction.href} primary />}
-              {card.secondaryActions.map((action) => (
-                <ActionLink key={`${card.id}:${action.kind}:${action.label}`} label={action.label} href={action.href} />
-              ))}
+          {card.subject && quickResolutions.length > 0 && (
+            <div className="mt-2">
+              <PromiseActions subject={card.subject} resolutions={quickResolutions} />
             </div>
           )}
 
-          {/* Gestes de RÉSOLUTION (T4) — mutations avec confirmation inline. */}
-          <AttentionCardResolutions card={card} />
+          {hasExpandable && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+              className="mt-2 flex items-center gap-1 text-xs text-[#9aa7be] hover:text-[#5f6c84]"
+            >
+              <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+              {expanded ? 'Réduire' : "Plus d'actions"}
+            </button>
+          )}
+
+          {expanded && (
+            <div className="mt-3 space-y-2 border-t border-[#e5eaf3] pt-3">
+              {card.description && (
+                <p className="text-xs leading-relaxed text-[#5f6c84]">{card.description}</p>
+              )}
+              {card.organizationLabel && (
+                <p className="text-xs text-[#65718b]">{card.organizationLabel}</p>
+              )}
+              {card.primaryAction && (
+                <Link
+                  href={card.primaryAction.href}
+                  className="block text-xs text-[#4973dd] hover:underline"
+                >
+                  {card.primaryAction.label}
+                </Link>
+              )}
+              {card.secondaryActions.map((action) => (
+                <Link
+                  key={`${card.id}:${action.kind}:${action.label}`}
+                  href={action.href}
+                  className="block text-xs text-[#4973dd] hover:underline"
+                >
+                  {action.label}
+                </Link>
+              ))}
+              {card.subject && deepResolutions.length > 0 && (
+                <PromiseActions subject={card.subject} resolutions={deepResolutions} />
+              )}
+            </div>
+          )}
         </div>
       </div>
     </article>

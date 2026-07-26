@@ -10,7 +10,7 @@ export const PRIORITY_WEIGHTS = {
   impact: {
     overdue_action:      40,
     planning_conflict:   40,
-    expired_promise:     35,
+    expired_promise:     30,
     pending_debrief:     30,
     open_reserve:        30,
     unconfirmed_promise: 20,

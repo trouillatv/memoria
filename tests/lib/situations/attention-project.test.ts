@@ -50,12 +50,12 @@ describe('projectSituationForAttention', () => {
 
     const card = projectSituationForAttention(situation, NOW)
 
-    // expired_promise: impact 35 + urgency overdue 25 + staleness 0 (2j) = 60
+    // expired_promise: impact 30 + urgency overdue 25 + staleness 0 (2j) = 55
     expect(card).toEqual({
       id: 'signal-1',
       icon: 'calendar',
       tone: 'amber',
-      priority: 60,
+      priority: 55,
       title: 'Planning toujours non diffusé',
       description: 'Annonce faite lors de la visite du 21 juillet.',
       siteLabel: 'Lycée PETRO ATTITI',
