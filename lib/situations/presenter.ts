@@ -135,6 +135,7 @@ const LEGACY_ATTENTION_KINDS: Record<string, { kind: SituationKind; fallbackTitl
   'old_action:deadline_overdue': { kind: 'overdue_action', fallbackTitle: 'Action en retard' },
   'open_reserve:object_aging': { kind: 'open_reserve', fallbackTitle: 'Réserve ouverte' },
   'planning_conflict:planning_conflict': { kind: 'planning_conflict', fallbackTitle: 'Conflit de planning' },
+  'missing_attachment:attachment_missing': { kind: 'pending_debrief', fallbackTitle: 'Débrief en attente' },
 }
 
 function legacyAttentionEntry(signal: MemorySignal): { kind: SituationKind; fallbackTitle: string } | null {

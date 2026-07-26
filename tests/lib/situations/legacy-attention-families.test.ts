@@ -108,9 +108,41 @@ describe('conflit de planning → planning_conflict', () => {
   })
 })
 
+describe('débrief en attente → pending_debrief', () => {
+  const s = signal({ type: 'missing_attachment', reason: 'attachment_missing' }, {
+    category: 'priority',
+    facts: [
+      { type: 'a', key: 'what', value: '2 visites à débriefer', confidence: null, sourceIds: ['s'], detectedAt: '2026-07-25T08:00:00.000Z', occurredAt: null, dueAt: null, validUntil: null },
+      { type: 'a', key: 'why', value: 'la plus ancienne date d’il y a 3 j — 5 éléments en attente', confidence: null, sourceIds: ['s'], detectedAt: '2026-07-25T08:00:00.000Z', occurredAt: null, dueAt: null, validUntil: null },
+      { type: 'a', key: 'where', value: 'Chantier Pointière', confidence: null, sourceIds: ['s'], detectedAt: '2026-07-25T08:00:00.000Z', occurredAt: null, dueAt: null, validUntil: null },
+    ],
+    sources: [{ type: 'visit', id: 'report-1', href: '/sites/site-1/visites/report-1', label: 'Visite à débriefer' }],
+  })
+
+  it('présente une Situation pending_debrief, faits inchangés', () => {
+    const situation = presentSituation(s)
+    expect(situation).toMatchObject({
+      kind: 'pending_debrief',
+      title: '2 visites à débriefer',
+      site: { name: 'Chantier Pointière' },
+      timing: { label: 'la plus ancienne date d’il y a 3 j — 5 éléments en attente' },
+      source: { href: '/sites/site-1/visites/report-1' },
+    })
+  })
+
+  it('projette une card ambre (icône document)', () => {
+    const card = projectSituationForAttention(presentSituation(s))
+    expect(card).toMatchObject({ icon: 'document', tone: 'amber', title: '2 visites à débriefer' })
+  })
+
+  it('est reconnue comme famille migrée', () => {
+    expect(isMigratedLegacyAttention(s)).toBe(true)
+  })
+})
+
 describe('familles NON migrées', () => {
   it('un trigger inconnu n\'est ni migré ni présenté (reste legacy)', () => {
-    const s = signal({ type: 'missing_attachment', reason: 'attachment_missing' } as unknown as MemorySignal['trigger'])
+    const s = signal({ type: 'unknown_family', reason: 'not_annotated' } as unknown as MemorySignal['trigger'])
     expect(isMigratedLegacyAttention(s)).toBe(false)
     expect(presentSituation(s)).toBeNull()
   })

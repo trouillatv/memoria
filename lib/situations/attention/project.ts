@@ -22,6 +22,8 @@ function iconOfSituation(situation: Situation): AttentionIcon {
     case 'overdue_action':
     case 'planning_conflict':
       return 'calendar'
+    case 'pending_debrief':
+      return 'document'
     case 'stale_action':
     case 'open_reserve':
       return 'warning'
@@ -50,6 +52,7 @@ function isSupportedSituation(situation: Situation): boolean {
     || situation.kind === 'overdue_action'
     || situation.kind === 'open_reserve'
     || situation.kind === 'planning_conflict'
+    || situation.kind === 'pending_debrief'
 }
 
 export function projectSituationForAttention(situation: Situation | null): AttentionCard | null {
