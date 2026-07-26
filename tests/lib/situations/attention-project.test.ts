@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import type { Situation } from '@/lib/situations/situation'
-import { projectAttentionCards, projectSituationForAttention } from '@/lib/situations/attention/project'
+import type { AttentionCard, AttentionTone } from '@/lib/situations/attention/types'
+import { projectAttentionCards, projectSituationForAttention, sortAttentionCardsBySeverity } from '@/lib/situations/attention/project'
 
 function baseSituation(overrides: Partial<Situation> = {}): Situation {
   return {
@@ -123,5 +124,25 @@ describe('projectSituationForAttention', () => {
   it('ne dépend pas de MemorySignal ni de facts, trigger, category ou reason', () => {
     const source = readFileSync('lib/situations/attention/project.ts', 'utf8')
     expect(source).not.toMatch(/MemorySignal|facts|trigger|category|reason/)
+  })
+})
+
+describe('sortAttentionCardsBySeverity', () => {
+  const card = (id: string, tone: AttentionTone): AttentionCard => ({
+    id, icon: 'warning', tone, title: id, description: null, siteLabel: 'site', secondaryActions: [],
+  })
+
+  it('rouge → ambre → neutre, tri STABLE (ordre d\'origine à sévérité égale)', () => {
+    const sorted = sortAttentionCardsBySeverity([
+      card('p1-amber', 'amber'), card('a1-red', 'red'), card('p2-amber', 'amber'),
+      card('n1-neutral', 'neutral'), card('a2-red', 'red'),
+    ])
+    expect(sorted.map((c) => c.id)).toEqual(['a1-red', 'a2-red', 'p1-amber', 'p2-amber', 'n1-neutral'])
+  })
+
+  it('ne mute pas le tableau d\'entrée', () => {
+    const input = [card('a', 'neutral'), card('b', 'red')]
+    sortAttentionCardsBySeverity(input)
+    expect(input.map((c) => c.id)).toEqual(['a', 'b'])
   })
 })

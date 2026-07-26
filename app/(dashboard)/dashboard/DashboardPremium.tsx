@@ -27,6 +27,7 @@ import type { OrganizationIdentityMap } from '@/lib/db/organisations'
 import type { MemorySignal } from '@/lib/memory/signals/operational-contract'
 import { presentAttentionSignals } from '@/lib/memory/signals/surface-presenters'
 import type { AttentionCard } from '@/lib/situations/attention/types'
+import { sortAttentionCardsBySeverity } from '@/lib/situations/attention/project'
 import type { NowCard } from '@/lib/situations/now/types'
 import { CockpitNow, PriorityActionList } from './CockpitNow'
 import { SituationAttentionCard } from './SituationAttentionCard'
@@ -85,6 +86,9 @@ function AttentionRow({ item, urgent, organizationMap }: { item: ReturnType<type
 function AttentionPanel({ signals, cards, organizationMap }: { signals: MemorySignal[]; cards: AttentionCard[]; organizationMap: OrganizationIdentityMap }) {
   const digestItems = presentAttentionSignals(signals)
   const items = digestItems.map((item) => ({ item, urgent: item.tier === 'red' })).slice(0, 4)
+  // Les cards ne sont plus uniquement des promesses (action ancienne, réserve…) :
+  // en-tête générique « Situations », triées par sévérité.
+  const sortedCards = sortAttentionCardsBySeverity(cards)
   return (
     <section className={`${surface} p-5 sm:p-7`}>
       <div className="mb-5 flex items-center gap-2 text-[#f0525f]"><AlertTriangle className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">Ce qui mérite votre attention aujourd&apos;hui</h2></div>
@@ -92,10 +96,10 @@ function AttentionPanel({ signals, cards, organizationMap }: { signals: MemorySi
         <p className="rounded-2xl bg-[#f3fbf6] px-4 py-5 text-sm text-[#258657]">Tout est en rythme aujourd&apos;hui.</p>
       ) : (
         <div className="space-y-4">
-          {cards.length > 0 && (
+          {sortedCards.length > 0 && (
             <div className="space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6a7892]">Situations de promesse</p>
-              <div className="space-y-2">{cards.map((card) => <SituationAttentionCard key={card.id} card={card} />)}</div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6a7892]">Situations</p>
+              <div className="space-y-2">{sortedCards.map((card) => <SituationAttentionCard key={card.id} card={card} />)}</div>
             </div>
           )}
           {items.length > 0 && (

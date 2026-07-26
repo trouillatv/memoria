@@ -75,3 +75,15 @@ export function projectAttentionCards(situations: Array<Situation | null>): Atte
     return card ? [card] : []
   })
 }
+
+// Priorité d'affichage : critique (rouge) d'abord, puis ambre, puis neutre.
+const CARD_TONE_RANK: Record<AttentionTone, number> = { red: 0, amber: 1, neutral: 2 }
+
+/**
+ * Trie les cards par SÉVÉRITÉ (rouge → ambre → neutre). Tri STABLE : à sévérité
+ * égale, l'ordre d'origine est conservé (promesses avant actions anciennes, etc.).
+ * Ne mute pas le tableau d'entrée.
+ */
+export function sortAttentionCardsBySeverity(cards: ReadonlyArray<AttentionCard>): AttentionCard[] {
+  return [...cards].sort((a, b) => CARD_TONE_RANK[a.tone] - CARD_TONE_RANK[b.tone])
+}
