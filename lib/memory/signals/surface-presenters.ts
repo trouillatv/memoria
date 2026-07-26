@@ -1,4 +1,3 @@
-import type { AttentionItem } from '@/lib/db/attention'
 import type { NowDashboardItem } from '@/lib/db/now-dashboard'
 import type { OrganizationIdentity, OrganizationIdentityMap } from '@/lib/db/organisations'
 import type { MemorySignal } from './operational-contract'
@@ -11,9 +10,6 @@ import {
   factSourceType,
   factStartsAt,
   factTitle,
-  factWhat,
-  factWhere,
-  factWhy,
 } from './fact-selectors'
 
 function organizationFor(signal: MemorySignal, organizationMap: OrganizationIdentityMap): OrganizationIdentity {
@@ -27,30 +23,7 @@ function organizationFor(signal: MemorySignal, organizationMap: OrganizationIden
   }
 }
 
-/** Projection conservant la forme attendue par AttentionPanel pendant la migration. */
-export function presentAttentionSignals(signals: MemorySignal[]): AttentionItem[] {
-  return signals
-    .filter((signal) => signal.state === 'active' && signal.category !== 'priority')
-    .map((signal) => ({
-      siteId: signal.siteId,
-      tier: signal.severity === 'critical' ? 'red' : 'orange',
-      what: factWhat(signal) ?? factTitle(signal) ?? signal.trigger.type,
-      where: factWhere(signal) ?? signal.siteId,
-      why: factWhy(signal) ?? signal.trigger.reason,
-      href: signal.sources[0]?.href ?? `/sites/${signal.siteId}`,
-      organizationId: signal.organizationId,
-      signal: {
-        category: signal.category,
-        trigger: signal.trigger,
-        actionability: signal.actionability,
-        origin: signal.origin,
-        dedupeKey: signal.dedupeKey,
-        sources: signal.sources,
-      },
-    }))
-}
-
-/** Projection conservant la forme attendue par CockpitNow pendant la migration. */
+/** Projection conservant la forme attendue par CockpitNow. */
 export function presentNowSignals(signals: MemorySignal[], organizationMap: OrganizationIdentityMap): NowDashboardItem[] {
   return signals
     .filter((signal) => signal.state === 'active' && signal.category === 'priority' && signal.actionability === 'direct')

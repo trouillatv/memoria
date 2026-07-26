@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { presentAttentionSignals, presentNowSignals } from '@/lib/memory/signals/surface-presenters'
+import { presentNowSignals } from '@/lib/memory/signals/surface-presenters'
 import type { MemorySignal } from '@/lib/memory/signals/operational-contract'
 
 const base = (overrides: Partial<MemorySignal> = {}): MemorySignal => ({
@@ -28,37 +28,6 @@ const base = (overrides: Partial<MemorySignal> = {}): MemorySignal => ({
 })
 
 describe('presenters des surfaces MemorySignal', () => {
-  it('reproduit une ligne Attention à partir des faits normalisés', () => {
-    const signal = base({
-      category: 'fragility',
-      trigger: { type: 'planning_conflict', reason: 'planning_conflict' },
-      severity: 'critical',
-      facts: [
-        { type: 'attention_item', key: 'what', value: '1 conflit de planning', confidence: null, sourceIds: ['site-1'], detectedAt: '2026-07-25T08:00:00.000Z', occurredAt: null, dueAt: null, validUntil: null },
-        { type: 'attention_reason', key: 'why', value: 'prestation prévue un jour de fermeture', confidence: null, sourceIds: ['site-1'], detectedAt: '2026-07-25T08:00:00.000Z', occurredAt: null, dueAt: null, validUntil: null },
-        { type: 'attention_where', key: 'where', value: 'Ducos', confidence: null, sourceIds: ['site-1'], detectedAt: '2026-07-25T08:00:00.000Z', occurredAt: null, dueAt: null, validUntil: null },
-      ],
-    })
-
-    expect(presentAttentionSignals([signal])).toEqual([{
-      siteId: 'site-1',
-      tier: 'red',
-      what: '1 conflit de planning',
-      where: 'Ducos',
-      why: 'prestation prévue un jour de fermeture',
-      href: '/sites/site-1/actions',
-      organizationId: 'org-1',
-      signal: {
-        category: 'fragility',
-        trigger: { type: 'planning_conflict', reason: 'planning_conflict' },
-        actionability: 'direct',
-        origin: 'rules',
-        dedupeKey: 'signal-1',
-        sources: signal.sources,
-      },
-    }])
-  })
-
   it('reproduit une priorité Cockpit avec son type et ses dates', () => {
     const signal = base({
       facts: [

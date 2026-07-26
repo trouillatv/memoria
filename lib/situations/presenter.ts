@@ -144,16 +144,6 @@ function legacyAttentionEntry(signal: MemorySignal): { kind: SituationKind; fall
   return LEGACY_ATTENTION_KINDS[`${signal.trigger.type}:${signal.trigger.reason}`] ?? null
 }
 
-/**
- * Un signal d'alerte legacy est-il MIGRÉ vers la chaîne Situation → AttentionCard ?
- * Source unique de vérité pour le dashboard : les familles migrées passent en
- * cards et sortent de la liste AttentionRow (pas de doublon). Ajouter une famille
- * à LEGACY_ATTENTION_KINDS suffit à l'inclure partout.
- */
-export function isMigratedLegacyAttention(signal: MemorySignal): boolean {
-  return legacyAttentionEntry(signal) !== null
-}
-
 // Mapping commun : `what` → titre, `where` → chantier, `why` → timing. Minimal :
 // pas d'enrichissement à la source (nom d'organisation absent → pas de badge org).
 function legacyAttentionSituation(signal: MemorySignal, kind: SituationKind, fallbackTitle: string): Situation {

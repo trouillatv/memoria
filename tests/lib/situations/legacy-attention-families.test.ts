@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { MemorySignal } from '@/lib/memory/signals/operational-contract'
-import { presentSituation, isMigratedLegacyAttention } from '@/lib/situations/presenter'
+import { presentSituation } from '@/lib/situations/presenter'
 import { projectSituationForAttention } from '@/lib/situations/attention/project'
 
 function signal(trigger: MemorySignal['trigger'], over: Partial<MemorySignal> = {}): MemorySignal {
@@ -46,8 +46,8 @@ describe('action en retard → overdue_action', () => {
     expect(card).toMatchObject({ icon: 'calendar', title: '2 actions en retard' })
   })
 
-  it('est reconnue comme famille migrée', () => {
-    expect(isMigratedLegacyAttention(s)).toBe(true)
+  it('est reconnue comme famille migrée (presentSituation non-null)', () => {
+    expect(presentSituation(s)).not.toBeNull()
   })
 })
 
@@ -70,8 +70,8 @@ describe('réserve ouverte → open_reserve', () => {
     expect(card).toMatchObject({ icon: 'warning', tone: 'red', title: '3 réserves ouvertes' })
   })
 
-  it('est reconnue comme famille migrée', () => {
-    expect(isMigratedLegacyAttention(s)).toBe(true)
+  it('est reconnue comme famille migrée (presentSituation non-null)', () => {
+    expect(presentSituation(s)).not.toBeNull()
   })
 })
 
@@ -103,8 +103,8 @@ describe('conflit de planning → planning_conflict', () => {
     expect(card).toMatchObject({ icon: 'calendar', tone: 'red', title: '3 prestations prévues un jour de fermeture' })
   })
 
-  it('est reconnue comme famille migrée', () => {
-    expect(isMigratedLegacyAttention(s)).toBe(true)
+  it('est reconnue comme famille migrée (presentSituation non-null)', () => {
+    expect(presentSituation(s)).not.toBeNull()
   })
 })
 
@@ -135,15 +135,14 @@ describe('débrief en attente → pending_debrief', () => {
     expect(card).toMatchObject({ icon: 'document', tone: 'amber', title: '2 visites à débriefer' })
   })
 
-  it('est reconnue comme famille migrée', () => {
-    expect(isMigratedLegacyAttention(s)).toBe(true)
+  it('est reconnue comme famille migrée (presentSituation non-null)', () => {
+    expect(presentSituation(s)).not.toBeNull()
   })
 })
 
 describe('familles NON migrées', () => {
-  it('un trigger inconnu n\'est ni migré ni présenté (reste legacy)', () => {
+  it('un trigger inconnu n\'est pas présenté en Situation', () => {
     const s = signal({ type: 'unknown_family', reason: 'not_annotated' } as unknown as MemorySignal['trigger'])
-    expect(isMigratedLegacyAttention(s)).toBe(false)
     expect(presentSituation(s)).toBeNull()
   })
 })

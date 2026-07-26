@@ -25,7 +25,6 @@ import type { SiteActionRow } from '@/lib/db/site-actions'
 import { OrganizationBadge, type OrgLabels } from '@/components/dashboard/OrgBadge'
 import type { OrganizationIdentityMap } from '@/lib/db/organisations'
 import type { MemorySignal } from '@/lib/memory/signals/operational-contract'
-import { presentAttentionSignals } from '@/lib/memory/signals/surface-presenters'
 import type { AttentionCard } from '@/lib/situations/attention/types'
 import { sortAttentionCardsBySeverity } from '@/lib/situations/attention/project'
 import type { NowCard } from '@/lib/situations/now/types'
@@ -36,7 +35,6 @@ import { MemoryInbox } from '@/app/(field)/m/site/[siteId]/MemoryReviewPanel'
 type Props = {
   firstName: string
   orgNames: string[]
-  attentionSignals: MemorySignal[]
   attentionCards: AttentionCard[]
   nowCards: NowCard[]
   visit: VisitImpact
@@ -70,45 +68,15 @@ function Metric({ icon: Icon, value, label, tone }: { icon: typeof FileText; val
   )
 }
 
-function AttentionRow({ item, urgent, organizationMap }: { item: ReturnType<typeof presentAttentionSignals>[number]; urgent: boolean; organizationMap: OrganizationIdentityMap }) {
-  return (
-    <Link href={item.href} className={`group flex items-center gap-4 rounded-2xl px-4 py-3.5 transition-colors ${urgent ? 'bg-[#fff8f8] hover:bg-[#fff1f1]' : 'bg-[#fffbf4] hover:bg-[#fff6e6]'}`}>
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${urgent ? 'bg-[#ffe7e7] text-[#ef5b62]' : 'bg-[#fff0d7] text-[#ec9a33]'}`}>
-        {urgent ? <AlertTriangle className="h-5 w-5" /> : <Clock3 className="h-5 w-5" />}
-      </span>
-      <span className="min-w-0 flex-1"><strong className="block text-sm font-semibold text-[#17213a]">{item.what}</strong><span className="mt-1 block text-xs text-[#66738c]">{item.why} · {item.where}</span></span>
-      {organizationMap[item.organizationId] && <OrganizationBadge organization={organizationMap[item.organizationId]} size="xs" />}
-      <ChevronRight className="h-4 w-4 shrink-0 text-[#91a0ba] transition-transform group-hover:translate-x-0.5" />
-    </Link>
-  )
-}
-
-function AttentionPanel({ signals, cards, organizationMap }: { signals: MemorySignal[]; cards: AttentionCard[]; organizationMap: OrganizationIdentityMap }) {
-  const digestItems = presentAttentionSignals(signals)
-  const items = digestItems.map((item) => ({ item, urgent: item.tier === 'red' })).slice(0, 4)
-  // Les cards ne sont plus uniquement des promesses (action ancienne, réserve…) :
-  // en-tête générique « Situations », triées par sévérité.
+function AttentionSection({ cards, organizationMap }: { cards: AttentionCard[]; organizationMap: OrganizationIdentityMap }) {
   const sortedCards = sortAttentionCardsBySeverity(cards)
   return (
     <section className={`${surface} p-5 sm:p-7`}>
       <div className="mb-5 flex items-center gap-2 text-[#f0525f]"><AlertTriangle className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">Ce qui mérite votre attention aujourd&apos;hui</h2></div>
-      {cards.length === 0 && items.length === 0 ? (
+      {sortedCards.length === 0 ? (
         <p className="rounded-2xl bg-[#f3fbf6] px-4 py-5 text-sm text-[#258657]">Tout est en rythme aujourd&apos;hui.</p>
       ) : (
-        <div className="space-y-4">
-          {sortedCards.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6a7892]">Situations</p>
-              <div className="space-y-2">{sortedCards.map((card) => <SituationAttentionCard key={card.id} card={card} />)}</div>
-            </div>
-          )}
-          {items.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6a7892]">Autres alertes</p>
-              <div className="space-y-2">{items.map(({ item, urgent }, index) => <AttentionRow key={`${item.href}-${index}`} item={item} urgent={urgent} organizationMap={organizationMap} />)}</div>
-            </div>
-          )}
-        </div>
+        <div className="space-y-2">{sortedCards.map((card) => <SituationAttentionCard key={card.id} card={card} />)}</div>
       )}
       <Link href="/actions" className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8] hover:text-[#0c4dbd]">Voir toutes les alertes <ArrowRight className="h-3.5 w-3.5" /></Link>
     </section>
@@ -195,10 +163,10 @@ function MemoryCards({ items, organizationMap }: { items: LivingASavoirCard[]; o
   return <section className={`${surface} p-5 sm:p-6`}><div className="flex items-center justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">Connaissances du terrain</p><h2 className="mt-2 text-lg font-semibold text-[#101a35]">Mémoire utile pour aujourd&apos;hui</h2></div><Info className="h-5 w-5 text-[#5e7bd3]" /></div>{items.length === 0 ? <p className="mt-6 text-sm italic text-[#73809a]">Aucune capsule disponible pour le moment.</p> : <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{items.slice(0, 4).map((item, index) => <Link key={item.id} href={`/sites/${item.site_id}`} className="group rounded-2xl border border-[#e8edf5] bg-[#fbfcff] p-4 transition-all hover:-translate-y-0.5 hover:border-[#cbd9f7] hover:shadow-sm"><span className={`flex h-9 w-9 items-center justify-center rounded-xl ${['bg-[#e5f8ef] text-[#2ba577]', 'bg-[#eee8ff] text-[#7756d7]', 'bg-[#fff0df] text-[#ed8b43]', 'bg-[#e8f0ff] text-[#4779dc]'][index]}`}><Sparkles className="h-4 w-4" /></span><p className="mt-3 line-clamp-3 text-xs font-medium leading-relaxed text-[#27334e]">{item.body}</p><p className="mt-4 flex items-center gap-1 truncate text-[10px] text-[#7b879d]">{item.site_name} · {organizationMap[item.organizationId] && <OrganizationBadge organization={organizationMap[item.organizationId]} size="xs" />}</p></Link>)}</div>}<Link href="/memoire" className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8]">Voir toutes les capsules <ArrowRight className="h-3.5 w-3.5" /></Link></section>
 }
 
-export function DashboardPremium({ firstName, orgNames, attentionSignals, attentionCards, nowCards, visit, upcoming, sites, aSavoir, organizationMap, now, nowSignals, visitReviews, deadlinesToPlan }: Props) {
+export function DashboardPremium({ firstName, orgNames, attentionCards, nowCards, visit, upcoming, sites, aSavoir, organizationMap, now, nowSignals, visitReviews, deadlinesToPlan }: Props) {
   return <div className="min-h-screen w-full bg-[#f8fafc] px-1 pb-12 pt-1 sm:px-2"><div className="w-full space-y-5">
     <header className="flex items-end justify-between gap-5 px-1 py-4 sm:px-2"><div><h1 className="text-3xl font-semibold tracking-[-0.035em] text-[#101a35]">Bonjour {firstName} 👋</h1><p className="mt-1 text-sm text-[#68758d]">Voici ce qui demande votre attention aujourd&apos;hui.</p>{orgNames.length > 1 && <p className="mt-3 text-xs font-medium text-[#6b7891]">{orgNames.join(' · ')}</p>}</div><div className="hidden items-center gap-2 text-xs text-[#7a879f] lg:flex"><span className="rounded-full border border-[#e2e8f2] bg-white px-4 py-2">Rechercher un chantier, une action, un document…</span><span className="flex h-10 w-10 items-center justify-center rounded-full border border-[#e2e8f2] bg-white"><Info className="h-4 w-4" /></span></div></header>
-    <AttentionPanel signals={attentionSignals} cards={attentionCards} organizationMap={organizationMap} />
+    <AttentionSection cards={attentionCards} organizationMap={organizationMap} />
     <CockpitNow signals={nowSignals} nowCards={nowCards} summary={now.summary} organizationMap={organizationMap} showOrganizationBadge={Object.keys(organizationMap).length > 1} />
     <div className="space-y-5">{visit.sites.length > 0 ? visit.sites.map((site) => <VisitSummary key={site.siteId} site={site} organizationMap={organizationMap} review={visitReviews[site.siteId] ?? { confirmed: [], toReview: [] }} />) : <section className={`${surface} p-6`}><h2 className="text-lg font-semibold text-[#101a35]">Depuis votre dernière visite</h2><p className="mt-4 text-sm text-[#73809a]">Aucune évolution récente à afficher.</p></section>}<Agenda items={upcoming} organizationMap={organizationMap} deadlinesToPlan={deadlinesToPlan} /></div>
     <div className="grid gap-5 xl:grid-cols-2"><SitesTable sites={sites} organizationMap={organizationMap} /><PriorityActionList actions={now.actions} organizationMap={organizationMap} /></div>

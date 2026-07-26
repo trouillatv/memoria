@@ -16,7 +16,6 @@ import { getStructuredPromiseRecords } from '@/lib/db/promise-candidates'
 import { attentionItemToMemorySignal, nowItemToMemorySignal } from '@/lib/memory/signals/lot1-adapters'
 import { detectPromiseSignalsFromRecords } from '@/lib/memory/signals/promise-pipeline'
 import { composeAttentionCardsFromSignals } from '@/lib/situations/attention/compose'
-import { isMigratedLegacyAttention } from '@/lib/situations/presenter'
 import { composeNowCardsFromSignals } from '@/lib/situations/now/compose'
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardPremium } from './DashboardPremium'
@@ -62,19 +61,11 @@ export default async function DashboardPage() {
   )) as Record<string, MemoryReview>
   const promiseSignals = detectPromiseSignalsFromRecords(promiseRecords)
   const now = await getNowDashboard(orgIds, upcoming, organizationMap ?? {})
-  const allLegacyAttentionSignals = [
+  const legacyAttentionSignals = [
     ...attention.red.map((item) => attentionItemToMemorySignal(item)),
     ...attention.orange.map((item) => attentionItemToMemorySignal(item)),
   ].filter((signal): signal is NonNullable<typeof signal> => signal !== null)
-  // Toutes les familles d'alertes annotées (action ancienne, action en retard,
-  // réserve ouverte, conflit de planning, débrief en attente) passent par la
-  // chaîne Situation → AttentionCard et sortent de la liste AttentionRow legacy
-  // (pas de doublon). Les lignes non annotées restent legacy jusqu'à annotation
-  // à la source. La liste des familles migrées vit dans le presenter (source
-  // unique de vérité).
-  const migratedAttentionSignals = allLegacyAttentionSignals.filter(isMigratedLegacyAttention)
-  const legacyAttentionSignals = allLegacyAttentionSignals.filter((s) => !isMigratedLegacyAttention(s))
-  const attentionCards = composeAttentionCardsFromSignals([...promiseSignals, ...migratedAttentionSignals])
+  const attentionCards = composeAttentionCardsFromSignals([...promiseSignals, ...legacyAttentionSignals])
   const nowCards = composeNowCardsFromSignals(promiseSignals)
   const nowSignals = now.items.map((item) => nowItemToMemorySignal(item))
 
@@ -82,7 +73,6 @@ export default async function DashboardPage() {
     <DashboardPremium
       firstName={user.full_name?.split(' ')[0] ?? ''}
       orgNames={orgNames}
-      attentionSignals={legacyAttentionSignals}
       attentionCards={attentionCards}
       nowCards={nowCards}
       visit={visit}
