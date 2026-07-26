@@ -44,6 +44,8 @@ describe('site workspaces', () => {
                 requiredInputs: ['nature'],
                 explanation: null,
               },
+              confidence: null,
+              sourceCaptureIds: [],
               provenance: { reportId: 'r-1', visitedAt: '2026-07-15T02:07:00.000Z', photos: 4, vocals: 2 },
             },
           ],

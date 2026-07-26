@@ -35,7 +35,10 @@ export async function listTenderEngagementProvenance(
 
   if (error) throw error
 
-  return ((data ?? []) as TenderEngagementProvenanceQueryRow[]).map((row) =>
+  // Supabase ne sait pas inférer la forme du join aliasé (tender_document:…) :
+  // `data` retombe sur GenericStringError[]. On passe par `unknown` (patron
+  // Supabase) — la forme réelle est garantie par TENDER_ENGAGEMENT_PROVENANCE_SELECT.
+  return ((data ?? []) as unknown as TenderEngagementProvenanceQueryRow[]).map((row) =>
     deriveEngagementProvenanceReadRow({
       engagementId: row.id,
       tenderId: row.tender_id,
