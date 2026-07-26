@@ -1,4 +1,4 @@
-import type { Situation, SituationCapability } from '../situation'
+import type { Situation, SituationCapability, SituationKind } from '../situation'
 import type { AttentionAction, AttentionCard, AttentionIcon, AttentionTone } from './types'
 
 function toneOfSituation(situation: Situation): AttentionTone {
@@ -55,7 +55,40 @@ function isSupportedSituation(situation: Situation): boolean {
     || situation.kind === 'pending_debrief'
 }
 
-export function projectSituationForAttention(situation: Situation | null): AttentionCard | null {
+// ─── Score métier ────────────────────────────────────────────────────────────
+
+/** Impact par type : que peut rater le conducteur si ça reste non traité ? */
+const IMPACT_SCORE: Record<SituationKind, number> = {
+  overdue_action:      40,  // deadline dépassée — urgence maximale
+  planning_conflict:   40,  // ressources bloquées — urgence maximale
+  expired_promise:     35,  // engagement non tenu
+  pending_debrief:     30,  // connaissance perdue après visite
+  open_reserve:        25,  // risque non traité
+  unconfirmed_promise: 20,  // manque de clarté
+  stale_action:        10,  // ancienne mais sans deadline
+}
+
+/**
+ * Score de priorisation métier (0–90). Critères de Vincent :
+ *   impact (0–40)   : type de situation × risque terrain
+ *   urgence (5–30)  : âge du problème (ageDays)
+ *   ancienneté (0–20) : signal non résolu depuis longtemps
+ *
+ * L'utilisateur ne voit jamais le score, seulement l'ordre résultant.
+ */
+function priorityScore(situation: Situation, now: Date): number {
+  const ageDays = situation.timing.ageDays ?? 0
+  const urgency = ageDays > 30 ? 30 : ageDays > 7 ? 20 : ageDays > 0 ? 10 : 5
+
+  const signalDays = Math.floor(
+    (now.getTime() - new Date(situation.timing.detectedAt).getTime()) / 86_400_000,
+  )
+  const staleness = signalDays > 14 ? 20 : signalDays > 7 ? 10 : signalDays > 2 ? 5 : 0
+
+  return (IMPACT_SCORE[situation.kind] ?? 0) + urgency + staleness
+}
+
+export function projectSituationForAttention(situation: Situation | null, now = new Date()): AttentionCard | null {
   if (!situation || !isSupportedSituation(situation)) return null
 
   const actions = situation.capabilities.flatMap((capability) => {
@@ -73,6 +106,7 @@ export function projectSituationForAttention(situation: Situation | null): Atten
     id: situation.id,
     icon: iconOfSituation(situation),
     tone: toneOfSituation(situation),
+    priority: priorityScore(situation, now),
     title: situation.title,
     description: situation.explanation,
     siteLabel: situation.site.name,
@@ -87,21 +121,24 @@ export function projectSituationForAttention(situation: Situation | null): Atten
   }
 }
 
-export function projectAttentionCards(situations: Array<Situation | null>): AttentionCard[] {
+export function projectAttentionCards(situations: Array<Situation | null>, now = new Date()): AttentionCard[] {
   return situations.flatMap((situation) => {
-    const card = projectSituationForAttention(situation)
+    const card = projectSituationForAttention(situation, now)
     return card ? [card] : []
   })
 }
 
-// Priorité d'affichage : critique (rouge) d'abord, puis ambre, puis neutre.
+// Tiebreaker par sévérité quand deux cartes ont le même score.
 const CARD_TONE_RANK: Record<AttentionTone, number> = { red: 0, amber: 1, neutral: 2 }
 
 /**
- * Trie les cards par SÉVÉRITÉ (rouge → ambre → neutre). Tri STABLE : à sévérité
- * égale, l'ordre d'origine est conservé (promesses avant actions anciennes, etc.).
- * Ne mute pas le tableau d'entrée.
+ * Trie les cartes par SCORE MÉTIER décroissant (impact × urgence × ancienneté).
+ * À score égal, le ton (rouge → ambre → neutre) départage. Ne mute pas l'entrée.
  */
-export function sortAttentionCardsBySeverity(cards: ReadonlyArray<AttentionCard>): AttentionCard[] {
-  return [...cards].sort((a, b) => CARD_TONE_RANK[a.tone] - CARD_TONE_RANK[b.tone])
+export function sortAttentionCards(cards: ReadonlyArray<AttentionCard>): AttentionCard[] {
+  return [...cards].sort((a, b) =>
+    b.priority !== a.priority
+      ? b.priority - a.priority
+      : CARD_TONE_RANK[a.tone] - CARD_TONE_RANK[b.tone],
+  )
 }

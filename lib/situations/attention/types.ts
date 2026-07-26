@@ -23,6 +23,8 @@ export type AttentionCard = {
   id: string
   icon: AttentionIcon
   tone: AttentionTone
+  /** Score métier calculé à la projection — détermine l'ordre d'affichage. */
+  priority: number
   title: string
   description: string | null
   siteLabel: string

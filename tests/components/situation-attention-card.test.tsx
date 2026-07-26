@@ -8,6 +8,7 @@ const card: AttentionCard = {
   id: 'signal-1',
   icon: 'calendar',
   tone: 'amber',
+  priority: 55,
   title: 'Planning toujours non diffusé',
   description: 'Annonce faite lors de la visite du 21 juillet.',
   siteLabel: 'Lycée PETRO ATTITI',

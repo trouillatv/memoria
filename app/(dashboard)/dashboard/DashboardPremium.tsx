@@ -26,7 +26,7 @@ import { OrganizationBadge, type OrgLabels } from '@/components/dashboard/OrgBad
 import type { OrganizationIdentityMap } from '@/lib/db/organisations'
 import type { MemorySignal } from '@/lib/memory/signals/operational-contract'
 import type { AttentionCard } from '@/lib/situations/attention/types'
-import { sortAttentionCardsBySeverity } from '@/lib/situations/attention/project'
+import { sortAttentionCards } from '@/lib/situations/attention/project'
 import type { NowCard } from '@/lib/situations/now/types'
 import { CockpitNow, PriorityActionList } from './CockpitNow'
 import { SituationAttentionCard } from './SituationAttentionCard'
@@ -69,7 +69,7 @@ function Metric({ icon: Icon, value, label, tone }: { icon: typeof FileText; val
 }
 
 function AttentionSection({ cards, organizationMap }: { cards: AttentionCard[]; organizationMap: OrganizationIdentityMap }) {
-  const sortedCards = sortAttentionCardsBySeverity(cards)
+  const sortedCards = sortAttentionCards(cards)
   return (
     <section className={`${surface} p-5 sm:p-7`}>
       <div className="mb-5 flex items-center gap-2 text-[#f0525f]"><AlertTriangle className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">Ce qui mérite votre attention aujourd&apos;hui</h2></div>
