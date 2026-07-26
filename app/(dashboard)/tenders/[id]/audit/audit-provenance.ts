@@ -9,6 +9,7 @@
 //   unavailable    → ne rien changer + « Source non localisée »
 
 import type { EngagementProvenanceState } from '@/types/db'
+import { provenanceSourceLabel as sourceLabel } from '@/lib/tenders/provenance-label'
 
 /** Une pièce du dossier telle que l'audit la consomme (URL signée côté serveur). */
 export interface AuditDocumentItem {
@@ -59,11 +60,10 @@ export function applyProvenanceSelection(
   return current
 }
 
-/** Libellé humain de la source — le vrai contrat : Document → Page → État. */
+/** Libellé humain de la source — le vrai contrat : Document → Page → État.
+ *  Format partagé avec la curation (source unique dans provenance-label). */
 export function provenanceSourceLabel(provenance: AuditProvenance): string {
-  if (provenance.state === 'exact') return `${provenance.filename} — page ${provenance.pageNumber}`
-  if (provenance.state === 'document_only') return `${provenance.filename} — page non localisée`
-  return 'Source non localisée'
+  return sourceLabel(provenance)
 }
 
 /** Forme courte pour la liste des engagements (badge de ligne). */
