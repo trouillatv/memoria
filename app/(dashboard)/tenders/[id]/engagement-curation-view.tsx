@@ -251,7 +251,8 @@ export function EngagementCurationView({ engagements, provenanceLabels }: {
                         <div className="text-xs text-muted-foreground italic">« {e.source_excerpt} »</div>
                         {provenanceLabels?.[e.id] && (
                           <div className="text-[10px] text-muted-foreground/80 mt-0.5">
-                            Source : {provenanceLabels[e.id]}
+                            {/* Libellé auto-descriptif (📘 Exigence AO… / ✍️ Proposé…). */}
+                            {provenanceLabels[e.id]}
                           </div>
                         )}
                       </>

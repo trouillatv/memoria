@@ -54,8 +54,8 @@ export default async function TenderAuditPage({ params }: { params: Promise<{ id
     .map((e) => {
       const row = provenanceById.get(e.id)
       const provenance: AuditProvenance = row
-        ? { state: row.state, documentId: row.documentId, pageNumber: row.pageNumber, filename: row.filename }
-        : { state: 'unavailable', documentId: null, pageNumber: null, filename: null }
+        ? { state: row.state, documentId: row.documentId, pageNumber: row.pageNumber, filename: row.filename, sourceType: row.sourceType }
+        : { state: 'unavailable', documentId: null, pageNumber: null, filename: null, sourceType: null }
       // Occurrences : pages où le terme canonique (glossaire) apparaît dans le doc.
       const forms = glossaryFormsForLabel(e.short_label, glossary) ?? glossaryFormsForLabel(e.source_excerpt, glossary)
       return {

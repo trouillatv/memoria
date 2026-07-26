@@ -41,20 +41,30 @@ describe('EngagementCurationView — source structurée', () => {
     render(
       <EngagementCurationView
         engagements={[engagement({ id: 'e-1', short_label: 'Pénalité de retard' })]}
-        provenanceLabels={{ 'e-1': 'CCTP.pdf — page 12' }}
+        provenanceLabels={{ 'e-1': '📘 Exigence AO — CCTP.pdf — page 12' }}
       />,
     )
-    expect(screen.getByText('Source : CCTP.pdf — page 12')).toBeInTheDocument()
+    expect(screen.getByText('📘 Exigence AO — CCTP.pdf — page 12')).toBeInTheDocument()
   })
 
-  it('affiche « page non localisée » pour document_only', () => {
+  it('affiche « page non localisée » pour document_only (pièce connue)', () => {
     render(
       <EngagementCurationView
         engagements={[engagement({ id: 'e-1' })]}
-        provenanceLabels={{ 'e-1': 'CCTP.pdf — page non localisée' }}
+        provenanceLabels={{ 'e-1': '📘 Exigence AO — CCTP.pdf — page non localisée' }}
       />,
     )
-    expect(screen.getByText('Source : CCTP.pdf — page non localisée')).toBeInTheDocument()
+    expect(screen.getByText('📘 Exigence AO — CCTP.pdf — page non localisée')).toBeInTheDocument()
+  })
+
+  it('affiche « ✍️ Proposé dans le mémoire technique » pour un engagement du mémoire', () => {
+    render(
+      <EngagementCurationView
+        engagements={[engagement({ id: 'e-1' })]}
+        provenanceLabels={{ 'e-1': '✍️ Proposé dans le mémoire technique' }}
+      />,
+    )
+    expect(screen.getByText('✍️ Proposé dans le mémoire technique')).toBeInTheDocument()
   })
 
   it('ne réintroduit JAMAIS la page devinée de source_ref (p. 99 / § IV.2)', () => {
@@ -64,8 +74,7 @@ describe('EngagementCurationView — source structurée', () => {
         provenanceLabels={{ 'e-1': 'Source non localisée' }}
       />,
     )
-    // La source structurée est là…
-    expect(screen.getByText('Source : Source non localisée')).toBeInTheDocument()
+    expect(screen.getByText('Source non localisée')).toBeInTheDocument()
     // …et jamais la référence héritée de source_ref.
     expect(screen.queryByText(/p\. 99/)).toBeNull()
     expect(screen.queryByText(/§ IV\.2/)).toBeNull()
@@ -73,7 +82,7 @@ describe('EngagementCurationView — source structurée', () => {
 
   it('sans libellé de provenance → aucune ligne de source (pas de repli source_ref)', () => {
     render(<EngagementCurationView engagements={[engagement({ id: 'e-1' })]} />)
-    expect(screen.queryByText(/^Source :/)).toBeNull()
     expect(screen.queryByText(/p\. 99/)).toBeNull()
+    expect(screen.queryByText(/§ IV\.2/)).toBeNull()
   })
 })

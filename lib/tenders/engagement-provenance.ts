@@ -1,4 +1,4 @@
-import type { EngagementProvenanceState } from '@/types/db'
+import type { EngagementProvenanceState, EngagementSourceType } from '@/types/db'
 import type { TenderPieceKind } from '@/types/db'
 import { locateQuote } from '@/services/ai/source-validation'
 import { buildTenderCorpus, tenderPieceLabel } from '@/lib/tenders/pieces'
@@ -14,6 +14,8 @@ export type EngagementProvenanceReadInput = {
   engagementId: string
   tenderId: string
   sourceRef: Record<string, unknown> | null
+  /** Absent/undefined = enregistrement historique (type inconnu) → traité null. */
+  sourceType?: EngagementSourceType | null
   tenderDocumentId: string | null
   pageNumber: number | null
   document: { id: string; filename: string } | null
@@ -23,6 +25,8 @@ export type EngagementProvenanceReadRow = {
   engagementId: string
   tenderId: string
   sourceRef: Record<string, unknown> | null
+  /** Nature de la source : exigence d'AO vs proposition du mémoire technique. */
+  sourceType: EngagementSourceType | null
   documentId: string | null
   filename: string | null
   pageNumber: number | null
@@ -82,6 +86,7 @@ export function deriveEngagementProvenanceReadRow({
   engagementId,
   tenderId,
   sourceRef,
+  sourceType,
   tenderDocumentId,
   pageNumber,
   document,
@@ -98,6 +103,7 @@ export function deriveEngagementProvenanceReadRow({
     engagementId,
     tenderId,
     sourceRef,
+    sourceType: sourceType ?? null,
     documentId: safeTenderDocumentId,
     filename: hasMatchingDocument ? document.filename : null,
     pageNumber: safePageNumber,
