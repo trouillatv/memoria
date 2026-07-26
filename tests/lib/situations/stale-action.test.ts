@@ -110,13 +110,12 @@ describe('stale_action — compose end-to-end', () => {
     expect(cards[0]).toEqual(expect.objectContaining({ title: '2 actions anciennes', tone: 'amber', icon: 'warning' }))
   })
 
-  it('les autres familles legacy ne deviennent PAS des cards (migration une à une)', () => {
-    // Une réserve ouverte (open_reserve) n'est pas encore migrée → aucune card.
-    const reserve = staleActionSignal({
-      id: 'attention:open-reserve:site-1',
-      category: 'fragility',
-      trigger: { type: 'open_reserve', reason: 'object_aging' },
+  it('les familles NON migrées ne deviennent PAS des cards (migration une à une)', () => {
+    // Un conflit de planning n'est pas migré → reste en AttentionRow, aucune card.
+    const conflict = staleActionSignal({
+      id: 'attention:planning-conflict:site-1',
+      trigger: { type: 'planning_conflict', reason: 'planning_conflict' } as MemorySignal['trigger'],
     })
-    expect(composeAttentionCardsFromSignals([reserve])).toEqual([])
+    expect(composeAttentionCardsFromSignals([conflict])).toEqual([])
   })
 })

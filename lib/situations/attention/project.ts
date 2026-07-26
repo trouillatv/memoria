@@ -19,7 +19,10 @@ function iconOfSituation(situation: Situation): AttentionIcon {
       return 'calendar'
     case 'unconfirmed_promise':
       return 'question'
+    case 'overdue_action':
+      return 'calendar'
     case 'stale_action':
+    case 'open_reserve':
       return 'warning'
     default:
       return 'warning'
@@ -43,6 +46,8 @@ function isSupportedSituation(situation: Situation): boolean {
   return situation.kind === 'expired_promise'
     || situation.kind === 'unconfirmed_promise'
     || situation.kind === 'stale_action'
+    || situation.kind === 'overdue_action'
+    || situation.kind === 'open_reserve'
 }
 
 export function projectSituationForAttention(situation: Situation | null): AttentionCard | null {
