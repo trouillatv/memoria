@@ -91,13 +91,24 @@ export default async function TenderDetailPage({
 
   // Le DOSSIER (toutes les pièces), pas le dernier fichier déposé. Chargé
   // toujours : savoir ce qui compose l'AO ne dépend pas de l'état de l'analyse.
-  const pieces: TenderPieceView[] = (await listTenderDocuments(id).catch(() => [])).map((d) => ({
+  const allDocs = await listTenderDocuments(id).catch(() => [])
+  const pieces: TenderPieceView[] = allDocs.map((d) => ({
     id: d.id,
     filename: d.filename,
     kind: d.kind,
     sizeBytes: d.size_bytes,
     read: !!d.extracted_text && d.extracted_text.trim().length > 0,
     uploadedAt: d.uploaded_at,
+  }))
+
+  // Section « Sources » : TOUTES les pièces, chacune avec sa propre URL signée
+  // (un AO est un dossier, jamais un document). Une URL signée par pièce reste
+  // scellée à sa pièce ; jamais de chemin Storage brut exposé.
+  const sourcesAdmin = createAdminClient()
+  const sourcePieces = await Promise.all(allDocs.map(async (d) => {
+    if (!d.storage_path) return { filename: d.filename, signedUrl: null }
+    const { data } = await sourcesAdmin.storage.from('tender-documents').createSignedUrl(d.storage_path, 3600)
+    return { filename: d.filename, signedUrl: data?.signedUrl ?? null }
   }))
   const canEditPieces = currentUser?.role === 'admin' || currentUser?.role === 'manager'
 
@@ -156,8 +167,7 @@ export default async function TenderDetailPage({
   }
 
   const sources = {
-    pdfSignedUrl,
-    pdfFilename: doc?.filename ?? null,
+    pieces: sourcePieces,
     libraryItemsCount: (analysis?.library_snapshot as { items_count?: number } | null)?.items_count ?? 0,
     provider: analysis?.provider ?? null,
     isMock: analysis?.provider === 'mock',

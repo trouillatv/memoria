@@ -36,8 +36,8 @@ interface TenderSidebarProps {
     chatMessagesCount: number
   }
   sources: {
-    pdfSignedUrl: string | null
-    pdfFilename: string | null
+    // TOUTES les pièces du dossier, pas seulement la dernière déposée.
+    pieces: { filename: string; signedUrl: string | null }[]
     libraryItemsCount: number
     provider: string | null
     isMock: boolean
@@ -105,6 +105,10 @@ export function TenderSidebar({
     const r = await _relaunchAnalysisAction(fd)
     if (r && 'error' in r) toast.error(r.error)
   }
+
+  // Raccourci « Voir le PDF source » — la première pièce consultable du dossier.
+  // La liste Sources ci-dessus donne déjà accès à TOUTES les pièces.
+  const primaryPdfUrl = sources.pieces.find((piece) => piece.signedUrl)?.signedUrl ?? null
 
   return (
     <aside className="md:sticky md:top-6 md:self-start space-y-4 md:max-h-[calc(100vh-3rem)] md:overflow-y-auto md:pr-2">
@@ -238,26 +242,35 @@ export function TenderSidebar({
       )}
 
       {/* SOURCES */}
-      {(sources.pdfSignedUrl || sources.libraryItemsCount > 0 || sources.provider) && (
+      {(sources.pieces.length > 0 || sources.libraryItemsCount > 0 || sources.provider) && (
         <>
           <div className="hidden md:block border-t" />
           <div className="space-y-2">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Sources</p>
             <ul className="space-y-1.5 text-xs text-muted-foreground">
-              {sources.pdfSignedUrl && (
-                <li>
-                  <a
-                    href={sources.pdfSignedUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 hover:text-foreground transition-colors"
-                  >
-                    <FileText className="h-3 w-3 shrink-0" />
-                    <span className="truncate">{sources.pdfFilename ?? 'PDF source'}</span>
-                    <ExternalLink className="h-3 w-3 shrink-0 opacity-60" />
-                  </a>
+              {/* Une ligne par pièce du dossier — un AO est un dossier, jamais un
+                  document. On n'affiche plus la seule dernière pièce déposée. */}
+              {sources.pieces.map((piece, i) => (
+                <li key={i}>
+                  {piece.signedUrl ? (
+                    <a
+                      href={piece.signedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+                    >
+                      <FileText className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{piece.filename}</span>
+                      <ExternalLink className="h-3 w-3 shrink-0 opacity-60" />
+                    </a>
+                  ) : (
+                    <span className="flex items-center gap-1.5">
+                      <FileText className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{piece.filename}</span>
+                    </span>
+                  )}
                 </li>
-              )}
+              ))}
               {sources.libraryItemsCount > 0 && (
                 <li className="flex items-center gap-1.5">
                   <BookOpen className="h-3 w-3 shrink-0" />
@@ -360,7 +373,7 @@ export function TenderSidebar({
       )}
 
       {/* ACTIONS — kebab natif <details> pour éviter les bugs overlay shadcn */}
-      {(canRelaunch || (!isInProgress && tender.status !== 'archived') || sources.pdfSignedUrl) && (
+      {(canRelaunch || (!isInProgress && tender.status !== 'archived') || primaryPdfUrl) && (
         <>
           <div className="hidden md:block border-t" />
           <details className="group relative">
@@ -390,9 +403,9 @@ export function TenderSidebar({
                   Archiver
                 </button>
               )}
-              {sources.pdfSignedUrl && (
+              {primaryPdfUrl && (
                 <a
-                  href={sources.pdfSignedUrl}
+                  href={primaryPdfUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
