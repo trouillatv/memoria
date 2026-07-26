@@ -5,6 +5,7 @@ export type SituationKind =
   | 'overdue_action'
   | 'open_reserve'
   | 'planning_conflict'
+  | 'pending_debrief'
 
 export type SituationSeverity = 'info' | 'warning' | 'critical'
 

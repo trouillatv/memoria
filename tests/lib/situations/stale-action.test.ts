@@ -111,11 +111,11 @@ describe('stale_action — compose end-to-end', () => {
   })
 
   it('les familles NON migrées ne deviennent PAS des cards (migration une à une)', () => {
-    // Un débrief en attente n'est pas encore migré → reste en AttentionRow, aucune card.
-    const debrief = staleActionSignal({
-      id: 'attention:pending-debrief:site-1',
-      trigger: { type: 'missing_attachment', reason: 'attachment_missing' } as MemorySignal['trigger'],
+    // Une famille non annotée (trigger inconnu) reste en AttentionRow, aucune card.
+    const unknown = staleActionSignal({
+      id: 'attention:unknown:site-1',
+      trigger: { type: 'unknown_family', reason: 'not_annotated' } as unknown as MemorySignal['trigger'],
     })
-    expect(composeAttentionCardsFromSignals([debrief])).toEqual([])
+    expect(composeAttentionCardsFromSignals([unknown])).toEqual([])
   })
 })
