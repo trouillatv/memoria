@@ -1,5 +1,7 @@
 import type { Situation, SituationCapability, SituationKind } from '../situation'
 import type { AttentionAction, AttentionCard, AttentionIcon, AttentionTone } from './types'
+import { PRIORITY_WEIGHTS, DEFAULT_PRIORITY_CONTEXT } from './priority-weights'
+import type { PriorityContext } from './priority-weights'
 
 function toneOfSituation(situation: Situation): AttentionTone {
   switch (situation.severity) {
@@ -57,38 +59,57 @@ function isSupportedSituation(situation: Situation): boolean {
 
 // ─── Score métier ────────────────────────────────────────────────────────────
 
-/** Impact par type : que peut rater le conducteur si ça reste non traité ? */
-const IMPACT_SCORE: Record<SituationKind, number> = {
-  overdue_action:      40,  // deadline dépassée — urgence maximale
-  planning_conflict:   40,  // ressources bloquées — urgence maximale
-  expired_promise:     35,  // engagement non tenu
-  pending_debrief:     30,  // connaissance perdue après visite
-  open_reserve:        25,  // risque non traité
-  unconfirmed_promise: 20,  // manque de clarté
-  stale_action:        10,  // ancienne mais sans deadline
+type UrgencyKey = keyof typeof PRIORITY_WEIGHTS.urgency
+
+function urgencyKey(dueAt: string | null, now: Date): UrgencyKey {
+  if (!dueAt) return 'none'
+  const due = new Date(dueAt)
+  due.setUTCHours(0, 0, 0, 0)
+  const today = new Date(now)
+  today.setUTCHours(0, 0, 0, 0)
+  const diffDays = Math.round((due.getTime() - today.getTime()) / 86_400_000)
+  if (diffDays < 0) return 'overdue'
+  if (diffDays === 0) return 'today'
+  if (diffDays === 1) return 'tomorrow'
+  if (diffDays <= 7) return 'thisWeek'
+  return 'none'
+}
+
+type StalenessKey = keyof typeof PRIORITY_WEIGHTS.staleness
+
+function stalenessKey(detectedAt: string, now: Date): StalenessKey {
+  const days = Math.floor((now.getTime() - new Date(detectedAt).getTime()) / 86_400_000)
+  if (days <= 7)  return 'days0to7'
+  if (days <= 14) return 'days8to14'
+  if (days <= 21) return 'days15to21'
+  if (days <= 30) return 'days22to30'
+  return 'daysOver30'
 }
 
 /**
- * Score de priorisation métier (0–90). Critères de Vincent :
- *   impact (0–40)   : type de situation × risque terrain
- *   urgence (5–30)  : âge du problème (ageDays)
- *   ancienneté (0–20) : signal non résolu depuis longtemps
+ * Score de priorisation métier (0–105). Quatre dimensions :
+ *   impact (0–40)    : type de situation × risque terrain
+ *   urgence (0–30)   : dueAt vs aujourd'hui (calendaire)
+ *   ancienneté (0–20): signal actif sans résolution depuis longtemps (plafonné)
+ *   contexte (0–15)  : activité programmée sur le chantier aujourd'hui
  *
+ * Poids dans PRIORITY_WEIGHTS — ajustables sans réécrire l'algorithme.
  * L'utilisateur ne voit jamais le score, seulement l'ordre résultant.
  */
-function priorityScore(situation: Situation, now: Date): number {
-  const ageDays = situation.timing.ageDays ?? 0
-  const urgency = ageDays > 30 ? 30 : ageDays > 7 ? 20 : ageDays > 0 ? 10 : 5
-
-  const signalDays = Math.floor(
-    (now.getTime() - new Date(situation.timing.detectedAt).getTime()) / 86_400_000,
-  )
-  const staleness = signalDays > 14 ? 20 : signalDays > 7 ? 10 : signalDays > 2 ? 5 : 0
-
-  return (IMPACT_SCORE[situation.kind] ?? 0) + urgency + staleness
+function priorityScore(situation: Situation, now: Date, context: PriorityContext): number {
+  const w = PRIORITY_WEIGHTS
+  const impact     = (w.impact as Record<string, number>)[situation.kind] ?? 0
+  const urgency    = w.urgency[urgencyKey(situation.timing.dueAt, now)]
+  const staleness  = w.staleness[stalenessKey(situation.timing.detectedAt, now)]
+  const contextBonus = context.siteIdsToday.has(situation.site.id) ? w.context.siteScheduledToday : 0
+  return impact + urgency + staleness + contextBonus
 }
 
-export function projectSituationForAttention(situation: Situation | null, now = new Date()): AttentionCard | null {
+export function projectSituationForAttention(
+  situation: Situation | null,
+  now = new Date(),
+  context: PriorityContext = DEFAULT_PRIORITY_CONTEXT,
+): AttentionCard | null {
   if (!situation || !isSupportedSituation(situation)) return null
 
   const actions = situation.capabilities.flatMap((capability) => {
@@ -106,7 +127,7 @@ export function projectSituationForAttention(situation: Situation | null, now = 
     id: situation.id,
     icon: iconOfSituation(situation),
     tone: toneOfSituation(situation),
-    priority: priorityScore(situation, now),
+    priority: priorityScore(situation, now, context),
     title: situation.title,
     description: situation.explanation,
     siteLabel: situation.site.name,
@@ -121,9 +142,13 @@ export function projectSituationForAttention(situation: Situation | null, now = 
   }
 }
 
-export function projectAttentionCards(situations: Array<Situation | null>, now = new Date()): AttentionCard[] {
+export function projectAttentionCards(
+  situations: Array<Situation | null>,
+  now = new Date(),
+  context: PriorityContext = DEFAULT_PRIORITY_CONTEXT,
+): AttentionCard[] {
   return situations.flatMap((situation) => {
-    const card = projectSituationForAttention(situation, now)
+    const card = projectSituationForAttention(situation, now, context)
     return card ? [card] : []
   })
 }

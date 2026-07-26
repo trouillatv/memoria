@@ -65,7 +65,11 @@ export default async function DashboardPage() {
     ...attention.red.map((item) => attentionItemToMemorySignal(item)),
     ...attention.orange.map((item) => attentionItemToMemorySignal(item)),
   ].filter((signal): signal is NonNullable<typeof signal> => signal !== null)
-  const attentionCards = composeAttentionCardsFromSignals([...promiseSignals, ...legacyAttentionSignals])
+  const siteIdsToday = new Set(upcoming.filter((i) => i.isToday).map((i) => i.siteId))
+  const attentionCards = composeAttentionCardsFromSignals(
+    [...promiseSignals, ...legacyAttentionSignals],
+    { siteIdsToday },
+  )
   const nowCards = composeNowCardsFromSignals(promiseSignals)
   const nowSignals = now.items.map((item) => nowItemToMemorySignal(item))
 
