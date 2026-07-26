@@ -20,26 +20,26 @@ function codeOnly(src: string): string {
 }
 
 describe('Curation — source depuis la provenance structurée', () => {
-  it('la page charge le read model et calcule les libellés (provenanceSourceLabel)', () => {
+  it('la page charge le read model et dérive la source via le presenter partagé', () => {
     expect(/listTenderEngagementProvenance\(/.test(page)).toBe(true)
-    expect(/provenanceSourceLabel\(/.test(page)).toBe(true)
-    expect(/provenanceLabels/.test(page)).toBe(true)
+    expect(/engagementSourceDisplay\(/.test(page)).toBe(true)
+    expect(/sourceDisplays/.test(page)).toBe(true)
   })
 
-  it('la vue affiche le libellé fourni, pas une réf. dérivée de source_ref', () => {
-    expect(/provenanceLabels/.test(view)).toBe(true)
+  it('la vue affiche la source du presenter, pas une réf. dérivée de source_ref', () => {
+    expect(/sourceDisplays/.test(view)).toBe(true)
     const code = codeOnly(view)
     // Plus aucune lecture de source_ref (ni ref.page / ref.section) pour la source.
     expect(/source_ref/.test(code)).toBe(false)
     expect(/ref\.page|ref\.section/.test(code)).toBe(false)
   })
 
-  it('le format du libellé est partagé (source unique provenance-label)', () => {
-    const label = read('lib/tenders/provenance-label.ts')
-    expect(/page non localisée/.test(label)).toBe(true)
-    expect(/Source non localisée/.test(label)).toBe(true)
-    // L'audit délègue au même helper — un seul format de source dans tout le produit.
-    const auditContract = read('app/(dashboard)/tenders/[id]/audit/audit-provenance.ts')
-    expect(/from '@\/lib\/tenders\/provenance-label'/.test(auditContract)).toBe(true)
+  it('presenter partagé = UNIQUE source de vérité (libellé + filtre)', () => {
+    const presenter = read('lib/tenders/engagement-source-display.ts')
+    expect(/Proposé dans le mémoire technique/.test(presenter)).toBe(true)
+    expect(/Source non localisée/.test(presenter)).toBe(true)
+    expect(/Exigence AO/.test(presenter)).toBe(true)
+    // La valeur de filtre est l'identité stable, jamais le nom affiché.
+    expect(/filterValue/.test(presenter)).toBe(true)
   })
 })

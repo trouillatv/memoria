@@ -43,8 +43,63 @@ export interface EngagementSourceDisplay {
   /** Libellé de la source (pièce, « Mémoire technique », « Source non localisée »…). */
   documentLabel: string
   page: number | null
-  /** Libellé complet prêt à afficher (avec icône). */
+  /** Icône de la source (📘 AO / ✍️ mémoire / ⚠️ non localisé). */
+  icon: string
+  /** Libellé complet prêt à afficher (icône + source). */
   label: string
+}
+
+const ICON: Record<EngagementSourceKind, string> = {
+  ao_exact: '📘',
+  ao_document_only: '📘',
+  document_unavailable: '📘',
+  memoire: '✍️',
+  unlocated: '⚠️',
+}
+
+export const ALL_FILTER_VALUE = 'all'
+
+export interface DocumentFilterOption {
+  value: string
+  label: string
+  count: number
+}
+
+function filterRank(kind: EngagementSourceKind): number {
+  if (kind === 'memoire') return 2
+  if (kind === 'document_unavailable') return 3
+  if (kind === 'unlocated') return 4
+  return 1 // pièces d'AO
+}
+
+/**
+ * Options du filtre document, avec compteurs, à partir des sources affichées.
+ * « Tous » d'abord ; les pièces d'AO ; puis mémoire, document indisponible et
+ * enfin non localisé. Une entrée n'existe que si elle a au moins un engagement —
+ * en particulier « Source non localisée » ne s'affiche JAMAIS à zéro (le filtre
+ * ne masque pas le problème : il ne le montre que s'il existe réellement).
+ */
+export function buildDocumentFilterOptions(
+  displays: ReadonlyArray<EngagementSourceDisplay>,
+): DocumentFilterOption[] {
+  const groups = new Map<string, { icon: string; documentLabel: string; count: number; kind: EngagementSourceKind }>()
+  for (const d of displays) {
+    const g = groups.get(d.filterValue)
+    if (g) g.count += 1
+    else groups.set(d.filterValue, { icon: d.icon, documentLabel: d.documentLabel, count: 1, kind: d.kind })
+  }
+  const options: DocumentFilterOption[] = [
+    { value: ALL_FILTER_VALUE, label: `Tous les documents (${displays.length})`, count: displays.length },
+  ]
+  const ordered = [...groups.entries()].sort(([, a], [, b]) => filterRank(a.kind) - filterRank(b.kind))
+  for (const [value, g] of ordered) {
+    options.push({
+      value,
+      label: `${g.icon} ${g.documentLabel} — ${g.count} engagement${g.count > 1 ? 's' : ''}`,
+      count: g.count,
+    })
+  }
+  return options
 }
 
 /**
@@ -61,24 +116,25 @@ export function classifyEngagementSource(input: EngagementSourceInput): Engageme
 
 export function engagementSourceDisplay(input: EngagementSourceInput): EngagementSourceDisplay {
   const kind = classifyEngagementSource(input)
+  const icon = ICON[kind]
   switch (kind) {
     case 'memoire':
       return {
         kind, documentId: null, filterValue: MEMOIRE_FILTER_VALUE,
         documentLabel: 'Mémoire technique', page: null,
-        label: '✍️ Proposé dans le mémoire technique',
+        icon, label: '✍️ Proposé dans le mémoire technique',
       }
     case 'ao_exact':
       return {
         kind, documentId: input.tenderDocumentId, filterValue: input.tenderDocumentId!,
         documentLabel: input.documentFilename!, page: input.page,
-        label: `📘 Exigence AO — ${input.documentFilename} — page ${input.page}`,
+        icon, label: `📘 Exigence AO — ${input.documentFilename} — page ${input.page}`,
       }
     case 'ao_document_only':
       return {
         kind, documentId: input.tenderDocumentId, filterValue: input.tenderDocumentId!,
         documentLabel: input.documentFilename!, page: null,
-        label: `📘 Exigence AO — ${input.documentFilename} — page non localisée`,
+        icon, label: `📘 Exigence AO — ${input.documentFilename} — page non localisée`,
       }
     case 'document_unavailable':
       // La pièce référencée n'existe plus : état DISTINCT d'une source jamais
@@ -86,14 +142,14 @@ export function engagementSourceDisplay(input: EngagementSourceInput): Engagemen
       return {
         kind, documentId: input.tenderDocumentId, filterValue: input.tenderDocumentId!,
         documentLabel: 'Document indisponible', page: null,
-        label: '📘 Exigence AO — Document indisponible',
+        icon, label: '📘 Exigence AO — Document indisponible',
       }
     case 'unlocated':
     default:
       return {
         kind: 'unlocated', documentId: null, filterValue: UNLOCATED_FILTER_VALUE,
         documentLabel: 'Source non localisée', page: null,
-        label: '⚠️ Source non localisée',
+        icon: ICON.unlocated, label: '⚠️ Source non localisée',
       }
   }
 }

@@ -4,8 +4,10 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  buildDocumentFilterOptions,
   classifyEngagementSource,
   engagementSourceDisplay,
+  ALL_FILTER_VALUE,
   MEMOIRE_FILTER_VALUE,
   UNLOCATED_FILTER_VALUE,
   type EngagementSourceInput,
@@ -75,5 +77,34 @@ describe('engagementSourceDisplay — libellés & valeurs de filtre', () => {
     const b = engagementSourceDisplay(input({ tenderDocumentId: 'id-B', documentExists: true, documentFilename: 'Annexe.pdf', page: 2 }))
     expect(a.filterValue).not.toBe(b.filterValue)
     expect(a.documentLabel).toBe(b.documentLabel) // même nom affiché
+  })
+})
+
+describe('buildDocumentFilterOptions', () => {
+  const ao = (docId: string, filename: string, page: number | null) =>
+    engagementSourceDisplay(input({ tenderDocumentId: docId, documentExists: true, documentFilename: filename, page }))
+  const memo = () => engagementSourceDisplay(input({ sourceType: 'memoire_engagement' }))
+  const unloc = () => engagementSourceDisplay(input({ tenderDocumentId: null }))
+
+  it('« Tous » d\'abord, compteurs justes, non-localisé présent si > 0', () => {
+    const opts = buildDocumentFilterOptions([ao('d1', 'CCTP.pdf', 12), ao('d1', 'CCTP.pdf', null), ao('d2', 'CCAP.pdf', 3), memo(), unloc()])
+    expect(opts[0]).toMatchObject({ value: ALL_FILTER_VALUE, count: 5 })
+    expect(opts.find((o) => o.value === 'd1')).toMatchObject({ label: '📘 CCTP.pdf — 2 engagements', count: 2 })
+    expect(opts.find((o) => o.value === 'd2')).toMatchObject({ count: 1 })
+    expect(opts.find((o) => o.value === MEMOIRE_FILTER_VALUE)?.label).toContain('Mémoire technique')
+    expect(opts.find((o) => o.value === UNLOCATED_FILTER_VALUE)?.label).toContain('Source non localisée')
+  })
+
+  it('aucun non-localisé → PAS d\'entrée non-localisée', () => {
+    const opts = buildDocumentFilterOptions([ao('d1', 'CCTP.pdf', 12)])
+    expect(opts.some((o) => o.value === UNLOCATED_FILTER_VALUE)).toBe(false)
+    expect(opts).toHaveLength(2) // Tous + CCTP
+  })
+
+  it('les pièces d\'AO avant le mémoire, le non-localisé en dernier', () => {
+    const opts = buildDocumentFilterOptions([unloc(), memo(), ao('d1', 'CCTP.pdf', 1)])
+    const order = opts.slice(1).map((o) => o.value) // hors « Tous »
+    expect(order.indexOf('d1')).toBeLessThan(order.indexOf(MEMOIRE_FILTER_VALUE))
+    expect(order.indexOf(MEMOIRE_FILTER_VALUE)).toBeLessThan(order.indexOf(UNLOCATED_FILTER_VALUE))
   })
 })
