@@ -52,16 +52,12 @@ function groupsByCategory(engagements: DbEngagement[]): RenderGroup[] {
 // Destinations proposables à la curation en V1 (a_savoir/mission = à la conversion).
 const CURATION_DESTINATIONS: EngagementDestination[] = ['contract_engagement', 'vigilance', 'a_savoir']
 
-/** Réf. source affichable (page / section) depuis le jsonb source_ref. */
-function sourceRefLabel(ref: Record<string, unknown> | null): string {
-  if (!ref) return ''
-  const parts: string[] = []
-  if (ref.page != null) parts.push(`p. ${ref.page}`)
-  if (ref.section != null) parts.push(`§ ${ref.section}`)
-  return parts.join(' · ')
-}
-
-export function EngagementCurationView({ engagements }: { engagements: DbEngagement[] }) {
+export function EngagementCurationView({ engagements, provenanceLabels }: {
+  engagements: DbEngagement[]
+  // Libellé de source structuré par engagement (read model de provenance).
+  // Absent = pas de source démontrée affichée — jamais la page devinée de source_ref.
+  provenanceLabels?: Record<string, string>
+}) {
   const router = useRouter()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState<string | null>(null)
@@ -253,9 +249,9 @@ export function EngagementCurationView({ engagements }: { engagements: DbEngagem
                         </div>
                         <div className="text-sm font-semibold mb-1">{e.short_label}</div>
                         <div className="text-xs text-muted-foreground italic">« {e.source_excerpt} »</div>
-                        {sourceRefLabel(e.source_ref) && (
+                        {provenanceLabels?.[e.id] && (
                           <div className="text-[10px] text-muted-foreground/80 mt-0.5">
-                            source : {sourceRefLabel(e.source_ref)}
+                            Source : {provenanceLabels[e.id]}
                           </div>
                         )}
                       </>

@@ -4,6 +4,8 @@ import { requireDeskUser } from '@/lib/auth/page-guard'
 import { listEngagementsByTender } from '@/lib/db/engagements'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getAoExperience } from '@/lib/db/ao-experience'
+import { listTenderEngagementProvenance } from '@/lib/db/tender-engagement-provenance'
+import { provenanceSourceLabel } from '@/lib/tenders/provenance-label'
 import { EngagementCurationView } from '../engagement-curation-view'
 import { AoExperiencePanel } from './AoExperiencePanel'
 import { ExtractEngagementsButton } from './ExtractEngagementsButton'
@@ -20,6 +22,13 @@ export default async function TenderEngagementsPage({ params }: { params: Promis
   const experience = engagements.length > 0
     ? await getAoExperience(orgId, engagements.map((e) => e.short_label)).catch(() => [])
     : []
+
+  // Source affichée = provenance structurée persistée (même contrat que l'audit),
+  // jamais la page devinée de source_ref. Display-only : aucune navigation ici.
+  const provenanceRows = engagements.length > 0 ? await listTenderEngagementProvenance(id) : []
+  const provenanceLabels: Record<string, string> = Object.fromEntries(
+    provenanceRows.map((r) => [r.engagementId, provenanceSourceLabel(r)]),
+  )
 
   return (
     <div className="space-y-4 w-full">
@@ -47,7 +56,7 @@ export default async function TenderEngagementsPage({ params }: { params: Promis
       ) : (
         <>
           <AoExperiencePanel terms={experience} />
-          <EngagementCurationView engagements={engagements} />
+          <EngagementCurationView engagements={engagements} provenanceLabels={provenanceLabels} />
         </>
       )}
     </div>
