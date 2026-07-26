@@ -27,7 +27,13 @@ export type EngagementProvenanceReadRow = {
   sourceRef: Record<string, unknown> | null
   /** Nature de la source : exigence d'AO vs proposition du mémoire technique. */
   sourceType: EngagementSourceType | null
+  /** Pièce SÛRE pour la navigation : null si la pièce n'existe pas/plus. */
   documentId: string | null
+  /** tender_document_id BRUT persisté (conservé même si la pièce a disparu) —
+   *  permet de distinguer « document supprimé » (cas E) de « jamais localisé ». */
+  rawTenderDocumentId: string | null
+  /** La pièce référencée existe-t-elle encore dans le dossier ? */
+  documentExists: boolean
   filename: string | null
   pageNumber: number | null
   state: EngagementProvenanceState
@@ -105,6 +111,8 @@ export function deriveEngagementProvenanceReadRow({
     sourceRef,
     sourceType: sourceType ?? null,
     documentId: safeTenderDocumentId,
+    rawTenderDocumentId: tenderDocumentId,
+    documentExists: hasMatchingDocument,
     filename: hasMatchingDocument ? document.filename : null,
     pageNumber: safePageNumber,
     state,

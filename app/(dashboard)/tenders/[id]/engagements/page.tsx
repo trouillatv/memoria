@@ -5,7 +5,7 @@ import { listEngagementsByTender } from '@/lib/db/engagements'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getAoExperience } from '@/lib/db/ao-experience'
 import { listTenderEngagementProvenance } from '@/lib/db/tender-engagement-provenance'
-import { provenanceSourceLabel } from '@/lib/tenders/provenance-label'
+import { engagementSourceDisplay, type EngagementSourceDisplay } from '@/lib/tenders/engagement-source-display'
 import { EngagementCurationView } from '../engagement-curation-view'
 import { AoExperiencePanel } from './AoExperiencePanel'
 import { ExtractEngagementsButton } from './ExtractEngagementsButton'
@@ -24,11 +24,17 @@ export default async function TenderEngagementsPage({ params }: { params: Promis
     ? await getAoExperience(orgId, engagements.map((e) => e.short_label)).catch(() => [])
     : []
 
-  // Source affichée = provenance structurée persistée (même contrat que l'audit),
-  // jamais la page devinée de source_ref. Display-only : aucune navigation ici.
+  // Source affichée = provenance structurée persistée (presenter partagé, unique
+  // source de vérité pour libellé + valeur de filtre). Jamais de déduction texte.
   const provenanceRows = engagements.length > 0 ? await listTenderEngagementProvenance(id) : []
-  const provenanceLabels: Record<string, string> = Object.fromEntries(
-    provenanceRows.map((r) => [r.engagementId, provenanceSourceLabel(r)]),
+  const sourceDisplays: Record<string, EngagementSourceDisplay> = Object.fromEntries(
+    provenanceRows.map((r) => [r.engagementId, engagementSourceDisplay({
+      sourceType: r.sourceType,
+      tenderDocumentId: r.rawTenderDocumentId,
+      documentExists: r.documentExists,
+      documentFilename: r.filename,
+      page: r.pageNumber,
+    })]),
   )
 
   return (
@@ -60,7 +66,7 @@ export default async function TenderEngagementsPage({ params }: { params: Promis
       ) : (
         <>
           <AoExperiencePanel terms={experience} />
-          <EngagementCurationView engagements={engagements} provenanceLabels={provenanceLabels} />
+          <EngagementCurationView engagements={engagements} sourceDisplays={sourceDisplays} />
         </>
       )}
     </div>

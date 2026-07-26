@@ -13,6 +13,11 @@ import type { DbEngagement, EngagementCategory, EngagementKind, EngagementProofR
 import { DESTINATION_META } from '@/lib/engagements/destination'
 import { CATEGORY_LABELS } from '@/lib/engagements/labels'
 import { KIND_META, KIND_ORDER, kindLabel } from '@/lib/engagements/kind'
+import {
+  buildDocumentFilterOptions,
+  ALL_FILTER_VALUE,
+  type EngagementSourceDisplay,
+} from '@/lib/tenders/engagement-source-display'
 
 const CATEGORIES: EngagementCategory[] = [
   'frequency', 'quality', 'compliance', 'delivery', 'sla', 'reporting', 'other',
@@ -52,18 +57,28 @@ function groupsByCategory(engagements: DbEngagement[]): RenderGroup[] {
 // Destinations proposables à la curation en V1 (a_savoir/mission = à la conversion).
 const CURATION_DESTINATIONS: EngagementDestination[] = ['contract_engagement', 'vigilance', 'a_savoir']
 
-export function EngagementCurationView({ engagements, provenanceLabels }: {
+export function EngagementCurationView({ engagements, sourceDisplays }: {
   engagements: DbEngagement[]
-  // Libellé de source structuré par engagement (read model de provenance).
-  // Absent = pas de source démontrée affichée — jamais la page devinée de source_ref.
-  provenanceLabels?: Record<string, string>
+  // Source structurée par engagement (presenter partagé) : libellé + valeur de
+  // filtre stable. Absent = pas de source affichée — jamais de déduction texte.
+  sourceDisplays?: Record<string, EngagementSourceDisplay>
 }) {
   const router = useRouter()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const [groupMode, setGroupMode] = useState<'kind' | 'category'>('kind')
-  const groups = groupMode === 'kind' ? groupsByKind(engagements) : groupsByCategory(engagements)
+  // Filtre par document (état client, cumulatif avec le regroupement). La valeur
+  // est l'identité STABLE de la source (tender_document_id | memoire | unlocated).
+  const [docFilter, setDocFilter] = useState<string>(ALL_FILTER_VALUE)
+
+  const filterOptions = buildDocumentFilterOptions(
+    engagements.map((e) => sourceDisplays?.[e.id]).filter((d): d is EngagementSourceDisplay => Boolean(d)),
+  )
+  const filtered = docFilter === ALL_FILTER_VALUE
+    ? engagements
+    : engagements.filter((e) => sourceDisplays?.[e.id]?.filterValue === docFilter)
+  const groups = groupMode === 'kind' ? groupsByKind(filtered) : groupsByCategory(filtered)
 
   const editableCount = engagements.filter((e) => e.status === 'extracted' || e.status === 'curated').length
 
@@ -168,6 +183,33 @@ export function EngagementCurationView({ engagements, provenanceLabels }: {
         </div>
       )}
 
+      {/* Filtre par DOCUMENT — cumulatif avec le regroupement. Le compteur reflète
+          la combinaison active ; on n'affiche le filtre que s'il y a une source. */}
+      {filterOptions.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="text-muted-foreground">Document</span>
+          <select
+            value={docFilter}
+            onChange={(ev) => setDocFilter(ev.target.value)}
+            className="rounded-md border px-2 py-1 text-[11px] max-w-xs"
+            aria-label="Filtrer par document"
+          >
+            {filterOptions.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <span className="tabular-nums text-muted-foreground">
+            {filtered.length} résultat{filtered.length > 1 ? 's' : ''}
+          </span>
+          {docFilter !== ALL_FILTER_VALUE && (
+            <button type="button" onClick={() => setDocFilter(ALL_FILTER_VALUE)}
+              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium hover:bg-muted/50">
+              <X className="h-3 w-3" /> Réinitialiser
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Bascule de regroupement : par NATURE (Sprint 2) ou par THÈME (Sprint 3). */}
       <div className="flex items-center gap-1 text-[11px]">
         <span className="text-muted-foreground mr-1">Grouper par</span>
@@ -178,6 +220,12 @@ export function EngagementCurationView({ engagements, provenanceLabels }: {
           </button>
         ))}
       </div>
+
+      {filtered.length === 0 && (
+        <p className="text-sm text-muted-foreground italic rounded-lg border p-3">
+          Aucun engagement pour ce document.
+        </p>
+      )}
 
       {/* Regroupé selon le mode choisi. */}
       {groups.map((group) => (
@@ -249,10 +297,11 @@ export function EngagementCurationView({ engagements, provenanceLabels }: {
                         </div>
                         <div className="text-sm font-semibold mb-1">{e.short_label}</div>
                         <div className="text-xs text-muted-foreground italic">« {e.source_excerpt} »</div>
-                        {provenanceLabels?.[e.id] && (
+                        {sourceDisplays?.[e.id] && (
                           <div className="text-[10px] text-muted-foreground/80 mt-0.5">
-                            {/* Libellé auto-descriptif (📘 Exigence AO… / ✍️ Proposé…). */}
-                            {provenanceLabels[e.id]}
+                            {/* Libellé auto-descriptif du presenter partagé
+                                (📘 Exigence AO… / ✍️ Proposé… / ⚠️ Source non localisée). */}
+                            {sourceDisplays[e.id].label}
                           </div>
                         )}
                       </>
