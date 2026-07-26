@@ -15,12 +15,21 @@ import {
   rejectEngagements,
 } from '@/lib/db/engagements'
 import { createContract } from '@/lib/db/contracts'
-import { getTender, listTenderDocuments } from '@/lib/db/tenders'
-import { buildTenderCorpus } from '@/lib/tenders/pieces'
+import { getTender, listTenderDocuments, getLatestTenderAnalysis } from '@/lib/db/tenders'
 import { createVerifiedEngagementProvenanceResolver } from '@/lib/tenders/engagement-provenance'
+import {
+  buildExtractionSources,
+  dedupeEngagements,
+  mapWithConcurrency,
+  type OrchestratedEngagement,
+} from '@/lib/tenders/extract-engagements'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
 import { readableError } from '@/lib/errors'
+
+// Concurrence des passes IA : au plus 3 appels simultanés (évite quotas /
+// timeouts / pics de charge quand un dossier a beaucoup de pièces).
+const EXTRACTION_CONCURRENCY = 3
 
 const extractSchema = z.object({ tender_id: z.string().uuid() })
 
@@ -46,62 +55,87 @@ export async function extractEngagementsAction(formData: FormData) {
   const tender = await getTender(parsed.data.tender_id)
   if (!tender) return { error: 'Dossier introuvable' }
 
-  // Les engagements vivent dans le CCAP et le CCTP — pas dans « le » document.
-  // Extraire depuis une seule pièce laisserait passer l'essentiel des obligations.
-  // (Le mémoire technique — getLatestTenderAnalysis — redevient une passe dédiée
-  //  au commit 2 de l'extraction par pièce.)
-  const docs = await listTenderDocuments(parsed.data.tender_id)
-  const aoText = buildTenderCorpus(
-    docs.map((d) => ({ kind: d.kind, filename: d.filename, text: d.extracted_text ?? '' })),
+  // Un AO est un DOSSIER : on extrait PIÈCE PAR PIÈCE, chaque pièce en entier
+  // dans sa propre passe (les clauses profondes du CCAP/CCTP ne sont plus
+  // tronquées par un corpus commun). + une passe dédiée au mémoire technique.
+  const [docs, analysis] = await Promise.all([
+    listTenderDocuments(parsed.data.tender_id),
+    getLatestTenderAnalysis(parsed.data.tender_id),
+  ])
+  const sources = buildExtractionSources(
+    docs.map((d) => ({ id: d.id, filename: d.filename, kind: d.kind, extractedText: d.extracted_text })),
+    analysis?.technical_memo ?? null,
   )
-  if (!aoText) return { error: 'Aucune pièce lisible dans ce dossier' }
+  if (sources.length === 0) return { error: 'Aucune pièce lisible ni mémoire technique dans ce dossier' }
 
-  // Toute exception (parse IA, contrainte DB…) est CAPTURÉE et renvoyée comme
-  // erreur lisible inline. Sans ce filet, un throw remonte à la page d'erreur
-  // globale (« Quelque chose s'est passé ») au lieu d'un message exploitable.
-  const resolveEngagementProvenance = createVerifiedEngagementProvenanceResolver({
-    documents: docs.map((document) => ({
-      id: document.id,
-      filename: document.filename,
-      kind: document.kind,
-      extractedText: document.extracted_text,
-    })),
-  })
+  // Vérificateur de PAGE par pièce, dans le document DÉJÀ CONNU : on ne réattribue
+  // jamais un engagement à une autre pièce (le document vient de la passe, pas
+  // d'un match de citation). Le résolveur ne sert plus qu'à localiser/vérifier la
+  // page à l'intérieur de sa propre pièce.
+  const pageResolverByDoc = new Map<string, (excerpt: string) => { page_number: number | null }>()
+  for (const d of docs) {
+    if (d.extracted_text && d.extracted_text.trim().length > 0) {
+      pageResolverByDoc.set(d.id, createVerifiedEngagementProvenanceResolver({
+        documents: [{ id: d.id, filename: d.filename, kind: d.kind, extractedText: d.extracted_text }],
+      }))
+    }
+  }
 
+  const failures: Array<{ label: string; error: string }> = []
   let count = 0
   try {
-    // Transitionnel (commit 1) : un seul appel sur le corpus AO combiné, type
-    // imposé. L'orchestration par pièce + la passe mémoire arrivent au commit 2 ;
-    // c'est pourquoi cette branche n'est pas mergée seule (sinon on perdrait
-    // temporairement les engagements du mémoire technique).
-    const result = await runEngagementExtractionAgent({
-      sourceText: aoText,
-      sourceType: 'ao_clause',
-      tenderDocumentId: null,
-      sourceLabel: 'Dossier AO',
-      userId: auth.userId,
+    // Passes IA à concurrence bornée. Reprise partielle : une pièce qui échoue
+    // n'annule pas les autres — on collecte les succès et on signale les échecs.
+    const perSource = await mapWithConcurrency(sources, EXTRACTION_CONCURRENCY, async (src) => {
+      try {
+        const res = await runEngagementExtractionAgent({
+          sourceText: src.sourceText,
+          sourceType: src.sourceType,
+          tenderDocumentId: src.tenderDocumentId,
+          sourceLabel: src.sourceLabel,
+          userId: auth.userId,
+        })
+        return res.engagements.map((e): OrchestratedEngagement => ({
+          ...e,
+          // Nature et provenance CONNUES (pas devinées) : elles viennent de la
+          // passe, pas de l'IA ni d'un match de citation. La page est vérifiée
+          // DANS cette pièce (null si la citation y est introuvable).
+          source_type: src.sourceType,
+          tender_document_id: src.tenderDocumentId,
+          page_number: src.tenderDocumentId
+            ? pageResolverByDoc.get(src.tenderDocumentId)?.(e.source_excerpt).page_number ?? null
+            : null,
+        }))
+      } catch (e) {
+        console.error(`[extractEngagementsAction] passe échouée : ${src.sourceLabel}`, e)
+        failures.push({ label: src.sourceLabel, error: readableError(e) })
+        return [] as OrchestratedEngagement[]
+      }
     })
 
-    if (result.engagements.length === 0) {
+    const engagements = dedupeEngagements(perSource.flat())
+
+    if (engagements.length === 0) {
+      if (failures.length > 0) {
+        return { error: `Extraction échouée sur toutes les sources : ${failures.map((f) => `${f.label} (${f.error})`).join(' ; ').slice(0, 300)}` }
+      }
       return { error: "Aucun engagement détecté dans ce dossier (l'IA n'a rien retourné d'exploitable)." }
     }
 
     await bulkInsertEngagements({
       tender_id: parsed.data.tender_id,
       created_by: auth.userId,
-      engagements: result.engagements.map((engagement) => ({
-        ...engagement,
-        ...resolveEngagementProvenance(engagement.source_excerpt),
-      })),
+      engagements,
     })
-    count = result.engagements.length
+    count = engagements.length
   } catch (e) {
     console.error('[extractEngagementsAction] échec extraction/insertion:', e)
     return { error: `Extraction impossible : ${readableError(e).slice(0, 300)}` }
   }
 
   revalidatePath(`/tenders/${parsed.data.tender_id}/engagements`)
-  return { ok: true as const, count }
+  // Succès partiel : on insère ce qui a marché et on signale les pièces en échec.
+  return { ok: true as const, count, failedSources: failures.length }
 }
 
 // Réinitialise les engagements EXTRAITS d'un dossier pour permettre une nouvelle
