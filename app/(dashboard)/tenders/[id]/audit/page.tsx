@@ -10,6 +10,7 @@ import { paragraphAround } from '@/lib/pdf/paragraph'
 import { pagesContaining, glossaryFormsForLabel } from '@/lib/pdf/occurrences'
 import { listGlossaryTerms } from '@/lib/db/glossary'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { engagementSourceDisplay } from '@/lib/tenders/engagement-source-display'
 import { DocumentAudit, type AuditEngagement } from './DocumentAudit'
 import type { AuditDocumentItem, AuditProvenance } from './audit-provenance'
 
@@ -56,6 +57,17 @@ export default async function TenderAuditPage({ params }: { params: Promise<{ id
       const provenance: AuditProvenance = row
         ? { state: row.state, documentId: row.documentId, pageNumber: row.pageNumber, filename: row.filename, sourceType: row.sourceType }
         : { state: 'unavailable', documentId: null, pageNumber: null, filename: null, sourceType: null }
+      // Source affichée = presenter PARTAGÉ (même libellé, badge et valeur de
+      // filtre qu'en curation). `provenance` ci-dessus reste l'autorité de
+      // NAVIGATION ; `sourceDisplay` est l'autorité d'AFFICHAGE — les deux
+      // dérivent de la même ligne de read model, donc jamais contradictoires.
+      const sourceDisplay = engagementSourceDisplay({
+        sourceType: row?.sourceType ?? null,
+        tenderDocumentId: row?.rawTenderDocumentId ?? null,
+        documentExists: row?.documentExists ?? false,
+        documentFilename: row?.filename ?? null,
+        page: row?.pageNumber ?? null,
+      })
       // Occurrences : pages où le terme canonique (glossaire) apparaît dans le doc.
       const forms = glossaryFormsForLabel(e.short_label, glossary) ?? glossaryFormsForLabel(e.source_excerpt, glossary)
       return {
@@ -66,6 +78,7 @@ export default async function TenderAuditPage({ params }: { params: Promise<{ id
         context: paragraphAround(docText, e.source_excerpt),
         occurrences: forms ? pagesContaining(docText, forms) : [],
         provenance,
+        sourceDisplay,
       }
     })
     // L'audit suit le dossier : pièce par pièce (ordre de dépôt), page par page.

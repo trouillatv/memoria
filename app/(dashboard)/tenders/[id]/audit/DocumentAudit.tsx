@@ -14,9 +14,13 @@ import { ChevronLeft, ChevronRight, FileText, ExternalLink, Loader2 } from 'luci
 import { KIND_META, KIND_ORDER } from '@/lib/engagements/kind'
 import type { EngagementKind } from '@/types/db'
 import {
-  applyProvenanceSelection, initialAuditSelection, provenancePageBadge, provenanceSourceLabel,
+  applyProvenanceSelection, initialAuditSelection,
   type AuditDocumentItem, type AuditProvenance, type AuditSelection,
 } from './audit-provenance'
+import {
+  engagementSourceBadge, buildDocumentFilterOptions, ALL_FILTER_VALUE,
+  type EngagementSourceDisplay,
+} from '@/lib/tenders/engagement-source-display'
 
 // pdf.js n'existe que côté client (worker) — jamais rendu côté serveur.
 const PdfAuditViewer = dynamic(() => import('./PdfAuditViewer').then((m) => m.PdfAuditViewer), {

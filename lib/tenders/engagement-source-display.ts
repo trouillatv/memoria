@@ -101,6 +101,24 @@ export function summarizeEngagementSources(
   return s
 }
 
+/**
+ * Forme COURTE de la source, pour une pastille de liste (écran Audit). Dérivée du
+ * MÊME `kind` que le libellé complet (`label`) — jamais recalculée depuis l'état
+ * brut de provenance. Ainsi la pastille et le libellé long racontent toujours la
+ * même classification : un engagement manuel n'y apparaît plus « non localisé ».
+ */
+export function engagementSourceBadge(display: EngagementSourceDisplay): string {
+  switch (display.kind) {
+    case 'ao_exact': return `p.${display.page}`
+    case 'ao_document_only': return 'page non localisée'
+    case 'memoire': return '✍️ mémoire'
+    case 'manual': return '✏️ manuel'
+    case 'document_unavailable': return '📕 indisponible'
+    case 'unlocated':
+    default: return '⚠️ non localisée'
+  }
+}
+
 function filterRank(kind: EngagementSourceKind): number {
   if (kind === 'memoire') return 2
   if (kind === 'manual') return 3
