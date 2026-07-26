@@ -75,9 +75,42 @@ describe('réserve ouverte → open_reserve', () => {
   })
 })
 
+describe('conflit de planning → planning_conflict', () => {
+  const s = signal({ type: 'planning_conflict', reason: 'planning_conflict' }, {
+    category: 'fragility',
+    facts: [
+      { type: 'a', key: 'what', value: '3 prestations prévues un jour de fermeture', confidence: null, sourceIds: ['s'], detectedAt: '2026-07-25T08:00:00.000Z', occurredAt: null, dueAt: null, validUntil: null },
+      { type: 'a', key: 'why', value: 'le lundi 27 juillet — chantier fermé', confidence: null, sourceIds: ['s'], detectedAt: '2026-07-25T08:00:00.000Z', occurredAt: null, dueAt: null, validUntil: null },
+      { type: 'a', key: 'where', value: 'Chantier Pointière', confidence: null, sourceIds: ['s'], detectedAt: '2026-07-25T08:00:00.000Z', occurredAt: null, dueAt: null, validUntil: null },
+    ],
+    sources: [{ type: 'planning', id: 'site-1', href: '/semaine', label: 'Conflit de planning' }],
+    severity: 'critical',
+  })
+
+  it('présente une Situation planning_conflict, faits inchangés', () => {
+    const situation = presentSituation(s)
+    expect(situation).toMatchObject({
+      kind: 'planning_conflict',
+      title: '3 prestations prévues un jour de fermeture',
+      site: { name: 'Chantier Pointière' },
+      timing: { label: 'le lundi 27 juillet — chantier fermé' },
+      source: { href: '/semaine' },
+    })
+  })
+
+  it('projette une card rouge (icône calendar)', () => {
+    const card = projectSituationForAttention(presentSituation(s))
+    expect(card).toMatchObject({ icon: 'calendar', tone: 'red', title: '3 prestations prévues un jour de fermeture' })
+  })
+
+  it('est reconnue comme famille migrée', () => {
+    expect(isMigratedLegacyAttention(s)).toBe(true)
+  })
+})
+
 describe('familles NON migrées', () => {
   it('un trigger inconnu n\'est ni migré ni présenté (reste legacy)', () => {
-    const s = signal({ type: 'planning_conflict', reason: 'planning_conflict' } as unknown as MemorySignal['trigger'])
+    const s = signal({ type: 'missing_attachment', reason: 'attachment_missing' } as unknown as MemorySignal['trigger'])
     expect(isMigratedLegacyAttention(s)).toBe(false)
     expect(presentSituation(s)).toBeNull()
   })

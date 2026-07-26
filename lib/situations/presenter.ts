@@ -1,5 +1,5 @@
 import type { MemorySignal, SignalFact } from '@/lib/memory/signals/operational-contract'
-import type { Situation, SituationKind, SituationSource, SituationTiming } from './situation'
+import type { Situation, SituationKind, SituationSource } from './situation'
 import { openSourceCapability } from './capabilities'
 
 function factString(signal: MemorySignal, key: string): string | null {
@@ -134,6 +134,7 @@ const LEGACY_ATTENTION_KINDS: Record<string, { kind: SituationKind; fallbackTitl
   'old_action:object_aging': { kind: 'stale_action', fallbackTitle: 'Action ancienne' },
   'old_action:deadline_overdue': { kind: 'overdue_action', fallbackTitle: 'Action en retard' },
   'open_reserve:object_aging': { kind: 'open_reserve', fallbackTitle: 'Réserve ouverte' },
+  'planning_conflict:planning_conflict': { kind: 'planning_conflict', fallbackTitle: 'Conflit de planning' },
 }
 
 function legacyAttentionEntry(signal: MemorySignal): { kind: SituationKind; fallbackTitle: string } | null {
