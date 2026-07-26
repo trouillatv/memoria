@@ -142,4 +142,22 @@ describe('extractEngagementsAction — provenance par pièce', () => {
     expect(result).toEqual({ error: 'Aucune pièce lisible ni mémoire technique dans ce dossier' })
     expect(mocks.bulkInsertEngagements).not.toHaveBeenCalled()
   })
+
+  it('GARDE anti-cas-D : le nouveau flux n\'insère JAMAIS un engagement AO sans pièce', async () => {
+    // Plusieurs pièces AO + mémoire. Invariant : tender_document_id null SEULEMENT
+    // pour le mémoire (memoire_engagement). Jamais un ao_clause sans document.
+    mocks.listTenderDocuments.mockResolvedValue([
+      { id: 'doc-1', filename: 'CCAP.pdf', kind: 'ccap', extracted_text: 'clause ccap' },
+      { id: 'doc-2', filename: 'CCTP.pdf', kind: 'cctp', extracted_text: 'clause cctp' },
+    ])
+    mocks.getLatestTenderAnalysis.mockResolvedValue({ technical_memo: 'Nous garantissons.' })
+
+    await extractEngagementsAction(makeFormData())
+
+    for (const e of insertedEngagements()) {
+      const isMemoire = e.source_type === 'memoire_engagement'
+      // null document ⇔ mémoire. Aucun ao_clause avec tender_document_id null.
+      expect(e.tender_document_id === null).toBe(isMemoire)
+    }
+  })
 })

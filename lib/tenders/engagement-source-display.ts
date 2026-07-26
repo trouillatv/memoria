@@ -16,6 +16,7 @@ export type EngagementSourceKind =
   | 'ao_exact'
   | 'ao_document_only'
   | 'memoire'
+  | 'manual'
   | 'unlocated'
   | 'document_unavailable'
 
@@ -32,6 +33,7 @@ export interface EngagementSourceInput {
 
 // Valeurs de filtre DÉDIÉES (jamais un nom de document, qui peut être ambigu).
 export const MEMOIRE_FILTER_VALUE = 'memoire'
+export const MANUAL_FILTER_VALUE = 'manual'
 export const UNLOCATED_FILTER_VALUE = 'unlocated'
 
 export interface EngagementSourceDisplay {
@@ -54,6 +56,7 @@ const ICON: Record<EngagementSourceKind, string> = {
   ao_document_only: '📘',
   document_unavailable: '📘',
   memoire: '✍️',
+  manual: '✏️',
   unlocated: '⚠️',
 }
 
@@ -67,8 +70,9 @@ export interface DocumentFilterOption {
 
 function filterRank(kind: EngagementSourceKind): number {
   if (kind === 'memoire') return 2
-  if (kind === 'document_unavailable') return 3
-  if (kind === 'unlocated') return 4
+  if (kind === 'manual') return 3
+  if (kind === 'document_unavailable') return 4
+  if (kind === 'unlocated') return 5
   return 1 // pièces d'AO
 }
 
@@ -108,6 +112,9 @@ export function buildDocumentFilterOptions(
  */
 export function classifyEngagementSource(input: EngagementSourceInput): EngagementSourceKind {
   if (input.sourceType === 'memoire_engagement') return 'memoire'
+  // Engagement saisi à la main : catégorie CONNUE (jamais un échec de
+  // localisation), même s'il n'a ni document ni page.
+  if (input.sourceType === 'manual') return 'manual'
   if (input.tenderDocumentId && input.documentExists && input.page != null) return 'ao_exact'
   if (input.tenderDocumentId && input.documentExists) return 'ao_document_only'
   if (input.tenderDocumentId && !input.documentExists) return 'document_unavailable'
@@ -123,6 +130,12 @@ export function engagementSourceDisplay(input: EngagementSourceInput): Engagemen
         kind, documentId: null, filterValue: MEMOIRE_FILTER_VALUE,
         documentLabel: 'Mémoire technique', page: null,
         icon, label: '✍️ Proposé dans le mémoire technique',
+      }
+    case 'manual':
+      return {
+        kind, documentId: null, filterValue: MANUAL_FILTER_VALUE,
+        documentLabel: 'Ajouté manuellement', page: null,
+        icon, label: '✏️ Ajouté manuellement',
       }
     case 'ao_exact':
       return {

@@ -72,6 +72,13 @@ describe('engagementSourceDisplay — libellés & valeurs de filtre', () => {
     expect(d).toMatchObject({ kind: 'unlocated', documentId: null, filterValue: UNLOCATED_FILTER_VALUE, label: '⚠️ Source non localisée' })
   })
 
+  it('saisi à la main → ✏️ Ajouté manuellement, JAMAIS « source non localisée »', () => {
+    const d = engagementSourceDisplay(input({ sourceType: 'manual', tenderDocumentId: null }))
+    expect(d).toMatchObject({ kind: 'manual', filterValue: 'manual', label: '✏️ Ajouté manuellement' })
+    expect(d.label).not.toContain('non localisée')
+    expect(d.kind).not.toBe('unlocated')
+  })
+
   it('deux pièces de nom identique → valeurs de filtre DIFFÉRENTES (id, pas le nom)', () => {
     const a = engagementSourceDisplay(input({ tenderDocumentId: 'id-A', documentExists: true, documentFilename: 'Annexe.pdf', page: 1 }))
     const b = engagementSourceDisplay(input({ tenderDocumentId: 'id-B', documentExists: true, documentFilename: 'Annexe.pdf', page: 2 }))
