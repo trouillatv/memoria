@@ -6,7 +6,7 @@
 
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Building2, MapPin, User, ArrowRight, Clock, Mail, Phone, Globe } from 'lucide-react'
+import { Building2, MapPin, User, ArrowRight, Clock, Mail, Phone, Globe, Share2 } from 'lucide-react'
 import { checkIntervenantsPageAccess } from '@/lib/intervenants/access'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getCompanyFiche, type CompanyFiche } from '@/lib/db/company-fiche'
@@ -83,6 +83,11 @@ export default async function CompanyFichePage({ params }: { params: Promise<{ c
                 {fiche.siret && <span>SIRET {fiche.siret}</span>}
               </div>
             )}
+            <div className="mt-3">
+              <Link href={`/intervenants?vue=graphe&focus=co_${fiche.id}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-2.5 py-1 text-xs font-medium text-brand-700 hover:border-brand-200 hover:bg-brand-50/40 dark:text-brand-300">
+                <Share2 className="h-3.5 w-3.5" aria-hidden /> Voir son réseau
+              </Link>
+            </div>
           </div>
         </div>
       </section>

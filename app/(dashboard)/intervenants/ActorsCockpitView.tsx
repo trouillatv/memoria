@@ -6,15 +6,18 @@
 // nouvelle ici : on trie, on filtre, on oriente vers les surfaces propriétaires.
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import {
-  Users, User, Building2, ArrowRight, AlertTriangle, Clock,
+  Users, User, Building2, ArrowRight, AlertTriangle, Clock, List, Share2,
 } from 'lucide-react'
 import type { ActorKind, ActorStatus, CockpitActor, ActorsCockpit } from '@/lib/db/actors-cockpit'
 import { attentionLevelLabel, type AttentionLevel } from '@/lib/knowledge/actor-attention'
+import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
 import { ActorPreviewPanel } from './ActorPreviewPanel'
 import { loadActorPreview } from './preview-actions'
 import type { ActorPreview } from './preview-types'
 import { AddIntervenantDialog } from './AddIntervenantDialog'
+import { ActorsGraphCanvas } from './graph/ActorsGraphCanvas'
 
 type Tab = 'all' | 'person' | 'company' | 'team'
 
@@ -81,7 +84,14 @@ function compareActors(a: CockpitActor, b: CockpitActor): number {
   return a.name.localeCompare(b.name, 'fr')
 }
 
-export function ActorsCockpitView({ directory, teams }: { directory: ActorsCockpit; teams: Array<{ id: string; name: string }> }) {
+export function ActorsCockpitView({ directory, teams, graph, focusId, view }: {
+  directory: ActorsCockpit
+  teams: Array<{ id: string; name: string }>
+  graph?: ActorsGraph | null
+  focusId?: string | null
+  view?: 'list' | 'graph'
+}) {
+  const isGraph = view === 'graph'
   const [tab, setTab] = useState<Tab>('all')
   const [query, setQuery] = useState('')
   const [alertsOnly, setAlertsOnly] = useState(false)
@@ -186,6 +196,26 @@ export function ActorsCockpitView({ directory, teams }: { directory: ActorsCockp
         <VolumeLink value={counters.teamsActive} label="équipes actives" onClick={() => focusTab('team')} />
       </p>
 
+      {/* Vue Liste | Graphe — la liste reste la vue quotidienne ; le graphe = investigation ponctuelle. */}
+      <div className="inline-flex self-start rounded-lg border border-border/60 bg-muted/40 p-0.5">
+        <Link href="/intervenants" className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${!isGraph ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+          <List className="h-4 w-4" aria-hidden /> Liste
+        </Link>
+        <Link href="/intervenants?vue=graphe" className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${isGraph ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+          <Share2 className="h-4 w-4" aria-hidden /> Graphe
+        </Link>
+      </div>
+
+      {isGraph ? (
+        graph && graph.nodes.length > 0 ? (
+          <ActorsGraphCanvas graph={graph} focusId={focusId} />
+        ) : (
+          <div className="rounded-2xl border border-dashed border-border/60 py-12 text-center text-sm text-muted-foreground italic">
+            Aucun acteur actif à représenter pour le moment.
+          </div>
+        )
+      ) : (
+      <>
       {/* Onglets + recherche + filtre essentiel. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex rounded-lg border border-border/60 bg-muted/40 p-0.5">
@@ -236,6 +266,8 @@ export function ActorsCockpitView({ directory, teams }: { directory: ActorsCockp
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   )

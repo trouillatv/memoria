@@ -184,12 +184,17 @@ export async function getActorsGraph(orgIds: string[]): Promise<ActorsGraph> {
     ((contactRes.data ?? []) as Array<{ id: string; company_id: string | null }>).map((c) => [c.id, c.company_id]),
   )
 
-  // Nœuds acteurs depuis le cockpit (personnes = contacts uniquement en V1).
+  // RÈGLE DE PERTINENCE (vue globale, Vincent 2026-07-27) : on garde les acteurs ACTIFS
+  // et tout ce qui a de l'attention (level ≠ ok). Un historique n'apparaît que s'il porte
+  // encore une relation active — or ce cas produit toujours une attention ≠ ok (ex. encore
+  // responsable d'une action ouverte → responsible_not_active / company_left_casting). Un
+  // ancien contact sans équipe/chantier/action (historique + ok) est donc masqué.
+  const relevant = (a: { status: string; attention: { level: AttentionLevel } }) => a.status === 'active' || a.attention.level !== 'ok'
   const persons = cockpit.actors
-    .filter((a) => a.kind === 'person' && companyIdByContact.has(a.id))
+    .filter((a) => a.kind === 'person' && companyIdByContact.has(a.id) && relevant(a))
     .map((a) => ({ id: a.id, name: a.name, sub: a.subtitle || null, level: a.attention.level, historical: a.status === 'historical', companyId: companyIdByContact.get(a.id) ?? null }))
-  const companies = cockpit.actors.filter((a) => a.kind === 'company').map((a) => ({ id: a.id, name: a.name, sub: a.subtitle || null, level: a.attention.level, historical: a.status === 'historical' }))
-  const teams = cockpit.actors.filter((a) => a.kind === 'team').map((a) => ({ id: a.id, name: a.name, sub: a.subtitle || null, level: a.attention.level, historical: a.status === 'historical' }))
+  const companies = cockpit.actors.filter((a) => a.kind === 'company' && relevant(a)).map((a) => ({ id: a.id, name: a.name, sub: a.subtitle || null, level: a.attention.level, historical: a.status === 'historical' }))
+  const teams = cockpit.actors.filter((a) => a.kind === 'team' && relevant(a)).map((a) => ({ id: a.id, name: a.name, sub: a.subtitle || null, level: a.attention.level, historical: a.status === 'historical' }))
 
   return buildActorsGraph({
     persons,

@@ -11,12 +11,13 @@ import { notFound, redirect } from 'next/navigation'
 import { checkIntervenantsPageAccess } from '@/lib/intervenants/access'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getActorsCockpit } from '@/lib/db/actors-cockpit'
+import { getActorsGraph } from '@/lib/knowledge/actors-graph'
 import { listTeams } from '@/lib/db/teams'
 import { ActorsCockpitView } from './ActorsCockpitView'
 
 export const dynamic = 'force-dynamic'
 
-export default async function IntervenantsListPage() {
+export default async function IntervenantsListPage({ searchParams }: { searchParams: Promise<{ vue?: string; focus?: string }> }) {
   const access = await checkIntervenantsPageAccess(null)
   if (!access.allowed) {
     if (access.reason === 'unauthenticated') redirect('/login')
@@ -24,10 +25,24 @@ export default async function IntervenantsListPage() {
   }
   if (!access.access.isPrivileged) notFound()
 
+  const sp = await searchParams
+  const showGraph = sp.vue === 'graphe'
+
   const orgIds = await getOrgIdsOfUser()
   const [directory, teams] = await Promise.all([getActorsCockpit(orgIds), listTeams()])
   // Équipes de l'org pour le rattachement facultatif à la création d'un intervenant.
   const teamOptions = teams.map((t) => ({ id: t.id, name: t.name }))
+  // CHARGEMENT PARESSEUX (Vincent) : la liste reste la vue par défaut ; on ne paie le
+  // coût du graphe QUE lorsque l'utilisateur bascule sur la vue Graphe (?vue=graphe).
+  const graph = showGraph ? await getActorsGraph(orgIds) : null
 
-  return <ActorsCockpitView directory={directory} teams={teamOptions} />
+  return (
+    <ActorsCockpitView
+      directory={directory}
+      teams={teamOptions}
+      graph={graph}
+      focusId={sp.focus ?? null}
+      view={showGraph ? 'graph' : 'list'}
+    />
+  )
 }

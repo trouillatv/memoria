@@ -7,7 +7,7 @@
 
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { User, Building2, Users, MapPin, ArrowRight, Clock, Mail, Phone, KeyRound } from 'lucide-react'
+import { User, Building2, Users, MapPin, ArrowRight, Clock, Mail, Phone, KeyRound, Share2 } from 'lucide-react'
 import { checkIntervenantsPageAccess } from '@/lib/intervenants/access'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getPersonFiche, type PersonFiche } from '@/lib/db/person-fiche'
@@ -97,6 +97,11 @@ export default async function PersonFichePage({ params }: { params: Promise<{ co
                 <KeyRound className="h-3 w-3" aria-hidden /> Compte lié possible — ouvrir la fiche compte
               </Link>
             )}
+            <div className="mt-3">
+              <Link href={`/intervenants?vue=graphe&focus=p_${fiche.id}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-2.5 py-1 text-xs font-medium text-brand-700 hover:border-brand-200 hover:bg-brand-50/40 dark:text-brand-300">
+                <Share2 className="h-3.5 w-3.5" aria-hidden /> Voir son réseau
+              </Link>
+            </div>
           </div>
         </div>
       </section>
