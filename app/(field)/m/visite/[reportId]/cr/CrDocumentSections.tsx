@@ -25,7 +25,7 @@
 // Un bouton qui ne restaurerait rien — ou qui ramènerait au vide — mentirait.
 
 import { useState } from 'react'
-import { Pencil, RotateCcw, Check, X, Loader2, Lock } from 'lucide-react'
+import { Pencil, RotateCcw, Check, X, Loader2, Lock, Plus } from 'lucide-react'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
 import {
   saveCrSectionAction,
@@ -61,6 +61,9 @@ export function CrDocumentSections({
   const [sections, setSections] = useState(initialSections)
   const [status, setStatus] = useState(initialStatus)
   const editable = status === 'draft'
+  // Rubriques que l'utilisateur a choisi de compléter (vides au départ, ouvertes
+  // pour saisie). Une fois remplies, elles rejoignent naturellement les pleines.
+  const [openedKeys, setOpenedKeys] = useState<string[]>([])
 
   // Un seul point de passage : `adopt` est appelé aussi bien après une
   // correction qu'après une restauration — les deux changent le texte, donc les
@@ -100,18 +103,61 @@ export function CrDocumentSections({
           : 'Ce compte-rendu est figé : il ne se modifie plus.'}
       </p>
 
-      <div className="mt-3 space-y-2.5">
-        {sections.map((section) => (
-          <SectionRow
-            key={section.key}
-            reportId={reportId}
-            section={section}
-            editable={editable}
-            onPersisted={adopt}
-            onApplyLocal={applyLocal}
-          />
-        ))}
-      </div>
+      {(() => {
+        // Une rubrique sans matière n'alourdit plus la lecture : en lecture seule
+        // elle disparaît ; en brouillon, elle se replie en bouton « compléter »
+        // (l'ajout reste possible, sans enfiler des « Rien à ce sujet »).
+        const filled = sections.filter((s) => s.content.trim().length > 0)
+        const empties = sections.filter((s) => s.content.trim().length === 0)
+        const opened = empties.filter((s) => openedKeys.includes(s.key))
+        const closed = empties.filter((s) => !openedKeys.includes(s.key))
+        return (
+          <div className="mt-3 space-y-2.5">
+            {filled.map((section) => (
+              <SectionRow
+                key={section.key}
+                reportId={reportId}
+                section={section}
+                editable={editable}
+                onPersisted={adopt}
+                onApplyLocal={applyLocal}
+              />
+            ))}
+
+            {editable && opened.map((section) => (
+              <SectionRow
+                key={section.key}
+                reportId={reportId}
+                section={section}
+                editable
+                onPersisted={adopt}
+                onApplyLocal={applyLocal}
+                startEditing
+              />
+            ))}
+
+            {editable && closed.length > 0 && (
+              <div className="rounded-xl border border-dashed bg-muted/20 p-3">
+                <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Compléter le compte-rendu
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {closed.map((section) => (
+                    <button
+                      key={section.key}
+                      type="button"
+                      onClick={() => setOpenedKeys((k) => [...k, section.key])}
+                      className="inline-flex items-center gap-1 rounded-lg border bg-background px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground active:bg-accent"
+                    >
+                      <Plus className="h-3.5 w-3.5" aria-hidden /> {section.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       <Lifecycle reportId={reportId} status={status} onChanged={setStatus} />
     </section>
@@ -218,14 +264,17 @@ function SectionRow({
   editable,
   onPersisted,
   onApplyLocal,
+  startEditing = false,
 }: {
   reportId: string
   section: ReportDocumentSection
   editable: boolean
   onPersisted: (doc: PersistedCrDocument) => void
   onApplyLocal: (key: string, content: string) => void
+  /** Ouvre directement en édition — pour une rubrique qu'on vient de « compléter ». */
+  startEditing?: boolean
 }) {
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing] = useState(startEditing)
   const [draft, setDraft] = useState(section.content)
   const [error, setError] = useState<string | null>(null)
   // Le pending est PAR SECTION : corriger le résumé ne gèle pas les six autres.

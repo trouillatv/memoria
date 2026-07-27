@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, fireEvent } from '@testing-library/react'
 import type { ReportDocumentSection } from '@/types/db'
 
 // L'écran ne doit RIEN écrire tout seul : on remplace les gestes serveur par des
@@ -26,15 +26,23 @@ const sections: ReportDocumentSection[] = [
 const row = (key: string) => document.querySelector(`[data-section="${key}"]`) as HTMLElement
 
 describe('CrDocumentSections — brouillon', () => {
-  it('affiche les sept sections du document', () => {
+  it('affiche les rubriques PLEINES en clair, les vides repliées en « compléter »', () => {
     render(<CrDocumentSections reportId="r1" sections={sections} status="draft" />)
-    expect(document.querySelectorAll('[data-section]')).toHaveLength(7)
+    // resume, decisions, actions, intervenants portent du texte → affichées.
+    expect(document.querySelectorAll('[data-section]')).toHaveLength(4)
+    for (const key of ['resume', 'decisions', 'actions', 'intervenants']) {
+      expect(row(key)).toBeTruthy()
+    }
+    // vigilances, a_savoir, echeances sont vides → repliées, jamais rendues en ligne.
+    for (const key of ['vigilances', 'a_savoir', 'echeances']) {
+      expect(row(key)).toBeNull()
+    }
     expect(screen.getByText('Brouillon — non validé')).toBeTruthy()
   })
 
-  it('propose « Modifier » sur chaque section', () => {
+  it('propose « Modifier » sur chaque rubrique pleine', () => {
     render(<CrDocumentSections reportId="r1" sections={sections} status="draft" />)
-    expect(screen.getAllByRole('button', { name: /Modifier/ })).toHaveLength(7)
+    expect(screen.getAllByRole('button', { name: /Modifier/ })).toHaveLength(4)
   })
 
   it('n’écrit rien au simple affichage', () => {
@@ -43,9 +51,21 @@ describe('CrDocumentSections — brouillon', () => {
     expect(restoreSpy).not.toHaveBeenCalled()
   })
 
-  it('dit le vide au lieu de l’inventer', () => {
+  it('les rubriques vides ne s’enfilent plus en « Rien à ce sujet »', () => {
     render(<CrDocumentSections reportId="r1" sections={sections} status="draft" />)
-    expect(within(row('vigilances')).getByText('Rien à ce sujet.')).toBeTruthy()
+    expect(screen.queryByText('Rien à ce sujet.')).toBeNull()
+  })
+
+  it('« compléter » ouvre une rubrique vide en édition, sans rien écrire', () => {
+    render(<CrDocumentSections reportId="r1" sections={sections} status="draft" />)
+    // La rubrique vide est un bouton « + Points de vigilance », pas une ligne.
+    expect(row('vigilances')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Points de vigilance/ }))
+    // Après clic : la ligne apparaît, ouverte en édition (textarea prêt).
+    const opened = row('vigilances')
+    expect(opened).toBeTruthy()
+    expect(within(opened).getByRole('textbox', { name: /Points de vigilance/ })).toBeTruthy()
+    expect(saveSpy).not.toHaveBeenCalled()
   })
 })
 
