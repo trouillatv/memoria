@@ -33,15 +33,10 @@ type Props = {
   deadlinesToPlan: DashboardDeadlineToPlan[]
 }
 
-function frenchDateToday(): string {
-  const today = new Date()
-  const parts = new Intl.DateTimeFormat('fr-FR', {
-    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Pacific/Noumea',
-  }).formatToParts(today)
-  const weekday = parts.find((p) => p.type === 'weekday')?.value ?? ''
-  const day = parts.find((p) => p.type === 'day')?.value ?? ''
-  const month = parts.find((p) => p.type === 'month')?.value ?? ''
-  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${day} ${month}`
+function livingPhrase(count: number): string {
+  if (count === 0) return 'Tout est sous contrôle aujourd\'hui.'
+  if (count === 1) return 'Un sujet demande votre attention.'
+  return `${count} sujets demandent votre attention.`
 }
 
 function familyLabel(card: AttentionCard): string {
@@ -77,23 +72,17 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
   const urgentCount = attentionCards.filter((c) => c.tone === 'red').length
 
   return (
-    <div className="min-h-screen bg-[#f4f6fb] pb-24">
-      <div className="mx-auto max-w-lg px-4 pt-6">
+    <div className="min-h-screen bg-[#f4f6fb]">
+      <div className="mx-auto max-w-lg pt-2">
 
-        {/* ── Header ─────────────────────────────────────────── */}
-        <div className="mb-5 flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-[#101a35]">Bonjour {firstName} 👋</h1>
-            <p className="mt-0.5 text-sm text-[#65718b]">{frenchDateToday()}</p>
-          </div>
-          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#e7f5ec] px-2.5 py-1 text-[10px] font-semibold text-[#1a7a44]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#22c55e]" />
-            Sync
-          </span>
+        {/* ── Accueil vivant ───────────────────────────────── */}
+        <div className="mb-3 px-1">
+          <p className="text-base font-semibold text-[#101a35]">Bonjour {firstName} 👋</p>
+          <p className="mt-0.5 text-sm text-[#65718b]">{livingPhrase(attentionCards.length)}</p>
         </div>
 
         {/* ── Bannière attention ────────────────────────────── */}
-        {attentionCards.length > 0 ? (
+        {attentionCards.length > 0 && (
           <div className="mb-4 rounded-2xl bg-[#dc2626] px-4 py-3 text-white shadow-sm">
             <p className="font-bold">
               {attentionCards.length} sujet{attentionCards.length > 1 ? 's' : ''} demandent votre attention
@@ -102,18 +91,13 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
               {urgentCount} urgent{urgentCount !== 1 ? 's' : ''} · {attentionCards.length - urgentCount} à surveiller
             </p>
           </div>
-        ) : (
-          <div className="mb-4 rounded-2xl bg-[#f0fdf4] px-4 py-3 shadow-sm ring-1 ring-[#bbf7d0]">
-            <p className="text-sm font-semibold text-[#16a34a]">Tout est en rythme ✓</p>
-            <p className="mt-0.5 text-xs text-[#4ade80]/90">Aucun sujet en attente.</p>
-          </div>
         )}
 
         {/* ── Carte chantier principal ─────────────────────── */}
         {primarySite && (
           <div className="mb-4 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-[#e5eaf3]">
-            <div className="h-32 bg-gradient-to-br from-[#b8cef5] to-[#ddeaff]" />
-            <div className="px-4 pb-4 pt-3">
+            <div className="h-20 bg-gradient-to-br from-[#b8cef5] to-[#ddeaff]" />
+            <div className="px-3 pb-3 pt-2">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <span className="inline-flex items-center rounded-full bg-[#eef4ff] px-2 py-0.5 text-[10px] font-bold text-[#4973dd]">
@@ -129,21 +113,21 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
                 </Link>
               </div>
 
-              <div className="mt-3 grid grid-cols-4 gap-1.5">
+              <div className="mt-2 grid grid-cols-4 gap-1">
                 {[
                   { value: primarySite.activeActionCount, label: 'actions' },
                   { value: todaySiteCount, label: "auj." },
-                  { value: primarySite.overdueActionCount, label: 'en retard' },
+                  { value: primarySite.overdueActionCount, label: 'retard' },
                   { value: primarySite.openReserveCount, label: 'réserves' },
                 ].map(({ value, label }) => (
-                  <div key={label} className="rounded-xl bg-[#f8fafc] py-2 text-center">
-                    <p className="text-lg font-bold leading-none text-[#101a35]">{value}</p>
+                  <div key={label} className="rounded-lg bg-[#f8fafc] py-1.5 text-center">
+                    <p className="text-base font-bold leading-none text-[#101a35]">{value}</p>
                     <p className="mt-0.5 text-[10px] leading-tight text-[#65718b]">{label}</p>
                   </div>
                 ))}
               </div>
 
-              <div className="mt-3">
+              <div className="mt-2">
                 <span
                   className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
                     primarySite.status === 'critical'
@@ -223,36 +207,27 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
           </div>
         )}
 
-        {/* ── Grille 2 colonnes ─────────────────────────────── */}
-        <div className="mb-4 grid grid-cols-2 gap-3">
-          <div className="rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-[#e5eaf3]">
-            <h3 className="text-xs font-bold text-[#101a35]">Prochaines échéances</h3>
-            {nextItems.length === 0 ? (
-              <p className="mt-2 text-[11px] italic text-[#9aa7be]">Aucune à venir.</p>
-            ) : (
-              <ul className="mt-2 space-y-2.5">
-                {nextItems.slice(0, 4).map((item) => (
-                  <li key={`${item.sourceType}:${item.id}`}>
-                    <Link href={item.href} className="block hover:opacity-75">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-[#4973dd]">
-                        {shortDate(item.startsAt)}
-                      </p>
-                      <p className="mt-0.5 truncate text-[11px] font-medium text-[#17213a]">{item.title}</p>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div className="rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-[#e5eaf3]">
+        {/* ── Prochaines échéances ─────────────────────────── */}
+        {nextItems.length > 0 && (
+          <div className="mb-4 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-[#e5eaf3]">
             <div className="flex items-baseline justify-between">
-              <h3 className="text-xs font-bold text-[#101a35]">Activité récente</h3>
-              <Link href="/journal" className="text-[10px] text-[#4973dd]">Journal ›</Link>
+              <h3 className="text-xs font-bold text-[#101a35]">Prochaines échéances</h3>
+              <Link href="/planning" className="text-[10px] text-[#4973dd]">Voir tout ›</Link>
             </div>
-            <p className="mt-3 text-[11px] italic text-[#9aa7be]">Aucune activité récente.</p>
+            <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2.5">
+              {nextItems.slice(0, 4).map((item) => (
+                <li key={`${item.sourceType}:${item.id}`}>
+                  <Link href={item.href} className="block hover:opacity-75">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-[#4973dd]">
+                      {shortDate(item.startsAt)}
+                    </p>
+                    <p className="mt-0.5 truncate text-[11px] font-medium text-[#17213a]">{item.title}</p>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
-        </div>
+        )}
 
       </div>
 
