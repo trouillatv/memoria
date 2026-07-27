@@ -352,7 +352,11 @@ export async function deleteReportPhotoAction(
  *  `assigned_contact_id` qui fait foi. */
 async function resolveResponsible(
   siteId: string,
-  input: { assignedTo?: string; assignedContactId?: string | null; assignedCompanyId?: string | null; confirmMismatch?: boolean },
+  input: {
+    assignedTo?: string; assignedContactId?: string | null; assignedCompanyId?: string | null; confirmMismatch?: boolean
+    /** Valeurs actuelles (édition) : une valeur inchangée est conservée sans re-validation. */
+    currentContactId?: string | null; currentCompanyId?: string | null
+  },
 ): Promise<
   | { assigned_to: string | null; assigned_contact_id: string | null; assigned_company_id: string | null }
   | { error: string; requiresConfirmation?: boolean }
@@ -381,6 +385,8 @@ async function resolveResponsible(
     candidateContactIds: new Set(candidates.map((c) => c.contactId)),
     contactCompanyId,
     confirmMismatch: input.confirmMismatch,
+    currentCompanyId: input.currentCompanyId ?? null,
+    currentContactId: input.currentContactId ?? null,
   })
   if (!decision.ok) return { error: decision.error, requiresConfirmation: decision.requiresConfirmation }
   // Miroir texte lisible : le nom du contact s'il y en a un, sinon l'entreprise.
@@ -437,7 +443,16 @@ export async function editActionAction(
   if (!title) return { ok: false, error: 'Intitulé vide.' }
   const report = await getSiteReport(reportId)
   if (!report?.site_id) return { ok: false, error: 'Réunion sans site.' }
-  const resp = await resolveResponsible(report.site_id, input)
+  // Valeurs actuelles : une responsabilité INCHANGÉE est conservée sans re-validation
+  // (une entreprise sortie du casting ne doit pas bloquer l'édition du titre).
+  const { data: current } = await createAdminClient()
+    .from('site_actions').select('assigned_company_id, assigned_contact_id').eq('id', actionId).maybeSingle()
+  const cur = current as { assigned_company_id: string | null; assigned_contact_id: string | null } | null
+  const resp = await resolveResponsible(report.site_id, {
+    ...input,
+    currentCompanyId: cur?.assigned_company_id ?? null,
+    currentContactId: cur?.assigned_contact_id ?? null,
+  })
   if ('error' in resp) return { ok: false, error: resp.error, requiresConfirmation: resp.requiresConfirmation }
   try {
     await updateSiteAction(actionId, {

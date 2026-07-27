@@ -55,4 +55,23 @@ describe('resolveActionResponsibility', () => {
     const r = resolveActionResponsibility({ companyId: 'etv', contactId: 'jean', candidateCompanyIds: companies, candidateContactIds: contacts, contactCompanyId: 'sotrap', confirmMismatch: true })
     expect(r).toEqual({ ok: true, assignedCompanyId: 'etv', assignedContactId: 'jean' })
   })
+
+  it('CONSERVATION : une entreprise sortie du casting, INCHANGÉE, n’est pas re-rejetée (édition du titre)', () => {
+    // « oldco » n'est plus candidate, mais c'est la valeur actuelle de l'action.
+    const r = resolveActionResponsibility({
+      companyId: 'oldco', contactId: null,
+      candidateCompanyIds: companies, candidateContactIds: contacts,
+      currentCompanyId: 'oldco',
+    })
+    expect(r).toEqual({ ok: true, assignedCompanyId: 'oldco', assignedContactId: null })
+  })
+
+  it('CHANGEMENT vers une entreprise hors casting → toujours refusé', () => {
+    const r = resolveActionResponsibility({
+      companyId: 'oldco', contactId: null,
+      candidateCompanyIds: companies, candidateContactIds: contacts,
+      currentCompanyId: 'etv', // on CHANGE etv → oldco (non candidate)
+    })
+    expect(r.ok).toBe(false)
+  })
 })

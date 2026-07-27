@@ -88,19 +88,28 @@ export function resolveActionResponsibility(input: {
   contactCompanyId?: string | null
   /** L'humain a confirmé une incohérence contact↔entreprise (relation atypique assumée). */
   confirmMismatch?: boolean
+  /** Valeurs ACTUELLES de l'action (édition). Une valeur INCHANGÉE est une
+   *  CONSERVATION historique — jamais re-validée contre le casting (une entreprise
+   *  sortie du casting ne doit pas bloquer l'édition d'un autre champ). Seule une
+   *  NOUVELLE affectation ou un CHANGEMENT est validé. */
+  currentCompanyId?: string | null
+  currentContactId?: string | null
 }): ResponsibilityDecision {
   const companyId = input.companyId || null
   const contactId = input.contactId || null
+  const companyChanged = companyId !== (input.currentCompanyId ?? null)
+  const contactChanged = contactId !== (input.currentContactId ?? null)
 
-  if (companyId && !input.candidateCompanyIds.has(companyId)) {
+  if (companyId && companyChanged && !input.candidateCompanyIds.has(companyId)) {
     return { ok: false, error: 'Cette entreprise n’intervient pas sur ce chantier.' }
   }
-  if (contactId && !input.candidateContactIds.has(contactId)) {
+  if (contactId && contactChanged && !input.candidateContactIds.has(contactId)) {
     return { ok: false, error: 'Cette personne n’est pas un responsable possible pour ce chantier.' }
   }
 
-  // Cohérence personne↔entreprise, seulement si les deux sont posés.
-  if (companyId && contactId) {
+  // Cohérence personne↔entreprise : uniquement si les deux sont posés ET qu'au
+  // moins l'un vient de changer (une paire conservée a déjà été acceptée).
+  if (companyId && contactId && (companyChanged || contactChanged)) {
     const contactCompanyId = input.contactCompanyId ?? null
     // Contact sans entreprise connue → autorisé (l'association est une suggestion UI,
     // jamais une modification automatique de la fiche).
