@@ -46,8 +46,12 @@ export interface ActorGraphNode {
   kind: ActorGraphKind
   label: string
   sub: string | null
-  level: AttentionLevel   // couleur d'attention (partagée avec cockpit/fiches)
+  level: AttentionLevel   // état d'attention (partagé avec cockpit/fiches) → anneau
   historical: boolean     // rendu « gris » — existe encore mais hors périmètre actif
+  /** Entreprise de rattachement (personne → sa société ; entreprise → elle-même ;
+   *  équipe/chantier/action → null). Sert au FOND coloré par organisation : « qui
+   *  travaille avec qui » d'un coup d'œil. */
+  companyId: string | null
 }
 
 export interface ActorGraphEdge {
@@ -153,15 +157,15 @@ export function buildActorsGraph(input: ActorsGraphInputs): ActorsGraph {
   for (const c of input.casting) if (companySet.has(c.companyId)) includedSites.add(c.siteId)
 
   const nodes: ActorGraphNode[] = []
-  for (const p of input.persons) nodes.push({ id: P(p.id), kind: 'person', label: p.name, sub: p.sub, level: p.level, historical: p.historical })
-  for (const c of input.companies) nodes.push({ id: CO(c.id), kind: 'company', label: c.name, sub: c.sub, level: c.level, historical: c.historical })
-  for (const t of input.teams) nodes.push({ id: TM(t.id), kind: 'team', label: t.name, sub: t.sub, level: t.level, historical: t.historical })
+  for (const p of input.persons) nodes.push({ id: P(p.id), kind: 'person', label: p.name, sub: p.sub, level: p.level, historical: p.historical, companyId: p.companyId ?? null })
+  for (const c of input.companies) nodes.push({ id: CO(c.id), kind: 'company', label: c.name, sub: c.sub, level: c.level, historical: c.historical, companyId: c.id })
+  for (const t of input.teams) nodes.push({ id: TM(t.id), kind: 'team', label: t.name, sub: t.sub, level: t.level, historical: t.historical, companyId: null })
   for (const siteId of includedSites) {
     const level: AttentionLevel = siteHasOverdue.get(siteId) ? 'urgent' : siteHasOpen.get(siteId) ? 'attention' : 'ok'
-    nodes.push({ id: S(siteId), kind: 'site', label: siteNameById.get(siteId) ?? 'Chantier', sub: null, level, historical: false })
+    nodes.push({ id: S(siteId), kind: 'site', label: siteNameById.get(siteId) ?? 'Chantier', sub: null, level, historical: false, companyId: null })
   }
   for (const a of includedActions) {
-    nodes.push({ id: AC(a.id), kind: 'action', label: a.title, sub: siteNameById.get(a.siteId) ?? null, level: a.overdue ? 'urgent' : 'ok', historical: false })
+    nodes.push({ id: AC(a.id), kind: 'action', label: a.title, sub: siteNameById.get(a.siteId) ?? null, level: a.overdue ? 'urgent' : 'ok', historical: false, companyId: null })
   }
 
   // Liens structurels (uniquement entre nœuds réellement présents).

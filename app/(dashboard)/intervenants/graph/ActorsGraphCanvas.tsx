@@ -13,7 +13,7 @@
 // EMBARQUÉ (fiches / panneau maître-détail : onSelectActor reconfigure la page).
 
 import { useEffect, useRef } from 'react'
-import { graphTimeline, type ActorsGraph, type ActorGraphKind, type ActorGraphNode } from '@/lib/knowledge/actors-graph-model'
+import { graphTimeline, type ActorsGraph, type ActorGraphKind, type ActorGraphNode, type ActorGraphRel } from '@/lib/knowledge/actors-graph-model'
 import { createForceGraphEngine, type ForceGraphEngine, type Vec } from '@/components/graph/force-graph-engine'
 
 export type SelectableKind = 'person' | 'company' | 'team'
@@ -35,15 +35,43 @@ export interface GraphControl {
   onTapVoid(): void
 }
 
-// ── Config propre aux ACTEURS ────────────────────────────────────────────────
-const LEVEL_COLOR = { urgent: '#dc2626', attention: '#f59e0b', ok: '#3b82f6' } as const
+// ── Langage visuel des ACTEURS (V2) ──────────────────────────────────────────
+// FOND = organisation (entreprise) → « qui travaille avec qui » d'un coup d'œil.
+// ANNEAU = état d'attention (rouge/orange) → « où sont les points d'attention ».
+// LIENS = couleur par type de relation → le sens sans avoir à lire les libellés.
+const RING_COLOR = { urgent: '#dc2626', attention: '#f59e0b', ok: null } as const
 const HISTORICAL_COLOR = '#94a3b8'
+// Nœuds sans entreprise (équipe/chantier/action, ou personne sans société) : fond
+// NEUTRE — ils sont le tissu, les entreprises ressortent. L'anneau porte l'alerte.
+const NEUTRAL_FILL = '#cbd5e1'
 // Hiérarchie visuelle : entreprise > chantier > personne = équipe > action.
 const SIZE: Record<ActorGraphKind, number> = { company: 24, site: 19, person: 14, team: 14, action: 9 }
 
-function nodeColor(n: ActorGraphNode): string {
+// Palette d'ENTREPRISES — bleus/verts/violets/cyans, SANS rouge ni orange (réservés
+// à l'anneau d'alerte : une couleur d'alerte n'est jamais une couleur d'entreprise).
+const COMPANY_PALETTE = [
+  '#3b82f6', '#22c55e', '#a855f7', '#14b8a6', '#ec4899', '#6366f1',
+  '#06b6d4', '#8b5cf6', '#0ea5e9', '#10b981', '#d946ef', '#84cc16',
+]
+function companyFill(companyId: string): string {
+  let h = 0
+  for (let i = 0; i < companyId.length; i++) h = (h * 31 + companyId.charCodeAt(i)) >>> 0
+  return COMPANY_PALETTE[h % COMPANY_PALETTE.length]
+}
+function nodeFill(n: ActorGraphNode): string {
   if (n.historical) return HISTORICAL_COLOR
-  return LEVEL_COLOR[n.level]
+  if (n.companyId) return companyFill(n.companyId)
+  return NEUTRAL_FILL
+}
+
+// Couleur des LIENS par type de relation (le sens même labels cachés).
+const REL_COLOR: Record<ActorGraphRel, string> = {
+  belongs_to: '#60a5fa',      // appartient à (entreprise) — bleu
+  member_of: '#a78bfa',       // membre d'équipe — violet
+  mobilized_on: '#34d399',    // équipe mobilisée sur un chantier — vert
+  intervenes_on: '#22c55e',   // entreprise intervient sur un chantier — vert
+  referent_of: '#fbbf24',     // référent d'une action — ambre
+  responsible_of: '#fb923c',  // responsable d'une action — orange
 }
 
 /** Signature stable des couches visibles — pour ne relancer la simulation QUE
@@ -182,9 +210,10 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
           const emphasized = i === f.hoverEdgeIndex || i === selEdge || inPath === true
           const nearFocus = focus && (e.a === focus || e.b === focus)
           const dimmed = (pathEdges && !inPath) || (!pathEdges && focus && !nearFocus && !emphasized)
-          ctx.strokeStyle = emphasized ? '#334155' : nearFocus ? '#64748b' : '#e2e8f0'
-          ctx.globalAlpha = al * (dimmed ? 0.15 : 1)
-          ctx.lineWidth = emphasized ? 2.2 : nearFocus ? 1.6 : 1
+          // Couleur PAR TYPE de relation : le sens même sans lire les libellés.
+          ctx.strokeStyle = REL_COLOR[e.rel]
+          ctx.globalAlpha = al * (dimmed ? 0.12 : emphasized ? 1 : nearFocus ? 0.9 : 0.55)
+          ctx.lineWidth = emphasized ? 2.6 : nearFocus ? 1.8 : 1.2
           ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke()
           if (i === f.hoverEdgeIndex || i === selEdge) {
             const mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2
@@ -206,10 +235,16 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
           const st = state(n.id)
           const r = SIZE[n.kind] + (st === 'focus' ? 3 : 0)
           ctx.globalAlpha = p.alpha * (st === 'out' ? 0.16 : 1)
+          // FOND = entreprise (ou neutre) — on regroupe l'organisation à l'œil.
           ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2)
-          ctx.fillStyle = nodeColor(n)
+          ctx.fillStyle = nodeFill(n)
           ctx.fill()
-          if (n.id === sel) { ctx.lineWidth = 3; ctx.strokeStyle = '#0f172a'; ctx.stroke() }
+          // ANNEAU = état d'attention (rouge/orange), toutes natures — préserve le
+          // signal « où sont les problèmes » malgré le fond coloré par entreprise.
+          const ring = n.historical ? null : RING_COLOR[n.level]
+          if (ring) { ctx.lineWidth = 3; ctx.strokeStyle = ring; ctx.stroke() }
+          // Sélection : anneau sombre EXTÉRIEUR (n'écrase pas l'anneau d'alerte).
+          if (n.id === sel) { ctx.beginPath(); ctx.arc(p.x, p.y, r + 2.5, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.strokeStyle = '#0f172a'; ctx.stroke() }
           // Labels : seulement le focus et son contexte quand un focus existe —
           // l'œil comprend immédiatement ce qui est important.
           if (st !== 'out') {
@@ -305,12 +340,18 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
     <div ref={containerRef} className={`relative w-full overflow-hidden rounded-2xl border border-border/60 bg-card ${heightClass}`}>
       <canvas ref={canvasRef} className="block h-full w-full touch-none" style={{ cursor: 'grab' }} />
 
-      {/* Légende — couleur = état d'attention. */}
-      <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-1 rounded-lg border border-border/60 bg-background/90 px-2.5 py-2 text-[11px] text-muted-foreground backdrop-blur">
-        <span className="flex items-center gap-1.5"><Dot c={LEVEL_COLOR.urgent} /> À traiter</span>
-        <span className="flex items-center gap-1.5"><Dot c={LEVEL_COLOR.attention} /> À surveiller</span>
-        <span className="flex items-center gap-1.5"><Dot c={LEVEL_COLOR.ok} /> À jour</span>
+      {/* Légende — fond = entreprise · anneau = état · liens = type de relation. */}
+      <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-0.5 rounded-lg border border-border/60 bg-background/90 px-2.5 py-2 text-[10.5px] leading-tight text-muted-foreground backdrop-blur">
+        <span className="text-[9.5px] font-semibold uppercase tracking-wide text-foreground/60">État (anneau)</span>
+        <span className="flex items-center gap-1.5"><Ring c={RING_COLOR.urgent} /> À traiter</span>
+        <span className="flex items-center gap-1.5"><Ring c={RING_COLOR.attention} /> À surveiller</span>
         <span className="flex items-center gap-1.5"><Dot c={HISTORICAL_COLOR} /> Historique</span>
+        <span className="mt-1 text-[9.5px] font-semibold uppercase tracking-wide text-foreground/60">Liens</span>
+        <span className="flex items-center gap-1.5"><Line c={REL_COLOR.intervenes_on} /> Sur un chantier</span>
+        <span className="flex items-center gap-1.5"><Line c={REL_COLOR.belongs_to} /> Appartient à</span>
+        <span className="flex items-center gap-1.5"><Line c={REL_COLOR.member_of} /> Membre d’équipe</span>
+        <span className="flex items-center gap-1.5"><Line c={REL_COLOR.responsible_of} /> Sur une action</span>
+        <span className="mt-1 text-[9.5px] italic">Fond = entreprise</span>
       </div>
 
       <p className="pointer-events-none absolute bottom-3 left-3 text-[11px] text-muted-foreground">
@@ -322,4 +363,14 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
 
 function Dot({ c }: { c: string }) {
   return <span aria-hidden className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: c }} />
+}
+
+/** Anneau (état) — cohérent avec le rendu des nœuds (l'alerte est un contour). */
+function Ring({ c }: { c: string }) {
+  return <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-full border-2 bg-transparent" style={{ borderColor: c }} />
+}
+
+/** Trait (type de lien). */
+function Line({ c }: { c: string }) {
+  return <span aria-hidden className="inline-block h-0.5 w-3.5 rounded-full" style={{ backgroundColor: c }} />
 }

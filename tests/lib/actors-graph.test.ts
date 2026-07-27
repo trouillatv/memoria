@@ -162,6 +162,23 @@ describe('buildActorsGraph', () => {
     expect(firstSeen.get('tm_t1')).toBe('2026-03-01') // n'a QUE la relation datée
   })
 
+  it('companyId sur les nœuds (fond coloré par entreprise) : personne→sa société, entreprise→elle-même, chantier→null', () => {
+    const g = buildActorsGraph({
+      ...base(),
+      persons: [
+        { id: 'c1', name: 'Joseph', sub: null, level: 'ok', historical: false, companyId: 'co1' },
+        { id: 'c2', name: 'Sans société', sub: null, level: 'ok', historical: false, companyId: null },
+      ],
+      companies: [{ id: 'co1', name: 'Clim Austral', sub: null, level: 'ok', historical: false }],
+      siteNames: [{ id: 's1', name: 'Petro' }],
+      casting: [{ companyId: 'co1', siteId: 's1' }],
+    })
+    expect(g.nodes.find((n) => n.id === 'p_c1')?.companyId).toBe('co1')   // personne → sa société
+    expect(g.nodes.find((n) => n.id === 'p_c2')?.companyId).toBeNull()    // personne sans société
+    expect(g.nodes.find((n) => n.id === 'co_co1')?.companyId).toBe('co1') // entreprise → elle-même
+    expect(g.nodes.find((n) => n.id === 's_s1')?.companyId).toBeNull()    // chantier → neutre
+  })
+
   it('graphKinds : natures RÉELLEMENT présentes (pilote les couches proposées)', () => {
     const g = buildActorsGraph({
       ...base(),
