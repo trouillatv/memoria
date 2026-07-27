@@ -5,13 +5,15 @@
 // read model déjà agrégé côté serveur (getActorsCockpit). Aucune donnée
 // nouvelle ici : on trie, on filtre, on oriente vers les surfaces propriétaires.
 
-import { useMemo, useState } from 'react'
-import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Users, User, Building2, ArrowRight, AlertTriangle, Clock,
 } from 'lucide-react'
 import type { ActorKind, ActorStatus, CockpitActor, ActorsCockpit } from '@/lib/db/actors-cockpit'
 import { attentionLevelLabel, type AttentionLevel } from '@/lib/knowledge/actor-attention'
+import { ActorPreviewPanel } from './ActorPreviewPanel'
+import { loadActorPreview } from './preview-actions'
+import type { ActorPreview } from './preview-types'
 
 type Tab = 'all' | 'person' | 'company' | 'team'
 
@@ -82,6 +84,8 @@ export function ActorsCockpitView({ directory }: { directory: ActorsCockpit }) {
   const [tab, setTab] = useState<Tab>('all')
   const [query, setQuery] = useState('')
   const [alertsOnly, setAlertsOnly] = useState(false)
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [preview, setPreview] = useState<{ key: string; data: ActorPreview } | null>(null)
 
   const { counters } = directory
   const filtered = useMemo(() => {
@@ -97,6 +101,33 @@ export function ActorsCockpitView({ directory }: { directory: ActorsCockpit }) {
     setTab(t)
     setAlertsOnly(onlyAlerts)
   }
+
+  // Sélection EFFECTIVE dérivée au rendu (pas d'effet) : par défaut le 1er acteur du
+  // filtre courant, comme la maquette ; sinon le choix de l'utilisateur s'il est encore visible.
+  const effectiveKey = useMemo(() => {
+    const keys = filtered.map((a) => `${a.kind}:${a.id}`)
+    if (keys.length === 0) return null
+    return selectedKey && keys.includes(selectedKey) ? selectedKey : keys[0]!
+  }, [filtered, selectedKey])
+
+  const selectedActor = useMemo(
+    () => (effectiveKey ? directory.actors.find((a) => `${a.kind}:${a.id}` === effectiveKey) ?? null : null),
+    [directory.actors, effectiveKey],
+  )
+
+  // Aperçu vivant chargé à la demande. setState uniquement dans le callback async
+  // (annulable si la sélection change vite) → pas de cascade de rendus synchrone.
+  useEffect(() => {
+    if (!selectedActor || !effectiveKey) return
+    let cancelled = false
+    loadActorPreview(selectedActor.kind, selectedActor.id)
+      .then((data) => { if (!cancelled) setPreview({ key: effectiveKey, data }) })
+      .catch(() => { if (!cancelled) setPreview({ key: effectiveKey, data: null }) })
+    return () => { cancelled = true }
+  }, [selectedActor, effectiveKey])
+
+  const previewData = preview && preview.key === effectiveKey ? preview.data : null
+  const loading = !!effectiveKey && (!preview || preview.key !== effectiveKey)
 
   const hasAttention =
     counters.actionsWithoutOwner > 0 || counters.companiesOverdue > 0 || counters.agentsWithoutTeam > 0 ||
@@ -182,17 +213,25 @@ export function ActorsCockpitView({ directory }: { directory: ActorsCockpit }) {
         </div>
       </div>
 
-      {/* Liste. */}
+      {/* Maître-détail : liste à gauche, aperçu vivant à droite (≥ lg). */}
       {filtered.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border/60 py-12 text-center text-sm text-muted-foreground italic">
           {alertsOnly ? 'Aucune alerte sur ce périmètre.' : query ? 'Aucun acteur ne correspond à cette recherche.' : 'Aucun acteur pour le moment.'}
         </div>
       ) : (
-        <ul className="space-y-2">
-          {filtered.map((a) => (
-            <ActorRow key={`${a.kind}:${a.id}`} actor={a} />
-          ))}
-        </ul>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+          <ul className="space-y-2 lg:col-span-3">
+            {filtered.map((a) => {
+              const key = `${a.kind}:${a.id}`
+              return <ActorRow key={key} actor={a} selected={key === effectiveKey} onSelect={() => setSelectedKey(key)} />
+            })}
+          </ul>
+          <div className="lg:col-span-2">
+            <div className="lg:sticky lg:top-4">
+              <ActorPreviewPanel actor={selectedActor} preview={previewData} loading={loading} />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -236,7 +275,7 @@ function VolumeLink({ value, label, onClick }: { value: number; label: string; o
   )
 }
 
-function ActorRow({ actor }: { actor: CockpitActor }) {
+function ActorRow({ actor, selected, onSelect }: { actor: CockpitActor; selected: boolean; onSelect: () => void }) {
   const inner = (
     <div className="flex items-start gap-3">
       <div className="mt-0.5 shrink-0 flex h-9 w-9 items-center justify-center rounded-full bg-brand-50 text-brand-700 dark:bg-brand-600/10 dark:text-brand-300">
@@ -286,19 +325,26 @@ function ActorRow({ actor }: { actor: CockpitActor }) {
         {/* Biographie ENSUITE, discrète. */}
         {actor.subtitle && <div className="mt-0.5 text-xs text-muted-foreground truncate">{actor.subtitle}</div>}
       </div>
-      {actor.href && <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-foreground transition-colors" aria-hidden />}
+      <ArrowRight className={`mt-1 h-4 w-4 shrink-0 transition-colors ${selected ? 'text-brand-600' : 'text-muted-foreground/40 group-hover:text-foreground'}`} aria-hidden />
     </div>
   )
 
-  const base = 'block rounded-xl border border-border/60 bg-card p-3.5'
-  if (actor.href) {
-    return (
-      <li>
-        <Link href={actor.href} className={`group ${base} transition-colors hover:border-brand-200/70 hover:bg-brand-50/30 dark:hover:bg-brand-600/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>
-          {inner}
-        </Link>
-      </li>
-    )
-  }
-  return <li className={base}>{inner}</li>
+  // Ligne SÉLECTIONNABLE (maître-détail) : le clic met à jour l'aperçu de droite,
+  // il ne navigue plus. La navigation vers la fiche complète se fait depuis l'aperçu.
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-current={selected ? 'true' : undefined}
+        className={`group block w-full rounded-xl border p-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+          selected
+            ? 'border-brand-300 bg-brand-50/50 dark:border-brand-700/60 dark:bg-brand-600/10'
+            : 'border-border/60 bg-card hover:border-brand-200/70 hover:bg-brand-50/30 dark:hover:bg-brand-600/5'
+        }`}
+      >
+        {inner}
+      </button>
+    </li>
+  )
 }
