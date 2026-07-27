@@ -14,6 +14,7 @@ import { attentionLevelLabel, type AttentionLevel } from '@/lib/knowledge/actor-
 import { ActorPreviewPanel } from './ActorPreviewPanel'
 import { loadActorPreview } from './preview-actions'
 import type { ActorPreview } from './preview-types'
+import { AddIntervenantDialog } from './AddIntervenantDialog'
 
 type Tab = 'all' | 'person' | 'company' | 'team'
 
@@ -80,7 +81,7 @@ function compareActors(a: CockpitActor, b: CockpitActor): number {
   return a.name.localeCompare(b.name, 'fr')
 }
 
-export function ActorsCockpitView({ directory }: { directory: ActorsCockpit }) {
+export function ActorsCockpitView({ directory, teams }: { directory: ActorsCockpit; teams: Array<{ id: string; name: string }> }) {
   const [tab, setTab] = useState<Tab>('all')
   const [query, setQuery] = useState('')
   const [alertsOnly, setAlertsOnly] = useState(false)
@@ -135,14 +136,17 @@ export function ActorsCockpitView({ directory }: { directory: ActorsCockpit }) {
 
   return (
     <div className="space-y-5 w-full">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
-          <Users className="h-6 w-6 text-brand-600" />
-          Intervenants
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Qui agit sur les chantiers, avec qui, où, et qu&apos;attend-on de lui — personnes, entreprises et équipes.
-        </p>
+      <header className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
+            <Users className="h-6 w-6 text-brand-600" />
+            Intervenants
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Qui agit sur les chantiers, avec qui, où, et qu&apos;attend-on de lui — personnes, entreprises et équipes.
+          </p>
+        </div>
+        <AddIntervenantDialog teams={teams} />
       </header>
 
       {/* ATTENTION d'abord — ce qui appelle une décision, pas du volume. Chaque

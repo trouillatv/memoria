@@ -11,6 +11,7 @@ import { notFound, redirect } from 'next/navigation'
 import { checkIntervenantsPageAccess } from '@/lib/intervenants/access'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getActorsCockpit } from '@/lib/db/actors-cockpit'
+import { listTeams } from '@/lib/db/teams'
 import { ActorsCockpitView } from './ActorsCockpitView'
 
 export const dynamic = 'force-dynamic'
@@ -24,7 +25,9 @@ export default async function IntervenantsListPage() {
   if (!access.access.isPrivileged) notFound()
 
   const orgIds = await getOrgIdsOfUser()
-  const directory = await getActorsCockpit(orgIds)
+  const [directory, teams] = await Promise.all([getActorsCockpit(orgIds), listTeams()])
+  // Équipes de l'org pour le rattachement facultatif à la création d'un intervenant.
+  const teamOptions = teams.map((t) => ({ id: t.id, name: t.name }))
 
-  return <ActorsCockpitView directory={directory} />
+  return <ActorsCockpitView directory={directory} teams={teamOptions} />
 }

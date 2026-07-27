@@ -68,7 +68,7 @@ vi.mock('@/lib/supabase/admin', () => ({
   }),
 }))
 
-import { createFieldPersonInTeam, attachContactToTeam } from '@/lib/db/team-field-members'
+import { createFieldPersonInTeam, attachContactToTeam, createOrgFieldPerson } from '@/lib/db/team-field-members'
 
 beforeEach(() => {
   teamRow = { organization_id: 'org-demo' }
@@ -144,6 +144,48 @@ describe('createFieldPersonInTeam', () => {
   it('refuse si l’appelant n’est pas membre de l’organisation de l’équipe', async () => {
     membership = { ok: false, error: 'Accès organisation refusé' }
     const res = await createFieldPersonInTeam({ teamId: 't-1', fullName: 'M. X', createdBy: 'u-1' })
+    expect(res.ok).toBe(false)
+    expect(inserts).toHaveLength(0)
+  })
+})
+
+describe('createOrgFieldPerson — création transversale (équipe facultative)', () => {
+  it('crée une personne SANS équipe (une personne peut exister seule)', async () => {
+    const res = await createOrgFieldPerson({ orgId: 'org-demo', fullName: 'Marie', isInternalAgent: true, createdBy: 'u-1' })
+    expect(res).toEqual({ ok: true, contactId: 'contact-1', teamsFailed: [] })
+    const contact = inserts.find((i) => i.table === 'company_contacts')!
+    expect(contact.payload.organization_id).toBe('org-demo')
+    expect(contact.payload.is_internal_agent).toBe(true)
+    expect(inserts.find((i) => i.table === 'team_field_members'), 'aucun rattachement').toBeUndefined()
+  })
+
+  it('classe en CONTACT EXTERNE quand demandé, entreprise via geste canonique', async () => {
+    const res = await createOrgFieldPerson({ orgId: 'org-demo', fullName: 'Paul', isInternalAgent: false, companyName: 'PAVE', createdBy: 'u-1' })
+    expect(res.ok).toBe(true)
+    const contact = inserts.find((i) => i.table === 'company_contacts')!
+    expect(contact.payload.is_internal_agent).toBe(false)
+    expect(findOrCreateCompanyByName).toHaveBeenCalledWith('org-demo', 'PAVE')
+    expect(contact.payload.company_id).toBe('company-1')
+  })
+
+  it('rattache aux équipes demandées (dédupliquées)', async () => {
+    const res = await createOrgFieldPerson({ orgId: 'org-demo', fullName: 'Marie', isInternalAgent: true, teamIds: ['t-1', 't-2', 't-1'], createdBy: 'u-1' })
+    expect(res.ok).toBe(true)
+    if (res.ok) expect(res.teamsFailed).toEqual([])
+    expect(inserts.filter((i) => i.table === 'team_field_members')).toHaveLength(2) // t-1 dédupliqué
+  })
+
+  it('un rattachement d’équipe qui échoue ne SUPPRIME PAS la personne (elle vit seule)', async () => {
+    edgeInsertError = { message: 'duplicate key value violates uq_team_field_members_active' }
+    const res = await createOrgFieldPerson({ orgId: 'org-demo', fullName: 'Marie', isInternalAgent: true, teamIds: ['t-1'], createdBy: 'u-1' })
+    expect(res.ok).toBe(true)
+    if (res.ok) expect(res.teamsFailed).toEqual(['t-1'])
+    expect(deletes.find((d) => d.table === 'company_contacts'), 'personne conservée').toBeUndefined()
+  })
+
+  it('refuse si l’appelant n’est pas membre de l’organisation — fail-closed', async () => {
+    membership = { ok: false, error: 'Accès organisation refusé' }
+    const res = await createOrgFieldPerson({ orgId: 'org-demo', fullName: 'Marie', isInternalAgent: true, createdBy: 'u-1' })
     expect(res.ok).toBe(false)
     expect(inserts).toHaveLength(0)
   })

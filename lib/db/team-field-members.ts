@@ -115,6 +115,69 @@ export async function createFieldPersonInTeam(input: {
   return { ok: true, contactId: contact.id }
 }
 
+export type CreateOrgPersonResult =
+  | { ok: true; contactId: string; teamsFailed: string[] }
+  | { ok: false; error: string }
+
+/**
+ * Crée une personne métier (SANS compte) au niveau de l'ORGANISATION, avec
+ * rattachement à zéro, une ou plusieurs équipes — le parcours transversal « Ajouter
+ * un intervenant » depuis la surface Acteurs, sans passer par une équipe précise.
+ *
+ * Règles préservées : une personne peut exister SANS équipe ; le rattachement à une
+ * équipe réutilise le geste sûr `attachContactToTeam` (org + trigger tenant). Un
+ * rattachement d'équipe qui échoue n'annule PAS la personne (elle peut vivre seule) —
+ * les équipes en échec sont remontées à l'appelant. Aucun compte Auth, aucun rôle.
+ */
+export async function createOrgFieldPerson(input: {
+  orgId: string
+  fullName: string
+  job?: string | null
+  companyName?: string | null
+  email?: string | null
+  phone?: string | null
+  isInternalAgent: boolean
+  teamIds?: string[]
+  createdBy: string | null
+}): Promise<CreateOrgPersonResult> {
+  const db = createAdminClient()
+  const membership = await requireOrganizationMembership(input.orgId)
+  if (!membership.ok) return { ok: false, error: membership.error }
+
+  const fullName = input.fullName.trim()
+  if (!fullName) return { ok: false, error: 'Le nom est requis' }
+
+  // Entreprise éventuelle : geste canonique (dédup par nom normalisé, scopé org).
+  let companyId: string | null = null
+  const companyName = input.companyName?.trim()
+  if (companyName) companyId = await findOrCreateCompanyByName(input.orgId, companyName)
+
+  const { data: contact, error: contactErr } = await db
+    .from('company_contacts')
+    .insert({
+      organization_id: input.orgId,
+      company_id: companyId,
+      full_name: fullName,
+      function: input.job?.trim() || null,
+      email: input.email?.trim() || null,
+      phone: input.phone?.trim() || null,
+      is_internal_agent: input.isInternalAgent,
+    })
+    .select('id')
+    .single()
+  if (contactErr || !contact) {
+    return { ok: false, error: contactErr?.message ?? 'Création de la personne impossible' }
+  }
+
+  // Rattachements facultatifs — best-effort, la personne existe indépendamment.
+  const teamsFailed: string[] = []
+  for (const teamId of [...new Set(input.teamIds ?? [])]) {
+    const res = await attachContactToTeam({ teamId, contactId: contact.id, createdBy: input.createdBy })
+    if (!res.ok) teamsFailed.push(teamId)
+  }
+  return { ok: true, contactId: contact.id, teamsFailed }
+}
+
 /**
  * Rattache une personne DÉJÀ existante à l'équipe (sans la recréer) — le geste
  * « rechercher un agent existant » du parcours. Vérifie que le contact et
