@@ -21,7 +21,8 @@ export type AttentionCode =
   | 'company_left_casting'     // attention (entreprise) — responsable mais sortie du casting
   // équipe
   | 'team_empty_but_assigned'  // attention — affectée à un chantier mais sans aucun membre
-  | 'team_no_field_member'     // attention — équipe active sans personne terrain
+  | 'team_no_member'           // attention — équipe sans aucun membre (même non affectée)
+  | 'team_no_field_member'     // attention — a des comptes mais aucune personne terrain
   | 'member_orphan_actions'    // attention — un membre porte des actions sur un chantier quitté
 
 export interface AttentionReason {
@@ -59,7 +60,9 @@ export type ActorFacts =
       kind: 'team'
       /** Affectée à au moins un chantier mais aucun membre (connecté ou terrain). */
       emptyButAssigned: boolean
-      /** Active mais sans aucun agent terrain (peut avoir des comptes connectés). */
+      /** Aucun membre du tout (connecté ni terrain), même sans affectation. */
+      noMembers: boolean
+      /** A des comptes connectés mais aucune personne terrain (et l'équipe est active). */
       activeWithoutFieldMember: boolean
       /** Actions portées par des membres sur un chantier dont l'équipe est sortie. */
       memberOrphanActions: number
@@ -104,10 +107,12 @@ export function deriveActorAttentionState(facts: ActorFacts): AttentionState {
     if (facts.memberOrphanActions > 0) {
       reasons.push({ level: 'attention', code: 'member_orphan_actions', count: facts.memberOrphanActions, label: plural(facts.memberOrphanActions, 'action') + ' portée' + (facts.memberOrphanActions > 1 ? 's' : '') + ' hors casting' })
     }
+    // Cascade du plus spécifique au plus général — une seule raison de composition.
     if (facts.emptyButAssigned) {
       reasons.push({ level: 'attention', code: 'team_empty_but_assigned', count: 1, label: 'Affectée mais vide' })
+    } else if (facts.noMembers) {
+      reasons.push({ level: 'attention', code: 'team_no_member', count: 1, label: 'Aucun membre' })
     } else if (facts.activeWithoutFieldMember) {
-      // 'empty_but_assigned' est plus spécifique ; on n'ajoute 'no_field_member' que sinon.
       reasons.push({ level: 'attention', code: 'team_no_field_member', count: 1, label: 'Aucun agent terrain' })
     }
   }

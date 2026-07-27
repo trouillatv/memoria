@@ -125,11 +125,12 @@ describe('buildActorsCockpit', () => {
     expect(t.href).toBe('/equipes/t1')
   })
 
-  it('équipe vide et non affectée → état à jour (rien d\'opérationnel ne bloque)', () => {
+  it('équipe vide et non affectée → à surveiller · Aucun membre (jamais « à jour »)', () => {
     const d = buildActorsCockpit({ ...base(), teams: [{ id: 't1', name: 'Gros œuvre' }] })
     const t = d.actors.find((a) => a.id === 't1')!
     expect(t.status).toBe('incomplete')
-    expect(t.attention.level).toBe('ok')
+    expect(t.attention.level).toBe('attention')
+    expect(codes(t)).toEqual(['team_no_member'])
   })
 
   it('dédup compte↔contact : un user avec le même e-mail qu\'un contact n\'est pas double-compté', () => {

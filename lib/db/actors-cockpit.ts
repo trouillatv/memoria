@@ -208,6 +208,7 @@ export function buildActorsCockpit(input: ActorsCockpitInputs): ActorsCockpit {
     const attention = deriveActorAttentionState({
       kind: 'team',
       emptyButAssigned: members === 0 && affected,
+      noMembers: members === 0,
       activeWithoutFieldMember: active && agentIds.size === 0,
       memberOrphanActions: 0, // détail par membre reporté à la fiche Équipe (2B.3C)
     })

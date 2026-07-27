@@ -45,13 +45,27 @@ export default async function CompanyFichePage({ params }: { params: Promise<{ c
               <AttentionBadge level={fiche.attention.level} />
               {fiche.isArchived && <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Archivée</span>}
             </div>
-            {/* 3 faits principaux. */}
-            <p className="mt-1 text-sm text-muted-foreground">
+            {/* FAITS OPÉRATIONNELS d'abord (prominents). */}
+            <p className="mt-1.5 text-sm font-medium text-foreground/90">
+              {fiche.openCount > 0 ? (
+                <>
+                  {fiche.openCount} action{fiche.openCount > 1 ? 's' : ''} ouverte{fiche.openCount > 1 ? 's' : ''}
+                  {fiche.overdueCount > 0 && <span className="text-red-700 dark:text-red-400"> · {fiche.overdueCount} en retard</span>}
+                  {fiche.noReferentCount > 0 && <span className="text-amber-700 dark:text-amber-400"> · {fiche.noReferentCount} sans référent</span>}
+                  <span className="text-muted-foreground font-normal"> · {fiche.activeSitesCount} chantier{fiche.activeSitesCount > 1 ? 's' : ''} actif{fiche.activeSitesCount > 1 ? 's' : ''}</span>
+                </>
+              ) : fiche.activeSitesCount > 0 ? (
+                <>{fiche.activeSitesCount} chantier{fiche.activeSitesCount > 1 ? 's' : ''} actif{fiche.activeSitesCount > 1 ? 's' : ''}<span className="text-muted-foreground font-normal"> · aucune action ouverte</span></>
+              ) : (
+                <span className="text-muted-foreground font-normal">Aucun chantier actif ni action ouverte</span>
+              )}
+            </p>
+            {/* Phrase de synthèse (discrète). */}
+            <p className="mt-0.5 text-xs text-muted-foreground">
               {[
                 fiche.activeRoles.length ? fiche.activeRoles.join(', ') : null,
-                `${fiche.activeSitesCount} chantier${fiche.activeSitesCount > 1 ? 's' : ''} actif${fiche.activeSitesCount > 1 ? 's' : ''}`,
-                `${fiche.openCount} action${fiche.openCount > 1 ? 's' : ''} ouverte${fiche.openCount > 1 ? 's' : ''}`,
-                fiche.noReferentCount > 0 ? `${fiche.noReferentCount} sans référent` : null,
+                fiche.activeCasting[0] ? `Intervient sur ${fiche.activeCasting[0].siteName}` : null,
+                `${fiche.contacts.length} contact${fiche.contacts.length > 1 ? 's' : ''} connu${fiche.contacts.length > 1 ? 's' : ''}`,
               ].filter(Boolean).join(' · ')}
             </p>
             {fiche.attention.reasons.length > 0 && (

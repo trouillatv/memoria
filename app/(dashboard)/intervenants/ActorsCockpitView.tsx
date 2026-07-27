@@ -37,12 +37,13 @@ const STATUS_LABEL: Record<ActorStatus, string> = {
 /** Rang de sévérité pour le tri (urgent d'abord). */
 const LEVEL_ORDER: Record<AttentionLevel, number> = { urgent: 0, attention: 1, ok: 2 }
 
-/** Pastille d'état d'attention — décrit la situation opérationnelle, ne juge pas l'acteur. */
+/** Pastille d'état d'attention — décrit la situation opérationnelle, ne juge pas l'acteur.
+ *  « À jour » reste discret (contour gris) ; couleur forte réservée aux problèmes. */
 function AttentionBadge({ level }: { level: AttentionLevel }) {
   if (level === 'ok') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
-        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> {attentionLevelLabel(level)}
+      <span className="inline-flex items-center gap-1 rounded-md border border-border/70 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+        {attentionLevelLabel(level)}
       </span>
     )
   }
@@ -204,18 +205,27 @@ function AttentionCard({ tone, value, label, onClick }: { tone: 'red' | 'amber';
     ? 'border-red-300/70 bg-red-50/60 text-red-900 dark:border-red-800/50 dark:bg-red-950/25 dark:text-red-200'
     : 'border-amber-300/70 bg-amber-50/60 text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/25 dark:text-amber-200'
   const dot = tone === 'red' ? 'bg-red-500' : 'bg-amber-500'
-  const inner = (
-    <>
+  const cls = `flex items-center gap-2 rounded-lg border px-3 py-2 ${palette}`
+  if (onClick) {
+    // Chaque alerte navigable devient un APPEL À L'ACTION (« Voir → »).
+    return (
+      <button type="button" onClick={onClick} className={`group ${cls} transition-shadow hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>
+        <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
+        <span className="text-lg font-semibold tabular-nums leading-none">{value}</span>
+        <span className="text-xs leading-tight opacity-90">{label}</span>
+        <span className="ml-1 inline-flex items-center gap-0.5 text-xs font-medium opacity-70 transition-opacity group-hover:opacity-100">
+          Voir <ArrowRight className="h-3 w-3" aria-hidden />
+        </span>
+      </button>
+    )
+  }
+  return (
+    <div className={cls} title="Aucun acteur à ouvrir directement — traiter sur le chantier concerné">
       <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
       <span className="text-lg font-semibold tabular-nums leading-none">{value}</span>
       <span className="text-xs leading-tight opacity-90">{label}</span>
-    </>
+    </div>
   )
-  const cls = `flex items-center gap-2 rounded-lg border px-3 py-2 ${palette}`
-  if (onClick) {
-    return <button type="button" onClick={onClick} className={`${cls} transition-shadow hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>{inner}</button>
-  }
-  return <div className={cls} title="Aucun acteur à ouvrir directement — traiter sur le chantier concerné">{inner}</div>
 }
 
 function VolumeLink({ value, label, onClick }: { value: number; label: string; onClick: () => void }) {
@@ -252,14 +262,14 @@ function ActorRow({ actor }: { actor: CockpitActor }) {
             </span>
           )}
         </div>
-        {actor.subtitle && <div className="mt-0.5 text-xs text-muted-foreground truncate">{actor.subtitle}</div>}
+        {/* Faits opérationnels D'ABORD (avant la biographie) — c'est ce qu'on lit en premier. */}
         {(actor.openActions > 0 || actor.attention.reasons.length > 0) && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
             {actor.openActions > 0 && (
-              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground tabular-nums">
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-foreground/80 tabular-nums">
                 {actor.openActions} action{actor.openActions > 1 ? 's' : ''} ouverte{actor.openActions > 1 ? 's' : ''}
                 {actor.overdueActions > 0 && (
-                  <span className="inline-flex items-center gap-0.5 text-amber-700 dark:text-amber-400">
+                  <span className="inline-flex items-center gap-0.5 text-red-700 dark:text-red-400">
                     <Clock className="h-3 w-3" aria-hidden /> {actor.overdueActions} en retard
                   </span>
                 )}
@@ -273,6 +283,8 @@ function ActorRow({ actor }: { actor: CockpitActor }) {
             ))}
           </div>
         )}
+        {/* Biographie ENSUITE, discrète. */}
+        {actor.subtitle && <div className="mt-0.5 text-xs text-muted-foreground truncate">{actor.subtitle}</div>}
       </div>
       {actor.href && <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-foreground transition-colors" aria-hidden />}
     </div>

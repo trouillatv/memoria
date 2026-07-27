@@ -6,12 +6,14 @@ import Link from 'next/link'
 import { ArrowRight, AlertTriangle } from 'lucide-react'
 import { attentionLevelLabel, type AttentionLevel } from '@/lib/knowledge/actor-attention'
 
-/** Pastille d'état — décrit la situation opérationnelle, ne juge jamais l'acteur. */
+/** Pastille d'état — décrit la situation opérationnelle, ne juge jamais l'acteur.
+ *  « À jour » reste DISCRET (contour gris) : la couleur forte est réservée aux
+ *  problèmes (orange/rouge) pour que l'œil aille droit à ce qui compte. */
 export function AttentionBadge({ level }: { level: AttentionLevel }) {
   if (level === 'ok') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
-        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> {attentionLevelLabel(level)}
+      <span className="inline-flex items-center gap-1 rounded-md border border-border/70 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+        {attentionLevelLabel(level)}
       </span>
     )
   }

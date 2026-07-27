@@ -55,14 +55,27 @@ export default async function PersonFichePage({ params }: { params: Promise<{ co
                 <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{STATUS_LABEL[fiche.status]}</span>
               )}
             </div>
-            {/* 3 faits principaux — identité + faits saillants, sans ouvrir le détail. */}
-            <p className="mt-1 text-sm text-muted-foreground">
+            {/* FAITS OPÉRATIONNELS d'abord (prominents) — la règle des 5 secondes. */}
+            <p className="mt-1.5 text-sm font-medium text-foreground/90">
+              {fiche.actionsAsReferent.length > 0 ? (
+                <>
+                  {fiche.actionsAsReferent.length} action{fiche.actionsAsReferent.length > 1 ? 's' : ''} ouverte{fiche.actionsAsReferent.length > 1 ? 's' : ''}
+                  {fiche.overdueCount > 0 && <span className="text-red-700 dark:text-red-400"> · {fiche.overdueCount} en retard</span>}
+                  {activeCasting.length > 0 && <span className="text-muted-foreground font-normal"> · {activeCasting.length} chantier{activeCasting.length > 1 ? 's' : ''}</span>}
+                </>
+              ) : activeCasting.length > 0 ? (
+                <>{activeCasting.length} chantier{activeCasting.length > 1 ? 's' : ''} en cours<span className="text-muted-foreground font-normal"> · aucune action ouverte</span></>
+              ) : (
+                <span className="text-muted-foreground font-normal">Aucune action ni chantier en cours</span>
+              )}
+            </p>
+            {/* Phrase de synthèse (biographie, discrète) — ce qu'elle EST, après ce qu'elle FAIT. */}
+            <p className="mt-0.5 text-xs text-muted-foreground">
               {[
-                fiche.category,
+                fiche.companyName ? `${fiche.category} de ${fiche.companyName}` : fiche.category,
                 fiche.function,
-                fiche.companyName,
                 activeTeams[0] ? `Équipe ${activeTeams[0].name}` : null,
-                activeCasting.length ? `${activeCasting.length} chantier${activeCasting.length > 1 ? 's' : ''}` : null,
+                activeCasting[0] ? `Intervient sur ${activeCasting[0].siteName}` : null,
               ].filter(Boolean).join(' · ')}
             </p>
             {/* Raisons de l'état — toujours explicites, jamais un niveau seul. */}
