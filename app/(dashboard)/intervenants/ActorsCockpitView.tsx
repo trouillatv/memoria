@@ -113,6 +113,16 @@ export function ActorsCockpitView({ directory, teams, graph, focusId, view }: {
     setAlertsOnly(onlyAlerts)
   }
 
+  // Navigation DANS le réseau (clic sur un nœud du graphe embarqué) : on RECONFIGURE la
+  // page en place (fiche + graphe) et on réinitialise le filtre pour que la cible soit
+  // visible dans la liste, y compris si elle est d'un autre type ou historique.
+  const selectActor = (kind: 'person' | 'company' | 'team', id: string) => {
+    setTab('all')
+    setAlertsOnly(false)
+    setQuery('')
+    setSelectedKey(`${kind}:${id}`)
+  }
+
   // Sélection EFFECTIVE dérivée au rendu (pas d'effet) : par défaut le 1er acteur du
   // filtre courant, comme la maquette ; sinon le choix de l'utilisateur s'il est encore visible.
   const effectiveKey = useMemo(() => {
@@ -262,7 +272,7 @@ export function ActorsCockpitView({ directory, teams, graph, focusId, view }: {
           </ul>
           <div className="lg:col-span-3">
             <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-1.5rem)] lg:overflow-y-auto lg:pr-1">
-              <ActorPreviewPanel actor={selectedActor} preview={previewData} loading={loading} />
+              <ActorPreviewPanel actor={selectedActor} preview={previewData} loading={loading} onSelectActor={selectActor} />
             </div>
           </div>
         </div>

@@ -5,9 +5,18 @@ import { Building2, MapPin, User, ArrowRight, Clock, Mail, Phone, Globe } from '
 import type { CompanyFiche } from '@/lib/db/company-fiche'
 import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
 import { AttentionBadge, FicheSection, FicheLinkRow, FicheEmpty } from './fiche-ui'
-import { ActorsGraphCanvas } from './graph/ActorsGraphCanvas'
+import { ActorsGraphCanvas, type SelectableKind } from './graph/ActorsGraphCanvas'
 
-export function CompanyFicheBody({ fiche, network }: { fiche: CompanyFiche; network?: ActorsGraph | null }) {
+export function CompanyFicheBody({ fiche, network, onSelectActor }: {
+  fiche: CompanyFiche
+  network?: ActorsGraph | null
+  onSelectActor?: (kind: SelectableKind, id: string) => void
+}) {
+  const networkSummary = [
+    fiche.activeSitesCount ? `intervient sur ${fiche.activeSitesCount} chantier${fiche.activeSitesCount > 1 ? 's' : ''}` : null,
+    fiche.contacts.length ? `${fiche.contacts.length} contact${fiche.contacts.length > 1 ? 's' : ''}` : null,
+    fiche.openCount ? `responsable de ${fiche.openCount} action${fiche.openCount > 1 ? 's' : ''} ouverte${fiche.openCount > 1 ? 's' : ''}` : null,
+  ].filter(Boolean).join(' · ')
   return (
     <div className="space-y-5">
       {/* ── SITUATION ACTUELLE — carte de synthèse ──────────────────────────────── */}
@@ -110,10 +119,11 @@ export function CompanyFicheBody({ fiche, network }: { fiche: CompanyFiche; netw
         </FicheSection>
       )}
 
-      {/* ── RÉSEAU — graphe centré, directement dans la fiche ─────────────────────── */}
+      {/* ── RÉSEAU DE COLLABORATION — graphe centré, directement dans la fiche ─────── */}
       {network && network.nodes.length > 1 && (
-        <FicheSection title="Réseau">
-          <ActorsGraphCanvas graph={network} focusId={`co_${fiche.id}`} heightClass="h-[420px]" />
+        <FicheSection title="Réseau de collaboration">
+          {networkSummary && <p className="mb-2.5 text-xs text-muted-foreground"><span className="font-medium text-foreground/80">{fiche.name}</span> {networkSummary}.</p>}
+          <ActorsGraphCanvas graph={network} focusId={`co_${fiche.id}`} heightClass="h-[420px]" onSelectActor={onSelectActor} />
         </FicheSection>
       )}
     </div>

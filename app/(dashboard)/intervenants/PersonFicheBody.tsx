@@ -8,15 +8,27 @@ import { User, Building2, Users, MapPin, ArrowRight, Clock, Mail, Phone, KeyRoun
 import type { PersonFiche } from '@/lib/db/person-fiche'
 import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
 import { AttentionBadge, FicheSection, FicheRow, FicheLinkRow, FicheEmpty } from './fiche-ui'
-import { ActorsGraphCanvas } from './graph/ActorsGraphCanvas'
+import { ActorsGraphCanvas, type SelectableKind } from './graph/ActorsGraphCanvas'
 
 const STATUS_LABEL = { active: 'Actif', incomplete: 'Incomplet', historical: 'Historique' } as const
 
-export function PersonFicheBody({ fiche, network }: { fiche: PersonFiche; network?: ActorsGraph | null }) {
+export function PersonFicheBody({ fiche, network, onSelectActor }: {
+  fiche: PersonFiche
+  network?: ActorsGraph | null
+  onSelectActor?: (kind: SelectableKind, id: string) => void
+}) {
   const activeTeams = fiche.teams.filter((t) => t.active)
   const historicalTeams = fiche.teams.filter((t) => !t.active)
   const activeCasting = fiche.casting.filter((c) => c.active)
   const historicalCasting = fiche.casting.filter((c) => !c.active)
+
+  const nRef = fiche.actionsAsReferent.length
+  const networkSummary = [
+    fiche.companyName ? `travaille chez ${fiche.companyName}` : null,
+    activeTeams[0] ? `dans l’équipe ${activeTeams[0].name}` : null,
+    activeCasting.length ? `intervient sur ${activeCasting.length} chantier${activeCasting.length > 1 ? 's' : ''}` : null,
+    nRef ? `référent${fiche.category === 'Agent interne' ? '' : 'e'} de ${nRef} action${nRef > 1 ? 's' : ''} ouverte${nRef > 1 ? 's' : ''}` : null,
+  ].filter(Boolean).join(' · ')
 
   return (
     <div className="space-y-5">
@@ -126,10 +138,11 @@ export function PersonFicheBody({ fiche, network }: { fiche: PersonFiche; networ
         </FicheSection>
       )}
 
-      {/* ── RÉSEAU — graphe centré, directement dans la fiche (pas de page intermédiaire) ── */}
+      {/* ── RÉSEAU DE COLLABORATION — graphe centré, directement dans la fiche ── */}
       {network && network.nodes.length > 1 && (
-        <FicheSection title="Réseau">
-          <ActorsGraphCanvas graph={network} focusId={`p_${fiche.id}`} heightClass="h-[420px]" />
+        <FicheSection title="Réseau de collaboration">
+          {networkSummary && <p className="mb-2.5 text-xs text-muted-foreground"><span className="font-medium text-foreground/80">{fiche.name}</span> {networkSummary}.</p>}
+          <ActorsGraphCanvas graph={network} focusId={`p_${fiche.id}`} heightClass="h-[420px]" onSelectActor={onSelectActor} />
         </FicheSection>
       )}
     </div>

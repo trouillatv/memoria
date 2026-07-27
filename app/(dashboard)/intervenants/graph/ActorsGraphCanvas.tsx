@@ -14,12 +14,24 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import type { ActorsGraph, ActorGraphKind, ActorGraphNode } from '@/lib/knowledge/actors-graph'
+
+export type SelectableKind = 'person' | 'company' | 'team'
 
 // ── Config propre aux ACTEURS (le reste du fichier est générique) ────────────
 const LEVEL_COLOR = { urgent: '#dc2626', attention: '#f59e0b', ok: '#3b82f6' } as const
 const HISTORICAL_COLOR = '#94a3b8'
-const SIZE: Record<ActorGraphKind, number> = { site: 22, company: 16, team: 15, person: 12, action: 9 }
+// Hiérarchie visuelle (Vincent) : entreprise > chantier > personne = équipe > action.
+const SIZE: Record<ActorGraphKind, number> = { company: 24, site: 19, person: 14, team: 14, action: 9 }
+
+function distToSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax, dy = by - ay
+  const len2 = dx * dx + dy * dy || 1
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2
+  t = Math.max(0, Math.min(1, t))
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+}
 const KIND_LABEL: Record<ActorGraphKind, string> = { person: 'Personne', company: 'Entreprise', team: 'Équipe', site: 'Chantier', action: 'Action' }
 
 function nodeColor(n: ActorGraphNode): string {
@@ -41,7 +53,15 @@ function nodeHref(n: ActorGraphNode): string | null {
 
 type Pt = { x: number; y: number; vx: number; vy: number }
 
-export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]' }: { graph: ActorsGraph; focusId?: string | null; heightClass?: string }) {
+export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', onSelectActor }: {
+  graph: ActorsGraph
+  focusId?: string | null
+  heightClass?: string
+  /** Fourni par le panneau maître-détail : cliquer un acteur RECONFIGURE la page en place
+   *  (fiche + graphe) au lieu de naviguer. Absent (page dédiée) → navigation classique. */
+  onSelectActor?: (kind: SelectableKind, id: string) => void
+}) {
+  const router = useRouter()
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pos = useRef<Map<string, Pt>>(new Map())
@@ -51,6 +71,9 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]' }: 
   const [selected, setSelected] = useState<ActorGraphNode | null>(null)
   const selectedRef = useRef<string | null>(null)
   const hoverRef = useRef<string | null>(null)
+  const hoverEdgeRef = useRef<number | null>(null)
+  const onSelectRef = useRef(onSelectActor)
+  useEffect(() => { onSelectRef.current = onSelectActor }, [onSelectActor])
 
   const nodeById = new Map(graph.nodes.map((n) => [n.id, n]))
   const adjacency = useRef<Map<string, Set<string>>>(new Map())
@@ -167,22 +190,27 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]' }: 
       const focus = sel ?? hov
       const neigh = focus ? adjacency.current.get(focus) : null
 
-      // Arêtes.
-      for (const e of graph.edges) {
+      // Arêtes — les LIENS PARLENT : libellé de relation au voisinage du nœud focalisé
+      // ET au survol direct du lien (« travaille chez », « intervient sur »…).
+      const hoverEdge = hoverEdgeRef.current
+      graph.edges.forEach((e, i) => {
         const a = pos.current.get(e.a), b = pos.current.get(e.b)
-        if (!a || !b) continue
-        const on = focus && (e.a === focus || e.b === focus)
+        if (!a || !b) return
+        const on = (focus && (e.a === focus || e.b === focus)) || i === hoverEdge
         ctx.strokeStyle = on ? '#475569' : '#e2e8f0'
-        ctx.lineWidth = on ? 1.6 : 1
+        ctx.lineWidth = on ? 1.8 : 1
         ctx.beginPath(); ctx.moveTo(sx(a.x), sy(a.y)); ctx.lineTo(sx(b.x), sy(b.y)); ctx.stroke()
-        // Libellé de relation seulement au voisinage du nœud focalisé (lisibilité).
         if (on) {
-          ctx.fillStyle = '#64748b'
+          const mx = (sx(a.x) + sx(b.x)) / 2, my = (sy(a.y) + sy(b.y)) / 2
           ctx.font = '10px system-ui, sans-serif'
           ctx.textAlign = 'center'
-          ctx.fillText(e.label, (sx(a.x) + sx(b.x)) / 2, (sy(a.y) + sy(b.y)) / 2 - 3)
+          const tw = ctx.measureText(e.label).width
+          ctx.fillStyle = 'rgba(255,255,255,0.9)'
+          ctx.fillRect(mx - tw / 2 - 3, my - 13, tw + 6, 13)
+          ctx.fillStyle = '#475569'
+          ctx.fillText(e.label, mx, my - 3)
         }
-      }
+      })
 
       // Nœuds.
       for (const n of graph.nodes) {
@@ -224,6 +252,16 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]' }: 
       }
       return best
     }
+    const hitEdge = (wx: number, wy: number): number | null => {
+      let best = -1; let bestD = 8 / view.current.k
+      graph.edges.forEach((e, i) => {
+        const a = pos.current.get(e.a), b = pos.current.get(e.b)
+        if (!a || !b) return
+        const d = distToSeg(wx, wy, a.x, a.y, b.x, b.y)
+        if (d < bestD) { bestD = d; best = i }
+      })
+      return best >= 0 ? best : null
+    }
     const onDown = (ev: PointerEvent) => {
       canvas.setPointerCapture(ev.pointerId)
       const { x, y } = toWorld(ev.clientX, ev.clientY)
@@ -232,7 +270,13 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]' }: 
     }
     const onMove = (ev: PointerEvent) => {
       const { x, y } = toWorld(ev.clientX, ev.clientY)
-      if (!drag.current) { hoverRef.current = hitNode(x, y); canvas.style.cursor = hoverRef.current ? 'pointer' : 'grab'; return }
+      if (!drag.current) {
+        const hn = hitNode(x, y)
+        hoverRef.current = hn
+        hoverEdgeRef.current = hn ? null : hitEdge(x, y)
+        canvas.style.cursor = hn || hoverEdgeRef.current != null ? 'pointer' : 'grab'
+        return
+      }
       const dxs = ev.clientX - drag.current.sx, dys = ev.clientY - drag.current.sy
       if (Math.abs(dxs) + Math.abs(dys) > 3) drag.current.moved = true
       if (drag.current.id) {
@@ -247,8 +291,18 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]' }: 
       drag.current = null
       if (!d) return
       if (!d.moved) {
-        if (d.id) { selectedRef.current = d.id; setSelected(nodeById.get(d.id) ?? null) }
-        else { selectedRef.current = null; setSelected(null) }
+        const node = d.id ? nodeById.get(d.id) ?? null : null
+        if (node && (node.kind === 'person' || node.kind === 'company' || node.kind === 'team')) {
+          // NAVIGATION DANS LE RÉSEAU (effet « graphe de connaissances ») : dans le
+          // panneau, on RECONFIGURE la page en place ; sur la page dédiée, on navigue.
+          const raw = node.id.slice(node.id.indexOf('_') + 1)
+          if (onSelectRef.current) onSelectRef.current(node.kind, raw)
+          else { const h = nodeHref(node); if (h) router.push(h) }
+        } else if (node) {
+          selectedRef.current = node.id; setSelected(node) // chantier / action → panneau d'info
+        } else {
+          selectedRef.current = null; setSelected(null)
+        }
       }
       try { canvas.releasePointerCapture(ev.pointerId) } catch { /* noop */ }
     }
@@ -307,7 +361,7 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]' }: 
       )}
 
       <p className="pointer-events-none absolute bottom-3 left-3 text-[11px] text-muted-foreground">
-        Molette : zoom · glisser : déplacer · clic : sélectionner
+        Molette : zoom · glisser : déplacer · clic sur un acteur : y naviguer
       </p>
     </div>
   )
