@@ -27,6 +27,9 @@ export async function createSiteAction(input: {
   /** Responsable STRUCTUREL (personne) — mig 220. Le trigger DB garantit
    *  l'invariant tenant ; l'appelant garantit l'appartenance au casting. */
   assigned_contact_id?: string | null
+  /** Organisation responsable (mig 245). Trigger DB : même org, non archivée,
+   *  jamais le placeholder. Entreprise et/ou contact, au moins l'un facultatif. */
+  assigned_company_id?: string | null
   due_date?: string | null
   due_date_status?: 'explicit' | 'estimated' | null
   /** Action corrective rattachée à une réserve (migration 123). */
@@ -52,6 +55,7 @@ export async function createSiteAction(input: {
       corps_etat: input.corps_etat ?? null,
       assigned_to: input.assigned_to ?? null,
       assigned_contact_id: input.assigned_contact_id ?? null,
+      assigned_company_id: input.assigned_company_id ?? null,
       due_date: input.due_date ?? null,
       due_date_status: input.due_date_status ?? null,
       reserve_id: input.reserve_id ?? null,
@@ -82,6 +86,7 @@ export async function updateSiteAction(
     title?: string
     assigned_to?: string | null
     assigned_contact_id?: string | null
+    assigned_company_id?: string | null
     corps_etat?: string | null
     due_date?: string | null
     due_date_status?: 'explicit' | 'estimated' | null
@@ -101,6 +106,7 @@ export async function updateSiteAction(
   if (patch.title !== undefined) p_patch.title = patch.title
   if (patch.assigned_to !== undefined) p_patch.assigned_to = patch.assigned_to
   if (patch.assigned_contact_id !== undefined) p_patch.assigned_contact_id = patch.assigned_contact_id
+  if (patch.assigned_company_id !== undefined) p_patch.assigned_company_id = patch.assigned_company_id
   if (patch.corps_etat !== undefined) p_patch.corps_etat = patch.corps_etat
   if (patch.due_date !== undefined) p_patch.due_date = patch.due_date
   if (patch.due_date_status !== undefined) p_patch.due_date_status = patch.due_date_status

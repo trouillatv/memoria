@@ -17,7 +17,7 @@ import { getSiteReport } from '@/lib/db/site-reports'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { listSiteIntervenants, getRoleActorMap, listSiteContacts } from '@/lib/db/site-intervenants'
+import { listSiteIntervenants, getRoleActorMap, listSiteContacts, listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
 import { listSiteActionResponsibleCandidates } from '@/lib/knowledge/action-responsible-candidates'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { listReportFinalVersions } from '@/lib/db/report-final-versions'
@@ -78,9 +78,20 @@ export default async function PvValidationPage({ params, searchParams }: {
   const actionCodesBySource = new Map(
     pv.items.filter((i) => i.section === 'points_examines' && i.type === 'action').map((i) => [i.source, i.actionCodes ?? []]),
   )
+  // Entreprises candidates (Lot 2B.1) : casting actif, hors placeholder/archivées.
+  // Sert le sélecteur ET l'affichage : une entreprise responsable qui n'est plus
+  // candidate = « plus active sur ce chantier » (affectation historique).
+  const candidateCompanies = report.site_id ? await listSiteCandidateCompanies(report.site_id) : []
+  const companyNameById = new Map(candidateCompanies.map((c) => [c.id, c.name]))
   const actionRows: ActionRow[] = (await listSiteActionsByReport(id))
     .filter((a) => a.status !== 'cancelled')
-    .map((a) => ({ id: a.id, title: a.title, assignedTo: a.assigned_to ?? '', assignedContactId: a.assigned_contact_id ?? '', dueDate: a.due_date ?? '', corpsEtat: a.corps_etat ?? '', actionCodes: actionCodesBySource.get(a.id) ?? [] }))
+    .map((a) => ({
+      id: a.id, title: a.title, assignedTo: a.assigned_to ?? '', assignedContactId: a.assigned_contact_id ?? '',
+      assignedCompanyId: a.assigned_company_id ?? '',
+      // Nom si l'entreprise est encore au casting ; vide sinon → l'UI dira « historique ».
+      assignedCompanyName: a.assigned_company_id ? (companyNameById.get(a.assigned_company_id) ?? '') : '',
+      dueDate: a.due_date ?? '', corpsEtat: a.corps_etat ?? '', actionCodes: actionCodesBySource.get(a.id) ?? [],
+    }))
 
   // DÉCISIONS (mig 136) prises dans ce CR — mémoire durable, gérées dans leur bloc.
   const decisions = await listDecisionsByReport(id)
@@ -312,7 +323,7 @@ export default async function PvValidationPage({ params, searchParams }: {
 
       {/* Actions — Ajouter / Modifier / Supprimer (l'entité la plus fréquente). */}
       <div className="border-t pt-5">
-        <PvActionsBlock reportId={id} actions={actionRows} roleActors={roleActors} castingPersons={castingPersons} />
+        <PvActionsBlock reportId={id} actions={actionRows} roleActors={roleActors} castingPersons={castingPersons} candidateCompanies={candidateCompanies} />
       </div>
 
       {/* Décisions — « on a décidé que… » : mémoire durable du site, projetée dans

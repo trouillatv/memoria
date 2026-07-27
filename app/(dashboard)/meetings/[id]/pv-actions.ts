@@ -25,8 +25,8 @@ import {
 import { findOrCreateCompanyByName } from '@/lib/db/companies'
 import { findOrCreateSubjectByName, attachToSubject } from '@/lib/db/subjects'
 import { createContact } from '@/lib/db/company-contacts'
-import { openSiteIntervenant, closeSiteIntervenant } from '@/lib/db/site-intervenants'
-import { listSiteActionResponsibleCandidates } from '@/lib/knowledge/action-responsible-candidates'
+import { openSiteIntervenant, closeSiteIntervenant, listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
+import { listSiteActionResponsibleCandidates, resolveActionResponsibility } from '@/lib/knowledge/action-responsible-candidates'
 import { recordCorrections, type CorrectionEvent } from '@/lib/db/memory-corrections'
 import { generatePv } from '@/services/ai/document-generation'
 import {
@@ -352,29 +352,58 @@ export async function deleteReportPhotoAction(
  *  `assigned_contact_id` qui fait foi. */
 async function resolveResponsible(
   siteId: string,
-  input: { assignedTo?: string; assignedContactId?: string | null },
-): Promise<{ assigned_to: string | null; assigned_contact_id: string | null } | { error: string }> {
+  input: { assignedTo?: string; assignedContactId?: string | null; assignedCompanyId?: string | null; confirmMismatch?: boolean },
+): Promise<
+  | { assigned_to: string | null; assigned_contact_id: string | null; assigned_company_id: string | null }
+  | { error: string; requiresConfirmation?: boolean }
+> {
   const contactId = input.assignedContactId?.trim() || null
-  if (!contactId) {
-    return { assigned_to: input.assignedTo?.trim() || null, assigned_contact_id: null }
+  const companyId = input.assignedCompanyId?.trim() || null
+  // Aucun responsable structurel : le texte libre reste le fallback historique.
+  if (!contactId && !companyId) {
+    return { assigned_to: input.assignedTo?.trim() || null, assigned_contact_id: null, assigned_company_id: null }
   }
-  const candidates = await listSiteActionResponsibleCandidates(siteId)
-  const c = candidates.find((x) => x.contactId === contactId)
-  if (!c) return { error: 'Cette personne n’est pas un responsable possible pour ce chantier.' }
-  return { assigned_to: c.fullName, assigned_contact_id: c.contactId }
+  const [candidates, companies] = await Promise.all([
+    listSiteActionResponsibleCandidates(siteId),
+    listSiteCandidateCompanies(siteId),
+  ])
+  // L'entreprise du contact (pour la cohérence), seulement si les deux sont posés.
+  let contactCompanyId: string | null = null
+  if (contactId && companyId) {
+    const { data } = await createAdminClient()
+      .from('company_contacts').select('company_id').eq('id', contactId).maybeSingle()
+    contactCompanyId = (data as { company_id: string | null } | null)?.company_id ?? null
+  }
+  const decision = resolveActionResponsibility({
+    companyId,
+    contactId,
+    candidateCompanyIds: new Set(companies.map((c) => c.id)),
+    candidateContactIds: new Set(candidates.map((c) => c.contactId)),
+    contactCompanyId,
+    confirmMismatch: input.confirmMismatch,
+  })
+  if (!decision.ok) return { error: decision.error, requiresConfirmation: decision.requiresConfirmation }
+  // Miroir texte lisible : le nom du contact s'il y en a un, sinon l'entreprise.
+  const contact = contactId ? candidates.find((x) => x.contactId === contactId) : null
+  const company = companyId ? companies.find((x) => x.id === companyId) : null
+  return {
+    assigned_to: contact?.fullName ?? company?.name ?? (input.assignedTo?.trim() || null),
+    assigned_contact_id: decision.assignedContactId,
+    assigned_company_id: decision.assignedCompanyId,
+  }
 }
 
 export async function addActionAction(
   reportId: string,
-  input: { title: string; assignedTo?: string; assignedContactId?: string | null; dueDate?: string; corpsEtat?: string },
-): Promise<{ ok: true } | { ok: false; error: string }> {
+  input: { title: string; assignedTo?: string; assignedContactId?: string | null; assignedCompanyId?: string | null; confirmMismatch?: boolean; dueDate?: string; corpsEtat?: string },
+): Promise<{ ok: true } | { ok: false; error: string; requiresConfirmation?: boolean }> {
   const user = await requireManagerOrAdmin()
   const title = input.title.trim()
   if (!title) return { ok: false, error: 'Intitulé vide.' }
   const report = await getSiteReport(reportId)
   if (!report?.site_id) return { ok: false, error: 'Réunion sans site — action impossible.' }
   const resp = await resolveResponsible(report.site_id, input)
-  if ('error' in resp) return { ok: false, error: resp.error }
+  if ('error' in resp) return { ok: false, error: resp.error, requiresConfirmation: resp.requiresConfirmation }
   try {
     await createSiteAction({
       site_id: report.site_id,
@@ -382,6 +411,7 @@ export async function addActionAction(
       title,
       assigned_to: resp.assigned_to,
       assigned_contact_id: resp.assigned_contact_id,
+      assigned_company_id: resp.assigned_company_id,
       due_date: input.dueDate || null,
       due_date_status: input.dueDate ? 'explicit' : null,
       corps_etat: input.corpsEtat?.trim() || null,
@@ -400,20 +430,21 @@ export async function addActionAction(
 export async function editActionAction(
   reportId: string,
   actionId: string,
-  input: { title: string; assignedTo?: string; assignedContactId?: string | null; dueDate?: string },
-): Promise<{ ok: true } | { ok: false; error: string }> {
+  input: { title: string; assignedTo?: string; assignedContactId?: string | null; assignedCompanyId?: string | null; confirmMismatch?: boolean; dueDate?: string },
+): Promise<{ ok: true } | { ok: false; error: string; requiresConfirmation?: boolean }> {
   const user = await requireManagerOrAdmin()
   const title = input.title.trim()
   if (!title) return { ok: false, error: 'Intitulé vide.' }
   const report = await getSiteReport(reportId)
   if (!report?.site_id) return { ok: false, error: 'Réunion sans site.' }
   const resp = await resolveResponsible(report.site_id, input)
-  if ('error' in resp) return { ok: false, error: resp.error }
+  if ('error' in resp) return { ok: false, error: resp.error, requiresConfirmation: resp.requiresConfirmation }
   try {
     await updateSiteAction(actionId, {
       title,
       assigned_to: resp.assigned_to,
       assigned_contact_id: resp.assigned_contact_id,
+      assigned_company_id: resp.assigned_company_id,
       due_date: input.dueDate || null,
       due_date_status: input.dueDate ? null : null, // date saisie = confirmée (null = figée)
     }, user.id)

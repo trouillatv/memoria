@@ -601,6 +601,9 @@ export interface DbSiteAction {
    *  `assigned_to` reste la trace TEXTE historique ; `assigned_contact_id` est la
    *  preuve. Un read model ne traite jamais `assigned_to` seul comme une personne. */
   assigned_contact_id: string | null
+  /** Organisation RESPONSABLE (mig 245, FK companies). Orthogonal à la personne :
+   *  entreprise seule, personne seule, ou entreprise + contact référent. */
+  assigned_company_id: string | null
   status: SiteActionStatus
   due_date: string | null
   // Statut de l'échéance (migration 121) : explicit = date dite en réunion ;

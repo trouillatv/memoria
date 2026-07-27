@@ -23,19 +23,27 @@ describe('P2 Slice 2 — responsable structurel (assigned_contact_id)', () => {
     expect(s).toContain("rpc('fn_update_action'")
   })
 
-  it('le serveur refuse un contact hors responsables possibles et met le nom en mirror', () => {
-    // Lot 2A : la vérité n'est plus le seul casting mais l'UNION (lecture) casting
-    // actif ∪ agents terrain des équipes affectées — exactement le sélecteur.
+  it('le serveur valide personne ET entreprise via la politique pure, et met le nom en mirror', () => {
+    // Lot 2A : candidats = UNION (lecture) casting actif ∪ agents des équipes affectées.
+    // Lot 2B.1 : + entreprises candidates ; la décision (appartenance + cohérence) est
+    // déléguée à une politique PURE ; le miroir texte = nom du contact, sinon entreprise.
     const s = read('app/(dashboard)/meetings/[id]/pv-actions.ts')
-    expect(s).toContain('listSiteActionResponsibleCandidates') // union casting + équipes affectées
-    expect(s).toMatch(/responsable possible/)          // refus explicite (nouvelle doctrine)
-    expect(s).toContain('assigned_to: c.fullName')    // mirror du nom, jamais un rapprochement
+    expect(s).toContain('listSiteActionResponsibleCandidates') // candidats personnes
+    expect(s).toContain('listSiteCandidateCompanies')          // candidats entreprises (Lot 2B.1)
+    expect(s).toContain('resolveActionResponsibility')         // décision pure déléguée
+    expect(s).toMatch(/assigned_to:\s*contact\?\.fullName\s*\?\?\s*company\?\.name/) // miroir
+    // Le refus explicite vit dans la politique pure (testée à part).
+    const policy = read('lib/knowledge/action-responsible-candidates.ts')
+    expect(policy).toMatch(/responsable possible/)
+    expect(policy).toMatch(/n.intervient pas sur ce chantier/) // entreprise hors chantier
   })
 
-  it('l’UI garde les deux modes EXCLUSIFS et distingue l’affichage', () => {
+  it('l’UI distingue entreprise / personne / texte libre, exclusifs', () => {
     const s = read('app/(dashboard)/meetings/[id]/pv/validation/PvActionsBlock.tsx')
-    expect(s).toContain('{!contactId && (')           // texte libre SEULEMENT sans personne
-    expect(s).toContain('Responsable identifié')      // le mode structurel
+    // Lot 2B.1 : le texte libre n'apparaît QUE s'il n'y a NI personne NI entreprise.
+    expect(s).toContain('{!contactId && !companyId && (')
+    expect(s).toContain('Entreprise responsable')     // le niveau entreprise (mig 245)
+    expect(s).toContain('Responsable identifié')      // le mode personne
     expect(s).toContain('ancien suivi')               // la trace texte, distincte
   })
 })

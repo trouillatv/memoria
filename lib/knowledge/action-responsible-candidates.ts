@@ -69,6 +69,56 @@ export function mergeResponsibleCandidates(
   return [...byId.values()].sort((x, y) => x.fullName.localeCompare(y.fullName, 'fr'))
 }
 
+// ── RÉSOLUTION D'UNE RESPONSABILITÉ (Lot 2B.1) ───────────────────────────────
+// Une action peut désigner une ENTREPRISE et/ou une PERSONNE. Décision PURE
+// (testable) : valide l'appartenance au chantier et la cohérence personne↔
+// entreprise. On n'invente jamais une personne ; on n'interdit pas une relation
+// terrain atypique — on la fait CONFIRMER.
+
+export type ResponsibilityDecision =
+  | { ok: true; assignedCompanyId: string | null; assignedContactId: string | null }
+  | { ok: false; error: string; requiresConfirmation?: boolean }
+
+export function resolveActionResponsibility(input: {
+  companyId: string | null
+  contactId: string | null
+  candidateCompanyIds: ReadonlySet<string>
+  candidateContactIds: ReadonlySet<string>
+  /** L'entreprise à laquelle le contact est rattaché (company_contacts.company_id), si connue. */
+  contactCompanyId?: string | null
+  /** L'humain a confirmé une incohérence contact↔entreprise (relation atypique assumée). */
+  confirmMismatch?: boolean
+}): ResponsibilityDecision {
+  const companyId = input.companyId || null
+  const contactId = input.contactId || null
+
+  if (companyId && !input.candidateCompanyIds.has(companyId)) {
+    return { ok: false, error: 'Cette entreprise n’intervient pas sur ce chantier.' }
+  }
+  if (contactId && !input.candidateContactIds.has(contactId)) {
+    return { ok: false, error: 'Cette personne n’est pas un responsable possible pour ce chantier.' }
+  }
+
+  // Cohérence personne↔entreprise, seulement si les deux sont posés.
+  if (companyId && contactId) {
+    const contactCompanyId = input.contactCompanyId ?? null
+    // Contact sans entreprise connue → autorisé (l'association est une suggestion UI,
+    // jamais une modification automatique de la fiche).
+    // Contact d'une AUTRE entreprise → contradiction : on avertit, on ne bloque pas
+    // définitivement (Jean peut représenter exceptionnellement ETV), mais on exige
+    // une confirmation explicite.
+    if (contactCompanyId && contactCompanyId !== companyId && !input.confirmMismatch) {
+      return {
+        ok: false,
+        error: 'Ce contact est rattaché à une autre entreprise. Confirmez qu’il représente bien l’entreprise responsable pour cette action.',
+        requiresConfirmation: true,
+      }
+    }
+  }
+
+  return { ok: true, assignedCompanyId: companyId, assignedContactId: contactId }
+}
+
 /** Les responsables possibles d'une action de CE chantier, prêts pour le sélecteur. */
 export async function listSiteActionResponsibleCandidates(siteId: string): Promise<ResponsibleCandidate[]> {
   const [casting, teamAgents] = await Promise.all([

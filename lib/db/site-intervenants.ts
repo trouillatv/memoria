@@ -162,6 +162,29 @@ export async function listSiteContacts(siteId: string): Promise<SiteContactOptio
   }))
 }
 
+export interface SiteCandidateCompany { id: string; name: string }
+
+/**
+ * Entreprises pouvant être RESPONSABLES d'une action de ce chantier (Lot 2B.1) :
+ * le casting ACTIF (site_intervenants, effective_to null), hors placeholder
+ * « À identifier » et hors archivées. Une entreprise devient candidate parce
+ * qu'elle intervient réellement — jamais parce qu'un de ses contacts est ailleurs.
+ */
+export async function listSiteCandidateCompanies(siteId: string): Promise<SiteCandidateCompany[]> {
+  const intervenants = await listSiteIntervenants(siteId)
+  const ids = [...new Set(intervenants.map((i) => i.companyId))]
+  if (ids.length === 0) return []
+  const sb = createAdminClient()
+  const { data } = await sb
+    .from('companies')
+    .select('id, name, short_name, is_placeholder, deleted_at')
+    .in('id', ids)
+  return ((data ?? []) as Array<{ id: string; name: string; short_name: string | null; is_placeholder: boolean; deleted_at: string | null }>)
+    .filter((c) => !c.is_placeholder && !c.deleted_at)
+    .map((c) => ({ id: c.id, name: c.short_name || c.name }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+}
+
 export interface RoleActor { company: string; contact: string | null }
 
 /** Résolution rôle → acteur pour un site : « ETV » → { company:'BatiSud', contact:'Jean Dupont' }.
