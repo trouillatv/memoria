@@ -252,16 +252,55 @@ reconstruire l'org — dette V1 notée), non-régression Mémoire.
 
 ---
 
-## 10. Décisions à valider avant V2.0 (code)
-1. **Ordre** : V2.0 (fondation) d'abord, ou V2.1 (panneau, plus de valeur visible)
-   sur le moteur V1 puis refactor ? Reco : **V2.0 d'abord** — tout le reste
-   s'appuie sur le contrat, et refactorer après V2.1 doublerait le travail.
-2. Focale **Activité** en V2.2 avec le périmètre réduit STRUCTUREL (§4), ou reportée
-   après les évolutions BDD optionnelles (meetings FK, événements casting) ?
-3. Icônes/formes par type de nœud : dessin canvas simple (cercle/carré/losange) ou
-   pictogrammes (coût rendu) ?
-4. Mini-carte : confirmée reportée ?
-5. Évolutions BDD optionnelles (site_intervenant_events, meetings+participants FK) :
-   ouvrir un lot données séparé ou s'en tenir aux sources actuelles pour toute la V2 ?
+## 10. Décisions TRANCHÉES (Vincent 2026-07-28) — V2.0 peut coder
+1. **V2.0 d'abord ✅** — extraction ISO-COMPORTEMENT, zéro changement visuel, aucun
+   ajout fonctionnel. Seulement : `ForceGraphWorkspace` + contrat (`GraphConfig`,
+   nœuds/liens génériques), puis `MemoryGraphConfig` et `ActorsGraphConfig`. À la
+   sortie, les deux graphes rendent EXACTEMENT comme avant.
+2. **Focale/Perspective Activité ❌ repoussée** (pas en V2.2). Elle repose sur ce qui
+   manque (réunions non structurées, participants, événements de relation) : un onglet
+   « un petit morceau de l'activité » serait incompréhensible pour Guillaume. V2 =
+   Organisation / Travail / Attention / Chantier / Acteur. Activité viendra quand les
+   données existeront (V3 Data Foundation).
+3. **Icônes ✅ canvas + pictogrammes simples** — la COULEUR reste l'attention, la
+   FORME devient le type (👤 personne, 🏢 entreprise, 👥 équipe, 🏗 chantier,
+   ✓ action). Reconnaissance immédiate, comme Obsidian/Excalidraw.
+4. **Mini-carte ❌ reportée** — confort, ne résout aucun problème actuel.
+5. **Lot BDD ✅ séparé** — futur « **Explorer V3 Data Foundation** » (participants
+   réunion, événements de casting/entreprise, historique des affectations, timeline
+   complète). Ne JAMAIS le mélanger à la V2 UI.
 
-**Arrêt ici — aucun code avant validation.**
+## 11. Concepts ajoutés au cadrage (Vincent 2026-07-28)
+
+### Perspectives (remplace « focales »)
+On ne filtre pas : on **change la façon de raconter le réseau**. Même graphe, autre
+lecture. Vocabulaire UI et code : `Perspective` (Organisation · Travail · Attention ·
+Chantier · Acteur).
+
+### Couches
+Ne jamais tout afficher : couche 1 = personnes/entreprises/équipes ; couche 2 =
+chantiers ; couche 3 = actions ; (couches 4-5 = visites/réunions, avec Activité).
+Le zoom et la perspective ajoutent progressivement les couches — l'anti-« pelote ».
+S'implémente dans le prédicat `nodeVisible(n, ctx)` du moteur (ctx porte zoom +
+perspective + couches actives).
+
+### Suivre un chemin
+Depuis un acteur sélectionné : « Montrer le chemin vers [X] » → le graphe met en
+évidence uniquement le(s) chemin(s) (Joseph → Clim Austral → Équipe → Petro Attiti),
+le reste s'atténue. Plus court chemin (BFS) sur le graphe courant, pur et testable.
+À placer en V2.4 (navigation avancée).
+
+### Narration (« ce qui manque le plus »)
+Le panneau droit ne doit pas seulement AFFICHER les données : il doit **raconter le
+réseau**. À la sélection d'un acteur, un résumé généré à partir des FAITS (jamais
+d'IA, jamais d'inférence) : « Joseph Wamytan intervient actuellement sur 1 chantier.
+Il est référent de 2 actions ouvertes sur Petro Attiti. Il travaille pour Clim
+Austral. Aucun retard ne lui est attribué. » Équivalent Acteurs du `recit()`
+d'Explorer (l.898-935) : générateur PUR `narrateActor(facts) → phrases[]`, testé.
+Intégré au lot V2.1 (panneau) — c'est ce qui fait passer le graphe de visualisation
+technique à outil d'investigation.
+
+### Plan ajusté
+V2.0 moteur partagé iso → **V2.1 panneau + narration** → V2.2 perspectives + couches
++ filtres (sans Activité) → V2.3 chronologie → V2.4 recherche + « suivre un chemin »
++ navigation avancée → V2.5 consolidation/perf. Lot BDD « V3 Data Foundation » à part.
