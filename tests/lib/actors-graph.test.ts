@@ -3,7 +3,7 @@
 // l'état d'attention (graphe d'attention, pas simple schéma).
 
 import { describe, expect, it } from 'vitest'
-import { buildActorsGraph, type ActorsGraphInputs } from '@/lib/knowledge/actors-graph'
+import { buildActorsGraph, egoSubgraph, type ActorsGraphInputs } from '@/lib/knowledge/actors-graph'
 
 function base(): ActorsGraphInputs {
   return {
@@ -68,6 +68,26 @@ describe('buildActorsGraph', () => {
     })
     expect(g.nodes.find((n) => n.id === 's_s1')?.level).toBe('urgent')
     expect(g.nodes.find((n) => n.id === 'co_co1')?.historical).toBe(true)
+  })
+
+  it('egoSubgraph : voisinage à profondeur bornée, centré sur un nœud', () => {
+    const g = buildActorsGraph({
+      ...base(),
+      persons: [{ id: 'c1', name: 'Centre', sub: null, level: 'ok', historical: false, companyId: 'co1' }],
+      companies: [{ id: 'co1', name: 'Co', sub: null, level: 'ok', historical: false }],
+      teams: [{ id: 't1', name: 'T', sub: null, level: 'ok', historical: false }],
+      siteNames: [{ id: 's1', name: 'S' }],
+      fieldMemberships: [{ contactId: 'c1', teamId: 't1' }],
+      missions: [{ siteId: 's1', teamId: 't1' }],
+    })
+    // Depth 1 depuis la personne : entreprise + équipe (voisins directs), pas encore le chantier.
+    const d1 = egoSubgraph(g, 'p_c1', 1)
+    expect(d1.nodes.map((n) => n.id).sort()).toEqual(['co_co1', 'p_c1', 'tm_t1'])
+    // Depth 2 : atteint le chantier via l'équipe.
+    const d2 = egoSubgraph(g, 'p_c1', 2)
+    expect(d2.nodes.map((n) => n.id)).toContain('s_s1')
+    // Nœud absent → sous-graphe vide.
+    expect(egoSubgraph(g, 'p_zzz', 2)).toEqual({ nodes: [], edges: [] })
   })
 
   it('déduplique les liens identiques', () => {

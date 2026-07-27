@@ -1,12 +1,13 @@
 // Corps de la fiche ENTREPRISE — PARTAGÉ entre la page dédiée et le panneau maître-
 // détail de /intervenants. Une seule source de rendu. Purement présentationnel.
 
-import Link from 'next/link'
-import { Building2, MapPin, User, ArrowRight, Clock, Mail, Phone, Globe, Share2 } from 'lucide-react'
+import { Building2, MapPin, User, ArrowRight, Clock, Mail, Phone, Globe } from 'lucide-react'
 import type { CompanyFiche } from '@/lib/db/company-fiche'
+import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
 import { AttentionBadge, FicheSection, FicheLinkRow, FicheEmpty } from './fiche-ui'
+import { ActorsGraphCanvas } from './graph/ActorsGraphCanvas'
 
-export function CompanyFicheBody({ fiche }: { fiche: CompanyFiche }) {
+export function CompanyFicheBody({ fiche, network }: { fiche: CompanyFiche; network?: ActorsGraph | null }) {
   return (
     <div className="space-y-5">
       {/* ── SITUATION ACTUELLE — carte de synthèse ──────────────────────────────── */}
@@ -59,11 +60,6 @@ export function CompanyFicheBody({ fiche }: { fiche: CompanyFiche }) {
                 {fiche.siret && <span>SIRET {fiche.siret}</span>}
               </div>
             )}
-            <div className="mt-3">
-              <Link href={`/intervenants?vue=graphe&focus=co_${fiche.id}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-2.5 py-1 text-xs font-medium text-brand-700 hover:border-brand-200 hover:bg-brand-50/40 dark:text-brand-300">
-                <Share2 className="h-3.5 w-3.5" aria-hidden /> Voir son réseau
-              </Link>
-            </div>
           </div>
         </div>
       </section>
@@ -111,6 +107,13 @@ export function CompanyFicheBody({ fiche }: { fiche: CompanyFiche }) {
           {fiche.historicalCasting.map((c) => (
             <FicheLinkRow key={`${c.siteId}-${c.role}`} href={c.href} icon={<MapPin className="h-4 w-4 opacity-60" aria-hidden />} label={c.siteName} sub={`Casting clôturé · ${c.role}`} />
           ))}
+        </FicheSection>
+      )}
+
+      {/* ── RÉSEAU — graphe centré, directement dans la fiche ─────────────────────── */}
+      {network && network.nodes.length > 1 && (
+        <FicheSection title="Réseau">
+          <ActorsGraphCanvas graph={network} focusId={`co_${fiche.id}`} heightClass="h-[420px]" />
         </FicheSection>
       )}
     </div>

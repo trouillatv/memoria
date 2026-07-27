@@ -41,7 +41,7 @@ function nodeHref(n: ActorGraphNode): string | null {
 
 type Pt = { x: number; y: number; vx: number; vy: number }
 
-export function ActorsGraphCanvas({ graph, focusId }: { graph: ActorsGraph; focusId?: string | null }) {
+export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]' }: { graph: ActorsGraph; focusId?: string | null; heightClass?: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pos = useRef<Map<string, Pt>>(new Map())
@@ -281,7 +281,7 @@ export function ActorsGraphCanvas({ graph, focusId }: { graph: ActorsGraph; focu
   const selHref = selected ? nodeHref(selected) : null
 
   return (
-    <div ref={containerRef} className="relative h-[70vh] w-full overflow-hidden rounded-2xl border border-border/60 bg-card">
+    <div ref={containerRef} className={`relative w-full overflow-hidden rounded-2xl border border-border/60 bg-card ${heightClass}`}>
       <canvas ref={canvasRef} className="block touch-none" style={{ cursor: 'grab' }} />
 
       {/* Légende — couleur = état d'attention. */}

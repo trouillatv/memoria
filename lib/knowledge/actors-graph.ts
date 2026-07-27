@@ -159,8 +159,12 @@ export function buildActorsGraph(input: ActorsGraphInputs): ActorsGraph {
  * Graphe des acteurs de l'organisation. Réutilise getActorsCockpit (état d'attention =
  * source unique) et ajoute la couche relationnelle par des lectures filtrées. Fail-closed :
  * sans org → graphe vide. Personnes = company_contacts (les comptes purs sont hors V1).
+ *
+ * `unfiltered` : ignore la règle de pertinence (garde tous les acteurs, y compris
+ * historiques) — utile pour extraire un ego-graph centré (getActorNetwork), où les
+ * relations historiques de l'acteur sont pertinentes.
  */
-export async function getActorsGraph(orgIds: string[]): Promise<ActorsGraph> {
+export async function getActorsGraph(orgIds: string[], opts?: { unfiltered?: boolean }): Promise<ActorsGraph> {
   if (orgIds.length === 0) return { nodes: [], edges: [] }
   const db = createAdminClient()
   const today = todayLocalIso()
@@ -189,7 +193,7 @@ export async function getActorsGraph(orgIds: string[]): Promise<ActorsGraph> {
   // encore une relation active — or ce cas produit toujours une attention ≠ ok (ex. encore
   // responsable d'une action ouverte → responsible_not_active / company_left_casting). Un
   // ancien contact sans équipe/chantier/action (historique + ok) est donc masqué.
-  const relevant = (a: { status: string; attention: { level: AttentionLevel } }) => a.status === 'active' || a.attention.level !== 'ok'
+  const relevant = (a: { status: string; attention: { level: AttentionLevel } }) => opts?.unfiltered || a.status === 'active' || a.attention.level !== 'ok'
   const persons = cockpit.actors
     .filter((a) => a.kind === 'person' && companyIdByContact.has(a.id) && relevant(a))
     .map((a) => ({ id: a.id, name: a.name, sub: a.subtitle || null, level: a.attention.level, historical: a.status === 'historical', companyId: companyIdByContact.get(a.id) ?? null }))
@@ -207,4 +211,36 @@ export async function getActorsGraph(orgIds: string[]): Promise<ActorsGraph> {
     openActions: ((actionRes.data ?? []) as Array<{ id: string; title: string; site_id: string; assigned_contact_id: string | null; assigned_company_id: string | null; due_date: string | null }>)
       .map((r) => ({ id: r.id, title: r.title, siteId: r.site_id, contactId: r.assigned_contact_id, companyId: r.assigned_company_id, overdue: !!r.due_date && r.due_date < today })),
   })
+}
+
+/** Sous-graphe accessible depuis `nodeId` en `depth` sauts. Pur, réutilisable. */
+export function egoSubgraph(graph: ActorsGraph, nodeId: string, depth: number): ActorsGraph {
+  if (!graph.nodes.some((n) => n.id === nodeId)) return { nodes: [], edges: [] }
+  const adj = new Map<string, string[]>()
+  for (const e of graph.edges) {
+    ;(adj.get(e.a) ?? adj.set(e.a, []).get(e.a)!).push(e.b)
+    ;(adj.get(e.b) ?? adj.set(e.b, []).get(e.b)!).push(e.a)
+  }
+  const keep = new Set<string>([nodeId])
+  let frontier = [nodeId]
+  for (let d = 0; d < depth; d++) {
+    const next: string[] = []
+    for (const id of frontier) for (const nb of adj.get(id) ?? []) if (!keep.has(nb)) { keep.add(nb); next.push(nb) }
+    frontier = next
+  }
+  return {
+    nodes: graph.nodes.filter((n) => keep.has(n.id)),
+    edges: graph.edges.filter((e) => keep.has(e.a) && keep.has(e.b)),
+  }
+}
+
+/**
+ * Ego-graph CENTRÉ sur un acteur (nodeId préfixé), à afficher DANS sa fiche. Inclut ses
+ * relations historiques utiles (org non filtré) et son voisinage à `depth` sauts. Réutilise
+ * intégralement getActorsGraph — aucune logique de relation dupliquée.
+ */
+export async function getActorNetwork(nodeId: string, orgIds: string[], depth = 2): Promise<ActorsGraph> {
+  if (orgIds.length === 0) return { nodes: [], edges: [] }
+  const full = await getActorsGraph(orgIds, { unfiltered: true })
+  return egoSubgraph(full, nodeId, depth)
 }

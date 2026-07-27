@@ -4,13 +4,15 @@
 // server-only) → utilisable en Server Component comme en Client Component.
 
 import Link from 'next/link'
-import { User, Building2, Users, MapPin, ArrowRight, Clock, Mail, Phone, KeyRound, Share2 } from 'lucide-react'
+import { User, Building2, Users, MapPin, ArrowRight, Clock, Mail, Phone, KeyRound } from 'lucide-react'
 import type { PersonFiche } from '@/lib/db/person-fiche'
+import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
 import { AttentionBadge, FicheSection, FicheRow, FicheLinkRow, FicheEmpty } from './fiche-ui'
+import { ActorsGraphCanvas } from './graph/ActorsGraphCanvas'
 
 const STATUS_LABEL = { active: 'Actif', incomplete: 'Incomplet', historical: 'Historique' } as const
 
-export function PersonFicheBody({ fiche }: { fiche: PersonFiche }) {
+export function PersonFicheBody({ fiche, network }: { fiche: PersonFiche; network?: ActorsGraph | null }) {
   const activeTeams = fiche.teams.filter((t) => t.active)
   const historicalTeams = fiche.teams.filter((t) => !t.active)
   const activeCasting = fiche.casting.filter((c) => c.active)
@@ -74,11 +76,6 @@ export function PersonFicheBody({ fiche }: { fiche: PersonFiche }) {
                 <KeyRound className="h-3 w-3" aria-hidden /> Compte lié possible — ouvrir la fiche compte
               </Link>
             )}
-            <div className="mt-3">
-              <Link href={`/intervenants?vue=graphe&focus=p_${fiche.id}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-2.5 py-1 text-xs font-medium text-brand-700 hover:border-brand-200 hover:bg-brand-50/40 dark:text-brand-300">
-                <Share2 className="h-3.5 w-3.5" aria-hidden /> Voir son réseau
-              </Link>
-            </div>
           </div>
         </div>
       </section>
@@ -126,6 +123,13 @@ export function PersonFicheBody({ fiche }: { fiche: PersonFiche }) {
           {historicalTeams.map((t) => (
             <FicheLinkRow key={t.id} href={t.href} icon={<Users className="h-4 w-4 opacity-60" aria-hidden />} label={t.name} sub="Équipe (passée)" />
           ))}
+        </FicheSection>
+      )}
+
+      {/* ── RÉSEAU — graphe centré, directement dans la fiche (pas de page intermédiaire) ── */}
+      {network && network.nodes.length > 1 && (
+        <FicheSection title="Réseau">
+          <ActorsGraphCanvas graph={network} focusId={`p_${fiche.id}`} heightClass="h-[420px]" />
         </FicheSection>
       )}
     </div>

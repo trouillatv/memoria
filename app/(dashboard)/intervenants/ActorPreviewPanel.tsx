@@ -12,7 +12,9 @@ import type { ActorPreview } from './preview-types'
 import { AttentionBadge, FicheSection, FicheLinkRow, FicheEmpty } from './fiche-ui'
 import { PersonFicheBody } from './PersonFicheBody'
 import { CompanyFicheBody } from './CompanyFicheBody'
+import { ActorsGraphCanvas } from './graph/ActorsGraphCanvas'
 import type { TeamActorInsight } from '@/lib/db/team-actor-insight'
+import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
 
 const STATUS_LABEL = { active: 'Actif', incomplete: 'Incomplet', historical: 'Historique' } as const
 
@@ -25,10 +27,11 @@ export function ActorPreviewPanel({ actor, preview, loading }: { actor: CockpitA
     )
   }
 
-  // Fiche complète disponible → on l'affiche telle quelle (même rendu que la page).
-  if (preview?.kind === 'person') return <PersonFicheBody fiche={preview.fiche} />
-  if (preview?.kind === 'company') return <CompanyFicheBody fiche={preview.fiche} />
-  if (preview?.kind === 'team') return <TeamFiche actor={actor} insight={preview.insight} />
+  // Fiche complète disponible → on l'affiche telle quelle (même rendu que la page),
+  // réseau (ego-graph) embarqué directement.
+  if (preview?.kind === 'person') return <PersonFicheBody fiche={preview.fiche} network={preview.network} />
+  if (preview?.kind === 'company') return <CompanyFicheBody fiche={preview.fiche} network={preview.network} />
+  if (preview?.kind === 'team') return <TeamFiche actor={actor} insight={preview.insight} network={preview.network} />
 
   // En cours de chargement (ou aperçu indisponible) → en-tête instantané + squelette.
   return (
@@ -55,8 +58,8 @@ export function ActorPreviewPanel({ actor, preview, loading }: { actor: CockpitA
   )
 }
 
-/** Équipe — la fiche riche vit sur /equipes/[id] ; ici l'essentiel + lien. */
-function TeamFiche({ actor, insight }: { actor: CockpitActor; insight: TeamActorInsight }) {
+/** Équipe — la fiche riche vit sur /equipes/[id] ; ici l'essentiel + réseau + lien. */
+function TeamFiche({ actor, insight, network }: { actor: CockpitActor; insight: TeamActorInsight; network: ActorsGraph }) {
   return (
     <div className="space-y-5">
       <section className="rounded-2xl border border-border/60 bg-card p-5">
@@ -105,6 +108,12 @@ function TeamFiche({ actor, insight }: { actor: CockpitActor; insight: TeamActor
           {insight.orphanActions.map((a) => (
             <FicheLinkRow key={a.id} href={a.href} icon={<ArrowRight className="h-4 w-4 opacity-60" aria-hidden />} label={a.title} sub={`${a.contactName} · ${a.siteName}`} />
           ))}
+        </FicheSection>
+      )}
+
+      {network.nodes.length > 1 && (
+        <FicheSection title="Réseau">
+          <ActorsGraphCanvas graph={network} focusId={`tm_${actor.id}`} heightClass="h-[420px]" />
         </FicheSection>
       )}
     </div>

@@ -4,9 +4,10 @@
 import type { PersonFiche } from '@/lib/db/person-fiche'
 import type { CompanyFiche } from '@/lib/db/company-fiche'
 import type { TeamActorInsight } from '@/lib/db/team-actor-insight'
+import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
 
 export type ActorPreview =
-  | { kind: 'person'; fiche: PersonFiche }
-  | { kind: 'company'; fiche: CompanyFiche }
-  | { kind: 'team'; insight: TeamActorInsight }
+  | { kind: 'person'; fiche: PersonFiche; network: ActorsGraph }
+  | { kind: 'company'; fiche: CompanyFiche; network: ActorsGraph }
+  | { kind: 'team'; insight: TeamActorInsight; network: ActorsGraph }
   | null
