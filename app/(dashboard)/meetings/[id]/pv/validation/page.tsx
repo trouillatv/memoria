@@ -18,6 +18,7 @@ import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteIntervenants, getRoleActorMap, listSiteContacts } from '@/lib/db/site-intervenants'
+import { listSiteActionResponsibleCandidates } from '@/lib/knowledge/action-responsible-candidates'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { listReportFinalVersions } from '@/lib/db/report-final-versions'
 import { listMeetingScopedPhotos } from '@/lib/db/site-photos'
@@ -101,16 +102,26 @@ export default async function PvValidationPage({ params, searchParams }: {
     id: c.id,
     label: c.function ? `${c.fullName} — ${c.companyName} (${c.function})` : `${c.fullName} — ${c.companyName}`,
   }))
-  // Les PERSONNES confirmées du chantier, groupées par entreprise — le sélecteur
-  // « Responsable identifié » (P2 Slice 2). Toutes les personnes du casting actif,
-  // pas seulement les contacts principaux : une action appartient à une personne.
-  const castingPersonsByCompany = new Map<string, { company: string; persons: Array<{ id: string; fullName: string; fonction: string | null }> }>()
-  for (const c of siteContacts) {
-    const g = castingPersonsByCompany.get(c.companyName) ?? { company: c.companyName, persons: [] }
-    g.persons.push({ id: c.id, fullName: c.fullName, fonction: c.function })
-    castingPersonsByCompany.set(c.companyName, g)
+  // Les RESPONSABLES POSSIBLES d'une action (Lot 2A) : union LECTURE du casting
+  // actif ET des agents terrain des équipes affectées au chantier. Groupés par
+  // provenance — entreprise (casting) ou « Équipe X » (agents mobilisés) — pour
+  // que le sélecteur dise d'où vient la personne. Dédup par contact déjà faite.
+  const responsibleCandidates = report.site_id
+    ? await listSiteActionResponsibleCandidates(report.site_id)
+    : []
+  const castingGroups = new Map<string, { company: string; persons: Array<{ id: string; fullName: string; fonction: string | null }> }>()
+  for (const c of responsibleCandidates) {
+    // Une personne du casting reste dans son groupe entreprise (même si elle est
+    // aussi dans une équipe) ; une personne d'équipe seule va dans son équipe.
+    const key = c.fromCasting ? `c:${c.companyName ?? ''}` : `t:${c.teams[0] ?? ''}`
+    const label = c.fromCasting
+      ? (c.companyName || 'Intervenants du chantier')
+      : `Équipe ${c.teams[0] ?? ''}`.trim()
+    const g = castingGroups.get(key) ?? { company: label, persons: [] }
+    g.persons.push({ id: c.contactId, fullName: c.fullName, fonction: c.fonction })
+    castingGroups.set(key, g)
   }
-  const castingPersons = [...castingPersonsByCompany.values()].sort((a, b) => a.company.localeCompare(b.company, 'fr'))
+  const castingPersons = [...castingGroups.values()].sort((a, b) => a.company.localeCompare(b.company, 'fr'))
 
   // « Fiche partout » (4/4) : un décisionnaire ouvre sa fiche transverse UNIQUEMENT
   // s'il est déjà un intervenant du casting (mainContactId d'une ligne active). Pas

@@ -23,10 +23,12 @@ describe('P2 Slice 2 — responsable structurel (assigned_contact_id)', () => {
     expect(s).toContain("rpc('fn_update_action'")
   })
 
-  it('le serveur refuse un contact hors casting et met le nom en mirror', () => {
+  it('le serveur refuse un contact hors responsables possibles et met le nom en mirror', () => {
+    // Lot 2A : la vérité n'est plus le seul casting mais l'UNION (lecture) casting
+    // actif ∪ agents terrain des équipes affectées — exactement le sélecteur.
     const s = read('app/(dashboard)/meetings/[id]/pv-actions.ts')
-    expect(s).toContain('listSiteContacts')          // le contact doit être du casting
-    expect(s).toMatch(/pas dans le casting/)          // refus explicite
+    expect(s).toContain('listSiteActionResponsibleCandidates') // union casting + équipes affectées
+    expect(s).toMatch(/responsable possible/)          // refus explicite (nouvelle doctrine)
     expect(s).toContain('assigned_to: c.fullName')    // mirror du nom, jamais un rapprochement
   })
 

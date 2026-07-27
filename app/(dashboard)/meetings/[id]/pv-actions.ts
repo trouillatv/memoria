@@ -25,7 +25,8 @@ import {
 import { findOrCreateCompanyByName } from '@/lib/db/companies'
 import { findOrCreateSubjectByName, attachToSubject } from '@/lib/db/subjects'
 import { createContact } from '@/lib/db/company-contacts'
-import { openSiteIntervenant, closeSiteIntervenant, listSiteContacts } from '@/lib/db/site-intervenants'
+import { openSiteIntervenant, closeSiteIntervenant } from '@/lib/db/site-intervenants'
+import { listSiteActionResponsibleCandidates } from '@/lib/knowledge/action-responsible-candidates'
 import { recordCorrections, type CorrectionEvent } from '@/lib/db/memory-corrections'
 import { generatePv } from '@/services/ai/document-generation'
 import {
@@ -343,11 +344,12 @@ export async function deleteReportPhotoAction(
 // L'entité la plus fréquente d'un CR (Vincent : « dans 80 % des cas, Émeline ajoute »).
 // Écrit la SOURCE (site_actions) → ressert partout (briefing, recherche, actions).
 
-/** Le responsable STRUCTUREL (personne). Un contact reçu doit appartenir au
- *  CASTING ACTIF du chantier (mêmes personnes que le sélecteur) — sinon on
- *  refuse. La garde applicative double l'invariant tenant du trigger DB (mig
- *  220). Le nom du contact alimente `assigned_to` (mirror lisible par les vues
- *  qui n'affichent que le texte) ; c'est `assigned_contact_id` qui fait foi. */
+/** Le responsable STRUCTUREL (personne). Lot 2A : un contact reçu doit être un
+ *  RESPONSABLE POSSIBLE du chantier — l'union (lecture) du casting actif ET des
+ *  agents terrain des équipes affectées — exactement les mêmes personnes que le
+ *  sélecteur. Sinon on refuse. La garde applicative double l'invariant tenant du
+ *  trigger DB (mig 220). Le nom alimente `assigned_to` (mirror lisible) ; c'est
+ *  `assigned_contact_id` qui fait foi. */
 async function resolveResponsible(
   siteId: string,
   input: { assignedTo?: string; assignedContactId?: string | null },
@@ -356,10 +358,10 @@ async function resolveResponsible(
   if (!contactId) {
     return { assigned_to: input.assignedTo?.trim() || null, assigned_contact_id: null }
   }
-  const contacts = await listSiteContacts(siteId)
-  const c = contacts.find((x) => x.id === contactId)
-  if (!c) return { error: 'Cette personne n’est pas dans le casting du chantier.' }
-  return { assigned_to: c.fullName, assigned_contact_id: c.id }
+  const candidates = await listSiteActionResponsibleCandidates(siteId)
+  const c = candidates.find((x) => x.contactId === contactId)
+  if (!c) return { error: 'Cette personne n’est pas un responsable possible pour ce chantier.' }
+  return { assigned_to: c.fullName, assigned_contact_id: c.contactId }
 }
 
 export async function addActionAction(

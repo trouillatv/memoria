@@ -164,6 +164,58 @@ export async function attachContactToTeam(input: {
   return { ok: true, contactId: input.contactId }
 }
 
+export interface SiteTeamFieldAgent {
+  contactId: string
+  fullName: string
+  job: string | null
+  companyName: string | null
+  /** L'équipe (affectée au chantier) par laquelle cet agent devient candidat. */
+  teamName: string
+}
+
+/**
+ * Agents terrain des équipes AFFECTÉES à un chantier (Lot 2A).
+ *
+ * « Affectée » = une mission non supprimée du site porte cette équipe
+ * (missions.assigned_team_id) — l'assignation opérationnelle réelle, pas une
+ * intervention ponctuelle. On ne matérialise RIEN : c'est une lecture qui unit
+ * l'équipe au chantier au moment où on la demande. Membres actifs, contacts non
+ * archivés (listFieldMembersOfTeam le garantit déjà). Équipe archivée ignorée.
+ */
+export async function listSiteAssignedTeamFieldAgents(siteId: string): Promise<SiteTeamFieldAgent[]> {
+  const db = createAdminClient()
+  const { data: missionRows } = await db
+    .from('missions')
+    .select('assigned_team_id')
+    .eq('site_id', siteId)
+    .is('deleted_at', null)
+    .not('assigned_team_id', 'is', null)
+  const teamIds = [...new Set(
+    ((missionRows ?? []) as Array<{ assigned_team_id: string | null }>)
+      .map((m) => m.assigned_team_id)
+      .filter((id): id is string => !!id),
+  )]
+  if (teamIds.length === 0) return []
+
+  const { data: teamRows } = await db
+    .from('teams')
+    .select('id, name')
+    .in('id', teamIds)
+    .is('deleted_at', null)
+  const teamNameById = new Map(((teamRows ?? []) as Array<{ id: string; name: string }>).map((t) => [t.id, t.name]))
+
+  const out: SiteTeamFieldAgent[] = []
+  for (const teamId of teamIds) {
+    const teamName = teamNameById.get(teamId)
+    if (!teamName) continue // équipe archivée / hors périmètre
+    const members = await listFieldMembersOfTeam(teamId)
+    for (const m of members) {
+      out.push({ contactId: m.contactId, fullName: m.fullName, job: m.job, companyName: m.companyName, teamName })
+    }
+  }
+  return out
+}
+
 export interface FieldPersonSearchResult {
   contactId: string
   fullName: string
