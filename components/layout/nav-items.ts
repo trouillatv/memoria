@@ -39,8 +39,8 @@ export interface NavItem {
 
 // Ordre = importance / fréquence d'usage (Vincent 2026-05-26).
 // 1) Pilotage quotidien (Semaine + Briefing gardés en haut) →
-// 2) Cœur opérationnel (Missions/Sites/Contrats/Équipes) →
-// 3) Mémoire & continuité (Intervenants/Passages/Continuité) →
+// 2) Cœur opérationnel (Missions/Sites/Contrats/Équipes/Acteurs) →
+// 3) Mémoire & continuité (Passages/Continuité) →
 // 4) Commercial & docs → 5) Guides → 6) Admin.
 export const NAV: NavItem[] = [
   // — Recherche —
@@ -77,13 +77,15 @@ export const NAV: NavItem[] = [
   { href: '/opportunites', label: 'Affaires',             icon: Compass,       roles: ['admin', 'manager'], essential: true },
   { href: '/contracts',  label: 'Contrats',               icon: FileCheck,     roles: ['admin', 'manager'] },
   { href: '/equipes',    label: 'Équipes',                icon: Users,         roles: ['admin', 'manager'] },
+  // Acteurs = cockpit humain (personnes / entreprises / équipes). Hors « Mémoire &
+  // continuité » (décision Vincent 2026-07-27). Gated ENV INTERVENANTS_PAGE_ENABLED ;
+  // le lien reste visible (404 si OFF) pour ne pas faire dépendre la nav d'un
+  // process.env côté client. Route inchangée : /intervenants.
+  { href: '/intervenants', label: 'Acteurs',              icon: UserCog,       roles: ['admin', 'manager'] },
   // — Mémoire & continuité —
   // Interroger l'entreprise = moteur de mémoire cross-site (P7) : une question →
   // traces de TOUS les chantiers, attribuées à leur site + synthèse à la demande.
   { href: '/memoire',      label: 'Interroger l’entreprise', icon: Brain,       roles: ['admin', 'manager'], groupStart: 'Mémoire & continuité' },
-  // Intervenants gated ENV INTERVENANTS_PAGE_ENABLED ; le lien reste visible
-  // (404 si OFF) pour ne pas faire dépendre la nav d'un process.env côté client.
-  { href: '/intervenants', label: 'Intervenants',          icon: UserCog,       roles: ['admin', 'manager'] },
   { href: '/tenders',    label: 'Dossiers de démarrage',  icon: FileText,      roles: ['admin', 'manager'] },
   // Passages de témoin — inclut désormais le radar « À anticiper » (fins de
   // contrat). Fusion 2026-05-27 de l'ancienne entrée « Continuité » (redondante,
