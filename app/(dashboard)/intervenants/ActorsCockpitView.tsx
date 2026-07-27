@@ -13,10 +13,12 @@ import {
 import type { ActorKind, ActorStatus, CockpitActor, ActorsCockpit } from '@/lib/db/actors-cockpit'
 import { attentionLevelLabel, type AttentionLevel } from '@/lib/knowledge/actor-attention'
 import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
+import type { ActorProposal } from '@/lib/db/actor-proposals'
 import { ActorPreviewPanel } from './ActorPreviewPanel'
 import { loadActorPreview } from './preview-actions'
 import type { ActorPreview } from './preview-types'
 import { AddIntervenantDialog } from './AddIntervenantDialog'
+import { ActorProposalsQueue } from './ActorProposalsQueue'
 import { ActorsExplorer } from './graph/ActorsExplorer'
 
 type Tab = 'all' | 'person' | 'company' | 'team'
@@ -84,9 +86,10 @@ function compareActors(a: CockpitActor, b: CockpitActor): number {
   return a.name.localeCompare(b.name, 'fr')
 }
 
-export function ActorsCockpitView({ directory, teams, graph, focusId, view }: {
+export function ActorsCockpitView({ directory, teams, proposals = [], graph, focusId, view }: {
   directory: ActorsCockpit
   teams: Array<{ id: string; name: string }>
+  proposals?: ActorProposal[]
   graph?: ActorsGraph | null
   focusId?: string | null
   view?: 'list' | 'graph'
@@ -187,7 +190,12 @@ export function ActorsCockpitView({ directory, teams, graph, focusId, view }: {
             <AttentionCard tone="amber" value={counters.companiesActionsNoReferent} label={`entreprise${counters.companiesActionsNoReferent > 1 ? 's' : ''} sans référent`} onClick={() => focusTab('company', true)} />
           )}
           {counters.detectedUnconfirmed > 0 && (
-            <AttentionCard tone="amber" value={counters.detectedUnconfirmed} label={`intervenant${counters.detectedUnconfirmed > 1 ? 's' : ''} à confirmer`} />
+            <AttentionCard
+              tone="amber"
+              value={counters.detectedUnconfirmed}
+              label={`intervenant${counters.detectedUnconfirmed > 1 ? 's' : ''} à confirmer`}
+              onClick={() => document.getElementById('acteurs-a-confirmer')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            />
           )}
         </div>
       ) : (
@@ -196,6 +204,9 @@ export function ActorsCockpitView({ directory, teams, graph, focusId, view }: {
           Rien n&apos;appelle d&apos;attention pour le moment.
         </div>
       )}
+
+      {/* File org des acteurs à confirmer — transforme les noms entendus en identités. */}
+      <ActorProposalsQueue proposals={proposals} teams={teams} />
 
       {/* Volume — contexte discret, jamais le centre de la page. */}
       <p className="text-xs text-muted-foreground">

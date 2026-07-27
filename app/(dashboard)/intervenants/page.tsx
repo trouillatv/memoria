@@ -12,6 +12,7 @@ import { checkIntervenantsPageAccess } from '@/lib/intervenants/access'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getActorsCockpit } from '@/lib/db/actors-cockpit'
 import { getActorsGraph } from '@/lib/knowledge/actors-graph'
+import { getUnconfirmedActorProposals } from '@/lib/db/actor-proposals'
 import { listTeams } from '@/lib/db/teams'
 import { ActorsCockpitView } from './ActorsCockpitView'
 
@@ -29,7 +30,11 @@ export default async function IntervenantsListPage({ searchParams }: { searchPar
   const showGraph = sp.vue === 'graphe'
 
   const orgIds = await getOrgIdsOfUser()
-  const [directory, teams] = await Promise.all([getActorsCockpit(orgIds), listTeams()])
+  const [directory, teams, proposals] = await Promise.all([
+    getActorsCockpit(orgIds),
+    listTeams(),
+    getUnconfirmedActorProposals(orgIds),
+  ])
   // Équipes de l'org pour le rattachement facultatif à la création d'un intervenant.
   const teamOptions = teams.map((t) => ({ id: t.id, name: t.name }))
   // CHARGEMENT PARESSEUX (Vincent) : la liste reste la vue par défaut ; on ne paie le
@@ -40,6 +45,7 @@ export default async function IntervenantsListPage({ searchParams }: { searchPar
     <ActorsCockpitView
       directory={directory}
       teams={teamOptions}
+      proposals={proposals}
       graph={graph}
       focusId={sp.focus ?? null}
       view={showGraph ? 'graph' : 'list'}
