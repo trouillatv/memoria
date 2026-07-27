@@ -40,6 +40,8 @@ import {
 } from '@/lib/db/team-profile'
 import { listMembersOfTeam } from '@/lib/db/teams'
 import { listFieldMembersOfTeam } from '@/lib/db/team-field-members'
+import { getTeamActorInsight } from '@/lib/db/team-actor-insight'
+import { AttentionBadge } from '../../intervenants/fiche-ui'
 import { AddFieldPersonDialog } from './AddFieldPersonDialog'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { SpecialtyBadge } from '@/components/ui/team-specialties'
@@ -121,6 +123,7 @@ export default async function TeamProfilePage({
     fieldMembers,
     availableSites,
     specialtyCatalog,
+    actorInsight,
   ] = await Promise.all([
     listTeamFavoriteSites(id, 8),
     listTeamContractsCovered(id),
@@ -154,6 +157,8 @@ export default async function TeamProfilePage({
     })(),
     // Vocabulaire métier de l'org : spécialités / corps d'état (catalogue → fallback template)
     listOrgCatalog(me.organization_id, 'team_specialty'),
+    // Lot 2B.3C : état d'attention commun + actions portées par les membres (org déjà garanti par la garde ci-dessus)
+    getTeamActorInsight(id, [me.organization_id!]),
   ])
 
   const specialtyOptions = specialtyCatalog.map((c) => ({ key: c.key, label: c.label }))
@@ -203,7 +208,18 @@ export default async function TeamProfilePage({
             )}
             {' · Créée il y a '}{ageLabel}
           </span>
+          {/* Lot 2B.3C : état d'attention COMMUN (même politique que le cockpit et les fiches). */}
+          {actorInsight && <AttentionBadge level={actorInsight.attention.level} />}
         </div>
+
+        {/* Raisons de l'état — toujours explicites, jamais un niveau seul. */}
+        {actorInsight && actorInsight.attention.reasons.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {actorInsight.attention.reasons.map((r) => (
+              <span key={r.code} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs text-foreground/80">{r.label}</span>
+            ))}
+          </div>
+        )}
 
         {/* Spécialités (compact, lecture seule dans le header) */}
         {overview.specialties.length > 0 && (
@@ -254,6 +270,65 @@ export default async function TeamProfilePage({
           availableSites={availableSites}
         />
       </div>
+
+      {/* ── Sujets portés par les membres (Lot 2B.3C) ────────────────────
+          L'équipe n'est JAMAIS responsable d'une action (aucun assigned_team_id) :
+          on montre les actions portées par ses MEMBRES, jamais « de l'équipe ». */}
+      {actorInsight && (actorInsight.memberActions.length > 0 || actorInsight.orphanActions.length > 0) && (
+        <section className="rounded-lg border bg-card p-5 space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold">Sujets portés par les membres</h2>
+            <p className="text-xs text-muted-foreground">
+              Actions portées par les membres de cette équipe sur les chantiers où elle est mobilisée.
+            </p>
+          </div>
+          {actorInsight.memberActions.length === 0 ? (
+            <p className="text-xs italic text-muted-foreground">Aucune action ouverte sur les chantiers actuels de l’équipe.</p>
+          ) : (
+            <ul className="divide-y divide-border/50">
+              {actorInsight.memberActions.map((a) => (
+                <li key={a.id}>
+                  <Link href={a.href} className="group flex items-center gap-2.5 py-2 transition-colors hover:bg-muted/40 -mx-2 px-2 rounded">
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50 group-hover:text-foreground" aria-hidden />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm">{a.title}</div>
+                      <div className="truncate text-xs text-muted-foreground">{a.contactName} · {a.siteName}</div>
+                    </div>
+                    {a.overdue && (
+                      <span className="shrink-0 text-xs font-medium text-red-700 dark:text-red-400">En retard</span>
+                    )}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Orphelines : portées sur un chantier dont l'équipe est sortie. */}
+          {actorInsight.orphanActions.length > 0 && (
+            <div className="pt-1">
+              <p className="mb-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                Portées sur un chantier dont l’équipe est sortie
+              </p>
+              <ul className="divide-y divide-border/50">
+                {actorInsight.orphanActions.map((a) => (
+                  <li key={a.id}>
+                    <Link href={a.href} className="group flex items-center gap-2.5 py-2 transition-colors hover:bg-muted/40 -mx-2 px-2 rounded">
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50 group-hover:text-foreground" aria-hidden />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm">{a.title}</div>
+                        <div className="truncate text-xs text-muted-foreground">{a.contactName} · {a.siteName}</div>
+                      </div>
+                      {a.overdue && (
+                        <span className="shrink-0 text-xs font-medium text-red-700 dark:text-red-400">En retard</span>
+                      )}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* ── Spécialités (édition inline) ─────────────────────────────── */}
       <TeamSpecialtiesSection teamId={overview.id} initial={overview.specialties} options={specialtyOptions} />
