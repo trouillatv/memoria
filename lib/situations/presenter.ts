@@ -196,6 +196,66 @@ function upcomingActionSituation(signal: MemorySignal, now: string): Situation {
   }
 }
 
+function missedVisitSituation(signal: MemorySignal, now: string): Situation {
+  const source = sourceFromSignal(signal)
+  const where = factString(signal, 'where') ?? siteName(signal)
+  const site = {
+    id: signal.siteId,
+    name: where,
+    organizationId: signal.organizationId,
+    organizationName: organizationName(signal),
+  }
+
+  if (signal.trigger.reason === 'site_visit_stale') {
+    const lastVisitAt = signal.facts.find((f) => typeof f.occurredAt === 'string' && f.occurredAt.length > 0)?.occurredAt ?? null
+    const days = lastVisitAt ? daysBetween(now, lastVisitAt) : null
+    return {
+      id: signal.id,
+      signalId: signal.id,
+      kind: 'stale_site_visit',
+      severity: signal.severity,
+      title: 'Chantier sans visite récente',
+      explanation: null,
+      site,
+      timing: {
+        occurredAt: lastVisitAt,
+        dueAt: null,
+        detectedAt: signal.detectedAt,
+        ageDays: days,
+        label: days === null ? 'Aucune visite récente' : `Dernière visite il y a ${days} jour${days === 1 ? '' : 's'}`,
+      },
+      source,
+      subject: null,
+      capabilities: openSourceCapability(source),
+    }
+  }
+
+  // planned_visit_overdue : le TITRE est ce qui était prévu (la mission), le
+  // chantier vit dans site.name, la date ratée dans le timing.
+  const dueAt = signal.facts.find((f) => typeof f.dueAt === 'string' && f.dueAt.length > 0)?.dueAt ?? null
+  const late = dueAt ? daysBetween(now, dueAt) : null
+  const dateLabel = formatFrenchDate(dueAt)
+  return {
+    id: signal.id,
+    signalId: signal.id,
+    kind: 'overdue_planned_visit',
+    severity: signal.severity,
+    title: factString(signal, 'what') ?? 'Visite planifiée non réalisée',
+    explanation: null,
+    site,
+    timing: {
+      occurredAt: null,
+      dueAt,
+      detectedAt: signal.detectedAt,
+      ageDays: late,
+      label: dateLabel ? `Prévue le ${dateLabel} · non réalisée` : 'Planifiée, non réalisée',
+    },
+    source,
+    subject: null,
+    capabilities: openSourceCapability(source),
+  }
+}
+
 function isPromiseSignal(signal: MemorySignal): boolean {
   return signal.category === 'promise' && signal.trigger.type === 'promise'
 }
@@ -252,6 +312,10 @@ export function presentSituation(signal: MemorySignal, now = new Date().toISOStr
   // Anticipation d'action : cas dédié (le mapping legacy ne porte pas dueAt).
   if (signal.trigger.type === 'old_action' && signal.trigger.reason === 'deadline_soon') {
     return upcomingActionSituation(signal, now)
+  }
+  // Visites oubliées : intervention planifiée non réalisée / chantier sans visite.
+  if (signal.trigger.type === 'missed_visit') {
+    return missedVisitSituation(signal, now)
   }
   const legacy = legacyAttentionEntry(signal)
   if (legacy) return legacyAttentionSituation(signal, legacy.kind, legacy.fallbackTitle)

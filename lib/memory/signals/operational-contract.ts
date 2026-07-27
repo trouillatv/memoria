@@ -27,6 +27,7 @@ export type OperationalSignalTrigger =
   | { type: 'health'; reason: 'activity_missing' }
   | { type: 'imminent_passage'; reason: 'passage_imminent' }
   | { type: 'overdue_deadline'; reason: 'deadline_overdue' }
+  | { type: 'missed_visit'; reason: 'planned_visit_overdue' | 'site_visit_stale' }
 
 /** Union de compatibilité pour les catalogues et métadonnées de migration. */
 export type OperationalSignalTriggerType = OperationalSignalTrigger['type']

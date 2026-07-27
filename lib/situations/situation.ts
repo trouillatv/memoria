@@ -10,6 +10,8 @@ export type SituationKind =
   | 'open_reserve'
   | 'planning_conflict'
   | 'pending_debrief'
+  | 'overdue_planned_visit'
+  | 'stale_site_visit'
 
 export type SituationSeverity = 'info' | 'warning' | 'critical'
 

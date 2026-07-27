@@ -16,6 +16,8 @@ import { getStructuredPromiseRecords } from '@/lib/db/promise-candidates'
 import { attentionItemToMemorySignal, nowItemToMemorySignal } from '@/lib/memory/signals/lot1-adapters'
 import { detectPromiseSignalsFromRecords } from '@/lib/memory/signals/promise-pipeline'
 import { detectActionDueSoonSignals } from '@/lib/memory/signals/action-due-soon-detector'
+import { getForgottenVisitCandidates } from '@/lib/db/forgotten-visits'
+import { detectMissedVisitSignals } from '@/lib/memory/signals/missed-visit-detector'
 import { composeAttentionCardsFromSignals } from '@/lib/situations/attention/compose'
 import { composeNowCardsFromSignals } from '@/lib/situations/now/compose'
 import { WelcomeCard } from './WelcomeCard'
@@ -67,9 +69,10 @@ export default async function DashboardPage() {
     ...attention.orange.map((item) => attentionItemToMemorySignal(item)),
   ].filter((signal): signal is NonNullable<typeof signal> => signal !== null)
   const actionDueSoonSignals = detectActionDueSoonSignals(now.actions)
+  const missedVisitSignals = detectMissedVisitSignals(await getForgottenVisitCandidates(orgIds).catch(() => ({ overduePlanned: [], staleSites: [] })))
   const siteIdsToday = new Set(upcoming.filter((i) => i.isToday).map((i) => i.siteId))
   const attentionCards = composeAttentionCardsFromSignals(
-    [...promiseSignals, ...legacyAttentionSignals, ...actionDueSoonSignals],
+    [...promiseSignals, ...legacyAttentionSignals, ...actionDueSoonSignals, ...missedVisitSignals],
     { siteIdsToday },
   )
   const nowCards = composeNowCardsFromSignals(promiseSignals)

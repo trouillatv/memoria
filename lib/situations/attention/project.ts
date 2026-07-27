@@ -26,11 +26,13 @@ function iconOfSituation(situation: Situation): AttentionIcon {
     case 'overdue_action':
     case 'upcoming_action':
     case 'planning_conflict':
+    case 'overdue_planned_visit':
       return 'calendar'
     case 'pending_debrief':
       return 'document'
     case 'stale_action':
     case 'open_reserve':
+    case 'stale_site_visit':
       return 'warning'
     default:
       return 'warning'
@@ -60,6 +62,8 @@ function isSupportedSituation(situation: Situation): boolean {
     || situation.kind === 'open_reserve'
     || situation.kind === 'planning_conflict'
     || situation.kind === 'pending_debrief'
+    || situation.kind === 'overdue_planned_visit'
+    || situation.kind === 'stale_site_visit'
 }
 
 // ─── Score métier ────────────────────────────────────────────────────────────

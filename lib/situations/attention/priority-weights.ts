@@ -15,15 +15,17 @@ export const PRIORITY_WEIGHTS = {
    * au-dessus d'unconfirmed_promise (20+0) et stale_action (10).
    */
   impact: {
-    overdue_action:      40,
-    planning_conflict:   40,
-    expired_promise:     30,
-    pending_debrief:     30,
-    open_reserve:        30,
-    upcoming_action:     25,
-    unconfirmed_promise: 20,
-    upcoming_promise:    20,
-    stale_action:        10,
+    overdue_action:        40,
+    planning_conflict:     40,
+    overdue_planned_visit: 35,
+    expired_promise:       30,
+    pending_debrief:       30,
+    open_reserve:          30,
+    upcoming_action:       25,
+    unconfirmed_promise:   20,
+    upcoming_promise:      20,
+    stale_site_visit:      15,
+    stale_action:          10,
   },
 
   /**
