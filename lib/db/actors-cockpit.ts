@@ -1,13 +1,15 @@
 import 'server-only'
 
-// ── RÉPERTOIRE UNIFIÉ DES ACTEURS (Lot 2B.2) ─────────────────────────────────
+// ── COCKPIT DES ACTEURS (Lot 2B.2) ───────────────────────────────────────────
+// Plus un annuaire (« qui existe ? ») mais un cockpit : « qui agit, où, avec qui,
+// sur quoi, et qui requiert mon attention ? ».
 // Read model DISCRIMINÉ person | company | team, org-scopé, LECTURE SEULE. Chaque
 // acteur reste dans son entité (company_contacts / companies / teams) — jamais
 // fusionné. On n'expose QUE des données réellement dérivables (cf. cadrage
 // docs/foundations/2026-07-27-intervenants-repertoire-cadrage.md). Aucune
 // « dernière activité » approximative ; le statut et les alertes sont déterministes.
 //
-// La composition (buildActorsDirectory) est PURE et testable sans base : getActorsDirectory
+// La composition (buildActorsCockpit) est PURE et testable sans base : getActorsCockpit
 // se contente de charger les lignes org-scopées puis délègue au calcul déterministe.
 
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -25,7 +27,7 @@ export type ActorAlert =
   | 'company_left_casting'     // entreprise responsable mais plus au casting actif
   | 'team_no_member'           // équipe sans personne
 
-export interface DirectoryActor {
+export interface CockpitActor {
   kind: ActorKind
   id: string
   name: string
@@ -41,8 +43,8 @@ export interface DirectoryActor {
   href: string | null
 }
 
-export interface ActorsDirectory {
-  actors: DirectoryActor[]
+export interface ActorsCockpit {
+  actors: CockpitActor[]
   /** Deux familles : ATTENTION (ce qui appelle une action) et VOLUME (contexte discret). */
   counters: {
     // ── Volume (contexte, discret) ──
@@ -60,7 +62,7 @@ export interface ActorsDirectory {
 }
 
 /** Entrées brutes déjà org-scopées et pré-filtrées (placeholders/supprimés exclus côté fetch). */
-export interface ActorsDirectoryInputs {
+export interface ActorsCockpitInputs {
   today: string
   companies: Array<{ id: string; name: string; short_name: string | null }>
   contacts: Array<{ id: string; full_name: string; function: string | null; company_id: string | null; is_internal_agent: boolean; email: string | null }>
@@ -82,7 +84,7 @@ function norm(s: string): string {
  * Composition PURE du répertoire. Déterministe : mêmes entrées → même sortie.
  * Ne dépend d'aucune surface ni d'aucun I/O — testable directement.
  */
-export function buildActorsDirectory(input: ActorsDirectoryInputs): ActorsDirectory {
+export function buildActorsCockpit(input: ActorsCockpitInputs): ActorsCockpit {
   const { today, companies, contacts, teams, users, teamMembers, fieldMembers, missions, casting, actions, proposalCount } = input
   const companyNameById = new Map(companies.map((c) => [c.id, c.short_name || c.name]))
   const teamNameById = new Map(teams.map((t) => [t.id, t.name]))
@@ -128,7 +130,7 @@ export function buildActorsDirectory(input: ActorsDirectoryInputs): ActorsDirect
   }
   const matchedUserIds = new Set<string>()
 
-  const actors: DirectoryActor[] = []
+  const actors: CockpitActor[] = []
 
   // ── PERSONNES : company_contacts d'abord ────────────────────────────────────
   for (const c of contacts) {
@@ -233,8 +235,8 @@ export function buildActorsDirectory(input: ActorsDirectoryInputs): ActorsDirect
  * Charge les lignes org-scopées puis délègue à la composition pure. Fail-closed :
  * sans org → répertoire vide.
  */
-export async function getActorsDirectory(orgIds: string[]): Promise<ActorsDirectory> {
-  if (orgIds.length === 0) return buildActorsDirectory(emptyInputs())
+export async function getActorsCockpit(orgIds: string[]): Promise<ActorsCockpit> {
+  if (orgIds.length === 0) return buildActorsCockpit(emptyInputs())
   const db = createAdminClient()
   const today = todayLocalIso()
 
@@ -266,7 +268,7 @@ export async function getActorsDirectory(orgIds: string[]): Promise<ActorsDirect
     db.from('site_knowledge_proposals').select('id').in('organization_id', orgIds).eq('kind', 'stakeholder').eq('status', 'proposed'),
   ])
 
-  return buildActorsDirectory({
+  return buildActorsCockpit({
     today,
     companies,
     contacts,
@@ -281,6 +283,6 @@ export async function getActorsDirectory(orgIds: string[]): Promise<ActorsDirect
   })
 }
 
-function emptyInputs(): ActorsDirectoryInputs {
+function emptyInputs(): ActorsCockpitInputs {
   return { today: todayLocalIso(), companies: [], contacts: [], teams: [], users: [], teamMembers: [], fieldMembers: [], missions: [], casting: [], actions: [], proposalCount: 0 }
 }

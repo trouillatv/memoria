@@ -3,9 +3,9 @@
 // sans jamais fusionner les entités ni masquer un acteur historique.
 
 import { describe, expect, it } from 'vitest'
-import { buildActorsDirectory, type ActorsDirectoryInputs } from '@/lib/db/actors-directory'
+import { buildActorsCockpit, type ActorsCockpitInputs } from '@/lib/db/actors-cockpit'
 
-function base(): ActorsDirectoryInputs {
+function base(): ActorsCockpitInputs {
   return {
     today: '2026-07-27',
     companies: [], contacts: [], teams: [], users: [],
@@ -13,9 +13,9 @@ function base(): ActorsDirectoryInputs {
   }
 }
 
-describe('buildActorsDirectory', () => {
+describe('buildActorsCockpit', () => {
   it('org vide → répertoire vide, compteurs à zéro', () => {
-    const d = buildActorsDirectory(base())
+    const d = buildActorsCockpit(base())
     expect(d.actors).toEqual([])
     expect(d.counters).toEqual({
       personsActive: 0, companiesActive: 0, teamsActive: 0,
@@ -25,7 +25,7 @@ describe('buildActorsDirectory', () => {
   })
 
   it('action ouverte sans aucun responsable → compteur actionsWithoutOwner', () => {
-    const d = buildActorsDirectory({
+    const d = buildActorsCockpit({
       ...base(),
       actions: [
         { assigned_contact_id: null, assigned_company_id: null, due_date: null },
@@ -36,7 +36,7 @@ describe('buildActorsDirectory', () => {
   })
 
   it('companiesOverdue compte les entreprises distinctes en retard, pas les actions', () => {
-    const d = buildActorsDirectory({
+    const d = buildActorsCockpit({
       ...base(),
       companies: [{ id: 'co1', name: 'A', short_name: null }, { id: 'co2', name: 'B', short_name: null }],
       casting: [{ company_id: 'co1', main_contact_id: null, role: 'X' }, { company_id: 'co2', main_contact_id: null, role: 'Y' }],
@@ -51,7 +51,7 @@ describe('buildActorsDirectory', () => {
   })
 
   it('agent interne sans équipe → alerte agent_no_team + statut incomplet', () => {
-    const d = buildActorsDirectory({
+    const d = buildActorsCockpit({
       ...base(),
       contacts: [{ id: 'c1', full_name: 'Jean Dupont', function: 'Électricien', company_id: null, is_internal_agent: true, email: null }],
     })
@@ -64,7 +64,7 @@ describe('buildActorsDirectory', () => {
   })
 
   it('agent avec équipe active → actif, sans alerte', () => {
-    const d = buildActorsDirectory({
+    const d = buildActorsCockpit({
       ...base(),
       contacts: [{ id: 'c1', full_name: 'Jean Dupont', function: null, company_id: null, is_internal_agent: true, email: null }],
       teams: [{ id: 't1', name: 'Électricité' }],
@@ -77,7 +77,7 @@ describe('buildActorsDirectory', () => {
   })
 
   it('entreprise avec action ouverte en retard sans référent → 2 alertes + compteurs', () => {
-    const d = buildActorsDirectory({
+    const d = buildActorsCockpit({
       ...base(),
       companies: [{ id: 'co1', name: 'SOTRAP SARL', short_name: 'SOTRAP' }],
       casting: [{ company_id: 'co1', main_contact_id: null, role: 'ETV' }],
@@ -94,7 +94,7 @@ describe('buildActorsDirectory', () => {
   })
 
   it('entreprise responsable mais sortie du casting → alerte company_left_casting, jamais masquée', () => {
-    const d = buildActorsDirectory({
+    const d = buildActorsCockpit({
       ...base(),
       companies: [{ id: 'co1', name: 'OldCo', short_name: null }],
       casting: [], // plus au casting actif
@@ -106,7 +106,7 @@ describe('buildActorsDirectory', () => {
   })
 
   it('équipe sans membre → alerte team_no_member + incomplet', () => {
-    const d = buildActorsDirectory({ ...base(), teams: [{ id: 't1', name: 'Gros œuvre' }] })
+    const d = buildActorsCockpit({ ...base(), teams: [{ id: 't1', name: 'Gros œuvre' }] })
     const t = d.actors.find((a) => a.id === 't1')!
     expect(t.kind).toBe('team')
     expect(t.status).toBe('incomplete')
@@ -115,7 +115,7 @@ describe('buildActorsDirectory', () => {
   })
 
   it('dédup compte↔contact : un user avec le même e-mail qu\'un contact n\'est pas double-compté', () => {
-    const d = buildActorsDirectory({
+    const d = buildActorsCockpit({
       ...base(),
       contacts: [{ id: 'c1', full_name: 'Marie Martin', function: null, company_id: null, is_internal_agent: true, email: 'marie@ex.fr' }],
       teams: [{ id: 't1', name: 'Élec' }],
@@ -130,7 +130,7 @@ describe('buildActorsDirectory', () => {
   })
 
   it('compte avec présence métier et SANS contact correspondant → présent avec href fiche', () => {
-    const d = buildActorsDirectory({
+    const d = buildActorsCockpit({
       ...base(),
       teams: [{ id: 't1', name: 'Élec' }],
       users: [{ id: 'u1', full_name: 'Paul Neuf', email: 'paul@ex.fr', role: 'chef_equipe' }],
@@ -143,7 +143,7 @@ describe('buildActorsDirectory', () => {
   })
 
   it('propositions stakeholder non confirmées remontées telles quelles', () => {
-    const d = buildActorsDirectory({ ...base(), proposalCount: 4 })
+    const d = buildActorsCockpit({ ...base(), proposalCount: 4 })
     expect(d.counters.detectedUnconfirmed).toBe(4)
   })
 })

@@ -1,8 +1,8 @@
 'use client'
 
-// Lot 2B.2 — Vue du répertoire unifié des acteurs (person | company | team).
+// Lot 2B.2 — Vue du cockpit des acteurs (person | company | team).
 // LECTURE SEULE. Onglets + recherche + filtres essentiels, en client, sur un
-// read model déjà agrégé côté serveur (getActorsDirectory). Aucune donnée
+// read model déjà agrégé côté serveur (getActorsCockpit). Aucune donnée
 // nouvelle ici : on trie, on filtre, on oriente vers les surfaces propriétaires.
 
 import { useMemo, useState } from 'react'
@@ -10,7 +10,7 @@ import Link from 'next/link'
 import {
   Users, User, Building2, ArrowRight, AlertTriangle, Clock,
 } from 'lucide-react'
-import type { ActorKind, ActorStatus, ActorAlert, DirectoryActor, ActorsDirectory } from '@/lib/db/actors-directory'
+import type { ActorKind, ActorStatus, ActorAlert, CockpitActor, ActorsCockpit } from '@/lib/db/actors-cockpit'
 
 type Tab = 'all' | 'person' | 'company' | 'team'
 
@@ -55,7 +55,7 @@ function KindIcon({ kind }: { kind: ActorKind }) {
 /** Ordre déterministe : d'abord les alertes, puis actif → incomplet → historique,
  *  puis alphabétique. Aucun ranking « pertinence » caché. */
 const STATUS_ORDER: Record<ActorStatus, number> = { active: 0, incomplete: 1, historical: 2 }
-function compareActors(a: DirectoryActor, b: DirectoryActor): number {
+function compareActors(a: CockpitActor, b: CockpitActor): number {
   const aAlert = a.alerts.length > 0 ? 0 : 1
   const bAlert = b.alerts.length > 0 ? 0 : 1
   if (aAlert !== bAlert) return aAlert - bAlert
@@ -63,7 +63,7 @@ function compareActors(a: DirectoryActor, b: DirectoryActor): number {
   return a.name.localeCompare(b.name, 'fr')
 }
 
-export function ActorsDirectoryView({ directory }: { directory: ActorsDirectory }) {
+export function ActorsCockpitView({ directory }: { directory: ActorsCockpit }) {
   const [tab, setTab] = useState<Tab>('all')
   const [query, setQuery] = useState('')
   const [alertsOnly, setAlertsOnly] = useState(false)
@@ -212,7 +212,7 @@ function VolumeLink({ value, label, onClick }: { value: number; label: string; o
   )
 }
 
-function ActorRow({ actor }: { actor: DirectoryActor }) {
+function ActorRow({ actor }: { actor: CockpitActor }) {
   const inner = (
     <div className="flex items-start gap-3">
       <div className="mt-0.5 shrink-0 flex h-9 w-9 items-center justify-center rounded-full bg-brand-50 text-brand-700 dark:bg-brand-600/10 dark:text-brand-300">

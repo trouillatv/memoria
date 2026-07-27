@@ -10,8 +10,8 @@
 import { notFound, redirect } from 'next/navigation'
 import { checkIntervenantsPageAccess } from '@/lib/intervenants/access'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
-import { getActorsDirectory } from '@/lib/db/actors-directory'
-import { ActorsDirectoryView } from './ActorsDirectoryView'
+import { getActorsCockpit } from '@/lib/db/actors-cockpit'
+import { ActorsCockpitView } from './ActorsCockpitView'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,7 +24,7 @@ export default async function IntervenantsListPage() {
   if (!access.access.isPrivileged) notFound()
 
   const orgIds = await getOrgIdsOfUser()
-  const directory = await getActorsDirectory(orgIds)
+  const directory = await getActorsCockpit(orgIds)
 
-  return <ActorsDirectoryView directory={directory} />
+  return <ActorsCockpitView directory={directory} />
 }
