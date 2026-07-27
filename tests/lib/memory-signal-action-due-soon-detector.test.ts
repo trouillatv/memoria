@@ -57,4 +57,16 @@ describe('ActionDueSoonDetector', () => {
     // Anticipation < action en retard (doctrine : dépassé d'abord).
     expect(card!.priority).toBeLessThan(65)
   })
+
+  it('le scoring partage la MÊME notion de « demain » que le détecteur (civil Nouméa, pas UTC)', () => {
+    // 2026-07-28T14:00Z = 2026-07-29 01:00 à Nouméa : la date UTC (28) et la
+    // date Nouméa (29) divergent — le cas qui piégeait l\'ancien calcul UTC.
+    const MIDNIGHT_WINDOW = '2026-07-28T14:00:00.000Z'
+    const [signal] = detectActionDueSoonSignals([row({ due_date: '2026-07-30' })], MIDNIGHT_WINDOW)
+    expect(signal).toBeDefined() // demain Nouméa = 30
+    const situation = presentSituation(signal, MIDNIGHT_WINDOW)
+    const card = projectSituationForAttention(situation, new Date(MIDNIGHT_WINDOW))
+    // impact upcoming_action 25 + urgence « demain » 15 (et non « thisWeek » 10 en UTC).
+    expect(card!.priority).toBe(40)
+  })
 })

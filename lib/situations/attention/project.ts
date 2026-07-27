@@ -2,6 +2,7 @@ import type { Situation, SituationCapability, SituationKind } from '../situation
 import type { AttentionAction, AttentionCard, AttentionIcon, AttentionTone } from './types'
 import { PRIORITY_WEIGHTS, DEFAULT_PRIORITY_CONTEXT } from './priority-weights'
 import type { PriorityContext } from './priority-weights'
+import { localDateOf } from '@/lib/time/local-date'
 
 function toneOfSituation(situation: Situation): AttentionTone {
   switch (situation.severity) {
@@ -65,13 +66,24 @@ function isSupportedSituation(situation: Situation): boolean {
 
 type UrgencyKey = keyof typeof PRIORITY_WEIGHTS.urgency
 
+// Même notion de « demain » que les détecteurs : DATE CIVILE Nouméa, de bout en
+// bout de la chaîne (détecteur → situation → projection → priorité). Un dueAt
+// civil pur (yyyy-mm-dd) est comparé tel quel ; un timestamp est converti.
+function civilDate(value: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  const parsed = new Date(value)
+  return Number.isFinite(parsed.getTime()) ? localDateOf(parsed) : value.slice(0, 10)
+}
+
+function civilDiffDays(fromIso: string, toIso: string): number {
+  const [fy, fm, fd] = fromIso.split('-').map(Number)
+  const [ty, tm, td] = toIso.split('-').map(Number)
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000)
+}
+
 function urgencyKey(dueAt: string | null, now: Date): UrgencyKey {
   if (!dueAt) return 'none'
-  const due = new Date(dueAt)
-  due.setUTCHours(0, 0, 0, 0)
-  const today = new Date(now)
-  today.setUTCHours(0, 0, 0, 0)
-  const diffDays = Math.round((due.getTime() - today.getTime()) / 86_400_000)
+  const diffDays = civilDiffDays(localDateOf(now), civilDate(dueAt))
   if (diffDays < 0) return 'overdue'
   if (diffDays === 0) return 'today'
   if (diffDays === 1) return 'tomorrow'
