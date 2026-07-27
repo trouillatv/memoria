@@ -40,6 +40,7 @@ import {
 } from '@/lib/db/team-profile'
 import { listMembersOfTeam } from '@/lib/db/teams'
 import { listFieldMembersOfTeam } from '@/lib/db/team-field-members'
+import { AddFieldPersonDialog } from './AddFieldPersonDialog'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { SpecialtyBadge } from '@/components/ui/team-specialties'
 import { TeamRhythm } from './TeamRhythm'
@@ -489,6 +490,10 @@ export default async function TeamProfilePage({
               )}
             </>
           )}
+          {/* Ajouter un agent terrain (sans compte) — recherche existant ou création. */}
+          <div className="pt-1">
+            <AddFieldPersonDialog teamId={id} teamName={overview.name} />
+          </div>
         </section>
       </div>
 

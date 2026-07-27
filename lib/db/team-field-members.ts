@@ -47,6 +47,11 @@ export async function createFieldPersonInTeam(input: {
   fullName: string
   job?: string | null
   companyName?: string | null
+  email?: string | null
+  phone?: string | null
+  /** Classification (mig 244) : true = agent interne de l'organisation. Défaut
+   *  true car le geste « créer depuis une équipe » vise justement un agent. */
+  isInternalAgent?: boolean
   createdBy: string | null
 }): Promise<AddFieldPersonResult> {
   const db = createAdminClient()
@@ -79,6 +84,9 @@ export async function createFieldPersonInTeam(input: {
       company_id: companyId,
       full_name: fullName,
       function: input.job?.trim() || null,
+      email: input.email?.trim() || null,
+      phone: input.phone?.trim() || null,
+      is_internal_agent: input.isInternalAgent ?? true,
     })
     .select('id')
     .single()
@@ -105,6 +113,94 @@ export async function createFieldPersonInTeam(input: {
   }
 
   return { ok: true, contactId: contact.id }
+}
+
+/**
+ * Rattache une personne DÉJÀ existante à l'équipe (sans la recréer) — le geste
+ * « rechercher un agent existant » du parcours. Vérifie que le contact et
+ * l'équipe partagent la même organisation (le trigger le garantit aussi).
+ */
+export async function attachContactToTeam(input: {
+  teamId: string
+  contactId: string
+  createdBy: string | null
+}): Promise<AddFieldPersonResult> {
+  const db = createAdminClient()
+  const { data: teamRow } = await db
+    .from('teams')
+    .select('organization_id')
+    .eq('id', input.teamId)
+    .maybeSingle()
+  if (!teamRow?.organization_id) return { ok: false, error: 'Équipe introuvable ou sans organisation' }
+  const orgId = teamRow.organization_id
+  const membership = await requireOrganizationMembership(orgId)
+  if (!membership.ok) return { ok: false, error: membership.error }
+
+  // La personne doit appartenir à la MÊME organisation que l'équipe et ne pas
+  // être archivée — jamais un rattachement croisé inter-organisations.
+  const { data: contact } = await db
+    .from('company_contacts')
+    .select('id, organization_id, deleted_at')
+    .eq('id', input.contactId)
+    .maybeSingle()
+  const c = contact as { id: string; organization_id: string; deleted_at: string | null } | null
+  if (!c || c.organization_id !== orgId) return { ok: false, error: 'Personne introuvable dans cette organisation' }
+  if (c.deleted_at) return { ok: false, error: 'Cette personne est archivée' }
+
+  const { error: edgeErr } = await db.from('team_field_members').insert({
+    organization_id: orgId,
+    team_id: input.teamId,
+    contact_id: input.contactId,
+    created_by: input.createdBy,
+  })
+  if (edgeErr) {
+    const msg = edgeErr.message ?? ''
+    if (msg.includes('tenant')) return { ok: false, error: 'Cette équipe n’appartient pas à votre organisation' }
+    if (msg.includes('duplicate') || msg.includes('uq_team_field_members_active')) {
+      return { ok: false, error: 'Cette personne est déjà dans l’équipe' }
+    }
+    return { ok: false, error: 'Rattachement à l’équipe impossible' }
+  }
+  return { ok: true, contactId: input.contactId }
+}
+
+export interface FieldPersonSearchResult {
+  contactId: string
+  fullName: string
+  job: string | null
+  email: string | null
+  phone: string | null
+  isInternalAgent: boolean
+}
+
+/**
+ * Recherche des personnes métier de l'organisation par nom (pour réutiliser une
+ * fiche existante plutôt que de recréer un doublon). Org-scopé, actifs seulement.
+ * Renvoie email/phone pour aider l'humain à reconnaître un doublon éventuel —
+ * jamais de fusion automatique.
+ */
+export async function searchOrgFieldPersons(orgIds: string[], query: string, limit = 8): Promise<FieldPersonSearchResult[]> {
+  const q = query.trim()
+  if (orgIds.length === 0 || q.length < 2) return []
+  const db = createAdminClient()
+  const { data, error } = await db
+    .from('company_contacts')
+    .select('id, full_name, function, email, phone, is_internal_agent')
+    .in('organization_id', orgIds)
+    .is('deleted_at', null)
+    .ilike('full_name', `%${q}%`)
+    .order('full_name', { ascending: true })
+    .limit(limit)
+  if (error) throw error
+  return ((data ?? []) as Array<{ id: string; full_name: string; function: string | null; email: string | null; phone: string | null; is_internal_agent: boolean }>)
+    .map((r) => ({
+      contactId: r.id,
+      fullName: r.full_name,
+      job: r.function,
+      email: r.email,
+      phone: r.phone,
+      isInternalAgent: r.is_internal_agent,
+    }))
 }
 
 /** Compte les personnes terrain ACTIVES par équipe. Descriptif (doctrine V2 :

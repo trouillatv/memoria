@@ -26,10 +26,17 @@ import {
   removeMemberFromTeam,
   getTeam,
   setTeamReferent,
+  listActiveTeamIdsForUser,
 } from '@/lib/db/teams'
-import { createFieldPersonInTeam } from '@/lib/db/team-field-members'
+import {
+  createFieldPersonInTeam,
+  attachContactToTeam,
+  searchOrgFieldPersons,
+  type FieldPersonSearchResult,
+} from '@/lib/db/team-field-members'
 import { logAuditEvent } from '@/lib/audit/log'
 import { requireOwned } from '@/lib/auth/ownership'
+import { decideTeamFieldAccess } from '@/lib/auth/team-field-access-policy'
 import type { UserRole } from '@/types/db'
 import { TEAM_BADGE_COLORS } from '@/components/ui/team-badge'
 // team-meta = SERVER-SAFE. Ne JAMAIS réimporter ces constantes depuis
@@ -59,6 +66,35 @@ async function requireManagerOrAdmin(): Promise<AuthOk | AuthFail> {
 async function guardTeam(role: UserRole, teamId: string): Promise<string | null> {
   const owned = await requireOwned(role, 'teams', teamId)
   return owned.allowed ? null : owned.error
+}
+
+/**
+ * Accès à la GESTION DES PERSONNES TERRAIN d'une équipe (mig 244 / Lot 1).
+ *
+ * admin/manager : toutes les équipes de leur organisation (garde d'org).
+ * chef_equipe   : UNIQUEMENT ses propres équipes — l'appartenance est PROUVÉE
+ *                 par team_members (listActiveTeamIdsForUser), jamais déduite du
+ *                 simple fait de connaître le teamId. Comme teams porte bien un
+ *                 organization_id (mig 089), la garde d'org tient aussi pour lui.
+ * Tout autre rôle : refusé.
+ */
+async function requireTeamFieldAccess(teamId: string): Promise<AuthOk | AuthFail> {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Non authentifié' }
+  const role = await getUserRoleById(user.id)
+
+  // Faits fournis à la politique pure : org de l'équipe + appartenance réelle.
+  const teamInOrg = role ? (await guardTeam(role, teamId)) === null : false
+  // L'appartenance ne compte que pour le chef d'équipe — on évite une requête
+  // inutile pour admin/manager.
+  const isMyTeam = role === 'chef_equipe'
+    ? (await listActiveTeamIdsForUser(user.id)).includes(teamId)
+    : false
+
+  const decision = decideTeamFieldAccess({ role, teamInOrg, isMyTeam })
+  if (!decision.allowed) return { error: decision.reason }
+  return { userId: user.id, role: role as UserRole }
 }
 
 // ----------------------------------------------------------------------------
@@ -120,11 +156,23 @@ const memberSchema = z.object({
 
 // Personne TERRAIN (mig 219) : un nom suffit — le métier et l'entreprise sont
 // optionnels, l'identité est progressive (« M. X » → « Jean Dupont — ETV »).
+// Email/téléphone optionnels (mig 244) — jamais requis, jamais un flux Auth.
 const fieldPersonSchema = z.object({
   teamId: z.string().uuid(),
   fullName: z.string().trim().min(1, 'Le nom est requis').max(120),
   job: z.string().trim().max(80).optional(),
   companyName: z.string().trim().max(120).optional(),
+  email: z.string().trim().email('E-mail invalide').max(160).optional().or(z.literal('')),
+  phone: z.string().trim().max(40).optional(),
+})
+
+const attachFieldPersonSchema = z.object({
+  teamId: z.string().uuid(),
+  contactId: z.string().uuid(),
+})
+
+const searchFieldPersonSchema = z.object({
+  query: z.string().trim().min(2, 'Au moins 2 caractères').max(80),
 })
 
 // ----------------------------------------------------------------------------
@@ -313,16 +361,16 @@ export async function addFieldPersonToTeamAction(input: {
   fullName: string
   job?: string
   companyName?: string
+  email?: string
+  phone?: string
 }): Promise<{ ok: boolean; error?: string; contactId?: string }> {
-  const auth = await requireManagerOrAdmin()
-  if ('error' in auth) return { ok: false, error: auth.error }
-
   const parsed = fieldPersonSchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
-  const denied = await guardTeam(auth.role, parsed.data.teamId)
-  if (denied) return { ok: false, error: denied }
+  // Garde Lot 1 : admin/manager sur toute l'org, chef_equipe sur SES équipes.
+  const auth = await requireTeamFieldAccess(parsed.data.teamId)
+  if ('error' in auth) return { ok: false, error: auth.error }
 
   const existing = await getTeam(parsed.data.teamId)
   if (!existing) return { ok: false, error: 'Équipe introuvable' }
@@ -332,6 +380,9 @@ export async function addFieldPersonToTeamAction(input: {
     fullName: parsed.data.fullName,
     job: parsed.data.job ?? null,
     companyName: parsed.data.companyName ?? null,
+    email: parsed.data.email || null,
+    phone: parsed.data.phone ?? null,
+    isInternalAgent: true, // créer depuis une équipe = un agent interne (mig 244)
     createdBy: auth.userId,
   })
   if (!res.ok) return { ok: false, error: res.error }
@@ -350,6 +401,72 @@ export async function addFieldPersonToTeamAction(input: {
   revalidatePath('/equipes')
   revalidatePath('/semaine')
   return { ok: true, contactId: res.contactId }
+}
+
+/**
+ * Rattache une personne EXISTANTE à l'équipe (parcours « rechercher un agent
+ * existant » plutôt que recréer un doublon). Même garde d'accès que la création.
+ */
+export async function attachFieldPersonToTeamAction(input: {
+  teamId: string
+  contactId: string
+}): Promise<{ ok: boolean; error?: string; contactId?: string }> {
+  const parsed = attachFieldPersonSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
+  }
+  const auth = await requireTeamFieldAccess(parsed.data.teamId)
+  if ('error' in auth) return { ok: false, error: auth.error }
+
+  const existing = await getTeam(parsed.data.teamId)
+  if (!existing) return { ok: false, error: 'Équipe introuvable' }
+
+  const res = await attachContactToTeam({
+    teamId: parsed.data.teamId,
+    contactId: parsed.data.contactId,
+    createdBy: auth.userId,
+  })
+  if (!res.ok) return { ok: false, error: res.error }
+
+  await logAuditEvent({
+    userId: auth.userId,
+    entityType: 'site',
+    entityId: parsed.data.teamId,
+    action: 'updated',
+    metadata: {
+      kind: 'team_field_person_attached',
+      team_id: parsed.data.teamId,
+      contact_id: res.contactId,
+    },
+  })
+  revalidatePath('/equipes')
+  revalidatePath('/semaine')
+  return { ok: true, contactId: res.contactId }
+}
+
+/**
+ * Recherche des personnes métier de l'organisation (pour réutiliser une fiche
+ * existante). Lecture org-scopée, ouverte aux trois rôles (le chef_equipe doit
+ * pouvoir chercher un agent existant avant d'en créer un doublon).
+ */
+export async function searchOrgFieldPersonsAction(input: {
+  query: string
+}): Promise<{ ok: boolean; error?: string; results?: FieldPersonSearchResult[] }> {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Non authentifié' }
+  const role = await getUserRoleById(user.id)
+  if (role !== 'admin' && role !== 'manager' && role !== 'chef_equipe') {
+    return { ok: false, error: 'Accès refusé' }
+  }
+  const parsed = searchFieldPersonSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Recherche invalide' }
+  }
+  const orgIds = await getOrgIdsOfUser()
+  if (orgIds.length === 0) return { ok: true, results: [] }
+  const results = await searchOrgFieldPersons(orgIds, parsed.data.query)
+  return { ok: true, results }
 }
 
 export async function addMemberToTeamAction(input: {
