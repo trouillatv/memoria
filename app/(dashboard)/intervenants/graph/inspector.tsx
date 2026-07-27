@@ -7,12 +7,17 @@
 // EdgePanel explique le LIEN comme un objet (nature, depuis, source, confiance).
 
 import Link from 'next/link'
-import { ArrowRight, Route, User, Building2, Users, MapPin, ListTodo } from 'lucide-react'
+import { ArrowRight, Route, User, Building2, Users, MapPin, ListTodo, FileText, Gavel, Zap } from 'lucide-react'
 import type { ActorGraphNode, ActorGraphKind } from '@/lib/knowledge/actors-graph-model'
+import type { ActorContext, ActorContextEvent, ActorContextEventKind } from '@/lib/db/actor-context'
 import { attentionLevelLabel } from '@/lib/knowledge/actor-attention'
 
 const KIND_LABEL: Record<ActorGraphKind, string> = { person: 'Personne', company: 'Entreprise', team: 'Équipe', site: 'Chantier', action: 'Action' }
 const KIND_ICON = { person: User, company: Building2, team: Users, site: MapPin, action: ListTodo } as const
+
+// Contexte opérationnel — icône par type d'événement (le dernier événement parle
+// plus qu'un compteur).
+const EVENT_ICON: Record<ActorContextEventKind, typeof FileText> = { report: FileText, decision: Gavel, action: Zap, casting: MapPin, team: Users }
 
 /** Surface propriétaire (lien EXPLICITE — jamais une navigation implicite au clic). */
 export function nodeHref(n: ActorGraphNode): string | null {
@@ -35,10 +40,12 @@ export function LevelBadge({ node }: { node: ActorGraphNode }) {
   return <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${cls}`}>{attentionLevelLabel(node.level)}</span>
 }
 
-export function NodePanel({ node, narration, relations, compact, onFollow, onSelectNode, onSelectEdge, onActivateActor }: {
+export function NodePanel({ node, narration, relations, context, compact, onFollow, onSelectNode, onSelectEdge, onActivateActor }: {
   node: ActorGraphNode
   narration: string[]
   relations: Array<{ e: { a: string; b: string; label: string }; index: number; other: ActorGraphNode }>
+  /** Contexte opérationnel (dernières interactions datées) — personne/entreprise. */
+  context?: ActorContext | null
   /** Réseau embarqué dans une fiche : typo plus resserrée. */
   compact?: boolean
   onFollow(): void
@@ -86,6 +93,30 @@ export function NodePanel({ node, narration, relations, compact, onFollow, onSel
           {narration.map((t, i) => (
             <p key={i} className={`mb-1.5 ${compact ? 'text-[12.5px]' : 'text-[13.5px]'} leading-relaxed`}>{t}</p>
           ))}
+        </>
+      )}
+
+      {context && context.latest.length > 0 && (
+        <>
+          <SectionLabel>Dernières interactions</SectionLabel>
+          <ul className="space-y-2">
+            {context.latest.map((e, i) => <InteractionRow key={i} e={e} />)}
+          </ul>
+        </>
+      )}
+
+      {context && context.timeline.length > 1 && (
+        <>
+          <SectionLabel>Chronologie condensée</SectionLabel>
+          <ol className="ml-1 border-l border-border/70 pl-3">
+            {context.timeline.map((e, i) => (
+              <li key={i} className="relative pb-2 last:pb-0">
+                <span aria-hidden className="absolute -left-[15px] top-1 h-1.5 w-1.5 rounded-full bg-muted-foreground/50" />
+                <span className="text-[11px] font-medium tabular-nums text-muted-foreground">{shortDate(e.date)}</span>
+                <span className="ml-1.5 text-[12.5px]">{e.label}</span>
+              </li>
+            ))}
+          </ol>
         </>
       )}
 
@@ -174,6 +205,34 @@ export function PathPanel({ steps, onQuit, onSelectNode }: {
       </ol>
       <p className="mt-3 border-t pt-2.5 text-[11px] text-muted-foreground">Le plus court chemin réel entre ces deux acteurs.</p>
     </div>
+  )
+}
+
+const shortDate = (iso: string) => new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' }).format(new Date(iso))
+
+/** Une dernière interaction : icône du type + libellé + chantier + date (le
+ *  dernier ÉVÉNEMENT, jamais un compteur). Cliquable vers la source si connue. */
+function InteractionRow({ e }: { e: ActorContextEvent }) {
+  const Icon = EVENT_ICON[e.kind]
+  const body = (
+    <>
+      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[12.5px] font-medium">{e.label}</span>
+        <span className="block text-[11px] text-muted-foreground">
+          {e.sub ? `${e.sub} · ` : ''}{shortDate(e.date)}
+        </span>
+      </span>
+    </>
+  )
+  return (
+    <li>
+      {e.href
+        ? <Link href={e.href} className="flex items-start gap-2 rounded-md hover:bg-muted/50">{body}</Link>
+        : <span className="flex items-start gap-2">{body}</span>}
+    </li>
   )
 }
 

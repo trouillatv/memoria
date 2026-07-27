@@ -6,13 +6,15 @@
 // raconté), chronologie (le film), narration. Le canvas ne fait que dessiner et
 // remonter les gestes ; toute la LECTURE vit ici.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   shortestPath, graphTimeline, graphKinds, PERSPECTIVES, enqueteFocus,
   REL_SOURCE_LABEL,
   type ActorsGraph, type ActorGraphNode, type ActorGraphKind, type ActorPerspective, type EnqueteLens,
 } from '@/lib/knowledge/actors-graph-model'
 import { narrateActorInGraph } from '@/lib/knowledge/actor-narration'
+import { getActorContextAction } from '../context-actions'
+import type { ActorContext } from '@/lib/db/actor-context'
 import { NodePanel, EdgePanel, PathPanel } from './inspector'
 
 export type GraphSelection = { type: 'node'; id: string } | { type: 'edge'; index: number } | null
@@ -59,6 +61,24 @@ export function useGraphExplorer(graph: ActorsGraph, focusId?: string | null, in
   // Sous-graphe d'enquête du nœud sélectionné (null hors sélection) — pilote la mise
   // en évidence ET l'isolement dans le canvas.
   const focusSet = useMemo(() => (selNode ? enqueteFocus(graph, selNode.id, lens) : null), [selNode, graph, lens])
+
+  // ── Contexte opérationnel (V2.2) : dernières interactions datées de l'acteur ──
+  // Chargé à la demande (personne/entreprise) — les décisions/CR/actions ne vivent
+  // pas dans le graphe. Annulable si la sélection change vite.
+  const [context, setContext] = useState<{ id: string; data: ActorContext } | null>(null)
+  useEffect(() => {
+    // Rien à charger hors personne/entreprise ; le contexte périmé n'est de toute
+    // façon jamais affiché (dérivation par id ci-dessous) → pas de setState synchrone.
+    if (!selNode || (selNode.kind !== 'person' && selNode.kind !== 'company')) return
+    const nodeId = selNode.id
+    const rawId = nodeId.slice(nodeId.indexOf('_') + 1)
+    let cancelled = false
+    getActorContextAction(selNode.kind, rawId)
+      .then((res) => { if (!cancelled && res.ok) setContext({ id: nodeId, data: res.context }) })
+      .catch(() => { /* contexte indisponible → l'inspecteur reste sans cette section */ })
+    return () => { cancelled = true }
+  }, [selNode])
+  const nodeContext = selNode && context?.id === selNode.id ? context.data : null
 
   const pathNodes = useMemo(() => (path ? new Set(path.nodes) : null), [path])
   const pathEdges = useMemo(() => (path ? new Set(path.edgeIndexes) : null), [path])
@@ -120,6 +140,7 @@ export function useGraphExplorer(graph: ActorsGraph, focusId?: string | null, in
     availableKinds, visibleKinds, perspective, applyPerspective, toggleKind,
     query, setQuery, matches, focusNode, centerRequest,
     lens, setLens, isolate, setIsolate,
+    nodeContext,
   }
 }
 
@@ -132,13 +153,14 @@ export function ExplorerAside({ ex, compact, focusId, onActivateActor, emptyStat
   onActivateActor?: (node: ActorGraphNode) => void
   emptyState?: React.ReactNode
 }) {
-  const { pathSteps, selNode, selEdge, narration, relations, nodeById, selectNode, selectEdge, startFollow, clearPath } = ex
+  const { pathSteps, selNode, selEdge, narration, relations, nodeById, nodeContext, selectNode, selectEdge, startFollow, clearPath } = ex
   if (pathSteps) return <PathPanel steps={pathSteps} onQuit={clearPath} onSelectNode={selectNode} />
   if (selNode) return (
     <NodePanel
       node={selNode}
       narration={narration}
       relations={relations}
+      context={nodeContext}
       compact={compact}
       onFollow={() => startFollow(selNode.id)}
       onSelectNode={selectNode}
