@@ -47,27 +47,31 @@ describe('deriveActorAttentionState — entreprise', () => {
 
 describe('deriveActorAttentionState — équipe', () => {
   it('jamais urgent, même avec des actions orphelines de membres', () => {
-    const s = deriveActorAttentionState({ kind: 'team', emptyButAssigned: false, noMembers: false, activeWithoutFieldMember: false, memberOrphanActions: 5 })
+    const s = deriveActorAttentionState({ kind: 'team', mobilized: false, hasAnyMember: true, hasFieldMember: true, memberOrphanActions: 5 })
     expect(s.level).toBe('attention') // pas urgent
     expect(s.reasons[0]!.code).toBe('member_orphan_actions')
   })
 
-  it('affectée mais vide → surveiller (plus spécifique que no_member/no_field_member)', () => {
-    const s = deriveActorAttentionState({ kind: 'team', emptyButAssigned: true, noMembers: true, activeWithoutFieldMember: true, memberOrphanActions: 0 })
+  it('mobilisée mais vide → surveiller (plus spécifique que no_field_member)', () => {
+    const s = deriveActorAttentionState({ kind: 'team', mobilized: true, hasAnyMember: false, hasFieldMember: false, memberOrphanActions: 0 })
     expect(s.level).toBe('attention')
     expect(s.reasons.map((r) => r.code)).toEqual(['team_empty_but_assigned'])
   })
 
-  it('équipe sans aucun membre (non affectée) → surveiller · Aucun membre (jamais « à jour »)', () => {
-    const s = deriveActorAttentionState({ kind: 'team', emptyButAssigned: false, noMembers: true, activeWithoutFieldMember: false, memberOrphanActions: 0 })
-    expect(s.level).toBe('attention')
-    expect(s.reasons.map((r) => r.code)).toEqual(['team_no_member'])
-    expect(s.reasons[0]!.label).toBe('Aucun membre')
+  it('NUANCE : équipe INACTIVE (non mobilisée, sans membre) → à jour, PAS un problème', () => {
+    const s = deriveActorAttentionState({ kind: 'team', mobilized: false, hasAnyMember: false, hasFieldMember: false, memberOrphanActions: 0 })
+    expect(s.level).toBe('ok')
+    expect(s.reasons).toEqual([])
   })
 
-  it('a des comptes mais aucun agent terrain → no_field_member', () => {
-    const s = deriveActorAttentionState({ kind: 'team', emptyButAssigned: false, noMembers: false, activeWithoutFieldMember: true, memberOrphanActions: 0 })
+  it('mobilisée avec comptes mais aucun agent terrain → no_field_member', () => {
+    const s = deriveActorAttentionState({ kind: 'team', mobilized: true, hasAnyMember: true, hasFieldMember: false, memberOrphanActions: 0 })
     expect(s.reasons.map((r) => r.code)).toEqual(['team_no_field_member'])
+  })
+
+  it('non mobilisée avec comptes mais sans agent terrain → à jour (inactive, pas un problème)', () => {
+    const s = deriveActorAttentionState({ kind: 'team', mobilized: false, hasAnyMember: true, hasFieldMember: false, memberOrphanActions: 0 })
+    expect(s.level).toBe('ok')
   })
 })
 

@@ -59,12 +59,11 @@ export function buildTeamActorInsight(input: TeamActorInsightInputs): TeamActorI
   const orphanActions = input.memberOpenActions.filter((a) => !assigned.has(a.siteId)).map(toRef)
     .sort((a, b) => Number(b.overdue) - Number(a.overdue))
 
-  const active = input.assignedSiteIds.length > 0 || input.totalMembers > 0
   const attention = deriveActorAttentionState({
     kind: 'team',
-    emptyButAssigned: input.totalMembers === 0 && input.assignedSiteIds.length > 0,
-    noMembers: input.totalMembers === 0,
-    activeWithoutFieldMember: active && input.fieldMemberCount === 0,
+    mobilized: input.assignedSiteIds.length > 0,
+    hasAnyMember: input.totalMembers > 0,
+    hasFieldMember: input.fieldMemberCount > 0,
     memberOrphanActions: orphanActions.length,
   })
 

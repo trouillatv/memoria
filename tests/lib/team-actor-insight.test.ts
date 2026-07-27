@@ -10,10 +10,10 @@ function base(): TeamActorInsightInputs {
 }
 
 describe('buildTeamActorInsight', () => {
-  it('équipe sans membre → à surveiller · Aucun membre', () => {
+  it('équipe INACTIVE (sans membre, non mobilisée) → à jour, pas un problème', () => {
     const i = buildTeamActorInsight(base())
-    expect(i.attention.level).toBe('attention')
-    expect(i.attention.reasons.map((r) => r.code)).toEqual(['team_no_member'])
+    expect(i.attention.level).toBe('ok')
+    expect(i.attention.reasons).toEqual([])
   })
 
   it('actions des membres réparties : sur chantier mobilisé vs orphelines (équipe sortie)', () => {

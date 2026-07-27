@@ -203,13 +203,14 @@ export function buildActorsCockpit(input: ActorsCockpitInputs): ActorsCockpit {
     let teamOpen = 0; let teamOverdue = 0
     for (const [contactId, n] of openByContact) if (agentIds.has(contactId)) teamOpen += n
     for (const [contactId, n] of overdueByContact) if (agentIds.has(contactId)) teamOverdue += n
-    const active = affected || members > 0
-    const status: ActorStatus = affected ? 'active' : (members === 0 ? 'incomplete' : 'historical')
+    // Non mobilisée = inactive (historique), jamais « incomplète » : une équipe
+    // utilisée nulle part n'est pas un problème (nuance Vincent 2026-07-27).
+    const status: ActorStatus = affected ? 'active' : 'historical'
     const attention = deriveActorAttentionState({
       kind: 'team',
-      emptyButAssigned: members === 0 && affected,
-      noMembers: members === 0,
-      activeWithoutFieldMember: active && agentIds.size === 0,
+      mobilized: affected,
+      hasAnyMember: members > 0,
+      hasFieldMember: agentIds.size > 0,
       memberOrphanActions: 0, // détail par membre reporté à la fiche Équipe (2B.3C)
     })
     const subtitleBits = [`${members} personne${members > 1 ? 's' : ''}`, sites ? `${sites} chantier${sites > 1 ? 's' : ''}` : null].filter(Boolean)

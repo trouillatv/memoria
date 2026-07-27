@@ -19,10 +19,10 @@ export type AttentionCode =
   | 'agent_no_team'            // attention (personne) — agent interne sans équipe active
   | 'company_no_referent'      // attention (entreprise) — action(s) sans contact référent
   | 'company_left_casting'     // attention (entreprise) — responsable mais sortie du casting
-  // équipe
-  | 'team_empty_but_assigned'  // attention — affectée à un chantier mais sans aucun membre
-  | 'team_no_member'           // attention — équipe sans aucun membre (même non affectée)
-  | 'team_no_field_member'     // attention — a des comptes mais aucune personne terrain
+  // équipe — signalées SEULEMENT si l'équipe est réellement mobilisée (une équipe
+  // inactive, utilisée nulle part, n'est PAS un problème : elle est « historique »).
+  | 'team_empty_but_assigned'  // attention — mobilisée mais sans aucun membre
+  | 'team_no_field_member'     // attention — mobilisée, a des comptes mais aucun agent terrain
   | 'member_orphan_actions'    // attention — un membre porte des actions sur un chantier quitté
 
 export interface AttentionReason {
@@ -58,12 +58,14 @@ export type ActorFacts =
     }
   | {
       kind: 'team'
-      /** Affectée à au moins un chantier mais aucun membre (connecté ou terrain). */
-      emptyButAssigned: boolean
-      /** Aucun membre du tout (connecté ni terrain), même sans affectation. */
-      noMembers: boolean
-      /** A des comptes connectés mais aucune personne terrain (et l'équipe est active). */
-      activeWithoutFieldMember: boolean
+      /** Mobilisée sur ≥ 1 chantier actif. Une équipe NON mobilisée est inactive
+       *  (historique), jamais « à surveiller » — l'absence de membre n'est un
+       *  problème que si l'équipe est censée travailler. */
+      mobilized: boolean
+      /** ≥ 1 membre (connecté ou terrain). */
+      hasAnyMember: boolean
+      /** ≥ 1 agent terrain. */
+      hasFieldMember: boolean
       /** Actions portées par des membres sur un chantier dont l'équipe est sortie. */
       memberOrphanActions: number
     }
@@ -107,12 +109,10 @@ export function deriveActorAttentionState(facts: ActorFacts): AttentionState {
     if (facts.memberOrphanActions > 0) {
       reasons.push({ level: 'attention', code: 'member_orphan_actions', count: facts.memberOrphanActions, label: plural(facts.memberOrphanActions, 'action') + ' portée' + (facts.memberOrphanActions > 1 ? 's' : '') + ' hors casting' })
     }
-    // Cascade du plus spécifique au plus général — une seule raison de composition.
-    if (facts.emptyButAssigned) {
-      reasons.push({ level: 'attention', code: 'team_empty_but_assigned', count: 1, label: 'Affectée mais vide' })
-    } else if (facts.noMembers) {
-      reasons.push({ level: 'attention', code: 'team_no_member', count: 1, label: 'Aucun membre' })
-    } else if (facts.activeWithoutFieldMember) {
+    // Un manque de membre n'est un problème QUE si l'équipe est mobilisée.
+    if (facts.mobilized && !facts.hasAnyMember) {
+      reasons.push({ level: 'attention', code: 'team_empty_but_assigned', count: 1, label: 'Mobilisée mais vide' })
+    } else if (facts.mobilized && !facts.hasFieldMember) {
       reasons.push({ level: 'attention', code: 'team_no_field_member', count: 1, label: 'Aucun agent terrain' })
     }
   }
