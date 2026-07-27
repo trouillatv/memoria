@@ -39,6 +39,8 @@ type DailyBriefing = {
   headline: string
   supportingText?: string
   tone: 'critical' | 'warning' | 'neutral'
+  /** Vrai quand le site est nommé dans headline ou supportingText — évite la répétition dans la carte blanche. */
+  siteNamedAbove: boolean
 }
 
 function computeDailyBriefing(
@@ -61,34 +63,46 @@ function computeDailyBriefing(
           ? 'Commence par son urgence.'
           : `Commence par ses ${siteUrgentCount} urgences.`,
         tone: 'critical',
+        siteNamedAbove: true,
       }
     }
     return {
       headline: `${urgentSiteNames.size} chantiers ont besoin de toi aujourd'hui.`,
       supportingText: focusSite ? `${focusSite.name} est le plus prioritaire.` : undefined,
       tone: 'critical',
+      siteNamedAbove: true,
     }
   }
 
-  if (attentionCards.length > 0) {
+  if (attentionCards.length > 0 && focusSite) {
     return {
       headline: 'La journée est maîtrisable.',
       supportingText: `${attentionCards.length} point${attentionCards.length > 1 ? 's' : ''} reste${attentionCards.length > 1 ? 'nt' : ''} à surveiller.`,
       tone: 'warning',
+      siteNamedAbove: false,
     }
   }
 
   return {
     headline: 'Tes chantiers sont sous contrôle.',
-    supportingText: 'Rien d\'urgent ne demande ton attention.',
+    supportingText: undefined,
     tone: 'neutral',
+    siteNamedAbove: false,
   }
 }
 
+// Fonds sombres et calmes — le rouge reste un accent, pas le fond du hero.
 const HERO_BG: Record<DailyBriefing['tone'], string> = {
-  critical: 'bg-gradient-to-br from-[#b91c1c] to-[#7f1d1d]',
-  warning: 'bg-gradient-to-br from-[#b45309] to-[#92400e]',
-  neutral: 'bg-gradient-to-br from-[#1e3a5f] to-[#162d48]',
+  critical: 'bg-gradient-to-br from-[#3d1212] to-[#1f0808]',   // prune foncé désaturé
+  warning: 'bg-gradient-to-br from-[#282008] to-[#161202]',    // olive nuit
+  neutral: 'bg-gradient-to-br from-[#0e2240] to-[#091828]',    // navy profond
+}
+
+// Bande d'accent colorée en haut du hero (fine, non agressive)
+const HERO_ACCENT: Record<DailyBriefing['tone'], string> = {
+  critical: 'bg-[#dc2626]',
+  warning: 'bg-[#d97706]',
+  neutral: 'bg-[#22c55e]',
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -143,7 +157,6 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
   const nextItems = upcoming.filter((i) => !i.isToday)
   const urgentCount = attentionCards.filter((c) => c.tone === 'red').length
 
-  // Décomposition du bandeau par famille d'urgence
   const overdueActionsCount = attentionCards.filter((c) => c.subject === null && c.icon === 'calendar' && c.tone === 'red').length
   const overduePromisesCount = attentionCards.filter((c) => c.subject !== null && c.tone === 'red').length
   const criticalReservesCount = attentionCards.filter((c) => c.icon === 'warning' && c.tone === 'red').length
@@ -169,6 +182,14 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
 
   const briefing = computeDailyBriefing(attentionCards, focusSite, urgentCount)
 
+  // La carte blanche du bas n'a de sens que si le chantier a vraiment des éléments à traiter.
+  const showFocusCard = focusSite && (
+    briefing.tone !== 'neutral' ||
+    focusSite.overdueActionCount > 0 ||
+    focusSite.openReserveCount > 0 ||
+    focusSitePromiseCount > 0
+  )
+
   return (
     <div className="min-h-screen bg-[#f4f6fb]">
       <div className="mx-auto max-w-lg pt-3">
@@ -176,18 +197,20 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
         {/* ── Hero : briefing + chantier du jour ───────────────── */}
         <div className="mb-4 overflow-hidden rounded-3xl shadow-lg">
 
+          {/* Bande d'accent — couleur sémantique discrète */}
+          <div className={`h-[3px] ${HERO_ACCENT[briefing.tone]}`} />
+
           {/* Top coloré — mission du jour */}
-          <div className={`px-5 pt-5 pb-6 ${HERO_BG[briefing.tone]}`}>
-            <p className="text-[11px] font-semibold text-white/60">Bonjour {firstName} 👋</p>
-            <h1 className="mt-2 text-[20px] font-bold leading-snug text-white">
+          <div className={`px-5 pt-4 pb-6 ${HERO_BG[briefing.tone]}`}>
+            <p className="text-[11px] font-semibold text-white/50">Bonjour {firstName} 👋</p>
+            <h1 className="mt-2 text-[19px] font-bold leading-snug text-white">
               {briefing.headline}
             </h1>
             {briefing.supportingText && (
-              <p className="mt-1.5 text-sm text-white/80">{briefing.supportingText}</p>
+              <p className="mt-1.5 text-sm text-white/75">{briefing.supportingText}</p>
             )}
-            {/* Décomposition urgences */}
             {urgentCount > 0 && (
-              <div className="mt-3.5 flex flex-wrap gap-x-3 gap-y-1.5 text-[11px] text-white/75">
+              <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-white/55">
                 {overdueActionsCount > 0 && (
                   <span>{overdueActionsCount} action{overdueActionsCount > 1 ? 's' : ''} en retard</span>
                 )}
@@ -199,23 +222,30 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
                 )}
               </div>
             )}
+            {briefing.tone === 'neutral' && (
+              <p className="mt-3 text-xs text-white/45">Rien d&apos;urgent ne demande ton attention.</p>
+            )}
           </div>
 
-          {/* Bas blanc — chantier du jour */}
-          {focusSite && (() => {
+          {/* Bas blanc — chantier du jour (seulement si pertinent) */}
+          {showFocusCard && (() => {
             const { label: statusLabel, badge: statusBadge, dot: statusDot } = siteStatusInfo(focusSite.status)
+            const cardLabel = briefing.tone === 'warning' ? 'À garder à l\'œil' : 'Chantier prioritaire'
             return (
               <div className="bg-white px-5 py-4">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#65718b]">
-                    Chantier du jour
+                    {cardLabel}
                   </span>
                   <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusBadge}`}>
                     <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
                     {statusLabel}
                   </span>
                 </div>
-                <p className="mt-1.5 text-[15px] font-bold text-[#101a35]">{focusSite.name}</p>
+                {/* Nom du chantier uniquement si pas déjà nommé dans le hero */}
+                {!briefing.siteNamedAbove && (
+                  <p className="mt-1.5 text-[15px] font-bold text-[#101a35]">{focusSite.name}</p>
+                )}
                 <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#9aa7be]">Sélectionné car</p>
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
                   {focusSite.overdueActionCount > 0 && (
@@ -243,11 +273,32 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
                   href={focusSite.href}
                   className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[#101a35] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1a2a50]"
                 >
-                  Ouvrir le chantier <ChevronRight className="h-4 w-4" />
+                  Voir les priorités <ChevronRight className="h-4 w-4" />
                 </Link>
               </div>
             )
           })()}
+
+          {/* Bas neutre — état stable, aucun chantier urgent à mettre en avant */}
+          {!showFocusCard && briefing.tone === 'neutral' && nextItems.length > 0 && (
+            <div className="bg-white px-5 py-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#65718b]">Prochaine échéance</p>
+              {(() => {
+                const next = nextItems[0]
+                return (
+                  <Link href={next.href} className="mt-1.5 flex items-center justify-between hover:opacity-75">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-[#4973dd]">
+                        {shortDate(next.startsAt)}
+                      </p>
+                      <p className="mt-0.5 text-[13px] font-semibold text-[#17213a]">{next.title}</p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-[#9aa7be]" />
+                  </Link>
+                )
+              })()}
+            </div>
+          )}
         </div>
 
         {/* ── À traiter en priorité ─────────────────────────── */}
