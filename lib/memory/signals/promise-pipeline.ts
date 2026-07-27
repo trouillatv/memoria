@@ -6,6 +6,7 @@ import {
   type PromiseDetectionContext,
 } from './promise-detector'
 import { detectPromiseNeedsConfirmationSignals } from './promise-follow-up-detector'
+import { detectPromiseExpiringSoonSignals } from './promise-upcoming-detector'
 import type { MemorySignalDetector } from './detector'
 
 const promiseExpiredDetector: MemorySignalDetector<PromiseDetectionContext> = {
@@ -18,6 +19,12 @@ const promiseNeedsConfirmationDetector: MemorySignalDetector<PromiseDetectionCon
   id: 'promise-needs-confirmation',
   version: '1',
   detect: detectPromiseNeedsConfirmationSignals,
+}
+
+const promiseExpiringSoonDetector: MemorySignalDetector<PromiseDetectionContext> = {
+  id: 'promise-expiring-soon',
+  version: '1',
+  detect: detectPromiseExpiringSoonSignals,
 }
 
 /**
@@ -36,6 +43,7 @@ export function detectPromiseSignalsFromRecords(
     [
       createSignalDetectorRegistration(promiseExpiredDetector, context),
       createSignalDetectorRegistration(promiseNeedsConfirmationDetector, context),
+      createSignalDetectorRegistration(promiseExpiringSoonDetector, context),
     ],
     now,
   )

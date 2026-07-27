@@ -1,6 +1,7 @@
 import type { MemorySignal, SignalFact } from '@/lib/memory/signals/operational-contract'
 import type { Situation, SituationKind, SituationSource } from './situation'
 import { openSourceCapability, promiseResolutionCapabilities } from './capabilities'
+import { localDateOf } from '@/lib/time/local-date'
 
 function factString(signal: MemorySignal, key: string): string | null {
   const fact = signal.facts.find((item: SignalFact) => item.key === key)
@@ -124,6 +125,77 @@ function promiseWithoutDueDateSituation(signal: MemorySignal, now: string): Situ
   }
 }
 
+// « Aujourd'hui » ou « demain » en date CIVILE Nouméa — jamais une différence
+// brute d'heures (stable sur toute la journée de consultation).
+function dueTodayOrTomorrowLabel(dueAt: string | null, now: string): string {
+  if (!dueAt) return 'Échéance proche'
+  const dueDate = new Date(dueAt)
+  const nowDate = new Date(now)
+  if (!Number.isFinite(dueDate.getTime()) || !Number.isFinite(nowDate.getTime())) return 'Échéance proche'
+  return localDateOf(dueDate) === localDateOf(nowDate) ? 'Échéance aujourd\'hui' : 'Échéance demain'
+}
+
+function promiseExpiringSoonSituation(signal: MemorySignal, now: string): Situation {
+  const source = sourceFromSignal(signal)
+  const dueAt = signal.facts.find((item) => typeof item.dueAt === 'string' && item.dueAt.length > 0)?.dueAt ?? null
+  const dateLabel = formatFrenchDate(dueAt)
+
+  return {
+    id: signal.id,
+    signalId: signal.id,
+    kind: 'upcoming_promise',
+    severity: signal.severity,
+    title: 'Promesse à sécuriser',
+    explanation: dateLabel ? `Engagement attendu le ${dateLabel}.` : 'Engagement à échéance imminente.',
+    site: {
+      id: signal.siteId,
+      name: siteName(signal),
+      organizationId: signal.organizationId,
+      organizationName: organizationName(signal),
+    },
+    timing: {
+      occurredAt: signal.facts.find((item) => typeof item.occurredAt === 'string' && item.occurredAt.length > 0)?.occurredAt ?? null,
+      dueAt,
+      detectedAt: signal.detectedAt,
+      ageDays: null,
+      label: dueTodayOrTomorrowLabel(dueAt, now),
+    },
+    source,
+    subject: signal.subject ?? null,
+    capabilities: [...openSourceCapability(source), ...promiseResolutionCapabilities(signal.subject ?? null)],
+  }
+}
+
+function upcomingActionSituation(signal: MemorySignal, now: string): Situation {
+  const source = sourceFromSignal(signal)
+  const dueAt = signal.facts.find((item) => typeof item.dueAt === 'string' && item.dueAt.length > 0)?.dueAt ?? null
+
+  return {
+    id: signal.id,
+    signalId: signal.id,
+    kind: 'upcoming_action',
+    severity: signal.severity,
+    title: factString(signal, 'what') ?? 'Action à échéance proche',
+    explanation: null,
+    site: {
+      id: signal.siteId,
+      name: factString(signal, 'where') ?? siteName(signal),
+      organizationId: signal.organizationId,
+      organizationName: organizationName(signal),
+    },
+    timing: {
+      occurredAt: null,
+      dueAt,
+      detectedAt: signal.detectedAt,
+      ageDays: null,
+      label: dueTodayOrTomorrowLabel(dueAt, now),
+    },
+    source,
+    subject: signal.subject ?? null,
+    capabilities: openSourceCapability(source),
+  }
+}
+
 function isPromiseSignal(signal: MemorySignal): boolean {
   return signal.category === 'promise' && signal.trigger.type === 'promise'
 }
@@ -177,6 +249,10 @@ function legacyAttentionSituation(signal: MemorySignal, kind: SituationKind, fal
 }
 
 export function presentSituation(signal: MemorySignal, now = new Date().toISOString()): Situation | null {
+  // Anticipation d'action : cas dédié (le mapping legacy ne porte pas dueAt).
+  if (signal.trigger.type === 'old_action' && signal.trigger.reason === 'deadline_soon') {
+    return upcomingActionSituation(signal, now)
+  }
   const legacy = legacyAttentionEntry(signal)
   if (legacy) return legacyAttentionSituation(signal, legacy.kind, legacy.fallbackTitle)
   if (!isPromiseSignal(signal)) return null
@@ -186,6 +262,8 @@ export function presentSituation(signal: MemorySignal, now = new Date().toISOStr
       return promiseExpiredSituation(signal, now)
     case 'promise_without_due_date':
       return promiseWithoutDueDateSituation(signal, now)
+    case 'promise_expiring_soon':
+      return promiseExpiringSoonSituation(signal, now)
     default:
       return null
   }

@@ -7,13 +7,22 @@
  */
 export const PRIORITY_WEIGHTS = {
   /** Impact par type : risque terrain si la situation reste non traitée. */
+  /**
+   * Doctrine temporelle (avec la dimension urgence) :
+   * dépassé > dû aujourd'hui > dû demain > ancien sans échéance > surveillance.
+   * upcoming_promise dû aujourd'hui : 20+30=50 — sous expired_promise (30+25=55) ;
+   * upcoming_action demain : 25+15=40 ; upcoming_promise demain : 20+15=35 —
+   * au-dessus d'unconfirmed_promise (20+0) et stale_action (10).
+   */
   impact: {
     overdue_action:      40,
     planning_conflict:   40,
     expired_promise:     30,
     pending_debrief:     30,
     open_reserve:        30,
+    upcoming_action:     25,
     unconfirmed_promise: 20,
+    upcoming_promise:    20,
     stale_action:        10,
   },
 

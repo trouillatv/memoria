@@ -1,5 +1,5 @@
 import type { PromiseSubjectRef } from '@/lib/memory/signals/operational-contract'
-import type { SituationResolutionKind } from '../situation'
+import type { SituationKind, SituationResolutionKind } from '../situation'
 
 export type AttentionTone = 'neutral' | 'amber' | 'red'
 export type AttentionIcon = 'calendar' | 'question' | 'document' | 'warning'
@@ -21,6 +21,9 @@ export type AttentionResolution = {
 
 export type AttentionCard = {
   id: string
+  /** Nature de la situation d'origine — permet aux surfaces de choisir le bon
+   *  label de famille (ex. « À anticiper ») sans deviner via icon/tone. */
+  kind?: SituationKind
   icon: AttentionIcon
   tone: AttentionTone
   /** Score métier calculé à la projection — détermine l'ordre d'affichage. */

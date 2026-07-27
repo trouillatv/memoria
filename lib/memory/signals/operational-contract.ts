@@ -14,13 +14,13 @@ export type OperationalSignalState = 'active' | 'acknowledged' | 'resolved' | 'd
 export type OperationalActionability = 'direct' | 'investigate' | 'observe'
 export type OperationalSignalOrigin = 'rules' | 'mixed' | 'ai'
 export type OperationalSignalTrigger =
-  | { type: 'old_action'; reason: 'object_aging' | 'deadline_overdue' }
+  | { type: 'old_action'; reason: 'object_aging' | 'deadline_overdue' | 'deadline_soon' }
   | { type: 'open_reserve'; reason: 'object_aging' }
   | { type: 'missing_company'; reason: 'company_not_linked' | 'company_not_created' | 'company_archived' }
   | { type: 'missing_contact'; reason: 'contact_not_identified' }
   | { type: 'missing_attachment'; reason: 'attachment_missing' }
   | { type: 'planning_conflict'; reason: 'planning_conflict' }
-  | { type: 'promise'; reason: 'promise_expired' | 'promise_without_due_date' }
+  | { type: 'promise'; reason: 'promise_expired' | 'promise_without_due_date' | 'promise_expiring_soon' }
   | { type: 'question'; reason: 'question_unanswered' }
   | { type: 'contradiction'; reason: 'facts_incompatible' }
   | { type: 'staleness'; reason: 'object_aging' | 'activity_missing' }

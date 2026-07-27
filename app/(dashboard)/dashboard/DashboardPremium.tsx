@@ -110,6 +110,8 @@ const HERO_ACCENT: Record<DailyBriefing['tone'], string> = {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function familyLabel(card: AttentionCard): string {
+  // Anticipation : niveau temporel, jamais « critique » avant l'échéance.
+  if (card.kind === 'upcoming_promise' || card.kind === 'upcoming_action') return 'À ANTICIPER'
   if (card.subject !== null) {
     return card.tone === 'red' ? 'PROMESSE EN RETARD' : 'PROMESSE À CONFIRMER'
   }
@@ -128,6 +130,7 @@ const FAMILY_COLORS: Record<AttentionCard['tone'], string> = {
 }
 
 function ctaLabel(card: AttentionCard): string {
+  if (card.kind === 'upcoming_action') return "Voir l'action"
   if (card.icon === 'calendar') return card.tone === 'red' ? "Voir l'action" : 'Planifier'
   if (card.icon === 'document') return 'Compléter'
   if (card.icon === 'warning') return 'Voir la réserve'

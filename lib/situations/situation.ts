@@ -3,8 +3,10 @@ import type { PromiseSubjectRef } from '@/lib/memory/signals/operational-contrac
 export type SituationKind =
   | 'expired_promise'
   | 'unconfirmed_promise'
+  | 'upcoming_promise'
   | 'stale_action'
   | 'overdue_action'
+  | 'upcoming_action'
   | 'open_reserve'
   | 'planning_conflict'
   | 'pending_debrief'

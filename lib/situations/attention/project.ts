@@ -20,8 +20,10 @@ function iconOfSituation(situation: Situation): AttentionIcon {
     case 'expired_promise':
       return 'calendar'
     case 'unconfirmed_promise':
+    case 'upcoming_promise':
       return 'question'
     case 'overdue_action':
+    case 'upcoming_action':
     case 'planning_conflict':
       return 'calendar'
     case 'pending_debrief':
@@ -50,8 +52,10 @@ function actionFromCapability(capability: SituationCapability): AttentionAction 
 function isSupportedSituation(situation: Situation): boolean {
   return situation.kind === 'expired_promise'
     || situation.kind === 'unconfirmed_promise'
+    || situation.kind === 'upcoming_promise'
     || situation.kind === 'stale_action'
     || situation.kind === 'overdue_action'
+    || situation.kind === 'upcoming_action'
     || situation.kind === 'open_reserve'
     || situation.kind === 'planning_conflict'
     || situation.kind === 'pending_debrief'
@@ -125,6 +129,7 @@ export function projectSituationForAttention(
 
   return {
     id: situation.id,
+    kind: situation.kind,
     icon: iconOfSituation(situation),
     tone: toneOfSituation(situation),
     priority: priorityScore(situation, now, context),
