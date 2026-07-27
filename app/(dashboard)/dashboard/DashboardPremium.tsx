@@ -69,7 +69,7 @@ function computeDailyBriefing(
     }
     return {
       headline: `${urgentSiteNames.size} chantiers ont besoin de toi aujourd'hui.`,
-      supportingText: focusSite ? `${focusSite.name} est le plus prioritaire.` : undefined,
+      supportingText: focusSite ? `${focusSite.name} est ta priorité aujourd'hui.` : undefined,
       tone: 'critical',
       siteNamedAbove: true,
     }
@@ -94,7 +94,7 @@ function computeDailyBriefing(
 
 // Fonds sombres et calmes — le rouge reste un accent, pas le fond du hero.
 const HERO_BG: Record<DailyBriefing['tone'], string> = {
-  critical: 'bg-gradient-to-br from-[#3d1212] to-[#1f0808]',   // prune foncé désaturé
+  critical: 'bg-gradient-to-br from-[#2c1830] to-[#1a0f22]',   // prune désaturé, tension portée par l'accent
   warning: 'bg-gradient-to-br from-[#282008] to-[#161202]',    // olive nuit
   neutral: 'bg-gradient-to-br from-[#0e2240] to-[#091828]',    // navy profond
 }
@@ -168,6 +168,7 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
   const overdueActionsCount = attentionCards.filter((c) => c.subject === null && c.icon === 'calendar' && c.tone === 'red').length
   const overduePromisesCount = attentionCards.filter((c) => c.subject !== null && c.tone === 'red').length
   const criticalReservesCount = attentionCards.filter((c) => c.icon === 'warning' && c.tone === 'red').length
+  const urgentSiteCount = new Set(attentionCards.filter((c) => c.tone === 'red' && c.siteLabel).map((c) => c.siteLabel)).size
 
   // Chantier du jour : somme des priorités par siteLabel
   const siteScores = new Map<string, number>()
@@ -220,6 +221,9 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
             )}
             {urgentCount > 0 && (
               <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-white/55">
+                {/* Métriques GLOBALES (tous chantiers) — les causes propres au
+                    chantier sélectionné sont dans la carte blanche dessous. */}
+                {urgentSiteCount > 1 && <span className="text-white/35">Sur l&apos;ensemble :</span>}
                 {overdueActionsCount > 0 && (
                   <span>{overdueActionsCount} action{overdueActionsCount > 1 ? 's' : ''} en retard</span>
                 )}
@@ -242,7 +246,10 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
           {/* Bas blanc — chantier du jour (seulement si pertinent) */}
           {showFocusCard && (() => {
             const { label: statusLabel, badge: statusBadge, dot: statusDot } = siteStatusInfo(focusSite.status)
-            const cardLabel = briefing.tone === 'warning' ? 'À garder à l\'œil' : 'Chantier prioritaire'
+            // Le hero a déjà nommé le chantier → la zone blanche explique le choix.
+            const cardLabel = briefing.siteNamedAbove
+              ? 'Pourquoi ce chantier'
+              : briefing.tone === 'warning' ? 'À garder à l\'œil' : 'Chantier prioritaire'
             return (
               <div className="bg-white px-5 py-4">
                 <div className="flex items-center justify-between">
@@ -256,10 +263,12 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
                 </div>
                 {/* Nom du chantier uniquement si pas déjà nommé dans le hero */}
                 {!briefing.siteNamedAbove && (
-                  <p className="mt-1.5 text-[15px] font-bold text-[#101a35]">{focusSite.name}</p>
+                  <>
+                    <p className="mt-1.5 text-[15px] font-bold text-[#101a35]">{focusSite.name}</p>
+                    <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#9aa7be]">Sélectionné car</p>
+                  </>
                 )}
-                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#9aa7be]">Sélectionné car</p>
-                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5">
                   {focusSite.overdueActionCount > 0 && (
                     <span className="inline-flex items-center gap-1 rounded-lg bg-[#fef2f2] px-2 py-1 text-xs font-semibold text-[#dc2626]">
                       {focusSite.overdueActionCount} action{focusSite.overdueActionCount > 1 ? 's' : ''} en retard
@@ -292,7 +301,7 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
                   href={focusSite.href}
                   className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[#101a35] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1a2a50]"
                 >
-                  Voir les priorités <ChevronRight className="h-4 w-4" />
+                  Ouvrir le chantier <ChevronRight className="h-4 w-4" />
                 </Link>
               </div>
             )
@@ -333,7 +342,7 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
               </Link>
             </div>
             <ul className="divide-y divide-[#f5f7fb]">
-              {sorted.slice(0, 5).map((card) => (
+              {sorted.slice(0, 3).map((card) => (
                 <li key={card.id} className="flex items-center gap-3 px-4 py-3">
                   <div className="min-w-0 flex-1">
                     <span
@@ -390,21 +399,50 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
           </div>
         )}
 
+        {/* ── Depuis ta dernière visite / Activité récente ─── */}
+        {(() => {
+          const focusImpact = focusSite ? (visit.sites.find((s) => s.siteId === focusSite.id) ?? null) : null
+          const useFocus = focusImpact !== null && focusImpact.events.length > 0
+          const events = useFocus
+            ? focusImpact.events.slice(0, 3).map((e) => ({ id: e.id, at: e.at, label: e.label, siteName: null as string | null }))
+            : visit.events.slice(0, 3).map((e) => ({ id: e.id, at: e.at, label: e.label, siteName: e.siteName as string | null }))
+          if (events.length === 0) return null
+          const title = useFocus ? focusImpact.sinceLabel : 'Activité récente'
+          return (
+            <div className="mb-4 overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-[#e5eaf3]">
+              <div className="flex items-center justify-between bg-[#f8faff] px-4 py-2.5">
+                <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-[#65718b]">{title}</h2>
+                <Link href="/journal" className="text-[10px] font-semibold text-[#4973dd]">Journal ›</Link>
+              </div>
+              <ul className="divide-y divide-[#f5f7fb]">
+                {events.map((e) => (
+                  <li key={e.id} className="px-4 py-2.5">
+                    <p className="text-[12px] font-medium leading-snug text-[#17213a]">{e.label}</p>
+                    <p className="mt-0.5 text-[10px] text-[#9aa7be]">
+                      {e.siteName ? `${e.siteName} · ` : ''}{shortDate(e.at)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )
+        })()}
+
         {/* ── Prochaines échéances ─────────────────────────── */}
         {nextItems.length > 0 && (
           <div className="mb-4 overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-[#e5eaf3]">
             <div className="flex items-center justify-between bg-[#f8faff] px-4 py-2.5">
-              <h3 className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#65718b]">Prochaines échéances</h3>
+              <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-[#65718b]">Prochaines échéances</h3>
               <Link href="/planning" className="text-[10px] font-semibold text-[#4973dd]">Voir tout ›</Link>
             </div>
-            <ul className="grid grid-cols-2 divide-x divide-y divide-[#f5f7fb]">
-              {nextItems.slice(0, 4).map((item) => (
+            <ul className="divide-y divide-[#f5f7fb]">
+              {nextItems.slice(0, 3).map((item) => (
                 <li key={`${item.sourceType}:${item.id}`}>
-                  <Link href={item.href} className="block px-4 py-3 hover:bg-[#f8faff]">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-[#4973dd]">
+                  <Link href={item.href} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-[#f8faff]">
+                    <p className="min-w-0 truncate text-[12px] font-medium text-[#17213a]">{item.title}</p>
+                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-[#4973dd]">
                       {shortDate(item.startsAt)}
-                    </p>
-                    <p className="mt-0.5 truncate text-[11px] font-medium text-[#17213a]">{item.title}</p>
+                    </span>
                   </Link>
                 </li>
               ))}
