@@ -254,14 +254,14 @@ export function ActorsCockpitView({ directory, teams, graph, focusId, view }: {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-          <ul className="space-y-2 lg:col-span-3">
+          <ul className="space-y-2 lg:col-span-2">
             {filtered.map((a) => {
               const key = `${a.kind}:${a.id}`
               return <ActorRow key={key} actor={a} selected={key === effectiveKey} onSelect={() => setSelectedKey(key)} />
             })}
           </ul>
-          <div className="lg:col-span-2">
-            <div className="lg:sticky lg:top-4">
+          <div className="lg:col-span-3">
+            <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-1.5rem)] lg:overflow-y-auto lg:pr-1">
               <ActorPreviewPanel actor={selectedActor} preview={previewData} loading={loading} />
             </div>
           </div>
