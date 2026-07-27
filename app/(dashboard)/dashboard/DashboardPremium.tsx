@@ -92,18 +92,19 @@ function computeDailyBriefing(
   }
 }
 
-// Fonds sombres et calmes — le rouge reste un accent, pas le fond du hero.
+// Hero vert MemorIA (même vert que le bouton central) — l'état est porté par la
+// bande d'accent et le badge, pas par le fond.
 const HERO_BG: Record<DailyBriefing['tone'], string> = {
-  critical: 'bg-gradient-to-br from-[#2c1830] to-[#1a0f22]',   // prune désaturé, tension portée par l'accent
-  warning: 'bg-gradient-to-br from-[#282008] to-[#161202]',    // olive nuit
-  neutral: 'bg-gradient-to-br from-[#0e2240] to-[#091828]',    // navy profond
+  critical: 'bg-gradient-to-br from-[#16a34a] to-[#0f7a38]',
+  warning: 'bg-gradient-to-br from-[#16a34a] to-[#0f7a38]',
+  neutral: 'bg-gradient-to-br from-[#16a34a] to-[#0f7a38]',
 }
 
 // Bande d'accent colorée en haut du hero (fine, non agressive)
 const HERO_ACCENT: Record<DailyBriefing['tone'], string> = {
   critical: 'bg-[#dc2626]',
-  warning: 'bg-[#d97706]',
-  neutral: 'bg-[#22c55e]',
+  warning: 'bg-[#f59e0b]',
+  neutral: 'bg-white/30',
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -244,7 +245,7 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
               </div>
             )}
             {briefing.tone === 'neutral' && (
-              <p className="mt-3 text-xs text-[#4ade80]/80">Aucun blocage critique — tes chantiers restent sous contrôle.</p>
+              <p className="mt-3 text-xs text-white/80">Aucun blocage critique — tes chantiers restent sous contrôle.</p>
             )}
           </div>
 
