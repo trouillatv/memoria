@@ -3,7 +3,7 @@
 // l'état d'attention (graphe d'attention, pas simple schéma).
 
 import { describe, expect, it } from 'vitest'
-import { buildActorsGraph, egoSubgraph, shortestPath, graphTimeline, graphKinds, PERSPECTIVES, type ActorsGraphInputs } from '@/lib/knowledge/actors-graph'
+import { buildActorsGraph, egoSubgraph, shortestPath, graphTimeline, graphKinds, PERSPECTIVES, DEFAULT_PERSPECTIVE, type ActorsGraphInputs } from '@/lib/knowledge/actors-graph'
 import { narrateActorInGraph } from '@/lib/knowledge/actor-narration'
 
 function base(): ActorsGraphInputs {
@@ -189,13 +189,17 @@ describe('buildActorsGraph', () => {
     expect(graphKinds({ nodes: [], edges: [] })).toEqual(new Set())
   })
 
-  it('perspectives : « Tout » = toutes natures ; chaque préset ne cible que des natures connues', () => {
+  it('lectures : « Tout » = toutes natures ; chaque lecture ne cible que des natures connues + une question', () => {
     const all = PERSPECTIVES.find((p) => p.id === 'all')!
     expect(all.kinds).toBeNull() // « Tout » ne filtre jamais
     const known = new Set(['person', 'company', 'team', 'site', 'action'])
     for (const p of PERSPECTIVES) {
+      expect(p.hint.length).toBeGreaterThan(0) // chaque lecture affiche SA question
       if (p.kinds) for (const k of p.kinds) expect(known.has(k)).toBe(true)
     }
+    // La lecture par défaut de la vue d'ensemble existe et n'est pas « Tout ».
+    expect(PERSPECTIVES.some((p) => p.id === DEFAULT_PERSPECTIVE)).toBe(true)
+    expect(DEFAULT_PERSPECTIVE).not.toBe('all')
   })
 
   it('déduplique les liens identiques', () => {

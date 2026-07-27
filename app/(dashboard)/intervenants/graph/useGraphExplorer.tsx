@@ -8,7 +8,8 @@
 
 import { useMemo, useState } from 'react'
 import {
-  shortestPath, graphTimeline, graphKinds, PERSPECTIVES, REL_SOURCE_LABEL,
+  shortestPath, graphTimeline, graphKinds, PERSPECTIVES,
+  REL_SOURCE_LABEL,
   type ActorsGraph, type ActorGraphNode, type ActorGraphKind, type ActorPerspective,
 } from '@/lib/knowledge/actors-graph-model'
 import { narrateActorInGraph } from '@/lib/knowledge/actor-narration'
@@ -16,7 +17,14 @@ import { NodePanel, EdgePanel, PathPanel } from './inspector'
 
 export type GraphSelection = { type: 'node'; id: string } | { type: 'edge'; index: number } | null
 
-export function useGraphExplorer(graph: ActorsGraph, focusId?: string | null) {
+const kindsOf = (id: ActorPerspective, available: Set<ActorGraphKind>): Set<ActorGraphKind> => {
+  const def = PERSPECTIVES.find((p) => p.id === id)!
+  return def.kinds === null ? new Set(available) : new Set(def.kinds.filter((k) => available.has(k)))
+}
+
+/** `initialPerspective` : la vue d'ensemble s'ouvre sur UNE lecture (« Chantiers »),
+ *  le réseau embarqué d'une fiche garde « Tout » (on veut voir tout l'entourage). */
+export function useGraphExplorer(graph: ActorsGraph, focusId?: string | null, initialPerspective: ActorPerspective = 'all') {
   const [sel, setSel] = useState<GraphSelection>(focusId ? { type: 'node', id: focusId } : null)
   const [followFrom, setFollowFrom] = useState<string | null>(null)
   const [path, setPath] = useState<{ nodes: string[]; edgeIndexes: number[] } | null>(null)
@@ -25,14 +33,13 @@ export function useGraphExplorer(graph: ActorsGraph, focusId?: string | null) {
   const nodeById = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n])), [graph])
   const timeline = useMemo(() => graphTimeline(graph), [graph])
 
-  // ── Perspectives & couches (changer la LECTURE, pas les données) ──
+  // ── Lectures & couches (changer la LECTURE, pas les données) ──
   const availableKinds = useMemo(() => graphKinds(graph), [graph])
-  const [visibleKinds, setVisibleKinds] = useState<Set<ActorGraphKind>>(() => new Set(availableKinds))
-  const [perspective, setPerspective] = useState<ActorPerspective>('all')
+  const [visibleKinds, setVisibleKinds] = useState<Set<ActorGraphKind>>(() => kindsOf(initialPerspective, availableKinds))
+  const [perspective, setPerspective] = useState<ActorPerspective>(initialPerspective)
   const applyPerspective = (id: ActorPerspective) => {
     setPerspective(id)
-    const def = PERSPECTIVES.find((p) => p.id === id)!
-    setVisibleKinds(def.kinds === null ? new Set(availableKinds) : new Set(def.kinds.filter((k) => availableKinds.has(k))))
+    setVisibleKinds(kindsOf(id, availableKinds))
   }
   const toggleKind = (k: ActorGraphKind) => {
     setPerspective('all') // couche modifiée à la main → plus une perspective nommée

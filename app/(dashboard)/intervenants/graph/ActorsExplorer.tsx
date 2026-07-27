@@ -5,7 +5,7 @@
 // inspecteur PARTAGÉS avec le réseau fusionné des fiches. AUCUNE navigation au clic.
 
 import { Route } from 'lucide-react'
-import type { ActorsGraph } from '@/lib/knowledge/actors-graph-model'
+import { DEFAULT_PERSPECTIVE, type ActorsGraph } from '@/lib/knowledge/actors-graph-model'
 import { ActorsGraphCanvas } from './ActorsGraphCanvas'
 import { GraphControls } from './GraphControls'
 import { GraphSearch } from './GraphSearch'
@@ -13,7 +13,8 @@ import { GraphTimeline } from './GraphTimeline'
 import { useGraphExplorer, ExplorerAside } from './useGraphExplorer'
 
 export function ActorsExplorer({ graph, focusId }: { graph: ActorsGraph; focusId?: string | null }) {
-  const ex = useGraphExplorer(graph, focusId)
+  // La vue d'ensemble s'ouvre sur UNE lecture (Chantiers) — pas « tout à la fois ».
+  const ex = useGraphExplorer(graph, focusId, DEFAULT_PERSPECTIVE)
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_360px]">

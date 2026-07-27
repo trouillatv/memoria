@@ -70,23 +70,29 @@ export interface ActorsGraph {
 }
 
 // ── PERSPECTIVES & COUCHES ───────────────────────────────────────────────────
-// On ne cache pas des données : on change la FAÇON de les lire. Une perspective
-// est un preset de couches (natures de nœuds visibles). N'offrir QUE ce que les
-// données honorent : décisions/visites/documents ne sont pas encore des nœuds du
-// graphe Acteurs (→ V3 Data Foundation) — pas de perspective mensongère.
-export type ActorPerspective = 'all' | 'collaboration' | 'sites' | 'workload'
+// On ne cache pas des données : on change la FAÇON de les lire. Chaque LECTURE
+// répond à UNE question métier (au lieu d'un graphe qui montre tout à la fois) et
+// n'affiche que les natures utiles à cette question — comme on change de couche sur
+// une carte. N'offrir QUE ce que les données honorent : Collaboration pondérée
+// (entreprise↔entreprise) et Historique (CR/visites/décisions comme nœuds) exigent
+// des lots data à venir → pas de lecture mensongère ici.
+export type ActorPerspective = 'all' | 'org' | 'sites' | 'work'
 
 export const KIND_LAYER_LABEL: Record<ActorGraphKind, string> = {
   person: 'Personnes', company: 'Entreprises', team: 'Équipes', site: 'Chantiers', action: 'Actions',
 }
 
-/** kinds = null → toutes les natures présentes. Sinon, sous-ensemble mis en avant. */
+/** Une LECTURE = une question + les seules natures qui y répondent. kinds = null →
+ *  toutes (échappatoire « Tout »). `hint` = la question métier, affichée à l'écran. */
 export const PERSPECTIVES: Array<{ id: ActorPerspective; label: string; hint: string; kinds: ActorGraphKind[] | null }> = [
-  { id: 'all', label: 'Tout', hint: 'Toutes les natures', kinds: null },
-  { id: 'collaboration', label: 'Collaboration', hint: 'Qui travaille avec qui', kinds: ['person', 'company', 'team'] },
-  { id: 'sites', label: 'Chantiers', hint: 'Qui intervient où', kinds: ['site', 'company', 'team', 'person'] },
-  { id: 'workload', label: 'Charge', hint: 'Qui porte quoi', kinds: ['person', 'company', 'action'] },
+  { id: 'org', label: 'Organigramme', hint: 'Qui travaille où ?', kinds: ['company', 'person', 'team'] },
+  { id: 'sites', label: 'Chantiers', hint: 'Qui travaille avec qui, et où ?', kinds: ['company', 'person', 'team', 'site'] },
+  { id: 'work', label: 'Travail', hint: 'Qui porte quoi ?', kinds: ['person', 'company', 'action'] },
+  { id: 'all', label: 'Tout', hint: 'Tout afficher (vue dense)', kinds: null },
 ]
+
+/** Lecture par défaut de la vue d'ensemble : une question, pas « tout à la fois ». */
+export const DEFAULT_PERSPECTIVE: ActorPerspective = 'sites'
 
 /** Natures de nœuds réellement présentes dans un graphe (pour n'offrir que l'utile). */
 export function graphKinds(graph: ActorsGraph): Set<ActorGraphKind> {

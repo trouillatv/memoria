@@ -1,14 +1,13 @@
 'use client'
 
-// ── PERSPECTIVES & COUCHES ───────────────────────────────────────────────────
-// Deux réglages de LECTURE du même graphe (on change la manière de lire, pas les
-// données) :
-//   · Perspectives — présets qui mettent en avant un jeu de natures (Collaboration,
-//     Chantiers, Charge) pour répondre à une question précise ;
-//   · Couches — afficher/masquer chaque nature à la main, pour éviter l'effet
-//     « pelote ». Toucher une couche sort de la perspective nommée.
-// N'affiche que les natures RÉELLEMENT présentes dans le graphe.
+// ── CHANGER LA LECTURE + COUCHES ─────────────────────────────────────────────
+// Le graphe ne montre pas tout à la fois : on choisit une LECTURE, qui répond à
+// UNE question métier et n'affiche que les natures utiles (comme changer de couche
+// sur une carte). La question active est affichée à l'écran (plus de légende
+// passive à déchiffrer). Les COUCHES sont l'outil : chaque case masque/affiche une
+// nature à la main (Figma/Miro). N'affiche que les natures réellement présentes.
 
+import { Check } from 'lucide-react'
 import { PERSPECTIVES, KIND_LAYER_LABEL, type ActorGraphKind, type ActorPerspective } from '@/lib/knowledge/actors-graph-model'
 
 const KIND_ORDER: ActorGraphKind[] = ['person', 'company', 'team', 'site', 'action']
@@ -20,34 +19,41 @@ export function GraphControls({ availableKinds, visibleKinds, perspective, onPer
   onPerspective: (id: ActorPerspective) => void
   onToggleKind: (k: ActorGraphKind) => void
 }) {
-  // Perspective inapplicable si aucune de ses natures n'existe → on la masque.
-  const perspectives = PERSPECTIVES.filter((p) => p.kinds === null || p.kinds.some((k) => availableKinds.has(k)))
+  // Lecture inapplicable si aucune de ses natures n'existe → on la masque.
+  const readings = PERSPECTIVES.filter((p) => p.kinds === null || p.kinds.some((k) => availableKinds.has(k)))
   const kinds = KIND_ORDER.filter((k) => availableKinds.has(k))
   if (kinds.length <= 1) return null // rien à filtrer
+  const active = PERSPECTIVES.find((p) => p.id === perspective)
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border/60 bg-card/60 px-3 py-2">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Perspective</span>
-        {perspectives.map((p) => {
-          const active = perspective === p.id
-          return (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => onPerspective(p.id)}
-              title={p.hint}
-              className={`rounded-full border px-2.5 py-1 text-[12px] transition ${
-                active ? 'border-brand-300 bg-brand-50 font-medium text-brand-700 dark:border-brand-600/50 dark:bg-brand-600/15 dark:text-brand-300' : 'border-border/60 text-muted-foreground hover:border-brand-200 hover:text-foreground'
-              }`}
-            >
-              {p.label}
-            </button>
-          )
-        })}
+    <div className="space-y-2 rounded-xl border border-border/60 bg-card/60 px-3 py-2.5">
+      {/* CHANGER LA LECTURE — une question à la fois. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Lecture</span>
+        <div className="inline-flex flex-wrap gap-1">
+          {readings.map((p) => {
+            const on = perspective === p.id
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => onPerspective(p.id)}
+                title={p.hint}
+                className={`rounded-full border px-2.5 py-1 text-[12px] transition ${
+                  on ? 'border-brand-300 bg-brand-50 font-medium text-brand-700 dark:border-brand-600/50 dark:bg-brand-600/15 dark:text-brand-300' : 'border-border/60 text-muted-foreground hover:border-brand-200 hover:text-foreground'
+                }`}
+              >
+                {p.label}
+              </button>
+            )
+          })}
+        </div>
+        {/* La question à laquelle la lecture répond — à l'écran, pas cachée. */}
+        {active && <span className="text-[12px] italic text-muted-foreground">{active.hint}</span>}
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5">
+      {/* COUCHES — l'outil : chaque case masque/affiche une nature. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
         <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Couches</span>
         {kinds.map((k) => {
           const on = visibleKinds.has(k)
@@ -57,10 +63,13 @@ export function GraphControls({ availableKinds, visibleKinds, perspective, onPer
               type="button"
               onClick={() => onToggleKind(k)}
               aria-pressed={on}
-              className={`rounded-full border px-2.5 py-1 text-[12px] transition ${
-                on ? 'border-border bg-muted font-medium text-foreground' : 'border-dashed border-border/50 text-muted-foreground/60 line-through'
+              className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[12px] transition ${
+                on ? 'border-border bg-muted font-medium text-foreground' : 'border-dashed border-border/50 text-muted-foreground/60'
               }`}
             >
+              <span aria-hidden className={`flex h-3.5 w-3.5 items-center justify-center rounded-[4px] border ${on ? 'border-brand-500 bg-brand-500 text-white' : 'border-border/70'}`}>
+                {on && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+              </span>
               {KIND_LAYER_LABEL[k]}
             </button>
           )
