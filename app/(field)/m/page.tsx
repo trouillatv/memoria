@@ -40,7 +40,7 @@ import { detectPromiseSignalsFromRecords } from '@/lib/memory/signals/promise-pi
 import { detectActionDueSoonSignals } from '@/lib/memory/signals/action-due-soon-detector'
 import { composeAttentionCardsFromSignals } from '@/lib/situations/attention/compose'
 import { composeNowCardsFromSignals } from '@/lib/situations/now/compose'
-import { DashboardPremium } from '@/app/(dashboard)/dashboard/DashboardPremium'
+import { MobileHomeCockpit } from '@/app/(dashboard)/dashboard/MobileHomeCockpit'
 
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s
@@ -260,7 +260,7 @@ export default async function FieldHomePage({
     const nowCards = composeNowCardsFromSignals(promiseSignals)
     const nowSignals = now.items.map((item) => nowItemToMemorySignal(item))
     return (
-      <DashboardPremium
+      <MobileHomeCockpit
         firstName={user.full_name?.split(' ')[0] ?? ''}
         orgNames={orgNames}
         attentionCards={attentionCards}
