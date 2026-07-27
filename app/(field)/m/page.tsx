@@ -22,6 +22,24 @@ import { listOrgTodayInterventions } from '@/lib/db/field-today'
 import { ManagerTodayView } from './ManagerTodayView'
 import { getMorningDigestForSites, getOrgMorningDigest } from '@/lib/db/morning-digest'
 import { MorningHero } from '@/app/(dashboard)/dashboard/MorningHero'
+// ── Pipeline dashboard (admin / manager en PWA ou préférence terrain) ─────────
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { getOrganizationIdentityMap } from '@/lib/db/organisations'
+import type { OrgLabels } from '@/components/dashboard/OrgBadge'
+import { getAttentionDigest } from '@/lib/db/attention'
+import { getVisitImpact, emptyVisitImpact } from '@/lib/knowledge/site-events'
+import { listLivingASavoir } from '@/lib/db/handover'
+import { getUpcomingItems } from '@/lib/db/upcoming-items'
+import { getSitesDashboard } from '@/lib/db/sites-dashboard'
+import { getNowDashboard } from '@/lib/db/now-dashboard'
+import { getMemoryReview, type MemoryReview } from '@/lib/knowledge/memory-review'
+import { getDashboardDeadlinesToPlan } from '@/lib/db/dashboard-deadlines'
+import { getStructuredPromiseRecords } from '@/lib/db/promise-candidates'
+import { attentionItemToMemorySignal, nowItemToMemorySignal } from '@/lib/memory/signals/lot1-adapters'
+import { detectPromiseSignalsFromRecords } from '@/lib/memory/signals/promise-pipeline'
+import { composeAttentionCardsFromSignals } from '@/lib/situations/attention/compose'
+import { composeNowCardsFromSignals } from '@/lib/situations/now/compose'
+import { DashboardPremium } from '@/app/(dashboard)/dashboard/DashboardPremium'
 
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s
@@ -199,6 +217,66 @@ export default async function FieldHomePage({
   const user = await getCurrentUserWithProfile()
   if (!user) return null
 
+  const userRole: string = user.role
+
+  // Admin / manager en PWA ou préférence terrain : afficher le cockpit premium
+  // (même pipeline que /dashboard) plutôt que la vue terrain chef d'équipe.
+  if (user.role === 'admin' || user.role === 'manager') {
+    const orgIds = await getOrgIdsOfUser()
+    const organizationMap = orgIds.length > 1 ? await getOrganizationIdentityMap(orgIds) : null
+    const rawOrgLabels = organizationMap
+      ? Object.fromEntries(Object.values(organizationMap).map((org) => [org.id, org.slug || org.name]))
+      : null
+    const orgLabels: OrgLabels = rawOrgLabels
+    const orgNames = rawOrgLabels ? Object.values(rawOrgLabels) : []
+    const [attention, visit, aSavoir, upcoming, sites, deadlinesToPlan, promiseRecords] = await Promise.all([
+      getAttentionDigest(5),
+      getVisitImpact().catch(() => emptyVisitImpact()),
+      listLivingASavoir(4),
+      getUpcomingItems(orgIds, 30, organizationMap ?? undefined),
+      getSitesDashboard(orgIds, organizationMap ?? undefined),
+      getDashboardDeadlinesToPlan(orgIds, organizationMap ?? {}),
+      getStructuredPromiseRecords(orgIds),
+    ])
+    const visitReviews = Object.fromEntries(await Promise.all(
+      visit.sites.map(async (site) => [
+        site.siteId,
+        await getMemoryReview(site.siteId, { includeWork: true }).catch(() => ({ confirmed: [], toReview: [] }) as MemoryReview),
+      ] as const),
+    )) as Record<string, MemoryReview>
+    const promiseSignals = detectPromiseSignalsFromRecords(promiseRecords)
+    const now = await getNowDashboard(orgIds, upcoming, organizationMap ?? {})
+    const legacyAttentionSignals = [
+      ...attention.red.map((item) => attentionItemToMemorySignal(item)),
+      ...attention.orange.map((item) => attentionItemToMemorySignal(item)),
+    ].filter((s): s is NonNullable<typeof s> => s !== null)
+    const siteIdsToday = new Set(upcoming.filter((i) => i.isToday).map((i) => i.siteId))
+    const attentionCards = composeAttentionCardsFromSignals(
+      [...promiseSignals, ...legacyAttentionSignals],
+      { siteIdsToday },
+    )
+    const nowCards = composeNowCardsFromSignals(promiseSignals)
+    const nowSignals = now.items.map((item) => nowItemToMemorySignal(item))
+    return (
+      <DashboardPremium
+        firstName={user.full_name?.split(' ')[0] ?? ''}
+        orgNames={orgNames}
+        attentionCards={attentionCards}
+        nowCards={nowCards}
+        visit={visit}
+        upcoming={upcoming}
+        sites={sites}
+        aSavoir={aSavoir}
+        orgLabels={orgLabels}
+        organizationMap={organizationMap ?? {}}
+        now={now}
+        nowSignals={nowSignals}
+        visitReviews={visitReviews}
+        deadlinesToPlan={deadlinesToPlan}
+      />
+    )
+  }
+
   const params = await searchParams
   const todayIso = todayLocalIso()
   const selectedDate = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date)
@@ -303,7 +381,7 @@ export default async function FieldHomePage({
   // interventions, les récurrences existent → on saute la génération coûteuse.
   // Les interventions générées portent organization_id (cf. generator), donc ce
   // count les voit dès le 1er passage : les chargements suivants sont gratuits.
-  if (agentSiteIds.length === 0 && (user.role === 'admin' || user.role === 'manager') && user.organization_id) {
+  if (agentSiteIds.length === 0 && (userRole === 'admin' || userRole === 'manager') && user.organization_id) {
     const { count: existingForDate } = await supabase
       .from('interventions')
       .select('id', { count: 'exact', head: true })
@@ -460,7 +538,7 @@ export default async function FieldHomePage({
   // Vue superviseur : pour les managers/admins sans intervention assignée,
   // afficher toutes les interventions de l'organisation POUR LA DATE CHOISIE
   // (pas seulement aujourd'hui — sinon hier/demain restaient vides côté manager).
-  const isManager = user.role === 'admin' || user.role === 'manager'
+  const isManager = userRole === 'admin' || userRole === 'manager'
   const orgTodaySites =
     isManager && interventions.length === 0 && user.organization_id
       ? await listOrgTodayInterventions(user.organization_id, selectedDate)
@@ -675,7 +753,7 @@ export default async function FieldHomePage({
   const morningDigest = isToday
     ? agentSiteIds.length > 0
       ? await getMorningDigestForSites(agentSiteIds).catch(() => null)
-      : (user.role === 'admin' || user.role === 'manager') && user.organization_id
+      : (userRole === 'admin' || userRole === 'manager') && user.organization_id
         ? await getOrgMorningDigest(user.organization_id).catch(() => null)
         : null
     : null
