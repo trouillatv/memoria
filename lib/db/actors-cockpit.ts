@@ -190,7 +190,7 @@ export function buildActorsCockpit(input: ActorsCockpitInputs): ActorsCockpit {
     actors.push({
       kind: 'company', id: co.id, name: co.short_name || co.name, subtitle: subtitleBits.join(' · '),
       status, openActions: open, overdueActions: overdue, attention, linkedAccountHint: false,
-      href: null, // fiche entreprise = 2B.3
+      href: `/intervenants/entreprise/${co.id}`, // fiche Entreprise (2B.3B)
     })
   }
 

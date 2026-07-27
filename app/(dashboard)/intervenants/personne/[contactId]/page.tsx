@@ -7,11 +7,11 @@
 
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { User, Building2, Users, MapPin, ArrowRight, AlertTriangle, Clock, Mail, Phone, KeyRound } from 'lucide-react'
+import { User, Building2, Users, MapPin, ArrowRight, Clock, Mail, Phone, KeyRound } from 'lucide-react'
 import { checkIntervenantsPageAccess } from '@/lib/intervenants/access'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getPersonFiche, type PersonFiche } from '@/lib/db/person-fiche'
-import { attentionLevelLabel } from '@/lib/knowledge/actor-attention'
+import { AttentionBadge, FicheSection, FicheRow, FicheLinkRow, FicheEmpty } from '../../fiche-ui'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,7 +34,6 @@ export default async function PersonFichePage({ params }: { params: Promise<{ co
   const historicalTeams = fiche.teams.filter((t) => !t.active)
   const activeCasting = fiche.casting.filter((c) => c.active)
   const historicalCasting = fiche.casting.filter((c) => !c.active)
-  const openCount = fiche.actionsAsReferent.length
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-5">
@@ -51,7 +50,7 @@ export default async function PersonFichePage({ params }: { params: Promise<{ co
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-semibold">{fiche.name}</h1>
-              <AttentionBadge fiche={fiche} />
+              <AttentionBadge level={fiche.attention.level} />
               {fiche.status !== 'active' && (
                 <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{STATUS_LABEL[fiche.status]}</span>
               )}
@@ -70,9 +69,7 @@ export default async function PersonFichePage({ params }: { params: Promise<{ co
             {fiche.attention.reasons.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {fiche.attention.reasons.map((r) => (
-                  <span key={r.code} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs text-foreground/80">
-                    <AlertTriangle className="h-3 w-3 text-amber-600" aria-hidden /> {r.label}
-                  </span>
+                  <span key={r.code} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs text-foreground/80">{r.label}</span>
                 ))}
               </div>
             )}
@@ -92,25 +89,25 @@ export default async function PersonFichePage({ params }: { params: Promise<{ co
       </section>
 
       {/* ── ORGANISATION — rattachements ────────────────────────────────────────── */}
-      <Section title="Organisation">
+      <FicheSection title="Organisation">
         {fiche.companyName && (
-          <Row icon={<Building2 className="h-4 w-4" aria-hidden />} label={fiche.companyName} sub="Entreprise de rattachement" />
+          <FicheRow icon={<Building2 className="h-4 w-4" aria-hidden />} label={fiche.companyName} sub="Entreprise de rattachement" />
         )}
         {activeTeams.map((t) => (
-          <LinkRow key={t.id} href={t.href} icon={<Users className="h-4 w-4" aria-hidden />} label={t.name} sub="Équipe" />
+          <FicheLinkRow key={t.id} href={t.href} icon={<Users className="h-4 w-4" aria-hidden />} label={t.name} sub="Équipe" />
         ))}
         {activeCasting.map((c) => (
-          <LinkRow key={`${c.siteId}-${c.role}`} href={c.href} icon={<MapPin className="h-4 w-4" aria-hidden />} label={c.siteName} sub={`Casting · ${c.role}`} />
+          <FicheLinkRow key={`${c.siteId}-${c.role}`} href={c.href} icon={<MapPin className="h-4 w-4" aria-hidden />} label={c.siteName} sub={`Casting · ${c.role}`} />
         ))}
         {!fiche.companyName && activeTeams.length === 0 && activeCasting.length === 0 && (
-          <Empty>Aucun rattachement actif.</Empty>
+          <FicheEmpty>Aucun rattachement actif.</FicheEmpty>
         )}
-      </Section>
+      </FicheSection>
 
       {/* ── TRAVAIL EN COURS — actions ouvertes ─────────────────────────────────── */}
-      <Section title="Travail en cours" count={openCount}>
+      <FicheSection title="Travail en cours" count={fiche.actionsAsReferent.length}>
         {fiche.actionsAsReferent.length === 0 ? (
-          <Empty>Aucune action ouverte dont cette personne est référente.</Empty>
+          <FicheEmpty>Aucune action ouverte dont cette personne est référente.</FicheEmpty>
         ) : (
           fiche.actionsAsReferent.map((a) => <ActionRow key={a.id} action={a} />)
         )}
@@ -120,101 +117,42 @@ export default async function PersonFichePage({ params }: { params: Promise<{ co
             {fiche.actionsViaCompany.map((a) => <ActionRow key={a.id} action={a} />)}
           </div>
         )}
-      </Section>
+      </FicheSection>
 
       {/* ── HISTORIQUE UTILE ────────────────────────────────────────────────────── */}
       {(fiche.decisions.length > 0 || historicalCasting.length > 0 || historicalTeams.length > 0) && (
-        <Section title="Historique">
+        <FicheSection title="Historique">
           {fiche.decisions.map((d) => (
-            <LinkRow key={d.id} href={`/sites/${d.siteId}`} icon={<ArrowRight className="h-4 w-4" aria-hidden />} label={d.title} sub={`Décision · ${d.siteName}${d.date ? ` · ${d.date}` : ''}`} />
+            <FicheLinkRow key={d.id} href={`/sites/${d.siteId}`} icon={<ArrowRight className="h-4 w-4" aria-hidden />} label={d.title} sub={`Décision · ${d.siteName}${d.date ? ` · ${d.date}` : ''}`} />
           ))}
           {historicalCasting.map((c) => (
-            <LinkRow key={`${c.siteId}-${c.role}`} href={c.href} icon={<MapPin className="h-4 w-4 opacity-60" aria-hidden />} label={c.siteName} sub={`Casting clôturé · ${c.role}`} />
+            <FicheLinkRow key={`${c.siteId}-${c.role}`} href={c.href} icon={<MapPin className="h-4 w-4 opacity-60" aria-hidden />} label={c.siteName} sub={`Casting clôturé · ${c.role}`} />
           ))}
           {historicalTeams.map((t) => (
-            <LinkRow key={t.id} href={t.href} icon={<Users className="h-4 w-4 opacity-60" aria-hidden />} label={t.name} sub="Équipe (passée)" />
+            <FicheLinkRow key={t.id} href={t.href} icon={<Users className="h-4 w-4 opacity-60" aria-hidden />} label={t.name} sub="Équipe (passée)" />
           ))}
-        </Section>
+        </FicheSection>
       )}
     </div>
-  )
-}
-
-function AttentionBadge({ fiche }: { fiche: PersonFiche }) {
-  const level = fiche.attention.level
-  if (level === 'ok') {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
-        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> {attentionLevelLabel(level)}
-      </span>
-    )
-  }
-  const cls = level === 'urgent'
-    ? 'bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-300'
-    : 'bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300'
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${cls}`}>
-      <AlertTriangle className="h-3 w-3" aria-hidden /> {attentionLevelLabel(level)}
-    </span>
-  )
-}
-
-function Section({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
-  return (
-    <section className="rounded-2xl border border-border/60 bg-card p-4">
-      <h2 className="mb-2 text-sm font-semibold text-foreground/90">
-        {title}{typeof count === 'number' && count > 0 && <span className="ml-1.5 text-xs font-normal text-muted-foreground tabular-nums">{count}</span>}
-      </h2>
-      <div className="space-y-1">{children}</div>
-    </section>
-  )
-}
-
-function rowInner(icon: React.ReactNode, label: string, sub: string | null, trailing?: React.ReactNode) {
-  return (
-    <div className="flex items-center gap-2.5">
-      <span className="shrink-0 text-muted-foreground">{icon}</span>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm">{label}</div>
-        {sub && <div className="truncate text-xs text-muted-foreground">{sub}</div>}
-      </div>
-      {trailing}
-    </div>
-  )
-}
-
-function Row({ icon, label, sub }: { icon: React.ReactNode; label: string; sub: string | null }) {
-  return <div className="rounded-lg px-1.5 py-1.5">{rowInner(icon, label, sub)}</div>
-}
-
-function LinkRow({ href, icon, label, sub }: { href: string; icon: React.ReactNode; label: string; sub: string | null }) {
-  return (
-    <Link href={href} className="group block rounded-lg px-1.5 py-1.5 transition-colors hover:bg-brand-50/40 dark:hover:bg-brand-600/5">
-      {rowInner(icon, label, sub, <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-foreground" aria-hidden />)}
-    </Link>
   )
 }
 
 function ActionRow({ action }: { action: PersonFiche['actionsAsReferent'][number] }) {
   return (
-    <Link href={action.href} className="group block rounded-lg px-1.5 py-1.5 transition-colors hover:bg-brand-50/40 dark:hover:bg-brand-600/5">
-      {rowInner(
-        <ArrowRight className="h-4 w-4" aria-hidden />,
-        action.title,
-        action.siteName,
-        <span className="flex shrink-0 items-center gap-2">
-          {action.overdue && (
-            <span className="inline-flex items-center gap-0.5 text-xs font-medium text-red-700 dark:text-red-400">
-              <Clock className="h-3 w-3" aria-hidden /> En retard
-            </span>
-          )}
-          {!action.overdue && action.dueDate && <span className="text-xs text-muted-foreground tabular-nums">{action.dueDate}</span>}
-        </span>,
-      )}
-    </Link>
+    <FicheLinkRow
+      href={action.href}
+      icon={<ArrowRight className="h-4 w-4" aria-hidden />}
+      label={action.title}
+      sub={action.siteName}
+      trailing={
+        action.overdue ? (
+          <span className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium text-red-700 dark:text-red-400">
+            <Clock className="h-3 w-3" aria-hidden /> En retard
+          </span>
+        ) : action.dueDate ? (
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{action.dueDate}</span>
+        ) : undefined
+      }
+    />
   )
-}
-
-function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="px-1.5 py-1 text-xs italic text-muted-foreground">{children}</p>
 }
