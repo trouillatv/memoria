@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, Star, Clock, FileText, ChevronRight,
+  Camera, Video, Mic, Pencil, Target, MapPin, Star, Clock, FileText, ChevronRight, Sparkles,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { visitIntentLabel } from '@/lib/field/visit-intents'
@@ -131,7 +131,7 @@ export default async function VisitRecapPage({
           destinée à être transmise) ; ici, c'est la TRACE exhaustive (tout ce
           qui a été capturé, y compris ce qui n'est pas repris dans le CR). */}
       <div className="rounded-2xl border bg-muted/20 p-3">
-        <p className="text-[13px] font-medium">Deux lectures de cette visite</p>
+        <p className="text-[13px] font-medium">Trois lectures de cette visite</p>
         <div className="mt-2 space-y-1.5">
           <Link
             href={`/m/visite/${reportId}/cr`}
@@ -141,6 +141,17 @@ export default async function VisitRecapPage({
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-medium">Compte-rendu</span>
               <span className="block text-[12px] text-muted-foreground">Le document relu, structuré et partageable.</span>
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </Link>
+          <Link
+            href={`/m/visite/${reportId}/comprehension`}
+            className="flex items-center gap-2.5 rounded-xl border bg-background px-3 py-2.5 active:bg-accent"
+          >
+            <Sparkles className="h-4 w-4 shrink-0 text-violet-600" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">Comment MemorIA a compris</span>
+              <span className="block text-[12px] text-muted-foreground">Du relevé à l&apos;action : pourquoi chaque élément existe.</span>
             </span>
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           </Link>

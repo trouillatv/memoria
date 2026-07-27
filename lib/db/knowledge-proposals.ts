@@ -311,6 +311,20 @@ export async function listProposalsBySite(
   return (data ?? []) as DbKnowledgeProposal[]
 }
 
+/** Toutes les propositions issues d'UNE visite (tous statuts) — pour retracer
+ *  la chaîne de compréhension : ce que cette visite a fait comprendre, et ce que
+ *  chaque proposition est devenue. Ordre de création (l'ordre du récit). */
+export async function listProposalsByReport(reportId: string): Promise<DbKnowledgeProposal[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('site_knowledge_proposals')
+    .select('*')
+    .eq('report_id', reportId)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as DbKnowledgeProposal[]
+}
+
 /** Compte les propositions d'un statut donné, par type — pour les compteurs
  *  « 3 actions proposées · 3 vigilances à confirmer » des surfaces. */
 export async function countProposalsBySite(
