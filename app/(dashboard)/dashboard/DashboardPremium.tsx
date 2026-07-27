@@ -188,6 +188,11 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
   const focusSitePromiseCount = focusSite
     ? attentionCards.filter((c) => c.subject !== null && c.siteLabel === focusSite.name).length
     : 0
+  // Les raisons RÉELLES du choix : les cartes d'attention de ce chantier,
+  // par priorité — pas des volumes, les faits eux-mêmes.
+  const focusReasons = focusSite
+    ? sorted.filter((c) => c.siteLabel === focusSite.name).slice(0, 3)
+    : []
 
   const briefing = computeDailyBriefing(attentionCards, focusSite, urgentCount)
 
@@ -268,29 +273,44 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
                     <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#9aa7be]">Sélectionné car</p>
                   </>
                 )}
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5">
-                  {focusSite.overdueActionCount > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-lg bg-[#fef2f2] px-2 py-1 text-xs font-semibold text-[#dc2626]">
-                      {focusSite.overdueActionCount} action{focusSite.overdueActionCount > 1 ? 's' : ''} en retard
-                    </span>
-                  )}
-                  {focusSite.openReserveCount > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-lg bg-[#fffbeb] px-2 py-1 text-xs font-semibold text-[#d97706]">
-                      {focusSite.openReserveCount} réserve{focusSite.openReserveCount > 1 ? 's' : ''} ouverte{focusSite.openReserveCount > 1 ? 's' : ''}
-                    </span>
-                  )}
-                  {focusSitePromiseCount > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-lg bg-[#eef4ff] px-2 py-1 text-xs font-semibold text-[#4973dd]">
-                      {focusSitePromiseCount} promesse{focusSitePromiseCount > 1 ? 's' : ''} à confirmer
-                    </span>
-                  )}
-                  {/* Volume générique en fallback seulement — les pills doivent être causales */}
-                  {focusSite.overdueActionCount === 0 && focusSite.openReserveCount === 0 && focusSitePromiseCount === 0 && focusSite.activeActionCount > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-lg bg-[#f5f7fb] px-2 py-1 text-xs font-semibold text-[#33415c]">
-                      {focusSite.activeActionCount} action{focusSite.activeActionCount > 1 ? 's' : ''} ouverte{focusSite.activeActionCount > 1 ? 's' : ''}
-                    </span>
-                  )}
-                </div>
+                {focusReasons.length > 0 ? (
+                  /* Les faits eux-mêmes, par priorité — l'IA explicable. */
+                  <ul className="mt-1.5 space-y-1.5">
+                    {focusReasons.map((c) => (
+                      <li key={c.id} className="flex items-baseline gap-2">
+                        <span
+                          aria-hidden
+                          className={`h-1.5 w-1.5 shrink-0 self-center rounded-full ${
+                            c.tone === 'red' ? 'bg-[#dc2626]' : c.tone === 'amber' ? 'bg-[#f59e0b]' : 'bg-[#4973dd]'
+                          }`}
+                        />
+                        <span className="min-w-0 text-[13px] leading-snug text-[#33415c]">
+                          {c.title}
+                          {c.timingLabel && <span className="text-[#9aa7be]"> — {c.timingLabel}</span>}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  /* Fallback : pills causales quand aucune carte ne cible ce chantier. */
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                    {focusSite.overdueActionCount > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-[#fef2f2] px-2 py-1 text-xs font-semibold text-[#dc2626]">
+                        {focusSite.overdueActionCount} action{focusSite.overdueActionCount > 1 ? 's' : ''} en retard
+                      </span>
+                    )}
+                    {focusSite.openReserveCount > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-[#fffbeb] px-2 py-1 text-xs font-semibold text-[#d97706]">
+                        {focusSite.openReserveCount} réserve{focusSite.openReserveCount > 1 ? 's' : ''} ouverte{focusSite.openReserveCount > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {focusSite.overdueActionCount === 0 && focusSite.openReserveCount === 0 && focusSite.activeActionCount > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-[#f5f7fb] px-2 py-1 text-xs font-semibold text-[#33415c]">
+                        {focusSite.activeActionCount} action{focusSite.activeActionCount > 1 ? 's' : ''} ouverte{focusSite.activeActionCount > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {/* Réassurance factuelle : aucune carte rouge sur ce chantier */}
                 {briefing.tone === 'warning' && focusSite.overdueActionCount === 0 && (
                   <p className="mt-2.5 text-xs font-medium text-[#16a34a]">
