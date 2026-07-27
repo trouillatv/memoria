@@ -46,6 +46,12 @@ function nodeColor(n: ActorGraphNode): string {
   return LEVEL_COLOR[n.level]
 }
 
+/** Signature stable des couches visibles — pour ne relancer la simulation QUE
+ *  quand la géométrie change vraiment (pas à chaque sélection). */
+function kindSig(vk: ReadonlySet<ActorGraphKind> | null | undefined): string {
+  return vk ? [...vk].sort().join(',') : 'all'
+}
+
 export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', onSelectActor, control, centerRequest }: {
   graph: ActorsGraph
   focusId?: string | null
@@ -68,8 +74,28 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
   const localSelRef = useRef<string | null>(null)
   const onSelectRef = useRef(onSelectActor)
   const controlRef = useRef(control)
+  // Dernier état de géométrie appliqué (chronologie + couches) : sert à relancer une
+  // brève simulation UNIQUEMENT quand ce qui est affiché change — pas à chaque
+  // sélection/survol (qui ne font que redessiner).
+  const lastTimeMaxRef = useRef<string | null | undefined>(undefined)
+  const lastKindSigRef = useRef<string | undefined>(undefined)
   useEffect(() => { onSelectRef.current = onSelectActor }, [onSelectActor])
-  useEffect(() => { controlRef.current = control }, [control])
+  useEffect(() => {
+    controlRef.current = control
+    const api = apiRef.current
+    if (!api) return
+    const tm = control?.timeMax ?? null
+    const ks = kindSig(control?.visibleKinds)
+    if (tm !== lastTimeMaxRef.current || ks !== lastKindSigRef.current) {
+      lastTimeMaxRef.current = tm
+      lastKindSigRef.current = ks
+      api.refreshVisibility() // géométrie changée → repositionne + courte relance
+    } else {
+      // Sélection / chemin / survol : la disposition ne bouge pas, on redessine juste
+      // (en mode figé, rien ne redessinerait sinon).
+      api.redraw()
+    }
+  }, [control])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -201,7 +227,9 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
       // Fondu d'apparition/disparition (replay + entrées de nœuds) — mêmes constantes
       // que Mémoire (0.12 in / 0.14 out).
       fade: { in: 0.12, out: 0.14 },
-      loop: 'continuous',
+      // Le graphe se met en place puis SE FIGE (au lieu de bouger indéfiniment) : la
+      // simulation ne vit que pendant un geste ou une relance bornée (cf. kick 2 s).
+      loop: 'settle',
       zoom: { min: 0.2, max: 3, factorIn: 1.12, factorOut: 0.893 },
       dprCap: 2,
       placeNewNearNeighbors: true,
@@ -229,6 +257,12 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
       },
     })
     apiRef.current = api
+    // Mémorise l'état de géométrie initial (évite une relance parasite au 1er rendu)
+    // et laisse jusqu'à 2 s pour se mettre en place, puis STOP (la friction fige avant
+    // si l'énergie retombe).
+    lastTimeMaxRef.current = controlRef.current?.timeMax ?? null
+    lastKindSigRef.current = kindSig(controlRef.current?.visibleKinds)
+    api.kick(2000)
 
     return () => {
       // Mémorise les positions pour le prochain graphe (dédup par id).
