@@ -19,8 +19,35 @@ describe('buildActorsDirectory', () => {
     expect(d.actors).toEqual([])
     expect(d.counters).toEqual({
       personsActive: 0, companiesActive: 0, teamsActive: 0,
-      overdueActions: 0, agentsWithoutTeam: 0, companiesActionsNoReferent: 0, detectedUnconfirmed: 0,
+      actionsWithoutOwner: 0, companiesOverdue: 0, agentsWithoutTeam: 0,
+      companiesActionsNoReferent: 0, detectedUnconfirmed: 0, overdueActions: 0,
     })
+  })
+
+  it('action ouverte sans aucun responsable → compteur actionsWithoutOwner', () => {
+    const d = buildActorsDirectory({
+      ...base(),
+      actions: [
+        { assigned_contact_id: null, assigned_company_id: null, due_date: null },
+        { assigned_contact_id: null, assigned_company_id: null, due_date: '2026-07-01' },
+      ],
+    })
+    expect(d.counters.actionsWithoutOwner).toBe(2)
+  })
+
+  it('companiesOverdue compte les entreprises distinctes en retard, pas les actions', () => {
+    const d = buildActorsDirectory({
+      ...base(),
+      companies: [{ id: 'co1', name: 'A', short_name: null }, { id: 'co2', name: 'B', short_name: null }],
+      casting: [{ company_id: 'co1', main_contact_id: null, role: 'X' }, { company_id: 'co2', main_contact_id: null, role: 'Y' }],
+      actions: [
+        { assigned_contact_id: null, assigned_company_id: 'co1', due_date: '2026-07-01' },
+        { assigned_contact_id: null, assigned_company_id: 'co1', due_date: '2026-07-02' },
+        { assigned_contact_id: null, assigned_company_id: 'co2', due_date: '2026-07-03' },
+      ],
+    })
+    expect(d.counters.companiesOverdue).toBe(2) // co1 + co2, malgré 3 actions
+    expect(d.counters.overdueActions).toBe(3)
   })
 
   it('agent interne sans équipe → alerte agent_no_team + statut incomplet', () => {

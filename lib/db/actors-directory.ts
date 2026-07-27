@@ -43,14 +43,19 @@ export interface DirectoryActor {
 
 export interface ActorsDirectory {
   actors: DirectoryActor[]
+  /** Deux familles : ATTENTION (ce qui appelle une action) et VOLUME (contexte discret). */
   counters: {
+    // ── Volume (contexte, discret) ──
     personsActive: number
     companiesActive: number
     teamsActive: number
-    overdueActions: number       // actions ouvertes en retard portées par une personne OU une entreprise
+    // ── Attention (ce qui doit remonter en haut de page) ──
+    actionsWithoutOwner: number  // actions ouvertes sans aucun responsable (ni personne ni entreprise)
+    companiesOverdue: number     // entreprises distinctes avec au moins une action en retard
     agentsWithoutTeam: number
     companiesActionsNoReferent: number
     detectedUnconfirmed: number  // propositions d'intervenants (stakeholder) non confirmées, org-globales
+    overdueActions: number       // total d'actions ouvertes en retard (personne OU entreprise)
   }
 }
 
@@ -101,6 +106,7 @@ export function buildActorsDirectory(input: ActorsDirectoryInputs): ActorsDirect
   // Actions par acteur — ouvertes + en retard.
   const openByContact = new Map<string, number>(); const overdueByContact = new Map<string, number>()
   const openByCompany = new Map<string, number>(); const overdueByCompany = new Map<string, number>(); const noReferentByCompany = new Map<string, number>()
+  let actionsWithoutOwner = 0 // action ouverte SANS aucun responsable (ni personne ni entreprise)
   for (const a of actions) {
     if (a.assigned_contact_id) {
       openByContact.set(a.assigned_contact_id, (openByContact.get(a.assigned_contact_id) ?? 0) + 1)
@@ -111,6 +117,7 @@ export function buildActorsDirectory(input: ActorsDirectoryInputs): ActorsDirect
       if (isOverdue(a.due_date)) overdueByCompany.set(a.assigned_company_id, (overdueByCompany.get(a.assigned_company_id) ?? 0) + 1)
       if (!a.assigned_contact_id) noReferentByCompany.set(a.assigned_company_id, (noReferentByCompany.get(a.assigned_company_id) ?? 0) + 1)
     }
+    if (!a.assigned_contact_id && !a.assigned_company_id) actionsWithoutOwner++
   }
 
   // Rapprochement compte↔contact : par e-mail exact, sinon nom normalisé.
@@ -211,10 +218,14 @@ export function buildActorsDirectory(input: ActorsDirectoryInputs): ActorsDirect
   const overdueActions = [...overdueByContact.values()].reduce((s, n) => s + n, 0) + [...overdueByCompany.values()].reduce((s, n) => s + n, 0)
   const agentsWithoutTeam = actors.filter((a) => a.kind === 'person' && a.alerts.includes('agent_no_team')).length
   const companiesActionsNoReferent = actors.filter((a) => a.kind === 'company' && a.alerts.includes('company_no_referent')).length
+  const companiesOverdue = actors.filter((a) => a.kind === 'company' && a.alerts.includes('company_overdue')).length
 
   return {
     actors,
-    counters: { personsActive, companiesActive, teamsActive, overdueActions, agentsWithoutTeam, companiesActionsNoReferent, detectedUnconfirmed: proposalCount },
+    counters: {
+      personsActive, companiesActive, teamsActive,
+      actionsWithoutOwner, companiesOverdue, agentsWithoutTeam, companiesActionsNoReferent, detectedUnconfirmed: proposalCount, overdueActions,
+    },
   }
 }
 

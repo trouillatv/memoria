@@ -83,6 +83,10 @@ export function ActorsDirectoryView({ directory }: { directory: ActorsDirectory 
     setAlertsOnly(onlyAlerts)
   }
 
+  const hasAttention =
+    counters.actionsWithoutOwner > 0 || counters.companiesOverdue > 0 || counters.agentsWithoutTeam > 0 ||
+    counters.companiesActionsNoReferent > 0 || counters.detectedUnconfirmed > 0
+
   return (
     <div className="space-y-5 w-full">
       <header className="space-y-1">
@@ -95,31 +99,42 @@ export function ActorsDirectoryView({ directory }: { directory: ActorsDirectory 
         </p>
       </header>
 
-      {/* Compteurs actionnables — chacun mène à l'onglet correspondant. */}
-      <div className="flex flex-wrap gap-2">
-        <CounterChip label="Personnes actives" value={counters.personsActive} onClick={() => focusTab('person')} />
-        <CounterChip label="Entreprises actives" value={counters.companiesActive} onClick={() => focusTab('company')} />
-        <CounterChip label="Équipes actives" value={counters.teamsActive} onClick={() => focusTab('team')} />
-      </div>
-
-      {/* Alertes déterministes — courtes, cliquables, jamais décoratives. */}
-      {(counters.agentsWithoutTeam > 0 || counters.overdueActions > 0 || counters.companiesActionsNoReferent > 0 || counters.detectedUnconfirmed > 0) && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-amber-300/70 bg-amber-50/50 px-4 py-2.5 text-sm dark:border-amber-800/50 dark:bg-amber-950/20">
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" aria-hidden />
-          {counters.agentsWithoutTeam > 0 && (
-            <AlertLink onClick={() => focusTab('person', true)}>{counters.agentsWithoutTeam} agent{counters.agentsWithoutTeam > 1 ? 's' : ''} sans équipe</AlertLink>
+      {/* ATTENTION d'abord — ce qui appelle une décision, pas du volume. Chaque
+          entrée mène à la liste filtrée correspondante ; les stats sans acteur
+          cible (actions orphelines, détectés) restent informatives. */}
+      {hasAttention ? (
+        <div className="flex flex-wrap items-stretch gap-2">
+          {counters.actionsWithoutOwner > 0 && (
+            <AttentionCard tone="red" value={counters.actionsWithoutOwner} label={`action${counters.actionsWithoutOwner > 1 ? 's' : ''} sans responsable`} />
           )}
-          {counters.overdueActions > 0 && (
-            <AlertLink onClick={() => focusTab('all', true)}>{counters.overdueActions} action{counters.overdueActions > 1 ? 's' : ''} en retard</AlertLink>
+          {counters.companiesOverdue > 0 && (
+            <AttentionCard tone="red" value={counters.companiesOverdue} label={`entreprise${counters.companiesOverdue > 1 ? 's' : ''} en retard`} onClick={() => focusTab('company', true)} />
+          )}
+          {counters.agentsWithoutTeam > 0 && (
+            <AttentionCard tone="amber" value={counters.agentsWithoutTeam} label={`agent${counters.agentsWithoutTeam > 1 ? 's' : ''} sans équipe`} onClick={() => focusTab('person', true)} />
           )}
           {counters.companiesActionsNoReferent > 0 && (
-            <AlertLink onClick={() => focusTab('company', true)}>{counters.companiesActionsNoReferent} entreprise{counters.companiesActionsNoReferent > 1 ? 's' : ''} sans contact référent</AlertLink>
+            <AttentionCard tone="amber" value={counters.companiesActionsNoReferent} label={`entreprise${counters.companiesActionsNoReferent > 1 ? 's' : ''} sans référent`} onClick={() => focusTab('company', true)} />
           )}
           {counters.detectedUnconfirmed > 0 && (
-            <span className="text-amber-800/90 dark:text-amber-300/90">{counters.detectedUnconfirmed} intervenant{counters.detectedUnconfirmed > 1 ? 's' : ''} détecté{counters.detectedUnconfirmed > 1 ? 's' : ''} à confirmer</span>
+            <AttentionCard tone="amber" value={counters.detectedUnconfirmed} label={`intervenant${counters.detectedUnconfirmed > 1 ? 's' : ''} à confirmer`} />
           )}
         </div>
+      ) : (
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-200/70 bg-emerald-50/40 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-800/40 dark:bg-emerald-950/20 dark:text-emerald-300">
+          <span aria-hidden className="h-2 w-2 rounded-full bg-emerald-500" />
+          Rien n&apos;appelle d&apos;attention pour le moment.
+        </div>
       )}
+
+      {/* Volume — contexte discret, jamais le centre de la page. */}
+      <p className="text-xs text-muted-foreground">
+        <VolumeLink value={counters.personsActive} label="personnes actives" onClick={() => focusTab('person')} />
+        {' · '}
+        <VolumeLink value={counters.companiesActive} label="entreprises actives" onClick={() => focusTab('company')} />
+        {' · '}
+        <VolumeLink value={counters.teamsActive} label="équipes actives" onClick={() => focusTab('team')} />
+      </p>
 
       {/* Onglets + recherche + filtre essentiel. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -168,23 +183,31 @@ export function ActorsDirectoryView({ directory }: { directory: ActorsDirectory 
   )
 }
 
-function CounterChip({ label, value, onClick }: { label: string; value: number; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-baseline gap-1.5 rounded-lg border border-border/60 bg-card px-3 py-1.5 text-sm transition-colors hover:border-brand-200/70 hover:bg-brand-50/40 dark:hover:bg-brand-600/10"
-    >
-      <span className="font-semibold tabular-nums">{value}</span>
-      <span className="text-muted-foreground">{label}</span>
-    </button>
+/** Carte d'attention. `red` = urgence (retards, orphelines), `amber` = à traiter.
+ *  Cliquable seulement quand elle mène à une liste d'acteurs filtrable. */
+function AttentionCard({ tone, value, label, onClick }: { tone: 'red' | 'amber'; value: number; label: string; onClick?: () => void }) {
+  const palette = tone === 'red'
+    ? 'border-red-300/70 bg-red-50/60 text-red-900 dark:border-red-800/50 dark:bg-red-950/25 dark:text-red-200'
+    : 'border-amber-300/70 bg-amber-50/60 text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/25 dark:text-amber-200'
+  const dot = tone === 'red' ? 'bg-red-500' : 'bg-amber-500'
+  const inner = (
+    <>
+      <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
+      <span className="text-lg font-semibold tabular-nums leading-none">{value}</span>
+      <span className="text-xs leading-tight opacity-90">{label}</span>
+    </>
   )
+  const cls = `flex items-center gap-2 rounded-lg border px-3 py-2 ${palette}`
+  if (onClick) {
+    return <button type="button" onClick={onClick} className={`${cls} transition-shadow hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>{inner}</button>
+  }
+  return <div className={cls} title="Aucun acteur à ouvrir directement — traiter sur le chantier concerné">{inner}</div>
 }
 
-function AlertLink({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+function VolumeLink({ value, label, onClick }: { value: number; label: string; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="text-amber-800 underline-offset-2 hover:underline dark:text-amber-300">
-      {children}
+    <button type="button" onClick={onClick} className="tabular-nums underline-offset-2 hover:text-foreground hover:underline">
+      <span className="font-medium text-foreground/80">{value}</span> {label}
     </button>
   )
 }
