@@ -11,6 +11,8 @@ import { getVisit, buildVisitProduction, buildSitePatrimoine } from '@/lib/db/vi
 import { buildSiteTimeline } from '@/lib/db/site-timeline'
 import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
 import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureRow, type VisitCaptureKind } from '@/lib/db/visit-captures'
+import { getSiteCoverCaptureId } from '@/lib/db/site-cover'
+import { CoverPhotoButton } from '../CoverPhotoButton'
 import { ReopenVisitButton } from '../ReopenVisitButton'
 import { VisitShareButton } from '../VisitShareButton'
 import { VisitMemoryTabs } from './VisitMemoryTabs'
@@ -68,6 +70,8 @@ export default async function VisitRecapPage({
   const captures = allCaptures.filter((c) => c.status !== 'discarded')
   const previews: Record<string, { url: string; mime: string | null }> =
     await getVisitCapturePreviewUrls(captures).catch(() => ({}))
+  // Photo principale du chantier (mig 243) — pour marquer la photo active.
+  const coverCaptureId = await getSiteCoverCaptureId(visit.site_id).catch(() => null)
 
   const startIso = visit.started_at ?? visit.created_at
   const dateLabel = new Date(startIso).toLocaleString('fr-FR', {
@@ -208,10 +212,17 @@ export default async function VisitRecapPage({
                   {c.starred && <Star className="h-4 w-4 shrink-0 text-amber-500" />}
                 </div>
                 {preview && c.kind === 'photo' && (
-                  <a href={preview.url} target="_blank" rel="noopener noreferrer" className="mt-2 block">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={preview.url} alt="" className="max-h-48 w-full rounded-lg border object-cover" />
-                  </a>
+                  <>
+                    <a href={preview.url} target="_blank" rel="noopener noreferrer" className="mt-2 block">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={preview.url} alt="" className="max-h-48 w-full rounded-lg border object-cover" />
+                    </a>
+                    {visit.site_id && (
+                      <div className="mt-2">
+                        <CoverPhotoButton siteId={visit.site_id} captureId={c.id} isCover={c.id === coverCaptureId} />
+                      </div>
+                    )}
+                  </>
                 )}
                 {preview && c.kind === 'video' && (
                   <video src={preview.url} controls playsInline className="mt-2 max-h-56 w-full rounded-lg border bg-black" />

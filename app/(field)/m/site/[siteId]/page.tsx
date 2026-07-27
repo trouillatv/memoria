@@ -21,6 +21,7 @@ import { VisitBasket, type SubjectMemoryLite } from './VisitBasket'
 import { VisitObjectivePrompt } from './VisitObjectivePrompt'
 import { getActiveVisit, getStartedVisitById, buildSiteStatusSummary, getSiteRecentActivity, buildSinceLastVisitSummary, getSiteMemorySnapshot } from '@/lib/db/visits'
 import { getSiteIdentity } from '@/lib/db/sites'
+import { getSiteCoverPhoto } from '@/lib/db/site-cover'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { SiteStatusCard } from './SiteStatusCard'
 import { IdentityCard } from './IdentityCard'
@@ -318,6 +319,10 @@ export default async function FieldSitePage({
     lastNotable = { date: lastNote.created_at, text: lastNote.body }
   }
 
+  // Photo principale du chantier (mig 243) — la vignette qui le représente.
+  // Pas pendant une visite en cours : l'écran de collecte reste épuré.
+  const cover = activeVisit ? null : await getSiteCoverPhoto(siteId).catch(() => null)
+
   return (
     <div className="max-w-md space-y-6 pb-32">
       {justVisited && <JustVisitedBanner />}
@@ -327,9 +332,17 @@ export default async function FieldSitePage({
         </h1>
       </header>
 
-      <section className="space-y-1">
-        <h2 className="text-2xl font-bold leading-tight">{site.name}</h2>
-        <p className="text-sm text-muted-foreground">{nthPassage}ᵉ passage</p>
+      <section className="space-y-2">
+        {cover && (
+          <div className="overflow-hidden rounded-2xl border">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={cover.url} alt={`Photo du chantier ${site.name}`} className="h-40 w-full object-cover" />
+          </div>
+        )}
+        <div className="space-y-1">
+          <h2 className="text-2xl font-bold leading-tight">{site.name}</h2>
+          <p className="text-sm text-muted-foreground">{nthPassage}ᵉ passage</p>
+        </div>
       </section>
 
       {/* Visite ouverte → le PANIER (collecte focalisée, écran épuré). Sinon → la
