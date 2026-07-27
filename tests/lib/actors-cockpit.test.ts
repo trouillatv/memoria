@@ -3,7 +3,7 @@
 // sans jamais fusionner les entités ni masquer un acteur historique.
 
 import { describe, expect, it } from 'vitest'
-import { buildActorsCockpit, type ActorsCockpitInputs } from '@/lib/db/actors-cockpit'
+import { buildActorsCockpit, type ActorsCockpitInputs, type CockpitActor } from '@/lib/db/actors-cockpit'
 
 function base(): ActorsCockpitInputs {
   return {
@@ -12,6 +12,9 @@ function base(): ActorsCockpitInputs {
     teamMembers: [], fieldMembers: [], missions: [], casting: [], actions: [], proposalCount: 0,
   }
 }
+
+/** Codes des raisons d'attention d'un acteur (politique commune). */
+const codes = (a: CockpitActor) => a.attention.reasons.map((r) => r.code)
 
 describe('buildActorsCockpit', () => {
   it('org vide → répertoire vide, compteurs à zéro', () => {
@@ -58,12 +61,13 @@ describe('buildActorsCockpit', () => {
     const jean = d.actors.find((a) => a.id === 'c1')!
     expect(jean.kind).toBe('person')
     expect(jean.status).toBe('incomplete')
-    expect(jean.alerts).toContain('agent_no_team')
+    expect(codes(jean)).toContain('agent_no_team')
+    expect(jean.attention.level).toBe('attention')
     expect(d.counters.agentsWithoutTeam).toBe(1)
     expect(d.counters.personsActive).toBe(0)
   })
 
-  it('agent avec équipe active → actif, sans alerte', () => {
+  it('agent avec équipe active → actif, état à jour', () => {
     const d = buildActorsCockpit({
       ...base(),
       contacts: [{ id: 'c1', full_name: 'Jean Dupont', function: null, company_id: null, is_internal_agent: true, email: null }],
@@ -72,11 +76,11 @@ describe('buildActorsCockpit', () => {
     })
     const jean = d.actors.find((a) => a.id === 'c1')!
     expect(jean.status).toBe('active')
-    expect(jean.alerts).not.toContain('agent_no_team')
+    expect(jean.attention.level).toBe('ok')
     expect(d.counters.personsActive).toBe(1)
   })
 
-  it('entreprise avec action ouverte en retard sans référent → 2 alertes + compteurs', () => {
+  it('entreprise avec action ouverte en retard sans référent → urgent + 2 raisons + compteurs', () => {
     const d = buildActorsCockpit({
       ...base(),
       companies: [{ id: 'co1', name: 'SOTRAP SARL', short_name: 'SOTRAP' }],
@@ -87,13 +91,15 @@ describe('buildActorsCockpit', () => {
     expect(co.kind).toBe('company')
     expect(co.name).toBe('SOTRAP')
     expect(co.status).toBe('active')
-    expect(co.alerts).toEqual(expect.arrayContaining(['company_overdue', 'company_no_referent']))
+    expect(co.attention.level).toBe('urgent') // le retard prime
+    expect(codes(co)).toEqual(expect.arrayContaining(['overdue_actions', 'company_no_referent']))
     expect(co.overdueActions).toBe(1)
     expect(d.counters.overdueActions).toBe(1)
+    expect(d.counters.companiesOverdue).toBe(1)
     expect(d.counters.companiesActionsNoReferent).toBe(1)
   })
 
-  it('entreprise responsable mais sortie du casting → alerte company_left_casting, jamais masquée', () => {
+  it('entreprise responsable mais sortie du casting → raison company_left_casting, jamais masquée', () => {
     const d = buildActorsCockpit({
       ...base(),
       companies: [{ id: 'co1', name: 'OldCo', short_name: null }],
@@ -101,17 +107,29 @@ describe('buildActorsCockpit', () => {
       actions: [{ assigned_contact_id: null, assigned_company_id: 'co1', due_date: null }],
     })
     const co = d.actors.find((a) => a.id === 'co1')!
-    expect(co.alerts).toContain('company_left_casting')
+    expect(codes(co)).toContain('company_left_casting')
+    expect(co.attention.level).toBe('attention')
     expect(co.status).toBe('active') // open>0 ⇒ toujours mobilisée
   })
 
-  it('équipe sans membre → alerte team_no_member + incomplet', () => {
-    const d = buildActorsCockpit({ ...base(), teams: [{ id: 't1', name: 'Gros œuvre' }] })
+  it('équipe affectée à un chantier mais vide → à surveiller (team_empty_but_assigned)', () => {
+    const d = buildActorsCockpit({
+      ...base(),
+      teams: [{ id: 't1', name: 'Gros œuvre' }],
+      missions: [{ site_id: 's1', assigned_team_id: 't1' }],
+    })
     const t = d.actors.find((a) => a.id === 't1')!
     expect(t.kind).toBe('team')
-    expect(t.status).toBe('incomplete')
-    expect(t.alerts).toContain('team_no_member')
+    expect(t.attention.level).toBe('attention') // équipe : jamais urgent
+    expect(codes(t)).toEqual(['team_empty_but_assigned'])
     expect(t.href).toBe('/equipes/t1')
+  })
+
+  it('équipe vide et non affectée → état à jour (rien d\'opérationnel ne bloque)', () => {
+    const d = buildActorsCockpit({ ...base(), teams: [{ id: 't1', name: 'Gros œuvre' }] })
+    const t = d.actors.find((a) => a.id === 't1')!
+    expect(t.status).toBe('incomplete')
+    expect(t.attention.level).toBe('ok')
   })
 
   it('dédup compte↔contact : un user avec le même e-mail qu\'un contact n\'est pas double-compté', () => {

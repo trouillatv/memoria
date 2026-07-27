@@ -275,14 +275,39 @@ attentionState. Verts.
 
 ---
 
-## 12. Décisions à confirmer avant 2B.3A (code)
-1. Contrat `attentionState` : les 3 points de §1.4 (incomplete_profile, priorité
-   retard vs sortie casting, retrofit cockpit).
-2. Nommage des routes Personne / Entreprise (§8).
-3. Audit log sur fiche Équipe : aligner sur Personne/Entreprise ou statu quo (§9).
-4. Périmètre « visites citées » (⚠️ JSONB) : inclure en v1 avec la mention « Citée »,
-   ou reporter pour éviter l'imprécision ?
-5. Rythme/heatmap/galerie sur les fiches : inclure (réutilisables) ou omettre en v1
-   pour tenir la règle anti-sur-agrégation ?
+## 12. Décisions TRANCHÉES (Vincent 2026-07-27) — 2B.3A peut coder
+1. **`attentionState` ✅** — `level` = **la raison la plus grave**, jamais une moyenne
+   (urgent > attention > ok). `incomplete_profile` **très conservateur** : ne se
+   déclenche QUE si une info manquante empêche un usage métier (ex. agent interne sans
+   équipe — déjà couvert par `agent_no_team`). PAS d'alerte pour téléphone/e-mail/photo
+   absents, ni « entreprise inconnue » d'un contact qui n'en a pas besoin. En v1
+   `incomplete_profile` et `identity_incomplete` ne sont donc pas émis (le cas utile est
+   déjà porté par `agent_no_team`). Priorité retard : un retard prime toujours (`urgent`).
+2. **Routes ✅** — `/intervenants/personne/[contactId]`, `/intervenants/entreprise/[companyId]`,
+   Équipe reste sur `/equipes/[id]` (ne pas créer 2 fiches Équipe concurrentes).
+3. **Audit log ❌ reporté** — statu quo. 2B.3 crée des surfaces de LECTURE, ne change pas
+   le comportement métier. Audit reporté à un futur chantier transversal (vaut aussi pour
+   Personne/Entreprise : garde d'accès + kill-switch oui, log non). La garde reste
+   `checkIntervenantsPageAccess` (privilégié + kill-switch).
+4. **Visites citées (JSONB) ❌ reportées** — règle : *une fiche n'affiche que des
+   relations structurellement fiables*. Reviennent quand une identité sera réellement
+   reliée. Évite de perdre la confiance dans la fiche.
+5. **Rythme / heatmap / galerie ❌ reportés** — priorité anti-sur-agrégation. La fiche
+   répond « qui ? où ? que dois-je voir maintenant ? » ; ces vues viendront ensuite.
 
-**Arrêt ici — aucun code avant validation de ces décisions.**
+### 6ᵉ exigence ajoutée (Vincent) — la CARTE DE SYNTHÈSE
+Chaque fiche s'ouvre sur une carte qui résume **en moins de 5 secondes pourquoi cet
+acteur mérite (ou non) l'attention de Guillaume** : **identité + attentionState + les 3
+faits principaux**. Exemples : Personne « Jean Dupont · À traiter · 2 actions en retard ·
+ETV · Équipe Électricité · 2 chantiers » ; Entreprise « SOTRAP · À surveiller · 5 actions ·
+2 sans référent · 3 chantiers » ; Équipe « Électricité · À jour · 6 membres · 2 chantiers ·
+14 actions portées ». C'est **le point le plus important du 2B.3A** : si cette carte est
+réussie, le reste de la fiche devient une navigation naturelle dans le détail.
+
+### Ordre imposé des sections (jamais l'inverse)
+**Situation actuelle → Organisation → Travail en cours → Historique → Navigation.**
+On ouvre une fiche pour « que dois-je comprendre maintenant ? », pas pour lire l'historique.
+
+### Vocabulaire
+Le cockpit n'est pas une vue spéciale : il **consomme la politique commune**, comme les
+fiches, comme le graphe demain. Ne pas parler de « retrofit » mais de *client de la politique*.

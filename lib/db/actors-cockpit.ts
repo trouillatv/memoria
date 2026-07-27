@@ -7,25 +7,18 @@ import 'server-only'
 // acteur reste dans son entité (company_contacts / companies / teams) — jamais
 // fusionné. On n'expose QUE des données réellement dérivables (cf. cadrage
 // docs/foundations/2026-07-27-intervenants-repertoire-cadrage.md). Aucune
-// « dernière activité » approximative ; le statut et les alertes sont déterministes.
+// « dernière activité » approximative ; le statut est déterministe et l'état
+// d'attention provient de la POLITIQUE COMMUNE (lib/knowledge/actor-attention).
 //
 // La composition (buildActorsCockpit) est PURE et testable sans base : getActorsCockpit
 // se contente de charger les lignes org-scopées puis délègue au calcul déterministe.
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { todayLocalIso } from '@/lib/time/local-date'
+import { deriveActorAttentionState, type AttentionState } from '@/lib/knowledge/actor-attention'
 
 export type ActorKind = 'person' | 'company' | 'team'
 export type ActorStatus = 'active' | 'incomplete' | 'historical'
-
-/** Alertes déterministes (règles explicites) — clés stables, libellées à l'UI. */
-export type ActorAlert =
-  | 'agent_no_team'            // agent interne sans équipe active
-  | 'company_overdue'          // entreprise avec actions en retard
-  | 'company_no_referent'      // entreprise responsable d'actions sans contact référent
-  | 'responsible_not_active'   // personne responsable d'action mais plus mobilisée
-  | 'company_left_casting'     // entreprise responsable mais plus au casting actif
-  | 'team_no_member'           // équipe sans personne
 
 export interface CockpitActor {
   kind: ActorKind
@@ -36,7 +29,8 @@ export interface CockpitActor {
   status: ActorStatus
   openActions: number
   overdueActions: number
-  alerts: ActorAlert[]
+  /** État d'attention issu de la POLITIQUE COMMUNE (le cockpit en est un client). */
+  attention: AttentionState
   /** Compte utilisateur probablement lié (heuristique e-mail/nom) — signal, jamais fusion. */
   linkedAccountHint: boolean
   /** Surface propriétaire (fiche existante) quand elle existe ; null sinon (fiche 2B.3). */
@@ -145,14 +139,17 @@ export function buildActorsCockpit(input: ActorsCockpitInputs): ActorsCockpit {
     const subtitleBits = [category, c.function, companyName, teamNames.length ? `Équipe ${teamNames[0]}` : null].filter(Boolean)
     const incomplete = !active && ((c.is_internal_agent && !activeTeam) || (!c.is_internal_agent && !c.company_id))
     const status: ActorStatus = active ? 'active' : incomplete ? 'incomplete' : 'historical'
-    const alerts: ActorAlert[] = []
-    if (c.is_internal_agent && !activeTeam) alerts.push('agent_no_team')
-    if (open > 0 && !active) alerts.push('responsible_not_active')
+    const attention = deriveActorAttentionState({
+      kind: 'person',
+      overdueActions: overdue,
+      responsibleButNotActive: open > 0 && !active,
+      internalAgentWithoutTeam: c.is_internal_agent && !activeTeam,
+    })
     const matchUserId = (c.email && userByEmail.get(c.email.toLowerCase())) || userByName.get(norm(c.full_name)) || null
     if (matchUserId) matchedUserIds.add(matchUserId)
     actors.push({
       kind: 'person', id: c.id, name: c.full_name, subtitle: subtitleBits.join(' · '),
-      status, openActions: open, overdueActions: overdue, alerts,
+      status, openActions: open, overdueActions: overdue, attention,
       linkedAccountHint: !!matchUserId, href: null, // fiche personne = 2B.3
     })
   }
@@ -166,7 +163,9 @@ export function buildActorsCockpit(input: ActorsCockpitInputs): ActorsCockpit {
     const teamNames = [...(userTeams.get(u.id) ?? [])].map((t) => teamNameById.get(t)).filter(Boolean)
     actors.push({
       kind: 'person', id: u.id, name: u.full_name || u.email, subtitle: ['Compte', teamNames.length ? `Équipe ${teamNames[0]}` : null].filter(Boolean).join(' · '),
-      status: 'active', openActions: 0, overdueActions: 0, alerts: [], linkedAccountHint: false,
+      status: 'active', openActions: 0, overdueActions: 0,
+      attention: deriveActorAttentionState({ kind: 'person', overdueActions: 0, responsibleButNotActive: false, internalAgentWithoutTeam: false }),
+      linkedAccountHint: false,
       href: `/intervenants/${u.id}`, // fiche compte existante
     })
   }
@@ -181,14 +180,16 @@ export function buildActorsCockpit(input: ActorsCockpitInputs): ActorsCockpit {
     const contactCount = contacts.filter((x) => x.company_id === co.id).length
     const active = activeCasting || open > 0
     const status: ActorStatus = active ? 'active' : (contactCount === 0 ? 'incomplete' : 'historical')
-    const alerts: ActorAlert[] = []
-    if (overdue > 0) alerts.push('company_overdue')
-    if (noRef > 0) alerts.push('company_no_referent')
-    if (open > 0 && !activeCasting) alerts.push('company_left_casting')
+    const attention = deriveActorAttentionState({
+      kind: 'company',
+      overdueActions: overdue,
+      actionsWithoutReferent: noRef,
+      leftCastingWithOpenActions: open > 0 && !activeCasting,
+    })
     const subtitleBits = [roles.join(', ') || null, `${contactCount} contact${contactCount > 1 ? 's' : ''}`].filter(Boolean)
     actors.push({
       kind: 'company', id: co.id, name: co.short_name || co.name, subtitle: subtitleBits.join(' · '),
-      status, openActions: open, overdueActions: overdue, alerts, linkedAccountHint: false,
+      status, openActions: open, overdueActions: overdue, attention, linkedAccountHint: false,
       href: null, // fiche entreprise = 2B.3
     })
   }
@@ -202,13 +203,18 @@ export function buildActorsCockpit(input: ActorsCockpitInputs): ActorsCockpit {
     let teamOpen = 0; let teamOverdue = 0
     for (const [contactId, n] of openByContact) if (agentIds.has(contactId)) teamOpen += n
     for (const [contactId, n] of overdueByContact) if (agentIds.has(contactId)) teamOverdue += n
+    const active = affected || members > 0
     const status: ActorStatus = affected ? 'active' : (members === 0 ? 'incomplete' : 'historical')
-    const alerts: ActorAlert[] = []
-    if (members === 0) alerts.push('team_no_member')
+    const attention = deriveActorAttentionState({
+      kind: 'team',
+      emptyButAssigned: members === 0 && affected,
+      activeWithoutFieldMember: active && agentIds.size === 0,
+      memberOrphanActions: 0, // détail par membre reporté à la fiche Équipe (2B.3C)
+    })
     const subtitleBits = [`${members} personne${members > 1 ? 's' : ''}`, sites ? `${sites} chantier${sites > 1 ? 's' : ''}` : null].filter(Boolean)
     actors.push({
       kind: 'team', id: t.id, name: t.name, subtitle: subtitleBits.join(' · '),
-      status, openActions: teamOpen, overdueActions: teamOverdue, alerts, linkedAccountHint: false,
+      status, openActions: teamOpen, overdueActions: teamOverdue, attention, linkedAccountHint: false,
       href: `/equipes/${t.id}`, // fiche équipe existante
     })
   }
@@ -218,9 +224,10 @@ export function buildActorsCockpit(input: ActorsCockpitInputs): ActorsCockpit {
   const companiesActive = actors.filter((a) => a.kind === 'company' && a.status === 'active').length
   const teamsActive = actors.filter((a) => a.kind === 'team' && a.status === 'active').length
   const overdueActions = [...overdueByContact.values()].reduce((s, n) => s + n, 0) + [...overdueByCompany.values()].reduce((s, n) => s + n, 0)
-  const agentsWithoutTeam = actors.filter((a) => a.kind === 'person' && a.alerts.includes('agent_no_team')).length
-  const companiesActionsNoReferent = actors.filter((a) => a.kind === 'company' && a.alerts.includes('company_no_referent')).length
-  const companiesOverdue = actors.filter((a) => a.kind === 'company' && a.alerts.includes('company_overdue')).length
+  const hasCode = (a: CockpitActor, code: string) => a.attention.reasons.some((r) => r.code === code)
+  const agentsWithoutTeam = actors.filter((a) => a.kind === 'person' && hasCode(a, 'agent_no_team')).length
+  const companiesActionsNoReferent = actors.filter((a) => a.kind === 'company' && hasCode(a, 'company_no_referent')).length
+  const companiesOverdue = actors.filter((a) => a.kind === 'company' && hasCode(a, 'overdue_actions')).length
 
   return {
     actors,

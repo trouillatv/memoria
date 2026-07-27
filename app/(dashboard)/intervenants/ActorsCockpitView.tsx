@@ -10,7 +10,8 @@ import Link from 'next/link'
 import {
   Users, User, Building2, ArrowRight, AlertTriangle, Clock,
 } from 'lucide-react'
-import type { ActorKind, ActorStatus, ActorAlert, CockpitActor, ActorsCockpit } from '@/lib/db/actors-cockpit'
+import type { ActorKind, ActorStatus, CockpitActor, ActorsCockpit } from '@/lib/db/actors-cockpit'
+import { attentionLevelLabel, type AttentionLevel } from '@/lib/knowledge/actor-attention'
 
 type Tab = 'all' | 'person' | 'company' | 'team'
 
@@ -27,19 +28,32 @@ const KIND_LABEL: Record<ActorKind, string> = {
   team: 'Équipe',
 }
 
-const ALERT_LABEL: Record<ActorAlert, string> = {
-  agent_no_team: 'Agent sans équipe',
-  company_overdue: 'Actions en retard',
-  company_no_referent: 'Sans contact référent',
-  responsible_not_active: 'Responsable plus mobilisé',
-  company_left_casting: 'Hors casting actif',
-  team_no_member: 'Équipe sans membre',
-}
-
 const STATUS_LABEL: Record<ActorStatus, string> = {
   active: 'Actif',
   incomplete: 'Incomplet',
   historical: 'Historique',
+}
+
+/** Rang de sévérité pour le tri (urgent d'abord). */
+const LEVEL_ORDER: Record<AttentionLevel, number> = { urgent: 0, attention: 1, ok: 2 }
+
+/** Pastille d'état d'attention — décrit la situation opérationnelle, ne juge pas l'acteur. */
+function AttentionBadge({ level }: { level: AttentionLevel }) {
+  if (level === 'ok') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
+        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> {attentionLevelLabel(level)}
+      </span>
+    )
+  }
+  const cls = level === 'urgent'
+    ? 'bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-300'
+    : 'bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300'
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${cls}`}>
+      <AlertTriangle className="h-3 w-3" aria-hidden /> {attentionLevelLabel(level)}
+    </span>
+  )
 }
 
 function norm(s: string): string {
@@ -52,13 +66,13 @@ function KindIcon({ kind }: { kind: ActorKind }) {
   return <User className="h-4 w-4" aria-hidden />
 }
 
-/** Ordre déterministe : d'abord les alertes, puis actif → incomplet → historique,
- *  puis alphabétique. Aucun ranking « pertinence » caché. */
+/** Ordre déterministe : d'abord l'attention la plus grave, puis actif → incomplet →
+ *  historique, puis alphabétique. Aucun ranking « pertinence » caché. */
 const STATUS_ORDER: Record<ActorStatus, number> = { active: 0, incomplete: 1, historical: 2 }
 function compareActors(a: CockpitActor, b: CockpitActor): number {
-  const aAlert = a.alerts.length > 0 ? 0 : 1
-  const bAlert = b.alerts.length > 0 ? 0 : 1
-  if (aAlert !== bAlert) return aAlert - bAlert
+  if (LEVEL_ORDER[a.attention.level] !== LEVEL_ORDER[b.attention.level]) {
+    return LEVEL_ORDER[a.attention.level] - LEVEL_ORDER[b.attention.level]
+  }
   if (STATUS_ORDER[a.status] !== STATUS_ORDER[b.status]) return STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
   return a.name.localeCompare(b.name, 'fr')
 }
@@ -73,7 +87,7 @@ export function ActorsCockpitView({ directory }: { directory: ActorsCockpit }) {
     const q = norm(query.trim())
     return directory.actors
       .filter((a) => (tab === 'all' ? true : a.kind === tab))
-      .filter((a) => (alertsOnly ? a.alerts.length > 0 : true))
+      .filter((a) => (alertsOnly ? a.attention.level !== 'ok' : true))
       .filter((a) => (q ? norm(a.name).includes(q) || norm(a.subtitle).includes(q) : true))
       .sort(compareActors)
   }, [directory.actors, tab, query, alertsOnly])
@@ -222,6 +236,7 @@ function ActorRow({ actor }: { actor: CockpitActor }) {
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold truncate">{actor.name}</span>
           <span className="text-[11px] rounded-md bg-muted px-1.5 py-0.5 text-muted-foreground">{KIND_LABEL[actor.kind]}</span>
+          <AttentionBadge level={actor.attention.level} />
           {actor.status !== 'active' && (
             <span className={`text-[11px] rounded-md px-1.5 py-0.5 ${
               actor.status === 'historical'
@@ -238,7 +253,7 @@ function ActorRow({ actor }: { actor: CockpitActor }) {
           )}
         </div>
         {actor.subtitle && <div className="mt-0.5 text-xs text-muted-foreground truncate">{actor.subtitle}</div>}
-        {(actor.openActions > 0 || actor.alerts.length > 0) && (
+        {(actor.openActions > 0 || actor.attention.reasons.length > 0) && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {actor.openActions > 0 && (
               <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground tabular-nums">
@@ -250,9 +265,10 @@ function ActorRow({ actor }: { actor: CockpitActor }) {
                 )}
               </span>
             )}
-            {actor.alerts.map((al) => (
-              <span key={al} className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-                <AlertTriangle className="h-3 w-3" aria-hidden /> {ALERT_LABEL[al]}
+            {/* Raisons de l'état — chaque niveau est TOUJOURS accompagné de son motif. */}
+            {actor.attention.reasons.map((r) => (
+              <span key={r.code} className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                {r.label}
               </span>
             ))}
           </div>
