@@ -150,7 +150,7 @@ export function buildActorsCockpit(input: ActorsCockpitInputs): ActorsCockpit {
     actors.push({
       kind: 'person', id: c.id, name: c.full_name, subtitle: subtitleBits.join(' · '),
       status, openActions: open, overdueActions: overdue, attention,
-      linkedAccountHint: !!matchUserId, href: null, // fiche personne = 2B.3
+      linkedAccountHint: !!matchUserId, href: `/intervenants/personne/${c.id}`, // fiche Personne (2B.3A)
     })
   }
 
