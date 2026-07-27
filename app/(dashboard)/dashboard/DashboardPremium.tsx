@@ -63,13 +63,36 @@ function shortDate(iso: string): string {
   }).format(new Date(iso))
 }
 
+function siteStatusInfo(status: 'critical' | 'warning' | 'normal') {
+  if (status === 'critical') return { label: 'Sous tension', badge: 'bg-[#fef2f2] text-[#dc2626]', dot: 'bg-[#dc2626]' }
+  if (status === 'warning') return { label: 'À surveiller', badge: 'bg-[#fffbeb] text-[#d97706]', dot: 'bg-[#f59e0b]' }
+  return { label: 'Stable', badge: 'bg-[#f0fdf4] text-[#16a34a]', dot: 'bg-[#22c55e]' }
+}
+
 export function DashboardPremium({ firstName, attentionCards, visit, upcoming, sites }: Props) {
   const sorted = sortAttentionCards(attentionCards)
-  const primarySiteId = visit.sites[0]?.siteId ?? null
-  const primarySite = primarySiteId ? (sites.find((s) => s.id === primarySiteId) ?? null) : null
-  const todaySiteCount = upcoming.filter((i) => i.isToday && i.siteId === primarySiteId).length
   const nextItems = upcoming.filter((i) => !i.isToday)
   const urgentCount = attentionCards.filter((c) => c.tone === 'red').length
+
+  // Chantier du jour : site ayant accumulé le score de priorité le plus élevé
+  // dans les attentionCards. Réutilise le moteur existant, sans nouveau calcul.
+  const siteScores = new Map<string, number>()
+  for (const card of attentionCards) {
+    if (card.siteLabel) siteScores.set(card.siteLabel, (siteScores.get(card.siteLabel) ?? 0) + card.priority)
+  }
+  let topSiteLabel: string | null = null
+  let topScore = 0
+  for (const [label, score] of siteScores) {
+    if (score > topScore) { topScore = score; topSiteLabel = label }
+  }
+  const primarySiteId = visit.sites[0]?.siteId ?? null
+  const primarySite = primarySiteId ? (sites.find((s) => s.id === primarySiteId) ?? null) : null
+  const focusSite = (topSiteLabel ? (sites.find((s) => s.name === topSiteLabel) ?? null) : null)
+    ?? primarySite
+    ?? (sites[0] ?? null)
+  const focusSitePromiseCount = focusSite
+    ? attentionCards.filter((c) => c.subject !== null && c.siteLabel === focusSite.name).length
+    : 0
 
   return (
     <div className="min-h-screen bg-[#f4f6fb]">
@@ -93,69 +116,58 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
           </div>
         )}
 
-        {/* ── Carte chantier principal ─────────────────────── */}
-        {primarySite && (
-          <div className="mb-4 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-[#e5eaf3]">
-            <div className="h-20 bg-gradient-to-br from-[#b8cef5] to-[#ddeaff]" />
-            <div className="px-3 pb-3 pt-2">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <span className="inline-flex items-center rounded-full bg-[#eef4ff] px-2 py-0.5 text-[10px] font-bold text-[#4973dd]">
-                    Chantier actif
-                  </span>
-                  <h2 className="mt-1 truncate text-base font-bold text-[#101a35]">{primarySite.name}</h2>
-                </div>
-                <Link
-                  href={primarySite.href}
-                  className="mt-1 flex shrink-0 items-center gap-0.5 whitespace-nowrap text-xs font-semibold text-[#4973dd] hover:underline"
-                >
-                  Voir le chantier <ChevronRight className="h-3.5 w-3.5" />
-                </Link>
-              </div>
-
-              <div className="mt-2 grid grid-cols-4 gap-1">
-                {[
-                  { value: primarySite.activeActionCount, label: 'actions' },
-                  { value: todaySiteCount, label: "auj." },
-                  { value: primarySite.overdueActionCount, label: 'retard' },
-                  { value: primarySite.openReserveCount, label: 'réserves' },
-                ].map(({ value, label }) => (
-                  <div key={label} className="rounded-lg bg-[#f8fafc] py-1.5 text-center">
-                    <p className="text-base font-bold leading-none text-[#101a35]">{value}</p>
-                    <p className="mt-0.5 text-[10px] leading-tight text-[#65718b]">{label}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-2">
-                <span
-                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                    primarySite.status === 'critical'
-                      ? 'bg-[#fef2f2] text-[#dc2626]'
-                      : primarySite.status === 'warning'
-                        ? 'bg-[#fffbeb] text-[#d97706]'
-                        : 'bg-[#f0fdf4] text-[#16a34a]'
-                  }`}
-                >
-                  <span
-                    className={`h-2 w-2 rounded-full ${
-                      primarySite.status === 'critical'
-                        ? 'bg-[#dc2626]'
-                        : primarySite.status === 'warning'
-                          ? 'bg-[#f59e0b]'
-                          : 'bg-[#22c55e]'
-                    }`}
-                  />
-                  {primarySite.status === 'critical'
-                    ? 'Sous tension'
-                    : primarySite.status === 'warning'
-                      ? 'À surveiller'
-                      : 'Stable'}
+        {/* ── Chantier du jour ─────────────────────────────── */}
+        {focusSite && (() => {
+          const { label: statusLabel, badge: statusBadge, dot: statusDot } = siteStatusInfo(focusSite.status)
+          return (
+            <div className="mb-4 rounded-2xl bg-white shadow-sm ring-1 ring-[#e5eaf3]">
+              <div className="flex items-center justify-between border-b border-[#f0f3f9] px-4 py-2.5">
+                <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#65718b]">
+                  Chantier du jour
+                </span>
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
+                  {statusLabel}
                 </span>
               </div>
+              <div className="px-4 py-3">
+                <h2 className="truncate text-base font-bold text-[#101a35]">{focusSite.name}</h2>
+                <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+                  {focusSite.overdueActionCount > 0 && (
+                    <span>
+                      <strong className="font-bold text-[#dc2626]">{focusSite.overdueActionCount}</strong>
+                      {' '}<span className="text-xs text-[#65718b]">en retard</span>
+                    </span>
+                  )}
+                  {focusSite.openReserveCount > 0 && (
+                    <span>
+                      <strong className="font-bold text-[#d97706]">{focusSite.openReserveCount}</strong>
+                      {' '}<span className="text-xs text-[#65718b]">réserve{focusSite.openReserveCount > 1 ? 's' : ''}</span>
+                    </span>
+                  )}
+                  {focusSitePromiseCount > 0 && (
+                    <span>
+                      <strong className="font-bold text-[#4973dd]">{focusSitePromiseCount}</strong>
+                      {' '}<span className="text-xs text-[#65718b]">promesse{focusSitePromiseCount > 1 ? 's' : ''}</span>
+                    </span>
+                  )}
+                  {focusSite.activeActionCount > 0 && (
+                    <span>
+                      <strong className="font-bold text-[#101a35]">{focusSite.activeActionCount}</strong>
+                      {' '}<span className="text-xs text-[#65718b]">action{focusSite.activeActionCount > 1 ? 's' : ''}</span>
+                    </span>
+                  )}
+                </div>
+                <Link
+                  href={focusSite.href}
+                  className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-[#4973dd] hover:underline"
+                >
+                  Ouvrir le chantier <ChevronRight className="h-4 w-4" />
+                </Link>
+              </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
         {/* ── À traiter en priorité ─────────────────────────── */}
         {sorted.length > 0 && (
