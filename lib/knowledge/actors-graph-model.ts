@@ -82,7 +82,7 @@ export interface ActorsGraphInputs {
   fieldMemberships: Array<{ contactId: string; teamId: string; joinedAt?: string | null }>  // personne → équipe (actif)
   missions: Array<{ siteId: string; teamId: string }>             // équipe → chantier (actif, pas de date structurelle)
   casting: Array<{ companyId: string; siteId: string; effectiveFrom?: string | null }>      // entreprise → chantier (casting actif)
-  openActions: Array<{ id: string; title: string; siteId: string; contactId: string | null; companyId: string | null; overdue: boolean }>
+  openActions: Array<{ id: string; title: string; siteId: string; contactId: string | null; companyId: string | null; overdue: boolean; createdAt?: string | null }>
 }
 
 const P = (id: string) => `p_${id}`
@@ -154,11 +154,43 @@ export function buildActorsGraph(input: ActorsGraphInputs): ActorsGraph {
     if (companySet.has(c.companyId) && includedSites.has(c.siteId)) pushEdge(CO(c.companyId), S(c.siteId), 'intervenes_on', c.effectiveFrom ?? null)
   }
   for (const a of includedActions) {
-    if (a.contactId && personSet.has(a.contactId)) pushEdge(P(a.contactId), AC(a.id), 'referent_of')
-    if (a.companyId && companySet.has(a.companyId)) pushEdge(CO(a.companyId), AC(a.id), 'responsible_of')
+    const since = a.createdAt?.slice(0, 10) ?? null
+    if (a.contactId && personSet.has(a.contactId)) pushEdge(P(a.contactId), AC(a.id), 'referent_of', since)
+    if (a.companyId && companySet.has(a.companyId)) pushEdge(CO(a.companyId), AC(a.id), 'responsible_of', since)
   }
 
   return { nodes, edges }
+}
+
+/**
+ * CHRONOLOGIE (le « film ») : jours réels où des relations du graphe sont apparues
+ * (`since` structurels), et première apparition de chaque nœud (= plus ancienne de
+ * ses relations datées ; null = présent depuis toujours, jamais masqué par le replay).
+ * Pur — même modèle que le replay d'Explorer Mémoire : on rejoue l'apparition de
+ * l'état ACTUEL, on ne reconstruit pas un passé disparu.
+ */
+export function graphTimeline(graph: ActorsGraph): { days: string[]; firstSeen: Map<string, string | null> } {
+  const daySet = new Set<string>()
+  const minDated = new Map<string, string>()
+  const hasUndated = new Set<string>()
+  for (const e of graph.edges) {
+    if (e.since) {
+      daySet.add(e.since)
+      for (const id of [e.a, e.b]) {
+        const cur = minDated.get(id)
+        if (cur === undefined || e.since < cur) minDated.set(id, e.since)
+      }
+    } else {
+      hasUndated.add(e.a); hasUndated.add(e.b)
+    }
+  }
+  const firstSeen = new Map<string, string | null>()
+  for (const n of graph.nodes) {
+    // ≥1 relation NON datée (ou aucune relation) → « depuis toujours » : on ne peut
+    // pas prétendre que le nœud est apparu plus tard, il reste visible en replay.
+    firstSeen.set(n.id, hasUndated.has(n.id) ? null : minDated.get(n.id) ?? null)
+  }
+  return { days: [...daySet].sort(), firstSeen }
 }
 
 /** Plus court chemin entre deux nœuds (BFS) — mode « Suivre » de l'Explorer des

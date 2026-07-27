@@ -143,6 +143,40 @@ export function EdgePanel({ a, b, label, since, source, onSelectNode }: {
   )
 }
 
+/** Le chemin est RACONTÉ : « Joseph → travaille chez → Clim Austral → intervient
+ *  sur → Petro Attiti ». Chaque étape est cliquable. */
+export function PathPanel({ steps, onQuit, onSelectNode }: {
+  steps: Array<{ node: ActorGraphNode; relLabel: string | null }>
+  onQuit(): void
+  onSelectNode(id: string): void
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+          <Route className="h-3.5 w-3.5" aria-hidden /> Chemin
+        </p>
+        <button type="button" onClick={onQuit} className="rounded-full border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">Quitter</button>
+      </div>
+      <ol className="mt-2.5">
+        {steps.map(({ node, relLabel }, i) => (
+          <li key={node.id}>
+            {relLabel && <p className="pl-1 text-[11px] italic text-muted-foreground">↓ {relLabel}</p>}
+            <button
+              type="button"
+              onClick={() => onSelectNode(node.id)}
+              className={`flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left hover:bg-muted ${i === 0 || i === steps.length - 1 ? 'font-semibold' : ''}`}
+            >
+              <span className="text-[13.5px]">{node.label}</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-3 border-t pt-2.5 text-[11px] text-muted-foreground">Le plus court chemin réel entre ces deux acteurs.</p>
+    </div>
+  )
+}
+
 export function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="mb-1.5 mt-3.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{children}</p>
 }

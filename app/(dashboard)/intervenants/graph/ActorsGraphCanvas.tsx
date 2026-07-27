@@ -13,17 +13,20 @@
 // EMBARQUÉ (fiches / panneau maître-détail : onSelectActor reconfigure la page).
 
 import { useEffect, useRef } from 'react'
-import type { ActorsGraph, ActorGraphKind, ActorGraphNode } from '@/lib/knowledge/actors-graph-model'
+import { graphTimeline, type ActorsGraph, type ActorGraphKind, type ActorGraphNode } from '@/lib/knowledge/actors-graph-model'
 import { createForceGraphEngine, type ForceGraphEngine, type Vec } from '@/components/graph/force-graph-engine'
 
 export type SelectableKind = 'person' | 'company' | 'team'
 
-/** Pilotage par l'Explorer : sélection et chemin vivent chez le parent. */
+/** Pilotage par l'Explorer : sélection, chemin et chronologie vivent chez le parent. */
 export interface GraphControl {
   selectedNodeId: string | null
   selectedEdgeIndex: number | null
   pathNodes: ReadonlySet<string> | null
   pathEdges: ReadonlySet<number> | null
+  /** CHRONOLOGIE (le film) : n'afficher que ce qui existait à cette date — les
+   *  relations sans date restent visibles (« depuis toujours »). null = aujourd'hui. */
+  timeMax?: string | null
   onTapNode(node: ActorGraphNode): void
   onTapEdge(index: number): void
   onTapVoid(): void
@@ -79,10 +82,24 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
     const idSet = new Set(ids)
     const cache = cacheRef.current
     for (const id of [...cache.keys()]) if (!idSet.has(id)) cache.delete(id)
+    // Chronologie : première apparition structurelle de chaque nœud (pur).
+    const { firstSeen } = graphTimeline(graph)
 
     const api = createForceGraphEngine(canvas, wrap, {
       nodeIds: () => ids,
       edges: () => graph.edges,
+      // Le film : à la date T, seuls les nœuds déjà apparus (ou « depuis toujours »)
+      // sont visibles — le moteur gère l'apparition/disparition en fondu.
+      visible() {
+        const tMax = controlRef.current?.timeMax ?? null
+        if (!tMax) return new Set(ids)
+        const s = new Set<string>()
+        for (const id of ids) {
+          const fs = firstSeen.get(id) ?? null
+          if (fs === null || fs <= tMax) s.add(id)
+        }
+        return s
+      },
       seed(P, size, view) {
         // Anneau à angle d'or autour du centre monde (0,0) — la gravité y ramène.
         let i = 0
@@ -93,7 +110,7 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
             else {
               const a = i * 2.399963
               const r = 40 + 12 * Math.sqrt(i + 1)
-              P[n.id] = { x: Math.cos(a) * r, y: Math.sin(a) * r, vx: 0, vy: 0, alpha: 1 }
+              P[n.id] = { x: Math.cos(a) * r, y: Math.sin(a) * r, vx: 0, vy: 0, alpha: 0 }
             }
           }
           i++
@@ -109,18 +126,28 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
         const hov = f.hoverNode
         const focus = sel ?? hov
         const neigh = focus ? adjacency.get(focus) : null
+        // TROIS ÉTATS (comme Explorer Mémoire) : FOCUS (inspecté, contour épais) ·
+        // CONTEXTE (voisinage, plein) · HORS CONTEXTE (très estompé, sans label).
+        const state = (id: string): 'focus' | 'context' | 'out' => {
+          if (pathNodes) return pathNodes.has(id) ? (id === focus ? 'focus' : 'context') : 'out'
+          if (!focus) return 'context'
+          if (id === focus) return 'focus'
+          return neigh && neigh.has(id) ? 'context' : 'out'
+        }
 
         // Arêtes — libellé UNIQUEMENT au survol ou sur le lien sélectionné (jamais
-        // d'étiquettes permanentes : à 40 nœuds on ne verrait plus que du texte).
+        // d'étiquettes permanentes). L'alpha du replay (fondu) s'applique partout.
         graph.edges.forEach((e, i) => {
           const A = f.P[e.a], B = f.P[e.b]
           if (!A || !B) return
+          const al = Math.min(A.alpha, B.alpha)
+          if (al < 0.02) return
           const inPath = pathEdges ? pathEdges.has(i) : null
           const emphasized = i === f.hoverEdgeIndex || i === selEdge || inPath === true
           const nearFocus = focus && (e.a === focus || e.b === focus)
           const dimmed = (pathEdges && !inPath) || (!pathEdges && focus && !nearFocus && !emphasized)
           ctx.strokeStyle = emphasized ? '#334155' : nearFocus ? '#64748b' : '#e2e8f0'
-          ctx.globalAlpha = dimmed ? 0.25 : 1
+          ctx.globalAlpha = al * (dimmed ? 0.15 : 1)
           ctx.lineWidth = emphasized ? 2.2 : nearFocus ? 1.6 : 1
           ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke()
           if (i === f.hoverEdgeIndex || i === selEdge) {
@@ -139,30 +166,37 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
         // Nœuds.
         for (const n of graph.nodes) {
           const p = f.P[n.id]
-          if (!p) continue
-          const r = SIZE[n.kind] + (n.id === sel ? 3 : 0)
-          const inPath = pathNodes ? pathNodes.has(n.id) : null
-          const dim = inPath === false || (!pathNodes && focus && n.id !== focus && !(neigh && neigh.has(n.id)))
-          ctx.globalAlpha = dim ? (pathNodes ? 0.15 : 0.28) : 1
+          if (!p || p.alpha < 0.02) continue
+          const st = state(n.id)
+          const r = SIZE[n.kind] + (st === 'focus' ? 3 : 0)
+          ctx.globalAlpha = p.alpha * (st === 'out' ? 0.16 : 1)
           ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2)
           ctx.fillStyle = nodeColor(n)
           ctx.fill()
           if (n.id === sel) { ctx.lineWidth = 3; ctx.strokeStyle = '#0f172a'; ctx.stroke() }
-          ctx.globalAlpha = dim ? (pathNodes ? 0.2 : 0.4) : 1
-          ctx.fillStyle = '#0f172a'
-          ctx.font = `${n.kind === 'site' ? 12 : 11}px system-ui, sans-serif`
-          ctx.textAlign = 'center'
-          const label = n.label.length > 22 ? n.label.slice(0, 21) + '…' : n.label
-          ctx.fillText(label, p.x, p.y + r + 12)
+          // Labels : seulement le focus et son contexte quand un focus existe —
+          // l'œil comprend immédiatement ce qui est important.
+          if (st !== 'out') {
+            ctx.globalAlpha = p.alpha
+            ctx.fillStyle = '#0f172a'
+            ctx.font = `${st === 'focus' ? '600 ' : ''}${n.kind === 'site' ? 12 : 11}px system-ui, sans-serif`
+            ctx.textAlign = 'center'
+            const label = n.label.length > 22 ? n.label.slice(0, 21) + '…' : n.label
+            ctx.fillText(label, p.x, p.y + r + 12)
+          }
         }
         ctx.globalAlpha = 1
       },
       physics: { repulsion: 5200, spring: 0.02, rest: () => 150, friction: 0.82, gravity: 0.0015 },
-      fade: null,
+      // Fondu d'apparition/disparition (replay + entrées de nœuds) — mêmes constantes
+      // que Mémoire (0.12 in / 0.14 out).
+      fade: { in: 0.12, out: 0.14 },
       loop: 'continuous',
       zoom: { min: 0.2, max: 3, factorIn: 1.12, factorOut: 0.893 },
       dprCap: 2,
+      placeNewNearNeighbors: true,
       hitNodeRadius: (id, k) => (SIZE[nodeById.get(id)?.kind ?? 'action'] + 6) / k,
+      hitAlphaGate: 0.5,
       edgeHit: { tolerance: (k) => 8 / k, clampA: 0, clampB: 1 },
       features: { pin: false, dblClick: false, edgeTap: !!controlRef.current },
       onTapNode(id) {

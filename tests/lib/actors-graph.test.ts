@@ -3,7 +3,7 @@
 // l'état d'attention (graphe d'attention, pas simple schéma).
 
 import { describe, expect, it } from 'vitest'
-import { buildActorsGraph, egoSubgraph, shortestPath, type ActorsGraphInputs } from '@/lib/knowledge/actors-graph'
+import { buildActorsGraph, egoSubgraph, shortestPath, graphTimeline, type ActorsGraphInputs } from '@/lib/knowledge/actors-graph'
 import { narrateActorInGraph } from '@/lib/knowledge/actor-narration'
 
 function base(): ActorsGraphInputs {
@@ -144,6 +144,22 @@ describe('buildActorsGraph', () => {
     expect(s).toContain('Membre de l’équipe Électricité.')
     expect(s).toContain('Référent de 2 actions ouvertes, dont 1 en retard.')
     expect(narrateActorInGraph('inconnu', g)).toEqual([])
+  })
+
+  it('chronologie (le film) : jours datés + première apparition ; relation NON datée = depuis toujours', () => {
+    const g = buildActorsGraph({
+      ...base(),
+      persons: [{ id: 'c1', name: 'X', sub: null, level: 'ok', historical: false, companyId: 'co1' }],
+      companies: [{ id: 'co1', name: 'Y', sub: null, level: 'ok', historical: false }],
+      teams: [{ id: 't1', name: 'T', sub: null, level: 'ok', historical: false }],
+      fieldMemberships: [{ contactId: 'c1', teamId: 't1', joinedAt: '2026-03-01T00:00:00Z' }],
+      // belongs_to c1→co1 n'a pas de date : c1 (relation non datée) reste « depuis toujours ».
+    })
+    const { days, firstSeen } = graphTimeline(g)
+    expect(days).toEqual(['2026-03-01'])
+    expect(firstSeen.get('p_c1')).toBeNull()          // a une relation non datée
+    expect(firstSeen.get('co_co1')).toBeNull()        // idem
+    expect(firstSeen.get('tm_t1')).toBe('2026-03-01') // n'a QUE la relation datée
   })
 
   it('déduplique les liens identiques', () => {

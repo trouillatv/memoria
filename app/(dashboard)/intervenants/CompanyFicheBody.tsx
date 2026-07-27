@@ -78,7 +78,7 @@ export function CompanyFicheBody({ fiche, network, onSelectActor }: {
       {network && network.nodes.length > 1 && (
         <FicheSection title="Réseau de collaboration">
           {networkSummary && <p className="mb-2.5 text-xs text-muted-foreground"><span className="font-medium text-foreground/80">{fiche.name}</span> {networkSummary}.</p>}
-          <ActorNetworkExplorer network={network} focusId={`co_${fiche.id}`} onSelectActor={onSelectActor} />
+          <ActorNetworkExplorer key={fiche.id} network={network} focusId={`co_${fiche.id}`} onSelectActor={onSelectActor} />
         </FicheSection>
       )}
 

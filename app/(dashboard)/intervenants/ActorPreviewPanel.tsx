@@ -119,7 +119,7 @@ function TeamFiche({ actor, insight, network, onSelectActor }: { actor: CockpitA
 
       {network.nodes.length > 1 && (
         <FicheSection title="Réseau de collaboration">
-          <ActorNetworkExplorer network={network} focusId={`tm_${actor.id}`} onSelectActor={onSelectActor} />
+          <ActorNetworkExplorer key={actor.id} network={network} focusId={`tm_${actor.id}`} onSelectActor={onSelectActor} />
         </FicheSection>
       )}
     </div>

@@ -1,113 +1,44 @@
 'use client'
 
 // ── EXPLORER DES ACTEURS — VUE D'ENSEMBLE DE L'ORG (toggle Graphe) ───────────
-// Le graphe global (filtré par pertinence) : qui agit, avec qui, où. Panneau droit
-// PARTAGÉ avec le réseau fusionné des fiches (graph/inspector.tsx) : narration,
-// relations, lien-objet, mode Suivre. AUCUNE navigation au clic.
+// Le graphe global (filtré par pertinence) : qui agit, avec qui, où, QUAND. État et
+// inspecteur PARTAGÉS avec le réseau fusionné des fiches. AUCUNE navigation au clic.
 
-import { useMemo, useState } from 'react'
 import { Route } from 'lucide-react'
-import { shortestPath, REL_SOURCE_LABEL, type ActorsGraph, type ActorGraphNode } from '@/lib/knowledge/actors-graph-model'
-import { narrateActorInGraph } from '@/lib/knowledge/actor-narration'
+import type { ActorsGraph } from '@/lib/knowledge/actors-graph-model'
 import { ActorsGraphCanvas } from './ActorsGraphCanvas'
-import { NodePanel, EdgePanel } from './inspector'
-
-type Selection = { type: 'node'; id: string } | { type: 'edge'; index: number } | null
+import { GraphTimeline } from './GraphTimeline'
+import { useGraphExplorer, ExplorerAside } from './useGraphExplorer'
 
 export function ActorsExplorer({ graph, focusId }: { graph: ActorsGraph; focusId?: string | null }) {
-  const [sel, setSel] = useState<Selection>(focusId ? { type: 'node', id: focusId } : null)
-  const [followFrom, setFollowFrom] = useState<string | null>(null)
-  const [path, setPath] = useState<{ nodes: string[]; edgeIndexes: number[] } | null>(null)
-
-  const nodeById = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n])), [graph])
-  const selNode = sel?.type === 'node' ? nodeById.get(sel.id) ?? null : null
-  const selEdge = sel?.type === 'edge' ? graph.edges[sel.index] ?? null : null
-
-  const pathNodes = useMemo(() => (path ? new Set(path.nodes) : null), [path])
-  const pathEdges = useMemo(() => (path ? new Set(path.edgeIndexes) : null), [path])
-
-  const narration = useMemo(() => (selNode ? narrateActorInGraph(selNode.id, graph) : []), [selNode, graph])
-  const relations = useMemo(() => {
-    if (!selNode) return []
-    return graph.edges
-      .map((e, index) => ({ e, index }))
-      .filter(({ e }) => e.a === selNode.id || e.b === selNode.id)
-      .map(({ e, index }) => ({ e, index, other: nodeById.get(e.a === selNode.id ? e.b : e.a)! }))
-      .filter((r) => r.other)
-  }, [selNode, graph, nodeById])
-
-  const clearPath = () => { setFollowFrom(null); setPath(null) }
-
-  const control = {
-    selectedNodeId: sel?.type === 'node' ? sel.id : null,
-    selectedEdgeIndex: sel?.type === 'edge' ? sel.index : null,
-    pathNodes,
-    pathEdges,
-    onTapNode(node: ActorGraphNode) {
-      if (followFrom && node.id !== followFrom) {
-        // Mode Suivre : le second clic calcule le chemin — tout le reste s'atténue.
-        setPath(shortestPath(graph, followFrom, node.id))
-        setFollowFrom(null)
-        setSel({ type: 'node', id: node.id })
-        return
-      }
-      setPath(null)
-      setSel({ type: 'node', id: node.id })
-    },
-    onTapEdge(index: number) { setPath(null); setFollowFrom(null); setSel({ type: 'edge', index }) },
-    onTapVoid() { setSel(null); clearPath() },
-  }
+  const ex = useGraphExplorer(graph, focusId)
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
       <div className="relative">
-        <ActorsGraphCanvas graph={graph} focusId={focusId} control={control} heightClass="h-[70vh]" />
-        {followFrom && (
-          <Banner onQuit={clearPath}>Suivre depuis {nodeById.get(followFrom)?.label} — cliquez un second acteur</Banner>
+        <ActorsGraphCanvas graph={graph} focusId={focusId} control={ex.control} heightClass="h-[70vh]" />
+        {ex.followFrom && (
+          <div className="absolute left-1/2 top-2 z-10 flex max-w-[92%] -translate-x-1/2 items-center gap-2 rounded-full border bg-card px-3.5 py-1.5 text-[12.5px] shadow-md">
+            <Route className="h-3.5 w-3.5 shrink-0 text-brand-600" aria-hidden />
+            <b className="truncate">Suivre depuis {ex.nodeById.get(ex.followFrom)?.label} — cliquez un second acteur</b>
+            <button type="button" onClick={ex.clearPath} className="shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[12px] text-muted-foreground">Quitter</button>
+          </div>
         )}
-        {path && (
-          <Banner onQuit={clearPath}>{path.nodes.map((id) => nodeById.get(id)?.label).join(' → ')}</Banner>
-        )}
+        <GraphTimeline days={ex.timeline.days} onChange={ex.setTimeMax} />
       </div>
 
       {/* ── PANNEAU : le graphe repère, le panneau explique. ── */}
       <aside className="rounded-2xl border bg-card p-5 shadow-sm lg:max-h-[70vh] lg:overflow-y-auto">
-        {selNode ? (
-          <NodePanel
-            node={selNode}
-            narration={narration}
-            relations={relations}
-            onFollow={() => { setPath(null); setFollowFrom(selNode.id) }}
-            onSelectNode={(id) => { setPath(null); setSel({ type: 'node', id }) }}
-            onSelectEdge={(index) => { setPath(null); setSel({ type: 'edge', index }) }}
-          />
-        ) : selEdge ? (
-          <EdgePanel
-            a={nodeById.get(selEdge.a)!}
-            b={nodeById.get(selEdge.b)!}
-            label={selEdge.label}
-            since={selEdge.since}
-            source={REL_SOURCE_LABEL[selEdge.rel]}
-            onSelectNode={(id) => setSel({ type: 'node', id })}
-          />
-        ) : (
-          <div className="text-sm text-muted-foreground">
-            <p className="font-medium text-foreground/80">Explorer les acteurs</p>
-            <p className="mt-1.5">Cliquez un acteur pour comprendre qui il est et avec qui il travaille. Cliquez un lien pour comprendre la relation elle-même.</p>
-            <p className="mt-1.5 text-xs">{graph.nodes.length} acteurs et objets · {graph.edges.length} relations structurelles.</p>
-          </div>
-        )}
+        <ExplorerAside
+          ex={ex}
+          focusId={focusId}
+          emptyState={
+            <p className="text-[13px] text-muted-foreground">
+              Cliquez un acteur pour l’inspecter, un lien pour comprendre la relation. {graph.nodes.length} acteurs · {graph.edges.length} relations.
+            </p>
+          }
+        />
       </aside>
-    </div>
-  )
-}
-
-function Banner({ children, onQuit }: { children: React.ReactNode; onQuit(): void }) {
-  return (
-    <div className="absolute left-1/2 top-2 z-10 flex max-w-[92%] -translate-x-1/2 items-center gap-2 rounded-full border bg-card px-3.5 py-1.5 text-[12.5px] shadow-md">
-      <Route className="h-3.5 w-3.5 shrink-0 text-brand-600" aria-hidden />
-      <b className="truncate">{children}</b>
-      <button type="button" onClick={onQuit} className="shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[12px] text-muted-foreground">Quitter</button>
     </div>
   )
 }

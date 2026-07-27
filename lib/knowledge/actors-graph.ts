@@ -41,7 +41,7 @@ export async function getActorsGraph(orgIds: string[], opts?: { unfiltered?: boo
     db.from('team_field_members').select('contact_id, team_id, joined_at').is('left_at', null).in('organization_id', orgIds),
     siteIds.length ? db.from('missions').select('site_id, assigned_team_id').in('site_id', siteIds).is('deleted_at', null).not('assigned_team_id', 'is', null) : Promise.resolve({ data: [] }),
     siteIds.length ? db.from('site_intervenants').select('company_id, site_id, effective_from').in('site_id', siteIds).is('effective_to', null) : Promise.resolve({ data: [] }),
-    siteIds.length ? db.from('site_actions').select('id, title, site_id, assigned_contact_id, assigned_company_id, due_date').in('site_id', siteIds).eq('status', 'open') : Promise.resolve({ data: [] }),
+    siteIds.length ? db.from('site_actions').select('id, title, site_id, assigned_contact_id, assigned_company_id, due_date, created_at').in('site_id', siteIds).eq('status', 'open') : Promise.resolve({ data: [] }),
   ])
 
   const companyIdByContact = new Map(
@@ -68,8 +68,8 @@ export async function getActorsGraph(orgIds: string[], opts?: { unfiltered?: boo
     fieldMemberships: ((tfmRes.data ?? []) as Array<{ contact_id: string; team_id: string; joined_at: string | null }>).map((r) => ({ contactId: r.contact_id, teamId: r.team_id, joinedAt: r.joined_at })),
     missions: ((missionRes.data ?? []) as Array<{ site_id: string; assigned_team_id: string }>).map((r) => ({ siteId: r.site_id, teamId: r.assigned_team_id })),
     casting: ((castingRes.data ?? []) as Array<{ company_id: string; site_id: string; effective_from: string | null }>).map((r) => ({ companyId: r.company_id, siteId: r.site_id, effectiveFrom: r.effective_from })),
-    openActions: ((actionRes.data ?? []) as Array<{ id: string; title: string; site_id: string; assigned_contact_id: string | null; assigned_company_id: string | null; due_date: string | null }>)
-      .map((r) => ({ id: r.id, title: r.title, siteId: r.site_id, contactId: r.assigned_contact_id, companyId: r.assigned_company_id, overdue: !!r.due_date && r.due_date < today })),
+    openActions: ((actionRes.data ?? []) as Array<{ id: string; title: string; site_id: string; assigned_contact_id: string | null; assigned_company_id: string | null; due_date: string | null; created_at: string | null }>)
+      .map((r) => ({ id: r.id, title: r.title, siteId: r.site_id, contactId: r.assigned_contact_id, companyId: r.assigned_company_id, overdue: !!r.due_date && r.due_date < today, createdAt: r.created_at })),
   })
 }
 
