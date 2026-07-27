@@ -15,6 +15,7 @@ import type { AttentionCard } from '@/lib/situations/attention/types'
 import type { NowCard } from '@/lib/situations/now/types'
 import { sortAttentionCards } from '@/lib/situations/attention/project'
 import { QuickConfirmButton } from './PromiseActions'
+import { ActionCheckbox } from './ActionCheckbox'
 
 type Props = {
   firstName: string
@@ -144,6 +145,13 @@ function shortDate(iso: string): string {
   }).format(new Date(iso))
 }
 
+function todayLongDate(): string {
+  const s = new Intl.DateTimeFormat('fr-FR', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Pacific/Noumea',
+  }).format(new Date())
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
 function siteStatusInfo(status: 'critical' | 'warning' | 'normal') {
   if (status === 'critical') return { label: 'Sous tension', badge: 'bg-[#fef2f2] text-[#dc2626]', dot: 'bg-[#dc2626]' }
   if (status === 'warning') return { label: 'À surveiller', badge: 'bg-[#fffbeb] text-[#d97706]', dot: 'bg-[#f59e0b]' }
@@ -152,7 +160,7 @@ function siteStatusInfo(status: 'critical' | 'warning' | 'normal') {
 
 // ── Composant ────────────────────────────────────────────────────────────────
 
-export function DashboardPremium({ firstName, attentionCards, visit, upcoming, sites }: Props) {
+export function DashboardPremium({ firstName, attentionCards, visit, upcoming, sites, now }: Props) {
   const sorted = sortAttentionCards(attentionCards)
   const nextItems = upcoming.filter((i) => !i.isToday)
   const urgentCount = attentionCards.filter((c) => c.tone === 'red').length
@@ -203,6 +211,7 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
           {/* Top coloré — mission du jour */}
           <div className={`px-5 pt-4 pb-6 ${HERO_BG[briefing.tone]}`}>
             <p className="text-[11px] font-semibold text-white/50">Bonjour {firstName} 👋</p>
+            <p className="mt-0.5 text-[11px] text-white/40">{todayLongDate()}</p>
             <h1 className="mt-2 text-[19px] font-bold leading-snug text-white">
               {briefing.headline}
             </h1>
@@ -220,10 +229,13 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
                 {criticalReservesCount > 0 && (
                   <span>{criticalReservesCount} réserve{criticalReservesCount > 1 ? 's' : ''} critique{criticalReservesCount > 1 ? 's' : ''}</span>
                 )}
+                {(attentionCards.length - urgentCount) > 0 && (
+                  <span className="text-white/40">{attentionCards.length - urgentCount} point{attentionCards.length - urgentCount > 1 ? 's' : ''} à surveiller</span>
+                )}
               </div>
             )}
             {briefing.tone === 'neutral' && (
-              <p className="mt-3 text-xs text-white/45">Rien d&apos;urgent ne demande ton attention.</p>
+              <p className="mt-3 text-xs text-[#4ade80]/80">Aucun blocage critique — tes chantiers restent sous contrôle.</p>
             )}
           </div>
 
@@ -250,25 +262,32 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
                   {focusSite.overdueActionCount > 0 && (
                     <span className="inline-flex items-center gap-1 rounded-lg bg-[#fef2f2] px-2 py-1 text-xs font-semibold text-[#dc2626]">
-                      {focusSite.overdueActionCount} en retard
+                      {focusSite.overdueActionCount} action{focusSite.overdueActionCount > 1 ? 's' : ''} en retard
                     </span>
                   )}
                   {focusSite.openReserveCount > 0 && (
                     <span className="inline-flex items-center gap-1 rounded-lg bg-[#fffbeb] px-2 py-1 text-xs font-semibold text-[#d97706]">
-                      {focusSite.openReserveCount} réserve{focusSite.openReserveCount > 1 ? 's' : ''}
+                      {focusSite.openReserveCount} réserve{focusSite.openReserveCount > 1 ? 's' : ''} ouverte{focusSite.openReserveCount > 1 ? 's' : ''}
                     </span>
                   )}
                   {focusSitePromiseCount > 0 && (
                     <span className="inline-flex items-center gap-1 rounded-lg bg-[#eef4ff] px-2 py-1 text-xs font-semibold text-[#4973dd]">
-                      {focusSitePromiseCount} promesse{focusSitePromiseCount > 1 ? 's' : ''}
+                      {focusSitePromiseCount} promesse{focusSitePromiseCount > 1 ? 's' : ''} à confirmer
                     </span>
                   )}
-                  {focusSite.activeActionCount > 0 && (
+                  {/* Volume générique en fallback seulement — les pills doivent être causales */}
+                  {focusSite.overdueActionCount === 0 && focusSite.openReserveCount === 0 && focusSitePromiseCount === 0 && focusSite.activeActionCount > 0 && (
                     <span className="inline-flex items-center gap-1 rounded-lg bg-[#f5f7fb] px-2 py-1 text-xs font-semibold text-[#33415c]">
-                      {focusSite.activeActionCount} action{focusSite.activeActionCount > 1 ? 's' : ''}
+                      {focusSite.activeActionCount} action{focusSite.activeActionCount > 1 ? 's' : ''} ouverte{focusSite.activeActionCount > 1 ? 's' : ''}
                     </span>
                   )}
                 </div>
+                {/* Réassurance factuelle : aucune carte rouge sur ce chantier */}
+                {briefing.tone === 'warning' && focusSite.overdueActionCount === 0 && (
+                  <p className="mt-2.5 text-xs font-medium text-[#16a34a]">
+                    Aucun blocage critique sur ce chantier.
+                  </p>
+                )}
                 <Link
                   href={focusSite.href}
                   className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[#101a35] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1a2a50]"
@@ -339,6 +358,32 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
                       </Link>
                     ) : null}
                   </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* ── À faire maintenant ────────────────────────────── */}
+        {now.items.length > 0 && (
+          <div className="mb-4 overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-[#e5eaf3]">
+            <div className="flex items-center justify-between bg-[#f8faff] px-4 py-2.5">
+              <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-[#65718b]">À faire maintenant</h2>
+            </div>
+            <ul className="divide-y divide-[#f5f7fb]">
+              {now.items.slice(0, 3).map((item) => (
+                <li key={`${item.sourceType}:${item.id}`} className="flex items-center gap-3 px-4 py-3">
+                  {item.canComplete && item.actionId ? (
+                    <ActionCheckbox actionId={item.actionId} siteId={item.siteId} label={item.title} />
+                  ) : null}
+                  <Link href={item.href} className="min-w-0 flex-1 hover:opacity-75">
+                    <p className="text-[13px] font-semibold leading-snug text-[#17213a]">{item.title}</p>
+                    <p className="mt-0.5 text-[11px] text-[#65718b]">
+                      {item.siteName}
+                      {item.priority === 'urgent' ? ' · en retard' : item.priority === 'today' ? " · aujourd'hui" : ''}
+                    </p>
+                  </Link>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-[#c3cddd]" />
                 </li>
               ))}
             </ul>
