@@ -18,6 +18,7 @@ import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteIntervenants, getRoleActorMap, listSiteContacts, listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
+import { listCompanyNamesByIds } from '@/lib/db/companies'
 import { listSiteActionResponsibleCandidates } from '@/lib/knowledge/action-responsible-candidates'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { listReportFinalVersions } from '@/lib/db/report-final-versions'
@@ -79,19 +80,23 @@ export default async function PvValidationPage({ params, searchParams }: {
     pv.items.filter((i) => i.section === 'points_examines' && i.type === 'action').map((i) => [i.source, i.actionCodes ?? []]),
   )
   // Entreprises candidates (Lot 2B.1) : casting actif, hors placeholder/archivées.
-  // Sert le sélecteur ET l'affichage : une entreprise responsable qui n'est plus
-  // candidate = « plus active sur ce chantier » (affectation historique).
+  // Sert le SÉLECTEUR et le STATUT « actif » — jamais la résolution du nom.
   const candidateCompanies = report.site_id ? await listSiteCandidateCompanies(report.site_id) : []
-  const companyNameById = new Map(candidateCompanies.map((c) => [c.id, c.name]))
-  const actionRows: ActionRow[] = (await listSiteActionsByReport(id))
-    .filter((a) => a.status !== 'cancelled')
-    .map((a) => ({
-      id: a.id, title: a.title, assignedTo: a.assigned_to ?? '', assignedContactId: a.assigned_contact_id ?? '',
-      assignedCompanyId: a.assigned_company_id ?? '',
-      // Nom si l'entreprise est encore au casting ; vide sinon → l'UI dira « historique ».
-      assignedCompanyName: a.assigned_company_id ? (companyNameById.get(a.assigned_company_id) ?? '') : '',
-      dueDate: a.due_date ?? '', corpsEtat: a.corps_etat ?? '', actionCodes: actionCodesBySource.get(a.id) ?? [],
-    }))
+  const activeCompanyIds = new Set(candidateCompanies.map((c) => c.id))
+  const rawActions = (await listSiteActionsByReport(id)).filter((a) => a.status !== 'cancelled')
+  // IDENTITÉ résolue par la FK companies (inclut archivées / sorties du casting) :
+  // une affectation historique reste PLEINEMENT identifiable, pas seulement conservée.
+  const companyNameById = await listCompanyNamesByIds(
+    rawActions.map((a) => a.assigned_company_id).filter((v): v is string => !!v),
+  )
+  const actionRows: ActionRow[] = rawActions.map((a) => ({
+    id: a.id, title: a.title, assignedTo: a.assigned_to ?? '', assignedContactId: a.assigned_contact_id ?? '',
+    assignedCompanyId: a.assigned_company_id ?? '',
+    assignedCompanyName: a.assigned_company_id ? (companyNameById.get(a.assigned_company_id) ?? '') : '',
+    // Statut CALCULÉ à part : présence dans le casting actif. Le nom, lui, vient de la FK.
+    assignedCompanyActive: a.assigned_company_id ? activeCompanyIds.has(a.assigned_company_id) : false,
+    dueDate: a.due_date ?? '', corpsEtat: a.corps_etat ?? '', actionCodes: actionCodesBySource.get(a.id) ?? [],
+  }))
 
   // DÉCISIONS (mig 136) prises dans ce CR — mémoire durable, gérées dans leur bloc.
   const decisions = await listDecisionsByReport(id)

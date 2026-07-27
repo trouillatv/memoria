@@ -61,6 +61,26 @@ export async function getCompany(id: string): Promise<Company | null> {
   return data ? rowToCompany(data) : null
 }
 
+/**
+ * Résout l'IDENTITÉ (nom court/raison sociale) de plusieurs entreprises par id,
+ * y compris ARCHIVÉES ou sorties d'un casting (Lot 2B.1). L'identité vient de
+ * `companies` — jamais du casting, qui ne porte que le STATUT d'intervention. Le
+ * caller garantit que les ids proviennent de données org-scopées.
+ */
+export async function listCompanyNamesByIds(ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter(Boolean))]
+  if (unique.length === 0) return new Map()
+  const { data } = await createAdminClient()
+    .from('companies')
+    .select('id, name, short_name')
+    .in('id', unique)
+  const out = new Map<string, string>()
+  for (const c of (data ?? []) as Array<{ id: string; name: string; short_name: string | null }>) {
+    out.set(c.id, c.short_name || c.name)
+  }
+  return out
+}
+
 export interface CompanyInput {
   name: string
   shortName?: string | null

@@ -36,8 +36,11 @@ export interface ActionRow {
   assignedContactId: string
   /** Organisation responsable (mig 245) — '' si aucune. */
   assignedCompanyId: string
-  /** Nom de l'entreprise si elle est ENCORE au casting ; '' si retirée (historique). */
+  /** Nom résolu par la FK companies — TOUJOURS présent si assignedCompanyId (même
+   *  archivée / sortie du casting). L'identité ne dépend jamais du casting. */
   assignedCompanyName: string
+  /** L'entreprise est-elle ENCORE au casting actif du chantier ? (statut, pas identité) */
+  assignedCompanyActive: boolean
   dueDate: string // AAAA-MM-JJ ou ''
   corpsEtat: string
   actionCodes: string[] // colonne ACTION mémorisée (ETV/MOA/… ; mig 132)
@@ -143,9 +146,9 @@ function Row({ reportId, action, roleActors, castingPersons, candidateCompanies 
     })
   }
 
-  // « Historique » : une entreprise responsable qui n'est plus au casting actif
-  // (assignedCompanyId présent mais nom absent → retirée du chantier).
-  const companyLeftCasting = !!action.assignedCompanyId && !action.assignedCompanyName
+  // « Historique » : une entreprise responsable plus au casting actif — STATUT,
+  // calculé à part. Son nom reste résolu par la FK (identité ≠ statut).
+  const companyLeftCasting = !!action.assignedCompanyId && !action.assignedCompanyActive
 
   return (
     <li className="rounded-lg border bg-card px-3 py-2 text-sm">
@@ -178,8 +181,9 @@ function Row({ reportId, action, roleActors, castingPersons, candidateCompanies 
                 {action.assignedCompanyId && (
                   <span className={`inline-flex items-center gap-1 font-medium ${companyLeftCasting ? 'text-muted-foreground' : 'text-indigo-700 dark:text-indigo-300'}`}>
                     <Building2 className="h-3 w-3" />
+                    {/* Le NOM est toujours affiché (résolu par la FK), même sortie du casting. */}
                     {action.assignedCompanyName || 'Entreprise responsable'}
-                    {companyLeftCasting ? ' (plus active sur ce chantier)' : ''}
+                    {companyLeftCasting ? ' · plus active sur ce chantier' : ''}
                   </span>
                 )}
                 {action.assignedCompanyId && action.assignedContactId ? ' · ' : ''}
