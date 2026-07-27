@@ -1,12 +1,12 @@
 // Corps de la fiche ENTREPRISE — PARTAGÉ entre la page dédiée et le panneau maître-
 // détail de /intervenants. Une seule source de rendu. Purement présentationnel.
 
-import Link from 'next/link'
 import { Building2, MapPin, User, ArrowRight, Clock, Mail, Phone, Globe } from 'lucide-react'
 import type { CompanyFiche } from '@/lib/db/company-fiche'
 import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
 import { AttentionBadge, FicheSection, FicheLinkRow, FicheEmpty } from './fiche-ui'
-import { ActorsGraphCanvas, type SelectableKind } from './graph/ActorsGraphCanvas'
+import { ActorNetworkExplorer } from './graph/ActorNetworkExplorer'
+import type { SelectableKind } from './graph/ActorsGraphCanvas'
 
 export function CompanyFicheBody({ fiche, network, onSelectActor }: {
   fiche: CompanyFiche
@@ -74,6 +74,14 @@ export function CompanyFicheBody({ fiche, network, onSelectActor }: {
         </div>
       </section>
 
+      {/* ── RÉSEAU — l'explorateur DANS la fiche (aucune fenêtre intermédiaire). */}
+      {network && network.nodes.length > 1 && (
+        <FicheSection title="Réseau de collaboration">
+          {networkSummary && <p className="mb-2.5 text-xs text-muted-foreground"><span className="font-medium text-foreground/80">{fiche.name}</span> {networkSummary}.</p>}
+          <ActorNetworkExplorer network={network} focusId={`co_${fiche.id}`} onSelectActor={onSelectActor} />
+        </FicheSection>
+      )}
+
       {/* ── PRÉSENCE OPÉRATIONNELLE — chantiers actifs + rôles ───────────────────── */}
       <FicheSection title="Présence opérationnelle" count={fiche.activeCasting.length}>
         {fiche.activeCasting.length === 0 ? (
@@ -120,18 +128,6 @@ export function CompanyFicheBody({ fiche, network, onSelectActor }: {
         </FicheSection>
       )}
 
-      {/* ── RÉSEAU DE COLLABORATION — graphe centré, directement dans la fiche ─────── */}
-      {network && network.nodes.length > 1 && (
-        <FicheSection title="Réseau de collaboration">
-          {networkSummary && <p className="mb-2.5 text-xs text-muted-foreground"><span className="font-medium text-foreground/80">{fiche.name}</span> {networkSummary}.</p>}
-          <ActorsGraphCanvas graph={network} focusId={`co_${fiche.id}`} heightClass="h-[420px]" onSelectActor={onSelectActor} />
-          <p className="mt-1.5 text-right">
-            <Link href={`/intervenants?vue=graphe&focus=co_${fiche.id}`} className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">
-              Ouvrir dans l’Explorer →
-            </Link>
-          </p>
-        </FicheSection>
-      )}
     </div>
   )
 }

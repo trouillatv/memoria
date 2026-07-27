@@ -8,7 +8,8 @@ import { User, Building2, Users, MapPin, ArrowRight, Clock, Mail, Phone, KeyRoun
 import type { PersonFiche } from '@/lib/db/person-fiche'
 import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
 import { AttentionBadge, FicheSection, FicheRow, FicheLinkRow, FicheEmpty } from './fiche-ui'
-import { ActorsGraphCanvas, type SelectableKind } from './graph/ActorsGraphCanvas'
+import { ActorNetworkExplorer } from './graph/ActorNetworkExplorer'
+import type { SelectableKind } from './graph/ActorsGraphCanvas'
 
 const STATUS_LABEL = { active: 'Actif', incomplete: 'Incomplet', historical: 'Historique' } as const
 
@@ -92,6 +93,15 @@ export function PersonFicheBody({ fiche, network, onSelectActor }: {
         </div>
       </section>
 
+      {/* ── RÉSEAU — l'explorateur DANS la fiche (tout au même endroit, aucune
+          fenêtre intermédiaire) : sélection nœud/lien en place, narration, Suivre. */}
+      {network && network.nodes.length > 1 && (
+        <FicheSection title="Réseau de collaboration">
+          {networkSummary && <p className="mb-2.5 text-xs text-muted-foreground"><span className="font-medium text-foreground/80">{fiche.name}</span> {networkSummary}.</p>}
+          <ActorNetworkExplorer network={network} focusId={`p_${fiche.id}`} onSelectActor={onSelectActor} />
+        </FicheSection>
+      )}
+
       {/* ── ORGANISATION — rattachements ────────────────────────────────────────── */}
       <FicheSection title="Organisation">
         {fiche.companyName && (
@@ -138,18 +148,6 @@ export function PersonFicheBody({ fiche, network, onSelectActor }: {
         </FicheSection>
       )}
 
-      {/* ── RÉSEAU DE COLLABORATION — graphe centré, directement dans la fiche ── */}
-      {network && network.nodes.length > 1 && (
-        <FicheSection title="Réseau de collaboration">
-          {networkSummary && <p className="mb-2.5 text-xs text-muted-foreground"><span className="font-medium text-foreground/80">{fiche.name}</span> {networkSummary}.</p>}
-          <ActorsGraphCanvas graph={network} focusId={`p_${fiche.id}`} heightClass="h-[420px]" onSelectActor={onSelectActor} />
-          <p className="mt-1.5 text-right">
-            <Link href={`/intervenants?vue=graphe&focus=p_${fiche.id}`} className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">
-              Ouvrir dans l’Explorer →
-            </Link>
-          </p>
-        </FicheSection>
-      )}
     </div>
   )
 }

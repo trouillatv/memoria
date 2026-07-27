@@ -12,7 +12,8 @@ import type { ActorPreview } from './preview-types'
 import { AttentionBadge, FicheSection, FicheLinkRow, FicheEmpty } from './fiche-ui'
 import { PersonFicheBody } from './PersonFicheBody'
 import { CompanyFicheBody } from './CompanyFicheBody'
-import { ActorsGraphCanvas, type SelectableKind } from './graph/ActorsGraphCanvas'
+import { ActorNetworkExplorer } from './graph/ActorNetworkExplorer'
+import type { SelectableKind } from './graph/ActorsGraphCanvas'
 import type { TeamActorInsight } from '@/lib/db/team-actor-insight'
 import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
 
@@ -118,7 +119,7 @@ function TeamFiche({ actor, insight, network, onSelectActor }: { actor: CockpitA
 
       {network.nodes.length > 1 && (
         <FicheSection title="Réseau de collaboration">
-          <ActorsGraphCanvas graph={network} focusId={`tm_${actor.id}`} heightClass="h-[420px]" onSelectActor={onSelectActor} />
+          <ActorNetworkExplorer network={network} focusId={`tm_${actor.id}`} onSelectActor={onSelectActor} />
         </FicheSection>
       )}
     </div>
