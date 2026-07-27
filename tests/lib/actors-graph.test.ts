@@ -3,7 +3,7 @@
 // l'état d'attention (graphe d'attention, pas simple schéma).
 
 import { describe, expect, it } from 'vitest'
-import { buildActorsGraph, egoSubgraph, shortestPath, graphTimeline, type ActorsGraphInputs } from '@/lib/knowledge/actors-graph'
+import { buildActorsGraph, egoSubgraph, shortestPath, graphTimeline, graphKinds, PERSPECTIVES, type ActorsGraphInputs } from '@/lib/knowledge/actors-graph'
 import { narrateActorInGraph } from '@/lib/knowledge/actor-narration'
 
 function base(): ActorsGraphInputs {
@@ -160,6 +160,25 @@ describe('buildActorsGraph', () => {
     expect(firstSeen.get('p_c1')).toBeNull()          // a une relation non datée
     expect(firstSeen.get('co_co1')).toBeNull()        // idem
     expect(firstSeen.get('tm_t1')).toBe('2026-03-01') // n'a QUE la relation datée
+  })
+
+  it('graphKinds : natures RÉELLEMENT présentes (pilote les couches proposées)', () => {
+    const g = buildActorsGraph({
+      ...base(),
+      persons: [{ id: 'c1', name: 'X', sub: null, level: 'ok', historical: false, companyId: 'co1' }],
+      companies: [{ id: 'co1', name: 'Y', sub: null, level: 'ok', historical: false }],
+    })
+    expect(graphKinds(g)).toEqual(new Set(['person', 'company']))
+    expect(graphKinds({ nodes: [], edges: [] })).toEqual(new Set())
+  })
+
+  it('perspectives : « Tout » = toutes natures ; chaque préset ne cible que des natures connues', () => {
+    const all = PERSPECTIVES.find((p) => p.id === 'all')!
+    expect(all.kinds).toBeNull() // « Tout » ne filtre jamais
+    const known = new Set(['person', 'company', 'team', 'site', 'action'])
+    for (const p of PERSPECTIVES) {
+      if (p.kinds) for (const k of p.kinds) expect(known.has(k)).toBe(true)
+    }
   })
 
   it('déduplique les liens identiques', () => {

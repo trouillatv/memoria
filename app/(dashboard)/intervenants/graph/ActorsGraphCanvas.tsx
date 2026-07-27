@@ -27,6 +27,9 @@ export interface GraphControl {
   /** CHRONOLOGIE (le film) : n'afficher que ce qui existait à cette date — les
    *  relations sans date restent visibles (« depuis toujours »). null = aujourd'hui. */
   timeMax?: string | null
+  /** COUCHES : natures de nœuds visibles (null = toutes). Pilote les perspectives —
+   *  on change la LECTURE du graphe, pas les données. */
+  visibleKinds?: ReadonlySet<ActorGraphKind> | null
   onTapNode(node: ActorGraphNode): void
   onTapEdge(index: number): void
   onTapVoid(): void
@@ -88,15 +91,19 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
     const api = createForceGraphEngine(canvas, wrap, {
       nodeIds: () => ids,
       edges: () => graph.edges,
-      // Le film : à la date T, seuls les nœuds déjà apparus (ou « depuis toujours »)
-      // sont visibles — le moteur gère l'apparition/disparition en fondu.
+      // Le film + les couches : à la date T, seuls les nœuds déjà apparus (ou
+      // « depuis toujours ») ET dont la nature est visible sont affichés — le moteur
+      // gère l'apparition/disparition en fondu.
       visible() {
-        const tMax = controlRef.current?.timeMax ?? null
-        if (!tMax) return new Set(ids)
+        const ctrl = controlRef.current
+        const tMax = ctrl?.timeMax ?? null
+        const vk = ctrl?.visibleKinds ?? null
+        if (!tMax && !vk) return new Set(ids)
         const s = new Set<string>()
         for (const id of ids) {
-          const fs = firstSeen.get(id) ?? null
-          if (fs === null || fs <= tMax) s.add(id)
+          if (vk && !vk.has(nodeById.get(id)!.kind)) continue
+          if (tMax) { const fs = firstSeen.get(id) ?? null; if (fs !== null && fs > tMax) continue }
+          s.add(id)
         }
         return s
       },

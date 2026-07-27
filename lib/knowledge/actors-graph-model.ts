@@ -65,6 +65,30 @@ export interface ActorsGraph {
   edges: ActorGraphEdge[]
 }
 
+// ── PERSPECTIVES & COUCHES ───────────────────────────────────────────────────
+// On ne cache pas des données : on change la FAÇON de les lire. Une perspective
+// est un preset de couches (natures de nœuds visibles). N'offrir QUE ce que les
+// données honorent : décisions/visites/documents ne sont pas encore des nœuds du
+// graphe Acteurs (→ V3 Data Foundation) — pas de perspective mensongère.
+export type ActorPerspective = 'all' | 'collaboration' | 'sites' | 'workload'
+
+export const KIND_LAYER_LABEL: Record<ActorGraphKind, string> = {
+  person: 'Personnes', company: 'Entreprises', team: 'Équipes', site: 'Chantiers', action: 'Actions',
+}
+
+/** kinds = null → toutes les natures présentes. Sinon, sous-ensemble mis en avant. */
+export const PERSPECTIVES: Array<{ id: ActorPerspective; label: string; hint: string; kinds: ActorGraphKind[] | null }> = [
+  { id: 'all', label: 'Tout', hint: 'Toutes les natures', kinds: null },
+  { id: 'collaboration', label: 'Collaboration', hint: 'Qui travaille avec qui', kinds: ['person', 'company', 'team'] },
+  { id: 'sites', label: 'Chantiers', hint: 'Qui intervient où', kinds: ['site', 'company', 'team', 'person'] },
+  { id: 'workload', label: 'Charge', hint: 'Qui porte quoi', kinds: ['person', 'company', 'action'] },
+]
+
+/** Natures de nœuds réellement présentes dans un graphe (pour n'offrir que l'utile). */
+export function graphKinds(graph: ActorsGraph): Set<ActorGraphKind> {
+  return new Set(graph.nodes.map((n) => n.kind))
+}
+
 /** Acteur (personne/entreprise/équipe) déjà résolu par le cockpit (état d'attention inclus). */
 export interface GraphActorInput {
   id: string
