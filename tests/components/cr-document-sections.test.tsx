@@ -69,6 +69,29 @@ describe('CrDocumentSections — brouillon', () => {
   })
 })
 
+describe('CrDocumentSections — narration reliée aux objets créés', () => {
+  const concretisation = {
+    actions: { created: 2, pending: 1 },
+    decisions: { created: 1, pending: 0 },
+  }
+
+  it('affiche « N créées dans le chantier » sous Actions, avec le compte non créé', () => {
+    render(<CrDocumentSections reportId="r1" sections={sections} status="draft" concretisation={concretisation} />)
+    expect(within(row('actions')).getByText(/2 actions créées dans le chantier/)).toBeTruthy()
+    expect(within(row('actions')).getByText(/1 non créée/)).toBeTruthy()
+  })
+
+  it('emploie le bon verbe pour les décisions (« enregistrée »)', () => {
+    render(<CrDocumentSections reportId="r1" sections={sections} status="draft" concretisation={concretisation} />)
+    expect(within(row('decisions')).getByText(/1 décision enregistrée dans le chantier/)).toBeTruthy()
+  })
+
+  it('sans résumé de concrétisation, aucune ligne de conséquence', () => {
+    render(<CrDocumentSections reportId="r1" sections={sections} status="draft" />)
+    expect(screen.queryByText(/dans le chantier/)).toBeNull()
+  })
+})
+
 describe('CrDocumentSections — le bouton de restauration ne ment jamais', () => {
   it('apparaît quand une proposition MemorIA existe ET que le texte a bougé', () => {
     render(<CrDocumentSections reportId="r1" sections={sections} status="draft" />)

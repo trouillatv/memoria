@@ -14,6 +14,7 @@ import { MemoriaRetained } from './MemoriaRetained'
 import { CrDocumentSections } from './CrDocumentSections'
 import { CrConcretisation } from './CrConcretisation'
 import { getOrCreateVisitCrDocument } from '@/lib/db/visit-cr-documents'
+import { listProposalsByReport } from '@/lib/db/knowledge-proposals'
 import { VisitShareButton } from '../VisitShareButton'
 
 export const dynamic = 'force-dynamic'
@@ -46,15 +47,30 @@ export default async function VisitCrPreviewPage({
     notFound()
   }
 
-  const [doc, decisions, crDocument] = await Promise.all([
+  const [doc, decisions, crDocument, proposals] = await Promise.all([
     buildVisitCrDoc(reportId, user.id),
     listDecisionsByReport(reportId).catch(() => []),
     // Le CR éditable. `null` = pas encore d'analyse (le débrief se lance à
     // l'ouverture, côté client) : la page retombe alors sur l'affichage
     // historique, sans un mot de plus. Une panne ici ne casse jamais le CR.
     getOrCreateVisitCrDocument(reportId, user.id).catch(() => null),
+    // Propositions de la visite : pour relier une section narrative à ce qui a
+    // été RÉELLEMENT créé dans le chantier (« ✓ 2 actions créées »).
+    listProposalsByReport(reportId).catch(() => []),
   ])
   if (!doc) notFound()
+
+  // Résumé de concrétisation par famille : créé = a un objet promu ; non créé =
+  // proposé/écarté mais jamais matérialisé (on ignore les remplacés). Passé au
+  // document pour afficher la conséquence sous les sections Actions / Décisions.
+  const summarize = (kind: 'action' | 'decision') => {
+    const fam = proposals.filter((p) => p.kind === kind)
+    return {
+      created: fam.filter((p) => !!p.promoted_object_id).length,
+      pending: fam.filter((p) => !p.promoted_object_id && p.status !== 'superseded').length,
+    }
+  }
+  const concretisation = { actions: summarize('action'), decisions: summarize('decision') }
 
   // ── LE PDF CHANGE QUAND LA SYNTHÈSE CHANGE — ET SON NOM AUSSI ──────────────
   // Le nom du fichier était unique par VISITE (chantier + date + heure), jamais
@@ -173,6 +189,7 @@ export default async function VisitCrPreviewPage({
             reportId={reportId}
             sections={crDocument.sections}
             status={crDocument.status}
+            concretisation={concretisation}
           />
           {/* CONCRÉTISER — le récit corrigé prépare le travail réel. Il vient
               juste après le document : on corrige, puis on transforme. */}

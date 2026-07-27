@@ -25,7 +25,7 @@
 // Un bouton qui ne restaurerait rien — ou qui ramènerait au vide — mentirait.
 
 import { useState } from 'react'
-import { Pencil, RotateCcw, Check, X, Loader2, Lock, Plus } from 'lucide-react'
+import { Pencil, RotateCcw, Check, X, Loader2, Lock, Plus, Circle } from 'lucide-react'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
 import {
   saveCrSectionAction,
@@ -35,15 +35,22 @@ import {
   type PersistedCrDocument,
 } from './cr-document-actions'
 
+/** Ce que chaque famille narrative est devenue dans le chantier — le liant
+ *  entre le récit (« Actions ») et les objets réels (« 2 actions créées »). */
+export type ConcretisationSummary = Record<string, { created: number; pending: number }>
+
 export function CrDocumentSections({
   reportId,
   sections: initialSections,
   status: initialStatus,
   onEdited,
+  concretisation,
 }: {
   reportId: string
   sections: ReportDocumentSection[]
   status: ReportDocumentStatus
+  /** Résumé de concrétisation par clé de section (actions, decisions). */
+  concretisation?: ConcretisationSummary
   /**
    * LE TEXTE VIENT DE CHANGER, ET QUELQU'UN D'AUTRE DOIT LE SAVOIR.
    *
@@ -121,6 +128,7 @@ export function CrDocumentSections({
                 editable={editable}
                 onPersisted={adopt}
                 onApplyLocal={applyLocal}
+                summary={concretisation?.[section.key]}
               />
             ))}
 
@@ -258,6 +266,30 @@ function Lifecycle({
   )
 }
 
+/** « ✓ 2 actions créées dans le chantier · ○ 1 non créée » — le lien narration →
+ *  objets, avec le verbe propre à la famille (créées / enregistrées). */
+function ConsequenceLine({ sectionKey, created, pending }: { sectionKey: string; created: number; pending: number }) {
+  const isDecision = sectionKey === 'decisions'
+  const noun = (n: number) => (isDecision ? `décision${n > 1 ? 's' : ''}` : `action${n > 1 ? 's' : ''}`)
+  const verb = (n: number) => (isDecision ? `enregistrée${n > 1 ? 's' : ''}` : `créée${n > 1 ? 's' : ''}`)
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 border-t border-dashed pt-2 text-[12px]">
+      {created > 0 && (
+        <span className="inline-flex items-center gap-1 font-medium text-emerald-700 dark:text-emerald-400">
+          <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          {created} {noun(created)} {verb(created)} dans le chantier
+        </span>
+      )}
+      {pending > 0 && (
+        <span className="inline-flex items-center gap-1 text-muted-foreground">
+          <Circle className="h-3 w-3 shrink-0" aria-hidden />
+          {pending} {isDecision ? `non enregistrée${pending > 1 ? 's' : ''}` : `non créée${pending > 1 ? 's' : ''}`}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function SectionRow({
   reportId,
   section,
@@ -265,6 +297,7 @@ function SectionRow({
   onPersisted,
   onApplyLocal,
   startEditing = false,
+  summary,
 }: {
   reportId: string
   section: ReportDocumentSection
@@ -273,6 +306,8 @@ function SectionRow({
   onApplyLocal: (key: string, content: string) => void
   /** Ouvre directement en édition — pour une rubrique qu'on vient de « compléter ». */
   startEditing?: boolean
+  /** Conséquence dans le chantier (créé / non créé) — seulement pour actions et décisions. */
+  summary?: { created: number; pending: number }
 }) {
   const [editing, setEditing] = useState(startEditing)
   const [draft, setDraft] = useState(section.content)
@@ -420,6 +455,14 @@ function SectionRow({
       ) : (
         // Le vide se dit, il ne s'invente pas : MemorIA n'a rien relevé ici.
         <p className="mt-1.5 text-[12px] italic text-muted-foreground">Rien à ce sujet.</p>
+      )}
+
+      {/* LE RÉCIT DEVIENT DES OBJETS — la conséquence, pas une seconde liste.
+          Le lecteur relie ce qu'il vient de lire (« Actions ») à ce qui a été
+          RÉELLEMENT créé dans le chantier. Passé (« créées »), distinct du panneau
+          de concrétisation qui, lui, parle au futur (« seront créées »). */}
+      {!editing && summary && (summary.created > 0 || summary.pending > 0) && (
+        <ConsequenceLine sectionKey={section.key} created={summary.created} pending={summary.pending} />
       )}
 
       {/* ON DIT CE QU'ON VA PERDRE, AVANT (Vincent, 2026-07-21). Le geste écrase
