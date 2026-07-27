@@ -62,6 +62,24 @@ export function useGraphExplorer(graph: ActorsGraph, focusId?: string | null) {
   const selectEdge = (index: number) => { setPath(null); setSel({ type: 'edge', index }) }
   const startFollow = (id: string) => { setPath(null); setFollowFrom(id) }
 
+  // ── Recherche & focus (taper « Joseph » → centrer + sélectionner + inspecter) ──
+  // On ne cherche que parmi les natures VISIBLES (couches) — pas de résultat qui
+  // ne serait pas affiché. `centerRequest` (avec nonce) demande au canvas de
+  // recadrer, même si l'on refocalise le même acteur.
+  const [query, setQuery] = useState('')
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return []
+    return graph.nodes.filter((n) => visibleKinds.has(n.kind) && n.label.toLowerCase().includes(q)).slice(0, 8)
+  }, [query, graph, visibleKinds])
+  const [centerRequest, setCenterRequest] = useState<{ id: string; nonce: number } | null>(null)
+  const focusNode = (id: string) => {
+    clearPath()
+    setSel({ type: 'node', id }) // sélection → contour + voisinage + inspecteur
+    setCenterRequest((prev) => ({ id, nonce: (prev?.nonce ?? 0) + 1 }))
+    setQuery('') // ferme la liste ; l'acteur reste centré et sélectionné
+  }
+
   const control = {
     selectedNodeId: sel?.type === 'node' ? sel.id : null,
     selectedEdgeIndex: sel?.type === 'edge' ? sel.index : null,
@@ -80,6 +98,7 @@ export function useGraphExplorer(graph: ActorsGraph, focusId?: string | null) {
     selNode, selEdge, followFrom, pathSteps, narration, relations, nodeById, timeline, control,
     setTimeMax, selectNode, selectEdge, startFollow, clearPath,
     availableKinds, visibleKinds, perspective, applyPerspective, toggleKind,
+    query, setQuery, matches, focusNode, centerRequest,
   }
 }
 

@@ -46,7 +46,7 @@ function nodeColor(n: ActorGraphNode): string {
   return LEVEL_COLOR[n.level]
 }
 
-export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', onSelectActor, control }: {
+export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', onSelectActor, control, centerRequest }: {
   graph: ActorsGraph
   focusId?: string | null
   heightClass?: string
@@ -54,6 +54,9 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
   onSelectActor?: (kind: SelectableKind, id: string) => void
   /** Mode CONTRÔLÉ (ActorsExplorer) : la sélection/le chemin vivent chez le parent. */
   control?: GraphControl
+  /** RECHERCHE : recentrer sur un nœud à la demande (le nonce force le recadrage
+   *  même sur le même acteur). La sélection est portée par `control`. */
+  centerRequest?: { id: string; nonce: number } | null
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -249,6 +252,20 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
       api.redraw()
     }
   }, [focusId, graph])
+
+  // Recherche → recadrage sur le nœud trouvé (le nonce déclenche même à id égal).
+  useEffect(() => {
+    const api = apiRef.current
+    if (!centerRequest || !api) return
+    const p = api.P[centerRequest.id]
+    const { W, H } = api.size()
+    if (p && W) {
+      api.view.k = Math.max(api.view.k, 1.1) // ne pas dézoomer un utilisateur déjà zoomé
+      api.view.tx = W / 2 - p.x * api.view.k
+      api.view.ty = H / 2 - p.y * api.view.k
+      api.redraw()
+    }
+  }, [centerRequest])
 
   return (
     <div ref={containerRef} className={`relative w-full overflow-hidden rounded-2xl border border-border/60 bg-card ${heightClass}`}>

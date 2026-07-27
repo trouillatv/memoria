@@ -8,6 +8,7 @@ import { Route } from 'lucide-react'
 import type { ActorsGraph } from '@/lib/knowledge/actors-graph-model'
 import { ActorsGraphCanvas } from './ActorsGraphCanvas'
 import { GraphControls } from './GraphControls'
+import { GraphSearch } from './GraphSearch'
 import { GraphTimeline } from './GraphTimeline'
 import { useGraphExplorer, ExplorerAside } from './useGraphExplorer'
 
@@ -17,15 +18,18 @@ export function ActorsExplorer({ graph, focusId }: { graph: ActorsGraph; focusId
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
       <div className="space-y-3">
-        <GraphControls
-          availableKinds={ex.availableKinds}
-          visibleKinds={ex.visibleKinds}
-          perspective={ex.perspective}
-          onPerspective={ex.applyPerspective}
-          onToggleKind={ex.toggleKind}
-        />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <GraphControls
+            availableKinds={ex.availableKinds}
+            visibleKinds={ex.visibleKinds}
+            perspective={ex.perspective}
+            onPerspective={ex.applyPerspective}
+            onToggleKind={ex.toggleKind}
+          />
+          <GraphSearch query={ex.query} onQuery={ex.setQuery} matches={ex.matches} onPick={ex.focusNode} />
+        </div>
         <div className="relative">
-        <ActorsGraphCanvas graph={graph} focusId={focusId} control={ex.control} heightClass="h-[70vh]" />
+        <ActorsGraphCanvas graph={graph} focusId={focusId} control={ex.control} centerRequest={ex.centerRequest} heightClass="h-[70vh]" />
         {ex.followFrom && (
           <div className="absolute left-1/2 top-2 z-10 flex max-w-[92%] -translate-x-1/2 items-center gap-2 rounded-full border bg-card px-3.5 py-1.5 text-[12.5px] shadow-md">
             <Route className="h-3.5 w-3.5 shrink-0 text-brand-600" aria-hidden />
