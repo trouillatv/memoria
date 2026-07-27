@@ -3,7 +3,7 @@
 // l'état d'attention (graphe d'attention, pas simple schéma).
 
 import { describe, expect, it } from 'vitest'
-import { buildActorsGraph, egoSubgraph, shortestPath, graphTimeline, graphKinds, PERSPECTIVES, DEFAULT_PERSPECTIVE, type ActorsGraphInputs } from '@/lib/knowledge/actors-graph'
+import { buildActorsGraph, egoSubgraph, shortestPath, graphTimeline, graphKinds, PERSPECTIVES, DEFAULT_PERSPECTIVE, enqueteFocus, type ActorsGraphInputs } from '@/lib/knowledge/actors-graph'
 import { narrateActorInGraph } from '@/lib/knowledge/actor-narration'
 
 function base(): ActorsGraphInputs {
@@ -200,6 +200,36 @@ describe('buildActorsGraph', () => {
     // La lecture par défaut de la vue d'ensemble existe et n'est pas « Tout ».
     expect(PERSPECTIVES.some((p) => p.id === DEFAULT_PERSPECTIVE)).toBe(true)
     expect(DEFAULT_PERSPECTIVE).not.toBe('all')
+  })
+
+  it('enquêteFocus : chaque lentille lit un sous-graphe différent du même acteur', () => {
+    const g = buildActorsGraph({
+      ...base(),
+      persons: [
+        { id: 'c1', name: 'Joseph', sub: null, level: 'ok', historical: false, companyId: 'co1' },
+        { id: 'c2', name: 'Collègue', sub: null, level: 'ok', historical: false, companyId: 'co1' },
+      ],
+      companies: [{ id: 'co1', name: 'Clim', sub: null, level: 'ok', historical: false }],
+      teams: [{ id: 't1', name: 'Élec', sub: null, level: 'ok', historical: false }],
+      siteNames: [{ id: 's1', name: 'Petro' }],
+      fieldMemberships: [{ contactId: 'c1', teamId: 't1' }],
+      missions: [{ siteId: 's1', teamId: 't1' }],
+      openActions: [{ id: 'a1', title: 'Repérage', siteId: 's1', contactId: 'c1', companyId: null, overdue: false }],
+    })
+    // Pourquoi ? = ses ancrages directs (entreprise, équipe, action) — pas le collègue (depth 2).
+    const why = enqueteFocus(g, 'p_c1', 'why')
+    expect(why).toContain('p_c1'); expect(why).toContain('co_co1'); expect(why).toContain('tm_t1'); expect(why).toContain('ac_a1')
+    expect(why.has('p_c2')).toBe(false)
+    // Réseau = personnes/entreprises/équipes (le collègue via l'entreprise), jamais l'action.
+    const net = enqueteFocus(g, 'p_c1', 'network')
+    expect(net).toContain('co_co1'); expect(net).toContain('tm_t1'); expect(net).toContain('p_c2')
+    expect(net.has('ac_a1')).toBe(false)
+    expect(net.has('s_s1')).toBe(false)
+    // Responsabilités = ses actions seulement.
+    const resp = enqueteFocus(g, 'p_c1', 'responsibilities')
+    expect([...resp].sort()).toEqual(['ac_a1', 'p_c1'])
+    // Nœud absent → ensemble vide.
+    expect(enqueteFocus(g, 'p_zzz', 'why').size).toBe(0)
   })
 
   it('déduplique les liens identiques', () => {

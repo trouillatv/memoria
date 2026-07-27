@@ -30,6 +30,10 @@ export interface GraphControl {
   /** COUCHES : natures de nœuds visibles (null = toutes). Pilote les perspectives —
    *  on change la LECTURE du graphe, pas les données. */
   visibleKinds?: ReadonlySet<ActorGraphKind> | null
+  /** ENQUÊTE : sous-graphe de l'acteur inspecté. Sert à la mise en évidence (le
+   *  reste s'estompe) ou, si `isolate`, à n'afficher QUE lui. null = pas d'enquête. */
+  focusSet?: ReadonlySet<string> | null
+  isolate?: boolean
   onTapNode(node: ActorGraphNode): void
   onTapEdge(index: number): void
   onTapVoid(): void
@@ -80,6 +84,12 @@ function kindSig(vk: ReadonlySet<ActorGraphKind> | null | undefined): string {
   return vk ? [...vk].sort().join(',') : 'all'
 }
 
+/** Signature de l'ISOLEMENT : ne change la géométrie que si l'on isole (le contenu
+ *  affiché varie). En mise en évidence, le sous-graphe ne change pas la visibilité. */
+function isoSig(ctrl: GraphControl | undefined): string {
+  return ctrl?.isolate && ctrl.focusSet ? [...ctrl.focusSet].sort().join(',') : ''
+}
+
 export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', onSelectActor, control, centerRequest }: {
   graph: ActorsGraph
   focusId?: string | null
@@ -107,6 +117,7 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
   // sélection/survol (qui ne font que redessiner).
   const lastTimeMaxRef = useRef<string | null | undefined>(undefined)
   const lastKindSigRef = useRef<string | undefined>(undefined)
+  const lastIsoSigRef = useRef<string | undefined>(undefined)
   useEffect(() => { onSelectRef.current = onSelectActor }, [onSelectActor])
   useEffect(() => {
     controlRef.current = control
@@ -114,13 +125,15 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
     if (!api) return
     const tm = control?.timeMax ?? null
     const ks = kindSig(control?.visibleKinds)
-    if (tm !== lastTimeMaxRef.current || ks !== lastKindSigRef.current) {
+    const is = isoSig(control)
+    if (tm !== lastTimeMaxRef.current || ks !== lastKindSigRef.current || is !== lastIsoSigRef.current) {
       lastTimeMaxRef.current = tm
       lastKindSigRef.current = ks
-      api.refreshVisibility() // géométrie changée → repositionne + courte relance
+      lastIsoSigRef.current = is
+      api.refreshVisibility() // géométrie changée (couches/chrono/isolement) → repositionne + relance
     } else {
-      // Sélection / chemin / survol : la disposition ne bouge pas, on redessine juste
-      // (en mode figé, rien ne redessinerait sinon).
+      // Sélection / chemin / survol / mise en évidence : la disposition ne bouge pas,
+      // on redessine juste (en mode figé, rien ne redessinerait sinon).
       api.redraw()
     }
   }, [control])
@@ -155,9 +168,13 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
         const ctrl = controlRef.current
         const tMax = ctrl?.timeMax ?? null
         const vk = ctrl?.visibleKinds ?? null
-        if (!tMax && !vk) return new Set(ids)
+        // Mode « Isoler » : n'afficher QUE le sous-graphe d'enquête (intersecté aux
+        // couches / à la chronologie). Sinon tous les nœuds (mise en évidence au draw).
+        const iso = ctrl?.isolate ? ctrl.focusSet ?? null : null
+        if (!tMax && !vk && !iso) return new Set(ids)
         const s = new Set<string>()
         for (const id of ids) {
+          if (iso && !iso.has(id)) continue
           if (vk && !vk.has(nodeById.get(id)!.kind)) continue
           if (tMax) { const fs = firstSeen.get(id) ?? null; if (fs !== null && fs > tMax) continue }
           s.add(id)
@@ -190,12 +207,16 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
         const hov = f.hoverNode
         const focus = sel ?? hov
         const neigh = focus ? adjacency.get(focus) : null
+        // ENQUÊTE : le sous-graphe (lentille) définit le CONTEXTE mis en avant quand
+        // l'acteur est sélectionné ; sinon on retombe sur le voisinage direct.
+        const focusSet = sel && ctrl?.focusSet ? ctrl.focusSet : null
         // TROIS ÉTATS (comme Explorer Mémoire) : FOCUS (inspecté, contour épais) ·
-        // CONTEXTE (voisinage, plein) · HORS CONTEXTE (très estompé, sans label).
+        // CONTEXTE (mis en avant, plein) · HORS CONTEXTE (très estompé, sans label).
         const state = (id: string): 'focus' | 'context' | 'out' => {
           if (pathNodes) return pathNodes.has(id) ? (id === focus ? 'focus' : 'context') : 'out'
           if (!focus) return 'context'
           if (id === focus) return 'focus'
+          if (focusSet) return focusSet.has(id) ? 'context' : 'out'
           return neigh && neigh.has(id) ? 'context' : 'out'
         }
 
@@ -297,6 +318,7 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
     // si l'énergie retombe).
     lastTimeMaxRef.current = controlRef.current?.timeMax ?? null
     lastKindSigRef.current = kindSig(controlRef.current?.visibleKinds)
+    lastIsoSigRef.current = isoSig(controlRef.current)
     api.kick(2000)
 
     return () => {

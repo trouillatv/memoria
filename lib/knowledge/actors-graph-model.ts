@@ -99,6 +99,49 @@ export function graphKinds(graph: ActorsGraph): Set<ActorGraphKind> {
   return new Set(graph.nodes.map((n) => n.kind))
 }
 
+// ── MODE ENQUÊTE ─────────────────────────────────────────────────────────────
+// Quand un acteur est sélectionné, plusieurs LECTURES de son entourage répondent
+// à des questions différentes. Chaque lentille = un sous-graphe ego filtré.
+// « Activité » (dernières visites/CR/réunions) dépend des données d'interactions
+// (lot à venir) → pas offerte tant qu'elle serait vide.
+export type EnqueteLens = 'why' | 'network' | 'responsibilities'
+
+export const ENQUETE_LENSES: Array<{ id: EnqueteLens; label: string; hint: string }> = [
+  { id: 'why', label: 'Pourquoi ?', hint: 'Ce qui justifie sa présence' },
+  { id: 'network', label: 'Réseau', hint: 'Avec qui il travaille' },
+  { id: 'responsibilities', label: 'Responsabilités', hint: 'Ce qu’il porte' },
+]
+
+const LENS_CONFIG: Record<EnqueteLens, { depth: number; kinds: Set<ActorGraphKind> | null }> = {
+  why: { depth: 1, kinds: null },                                   // ses ancrages directs
+  network: { depth: 2, kinds: new Set(['person', 'company', 'team']) }, // avec qui (co-équipiers via société/équipe)
+  responsibilities: { depth: 1, kinds: new Set(['action']) },       // ce qu'il porte (actions)
+}
+
+/** Sous-graphe d'ENQUÊTE autour d'un nœud : l'ensemble des nœuds à mettre en avant
+ *  (ou à isoler) pour la lentille choisie. Pur — BFS borné, filtre par nature de
+ *  l'extrémité atteinte. Inclut toujours le nœud de départ. */
+export function enqueteFocus(graph: ActorsGraph, startId: string, lens: EnqueteLens): Set<string> {
+  const cfg = LENS_CONFIG[lens]
+  const kindById = new Map(graph.nodes.map((n) => [n.id, n.kind]))
+  if (!kindById.has(startId)) return new Set()
+  const adj = new Map<string, string[]>()
+  const push = (a: string, b: string) => { const l = adj.get(a); if (l) l.push(b); else adj.set(a, [b]) }
+  for (const e of graph.edges) { push(e.a, e.b); push(e.b, e.a) }
+  const out = new Set<string>([startId])
+  let frontier = [startId]
+  for (let d = 0; d < cfg.depth; d++) {
+    const next: string[] = []
+    for (const id of frontier) for (const nb of adj.get(id) ?? []) {
+      if (out.has(nb)) continue
+      if (cfg.kinds && !cfg.kinds.has(kindById.get(nb)!)) continue
+      out.add(nb); next.push(nb)
+    }
+    frontier = next
+  }
+  return out
+}
+
 /** Acteur (personne/entreprise/équipe) déjà résolu par le cockpit (état d'attention inclus). */
 export interface GraphActorInput {
   id: string

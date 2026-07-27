@@ -8,9 +8,9 @@
 
 import { useMemo, useState } from 'react'
 import {
-  shortestPath, graphTimeline, graphKinds, PERSPECTIVES,
+  shortestPath, graphTimeline, graphKinds, PERSPECTIVES, enqueteFocus,
   REL_SOURCE_LABEL,
-  type ActorsGraph, type ActorGraphNode, type ActorGraphKind, type ActorPerspective,
+  type ActorsGraph, type ActorGraphNode, type ActorGraphKind, type ActorPerspective, type EnqueteLens,
 } from '@/lib/knowledge/actors-graph-model'
 import { narrateActorInGraph } from '@/lib/knowledge/actor-narration'
 import { NodePanel, EdgePanel, PathPanel } from './inspector'
@@ -46,8 +46,19 @@ export function useGraphExplorer(graph: ActorsGraph, focusId?: string | null, in
     setVisibleKinds((prev) => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n })
   }
 
+  // ── Mode enquête (Niveau 2, quand un acteur est sélectionné) ──
+  // Lentille = une lecture de son entourage ; `isolate` = ne garder QUE ce sous-graphe
+  // (vs le mettre en évidence, le reste estompé). « Pourquoi ? » = comportement par
+  // défaut (voisinage direct) → sélection simple inchangée.
+  const [lens, setLens] = useState<EnqueteLens>('why')
+  const [isolate, setIsolate] = useState(false)
+
   const selNode = sel?.type === 'node' ? nodeById.get(sel.id) ?? null : null
   const selEdge = sel?.type === 'edge' ? graph.edges[sel.index] ?? null : null
+
+  // Sous-graphe d'enquête du nœud sélectionné (null hors sélection) — pilote la mise
+  // en évidence ET l'isolement dans le canvas.
+  const focusSet = useMemo(() => (selNode ? enqueteFocus(graph, selNode.id, lens) : null), [selNode, graph, lens])
 
   const pathNodes = useMemo(() => (path ? new Set(path.nodes) : null), [path])
   const pathEdges = useMemo(() => (path ? new Set(path.edgeIndexes) : null), [path])
@@ -93,6 +104,8 @@ export function useGraphExplorer(graph: ActorsGraph, focusId?: string | null, in
     pathNodes, pathEdges, timeMax,
     // Couches : natures visibles (null = toutes) — filtre appliqué par le canvas.
     visibleKinds: visibleKinds.size === availableKinds.size ? null : visibleKinds,
+    // Enquête : sous-graphe mis en avant ; isolé = le canvas n'affiche que lui.
+    focusSet, isolate: isolate && !!focusSet,
     onTapNode(node: ActorGraphNode) {
       if (followFrom && node.id !== followFrom) { setPath(shortestPath(graph, followFrom, node.id)); setFollowFrom(null); setSel({ type: 'node', id: node.id }); return }
       setPath(null); setSel({ type: 'node', id: node.id })
@@ -106,6 +119,7 @@ export function useGraphExplorer(graph: ActorsGraph, focusId?: string | null, in
     setTimeMax, selectNode, selectEdge, startFollow, clearPath,
     availableKinds, visibleKinds, perspective, applyPerspective, toggleKind,
     query, setQuery, matches, focusNode, centerRequest,
+    lens, setLens, isolate, setIsolate,
   }
 }
 

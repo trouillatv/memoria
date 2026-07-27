@@ -26,6 +26,11 @@ export function ActorsExplorer({ graph, focusId }: { graph: ActorsGraph; focusId
             perspective={ex.perspective}
             onPerspective={ex.applyPerspective}
             onToggleKind={ex.toggleKind}
+            focusLabel={ex.selNode?.label ?? null}
+            lens={ex.lens}
+            onLens={ex.setLens}
+            isolate={ex.isolate}
+            onIsolate={ex.setIsolate}
           />
           <GraphSearch query={ex.query} onQuery={ex.setQuery} matches={ex.matches} onPick={ex.focusNode} />
         </div>
