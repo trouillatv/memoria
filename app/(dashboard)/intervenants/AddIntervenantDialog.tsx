@@ -23,6 +23,16 @@ import type { FieldPersonSearchResult } from '@/lib/db/team-field-members'
 import { searchOrgFieldPersonsAction } from '../equipes/actions'
 import { createIntervenantAction } from './create-actions'
 
+// Rôle / fonction DURABLE de la personne (company_contacts.function), réutilisé
+// partout ensuite (casting, mémoire, CR, préparation de visite). Suggestions
+// libres — la saisie reste ouverte. ⚠ distinct du rôle de casting (contexte de
+// chantier, jamais une propriété permanente de la personne).
+const ROLE_SUGGESTIONS = [
+  'Conducteur de travaux', 'Chef de chantier', 'Chef d’équipe', 'Maître d’œuvre (MOE)',
+  'Maître d’ouvrage (MOA)', 'Coordinateur SPS', 'Architecte', 'Bureau d’études',
+  'Économiste', 'Électricien', 'Plombier', 'Maçon', 'Peintre', 'Menuisier',
+]
+
 export function AddIntervenantDialog({ teams }: { teams: Array<{ id: string; name: string }> }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -91,10 +101,10 @@ export function AddIntervenantDialog({ teams }: { teams: Array<{ id: string; nam
 
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset() }}>
-      <DialogTrigger render={<Button size="sm"><UserPlus /> Ajouter un intervenant</Button>} />
+      <DialogTrigger render={<Button size="sm"><UserPlus /> Ajouter un acteur</Button>} />
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Ajouter un intervenant</DialogTitle>
+          <DialogTitle>Ajouter un acteur</DialogTitle>
           <DialogDescription>
             Une personne métier sans compte de connexion. Cherchez d’abord si elle existe,
             sinon créez-la puis rattachez-la éventuellement à une ou plusieurs équipes.
@@ -144,7 +154,7 @@ export function AddIntervenantDialog({ teams }: { teams: Array<{ id: string; nam
 
           {/* 2 — Créer */}
           <div className="space-y-2.5 border-t pt-4">
-            <Label className="text-xs text-muted-foreground">Ou créer un nouvel intervenant</Label>
+            <Label className="text-xs text-muted-foreground">Ou créer un nouvel acteur</Label>
             <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Nom complet (obligatoire)" disabled={pending} />
 
             {/* Type — agent interne / contact externe. */}
@@ -153,11 +163,25 @@ export function AddIntervenantDialog({ teams }: { teams: Array<{ id: string; nam
               <TypeToggle active={!isInternalAgent} onClick={() => setIsInternalAgent(false)} label="Contact externe" disabled={pending} />
             </div>
 
+            {/* Rôle / fonction — champ de premier plan : réutilisé partout ensuite. */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Rôle / fonction</Label>
+              <Input
+                value={job}
+                onChange={(e) => setJob(e.target.value)}
+                placeholder="ex. Conducteur de travaux, MOE, Électricien…"
+                list="acteur-role-suggestions"
+                disabled={pending}
+              />
+              <datalist id="acteur-role-suggestions">
+                {ROLE_SUGGESTIONS.map((r) => <option key={r} value={r} />)}
+              </datalist>
+            </div>
+
             <div className="grid grid-cols-2 gap-2">
-              <Input value={job} onChange={(e) => setJob(e.target.value)} placeholder="Métier / fonction" disabled={pending} />
               <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Entreprise (facultatif)" disabled={pending} />
-              <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail (facultatif)" disabled={pending} />
               <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Téléphone (facultatif)" disabled={pending} />
+              <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail (facultatif)" disabled={pending} className="col-span-2" />
             </div>
 
             {/* Rattachement facultatif à des équipes. */}
@@ -180,7 +204,7 @@ export function AddIntervenantDialog({ teams }: { teams: Array<{ id: string; nam
               rendue responsable d’une action quand son équipe est mobilisée sur le chantier.
             </p>
             <Button type="button" onClick={create} disabled={pending || fullName.trim().length < 1} className="w-full">
-              <UserPlus /> Créer l’intervenant
+              <UserPlus /> Créer l’acteur
             </Button>
           </div>
         </div>
