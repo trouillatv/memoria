@@ -5,7 +5,7 @@ const source = { type: 'visit', id: 'report-1', href: '/sites/site-1/visites/rep
 
 const context = (overrides: Partial<PromiseDetectionContext> = {}): PromiseDetectionContext => ({
   promises: [{
-    id: 'promise-1', organizationId: 'org-1', siteId: 'site-1',
+    id: 'promise-1', organizationId: 'org-1', siteId: 'site-1', siteName: 'Lycée PETRO ATTITI',
     subject: { table: 'captured_knowledge', id: 'promise-1', organizationId: 'org-1', siteId: 'site-1' },
     text: 'Le planning sera diffusé vendredi.', source, occurredAt: '2026-07-21T09:00:00.000Z', dueAt: '2026-07-25T23:59:59+11:00',
     confirmedAt: null, confirmationSourceIds: [], relatedProofSourceIds: [], replacedAt: null, cancelledAt: null, importance: 'normal', blocking: false,

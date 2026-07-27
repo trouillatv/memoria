@@ -6,6 +6,7 @@ export type StructuredPromiseRecord = {
   id: string
   organizationId: string
   siteId: string
+  siteName: string
   kind: string
   title: string
   body: string | null
@@ -41,6 +42,7 @@ export function buildPromiseCandidates(records: StructuredPromiseRecord[]): Prom
       id: record.id,
       organizationId: record.organizationId,
       siteId: record.siteId,
+      siteName: record.siteName,
       text: record.title.trim(),
       source: record.source,
       subject: record.subject,

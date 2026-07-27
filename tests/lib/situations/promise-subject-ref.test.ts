@@ -15,7 +15,7 @@ const source = { type: 'visit', id: 'report-1', href: '/sites/site-1/visites/rep
 
 function record(subject: PromiseSubjectRef, over: Partial<StructuredPromiseRecord> = {}): StructuredPromiseRecord {
   return {
-    id: subject.id, organizationId: 'org-1', siteId: 'site-1', kind: 'promise',
+    id: subject.id, organizationId: 'org-1', siteId: 'site-1', siteName: 'Lycée PETRO ATTITI', kind: 'promise',
     title: 'Le planning sera diffusé vendredi.', body: null, source, subject,
     occurredAt: '2026-07-21T09:00:00.000Z', dueAt: '2026-07-25T23:59:59+11:00',
     confirmedAt: null, confirmationSourceIds: [], relatedProofSourceIds: [],

@@ -4,6 +4,7 @@ export type PromiseCandidate = {
   id: string
   organizationId: string
   siteId: string
+  siteName: string
   text: string
   source: SourceRef
   /** Objet persistant résoluble (T2) — porté jusqu'au signal, puis à la Situation. */
@@ -68,7 +69,11 @@ export function detectPromiseExpiredSignals(
       facts: [
         {
           type: 'promise', key: 'promise_text', value: promise.text, confidence: null,
-        sourceIds: [promise.source.id, ...promise.confirmationSourceIds, ...promise.relatedProofSourceIds], detectedAt: now, occurredAt: promise.occurredAt, dueAt: promise.dueAt, validUntil: null,
+          sourceIds: [promise.source.id, ...promise.confirmationSourceIds, ...promise.relatedProofSourceIds], detectedAt: now, occurredAt: promise.occurredAt, dueAt: promise.dueAt, validUntil: null,
+        },
+        {
+          type: 'site', key: 'site_name', value: promise.siteName, confidence: null,
+          sourceIds: [], detectedAt: now, occurredAt: null, dueAt: null, validUntil: null,
         },
       ],
       rules: [{ id: 'promise_expired', version: '1' }],

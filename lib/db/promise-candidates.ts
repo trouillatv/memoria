@@ -39,7 +39,7 @@ function sourceRefFor(siteId: string, type: unknown, id: unknown, label?: string
       type: 'visit',
       id: sourceId,
       href: `/sites/${siteId}/visites/${sourceId}`,
-      label: label ?? `Visite ${sourceId}`,
+      label: label ?? 'Voir la visite',
     }
   }
 
@@ -48,7 +48,7 @@ function sourceRefFor(siteId: string, type: unknown, id: unknown, label?: string
       type: 'capture',
       id: sourceId,
       href: `/sites/${siteId}/observation/${sourceId}`,
-      label: label ?? `Capture ${sourceId}`,
+      label: label ?? 'Voir la capture',
     }
   }
 
@@ -57,7 +57,7 @@ function sourceRefFor(siteId: string, type: unknown, id: unknown, label?: string
       type: sourceType,
       id: sourceId,
       href: `/sites/${siteId}/chronologie?source=${encodeURIComponent(sourceId)}`,
-      label: label ?? `${sourceType} ${sourceId}`,
+      label: label ?? 'Voir la source',
     }
   }
 
@@ -70,12 +70,12 @@ function sourceFromProposal(row: UnknownRecord): SourceRef | null {
 
   const reportId = stringValue(row.report_id)
   if (reportId) {
-    return sourceRefFor(siteId, 'report', reportId, `Visite ${reportId}`)
+    return sourceRefFor(siteId, 'report', reportId)
   }
 
   const captureIds = Array.isArray(row.source_capture_ids) ? row.source_capture_ids : []
   const captureId = captureIds.find((value): value is string => typeof value === 'string' && value.length > 0)
-  return sourceRefFor(siteId, 'capture', captureId, captureId ? `Capture ${captureId}` : undefined)
+  return sourceRefFor(siteId, 'capture', captureId)
 }
 
 function payloadOf(row: UnknownRecord): UnknownRecord | null {
@@ -97,7 +97,7 @@ function blockingOf(payload: UnknownRecord | null): boolean {
   return payload?.blocking === true
 }
 
-function capturedRecord(row: UnknownRecord): StructuredPromiseRecord | null {
+function capturedRecord(row: UnknownRecord, siteName: string): StructuredPromiseRecord | null {
   const organizationId = stringValue(row.organization_id)
   const siteId = stringValue(row.site_id)
   const id = stringValue(row.id)
@@ -109,6 +109,7 @@ function capturedRecord(row: UnknownRecord): StructuredPromiseRecord | null {
     id,
     organizationId,
     siteId,
+    siteName,
     kind: 'promise',
     title,
     body: typeof row.body === 'string' ? row.body : null,
@@ -124,7 +125,7 @@ function capturedRecord(row: UnknownRecord): StructuredPromiseRecord | null {
   }
 }
 
-function proposalRecord(row: UnknownRecord): StructuredPromiseRecord | null {
+function proposalRecord(row: UnknownRecord, siteName: string): StructuredPromiseRecord | null {
   const organizationId = stringValue(row.organization_id)
   const siteId = stringValue(row.site_id)
   const title = stringValue(row.title)
@@ -152,6 +153,7 @@ function proposalRecord(row: UnknownRecord): StructuredPromiseRecord | null {
     id,
     organizationId,
     siteId,
+    siteName,
     kind: 'promise',
     title,
     body: typeof row.body === 'string' ? row.body : null,
@@ -211,12 +213,27 @@ export async function getStructuredPromiseRecords(
   if (capturedError) throw capturedError
   if (proposalError) throw proposalError
 
+  // Collect siteIds present in results to resolve names in one query.
+  const rawSiteIds = new Set<string>()
+  for (const row of (capturedRows ?? []) as unknown[]) {
+    if (isRecord(row)) { const sid = stringValue(row.site_id); if (sid) rawSiteIds.add(sid) }
+  }
+  for (const row of (proposalRows ?? []) as unknown[]) {
+    if (isRecord(row)) { const sid = stringValue(row.site_id); if (sid) rawSiteIds.add(sid) }
+  }
+  const siteNameMap = new Map<string, string>()
+  if (rawSiteIds.size > 0) {
+    const { data: siteRows } = await supabase.from('sites').select('id, name').in('id', [...rawSiteIds])
+    for (const s of (siteRows ?? []) as Array<{ id: string; name: string }>) siteNameMap.set(s.id, s.name)
+  }
+
   const byKey = new Map<string, StructuredPromiseRecord>()
   for (const row of (capturedRows ?? []) as unknown[]) {
     if (!isRecord(row) || TERMINAL_CAPTURED_STATUSES.has(String(row.status))) continue
     if (!organizationIds.includes(String(row.organization_id))) continue
     if (siteIds && !siteIds.includes(String(row.site_id))) continue
-    const record = capturedRecord(row)
+    const siteName = siteNameMap.get(stringValue(row.site_id) ?? '') ?? ''
+    const record = capturedRecord(row, siteName)
     if (!record) continue
     const key = recordKey(record, row)
     const previous = byKey.get(key)
@@ -226,7 +243,8 @@ export async function getStructuredPromiseRecords(
     if (!isRecord(row) || TERMINAL_PROPOSAL_STATUSES.has(String(row.status))) continue
     if (!organizationIds.includes(String(row.organization_id))) continue
     if (siteIds && !siteIds.includes(String(row.site_id))) continue
-    const record = proposalRecord(row)
+    const siteName = siteNameMap.get(stringValue(row.site_id) ?? '') ?? ''
+    const record = proposalRecord(row, siteName)
     if (!record) continue
     const key = recordKey(record, row)
     const previous = byKey.get(key)

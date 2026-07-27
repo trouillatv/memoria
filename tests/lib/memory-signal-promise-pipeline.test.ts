@@ -14,6 +14,7 @@ const record = (overrides: Partial<StructuredPromiseRecord> = {}): StructuredPro
   id: 'promise-1',
   organizationId: 'org-1',
   siteId: 'site-1',
+  siteName: 'Lycée PETRO ATTITI',
   kind: 'promise',
   title: 'Le planning sera diffuse vendredi.',
   body: null,

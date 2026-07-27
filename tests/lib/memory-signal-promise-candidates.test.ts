@@ -4,7 +4,7 @@ import { buildPromiseCandidates, type StructuredPromiseRecord } from '@/lib/memo
 const source = { type: 'visit', id: 'report-1', href: '/sites/site-1/visites/report-1', label: 'Visite du 21 juillet' }
 
 const record = (overrides: Partial<StructuredPromiseRecord> = {}): StructuredPromiseRecord => ({
-  id: 'promise-1', organizationId: 'org-1', siteId: 'site-1', kind: 'promise',
+  id: 'promise-1', organizationId: 'org-1', siteId: 'site-1', siteName: 'Lycée PETRO ATTITI', kind: 'promise',
   title: 'Le planning sera diffusé vendredi.', body: null, source,
   subject: { table: 'captured_knowledge', id: 'promise-1', organizationId: 'org-1', siteId: 'site-1' },
   occurredAt: '2026-07-21T09:00:00.000Z',
