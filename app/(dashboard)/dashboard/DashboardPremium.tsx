@@ -58,9 +58,9 @@ const FAMILY_COLORS: Record<AttentionCard['tone'], string> = {
 }
 
 function ctaLabel(card: AttentionCard): string {
-  if (card.icon === 'calendar') return card.tone === 'red' ? 'Ouvrir' : 'Planifier'
+  if (card.icon === 'calendar') return card.tone === 'red' ? "Voir l'action" : 'Planifier'
   if (card.icon === 'document') return 'Compléter'
-  if (card.icon === 'warning') return card.tone === 'red' ? 'Arbitrer' : 'Ouvrir'
+  if (card.icon === 'warning') return 'Voir la réserve'
   return 'Voir'
 }
 
@@ -86,6 +86,11 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
   const sorted = sortAttentionCards(attentionCards)
   const nextItems = upcoming.filter((i) => !i.isToday)
   const urgentCount = attentionCards.filter((c) => c.tone === 'red').length
+
+  // Décomposition du bandeau par famille d'urgence
+  const overdueActionsCount = attentionCards.filter((c) => c.subject === null && c.icon === 'calendar' && c.tone === 'red').length
+  const overduePromisesCount = attentionCards.filter((c) => c.subject !== null && c.tone === 'red').length
+  const criticalReservesCount = attentionCards.filter((c) => c.icon === 'warning' && c.tone === 'red').length
 
   // Chantier du jour : site ayant accumulé le score de priorité le plus élevé
   // dans les attentionCards. Réutilise le moteur existant, sans nouveau calcul.
@@ -121,12 +126,22 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
         {attentionCards.length > 0 && (
           <div className="mb-4 rounded-2xl bg-gradient-to-br from-[#dc2626] to-[#b91c1c] px-4 py-3.5 text-white shadow-md">
             <p className="text-sm font-bold">
-              {attentionCards.length} sujet{attentionCards.length > 1 ? 's' : ''} demandent votre attention
+              {urgentCount > 0 ? `${urgentCount} urgence${urgentCount > 1 ? 's' : ''}` : `${attentionCards.length} sujet${attentionCards.length > 1 ? 's' : ''} à traiter`}
             </p>
-            <p className="mt-1 text-xs text-white/75">
-              <span className="font-semibold text-white">{urgentCount} urgent{urgentCount !== 1 ? 's' : ''}</span>
-              {' '}· {attentionCards.length - urgentCount} à surveiller
-            </p>
+            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-white/85">
+              {overdueActionsCount > 0 && (
+                <span>{overdueActionsCount} action{overdueActionsCount > 1 ? 's' : ''} en retard</span>
+              )}
+              {overduePromisesCount > 0 && (
+                <span>{overduePromisesCount} promesse{overduePromisesCount > 1 ? 's' : ''} dépassée{overduePromisesCount > 1 ? 's' : ''}</span>
+              )}
+              {criticalReservesCount > 0 && (
+                <span>{criticalReservesCount} réserve{criticalReservesCount > 1 ? 's' : ''} critique{criticalReservesCount > 1 ? 's' : ''}</span>
+              )}
+              {(attentionCards.length - urgentCount) > 0 && (
+                <span className="text-white/65">{attentionCards.length - urgentCount} à surveiller</span>
+              )}
+            </div>
           </div>
         )}
 
@@ -146,7 +161,8 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
               </div>
               <div className="px-4 py-4">
                 <h2 className="truncate text-[15px] font-bold leading-tight text-[#101a35]">{focusSite.name}</h2>
-                <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#9aa7be]">Sélectionné car</p>
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                   {focusSite.overdueActionCount > 0 && (
                     <span className="inline-flex items-center gap-1 rounded-lg bg-[#fef2f2] px-2 py-1 text-xs font-semibold text-[#dc2626]">
                       {focusSite.overdueActionCount} en retard
@@ -184,8 +200,11 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
           <div className="mb-4 overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-[#e5eaf3]">
             <div className="flex items-center justify-between bg-[#f8faff] px-4 py-2.5">
               <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-[#65718b]">À traiter</h2>
-              <Link href="/actions" className="text-xs font-semibold text-[#4973dd]">
-                Tout voir ({sorted.length}) ›
+              <Link
+                href="/actions"
+                className="inline-flex items-center gap-1 rounded-lg bg-[#eef4ff] px-2.5 py-1 text-[11px] font-semibold text-[#4973dd] hover:bg-[#dce8ff]"
+              >
+                Voir les {sorted.length}
               </Link>
             </div>
             <ul className="divide-y divide-[#f5f7fb]">
