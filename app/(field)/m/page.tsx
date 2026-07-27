@@ -275,6 +275,7 @@ export default async function FieldHomePage({
         nowSignals={nowSignals}
         visitReviews={visitReviews}
         deadlinesToPlan={deadlinesToPlan}
+        embedded
       />
     )
   }

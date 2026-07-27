@@ -32,6 +32,10 @@ type Props = {
   nowSignals: MemorySignal[]
   visitReviews: Record<string, MemoryReview>
   deadlinesToPlan: DashboardDeadlineToPlan[]
+  /** Rendu à l'intérieur du layout terrain (/m) : celui-ci fournit déjà la
+   *  MobileTabBar et le fond. On masque alors le wrapper plein écran + la barre
+   *  interne (qui pointe vers des routes desktop inexistantes côté mobile). */
+  embedded?: boolean
 }
 
 // ── Briefing conditionnel ────────────────────────────────────────────────────
@@ -164,7 +168,7 @@ function siteStatusInfo(status: 'critical' | 'warning' | 'normal') {
 
 // ── Composant ────────────────────────────────────────────────────────────────
 
-export function DashboardPremium({ firstName, attentionCards, visit, upcoming, sites, now }: Props) {
+export function DashboardPremium({ firstName, attentionCards, visit, upcoming, sites, now, embedded = false }: Props) {
   const sorted = sortAttentionCards(attentionCards)
   const nextItems = upcoming.filter((i) => !i.isToday)
   const urgentCount = attentionCards.filter((c) => c.tone === 'red').length
@@ -200,6 +204,12 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
 
   const briefing = computeDailyBriefing(attentionCards, focusSite, urgentCount)
 
+  // Routes contextuelles : en mode terrain (/m), les destinations vivent sous
+  // /m/* ; au bureau, à la racine. Le « Journal » du terrain = /m/planning.
+  const routes = embedded
+    ? { actions: '/m/actions', journal: '/m/planning', planning: '/m/planning' }
+    : { actions: '/actions', journal: '/planning', planning: '/planning' }
+
   // La carte blanche du bas n'a de sens que si le chantier a vraiment des éléments à traiter.
   const showFocusCard = focusSite && (
     briefing.tone !== 'neutral' ||
@@ -209,8 +219,8 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
   )
 
   return (
-    <div className="min-h-screen bg-[#f4f6fb]">
-      <div className="mx-auto max-w-lg pt-3">
+    <div className={embedded ? '' : 'min-h-screen bg-[#f4f6fb]'}>
+      <div className={embedded ? 'mx-auto max-w-lg' : 'mx-auto max-w-lg pt-3'}>
 
         {/* ── Hero : briefing + chantier du jour ───────────────── */}
         <div className="mb-4 overflow-hidden rounded-3xl shadow-lg">
@@ -367,7 +377,7 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
             <div className="flex items-center justify-between bg-[#f8faff] px-4 py-2.5">
               <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-[#65718b]">À traiter</h2>
               <Link
-                href="/actions"
+                href={routes.actions}
                 className="inline-flex items-center gap-1 rounded-lg bg-[#eef4ff] px-2.5 py-1 text-[11px] font-semibold text-[#4973dd] hover:bg-[#dce8ff]"
               >
                 Voir les {sorted.length}
@@ -444,7 +454,7 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
             <div className="mb-4 overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-[#e5eaf3]">
               <div className="flex items-center justify-between bg-[#f8faff] px-4 py-2.5">
                 <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-[#65718b]">{title}</h2>
-                <Link href="/journal" className="text-[10px] font-semibold text-[#4973dd]">Journal ›</Link>
+                <Link href={routes.journal} className="text-[10px] font-semibold text-[#4973dd]">Journal ›</Link>
               </div>
               <ul className="divide-y divide-[#f5f7fb]">
                 {events.map((e) => (
@@ -465,7 +475,7 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
           <div className="mb-4 overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-[#e5eaf3]">
             <div className="flex items-center justify-between bg-[#f8faff] px-4 py-2.5">
               <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-[#65718b]">Prochaines échéances</h3>
-              <Link href="/planning" className="text-[10px] font-semibold text-[#4973dd]">Voir tout ›</Link>
+              <Link href={routes.planning} className="text-[10px] font-semibold text-[#4973dd]">Voir tout ›</Link>
             </div>
             <ul className="divide-y divide-[#f5f7fb]">
               {nextItems.slice(0, 3).map((item) => (
@@ -484,32 +494,36 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
 
       </div>
 
-      {/* ── Navigation bas de page (fixe) ────────────────── */}
-      <nav className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-around border-t border-[#e5eaf3] bg-white px-2 py-3">
-        <Link href="/" className="flex flex-col items-center gap-0.5 text-[#4973dd]">
-          <Sun className="h-5 w-5" />
-          <span className="text-[10px] font-semibold">Aujourd&apos;hui</span>
-        </Link>
-        <Link href="/journal" className="flex flex-col items-center gap-0.5 text-[#9aa7be]">
-          <BookOpen className="h-5 w-5" />
-          <span className="text-[10px]">Journal</span>
-        </Link>
-        <Link
-          href="/nouveau"
-          className="flex h-12 w-12 items-center justify-center rounded-full bg-[#16a34a] shadow-md text-white"
-          aria-label="Nouveau"
-        >
-          <Plus className="h-6 w-6" />
-        </Link>
-        <Link href="/sites" className="flex flex-col items-center gap-0.5 text-[#9aa7be]">
-          <Building2 className="h-5 w-5" />
-          <span className="text-[10px]">Chantiers</span>
-        </Link>
-        <Link href="/actions" className="flex flex-col items-center gap-0.5 text-[#9aa7be]">
-          <CheckSquare className="h-5 w-5" />
-          <span className="text-[10px]">Actions</span>
-        </Link>
-      </nav>
+      {/* ── Navigation bas de page (fixe) ────────────────────
+          Uniquement au bureau : en mode terrain (/m), le layout fournit déjà
+          la MobileTabBar avec les routes /m/*. On n'empile pas une 2ᵉ barre. */}
+      {!embedded && (
+        <nav className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-around border-t border-[#e5eaf3] bg-white px-2 py-3">
+          <Link href="/dashboard" className="flex flex-col items-center gap-0.5 text-[#4973dd]">
+            <Sun className="h-5 w-5" />
+            <span className="text-[10px] font-semibold">Aujourd&apos;hui</span>
+          </Link>
+          <Link href={routes.journal} className="flex flex-col items-center gap-0.5 text-[#9aa7be]">
+            <BookOpen className="h-5 w-5" />
+            <span className="text-[10px]">Journal</span>
+          </Link>
+          <Link
+            href={routes.planning}
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-[#16a34a] shadow-md text-white"
+            aria-label="Planning"
+          >
+            <Plus className="h-6 w-6" />
+          </Link>
+          <Link href="/sites" className="flex flex-col items-center gap-0.5 text-[#9aa7be]">
+            <Building2 className="h-5 w-5" />
+            <span className="text-[10px]">Chantiers</span>
+          </Link>
+          <Link href={routes.actions} className="flex flex-col items-center gap-0.5 text-[#9aa7be]">
+            <CheckSquare className="h-5 w-5" />
+            <span className="text-[10px]">Actions</span>
+          </Link>
+        </nav>
+      )}
     </div>
   )
 }
