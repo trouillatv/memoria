@@ -20,8 +20,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import type { SiteGraph, GraphEdge, GraphNode, GraphNodeType } from '@/lib/knowledge/site-graph'
+import type { SiteGraph, GraphNode, GraphNodeType } from '@/lib/knowledge/site-graph'
 import { cn } from '@/lib/utils'
+// V2.0 : la mécanique (physique, zoom/pan/drag/pin, hit, boucle « figé par défaut »)
+// vit dans le moteur PARTAGÉ — ce fichier garde tout le SENS Mémoire (visible(),
+// rendu, tooltips, sélection, panneau, générateurs). Iso-comportement.
+import { createForceGraphEngine } from '@/components/graph/force-graph-engine'
 
 const COLOR: Record<GraphNodeType, string> = {
   site: '#1C1B22', visite: '#0369A1', photo: '#D97706', memo: '#0F766E',
@@ -51,7 +55,6 @@ const PROOF = new Set<GraphNodeType>(['photo', 'memo'])
 // se déplie depuis la légende.
 const GLOBAL_DEFAULT = new Set<GraphNodeType>(['visite', 'action', 'dec', 'acteur'])
 
-type P = { x: number; y: number; vx: number; vy: number; alpha: number }
 type PanelMode = 'fiche' | 'recit' | 'gaps'
 
 const dayFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long' })
@@ -122,16 +125,13 @@ export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
     return counts
   }, [center, depth, enquete, timeMax, neigh, nodeById])
 
-  // ── Le moteur canvas vit hors de React. ──
+  // ── L'état MÉTIER de l'exploration, miroité hors React pour le moteur. ──
+  // (La mécanique — positions, vue, drag, pins — vit dans le moteur partagé.)
   const engine = useRef<{
-    P: Record<string, P>; pinned: Set<string>
-    view: { k: number; tx: number; ty: number }
-    dragId: string | null; hoverNode: string | null; hoverEdge: GraphEdge | null
-    simUntil: number; running: boolean
     center: string; depth: 1 | 2; enqueteSet: Set<string> | null; timeMax: string | null
     hiddenTypes: ReadonlySet<GraphNodeType>; revealedTypes: ReadonlySet<GraphNodeType>; hlType: GraphNodeType | null
     doSelect?: (id: string) => void; refreshVis?: () => void; reset?: () => void; redraw?: () => void
-  }>({ P: {}, pinned: new Set(), view: { k: 1, tx: 0, ty: 0 }, dragId: null, hoverNode: null, hoverEdge: null, simUntil: 0, running: false, center: 'site', depth: 2, enqueteSet: null, timeMax: null, hiddenTypes: new Set(), revealedTypes: new Set(), hlType: null })
+  }>({ center: 'site', depth: 2, enqueteSet: null, timeMax: null, hiddenTypes: new Set(), revealedTypes: new Set(), hlType: null })
 
   useEffect(() => { engine.current.center = center }, [center])
   useEffect(() => {
@@ -144,12 +144,11 @@ export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
   }, [depth, enquete, timeMax, hidden, revealed])
 
   useEffect(() => {
-    const wrap = wrapRef.current!, cv = cvRef.current!, ctx = cv.getContext('2d')!
+    const wrap = wrapRef.current!, cv = cvRef.current!
     const E = engine.current
     const dark = () => document.documentElement.dataset.theme === 'dark'
       || (document.documentElement.dataset.theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
     const col = (t: GraphNodeType) => (dark() ? COLOR_DARK : COLOR)[t]
-    let W = 0, H = 0
 
     const visible = () => {
       let s: Set<string>
@@ -181,255 +180,138 @@ export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
       }
       return s
     }
-    const toWorld = (x: number, y: number) => ({ x: (x - E.view.tx) / E.view.k, y: (y - E.view.ty) / E.view.k })
 
-    function seed() {
-      const ring = [...(neigh[E.center] ?? [])]
-      E.P[E.center] ??= { x: W / 2, y: H / 2, vx: 0, vy: 0, alpha: 0 }
-      ring.forEach((id, i) => {
-        const a = -Math.PI / 2 + (i * 2 * Math.PI) / Math.max(1, ring.length)
-        E.P[id] ??= { x: W / 2 + 130 * Math.cos(a), y: H / 2 + 130 * Math.sin(a), vx: 0, vy: 0, alpha: 0 }
-      })
-      for (const n of graph.nodes) E.P[n.id] ??= { x: W / 2 + (Math.random() - 0.5) * 280, y: H / 2 + (Math.random() - 0.5) * 280, vx: 0, vy: 0, alpha: 0 }
-    }
-    function placeNew() {
-      for (const id of visible()) {
-        const p = E.P[id]
-        if (p && p.alpha < 0.05) {
-          const nb = [...(neigh[id] ?? [])].find((m) => E.P[m] && E.P[m].alpha > 0.5)
-          if (nb) { p.x = E.P[nb].x + (Math.random() - 0.5) * 90; p.y = E.P[nb].y + (Math.random() - 0.5) * 90; p.vx = 0; p.vy = 0 }
+    const api = createForceGraphEngine(cv, wrap, {
+      nodeIds: () => graph.nodes.map((n) => n.id),
+      edges: () => graph.edges,
+      visible,
+      // Géographie d'origine : centre au milieu, voisins en anneau 130, le reste dispersé.
+      seed(P, { W, H }) {
+        const ring = [...(neigh[E.center] ?? [])]
+        P[E.center] ??= { x: W / 2, y: H / 2, vx: 0, vy: 0, alpha: 0 }
+        ring.forEach((id, i) => {
+          const a = -Math.PI / 2 + (i * 2 * Math.PI) / Math.max(1, ring.length)
+          P[id] ??= { x: W / 2 + 130 * Math.cos(a), y: H / 2 + 130 * Math.sin(a), vx: 0, vy: 0, alpha: 0 }
+        })
+        for (const n of graph.nodes) P[n.id] ??= { x: W / 2 + (Math.random() - 0.5) * 280, y: H / 2 + (Math.random() - 0.5) * 280, vx: 0, vy: 0, alpha: 0 }
+      },
+      // Rendu Mémoire, pixel-identique (le moteur applique clear + transform).
+      draw(ctx, f) {
+        const surface = dark() ? '#1E1A25' : '#FFFFFF'
+        const inkC = dark() ? '#F0EDF6' : '#1C1B22'
+        const mutedC = dark() ? '#A49DB3' : '#6B6577'
+        const hoverEdge = f.hoverEdgeIndex == null ? null : graph.edges[f.hoverEdgeIndex]
+        const grabbed = f.dragId || f.hoverNode
+        const grabSet = grabbed ? new Set([grabbed, ...(neigh[grabbed] ?? [])]) : null
+        const soft = !f.dragId && f.hoverNode
+        const hl = E.hlType // survol de la légende : halo léger, jamais un clignotement
+        const labelVisible = (id: string) => {
+          if (E.enqueteSet) return true
+          return id === E.center || id === f.hoverNode || (neigh[E.center] ?? new Set()).has(id)
         }
-      }
-    }
-    function kick(ms = 900) {
-      E.simUntil = Math.max(E.simUntil, performance.now() + ms)
-      if (!E.running) { E.running = true; requestAnimationFrame(step) }
-    }
-    function step() {
-      const vis = visible(), ids = [...vis]
-      let energy = 0
-      for (const id of ids) { const p = E.P[id]; if (p) p.alpha += (1 - p.alpha) * 0.12 }
-      for (const n of graph.nodes) if (!vis.has(n.id)) { const p = E.P[n.id]; if (p) p.alpha += (0 - p.alpha) * 0.14 }
-      for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
-        const A = E.P[ids[i]], B = E.P[ids[j]]; if (!A || !B) continue
-        const dx = B.x - A.x, dy = B.y - A.y, d2 = dx * dx + dy * dy || 1, d = Math.sqrt(d2)
-        const f = 4200 / d2, fx = (f * dx) / d, fy = (f * dy) / d
-        A.vx -= fx; A.vy -= fy; B.vx += fx; B.vy += fy
-      }
-      for (const e of graph.edges) {
-        if (!vis.has(e.a) || !vis.has(e.b)) continue
-        const A = E.P[e.a], B = E.P[e.b]; if (!A || !B) continue
-        const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy) || 1
-        const rest = e.a === E.center || e.b === E.center ? 150 : 105
-        const f = 0.022 * (d - rest), fx = (f * dx) / d, fy = (f * dy) / d
-        A.vx += fx; A.vy += fy; B.vx -= fx; B.vy -= fy
-      }
-      for (const id of ids) {
-        const p = E.P[id]; if (!p) continue
-        if (id === E.dragId || E.pinned.has(id)) { p.vx = 0; p.vy = 0; continue }
-        p.vx *= 0.8; p.vy *= 0.8; p.x += p.vx; p.y += p.vy
-        p.x = Math.max(30, Math.min(W - 30, p.x)); p.y = Math.max(34, Math.min(H - 40, p.y))
-        energy += Math.abs(p.vx) + Math.abs(p.vy)
-      }
-      draw()
-      const fading = graph.nodes.some((n) => { const a = E.P[n.id]?.alpha ?? 0; return a > 0.02 && a < 0.98 })
-      const alive = E.dragId || fading || (performance.now() < E.simUntil && energy > 0.25)
-      if (alive) requestAnimationFrame(step); else E.running = false
-    }
-    function labelVisible(id: string) {
-      if (E.enqueteSet) return true
-      return id === E.center || id === E.hoverNode || (neigh[E.center] ?? new Set()).has(id)
-    }
-    function draw() {
-      ctx.clearRect(0, 0, W, H)
-      ctx.save(); ctx.translate(E.view.tx, E.view.ty); ctx.scale(E.view.k, E.view.k)
-      const surface = dark() ? '#1E1A25' : '#FFFFFF'
-      const inkC = dark() ? '#F0EDF6' : '#1C1B22'
-      const mutedC = dark() ? '#A49DB3' : '#6B6577'
-      const grabbed = E.dragId || E.hoverNode
-      const grabSet = grabbed ? new Set([grabbed, ...(neigh[grabbed] ?? [])]) : null
-      const soft = !E.dragId && E.hoverNode
-      const hl = E.hlType // survol de la légende : halo léger, jamais un clignotement
-      for (const e of graph.edges) {
-        const A = E.P[e.a], B = E.P[e.b]; if (!A || !B) continue
-        const al = Math.min(A.alpha, B.alpha); if (al < 0.02) continue
-        const touch = grabbed && (e.a === grabbed || e.b === grabbed)
-        const active = e === E.hoverEdge || e.a === E.center || e.b === E.center
-        ctx.strokeStyle = col(e.type)
-        ctx.globalAlpha = al * (touch ? 0.95 : grabbed ? (soft ? 0.18 : 0.12) : e === E.hoverEdge ? 1 : active ? 0.8 : 0.3)
-        ctx.lineWidth = e === E.hoverEdge || touch ? 2.5 : 1.4
-        ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke()
-      }
-      for (const n of graph.nodes) {
-        const p = E.P[n.id]; if (!p || p.alpha < 0.02) continue
-        const r = (n.id === E.center ? SIZE[n.type] + 6 : SIZE[n.type]) + (hl === n.type ? 2 : 0)
-        ctx.globalAlpha = p.alpha
-          * (grabSet && !grabSet.has(n.id) ? (soft ? 0.4 : 0.22) : 1)
-          * (hl && hl !== n.type ? 0.45 : 1)
-        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7)
-        ctx.fillStyle = surface; ctx.fill()
-        ctx.lineWidth = (n.id === E.center ? 3.5 : n.id === E.hoverNode ? 3 : 2.2) + (hl === n.type ? 1 : 0)
-        ctx.strokeStyle = col(n.type); ctx.stroke()
-        if (n.count) {
-          ctx.beginPath(); ctx.arc(p.x + r * 0.8, p.y - r * 0.8, 9, 0, 7)
-          ctx.fillStyle = col(n.type); ctx.fill()
-          ctx.fillStyle = surface; ctx.font = '700 10px system-ui'
-          ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-          ctx.fillText(String(n.count), p.x + r * 0.8, p.y - r * 0.8)
+        for (const e of graph.edges) {
+          const A = f.P[e.a], B = f.P[e.b]; if (!A || !B) continue
+          const al = Math.min(A.alpha, B.alpha); if (al < 0.02) continue
+          const touch = grabbed && (e.a === grabbed || e.b === grabbed)
+          const active = e === hoverEdge || e.a === E.center || e.b === E.center
+          ctx.strokeStyle = col(e.type)
+          ctx.globalAlpha = al * (touch ? 0.95 : grabbed ? (soft ? 0.18 : 0.12) : e === hoverEdge ? 1 : active ? 0.8 : 0.3)
+          ctx.lineWidth = e === hoverEdge || touch ? 2.5 : 1.4
+          ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke()
         }
-        if (labelVisible(n.id)) {
-          ctx.fillStyle = n.id === E.center ? inkC : mutedC
-          ctx.font = (n.id === E.center ? '600 13' : '500 11.5') + 'px system-ui'
-          ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-          const words = n.label.split(' '), lines: string[] = []; let cur = ''
-          for (const w of words) { if ((cur + ' ' + w).trim().length > 18) { lines.push(cur.trim()); cur = w } else cur += ' ' + w }
-          lines.push(cur.trim())
-          lines.slice(0, 2).forEach((l, i) => ctx.fillText(lines.length > 2 && i === 1 ? l + '…' : l, p.x, p.y + r + 4 + i * 13))
+        for (const n of graph.nodes) {
+          const p = f.P[n.id]; if (!p || p.alpha < 0.02) continue
+          const r = (n.id === E.center ? SIZE[n.type] + 6 : SIZE[n.type]) + (hl === n.type ? 2 : 0)
+          ctx.globalAlpha = p.alpha
+            * (grabSet && !grabSet.has(n.id) ? (soft ? 0.4 : 0.22) : 1)
+            * (hl && hl !== n.type ? 0.45 : 1)
+          ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7)
+          ctx.fillStyle = surface; ctx.fill()
+          ctx.lineWidth = (n.id === E.center ? 3.5 : n.id === f.hoverNode ? 3 : 2.2) + (hl === n.type ? 1 : 0)
+          ctx.strokeStyle = col(n.type); ctx.stroke()
+          if (n.count) {
+            ctx.beginPath(); ctx.arc(p.x + r * 0.8, p.y - r * 0.8, 9, 0, 7)
+            ctx.fillStyle = col(n.type); ctx.fill()
+            ctx.fillStyle = surface; ctx.font = '700 10px system-ui'
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+            ctx.fillText(String(n.count), p.x + r * 0.8, p.y - r * 0.8)
+          }
+          if (labelVisible(n.id)) {
+            ctx.fillStyle = n.id === E.center ? inkC : mutedC
+            ctx.font = (n.id === E.center ? '600 13' : '500 11.5') + 'px system-ui'
+            ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+            const words = n.label.split(' '), lines: string[] = []; let cur = ''
+            for (const w of words) { if ((cur + ' ' + w).trim().length > 18) { lines.push(cur.trim()); cur = w } else cur += ' ' + w }
+            lines.push(cur.trim())
+            lines.slice(0, 2).forEach((l, i) => ctx.fillText(lines.length > 2 && i === 1 ? l + '…' : l, p.x, p.y + r + 4 + i * 13))
+          }
         }
-      }
-      ctx.globalAlpha = 1; ctx.restore()
-    }
-    function hitNode(x: number, y: number) {
-      let best: string | null = null, bd = 1e9
-      for (const n of graph.nodes) {
-        const p = E.P[n.id]; if (!p || p.alpha < 0.5) continue
-        const d = Math.hypot(p.x - x, p.y - y)
-        if (d < Math.max(24, SIZE[n.type] + 10) && d < bd) { bd = d; best = n.id }
-      }
-      return best
-    }
-    function hitEdge(x: number, y: number) {
-      let best: GraphEdge | null = null, bd = 8
-      for (const e of graph.edges) {
-        const A = E.P[e.a], B = E.P[e.b]; if (!A || !B || Math.min(A.alpha, B.alpha) < 0.5) continue
-        const L2 = (B.x - A.x) ** 2 + (B.y - A.y) ** 2 || 1
-        let t = ((x - A.x) * (B.x - A.x) + (y - A.y) * (B.y - A.y)) / L2
-        t = Math.max(0.08, Math.min(0.92, t))
-        const d = Math.hypot(A.x + t * (B.x - A.x) - x, A.y + t * (B.y - A.y) - y)
-        if (d < bd) { bd = d; best = e }
-      }
-      return best
-    }
-
-    function resize() {
-      const dpr = devicePixelRatio || 1
-      W = wrap.clientWidth; H = wrap.clientHeight
-      cv.width = W * dpr; cv.height = H * dpr
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      seed(); kick()
-    }
-
-    let downAt: { x: number; y: number } | null = null, moved = false
-    let panning = false, panFrom = { tx: 0, ty: 0 }
-    const onDown = (ev: PointerEvent) => {
-      const r = cv.getBoundingClientRect(), sx = ev.clientX - r.left, sy = ev.clientY - r.top
-      const { x, y } = toWorld(sx, sy)
-      const id = hitNode(x, y); downAt = { x: sx, y: sy }; moved = false
-      cv.setPointerCapture(ev.pointerId)
-      if (id) { E.dragId = id; cv.style.cursor = 'grabbing' }
-      else { panning = true; panFrom = { tx: E.view.tx, ty: E.view.ty }; cv.style.cursor = 'grabbing' }
-      kick()
-    }
-    const onMove = (ev: PointerEvent) => {
-      const r = cv.getBoundingClientRect(), sx = ev.clientX - r.left, sy = ev.clientY - r.top
-      if (E.dragId) {
-        if (downAt && Math.hypot(sx - downAt.x, sy - downAt.y) > 5) moved = true
-        const w = toWorld(sx, sy); const p = E.P[E.dragId]
-        if (p) { p.x = w.x; p.y = w.y }
-        kick(); return
-      }
-      if (panning) {
-        if (downAt && Math.hypot(sx - downAt.x, sy - downAt.y) > 5) moved = true
-        E.view.tx = panFrom.tx + (sx - downAt!.x); E.view.ty = panFrom.ty + (sy - downAt!.y)
-        draw(); return
-      }
-      const { x, y } = toWorld(sx, sy)
-      const n = hitNode(x, y)
-      E.hoverEdge = n ? null : hitEdge(x, y)
-      if (n !== E.hoverNode) { E.hoverNode = n; draw() } else if (E.hoverEdge) draw()
-      cv.style.cursor = n ? 'pointer' : E.hoverEdge ? 'pointer' : 'grab'
-      if (n) {
-        const nd = nodeById[n]
-        setTip({ x: sx, y: sy, html: `<b>${esc(nd.label)}${nd.count ? ` (${nd.count})` : ''}</b><span>${TYPE_LABEL[nd.type]}${nd.sub ? ' · ' + esc(nd.sub) : ''}</span>` })
-      } else if (E.hoverEdge) {
-        const e = E.hoverEdge
-        setTip({ x: sx, y: sy, html: `<b>${esc(nodeById[e.a].label)} ⟷ ${esc(nodeById[e.b].label)}</b><span>${esc(e.why)}${e.date ? ' · ' + esc(e.date) : ''}</span>` })
-      } else setTip(null)
-    }
-    const onUp = (ev: PointerEvent) => {
-      const r = cv.getBoundingClientRect()
-      const { x, y } = toWorld(ev.clientX - r.left, ev.clientY - r.top)
-      const id = E.dragId; E.dragId = null
-      const wasPan = panning; panning = false
-      cv.style.cursor = id ? 'pointer' : 'grab'
-      if (id && moved) E.pinned.add(id)
-      if (id && !moved && id !== E.center) select(id)
-      else if (!id && !wasPan && !moved) { const e = hitEdge(x, y); if (e) select(e.a === E.center ? e.b : e.a) }
-      else if (wasPan && !moved) {
-        E.hoverNode = null; E.hoverEdge = null; setTip(null)
+        ctx.globalAlpha = 1
+      },
+      physics: {
+        repulsion: 4200,
+        spring: 0.022,
+        rest: (e) => (e.a === E.center || e.b === E.center ? 150 : 105),
+        friction: 0.8,
+        bounds: { padX: 30, padTop: 34, padBottom: 40 },
+      },
+      fade: { in: 0.12, out: 0.14 },
+      loop: 'settle', // figé par défaut — la physique ne vit que pendant un geste
+      zoom: { min: 0.45, max: 2.6, factorIn: 1.12, factorOut: 0.89 },
+      placeNewNearNeighbors: true,
+      hitNodeRadius: (id) => Math.max(24, SIZE[nodeById[id].type] + 10),
+      edgeHit: { tolerance: () => 8, clampA: 0.08, clampB: 0.92 },
+      hitAlphaGate: 0.5,
+      features: { pin: true, dblClick: true },
+      watchTheme: true,
+      onHover(h) {
+        if (!h) { setTip(null); return }
+        if (h.kind === 'node') {
+          const nd = nodeById[h.nodeId!]
+          setTip({ x: h.sx, y: h.sy, html: `<b>${esc(nd.label)}${nd.count ? ` (${nd.count})` : ''}</b><span>${TYPE_LABEL[nd.type]}${nd.sub ? ' · ' + esc(nd.sub) : ''}</span>` })
+        } else {
+          const e = graph.edges[h.edgeIndex!]
+          setTip({ x: h.sx, y: h.sy, html: `<b>${esc(nodeById[e.a].label)} ⟷ ${esc(nodeById[e.b].label)}</b><span>${esc(e.why)}${e.date ? ' · ' + esc(e.date) : ''}</span>` })
+        }
+      },
+      onTapNode(id) { if (id !== E.center) select(id) },
+      onTapVoid() {
+        setTip(null)
         if (E.center !== 'site') select('site')
-        else { E.view = { k: 1, tx: 0, ty: 0 }; kick() }
-      }
-      kick()
-    }
-    const onDbl = (ev: MouseEvent) => {
-      const r = cv.getBoundingClientRect()
-      const { x, y } = toWorld(ev.clientX - r.left, ev.clientY - r.top)
-      const id = hitNode(x, y); if (!id) return
-      E.view.k = 1.35
-      const p = E.P[id]; if (p) { E.view.tx = W / 2 - p.x * E.view.k; E.view.ty = H / 2 - p.y * E.view.k }
-      if (id !== E.center) select(id); else kick()
-    }
-    const onWheel = (ev: WheelEvent) => {
-      ev.preventDefault()
-      const r = cv.getBoundingClientRect(), sx = ev.clientX - r.left, sy = ev.clientY - r.top
-      const w = toWorld(sx, sy)
-      E.view.k = Math.max(0.45, Math.min(2.6, E.view.k * (ev.deltaY < 0 ? 1.12 : 0.89)))
-      E.view.tx = sx - w.x * E.view.k; E.view.ty = sy - w.y * E.view.k
-      draw()
-    }
-    const onLeave = () => { E.hoverNode = null; E.hoverEdge = null; setTip(null); draw() }
+        else { api.view.k = 1; api.view.tx = 0; api.view.ty = 0; api.kick() }
+      },
+      onDblClickNode(id) {
+        api.view.k = 1.35
+        const p = api.P[id]; const { W, H } = api.size()
+        if (p) { api.view.tx = W / 2 - p.x * api.view.k; api.view.ty = H / 2 - p.y * api.view.k }
+        if (id !== E.center) select(id); else api.kick()
+      },
+    })
 
     function select(id: string) {
+      E.center = id // synchrone : seed/rest/placeNew lisent le nouveau centre sans attendre l'effet
       setCenter(id)
       setRevealed(new Set())
       setPanelMode('fiche')
       setTrail((t) => { const i = t.indexOf(id); return i >= 0 ? t.slice(0, i + 1) : [...t, id] })
-      setTimeout(() => { placeNew(); kick(700) }, 0)
+      setTimeout(() => api.refreshVisibility(), 0)
     }
     E.doSelect = select
-    E.refreshVis = () => { placeNew(); kick(700) }
-    E.redraw = () => draw()
+    E.refreshVis = () => api.refreshVisibility()
+    E.redraw = () => api.redraw()
     E.reset = () => {
-      E.pinned.clear(); E.view = { k: 1, tx: 0, ty: 0 }
+      api.pinned.clear(); api.view.k = 1; api.view.tx = 0; api.view.ty = 0
+      const { W, H } = api.size()
       const ring = [...(neigh[E.center] ?? [])]
-      const c = E.P[E.center]; if (c) { c.x = W / 2; c.y = H / 2; c.vx = 0; c.vy = 0 }
+      const c = api.P[E.center]; if (c) { c.x = W / 2; c.y = H / 2; c.vx = 0; c.vy = 0 }
       ring.forEach((id, i) => {
         const a = -Math.PI / 2 + (i * 2 * Math.PI) / Math.max(1, ring.length)
-        const p = E.P[id]; if (p) { p.x = W / 2 + 140 * Math.cos(a); p.y = H / 2 + 140 * Math.sin(a); p.vx = 0; p.vy = 0 }
+        const p = api.P[id]; if (p) { p.x = W / 2 + 140 * Math.cos(a); p.y = H / 2 + 140 * Math.sin(a); p.vx = 0; p.vy = 0 }
       })
-      kick()
+      api.kick()
     }
 
-    resize()
-    const ro = new ResizeObserver(resize); ro.observe(wrap)
-    cv.addEventListener('pointerdown', onDown)
-    cv.addEventListener('pointermove', onMove)
-    cv.addEventListener('pointerup', onUp)
-    cv.addEventListener('dblclick', onDbl)
-    cv.addEventListener('wheel', onWheel, { passive: false })
-    cv.addEventListener('pointerleave', onLeave)
-    const mo = new MutationObserver(() => draw())
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
-    return () => {
-      ro.disconnect(); mo.disconnect()
-      cv.removeEventListener('pointerdown', onDown)
-      cv.removeEventListener('pointermove', onMove)
-      cv.removeEventListener('pointerup', onUp)
-      cv.removeEventListener('dblclick', onDbl)
-      cv.removeEventListener('wheel', onWheel)
-      cv.removeEventListener('pointerleave', onLeave)
-    }
+    return () => api.destroy()
   }, [graph, neigh, nodeById])
 
   const selectFromPanel = (id: string) => engine.current.doSelect?.(id)
