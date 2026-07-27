@@ -33,11 +33,65 @@ type Props = {
   deadlinesToPlan: DashboardDeadlineToPlan[]
 }
 
-function livingPhrase(count: number): string {
-  if (count === 0) return 'Tout est sous contrôle aujourd\'hui.'
-  if (count === 1) return 'Un sujet demande votre attention.'
-  return `${count} sujets demandent votre attention.`
+// ── Briefing conditionnel ────────────────────────────────────────────────────
+
+type DailyBriefing = {
+  headline: string
+  supportingText?: string
+  tone: 'critical' | 'warning' | 'neutral'
 }
+
+function computeDailyBriefing(
+  attentionCards: AttentionCard[],
+  focusSite: SiteDashboardItem | null,
+  urgentCount: number,
+): DailyBriefing {
+  if (urgentCount > 0) {
+    const urgentSiteNames = new Set(
+      attentionCards.filter((c) => c.tone === 'red' && c.siteLabel).map((c) => c.siteLabel!),
+    )
+    const siteUrgentCount = focusSite
+      ? attentionCards.filter((c) => c.tone === 'red' && c.siteLabel === focusSite.name).length
+      : 0
+
+    if (focusSite && urgentSiteNames.size === 1) {
+      return {
+        headline: `Tu peux remettre ${focusSite.name} sous contrôle aujourd'hui.`,
+        supportingText: siteUrgentCount === 1
+          ? 'Commence par son urgence.'
+          : `Commence par ses ${siteUrgentCount} urgences.`,
+        tone: 'critical',
+      }
+    }
+    return {
+      headline: `${urgentSiteNames.size} chantiers ont besoin de toi aujourd'hui.`,
+      supportingText: focusSite ? `${focusSite.name} est le plus prioritaire.` : undefined,
+      tone: 'critical',
+    }
+  }
+
+  if (attentionCards.length > 0) {
+    return {
+      headline: 'La journée est maîtrisable.',
+      supportingText: `${attentionCards.length} point${attentionCards.length > 1 ? 's' : ''} reste${attentionCards.length > 1 ? 'nt' : ''} à surveiller.`,
+      tone: 'warning',
+    }
+  }
+
+  return {
+    headline: 'Tes chantiers sont sous contrôle.',
+    supportingText: 'Rien d\'urgent ne demande ton attention.',
+    tone: 'neutral',
+  }
+}
+
+const HERO_BG: Record<DailyBriefing['tone'], string> = {
+  critical: 'bg-gradient-to-br from-[#b91c1c] to-[#7f1d1d]',
+  warning: 'bg-gradient-to-br from-[#b45309] to-[#92400e]',
+  neutral: 'bg-gradient-to-br from-[#1e3a5f] to-[#162d48]',
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function familyLabel(card: AttentionCard): string {
   if (card.subject !== null) {
@@ -82,6 +136,8 @@ function siteStatusInfo(status: 'critical' | 'warning' | 'normal') {
   return { label: 'Stable', badge: 'bg-[#f0fdf4] text-[#16a34a]', dot: 'bg-[#22c55e]' }
 }
 
+// ── Composant ────────────────────────────────────────────────────────────────
+
 export function DashboardPremium({ firstName, attentionCards, visit, upcoming, sites }: Props) {
   const sorted = sortAttentionCards(attentionCards)
   const nextItems = upcoming.filter((i) => !i.isToday)
@@ -92,8 +148,7 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
   const overduePromisesCount = attentionCards.filter((c) => c.subject !== null && c.tone === 'red').length
   const criticalReservesCount = attentionCards.filter((c) => c.icon === 'warning' && c.tone === 'red').length
 
-  // Chantier du jour : site ayant accumulé le score de priorité le plus élevé
-  // dans les attentionCards. Réutilise le moteur existant, sans nouveau calcul.
+  // Chantier du jour : somme des priorités par siteLabel
   const siteScores = new Map<string, number>()
   for (const card of attentionCards) {
     if (card.siteLabel) siteScores.set(card.siteLabel, (siteScores.get(card.siteLabel) ?? 0) + card.priority)
@@ -112,57 +167,57 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
     ? attentionCards.filter((c) => c.subject !== null && c.siteLabel === focusSite.name).length
     : 0
 
+  const briefing = computeDailyBriefing(attentionCards, focusSite, urgentCount)
+
   return (
     <div className="min-h-screen bg-[#f4f6fb]">
       <div className="mx-auto max-w-lg pt-3">
 
-        {/* ── Accueil vivant ───────────────────────────────── */}
-        <div className="mb-4 px-1">
-          <p className="text-lg font-bold text-[#101a35]">Bonjour {firstName} 👋</p>
-          <p className="mt-0.5 text-sm text-[#65718b]">{livingPhrase(attentionCards.length)}</p>
-        </div>
+        {/* ── Hero : briefing + chantier du jour ───────────────── */}
+        <div className="mb-4 overflow-hidden rounded-3xl shadow-lg">
 
-        {/* ── Bannière attention ────────────────────────────── */}
-        {attentionCards.length > 0 && (
-          <div className="mb-4 rounded-2xl bg-gradient-to-br from-[#dc2626] to-[#b91c1c] px-4 py-3.5 text-white shadow-md">
-            <p className="text-sm font-bold">
-              {urgentCount > 0 ? `${urgentCount} urgence${urgentCount > 1 ? 's' : ''}` : `${attentionCards.length} sujet${attentionCards.length > 1 ? 's' : ''} à traiter`}
-            </p>
-            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-white/85">
-              {overdueActionsCount > 0 && (
-                <span>{overdueActionsCount} action{overdueActionsCount > 1 ? 's' : ''} en retard</span>
-              )}
-              {overduePromisesCount > 0 && (
-                <span>{overduePromisesCount} promesse{overduePromisesCount > 1 ? 's' : ''} dépassée{overduePromisesCount > 1 ? 's' : ''}</span>
-              )}
-              {criticalReservesCount > 0 && (
-                <span>{criticalReservesCount} réserve{criticalReservesCount > 1 ? 's' : ''} critique{criticalReservesCount > 1 ? 's' : ''}</span>
-              )}
-              {(attentionCards.length - urgentCount) > 0 && (
-                <span className="text-white/65">{attentionCards.length - urgentCount} à surveiller</span>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ── Chantier du jour ─────────────────────────────── */}
-        {focusSite && (() => {
-          const { label: statusLabel, badge: statusBadge, dot: statusDot } = siteStatusInfo(focusSite.status)
-          return (
-            <div className="mb-4 overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-[#e5eaf3]">
-              <div className="flex items-center justify-between bg-[#f8faff] px-4 py-2.5">
-                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#65718b]">
-                  Chantier du jour
-                </span>
-                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusBadge}`}>
-                  <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
-                  {statusLabel}
-                </span>
+          {/* Top coloré — mission du jour */}
+          <div className={`px-5 pt-5 pb-6 ${HERO_BG[briefing.tone]}`}>
+            <p className="text-[11px] font-semibold text-white/60">Bonjour {firstName} 👋</p>
+            <h1 className="mt-2 text-[20px] font-bold leading-snug text-white">
+              {briefing.headline}
+            </h1>
+            {briefing.supportingText && (
+              <p className="mt-1.5 text-sm text-white/80">{briefing.supportingText}</p>
+            )}
+            {/* Décomposition urgences */}
+            {urgentCount > 0 && (
+              <div className="mt-3.5 flex flex-wrap gap-x-3 gap-y-1.5 text-[11px] text-white/75">
+                {overdueActionsCount > 0 && (
+                  <span>{overdueActionsCount} action{overdueActionsCount > 1 ? 's' : ''} en retard</span>
+                )}
+                {overduePromisesCount > 0 && (
+                  <span>{overduePromisesCount} promesse{overduePromisesCount > 1 ? 's' : ''} dépassée{overduePromisesCount > 1 ? 's' : ''}</span>
+                )}
+                {criticalReservesCount > 0 && (
+                  <span>{criticalReservesCount} réserve{criticalReservesCount > 1 ? 's' : ''} critique{criticalReservesCount > 1 ? 's' : ''}</span>
+                )}
               </div>
-              <div className="px-4 py-4">
-                <h2 className="truncate text-[15px] font-bold leading-tight text-[#101a35]">{focusSite.name}</h2>
+            )}
+          </div>
+
+          {/* Bas blanc — chantier du jour */}
+          {focusSite && (() => {
+            const { label: statusLabel, badge: statusBadge, dot: statusDot } = siteStatusInfo(focusSite.status)
+            return (
+              <div className="bg-white px-5 py-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#65718b]">
+                    Chantier du jour
+                  </span>
+                  <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusBadge}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
+                    {statusLabel}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-[15px] font-bold text-[#101a35]">{focusSite.name}</p>
                 <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#9aa7be]">Sélectionné car</p>
-                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
                   {focusSite.overdueActionCount > 0 && (
                     <span className="inline-flex items-center gap-1 rounded-lg bg-[#fef2f2] px-2 py-1 text-xs font-semibold text-[#dc2626]">
                       {focusSite.overdueActionCount} en retard
@@ -191,9 +246,9 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
                   Ouvrir le chantier <ChevronRight className="h-4 w-4" />
                 </Link>
               </div>
-            </div>
-          )
-        })()}
+            )
+          })()}
+        </div>
 
         {/* ── À traiter en priorité ─────────────────────────── */}
         {sorted.length > 0 && (
