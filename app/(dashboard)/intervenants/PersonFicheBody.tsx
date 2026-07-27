@@ -143,6 +143,11 @@ export function PersonFicheBody({ fiche, network, onSelectActor }: {
         <FicheSection title="Réseau de collaboration">
           {networkSummary && <p className="mb-2.5 text-xs text-muted-foreground"><span className="font-medium text-foreground/80">{fiche.name}</span> {networkSummary}.</p>}
           <ActorsGraphCanvas graph={network} focusId={`p_${fiche.id}`} heightClass="h-[420px]" onSelectActor={onSelectActor} />
+          <p className="mt-1.5 text-right">
+            <Link href={`/intervenants?vue=graphe&focus=p_${fiche.id}`} className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">
+              Ouvrir dans l’Explorer →
+            </Link>
+          </p>
         </FicheSection>
       )}
     </div>

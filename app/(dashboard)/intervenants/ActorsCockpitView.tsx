@@ -17,7 +17,7 @@ import { ActorPreviewPanel } from './ActorPreviewPanel'
 import { loadActorPreview } from './preview-actions'
 import type { ActorPreview } from './preview-types'
 import { AddIntervenantDialog } from './AddIntervenantDialog'
-import { ActorsGraphCanvas } from './graph/ActorsGraphCanvas'
+import { ActorsExplorer } from './graph/ActorsExplorer'
 
 type Tab = 'all' | 'person' | 'company' | 'team'
 
@@ -218,7 +218,7 @@ export function ActorsCockpitView({ directory, teams, graph, focusId, view }: {
 
       {isGraph ? (
         graph && graph.nodes.length > 0 ? (
-          <ActorsGraphCanvas graph={graph} focusId={focusId} />
+          <ActorsExplorer graph={graph} focusId={focusId} />
         ) : (
           <div className="rounded-2xl border border-dashed border-border/60 py-12 text-center text-sm text-muted-foreground italic">
             Aucun acteur actif à représenter pour le moment.

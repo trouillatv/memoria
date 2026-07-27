@@ -75,7 +75,13 @@ export interface ForceGraphConfig {
   /** Nœuds dont alpha < ce seuil sont transparents aux gestes (Mémoire : 0.5). */
   hitAlphaGate?: number
 
-  features: { pin: boolean; dblClick: boolean }
+  features: {
+    pin: boolean
+    dblClick: boolean
+    /** Un clic (sans déplacement) tombant sur une arête déclenche onTapEdge au lieu
+     *  d'onTapVoid. false = comportement Mémoire historique (arête ≡ vide). */
+    edgeTap?: boolean
+  }
 
   onTapNode?(id: string): void
   onTapEdge?(index: number): void
@@ -293,8 +299,12 @@ export function createForceGraphEngine(
     canvas.style.cursor = id ? 'pointer' : 'grab'
     if (id && moved && cfg.features.pin) pinned.add(id)
     if (id && !moved) cfg.onTapNode?.(id)
-    else if (!id && !wasPan && !moved) { const e = hitEdge(x, y); if (e !== null) cfg.onTapEdge?.(e) }
-    else if (wasPan && !moved) { hoverNode = null; hoverEdgeIndex = null; cfg.onHover?.(null); cfg.onTapVoid?.(true) }
+    else if (wasPan && !moved) {
+      // Clic sans déplacement dans le vide — ou sur une arête si edgeTap est actif.
+      const e = cfg.features.edgeTap ? hitEdge(x, y) : null
+      if (e !== null) { cfg.onTapEdge?.(e); kick(); try { canvas.releasePointerCapture(ev.pointerId) } catch { /* noop */ } return }
+      hoverNode = null; hoverEdgeIndex = null; cfg.onHover?.(null); cfg.onTapVoid?.(true)
+    }
     kick()
     try { canvas.releasePointerCapture(ev.pointerId) } catch { /* noop */ }
   }

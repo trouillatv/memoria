@@ -1,65 +1,66 @@
 'use client'
 
-// ── CANVAS DU GRAPHE DES ACTEURS (client du moteur partagé, V2.0) ────────────
-// Depuis V2.0, la MÉCANIQUE (physique, zoom/pan/drag, hit, boucle) vit dans
-// components/graph/force-graph-engine.ts, partagée avec l'Explorer Mémoire.
-// Ce fichier ne garde que le SENS acteurs : config physique V1 (gravité douce,
-// boucle continue), rendu (couleur = attentionState, tailles hiérarchisées,
-// libellés de relation au survol), sélection/navigation (onSelectActor) et
-// habillage (légende, panneau, hint). Iso-comportement avec la V1.
-// NE PAS mélanger avec le graphe Mémoire : même moteur, deux histoires.
+// ── CANVAS DU GRAPHE DES ACTEURS (client du moteur partagé) ──────────────────
+// V2.1 (direction Vincent) : le graphe reste UN GRAPHE.
+//   · AUCUNE étiquette permanente sur les liens — libellé au survol, et conservé
+//     quand le lien est SÉLECTIONNÉ ;
+//   · AUCUNE popup flottante — l'explication vit dans le panneau de droite
+//     (ActorsExplorer) ;
+//   · AUCUNE navigation au clic — la sélection remonte au parent, tout se met à
+//     jour dans la même vue ;
+//   · mode « Suivre » : un chemin surligné, le reste s'atténue.
+// Deux usages : CONTRÔLÉ (ActorsExplorer : sélection nœud/lien + chemin) ou
+// EMBARQUÉ (fiches / panneau maître-détail : onSelectActor reconfigure la page).
 
-import { useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import type { ActorsGraph, ActorGraphKind, ActorGraphNode } from '@/lib/knowledge/actors-graph'
+import { useEffect, useRef } from 'react'
+import type { ActorsGraph, ActorGraphKind, ActorGraphNode } from '@/lib/knowledge/actors-graph-model'
 import { createForceGraphEngine, type ForceGraphEngine, type Vec } from '@/components/graph/force-graph-engine'
 
 export type SelectableKind = 'person' | 'company' | 'team'
 
+/** Pilotage par l'Explorer : sélection et chemin vivent chez le parent. */
+export interface GraphControl {
+  selectedNodeId: string | null
+  selectedEdgeIndex: number | null
+  pathNodes: ReadonlySet<string> | null
+  pathEdges: ReadonlySet<number> | null
+  onTapNode(node: ActorGraphNode): void
+  onTapEdge(index: number): void
+  onTapVoid(): void
+}
+
 // ── Config propre aux ACTEURS ────────────────────────────────────────────────
 const LEVEL_COLOR = { urgent: '#dc2626', attention: '#f59e0b', ok: '#3b82f6' } as const
 const HISTORICAL_COLOR = '#94a3b8'
-// Hiérarchie visuelle (Vincent) : entreprise > chantier > personne = équipe > action.
+// Hiérarchie visuelle : entreprise > chantier > personne = équipe > action.
 const SIZE: Record<ActorGraphKind, number> = { company: 24, site: 19, person: 14, team: 14, action: 9 }
-const KIND_LABEL: Record<ActorGraphKind, string> = { person: 'Personne', company: 'Entreprise', team: 'Équipe', site: 'Chantier', action: 'Action' }
 
 function nodeColor(n: ActorGraphNode): string {
   if (n.historical) return HISTORICAL_COLOR
   return LEVEL_COLOR[n.level]
 }
 
-/** Surface propriétaire d'un nœud (id préfixé). null si non navigable (action). */
-function nodeHref(n: ActorGraphNode): string | null {
-  const raw = n.id.slice(n.id.indexOf('_') + 1)
-  switch (n.kind) {
-    case 'person': return `/intervenants/personne/${raw}`
-    case 'company': return `/intervenants/entreprise/${raw}`
-    case 'team': return `/equipes/${raw}`
-    case 'site': return `/sites/${raw}`
-    default: return null
-  }
-}
-
-export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', onSelectActor }: {
+export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', onSelectActor, control }: {
   graph: ActorsGraph
   focusId?: string | null
   heightClass?: string
-  /** Fourni par le panneau maître-détail : cliquer un acteur RECONFIGURE la page en place
-   *  (fiche + graphe) au lieu de naviguer. Absent (page dédiée) → navigation classique. */
+  /** Mode EMBARQUÉ (panneau maître-détail) : cliquer un acteur reconfigure la page. */
   onSelectActor?: (kind: SelectableKind, id: string) => void
+  /** Mode CONTRÔLÉ (ActorsExplorer) : la sélection/le chemin vivent chez le parent. */
+  control?: GraphControl
 }) {
-  const router = useRouter()
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const apiRef = useRef<ForceGraphEngine | null>(null)
   // Positions conservées entre changements de graphe (le maître-détail remplace le
-  // graphe sans démonter le composant) — iso avec la V1.
+  // graphe sans démonter le composant).
   const cacheRef = useRef<Map<string, Vec>>(new Map())
-  const [selected, setSelected] = useState<ActorGraphNode | null>(null)
-  const selectedRef = useRef<string | null>(null)
+  // Sélection LOCALE (mode embarqué sans handler) — simple mise en évidence.
+  const localSelRef = useRef<string | null>(null)
   const onSelectRef = useRef(onSelectActor)
+  const controlRef = useRef(control)
   useEffect(() => { onSelectRef.current = onSelectActor }, [onSelectActor])
+  useEffect(() => { controlRef.current = control }, [control])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -87,7 +88,7 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
         let i = 0
         for (const n of graph.nodes) {
           if (!P[n.id]) {
-            const cached = cacheRef.current.get(n.id)
+            const cached = cache.get(n.id)
             if (cached) P[n.id] = { ...cached }
             else {
               const a = i * 2.399963
@@ -100,43 +101,54 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
         if (view.tx === 0 && view.ty === 0) { view.tx = size.W / 2; view.ty = size.H / 2 }
       },
       draw(ctx, f) {
-        const sel = selectedRef.current
+        const ctrl = controlRef.current
+        const sel = ctrl ? ctrl.selectedNodeId : localSelRef.current
+        const selEdge = ctrl?.selectedEdgeIndex ?? null
+        const pathNodes = ctrl?.pathNodes ?? null
+        const pathEdges = ctrl?.pathEdges ?? null
         const hov = f.hoverNode
         const focus = sel ?? hov
         const neigh = focus ? adjacency.get(focus) : null
 
-        // Arêtes — les LIENS PARLENT : libellé au voisinage du focus ET au survol du lien.
+        // Arêtes — libellé UNIQUEMENT au survol ou sur le lien sélectionné (jamais
+        // d'étiquettes permanentes : à 40 nœuds on ne verrait plus que du texte).
         graph.edges.forEach((e, i) => {
           const A = f.P[e.a], B = f.P[e.b]
           if (!A || !B) return
-          const on = (focus && (e.a === focus || e.b === focus)) || i === f.hoverEdgeIndex
-          ctx.strokeStyle = on ? '#475569' : '#e2e8f0'
-          ctx.lineWidth = on ? 1.8 : 1
+          const inPath = pathEdges ? pathEdges.has(i) : null
+          const emphasized = i === f.hoverEdgeIndex || i === selEdge || inPath === true
+          const nearFocus = focus && (e.a === focus || e.b === focus)
+          const dimmed = (pathEdges && !inPath) || (!pathEdges && focus && !nearFocus && !emphasized)
+          ctx.strokeStyle = emphasized ? '#334155' : nearFocus ? '#64748b' : '#e2e8f0'
+          ctx.globalAlpha = dimmed ? 0.25 : 1
+          ctx.lineWidth = emphasized ? 2.2 : nearFocus ? 1.6 : 1
           ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke()
-          if (on) {
+          if (i === f.hoverEdgeIndex || i === selEdge) {
             const mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2
             ctx.font = '10px system-ui, sans-serif'
             ctx.textAlign = 'center'
             const tw = ctx.measureText(e.label).width
-            ctx.fillStyle = 'rgba(255,255,255,0.9)'
+            ctx.fillStyle = 'rgba(255,255,255,0.92)'
             ctx.fillRect(mx - tw / 2 - 3, my - 13, tw + 6, 13)
-            ctx.fillStyle = '#475569'
+            ctx.fillStyle = '#334155'
             ctx.fillText(e.label, mx, my - 3)
           }
+          ctx.globalAlpha = 1
         })
 
         // Nœuds.
         for (const n of graph.nodes) {
           const p = f.P[n.id]
           if (!p) continue
-          const r = SIZE[n.kind]
-          const dim = focus && n.id !== focus && !(neigh && neigh.has(n.id))
-          ctx.globalAlpha = dim ? 0.28 : 1
+          const r = SIZE[n.kind] + (n.id === sel ? 3 : 0)
+          const inPath = pathNodes ? pathNodes.has(n.id) : null
+          const dim = inPath === false || (!pathNodes && focus && n.id !== focus && !(neigh && neigh.has(n.id)))
+          ctx.globalAlpha = dim ? (pathNodes ? 0.15 : 0.28) : 1
           ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2)
           ctx.fillStyle = nodeColor(n)
           ctx.fill()
           if (n.id === sel) { ctx.lineWidth = 3; ctx.strokeStyle = '#0f172a'; ctx.stroke() }
-          ctx.globalAlpha = dim ? 0.4 : 1
+          ctx.globalAlpha = dim ? (pathNodes ? 0.2 : 0.4) : 1
           ctx.fillStyle = '#0f172a'
           ctx.font = `${n.kind === 'site' ? 12 : 11}px system-ui, sans-serif`
           ctx.textAlign = 'center'
@@ -152,20 +164,25 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
       dprCap: 2,
       hitNodeRadius: (id, k) => (SIZE[nodeById.get(id)?.kind ?? 'action'] + 6) / k,
       edgeHit: { tolerance: (k) => 8 / k, clampA: 0, clampB: 1 },
-      features: { pin: false, dblClick: false },
+      features: { pin: false, dblClick: false, edgeTap: !!controlRef.current },
       onTapNode(id) {
         const node = nodeById.get(id) ?? null
-        if (node && (node.kind === 'person' || node.kind === 'company' || node.kind === 'team')) {
-          // NAVIGATION DANS LE RÉSEAU : dans le panneau, on RECONFIGURE la page ;
-          // sur la page dédiée, on navigue.
-          const raw = node.id.slice(node.id.indexOf('_') + 1)
-          if (onSelectRef.current) onSelectRef.current(node.kind, raw)
-          else { const h = nodeHref(node); if (h) router.push(h) }
-        } else if (node) {
-          selectedRef.current = node.id; setSelected(node) // chantier / action → panneau d'info
+        if (!node) return
+        const ctrl = controlRef.current
+        if (ctrl) { ctrl.onTapNode(node); return } // Explorer : AUCUNE navigation
+        if ((node.kind === 'person' || node.kind === 'company' || node.kind === 'team') && onSelectRef.current) {
+          // Panneau maître-détail : reconfigure la page en place (pas de rechargement).
+          onSelectRef.current(node.kind, node.id.slice(node.id.indexOf('_') + 1))
+        } else {
+          localSelRef.current = node.id // mise en évidence locale, sans popup
         }
       },
-      onTapVoid() { selectedRef.current = null; setSelected(null) },
+      onTapEdge(index) { controlRef.current?.onTapEdge(index) },
+      onTapVoid() {
+        const ctrl = controlRef.current
+        if (ctrl) ctrl.onTapVoid()
+        else localSelRef.current = null
+      },
     })
     apiRef.current = api
 
@@ -175,9 +192,9 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
       api.destroy()
       apiRef.current = null
     }
-  }, [graph, router])
+  }, [graph])
 
-  // Centrage initial sur le nœud « Voir son réseau ».
+  // Centrage initial (« Voir son réseau » / focus Explorer).
   useEffect(() => {
     const api = apiRef.current
     if (!focusId || !api) return
@@ -187,14 +204,10 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
       api.view.k = 1.1
       api.view.tx = W / 2 - p.x * api.view.k
       api.view.ty = H / 2 - p.y * api.view.k
-      selectedRef.current = focusId
-      setSelected(graph.nodes.find((n) => n.id === focusId) ?? null)
+      if (!controlRef.current) localSelRef.current = focusId
       api.redraw()
     }
-     
   }, [focusId, graph])
-
-  const selHref = selected ? nodeHref(selected) : null
 
   return (
     <div ref={containerRef} className={`relative w-full overflow-hidden rounded-2xl border border-border/60 bg-card ${heightClass}`}>
@@ -208,22 +221,8 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
         <span className="flex items-center gap-1.5"><Dot c={HISTORICAL_COLOR} /> Historique</span>
       </div>
 
-      {/* Panneau de sélection. */}
-      {selected && (
-        <div className="absolute right-3 top-3 w-60 rounded-lg border border-border/60 bg-background/95 p-3 text-sm shadow-sm backdrop-blur">
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{KIND_LABEL[selected.kind]}</div>
-          <div className="font-semibold">{selected.label}</div>
-          {selected.sub && <div className="text-xs text-muted-foreground">{selected.sub}</div>}
-          {selHref && (
-            <Link href={selHref} className="mt-2 inline-block text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">
-              Ouvrir la fiche →
-            </Link>
-          )}
-        </div>
-      )}
-
       <p className="pointer-events-none absolute bottom-3 left-3 text-[11px] text-muted-foreground">
-        Molette : zoom · glisser : déplacer · clic sur un acteur : y naviguer
+        Molette : zoom · glisser : déplacer · clic : sélectionner
       </p>
     </div>
   )

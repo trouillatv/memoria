@@ -3,7 +3,8 @@
 // l'état d'attention (graphe d'attention, pas simple schéma).
 
 import { describe, expect, it } from 'vitest'
-import { buildActorsGraph, egoSubgraph, type ActorsGraphInputs } from '@/lib/knowledge/actors-graph'
+import { buildActorsGraph, egoSubgraph, shortestPath, type ActorsGraphInputs } from '@/lib/knowledge/actors-graph'
+import { narrateActorInGraph } from '@/lib/knowledge/actor-narration'
 
 function base(): ActorsGraphInputs {
   return {
@@ -88,6 +89,61 @@ describe('buildActorsGraph', () => {
     expect(d2.nodes.map((n) => n.id)).toContain('s_s1')
     // Nœud absent → sous-graphe vide.
     expect(egoSubgraph(g, 'p_zzz', 2)).toEqual({ nodes: [], edges: [] })
+  })
+
+  it('les liens portent leur DÉBUT structurel quand il existe (joined_at, effective_from)', () => {
+    const g = buildActorsGraph({
+      ...base(),
+      persons: [{ id: 'c1', name: 'X', sub: null, level: 'ok', historical: false, companyId: 'co1' }],
+      companies: [{ id: 'co1', name: 'Y', sub: null, level: 'ok', historical: false }],
+      teams: [{ id: 't1', name: 'T', sub: null, level: 'ok', historical: false }],
+      siteNames: [{ id: 's1', name: 'S' }],
+      fieldMemberships: [{ contactId: 'c1', teamId: 't1', joinedAt: '2026-03-12T08:00:00Z' }],
+      casting: [{ companyId: 'co1', siteId: 's1', effectiveFrom: '2026-07-24' }],
+    })
+    expect(g.edges.find((e) => e.rel === 'member_of')?.since).toBe('2026-03-12')
+    expect(g.edges.find((e) => e.rel === 'intervenes_on')?.since).toBe('2026-07-24')
+    // Aucune date structurelle pour belongs_to → jamais une date inventée.
+    expect(g.edges.find((e) => e.rel === 'belongs_to')?.since).toBeNull()
+  })
+
+  it('shortestPath (mode Suivre) : chemin le plus court, index d\'arêtes traversées', () => {
+    const g = buildActorsGraph({
+      ...base(),
+      persons: [{ id: 'c1', name: 'Joseph', sub: null, level: 'ok', historical: false, companyId: 'co1' }],
+      companies: [{ id: 'co1', name: 'Clim', sub: null, level: 'ok', historical: false }],
+      teams: [{ id: 't1', name: 'Élec', sub: null, level: 'ok', historical: false }],
+      siteNames: [{ id: 's1', name: 'Petro' }],
+      fieldMemberships: [{ contactId: 'c1', teamId: 't1' }],
+      missions: [{ siteId: 's1', teamId: 't1' }],
+      casting: [{ companyId: 'co1', siteId: 's1' }],
+    })
+    const p = shortestPath(g, 'p_c1', 's_s1')!
+    expect(p.nodes[0]).toBe('p_c1')
+    expect(p.nodes[p.nodes.length - 1]).toBe('s_s1')
+    expect(p.nodes).toHaveLength(3) // p_c1 → tm_t1 → s_s1 (plus court que via l'entreprise)
+    expect(p.edgeIndexes).toHaveLength(2)
+    expect(shortestPath(g, 'p_c1', 'zzz')).toBeNull()
+  })
+
+  it('narration : phrases factuelles depuis les relations structurelles', () => {
+    const g = buildActorsGraph({
+      ...base(),
+      persons: [{ id: 'c1', name: 'Joseph', sub: null, level: 'urgent', historical: false, companyId: 'co1' }],
+      companies: [{ id: 'co1', name: 'Clim Austral', sub: null, level: 'ok', historical: false }],
+      teams: [{ id: 't1', name: 'Électricité', sub: null, level: 'ok', historical: false }],
+      siteNames: [{ id: 's1', name: 'Petro' }],
+      fieldMemberships: [{ contactId: 'c1', teamId: 't1' }],
+      openActions: [
+        { id: 'a1', title: 'A', siteId: 's1', contactId: 'c1', companyId: null, overdue: true },
+        { id: 'a2', title: 'B', siteId: 's1', contactId: 'c1', companyId: null, overdue: false },
+      ],
+    })
+    const s = narrateActorInGraph('p_c1', g).join(' ')
+    expect(s).toContain('Joseph travaille chez Clim Austral.')
+    expect(s).toContain('Membre de l’équipe Électricité.')
+    expect(s).toContain('Référent de 2 actions ouvertes, dont 1 en retard.')
+    expect(narrateActorInGraph('inconnu', g)).toEqual([])
   })
 
   it('déduplique les liens identiques', () => {

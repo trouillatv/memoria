@@ -1,6 +1,7 @@
 // Corps de la fiche ENTREPRISE — PARTAGÉ entre la page dédiée et le panneau maître-
 // détail de /intervenants. Une seule source de rendu. Purement présentationnel.
 
+import Link from 'next/link'
 import { Building2, MapPin, User, ArrowRight, Clock, Mail, Phone, Globe } from 'lucide-react'
 import type { CompanyFiche } from '@/lib/db/company-fiche'
 import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
@@ -124,6 +125,11 @@ export function CompanyFicheBody({ fiche, network, onSelectActor }: {
         <FicheSection title="Réseau de collaboration">
           {networkSummary && <p className="mb-2.5 text-xs text-muted-foreground"><span className="font-medium text-foreground/80">{fiche.name}</span> {networkSummary}.</p>}
           <ActorsGraphCanvas graph={network} focusId={`co_${fiche.id}`} heightClass="h-[420px]" onSelectActor={onSelectActor} />
+          <p className="mt-1.5 text-right">
+            <Link href={`/intervenants?vue=graphe&focus=co_${fiche.id}`} className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300">
+              Ouvrir dans l’Explorer →
+            </Link>
+          </p>
         </FicheSection>
       )}
     </div>
