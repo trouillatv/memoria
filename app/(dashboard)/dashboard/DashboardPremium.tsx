@@ -321,12 +321,20 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
                     Aucun blocage critique sur ce chantier.
                   </p>
                 )}
-                <Link
-                  href={focusSite.href}
-                  className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[#101a35] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1a2a50]"
-                >
-                  Ouvrir le chantier <ChevronRight className="h-4 w-4" />
-                </Link>
+                <div className="mt-4 flex items-center gap-4">
+                  <Link
+                    href={`/m/site/${focusSite.id}/prepare`}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#101a35] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1a2a50]"
+                  >
+                    Préparer ma visite <ChevronRight className="h-4 w-4" />
+                  </Link>
+                  <Link
+                    href={focusSite.href}
+                    className="text-sm font-semibold text-[#4973dd] hover:underline"
+                  >
+                    Ouvrir le chantier
+                  </Link>
+                </div>
               </div>
             )
           })()}
