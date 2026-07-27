@@ -14,7 +14,7 @@ import type { MemorySignal } from '@/lib/memory/signals/operational-contract'
 import type { AttentionCard } from '@/lib/situations/attention/types'
 import type { NowCard } from '@/lib/situations/now/types'
 import { sortAttentionCards } from '@/lib/situations/attention/project'
-import { PromiseActions } from './PromiseActions'
+import { QuickConfirmButton } from './PromiseActions'
 
 type Props = {
   firstName: string
@@ -57,6 +57,19 @@ const FAMILY_COLORS: Record<AttentionCard['tone'], string> = {
   neutral: 'text-[#4973dd] bg-[#eef4ff]',
 }
 
+function ctaLabel(card: AttentionCard): string {
+  if (card.icon === 'calendar') return card.tone === 'red' ? 'Ouvrir' : 'Planifier'
+  if (card.icon === 'document') return 'Compléter'
+  if (card.icon === 'warning') return card.tone === 'red' ? 'Arbitrer' : 'Ouvrir'
+  return 'Voir'
+}
+
+const CTA_COLORS: Record<AttentionCard['tone'], string> = {
+  red: 'bg-[#fef2f2] text-[#dc2626] hover:bg-[#fee2e2]',
+  amber: 'bg-[#fffbeb] text-[#d97706] hover:bg-[#fef3c7]',
+  neutral: 'bg-[#eef4ff] text-[#4973dd] hover:bg-[#dce8ff]',
+}
+
 function shortDate(iso: string): string {
   return new Intl.DateTimeFormat('fr-FR', {
     weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Pacific/Noumea',
@@ -96,22 +109,23 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
 
   return (
     <div className="min-h-screen bg-[#f4f6fb]">
-      <div className="mx-auto max-w-lg pt-2">
+      <div className="mx-auto max-w-lg pt-3">
 
         {/* ── Accueil vivant ───────────────────────────────── */}
-        <div className="mb-3 px-1">
-          <p className="text-base font-semibold text-[#101a35]">Bonjour {firstName} 👋</p>
+        <div className="mb-4 px-1">
+          <p className="text-lg font-bold text-[#101a35]">Bonjour {firstName} 👋</p>
           <p className="mt-0.5 text-sm text-[#65718b]">{livingPhrase(attentionCards.length)}</p>
         </div>
 
         {/* ── Bannière attention ────────────────────────────── */}
         {attentionCards.length > 0 && (
-          <div className="mb-4 rounded-2xl bg-[#dc2626] px-4 py-3 text-white shadow-sm">
-            <p className="font-bold">
+          <div className="mb-4 rounded-2xl bg-gradient-to-br from-[#dc2626] to-[#b91c1c] px-4 py-3.5 text-white shadow-md">
+            <p className="text-sm font-bold">
               {attentionCards.length} sujet{attentionCards.length > 1 ? 's' : ''} demandent votre attention
             </p>
-            <p className="mt-0.5 text-xs text-white/80">
-              {urgentCount} urgent{urgentCount !== 1 ? 's' : ''} · {attentionCards.length - urgentCount} à surveiller
+            <p className="mt-1 text-xs text-white/75">
+              <span className="font-semibold text-white">{urgentCount} urgent{urgentCount !== 1 ? 's' : ''}</span>
+              {' '}· {attentionCards.length - urgentCount} à surveiller
             </p>
           </div>
         )}
@@ -120,47 +134,43 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
         {focusSite && (() => {
           const { label: statusLabel, badge: statusBadge, dot: statusDot } = siteStatusInfo(focusSite.status)
           return (
-            <div className="mb-4 rounded-2xl bg-white shadow-sm ring-1 ring-[#e5eaf3]">
-              <div className="flex items-center justify-between border-b border-[#f0f3f9] px-4 py-2.5">
-                <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#65718b]">
+            <div className="mb-4 overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-[#e5eaf3]">
+              <div className="flex items-center justify-between bg-[#f8faff] px-4 py-2.5">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#65718b]">
                   Chantier du jour
                 </span>
-                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge}`}>
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusBadge}`}>
                   <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
                   {statusLabel}
                 </span>
               </div>
-              <div className="px-4 py-3">
-                <h2 className="truncate text-base font-bold text-[#101a35]">{focusSite.name}</h2>
-                <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+              <div className="px-4 py-4">
+                <h2 className="truncate text-[15px] font-bold leading-tight text-[#101a35]">{focusSite.name}</h2>
+                <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                   {focusSite.overdueActionCount > 0 && (
-                    <span>
-                      <strong className="font-bold text-[#dc2626]">{focusSite.overdueActionCount}</strong>
-                      {' '}<span className="text-xs text-[#65718b]">en retard</span>
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-[#fef2f2] px-2 py-1 text-xs font-semibold text-[#dc2626]">
+                      {focusSite.overdueActionCount} en retard
                     </span>
                   )}
                   {focusSite.openReserveCount > 0 && (
-                    <span>
-                      <strong className="font-bold text-[#d97706]">{focusSite.openReserveCount}</strong>
-                      {' '}<span className="text-xs text-[#65718b]">réserve{focusSite.openReserveCount > 1 ? 's' : ''}</span>
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-[#fffbeb] px-2 py-1 text-xs font-semibold text-[#d97706]">
+                      {focusSite.openReserveCount} réserve{focusSite.openReserveCount > 1 ? 's' : ''}
                     </span>
                   )}
                   {focusSitePromiseCount > 0 && (
-                    <span>
-                      <strong className="font-bold text-[#4973dd]">{focusSitePromiseCount}</strong>
-                      {' '}<span className="text-xs text-[#65718b]">promesse{focusSitePromiseCount > 1 ? 's' : ''}</span>
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-[#eef4ff] px-2 py-1 text-xs font-semibold text-[#4973dd]">
+                      {focusSitePromiseCount} promesse{focusSitePromiseCount > 1 ? 's' : ''}
                     </span>
                   )}
                   {focusSite.activeActionCount > 0 && (
-                    <span>
-                      <strong className="font-bold text-[#101a35]">{focusSite.activeActionCount}</strong>
-                      {' '}<span className="text-xs text-[#65718b]">action{focusSite.activeActionCount > 1 ? 's' : ''}</span>
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-[#f5f7fb] px-2 py-1 text-xs font-semibold text-[#33415c]">
+                      {focusSite.activeActionCount} action{focusSite.activeActionCount > 1 ? 's' : ''}
                     </span>
                   )}
                 </div>
                 <Link
                   href={focusSite.href}
-                  className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-[#4973dd] hover:underline"
+                  className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-[#101a35] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1a2a50]"
                 >
                   Ouvrir le chantier <ChevronRight className="h-4 w-4" />
                 </Link>
@@ -171,65 +181,56 @@ export function DashboardPremium({ firstName, attentionCards, visit, upcoming, s
 
         {/* ── À traiter en priorité ─────────────────────────── */}
         {sorted.length > 0 && (
-          <div className="mb-4 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-[#e5eaf3]">
-            <div className="flex items-center justify-between border-b border-[#f0f3f9] px-4 py-3">
-              <h2 className="text-sm font-bold text-[#101a35]">À traiter en priorité</h2>
+          <div className="mb-4 overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-[#e5eaf3]">
+            <div className="flex items-center justify-between bg-[#f8faff] px-4 py-2.5">
+              <h2 className="text-xs font-bold uppercase tracking-[0.12em] text-[#65718b]">À traiter</h2>
               <Link href="/actions" className="text-xs font-semibold text-[#4973dd]">
-                Voir tout ({sorted.length}) ›
+                Tout voir ({sorted.length}) ›
               </Link>
             </div>
             <ul className="divide-y divide-[#f5f7fb]">
-              {sorted.slice(0, 5).map((card) => {
-                const fulfillResolutions = card.resolutions.filter((r) => r.kind === 'fulfill_promise')
-                return (
-                  <li key={card.id} className="flex items-start gap-3 px-4 py-3">
-                    <div className="min-w-0 flex-1">
-                      <span
-                        className={`inline-block rounded px-1.5 py-0.5 text-[9px] font-bold tracking-[0.1em] ${FAMILY_COLORS[card.tone]}`}
+              {sorted.slice(0, 5).map((card) => (
+                <li key={card.id} className="flex items-center gap-3 px-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    <span
+                      className={`inline-block rounded-md px-1.5 py-0.5 text-[9px] font-bold tracking-[0.1em] ${FAMILY_COLORS[card.tone]}`}
+                    >
+                      {familyLabel(card)}
+                    </span>
+                    <p className="mt-1 text-[13px] font-semibold leading-snug text-[#17213a]">{card.title}</p>
+                    <p className="mt-0.5 text-[11px] text-[#65718b]">
+                      {card.siteLabel}{card.timingLabel ? ` · ${card.timingLabel}` : ''}
+                    </p>
+                  </div>
+                  <div className="shrink-0">
+                    {card.subject !== null ? (
+                      <QuickConfirmButton subject={card.subject} />
+                    ) : card.primaryAction ? (
+                      <Link
+                        href={card.primaryAction.href}
+                        className={`inline-flex items-center rounded-xl px-3 py-1.5 text-xs font-semibold ${CTA_COLORS[card.tone]}`}
                       >
-                        {familyLabel(card)}
-                      </span>
-                      <p className="mt-1 text-sm font-semibold leading-snug text-[#17213a]">{card.title}</p>
-                      <p className="mt-0.5 text-xs text-[#65718b]">
-                        {card.siteLabel}{card.timingLabel ? ` · ${card.timingLabel}` : ''}
-                      </p>
-                    </div>
-                    <div className="shrink-0">
-                      {card.subject && fulfillResolutions.length > 0 ? (
-                        <PromiseActions subject={card.subject} resolutions={fulfillResolutions} />
-                      ) : card.primaryAction ? (
-                        <Link
-                          href={card.primaryAction.href}
-                          className={`mt-3 inline-flex items-center rounded-xl px-3 py-1.5 text-xs font-semibold ${
-                            card.tone === 'red'
-                              ? 'bg-[#fef2f2] text-[#dc2626]'
-                              : card.tone === 'amber'
-                                ? 'bg-[#fffbeb] text-[#d97706]'
-                                : 'bg-[#eef4ff] text-[#4973dd]'
-                          }`}
-                        >
-                          Ouvrir
-                        </Link>
-                      ) : null}
-                    </div>
-                  </li>
-                )
-              })}
+                        {ctaLabel(card)}
+                      </Link>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
             </ul>
           </div>
         )}
 
         {/* ── Prochaines échéances ─────────────────────────── */}
         {nextItems.length > 0 && (
-          <div className="mb-4 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-[#e5eaf3]">
-            <div className="flex items-baseline justify-between">
-              <h3 className="text-xs font-bold text-[#101a35]">Prochaines échéances</h3>
-              <Link href="/planning" className="text-[10px] text-[#4973dd]">Voir tout ›</Link>
+          <div className="mb-4 overflow-hidden rounded-2xl bg-white shadow-md ring-1 ring-[#e5eaf3]">
+            <div className="flex items-center justify-between bg-[#f8faff] px-4 py-2.5">
+              <h3 className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#65718b]">Prochaines échéances</h3>
+              <Link href="/planning" className="text-[10px] font-semibold text-[#4973dd]">Voir tout ›</Link>
             </div>
-            <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2.5">
+            <ul className="grid grid-cols-2 divide-x divide-y divide-[#f5f7fb]">
               {nextItems.slice(0, 4).map((item) => (
                 <li key={`${item.sourceType}:${item.id}`}>
-                  <Link href={item.href} className="block hover:opacity-75">
+                  <Link href={item.href} className="block px-4 py-3 hover:bg-[#f8faff]">
                     <p className="text-[10px] font-bold uppercase tracking-wide text-[#4973dd]">
                       {shortDate(item.startsAt)}
                     </p>

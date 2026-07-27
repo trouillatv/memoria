@@ -116,6 +116,30 @@ export function PromiseActions({ subject, resolutions }: { subject: PromiseSubje
   )
 }
 
+/** Bouton compact « Confirmer » pour la liste dashboard — un seul geste, zéro formulaire. */
+export function QuickConfirmButton({ subject }: { subject: PromiseSubjectRef }) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  function confirm() {
+    startTransition(async () => {
+      const r = await fulfillPromiseAction({ subject })
+      if (r?.error) { toast.error(r.error); return }
+      toast.success('Promesse confirmée.')
+      router.refresh()
+    })
+  }
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={confirm}
+      className="inline-flex items-center rounded-xl px-3 py-1.5 text-xs font-semibold bg-[#eef4ff] text-[#4973dd] disabled:opacity-50 hover:bg-[#dce8ff]"
+    >
+      Confirmer
+    </button>
+  )
+}
+
 /** Rend les gestes de résolution d'une carte, ou rien si elle n'est pas résoluble. */
 export function AttentionCardResolutions({ card }: { card: AttentionCard }) {
   if (!card.subject || card.resolutions.length === 0) return null
