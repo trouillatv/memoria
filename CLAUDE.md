@@ -848,5 +848,5 @@ Toujours analyser le **périmètre minimal** utile à la tâche. Ne jamais index
 
 - Utiliser `--code-only` par défaut (aucun token LLM consommé).
 - N'utiliser un backend LLM que si l'analyse sémantique des docs ou images est réellement nécessaire.
-- `graphify-out/` est un artefact local : ne jamais le versionner.
+- `graphify-out/` est versionné dans le dépôt.
 - Ne pas lancer Graphify pour une correction locale, un changement de texte ou un ajustement CSS.
