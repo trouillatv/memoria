@@ -1,34 +1,53 @@
 import 'server-only'
 
-// ── « POURQUOI C'EST ICI ? » — LA CHAÎNE DE PROVENANCE ───────────────────────
-// Objectif 2 du moteur d'explication (cadrage 2026-07-18) : « en 30 secondes,
-// je comprends pourquoi cette chose existe ».
+// ── « POURQUOI ? » — LA PREUVE CIBLÉE ────────────────────────────────────────
+// Objectif du moteur d'explication : « en moins de 5 secondes, je comprends
+// pourquoi MemorIA a proposé ceci » — une logique de PREUVE, pas d'affichage
+// exhaustif du contenu source (Vincent, 2026-07-28).
 //
-// La chaîne remonte un objet confirmé jusqu'à la voix qui l'a fait naître :
-//   chantier → visite → mémo(s), mot pour mot → objet.
+// Le bloc remonte, dans cet ordre de lecture :
+//   1. STATUT de la proposition (validée / en attente / rejetée / remplacée) ;
+//   2. DÉTECTÉ LE — le jour où MemorIA a créé la proposition ;
+//   3. SOURCE — la visite/réunion/document d'origine ;
+//   4. CITATION — UNIQUEMENT la ou les phrases (≤ 2) qui ont justifié
+//      l'extraction, jamais tout le mémo ;
+//   5. LIEN vers la source.
 //
-// AUCUNE génération n'a lieu ici : chaque maillon est une ligne de base
-// identifiable (règle « rien d'affiché sans preuve »). Le travail dur est déjà
-// fait — report_id sur l'objet, source_capture_ids sur la proposition qui l'a
-// porté (backref promoted_object_id, mig 212). Ce read model ne fait que le
-// rendre lisible. Il servira tel quel à l'onglet Explorer.
+// AUCUNE génération : chaque maillon est une ligne de base identifiable. La
+// citation est RETROUVÉE dans le mémo par correspondance déterministe (aucun
+// appel IA) — on ne cite jamais une paraphrase.
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 
 export type ProvenanceObjectType = 'action' | 'deadline' | 'decision'
 
-export interface ProvenanceStep {
-  kind: 'site' | 'visite' | 'memo' | 'objet'
-  label: string
-  /** Détail court — date de visite, contrainte d'échéance… */
-  sub?: string | null
-  /** Le mémo, mot pour mot (tronqué) : la preuve, jamais une paraphrase. */
-  excerpt?: string | null
+/** Cycle de vie d'une proposition (mig 212 + 231). */
+export type ProposalStatus = 'proposed' | 'confirmed' | 'fulfilled' | 'dismissed' | 'superseded'
+
+export interface ProvenanceCitation {
+  /** « Mémo vocal » · « Note de visite ». */
+  source: string
+  /** La phrase RETROUVÉE dans le mémo — courte, mot pour mot. */
+  text: string
 }
 
 export interface ProvenanceChain {
-  steps: ProvenanceStep[]
+  /** Statut de la proposition IA. null = objet saisi à la main (aucune proposition). */
+  status: ProposalStatus | null
+  /** Jour où MemorIA a détecté/proposé (ISO) — proposition `created_at`. null si saisie manuelle. */
+  detectedAt: string | null
+  /** Le chantier — contexte discret. */
+  siteName: string
+  /** La source d'origine — « Visite du 12 mai 2026 ». */
+  sourceLabel: string | null
+  /** Citations CIBLÉES (≤ 2) : les phrases qui ont justifié l'extraction. */
+  citations: ProvenanceCitation[]
+  /** Lien vers la visite/document d'origine. */
+  origin: { href: string; label: string } | null
+  /** L'objet lui-même (l'échéance/action/décision) + sa nature. */
+  objectLabel: string
+  objectKind: string
 }
 
 const TABLES: Record<ProvenanceObjectType, { table: string; titleCol: string }> = {
@@ -44,12 +63,79 @@ const OBJET_LABEL: Record<ProvenanceObjectType, string> = {
 }
 
 const dateFmt = new Intl.DateTimeFormat('fr-FR', {
-  timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long',
+  timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long', year: 'numeric',
 })
 
+// ── Citation ciblée (déterministe) ───────────────────────────────────────────
+// On ne montre plus tout le mémo : on RETROUVE la/les phrase(s) la/les plus
+// proche(s) de ce que MemorIA a extrait (le titre de l'objet + la contrainte).
+
+const STOP = new Set([
+  'dans', 'pour', 'avec', 'les', 'des', 'une', 'que', 'qui', 'est', 'sera', 'seront',
+  'vont', 'plus', 'sont', 'aux', 'par', 'pas', 'leur', 'leurs', 'cette', 'ces', 'ils',
+  'elle', 'nous', 'vous', 'sur', 'son', 'ses', 'the', 'and', 'être', 'avoir', 'fait',
+])
+
+function normalize(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+}
+
+/** Jetons signifiants (≥ 4 lettres, hors mots vides). */
+function tokens(s: string): string[] {
+  return normalize(s).replace(/[^a-z0-9]+/g, ' ').split(' ').filter((w) => w.length >= 4 && !STOP.has(w))
+}
+
+/** Découpe en phrases (ponctuation forte ou saut de ligne). */
+function splitSentences(text: string): string[] {
+  return text
+    .replace(/\r/g, '\n')
+    .split(/(?<=[.!?…])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+}
+
+/** Raccourcit une citation trop longue à la frontière d'un mot. */
+function trimCitation(s: string, maxLen = 180): string {
+  if (s.length <= maxLen) return s
+  const cut = s.slice(0, maxLen)
+  const lastSpace = cut.lastIndexOf(' ')
+  return (lastSpace > 60 ? cut.slice(0, lastSpace) : cut).replace(/[\s.,;:–-]+$/, '') + '…'
+}
+
 /**
- * La provenance d'un objet confirmé. `null` si l'objet n'existe pas, n'a pas de
- * provenance, ou n'appartient pas à l'organisation de l'appelant (fail-closed :
+ * Retrouve dans les mémos les phrases les plus proches de ce qui a été extrait.
+ * Au plus `max` citations, dans l'ordre de lecture. Si aucune phrase ne partage
+ * de mot signifiant, on retombe sur la 1ʳᵉ phrase du 1ᵉ mémo (courte) plutôt que
+ * sur tout le mémo — jamais l'intégralité de la note.
+ */
+function pickCitations(
+  captures: Array<{ kind: string; body: string }>,
+  needle: string,
+  max = 2,
+): ProvenanceCitation[] {
+  const key = new Set(tokens(needle))
+  const label = (kind: string) => (kind === 'vocal' ? 'Mémo vocal' : 'Note de visite')
+  type Cand = { kind: string; text: string; order: number; overlap: number }
+  const cands: Cand[] = []
+  let order = 0
+  for (const c of captures) {
+    for (const sentence of splitSentences(c.body)) {
+      const t = tokens(sentence)
+      const overlap = t.reduce((n, w) => n + (key.has(w) ? 1 : 0), 0)
+      cands.push({ kind: c.kind, text: sentence, order: order++, overlap })
+    }
+  }
+  if (cands.length === 0) return []
+  const scored = cands.filter((c) => c.overlap > 0).sort((a, b) => b.overlap - a.overlap || a.order - b.order)
+  const chosen = (scored.length > 0 ? scored : cands.slice(0, 1)).slice(0, max)
+  return chosen
+    .sort((a, b) => a.order - b.order)
+    .map((c) => ({ source: label(c.kind), text: trimCitation(c.text) }))
+}
+
+/**
+ * La provenance d'un objet. `null` si l'objet n'existe pas, n'a pas de source
+ * traçable, ou n'appartient pas à l'organisation de l'appelant (fail-closed :
  * le service-role bypasse la RLS, la garde vit ici).
  */
 export async function getProvenance(
@@ -81,65 +167,66 @@ export async function getProvenance(
     .maybeSingle()
   if (!site || !orgIds.includes((site as { organization_id: string | null }).organization_id ?? '')) return null
 
-  // La proposition qui a porté l'objet (mig 212) : c'est elle qui connaît les
-  // captures d'origine. Son absence n'est pas une erreur — un objet saisi à la
-  // main n'a simplement pas de voix derrière lui.
+  // La proposition qui a porté l'objet (mig 212) : elle connaît le STATUT, la
+  // date de détection et les captures d'origine. Son absence n'est pas une
+  // erreur — un objet saisi à la main n'a simplement pas de voix derrière lui.
   const { data: prop } = await db
     .from('site_knowledge_proposals')
-    .select('id, source_capture_ids, report_id')
+    .select('id, source_capture_ids, report_id, status, created_at, title, body')
     .eq('promoted_object_id', id)
     .maybeSingle()
+  const p = prop as {
+    source_capture_ids?: string[]; report_id?: string | null; status?: ProposalStatus
+    created_at?: string | null; title?: string | null; body?: string | null
+  } | null
 
-  const captureIds: string[] = (prop as { source_capture_ids?: string[] } | null)?.source_capture_ids ?? []
-  const effectiveReportId = reportId ?? (prop as { report_id?: string | null } | null)?.report_id ?? null
+  const captureIds: string[] = p?.source_capture_ids ?? []
+  const effectiveReportId = reportId ?? p?.report_id ?? null
+  // Sans source traçable, pas de bloc : on ne rend pas un « Pourquoi ? » qui ment.
+  if (!effectiveReportId) return null
 
-  const steps: ProvenanceStep[] = [
-    { kind: 'site', label: (site as { name: string }).name },
-  ]
+  const status = p?.status ?? null
+  const detectedAt = p?.created_at ?? null
 
-  if (effectiveReportId) {
-    const { data: report } = await db
-      .from('site_reports')
-      .select('id, started_at')
-      .eq('id', effectiveReportId)
-      .maybeSingle()
-    if (report) {
-      const started = (report as { started_at: string | null }).started_at
-      steps.push({
-        kind: 'visite',
-        label: started ? `Visite du ${dateFmt.format(new Date(started))}` : 'Visite',
-        sub: 'la source de ce que MemorIA a retenu',
-      })
-    }
-
-    // Les mémos d'origine : d'abord ceux que la proposition désigne ; à défaut,
-    // les captures textuelles de la visite (le fait en vient forcément).
-    let capQuery = db
-      .from('visit_capture')
-      .select('id, kind, body')
-      .is('hidden_at', null)
-      .not('body', 'is', null)
-    capQuery = captureIds.length > 0
-      ? capQuery.in('id', captureIds)
-      : capQuery.eq('report_id', effectiveReportId).in('kind', ['vocal', 'note'])
-    const { data: caps } = await capQuery.limit(3)
-    for (const c of (caps ?? []) as Array<{ id: string; kind: string; body: string | null }>) {
-      if (!c.body) continue
-      steps.push({
-        kind: 'memo',
-        label: c.kind === 'vocal' ? 'Mémo vocal' : 'Note de visite',
-        excerpt: c.body.length > 240 ? c.body.slice(0, 237) + '…' : c.body,
-      })
-    }
+  let sourceLabel: string | null = null
+  const { data: report } = await db
+    .from('site_reports')
+    .select('id, started_at')
+    .eq('id', effectiveReportId)
+    .maybeSingle()
+  if (report) {
+    const started = (report as { started_at: string | null }).started_at
+    sourceLabel = started ? `Visite du ${dateFmt.format(new Date(started))}` : 'Visite'
   }
 
-  steps.push({
-    kind: 'objet',
-    label: (row[titleCol] as string) ?? OBJET_LABEL[type],
-    sub: OBJET_LABEL[type],
-  })
+  // Les mémos d'origine : d'abord ceux que la proposition désigne ; à défaut,
+  // les captures textuelles de la visite (le fait en vient forcément).
+  let capQuery = db
+    .from('visit_capture')
+    .select('id, kind, body')
+    .is('hidden_at', null)
+    .not('body', 'is', null)
+  capQuery = captureIds.length > 0
+    ? capQuery.in('id', captureIds)
+    : capQuery.eq('report_id', effectiveReportId).in('kind', ['vocal', 'note'])
+  const { data: caps } = await capQuery.limit(3)
+  const captures = ((caps ?? []) as Array<{ id: string; kind: string; body: string | null }>)
+    .filter((c): c is { id: string; kind: string; body: string } => !!c.body)
 
-  // Une chaîne réduite à « chantier → objet » n'explique rien : on la dit nulle,
-  // et l'écran n'affiche pas un bouton qui ne tiendra pas sa promesse.
-  return steps.length > 2 ? { steps } : null
+  // La cible de la citation = ce que MemorIA a extrait (titre de l'objet + titre/
+  // corps de la proposition), pour retrouver la phrase d'origine la plus proche.
+  const objectLabel = (row[titleCol] as string) ?? OBJET_LABEL[type]
+  const needle = [objectLabel, p?.title ?? '', p?.body ?? ''].join(' ')
+  const citations = pickCitations(captures.map((c) => ({ kind: c.kind, body: c.body })), needle)
+
+  return {
+    status,
+    detectedAt,
+    siteName: (site as { name: string }).name,
+    sourceLabel,
+    citations,
+    origin: { href: `/sites/${siteId}/visites/${effectiveReportId}`, label: 'Ouvrir la visite' },
+    objectLabel,
+    objectKind: OBJET_LABEL[type],
+  }
 }

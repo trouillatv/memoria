@@ -1,19 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// ── « POURQUOI ? » — LA CHAÎNE DE PROVENANCE ─────────────────────────────────
+// ── « POURQUOI ? » — LA PREUVE CIBLÉE ────────────────────────────────────────
 // Ce que le read model doit garantir :
 //   · fail-closed : un objet d'un autre tenant → null (le service-role bypasse
 //     la RLS, la garde vit ici) ;
-//   · la chaîne remonte chantier → visite → mémo (mot pour mot) → objet ;
-//   · sans provenance réelle, null — l'écran ne rend pas un bouton qui ne
-//     tiendra pas sa promesse ;
-//   · l'extrait vient de la CAPTURE désignée par la proposition (backref
-//     promoted_object_id), jamais d'une paraphrase.
+//   · statut + date de détection + source + CITATION CIBLÉE + lien ;
+//   · la citation est RETROUVÉE dans le mémo (la phrase la plus proche de ce qui
+//     a été extrait), JAMAIS tout le mémo ;
+//   · sans source traçable, null — pas de bouton qui ment.
 
 vi.mock('server-only', () => ({}))
 
-let mockOrgId: string | null = 'org-1'
-vi.mock('@/lib/db/users', () => ({ getOrgId: async () => mockOrgId }))
+let mockOrgIds: string[] = ['org-1']
+vi.mock('@/lib/auth/memberships', () => ({ getOrgIdsOfUser: async () => mockOrgIds }))
 
 // La base simulée, table par table.
 let objRow: Record<string, unknown> | null = null
@@ -46,25 +45,49 @@ vi.mock('@/lib/supabase/admin', () => ({
 import { getProvenance } from '@/lib/knowledge/provenance'
 
 beforeEach(() => {
-  mockOrgId = 'org-1'
-  objRow = { id: 'e2', title: 'Pose d’un coffret électrique', site_id: 's-1', report_id: 'r-1' }
+  mockOrgIds = ['org-1']
+  objRow = { id: 'e2', title: 'Vérification des lignes et consignations', site_id: 's-1', report_id: 'r-1' }
   siteRow = { id: 's-1', name: 'Lycée PETRO ATTITI', organization_id: 'org-1' }
-  propRow = { id: 'p-1', source_capture_ids: ['c-9'], report_id: 'r-1' }
+  propRow = { id: 'p-1', source_capture_ids: ['c-9'], report_id: 'r-1', status: 'confirmed', created_at: '2026-07-15T02:07:33Z', title: 'Vérification lignes/consignations', body: null }
   reportRow = { id: 'r-1', started_at: '2026-07-15T02:07:33Z' }
-  capRows = [{ id: 'c-9', kind: 'vocal', body: 'À noter important les électriciens vont vérifier les lignes électriques…' }]
+  // Le mémo contient DEUX phrases : une hors sujet, une qui a justifié l'extraction.
+  capRows = [{ id: 'c-9', kind: 'vocal', body: 'On a bien avancé sur le gros œuvre aujourd’hui. Les électriciens vont vérifier les lignes et les consignations dans une semaine et demie.' }]
 })
 
 describe('getProvenance', () => {
-  it('remonte chantier → visite → mémo mot pour mot → objet', async () => {
+  it('statut · détecté le · source · citation CIBLÉE · lien', async () => {
     const chain = await getProvenance('deadline', 'e2')
     expect(chain).not.toBeNull()
-    const kinds = chain!.steps.map((s) => s.kind)
-    expect(kinds).toEqual(['site', 'visite', 'memo', 'objet'])
-    expect(chain!.steps[0].label).toBe('Lycée PETRO ATTITI')
-    expect(chain!.steps[1].label).toContain('15 juillet')
-    // La preuve, mot pour mot — jamais une paraphrase.
-    expect(chain!.steps[2].excerpt).toContain('les électriciens vont vérifier')
-    expect(chain!.steps[3].label).toBe('Pose d’un coffret électrique')
+    expect(chain!.status).toBe('confirmed')
+    expect(chain!.detectedAt).toBe('2026-07-15T02:07:33Z')
+    expect(chain!.sourceLabel).toContain('15 juillet')
+    expect(chain!.origin?.href).toBe('/sites/s-1/visites/r-1')
+    expect(chain!.objectLabel).toBe('Vérification des lignes et consignations')
+  })
+
+  it('cite UNIQUEMENT la phrase pertinente — jamais tout le mémo', async () => {
+    const chain = await getProvenance('deadline', 'e2')
+    expect(chain!.citations).toHaveLength(1)
+    expect(chain!.citations[0].text).toContain('vérifier les lignes')
+    expect(chain!.citations[0].source).toBe('Mémo vocal')
+    // La phrase hors sujet (« gros œuvre ») ne doit PAS être citée.
+    expect(chain!.citations[0].text).not.toContain('gros œuvre')
+  })
+
+  it('au maximum 2 citations', async () => {
+    capRows = [{
+      id: 'c-9', kind: 'note',
+      body: 'Vérifier les lignes avant lundi. Confirmer les consignations avec le chef. Contexte sans rapport ici. Prévoir la vérification des consignations en fin de semaine.',
+    }]
+    const chain = await getProvenance('deadline', 'e2')
+    expect(chain!.citations.length).toBeGreaterThan(0)
+    expect(chain!.citations.length).toBeLessThanOrEqual(2)
+  })
+
+  it('conserve le statut rejeté — traçabilité', async () => {
+    propRow = { ...(propRow as object), status: 'dismissed' }
+    const chain = await getProvenance('deadline', 'e2')
+    expect(chain!.status).toBe('dismissed')
   })
 
   it('refuse un objet d’un AUTRE tenant — fail-closed', async () => {
@@ -73,11 +96,11 @@ describe('getProvenance', () => {
   })
 
   it('refuse sans organisation — fail-closed', async () => {
-    mockOrgId = null
+    mockOrgIds = []
     expect(await getProvenance('deadline', 'e2')).toBeNull()
   })
 
-  it('sans provenance réelle, null — pas de bouton qui ment', async () => {
+  it('sans source traçable, null — pas de bouton qui ment', async () => {
     // Objet saisi à la main : ni report_id, ni proposition derrière lui.
     objRow = { id: 'a-9', title: 'Action manuelle', site_id: 's-1', report_id: null }
     propRow = null
@@ -88,6 +111,7 @@ describe('getProvenance', () => {
   it('une décision lit « titre », pas « title »', async () => {
     objRow = { id: 'd-1', titre: 'Les accès seront communiqués ultérieurement', site_id: 's-1', report_id: 'r-1' }
     const chain = await getProvenance('decision', 'd-1')
-    expect(chain!.steps.at(-1)!.label).toBe('Les accès seront communiqués ultérieurement')
+    expect(chain!.objectLabel).toBe('Les accès seront communiqués ultérieurement')
+    expect(chain!.objectKind).toBe('Décision')
   })
 })
