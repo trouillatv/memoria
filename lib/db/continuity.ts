@@ -143,7 +143,7 @@ export async function listContinuityRisks(input: {
   // 2. Équipes actives de chaque user (left_at IS NULL)
   const { data: memberships, error: mErr } = await admin
     .from('team_members')
-    .select('user_id, team:teams(id, name, deleted_at)')
+    .select('user_id, team:teams!team_id(id, name, deleted_at)')
     .in('user_id', userIds)
     .is('left_at', null)
   if (mErr) throw mErr

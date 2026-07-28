@@ -503,7 +503,7 @@ export async function getIntervenantOverview(
       .eq('created_by', intervenantId),
     admin
       .from('team_members')
-      .select('team:teams(id, name, color)')
+      .select('team:teams!team_id(id, name, color)')
       .eq('user_id', intervenantId)
       .is('left_at', null),
   ])
@@ -814,7 +814,7 @@ export async function listIntervenantsForList(viewer?: {
   // 2) Équipes actives par user
   const { data: memberRows } = await admin
     .from('team_members')
-    .select('user_id, team:teams(id, name, color)')
+    .select('user_id, team:teams!team_id(id, name, color)')
     .in('user_id', userIds)
     .is('left_at', null)
 
@@ -1014,7 +1014,7 @@ export async function getIntervenantTeamsHistory(
 
   const { data: memberships } = await admin
     .from('team_members')
-    .select('team_id, joined_at, left_at, team:teams(id, name, color, deleted_at)')
+    .select('team_id, joined_at, left_at, team:teams!team_id(id, name, color, deleted_at)')
     .eq('user_id', intervenantId)
     .or('left_at.is.null,left_at.gte.' + sinceIso)
 
@@ -1086,7 +1086,7 @@ export async function listIntervenantCollaborators(
 
   const { data: myMemberships } = await admin
     .from('team_members')
-    .select('team_id, left_at, team:teams(name)')
+    .select('team_id, left_at, team:teams!team_id(name)')
     .eq('user_id', intervenantId)
     .or('left_at.is.null,left_at.gte.' + sinceIso)
 

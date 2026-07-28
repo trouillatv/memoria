@@ -56,7 +56,7 @@ async function listAssignableMembers(): Promise<MemberLite[]> {
       // le sélecteur "déjà dans Équipe X" et éviter les doublons cross-équipes.
       supabase
         .from('team_members')
-        .select('user_id, team:teams(id, name, deleted_at)')
+        .select('user_id, team:teams!team_id(id, name, deleted_at)')
         .is('left_at', null),
     ])
   if (uErr) throw uErr
