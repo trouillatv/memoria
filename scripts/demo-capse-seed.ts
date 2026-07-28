@@ -1168,6 +1168,72 @@ async function seedSiteActions(authIds: Record<string, string>) {
   process.stdout.write(`    ${rows.length} actions (done/late/upcoming/planned)\n`)
 }
 
+async function seedChecklistItems(authIds: Record<string, string>) {
+  console.log('  Checklist items par intervention…')
+  const adminId = authIds['david.bouvier']
+
+  // Modèles de checklist par type de mission
+  const CHECKLISTS: Record<string, Array<{ label: string; required: boolean }>> = {
+    m0: [
+      { label: 'Vérifier les extincteurs CO2 et poudre (présence + accessibilité)', required: true },
+      { label: 'Contrôler les sorties de secours et dégagements', required: true },
+      { label: 'Tester le déclencheur alarme incendie', required: true },
+      { label: 'Inspecter les colonnes sèches / RIA', required: false },
+      { label: 'Vérifier la signalétique d\'évacuation', required: false },
+    ],
+    m1: [
+      { label: 'Contrôle visuel de chaque extincteur (état, étiquette, scellé)', required: true },
+      { label: 'Vérification date d\'échéance et pression manomètre', required: true },
+      { label: 'Test du réseau sprinkler — déclenchement test tête ouverte', required: true },
+      { label: 'Vérification pression réseau (valeur relevée en MPa)', required: true },
+    ],
+  }
+
+  // Statuts des interventions par index (même ordre que seedMissions)
+  const INT_STATUSES = [
+    'completed', 'completed', 'completed', 'completed', // ii=0..3
+    'planned', 'planned', 'planned',                    // ii=4..6
+  ] as const
+
+  const rows: string[] = []
+
+  for (const site of SITES) {
+    for (const suffix of ['m0', 'm1'] as const) {
+      const template = CHECKLISTS[suffix]
+      for (let ii = 0; ii < INT_STATUSES.length; ii++) {
+        const intId  = duid(`int:${site.key}:${suffix}:${ii}`)
+        const isDone = INT_STATUSES[ii] === 'completed'
+        const doneAt = isDone ? esc(pgTs(addDays(TODAY_STR, -93 + ii * 28))) : 'NULL'
+        const doneBy = isDone ? `'${adminId}'` : 'NULL'
+
+        for (let pi = 0; pi < template.length; pi++) {
+          const item = template[pi]
+          const ciId = duid(`ci:${site.key}:${suffix}:${ii}:${pi}`)
+          rows.push(`(
+            '${ciId}', '${intId}', ${esc(item.label)},
+            ${pi}, ${item.required}, ${isDone}, ${doneAt}, ${doneBy}
+          )`)
+        }
+      }
+    }
+  }
+
+  for (let i = 0; i < rows.length; i += 100) {
+    await runSql(`
+      INSERT INTO public.intervention_checklist_items
+        (id, intervention_id, label, position, required, done, done_at, done_by)
+      VALUES ${rows.slice(i, i + 100).join(',')}
+      ON CONFLICT (id) DO UPDATE SET
+        done    = EXCLUDED.done,
+        done_at = EXCLUDED.done_at,
+        done_by = EXCLUDED.done_by
+    `)
+    process.stdout.write('.')
+  }
+  console.log()
+  process.stdout.write(`    ${rows.length} checklist items (${SITES.length} sites × 2 missions × 7 interventions)\n`)
+}
+
 async function seedVisitCaptures(authIds: Record<string, string>) {
   console.log('  Captures de visite…')
   const adminId = authIds['david.bouvier']
@@ -1703,6 +1769,7 @@ async function main() {
   await seedContractors()
   await seedSiteIntervenants()
   await seedMissions(authIds)
+  await seedChecklistItems(authIds)
   await seedSiteActions(authIds)
   await seedVisitCaptures(authIds)
   await seedPlanningCycles(authIds)
