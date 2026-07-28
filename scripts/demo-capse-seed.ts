@@ -1070,33 +1070,39 @@ async function seedMissions(authIds: Record<string, string>) {
     { suffix: 'm1', name: 'Contrôle extincteurs & sprinklers', cadence: 'on_demand' },
   ] as const
 
+  // TODAY = 2026-07-29 (mercredi). Lundi de chaque semaine cible (offset depuis TODAY) :
+  //   -93 = lundi il y a ~13 semaines | -65 = ~9 sem. | -37 = ~5 sem. | -9 = semaine passée
+  //   -2  = cette semaine | +5 = semaine prochaine | +33 = dans 5 semaines
+  // Chaque site reçoit un weekday dédié (si % 5 → 0=lun … 4=ven) → 5-7 interventions/jour max.
   const intSchedule = [
-    { offset: -90, status: 'completed' },
-    { offset: -60, status: 'completed' },
-    { offset: -30, status: 'completed' },
-    { offset: -7,  status: 'completed' },
-    { offset: 0,   status: 'planned'   }, // semaine courante
-    { offset: 7,   status: 'planned'   }, // semaine prochaine
-    { offset: 35,  status: 'planned'   },
+    { mondayBase: -93, status: 'completed' },
+    { mondayBase: -65, status: 'completed' },
+    { mondayBase: -37, status: 'completed' },
+    { mondayBase: -9,  status: 'completed' },
+    { mondayBase: -2,  status: 'planned'   }, // cette semaine
+    { mondayBase:  5,  status: 'planned'   }, // semaine prochaine
+    { mondayBase: 33,  status: 'planned'   }, // dans 5 semaines
   ] as const
 
   for (let si = 0; si < SITES.length; si++) {
     const site = SITES[si]
-    const siteId = duid('site:' + site.key)
-    const teamId = duid(TEAMS[si % 3].key)
+    const siteId   = duid('site:' + site.key)
+    const teamId   = duid(TEAMS[si % 3].key)
+    const weekday  = si % 5          // 0=lun, 1=mar, 2=mer, 3=jeu, 4=ven — constant par site
 
     for (const md of missionDefs) {
-      const missionId = duid(`mission:${site.key}:${md.suffix}`)
+      const missionId  = duid(`mission:${site.key}:${md.suffix}`)
+      const startHour  = md.suffix === 'm0' ? 8 : 13  // inspection matin, extincteurs aprèm
       missionRows.push(`(
         '${missionId}', '${siteId}', ${esc(md.name)},
         '${md.cadence}'::mission_cadence, true, '${ORG_ID}', '${adminId}'
       )`)
 
       for (let ii = 0; ii < intSchedule.length; ii++) {
-        const { offset, status } = intSchedule[ii]
-        const intId = duid(`int:${site.key}:${md.suffix}:${ii}`)
-        const scheduledAt = addDays(TODAY_STR, offset)
-        scheduledAt.setHours(8, 0, 0, 0)
+        const { mondayBase, status } = intSchedule[ii]
+        const intId      = duid(`int:${site.key}:${md.suffix}:${ii}`)
+        const scheduledAt = addDays(TODAY_STR, mondayBase + weekday)
+        scheduledAt.setHours(startHour, 0, 0, 0)
         interventionRows.push(`(
           '${intId}', '${missionId}',
           ${esc(pgTs(scheduledAt))}, '${isoDate(scheduledAt)}',
