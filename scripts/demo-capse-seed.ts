@@ -1226,6 +1226,68 @@ async function seedVisitCaptures(authIds: Record<string, string>) {
   process.stdout.write(`    ${rows.length} captures\n`)
 }
 
+async function seedPlanningCycles(authIds: Record<string, string>) {
+  console.log(`  Roulements (planning_cycles + slots) — ${SITES.length} sites × 2 missions…`)
+  const adminId = authIds['david.bouvier']
+  const anchorDate = '2026-07-27' // lundi de la semaine courante
+  const startsOn  = '2026-01-05' // début d'année, lundi
+
+  const cycleRows: string[] = []
+  const slotRows:  string[] = []
+
+  // 2 roulements par site : mensuel (4 sem.) le lundi matin, bi-hebdo (2 sem.) le jeudi aprèm
+  const cycleDefs = [
+    { suffix: 'm0', label: 'Inspection mensuelle — roulement', cycleWeeks: 4, weekday: 1, t0: '08:00', t1: '12:00' },
+    { suffix: 'm1', label: 'Contrôle extincteurs — roulement',  cycleWeeks: 2, weekday: 4, t0: '13:00', t1: '16:30' },
+  ] as const
+
+  for (let si = 0; si < SITES.length; si++) {
+    const site = SITES[si]
+    const siteId   = duid('site:' + site.key)
+    // Inspection Nord pour sites pairs, Inspection Sud pour sites impairs
+    const teamId   = duid(TEAMS[si % 2].key)
+
+    for (const cd of cycleDefs) {
+      const missionId = duid(`mission:${site.key}:${cd.suffix}`)
+      const cycleId   = duid(`cycle:${site.key}:${cd.suffix}`)
+      cycleRows.push(`(
+        '${cycleId}', '${ORG_ID}', '${siteId}', '${missionId}',
+        ${esc(site.name + ' — ' + cd.label)},
+        ${cd.cycleWeeks}, '${anchorDate}', '${startsOn}', NULL,
+        'published', '${adminId}'
+      )`)
+      slotRows.push(`(
+        '${duid('slot:' + site.key + ':' + cd.suffix)}',
+        '${cycleId}', 0, ${cd.weekday}, '${teamId}',
+        'work', '${cd.t0}', '${cd.t1}'
+      )`)
+    }
+  }
+
+  for (let i = 0; i < cycleRows.length; i += 50) {
+    await runSql(`
+      INSERT INTO public.planning_cycles
+        (id, organization_id, site_id, mission_id, name,
+         cycle_length_weeks, anchor_date, starts_on, ends_on,
+         status, created_by)
+      VALUES ${cycleRows.slice(i, i + 50).join(',')}
+      ON CONFLICT (id) DO NOTHING
+    `)
+    process.stdout.write('.')
+  }
+  for (let i = 0; i < slotRows.length; i += 50) {
+    await runSql(`
+      INSERT INTO public.planning_cycle_slots
+        (id, cycle_id, week_index, weekday, team_id, state, start_time, end_time)
+      VALUES ${slotRows.slice(i, i + 50).join(',')}
+      ON CONFLICT (cycle_id, week_index, weekday, team_id) DO NOTHING
+    `)
+    process.stdout.write('.')
+  }
+  console.log()
+  process.stdout.write(`    ${cycleRows.length} roulements published, ${slotRows.length} cases\n`)
+}
+
 // ════════════════════════════════════════════════════════════════════════════════
 // SHOWCASE FUNCTIONS
 // ════════════════════════════════════════════════════════════════════════════════
@@ -1590,6 +1652,7 @@ async function main() {
   await seedMissions(authIds)
   await seedSiteActions(authIds)
   await seedVisitCaptures(authIds)
+  await seedPlanningCycles(authIds)
 
   // Showcase CPS Siège — contenu vivant pour la démonstration
   console.log(`\n  ── Showcase CPS Siège social ──`)
@@ -1618,6 +1681,7 @@ async function main() {
   console.log(`  Réunions        : ${SHOWCASE_MEETINGS.length} avec participants + CR IA`)
   console.log(`  Personnes actives: 5 contacts liés aux équipes`)
   console.log(`  AO              : 2 appels d'offres avec analyses IA`)
+  console.log(`  Roulements      : ${SITES.length * 2} cycles published (2/site)`)
 }
 
 main().catch((e) => {
