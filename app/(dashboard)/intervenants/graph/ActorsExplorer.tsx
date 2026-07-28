@@ -94,7 +94,7 @@ export function ActorsExplorer({ graph, focusId, collabGraph }: { graph: ActorsG
               <GraphSearch query={ex.query} onQuery={ex.setQuery} matches={ex.matches} onPick={ex.focusNode} />
             </div>
             <div className="relative">
-              <ActorsGraphCanvas graph={graph} focusId={focusId} control={ex.control} centerRequest={ex.centerRequest} heightClass="h-[70vh]" layout={reading === 'org' ? 'hierarchical' : reading === 'sites' ? 'radial' : 'force'} />
+              <ActorsGraphCanvas graph={graph} focusId={focusId} control={ex.control} centerRequest={ex.centerRequest} heightClass="h-[70vh]" layout={reading === 'org' ? 'hierarchical' : reading === 'sites' ? 'radial' : reading === 'work' ? 'layered' : 'force'} />
               {ex.followFrom && (
                 <div className="absolute left-1/2 top-2 z-10 flex max-w-[92%] -translate-x-1/2 items-center gap-2 rounded-full border bg-card px-3.5 py-1.5 text-[12.5px] shadow-md">
                   <Route className="h-3.5 w-3.5 shrink-0 text-brand-600" aria-hidden />

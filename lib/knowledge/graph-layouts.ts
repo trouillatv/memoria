@@ -8,7 +8,7 @@
 
 import type { ActorsGraph, ActorGraphNode } from './actors-graph-model'
 
-export type GraphLayoutKind = 'force' | 'hierarchical' | 'radial'
+export type GraphLayoutKind = 'force' | 'hierarchical' | 'radial' | 'layered'
 
 export type LayoutPositions = Map<string, { x: number; y: number }>
 
@@ -148,6 +148,51 @@ export function radialLayout(graph: ActorsGraph): StaticLayoutResult {
   const unplaced = graph.nodes.filter((n) => (n.kind === 'company' || n.kind === 'person' || n.kind === 'team') && !pos.has(n.id))
   const OR = Math.max(520, sites.length * 110)
   unplaced.forEach((n, i) => { const a = (i / Math.max(1, unplaced.length)) * 2 * Math.PI; pos.set(n.id, { x: Math.cos(a) * OR, y: Math.sin(a) * OR }) })
+
+  return { positions: pos, blocks: [] }
+}
+
+const LAYER_X = { company: -300, person: 0, action: 300 } // colonnes du flux gauche→droite
+const LAYER_ROW = 56
+
+/**
+ * TRAVAIL — layout ORIENTÉ en couches (« qui porte quoi ») : un FLUX gauche→droite
+ * Entreprise → Personne (référente) → Action. L'œil suit un chemin au lieu de
+ * chercher dans un réseau. Personnes groupées par entreprise ; actions à droite de
+ * leur référent. Déterministe.
+ */
+export function layeredLayout(graph: ActorsGraph): StaticLayoutResult {
+  const pos: LayoutPositions = new Map()
+  const companies = graph.nodes.filter((n) => n.kind === 'company')
+  const companyOfPerson = new Map<string, string>()
+  const personsOfCompany = new Map<string, ActorGraphNode[]>()
+  const actionsOfPerson = new Map<string, ActorGraphNode[]>()
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]))
+  for (const e of graph.edges) {
+    if (e.rel === 'belongs_to') { companyOfPerson.set(e.a, e.b); const p = byId.get(e.a); if (p) { if (!personsOfCompany.has(e.b)) personsOfCompany.set(e.b, []); personsOfCompany.get(e.b)!.push(p) } }
+    else if (e.rel === 'referent_of') { const a = byId.get(e.b); if (a) { if (!actionsOfPerson.has(e.a)) actionsOfPerson.set(e.a, []); actionsOfPerson.get(e.a)!.push(a) } }
+  }
+  for (const m of [personsOfCompany, actionsOfPerson]) for (const l of m.values()) l.sort(byLabel)
+  const sortedCompanies = [...companies].sort((a, b) => (personsOfCompany.get(b.id)?.length ?? 0) - (personsOfCompany.get(a.id)?.length ?? 0) || byLabel(a, b))
+
+  let y = 0
+  const placePersonRow = (p: ActorGraphNode) => {
+    pos.set(p.id, { x: LAYER_X.person, y })
+    const actions = actionsOfPerson.get(p.id) ?? []
+    actions.forEach((a, i) => pos.set(a.id, { x: LAYER_X.action, y: y + i * LAYER_ROW }))
+    y += Math.max(LAYER_ROW, actions.length * LAYER_ROW)
+  }
+  for (const co of sortedCompanies) {
+    const persons = personsOfCompany.get(co.id) ?? []
+    const startY = y
+    if (persons.length === 0) { pos.set(co.id, { x: LAYER_X.company, y }); y += LAYER_ROW; continue }
+    for (const p of persons) placePersonRow(p)
+    pos.set(co.id, { x: LAYER_X.company, y: (startY + y - LAYER_ROW) / 2 }) // entreprise au centre de ses personnes
+    y += LAYER_ROW * 0.6 // respiration entre entreprises
+  }
+  // Personnes sans entreprise → en bas.
+  const orphanPersons = graph.nodes.filter((n) => n.kind === 'person' && !companyOfPerson.has(n.id))
+  orphanPersons.sort(byLabel).forEach((p) => placePersonRow(p))
 
   return { positions: pos, blocks: [] }
 }

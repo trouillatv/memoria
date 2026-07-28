@@ -1,7 +1,7 @@
 // Layout hiérarchique (Organigramme, V3 UX) + titre vivant — PURS, déterministes.
 
 import { describe, expect, it } from 'vitest'
-import { hierarchicalLayout, radialLayout } from '@/lib/knowledge/graph-layouts'
+import { hierarchicalLayout, radialLayout, layeredLayout } from '@/lib/knowledge/graph-layouts'
 import { structuralGraphSummary, collaborationGraphSummary, collaborationGraphNarrative } from '@/lib/knowledge/graph-summary'
 import { buildActorsGraph } from '@/lib/knowledge/actors-graph'
 import type { CollaborationGraphView } from '@/lib/knowledge/collaboration-graph'
@@ -71,6 +71,23 @@ describe('radialLayout (Chantiers = hubs)', () => {
     expect(site).toEqual({ x: 0, y: 0 })          // hub au centre
     expect(dist(co1, site)).toBeCloseTo(135, 0)   // entreprise sur l'anneau du chantier
     expect(dist(jo, co1)).toBeCloseTo(68, 0)      // personne autour de son entreprise
+  })
+})
+
+describe('layeredLayout (Travail = flux orienté)', () => {
+  it('flux gauche→droite : entreprise (x<0) → personne (x=0) → action (x>0)', () => {
+    const g = buildActorsGraph({
+      persons: [{ id: 'c1', name: 'Jo', sub: null, level: 'ok', historical: false, companyId: 'co1' }],
+      companies: [{ id: 'co1', name: 'Clim', sub: null, level: 'ok', historical: false }],
+      teams: [], siteNames: [{ id: 's1', name: 'Petro' }],
+      fieldMemberships: [], missions: [], casting: [],
+      openActions: [{ id: 'a1', title: 'Repérage', siteId: 's1', contactId: 'c1', companyId: null, overdue: false }],
+    })
+    const { positions } = layeredLayout(g)
+    expect(positions.get('co_co1')!.x).toBeLessThan(positions.get('p_c1')!.x)   // entreprise à gauche
+    expect(positions.get('p_c1')!.x).toBeLessThan(positions.get('ac_a1')!.x)    // action à droite
+    expect(positions.get('co_co1')!.x).toBe(-300)
+    expect(positions.get('ac_a1')!.x).toBe(300)
   })
 })
 

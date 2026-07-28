@@ -16,7 +16,7 @@ import { useEffect, useRef } from 'react'
 import { graphTimeline, type ActorsGraph, type ActorGraphKind, type ActorGraphNode, type ActorGraphRel } from '@/lib/knowledge/actors-graph-model'
 import { createForceGraphEngine, type ForceGraphEngine, type Vec } from '@/components/graph/force-graph-engine'
 import { RING_COLOR, HISTORICAL_COLOR, NEUTRAL_FILL, companyFill } from './actor-colors'
-import { hierarchicalLayout, radialLayout, type GraphLayoutKind } from '@/lib/knowledge/graph-layouts'
+import { hierarchicalLayout, radialLayout, layeredLayout, type GraphLayoutKind } from '@/lib/knowledge/graph-layouts'
 
 export type SelectableKind = 'person' | 'company' | 'team'
 
@@ -159,7 +159,8 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
     // LAYOUT STATIQUE (Organigramme hiérarchique / Chantiers radial) : positions
     // déterministes + physique coupée.
     const layoutResult = layout === 'hierarchical' ? hierarchicalLayout(graph)
-      : layout === 'radial' ? radialLayout(graph) : null
+      : layout === 'radial' ? radialLayout(graph)
+        : layout === 'layered' ? layeredLayout(graph) : null
     const layoutPos = layoutResult?.positions ?? null
     const layoutBlocks = layoutResult?.blocks ?? null
 
