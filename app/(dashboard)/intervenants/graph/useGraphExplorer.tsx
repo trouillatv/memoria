@@ -56,6 +56,9 @@ export function useGraphExplorer(graph: ActorsGraph, focusId?: string | null, in
   // défaut (voisinage direct) → sélection simple inchangée.
   const [lens, setLens] = useState<EnqueteLens>('why')
   const [isolate, setIsolate] = useState(false)
+  // Langage visuel épuré par défaut : liens NEUTRES ; la couleur par nature n'est
+  // affichée que si l'utilisateur active cette lecture (moins de codes simultanés).
+  const [colorEdges, setColorEdges] = useState(false)
 
   const selNode = sel?.type === 'node' ? nodeById.get(sel.id) ?? null : null
   const selEdge = sel?.type === 'edge' ? graph.edges[sel.index] ?? null : null
@@ -143,6 +146,8 @@ export function useGraphExplorer(graph: ActorsGraph, focusId?: string | null, in
     visibleKinds: visibleKinds.size === availableKinds.size ? null : visibleKinds,
     // Enquête : sous-graphe mis en avant ; isolé = le canvas n'affiche que lui.
     focusSet, isolate: isolate && !!focusSet,
+    // Liens colorés par nature seulement si la lecture est activée (sinon neutres).
+    colorEdgesByNature: colorEdges,
     onTapNode(node: ActorGraphNode) {
       if (followFrom && node.id !== followFrom) { setPath(shortestPath(graph, followFrom, node.id)); setFollowFrom(null); setSel({ type: 'node', id: node.id }); return }
       setPath(null); setSel({ type: 'node', id: node.id })
@@ -157,6 +162,7 @@ export function useGraphExplorer(graph: ActorsGraph, focusId?: string | null, in
     availableKinds, visibleKinds, perspective, applyPerspective, toggleKind,
     query, setQuery, matches, focusNode, centerRequest,
     lens, setLens, isolate, setIsolate,
+    colorEdges, setColorEdges,
     nodeContext, nodeRelations,
   }
 }

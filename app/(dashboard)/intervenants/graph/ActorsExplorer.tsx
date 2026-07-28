@@ -31,6 +31,8 @@ export function ActorsExplorer({ graph, focusId }: { graph: ActorsGraph; focusId
             onLens={ex.setLens}
             isolate={ex.isolate}
             onIsolate={ex.setIsolate}
+            colorEdges={ex.colorEdges}
+            onColorEdges={ex.setColorEdges}
           />
           <GraphSearch query={ex.query} onQuery={ex.setQuery} matches={ex.matches} onPick={ex.focusNode} />
         </div>

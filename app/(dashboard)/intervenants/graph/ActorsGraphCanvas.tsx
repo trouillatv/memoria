@@ -34,6 +34,8 @@ export interface GraphControl {
    *  reste s'estompe) ou, si `isolate`, à n'afficher QUE lui. null = pas d'enquête. */
   focusSet?: ReadonlySet<string> | null
   isolate?: boolean
+  /** Liens colorés par NATURE de relation seulement si activé (défaut : neutres). */
+  colorEdgesByNature?: boolean
   onTapNode(node: ActorGraphNode): void
   onTapEdge(index: number): void
   onTapVoid(): void
@@ -68,7 +70,10 @@ function nodeFill(n: ActorGraphNode): string {
   return NEUTRAL_FILL
 }
 
-// Couleur des LIENS par type de relation (le sens même labels cachés).
+// Couleur NEUTRE des liens (langage épuré par défaut) — la couleur par nature
+// n'apparaît que si l'utilisateur active cette lecture.
+const EDGE_NEUTRAL = '#94a3b8'
+// Couleur des LIENS par type de relation (le sens même labels cachés) — lecture optionnelle.
 const REL_COLOR: Record<ActorGraphRel, string> = {
   belongs_to: '#60a5fa',      // appartient à (entreprise) — bleu
   member_of: '#a78bfa',       // membre d'équipe — violet
@@ -231,8 +236,8 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
           const emphasized = i === f.hoverEdgeIndex || i === selEdge || inPath === true
           const nearFocus = focus && (e.a === focus || e.b === focus)
           const dimmed = (pathEdges && !inPath) || (!pathEdges && focus && !nearFocus && !emphasized)
-          // Couleur PAR TYPE de relation : le sens même sans lire les libellés.
-          ctx.strokeStyle = REL_COLOR[e.rel]
+          // Neutres par défaut ; colorées par nature seulement si la lecture est active.
+          ctx.strokeStyle = ctrl?.colorEdgesByNature ? REL_COLOR[e.rel] : EDGE_NEUTRAL
           ctx.globalAlpha = al * (dimmed ? 0.12 : emphasized ? 1 : nearFocus ? 0.9 : 0.55)
           ctx.lineWidth = emphasized ? 2.6 : nearFocus ? 1.8 : 1.2
           ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke()
@@ -362,37 +367,9 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
     <div ref={containerRef} className={`relative w-full overflow-hidden rounded-2xl border border-border/60 bg-card ${heightClass}`}>
       <canvas ref={canvasRef} className="block h-full w-full touch-none" style={{ cursor: 'grab' }} />
 
-      {/* Légende — fond = entreprise · anneau = état · liens = type de relation. */}
-      <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-0.5 rounded-lg border border-border/60 bg-background/90 px-2.5 py-2 text-[10.5px] leading-tight text-muted-foreground backdrop-blur">
-        <span className="text-[9.5px] font-semibold uppercase tracking-wide text-foreground/60">État (anneau)</span>
-        <span className="flex items-center gap-1.5"><Ring c={RING_COLOR.urgent} /> À traiter</span>
-        <span className="flex items-center gap-1.5"><Ring c={RING_COLOR.attention} /> À surveiller</span>
-        <span className="flex items-center gap-1.5"><Dot c={HISTORICAL_COLOR} /> Historique</span>
-        <span className="mt-1 text-[9.5px] font-semibold uppercase tracking-wide text-foreground/60">Liens</span>
-        <span className="flex items-center gap-1.5"><Line c={REL_COLOR.intervenes_on} /> Sur un chantier</span>
-        <span className="flex items-center gap-1.5"><Line c={REL_COLOR.belongs_to} /> Appartient à</span>
-        <span className="flex items-center gap-1.5"><Line c={REL_COLOR.member_of} /> Membre d’équipe</span>
-        <span className="flex items-center gap-1.5"><Line c={REL_COLOR.responsible_of} /> Sur une action</span>
-        <span className="mt-1 text-[9.5px] italic">Fond = entreprise</span>
-      </div>
-
       <p className="pointer-events-none absolute bottom-3 left-3 text-[11px] text-muted-foreground">
         Molette : zoom · glisser : déplacer · clic : sélectionner
       </p>
     </div>
   )
-}
-
-function Dot({ c }: { c: string }) {
-  return <span aria-hidden className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: c }} />
-}
-
-/** Anneau (état) — cohérent avec le rendu des nœuds (l'alerte est un contour). */
-function Ring({ c }: { c: string }) {
-  return <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-full border-2 bg-transparent" style={{ borderColor: c }} />
-}
-
-/** Trait (type de lien). */
-function Line({ c }: { c: string }) {
-  return <span aria-hidden className="inline-block h-0.5 w-3.5 rounded-full" style={{ backgroundColor: c }} />
 }

@@ -8,8 +8,9 @@
 // Même cerveau et même inspecteur que la vue d'ensemble (useGraphExplorer).
 
 import { Route } from 'lucide-react'
-import type { ActorsGraph } from '@/lib/knowledge/actors-graph-model'
+import { DEFAULT_PERSPECTIVE, type ActorsGraph } from '@/lib/knowledge/actors-graph-model'
 import { ActorsGraphCanvas, type SelectableKind } from './ActorsGraphCanvas'
+import { GraphControls } from './GraphControls'
 import { GraphTimeline } from './GraphTimeline'
 import { useGraphExplorer, ExplorerAside } from './useGraphExplorer'
 
@@ -20,11 +21,23 @@ export function ActorNetworkExplorer({ network, focusId, onSelectActor }: {
   /** Maître-détail : recharge la fiche en place sur un autre acteur. */
   onSelectActor?: (kind: SelectableKind, id: string) => void
 }) {
-  const ex = useGraphExplorer(network, focusId)
+  // Même stratification que la vue d'ensemble : on ouvre sur l'Organigramme
+  // (Niveau 1), on monte en détail à la demande — plus de « tout à la fois ».
+  const ex = useGraphExplorer(network, focusId, DEFAULT_PERSPECTIVE)
 
   return (
     <div className="grid gap-3 md:grid-cols-[1fr_250px]">
-      <div className="relative">
+      <div className="space-y-2">
+        <GraphControls
+          availableKinds={ex.availableKinds}
+          visibleKinds={ex.visibleKinds}
+          perspective={ex.perspective}
+          onPerspective={ex.applyPerspective}
+          onToggleKind={ex.toggleKind}
+          colorEdges={ex.colorEdges}
+          onColorEdges={ex.setColorEdges}
+        />
+        <div className="relative">
         <ActorsGraphCanvas graph={network} focusId={focusId} control={ex.control} heightClass="h-[420px]" />
         {ex.followFrom && (
           <div className="absolute left-1/2 top-2 z-10 flex max-w-[92%] -translate-x-1/2 items-center gap-2 rounded-full border bg-card px-3 py-1 text-[12px] shadow-md">
@@ -34,6 +47,7 @@ export function ActorNetworkExplorer({ network, focusId, onSelectActor }: {
           </div>
         )}
         <GraphTimeline days={ex.timeline.days} onChange={ex.setTimeMax} />
+        </div>
       </div>
 
       <aside className="rounded-xl border border-border/60 bg-muted/20 p-3.5 md:max-h-[420px] md:overflow-y-auto">

@@ -15,6 +15,7 @@ const KIND_ORDER: ActorGraphKind[] = ['person', 'company', 'team', 'site', 'acti
 export function GraphControls({
   availableKinds, visibleKinds, perspective, onPerspective, onToggleKind,
   focusLabel, lens, onLens, isolate, onIsolate,
+  colorEdges, onColorEdges,
 }: {
   availableKinds: Set<ActorGraphKind>
   visibleKinds: Set<ActorGraphKind>
@@ -27,6 +28,9 @@ export function GraphControls({
   onLens?: (l: EnqueteLens) => void
   isolate?: boolean
   onIsolate?: (v: boolean) => void
+  /** Lecture optionnelle : colorer les liens par nature (désactivée par défaut). */
+  colorEdges?: boolean
+  onColorEdges?: (v: boolean) => void
 }) {
   // Lecture inapplicable si aucune de ses natures n'existe → on la masque.
   const readings = PERSPECTIVES.filter((p) => p.kinds === null || p.kinds.some((k) => availableKinds.has(k)))
@@ -83,6 +87,22 @@ export function GraphControls({
             </button>
           )
         })}
+        {/* Lecture optionnelle des liens : couleur par nature (sinon neutres). */}
+        {onColorEdges && (
+          <button
+            type="button"
+            onClick={() => onColorEdges(!colorEdges)}
+            aria-pressed={!!colorEdges}
+            className={`ml-1 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[12px] transition ${
+              colorEdges ? 'border-border bg-muted font-medium text-foreground' : 'border-dashed border-border/50 text-muted-foreground/60'
+            }`}
+          >
+            <span aria-hidden className={`flex h-3.5 w-3.5 items-center justify-center rounded-[4px] border ${colorEdges ? 'border-brand-500 bg-brand-500 text-white' : 'border-border/70'}`}>
+              {colorEdges && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+            </span>
+            Liens par nature
+          </button>
+        )}
       </div>
 
       {/* NIVEAU 2 — MODE ENQUÊTE : n'apparaît qu'avec un acteur sélectionné. */}

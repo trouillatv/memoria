@@ -85,14 +85,15 @@ export const KIND_LAYER_LABEL: Record<ActorGraphKind, string> = {
 /** Une LECTURE = une question + les seules natures qui y répondent. kinds = null →
  *  toutes (échappatoire « Tout »). `hint` = la question métier, affichée à l'écran. */
 export const PERSPECTIVES: Array<{ id: ActorPerspective; label: string; hint: string; kinds: ActorGraphKind[] | null }> = [
-  { id: 'org', label: 'Organigramme', hint: 'Qui travaille où ?', kinds: ['company', 'person', 'team'] },
-  { id: 'sites', label: 'Chantiers', hint: 'Qui travaille avec qui, et où ?', kinds: ['company', 'person', 'team', 'site'] },
+  { id: 'org', label: 'Organigramme', hint: 'Qui travaille avec qui ?', kinds: ['company', 'person', 'team'] },
+  { id: 'sites', label: 'Chantiers', hint: 'Qui intervient où ?', kinds: ['company', 'person', 'team', 'site'] },
   { id: 'work', label: 'Travail', hint: 'Qui porte quoi ?', kinds: ['person', 'company', 'action'] },
-  { id: 'all', label: 'Tout', hint: 'Tout afficher (vue dense)', kinds: null },
+  { id: 'all', label: 'Réseau', hint: 'Toutes les relations', kinds: null },
 ]
 
-/** Lecture par défaut de la vue d'ensemble : une question, pas « tout à la fois ». */
-export const DEFAULT_PERSPECTIVE: ActorPerspective = 'sites'
+/** Lecture par défaut PARTOUT : le niveau le plus simple (organigramme), pas « tout à
+ *  la fois ». On monte en détail à la demande (Chantiers → Travail → Réseau). */
+export const DEFAULT_PERSPECTIVE: ActorPerspective = 'org'
 
 /** Natures de nœuds réellement présentes dans un graphe (pour n'offrir que l'utile). */
 export function graphKinds(graph: ActorsGraph): Set<ActorGraphKind> {
