@@ -47,8 +47,9 @@ export interface GraphControl {
 // ANNEAU = état d'attention (rouge/orange) → « où sont les points d'attention ».
 // LIENS = couleur par type de relation → le sens sans avoir à lire les libellés.
 // Couleurs (fond/halo) PARTAGÉES avec le graphe de collaboration (actor-colors).
-// Hiérarchie visuelle : entreprise > chantier > personne = équipe > action.
-const SIZE: Record<ActorGraphKind, number> = { company: 24, site: 19, person: 14, team: 14, action: 9 }
+// Hiérarchie visuelle FORTE : l'entreprise domine (ancre), le chantier est un HUB,
+// la personne est secondaire (~2:1), l'action minime.
+const SIZE: Record<ActorGraphKind, number> = { company: 30, site: 26, person: 13, team: 15, action: 8 }
 
 function nodeFill(n: ActorGraphNode): string {
   if (n.historical) return HISTORICAL_COLOR

@@ -22,7 +22,8 @@ export interface CollaborationControl {
   onTapVoid(): void
 }
 
-const SIZE = { company: 22, person: 13 } as const
+// Entreprise DOMINANTE, personne secondaire (~2:1) — l'entreprise est l'ancre.
+const SIZE = { company: 32, person: 15 } as const
 const EDGE_COLOR = '#64748b'      // neutre (slate) — la nature n'est PAS encodée ici
 const EDGE_EMPH = '#334155'
 
