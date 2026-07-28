@@ -3,14 +3,17 @@ import Link from 'next/link'
 import {
   Camera, Mic, Pencil, Video, ChevronDown, ArrowLeft,
   ListChecks, AlertTriangle, Scale, Lightbulb, Users, CalendarClock,
-  CheckCircle2, Clock3, XCircle, RefreshCw,
+  CheckCircle2, Clock3, XCircle, RefreshCw, UserCheck, UserX, Building2,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getVisit } from '@/lib/db/visits'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildVisitUnderstandingChain } from '@/lib/knowledge/understanding-chain'
+import { readDebriefSemanticMemory } from '@/lib/visits/debrief-analysis'
 import type { ProposalKind, ProposalStatus } from '@/lib/db/knowledge-proposals'
 import type { VisitCaptureKind } from '@/lib/db/visit-captures'
+import type { EntityResolution } from '@/lib/knowledge/semantic-resolution'
+import { ignoreCandidat, addEntityFromCandidat } from './semantic-actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,6 +21,7 @@ export const dynamic = 'force-dynamic'
  * « Comment MemorIA a compris cette visite » — la chaîne rendue visible :
  * ce que tu as relevé → ce que MemorIA en a compris → ce que c'est devenu.
  * Répond à « pourquoi cette action existe ? » sans quitter le terrain.
+ * Lot 1C : résolutions sémantiques visibles et actionnables.
  */
 
 const KIND_META: Record<ProposalKind, { label: string; Icon: typeof ListChecks; cls: string }> = {
@@ -51,6 +55,18 @@ function becameLabel(status: ProposalStatus, kindLabel: string): { text: string;
   }
 }
 
+const SOURCE_LABEL: Record<EntityResolution['source'], string> = {
+  semantic_memory: 'Mémoire du chantier',
+  canonical_name: 'Nom canonique',
+  llm_only: 'Non reconnu',
+}
+
+const SCOPE_LABEL: Record<string, string> = {
+  org: 'Organisation',
+  site: 'Chantier',
+  user: 'Utilisateur',
+}
+
 export default async function VisitComprehensionPage({
   params,
 }: {
@@ -70,9 +86,20 @@ export default async function VisitComprehensionPage({
   const { data: site } = await supabase.from('sites').select('name').eq('id', visit.site_id).maybeSingle()
   const siteName = (site as { name: string } | null)?.name ?? 'Chantier'
 
-  const chain = await buildVisitUnderstandingChain(reportId)
+  const [chain, semanticMemory] = await Promise.all([
+    buildVisitUnderstandingChain(reportId),
+    readDebriefSemanticMemory(reportId),
+  ])
   const photos = chain.captures.filter((c) => c.kind === 'photo' || c.kind === 'video')
   const spoken = chain.captures.filter((c) => (c.kind === 'vocal' || c.kind === 'note') && c.text)
+
+  // Résolutions à afficher : dédupliquées, sans les ignorées
+  const ignored = new Set(semanticMemory?.ignored_candidates ?? [])
+  const resolutionEntries = semanticMemory
+    ? Object.entries(semanticMemory.resolutions).filter(([rawText]) => !ignored.has(rawText))
+    : []
+  const resolvedEntries = resolutionEntries.filter(([, r]) => r.status === 'resolved')
+  const unknownEntries = resolutionEntries.filter(([, r]) => r.status !== 'resolved')
 
   return (
     <div className="space-y-5 max-w-md pb-24">
@@ -178,6 +205,111 @@ export default async function VisitComprehensionPage({
             <p className="rounded-xl border bg-muted/30 px-4 py-5 text-center text-[13px] text-muted-foreground">
               MemorIA n&apos;a pas encore tiré de conclusion de cette visite.
             </p>
+          )}
+
+          {/* ── 3. Intervenants et entreprises (Lot 1C) ────────────── */}
+          {resolutionEntries.length > 0 && (
+            <>
+              <div className="flex justify-center text-muted-foreground/50">
+                <ChevronDown className="h-5 w-5" />
+              </div>
+              <section className="space-y-2.5">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Intervenants et entreprises
+                </h2>
+
+                {/* Entités reconnues */}
+                {resolvedEntries.length > 0 && (
+                  <ul className="space-y-2">
+                    {resolvedEntries.map(([rawText, r]) => (
+                      <li key={rawText} className="rounded-2xl border border-foreground/[0.06] bg-card p-3.5">
+                        <div className="flex items-start gap-2.5">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950/40">
+                            <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[12px] text-muted-foreground">{rawText}</p>
+                            <p className="text-[14px] font-semibold leading-snug">{r.canonical}</p>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                              {SOURCE_LABEL[r.source]}
+                              {r.entityId && semanticMemory?.resolutions[rawText] && (
+                                <> · {SCOPE_LABEL['org'] /* TODO: expose scope from resolution */}</>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {/* Entités non reconnues */}
+                {unknownEntries.length > 0 && (
+                  <ul className="space-y-2">
+                    {unknownEntries.map(([rawText]) => {
+                      const orgId = visit.organization_id ?? ''
+                      async function doIgnore() {
+                        'use server'
+                        await ignoreCandidat(reportId, rawText)
+                      }
+                      async function doAddPerson() {
+                        'use server'
+                        await addEntityFromCandidat(reportId, orgId, rawText, 'person')
+                      }
+                      async function doAddCompany() {
+                        'use server'
+                        await addEntityFromCandidat(reportId, orgId, rawText, 'company')
+                      }
+                      return (
+                        <li key={rawText} className="rounded-2xl border border-amber-200/60 bg-amber-50/40 p-3.5 dark:border-amber-900/30 dark:bg-amber-950/10">
+                          <div className="flex items-start gap-2.5">
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-950/40">
+                              <UserX className="h-3.5 w-3.5 text-amber-600" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[14px] font-semibold leading-snug">{rawText}</p>
+                              <p className="mt-0.5 text-[11px] text-muted-foreground">Personne non reconnue</p>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2 border-t border-amber-200/50 pt-3 dark:border-amber-900/30">
+                            <Link
+                              href={`/m/visite/${reportId}/comprehension/associer?rawText=${encodeURIComponent(rawText)}`}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/10 bg-background px-2.5 py-1.5 text-[12px] font-medium text-foreground active:opacity-70"
+                            >
+                              <Users className="h-3 w-3" /> Associer
+                            </Link>
+                            <form action={doAddPerson}>
+                              <button
+                                type="submit"
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/10 bg-background px-2.5 py-1.5 text-[12px] font-medium text-foreground active:opacity-70"
+                              >
+                                <Users className="h-3 w-3" /> Ajouter comme personne
+                              </button>
+                            </form>
+                            <form action={doAddCompany}>
+                              <button
+                                type="submit"
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/10 bg-background px-2.5 py-1.5 text-[12px] font-medium text-foreground active:opacity-70"
+                              >
+                                <Building2 className="h-3 w-3" /> Ajouter comme entreprise
+                              </button>
+                            </form>
+                            <form action={doIgnore}>
+                              <button
+                                type="submit"
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/10 bg-background px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground active:opacity-70"
+                              >
+                                <XCircle className="h-3 w-3" /> Ignorer
+                              </button>
+                            </form>
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </section>
+            </>
           )}
         </>
       )}

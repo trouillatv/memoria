@@ -41,11 +41,25 @@ export interface EntityResolution {
   needs_resolution: boolean
 }
 
+/** Champ source d'une occurrence d'entité dans la synthèse LLM. */
+export type OccurrenceField = 'intervenant' | 'action_owner' | 'watchpoint_owner'
+
+/** Une occurrence d'entité brute avec sa localisation dans la synthèse. */
+export interface SemanticOccurrence {
+  rawText: string
+  field: OccurrenceField
+  index: number
+}
+
 export interface DebriefSemanticMemory {
   /** rawText (trim) → résolution ; une entrée par texte unique extrait par le LLM. */
   resolutions: Record<string, EntityResolution>
   /** Textes non résolus, dédupliqués. Candidats à ajouter à la mémoire (Lot 2). */
   new_candidates: string[]
+  /** Toutes les occurrences avec leur localisation (champ + index). */
+  occurrences: SemanticOccurrence[]
+  /** Candidats explicitement ignorés par l'utilisateur (Lot 1C). */
+  ignored_candidates?: string[]
 }
 
 const SCOPE_PRIORITY: Record<string, number> = { user: 3, site: 2, org: 1 }
@@ -113,31 +127,33 @@ export function resolveRawTexts(
     if (resolution.status !== 'resolved') newCandidates.push(trimmed)
   }
 
-  return { resolutions, new_candidates: newCandidates }
+  return { resolutions, new_candidates: newCandidates, occurrences: [] }
 }
 
-// Charge les entités du contexte et résout les textes bruts extraits par le LLM.
+// Charge les entités du contexte et résout les occurrences extraites par le LLM.
 // À appeler après l'appel LLM, avant la persistance de la synthèse.
-// Retourne une mémoire vide si la mémoire sémantique n'est pas configurée.
+// Retourne une mémoire vide si aucune occurrence n'est fournie.
 export async function buildDebriefSemanticMemory(
-  rawTexts: string[],
+  rawOccurrences: SemanticOccurrence[],
   siteId: string,
   orgId: string,
   userId?: string,
 ): Promise<DebriefSemanticMemory> {
-  const nonEmpty = rawTexts.map((t) => t.trim()).filter(Boolean)
-  if (nonEmpty.length === 0) return { resolutions: {}, new_candidates: [] }
+  const nonEmpty = rawOccurrences.filter((o) => o.rawText.trim())
+  if (nonEmpty.length === 0) return { resolutions: {}, new_candidates: [], occurrences: [] }
 
   const entities = await loadKnowledgeEntities(siteId, orgId, userId)
-  const result = resolveRawTexts(nonEmpty, entities)
+  const uniqueTexts = [...new Set(nonEmpty.map((o) => o.rawText.trim()))]
+  const { resolutions, new_candidates } = resolveRawTexts(uniqueTexts, entities)
+  const occurrences = nonEmpty.map((o) => ({ ...o, rawText: o.rawText.trim() }))
 
-  const resolvedCount = Object.values(result.resolutions).filter((r) => r.status === 'resolved').length
+  const resolvedCount = Object.values(resolutions).filter((r) => r.status === 'resolved').length
   console.log(
-    `[semantic-resolution] ${resolvedCount}/${nonEmpty.length} entité(s) résolue(s)` +
-      (result.new_candidates.length > 0
-        ? ` — ${result.new_candidates.length} candidat(s) : ${result.new_candidates.join(', ')}`
+    `[semantic-resolution] ${resolvedCount}/${uniqueTexts.length} entité(s) résolue(s)` +
+      (new_candidates.length > 0
+        ? ` — ${new_candidates.length} candidat(s) : ${new_candidates.join(', ')}`
         : ''),
   )
 
-  return result
+  return { resolutions, new_candidates, occurrences }
 }

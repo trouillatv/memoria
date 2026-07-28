@@ -34,7 +34,11 @@ import { toDebriefEcheance, type DebriefEcheance } from '@/lib/visits/echeance-l
 import { runVisitDebriefAgent, type VisitDebriefInput, type VisitDebriefParsed } from '@/services/ai/visit-debrief'
 import { projectDebriefToProposals } from '@/lib/db/knowledge-proposals'
 import { buildSemanticContextBlock } from '@/lib/knowledge/semantic-entities'
-import { buildDebriefSemanticMemory, type DebriefSemanticMemory } from '@/lib/knowledge/semantic-resolution'
+import {
+  buildDebriefSemanticMemory,
+  type DebriefSemanticMemory,
+  type SemanticOccurrence,
+} from '@/lib/knowledge/semantic-resolution'
 
 type Confidence = 'elevee' | 'moyenne' | 'faible' | null
 
@@ -270,6 +274,11 @@ function fromAgent(
   }
 }
 
+export async function readDebriefSemanticMemory(reportId: string): Promise<DebriefSemanticMemory | null> {
+  const { analysis } = await readState(reportId)
+  return analysis?.semantic_memory ?? null
+}
+
 async function readState(
   reportId: string,
 ): Promise<{ analysis: StoredDebriefAnalysis | null; generatingAt: string | null }> {
@@ -418,17 +427,23 @@ export async function loadOrRunVisitDebrief(
     // à jour n'efface jamais un état humain (fait/écarté).
     const oldLedger = cache?.schema_version === ANALYSIS_SCHEMA_VERSION ? cache.action_ledger : undefined
 
-    // Résolution post-LLM (Lot 1B) : qualifie les entités extraites contre la mémoire sémantique.
-    // Les textes bruts à résoudre sont : intervenants + owners des actions et vigilances.
-    const entityTexts = [
-      ...res.parsed.intervenants,
-      ...res.parsed.suggested_actions.map((a) => a.owner),
-      ...res.parsed.important_points.map((p) => p.owner),
-    ].filter(Boolean)
+    // Résolution post-LLM (Lot 1B/1C) : qualifie les entités extraites contre la mémoire sémantique.
+    // Les occurrences sont structurées (champ + index) pour permettre la traçabilité dans l'UI.
+    const rawOccurrences: SemanticOccurrence[] = [
+      ...res.parsed.intervenants
+        .filter(Boolean)
+        .map((t, i) => ({ rawText: t, field: 'intervenant' as const, index: i })),
+      ...res.parsed.suggested_actions
+        .filter((a) => a.owner)
+        .map((a, i) => ({ rawText: a.owner, field: 'action_owner' as const, index: i })),
+      ...res.parsed.important_points
+        .filter((p) => p.owner)
+        .map((p, i) => ({ rawText: p.owner, field: 'watchpoint_owner' as const, index: i })),
+    ]
     const semanticMemory =
-      entityTexts.length > 0 && ctx.visit.site_id && ctx.visit.organization_id
+      rawOccurrences.length > 0 && ctx.visit.site_id && ctx.visit.organization_id
         ? await buildDebriefSemanticMemory(
-            [...new Set(entityTexts)],
+            rawOccurrences,
             ctx.visit.site_id,
             ctx.visit.organization_id,
             userId ?? undefined,
