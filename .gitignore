@@ -74,3 +74,6 @@ docs/AO/extract*
 cr-becib-preview.pdf
 
 .preview/
+
+# Graphify — graphe généré localement, reconstruit à la demande
+graphify-out/
