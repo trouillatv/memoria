@@ -989,6 +989,10 @@ async function seedContractors() {
 
 async function seedSiteIntervenants() {
   console.log('  Intervenants par chantier…')
+  // Purge préalable : les rôles dépendent de l'index si → changer le tableau SITES
+  // peut modifier les assignments. On repart d'une table propre pour les sites courants.
+  const currentSiteIds = SITES.map(s => `'${duid('site:' + s.key)}'`).join(',')
+  await runSql(`DELETE FROM public.site_intervenants WHERE site_id IN (${currentSiteIds})`)
   const rows: string[] = []
 
   for (let si = 0; si < SITES.length; si++) {
@@ -1196,6 +1200,13 @@ async function seedVisitCaptures(authIds: Record<string, string>) {
 async function seedPlanningCycles(authIds: Record<string, string>) {
   console.log(`  Roulements (planning_cycles + slots) — ${SITES.length} sites × 2 missions…`)
   const adminId = authIds['david.bouvier']
+  // Pré-purge : les weekdays/teams dépendent de l'index si → repart proprement
+  const currentSiteIds = SITES.map(s => `'${duid('site:' + s.key)}'`).join(',')
+  await runSql(`
+    DELETE FROM public.planning_cycle_slots
+    WHERE cycle_id IN (SELECT id FROM public.planning_cycles WHERE site_id IN (${currentSiteIds}))
+  `)
+  await runSql(`DELETE FROM public.planning_cycles WHERE site_id IN (${currentSiteIds})`)
   const anchorDate = '2026-07-27' // lundi de la semaine courante
   const startsOn  = '2026-01-05' // début d'année, lundi
 
