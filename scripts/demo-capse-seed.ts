@@ -801,7 +801,7 @@ async function seedSiteIntervenants() {
 }
 
 async function seedMissions(authIds: Record<string, string>) {
-  console.log(`  Missions & interventions (${SITES.length} sites × 2 missions × 6 interventions)…`)
+  console.log(`  Missions & interventions (${SITES.length} sites × 2 missions × 7 interventions)…`)
   const adminId = authIds['david.bouvier']
 
   const missionRows: string[] = []
@@ -816,9 +816,10 @@ async function seedMissions(authIds: Record<string, string>) {
     { offset: -90, status: 'completed' },
     { offset: -60, status: 'completed' },
     { offset: -30, status: 'completed' },
-    { offset: -10, status: 'completed' },
-    { offset: 20, status: 'planned' },
-    { offset: 50, status: 'planned' },
+    { offset: -7,  status: 'completed' },
+    { offset: 0,   status: 'planned'   }, // semaine courante
+    { offset: 7,   status: 'planned'   }, // semaine prochaine
+    { offset: 35,  status: 'planned'   },
   ] as const
 
   for (let si = 0; si < SITES.length; si++) {
@@ -862,7 +863,11 @@ async function seedMissions(authIds: Record<string, string>) {
       INSERT INTO public.interventions
         (id, mission_id, scheduled_at, scheduled_for, status, assigned_team_id, organization_id, created_by)
       VALUES ${interventionRows.slice(i, i + 50).join(',')}
-      ON CONFLICT (id) DO NOTHING
+      ON CONFLICT (id) DO UPDATE SET
+        scheduled_at    = EXCLUDED.scheduled_at,
+        scheduled_for   = EXCLUDED.scheduled_for,
+        status          = EXCLUDED.status,
+        assigned_team_id = EXCLUDED.assigned_team_id
     `)
     process.stdout.write('.')
   }
@@ -871,9 +876,21 @@ async function seedMissions(authIds: Record<string, string>) {
 }
 
 async function seedSiteActions(authIds: Record<string, string>) {
-  console.log('  Actions ouvertes par chantier…')
+  console.log('  Actions par chantier (mix done / late / upcoming / planned)…')
   const adminId = authIds['david.bouvier']
   const rows: string[] = []
+
+  // Statuts et dates par index d'action
+  const ACTION_VARIANTS = [
+    // ai=0 : terminée il y a ~2 mois
+    { status: 'done',    dueDaysOffset: -60, doneDaysOffset: -55 },
+    // ai=1 : ouverte EN RETARD (due passée)
+    { status: 'open',    dueDaysOffset: -15, doneDaysOffset: null },
+    // ai=2 : ouverte, échéance à venir
+    { status: 'open',    dueDaysOffset:  21, doneDaysOffset: null },
+    // ai=3 : planifiée (convertie en intervention)
+    { status: 'planned', dueDaysOffset:  35, doneDaysOffset: null },
+  ] as const
 
   for (let si = 0; si < SITES.length; si++) {
     const site = SITES[si]
@@ -884,12 +901,17 @@ async function seedSiteActions(authIds: Record<string, string>) {
     for (let ai = 0; ai < count; ai++) {
       const action = pick(ACTION_POOL, `sa:${site.key}:${ai}`)
       const aId = duid(`sa:${site.key}:${ai}`)
-      const dueDate = isoDate(addDays(TODAY_STR, -30 + ai * 18))
+      const variant = ACTION_VARIANTS[ai % ACTION_VARIANTS.length]
+      const dueDate = isoDate(addDays(TODAY_STR, variant.dueDaysOffset))
+      const doneAt = variant.doneDaysOffset !== null
+        ? esc(pgTs(addDays(TODAY_STR, variant.doneDaysOffset)))
+        : 'NULL'
+
       rows.push(`(
         '${aId}', '${siteId}', '${reportId}',
         ${esc(action.title)}, ${esc(action.rationale)},
         'Sécurité incendie', ${esc(action.owner)},
-        'open', '${dueDate}', '${adminId}'
+        '${variant.status}', '${dueDate}', ${doneAt}, '${adminId}'
       )`)
     }
   }
@@ -897,14 +919,17 @@ async function seedSiteActions(authIds: Record<string, string>) {
   for (let i = 0; i < rows.length; i += 50) {
     await runSql(`
       INSERT INTO public.site_actions
-        (id, site_id, report_id, title, body, corps_etat, assigned_to, status, due_date, created_by)
+        (id, site_id, report_id, title, body, corps_etat, assigned_to, status, due_date, done_at, created_by)
       VALUES ${rows.slice(i, i + 50).join(',')}
-      ON CONFLICT (id) DO NOTHING
+      ON CONFLICT (id) DO UPDATE SET
+        status   = EXCLUDED.status,
+        due_date = EXCLUDED.due_date,
+        done_at  = EXCLUDED.done_at
     `)
     process.stdout.write('.')
   }
   console.log()
-  process.stdout.write(`    ${rows.length} actions\n`)
+  process.stdout.write(`    ${rows.length} actions (done/late/upcoming/planned)\n`)
 }
 
 async function seedVisitCaptures(authIds: Record<string, string>) {
@@ -994,7 +1019,7 @@ async function main() {
   console.log(`  Reports/site : 4 visites passées + 2 réunions + 2 futures = 8`)
   console.log(`  Total reports: ~${SITES.length * 8}`)
   console.log(`  Missions     : ${SITES.length * 2} (2/site)`)
-  console.log(`  Interventions: ${SITES.length * 2 * 6} (6/mission)`)
+  console.log(`  Interventions: ${SITES.length * 2 * 7} (7/mission : 4 passées + 3 futures dont semaine courante)`)
   console.log(`  Actions      : ~${SITES.length * 3} (3-4/site)`)
   console.log(`  Captures     : ~${SITES.length * 4 * 3} (3-4/visite passée)`)
 }
