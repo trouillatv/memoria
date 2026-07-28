@@ -1110,15 +1110,16 @@ async function seedSiteActions(authIds: Record<string, string>) {
   const rows: string[] = []
 
   // Statuts et dates par index d'action
+  // convertedType/convertedId : lie l'action à une mission pour l'écran intervention
   const ACTION_VARIANTS = [
     // ai=0 : terminée il y a ~2 mois
-    { status: 'done',    dueDaysOffset: -60, doneDaysOffset: -55 },
-    // ai=1 : ouverte EN RETARD (due passée)
-    { status: 'open',    dueDaysOffset: -15, doneDaysOffset: null },
-    // ai=2 : ouverte, échéance à venir
-    { status: 'open',    dueDaysOffset:  21, doneDaysOffset: null },
-    // ai=3 : planifiée (convertie en intervention)
-    { status: 'planned', dueDaysOffset:  35, doneDaysOffset: null },
+    { status: 'done',    dueDaysOffset: -60, doneDaysOffset: -55, convertedSuffix: null },
+    // ai=1 : ouverte EN RETARD (due passée) — liée à mission m0
+    { status: 'open',    dueDaysOffset: -15, doneDaysOffset: null, convertedSuffix: 'm0' },
+    // ai=2 : ouverte, échéance à venir — liée à mission m1
+    { status: 'open',    dueDaysOffset:  21, doneDaysOffset: null, convertedSuffix: 'm1' },
+    // ai=3 : planifiée
+    { status: 'planned', dueDaysOffset:  35, doneDaysOffset: null, convertedSuffix: null },
   ] as const
 
   for (let si = 0; si < SITES.length; si++) {
@@ -1135,12 +1136,15 @@ async function seedSiteActions(authIds: Record<string, string>) {
       const doneAt = variant.doneDaysOffset !== null
         ? esc(pgTs(addDays(TODAY_STR, variant.doneDaysOffset)))
         : 'NULL'
+      const convType = variant.convertedSuffix ? `'mission'` : 'NULL'
+      const convId   = variant.convertedSuffix ? `'${duid('mission:' + site.key + ':' + variant.convertedSuffix)}'` : 'NULL'
 
       rows.push(`(
         '${aId}', '${siteId}', '${reportId}',
         ${esc(action.title)}, ${esc(action.rationale)},
         'Sécurité incendie', ${esc(action.owner)},
-        '${variant.status}', '${dueDate}', ${doneAt}, '${adminId}'
+        '${variant.status}', '${dueDate}', ${doneAt}, '${adminId}',
+        ${convType}, ${convId}
       )`)
     }
   }
@@ -1148,12 +1152,15 @@ async function seedSiteActions(authIds: Record<string, string>) {
   for (let i = 0; i < rows.length; i += 50) {
     await runSql(`
       INSERT INTO public.site_actions
-        (id, site_id, report_id, title, body, corps_etat, assigned_to, status, due_date, done_at, created_by)
+        (id, site_id, report_id, title, body, corps_etat, assigned_to, status, due_date, done_at, created_by,
+         converted_to_type, converted_to_id)
       VALUES ${rows.slice(i, i + 50).join(',')}
       ON CONFLICT (id) DO UPDATE SET
-        status   = EXCLUDED.status,
-        due_date = EXCLUDED.due_date,
-        done_at  = EXCLUDED.done_at
+        status            = EXCLUDED.status,
+        due_date          = EXCLUDED.due_date,
+        done_at           = EXCLUDED.done_at,
+        converted_to_type = EXCLUDED.converted_to_type,
+        converted_to_id   = EXCLUDED.converted_to_id
     `)
     process.stdout.write('.')
   }

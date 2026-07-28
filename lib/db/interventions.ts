@@ -767,16 +767,29 @@ export async function getSiteResumeContext(
     .is('deleted_at', null)
   const missionIds = (missions ?? []).map((m) => m.id)
 
+  // Équipes actives de l'utilisateur (V3 doctrine : assigned_team_id)
+  const { data: memberships } = await supabase
+    .from('team_members')
+    .select('team_id')
+    .eq('user_id', userId)
+    .is('left_at', null)
+  const teamIds = (memberships ?? []).map((m) => m.team_id)
+
   let lastVisitAt: string | null = null
   if (missionIds.length > 0) {
-    const { data: lastIntv } = await supabase
+    let q = supabase
       .from('interventions')
       .select('executed_at, scheduled_at, status')
       .in('mission_id', missionIds)
-      .contains('team', [userId])
       .in('status', ['completed', 'validated'])
       .order('executed_at', { ascending: false, nullsFirst: false })
       .limit(1)
+    if (teamIds.length > 0) {
+      q = q.or(`team.cs.{${userId}},assigned_team_id.in.(${teamIds.join(',')})`)
+    } else {
+      q = q.contains('team', [userId])
+    }
+    const { data: lastIntv } = await q
     const row = lastIntv?.[0]
     if (row) {
       lastVisitAt = row.executed_at ?? row.scheduled_at ?? null
