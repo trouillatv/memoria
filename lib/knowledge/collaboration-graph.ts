@@ -12,6 +12,8 @@ import { computeRelationTemporalMetrics, type RelationActivityTrend } from './ac
 import type { ActorInteraction, ActorRef } from './actor-interactions'
 import type { AttentionLevel } from './actor-attention'
 
+export interface CollaborationBreakdown { co_casting: number; co_action: number; co_team: number }
+
 export interface CollaborationEdge {
   /** Couple canonique (refKey(a) <= refKey(b)). */
   a: ActorRef
@@ -23,6 +25,8 @@ export interface CollaborationEdge {
   daysSinceLastInteraction: number
   trend: RelationActivityTrend
   activeInteractionCount: number
+  /** Répartition des interactions par type (pour l'inspecteur — « pourquoi proches »). */
+  breakdown: CollaborationBreakdown
 }
 
 export interface CollaborationGraph {
@@ -46,6 +50,7 @@ export interface CollaborationEdgeView {
   daysSinceLastInteraction: number
   trend: RelationActivityTrend
   activeInteractionCount: number
+  breakdown: CollaborationBreakdown
 }
 export interface CollaborationGraphView {
   nodes: CollaborationNodeView[]
@@ -79,6 +84,11 @@ export function buildCollaborationGraph(interactions: ActorInteraction[], asOf: 
       daysSinceLastInteraction: temporal.daysSinceLastInteraction,
       trend: temporal.activity.trend,
       activeInteractionCount: relation.activeInteractionCount,
+      breakdown: {
+        co_casting: relation.breakdown.co_casting.count,
+        co_action: relation.breakdown.co_action.count,
+        co_team: relation.breakdown.co_team.count,
+      },
     })
   }
 
@@ -88,6 +98,27 @@ export function buildCollaborationGraph(interactions: ActorInteraction[], asOf: 
   })
   const nodes = [...nodeByKey.values()].sort((p, q) => (refKey(p) < refKey(q) ? -1 : refKey(p) > refKey(q) ? 1 : 0))
   return { nodes, edges }
+}
+
+// ── Transformations VISUELLES (bornées, robustes à une distribution asymétrique) ──
+export const EDGE_WIDTH_MIN = 1.2
+export const EDGE_WIDTH_MAX = 7
+
+/** Épaisseur d'un lien depuis la force : monotone + PLAFOND. sqrt(force) garde des
+ *  écarts visibles entre faible/moyen/fort ; le plafond empêche une relation
+ *  exceptionnelle d'écraser toutes les autres. */
+export function collaborationEdgeWidth(strength: number): number {
+  return Math.min(EDGE_WIDTH_MAX, EDGE_WIDTH_MIN + 1.1 * Math.sqrt(Math.max(0, strength)))
+}
+
+/** Transparence depuis la récence : récent = opaque, ancien = pâle mais VISIBLE
+ *  (plancher 0,3 — les relations anciennes restent secondaires, jamais effacées). */
+export function collaborationEdgeAlpha(daysSinceLastInteraction: number): number {
+  const d = daysSinceLastInteraction
+  if (d <= 90) return 1
+  if (d <= 365) return 0.7
+  if (d <= 730) return 0.45
+  return 0.3
 }
 
 /** Vue ÉCOSYSTÈME : le graphe de collaboration réduit aux ENTREPRISES (personnes,

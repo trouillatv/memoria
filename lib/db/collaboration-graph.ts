@@ -44,6 +44,7 @@ export async function getCollaborationGraph(orgIds: string[], asOf: Date): Promi
     a: `${e.a.kind}:${e.a.id}`, b: `${e.b.kind}:${e.b.id}`,
     strength: e.strength, interactionCount: e.interactionCount,
     daysSinceLastInteraction: e.daysSinceLastInteraction, trend: e.trend, activeInteractionCount: e.activeInteractionCount,
+    breakdown: e.breakdown,
   }))
   return { nodes, edges }
 }

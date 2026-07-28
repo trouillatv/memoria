@@ -4,19 +4,53 @@
 // Le graphe global (filtré par pertinence) : qui agit, avec qui, où, QUAND. État et
 // inspecteur PARTAGÉS avec le réseau fusionné des fiches. AUCUNE navigation au clic.
 
-import { Route } from 'lucide-react'
+import { useState } from 'react'
+import { Route, Share2, GitFork, Building2 } from 'lucide-react'
 import { DEFAULT_PERSPECTIVE, type ActorsGraph } from '@/lib/knowledge/actors-graph-model'
+import type { CollaborationGraphView } from '@/lib/knowledge/collaboration-graph'
 import { ActorsGraphCanvas } from './ActorsGraphCanvas'
 import { GraphControls } from './GraphControls'
 import { GraphSearch } from './GraphSearch'
 import { GraphTimeline } from './GraphTimeline'
+import { CollaborationExplorer } from './CollaborationExplorer'
 import { useGraphExplorer, ExplorerAside } from './useGraphExplorer'
 
-export function ActorsExplorer({ graph, focusId }: { graph: ActorsGraph; focusId?: string | null }) {
+type Source = 'structural' | 'collaboration' | 'ecosystem'
+const SOURCES: ReadonlyArray<{ id: Source; label: string; icon: typeof Share2 }> = [
+  { id: 'structural', label: 'Structurel', icon: Share2 },
+  { id: 'collaboration', label: 'Collaboration', icon: GitFork },
+  { id: 'ecosystem', label: 'Écosystème', icon: Building2 },
+]
+
+export function ActorsExplorer({ graph, focusId, collabGraph }: { graph: ActorsGraph; focusId?: string | null; collabGraph?: CollaborationGraphView | null }) {
   // La vue d'ensemble s'ouvre sur UNE lecture (Chantiers) — pas « tout à la fois ».
   const ex = useGraphExplorer(graph, focusId, DEFAULT_PERSPECTIVE)
+  // Bascule de SOURCE (pas un filtre) : structurel « qui est relié à qui » vs
+  // collaboration/écosystème « qui travaille réellement ensemble » (graphe pondéré).
+  const [source, setSource] = useState<Source>('structural')
+
+  const collabReady = !!collabGraph && collabGraph.nodes.length > 0
 
   return (
+    <div className="space-y-3">
+      <div className="inline-flex self-start rounded-lg border border-border/60 bg-muted/40 p-0.5">
+        {SOURCES.map((s) => {
+          const active = source === s.id
+          const Icon = s.icon
+          return (
+            <button key={s.id} type="button" onClick={() => setSource(s.id)}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+              <Icon className="h-4 w-4" aria-hidden /> {s.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {source !== 'structural' ? (
+        collabReady
+          ? <CollaborationExplorer data={collabGraph!} mode={source === 'ecosystem' ? 'ecosystem' : 'collaboration'} />
+          : <div className="rounded-2xl border border-dashed border-border/60 py-12 text-center text-sm text-muted-foreground italic">Aucune collaboration structurelle à représenter pour le moment.</div>
+      ) : (
     <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
       <div className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -61,6 +95,8 @@ export function ActorsExplorer({ graph, focusId }: { graph: ActorsGraph; focusId
           }
         />
       </aside>
+    </div>
+      )}
     </div>
   )
 }

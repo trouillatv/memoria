@@ -13,6 +13,7 @@ import {
 import type { ActorKind, ActorStatus, CockpitActor, ActorsCockpit } from '@/lib/db/actors-cockpit'
 import { attentionLevelLabel, type AttentionLevel } from '@/lib/knowledge/actor-attention'
 import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
+import type { CollaborationGraphView } from '@/lib/knowledge/collaboration-graph'
 import type { ActorProposal } from '@/lib/db/actor-proposals'
 import { ActorPreviewPanel } from './ActorPreviewPanel'
 import { loadActorPreview } from './preview-actions'
@@ -86,11 +87,12 @@ function compareActors(a: CockpitActor, b: CockpitActor): number {
   return a.name.localeCompare(b.name, 'fr')
 }
 
-export function ActorsCockpitView({ directory, teams, proposals = [], graph, focusId, view }: {
+export function ActorsCockpitView({ directory, teams, proposals = [], graph, collabGraph, focusId, view }: {
   directory: ActorsCockpit
   teams: Array<{ id: string; name: string }>
   proposals?: ActorProposal[]
   graph?: ActorsGraph | null
+  collabGraph?: CollaborationGraphView | null
   focusId?: string | null
   view?: 'list' | 'graph'
 }) {
@@ -229,7 +231,7 @@ export function ActorsCockpitView({ directory, teams, proposals = [], graph, foc
 
       {isGraph ? (
         graph && graph.nodes.length > 0 ? (
-          <ActorsExplorer graph={graph} focusId={focusId} />
+          <ActorsExplorer graph={graph} focusId={focusId} collabGraph={collabGraph} />
         ) : (
           <div className="rounded-2xl border border-dashed border-border/60 py-12 text-center text-sm text-muted-foreground italic">
             Aucun acteur actif à représenter pour le moment.

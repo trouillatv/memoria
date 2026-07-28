@@ -12,6 +12,7 @@ import { checkIntervenantsPageAccess } from '@/lib/intervenants/access'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getActorsCockpit } from '@/lib/db/actors-cockpit'
 import { getActorsGraph } from '@/lib/knowledge/actors-graph'
+import { getCollaborationGraph } from '@/lib/db/collaboration-graph'
 import { getUnconfirmedActorProposals } from '@/lib/db/actor-proposals'
 import { listTeams } from '@/lib/db/teams'
 import { ActorsCockpitView } from './ActorsCockpitView'
@@ -38,8 +39,11 @@ export default async function IntervenantsListPage({ searchParams }: { searchPar
   // Équipes de l'org pour le rattachement facultatif à la création d'un intervenant.
   const teamOptions = teams.map((t) => ({ id: t.id, name: t.name }))
   // CHARGEMENT PARESSEUX (Vincent) : la liste reste la vue par défaut ; on ne paie le
-  // coût du graphe QUE lorsque l'utilisateur bascule sur la vue Graphe (?vue=graphe).
-  const graph = showGraph ? await getActorsGraph(orgIds) : null
+  // coût des graphes QUE lorsque l'utilisateur bascule sur la vue Graphe (?vue=graphe).
+  // Structurel + collaboration pondérée (bascule de source côté client).
+  const [graph, collabGraph] = showGraph
+    ? await Promise.all([getActorsGraph(orgIds), getCollaborationGraph(orgIds, new Date())])
+    : [null, null]
 
   return (
     <ActorsCockpitView
@@ -47,6 +51,7 @@ export default async function IntervenantsListPage({ searchParams }: { searchPar
       teams={teamOptions}
       proposals={proposals}
       graph={graph}
+      collabGraph={collabGraph}
       focusId={sp.focus ?? null}
       view={showGraph ? 'graph' : 'list'}
     />

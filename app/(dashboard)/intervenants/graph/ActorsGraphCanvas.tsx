@@ -15,6 +15,7 @@
 import { useEffect, useRef } from 'react'
 import { graphTimeline, type ActorsGraph, type ActorGraphKind, type ActorGraphNode, type ActorGraphRel } from '@/lib/knowledge/actors-graph-model'
 import { createForceGraphEngine, type ForceGraphEngine, type Vec } from '@/components/graph/force-graph-engine'
+import { RING_COLOR, HISTORICAL_COLOR, NEUTRAL_FILL, companyFill } from './actor-colors'
 
 export type SelectableKind = 'person' | 'company' | 'team'
 
@@ -45,25 +46,10 @@ export interface GraphControl {
 // FOND = organisation (entreprise) → « qui travaille avec qui » d'un coup d'œil.
 // ANNEAU = état d'attention (rouge/orange) → « où sont les points d'attention ».
 // LIENS = couleur par type de relation → le sens sans avoir à lire les libellés.
-const RING_COLOR = { urgent: '#dc2626', attention: '#f59e0b', ok: null } as const
-const HISTORICAL_COLOR = '#94a3b8'
-// Nœuds sans entreprise (équipe/chantier/action, ou personne sans société) : fond
-// NEUTRE — ils sont le tissu, les entreprises ressortent. L'anneau porte l'alerte.
-const NEUTRAL_FILL = '#cbd5e1'
+// Couleurs (fond/halo) PARTAGÉES avec le graphe de collaboration (actor-colors).
 // Hiérarchie visuelle : entreprise > chantier > personne = équipe > action.
 const SIZE: Record<ActorGraphKind, number> = { company: 24, site: 19, person: 14, team: 14, action: 9 }
 
-// Palette d'ENTREPRISES — bleus/verts/violets/cyans, SANS rouge ni orange (réservés
-// à l'anneau d'alerte : une couleur d'alerte n'est jamais une couleur d'entreprise).
-const COMPANY_PALETTE = [
-  '#3b82f6', '#22c55e', '#a855f7', '#14b8a6', '#ec4899', '#6366f1',
-  '#06b6d4', '#8b5cf6', '#0ea5e9', '#10b981', '#d946ef', '#84cc16',
-]
-function companyFill(companyId: string): string {
-  let h = 0
-  for (let i = 0; i < companyId.length; i++) h = (h * 31 + companyId.charCodeAt(i)) >>> 0
-  return COMPANY_PALETTE[h % COMPANY_PALETTE.length]
-}
 function nodeFill(n: ActorGraphNode): string {
   if (n.historical) return HISTORICAL_COLOR
   if (n.companyId) return companyFill(n.companyId)

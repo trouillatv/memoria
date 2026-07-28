@@ -4,7 +4,7 @@
 // vue Écosystème (entreprises seules), déterminisme.
 
 import { describe, expect, it } from 'vitest'
-import { buildCollaborationGraph, ecosystemView } from '@/lib/knowledge/collaboration-graph'
+import { buildCollaborationGraph, ecosystemView, collaborationEdgeWidth, collaborationEdgeAlpha, EDGE_WIDTH_MIN, EDGE_WIDTH_MAX } from '@/lib/knowledge/collaboration-graph'
 import { aggregateActorRelations } from '@/lib/knowledge/actor-relations'
 import type { ActorInteraction } from '@/lib/knowledge/actor-interactions'
 
@@ -62,6 +62,29 @@ describe('buildCollaborationGraph', () => {
 
   it('graphe vide → vide', () => {
     expect(buildCollaborationGraph([], ASOF)).toEqual({ nodes: [], edges: [] })
+  })
+})
+
+describe('transformations visuelles (bornées)', () => {
+  it('épaisseur : monotone, plancher, et PLAFONNÉE (un outlier n’écrase pas le reste)', () => {
+    expect(collaborationEdgeWidth(0)).toBeCloseTo(EDGE_WIDTH_MIN)
+    expect(collaborationEdgeWidth(2)).toBeLessThan(collaborationEdgeWidth(10)) // monotone
+    expect(collaborationEdgeWidth(10)).toBeLessThan(collaborationEdgeWidth(30))
+    expect(collaborationEdgeWidth(100000)).toBeLessThanOrEqual(EDGE_WIDTH_MAX) // plafond
+    // Écarts VISIBLES entre faible / moyen / fort avant plafond.
+    expect(collaborationEdgeWidth(6) - collaborationEdgeWidth(2)).toBeGreaterThan(0.3)
+  })
+
+  it('transparence : récent opaque, ancien pâle mais visible (plancher 0,3)', () => {
+    expect(collaborationEdgeAlpha(0)).toBe(1)
+    expect(collaborationEdgeAlpha(200)).toBe(0.7)
+    expect(collaborationEdgeAlpha(500)).toBe(0.45)
+    expect(collaborationEdgeAlpha(2000)).toBe(0.3) // jamais 0
+  })
+
+  it('breakdown par type porté par l’arête', () => {
+    const g = buildCollaborationGraph([casting('s1', shift(-10), null, 'coA', 'coB'), casting('s2', shift(-10), null, 'coA', 'coB')], ASOF)
+    expect(g.edges[0]!.breakdown).toEqual({ co_casting: 2, co_action: 0, co_team: 0 })
   })
 })
 
