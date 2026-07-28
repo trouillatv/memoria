@@ -844,9 +844,27 @@ Toujours analyser le **périmètre minimal** utile à la tâche. Ne jamais index
 | AO / Tenders | `lib/tender` |
 | Schéma base de données | `supabase/migrations` |
 
+### Fréquences et coût
+
+| Commande | Fréquence | Tokens |
+|---|---|---|
+| `graphify lib/<module> --code-only` | Quotidien si besoin | 0 |
+| `graphify supabase/migrations --code-only` | À chaque touche SQL | 0 |
+| `graphify docs/<dossier> --backend claude` | Ponctuel | Faible |
+| `graphify . --backend claude` | 1 fois par mois / avant grosse refonte | Élevé |
+
+### Graphify comme cache de contexte
+
+Au lieu de demander à Claude de relire tout le dépôt, lui passer directement le graphe d'un module :
+
+> « Utilise Graphify pour comprendre uniquement le module Knowledge, puis propose les modifications. »
+
+Cela réduit fortement le contexte et évite les analyses globales inutiles.
+
 ### Règles
 
 - Utiliser `--code-only` par défaut (aucun token LLM consommé).
+- Ne jamais lancer `graphify .` sans `--code-only` sauf audit mensuel ou refonte majeure.
 - N'utiliser un backend LLM que si l'analyse sémantique des docs ou images est réellement nécessaire.
 - `graphify-out/` est versionné dans le dépôt.
 - Ne pas lancer Graphify pour une correction locale, un changement de texte ou un ajustement CSS.
