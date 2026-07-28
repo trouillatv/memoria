@@ -977,8 +977,12 @@ export interface DbInterventionChecklistItem {
   delivered_qty: number | null
   item_status: string | null
   // Provenance (mig 252) : 'mission_template' = copié du modèle de mission ;
-  // 'local' = ajouté pour cette intervention uniquement.
+  // 'local' = ajouté pour cette intervention OU item du modèle personnalisé.
   source: 'mission_template' | 'local'
+  // Origine (mig 253) : si non null, cet item local provient d'un item du modèle
+  // (renommé / rendu obligatoire ici). Valeur = libellé du modèle d'origine.
+  // null = item du modèle intact, ou ajout local de toutes pièces.
+  origin_template_label: string | null
 }
 
 export type PhotoKind = 'before' | 'after' | 'anomaly' | 'proof' | 'passage' | 'access'

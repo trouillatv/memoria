@@ -203,12 +203,24 @@ export function EditChecklistSheet({ interventionId, items, hasMissionTemplate }
                 </div>
               </div>
 
-              {/* Badge source */}
+              {/* Badge source — deux cas distincts de 'local' :
+                  - origine null  → ajouté de toutes pièces pour cette intervention
+                  - origine posée → item du modèle personnalisé ici */}
               {item.source === 'local' && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-1.5 py-0.5">
-                  <Plus className="h-2.5 w-2.5" />
-                  Ajouté pour cette intervention
-                </span>
+                item.origin_template_label ? (
+                  <span
+                    className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5"
+                    title={`Modèle : « ${item.origin_template_label} »`}
+                  >
+                    <Pencil className="h-2.5 w-2.5" />
+                    Personnalisé
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-1.5 py-0.5">
+                    <Plus className="h-2.5 w-2.5" />
+                    Ajouté pour cette intervention
+                  </span>
+                )
               )}
             </li>
           ))}

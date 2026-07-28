@@ -484,20 +484,48 @@ export async function removeChecklistItem(itemId: string): Promise<void> {
   if (error) throw error
 }
 
+/**
+ * Édite un item et applique la PROMOTION : si l'item provient du modèle
+ * ('mission_template'), toute édition le fait diverger → 'local', en gardant
+ * `origin_template_label` = libellé du modèle d'origine (capturé une seule fois).
+ * Ainsi le Lot 2 (propagation) sait que cette intervention a personnalisé cet
+ * item et ne le ré-ajoute ni ne l'écrase.
+ */
 export async function updateChecklistItem(itemId: string, patch: {
   label?: string
   required?: boolean
   position?: number
 }): Promise<void> {
   const supabase = createAdminClient()
+  const { data: current } = await supabase
+    .from('intervention_checklist_items')
+    .select('source, label, origin_template_label')
+    .eq('id', itemId)
+    .single()
+
+  const update: Record<string, unknown> = { ...patch }
+  if (current?.source === 'mission_template') {
+    update.source = 'local'
+    // Capture l'origine une seule fois : le libellé actuel EST celui du modèle
+    // puisque l'item n'avait pas encore divergé.
+    update.origin_template_label = current.origin_template_label ?? current.label
+  }
+
   const { error } = await supabase
     .from('intervention_checklist_items')
-    .update(patch)
+    .update(update)
     .eq('id', itemId)
   if (error) throw error
 }
 
-/** Restaure les items 'mission_template' depuis le modèle ; préserve les 'local'. */
+/**
+ * Restaure la partie « modèle » de la checklist depuis la mission.
+ *   - supprime les items 'mission_template' (intacts) ;
+ *   - supprime les items 'local' personnalisés depuis le modèle
+ *     (origin_template_label non null) — restaurer annule la divergence ;
+ *   - PRÉSERVE les items 'local' ajoutés de toutes pièces (origine null) ;
+ *   - ré-insère les items du modèle.
+ */
 export async function restoreChecklistFromMission(
   interventionId: string,
   templateItems: Array<{ label: string; required?: boolean; engagement_id?: string }>,
@@ -508,6 +536,13 @@ export async function restoreChecklistFromMission(
     .delete()
     .eq('intervention_id', interventionId)
     .eq('source', 'mission_template')
+  // Items du modèle personnalisés ici : la restauration défait la divergence.
+  await supabase
+    .from('intervention_checklist_items')
+    .delete()
+    .eq('intervention_id', interventionId)
+    .eq('source', 'local')
+    .not('origin_template_label', 'is', null)
   if (templateItems.length === 0) return
   const { error } = await supabase
     .from('intervention_checklist_items')
