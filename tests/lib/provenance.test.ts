@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 //   · sans source traçable, null — pas de bouton qui ment.
 
 vi.mock('server-only', () => ({}))
+vi.mock('next/cache', () => ({ revalidateTag: () => {}, revalidatePath: () => {} }))
 
 let mockOrgIds: string[] = ['org-1']
 vi.mock('@/lib/auth/memberships', () => ({ getOrgIdsOfUser: async () => mockOrgIds }))
@@ -19,6 +20,7 @@ let objRow: Record<string, unknown> | null = null
 let siteRow: Record<string, unknown> | null = null
 let propRow: Record<string, unknown> | null = null
 let reportRow: Record<string, unknown> | null = null
+let userRow: Record<string, unknown> | null = null
 let capRows: Array<Record<string, unknown>> = []
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -28,6 +30,7 @@ vi.mock('@/lib/supabase/admin', () => ({
         if (table === 'sites') return { data: siteRow }
         if (table === 'site_knowledge_proposals') return { data: propRow }
         if (table === 'site_reports') return { data: reportRow }
+        if (table === 'users') return { data: userRow }
         return { data: objRow } // site_actions / site_deadlines / site_decisions
       }
       const chain: Record<string, unknown> = {}
@@ -46,10 +49,11 @@ import { getProvenance } from '@/lib/knowledge/provenance'
 
 beforeEach(() => {
   mockOrgIds = ['org-1']
-  objRow = { id: 'e2', title: 'Vérification des lignes et consignations', site_id: 's-1', report_id: 'r-1' }
+  objRow = { id: 'e2', title: 'Vérification des lignes et consignations', site_id: 's-1', report_id: 'r-1', status: 'planned' }
   siteRow = { id: 's-1', name: 'Lycée PETRO ATTITI', organization_id: 'org-1' }
   propRow = { id: 'p-1', source_capture_ids: ['c-9'], report_id: 'r-1', status: 'confirmed', created_at: '2026-07-15T02:07:33Z', title: 'Vérification lignes/consignations', body: null }
   reportRow = { id: 'r-1', started_at: '2026-07-15T02:07:33Z' }
+  userRow = { full_name: 'Guillaume' }
   // Le mémo contient DEUX phrases : une hors sujet, une qui a justifié l'extraction.
   capRows = [{ id: 'c-9', kind: 'vocal', body: 'On a bien avancé sur le gros œuvre aujourd’hui. Les électriciens vont vérifier les lignes et les consignations dans une semaine et demie.' }]
 })
@@ -106,6 +110,24 @@ describe('getProvenance', () => {
     propRow = null
     capRows = []
     expect(await getProvenance('action', 'a-9')).toBeNull()
+  })
+
+  it('échéance active → aucune fin de vie (lifecycle null)', async () => {
+    const chain = await getProvenance('deadline', 'e2')
+    expect(chain!.lifecycle).toBeNull()
+  })
+
+  it('échéance annulée → fin de vie tracée (statut / motif / qui)', async () => {
+    objRow = {
+      id: 'e2', title: 'Vérification des lignes', site_id: 's-1', report_id: 'r-1',
+      status: 'cancelled', cancelled_at: '2026-07-28T01:00:00Z', cancelled_by: 'u-1',
+      cancel_reason: 'not_needed', cancel_comment: null, superseded_by: null,
+    }
+    const chain = await getProvenance('deadline', 'e2')
+    expect(chain!.lifecycle).not.toBeNull()
+    expect(chain!.lifecycle!.status).toBe('cancelled')
+    expect(chain!.lifecycle!.reasonLabel).toBe('Plus nécessaire')
+    expect(chain!.lifecycle!.byName).toBe('Guillaume')
   })
 
   it('une décision lit « titre », pas « title »', async () => {

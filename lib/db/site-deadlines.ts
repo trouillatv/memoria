@@ -11,7 +11,20 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 
-export type DeadlineStatus = 'to_plan' | 'planned' | 'done' | 'cancelled'
+export type DeadlineStatus = 'to_plan' | 'planned' | 'done' | 'cancelled' | 'superseded'
+
+/** Motifs d'annulation d'une échéance DÉJÀ validée (≠ rejet d'une proposition). */
+export type DeadlineCancelReason =
+  | 'abandoned' | 'superseded' | 'done_otherwise' | 'bad_extraction' | 'not_needed' | 'other'
+
+export const CANCEL_REASON_LABEL: Record<DeadlineCancelReason, string> = {
+  abandoned: 'Travaux abandonnés',
+  superseded: 'Remplacée par une autre échéance',
+  done_otherwise: 'Déjà réalisée autrement',
+  bad_extraction: 'Mauvaise extraction',
+  not_needed: 'Plus nécessaire',
+  other: 'Autre',
+}
 
 export interface SiteDeadline {
   id: string
@@ -24,6 +37,16 @@ export interface SiteDeadline {
   due_date: string | null
   status: DeadlineStatus
   created_at: string
+}
+
+/** Une échéance sortie du planning actif (réalisée / annulée / remplacée) — pour
+ *  l'historique et la traçabilité. Porte le QUI/QUAND/POURQUOI de sa fin de vie. */
+export interface SiteDeadlineHistory extends SiteDeadline {
+  completed_at: string | null
+  cancelled_at: string | null
+  cancel_reason: DeadlineCancelReason | null
+  cancel_comment: string | null
+  superseded_by: string | null
 }
 
 export async function createSiteDeadline(input: {
@@ -75,7 +98,8 @@ export async function listSiteDeadlines(siteId: string): Promise<SiteDeadline[]>
   return (data ?? []) as SiteDeadline[]
 }
 
-/** Datée par un humain : l'échéance quitte « à planifier » pour le planning. */
+/** Datée par un humain : l'échéance quitte « à planifier » pour le planning.
+ *  Sert aussi à REPLANIFIER une échéance déjà datée (nouvelle date, statut actif). */
 export async function planSiteDeadline(id: string, dueDate: string): Promise<string | null> {
   const db = createAdminClient()
   const { data, error } = await db
@@ -88,4 +112,78 @@ export async function planSiteDeadline(id: string, dueDate: string): Promise<str
   const siteId = (data as { site_id: string } | null)?.site_id ?? null
   if (siteId) invalidateSiteProjection(siteId)
   return siteId
+}
+
+/** L'échéance est arrivée : réalisée. Sort du planning actif, reste dans l'historique. */
+export async function completeSiteDeadline(id: string, userId: string | null): Promise<string | null> {
+  const db = createAdminClient()
+  const now = new Date().toISOString()
+  const { data, error } = await db
+    .from('site_deadlines')
+    .update({ status: 'done', completed_at: now, completed_by: userId, updated_at: now })
+    .eq('id', id)
+    .select('site_id')
+    .maybeSingle()
+  if (error) throw error
+  const siteId = (data as { site_id: string } | null)?.site_id ?? null
+  if (siteId) invalidateSiteProjection(siteId)
+  return siteId
+}
+
+/**
+ * Fin de vie d'une échéance VALIDÉE : annulée (sans objet) ou remplacée. On exige
+ * un motif ; la date/l'auteur/le commentaire/le remplaçant sont mémorisés (jamais
+ * un simple effacement). Une échéance remplaçante → statut 'superseded' + lien.
+ */
+export async function cancelSiteDeadline(
+  id: string,
+  input: { reason: DeadlineCancelReason; comment?: string | null; replacementId?: string | null },
+  userId: string | null,
+): Promise<string | null> {
+  const db = createAdminClient()
+  const now = new Date().toISOString()
+  const replacement = input.replacementId?.trim() || null
+  const { data, error } = await db
+    .from('site_deadlines')
+    .update({
+      status: replacement ? 'superseded' : 'cancelled',
+      cancelled_at: now,
+      cancelled_by: userId,
+      cancel_reason: input.reason,
+      cancel_comment: input.comment?.trim() || null,
+      superseded_by: replacement,
+      updated_at: now,
+    })
+    .eq('id', id)
+    .select('site_id')
+    .maybeSingle()
+  if (error) throw error
+  const siteId = (data as { site_id: string } | null)?.site_id ?? null
+  if (siteId) invalidateSiteProjection(siteId)
+  return siteId
+}
+
+/** L'organisation propriétaire d'une échéance (via son chantier) — garde tenant
+ *  des actions serveur : on ne mute jamais une échéance hors de son organisation. */
+export async function getSiteDeadlineOrgId(id: string): Promise<string | null> {
+  const db = createAdminClient()
+  const { data: d } = await db.from('site_deadlines').select('site_id').eq('id', id).maybeSingle()
+  const siteId = (d as { site_id: string } | null)?.site_id
+  if (!siteId) return null
+  const { data: s } = await db.from('sites').select('organization_id').eq('id', siteId).maybeSingle()
+  return (s as { organization_id: string | null } | null)?.organization_id ?? null
+}
+
+/** Historique des échéances (hors planning actif) : réalisées / annulées /
+ *  remplacées, les plus récentes d'abord. Pour la traçabilité et le bloc Pourquoi ?. */
+export async function listSiteDeadlineHistory(siteId: string): Promise<SiteDeadlineHistory[]> {
+  const { data, error } = await createAdminClient()
+    .from('site_deadlines')
+    .select('id, site_id, report_id, title, constraint_text, due_date, status, created_at, completed_at, cancelled_at, cancel_reason, cancel_comment, superseded_by')
+    .eq('site_id', siteId)
+    .is('deleted_at', null)
+    .in('status', ['done', 'cancelled', 'superseded'])
+    .order('updated_at', { ascending: false })
+  if (error) return []
+  return (data ?? []) as SiteDeadlineHistory[]
 }

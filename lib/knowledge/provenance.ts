@@ -19,6 +19,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { CANCEL_REASON_LABEL, type DeadlineCancelReason } from '@/lib/db/site-deadlines'
 
 export type ProvenanceObjectType = 'action' | 'deadline' | 'decision'
 
@@ -32,9 +33,24 @@ export interface ProvenanceCitation {
   text: string
 }
 
+/** Fin de vie d'une échéance déjà validée (réalisée / annulée / remplacée) — le
+ *  bloc « Pourquoi ? » d'une échéance annulée doit dire qui/quand/pourquoi. */
+export interface ProvenanceLifecycle {
+  status: 'done' | 'cancelled' | 'superseded'
+  /** Le jour du changement (ISO) — cancelled_at ou completed_at. */
+  at: string | null
+  byName: string | null
+  reasonLabel: string | null
+  comment: string | null
+  /** L'échéance de remplacement (statut superseded). */
+  replacement: { href: string; label: string } | null
+}
+
 export interface ProvenanceChain {
   /** Statut de la proposition IA. null = objet saisi à la main (aucune proposition). */
   status: ProposalStatus | null
+  /** Fin de vie d'une échéance validée (null hors échéance, ou échéance encore active). */
+  lifecycle: ProvenanceLifecycle | null
   /** Jour où MemorIA a détecté/proposé (ISO) — proposition `created_at`. null si saisie manuelle. */
   detectedAt: string | null
   /** Le chantier — contexte discret. */
@@ -133,6 +149,46 @@ function pickCitations(
     .map((c) => ({ source: label(c.kind), text: trimCitation(c.text) }))
 }
 
+/** Fin de vie d'une échéance (réalisée/annulée/remplacée). null si encore active. */
+async function getDeadlineLifecycle(
+  db: ReturnType<typeof createAdminClient>, deadlineId: string, siteId: string,
+): Promise<ProvenanceLifecycle | null> {
+  const { data } = await db
+    .from('site_deadlines')
+    .select('status, completed_at, completed_by, cancelled_at, cancelled_by, cancel_reason, cancel_comment, superseded_by')
+    .eq('id', deadlineId)
+    .maybeSingle()
+  const d = data as {
+    status: string; completed_at: string | null; completed_by: string | null
+    cancelled_at: string | null; cancelled_by: string | null
+    cancel_reason: DeadlineCancelReason | null; cancel_comment: string | null; superseded_by: string | null
+  } | null
+  if (!d || (d.status !== 'done' && d.status !== 'cancelled' && d.status !== 'superseded')) return null
+
+  const actorId = d.cancelled_by ?? d.completed_by
+  let byName: string | null = null
+  if (actorId) {
+    const { data: u } = await db.from('users').select('full_name').eq('id', actorId).maybeSingle()
+    byName = (u as { full_name: string | null } | null)?.full_name?.trim() || null
+  }
+
+  let replacement: ProvenanceLifecycle['replacement'] = null
+  if (d.superseded_by) {
+    const { data: r } = await db.from('site_deadlines').select('title').eq('id', d.superseded_by).maybeSingle()
+    const title = (r as { title: string | null } | null)?.title?.trim()
+    if (title) replacement = { href: `/sites/${siteId}/planning`, label: title }
+  }
+
+  return {
+    status: d.status as ProvenanceLifecycle['status'],
+    at: d.cancelled_at ?? d.completed_at,
+    byName,
+    reasonLabel: d.cancel_reason ? CANCEL_REASON_LABEL[d.cancel_reason] : null,
+    comment: d.cancel_comment?.trim() || null,
+    replacement,
+  }
+}
+
 /**
  * La provenance d'un objet. `null` si l'objet n'existe pas, n'a pas de source
  * traçable, ou n'appartient pas à l'organisation de l'appelant (fail-closed :
@@ -219,8 +275,12 @@ export async function getProvenance(
   const needle = [objectLabel, p?.title ?? '', p?.body ?? ''].join(' ')
   const citations = pickCitations(captures.map((c) => ({ kind: c.kind, body: c.body })), needle)
 
+  // Fin de vie : réservée aux échéances (seul objet doté du menu réaliser/annuler).
+  const lifecycle = type === 'deadline' ? await getDeadlineLifecycle(db, id, siteId) : null
+
   return {
     status,
+    lifecycle,
     detectedAt,
     siteName: (site as { name: string }).name,
     sourceLabel,

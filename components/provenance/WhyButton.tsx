@@ -18,7 +18,15 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ChevronUp, Loader2, ArrowUpRight } from 'lucide-react'
 import { getProvenanceAction } from '@/app/(dashboard)/sites/[id]/provenance-actions'
-import type { ProvenanceChain, ProvenanceObjectType, ProposalStatus } from '@/lib/knowledge/provenance'
+import type { ProvenanceChain, ProvenanceObjectType, ProposalStatus, ProvenanceLifecycle } from '@/lib/knowledge/provenance'
+
+// Fin de vie d'une échéance validée — c'est LE statut courant, il prime sur celui
+// de la proposition (une échéance annulée n'est plus « Validée »).
+const LIFECYCLE: Record<ProvenanceLifecycle['status'], { verb: string; cls: string; dot: string }> = {
+  done: { verb: 'Réalisée', cls: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300', dot: 'bg-emerald-500' },
+  cancelled: { verb: 'Annulée', cls: 'bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-300', dot: 'bg-red-500' },
+  superseded: { verb: 'Remplacée', cls: 'bg-muted text-muted-foreground', dot: 'bg-muted-foreground/60' },
+}
 
 const STATUS_BADGE: Record<ProposalStatus, { label: string; cls: string; dot: string }> = {
   confirmed: { label: 'Validée', cls: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300', dot: 'bg-emerald-500' },
@@ -81,8 +89,11 @@ export function WhyButton({
           {error && <p className="text-[12px] text-muted-foreground">{error}</p>}
           {chain && (
             <>
-              {/* 1. STATUT — immédiatement identifiable. */}
-              {badge && (
+              {/* 1. STATUT — la fin de vie d'une échéance PRIME sur le statut de
+                  la proposition (annulée ≠ « Validée »). */}
+              {chain.lifecycle ? (
+                <LifecycleBanner lifecycle={chain.lifecycle} />
+              ) : badge && (
                 <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-semibold ${badge.cls}`}>
                   <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />
                   {badge.label}
@@ -132,6 +143,27 @@ export function WhyButton({
             </>
           )}
         </div>
+      )}
+    </div>
+  )
+}
+
+/** « 🔴 Annulée le 28/07/2026 · Motif : plus nécessaire · Annulée par Guillaume ». */
+function LifecycleBanner({ lifecycle }: { lifecycle: ProvenanceLifecycle }) {
+  const l = LIFECYCLE[lifecycle.status]
+  return (
+    <div className={`rounded-lg px-2.5 py-2 ${l.cls}`}>
+      <p className="flex items-center gap-1.5 text-[12px] font-semibold">
+        <span className={`h-1.5 w-1.5 rounded-full ${l.dot}`} />
+        {l.verb}{lifecycle.at ? ` le ${detectedFmt.format(new Date(lifecycle.at))}` : ''}
+      </p>
+      {lifecycle.reasonLabel && <p className="mt-0.5 text-[11.5px]">Motif : {lifecycle.reasonLabel}</p>}
+      {lifecycle.byName && <p className="text-[11.5px]">{l.verb} par {lifecycle.byName}</p>}
+      {lifecycle.comment && <p className="mt-0.5 text-[11.5px] italic">«&nbsp;{lifecycle.comment}&nbsp;»</p>}
+      {lifecycle.replacement && (
+        <Link href={lifecycle.replacement.href} className="mt-1 inline-flex items-center gap-1 text-[11.5px] font-medium underline decoration-dotted underline-offset-2">
+          Remplacée par : {lifecycle.replacement.label} <ArrowUpRight className="h-3 w-3" />
+        </Link>
       )}
     </div>
   )

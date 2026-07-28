@@ -7,8 +7,9 @@ import type { SiteBlocage } from '@/lib/db/site-blocages'
 import type { PlanningTimelineEvent } from '@/lib/planning/timeline-contract'
 import type { SupervisorInterventionRow } from '@/lib/db/interventions'
 import type { CycleSlot, PlanningCycle } from '@/lib/db/planning-cycles'
-import type { SiteDeadline } from '@/lib/db/site-deadlines'
+import { CANCEL_REASON_LABEL, type SiteDeadline, type SiteDeadlineHistory } from '@/lib/db/site-deadlines'
 import { WhyButton } from '@/components/provenance/WhyButton'
+import { DeadlineActions } from './DeadlineActions'
 import { echeanceDateLabel } from '@/lib/visits/echeance-labels'
 import type { OverviewEventInput } from '@/lib/chantier/overview-projections'
 import type { DbMission, DbTeam } from '@/types/db'
@@ -21,8 +22,10 @@ interface PlanningWorkspaceProps {
   blocages: SiteBlocage[]
   cycles: PlanningCycle[]
   teams: DbTeam[]
-  /** Les échéances confirmées du chantier : datées ET à planifier. */
+  /** Les échéances ACTIVES du chantier : datées ET à planifier. */
   deadlines: SiteDeadline[]
+  /** Échéances sorties du planning actif (réalisées / annulées / remplacées). */
+  deadlineHistory?: SiteDeadlineHistory[]
   /** TOUT ce qui est daté sur ce chantier — visites, réunions, échéances,
    *  interventions. Le compteur « Visites » disait `nextEvent?.kind === 'visit'`
    *  : il ne comptait rien, il regardait si le PROCHAIN événement était une
@@ -51,12 +54,19 @@ export function PlanningWorkspace({
   cycles,
   teams,
   deadlines,
+  deadlineHistory,
   timeline,
 }: PlanningWorkspaceProps) {
   // Une échéance sans date n'est pas incomplète : elle attend une décision. Elle a
   // donc sa place à elle — pas une ligne grise en bas d'un calendrier.
   const toPlan = deadlines.filter((d) => !d.due_date)
   const dated = deadlines.filter((d) => d.due_date)
+  const history = deadlineHistory ?? []
+  // « En retard » est un état CALCULÉ (planned + date dépassée), jamais un statut
+  // stocké : une échéance encore due ne disparaît pas parce que sa date est passée.
+  const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Noumea', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+  // Autres échéances actives — proposées comme « remplacement » lors d'une annulation.
+  const replacementOptions = deadlines.map((d) => ({ id: d.id, title: d.title }))
   const week = getCurrentWeek()
   const interventionsThisWeek = interventions.filter((intervention) => {
     const date = intervention.scheduled_for ?? isoDate(intervention.scheduled_at)
@@ -115,7 +125,10 @@ export function PlanningWorkspace({
               <ul className="mt-2 space-y-2">
                 {toPlan.map((d) => (
                   <li key={d.id}>
-                    <p className="text-sm font-medium text-foreground">{d.title}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="min-w-0 text-sm font-medium text-foreground">{d.title}</p>
+                      <DeadlineActions deadlineId={d.id} hasDate={false} currentDueDate={null} otherDeadlines={replacementOptions.filter((o) => o.id !== d.id)} />
+                    </div>
                     {/* La contrainte, avec les mots du débrief : elle dit POURQUOI
                         cette échéance attend, et personne n'a inventé de date. */}
                     {d.constraint_text && (
@@ -137,23 +150,37 @@ export function PlanningWorkspace({
 
           {dated.length > 0 && (
             <ul className="mt-4 space-y-2">
-              {dated.map((d) => (
-                <li key={d.id}>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="min-w-0 text-sm text-foreground">{d.title}</span>
-                    <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
-                      {echeanceDateLabel(d.due_date!)}
-                    </span>
-                  </div>
-                  {d.report_id && (
-                    <div className="mt-0.5">
-                      <WhyButton objectType="deadline" objectId={d.id} />
+              {dated.map((d) => {
+                const overdue = d.due_date! < todayIso
+                return (
+                  <li key={d.id}>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="min-w-0 text-sm text-foreground">{d.title}</span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        {overdue && (
+                          <span className="rounded-md bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-300">En retard</span>
+                        )}
+                        <span className={cn('text-xs font-medium tabular-nums', overdue ? 'text-red-700 dark:text-red-300' : 'text-muted-foreground')}>
+                          {echeanceDateLabel(d.due_date!)}
+                        </span>
+                        <DeadlineActions deadlineId={d.id} hasDate currentDueDate={d.due_date} otherDeadlines={replacementOptions.filter((o) => o.id !== d.id)} />
+                      </span>
                     </div>
-                  )}
-                </li>
-              ))}
+                    {d.report_id && (
+                      <div className="mt-0.5">
+                        <WhyButton objectType="deadline" objectId={d.id} />
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           )}
+
+          {/* HISTORIQUE — réalisées / annulées / remplacées : hors du planning
+              actif, mais conservées pour la traçabilité (le « Pourquoi ? » y dit
+              qui a annulé, quand et pourquoi). */}
+          {history.length > 0 && <DeadlineHistory items={history} />}
         </section>
       )}
 
@@ -324,6 +351,48 @@ export function PlanningWorkspace({
         </section>
       </section>
     </main>
+  )
+}
+
+const HISTORY_BADGE: Record<string, { label: string; cls: string }> = {
+  done: { label: 'Réalisée', cls: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300' },
+  cancelled: { label: 'Annulée', cls: 'bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-300' },
+  superseded: { label: 'Remplacée', cls: 'bg-muted text-muted-foreground' },
+}
+const historyDateFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: '2-digit', month: '2-digit', year: 'numeric' })
+
+/** Historique des échéances (repliable, sans JS) : réalisées / annulées /
+ *  remplacées. Le « Pourquoi ? » de chaque ligne porte le détail de traçabilité. */
+function DeadlineHistory({ items }: { items: SiteDeadlineHistory[] }) {
+  return (
+    <details className="mt-4 rounded-2xl border bg-muted/10">
+      <summary className="cursor-pointer list-none px-4 py-2.5 text-sm font-semibold text-muted-foreground marker:content-none">
+        Historique ({items.length}) — réalisées, annulées, remplacées
+      </summary>
+      <ul className="space-y-2 px-4 pb-4">
+        {items.map((d) => {
+          const badge = HISTORY_BADGE[d.status] ?? HISTORY_BADGE.cancelled
+          const when = d.cancelled_at ?? d.completed_at
+          return (
+            <li key={d.id} className="border-t pt-2 first:border-t-0 first:pt-0">
+              <div className="flex items-start justify-between gap-2">
+                <span className="min-w-0 text-sm text-foreground line-through decoration-muted-foreground/40">{d.title}</span>
+                <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${badge.cls}`}>{badge.label}</span>
+              </div>
+              <p className="mt-0.5 text-[11.5px] text-muted-foreground">
+                {when ? historyDateFmt.format(new Date(when)) : ''}
+                {d.cancel_reason ? ` · ${CANCEL_REASON_LABEL[d.cancel_reason]}` : ''}
+              </p>
+              {d.report_id && (
+                <div className="mt-1">
+                  <WhyButton objectType="deadline" objectId={d.id} />
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </details>
   )
 }
 
