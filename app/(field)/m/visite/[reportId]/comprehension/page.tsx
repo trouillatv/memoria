@@ -46,6 +46,8 @@ function becameLabel(status: ProposalStatus, kindLabel: string): { text: string;
       return { text: 'Écartée', Icon: XCircle, cls: 'bg-muted text-muted-foreground' }
     case 'superseded':
       return { text: 'Remplacée', Icon: RefreshCw, cls: 'bg-muted text-muted-foreground' }
+    case 'masked':
+      return { text: 'Masquée par le filtre', Icon: XCircle, cls: 'bg-muted text-muted-foreground' }
   }
 }
 
