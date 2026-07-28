@@ -1,12 +1,14 @@
 'use client'
 
-// ── EXPLORER DES ACTEURS — VUE D'ENSEMBLE DE L'ORG (toggle Graphe) ───────────
-// Le graphe global (filtré par pertinence) : qui agit, avec qui, où, QUAND. État et
-// inspecteur PARTAGÉS avec le réseau fusionné des fiches. AUCUNE navigation au clic.
+// ── EXPLORER DES ACTEURS — VUE D'ENSEMBLE ────────────────────────────────────
+// Les 5 LECTURES sont le premier niveau de navigation (pas de notion « structurel »
+// exposée) : Organigramme / Chantiers / Travail = graphe structurel (layout propre
+// à chacune) ; Collaboration / Écosystème = graphe pondéré. Chaque lecture répond à
+// UNE question métier et a son propre placement.
 
 import { useState } from 'react'
-import { Route, Share2, GitFork, Building2 } from 'lucide-react'
-import { DEFAULT_PERSPECTIVE, PERSPECTIVES, type ActorsGraph } from '@/lib/knowledge/actors-graph-model'
+import { Route } from 'lucide-react'
+import { type ActorsGraph, type ActorPerspective } from '@/lib/knowledge/actors-graph-model'
 import type { CollaborationGraphView } from '@/lib/knowledge/collaboration-graph'
 import { structuralGraphSummary, collaborationGraphSummary } from '@/lib/knowledge/graph-summary'
 import { ActorsGraphCanvas } from './ActorsGraphCanvas'
@@ -16,99 +18,100 @@ import { GraphTimeline } from './GraphTimeline'
 import { CollaborationExplorer } from './CollaborationExplorer'
 import { useGraphExplorer, ExplorerAside } from './useGraphExplorer'
 
-type Source = 'structural' | 'collaboration' | 'ecosystem'
-const SOURCES: ReadonlyArray<{ id: Source; label: string; icon: typeof Share2 }> = [
-  { id: 'structural', label: 'Structurel', icon: Share2 },
-  { id: 'collaboration', label: 'Collaboration', icon: GitFork },
-  { id: 'ecosystem', label: 'Écosystème', icon: Building2 },
+type Reading = 'org' | 'sites' | 'work' | 'collaboration' | 'ecosystem'
+const READINGS: ReadonlyArray<{ id: Reading; label: string; question: string; structural: boolean }> = [
+  { id: 'org', label: 'Organigramme', question: 'Qui appartient à quoi ?', structural: true },
+  { id: 'sites', label: 'Chantiers', question: 'Qui intervient où ?', structural: true },
+  { id: 'work', label: 'Travail', question: 'Qui porte quoi ?', structural: true },
+  { id: 'collaboration', label: 'Collaboration', question: 'Qui travaille avec qui ?', structural: false },
+  { id: 'ecosystem', label: 'Écosystème', question: 'Comment est organisé mon réseau ?', structural: false },
 ]
 
 export function ActorsExplorer({ graph, focusId, collabGraph }: { graph: ActorsGraph; focusId?: string | null; collabGraph?: CollaborationGraphView | null }) {
-  // La vue d'ensemble s'ouvre sur UNE lecture (Chantiers) — pas « tout à la fois ».
-  const ex = useGraphExplorer(graph, focusId, DEFAULT_PERSPECTIVE)
-  // Bascule de SOURCE (pas un filtre) : structurel « qui est relié à qui » vs
-  // collaboration/écosystème « qui travaille réellement ensemble » (graphe pondéré).
-  const [source, setSource] = useState<Source>('structural')
+  const ex = useGraphExplorer(graph, focusId, 'org')
+  const [reading, setReading] = useState<Reading>('org')
 
+  const select = (r: Reading) => {
+    setReading(r)
+    const def = READINGS.find((x) => x.id === r)!
+    if (def.structural) ex.applyPerspective(r as ActorPerspective) // pilote les couches
+  }
+
+  const active = READINGS.find((r) => r.id === reading)!
   const collabReady = !!collabGraph && collabGraph.nodes.length > 0
-
-  // TITRE VIVANT : le graphe raconte avant qu'on le regarde (compteurs par lecture).
-  const title = source === 'structural'
-    ? { label: PERSPECTIVES.find((p) => p.id === ex.perspective)?.label ?? 'Structurel', summary: structuralGraphSummary(graph, ex.visibleKinds) }
-    : source === 'ecosystem'
-      ? { label: 'Écosystème', summary: collabReady ? collaborationGraphSummary(collabGraph!) : '' }
-      : { label: 'Collaboration', summary: collabReady ? collaborationGraphSummary(collabGraph!) : '' }
+  const summary = active.structural
+    ? structuralGraphSummary(graph, ex.visibleKinds)
+    : collabReady ? collaborationGraphSummary(collabGraph!) : ''
 
   return (
     <div className="space-y-3">
-      <div className="inline-flex self-start rounded-lg border border-border/60 bg-muted/40 p-0.5">
-        {SOURCES.map((s) => {
-          const active = source === s.id
-          const Icon = s.icon
-          return (
-            <button key={s.id} type="button" onClick={() => setSource(s.id)}
-              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
-              <Icon className="h-4 w-4" aria-hidden /> {s.label}
-            </button>
-          )
-        })}
+      {/* Les LECTURES = navigation de premier niveau (chacune sa question, son layout). */}
+      <div className="inline-flex flex-wrap self-start rounded-lg border border-border/60 bg-muted/40 p-0.5">
+        {READINGS.map((r) => (
+          <button key={r.id} type="button" onClick={() => select(r.id)} title={r.question}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${reading === r.id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            {r.label}
+          </button>
+        ))}
       </div>
 
+      {/* TITRE VIVANT : la question + les compteurs (le graphe raconte avant lecture). */}
       <p className="text-[13.5px]">
-        <span className="font-semibold text-foreground">{title.label}</span>
-        {title.summary ? <span className="text-muted-foreground"> — {title.summary}</span> : null}
+        <span className="font-semibold text-foreground">{active.label}</span>
+        <span className="text-muted-foreground"> · {active.question}</span>
+        {summary ? <span className="text-muted-foreground"> — {summary}</span> : null}
       </p>
 
-      {source !== 'structural' ? (
+      {!active.structural ? (
         collabReady
-          ? <CollaborationExplorer data={collabGraph!} mode={source === 'ecosystem' ? 'ecosystem' : 'collaboration'} />
+          ? <CollaborationExplorer data={collabGraph!} mode={reading === 'ecosystem' ? 'ecosystem' : 'collaboration'} />
           : <div className="rounded-2xl border border-dashed border-border/60 py-12 text-center text-sm text-muted-foreground italic">Aucune collaboration structurelle à représenter pour le moment.</div>
       ) : (
-    <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <GraphControls
-            availableKinds={ex.availableKinds}
-            visibleKinds={ex.visibleKinds}
-            perspective={ex.perspective}
-            onPerspective={ex.applyPerspective}
-            onToggleKind={ex.toggleKind}
-            focusLabel={ex.selNode?.label ?? null}
-            lens={ex.lens}
-            onLens={ex.setLens}
-            isolate={ex.isolate}
-            onIsolate={ex.setIsolate}
-            colorEdges={ex.colorEdges}
-            onColorEdges={ex.setColorEdges}
-          />
-          <GraphSearch query={ex.query} onQuery={ex.setQuery} matches={ex.matches} onPick={ex.focusNode} />
-        </div>
-        <div className="relative">
-        <ActorsGraphCanvas graph={graph} focusId={focusId} control={ex.control} centerRequest={ex.centerRequest} heightClass="h-[70vh]" layout={ex.perspective === 'org' ? 'hierarchical' : 'force'} />
-        {ex.followFrom && (
-          <div className="absolute left-1/2 top-2 z-10 flex max-w-[92%] -translate-x-1/2 items-center gap-2 rounded-full border bg-card px-3.5 py-1.5 text-[12.5px] shadow-md">
-            <Route className="h-3.5 w-3.5 shrink-0 text-brand-600" aria-hidden />
-            <b className="truncate">Suivre depuis {ex.nodeById.get(ex.followFrom)?.label} — cliquez un second acteur</b>
-            <button type="button" onClick={ex.clearPath} className="shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[12px] text-muted-foreground">Quitter</button>
+        <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <GraphControls
+                availableKinds={ex.availableKinds}
+                visibleKinds={ex.visibleKinds}
+                perspective={ex.perspective}
+                onPerspective={ex.applyPerspective}
+                onToggleKind={ex.toggleKind}
+                hideReadings
+                focusLabel={ex.selNode?.label ?? null}
+                lens={ex.lens}
+                onLens={ex.setLens}
+                isolate={ex.isolate}
+                onIsolate={ex.setIsolate}
+                colorEdges={ex.colorEdges}
+                onColorEdges={ex.setColorEdges}
+              />
+              <GraphSearch query={ex.query} onQuery={ex.setQuery} matches={ex.matches} onPick={ex.focusNode} />
+            </div>
+            <div className="relative">
+              <ActorsGraphCanvas graph={graph} focusId={focusId} control={ex.control} centerRequest={ex.centerRequest} heightClass="h-[70vh]" layout={reading === 'org' ? 'hierarchical' : 'force'} />
+              {ex.followFrom && (
+                <div className="absolute left-1/2 top-2 z-10 flex max-w-[92%] -translate-x-1/2 items-center gap-2 rounded-full border bg-card px-3.5 py-1.5 text-[12.5px] shadow-md">
+                  <Route className="h-3.5 w-3.5 shrink-0 text-brand-600" aria-hidden />
+                  <b className="truncate">Suivre depuis {ex.nodeById.get(ex.followFrom)?.label} — cliquez un second acteur</b>
+                  <button type="button" onClick={ex.clearPath} className="shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[12px] text-muted-foreground">Quitter</button>
+                </div>
+              )}
+              <GraphTimeline days={ex.timeline.days} onChange={ex.setTimeMax} />
+            </div>
           </div>
-        )}
-        <GraphTimeline days={ex.timeline.days} onChange={ex.setTimeMax} />
-        </div>
-      </div>
 
-      {/* ── PANNEAU : le graphe repère, le panneau explique. ── */}
-      <aside className="rounded-2xl border bg-card p-5 shadow-sm lg:max-h-[70vh] lg:overflow-y-auto">
-        <ExplorerAside
-          ex={ex}
-          focusId={focusId}
-          emptyState={
-            <p className="text-[13px] text-muted-foreground">
-              Cliquez un acteur pour l’inspecter, un lien pour comprendre la relation. {graph.nodes.length} acteurs · {graph.edges.length} relations.
-            </p>
-          }
-        />
-      </aside>
-    </div>
+          <aside className="rounded-2xl border bg-card p-5 shadow-sm lg:max-h-[70vh] lg:overflow-y-auto">
+            <ExplorerAside
+              ex={ex}
+              focusId={focusId}
+              emptyState={
+                <p className="text-[13px] text-muted-foreground">
+                  Cliquez un acteur pour l’inspecter, un lien pour comprendre la relation. {graph.nodes.length} acteurs · {graph.edges.length} relations.
+                </p>
+              }
+            />
+          </aside>
+        </div>
       )}
     </div>
   )

@@ -15,7 +15,7 @@ const KIND_ORDER: ActorGraphKind[] = ['person', 'company', 'team', 'site', 'acti
 export function GraphControls({
   availableKinds, visibleKinds, perspective, onPerspective, onToggleKind,
   focusLabel, lens, onLens, isolate, onIsolate,
-  colorEdges, onColorEdges,
+  colorEdges, onColorEdges, hideReadings,
 }: {
   availableKinds: Set<ActorGraphKind>
   visibleKinds: Set<ActorGraphKind>
@@ -31,6 +31,8 @@ export function GraphControls({
   /** Lecture optionnelle : colorer les liens par nature (désactivée par défaut). */
   colorEdges?: boolean
   onColorEdges?: (v: boolean) => void
+  /** Masque les chips « Lecture » quand la navigation par onglets les remplace. */
+  hideReadings?: boolean
 }) {
   // Lecture inapplicable si aucune de ses natures n'existe → on la masque.
   const readings = PERSPECTIVES.filter((p) => p.kinds === null || p.kinds.some((k) => availableKinds.has(k)))
@@ -40,7 +42,8 @@ export function GraphControls({
 
   return (
     <div className="space-y-2 rounded-xl border border-border/60 bg-card/60 px-3 py-2.5">
-      {/* CHANGER LA LECTURE — une question à la fois. */}
+      {/* CHANGER LA LECTURE — masqué si les onglets de lecture pilotent déjà. */}
+      {!hideReadings && (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Lecture</span>
         <div className="inline-flex flex-wrap gap-1">
@@ -64,6 +67,7 @@ export function GraphControls({
         {/* La question à laquelle la lecture répond — à l'écran, pas cachée. */}
         {active && <span className="text-[12px] italic text-muted-foreground">{active.hint}</span>}
       </div>
+      )}
 
       {/* COUCHES — l'outil : chaque case masque/affiche une nature. */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">

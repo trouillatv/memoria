@@ -24,27 +24,30 @@ function orgGraph() {
 }
 
 describe('hierarchicalLayout', () => {
-  it('entreprises en en-tête (y=0), personnes empilées dessous dans la même colonne', () => {
-    const g = orgGraph()
-    const pos = hierarchicalLayout(g)
+  it('entreprises en en-tête (y=0), personnes empilées et ALIGNÉES sous l\'entreprise', () => {
+    const { positions: pos } = hierarchicalLayout(orgGraph())
     const co1 = pos.get('co_co1')!, jo = pos.get('p_c1')!, marc = pos.get('p_c2')!
     expect(co1.y).toBe(0)                 // en-tête
-    expect(jo.x).toBe(co1.x)              // même colonne que son entreprise
+    expect(jo.x).toBe(co1.x)              // parfaitement aligné
     expect(marc.x).toBe(co1.x)
-    expect(jo.y).toBeGreaterThan(0)       // sous l'en-tête
+    expect(jo.y).toBeGreaterThan(0)
     expect(marc.y).toBeGreaterThan(jo.y)  // empilées
   })
 
-  it('deux entreprises = deux colonnes distinctes', () => {
-    const pos = hierarchicalLayout(orgGraph())
-    expect(pos.get('co_co1')!.x).not.toBe(pos.get('co_co2')!.x)
-    expect(pos.get('p_c3')!.x).toBe(pos.get('co_co2')!.x) // Vincent sous PAVE
+  it('entreprises triées par NOMBRE de collaborateurs (Clim 2 avant PAVE 1)', () => {
+    const { positions: pos } = hierarchicalLayout(orgGraph())
+    expect(pos.get('co_co1')!.x).toBeLessThan(pos.get('co_co2')!.x) // Clim (2 pers) à gauche de PAVE (1)
+    expect(pos.get('p_c3')!.x).toBe(pos.get('co_co2')!.x)           // Vincent sous PAVE
   })
 
-  it('personne sans entreprise → colonne à part ; déterministe', () => {
+  it('bloc « Sans entreprise » + strate « Équipes » ; déterministe', () => {
     const a = hierarchicalLayout(orgGraph()), b = hierarchicalLayout(orgGraph())
-    expect(a.get('p_c4')).toBeDefined()
-    expect([...a.entries()]).toEqual([...b.entries()]) // même entrée = mêmes positions
+    expect(a.positions.get('p_c4')).toBeDefined()
+    expect(a.blocks.some((bl) => bl.title === 'Sans entreprise')).toBe(true)
+    expect(a.blocks.some((bl) => bl.title === 'Équipes')).toBe(true)
+    // Une carte par entreprise (title null) + orphelins + équipes.
+    expect(a.blocks.filter((bl) => bl.title === null).length).toBe(2)
+    expect([...a.positions.entries()]).toEqual([...b.positions.entries()])
   })
 })
 

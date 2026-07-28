@@ -154,7 +154,9 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
     // Chronologie : première apparition structurelle de chaque nœud (pur).
     const { firstSeen } = graphTimeline(graph)
     // LAYOUT STATIQUE (Organigramme) : positions déterministes + physique coupée.
-    const layoutPos = layout === 'hierarchical' ? hierarchicalLayout(graph) : null
+    const layoutResult = layout === 'hierarchical' ? hierarchicalLayout(graph) : null
+    const layoutPos = layoutResult?.positions ?? null
+    const layoutBlocks = layoutResult?.blocks ?? null
 
     const api = createForceGraphEngine(canvas, wrap, {
       nodeIds: () => ids,
@@ -215,6 +217,21 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
         if (view.tx === 0 && view.ty === 0) { view.tx = size.W / 2; view.ty = size.H / 2 }
       },
       draw(ctx, f) {
+        // ORGANIGRAMME : cartes de groupe (entreprise/strate) DERRIÈRE tout — le
+        // cerveau voit « ces personnes appartiennent ensemble » avant de lire.
+        if (layoutBlocks) {
+          for (const b of layoutBlocks) {
+            const x = b.cx - b.halfWidth, y = b.top, w = b.halfWidth * 2, h = b.bottom - b.top
+            ctx.beginPath()
+            if (ctx.roundRect) ctx.roundRect(x, y, w, h, 14); else ctx.rect(x, y, w, h)
+            ctx.fillStyle = 'rgba(148,163,184,0.07)'; ctx.fill()
+            ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(148,163,184,0.35)'; ctx.stroke()
+            if (b.title) {
+              ctx.font = '600 11px system-ui, sans-serif'; ctx.textAlign = 'center'
+              ctx.fillStyle = '#64748b'; ctx.fillText(b.title.toUpperCase(), b.cx, b.top + 15)
+            }
+          }
+        }
         const ctrl = controlRef.current
         const sel = ctrl ? ctrl.selectedNodeId : localSelRef.current
         const selEdge = ctrl?.selectedEdgeIndex ?? null
