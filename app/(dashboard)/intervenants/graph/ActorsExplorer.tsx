@@ -16,6 +16,7 @@ import { GraphControls } from './GraphControls'
 import { GraphSearch } from './GraphSearch'
 import { GraphTimeline } from './GraphTimeline'
 import { CollaborationExplorer } from './CollaborationExplorer'
+import { EcosystemExplorer } from './EcosystemExplorer'
 import { useGraphExplorer, ExplorerAside } from './useGraphExplorer'
 
 type Reading = 'org' | 'sites' | 'work' | 'collaboration' | 'ecosystem'
@@ -39,9 +40,12 @@ export function ActorsExplorer({ graph, focusId, collabGraph }: { graph: ActorsG
 
   const active = READINGS.find((r) => r.id === reading)!
   const collabReady = !!collabGraph && collabGraph.nodes.length > 0
+  const companyCount = graph.nodes.filter((n) => n.kind === 'company').length
   const summary = active.structural
     ? structuralGraphSummary(graph, ex.visibleKinds)
-    : collabReady ? (collaborationGraphNarrative(collabGraph!) || collaborationGraphSummary(collabGraph!)) : ''
+    : reading === 'ecosystem'
+      ? `${companyCount} entreprise${companyCount > 1 ? 's' : ''} — dépliez pour explorer votre réseau`
+      : collabReady ? (collaborationGraphNarrative(collabGraph!) || collaborationGraphSummary(collabGraph!)) : ''
 
   return (
     <div className="space-y-3">
@@ -62,9 +66,11 @@ export function ActorsExplorer({ graph, focusId, collabGraph }: { graph: ActorsG
         {summary ? <span className="text-muted-foreground"> — {summary}</span> : null}
       </p>
 
-      {!active.structural ? (
+      {reading === 'ecosystem' ? (
+        <EcosystemExplorer graph={graph} />
+      ) : !active.structural ? (
         collabReady
-          ? <CollaborationExplorer data={collabGraph!} mode={reading === 'ecosystem' ? 'ecosystem' : 'collaboration'} />
+          ? <CollaborationExplorer data={collabGraph!} mode="collaboration" />
           : <div className="rounded-2xl border border-dashed border-border/60 py-12 text-center text-sm text-muted-foreground italic">Aucune collaboration structurelle à représenter pour le moment.</div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[1fr_360px]">

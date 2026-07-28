@@ -48,12 +48,15 @@ export interface GraphControl {
 // ANNEAU = état d'attention (rouge/orange) → « où sont les points d'attention ».
 // LIENS = couleur par type de relation → le sens sans avoir à lire les libellés.
 // Couleurs (fond/halo) PARTAGÉES avec le graphe de collaboration (actor-colors).
-// Hiérarchie visuelle FORTE : l'entreprise domine (ancre), le chantier est un HUB,
-// la personne est secondaire (~2:1), l'action minime.
-const SIZE: Record<ActorGraphKind, number> = { company: 30, site: 26, person: 13, team: 15, action: 8 }
+// Hiérarchie visuelle FORTE : le CHANTIER est un HUB dominant (centre de gravité),
+// l'entreprise une ancre, la personne secondaire, l'action minime.
+const SIZE: Record<ActorGraphKind, number> = { site: 36, company: 30, person: 13, team: 15, action: 8 }
+// Couleur de HUB (chantier) : distincte des entreprises → le centre saute aux yeux.
+const SITE_HUB_FILL = '#334155'
 
 function nodeFill(n: ActorGraphNode): string {
   if (n.historical) return HISTORICAL_COLOR
+  if (n.kind === 'site') return SITE_HUB_FILL // hub, pas une entreprise
   if (n.companyId) return companyFill(n.companyId)
   return NEUTRAL_FILL
 }
