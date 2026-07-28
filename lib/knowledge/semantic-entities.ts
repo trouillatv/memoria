@@ -4,11 +4,16 @@
 //
 // PRIORITÉ DE RÉSOLUTION (décroissante) : utilisateur > chantier > organisation.
 // Quand deux entités de scopes différents revendiquent le même alias_norm,
-// le scope supérieur gagne. Deux entités du même scope sur le même alias_norm :
-// l'une d'elles écrase l'autre (ordre stable une fois les entités triées).
+// le scope supérieur gagne. Deux entités du MÊME scope sur le même alias_norm
+// constituent un CONFLIT (AliasConflict) : signalé, non silencieux, résolu par
+// l'entité traitée en dernier lors du tri déterministe.
 //
 // NORMALISATION : identique à normalize() de lib/db/knowledge-proposals.ts.
 // Doit rester synchronisée pour la validation post-LLM (Lot 1B).
+//
+// FORMAT LLM : chaque ligne inclut le type et les métadonnées disponibles,
+// ex. : "Joseph → Joseph Martin (personne, conducteur de travaux chez Élec Plus)"
+// afin de lever les ambiguïtés de prénom et de réduire les mauvaises résolutions.
 
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -23,6 +28,7 @@ export interface KnowledgeEntity {
   confidence: number
   isActive: boolean
   aliases: string[]
+  metadata: Record<string, unknown>
 }
 
 export interface ResolvedEntity {
@@ -30,6 +36,14 @@ export interface ResolvedEntity {
   entityType: EntityType
   scope: EntityScope
   aliases: string[] // alias bruts gagnants pour cette entité, triés
+  metadata: Record<string, unknown>
+}
+
+// Conflit : même alias_norm revendiqué par deux entités actives dans le même scope.
+export interface AliasConflict {
+  aliasNorm: string
+  alias: string // forme brute de l'alias
+  entities: Array<{ id: string; canonicalLabel: string; scope: EntityScope }>
 }
 
 const SCOPE_PRIORITY: Record<EntityScope, number> = { user: 3, site: 2, org: 1 }
@@ -91,6 +105,7 @@ export function resolveEntities(entities: KnowledgeEntity[]): ResolvedEntity[] {
       entityType: entity.entityType,
       scope: entity.scope,
       aliases: [...aliases].sort(),
+      metadata: entity.metadata,
     })
   }
 
@@ -104,10 +119,90 @@ export function resolveEntities(entities: KnowledgeEntity[]): ResolvedEntity[] {
   })
 }
 
+// Détecte les conflits : deux entités actives dans le MÊME scope revendiquant
+// le même alias_norm. Ces conflits signalent une incohérence de données.
+// La résolution déterministe de resolveEntities() gère silencieusement le conflit,
+// mais cette fonction le rend explicite pour logging / alerte UI future.
+export function detectAliasConflicts(entities: KnowledgeEntity[]): AliasConflict[] {
+  const active = entities.filter((e) => e.isActive)
+
+  // alias_norm|scope → liste d'entités qui le revendiquent
+  const claimsByKey = new Map<string, Array<{ id: string; canonicalLabel: string; scope: EntityScope; alias: string }>>()
+
+  for (const entity of active) {
+    for (const alias of entity.aliases) {
+      const norm = normalizeAlias(alias)
+      if (!norm) continue
+      const key = `${norm}|${entity.scope}`
+      const claims = claimsByKey.get(key) ?? []
+      claims.push({ id: entity.id, canonicalLabel: entity.canonicalLabel, scope: entity.scope, alias })
+      claimsByKey.set(key, claims)
+    }
+  }
+
+  const conflicts: AliasConflict[] = []
+  for (const [key, claims] of claimsByKey) {
+    if (claims.length <= 1) continue
+    // Conflit réel : deux entités différentes sur même alias_norm + scope
+    const uniqueEntities = claims.filter((c, i) => claims.findIndex((x) => x.id === c.id) === i)
+    if (uniqueEntities.length > 1) {
+      const aliasNorm = key.split('|')[0]
+      conflicts.push({
+        aliasNorm,
+        alias: claims[0].alias,
+        entities: uniqueEntities.map((c) => ({ id: c.id, canonicalLabel: c.canonicalLabel, scope: c.scope })),
+      })
+    }
+  }
+
+  return conflicts
+}
+
+// Formate une entité résolue en ligne LLM avec contexte type + métadonnées.
+// Format par type :
+//   company     : "alias → Canonique (entreprise, trade)"
+//   person      : "alias → Prénom Nom (personne, rôle chez Entreprise)"
+//   acronym     : "alias → Développé (sigle)"
+//   expression  : "alias → Canonique (expression)"
+//   pronunciation : "alias → Correct (prononciation vocale)"
+function formatEntityLine(entity: ResolvedEntity): string {
+  const aliasStr = entity.aliases.join(' / ')
+  const m = entity.metadata
+
+  let ctx = ''
+  switch (entity.entityType) {
+    case 'company': {
+      const trade = typeof m.trade === 'string' && m.trade ? `, ${m.trade}` : ''
+      ctx = `entreprise${trade}`
+      break
+    }
+    case 'person': {
+      const role = typeof m.role === 'string' && m.role ? m.role : ''
+      const co = typeof m.company_label === 'string' && m.company_label ? m.company_label : ''
+      const detail = [role, co ? `chez ${co}` : ''].filter(Boolean).join(', ')
+      ctx = detail ? `personne, ${detail}` : 'personne'
+      break
+    }
+    case 'acronym':
+      ctx = 'sigle'
+      break
+    case 'expression':
+      ctx = 'expression'
+      break
+    case 'pronunciation':
+      ctx = 'prononciation vocale'
+      break
+  }
+
+  return `${aliasStr} → ${entity.canonicalLabel} (${ctx})`
+}
+
 export const MAX_SEMANTIC_BLOCK_CHARS = 2000
 
 // Formate les entités résolues en bloc de contexte LLM, dans la limite de maxChars.
-// Troncature à la limite de ligne : les entités de plus haute priorité sont incluses en premier.
+// Troncature à la limite de ligne : les entités de plus haute priorité (user > site > org)
+// et de type prioritaire (person > company > acronym > expression > pronunciation)
+// sont incluses en premier.
 // Retourne '' si aucune entité n'a d'alias gagnant.
 export function formatSemanticContextBlock(
   resolved: ResolvedEntity[],
@@ -115,7 +210,7 @@ export function formatSemanticContextBlock(
 ): string {
   const lines = resolved
     .filter((e) => e.aliases.length > 0)
-    .map((e) => `${e.aliases.join(' / ')} → ${e.canonicalLabel}`)
+    .map(formatEntityLine)
 
   if (lines.length === 0) return ''
 
@@ -135,6 +230,7 @@ export function formatSemanticContextBlock(
 // et retourne le bloc de contexte formaté, prêt à être injecté dans le prompt.
 // Retourne '' si aucune entité n'est configurée (comportement identique à l'absence
 // du module — aucun impact sur le pipeline existant).
+// Les conflits détectés sont loggés mais n'interrompent pas le pipeline.
 export async function buildSemanticContextBlock(
   siteId: string,
   orgId: string,
@@ -142,8 +238,6 @@ export async function buildSemanticContextBlock(
 ): Promise<string> {
   const db = createAdminClient()
 
-  // Charge toutes les entités actives de l'organisation pour ce chantier et cet utilisateur.
-  // Filtre côté DB : entités d'organisation (site_id null) + entités du chantier courant.
   let query = db
     .from('site_knowledge_entities')
     .select(`
@@ -154,6 +248,7 @@ export async function buildSemanticContextBlock(
       user_id,
       confidence,
       is_active,
+      metadata,
       site_knowledge_entity_aliases ( alias )
     `)
     .eq('organization_id', orgId)
@@ -181,11 +276,25 @@ export async function buildSemanticContextBlock(
       scope,
       confidence: row.confidence as number,
       isActive: row.is_active as boolean,
+      metadata: (row.metadata ?? {}) as Record<string, unknown>,
       aliases: ((row.site_knowledge_entity_aliases ?? []) as Array<{ alias: string }>).map(
         (a) => a.alias,
       ),
     }
   })
 
-  return formatSemanticContextBlock(resolveEntities(entities))
+  const conflicts = detectAliasConflicts(entities)
+  if (conflicts.length > 0) {
+    console.warn(
+      `[semantic-entities] ${conflicts.length} conflit(s) d'alias détecté(s) :`,
+      conflicts.map((c) => `"${c.alias}" → ${c.entities.map((e) => e.canonicalLabel).join(' vs ')}`).join(', '),
+    )
+  }
+
+  const block = formatSemanticContextBlock(resolveEntities(entities))
+  if (block) {
+    console.log(`[semantic-entities] Bloc injecté (${block.length} chars) :\n${block}`)
+  }
+
+  return block
 }
