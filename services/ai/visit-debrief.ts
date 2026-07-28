@@ -205,7 +205,7 @@ Champs :
 - echeances : ce qui doit arriver À UN MOMENT. Une échéance n'existe QUE s'il y a une notion de TEMPS — une date (« le 28 juillet »), un délai (« sous une dizaine de jours »), ou une dépendance (« avant le démarrage », « après la visite PAVE »). Si le débrief dit seulement qu'il faudra faire quelque chose, SANS aucune notion de temps, ce n'est PAS une échéance : c'est une action, ne la mets pas ici.
   Format : [{ label, date, constraint }].
   · label : CE QUI doit arriver, court et autoportant. Ex. « Poser le coffret électrique », « Programmer la visite PAVE ». Pas de délai dans le label.
-  · date : UNIQUEMENT une vraie date, au format AAAA-MM-JJ. Si le débrief dit « le 28 juillet », donne-la. Si tu n'as PAS de date certaine, laisse VIDE. « Sous dix jours », « fin de la semaine », « avant le démarrage » ne sont PAS des dates : n'invente jamais une date à partir d'un délai.
+  · date : UNIQUEMENT une vraie date, au format AAAA-MM-JJ. Si le débrief dit « le 28 juillet », donne-la EN UTILISANT L'ANNÉE DE LA DATE DE VISITE fournie en tête (jamais une autre année). Si tu n'as PAS de date certaine, laisse VIDE. « Sous dix jours », « fin de la semaine », « avant le démarrage » ne sont PAS des dates : n'invente jamais une date à partir d'un délai.
   · constraint : la contrainte de temps, dite avec les mots du débrief. Ex. « Avant le démarrage », « Sous une dizaine de jours », « Après la visite PAVE ». Vide si le débrief donne une date nette.
 - intervenants : les PERSONNES et ENTREPRISES citées, avec leur rôle si connu. Ex. « Vincent Milon (PAVE) », « Ginger », « Électriciens ». Réutilisables aux prochaines visites.
 - forgotten_obligations : obligations/contrôles que le débrief signale comme oubliés ou manquants.
@@ -225,6 +225,10 @@ export interface VisitDebriefInput {
   siteHistory: string
   /** Digest court par sujet ouvert — l'Agent 1 identifie LUI-MÊME le concerné. */
   subjectDigests: string[]
+  /** Date de la visite (AAAA-MM-JJ) = ancre temporelle. Sans elle, le modèle
+   *  situe « le 28 juillet » sur son année d'entraînement (~2024) au lieu de
+   *  l'année réelle de la visite. null si inconnue. */
+  referenceDate: string | null
   userId: string | null
 }
 
@@ -235,9 +239,21 @@ export interface VisitDebriefResult {
   provider: AIProviderName
 }
 
+/** Ancre temporelle : situe l'année des dates partielles. Vide si date inconnue. */
+function referenceDateBlock(referenceDate: string | null): string {
+  if (!referenceDate) return ''
+  return [
+    '=== Date de la visite (référence temporelle) ===',
+    referenceDate,
+    "Utilise CETTE date pour situer l'année des dates partielles (« le 28 juillet » → l'année de la visite, jamais une autre année). Ne convertis JAMAIS un délai (« sous dix jours », « avant le démarrage ») en date.",
+    '',
+  ].join('\n')
+}
+
 /** Bloc de contexte fourni à l'Agent 1. */
 function buildContextBlock(input: VisitDebriefInput): string {
   return [
+    referenceDateBlock(input.referenceDate),
     '=== Vocal / transcription ===',
     input.transcript?.slice(0, 10000) || '(aucun)',
     '',
@@ -338,6 +354,7 @@ export async function runVisitDebriefAgent(input: VisitDebriefInput): Promise<Vi
         ? input.openSubjects.map((s, i) => `[${i}] ${s.name}`).join('\n')
         : '(aucun sujet connu)'
       userMessage = [
+        referenceDateBlock(input.referenceDate),
         '=== Débrief opérationnel du conducteur (la lecture d’ensemble) ===',
         narrative,
         '',

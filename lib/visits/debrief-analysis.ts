@@ -115,6 +115,9 @@ function buildDebriefInput(
     openSubjects: ctx.openSubjects,
     siteHistory: ctx.history,
     subjectDigests: ctx.subjectDigests,
+    // Ancre temporelle = jour de la visite → l'agent situe l'année des dates
+    // partielles au lieu de l'anchorer sur son année d'entraînement.
+    referenceDate: (ctx.visit.started_at ?? ctx.visit.created_at)?.slice(0, 10) ?? null,
     userId,
   }
 }
@@ -124,7 +127,9 @@ function buildDebriefInput(
 // SILENCE (pas « enrichi »). Distinct du corpus_hash, qui ne décrit QUE la matière.
 // v6 : les échéances deviennent { label, date, constraint }. Le bump fait régénérer
 // les analyses de forme v5 à leur prochaine ouverture — c'est le mécanisme prévu.
-const ANALYSIS_SCHEMA_VERSION = 'v6-echeances-datees'
+// v7 : la date de visite est fournie à l'agent comme ancre temporelle (corrige les
+// années fausses type 2024 au lieu de 2026) → régénère les analyses v6 à l'ouverture.
+const ANALYSIS_SCHEMA_VERSION = 'v7-echeances-ancrees'
 
 /** Empreinte de la MATIÈRE PROPRE À LA VISITE (le CORPUS envoyé à l'agent), en
  *  ordre stable. NE dépend PAS de la version de forme : un corpus inchangé donne le
