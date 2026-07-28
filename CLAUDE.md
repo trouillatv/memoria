@@ -861,6 +861,17 @@ Au lieu de demander à Claude de relire tout le dépôt, lui passer directement 
 
 Cela réduit fortement le contexte et évite les analyses globales inutiles.
 
+**Contrat de cache**
+
+| Élément | Valeur |
+|---|---|
+| **Clé de cache** | Organisation + chantier + utilisateur + version du contexte + hash des sources indexées |
+| **Invalidation** | Toute modification d'une entité, d'un alias, d'une portée, des droits, du chantier, ou de toute donnée injectée dans le contexte |
+| **Durée de vie** | Pas de TTL temporel — le graphe est valide jusqu'à invalidation événementielle |
+| **Fallback** | Si le cache est absent, périmé, corrompu ou incompatible : reconstruction complète (`graphify <module> --code-only`), sans bloquer le pipeline |
+
+**Invariant fondamental** : le cache ne doit jamais devenir une source de vérité. Il ne fait qu'accélérer la reconstruction d'un contexte dérivé des données canoniques. En cas de doute sur la fraîcheur, reconstruire.
+
 ### Règles
 
 - Utiliser `--code-only` par défaut (aucun token LLM consommé).
