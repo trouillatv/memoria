@@ -103,12 +103,16 @@ export function CaptureTriage({
   // facultatif : il devient le TITRE de la suite. On le rend explicite et bien
   // visible sur la photo, au lieu de laisser une « Action à préciser » vide.
   const needsTitle = chosen === 'action' || chosen === 'reserve'
+  // Hors action/réserve, le champ portait seulement un placeholder discret — un
+  // utilisateur terrain ne voyait pas que c'est ICI qu'on renseigne la photo
+  // (retour Guillaume). On lui donne un vrai label « Décrire cette photo/vidéo ».
   const commentLabel = chosen === 'action' ? 'Précisez l’action à réaliser'
     : chosen === 'reserve' ? 'Quel défaut faut-il lever ?'
+    : canComment ? `Décrire cette ${capture.kind === 'video' ? 'vidéo' : 'photo'}`
     : null
   const commentPlaceholder = chosen === 'action' ? 'Ex. Reprendre l’étanchéité de la terrasse'
     : chosen === 'reserve' ? 'Ex. Fissure sur poteau — à traiter'
-    : 'Ajouter un commentaire… (facultatif)'
+    : 'Ex. Fissure au plafond — chambre 2 (facultatif)'
 
   // Persiste le commentaire tapé APRÈS le choix du tag (au blur) : sinon le texte
   // saisi une fois la photo taguée serait perdu (il n'était lu qu'au moment du tag).
@@ -254,7 +258,7 @@ export function CaptureTriage({
         {canComment && (
           <div className="space-y-1">
             {commentLabel && (
-              <p className="text-[13px] font-medium text-emerald-700 dark:text-emerald-300">{commentLabel}</p>
+              <p className={`text-[13px] font-medium ${needsTitle ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground'}`}>{commentLabel}</p>
             )}
             <input
               key={capture.id}
