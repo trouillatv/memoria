@@ -164,6 +164,30 @@ export async function listSiteContacts(siteId: string): Promise<SiteContactOptio
 
 export interface SiteCandidateCompany { id: string; name: string }
 
+export interface SiteCompanyLogo { id: string; name: string; logoUrl: string | null }
+
+/**
+ * Entreprises du chantier (casting ACTIF), avec leur logo — pour l'en-tête du CR
+ * PDF. Mêmes règles de propreté que les candidates responsables : hors placeholder
+ * « À identifier » et hors archivées. Nom court privilégié ; logo = `logo_url`
+ * (URL publique, directement lisible par le renderer PDF), null si absent.
+ */
+export async function listSiteConcernedCompanies(siteId: string): Promise<SiteCompanyLogo[]> {
+  const intervenants = await listSiteIntervenants(siteId)
+  const ids = [...new Set(intervenants.map((i) => i.companyId))]
+  if (ids.length === 0) return []
+  const sb = createAdminClient()
+  const { data } = await sb
+    .from('companies')
+    .select('id, name, short_name, logo_url, is_placeholder, deleted_at')
+    .in('id', ids)
+  return ((data ?? []) as Array<{ id: string; name: string; short_name: string | null; logo_url: string | null; is_placeholder: boolean; deleted_at: string | null }>)
+    .filter((c) => !c.is_placeholder && !c.deleted_at)
+    .map((c) => ({ id: c.id, name: c.short_name?.trim() || c.name, logoUrl: c.logo_url?.trim() || null }))
+    // Les entreprises AVEC logo d'abord (valeur visuelle recherchée), puis par nom.
+    .sort((a, b) => (a.logoUrl ? 0 : 1) - (b.logoUrl ? 0 : 1) || a.name.localeCompare(b.name, 'fr'))
+}
+
 /**
  * Entreprises pouvant être RESPONSABLES d'une action de ce chantier (Lot 2B.1) :
  * le casting ACTIF (site_intervenants, effective_to null), hors placeholder

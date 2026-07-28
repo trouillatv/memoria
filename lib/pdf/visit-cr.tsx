@@ -143,10 +143,22 @@ const styles = StyleSheet.create({
     position: 'absolute', bottom: 24, left: 40, right: 40, flexDirection: 'row', justifyContent: 'space-between',
     borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 6, fontSize: 8, color: COLORS.faint,
   },
-  // M4a — badge organisation dans l'en-tête du CR.
-  orgLogoImg: { width: 22, height: 22, objectFit: 'contain' as const, borderRadius: 3, marginBottom: 4 },
-  orgDot: { width: 22, height: 22, borderRadius: 3, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  orgInitials: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#ffffff' },
+  // M4a — badge organisation dans l'en-tête du CR. Logo AGRANDI (22 → 30, +36 %)
+  // à la demande terrain : identifier d'un coup d'œil qui a réalisé la visite.
+  orgLogoImg: { width: 30, height: 30, objectFit: 'contain' as const, borderRadius: 3 },
+  orgDot: { width: 30, height: 30, borderRadius: 3, alignItems: 'center', justifyContent: 'center' },
+  orgInitials: { fontSize: 10, fontFamily: 'Helvetica-Bold', color: '#ffffff' },
+  // Rangée de branding : logo de l'organisation (réalisateur) puis, séparés par un
+  // filet, les logos des entreprises DU CHANTIER (concernées), légèrement plus
+  // grands pour être immédiatement visibles.
+  brandRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  brandDivider: { width: 0.5, height: 26, backgroundColor: COLORS.border, marginLeft: 8 },
+  coLogoImg: { width: 34, height: 34, objectFit: 'contain' as const, borderRadius: 3, marginLeft: 8 },
+  // Repli propre quand l'entreprise n'a pas de logo : une puce discrète au nom,
+  // à la même hauteur que les logos (l'alignement de l'en-tête reste net).
+  coChip: { height: 34, maxWidth: 96, justifyContent: 'center', paddingHorizontal: 7, borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3, marginLeft: 8 },
+  coChipText: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: COLORS.slate },
+  coMore: { fontSize: 8, color: COLORS.muted, marginLeft: 8 },
 })
 
 function orgInitials(label: string | null): string {
@@ -375,6 +387,15 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
   // portent le même titre et donnent l'impression d'ouvrir le même fichier.
   const title = `${kicker} — ${doc.siteName} · ${doc.dateLabel}`
 
+  // En-tête : logo de l'organisation (réalisateur) + logos des entreprises DU
+  // CHANTIER. On plafonne l'affichage pour ne jamais déséquilibrer/déborder un
+  // en-tête répété à chaque page ; au-delà, un « +N » discret. Les entreprises
+  // avec logo arrivent en premier (tri fait côté données).
+  const MAX_HEADER_COMPANIES = 4
+  const hasRealizer = !!(doc.orgLogoUrl || doc.orgColor)
+  const shownCompanies = doc.concernedCompanies.slice(0, MAX_HEADER_COMPANIES)
+  const moreCompanies = doc.concernedCompanies.length - shownCompanies.length
+
   // ── LE VERBATIM NE PART PAS CHEZ LE CLIENT (Vincent, 2026-07-21) ──────────
   //
   // `doc.points.reserve` n'est pas une liste de réserves : c'est le CORPS BRUT
@@ -454,18 +475,36 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
         {/* En-tête identité : qui / où / quand, avant même le résumé. */}
         <View style={styles.header} fixed>
           <View style={styles.headTop}>
-            <View>
+            <View style={{ flex: 1, paddingRight: 12 }}>
               <Text style={styles.kicker}>{kicker}</Text>
               <Text style={styles.siteName}>{doc.siteName}</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
-              {doc.orgLogoUrl ? (
-                <Image src={doc.orgLogoUrl} style={styles.orgLogoImg} />
-              ) : doc.orgColor ? (
-                <View style={[styles.orgDot, { backgroundColor: doc.orgColor }]}>
-                  <Text style={styles.orgInitials}>{orgInitials(doc.orgLabel)}</Text>
-                </View>
-              ) : null}
+              <View style={styles.brandRow}>
+                {/* Réalisateur de la visite (l'organisation, ex. AGP). */}
+                {doc.orgLogoUrl ? (
+                  // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image
+                  <Image src={doc.orgLogoUrl} style={styles.orgLogoImg} />
+                ) : doc.orgColor ? (
+                  <View style={[styles.orgDot, { backgroundColor: doc.orgColor }]}>
+                    <Text style={styles.orgInitials}>{orgInitials(doc.orgLabel)}</Text>
+                  </View>
+                ) : null}
+                {/* Filet séparateur : réalisateur | entreprises du chantier. */}
+                {hasRealizer && shownCompanies.length > 0 && <View style={styles.brandDivider} />}
+                {/* Entreprises concernées : logo, ou puce au nom si pas de logo. */}
+                {shownCompanies.map((c, i) => (
+                  c.logoUrl ? (
+                    // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image
+                    <Image key={i} src={c.logoUrl} style={styles.coLogoImg} />
+                  ) : (
+                    <View key={i} style={styles.coChip}>
+                      <Text style={styles.coChipText}>{c.name}</Text>
+                    </View>
+                  )
+                ))}
+                {moreCompanies > 0 && <Text style={styles.coMore}>+{moreCompanies}</Text>}
+              </View>
               <Text style={styles.badge}>{doc.typeLabel}</Text>
             </View>
           </View>

@@ -28,6 +28,7 @@ import { toProposalRows, proposalVisitKind, proposalCaptureId, proposalExcerpt }
 import { visitIntentLabel } from '@/lib/field/visit-intents'
 import { listSubjectsBySite } from '@/lib/db/subjects'
 import { getOrganizationsMeta } from '@/lib/db/organisations'
+import { listSiteConcernedCompanies } from '@/lib/db/site-intervenants'
 // Le chantier est à Nouméa, le serveur tourne en UTC. Toute date de visite
 // rendue sans fuseau recule d'un jour dès que la visite a commencé avant 11 h
 // locale — c'est-à-dire presque toujours. Cf. `lib/time/local-date.ts`.
@@ -1908,6 +1909,34 @@ export interface VisitCrDoc {
   orgLogoUrl: string | null
   orgColor: string | null
   orgLabel: string | null
+  /** Entreprises du chantier (casting actif) à afficher dans l'en-tête du PDF, à
+   *  côté du logo de l'organisation qui a réalisé la visite. Logo si disponible,
+   *  sinon le nom sert de repli discret. */
+  concernedCompanies: Array<{ name: string; logoUrl: string | null }>
+}
+
+/**
+ * Logo d'entreprise (URL publique héritée) → data URI, pour l'EMBARQUER dans le
+ * PDF. On ne laisse pas @react-pdf aller chercher l'URL au rendu : une URL cassée
+ * y ferait ÉCHOUER tout le document. Ici, la moindre indisponibilité → null → le
+ * repli « nom de l'entreprise » prend le relais, et le CR est toujours généré.
+ */
+async function fetchCompanyLogoDataUri(url: string): Promise<string | null> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 4000)
+  try {
+    const res = await fetch(url, { signal: ctrl.signal })
+    if (!res.ok) return null
+    const type = res.headers.get('content-type') ?? ''
+    if (!type.startsWith('image/')) return null
+    const buf = Buffer.from(await res.arrayBuffer())
+    if (buf.byteLength === 0 || buf.byteLength > 2_000_000) return null // garde-fou taille
+    return `data:${type};base64,${buf.toString('base64')}`
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 /**
@@ -2132,6 +2161,20 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     }
   } catch { /* CR sans bloc évolution plutôt que pas de CR */ }
 
+  // Entreprises du chantier (casting actif) pour l'en-tête — logos à côté de celui
+  // de l'organisation qui a réalisé la visite. Non bloquant : un échec laisse
+  // simplement l'en-tête avec le seul logo de l'organisation. Les logos sont
+  // EMBARQUÉS (data URI) pour ne jamais faire échouer le rendu sur une URL cassée.
+  const concernedRaw = visit.site_id
+    ? await listSiteConcernedCompanies(visit.site_id).catch(() => [])
+    : []
+  const concernedCompanies = await Promise.all(
+    concernedRaw.map(async (c) => ({
+      name: c.name,
+      logoUrl: c.logoUrl ? await fetchCompanyLogoDataUri(c.logoUrl) : null,
+    })),
+  )
+
   return {
     siteName,
     clientName,
@@ -2165,6 +2208,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     orgLogoUrl,
     orgColor,
     orgLabel,
+    concernedCompanies,
   }
 }
 
