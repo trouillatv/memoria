@@ -123,12 +123,14 @@ travaillé ensemble il y a 3 ans ».
 6. *(Lot data séparé, plus tard)* : liaison structurelle **report↔acteur**
    (table de participation avec FK) → débloque la co-présence visite/réunion fiable.
 
-## 9. Décisions à trancher AVANT l'étape 2
+## 9. Décisions
 
-- **D1 — Périmètre v1 :** se limiter aux 3 signaux structurels fiables (co-casting /
-  co-équipe / co-action), en différant les visites/réunions ? *(reco : OUI — ne pas
-  bâtir un score sur du flou lexical)*
+- **D1 — Périmètre v1 : TRANCHÉ (Vincent, 2026-07-28) → v1 = 3 signaux structurels
+  fiables uniquement** (co-casting / co-équipe / co-action). La co-présence
+  visite/réunion est différée à une liaison structurelle report↔acteur (§8.6). On ne
+  bâtit pas de score sur du rattachement lexical (doctrine « une mention n'est pas une
+  identité »).
 - **D2 — Forme :** read model calculé à la volée d'abord, table matérialisée plus tard
-  si la perf l'exige ? *(reco : calculé)*
-- **D3 — Poids & décote :** valider les ordres de grandeur (co-action 3, co-casting 2,
-  co-équipe 2 ; demi-vie 12–18 mois). *(affinables à l'étape 3)*
+  si la perf l'exige. *(reco retenue : calculé)*
+- **D3 — Poids & décote :** ordres de grandeur proposés (co-action 3, co-casting 2,
+  co-équipe 2 ; demi-vie 12–18 mois) — à affiner à l'étape 3.
