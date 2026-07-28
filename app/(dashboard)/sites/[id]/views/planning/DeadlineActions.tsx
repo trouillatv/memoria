@@ -1,25 +1,18 @@
 'use client'
 
-// ── FIN DE VIE D'UNE ÉCHÉANCE VALIDÉE — menu d'actions ───────────────────────
-// Sur chaque échéance ACTIVE : la réaliser, la replanifier, ou l'annuler (avec
-// motif obligatoire). L'annulation n'efface rien — elle mémorise qui/quand/
-// pourquoi, et le lien vers l'échéance de remplacement le cas échéant.
-
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { MoreHorizontal, Check, CalendarClock, XCircle, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { completeDeadlineAction, rescheduleDeadlineAction, cancelDeadlineAction, reopenDeadlineAction } from './deadline-actions'
 
-// Copie UI des motifs (la source `site-deadlines.ts` est `server-only`, non
-// importable côté client — mais les valeurs DOIVENT rester alignées avec l'enum).
 const CANCEL_REASONS: Array<{ value: string; label: string }> = [
-  { value: 'abandoned', label: 'Travaux abandonnés' },
-  { value: 'superseded', label: 'Remplacée par une autre échéance' },
-  { value: 'done_otherwise', label: 'Déjà réalisée autrement' },
+  { value: 'abandoned', label: 'Travaux abandonnes' },
+  { value: 'superseded', label: 'Remplacee par une autre echeance' },
+  { value: 'done_otherwise', label: 'Deja realisee autrement' },
   { value: 'bad_extraction', label: 'Mauvaise extraction' },
-  { value: 'not_needed', label: 'Plus nécessaire' },
-  { value: 'other', label: 'Autre (préciser)' },
+  { value: 'not_needed', label: 'Plus necessaire' },
+  { value: 'other', label: 'Autre (preciser)' },
 ]
 
 type Modal = null | 'reschedule' | 'cancel'
@@ -40,13 +33,13 @@ export function DeadlineActions({
   const [modal, setModal] = useState<Modal>(null)
   const [pending, start] = useTransition()
 
-  // Champs de replanification / annulation.
   const [dueDate, setDueDate] = useState(currentDueDate ?? '')
   const [reason, setReason] = useState('')
   const [comment, setComment] = useState('')
   const [replacementId, setReplacementId] = useState('')
+  const [suppress, setSuppress] = useState(false)
 
-  function close() { setModal(null); setReason(''); setComment(''); setReplacementId('') }
+  function close() { setModal(null); setReason(''); setComment(''); setReplacementId(''); setSuppress(false) }
 
   function run(fn: () => Promise<{ ok: true } | { ok: false; error: string }>, okMsg: string) {
     start(async () => {
@@ -61,8 +54,7 @@ export function DeadlineActions({
       const res = await completeDeadlineAction(deadlineId)
       if (!res.ok) { toast.error(res.error); return }
       router.refresh()
-      // Undo pendant 5 s — plus fluide qu'une modale de confirmation.
-      toast('Réalisée — hors du planning actif', {
+      toast('Realisee — hors du planning actif', {
         duration: 5000,
         action: {
           label: 'Annuler',
@@ -75,19 +67,22 @@ export function DeadlineActions({
       })
     })
   }
+
   const reschedule = () => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { toast.error('Choisissez une date.'); return }
     run(() => rescheduleDeadlineAction({ deadlineId, dueDate }), 'Échéance replanifiée')
   }
+
   const cancel = () => {
     if (!reason) { toast.error('Choisissez un motif.'); return }
-    if (reason === 'other' && !comment.trim()) { toast.error('Précisez le motif.'); return }
+    if (reason === 'other' && !comment.trim()) { toast.error('Precisez le motif.'); return }
     run(
       () => cancelDeadlineAction({
         deadlineId,
         reason: reason as never,
         comment: comment.trim() || undefined,
         replacementId: reason === 'superseded' && replacementId ? replacementId : undefined,
+        suppressSimilar: reason === 'bad_extraction' ? suppress : undefined,
       }),
       'Échéance annulée',
     )
@@ -99,14 +94,13 @@ export function DeadlineActions({
         <button
           type="button"
           onClick={() => setMenu((v) => !v)}
-          aria-label="Actions sur l’échéance"
+          aria-label="Actions sur l'échéance"
           className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <MoreHorizontal className="h-4 w-4" />
         </button>
         {menu && (
           <>
-            {/* Fermeture au clic extérieur. */}
             <button type="button" aria-hidden tabIndex={-1} className="fixed inset-0 z-10 cursor-default" onClick={() => setMenu(false)} />
             <div className="absolute right-0 z-20 mt-1 w-56 overflow-hidden rounded-xl border bg-card py-1 shadow-lg">
               <MenuItem icon={Check} onClick={() => { setMenu(false); complete() }}>Marquer comme réalisée</MenuItem>
@@ -120,7 +114,7 @@ export function DeadlineActions({
       </div>
 
       {modal === 'reschedule' && (
-        <Overlay onClose={() => !pending && close()} title="Replanifier l’échéance">
+        <Overlay onClose={() => !pending && close()} title="Replanifier l'échéance">
           <label className="block text-[13px] font-medium">Nouvelle date</label>
           <input
             type="date"
@@ -133,9 +127,9 @@ export function DeadlineActions({
       )}
 
       {modal === 'cancel' && (
-        <Overlay onClose={() => !pending && close()} title="Annuler l’échéance">
+        <Overlay onClose={() => !pending && close()} title="Annuler l'échéance">
           <p className="text-[12.5px] text-muted-foreground">
-            L’échéance n’est pas supprimée : elle est conservée dans la traçabilité, avec son motif.
+            L&apos;échéance n&apos;est pas supprimée : elle est conservée dans la traçabilité, avec son motif.
           </p>
           <fieldset className="mt-3 space-y-1.5">
             <legend className="text-[13px] font-medium">Motif</legend>
@@ -147,7 +141,6 @@ export function DeadlineActions({
             ))}
           </fieldset>
 
-          {/* Remplacée → on désigne l'échéance qui prend le relais (lien conservé). */}
           {reason === 'superseded' && otherDeadlines.length > 0 && (
             <div className="mt-3">
               <label className="block text-[13px] font-medium">Échéance de remplacement</label>
@@ -159,6 +152,25 @@ export function DeadlineActions({
                 <option value="">— Aucune (annuler simplement) —</option>
                 {otherDeadlines.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}
               </select>
+            </div>
+          )}
+
+          {reason === 'bad_extraction' && (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/40 p-3 dark:border-amber-900/40 dark:bg-amber-950/20">
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={suppress}
+                  onChange={(e) => setSuppress(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded accent-amber-600"
+                />
+                <span className="text-[13px] font-medium text-amber-900 dark:text-amber-200">
+                  Ne plus me proposer des échéances similaires sur ce chantier
+                </span>
+              </label>
+              <p className="mt-1 pl-7 text-[11.5px] text-amber-800/70 dark:text-amber-300/60">
+                Les futures extractions similaires seront masquées, mais resteront consultables dans &laquo;&nbsp;Masquées — à vérifier&nbsp;&raquo;.
+              </p>
             </div>
           )}
 
@@ -175,7 +187,7 @@ export function DeadlineActions({
               className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
-          <Actions pending={pending} onCancel={close} onConfirm={cancel} confirmLabel="Confirmer l’annulation" danger />
+          <Actions pending={pending} onCancel={close} onConfirm={cancel} confirmLabel="Confirmer l&apos;annulation" danger />
         </Overlay>
       )}
     </>

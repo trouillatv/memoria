@@ -11,6 +11,7 @@ import { listMissionsBySite } from '@/lib/db/missions'
 import { listInterventionsSupervisor } from '@/lib/db/interventions'
 import { listCyclesBySite } from '@/lib/db/planning-cycles'
 import { listSiteDeadlines, listSiteDeadlineHistory } from '@/lib/db/site-deadlines'
+import { listMaskedDeadlineProposals } from '@/lib/db/knowledge-proposals'
 import { listTeams } from '@/lib/db/teams'
 import {
   getLastEndedVisitForSite,
@@ -330,7 +331,7 @@ async function PlanningView({ siteId }: { siteId: string }) {
   const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate() + 6)
   const iso = (d: Date) => d.toISOString().slice(0, 10)
 
-  const [currentState, interventions, missions, blocages, cycles, deadlines, deadlineHistory, teams, timeline] = await Promise.all([
+  const [currentState, interventions, missions, blocages, cycles, deadlines, deadlineHistory, maskedProposals, teams, timeline] = await Promise.all([
     getSiteCurrentState(siteId).catch(() => null),
     listInterventionsSupervisor({ siteId, dateRange: 'all', limit: 80 }).catch((e) => { console.error('[sites/[id]] interventions', e); return { items: [], total: 0 } }),
     listMissionsBySite(siteId).catch(() => []),
@@ -338,6 +339,7 @@ async function PlanningView({ siteId }: { siteId: string }) {
     listCyclesBySite(siteId).catch(() => []),
     listSiteDeadlines(siteId).catch(() => []),
     listSiteDeadlineHistory(siteId).catch(() => []),
+    listMaskedDeadlineProposals(siteId).catch(() => []),
     listTeams().catch(() => []),
     getPlanningTimeline({ from: iso(lundi), to: iso(dimanche) }, { siteIds: [siteId] }).catch((): PlanningTimelineEvent[] => []),
   ])
@@ -351,6 +353,7 @@ async function PlanningView({ siteId }: { siteId: string }) {
       cycles={cycles}
       deadlines={deadlines}
       deadlineHistory={deadlineHistory}
+      maskedProposals={maskedProposals}
       teams={teams}
       timeline={timeline}
     />

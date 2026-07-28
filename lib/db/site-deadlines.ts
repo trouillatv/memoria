@@ -146,7 +146,7 @@ export async function cancelSiteDeadline(
   id: string,
   input: { reason: DeadlineCancelReason; comment?: string | null; replacementId?: string | null },
   userId: string | null,
-): Promise<string | null> {
+): Promise<{ siteId: string | null; title: string | null }> {
   const db = createAdminClient()
   const now = new Date().toISOString()
   const replacement = input.replacementId?.trim() || null
@@ -162,12 +162,12 @@ export async function cancelSiteDeadline(
       updated_at: now,
     })
     .eq('id', id)
-    .select('site_id')
+    .select('site_id, title')
     .maybeSingle()
   if (error) throw error
-  const siteId = (data as { site_id: string } | null)?.site_id ?? null
-  if (siteId) invalidateSiteProjection(siteId)
-  return siteId
+  const row = data as { site_id: string; title: string } | null
+  if (row?.site_id) invalidateSiteProjection(row.site_id)
+  return { siteId: row?.site_id ?? null, title: row?.title ?? null }
 }
 
 /** Rouvre une échéance réalisée par erreur (undo) : la remet dans le planning actif.

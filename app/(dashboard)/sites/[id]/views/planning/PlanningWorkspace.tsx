@@ -8,8 +8,10 @@ import type { PlanningTimelineEvent } from '@/lib/planning/timeline-contract'
 import type { SupervisorInterventionRow } from '@/lib/db/interventions'
 import type { CycleSlot, PlanningCycle } from '@/lib/db/planning-cycles'
 import { CANCEL_REASON_LABEL, type SiteDeadline, type SiteDeadlineHistory } from '@/lib/db/site-deadlines'
+import type { DbKnowledgeProposal } from '@/lib/db/knowledge-proposals'
 import { WhyButton } from '@/components/provenance/WhyButton'
 import { DeadlineActions } from './DeadlineActions'
+import { MaskedProposals } from './MaskedProposals'
 import { echeanceDateLabel } from '@/lib/visits/echeance-labels'
 import type { OverviewEventInput } from '@/lib/chantier/overview-projections'
 import type { DbMission, DbTeam } from '@/types/db'
@@ -26,6 +28,8 @@ interface PlanningWorkspaceProps {
   deadlines: SiteDeadline[]
   /** Échéances sorties du planning actif (réalisées / annulées / remplacées). */
   deadlineHistory?: SiteDeadlineHistory[]
+  /** Propositions masquées par le filtre de suppression — « Masquées — à vérifier ». */
+  maskedProposals?: DbKnowledgeProposal[]
   /** TOUT ce qui est daté sur ce chantier — visites, réunions, échéances,
    *  interventions. Le compteur « Visites » disait `nextEvent?.kind === 'visit'`
    *  : il ne comptait rien, il regardait si le PROCHAIN événement était une
@@ -55,6 +59,7 @@ export function PlanningWorkspace({
   teams,
   deadlines,
   deadlineHistory,
+  maskedProposals,
   timeline,
 }: PlanningWorkspaceProps) {
   // Une échéance sans date n'est pas incomplète : elle attend une décision. Elle a
@@ -181,6 +186,7 @@ export function PlanningWorkspace({
               actif, mais conservées pour la traçabilité (le « Pourquoi ? » y dit
               qui a annulé, quand et pourquoi). */}
           {history.length > 0 && <DeadlineHistory items={history} siteId={siteId} />}
+          {maskedProposals && maskedProposals.length > 0 && <MaskedProposals items={maskedProposals} />}
         </section>
       )}
 

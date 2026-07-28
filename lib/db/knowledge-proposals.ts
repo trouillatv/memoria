@@ -29,6 +29,7 @@ import { findInLedger, recordPromotionInLedger } from '@/lib/db/concretisation-l
 import { canonicalFamily, signatureOf } from '@/lib/visits/cr-concretisation'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 import { toDebriefEcheance } from '@/lib/visits/echeance-labels'
+import { listExtractionSuppressions, matchSuppression, DEFAULT_SUPPRESSION_THRESHOLD } from '@/lib/db/extraction-suppressions'
 
 export type ProposalKind = 'action' | 'vigilance' | 'decision' | 'knowledge' | 'stakeholder' | 'deadline'
 /**
@@ -43,7 +44,7 @@ export type ProposalKind = 'action' | 'vigilance' | 'decision' | 'knowledge' | '
  * Aucun des deux n'attend plus de geste : ni l'un ni l'autre n'est du « travail
  * restant ». (mig 231)
  */
-export type ProposalStatus = 'proposed' | 'confirmed' | 'fulfilled' | 'dismissed' | 'superseded'
+export type ProposalStatus = 'proposed' | 'confirmed' | 'fulfilled' | 'dismissed' | 'superseded' | 'masked'
 export type ProposalPayload = Record<string, unknown>
 
 export interface DbKnowledgeProposal {
@@ -198,6 +199,12 @@ export async function projectDebriefToProposals(params: {
     (existingRows ?? []).map((r) => [r.dedupe_key as string, r as { id: string; dedupe_key: string; status: ProposalStatus }]),
   )
 
+  // Suppressions d'extraction — chargées une fois en batch avant la boucle.
+  // Seules les échéances sont filtrées pour l'instant (portée validée par Vincent).
+  const suppressions = desired.some((d) => d.kind === 'deadline')
+    ? await listExtractionSuppressions(siteId, 'deadline').catch(() => [])
+    : []
+
   const toInsert: Array<Record<string, unknown>> = []
   let refreshed = 0
   let skipped = 0
@@ -205,13 +212,22 @@ export async function projectDebriefToProposals(params: {
   for (const d of desired) {
     const ex = byKey.get(d.dedupe_key)
     if (!ex) {
+      // Filtre de suppression : uniquement pour les nouvelles propositions d'échéances.
+      // Masquée = visible dans « Masquées — à vérifier », jamais supprimée silencieusement.
+      let status: ProposalStatus = 'proposed'
+      if (d.kind === 'deadline' && suppressions.length > 0) {
+        for (const sup of suppressions) {
+          const match = matchSuppression(d.title, sup.title_tokens, DEFAULT_SUPPRESSION_THRESHOLD)
+          if (match.matched) { status = 'masked'; break }
+        }
+      }
       toInsert.push({
         organization_id: organizationId,
         site_id: siteId,
         report_id: reportId,
         analysis_version: version,
         kind: d.kind,
-        status: 'proposed',
+        status,
         title: d.title,
         body: d.body,
         payload: d.payload,
@@ -309,6 +325,23 @@ export async function listProposalsBySite(
   const { data, error } = await q.order('created_at', { ascending: true })
   if (error) throw error
   return (data ?? []) as DbKnowledgeProposal[]
+}
+
+/** Propositions d'échéances masquées par le filtre de suppression.
+ *  Consultables dans « Masquées — à vérifier » — jamais supprimées silencieusement. */
+export async function listMaskedDeadlineProposals(siteId: string): Promise<DbKnowledgeProposal[]> {
+  return listProposalsBySite(siteId, { kind: 'deadline', status: 'masked' })
+}
+
+/** Remet une proposition masquée en attente de validation.
+ *  L'utilisateur a décidé que le filtre avait tort pour ce cas précis. */
+export async function unmaskProposal(id: string): Promise<void> {
+  const { error } = await createAdminClient()
+    .from('site_knowledge_proposals')
+    .update({ status: 'proposed', updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('status', 'masked')
+  if (error) throw error
 }
 
 /** Toutes les propositions issues d'UNE visite (tous statuts) — pour retracer
