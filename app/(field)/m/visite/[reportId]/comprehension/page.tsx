@@ -61,10 +61,21 @@ const SOURCE_LABEL: Record<EntityResolution['source'], string> = {
   llm_only: 'Non reconnu',
 }
 
-const SCOPE_LABEL: Record<string, string> = {
-  org: 'Organisation',
-  site: 'Chantier',
-  user: 'Utilisateur',
+const FIELD_LABEL: Record<string, string> = {
+  intervenant: 'Intervenant',
+  action_owner: 'Action',
+  watchpoint_owner: 'Vigilance',
+}
+
+function occurrenceSummary(
+  rawText: string,
+  occurrences: Array<{ rawText: string; field: string }>,
+): string {
+  const matching = occurrences.filter((o) => o.rawText === rawText)
+  const n = matching.length
+  if (n === 0) return ''
+  const fields = [...new Set(matching.map((o) => FIELD_LABEL[o.field] ?? o.field))]
+  return `${n} occurrence${n > 1 ? 's' : ''} — ${fields.join(' · ')}`
 }
 
 export default async function VisitComprehensionPage({
@@ -221,25 +232,33 @@ export default async function VisitComprehensionPage({
                 {/* Entités reconnues */}
                 {resolvedEntries.length > 0 && (
                   <ul className="space-y-2">
-                    {resolvedEntries.map(([rawText, r]) => (
-                      <li key={rawText} className="rounded-2xl border border-foreground/[0.06] bg-card p-3.5">
-                        <div className="flex items-start gap-2.5">
-                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950/40">
-                            <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[12px] text-muted-foreground">{rawText}</p>
-                            <p className="text-[14px] font-semibold leading-snug">{r.canonical}</p>
-                            <p className="mt-0.5 text-[11px] text-muted-foreground">
-                              {SOURCE_LABEL[r.source]}
-                              {r.entityId && semanticMemory?.resolutions[rawText] && (
-                                <> · {SCOPE_LABEL['org'] /* TODO: expose scope from resolution */}</>
+                    {resolvedEntries.map(([rawText, r]) => {
+                      const occs = semanticMemory?.occurrences ?? []
+                      const occSummary = occurrenceSummary(rawText, occs)
+                      const aliasIsDistinct = r.matchedAlias && r.matchedAlias !== r.canonical
+                      return (
+                        <li key={rawText} className="rounded-2xl border border-foreground/[0.06] bg-card p-3.5">
+                          <div className="flex items-start gap-2.5">
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950/40">
+                              <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[12px] text-muted-foreground">{rawText}</p>
+                              <p className="text-[14px] font-semibold leading-snug">{r.canonical}</p>
+                              {aliasIsDistinct && (
+                                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                  Alias reconnu : &laquo;&nbsp;{r.matchedAlias}&nbsp;&raquo;
+                                </p>
                               )}
-                            </p>
+                              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                {SOURCE_LABEL[r.source]}
+                                {occSummary ? ` · ${occSummary}` : ''}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      </li>
-                    ))}
+                        </li>
+                      )
+                    })}
                   </ul>
                 )}
 
@@ -248,6 +267,8 @@ export default async function VisitComprehensionPage({
                   <ul className="space-y-2">
                     {unknownEntries.map(([rawText]) => {
                       const orgId = visit.organization_id ?? ''
+                      const occs = semanticMemory?.occurrences ?? []
+                      const occSummary = occurrenceSummary(rawText, occs)
                       async function doIgnore() {
                         'use server'
                         await ignoreCandidat(reportId, rawText)
@@ -268,7 +289,9 @@ export default async function VisitComprehensionPage({
                             </span>
                             <div className="min-w-0 flex-1">
                               <p className="text-[14px] font-semibold leading-snug">{rawText}</p>
-                              <p className="mt-0.5 text-[11px] text-muted-foreground">Personne non reconnue</p>
+                              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                Non reconnu{occSummary ? ` · ${occSummary}` : ''}
+                              </p>
                             </div>
                           </div>
                           <div className="mt-3 flex flex-wrap gap-2 border-t border-amber-200/50 pt-3 dark:border-amber-900/30">
