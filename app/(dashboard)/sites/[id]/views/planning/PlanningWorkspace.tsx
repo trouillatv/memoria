@@ -180,7 +180,7 @@ export function PlanningWorkspace({
           {/* HISTORIQUE — réalisées / annulées / remplacées : hors du planning
               actif, mais conservées pour la traçabilité (le « Pourquoi ? » y dit
               qui a annulé, quand et pourquoi). */}
-          {history.length > 0 && <DeadlineHistory items={history} />}
+          {history.length > 0 && <DeadlineHistory items={history} siteId={siteId} />}
         </section>
       )}
 
@@ -354,35 +354,63 @@ export function PlanningWorkspace({
   )
 }
 
-const HISTORY_BADGE: Record<string, { label: string; cls: string }> = {
-  done: { label: 'Réalisée', cls: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300' },
-  cancelled: { label: 'Annulée', cls: 'bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-300' },
-  superseded: { label: 'Remplacée', cls: 'bg-muted text-muted-foreground' },
-}
-const historyDateFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: '2-digit', month: '2-digit', year: 'numeric' })
+const historyDateFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long', year: 'numeric' })
 
-/** Historique des échéances (repliable, sans JS) : réalisées / annulées /
- *  remplacées. Le « Pourquoi ? » de chaque ligne porte le détail de traçabilité. */
-function DeadlineHistory({ items }: { items: SiteDeadlineHistory[] }) {
+/** Historique des échéances (repliable) : réalisées / annulées / remplacées.
+ *  Chaque ligne raconte ce qui s'est passé, avec l'acteur et la raison. */
+function DeadlineHistory({ items, siteId }: { items: SiteDeadlineHistory[]; siteId: string }) {
   return (
     <details className="mt-4 rounded-2xl border bg-muted/10">
       <summary className="cursor-pointer list-none px-4 py-2.5 text-sm font-semibold text-muted-foreground marker:content-none">
         Historique ({items.length}) — réalisées, annulées, remplacées
       </summary>
-      <ul className="space-y-2 px-4 pb-4">
+      <ul className="space-y-3 px-4 pb-4 pt-2">
         {items.map((d) => {
-          const badge = HISTORY_BADGE[d.status] ?? HISTORY_BADGE.cancelled
           const when = d.cancelled_at ?? d.completed_at
+          const whenLabel = when ? historyDateFmt.format(new Date(when)) : null
           return (
-            <li key={d.id} className="border-t pt-2 first:border-t-0 first:pt-0">
-              <div className="flex items-start justify-between gap-2">
-                <span className="min-w-0 text-sm text-foreground line-through decoration-muted-foreground/40">{d.title}</span>
-                <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${badge.cls}`}>{badge.label}</span>
-              </div>
-              <p className="mt-0.5 text-[11.5px] text-muted-foreground">
-                {when ? historyDateFmt.format(new Date(when)) : ''}
-                {d.cancel_reason ? ` · ${CANCEL_REASON_LABEL[d.cancel_reason]}` : ''}
-              </p>
+            <li key={d.id} className="border-t pt-3 first:border-t-0 first:pt-0">
+              <p className="text-sm text-foreground/80">{d.title}</p>
+
+              {d.status === 'done' && (
+                <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-emerald-700 dark:text-emerald-400">
+                  <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                  Réalisée{whenLabel ? ` le ${whenLabel}` : ''}{d.actor_name ? ` par ${d.actor_name}` : ''}
+                </p>
+              )}
+
+              {d.status === 'cancelled' && (
+                <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-red-700 dark:text-red-400">
+                  <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+                  Annulée{whenLabel ? ` le ${whenLabel}` : ''}
+                  {d.cancel_reason ? ` · ${CANCEL_REASON_LABEL[d.cancel_reason]}` : ''}
+                  {d.actor_name ? ` · par ${d.actor_name}` : ''}
+                </p>
+              )}
+
+              {d.status === 'superseded' && (
+                <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                  <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
+                  Remplacée{whenLabel ? ` le ${whenLabel}` : ''}
+                  {d.replacement_title ? (
+                    <>
+                      {' '}par{' '}
+                      <Link
+                        href={`/sites/${siteId}?tab=planning`}
+                        className="font-medium text-foreground/80 underline decoration-dotted underline-offset-2 hover:text-foreground"
+                      >
+                        « {d.replacement_title} »
+                      </Link>
+                    </>
+                  ) : null}
+                  {d.actor_name ? ` · par ${d.actor_name}` : ''}
+                </p>
+              )}
+
+              {d.cancel_comment && (
+                <p className="mt-0.5 pl-3 text-[11.5px] italic text-muted-foreground">«&nbsp;{d.cancel_comment}&nbsp;»</p>
+              )}
+
               {d.report_id && (
                 <div className="mt-1">
                   <WhyButton objectType="deadline" objectId={d.id} />

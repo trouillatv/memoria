@@ -10,7 +10,8 @@ import { revalidatePath } from 'next/cache'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import {
-  completeSiteDeadline, planSiteDeadline, cancelSiteDeadline, getSiteDeadlineOrgId,
+  completeSiteDeadline, planSiteDeadline, cancelSiteDeadline,
+  reopenSiteDeadline, getSiteDeadlineOrgId,
 } from '@/lib/db/site-deadlines'
 
 type Result = { ok: true } | { ok: false; error: string }
@@ -39,6 +40,18 @@ export async function completeDeadlineAction(deadlineId: string): Promise<Result
     if (siteId) revalidatePath(`/sites/${siteId}`)
     return { ok: true }
   } catch { return { ok: false, error: 'Échec de l’enregistrement' } }
+}
+
+/** Annule une réalisation par erreur (undo toast) : remet l'échéance dans le planning actif. */
+export async function reopenDeadlineAction(deadlineId: string): Promise<Result> {
+  if (!idSchema.safeParse(deadlineId).success) return { ok: false, error: 'Requête invalide' }
+  const g = await guard(deadlineId)
+  if (!g.ok) return g
+  try {
+    const siteId = await reopenSiteDeadline(deadlineId)
+    if (siteId) revalidatePath(`/sites/${siteId}`)
+    return { ok: true }
+  } catch { return { ok: false, error: 'Échec du rétablissement' } }
 }
 
 const rescheduleSchema = z.object({

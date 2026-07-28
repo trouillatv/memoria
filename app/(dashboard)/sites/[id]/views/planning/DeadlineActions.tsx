@@ -9,7 +9,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { MoreHorizontal, Check, CalendarClock, XCircle, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { completeDeadlineAction, rescheduleDeadlineAction, cancelDeadlineAction } from './deadline-actions'
+import { completeDeadlineAction, rescheduleDeadlineAction, cancelDeadlineAction, reopenDeadlineAction } from './deadline-actions'
 
 // Copie UI des motifs (la source `site-deadlines.ts` est `server-only`, non
 // importable côté client — mais les valeurs DOIVENT rester alignées avec l'enum).
@@ -56,7 +56,25 @@ export function DeadlineActions({
     })
   }
 
-  const complete = () => run(() => completeDeadlineAction(deadlineId), 'Échéance marquée réalisée')
+  const complete = () => {
+    start(async () => {
+      const res = await completeDeadlineAction(deadlineId)
+      if (!res.ok) { toast.error(res.error); return }
+      router.refresh()
+      // Undo pendant 5 s — plus fluide qu'une modale de confirmation.
+      toast('Réalisée — hors du planning actif', {
+        duration: 5000,
+        action: {
+          label: 'Annuler',
+          onClick: async () => {
+            const undo = await reopenDeadlineAction(deadlineId)
+            if (undo.ok) router.refresh()
+            else toast.error(undo.error)
+          },
+        },
+      })
+    })
+  }
   const reschedule = () => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { toast.error('Choisissez une date.'); return }
     run(() => rescheduleDeadlineAction({ deadlineId, dueDate }), 'Échéance replanifiée')

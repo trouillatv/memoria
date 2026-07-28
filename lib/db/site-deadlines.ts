@@ -43,10 +43,17 @@ export interface SiteDeadline {
  *  l'historique et la traçabilité. Porte le QUI/QUAND/POURQUOI de sa fin de vie. */
 export interface SiteDeadlineHistory extends SiteDeadline {
   completed_at: string | null
+  completed_by: string | null
   cancelled_at: string | null
+  cancelled_by: string | null
   cancel_reason: DeadlineCancelReason | null
   cancel_comment: string | null
   superseded_by: string | null
+  /** Résolu : nom de l'acteur (réalisateur ou annuleur). */
+  actor_name: string | null
+  /** Résolu : titre de l'échéance de remplacement (statut superseded). */
+  replacement_title: string | null
+  replacement_due_date: string | null
 }
 
 export async function createSiteDeadline(input: {
@@ -163,6 +170,27 @@ export async function cancelSiteDeadline(
   return siteId
 }
 
+/** Rouvre une échéance réalisée par erreur (undo) : la remet dans le planning actif.
+ *  Restaure `to_plan` ou `planned` selon la présence de `due_date`. */
+export async function reopenSiteDeadline(id: string): Promise<string | null> {
+  const db = createAdminClient()
+  const { data: cur } = await db.from('site_deadlines').select('due_date, site_id').eq('id', id).maybeSingle()
+  const row = cur as { due_date: string | null; site_id: string } | null
+  if (!row) return null
+  const status: DeadlineStatus = row.due_date ? 'planned' : 'to_plan'
+  const now = new Date().toISOString()
+  const { data, error } = await db
+    .from('site_deadlines')
+    .update({ status, completed_at: null, completed_by: null, updated_at: now })
+    .eq('id', id)
+    .select('site_id')
+    .maybeSingle()
+  if (error) throw error
+  const siteId = (data as { site_id: string } | null)?.site_id ?? row.site_id
+  if (siteId) invalidateSiteProjection(siteId)
+  return siteId
+}
+
 /** L'organisation propriétaire d'une échéance (via son chantier) — garde tenant
  *  des actions serveur : on ne mute jamais une échéance hors de son organisation. */
 export async function getSiteDeadlineOrgId(id: string): Promise<string | null> {
@@ -175,15 +203,53 @@ export async function getSiteDeadlineOrgId(id: string): Promise<string | null> {
 }
 
 /** Historique des échéances (hors planning actif) : réalisées / annulées /
- *  remplacées, les plus récentes d'abord. Pour la traçabilité et le bloc Pourquoi ?. */
+ *  remplacées, les plus récentes d'abord. Résout les noms d'acteurs et les titres
+ *  de remplacement en une passe batch (pas de N+1). */
 export async function listSiteDeadlineHistory(siteId: string): Promise<SiteDeadlineHistory[]> {
-  const { data, error } = await createAdminClient()
+  const db = createAdminClient()
+  type RawRow = {
+    id: string; site_id: string; report_id: string | null; title: string
+    constraint_text: string | null; due_date: string | null; status: DeadlineStatus
+    created_at: string; completed_at: string | null; completed_by: string | null
+    cancelled_at: string | null; cancelled_by: string | null
+    cancel_reason: DeadlineCancelReason | null; cancel_comment: string | null
+    superseded_by: string | null
+  }
+  const { data, error } = await db
     .from('site_deadlines')
-    .select('id, site_id, report_id, title, constraint_text, due_date, status, created_at, completed_at, cancelled_at, cancel_reason, cancel_comment, superseded_by')
+    .select('id, site_id, report_id, title, constraint_text, due_date, status, created_at, completed_at, completed_by, cancelled_at, cancelled_by, cancel_reason, cancel_comment, superseded_by')
     .eq('site_id', siteId)
     .is('deleted_at', null)
     .in('status', ['done', 'cancelled', 'superseded'])
     .order('updated_at', { ascending: false })
   if (error) return []
-  return (data ?? []) as SiteDeadlineHistory[]
+  const rows = (data ?? []) as RawRow[]
+  if (rows.length === 0) return []
+
+  // Batch : noms d'acteurs + titres de remplacement.
+  const actorIds = [...new Set(rows.flatMap((r) => [r.completed_by, r.cancelled_by]).filter((v): v is string => !!v))]
+  const replacementIds = [...new Set(rows.map((r) => r.superseded_by).filter((v): v is string => !!v))]
+
+  const actorMap = new Map<string, string>()
+  if (actorIds.length > 0) {
+    const { data: users } = await db.from('users').select('id, full_name').in('id', actorIds)
+    for (const u of (users ?? []) as Array<{ id: string; full_name: string | null }>) {
+      if (u.full_name?.trim()) actorMap.set(u.id, u.full_name.trim())
+    }
+  }
+
+  const replacementMap = new Map<string, { title: string; due_date: string | null }>()
+  if (replacementIds.length > 0) {
+    const { data: repl } = await db.from('site_deadlines').select('id, title, due_date').in('id', replacementIds)
+    for (const r of (repl ?? []) as Array<{ id: string; title: string; due_date: string | null }>) {
+      replacementMap.set(r.id, { title: r.title, due_date: r.due_date })
+    }
+  }
+
+  return rows.map((r) => ({
+    ...r,
+    actor_name: (r.cancelled_by && actorMap.get(r.cancelled_by)) || (r.completed_by && actorMap.get(r.completed_by)) || null,
+    replacement_title: r.superseded_by ? (replacementMap.get(r.superseded_by)?.title ?? null) : null,
+    replacement_due_date: r.superseded_by ? (replacementMap.get(r.superseded_by)?.due_date ?? null) : null,
+  }))
 }
