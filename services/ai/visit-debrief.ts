@@ -230,6 +230,10 @@ export interface VisitDebriefInput {
    *  l'année réelle de la visite. null si inconnue. */
   referenceDate: string | null
   userId: string | null
+  /** Bloc de contexte sémantique pré-formaté (lib/knowledge/semantic-entities).
+   *  Injecté avant la transcription dans les deux agents. null = aucune entité
+   *  connue → comportement identique à l'absence du module. */
+  semanticBlock?: string | null
 }
 
 export interface VisitDebriefResult {
@@ -254,6 +258,7 @@ function referenceDateBlock(referenceDate: string | null): string {
 function buildContextBlock(input: VisitDebriefInput): string {
   return [
     referenceDateBlock(input.referenceDate),
+    ...(input.semanticBlock ? [input.semanticBlock, ''] : []),
     '=== Vocal / transcription ===',
     input.transcript?.slice(0, 10000) || '(aucun)',
     '',
@@ -355,6 +360,7 @@ export async function runVisitDebriefAgent(input: VisitDebriefInput): Promise<Vi
         : '(aucun sujet connu)'
       userMessage = [
         referenceDateBlock(input.referenceDate),
+        ...(input.semanticBlock ? [input.semanticBlock, ''] : []),
         '=== Débrief opérationnel du conducteur (la lecture d’ensemble) ===',
         narrative,
         '',

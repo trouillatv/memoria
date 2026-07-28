@@ -33,6 +33,7 @@ import { computeSnapshotDelta, type SnapshotDelta } from '@/lib/visits/source-sn
 import { toDebriefEcheance, type DebriefEcheance } from '@/lib/visits/echeance-labels'
 import { runVisitDebriefAgent, type VisitDebriefInput, type VisitDebriefParsed } from '@/services/ai/visit-debrief'
 import { projectDebriefToProposals } from '@/lib/db/knowledge-proposals'
+import { buildSemanticContextBlock } from '@/lib/knowledge/semantic-entities'
 
 type Confidence = 'elevee' | 'moyenne' | 'faible' | null
 
@@ -94,10 +95,14 @@ export interface StoredDebriefAnalysis {
 }
 
 /** L'entrée EXACTE passée à l'agent — construite une seule fois, hashée, puis
- *  envoyée telle quelle : le hash décrit précisément ce qui a été analysé. */
+ *  envoyée telle quelle : le hash décrit précisément ce qui a été analysé.
+ *  semanticBlock est EXCLU du hash (contexte volatile comme siteHistory) :
+ *  l'ajout d'entités sémantiques ne revalide pas automatiquement le cache,
+ *  l'utilisateur utilise « Mettre à jour la synthèse » pour régénérer. */
 function buildDebriefInput(
   ctx: NonNullable<Awaited<ReturnType<typeof gatherVisitDebriefContext>>>,
   userId: string | null,
+  semanticBlock: string | null = null,
 ): VisitDebriefInput {
   const signalLines = ctx.signals.flatMap((s) => [
     s.title,
@@ -119,6 +124,7 @@ function buildDebriefInput(
     // partielles au lieu de l'anchorer sur son année d'entraînement.
     referenceDate: (ctx.visit.started_at ?? ctx.visit.created_at)?.slice(0, 10) ?? null,
     userId,
+    semanticBlock: semanticBlock || null,
   }
 }
 
@@ -368,7 +374,10 @@ export async function loadOrRunVisitDebrief(
 ): Promise<DebriefLoadResult> {
   const ctx = await gatherVisitDebriefContext(reportId)
   if (!ctx) return { ok: false, error: 'Visite introuvable' }
-  const input = buildDebriefInput(ctx, userId)
+  const semanticBlock = ctx.visit.site_id && ctx.visit.organization_id
+    ? await buildSemanticContextBlock(ctx.visit.site_id, ctx.visit.organization_id, userId ?? undefined)
+    : null
+  const input = buildDebriefInput(ctx, userId, semanticBlock)
   const hash = computeCorpusHash(input)
   const snapshot = ctx.sourceSnapshot
 
