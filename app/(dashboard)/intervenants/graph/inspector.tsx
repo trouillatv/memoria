@@ -10,7 +10,9 @@ import Link from 'next/link'
 import { ArrowRight, Route, User, Building2, Users, MapPin, ListTodo, FileText, Gavel, Zap } from 'lucide-react'
 import type { ActorGraphNode, ActorGraphKind } from '@/lib/knowledge/actors-graph-model'
 import type { ActorContext, ActorContextEvent, ActorContextEventKind } from '@/lib/db/actor-context'
+import type { ActorRelationsResult } from '@/lib/knowledge/actor-relation-view'
 import { attentionLevelLabel } from '@/lib/knowledge/actor-attention'
+import { ActorRelationsPanel } from './ActorRelationsPanel'
 
 const KIND_LABEL: Record<ActorGraphKind, string> = { person: 'Personne', company: 'Entreprise', team: 'Équipe', site: 'Chantier', action: 'Action' }
 const KIND_ICON = { person: User, company: Building2, team: Users, site: MapPin, action: ListTodo } as const
@@ -40,12 +42,14 @@ export function LevelBadge({ node }: { node: ActorGraphNode }) {
   return <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${cls}`}>{attentionLevelLabel(node.level)}</span>
 }
 
-export function NodePanel({ node, narration, relations, context, compact, onFollow, onSelectNode, onSelectEdge, onActivateActor }: {
+export function NodePanel({ node, narration, relations, context, relationsView, compact, onFollow, onSelectNode, onSelectEdge, onActivateActor }: {
   node: ActorGraphNode
   narration: string[]
   relations: Array<{ e: { a: string; b: string; label: string }; index: number; other: ActorGraphNode }>
   /** Contexte opérationnel (dernières interactions datées) — personne/entreprise. */
   context?: ActorContext | null
+  /** Relations agrégées (« Travaille principalement avec » + écosystème). */
+  relationsView?: ActorRelationsResult | null
   /** Réseau embarqué dans une fiche : typo plus resserrée. */
   compact?: boolean
   onFollow(): void
@@ -119,6 +123,8 @@ export function NodePanel({ node, narration, relations, context, compact, onFoll
           </ol>
         </>
       )}
+
+      {relationsView && <ActorRelationsPanel data={relationsView} />}
 
       {relations.length > 0 && (
         <>

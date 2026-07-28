@@ -10,14 +10,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getActorInteractions } from '@/lib/db/actor-interactions'
 import {
   buildActorRelationViews, groupEcosystem,
-  type ActorEcosystem, type ActorRelationView, type RelationViewLabels,
+  type ActorRelationsResult, type RelationViewLabels,
 } from '@/lib/knowledge/actor-relation-view'
 import type { ActorInteraction, ActorInteractionKind, ActorRef } from '@/lib/knowledge/actor-interactions'
 
-export interface ActorRelationsResult {
-  relations: ActorRelationView[]
-  ecosystem: ActorEcosystem
-}
+export type { ActorRelationsResult }
 
 const KIND_FALLBACK: Record<'person' | 'company', string> = { person: 'Personne', company: 'Entreprise' }
 

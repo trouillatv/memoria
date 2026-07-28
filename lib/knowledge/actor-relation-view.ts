@@ -56,6 +56,11 @@ export interface ActorEcosystem {
   inactive: ActorRelationView[] // trend 'inactive' (encore une force)
 }
 
+export interface ActorRelationsResult {
+  relations: ActorRelationView[]
+  ecosystem: ActorEcosystem
+}
+
 /** Résolveurs de libellés/hrefs injectés (le serveur les branche sur la base ;
  *  les tests les simulent) — la logique reste pure et sans I/O. */
 export interface RelationViewLabels {

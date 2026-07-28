@@ -14,7 +14,9 @@ import {
 } from '@/lib/knowledge/actors-graph-model'
 import { narrateActorInGraph } from '@/lib/knowledge/actor-narration'
 import { getActorContextAction } from '../context-actions'
+import { getActorRelationsAction } from '../relation-actions'
 import type { ActorContext } from '@/lib/db/actor-context'
+import type { ActorRelationsResult } from '@/lib/knowledge/actor-relation-view'
 import { NodePanel, EdgePanel, PathPanel } from './inspector'
 
 export type GraphSelection = { type: 'node'; id: string } | { type: 'edge'; index: number } | null
@@ -80,6 +82,21 @@ export function useGraphExplorer(graph: ActorsGraph, focusId?: string | null, in
   }, [selNode])
   const nodeContext = selNode && context?.id === selNode.id ? context.data : null
 
+  // ── Relations (V3 étape 5) : « Travaille principalement avec » + écosystème ──
+  // Même patron : chargé à la demande, dérivation par id (jamais de recalcul UI).
+  const [relView, setRelView] = useState<{ id: string; data: ActorRelationsResult } | null>(null)
+  useEffect(() => {
+    if (!selNode || (selNode.kind !== 'person' && selNode.kind !== 'company')) return
+    const nodeId = selNode.id
+    const rawId = nodeId.slice(nodeId.indexOf('_') + 1)
+    let cancelled = false
+    getActorRelationsAction(selNode.kind, rawId)
+      .then((res) => { if (!cancelled && res.ok) setRelView({ id: nodeId, data: res.data }) })
+      .catch(() => { /* relations indisponibles → section masquée */ })
+    return () => { cancelled = true }
+  }, [selNode])
+  const nodeRelations = selNode && relView?.id === selNode.id ? relView.data : null
+
   const pathNodes = useMemo(() => (path ? new Set(path.nodes) : null), [path])
   const pathEdges = useMemo(() => (path ? new Set(path.edgeIndexes) : null), [path])
   const pathSteps = useMemo(() => {
@@ -140,7 +157,7 @@ export function useGraphExplorer(graph: ActorsGraph, focusId?: string | null, in
     availableKinds, visibleKinds, perspective, applyPerspective, toggleKind,
     query, setQuery, matches, focusNode, centerRequest,
     lens, setLens, isolate, setIsolate,
-    nodeContext,
+    nodeContext, nodeRelations,
   }
 }
 
@@ -153,7 +170,7 @@ export function ExplorerAside({ ex, compact, focusId, onActivateActor, emptyStat
   onActivateActor?: (node: ActorGraphNode) => void
   emptyState?: React.ReactNode
 }) {
-  const { pathSteps, selNode, selEdge, narration, relations, nodeById, nodeContext, selectNode, selectEdge, startFollow, clearPath } = ex
+  const { pathSteps, selNode, selEdge, narration, relations, nodeById, nodeContext, nodeRelations, selectNode, selectEdge, startFollow, clearPath } = ex
   if (pathSteps) return <PathPanel steps={pathSteps} onQuit={clearPath} onSelectNode={selectNode} />
   if (selNode) return (
     <NodePanel
@@ -161,6 +178,7 @@ export function ExplorerAside({ ex, compact, focusId, onActivateActor, emptyStat
       narration={narration}
       relations={relations}
       context={nodeContext}
+      relationsView={nodeRelations}
       compact={compact}
       onFollow={() => startFollow(selNode.id)}
       onSelectNode={selectNode}
