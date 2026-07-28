@@ -14,7 +14,7 @@ import {
   reopenSiteDeadline, getSiteDeadlineOrgId,
 } from '@/lib/db/site-deadlines'
 import { createExtractionSuppression } from '@/lib/db/extraction-suppressions'
-import { unmaskProposal } from '@/lib/db/knowledge-proposals'
+import { unmaskProposal, unmaskProposalAndDeleteRule } from '@/lib/db/knowledge-proposals'
 
 type Result = { ok: true } | { ok: false; error: string }
 
@@ -107,7 +107,7 @@ export async function cancelDeadlineAction(input: z.input<typeof cancelSchema>):
 
 const proposalIdSchema = z.string().uuid()
 
-/** Remet une proposition masquee en attente de validation (le filtre avait tort). */
+/** Remet une proposition masquee en attente de validation (bypass ponctuel — la regle reste active). */
 export async function unmaskDeadlineProposalAction(proposalId: string): Promise<Result> {
   if (!proposalIdSchema.safeParse(proposalId).success) return { ok: false, error: 'Requete invalide' }
   const user = await getCurrentUserWithProfile()
@@ -118,4 +118,17 @@ export async function unmaskDeadlineProposalAction(proposalId: string): Promise<
     await unmaskProposal(proposalId)
     return { ok: true }
   } catch { return { ok: false, error: 'Echec du demasquage' } }
+}
+
+/** Remet une proposition masquee en attente ET supprime la regle de suppression associee. */
+export async function deleteSuppressionRuleAction(proposalId: string): Promise<Result> {
+  if (!proposalIdSchema.safeParse(proposalId).success) return { ok: false, error: 'Requete invalide' }
+  const user = await getCurrentUserWithProfile()
+  if (!user || (user.role !== 'admin' && user.role !== 'manager' && user.role !== 'chef_equipe')) {
+    return { ok: false, error: 'Acces refuse' }
+  }
+  try {
+    await unmaskProposalAndDeleteRule(proposalId)
+    return { ok: true }
+  } catch { return { ok: false, error: 'Echec de la suppression de la regle' } }
 }

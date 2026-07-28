@@ -45,3 +45,13 @@ ALTER TABLE public.site_knowledge_proposals
 
 COMMENT ON COLUMN public.site_knowledge_proposals.status IS
   'proposed=à valider · confirmed=validée · fulfilled=satisfaite par CR · dismissed=rejetée · superseded=obsolète · masked=masquée par suppression (visible dans « Masquées — à vérifier »)';
+
+-- Lien vers la règle de suppression qui a déclenché le masquage.
+-- ON DELETE SET NULL : si la règle est supprimée, la proposition reste masquée
+-- jusqu'au prochain cycle d'extraction (où elle réapparaîtra comme proposed).
+ALTER TABLE public.site_knowledge_proposals
+  ADD COLUMN IF NOT EXISTS masked_by_suppression_id uuid
+  REFERENCES public.site_extraction_suppressions(id) ON DELETE SET NULL;
+
+COMMENT ON COLUMN public.site_knowledge_proposals.masked_by_suppression_id IS
+  'Règle de suppression qui a déclenché le statut masked. Permet à l''utilisateur de supprimer la règle directement depuis « Masquées — à vérifier ».';

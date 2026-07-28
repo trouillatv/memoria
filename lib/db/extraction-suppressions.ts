@@ -101,6 +101,15 @@ export async function createExtractionSuppression(params: {
     })
 }
 
+/** Supprime une règle de suppression (l'utilisateur a décidé que le filtre avait globalement tort). */
+export async function deleteExtractionSuppression(id: string): Promise<void> {
+  const { error } = await createAdminClient()
+    .from('site_extraction_suppressions')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+}
+
 /** Suppressions actives d'un chantier pour un type d'objet (lecture batch). */
 export async function listExtractionSuppressions(
   siteId: string,

@@ -29,7 +29,7 @@ import { findInLedger, recordPromotionInLedger } from '@/lib/db/concretisation-l
 import { canonicalFamily, signatureOf } from '@/lib/visits/cr-concretisation'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 import { toDebriefEcheance } from '@/lib/visits/echeance-labels'
-import { listExtractionSuppressions, matchSuppression, DEFAULT_SUPPRESSION_THRESHOLD } from '@/lib/db/extraction-suppressions'
+import { listExtractionSuppressions, matchSuppression, DEFAULT_SUPPRESSION_THRESHOLD, deleteExtractionSuppression } from '@/lib/db/extraction-suppressions'
 
 export type ProposalKind = 'action' | 'vigilance' | 'decision' | 'knowledge' | 'stakeholder' | 'deadline'
 /**
@@ -215,10 +215,11 @@ export async function projectDebriefToProposals(params: {
       // Filtre de suppression : uniquement pour les nouvelles propositions d'échéances.
       // Masquée = visible dans « Masquées — à vérifier », jamais supprimée silencieusement.
       let status: ProposalStatus = 'proposed'
+      let maskedBySuppressionId: string | null = null
       if (d.kind === 'deadline' && suppressions.length > 0) {
         for (const sup of suppressions) {
           const match = matchSuppression(d.title, sup.title_tokens, DEFAULT_SUPPRESSION_THRESHOLD)
-          if (match.matched) { status = 'masked'; break }
+          if (match.matched) { status = 'masked'; maskedBySuppressionId = sup.id; break }
         }
       }
       toInsert.push({
@@ -232,6 +233,7 @@ export async function projectDebriefToProposals(params: {
         body: d.body,
         payload: d.payload,
         dedupe_key: d.dedupe_key,
+        masked_by_suppression_id: maskedBySuppressionId,
       })
       continue
     }
@@ -334,7 +336,10 @@ export async function listMaskedDeadlineProposals(siteId: string): Promise<DbKno
 }
 
 /** Remet une proposition masquée en attente de validation.
- *  L'utilisateur a décidé que le filtre avait tort pour ce cas précis. */
+ *  L'utilisateur a décidé que le filtre avait tort pour ce cas précis.
+ *  La règle de suppression reste active : la même proposition sera re-masquée
+ *  au prochain cycle d'extraction. Pour supprimer la règle, utiliser
+ *  unmaskProposalAndDeleteRule. */
 export async function unmaskProposal(id: string): Promise<void> {
   const { error } = await createAdminClient()
     .from('site_knowledge_proposals')
@@ -342,6 +347,26 @@ export async function unmaskProposal(id: string): Promise<void> {
     .eq('id', id)
     .eq('status', 'masked')
   if (error) throw error
+}
+
+/** Remet une proposition masquée en attente ET supprime la règle qui l'a masquée.
+ *  L'utilisateur a décidé que le filtre était globalement erroné pour ce pattern. */
+export async function unmaskProposalAndDeleteRule(id: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('site_knowledge_proposals')
+    .select('masked_by_suppression_id')
+    .eq('id', id)
+    .eq('status', 'masked')
+    .single()
+  const suppressionId = (data as { masked_by_suppression_id: string | null } | null)?.masked_by_suppression_id ?? null
+  const { error } = await supabase
+    .from('site_knowledge_proposals')
+    .update({ status: 'proposed', masked_by_suppression_id: null, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('status', 'masked')
+  if (error) throw error
+  if (suppressionId) await deleteExtractionSuppression(suppressionId)
 }
 
 /** Toutes les propositions issues d'UNE visite (tous statuts) — pour retracer
