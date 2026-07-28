@@ -795,3 +795,58 @@ Le run peut se terminer lorsque :
 - aucune action irréversible non autorisée n’a été exécutée.
 
 Le but est une livraison fiable, pas une accumulation de cérémonies.
+
+---
+
+## 23. Graphify — outil de navigation de l'architecture
+
+Graphify est installé comme outil externe (`graphifyy 0.9.28` via `uv tool install graphifyy`). Il ne fait pas partie du code source de MemorIA.
+
+### Doctrine
+
+Graphify sert à **comprendre l'architecture et les dépendances** avant une modification importante. Ce n'est pas un outil à lancer systématiquement.
+
+Toujours analyser le **périmètre minimal** utile à la tâche. Ne jamais indexer l'ensemble du dépôt par défaut.
+
+### Ordre de préférence
+
+1. **Module ciblé** — avant toute analyse d'impact ou refactorisation :
+   ```bash
+   graphify lib/knowledge --code-only
+   graphify components/planning --code-only
+   graphify app/(field) --code-only
+   graphify lib/tender --code-only
+   ```
+
+2. **Migrations SQL** — quand la tâche touche au schéma ou aux relations :
+   ```bash
+   graphify supabase/migrations --code-only
+   ```
+
+3. **Documentation ciblée** — uniquement si l'analyse documentaire est nécessaire à la tâche :
+   ```bash
+   graphify docs/architecture
+   ```
+
+4. **Dépôt complet avec backend LLM** — réservé aux audits d'architecture et aux grosses refontes :
+   ```bash
+   graphify . --backend claude
+   ```
+   Ne jamais lancer cette commande par défaut. Une fois par mois est suffisant.
+
+### Correspondance modules MemorIA
+
+| Domaine | Périmètre Graphify |
+|---|---|
+| Planning | `components/planning` |
+| Mémoire / connaissance | `lib/knowledge` |
+| Visites | `app/.../visites` |
+| AO / Tenders | `lib/tender` |
+| Schéma base de données | `supabase/migrations` |
+
+### Règles
+
+- Utiliser `--code-only` par défaut (aucun token LLM consommé).
+- N'utiliser un backend LLM que si l'analyse sémantique des docs ou images est réellement nécessaire.
+- `graphify-out/` est un artefact local : ne jamais le versionner.
+- Ne pas lancer Graphify pour une correction locale, un changement de texte ou un ajustement CSS.
