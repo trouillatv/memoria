@@ -357,6 +357,264 @@ const CAPTURE_NOTES = [
 ] as const
 
 // ════════════════════════════════════════════════════════════════════════════════
+// SHOWCASE — CPS Siège social (site pilote de démonstration)
+// ════════════════════════════════════════════════════════════════════════════════
+
+const SHOWCASE_SITE_KEY = 'cps-siege'
+
+const SHOWCASE_VISITS = [
+  {
+    key: 'sc0',
+    daysBack: 8,
+    title: 'Inspection sécurité incendie trimestrielle',
+    motive: 'inspection',
+    objective: 'Inspection réglementaire incendie',
+    outcome: 'conforme_reserves',
+    captures: [
+      { kind: 'verification', body: 'Extincteurs RDC — 12 appareils vérifiés. Étiquettes de contrôle à jour, dernier passage le 15/03/2026. Prochain avant le 15/09/2026. Charge correcte sur 12/12. Aucune anomalie.' },
+      { kind: 'note',         body: 'Marc Rodriguez (Clim Expair) présent à l\'accueil. Signale une anomalie sur le désenfumage du sous-sol — clapet couloir B ne se ferme plus complètement depuis une semaine. Priorité à traiter immédiatement.' },
+      { kind: 'verification', body: 'Issues de secours niveau 1 (3 sorties). Toutes dégagées, signalisation conforme. Balisage lumineux fonctionnel. Gond légèrement grippé sur issue nord — porte s\'ouvre à 80° max au lieu de 90° réglementaire.' },
+      { kind: 'note',         body: 'Alice Nondas (Calypso) présente pour vérification réseau sprinklers. Tête corrodée relevée en travée D4 — remplacement à programmer sous 30 jours. Pression réseau 5,4 bars, dans la plage admissible.' },
+      { kind: 'verification', body: 'Système alarme incendie testé. Centrale ZX5, 4 zones. Zones 1, 2, 3 : déclenchement correct (< 3s). Zone 4 (sous-sol) : délai de propagation mesuré à 8s au lieu de 3s max — anomalie confirmée.' },
+      { kind: 'note',         body: 'Local technique RDC : rangement correct, accès balisé. Extincteur CO₂ 2kg vérifié. Boîtier de report alarme incendie : vitre brisée — à remplacer. Risque de fausse manipulation en l\'état.' },
+      { kind: 'verification', body: 'Colonnes sèches : 2 colonnes examinées. Bouchons en place, manomètres lisibles. Vannes d\'alimentation pompiers accessibles et déverrouillées. État général satisfaisant.' },
+      { kind: 'note',         body: 'Responsable RH CPS, Fatima Ouali, demande à intégrer un exercice évacuation avant fin septembre 2026. Engagement de CAPSE de proposer un créneau dans les 15 jours suivant ce rapport.' },
+      { kind: 'verification', body: 'Registre de sécurité consulté. Dernière mise à jour le 18/06/2026. Signatures présentes sur les 6 derniers contrôles. Registre conforme aux exigences réglementaires.' },
+      { kind: 'note',         body: 'Clapet de désenfumage CB-04 (couloir B, sous-sol) manœuvré manuellement : fermeture incomplète confirmée — jeu résiduel estimé à 8 mm. Intervention Sotraval à déclencher en urgence (délai max 72h).' },
+      { kind: 'verification', body: 'Blocs de sécurité portes coupe-feu : 8 blocs testés. 7 conformes. Bloc escalier A : ressort de fermeture affaibli, porte reste entrouverte. Non-conformité relevée.' },
+      { kind: 'note',         body: 'Fin d\'inspection. Rapport signé par David Bouvier (CAPSE) et Marc Rodriguez (Clim Expair). Plan d\'actions transmis à Fatima Ouali (CPS) — 3 points dont 1 urgence désenfumage.' },
+    ],
+    stakeholders: [
+      { label: 'Marc Rodriguez (Clim Expair)', role: 'Responsable technique — présent à l\'accueil et en fin d\'inspection, cosignataire du rapport de visite.' },
+      { label: 'Alice Nondas (Calypso)',       role: 'Technicienne sprinklers — vérification du réseau sprinklers sur l\'ensemble du bâtiment, identification tête corrodée D4.' },
+      { label: 'Fatima Ouali (CPS)',            role: 'Responsable sécurité CPS — accompagnement de l\'inspection, demande planification exercice évacuation.' },
+    ],
+  },
+  {
+    key: 'sc1',
+    daysBack: 35,
+    title: 'Contrôle extincteurs & sprinklers',
+    motive: 'controle',
+    objective: 'Contrôle périodique des équipements de sécurité',
+    outcome: 'conforme',
+    captures: [
+      { kind: 'verification', body: 'Extincteurs — recensement complet : 38 appareils répartis sur 4 niveaux. 36 conformes. 2 hors délai en niveau 2 — remplacement prévu en semaine 32 (bons de commande signés).' },
+      { kind: 'note',         body: 'Alice Nondas (Calypso) conduit la vérification complète du réseau sprinklers. Durée estimée : 3h. Accès local nourrice accompagné par le gardien. Outillage complet présent.' },
+      { kind: 'verification', body: 'Nourrice principale réseau sprinklers : pression 5,8 bars. Plage admissible : 4–6 bars. Vannes d\'isolement secteur nord et sud en position ouverte. Manomètre lisible et calibré.' },
+      { kind: 'verification', body: 'Zone A (RDC) — 24 têtes de sprinklers. 23 OK. 1 tête réf. K74 légèrement oxydée mais fonctionnelle — surveillance à J+90 notée au registre.' },
+      { kind: 'note',         body: 'Accès faux plafond couloir C nécessite nacelle. Prévu lors du prochain passage (semaine 35) — coordination à valider avec le service maintenance CPS.' },
+      { kind: 'verification', body: 'Armoires électriques groupes de mise en pression : disjoncteurs en position fermée, voyants verts. Test de continuité OK. Alimentation ondulée présente et active.' },
+      { kind: 'note',         body: 'Félix Katrawi (Élec Plus) contacté pour validation de la coupure électrique zone 3 lors du prochain test alarme complet — confirmé pour le 30/07/2026.' },
+      { kind: 'verification', body: 'Zone B (niveau 1) — 31 têtes de sprinklers. 31 conformes. Nettoyage anti-poussière effectué sur 4 têtes en couloir. Aucune anomalie.' },
+      { kind: 'verification', body: 'Zone C (niveau 2) — 18 têtes de sprinklers. 18 conformes. Aucune oxydation visible. État général excellent pour une installation de 4 ans.' },
+      { kind: 'note',         body: 'Bilan avec Alice Nondas : réseau globalement en bon état. Recommandation : contrôle de pression annuel complet au lieu de semestriel vu la qualité des installations.' },
+      { kind: 'verification', body: 'Extincteurs niveau 2 — 2 appareils hors délai remplacés sur place. Étiquettes posées, registre signé. Conformité restaurée sur ce niveau.' },
+    ],
+    stakeholders: [
+      { label: 'Alice Nondas (Calypso)',  role: 'Technicienne sprinklers — vérification complète réseau sprinklers (3h), remplacement extincteurs hors délai, rapport technique remis.' },
+      { label: 'Félix Katrawi (Élec Plus)', role: 'Chef d\'équipe électricité — coordination pour coupure zone 3 lors du prochain test alarme complet (30/07/2026).' },
+    ],
+  },
+  {
+    key: 'sc2',
+    daysBack: 70,
+    title: 'Visite de levée de réserves',
+    motive: 'levee_reserves',
+    objective: 'Visite de suivi des actions correctives',
+    outcome: 'a_revoir',
+    captures: [
+      { kind: 'note',         body: 'Visite de suivi des 5 réserves relevées le 18/04/2026. Objectif : constater la levée totale ou partielle. Équipe : JP Kaémo (CAPSE) et Olivier Meunier (BTP NC).' },
+      { kind: 'verification', body: 'Réserve 1 — Issue de secours nord bloquée par mobilier : LEVÉE. Couloir entièrement dégagé. Signalisation remise en place. Point clos.' },
+      { kind: 'verification', body: 'Réserve 2 — Extincteur chaufferie hors délai : LEVÉE. Nouvel appareil CO₂ 5kg installé, étiquette mai 2026. Registre signé. Point clos.' },
+      { kind: 'note',         body: 'Réserve 3 — Formation évacuation non réalisée : NON LEVÉE. RH CPS confirme report à septembre 2026 (pic d\'activité trimestrielle). Engagement écrit obtenu de Fatima Ouali.' },
+      { kind: 'verification', body: 'Réserve 4 — Clapet désenfumage RDC : LEVÉE. Sotraval est intervenu le 24/04/2026. Clapet manœuvré — fermeture étanche. Certificat d\'intervention annexé au registre.' },
+      { kind: 'note',         body: 'Réserve 5 — Panneau de sécurité niveau 3 : PARTIELLEMENT LEVÉE. Panneau installé mais lampe de balisage non branchée — câble d\'alimentation manquant. Délai accordé : 15 jours.' },
+      { kind: 'note',         body: 'Olivier Meunier (BTP NC) présent pour constater les travaux. Bon d\'intervention Sotraval remis — travaux clapet conformes aux plans. Signature apposée.' },
+      { kind: 'verification', body: 'Local TGBT (niveau −1) : accès verrouillé à clé. CO₂ présent. Aucune accumulation de déchets depuis la dernière visite. OK.' },
+      { kind: 'verification', body: 'Balisage de sécurité niveau 1 : 8 blocs testés, tous fonctionnels. 1 ampoule remplacée depuis la dernière visite. Amélioration nette.' },
+      { kind: 'note',         body: 'M. Beaumont (Directeur CPS) exprime une satisfaction partielle : travaux réalisés rapidement, mais la formation évacuation reste critique à ses yeux. Engagement CAPSE renouvelé.' },
+      { kind: 'verification', body: 'Colonnes sèches : revue rapide, pas de changement depuis janvier. Bon état général. Aucune réserve sur ce point.' },
+      { kind: 'note',         body: '3e visite de suivi fixée au 09/09/2026 pour constater la levée des 2 réserves restantes. Date confirmée avec le secrétariat CPS.' },
+      { kind: 'verification', body: 'Registre de sécurité mis à jour sur place — 2 réserves marquées levées, 2 restantes avec délai. Signatures : JP Kaémo (CAPSE) et M. Beaumont (CPS).' },
+    ],
+    stakeholders: [
+      { label: 'Olivier Meunier (BTP NC)', role: 'Conducteur de travaux — constat des travaux réalisés sur clapet et issues de secours, remise du bon d\'intervention Sotraval.' },
+      { label: 'Fatima Ouali (CPS)',        role: 'Responsable sécurité — accompagnement visite, engagement écrit sur formation évacuation septembre 2026.' },
+    ],
+  },
+  {
+    key: 'sc3',
+    daysBack: 120,
+    title: 'Audit initial du site',
+    motive: 'inspection',
+    objective: 'Audit initial du site',
+    outcome: 'non_conforme',
+    captures: [
+      { kind: 'note',         body: 'Premier passage sur site dans le cadre du nouveau contrat CAPSE-CPS. Objectif : cartographier les équipements et établir la situation de référence. Présence : David Bouvier (CAPSE) + Luc Barnard (SOPAC Sécurité).' },
+      { kind: 'verification', body: 'Extincteurs — recensement initial : 38 appareils identifiés sur 4 niveaux. 31 étiquetés. 7 sans étiquette de contrôle — état inconnu. Non-conformité sérieuse, priorité 1.' },
+      { kind: 'note',         body: 'Local sprinklers (sous-sol) : accès difficile — porte bloquée par une armoire métallique. Pression nourrice non lisible (manomètre hors de portée). Première anomalie critique identifiée.' },
+      { kind: 'verification', body: 'Registre de sécurité : présent, mais incomplet. Dernière signature datée de 14 mois. Aucune trace des 2 contrôles réglementaires annuels exigés. Non-conformité réglementaire.' },
+      { kind: 'note',         body: 'Luc Barnard (SOPAC) constate que le système d\'alarme manque d\'un testeur de déclenchement — test complet impossible sans outillage dédié. Rendez-vous prévu à J+7 avec matériel complet.' },
+      { kind: 'verification', body: 'Issues de secours : 3 issues identifiées. Issue est (niveau 2) bloquée par des cartons et palettes vides. Obstruction totale — non-conformité critique notifiée immédiatement.' },
+      { kind: 'note',         body: 'Local TGBT (niveau −1) : ouvert et sans signalisation de danger. Accumulation de cartons en appui sur l\'armoire principale. Risque incendie et électrique combiné. Alerte transmise sur-le-champ au responsable de site.' },
+      { kind: 'verification', body: 'Colonnes sèches : 2 colonnes repérées. 1 bouchon manquant sur la colonne nord. Vannes d\'alimentation non testées — clés non disponibles ce jour.' },
+      { kind: 'note',         body: 'Conversation avec M. Beaumont (Directeur CPS) : surpris par le niveau de non-conformité. S\'engage sur une mise en ordre dans les 30 jours. Réunion de bilan planifiée fin du mois.' },
+      { kind: 'verification', body: 'Balisage de sécurité : 3 blocs non fonctionnels sur 8 (piles vides ou ampoule défectueuse). 2 panneaux "Sortie de secours" absents aux niveaux 3 et 4.' },
+      { kind: 'note',         body: 'Plan d\'actions initial dressé en fin de visite : 8 points dont 3 critiques (issue bloquée, TGBT ouvert, registre incomplet). Transmis à M. Beaumont avant 20h.' },
+      { kind: 'note',         body: 'Durée de l\'audit : 4h30. Bâtiment plus complexe qu\'estimé — 4 niveaux + sous-sol technique + local groupe électrogène en toiture. Plan de masse demandé à CPS pour la prochaine visite.' },
+      { kind: 'verification', body: 'Groupe électrogène toiture : accès par escalier de service. Dernier test de démarrage : inconnu (aucune trace). Contrat de maintenance groupe à fournir par CPS.' },
+      { kind: 'note',         body: 'Bilan avec Luc Barnard (SOPAC) : 11 non-conformités, dont 3 critiques. Score de maturité sécurité estimé à 3/10. Recommandation : contrat annuel avec visite trimestrielle minimum.' },
+      { kind: 'verification', body: 'Rapport d\'audit finalisé et signé. Transmis à M. Beaumont par email ce soir même, accusé de réception demandé avant le lendemain 17h.' },
+    ],
+    stakeholders: [
+      { label: 'Luc Barnard (SOPAC Sécurité)', role: 'Agent de sécurité référent — co-inspection lors de l\'audit initial, identification et classification des non-conformités.' },
+      { label: 'Fatima Ouali (CPS)',             role: 'Responsable sécurité — présente en fin de visite pour présentation du bilan, engagement sur les actions correctives prioritaires.' },
+    ],
+  },
+  {
+    key: 'sc4',
+    daysBack: 175,
+    title: 'Inspection réglementaire annuelle',
+    motive: 'inspection',
+    objective: 'Contrôle annuel — systèmes d\'alarme et désenfumage',
+    outcome: 'conforme_reserves',
+    captures: [
+      { kind: 'note',         body: 'Inspection annuelle réglementaire CPS Siège. Équipe CAPSE : Sophie Wané (chef d\'équipe) + Jean-Pierre Kaémo. Représentant CPS : Fatima Ouali.' },
+      { kind: 'verification', body: 'Extincteurs — contrôle annuel complet : 35 appareils recensés. 34 conformes, 1 hors délai en niveau 3 — remplacement à J+7. Bon global pour une installation de première année.' },
+      { kind: 'verification', body: 'Système alarme incendie — test complet réalisé avec Félix Katrawi (Élec Plus). Toutes les zones déclenchent correctement. Centrale en mode supervision, aucune anomalie en mémoire.' },
+      { kind: 'note',         body: 'Félix Katrawi (Élec Plus) réalise les tests alarme et vérifie le câblage de la centrale. Durée : 1h30. Rapport technique remis sur place en fin d\'intervention.' },
+      { kind: 'verification', body: 'Désenfumage : 8 clapets testés manuellement. 7 conformes, fermeture étanche. Clapet RDC-B (couloir principal) : temps de fermeture 4s au lieu de 3s max — réserve mineure notée.' },
+      { kind: 'verification', body: 'Blocs de balisage de sécurité : 8 blocs testés. 8 fonctionnels. Durée d\'autonomie > 1h sur tous les appareils. Conformes au référentiel.' },
+      { kind: 'note',         body: 'Issue de secours niveau 2 : légère déformation du dormant constatée — la porte frotte en bas lors de la fermeture mais reste opérationnelle. Surveillance recommandée.' },
+      { kind: 'verification', body: 'Registre de sécurité : à jour, toutes les colonnes renseignées. Signatures présentes pour les 4 contrôles réglementaires de l\'année. Conforme.' },
+      { kind: 'verification', body: 'Groupe électrogène toiture : test de démarrage automatique réalisé. Démarrage en 8s. Charge réseau partielle appliquée 15 min. Groupe fonctionnel, niveaux huile et carburant OK.' },
+      { kind: 'note',         body: 'Bilan avec Fatima Ouali : nette amélioration par rapport au dernier audit. Elle confirme que les équipes ont intégré les consignes de rangement et de maintenance préventive.' },
+      { kind: 'verification', body: 'Rapport annuel signé par les 3 parties (CAPSE, CPS, Élec Plus). Transmis à la DDTM pour archivage réglementaire. Attestation de conformité délivrée.' },
+    ],
+    stakeholders: [
+      { label: 'Félix Katrawi (Élec Plus)', role: 'Chef d\'équipe électricité — tests alarme et vérification câblage centrale, rapport technique fourni et signé.' },
+      { label: 'Fatima Ouali (CPS)',         role: 'Responsable sécurité CPS — accompagnement inspection annuelle réglementaire, bilan final satisfaisant.' },
+    ],
+  },
+]
+
+const SHOWCASE_MEETINGS = [
+  {
+    key: 'sc-m0',
+    daysBack: 7,
+    title: 'Point d\'urgence — anomalie désenfumage CPS Siège',
+    participants: [
+      { name: 'David Bouvier',    role: 'Directeur technique CAPSE',          kind: 'person', presence: 'P'  },
+      { name: 'Marc Rodriguez',   role: 'Responsable technique Clim Expair',  kind: 'person', presence: 'P'  },
+      { name: 'Fatima Ouali',     role: 'Responsable sécurité CPS',           kind: 'person', presence: 'P'  },
+      { name: 'Jean-Pierre Kaémo', role: 'Chef équipe inspection CAPSE',      kind: 'person', presence: 'P'  },
+    ],
+    decisions: [
+      'Déclenchement immédiat d\'une intervention Sotraval sur clapet CB-04 (couloir B sous-sol) — délai max 48h',
+      'Restriction d\'accès au couloir B jusqu\'à confirmation de remise en état par CAPSE',
+      'Point de suivi fixé au 05/08/2026 pour constater la levée de la non-conformité',
+    ],
+    summary: 'Réunion d\'urgence déclenchée suite à la détection d\'une anomalie sur le clapet de désenfumage CB-04 lors de l\'inspection du 22/07/2026. Décision prise de traiter la non-conformité en priorité 1 avec intervention Sotraval sous 48h. Couloir B mis en restriction d\'accès. Prochaine réunion de suivi le 05/08/2026.',
+  },
+  {
+    key: 'sc-m1',
+    daysBack: 32,
+    title: 'Réunion de suivi mensuelle — CPS Quartier Latin',
+    participants: [
+      { name: 'David Bouvier',   role: 'Directeur technique CAPSE',           kind: 'person', presence: 'P'  },
+      { name: 'Marie Lefèvre',   role: 'Responsable Audit & Conformité CAPSE', kind: 'person', presence: 'P'  },
+      { name: 'M. Beaumont',     role: 'Directeur CPS',                       kind: 'person', presence: 'P'  },
+      { name: 'Fatima Ouali',    role: 'Responsable sécurité CPS',            kind: 'person', presence: 'P'  },
+      { name: 'Alice Nondas',    role: 'Technicienne sprinklers Calypso',     kind: 'person', presence: 'AE' },
+    ],
+    decisions: [
+      'Renouvellement contrat maintenance extincteurs Calypso pour l\'exercice 2027 — bon pour accord CPS',
+      'Formation évacuation planifiée pour le 09/09/2026 avec participation de 60 collaborateurs CPS',
+      'Budget complémentaire de 85 000 XPF accordé pour la mise en conformité du panneau niveau 3 et câblage balisage',
+    ],
+    summary: 'Réunion mensuelle de suivi du contrat CAPSE-CPS. Revue des 5 réserves ouvertes : 3 levées, 2 en cours de traitement. Budget complémentaire accordé pour finaliser la mise en conformité. Exercice évacuation planifié le 09/09/2026. Renouvellement contrat extincteurs Calypso validé à l\'unanimité.',
+  },
+  {
+    key: 'sc-m2',
+    daysBack: 90,
+    title: 'Bilan trimestriel de sécurité — CPS',
+    participants: [
+      { name: 'David Bouvier',    role: 'Directeur technique CAPSE',         kind: 'person', presence: 'P'  },
+      { name: 'Jean-Pierre Kaémo', role: 'Chef équipe inspection CAPSE',     kind: 'person', presence: 'P'  },
+      { name: 'M. Beaumont',      role: 'Directeur CPS',                     kind: 'person', presence: 'P'  },
+      { name: 'Fatima Ouali',     role: 'Responsable sécurité CPS',          kind: 'person', presence: 'P'  },
+      { name: 'Thierry Paoua',    role: 'Conducteur de travaux Sotraval',    kind: 'person', presence: 'AE' },
+    ],
+    decisions: [
+      'Mandater Sotraval pour remise en conformité complète des colonnes sèches — devis à fournir sous 15 jours',
+      'Programmer la vérification du groupe électrogène toiture lors de la prochaine inspection CAPSE (juillet 2026)',
+      'Transmettre le rapport trimestriel de sécurité à la direction générale CPS avant fin de mois',
+    ],
+    summary: 'Bilan trimestriel réunissant CAPSE et la direction CPS. Revue complète des non-conformités relevées lors de l\'audit initial : 11 points, 8 résolus, 3 en cours. Plan de mise en conformité validé, budget approuvé pour Sotraval. Prochain bilan trimestriel prévu en octobre 2026.',
+  },
+]
+
+const TENDER_CPS_TEXT = `CAHIER DES CHARGES — APPEL D'OFFRES
+
+MAINTENANCE ET CONTRÔLE DES INSTALLATIONS DE SÉCURITÉ INCENDIE
+CPS SIÈGE SOCIAL — QUARTIER LATIN, NOUMÉA
+
+Référence : CPS-SI-2026-018 | Date limite de remise des offres : 15 septembre 2026
+
+1. PRÉSENTATION DU MAÎTRE D'OUVRAGE
+La Caisse de Protection Sociale (CPS) est l'organisme de protection sociale de Nouvelle-Calédonie, dont le siège social est situé au Quartier Latin à Nouméa. L'établissement comprend 4 niveaux de bureaux et un sous-sol technique, pour une surface totale de 4 200 m². L'effectif permanent est de 220 agents.
+
+2. OBJET DU MARCHÉ
+Le présent appel d'offres porte sur la maintenance préventive et corrective, ainsi que les contrôles réglementaires annuels, de l'ensemble des installations de sécurité incendie du siège social CPS. Durée du marché : 2 ans, renouvelables une fois.
+
+3. PÉRIMÈTRE DES PRESTATIONS
+- Extincteurs (38 appareils) : contrôle semestriel, remplacement selon état
+- Réseau sprinklers : contrôle de pression trimestriel, vérification des têtes annuelle
+- Système alarme incendie (centrale ZX5, 4 zones) : test complet semestriel
+- Désenfumage (8 clapets) : test annuel et maintenance préventive
+- Colonnes sèches (2) : vérification annuelle
+- Balisage de sécurité (8 blocs) : remplacement piles/ampoules
+- Registre de sécurité : mise à jour après chaque intervention
+
+4. EXIGENCES TECHNIQUES
+- Titulaire certifié APSAD ou équivalent pour extincteurs et sprinklers
+- Habilitations électriques BR et B2V pour travaux sur centrale alarme
+- Délai d'intervention urgente : 4h maximum en jours ouvrés
+- Rapport d'intervention numérique transmis sous 48h
+- Accès 24h/24 à une hotline technique dédiée
+
+5. CRITÈRES D'ÉVALUATION
+- Prix (40%) : décomposition par poste de prestation
+- Références techniques en Nouvelle-Calédonie (25%) : au moins 3 sites comparables dans les 3 ans
+- Délai d'intervention et organisation (20%)
+- Qualité de l'outillage et des équipements (15%)
+`
+
+const TENDER_SMSP_TEXT = `APPEL D'OFFRES — SMSP TOWER
+MAINTENANCE PRÉVENTIVE SÉCURITÉ INCENDIE 2027
+
+Référence : SMSP-MAINT-2026-005 | Date de clôture : 30 août 2026
+
+CONTEXTE
+La tour SMSP (8 étages, 6 200 m², 180 occupants permanents) recherche un prestataire pour la maintenance complète de ses installations de sécurité incendie à compter du 1er janvier 2027. Le contrat actuel (SOPAC Sécurité) arrive à échéance le 31/12/2026.
+
+PÉRIMÈTRE
+Extincteurs, colonnes sèches, désenfumage mécanique (moteurs de toiture), alarme incendie (centrale Notifier), balisage de sécurité, registre réglementaire.
+
+SPÉCIFICITÉS DU SITE
+- Tour de bureaux, occupation en journée uniquement (7h–20h)
+- Accès parking sous-sol : badgeage obligatoire
+- Local central sécurité au rez-de-chaussée : accès 24h/24
+- Moteurs de désenfumage en toiture : habilitation travaux en hauteur exigée
+
+BUDGET INDICATIF
+L'enveloppe annuelle indicative est de 2 800 000 XPF.
+
+CRITÈRES DE SÉLECTION
+Expérience sur bâtiments en hauteur, connaissance des systèmes Notifier, délai de réponse, prix.
+`
+
+// ════════════════════════════════════════════════════════════════════════════════
 // CONSTRUCTION D'UN DEBRIEF_ANALYSIS
 // ════════════════════════════════════════════════════════════════════════════════
 
@@ -969,6 +1227,330 @@ async function seedVisitCaptures(authIds: Record<string, string>) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+// SHOWCASE FUNCTIONS
+// ════════════════════════════════════════════════════════════════════════════════
+
+async function seedShowcaseSite(authIds: Record<string, string>) {
+  console.log(`  Showcase CPS Siège — ${SHOWCASE_VISITS.length} visites riches + captures + intervenants…`)
+  const adminId = authIds['david.bouvier']
+  const siteId = duid('site:' + SHOWCASE_SITE_KEY)
+
+  // 1. Site reports pour les visites showcase
+  const reportRows: string[] = []
+  for (const sv of SHOWCASE_VISITS) {
+    const rid = duid(`rp:${SHOWCASE_SITE_KEY}:${sv.key}`)
+    const startedAt = addDays(TODAY_STR, -sv.daysBack)
+    const endedAt = new Date(startedAt.getTime() + 2.5 * 3600 * 1000)
+    const analysis = makeDebriefAnalysis(`${SHOWCASE_SITE_KEY}:${sv.key}`, 0, startedAt, sv.outcome)
+    reportRows.push(`(
+      '${rid}', '${siteId}', '${ORG_ID}', '${ORG_ID}',
+      'curated', 'done', 'planned',
+      ${esc(pgTs(startedAt))}, ${esc(pgTs(endedAt))},
+      ${esc(sv.title)}, ${esc(sv.motive)}, ${esc(sv.objective)}, '${sv.outcome}',
+      ${escJson(analysis)},
+      '${adminId}',
+      ${esc(pgTs(startedAt))}
+    )`)
+  }
+  await runSql(`
+    INSERT INTO public.site_reports
+      (id, site_id, organization_id, tenant_id,
+       status, transcript_status, origin,
+       started_at, ended_at,
+       title, visit_motive, objective, outcome,
+       debrief_analysis,
+       created_by, created_at)
+    VALUES ${reportRows.join(',')}
+    ON CONFLICT (id) DO NOTHING
+  `)
+
+  // 2. Captures riches (12-15 par visite)
+  const captureRows: string[] = []
+  for (const sv of SHOWCASE_VISITS) {
+    const rid = duid(`rp:${SHOWCASE_SITE_KEY}:${sv.key}`)
+    for (let c = 0; c < sv.captures.length; c++) {
+      const cap = sv.captures[c]
+      captureRows.push(`(
+        '${duid('vc:' + SHOWCASE_SITE_KEY + ':' + sv.key + ':' + c)}',
+        '${ORG_ID}', '${siteId}', '${rid}',
+        '${cap.kind}', 'processed',
+        ${esc(cap.body)}, '${adminId}'
+      )`)
+    }
+  }
+  for (let i = 0; i < captureRows.length; i += 100) {
+    await runSql(`
+      INSERT INTO public.visit_capture
+        (id, organization_id, site_id, report_id, kind, status, body, created_by)
+      VALUES ${captureRows.slice(i, i + 100).join(',')}
+      ON CONFLICT (id) DO NOTHING
+    `)
+  }
+
+  // 3. Proposals kind='stakeholder' (pour l'onglet "Intervenants" du détail visite)
+  const propRows: string[] = []
+  for (const sv of SHOWCASE_VISITS) {
+    const rid = duid(`rp:${SHOWCASE_SITE_KEY}:${sv.key}`)
+    for (let s = 0; s < sv.stakeholders.length; s++) {
+      const sh = sv.stakeholders[s]
+      const pid = duid(`prop:${SHOWCASE_SITE_KEY}:${sv.key}:sh:${s}`)
+      const dedupeKey = `${SEED_KEY}:${SHOWCASE_SITE_KEY}:${sv.key}:sh:${s}`
+      propRows.push(`(
+        '${pid}', '${ORG_ID}', '${siteId}', '${rid}',
+        1, 'stakeholder', 'confirmed',
+        ${esc(sh.label)}, ${esc(sh.role)},
+        '{}', NULL, '{}',
+        ${esc(dedupeKey)}
+      )`)
+    }
+  }
+  await runSql(`
+    INSERT INTO public.site_knowledge_proposals
+      (id, organization_id, site_id, report_id, analysis_version,
+       kind, status, title, body, payload, confidence, source_capture_ids, dedupe_key)
+    VALUES ${propRows.join(',')}
+    ON CONFLICT (site_id, dedupe_key) DO NOTHING
+  `)
+
+  const totalCaptures = SHOWCASE_VISITS.reduce((s, v) => s + v.captures.length, 0)
+  const totalStakeholders = SHOWCASE_VISITS.reduce((s, v) => s + v.stakeholders.length, 0)
+  process.stdout.write(`    ${SHOWCASE_VISITS.length} visites, ${totalCaptures} captures, ${totalStakeholders} intervenants\n`)
+}
+
+async function seedShowcaseMeetings(authIds: Record<string, string>) {
+  console.log(`  Showcase réunions CPS Siège — participants + comptes rendus IA…`)
+  const adminId = authIds['david.bouvier']
+  const siteId = duid('site:' + SHOWCASE_SITE_KEY)
+
+  // Enrichir les réunions génériques cps-siege avec des participants (UPDATE direct)
+  const genericEnrichments = [
+    {
+      id: duid(`rp:${SHOWCASE_SITE_KEY}:m0`),
+      participants: [
+        { name: 'David Bouvier', role: 'Directeur technique CAPSE', kind: 'person', presence: 'P'  },
+        { name: 'M. Beaumont',   role: 'Directeur CPS',             kind: 'person', presence: 'P'  },
+        { name: 'Fatima Ouali',  role: 'Responsable sécurité CPS',  kind: 'person', presence: 'P'  },
+      ],
+    },
+    {
+      id: duid(`rp:${SHOWCASE_SITE_KEY}:m1`),
+      participants: [
+        { name: 'David Bouvier', role: 'Directeur technique CAPSE',           kind: 'person', presence: 'P'  },
+        { name: 'Marie Lefèvre', role: 'Responsable Audit & Conformité CAPSE', kind: 'person', presence: 'P'  },
+        { name: 'M. Beaumont',   role: 'Directeur CPS',                       kind: 'person', presence: 'AE' },
+        { name: 'Fatima Ouali',  role: 'Responsable sécurité CPS',            kind: 'person', presence: 'P'  },
+      ],
+    },
+  ]
+  for (const gm of genericEnrichments) {
+    await runSql(`
+      UPDATE public.site_reports
+      SET participants = ${escJson(gm.participants)}::jsonb
+      WHERE id = '${gm.id}'
+    `)
+  }
+
+  // Nouvelles réunions showcase avec participants + debrief_analysis
+  const rows: string[] = []
+  for (const sm of SHOWCASE_MEETINGS) {
+    const rid = duid(`rp:${SHOWCASE_SITE_KEY}:${sm.key}`)
+    const startedAt = addDays(TODAY_STR, -sm.daysBack)
+    const debriefAnalysis = {
+      summary: sm.summary,
+      decisions: sm.decisions,
+      actions: [],
+      watchpoints: [],
+      a_savoir: [],
+      echeances: [],
+      intervenants: sm.participants.filter((p: { presence: string }) => p.presence === 'P').map((p: { name: string }) => p.name),
+      attention: [],
+      open_questions: [],
+      forgotten_obligations: [],
+      objective: sm.title,
+      objective_rationale: 'Réunion de coordination CAPSE-CPS.',
+      objective_confidence: 'elevee',
+      subject_match_index: -1,
+      subject_name: '',
+      subject_rationale: '',
+      subject_confidence: null,
+      outcome: 'conforme',
+      resolution: null,
+      provider: 'anthropic',
+      model: 'claude-opus-4-8',
+      generated_at: new Date(startedAt.getTime() + 1.5 * 3600 * 1000).toISOString(),
+      corpus_hash: crypto.createHash('sha256').update(`${SEED_KEY}:${sm.key}`).digest('hex').slice(0, 16),
+      schema_version: 'v7-echeances-ancrees',
+      analysis_version: 1,
+      source_snapshot: { photos: 0, videos: 0, vocals: 0, notes: 0, last_capture_at: null },
+      action_ledger: [],
+    }
+    rows.push(`(
+      '${rid}', '${siteId}', '${ORG_ID}', '${ORG_ID}',
+      'curated', 'none', NULL,
+      ${esc(pgTs(startedAt))}, NULL,
+      ${esc(sm.title)}, NULL, NULL, NULL,
+      ${escJson(debriefAnalysis)},
+      ${escJson(sm.participants)},
+      '${adminId}',
+      ${esc(pgTs(startedAt))}
+    )`)
+  }
+  await runSql(`
+    INSERT INTO public.site_reports
+      (id, site_id, organization_id, tenant_id,
+       status, transcript_status, origin,
+       started_at, ended_at,
+       title, visit_motive, objective, outcome,
+       debrief_analysis,
+       participants,
+       created_by, created_at)
+    VALUES ${rows.join(',')}
+    ON CONFLICT (id) DO NOTHING
+  `)
+  process.stdout.write(`    ${SHOWCASE_MEETINGS.length} réunions créées, 2 réunions génériques enrichies\n`)
+}
+
+async function seedTeamFieldMembers(authIds: Record<string, string>) {
+  console.log('  Personnes actives (team_field_members)…')
+  const adminId = authIds['david.bouvier']
+  const joinedAt = pgTs(addDays(TODAY_STR, -180))
+  const links = [
+    { key: 'tfm:marc-rodriguez:insp-nord',  teamKey: 'team:insp-nord', contactKey: 'cc:marc-rodriguez' },
+    { key: 'tfm:alice-nondas:insp-nord',    teamKey: 'team:insp-nord', contactKey: 'cc:alice-nondas'   },
+    { key: 'tfm:luc-barnard:insp-sud',      teamKey: 'team:insp-sud',  contactKey: 'cc:luc-barnard'    },
+    { key: 'tfm:thierry-paoua:insp-sud',    teamKey: 'team:insp-sud',  contactKey: 'cc:thierry-paoua'  },
+    { key: 'tfm:felix-katrawi:audit',       teamKey: 'team:audit',     contactKey: 'cc:felix-katrawi'  },
+  ]
+  const rows = links.map(l => `(
+    '${duid(l.key)}', '${ORG_ID}', '${duid(l.teamKey)}', '${duid(l.contactKey)}',
+    ${esc(joinedAt)}, NULL, '${adminId}'
+  )`)
+  await runSql(`
+    INSERT INTO public.team_field_members (id, organization_id, team_id, contact_id, joined_at, left_at, created_by)
+    VALUES ${rows.join(',')}
+    ON CONFLICT (id) DO NOTHING
+  `)
+  process.stdout.write(`    ${links.length} personnes actives liées aux équipes\n`)
+}
+
+async function seedTenders(authIds: Record<string, string>) {
+  console.log('  Appels d\'offres (AO)…')
+  const adminId = authIds['david.bouvier']
+
+  const TENDERS_DATA = [
+    {
+      key:        'tender:cps-2026',
+      title:      'AO — Sécurité incendie CPS Siège social 2026–2028',
+      clientName: 'CPS – Caisse de Protection Sociale',
+      deadline:   '2026-09-15',
+      text:       TENDER_CPS_TEXT,
+      filename:   'CPS_SI_2026_018_cahier_des_charges.pdf',
+      analysis: {
+        summary:      'AO de maintenance incendie sur 2 ans pour le siège CPS (4 200 m², 220 agents, 38 extincteurs, réseau sprinklers ZX5). Périmètre 7 types d\'équipements, critères prix 40 % + références NC 25 %. Budget estimé 3,5–5M XPF/an. Opportunité stratégique : CPS est une référence institutionnelle forte en Nouvelle-Calédonie. CAPSE dispose déjà d\'un historique de 6 mois sur site.',
+        constraints:  [
+          { text: 'Certification APSAD ou équivalent obligatoire',               priority: 'bloquant'  },
+          { text: 'Délai d\'intervention urgente < 4h en jours ouvrés',          priority: 'bloquant'  },
+          { text: 'Habilitation BR et B2V pour travaux sur centrale alarme',     priority: 'bloquant'  },
+          { text: 'Rapport numérique transmis sous 48h après chaque passage',    priority: 'important' },
+          { text: 'Hotline 24h/24 — ressource humaine dédiée à prévoir',         priority: 'important' },
+        ],
+        risks: [
+          { text: 'Accès au sous-sol technique limité aux horaires de bureau — contrainte logistique',  severity: 'moyen'  },
+          { text: 'Réseau sprinklers vieillissant — coûts pièces détachées potentiellement élevés',     severity: 'moyen'  },
+          { text: 'Concurrence probable avec SOPAC Sécurité et Calypso Extincteurs sur ce site',        severity: 'moyen'  },
+          { text: 'Évolution réglementaire (code de la construction NC) — veille à maintenir',          severity: 'faible' },
+        ],
+        checklist: [
+          { label: 'Certification APSAD vérifiée et à jour',                          done: true  },
+          { label: 'Habilitations électriques BR + B2V disponibles dans l\'équipe',   done: true  },
+          { label: 'Référence de 3 sites comparables en NC à joindre',                done: false },
+          { label: 'Offre de prix décomposée sur les 5 postes demandés',              done: false },
+          { label: 'Assurance RC Pro à jour et jointe au dossier de candidature',     done: false },
+          { label: 'Planning de maintenance annuelle proposé en annexe technique',    done: false },
+        ],
+        technical_memo: 'Approche recommandée : contrat avec visite trimestrielle systématique et tableau de bord CAPSE mensuel. Valoriser la connaissance du site (audit initial mars 2026, 11 non-conformités traitées, relation établie avec Fatima Ouali). Prix cible : 420 000 XPF/mois tout inclus, soit 5,04M XPF/an — compétitif vs. SOPAC qui facture les passages séparément.',
+      },
+    },
+    {
+      key:        'tender:smsp-2027',
+      title:      'AO — Maintenance préventive équipements SMSP Tower 2027',
+      clientName: 'SMSP Tower',
+      deadline:   '2026-08-30',
+      text:       TENDER_SMSP_TEXT,
+      filename:   'SMSP_MAINT_2026_005_appel_offres.pdf',
+      analysis: {
+        summary:      'AO remplacement contrat SOPAC Sécurité sur tour SMSP (8 étages, 6 200 m²). Budget indicatif 2,8M XPF/an, démarrage 01/01/2027. Spécificité : moteurs désenfumage toiture (habilitation hauteur) + centrale Notifier (vs ZX5 chez CPS). Délai de réponse très court (30/08/2026). Opportunité de déloger SOPAC sur un site où CAPSE est déjà présent en inspection.',
+        constraints:  [
+          { text: 'Habilitation travaux en hauteur pour moteurs de désenfumage toiture', priority: 'bloquant'  },
+          { text: 'Maîtrise de la centrale Notifier (différente des ZX5 habituels)',      priority: 'important' },
+          { text: 'Badgeage obligatoire pour accès parking sous-sol — coordination CPS',  priority: 'moyen'    },
+          { text: 'Clôture de l\'AO le 30/08/2026 — délai très court (< 5 semaines)',    priority: 'important' },
+        ],
+        risks: [
+          { text: 'Centrale Notifier peu maîtrisée dans l\'équipe — formation ou sous-traitance à prévoir',     severity: 'moyen' },
+          { text: 'SOPAC Sécurité pourrait proposer un prix très bas pour conserver le contrat sortant',        severity: 'élevé' },
+          { text: 'Démarrage 01/01/2027 — transition de 2 mois si signature en octobre, très serré',            severity: 'faible' },
+        ],
+        checklist: [
+          { label: 'Habilitation travaux en hauteur vérifiée dans l\'équipe',            done: false },
+          { label: 'Formation ou partenaire sur centrale Notifier identifié',            done: false },
+          { label: 'Prix ajusté en dessous des 2,8M XPF indicatif pour être compétitif', done: false },
+          { label: 'Offre transmise avant le 30/08/2026 à 17h',                          done: false },
+          { label: 'Référence de bâtiment en hauteur en NC jointe au dossier',          done: false },
+        ],
+        technical_memo: 'Opportunité à saisir rapidement. Angle : CAPSE inspecte déjà SMSP Tower (plateaux 3e et 8e, missions actives). Proposer une continuité inspection/maintenance pour réduire les frictions administratives côté SMSP. Prix cible : 2,4M XPF/an (−14 % vs budget indicatif). Mobiliser l\'équipe Inspection Sud (Patrick Djirilet) pour la présentation technique.',
+      },
+    },
+  ]
+
+  for (const td of TENDERS_DATA) {
+    const tenderId = duid(td.key)
+    await runSql(`
+      INSERT INTO public.tenders (id, title, client_name, deadline, status, created_by, organization_id)
+      VALUES (
+        '${tenderId}',
+        ${esc(td.title)},
+        ${esc(td.clientName)},
+        '${td.deadline}',
+        'ready',
+        '${adminId}',
+        '${ORG_ID}'
+      )
+      ON CONFLICT (id) DO NOTHING
+    `)
+    const docId = duid(td.key + ':doc0')
+    await runSql(`
+      INSERT INTO public.tender_documents (id, tender_id, storage_path, filename, size_bytes, page_count, extracted_text)
+      VALUES (
+        '${docId}', '${tenderId}',
+        ${esc('demo-capse/' + td.key.replace('tender:', '') + '/document.pdf')},
+        ${esc(td.filename)},
+        ${Math.floor(td.text.length * 1.3)},
+        4,
+        ${esc(td.text)}
+      )
+      ON CONFLICT (id) DO NOTHING
+    `)
+    const analysisId = duid(td.key + ':analysis0')
+    await runSql(`
+      INSERT INTO public.tender_analyses
+        (id, tender_id, provider, model, summary, constraints, risks, checklist, technical_memo)
+      VALUES (
+        '${analysisId}', '${tenderId}',
+        'anthropic', 'claude-opus-4-8',
+        ${esc(td.analysis.summary)},
+        ${escJson(td.analysis.constraints)},
+        ${escJson(td.analysis.risks)},
+        ${escJson(td.analysis.checklist)},
+        ${esc(td.analysis.technical_memo)}
+      )
+      ON CONFLICT (id) DO NOTHING
+    `)
+  }
+  process.stdout.write(`    ${TENDERS_DATA.length} AO avec documents et analyses IA\n`)
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 // MAIN
 // ════════════════════════════════════════════════════════════════════════════════
 
@@ -1009,6 +1591,15 @@ async function main() {
   await seedSiteActions(authIds)
   await seedVisitCaptures(authIds)
 
+  // Showcase CPS Siège — contenu vivant pour la démonstration
+  console.log(`\n  ── Showcase CPS Siège social ──`)
+  await seedShowcaseSite(authIds)
+  await seedShowcaseMeetings(authIds)
+  await seedTeamFieldMembers(authIds)
+  await seedTenders(authIds)
+
+  const showcaseCaptures = SHOWCASE_VISITS.reduce((s, v) => s + v.captures.length, 0)
+
   console.log('\n✅ Seed terminé.')
   console.log(`  Org          : CAPSE Démonstration (${ORG_ID})`)
   console.log(`  Admin        : david.bouvier.test@memoria.nc — ${PASSWORD}`)
@@ -1022,6 +1613,11 @@ async function main() {
   console.log(`  Interventions: ${SITES.length * 2 * 7} (7/mission : 4 passées + 3 futures dont semaine courante)`)
   console.log(`  Actions      : ~${SITES.length * 3} (3-4/site)`)
   console.log(`  Captures     : ~${SITES.length * 4 * 3} (3-4/visite passée)`)
+  console.log(`  ── Showcase CPS Siège ──`)
+  console.log(`  Visites riches  : ${SHOWCASE_VISITS.length} (${showcaseCaptures} captures détaillées)`)
+  console.log(`  Réunions        : ${SHOWCASE_MEETINGS.length} avec participants + CR IA`)
+  console.log(`  Personnes actives: 5 contacts liés aux équipes`)
+  console.log(`  AO              : 2 appels d'offres avec analyses IA`)
 }
 
 main().catch((e) => {
