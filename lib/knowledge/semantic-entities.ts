@@ -226,16 +226,14 @@ export function formatSemanticContextBlock(
   return block
 }
 
-// Charge les entités connues pour un contexte donné (org + chantier + utilisateur)
-// et retourne le bloc de contexte formaté, prêt à être injecté dans le prompt.
-// Retourne '' si aucune entité n'est configurée (comportement identique à l'absence
-// du module — aucun impact sur le pipeline existant).
-// Les conflits détectés sont loggés mais n'interrompent pas le pipeline.
-export async function buildSemanticContextBlock(
+// Charge les entités actives pour un contexte donné (org + chantier + utilisateur).
+// Utilisé par buildSemanticContextBlock (injection pré-LLM) et par le module de
+// résolution post-LLM (Lot 1B). Retourne [] si la mémoire est vide ou en erreur.
+export async function loadKnowledgeEntities(
   siteId: string,
   orgId: string,
   userId?: string,
-): Promise<string> {
+): Promise<KnowledgeEntity[]> {
   const db = createAdminClient()
 
   let query = db
@@ -262,10 +260,9 @@ export async function buildSemanticContextBlock(
   }
 
   const { data, error } = await query
+  if (error || !data || data.length === 0) return []
 
-  if (error || !data || data.length === 0) return ''
-
-  const entities: KnowledgeEntity[] = data.map((row) => {
+  return data.map((row) => {
     const siteNull = !row.site_id
     const userNull = !row.user_id
     const scope: EntityScope = !userNull ? 'user' : siteNull ? 'org' : 'site'
@@ -282,6 +279,20 @@ export async function buildSemanticContextBlock(
       ),
     }
   })
+}
+
+// Charge les entités connues pour un contexte donné (org + chantier + utilisateur)
+// et retourne le bloc de contexte formaté, prêt à être injecté dans le prompt.
+// Retourne '' si aucune entité n'est configurée (comportement identique à l'absence
+// du module — aucun impact sur le pipeline existant).
+// Les conflits détectés sont loggés mais n'interrompent pas le pipeline.
+export async function buildSemanticContextBlock(
+  siteId: string,
+  orgId: string,
+  userId?: string,
+): Promise<string> {
+  const entities = await loadKnowledgeEntities(siteId, orgId, userId)
+  if (entities.length === 0) return ''
 
   const conflicts = detectAliasConflicts(entities)
   if (conflicts.length > 0) {

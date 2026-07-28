@@ -34,6 +34,7 @@ import { toDebriefEcheance, type DebriefEcheance } from '@/lib/visits/echeance-l
 import { runVisitDebriefAgent, type VisitDebriefInput, type VisitDebriefParsed } from '@/services/ai/visit-debrief'
 import { projectDebriefToProposals } from '@/lib/db/knowledge-proposals'
 import { buildSemanticContextBlock } from '@/lib/knowledge/semantic-entities'
+import { buildDebriefSemanticMemory, type DebriefSemanticMemory } from '@/lib/knowledge/semantic-resolution'
 
 type Confidence = 'elevee' | 'moyenne' | 'faible' | null
 
@@ -80,6 +81,9 @@ export interface StoredDebriefAnalysis {
   subject_confidence: Confidence
   outcome: string | null
   resolution: string | null
+  /** Résolution post-LLM des entités extraites (Lot 1B).
+   *  Absent sur les analyses produites avant le Lot 1B. */
+  semantic_memory?: DebriefSemanticMemory
   provider: string
   model: string | null
   generated_at: string
@@ -232,6 +236,7 @@ function fromAgent(
   version: number,
   snapshot: VisitSourceSnapshot,
   oldLedger: LedgerAction[] | undefined,
+  semanticMemory: DebriefSemanticMemory | null = null,
 ): StoredDebriefAnalysis {
   return {
     schema_version: ANALYSIS_SCHEMA_VERSION,
@@ -257,6 +262,7 @@ function fromAgent(
     subject_confidence: parsed.subject_confidence,
     outcome: parsed.outcome,
     resolution: parsed.resolution,
+    semantic_memory: semanticMemory ?? undefined,
     provider,
     model,
     generated_at: new Date().toISOString(),
@@ -411,7 +417,25 @@ export async function loadOrRunVisitDebrief(
     // Le grand livre d'actions du cache (même schéma périmé) est REPRIS : une mise
     // à jour n'efface jamais un état humain (fait/écarté).
     const oldLedger = cache?.schema_version === ANALYSIS_SCHEMA_VERSION ? cache.action_ledger : undefined
-    const analysis = fromAgent(res.narrative, res.parsed, res.provider, res.model, hash, version, snapshot, oldLedger)
+
+    // Résolution post-LLM (Lot 1B) : qualifie les entités extraites contre la mémoire sémantique.
+    // Les textes bruts à résoudre sont : intervenants + owners des actions et vigilances.
+    const entityTexts = [
+      ...res.parsed.intervenants,
+      ...res.parsed.suggested_actions.map((a) => a.owner),
+      ...res.parsed.important_points.map((p) => p.owner),
+    ].filter(Boolean)
+    const semanticMemory =
+      entityTexts.length > 0 && ctx.visit.site_id && ctx.visit.organization_id
+        ? await buildDebriefSemanticMemory(
+            [...new Set(entityTexts)],
+            ctx.visit.site_id,
+            ctx.visit.organization_id,
+            userId ?? undefined,
+          )
+        : null
+
+    const analysis = fromAgent(res.narrative, res.parsed, res.provider, res.model, hash, version, snapshot, oldLedger, semanticMemory)
     await writeAnalysis(reportId, analysis).catch(() => {})
     // Couche d'extraction métier : la synthèse fraîche est projetée en propositions
     // (actions, vigilances, décisions, savoirs, intervenants, échéances), visibles
