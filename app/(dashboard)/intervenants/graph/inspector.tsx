@@ -11,6 +11,7 @@ import { ArrowRight, Route, User, Building2, Users, MapPin, ListTodo, FileText, 
 import type { ActorGraphNode, ActorGraphKind } from '@/lib/knowledge/actors-graph-model'
 import type { ActorContext, ActorContextEvent, ActorContextEventKind } from '@/lib/db/actor-context'
 import type { ActorRelationsResult } from '@/lib/knowledge/actor-relation-view'
+import { buildActorNarrative } from '@/lib/knowledge/actor-narrative'
 import { attentionLevelLabel } from '@/lib/knowledge/actor-attention'
 import { ActorRelationsPanel } from './ActorRelationsPanel'
 
@@ -62,6 +63,13 @@ export function NodePanel({ node, narration, relations, context, relationsView, 
   const href = nodeHref(node)
   const Icon = KIND_ICON[node.kind]
   const isActor = node.kind === 'person' || node.kind === 'company' || node.kind === 'team'
+  // Récit factuel « Pourquoi cette relation est-elle importante ? » — DÉTERMINISTE,
+  // assemble les faits déjà calculés (relations agrégées + contexte). Uniquement
+  // personne/entreprise (les seules à porter des relations agrégées). Remplace le
+  // narration structurel « Pourquoi apparaît-il ici ? » quand il est disponible.
+  const importance = relationsView && (node.kind === 'person' || node.kind === 'company')
+    ? buildActorNarrative(node.kind, node.label, relationsView, context ?? null)
+    : []
   return (
     <div>
       <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -91,7 +99,14 @@ export function NodePanel({ node, narration, relations, context, relationsView, 
         )}
       </div>
 
-      {narration.length > 0 && (
+      {importance.length > 0 ? (
+        <>
+          <SectionLabel>Pourquoi cette relation est-elle importante ?</SectionLabel>
+          {importance.map((t, i) => (
+            <p key={i} className={`mb-1.5 ${compact ? 'text-[12.5px]' : 'text-[13.5px]'} leading-relaxed`}>{t}</p>
+          ))}
+        </>
+      ) : narration.length > 0 && (
         <>
           <SectionLabel>Pourquoi apparaît-il ici ?</SectionLabel>
           {narration.map((t, i) => (
