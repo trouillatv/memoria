@@ -1060,7 +1060,7 @@ async function seedMissions(authIds: Record<string, string>) {
       const startHour  = md.suffix === 'm0' ? 8 : 13  // inspection matin, extincteurs aprèm
       missionRows.push(`(
         '${missionId}', '${siteId}', ${esc(md.name)},
-        '${md.cadence}'::mission_cadence, true, '${ORG_ID}', '${adminId}'
+        '${md.cadence}'::mission_cadence, true, '${ORG_ID}', '${adminId}', '${teamId}'
       )`)
 
       for (let ii = 0; ii < intSchedule.length; ii++) {
@@ -1080,9 +1080,9 @@ async function seedMissions(authIds: Record<string, string>) {
 
   for (let i = 0; i < missionRows.length; i += 50) {
     await runSql(`
-      INSERT INTO public.missions (id, site_id, name, cadence, active, organization_id, created_by)
+      INSERT INTO public.missions (id, site_id, name, cadence, active, organization_id, created_by, assigned_team_id)
       VALUES ${missionRows.slice(i, i + 50).join(',')}
-      ON CONFLICT (id) DO NOTHING
+      ON CONFLICT (id) DO UPDATE SET assigned_team_id = EXCLUDED.assigned_team_id
     `)
   }
   process.stdout.write(`    ${missionRows.length} missions\n`)
