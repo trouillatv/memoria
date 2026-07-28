@@ -101,14 +101,16 @@ export function buildCollaborationGraph(interactions: ActorInteraction[], asOf: 
 }
 
 // ── Transformations VISUELLES (bornées, robustes à une distribution asymétrique) ──
-export const EDGE_WIDTH_MIN = 1.2
-export const EDGE_WIDTH_MAX = 7
+// Calibré sur la distribution réelle observée (forces ~0,5 → 6) : l'écart doit être
+// PERCEPTIBLE — faible ≈ 1,6 px · moyen ≈ 3,5 px · fort ≈ 7,8 px.
+export const EDGE_WIDTH_MIN = 0.8
+export const EDGE_WIDTH_MAX = 11
 
-/** Épaisseur d'un lien depuis la force : monotone + PLAFOND. sqrt(force) garde des
- *  écarts visibles entre faible/moyen/fort ; le plafond empêche une relation
- *  exceptionnelle d'écraser toutes les autres. */
+/** Épaisseur d'un lien depuis la force : monotone + PLAFOND. Exposant < 1 (compression
+ *  douce) pour garder des écarts nets entre faible/moyen/fort ; le plafond empêche une
+ *  relation exceptionnelle d'écraser toutes les autres. */
 export function collaborationEdgeWidth(strength: number): number {
-  return Math.min(EDGE_WIDTH_MAX, EDGE_WIDTH_MIN + 1.1 * Math.sqrt(Math.max(0, strength)))
+  return Math.min(EDGE_WIDTH_MAX, EDGE_WIDTH_MIN + 1.5 * Math.pow(Math.max(0, strength), 0.85))
 }
 
 /** Transparence depuis la récence : récent = opaque, ancien = pâle mais VISIBLE

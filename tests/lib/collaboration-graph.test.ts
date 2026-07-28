@@ -68,11 +68,11 @@ describe('buildCollaborationGraph', () => {
 describe('transformations visuelles (bornées)', () => {
   it('épaisseur : monotone, plancher, et PLAFONNÉE (un outlier n’écrase pas le reste)', () => {
     expect(collaborationEdgeWidth(0)).toBeCloseTo(EDGE_WIDTH_MIN)
-    expect(collaborationEdgeWidth(2)).toBeLessThan(collaborationEdgeWidth(10)) // monotone
-    expect(collaborationEdgeWidth(10)).toBeLessThan(collaborationEdgeWidth(30))
+    expect(collaborationEdgeWidth(2)).toBeLessThan(collaborationEdgeWidth(4)) // monotone avant plafond
+    expect(collaborationEdgeWidth(4)).toBeLessThan(collaborationEdgeWidth(6))
     expect(collaborationEdgeWidth(100000)).toBeLessThanOrEqual(EDGE_WIDTH_MAX) // plafond
-    // Écarts VISIBLES entre faible / moyen / fort avant plafond.
-    expect(collaborationEdgeWidth(6) - collaborationEdgeWidth(2)).toBeGreaterThan(0.3)
+    // Écarts nettement VISIBLES entre faible / moyen / fort (calibré sur la distribution réelle).
+    expect(collaborationEdgeWidth(6) - collaborationEdgeWidth(2)).toBeGreaterThan(2)
   })
 
   it('transparence : récent opaque, ancien pâle mais visible (plancher 0,3)', () => {
