@@ -140,11 +140,11 @@ function escJson(obj: unknown): string {
 const ORG_ID = duid('org:capse')
 
 const USERS = [
-  { key: 'david.bouvier', email: 'david.bouvier.test@memoria.nc', name: 'David Bouvier', role: 'admin' },
-  { key: 'marie.lefevre', email: 'marie.lefevre.test@memoria.nc', name: 'Marie Lefèvre', role: 'manager' },
-  { key: 'jp.kaemo', email: 'jp.kaemo.test@memoria.nc', name: 'Jean-Pierre Kaémo', role: 'chef_equipe' },
-  { key: 'sophie.wane', email: 'sophie.wane.test@memoria.nc', name: 'Sophie Wané', role: 'chef_equipe' },
-  { key: 'patrick.djiril', email: 'patrick.djiril.test@memoria.nc', name: 'Patrick Djirilet', role: 'chef_equipe' },
+  { key: 'david.bouvier', email: 'david.bouvier.test@memoria.nc', name: 'David Bouvier', role: 'admin', homePreference: 'dashboard' },
+  { key: 'marie.lefevre', email: 'marie.lefevre.test@memoria.nc', name: 'Marie Lefèvre', role: 'manager', homePreference: 'dashboard' },
+  { key: 'jp.kaemo', email: 'jp.kaemo.test@memoria.nc', name: 'Jean-Pierre Kaémo', role: 'chef_equipe', homePreference: 'terrain' },
+  { key: 'sophie.wane', email: 'sophie.wane.test@memoria.nc', name: 'Sophie Wané', role: 'chef_equipe', homePreference: 'terrain' },
+  { key: 'patrick.djiril', email: 'patrick.djiril.test@memoria.nc', name: 'Patrick Djirilet', role: 'chef_equipe', homePreference: 'terrain' },
 ] as const
 
 const CLIENTS = [
@@ -406,15 +406,17 @@ async function seedUsers(): Promise<Record<string, string>> {
     ${esc(u.email)},
     ${esc(u.name)},
     '${u.role}'::user_role,
-    '${ORG_ID}'
+    '${ORG_ID}',
+    '${u.homePreference}'
   )`).join(',')
   await runSql(`
-    INSERT INTO public.users (id, email, full_name, role, organization_id)
+    INSERT INTO public.users (id, email, full_name, role, organization_id, home_preference)
     VALUES ${userVals}
     ON CONFLICT (id) DO UPDATE SET
       full_name       = EXCLUDED.full_name,
       role            = EXCLUDED.role,
-      organization_id = EXCLUDED.organization_id
+      organization_id = EXCLUDED.organization_id,
+      home_preference = EXCLUDED.home_preference
   `)
 
   const membVals = USERS.map((u) => `(

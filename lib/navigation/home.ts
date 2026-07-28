@@ -2,7 +2,9 @@ import type { UserRole } from '@/types/db'
 
 export function isMobileUserAgent(ua: string | null): boolean {
   if (!ua) return false
-  return /android|iphone|ipad|ipod|mobile|blackberry|windows phone/i.test(ua)
+  // "android" retiré : Chrome en mode "site bureau" conserve "android" dans l'UA
+  // mais retire "Mobile" — le mot-clé "mobile" suffit pour les téléphones Android.
+  return /iphone|ipod|mobile|blackberry|windows phone/i.test(ua)
 }
 
 export function resolveHomeDestination(user: {
