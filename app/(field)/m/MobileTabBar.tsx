@@ -36,10 +36,16 @@ const IMMERSIVE = ['/m/visite/', '/m/site/', '/m/import', '/m/intervention/']
 // pour comprendre la grammaire voir / faire / décider, puis plus jamais.
 const PLUS_INTRO_KEY = 'memoria_plus_intro_seen'
 
-export function MobileTabBar({ actionsCount }: { actionsCount: number }) {
+export function MobileTabBar({ actionsCount, userRole }: { actionsCount: number; userRole: string }) {
   const pathname = usePathname() ?? '/m'
   const [createOpen, setCreateOpen] = useState(false)
   const [showIntro, setShowIntro] = useState(false)
+  // Le ➕ est contextuel au rôle (décision Vincent 2026-07-29) : Réunion et
+  // Intervention sont des actes de PILOTAGE (conducteur). Le chef d'équipe est
+  // un EXÉCUTANT — on lui laisse la seule création discrète qui reste de son
+  // ressort : la visite spontanée. Ses gestes d'exécution (démarrer, preuve,
+  // problème, terminer) vivent DANS son intervention, pas dans un menu global.
+  const isManager = userRole === 'admin' || userRole === 'manager'
   if (IMMERSIVE.some((p) => pathname.startsWith(p))) return null
 
   function openCreate() {
@@ -93,15 +99,17 @@ export function MobileTabBar({ actionsCount }: { actionsCount: number }) {
           >
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Que venez-vous faire&nbsp;?
+                {isManager ? 'Que venez-vous faire ?' : 'Créer'}
               </h2>
               <button type="button" onClick={() => setCreateOpen(false)} aria-label="Fermer" className="rounded-lg p-1 text-muted-foreground active:bg-accent">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            {/* PREMIÈRE FOIS seulement : la grammaire en trente secondes. */}
-            {showIntro && (
+            {/* PREMIÈRE FOIS seulement : la grammaire en trente secondes.
+                Réservée au conducteur — le chef n'a qu'une entrée (visite),
+                la grammaire voir/faire/décider n'aurait pas de sens. */}
+            {isManager && showIntro && (
               <div className="mb-3 space-y-2 rounded-xl border bg-muted/30 p-3 text-[13px] leading-snug">
                 <p><span className="font-semibold">👀 Je viens voir</span> — observer, contrôler, comparer avec la dernière fois.</p>
                 <p><span className="font-semibold">🔧 Je viens faire</span> — exécuter ce qui a été décidé, avec les preuves.</p>
@@ -115,15 +123,16 @@ export function MobileTabBar({ actionsCount }: { actionsCount: number }) {
                 </button>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3">
+            <div className={`grid gap-3 ${isManager ? 'grid-cols-2' : 'grid-cols-1'}`}>
               <VisitLauncherHome />
-              <MeetingLauncher />
-              <InterventionLauncher />
+              {/* Réunion + Intervention = actes de pilotage → conducteur seul. */}
+              {isManager && <MeetingLauncher />}
+              {isManager && <InterventionLauncher />}
             </div>
 
             {/* La grammaire reste consultable À VOLONTÉ (revue 2026-07-13) :
                 le lien rouvre la même fiche courte que la première fois. */}
-            {!showIntro && (
+            {isManager && !showIntro && (
               <button
                 type="button"
                 onClick={() => setShowIntro(true)}
