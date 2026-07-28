@@ -8,7 +8,7 @@
 
 import type { ActorsGraph, ActorGraphNode } from './actors-graph-model'
 
-export type GraphLayoutKind = 'force' | 'hierarchical'
+export type GraphLayoutKind = 'force' | 'hierarchical' | 'radial'
 
 export type LayoutPositions = Map<string, { x: number; y: number }>
 
@@ -22,7 +22,7 @@ export interface LayoutBlock {
   halfWidth: number
 }
 
-export interface HierarchicalResult { positions: LayoutPositions; blocks: LayoutBlock[] }
+export interface StaticLayoutResult { positions: LayoutPositions; blocks: LayoutBlock[] }
 
 const COL_W = 190     // largeur d'une colonne d'entreprise
 const ROW_H = 54      // hauteur d'une ligne (personne)
@@ -40,7 +40,7 @@ const PAD_BOTTOM = 30 // marge de la carte sous la dernière ligne
  * Entreprises triées par NOMBRE de collaborateurs (desc) puis alphabétique →
  * ordre stable. Déterministe. Sites/actions non placés (invisibles ici).
  */
-export function hierarchicalLayout(graph: ActorsGraph): HierarchicalResult {
+export function hierarchicalLayout(graph: ActorsGraph): StaticLayoutResult {
   const pos: LayoutPositions = new Map()
   const blocks: LayoutBlock[] = []
   const companies = graph.nodes.filter((n) => n.kind === 'company')
@@ -92,6 +92,64 @@ export function hierarchicalLayout(graph: ActorsGraph): HierarchicalResult {
     blocks.push({ title: 'Équipes', cx: 0, top: ty - PAD_TOP, bottom: ty + PAD_BOTTOM, halfWidth: (teams.length * COL_W) / 2 })
   }
   return { positions: pos, blocks }
+}
+
+const SITE_RING = 135   // rayon des entreprises autour d'un chantier
+const PERSON_RING = 68  // rayon des personnes autour de leur entreprise
+
+/**
+ * CHANTIERS — placement RADIAL : chaque CHANTIER est un HUB (centre de gravité).
+ * Autour de lui, les ENTREPRISES qui interviennent (+ équipes mobilisées) sur un
+ * anneau ; autour de chaque entreprise, ses PERSONNES. Une entreprise partagée par
+ * plusieurs chantiers garde sa 1ʳᵉ position (limite assumée v1). Déterministe.
+ */
+export function radialLayout(graph: ActorsGraph): StaticLayoutResult {
+  const pos: LayoutPositions = new Map()
+  const sites = graph.nodes.filter((n) => n.kind === 'site').sort(byLabel)
+
+  const listOf = (rel: string, keyEnd: 'a' | 'b') => {
+    const m = new Map<string, string[]>()
+    for (const e of graph.edges) if (e.rel === rel) {
+      const site = e.b, actor = keyEnd === 'a' ? e.a : e.b
+      if (!m.has(site)) m.set(site, []); m.get(site)!.push(actor)
+    }
+    return m
+  }
+  const companiesOfSite = listOf('intervenes_on', 'a') // a=company, b=site
+  const teamsOfSite = listOf('mobilized_on', 'a')       // a=team, b=site
+  const personsOfCompany = new Map<string, string[]>()
+  for (const e of graph.edges) if (e.rel === 'belongs_to') { if (!personsOfCompany.has(e.b)) personsOfCompany.set(e.b, []); personsOfCompany.get(e.b)!.push(e.a) }
+
+  // Hubs (chantiers) sur un grand cercle (ou centre si unique).
+  if (sites.length === 1) pos.set(sites[0]!.id, { x: 0, y: 0 })
+  else {
+    const R = Math.max(320, sites.length * 90)
+    sites.forEach((s, i) => { const a = (i / sites.length) * 2 * Math.PI; pos.set(s.id, { x: Math.cos(a) * R, y: Math.sin(a) * R }) })
+  }
+
+  for (const s of sites) {
+    const sp = pos.get(s.id)!
+    const around = [...new Set([...(companiesOfSite.get(s.id) ?? []), ...(teamsOfSite.get(s.id) ?? [])])].sort()
+    around.forEach((cid, i) => {
+      if (pos.has(cid)) return // partagé → conserve la 1ʳᵉ position
+      const a = (i / Math.max(1, around.length)) * 2 * Math.PI
+      pos.set(cid, { x: sp.x + Math.cos(a) * SITE_RING, y: sp.y + Math.sin(a) * SITE_RING })
+    })
+  }
+  // Personnes autour de leur entreprise.
+  for (const [coId, persons] of personsOfCompany) {
+    const cp = pos.get(coId); if (!cp) continue
+    ;[...persons].sort().forEach((pid, i) => {
+      const a = (i / Math.max(1, persons.length)) * 2 * Math.PI
+      pos.set(pid, { x: cp.x + Math.cos(a) * PERSON_RING, y: cp.y + Math.sin(a) * PERSON_RING })
+    })
+  }
+  // Acteurs non rattachés → anneau extérieur.
+  const unplaced = graph.nodes.filter((n) => (n.kind === 'company' || n.kind === 'person' || n.kind === 'team') && !pos.has(n.id))
+  const OR = Math.max(520, sites.length * 110)
+  unplaced.forEach((n, i) => { const a = (i / Math.max(1, unplaced.length)) * 2 * Math.PI; pos.set(n.id, { x: Math.cos(a) * OR, y: Math.sin(a) * OR }) })
+
+  return { positions: pos, blocks: [] }
 }
 
 function byLabel(a: ActorGraphNode, b: ActorGraphNode): number {

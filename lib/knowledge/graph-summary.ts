@@ -32,3 +32,30 @@ export function collaborationGraphSummary(view: CollaborationGraphView): string 
   if (recent) parts.push(`${recent} récente${recent > 1 ? 's' : ''}`)
   return parts.join(' · ')
 }
+
+/** Titre-PHRASE de la lecture Collaboration (entreprises) : « X collabore
+ *  principalement avec Y et Z. N collaborations fortes détectées. » Sur les seules
+ *  arêtes entreprise↔entreprise. Vide si pas de collaboration entre entreprises. */
+export function collaborationGraphNarrative(view: CollaborationGraphView): string {
+  const meta = new Map(view.nodes.map((n) => [n.key, n]))
+  const compEdges = view.edges.filter((e) => meta.get(e.a)?.kind === 'company' && meta.get(e.b)?.kind === 'company')
+  if (compEdges.length === 0) return ''
+  const total = new Map<string, number>()
+  const partners = new Map<string, Array<{ key: string; s: number }>>()
+  const add = (x: string, y: string, s: number) => {
+    total.set(x, (total.get(x) ?? 0) + s)
+    if (!partners.has(x)) partners.set(x, [])
+    partners.get(x)!.push({ key: y, s })
+  }
+  for (const e of compEdges) { add(e.a, e.b, e.strength); add(e.b, e.a, e.strength) }
+  const topKey = [...total.entries()].sort((a, b) => b[1] - a[1])[0]![0]
+  const name = meta.get(topKey)?.label ?? 'Une entreprise'
+  const tops = (partners.get(topKey) ?? []).sort((a, b) => b.s - a.s).slice(0, 2)
+    .map((p) => meta.get(p.key)?.label).filter((l): l is string => !!l)
+  const strong = compEdges.filter((e) => e.strength >= 4).length
+  let s = tops.length
+    ? `${name} collabore principalement avec ${tops.join(' et ')}.`
+    : `${name} est l’entreprise la plus active.`
+  if (strong) s += ` ${strong} collaboration${strong > 1 ? 's' : ''} forte${strong > 1 ? 's' : ''} détectée${strong > 1 ? 's' : ''}.`
+  return s
+}

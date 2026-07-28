@@ -16,7 +16,7 @@ import { useEffect, useRef } from 'react'
 import { graphTimeline, type ActorsGraph, type ActorGraphKind, type ActorGraphNode, type ActorGraphRel } from '@/lib/knowledge/actors-graph-model'
 import { createForceGraphEngine, type ForceGraphEngine, type Vec } from '@/components/graph/force-graph-engine'
 import { RING_COLOR, HISTORICAL_COLOR, NEUTRAL_FILL, companyFill } from './actor-colors'
-import { hierarchicalLayout, type GraphLayoutKind } from '@/lib/knowledge/graph-layouts'
+import { hierarchicalLayout, radialLayout, type GraphLayoutKind } from '@/lib/knowledge/graph-layouts'
 
 export type SelectableKind = 'person' | 'company' | 'team'
 
@@ -153,8 +153,10 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
     for (const id of [...cache.keys()]) if (!idSet.has(id)) cache.delete(id)
     // Chronologie : première apparition structurelle de chaque nœud (pur).
     const { firstSeen } = graphTimeline(graph)
-    // LAYOUT STATIQUE (Organigramme) : positions déterministes + physique coupée.
-    const layoutResult = layout === 'hierarchical' ? hierarchicalLayout(graph) : null
+    // LAYOUT STATIQUE (Organigramme hiérarchique / Chantiers radial) : positions
+    // déterministes + physique coupée.
+    const layoutResult = layout === 'hierarchical' ? hierarchicalLayout(graph)
+      : layout === 'radial' ? radialLayout(graph) : null
     const layoutPos = layoutResult?.positions ?? null
     const layoutBlocks = layoutResult?.blocks ?? null
 
@@ -299,9 +301,9 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
           if (ring) { ctx.lineWidth = 3; ctx.strokeStyle = ring; ctx.stroke() }
           // Sélection : anneau sombre EXTÉRIEUR (n'écrase pas l'anneau d'alerte).
           if (n.id === sel) { ctx.beginPath(); ctx.arc(p.x, p.y, r + 2.5, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.strokeStyle = '#0f172a'; ctx.stroke() }
-          // Labels : toujours en Organigramme (un organigramme se lit en entier) ;
-          // sinon seulement le focus et son contexte.
-          if (layout === 'hierarchical' || st !== 'out') {
+          // Labels : toujours dans les layouts statiques (organigramme/radial se
+          // lisent en entier) ; sinon seulement le focus et son contexte.
+          if (layout !== 'force' || st !== 'out') {
             ctx.globalAlpha = p.alpha
             ctx.fillStyle = '#0f172a'
             ctx.font = `${st === 'focus' ? '600 ' : ''}${n.kind === 'site' ? 12 : 11}px system-ui, sans-serif`
@@ -312,8 +314,8 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
         }
         ctx.globalAlpha = 1
       },
-      // Organigramme : AUCUNE force — les positions hiérarchiques sont fixes.
-      physics: layout === 'hierarchical'
+      // Layouts statiques : AUCUNE force — les positions sont fixes.
+      physics: layout !== 'force'
         ? { repulsion: 0, spring: 0, rest: () => 0, friction: 0.9, gravity: 0 }
         : { repulsion: 5200, spring: 0.02, rest: () => 150, friction: 0.82, gravity: 0.0015 },
       // Fondu d'apparition/disparition (replay + entrées de nœuds) — mêmes constantes
@@ -359,8 +361,8 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
 
     return () => {
       // Mémorise les positions pour le prochain graphe FORCE (jamais les positions
-      // hiérarchiques, qui pollueraient la disposition physique).
-      if (layout !== 'hierarchical') for (const [id, p] of Object.entries(api.P)) cache.set(id, { ...p })
+      // statiques, qui pollueraient la disposition physique).
+      if (layout === 'force') for (const [id, p] of Object.entries(api.P)) cache.set(id, { ...p })
       api.destroy()
       apiRef.current = null
     }

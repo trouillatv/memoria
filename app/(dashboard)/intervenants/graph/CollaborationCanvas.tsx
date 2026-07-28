@@ -20,6 +20,8 @@ export interface CollaborationControl {
   onTapNode(key: string): void
   onTapEdge(index: number): void
   onTapVoid(): void
+  /** Double-clic sur une entreprise = déployer/replier ses personnes. */
+  onDblClickNode?(key: string): void
 }
 
 // Entreprise DOMINANTE, personne secondaire (~2:1) — l'entreprise est l'ancre.
@@ -162,7 +164,8 @@ export function CollaborationCanvas({ nodes, edges, membershipEdges = [], contro
       hitNodeRadius: (id, k) => (SIZE[nodeByKey.get(id)?.kind ?? 'person'] + 6) / k,
       hitAlphaGate: 0.5,
       edgeHit: { tolerance: (k) => 8 / k, clampA: 0, clampB: 1 },
-      features: { pin: false, dblClick: false, edgeTap: true },
+      features: { pin: false, dblClick: true, edgeTap: true },
+      onDblClickNode(id) { controlRef.current?.onDblClickNode?.(id) },
       onTapNode(id) { controlRef.current?.onTapNode(id) },
       onTapEdge(index) {
         // Seules les collaborations (index < edges.length) sont inspectables ;

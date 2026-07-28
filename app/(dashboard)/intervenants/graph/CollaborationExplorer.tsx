@@ -20,15 +20,15 @@ export function CollaborationExplorer({ data, mode }: { data: CollaborationGraph
   const [deployed, setDeployed] = useState<Set<string>>(() => new Set())
   const nodeByKey = useMemo(() => new Map(data.nodes.map((n) => [n.key, n])), [data])
 
-  // ── Nœuds / arêtes AFFICHÉS selon la lecture ──
+  // ── Nœuds / arêtes AFFICHÉS ──
+  // Collaboration ET Écosystème : ENTREPRISES seules au premier niveau (pas de
+  // personnes, pas d'actions) — « qui travaille avec qui ». On déploie les personnes
+  // d'une entreprise à la demande (double-clic, ou bouton en Écosystème).
   const view = useMemo(() => {
-    if (mode === 'collaboration') return { nodes: data.nodes, edges: data.edges, membership: [] as Array<{ a: string; b: string }> }
-    // Écosystème : entreprises seules + arêtes entreprise↔entreprise…
     const companies = data.nodes.filter((n) => n.kind === 'company')
     const edges = data.edges.filter((e) => nodeByKey.get(e.a)?.kind === 'company' && nodeByKey.get(e.b)?.kind === 'company')
     const nodes: CollaborationNodeView[] = [...companies]
     const membership: Array<{ a: string; b: string }> = []
-    // …+ personnes des entreprises DÉPLOYÉES (rattachement explicite, sans voisinage).
     for (const co of companies) {
       if (!deployed.has(co.key)) continue
       for (const p of data.nodes) {
@@ -36,7 +36,9 @@ export function CollaborationExplorer({ data, mode }: { data: CollaborationGraph
       }
     }
     return { nodes, edges, membership }
-  }, [mode, data, nodeByKey, deployed])
+  }, [data, nodeByKey, deployed])
+
+  const toggleDeploy = (key: string) => setDeployed((d) => { const n = new Set(d); if (n.has(key)) n.delete(key); else n.add(key); return n })
 
   const control: CollaborationControl = {
     selectedKey: sel?.type === 'node' ? sel.key : null,
@@ -44,12 +46,12 @@ export function CollaborationExplorer({ data, mode }: { data: CollaborationGraph
     onTapNode: (key) => setSel({ type: 'node', key }),
     onTapEdge: (index) => setSel({ type: 'edge', index }),
     onTapVoid: () => setSel(null),
+    // Double-clic sur une entreprise = déployer/replier ses personnes.
+    onDblClickNode: (key) => { if (nodeByKey.get(key)?.kind === 'company') toggleDeploy(key) },
   }
 
   const selEdge = sel?.type === 'edge' ? view.edges[sel.index] ?? null : null
   const selNode = sel?.type === 'node' ? nodeByKey.get(sel.key) ?? null : null
-
-  const toggleDeploy = (key: string) => setDeployed((d) => { const n = new Set(d); if (n.has(key)) n.delete(key); else n.add(key); return n })
 
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
@@ -63,9 +65,9 @@ export function CollaborationExplorer({ data, mode }: { data: CollaborationGraph
         ) : (
           <p className="text-[13px] text-muted-foreground">
             {mode === 'ecosystem'
-              ? 'Cliquez une entreprise pour l’inspecter, ou un lien pour comprendre la collaboration. Sur une entreprise, « Afficher les personnes » déploie ses contacts.'
-              : 'Cliquez un lien pour comprendre la collaboration entre deux acteurs — l’épaisseur en dit la force, la pâleur l’ancienneté.'}
-            <br />{view.nodes.length} acteurs · {view.edges.length} collaborations.
+              ? 'Écosystème : uniquement les entreprises. Cliquez-en une, puis « Afficher les personnes » (ou double-clic) pour explorer.'
+              : 'Uniquement les entreprises : l’épaisseur dit la force, la pâleur l’ancienneté. Double-cliquez une entreprise pour voir ses personnes ; cliquez un lien pour l’expliquer.'}
+            <br />{view.nodes.filter((n) => n.kind === 'company').length} entreprises · {view.edges.length} collaborations.
           </p>
         )}
       </aside>
