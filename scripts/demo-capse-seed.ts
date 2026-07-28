@@ -148,58 +148,19 @@ const USERS = [
 ] as const
 
 const CLIENTS = [
-  { key: 'pacific-industries', name: 'Pacific Industries SA', address: 'Zone industrielle Ducos, Nouméa', phone: '+687 24 31 50' },
-  { key: 'hilton-noumea', name: 'Hôtel Hilton Nouméa', address: '2 Promenade Roger Laroque, Nouméa', phone: '+687 26 90 00' },
-  { key: 'dumbea-mall', name: 'Dumbéa Mall', address: 'Route de Tontouta, Dumbéa', phone: '+687 41 19 20' },
-  { key: 'ville-dumbea', name: 'Commune de Dumbéa', address: '1 Place de la Mairie, Dumbéa', phone: '+687 41 80 00' },
-  { key: 'lycee-garnier', name: 'Lycée Jules Garnier', address: '12 Rue Auvergne, Nouméa', phone: '+687 28 41 00' },
-  { key: 'smsp-tower', name: 'SMSP Tower', address: '1 Place des Cocotiers, Nouméa', phone: '+687 23 65 00' },
-  { key: 'port-nc', name: 'Port Autonome de Nouvelle-Calédonie', address: 'Quai Ferry, Nouméa', phone: '+687 24 27 00' },
-  { key: 'totalenergies-nc', name: 'TotalÉnergies NC', address: 'Station Montravel, Nouméa', phone: '+687 28 55 10' },
-  { key: 'ballande-logistique', name: 'Ballande Logistique', address: 'Zone de Ducos, Nouméa', phone: '+687 24 80 30' },
-  { key: 'clinique-kuindo', name: 'Clinique Kuindo-Magnin', address: 'Artillerie, Nouméa', phone: '+687 26 68 00' },
-  { key: 'vale-nc', name: 'Vale NC', address: 'Usine de Goro, Province Sud', phone: '+687 43 80 00' },
-  { key: 'casino-noumea', name: 'Casino de Nouméa', address: 'Anse Vata, Nouméa', phone: '+687 26 25 00' },
-  { key: 'cps-nc', name: 'CPS – Caisse de Protection Sociale', address: 'Quartier Latin, Nouméa', phone: '+687 25 18 00' },
-  { key: 'prony-resources', name: 'Prony Resources', address: 'Site de Prony, Province Sud', phone: '+687 43 60 00' },
-  { key: 'aircalin', name: 'Aircalin', address: 'Aéroport de La Tontouta', phone: '+687 26 55 00' },
+  { key: 'cps-nc',      name: 'CPS – Caisse de Protection Sociale', address: 'Quartier Latin, Nouméa',             phone: '+687 25 18 00' },
+  { key: 'smsp-tower',  name: 'SMSP Tower',                         address: '1 Place des Cocotiers, Nouméa',       phone: '+687 23 65 00' },
+  { key: 'hilton-noumea', name: 'Hôtel Hilton Nouméa',              address: '2 Promenade Roger Laroque, Nouméa',   phone: '+687 26 90 00' },
+  { key: 'dumbea-mall', name: 'Dumbéa Mall',                        address: 'Route de Tontouta, Dumbéa',           phone: '+687 41 19 20' },
 ] as const
 
 const SITES = [
-  { key: 'pacific-doniambo', clientKey: 'pacific-industries', name: 'Usine Doniambo', address: 'Zone industrielle Ducos, Bâtiment A, Nouméa' },
-  { key: 'pacific-hangar', clientKey: 'pacific-industries', name: 'Hangar de stockage', address: 'Zone industrielle Ducos, Bâtiment C, Nouméa' },
-  { key: 'pacific-labo', clientKey: 'pacific-industries', name: 'Laboratoire qualité', address: 'Zone industrielle Ducos, Bâtiment D, Nouméa' },
-  { key: 'hilton-rdc', clientKey: 'hilton-noumea', name: 'Rez-de-chaussée et lobby', address: 'Promenade R. Laroque — RDC, Nouméa' },
-  { key: 'hilton-technique', clientKey: 'hilton-noumea', name: 'Sous-sol technique', address: 'Promenade R. Laroque — Sous-sol, Nouméa' },
-  { key: 'hilton-piscine', clientKey: 'hilton-noumea', name: 'Espace piscine & pool bar', address: 'Promenade R. Laroque — Terrasse, Nouméa' },
-  { key: 'dumbea-galerie', clientKey: 'dumbea-mall', name: 'Galerie principale', address: 'Dumbéa Mall, Niveau 1' },
-  { key: 'dumbea-parking', clientKey: 'dumbea-mall', name: 'Parking souterrain', address: 'Dumbéa Mall, Niveau −1' },
-  { key: 'dumbea-local-tech', clientKey: 'dumbea-mall', name: 'Local technique centralisé', address: 'Dumbéa Mall, Niveau −2' },
-  { key: 'dumbea-mairie', clientKey: 'ville-dumbea', name: 'Mairie principale', address: '1 Place de la Mairie, Dumbéa' },
-  { key: 'dumbea-sport', clientKey: 'ville-dumbea', name: 'Centre sportif municipal', address: 'Rue des Sports, Dumbéa' },
-  { key: 'garnier-principal', clientKey: 'lycee-garnier', name: 'Bâtiment principal', address: 'Lycée Jules Garnier, Bât. A' },
-  { key: 'garnier-internat', clientKey: 'lycee-garnier', name: 'Internat', address: 'Lycée Jules Garnier, Bât. B' },
-  { key: 'garnier-cuisine', clientKey: 'lycee-garnier', name: 'Cuisine centrale', address: 'Lycée Jules Garnier, Bât. C' },
-  { key: 'smsp-plateau3', clientKey: 'smsp-tower', name: 'Plateau 3e étage', address: 'SMSP Tower, 3e étage, Nouméa' },
-  { key: 'smsp-plateau8', clientKey: 'smsp-tower', name: 'Plateau 8e étage', address: 'SMSP Tower, 8e étage, Nouméa' },
-  { key: 'port-terminal', clientKey: 'port-nc', name: 'Terminal à conteneurs', address: 'Port Autonome, Terminal 2, Nouméa' },
-  { key: 'port-frigo', clientKey: 'port-nc', name: 'Entrepôt frigorifique', address: 'Port Autonome, Quai 5, Nouméa' },
-  { key: 'total-montravel', clientKey: 'totalenergies-nc', name: 'Station Montravel', address: 'Route de Montravel, Nouméa' },
-  { key: 'total-dumbea', clientKey: 'totalenergies-nc', name: 'Station Dumbéa Est', address: 'Route de Ouémo, Dumbéa' },
-  { key: 'ballande-entrepot-a', clientKey: 'ballande-logistique', name: 'Entrepôt A', address: 'Zone Ducos, Entrepôt A, Nouméa' },
-  { key: 'ballande-entrepot-b', clientKey: 'ballande-logistique', name: 'Entrepôt B', address: 'Zone Ducos, Entrepôt B, Nouméa' },
-  { key: 'kuindo-bloc', clientKey: 'clinique-kuindo', name: 'Bloc opératoire', address: 'Clinique Kuindo, Bât. médical, Artillerie' },
-  { key: 'kuindo-urgences', clientKey: 'clinique-kuindo', name: "Service urgences", address: 'Clinique Kuindo, Entrée urgences' },
-  { key: 'vale-fonderie', clientKey: 'vale-nc', name: 'Fonderie', address: 'Site de Goro — Zone fonderie' },
-  { key: 'vale-traitement', clientKey: 'vale-nc', name: 'Station de traitement des eaux', address: 'Site de Goro — Zone environnement' },
-  { key: 'casino-jeux', clientKey: 'casino-noumea', name: 'Salle des jeux', address: 'Casino Nouméa, RDC, Anse Vata' },
-  { key: 'casino-machines', clientKey: 'casino-noumea', name: 'Local machines & sous-stations', address: 'Casino Nouméa, Sous-sol' },
-  { key: 'cps-siege', clientKey: 'cps-nc', name: 'Siège social', address: 'Quartier Latin, Nouméa' },
-  { key: 'cps-dumbea', clientKey: 'cps-nc', name: 'Antenne Dumbéa', address: 'Centre Dumbéa, Route de Tontouta' },
-  { key: 'prony-mine', clientKey: 'prony-resources', name: 'Site minier Prony', address: 'Prony — Zone extraction' },
-  { key: 'prony-usine', clientKey: 'prony-resources', name: 'Usine de traitement', address: 'Prony — Zone traitement' },
-  { key: 'aircalin-maintenance', clientKey: 'aircalin', name: 'Hangar maintenance', address: 'Aéroport Tontouta, Zone technique' },
-  { key: 'aircalin-bureaux', clientKey: 'aircalin', name: 'Bureaux Tontouta', address: 'Aéroport Tontouta, Terminal' },
+  { key: 'cps-siege',    clientKey: 'cps-nc',       name: 'Siège social',            address: 'Quartier Latin, Nouméa' },
+  { key: 'cps-dumbea',   clientKey: 'cps-nc',       name: 'Antenne Dumbéa',          address: 'Centre Dumbéa, Route de Tontouta' },
+  { key: 'smsp-plateau3', clientKey: 'smsp-tower',  name: 'Plateau 3e étage',        address: 'SMSP Tower, 3e étage, Nouméa' },
+  { key: 'smsp-plateau8', clientKey: 'smsp-tower',  name: 'Plateau 8e étage',        address: 'SMSP Tower, 8e étage, Nouméa' },
+  { key: 'hilton-rdc',   clientKey: 'hilton-noumea', name: 'Rez-de-chaussée et lobby', address: 'Promenade R. Laroque — RDC, Nouméa' },
+  { key: 'dumbea-galerie', clientKey: 'dumbea-mall', name: 'Galerie principale',     address: 'Dumbéa Mall, Niveau 1' },
 ] as const
 
 const PEOPLE_ENTITIES = [
@@ -1619,6 +1580,73 @@ async function seedTenders(authIds: Record<string, string>) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+// PURGE — supprime les sites retirés du seed (anciens sites hors liste SITES)
+// ════════════════════════════════════════════════════════════════════════════════
+
+async function purgeRemovedSites() {
+  // Sites présents dans l'ancienne version du seed (34 sites) mais absents de SITES (6 sites).
+  // Protégé par is_demo = true côté seedOrg — refuse de s'exécuter sur une orga réelle.
+  const REMOVED_SITE_KEYS = [
+    'pacific-doniambo', 'pacific-hangar', 'pacific-labo',
+    'hilton-technique', 'hilton-piscine',
+    'dumbea-parking', 'dumbea-local-tech', 'dumbea-mairie', 'dumbea-sport',
+    'garnier-principal', 'garnier-internat', 'garnier-cuisine',
+    'port-terminal', 'port-frigo',
+    'total-montravel', 'total-dumbea',
+    'ballande-entrepot-a', 'ballande-entrepot-b',
+    'kuindo-bloc', 'kuindo-urgences',
+    'vale-fonderie', 'vale-traitement',
+    'casino-jeux', 'casino-machines',
+    'prony-mine', 'prony-usine',
+    'aircalin-maintenance', 'aircalin-bureaux',
+  ]
+
+  const REMOVED_CLIENT_KEYS = [
+    'pacific-industries', 'ville-dumbea', 'lycee-garnier', 'port-nc',
+    'totalenergies-nc', 'ballande-logistique', 'clinique-kuindo',
+    'vale-nc', 'casino-noumea', 'prony-resources', 'aircalin',
+  ]
+
+  const siteIds = REMOVED_SITE_KEYS.map(k => `'${duid('site:' + k)}'`).join(',')
+  const clientIds = REMOVED_CLIENT_KEYS.map(k => `'${duid('client:' + k)}'`).join(',')
+
+  const rows = await runSql(`
+    SELECT COUNT(*) AS n FROM public.sites WHERE id IN (${siteIds})
+  `) as Array<{ n: string }>
+  const count = parseInt(rows[0]?.n ?? '0', 10)
+  if (count === 0) {
+    console.log('  Purge : aucun ancien site à supprimer.')
+    return
+  }
+  console.log(`  Purge : ${count} anciens sites à supprimer…`)
+
+  // 1) interventions → missions (ON DELETE RESTRICT sur missions.site_id)
+  await runSql(`
+    DELETE FROM public.interventions
+    WHERE mission_id IN (
+      SELECT id FROM public.missions WHERE site_id IN (${siteIds})
+    )
+  `)
+  // 2) planning_cycle_slots → planning_cycles
+  await runSql(`
+    DELETE FROM public.planning_cycle_slots
+    WHERE cycle_id IN (
+      SELECT id FROM public.planning_cycles WHERE site_id IN (${siteIds})
+    )
+  `)
+  await runSql(`DELETE FROM public.planning_cycles WHERE site_id IN (${siteIds})`)
+  // 3) missions (RESTRICT levé une fois les interventions supprimées)
+  await runSql(`DELETE FROM public.missions WHERE site_id IN (${siteIds})`)
+  // 4) sites — cascade : site_reports, visit_capture, site_knowledge_proposals,
+  //                      site_actions, site_intervenants, etc.
+  await runSql(`DELETE FROM public.sites WHERE id IN (${siteIds})`)
+  // 5) clients retirés
+  await runSql(`DELETE FROM public.clients WHERE id IN (${clientIds})`)
+
+  process.stdout.write(`    Purge terminée — ${REMOVED_SITE_KEYS.length} sites, ${REMOVED_CLIENT_KEYS.length} clients supprimés\n`)
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 // MAIN
 // ════════════════════════════════════════════════════════════════════════════════
 
@@ -1633,6 +1661,7 @@ async function main() {
   await seedOrg()
   const authIds = await seedUsers()
   const adminId = authIds['david.bouvier']
+  await purgeRemovedSites()
   await seedClients()
   await seedSites()
   await seedKnowledgeEntities(adminId)
