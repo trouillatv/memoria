@@ -413,6 +413,7 @@ async function seedUsers(): Promise<Record<string, string>> {
     VALUES ${userVals}
     ON CONFLICT (id) DO UPDATE SET
       full_name       = EXCLUDED.full_name,
+      role            = EXCLUDED.role,
       organization_id = EXCLUDED.organization_id
   `)
 
