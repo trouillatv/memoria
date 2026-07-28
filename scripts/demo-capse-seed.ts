@@ -296,6 +296,66 @@ const TITLE_POOL = [
 const MOTIVES = ['inspection', 'controle', 'avancement', 'levee_reserves', 'maintenance', 'libre'] as const
 const OUTCOMES = ['conforme', 'conforme_reserves', 'non_conforme', 'a_revoir'] as const
 
+// ── Équipes internes CAPSE ─────────────────────────────────────────────────────
+
+const TEAMS = [
+  { key: 'team:insp-nord', name: 'Inspection Nord', color: '#3b82f6', members: ['jp.kaemo', 'sophie.wane'] },
+  { key: 'team:insp-sud', name: 'Inspection Sud', color: '#10b981', members: ['patrick.djiril'] },
+  { key: 'team:audit', name: 'Audit & Conformité', color: '#8b5cf6', members: ['marie.lefevre'] },
+] as const
+
+// ── Entreprises intervenantes (pour site_intervenants) ────────────────────────
+
+const CONTRACTORS = [
+  {
+    key: 'co:sotraval', name: 'Sotraval', city: 'Dumbéa', phone: '+687 41 33 20',
+    contacts: [{ key: 'cc:thierry-paoua', name: 'Thierry Paoua', fn: 'Conducteur de travaux', mobile: '+687 71 33 20' }],
+  },
+  {
+    key: 'co:sopac', name: 'SOPAC Sécurité', city: 'Nouméa', phone: '+687 26 18 50',
+    contacts: [{ key: 'cc:luc-barnard', name: 'Luc Barnard', fn: 'Agent de sécurité référent', mobile: '+687 76 18 50' }],
+  },
+  {
+    key: 'co:calypso', name: 'Calypso Extincteurs', city: 'Nouméa', phone: '+687 27 40 60',
+    contacts: [{ key: 'cc:alice-nondas', name: 'Alice Nondas', fn: 'Technicienne sprinklers', mobile: '+687 77 40 60' }],
+  },
+  {
+    key: 'co:elec-plus', name: 'Élec Plus NC', city: 'Nouméa', phone: '+687 28 42 10',
+    contacts: [{ key: 'cc:felix-katrawi', name: 'Félix Katrawi', fn: "Chef d'équipe électricité", mobile: '+687 78 42 10' }],
+  },
+  {
+    key: 'co:clim-expair', name: 'Clim Expair', city: 'Nouméa', phone: '+687 24 15 30',
+    contacts: [{ key: 'cc:marc-rodriguez', name: 'Marc Rodriguez', fn: 'Responsable technique', mobile: '+687 74 15 30' }],
+  },
+  {
+    key: 'co:btp-nc', name: 'BTP Nouvelle-Calédonie', city: 'Dumbéa', phone: '+687 41 55 80',
+    contacts: [{ key: 'cc:olivier-meunier', name: 'Olivier Meunier', fn: 'Conducteur de travaux', mobile: '+687 71 55 80' }],
+  },
+] as const
+
+// Rôles d'intervenant — 2-3 par site, rotation par index
+const SITE_ROLES = [
+  { role: 'Maintenance générale', coIdx: 0 },
+  { role: 'Sécurité incendie', coIdx: 1 },
+  { role: 'Extincteurs & sprinklers', coIdx: 2 },
+  { role: 'Électricité', coIdx: 3 },
+  { role: 'Climatisation', coIdx: 4 },
+] as const
+
+// Captures de visite — texte libre de notes de terrain
+const CAPTURE_NOTES = [
+  "Extincteur vérifié — étiquette de contrôle à jour.",
+  "Issue de secours dégagée, signalisation conforme.",
+  "Détecteur de fumée testé — déclenchement OK.",
+  "Local électrique fermé à clé, câbles organisés.",
+  "Réserve constatée : palette devant la porte coupe-feu.",
+  "Registre de sécurité à jour, dernière signature datée de ce mois.",
+  "Vanne sprinkler ouverte et positionnée correctement.",
+  "Point de rassemblement balisé, plan d'évacuation affiché.",
+  "Groupe électrogène testé — autonomie 4h confirmée.",
+  "Clapet de désenfumage manœuvré — fermeture étanche.",
+] as const
+
 // ════════════════════════════════════════════════════════════════════════════════
 // CONSTRUCTION D'UN DEBRIEF_ANALYSIS
 // ════════════════════════════════════════════════════════════════════════════════
@@ -645,6 +705,245 @@ async function seedProposalsForSite(site: (typeof SITES)[number]) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+// FONCTIONS OPÉRATIONNELLES (écrans Équipes, Planning, Chantier, Visite)
+// ════════════════════════════════════════════════════════════════════════════════
+
+async function seedTeams(authIds: Record<string, string>) {
+  console.log('  Équipes CAPSE…')
+  const adminId = authIds['david.bouvier']
+
+  const teamVals = TEAMS.map(t => `(
+    '${duid(t.key)}', ${esc(t.name)}, ${esc(t.color)}, true, '${ORG_ID}', '${adminId}'
+  )`).join(',')
+  await runSql(`
+    INSERT INTO public.teams (id, name, color, active, organization_id, created_by)
+    VALUES ${teamVals}
+    ON CONFLICT (id) DO UPDATE SET organization_id = EXCLUDED.organization_id
+  `)
+
+  const memberRows: string[] = []
+  for (const t of TEAMS) {
+    for (const userKey of t.members) {
+      memberRows.push(`(
+        '${duid('tmem:' + t.key + ':' + userKey)}',
+        '${duid(t.key)}',
+        '${authIds[userKey as keyof typeof authIds]}',
+        '${ORG_ID}'
+      )`)
+    }
+  }
+  await runSql(`
+    INSERT INTO public.team_members (id, team_id, user_id, organization_id)
+    VALUES ${memberRows.join(',')}
+    ON CONFLICT (id) DO NOTHING
+  `)
+  process.stdout.write(`    ${TEAMS.length} équipes, ${memberRows.length} membres\n`)
+}
+
+async function seedContractors() {
+  console.log('  Entreprises intervenantes…')
+
+  const coVals = CONTRACTORS.map(c => `(
+    '${duid(c.key)}', '${ORG_ID}', ${esc(c.name)}, ${esc(c.city)}, ${esc(c.phone)}
+  )`).join(',')
+  await runSql(`
+    INSERT INTO public.companies (id, organization_id, name, city, phone)
+    VALUES ${coVals}
+    ON CONFLICT (id) DO NOTHING
+  `)
+
+  const contactVals: string[] = []
+  for (const c of CONTRACTORS) {
+    for (const ct of c.contacts) {
+      contactVals.push(`(
+        '${duid(ct.key)}', '${duid(c.key)}', '${ORG_ID}', ${esc(ct.name)}, ${esc(ct.fn)}, ${esc(ct.mobile)}, true
+      )`)
+    }
+  }
+  await runSql(`
+    INSERT INTO public.company_contacts (id, company_id, organization_id, full_name, function, mobile, is_main)
+    VALUES ${contactVals.join(',')}
+    ON CONFLICT (id) DO NOTHING
+  `)
+  process.stdout.write(`    ${CONTRACTORS.length} entreprises, ${contactVals.length} contacts\n`)
+}
+
+async function seedSiteIntervenants() {
+  console.log('  Intervenants par chantier…')
+  const rows: string[] = []
+
+  for (let si = 0; si < SITES.length; si++) {
+    const site = SITES[si]
+    const siteId = duid('site:' + site.key)
+    const roleCount = 2 + (si % 2) // 2 ou 3 rôles par site
+    for (let r = 0; r < roleCount; r++) {
+      const roleEntry = SITE_ROLES[(si + r) % SITE_ROLES.length]
+      const co = CONTRACTORS[roleEntry.coIdx]
+      const mainContact = co.contacts[0]
+      rows.push(`(
+        '${duid('si:' + site.key + ':' + r)}',
+        '${siteId}',
+        ${esc(roleEntry.role)},
+        '${duid(co.key)}',
+        '${duid(mainContact.key)}'
+      )`)
+    }
+  }
+
+  for (let i = 0; i < rows.length; i += 50) {
+    await runSql(`
+      INSERT INTO public.site_intervenants (id, site_id, role, company_id, main_contact_id)
+      VALUES ${rows.slice(i, i + 50).join(',')}
+      ON CONFLICT (id) DO NOTHING
+    `)
+  }
+  process.stdout.write(`    ${rows.length} rattachements site↔entreprise\n`)
+}
+
+async function seedMissions(authIds: Record<string, string>) {
+  console.log(`  Missions & interventions (${SITES.length} sites × 2 missions × 6 interventions)…`)
+  const adminId = authIds['david.bouvier']
+
+  const missionRows: string[] = []
+  const interventionRows: string[] = []
+
+  const missionDefs = [
+    { suffix: 'm0', name: 'Inspection mensuelle sécurité incendie', cadence: 'monthly' },
+    { suffix: 'm1', name: 'Contrôle extincteurs & sprinklers', cadence: 'on_demand' },
+  ] as const
+
+  const intSchedule = [
+    { offset: -90, status: 'completed' },
+    { offset: -60, status: 'completed' },
+    { offset: -30, status: 'completed' },
+    { offset: -10, status: 'completed' },
+    { offset: 20, status: 'planned' },
+    { offset: 50, status: 'planned' },
+  ] as const
+
+  for (let si = 0; si < SITES.length; si++) {
+    const site = SITES[si]
+    const siteId = duid('site:' + site.key)
+    const teamId = duid(TEAMS[si % 3].key)
+
+    for (const md of missionDefs) {
+      const missionId = duid(`mission:${site.key}:${md.suffix}`)
+      missionRows.push(`(
+        '${missionId}', '${siteId}', ${esc(md.name)},
+        '${md.cadence}'::mission_cadence, true, '${ORG_ID}', '${adminId}'
+      )`)
+
+      for (let ii = 0; ii < intSchedule.length; ii++) {
+        const { offset, status } = intSchedule[ii]
+        const intId = duid(`int:${site.key}:${md.suffix}:${ii}`)
+        const scheduledAt = addDays(TODAY_STR, offset)
+        scheduledAt.setHours(8, 0, 0, 0)
+        interventionRows.push(`(
+          '${intId}', '${missionId}',
+          ${esc(pgTs(scheduledAt))}, '${isoDate(scheduledAt)}',
+          '${status}'::intervention_status, '${teamId}',
+          '${ORG_ID}', '${adminId}'
+        )`)
+      }
+    }
+  }
+
+  for (let i = 0; i < missionRows.length; i += 50) {
+    await runSql(`
+      INSERT INTO public.missions (id, site_id, name, cadence, active, organization_id, created_by)
+      VALUES ${missionRows.slice(i, i + 50).join(',')}
+      ON CONFLICT (id) DO NOTHING
+    `)
+  }
+  process.stdout.write(`    ${missionRows.length} missions\n`)
+
+  for (let i = 0; i < interventionRows.length; i += 50) {
+    await runSql(`
+      INSERT INTO public.interventions
+        (id, mission_id, scheduled_at, scheduled_for, status, assigned_team_id, organization_id, created_by)
+      VALUES ${interventionRows.slice(i, i + 50).join(',')}
+      ON CONFLICT (id) DO NOTHING
+    `)
+    process.stdout.write('.')
+  }
+  console.log()
+  process.stdout.write(`    ${interventionRows.length} interventions\n`)
+}
+
+async function seedSiteActions(authIds: Record<string, string>) {
+  console.log('  Actions ouvertes par chantier…')
+  const adminId = authIds['david.bouvier']
+  const rows: string[] = []
+
+  for (let si = 0; si < SITES.length; si++) {
+    const site = SITES[si]
+    const siteId = duid('site:' + site.key)
+    const reportId = duid(`rp:${site.key}:v0`)
+    const count = 3 + (si % 2)
+
+    for (let ai = 0; ai < count; ai++) {
+      const action = pick(ACTION_POOL, `sa:${site.key}:${ai}`)
+      const aId = duid(`sa:${site.key}:${ai}`)
+      const dueDate = isoDate(addDays(TODAY_STR, -30 + ai * 18))
+      rows.push(`(
+        '${aId}', '${siteId}', '${reportId}',
+        ${esc(action.title)}, ${esc(action.rationale)},
+        'Sécurité incendie', ${esc(action.owner)},
+        'open', '${dueDate}', '${adminId}'
+      )`)
+    }
+  }
+
+  for (let i = 0; i < rows.length; i += 50) {
+    await runSql(`
+      INSERT INTO public.site_actions
+        (id, site_id, report_id, title, body, corps_etat, assigned_to, status, due_date, created_by)
+      VALUES ${rows.slice(i, i + 50).join(',')}
+      ON CONFLICT (id) DO NOTHING
+    `)
+    process.stdout.write('.')
+  }
+  console.log()
+  process.stdout.write(`    ${rows.length} actions\n`)
+}
+
+async function seedVisitCaptures(authIds: Record<string, string>) {
+  console.log('  Captures de visite…')
+  const adminId = authIds['david.bouvier']
+  const rows: string[] = []
+
+  for (const site of SITES) {
+    const siteId = duid('site:' + site.key)
+    for (let v = 0; v < 4; v++) {
+      const reportId = duid(`rp:${site.key}:v${v}`)
+      const captureCount = 3 + (v % 2)
+      for (let c = 0; c < captureCount; c++) {
+        const note = pick(CAPTURE_NOTES, `vc:${site.key}:v${v}:c${c}`)
+        const kind = c === 0 ? 'verification' : 'note'
+        rows.push(`(
+          '${duid('vc:' + site.key + ':v' + v + ':' + c)}',
+          '${ORG_ID}', '${siteId}', '${reportId}',
+          '${kind}', 'processed',
+          ${esc(note)}, '${adminId}'
+        )`)
+      }
+    }
+  }
+
+  for (let i = 0; i < rows.length; i += 100) {
+    await runSql(`
+      INSERT INTO public.visit_capture
+        (id, organization_id, site_id, report_id, kind, status, body, created_by)
+      VALUES ${rows.slice(i, i + 100).join(',')}
+      ON CONFLICT (id) DO NOTHING
+    `)
+    process.stdout.write('.')
+  }
+  console.log()
+  process.stdout.write(`    ${rows.length} captures\n`)
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 // MAIN
 // ════════════════════════════════════════════════════════════════════════════════
 
@@ -677,13 +976,27 @@ async function main() {
   }
   console.log()
 
+  // Écrans opérationnels — Équipes, Planning, Chantier, Visite
+  await seedTeams(authIds)
+  await seedContractors()
+  await seedSiteIntervenants()
+  await seedMissions(authIds)
+  await seedSiteActions(authIds)
+  await seedVisitCaptures(authIds)
+
   console.log('\n✅ Seed terminé.')
   console.log(`  Org          : CAPSE Démonstration (${ORG_ID})`)
   console.log(`  Admin        : david.bouvier.test@memoria.nc — ${PASSWORD}`)
   console.log(`  Clients      : ${CLIENTS.length}`)
   console.log(`  Sites        : ${SITES.length}`)
+  console.log(`  Équipes      : ${TEAMS.length} (${TEAMS.map(t => t.name).join(', ')})`)
+  console.log(`  Entreprises  : ${CONTRACTORS.length} avec contacts`)
   console.log(`  Reports/site : 4 visites passées + 2 réunions + 2 futures = 8`)
   console.log(`  Total reports: ~${SITES.length * 8}`)
+  console.log(`  Missions     : ${SITES.length * 2} (2/site)`)
+  console.log(`  Interventions: ${SITES.length * 2 * 6} (6/mission)`)
+  console.log(`  Actions      : ~${SITES.length * 3} (3-4/site)`)
+  console.log(`  Captures     : ~${SITES.length * 4 * 3} (3-4/visite passée)`)
 }
 
 main().catch((e) => {
