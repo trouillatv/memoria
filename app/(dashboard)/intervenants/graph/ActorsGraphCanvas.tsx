@@ -16,6 +16,7 @@ import { useEffect, useRef } from 'react'
 import { graphTimeline, type ActorsGraph, type ActorGraphKind, type ActorGraphNode, type ActorGraphRel } from '@/lib/knowledge/actors-graph-model'
 import { createForceGraphEngine, type ForceGraphEngine, type Vec } from '@/components/graph/force-graph-engine'
 import { RING_COLOR, HISTORICAL_COLOR, NEUTRAL_FILL, companyFill } from './actor-colors'
+import { hierarchicalLayout, type GraphLayoutKind } from '@/lib/knowledge/graph-layouts'
 
 export type SelectableKind = 'person' | 'company' | 'team'
 
@@ -82,7 +83,7 @@ function isoSig(ctrl: GraphControl | undefined): string {
   return ctrl?.isolate && ctrl.focusSet ? [...ctrl.focusSet].sort().join(',') : ''
 }
 
-export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', onSelectActor, control, centerRequest }: {
+export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', onSelectActor, control, centerRequest, layout = 'force' }: {
   graph: ActorsGraph
   focusId?: string | null
   heightClass?: string
@@ -93,6 +94,9 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
   /** RECHERCHE : recentrer sur un nœud à la demande (le nonce force le recadrage
    *  même sur le même acteur). La sélection est portée par `control`. */
   centerRequest?: { id: string; nonce: number } | null
+  /** ALGORITHME DE PLACEMENT (V3 UX) : 'force' (physique) ou 'hierarchical'
+   *  (Organigramme : positions déterministes, physique coupée). */
+  layout?: GraphLayoutKind
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -149,6 +153,8 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
     for (const id of [...cache.keys()]) if (!idSet.has(id)) cache.delete(id)
     // Chronologie : première apparition structurelle de chaque nœud (pur).
     const { firstSeen } = graphTimeline(graph)
+    // LAYOUT STATIQUE (Organigramme) : positions déterministes + physique coupée.
+    const layoutPos = layout === 'hierarchical' ? hierarchicalLayout(graph) : null
 
     const api = createForceGraphEngine(canvas, wrap, {
       nodeIds: () => ids,
@@ -174,6 +180,24 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
         return s
       },
       seed(P, size, view) {
+        if (layoutPos) {
+          // ORGANIGRAMME : chaque nœud à sa position hiérarchique fixe. Les nœuds hors
+          // layout (chantiers/actions, invisibles ici) sont renvoyés hors-champ.
+          for (const n of graph.nodes) {
+            const lp = layoutPos.get(n.id)
+            P[n.id] = lp ? { x: lp.x, y: lp.y, vx: 0, vy: 0, alpha: P[n.id]?.alpha ?? 0 } : { x: 1e6, y: 0, vx: 0, vy: 0, alpha: 0 }
+          }
+          // Recadrage : ajuster zoom + centre à l'emprise du layout.
+          const xs = [...layoutPos.values()].map((p) => p.x), ys = [...layoutPos.values()].map((p) => p.y)
+          if (xs.length) {
+            const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys)
+            const w = maxX - minX + 240, h = maxY - minY + 160
+            view.k = Math.max(0.3, Math.min(1.2, Math.min(size.W / w, size.H / h)))
+            view.tx = size.W / 2 - ((minX + maxX) / 2) * view.k
+            view.ty = size.H / 2 - ((minY + maxY) / 2) * view.k
+          }
+          return
+        }
         // Anneau à angle d'or autour du centre monde (0,0) — la gravité y ramène.
         let i = 0
         for (const n of graph.nodes) {
@@ -258,9 +282,9 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
           if (ring) { ctx.lineWidth = 3; ctx.strokeStyle = ring; ctx.stroke() }
           // Sélection : anneau sombre EXTÉRIEUR (n'écrase pas l'anneau d'alerte).
           if (n.id === sel) { ctx.beginPath(); ctx.arc(p.x, p.y, r + 2.5, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.strokeStyle = '#0f172a'; ctx.stroke() }
-          // Labels : seulement le focus et son contexte quand un focus existe —
-          // l'œil comprend immédiatement ce qui est important.
-          if (st !== 'out') {
+          // Labels : toujours en Organigramme (un organigramme se lit en entier) ;
+          // sinon seulement le focus et son contexte.
+          if (layout === 'hierarchical' || st !== 'out') {
             ctx.globalAlpha = p.alpha
             ctx.fillStyle = '#0f172a'
             ctx.font = `${st === 'focus' ? '600 ' : ''}${n.kind === 'site' ? 12 : 11}px system-ui, sans-serif`
@@ -271,7 +295,10 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
         }
         ctx.globalAlpha = 1
       },
-      physics: { repulsion: 5200, spring: 0.02, rest: () => 150, friction: 0.82, gravity: 0.0015 },
+      // Organigramme : AUCUNE force — les positions hiérarchiques sont fixes.
+      physics: layout === 'hierarchical'
+        ? { repulsion: 0, spring: 0, rest: () => 0, friction: 0.9, gravity: 0 }
+        : { repulsion: 5200, spring: 0.02, rest: () => 150, friction: 0.82, gravity: 0.0015 },
       // Fondu d'apparition/disparition (replay + entrées de nœuds) — mêmes constantes
       // que Mémoire (0.12 in / 0.14 out).
       fade: { in: 0.12, out: 0.14 },
@@ -314,12 +341,13 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
     api.kick(2000)
 
     return () => {
-      // Mémorise les positions pour le prochain graphe (dédup par id).
-      for (const [id, p] of Object.entries(api.P)) cache.set(id, { ...p })
+      // Mémorise les positions pour le prochain graphe FORCE (jamais les positions
+      // hiérarchiques, qui pollueraient la disposition physique).
+      if (layout !== 'hierarchical') for (const [id, p] of Object.entries(api.P)) cache.set(id, { ...p })
       api.destroy()
       apiRef.current = null
     }
-  }, [graph])
+  }, [graph, layout])
 
   // Centrage initial (« Voir son réseau » / focus Explorer).
   useEffect(() => {

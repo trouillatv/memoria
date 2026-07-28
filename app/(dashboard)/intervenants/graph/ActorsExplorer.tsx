@@ -6,8 +6,9 @@
 
 import { useState } from 'react'
 import { Route, Share2, GitFork, Building2 } from 'lucide-react'
-import { DEFAULT_PERSPECTIVE, type ActorsGraph } from '@/lib/knowledge/actors-graph-model'
+import { DEFAULT_PERSPECTIVE, PERSPECTIVES, type ActorsGraph } from '@/lib/knowledge/actors-graph-model'
 import type { CollaborationGraphView } from '@/lib/knowledge/collaboration-graph'
+import { structuralGraphSummary, collaborationGraphSummary } from '@/lib/knowledge/graph-summary'
 import { ActorsGraphCanvas } from './ActorsGraphCanvas'
 import { GraphControls } from './GraphControls'
 import { GraphSearch } from './GraphSearch'
@@ -31,6 +32,13 @@ export function ActorsExplorer({ graph, focusId, collabGraph }: { graph: ActorsG
 
   const collabReady = !!collabGraph && collabGraph.nodes.length > 0
 
+  // TITRE VIVANT : le graphe raconte avant qu'on le regarde (compteurs par lecture).
+  const title = source === 'structural'
+    ? { label: PERSPECTIVES.find((p) => p.id === ex.perspective)?.label ?? 'Structurel', summary: structuralGraphSummary(graph, ex.visibleKinds) }
+    : source === 'ecosystem'
+      ? { label: 'Écosystème', summary: collabReady ? collaborationGraphSummary(collabGraph!) : '' }
+      : { label: 'Collaboration', summary: collabReady ? collaborationGraphSummary(collabGraph!) : '' }
+
   return (
     <div className="space-y-3">
       <div className="inline-flex self-start rounded-lg border border-border/60 bg-muted/40 p-0.5">
@@ -45,6 +53,11 @@ export function ActorsExplorer({ graph, focusId, collabGraph }: { graph: ActorsG
           )
         })}
       </div>
+
+      <p className="text-[13.5px]">
+        <span className="font-semibold text-foreground">{title.label}</span>
+        {title.summary ? <span className="text-muted-foreground"> — {title.summary}</span> : null}
+      </p>
 
       {source !== 'structural' ? (
         collabReady
@@ -71,7 +84,7 @@ export function ActorsExplorer({ graph, focusId, collabGraph }: { graph: ActorsG
           <GraphSearch query={ex.query} onQuery={ex.setQuery} matches={ex.matches} onPick={ex.focusNode} />
         </div>
         <div className="relative">
-        <ActorsGraphCanvas graph={graph} focusId={focusId} control={ex.control} centerRequest={ex.centerRequest} heightClass="h-[70vh]" />
+        <ActorsGraphCanvas graph={graph} focusId={focusId} control={ex.control} centerRequest={ex.centerRequest} heightClass="h-[70vh]" layout={ex.perspective === 'org' ? 'hierarchical' : 'force'} />
         {ex.followFrom && (
           <div className="absolute left-1/2 top-2 z-10 flex max-w-[92%] -translate-x-1/2 items-center gap-2 rounded-full border bg-card px-3.5 py-1.5 text-[12.5px] shadow-md">
             <Route className="h-3.5 w-3.5 shrink-0 text-brand-600" aria-hidden />
