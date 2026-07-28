@@ -143,7 +143,16 @@ export function CollaborationCanvas({ nodes, edges, membershipEdges = [], contro
         }
         ctx.globalAlpha = 1
       },
-      physics: { repulsion: 6000, spring: 0.02, rest: () => 160, friction: 0.82, gravity: 0.0016 },
+      physics: {
+        repulsion: 6000, spring: 0.02, friction: 0.82, gravity: 0.0016,
+        // FORCE → PROXIMITÉ : un lien fort raccourcit la distance de repos (les
+        // entreprises très liées se rapprochent → vraie silhouette d'écosystème,
+        // pas « la Collaboration à qui on a masqué les personnes »). Borné [90,210].
+        // Les appartenances (index >= edges.length) collent la personne à son entreprise.
+        rest: (_e, index) => index < edges.length
+          ? Math.max(90, 210 - 26 * Math.sqrt(Math.max(0, edges[index]!.strength)))
+          : 64,
+      },
       fade: { in: 0.12, out: 0.14 },
       loop: 'settle',
       zoom: { min: 0.2, max: 3, factorIn: 1.12, factorOut: 0.893 },
