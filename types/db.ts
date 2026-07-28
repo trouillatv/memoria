@@ -976,6 +976,9 @@ export interface DbInterventionChecklistItem {
   expected_qty: number | null
   delivered_qty: number | null
   item_status: string | null
+  // Provenance (mig 252) : 'mission_template' = copié du modèle de mission ;
+  // 'local' = ajouté pour cette intervention uniquement.
+  source: 'mission_template' | 'local'
 }
 
 export type PhotoKind = 'before' | 'after' | 'anomaly' | 'proof' | 'passage' | 'access'

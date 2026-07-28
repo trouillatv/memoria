@@ -513,6 +513,7 @@ export async function createInterventionFromWeekAction(
         label: item.label,
         position: item.position ?? idx + 1,
         required: item.required ?? false,
+        source: 'mission_template' as const,
       })),
     )
   }

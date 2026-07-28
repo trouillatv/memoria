@@ -438,15 +438,89 @@ export async function bulkInsertChecklistItems(items: Array<{
   position: number
   required: boolean
   expected_qty?: number | null
+  source?: 'mission_template' | 'local'
 }>): Promise<DbInterventionChecklistItem[]> {
   if (items.length === 0) return []
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('intervention_checklist_items')
-    .insert(items.map((i) => ({ ...i, done: false })))
+    .insert(items.map((i) => ({ ...i, done: false, source: i.source ?? 'mission_template' })))
     .select('*')
   if (error) throw error
   return data ?? []
+}
+
+// ----- Lot 1 : édition d'une intervention planned -----
+
+export async function addChecklistItem(input: {
+  interventionId: string
+  label: string
+  required: boolean
+  position: number
+}): Promise<DbInterventionChecklistItem> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('intervention_checklist_items')
+    .insert({
+      intervention_id: input.interventionId,
+      label: input.label,
+      required: input.required,
+      position: input.position,
+      done: false,
+      source: 'local',
+    })
+    .select('*')
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function removeChecklistItem(itemId: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('intervention_checklist_items')
+    .delete()
+    .eq('id', itemId)
+  if (error) throw error
+}
+
+export async function updateChecklistItem(itemId: string, patch: {
+  label?: string
+  required?: boolean
+  position?: number
+}): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('intervention_checklist_items')
+    .update(patch)
+    .eq('id', itemId)
+  if (error) throw error
+}
+
+/** Restaure les items 'mission_template' depuis le modèle ; préserve les 'local'. */
+export async function restoreChecklistFromMission(
+  interventionId: string,
+  templateItems: Array<{ label: string; required?: boolean; engagement_id?: string }>,
+): Promise<void> {
+  const supabase = createAdminClient()
+  await supabase
+    .from('intervention_checklist_items')
+    .delete()
+    .eq('intervention_id', interventionId)
+    .eq('source', 'mission_template')
+  if (templateItems.length === 0) return
+  const { error } = await supabase
+    .from('intervention_checklist_items')
+    .insert(templateItems.map((item, idx) => ({
+      intervention_id: interventionId,
+      engagement_id: item.engagement_id ?? null,
+      label: item.label,
+      position: idx,
+      required: item.required ?? false,
+      done: false,
+      source: 'mission_template' as const,
+    })))
+  if (error) throw error
 }
 
 export async function markChecklistItemDone(id: string, userId: string | null): Promise<void> {

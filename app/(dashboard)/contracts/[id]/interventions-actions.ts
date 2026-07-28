@@ -74,6 +74,7 @@ export async function createInterventionAction(formData: FormData) {
       position: item.position ?? idx + 1,
       required: item.required ?? false,
       expected_qty: item.expected_qty ?? null,
+      source: 'mission_template' as const,
     })))
   }
 

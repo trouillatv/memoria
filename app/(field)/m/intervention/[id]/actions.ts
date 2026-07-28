@@ -13,7 +13,14 @@ import {
   createAnomaly,
   rescheduleIntervention,
   getAvailableSlotsForTeam,
+  addChecklistItem,
+  removeChecklistItem,
+  updateChecklistItem,
+  restoreChecklistFromMission,
+  listChecklistItemsByIntervention,
 } from '@/lib/db/interventions'
+import { getMission } from '@/lib/db/missions'
+import type { ChecklistTemplateItem } from '@/types/db'
 import { markInterventionSkipped } from '@/lib/db/intervention-templates'
 import { logAuditEvent } from '@/lib/audit/log'
 import { requireOwned } from '@/lib/auth/ownership'
@@ -563,4 +570,86 @@ export async function deletePhotoMobileAction(photoId: string): Promise<{ ok: tr
 
   revalidatePath(`/m/intervention/${photo.intervention_id}`)
   return { ok: true as const }
+}
+
+// ----- Édition de checklist (Lot 1 — intervention planned uniquement) -----
+
+const EDIT_ROLES = ['admin', 'manager', 'chef_equipe'] as const
+
+async function guardChecklistEdit(interventionId: string) {
+  const user = await getCurrentUserWithProfile()
+  if (!user) return { error: 'Non authentifié' as const }
+  if (!(EDIT_ROLES as readonly string[]).includes(user.role)) return { error: 'Non autorisé' as const }
+  const intervention = await getIntervention(interventionId)
+  if (!intervention) return { error: 'Intervention introuvable' as const }
+  if (intervention.status !== 'planned') return { error: 'Modification impossible : intervention déjà démarrée ou terminée.' as const }
+  return { user, intervention }
+}
+
+export async function addChecklistItemAction(
+  fd: FormData,
+): Promise<{ error: string } | { ok: true }> {
+  const interventionId = fd.get('intervention_id') as string
+  const guard = await guardChecklistEdit(interventionId)
+  if ('error' in guard) return { error: guard.error! }
+
+  const label = (fd.get('label') as string | null)?.trim() ?? ''
+  if (!label) return { error: 'Libellé requis' }
+  const required = fd.get('required') === 'true'
+
+  const existing = await listChecklistItemsByIntervention(interventionId)
+  const position = existing.length > 0 ? Math.max(...existing.map((i) => i.position)) + 1 : 0
+
+  await addChecklistItem({ interventionId, label, required, position })
+  revalidatePath(`/m/intervention/${interventionId}`)
+  return { ok: true }
+}
+
+export async function removeChecklistItemAction(
+  fd: FormData,
+): Promise<{ error: string } | { ok: true }> {
+  const interventionId = fd.get('intervention_id') as string
+  const itemId = fd.get('item_id') as string
+  const guard = await guardChecklistEdit(interventionId)
+  if ('error' in guard) return { error: guard.error! }
+
+  await removeChecklistItem(itemId)
+  revalidatePath(`/m/intervention/${interventionId}`)
+  return { ok: true }
+}
+
+export async function updateChecklistItemAction(
+  fd: FormData,
+): Promise<{ error: string } | { ok: true }> {
+  const interventionId = fd.get('intervention_id') as string
+  const itemId = fd.get('item_id') as string
+  const guard = await guardChecklistEdit(interventionId)
+  if ('error' in guard) return { error: guard.error! }
+
+  const label = (fd.get('label') as string | null)?.trim()
+  const requiredRaw = fd.get('required')
+  const patch: { label?: string; required?: boolean } = {}
+  if (label) patch.label = label
+  if (requiredRaw !== null) patch.required = requiredRaw === 'true'
+
+  if (Object.keys(patch).length === 0) return { ok: true }
+  await updateChecklistItem(itemId, patch)
+  revalidatePath(`/m/intervention/${interventionId}`)
+  return { ok: true }
+}
+
+export async function restoreChecklistFromMissionAction(
+  fd: FormData,
+): Promise<{ error: string } | { ok: true }> {
+  const interventionId = fd.get('intervention_id') as string
+  const guard = await guardChecklistEdit(interventionId)
+  if ('error' in guard) return { error: guard.error! }
+
+  const mission = await getMission(guard.intervention.mission_id)
+  if (!mission) return { error: 'Mission introuvable' }
+  const template = (mission.default_checklist ?? []) as ChecklistTemplateItem[]
+
+  await restoreChecklistFromMission(interventionId, template)
+  revalidatePath(`/m/intervention/${interventionId}`)
+  return { ok: true }
 }

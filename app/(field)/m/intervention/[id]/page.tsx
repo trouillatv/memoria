@@ -21,6 +21,7 @@ import { formatRelativeShort } from '@/lib/format'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { AnomalyList } from './AnomalyList'
 import { ChecklistMobile } from './checklist-mobile'
+import { EditChecklistSheet } from './EditChecklistSheet'
 import { StartInterventionButton } from './start-intervention-button'
 import { AssignTeamMobile } from './AssignTeamMobile'
 import { listTeams, listActiveTeamIdsForUser } from '@/lib/db/teams'
@@ -526,16 +527,36 @@ export default async function FieldInterventionPage({
       )}
 
       {/* Checklist masquée si vide (cas d'une intervention ponctuelle : pas de
-          tâches obligatoires — le travail est l'objet lui-même). */}
-      {checklistItems.length > 0 && (
-        <ChecklistMobile
-          interventionId={id}
-          items={checklistItems}
-          serverPhotos={photos}
-          signedUrls={signedUrls}
-          canEdit={isInProgress}
-          executorByToken={Object.fromEntries(tokenLabel)}
-        />
+          tâches obligatoires — le travail est l'objet lui-même).
+          Lot 1 : bouton "Modifier" visible par admin/manager/chef_equipe tant
+          que l'intervention est planned (structure figée à partir de in_progress). */}
+      {(checklistItems.length > 0 || isPlanned) && (
+        <div className="space-y-2">
+          {isPlanned && (user.role === 'admin' || user.role === 'manager' || user.role === 'chef_equipe') && (
+            <div className="flex justify-end">
+              <EditChecklistSheet
+                interventionId={id}
+                items={checklistItems}
+                hasMissionTemplate={(mission?.default_checklist?.length ?? 0) > 0}
+              />
+            </div>
+          )}
+          {checklistItems.length > 0 && (
+            <ChecklistMobile
+              interventionId={id}
+              items={checklistItems}
+              serverPhotos={photos}
+              signedUrls={signedUrls}
+              canEdit={isInProgress}
+              executorByToken={Object.fromEntries(tokenLabel)}
+            />
+          )}
+          {checklistItems.length === 0 && isPlanned && (
+            <p className="text-sm text-muted-foreground px-1">
+              Aucune tâche pour l&apos;instant — ajoutez-en via « Modifier ».
+            </p>
+          )}
+        </div>
       )}
 
       {/* CAPTURER UNE PREUVE — les gestes de la visite, groupés dans UNE carte

@@ -42,6 +42,7 @@ function makeItem(overrides: Partial<DbInterventionChecklistItem> = {}): DbInter
     expected_qty: null,
     delivered_qty: null,
     item_status: null,
+    source: 'mission_template',
     ...overrides,
   }
 }
