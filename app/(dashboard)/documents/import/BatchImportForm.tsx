@@ -27,6 +27,7 @@ interface Row {
   id: string
   file: File
   documentType: string
+  effectiveDate: string // date du PV pour historical_visit_report (YYYY-MM-DD)
   embedOverride: boolean | null // null = suit la reco
   status: RowStatus
   error?: string
@@ -82,6 +83,7 @@ export function BatchImportForm({
         id: globalThis.crypto.randomUUID(),
         file,
         documentType: guessDocumentType(file.name),
+        effectiveDate: '',
         embedOverride: null,
         status: 'idle' as RowStatus,
       }))
@@ -118,6 +120,9 @@ export function BatchImportForm({
         fd.set('visibility_level', visibility)
         fd.set('embed', rowEmbed(row) ? 'true' : 'false')
         fd.set('memory_tier', classifyDocument({ documentType: row.documentType, filename: row.file.name }).tier)
+        if (row.documentType === 'historical_visit_report' && row.effectiveDate) {
+          fd.set('effective_date', row.effectiveDate)
+        }
         if (targetType && targetId) {
           fd.set('target_type', targetType)
           fd.set('target_id', targetId)
@@ -258,7 +263,22 @@ export function BatchImportForm({
                       title={isLitige ? 'Litige : jamais indexé (doctrine)' : 'Indexer pour la recherche'}
                     />
                   </div>
-                  <div className="col-span-3 text-xs text-muted-foreground truncate" title={c.reason}>{c.reason}</div>
+                  <div className="col-span-3 text-xs text-muted-foreground truncate">
+                    {row.documentType === 'historical_visit_report' ? (
+                      <label className="flex items-center gap-1.5">
+                        <span className="shrink-0 text-muted-foreground">Date du PV</span>
+                        <input
+                          type="date"
+                          value={row.effectiveDate}
+                          onChange={(e) => patchRow(row.id, { effectiveDate: e.target.value })}
+                          disabled={importing}
+                          className={`${selectCls} py-0.5 w-full`}
+                        />
+                      </label>
+                    ) : (
+                      <span title={c.reason}>{c.reason}</span>
+                    )}
+                  </div>
                   <div className="col-span-1 flex justify-end">
                     {row.status === 'uploading' && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                     {row.status === 'ok' && <Check className="h-4 w-4 text-emerald-600" />}
