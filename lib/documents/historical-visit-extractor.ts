@@ -249,7 +249,7 @@ export async function extractHistoricalPvProposals(
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0,
-            maxOutputTokens: 16000,
+            maxOutputTokens: 65536,
             responseMimeType: 'application/json',
             responseSchema: GEMINI_RESPONSE_SCHEMA,
           },
@@ -266,6 +266,7 @@ export async function extractHistoricalPvProposals(
       candidates: Array<{ content: { parts: Array<{ text: string }> } }>
     }
     outputText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+    if (!outputText) throw new Error('Gemini returned empty output')
     const parsed: unknown = JSON.parse(outputText)
     return LlmExtractionResultSchema.parse(parsed)
   } finally {
