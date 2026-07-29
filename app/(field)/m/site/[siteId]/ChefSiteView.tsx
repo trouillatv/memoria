@@ -110,6 +110,7 @@ export async function ChefSiteView({
     const { data } = await supabase
       .from('interventions')
       .select('id, status, scheduled_for, slot, planned_start, planned_end, mission_id, label')
+      .in('mission_id', chefMissionIds)   // ICI = missions de CE chantier uniquement
       .in('assigned_team_id', teamIds)
       .in('status', ['planned', 'in_progress'])
       .gte('scheduled_for', todayIso)
