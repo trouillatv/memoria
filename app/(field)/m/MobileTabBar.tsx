@@ -8,8 +8,8 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { usePathname } from 'next/navigation'
-import { Home, Building2, Plus, CheckSquare, NotebookText, X, Play, RotateCcw, Camera, AlertTriangle, CalendarX } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { Home, Building2, Plus, CheckSquare, NotebookText, X, Play, RotateCcw, Camera, AlertTriangle, CalendarX, ChevronRight } from 'lucide-react'
 import { MeetingLauncher } from './MeetingLauncher'
 import { VisitLauncherHome } from './VisitLauncherHome'
 import { InterventionLauncher } from './InterventionLauncher'
@@ -19,6 +19,11 @@ export type ChefLaunchIntervention = {
   missionName: string
   siteName: string | null
   status: string
+}
+
+export type ChefLaunchState = {
+  inProgress: ChefLaunchIntervention | null
+  upcoming: ChefLaunchIntervention[]
 }
 
 type Item = { href: string; label: string; Icon: typeof Home; isActive: (p: string) => boolean; badge?: boolean }
@@ -46,24 +51,38 @@ const PLUS_INTRO_KEY = 'memoria_plus_intro_seen'
 export function MobileTabBar({
   actionsCount,
   userRole,
-  chefIntervention = null,
+  chefLaunch = null,
 }: {
   actionsCount: number
   userRole: string
-  chefIntervention?: ChefLaunchIntervention | null
+  chefLaunch?: ChefLaunchState | null
 }) {
   const pathname = usePathname() ?? '/m'
+  const router = useRouter()
   const [createOpen, setCreateOpen] = useState(false)
   const [showIntro, setShowIntro] = useState(false)
-  // Le ➕ est contextuel au rôle (décision Vincent 2026-07-29). Le conducteur
-  // (admin/manager) PILOTE : il crée visites, réunions, interventions. Le chef
-  // d'équipe EXÉCUTE : il ne crée ni visite ni réunion libre. Son ➕ ouvre
-  // directement SON intervention affectée (commencer / reprendre / preuve /
-  // problème) — ou affiche « Aucune intervention à démarrer ».
+  // Le bouton central est contextuel au rôle (décision Vincent 2026-07-29). Le
+  // conducteur (admin/manager) PILOTE : ➕ « Créer » (visites, réunions,
+  // interventions). Le chef d'équipe EXÉCUTE : bouton ▶ qui pointe vers SON
+  // intervention — jamais un objet de création. Le symbole diffère car l'acte
+  // diffère (créer vs démarrer un travail existant).
   const isManager = userRole === 'admin' || userRole === 'manager'
+  const inProgress = chefLaunch?.inProgress ?? null
+  const upcoming = chefLaunch?.upcoming ?? []
   if (IMMERSIVE.some((p) => pathname.startsWith(p))) return null
 
   function openCreate() {
+    if (!isManager) {
+      // Chef ▶ : redirection DIRECTE quand il n'y a qu'une seule intervention à
+      // démarrer et rien en cours (le cas le plus fréquent → zéro clic inutile).
+      // Sinon (en cours, plusieurs, ou aucune) → sheet.
+      if (!inProgress && upcoming.length === 1) {
+        router.push(`/m/intervention/${upcoming[0].id}`)
+        return
+      }
+      setCreateOpen(true)
+      return
+    }
     try {
       if (!localStorage.getItem(PLUS_INTRO_KEY)) setShowIntro(true)
     } catch { /* stockage indisponible → pas d'intro, jamais bloquant */ }
@@ -80,16 +99,16 @@ export function MobileTabBar({
         <div className="mx-auto grid max-w-md grid-cols-5 items-end">
           {LEFT.map((it) => <Tab key={it.href} item={it} pathname={pathname} actionsCount={actionsCount} />)}
 
-          {/* Action flottante — le ➕ OUVRE la bottom sheet « Créer », il ne navigue
-              pas (plus de page-lanceur vide). Sans texte : c'est une action. */}
+          {/* Action flottante. Conducteur : ➕ « Créer ». Chef : ▶ « démarrer »
+              (le symbole colle à l'acte — exécuter, pas créer). */}
           <div className="flex items-center justify-center pb-2">
             <button
               type="button"
               onClick={openCreate}
-              aria-label="Créer"
+              aria-label={isManager ? 'Créer' : 'Mon intervention'}
               className={`-mt-5 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg ring-4 ring-background active:scale-95 transition-colors ${createOpen ? 'bg-emerald-700' : 'bg-emerald-600'}`}
             >
-              <Plus className="h-7 w-7" />
+              {isManager ? <Plus className="h-7 w-7" /> : <Play className="h-6 w-6 translate-x-0.5" fill="currentColor" />}
             </button>
           </div>
 
@@ -146,7 +165,7 @@ export function MobileTabBar({
                 <InterventionLauncher />
               </div>
             ) : (
-              <ChefCreateSheet intervention={chefIntervention} onNavigate={() => setCreateOpen(false)} />
+              <ChefCreateSheet inProgress={inProgress} upcoming={upcoming} onNavigate={() => setCreateOpen(false)} />
             )}
 
             {/* La grammaire reste consultable À VOLONTÉ (revue 2026-07-13) :
@@ -173,13 +192,51 @@ export function MobileTabBar({
 // Preuve + problème n'apparaissent qu'en cours : leurs sections cibles
 // (#capturer / #signaler) n'existent sur la fiche intervention qu'à ce moment.
 function ChefCreateSheet({
-  intervention,
+  inProgress,
+  upcoming,
   onNavigate,
 }: {
-  intervention: ChefLaunchIntervention | null
+  inProgress: ChefLaunchIntervention | null
+  upcoming: ChefLaunchIntervention[]
   onNavigate: () => void
 }) {
-  if (!intervention) {
+  const subtitleOf = (i: ChefLaunchIntervention) =>
+    i.siteName ? `${i.missionName} · ${i.siteName}` : i.missionName
+
+  // Cas 1 — une intervention EN COURS : reprendre + gestes d'exécution.
+  if (inProgress) {
+    const base = `/m/intervention/${inProgress.id}`
+    return (
+      <div className="space-y-2.5">
+        <Link
+          href={base}
+          onClick={onNavigate}
+          className="flex items-center gap-3 rounded-xl bg-emerald-600 px-4 py-3.5 text-white active:bg-emerald-700"
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20">
+            <RotateCcw className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-semibold leading-snug">Reprendre mon intervention</span>
+            <span className="mt-0.5 block truncate text-[13px] text-white/80">{subtitleOf(inProgress)}</span>
+          </span>
+        </Link>
+        <div className="grid grid-cols-2 gap-2.5">
+          <Link href={`${base}#capturer`} onClick={onNavigate} className="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-3 active:bg-muted/40">
+            <Camera className="h-5 w-5 text-muted-foreground" />
+            <span className="text-[13px] font-medium">Ajouter une preuve</span>
+          </Link>
+          <Link href={`${base}#signaler`} onClick={onNavigate} className="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-3 active:bg-muted/40">
+            <AlertTriangle className="h-5 w-5 text-amber-600" />
+            <span className="text-[13px] font-medium">Signaler un problème</span>
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  // Cas 2 — AUCUNE intervention.
+  if (upcoming.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-muted/20 p-5 text-center">
         <CalendarX className="mx-auto mb-2 h-6 w-6 text-muted-foreground" />
@@ -196,50 +253,31 @@ function ChefCreateSheet({
     )
   }
 
-  const inProgress = intervention.status === 'in_progress'
-  const base = `/m/intervention/${intervention.id}`
-  const subtitle = intervention.siteName
-    ? `${intervention.missionName} · ${intervention.siteName}`
-    : intervention.missionName
-
+  // Cas 3 — PLUSIEURS interventions : choisir laquelle démarrer (le cas « une
+  // seule » ne passe jamais ici — il redirige directement, cf. openCreate).
   return (
-    <div className="space-y-2.5">
-      <Link
-        href={base}
-        onClick={onNavigate}
-        className="flex items-center gap-3 rounded-xl bg-emerald-600 px-4 py-3.5 text-white active:bg-emerald-700"
-      >
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20">
-          {inProgress ? <RotateCcw className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-semibold leading-snug">
-            {inProgress ? 'Reprendre mon intervention' : 'Commencer mon intervention'}
-          </span>
-          <span className="mt-0.5 block truncate text-[13px] text-white/80">{subtitle}</span>
-        </span>
-      </Link>
-
-      {inProgress && (
-        <div className="grid grid-cols-2 gap-2.5">
-          <Link
-            href={`${base}#capturer`}
-            onClick={onNavigate}
-            className="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-3 active:bg-muted/40"
-          >
-            <Camera className="h-5 w-5 text-muted-foreground" />
-            <span className="text-[13px] font-medium">Ajouter une preuve</span>
-          </Link>
-          <Link
-            href={`${base}#signaler`}
-            onClick={onNavigate}
-            className="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-3 active:bg-muted/40"
-          >
-            <AlertTriangle className="h-5 w-5 text-amber-600" />
-            <span className="text-[13px] font-medium">Signaler un problème</span>
-          </Link>
-        </div>
-      )}
+    <div className="space-y-2">
+      <p className="text-[13px] text-muted-foreground">Quelle intervention démarrer&nbsp;?</p>
+      <ul className="space-y-2">
+        {upcoming.map((i, idx) => (
+          <li key={i.id}>
+            <Link
+              href={`/m/intervention/${i.id}`}
+              onClick={onNavigate}
+              className={`flex items-center gap-3 rounded-xl px-4 py-3 ${idx === 0 ? 'bg-emerald-600 text-white active:bg-emerald-700' : 'border border-border bg-card active:bg-muted/40'}`}
+            >
+              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${idx === 0 ? 'bg-white/20' : 'bg-emerald-50 text-emerald-600'}`}>
+                <Play className="h-4 w-4" fill="currentColor" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold leading-snug">{i.missionName}</span>
+                {i.siteName && <span className={`mt-0.5 block truncate text-[12px] ${idx === 0 ? 'text-white/80' : 'text-muted-foreground'}`}>{i.siteName}</span>}
+              </span>
+              <ChevronRight className={`h-4 w-4 shrink-0 ${idx === 0 ? 'text-white/80' : 'text-muted-foreground'}`} />
+            </Link>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

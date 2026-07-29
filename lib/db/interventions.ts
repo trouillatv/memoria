@@ -823,14 +823,15 @@ export async function listInterventionsVisibleToUser(userId: string): Promise<Db
 }
 
 // ----------------------------------------------------------------------------
-// getChefLaunchIntervention — l'intervention « maintenant » du chef d'équipe
+// getChefLaunchState — l'état « maintenant » du chef d'équipe pour son bouton ▶
 //
 // Doctrine (Vincent 2026-07-29) : le chef est un EXÉCUTANT. Son point d'entrée
-// n'est ni une visite ni une réunion (actes de pilotage) mais SON intervention
-// affectée. Ce helper alimente le ➕ contextuel de la barre terrain :
-//   1. une intervention en cours (in_progress) → « Reprendre » ;
-//   2. sinon la prochaine planifiée (aujourd'hui ou à venir) → « Commencer » ;
-//   3. sinon null → l'UI affiche « Aucune intervention à démarrer ».
+// n'est ni une visite ni une réunion (actes de pilotage) mais SON intervention.
+// Le bouton terrain décide selon cet état :
+//   - inProgress non null      → sheet « Reprendre » (+ preuve / problème) ;
+//   - upcoming.length === 1     → redirection DIRECTE (aucune sheet) ;
+//   - upcoming.length > 1       → sheet pour choisir ;
+//   - rien                      → sheet « Aucune intervention à démarrer ».
 // ----------------------------------------------------------------------------
 
 export interface ChefLaunchIntervention {
@@ -840,7 +841,24 @@ export interface ChefLaunchIntervention {
   status: string
 }
 
-export async function getChefLaunchIntervention(userId: string): Promise<ChefLaunchIntervention | null> {
+export interface ChefLaunchState {
+  /** Une intervention en cours (in_progress) de l'équipe, s'il y en a une. */
+  inProgress: ChefLaunchIntervention | null
+  /** Interventions planifiées à venir (aujourd'hui d'abord), plafonnées. */
+  upcoming: ChefLaunchIntervention[]
+}
+
+function mapChefIntervention(r: unknown): ChefLaunchIntervention | null {
+  if (!r) return null
+  const row = r as { id: string; status: string; mission: unknown }
+  const mission = Array.isArray(row.mission) ? row.mission[0] : row.mission
+  const m = (mission ?? null) as { name?: string; site?: unknown } | null
+  const site = m ? (Array.isArray(m.site) ? m.site[0] : m.site) : null
+  const s = (site ?? null) as { name?: string } | null
+  return { id: row.id, status: row.status, missionName: m?.name ?? 'Intervention', siteName: s?.name ?? null }
+}
+
+export async function getChefLaunchState(userId: string): Promise<ChefLaunchState> {
   const supabase = createAdminClient()
   const { data: memberships } = await supabase
     .from('team_members')
@@ -849,40 +867,30 @@ export async function getChefLaunchIntervention(userId: string): Promise<ChefLau
     .is('left_at', null)
   const teamIds = (memberships ?? []).map((m) => m.team_id as string)
   const today = todayLocalIso()
-
   const sel = 'id, status, mission:missions!inner(name, site:sites(name))'
-  const pick = (rows: unknown): ChefLaunchIntervention | null => {
-    const r = Array.isArray(rows) ? rows[0] : rows
-    if (!r) return null
-    const row = r as { id: string; status: string; mission: unknown }
-    const mission = Array.isArray(row.mission) ? row.mission[0] : row.mission
-    const m = (mission ?? null) as { name?: string; site?: unknown } | null
-    const site = m ? (Array.isArray(m.site) ? m.site[0] : m.site) : null
-    const s = (site ?? null) as { name?: string } | null
-    return { id: row.id, status: row.status, missionName: m?.name ?? 'Intervention', siteName: s?.name ?? null }
-  }
+  const orFilter = `assigned_team_id.in.(${teamIds.join(',')}),team.cs.{${userId}}`
 
-  // 1. En cours — priorité absolue (« Reprendre »).
+  // 1. En cours — « Reprendre » (limite 1).
   let q1 = supabase.from('interventions').select(sel).eq('status', 'in_progress')
     .order('scheduled_at', { ascending: false }).limit(1)
-  q1 = teamIds.length > 0
-    ? q1.or(`assigned_team_id.in.(${teamIds.join(',')}),team.cs.{${userId}}`)
-    : q1.contains('team', [userId])
-  const inProgress = await q1
-  const hit = pick(inProgress.data)
-  if (hit) return hit
+  q1 = teamIds.length > 0 ? q1.or(orFilter) : q1.contains('team', [userId])
+  const inProgressRes = await q1
+  const inProgress = mapChefIntervention((inProgressRes.data ?? [])[0] ?? null)
 
-  // 2. Prochaine planifiée (aujourd'hui ou à venir) — « Commencer ».
+  // 2. À venir — planifiées aujourd'hui ou après (plafond 6, pour distinguer
+  //    « une seule » (redirection directe) de « plusieurs » (choix).
   let q2 = supabase.from('interventions').select(sel).eq('status', 'planned')
     .gte('scheduled_for', today)
     .order('scheduled_for', { ascending: true })
     .order('planned_start', { ascending: true, nullsFirst: true })
-    .limit(1)
-  q2 = teamIds.length > 0
-    ? q2.or(`assigned_team_id.in.(${teamIds.join(',')}),team.cs.{${userId}}`)
-    : q2.contains('team', [userId])
-  const planned = await q2
-  return pick(planned.data)
+    .limit(6)
+  q2 = teamIds.length > 0 ? q2.or(orFilter) : q2.contains('team', [userId])
+  const upcomingRes = await q2
+  const upcoming = (upcomingRes.data ?? [])
+    .map(mapChefIntervention)
+    .filter((x): x is ChefLaunchIntervention => x !== null)
+
+  return { inProgress, upcoming }
 }
 
 // =================================

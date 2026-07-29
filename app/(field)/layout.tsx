@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { User } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getOpenActionsHealth } from '@/lib/db/site-actions'
-import { getChefLaunchIntervention } from '@/lib/db/interventions'
+import { getChefLaunchState } from '@/lib/db/interventions'
 import { MobileTabBar } from './m/MobileTabBar'
 import { SyncIndicator } from './sync-indicator'
 import { SyncToastBridge } from './sync-toast-bridge'
@@ -26,12 +26,12 @@ export default async function FieldLayout({ children }: { children: React.ReactN
   // ce qui reste à faire). Résilient si le socle n'est pas migré.
   const actionsHealth = await getOpenActionsHealth()
 
-  // Le ➕ du chef d'équipe pointe vers SON intervention (exécutant, pas
-  // pilotage) : on résout l'intervention « maintenant ». Inutile pour le
-  // conducteur, qui garde le menu de création complet.
+  // Le bouton terrain du chef d'équipe pointe vers SON intervention (exécutant,
+  // pas pilotage) : on résout l'état « maintenant » (en cours + à venir) pour
+  // décider redirection directe vs sheet. Inutile pour le conducteur.
   const isChef = user.role === 'chef_equipe'
-  const chefIntervention = isChef
-    ? await getChefLaunchIntervention(user.id).catch(() => null)
+  const chefLaunch = isChef
+    ? await getChefLaunchState(user.id).catch(() => null)
     : null
 
   return (
@@ -68,7 +68,7 @@ export default async function FieldLayout({ children }: { children: React.ReactN
       <main className="max-w-md mx-auto px-3 pt-5 pb-24">{children}</main>
       {/* Badge = ce qui mérite l'œil AUJOURD'HUI (pas l'inventaire des ouvertes) :
           silencieux quand rien ne réclame — même modèle que l'accueil. */}
-      <MobileTabBar actionsCount={actionsHealth.attention} userRole={user.role} chefIntervention={chefIntervention} />
+      <MobileTabBar actionsCount={actionsHealth.attention} userRole={user.role} chefLaunch={chefLaunch} />
       {/* Réapplique le thème persisté de l'user en entrant sur le terrain. */}
       <ThemeSync theme={user.theme_preference} />
       {/* Instrumentation : ouverture des surfaces terrain (/m…) — savoir si le
