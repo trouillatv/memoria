@@ -119,12 +119,13 @@ export async function deleteDocumentCollection(
   if (error) throw error
 }
 
-/** Documents sans collection (orphelins) — groupe « Sans collection ». */
+/** Documents sans collection (orphelins) — groupe « Sans collection ».
+ *  Les PV historiques sont exclus : ils vivent dans le chantier, pas la bibliothèque. */
 export async function listOrphanDocuments(): Promise<DbDocument[]> {
   const supabase = createAdminClient()
   const orgIds = await getOrgIdsOfUser()
   if (orgIds.length === 0) return []
-  let q = supabase.from('documents').select('*').is('collection_id', null).is('deleted_at', null).order('created_at', { ascending: false })
+  let q = supabase.from('documents').select('*').is('collection_id', null).is('deleted_at', null).neq('document_type', 'historical_visit_report').order('created_at', { ascending: false })
   q = q.in('organization_id', orgIds)
   const { data, error } = await q
   if (error) throw error
@@ -229,6 +230,8 @@ export async function listDocumentsByCollection(
     .select('*')
     .eq('collection_id', collectionId)
     .is('deleted_at', null)
+    // Les PV historiques vivent dans le chantier, pas dans la bibliothèque
+    .neq('document_type', 'historical_visit_report')
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data ?? []) as DbDocument[]
