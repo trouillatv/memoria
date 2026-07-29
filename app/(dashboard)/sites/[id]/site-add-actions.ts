@@ -1,9 +1,13 @@
 'use server'
 
+import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
+import { createClient } from '@/lib/supabase/server'
+import { getUserRoleById } from '@/lib/db/users'
 import { createDocumentCollection, listDocumentCollections } from '@/lib/db/documents'
 import { uploadDocumentAction } from '@/app/(dashboard)/documents/actions'
 import { importVisitAction } from '@/app/(field)/m/import/import-actions'
+import { extractHistoricalPv } from '@/lib/documents/extract-historical-pv'
 
 async function ensureSiteCollection(siteId: string): Promise<string> {
   const collections = await listDocumentCollections()
@@ -37,6 +41,43 @@ export async function uploadSiteDocumentAction(
     revalidatePath(`/sites/${siteId}?tab=documents-preuves`)
   }
   return result
+}
+
+export async function importSiteHistoricalPvAction(
+  siteId: string,
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string; documentId?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Non authentifié' }
+  const role = await getUserRoleById(user.id)
+  if (role !== 'admin' && role !== 'manager') return { ok: false, error: 'Permissions insuffisantes' }
+
+  const collectionId = await ensureSiteCollection(siteId)
+  const fd = new FormData()
+  const file = formData.get('file')
+  if (file) fd.set('file', file)
+  fd.set('collection_id', collectionId)
+  fd.set('document_type', 'historical_visit_report')
+  fd.set('visibility_level', 'manager')
+  fd.set('target_type', 'site')
+  fd.set('target_id', siteId)
+  fd.set('embed', 'false')
+  fd.set('memory_tier', 'froide')
+  const effectiveDate = formData.get('effective_date')?.toString()
+  if (effectiveDate) fd.set('effective_date', effectiveDate)
+
+  const result = await uploadDocumentAction(fd)
+  if (!result.ok || !result.documentId) return { ok: false, error: result.error ?? 'Import impossible' }
+
+  after(() => {
+    void extractHistoricalPv(result.documentId!, user.id, siteId).catch((e: unknown) => {
+      console.error('importSiteHistoricalPvAction background error:', e)
+    })
+  })
+
+  revalidatePath(`/sites/${siteId}`)
+  return { ok: true, documentId: result.documentId }
 }
 
 export async function importSiteEvidenceAction(

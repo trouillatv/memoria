@@ -41,6 +41,7 @@ export async function createExtractionRun(input: {
       organization_id: input.organization_id,
       extractor_key: input.extractor_key,
       extractor_version: input.extractor_version ?? '1.0.0',
+      target_site_id: input.target_site_id ?? null,
       status: 'pending' as DocumentExtractionRunStatus,
       created_by: input.created_by ?? null,
     })

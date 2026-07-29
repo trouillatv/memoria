@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import Link from 'next/link'
-import { Camera, ChevronDown, FileText, History, Loader2, Mic, Video } from 'lucide-react'
-import { importSiteEvidenceAction, uploadSiteDocumentAction } from './site-add-actions'
+import { Camera, ChevronDown, FileText, History, Loader2, Mic, Video, BookOpen } from 'lucide-react'
+import { importSiteEvidenceAction, uploadSiteDocumentAction, importSiteHistoricalPvAction } from './site-add-actions'
 
-type DialogKind = 'document' | 'evidence' | null
+type DialogKind = 'document' | 'evidence' | 'historical_pv' | null
 
 export function SiteAddMenu({ siteId }: { siteId: string }) {
   const [open, setOpen] = useState(false)
@@ -63,14 +63,7 @@ export function SiteAddMenu({ siteId }: { siteId: string }) {
         <div role="menu" className="absolute right-0 z-20 mt-2 w-72 rounded-xl border bg-popover p-2 shadow-lg">
           <MenuButton icon={<FileText className="h-4 w-4" />} label="Document PDF" onClick={() => openDialog('document')} />
           <MenuButton icon={<Camera className="h-4 w-4" />} label="Photos, vidéos, vocaux" onClick={() => openDialog('evidence')} />
-          <Link
-            href={`/documents/import?target_type=site&target_id=${siteId}`}
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm hover:bg-muted"
-          >
-            <span className="text-muted-foreground"><History className="h-4 w-4" /></span>
-            <span>Importer un PV historique</span>
-          </Link>
+          <MenuButton icon={<History className="h-4 w-4" />} label="PV historique — analyser" onClick={() => openDialog('historical_pv')} />
           <Link
             href={`/sites/${siteId}/actions`}
             onClick={() => setOpen(false)}
@@ -98,6 +91,14 @@ export function SiteAddMenu({ siteId }: { siteId: string }) {
       )}
       {dialog === 'evidence' && (
         <SiteEvidenceDialog
+          siteId={siteId}
+          message={message}
+          setMessage={setMessage}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === 'historical_pv' && (
+        <SiteHistoricalPvDialog
           siteId={siteId}
           message={message}
           setMessage={setMessage}
@@ -220,6 +221,73 @@ function SiteEvidenceDialog({
             {pending && <Loader2 className="h-4 w-4 animate-spin" />}
             Ajouter
           </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+function SiteHistoricalPvDialog({
+  siteId,
+  message,
+  setMessage,
+  onClose,
+}: {
+  siteId: string
+  message: string | null
+  setMessage: (message: string | null) => void
+  onClose: () => void
+}) {
+  const formRef = useRef<HTMLFormElement>(null)
+  const [pending, startTransition] = useTransition()
+  const [documentId, setDocumentId] = useState<string | null>(null)
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = formRef.current
+    if (!form) return
+    const fd = new FormData(form)
+    startTransition(async () => {
+      const result = await importSiteHistoricalPvAction(siteId, fd)
+      if (!result.ok) {
+        setMessage(result.error ?? 'Import impossible.')
+        return
+      }
+      setDocumentId(result.documentId ?? null)
+      setMessage('Analyse lancée — patientez quelques instants.')
+      form.reset()
+    })
+  }
+
+  return (
+    <Modal title="Importer un PV historique" onClose={onClose}>
+      <form ref={formRef} className="space-y-4" onSubmit={submit}>
+        <label className="block space-y-2">
+          <span className="text-sm font-medium">PDF du PV</span>
+          <input name="file" type="file" accept="application/pdf" required className="block w-full rounded-lg border p-2 text-sm" />
+        </label>
+        <label className="block space-y-2">
+          <span className="text-sm font-medium">Date du PV <span className="text-destructive">*</span></span>
+          <input name="effective_date" type="date" required className="block w-full rounded-lg border px-3 py-2 text-sm bg-background" />
+        </label>
+        {message && (
+          <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground space-y-1">
+            <p>{message}</p>
+            {documentId && (
+              <a href={`/documents/${documentId}`} className="underline underline-offset-2 hover:text-foreground text-sm">
+                Suivre l'analyse →
+              </a>
+            )}
+          </div>
+        )}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">Fermer</button>
+          {!documentId && (
+            <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
+              {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Importer et analyser
+            </button>
+          )}
         </div>
       </form>
     </Modal>
