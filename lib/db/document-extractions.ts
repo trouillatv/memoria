@@ -227,6 +227,7 @@ export async function listExtractionForReview(
 export type ReviewAction =
   | { action: 'accept' }
   | { action: 'reject' }
+  | { action: 'reset' } // retour à pending — Réexaminer
   | {
       action: 'edit'
       label: string
@@ -258,6 +259,8 @@ export async function reviewProposal(
 
   if (review.action === 'reject') {
     patch = { review_status: 'rejected', reviewed_at: now, reviewed_by: reviewedBy ?? null }
+  } else if (review.action === 'reset') {
+    patch = { review_status: 'pending', reviewed_at: now, reviewed_by: reviewedBy ?? null }
   } else if (review.action === 'accept') {
     patch = { review_status: 'accepted', reviewed_at: now, reviewed_by: reviewedBy ?? null }
   } else {
@@ -322,4 +325,59 @@ export async function recordMaterialization(input: {
     .from('document_extraction_proposal')
     .update({ review_status: 'materialized' })
     .eq('id', input.proposal_id)
+}
+
+// ── Requêtes pour l'interface de revue ───────────────────────────────────────
+
+export async function getExtractionRun(
+  runId: string,
+): Promise<DbDocumentExtractionRun | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('document_extraction_run')
+    .select('*')
+    .eq('id', runId)
+    .maybeSingle()
+  if (error) throw error
+  return (data as DbDocumentExtractionRun | null)
+}
+
+export async function getLatestExtractionRunForDocument(
+  documentId: string,
+): Promise<DbDocumentExtractionRun | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('document_extraction_run')
+    .select('*')
+    .eq('document_id', documentId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return (data as DbDocumentExtractionRun | null)
+}
+
+export async function listOrphanEvidenceForRun(
+  runId: string,
+): Promise<DbDocumentExtractionEvidence[]> {
+  const supabase = createAdminClient()
+
+  const { data: allEvidence, error: evErr } = await supabase
+    .from('document_extraction_evidence')
+    .select('*')
+    .eq('extraction_run_id', runId)
+  if (evErr) throw evErr
+  if (!allEvidence || allEvidence.length === 0) return []
+
+  const all = allEvidence as DbDocumentExtractionEvidence[]
+  const evidenceIds = all.map((e) => e.id)
+
+  const { data: linked, error: linkErr } = await supabase
+    .from('document_proposal_evidence')
+    .select('evidence_id')
+    .in('evidence_id', evidenceIds)
+  if (linkErr) throw linkErr
+
+  const linkedIds = new Set((linked ?? []).map((r: { evidence_id: string }) => r.evidence_id))
+  return all.filter((e) => !linkedIds.has(e.id))
 }

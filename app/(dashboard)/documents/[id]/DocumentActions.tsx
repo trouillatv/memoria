@@ -20,12 +20,14 @@ export function DocumentActions({
   analysisStatus,
   avgCostUsd,
   costSampleCount,
+  extractionInProgress = false,
 }: {
   documentId: string
   documentType: string
   analysisStatus: string
   avgCostUsd?: number | null
   costSampleCount?: number
+  extractionInProgress?: boolean
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -90,9 +92,10 @@ export function DocumentActions({
           type="button"
           variant="outline"
           onClick={onAnalyzePv}
-          disabled={pending}
+          disabled={pending || extractionInProgress}
+          title={extractionInProgress ? 'Analyse en cours' : undefined}
         >
-          {pending ? '…' : 'Analyser ce PV'}
+          {pending ? '…' : extractionInProgress ? 'Analyse en cours…' : 'Analyser ce PV'}
         </Button>
       ) : (
         <span className="inline-flex items-center gap-1.5">

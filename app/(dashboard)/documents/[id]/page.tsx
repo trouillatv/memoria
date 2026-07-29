@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getDocument, getDocumentLinkLabels } from '@/lib/db/documents'
+import { getLatestExtractionRunForDocument } from '@/lib/db/document-extractions'
 import { listContracts } from '@/lib/db/contracts'
 import { listSites, listClients } from '@/lib/db/sites'
 import { listTenders } from '@/lib/db/tenders'
@@ -123,6 +124,12 @@ export default async function DocumentViewerPage({
   const isPdf = lower.endsWith('.pdf')
   const isImage = /\.(png|jpe?g|gif|webp|avif)$/.test(lower)
 
+  // Dernier run d'extraction (pour les PV historiques)
+  const latestRun = doc.document_type === 'historical_visit_report'
+    ? await getLatestExtractionRunForDocument(doc.id).catch(() => null)
+    : null
+  const extractionInProgress = latestRun?.status === 'processing' || latestRun?.status === 'pending'
+
   // Coût IA indicatif = moyenne observée des dernières analyses de document
   // (responsabilise avant « Réanalyser »). Réel, pas théorique.
   const docAvgCost = await getAverageCostForFeatures(['embed_chunks_document'])
@@ -166,9 +173,36 @@ export default async function DocumentViewerPage({
             analysisStatus={doc.analysis_status}
             avgCostUsd={docAvgCost.avgUsd}
             costSampleCount={docAvgCost.count}
+            extractionInProgress={extractionInProgress}
           />
         )}
       </header>
+
+      {/* Section extraction IA — uniquement pour les PV historiques */}
+      {doc.document_type === 'historical_visit_report' && latestRun && (
+        <section className="rounded-lg border bg-card p-4 space-y-2">
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Extraction IA
+          </h2>
+          {latestRun.status === 'processing' || latestRun.status === 'pending' ? (
+            <p className="text-sm text-muted-foreground">Analyse en cours…</p>
+          ) : latestRun.status === 'failed' ? (
+            <div>
+              <p className="text-sm text-destructive">L'analyse a échoué.</p>
+              {latestRun.error_message && (
+                <p className="text-xs text-muted-foreground mt-0.5">{latestRun.error_message}</p>
+              )}
+            </div>
+          ) : (
+            <Link
+              href={`/documents/${doc.id}/extraction/${latestRun.id}`}
+              className="inline-flex text-sm underline underline-offset-2 hover:text-foreground text-muted-foreground"
+            >
+              {latestRun.status === 'ready_for_review' ? 'Revoir les éléments détectés' : "Voir l’analyse"}
+            </Link>
+          )}
+        </section>
+      )}
 
       <section className="rounded-lg border bg-card p-4">
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
