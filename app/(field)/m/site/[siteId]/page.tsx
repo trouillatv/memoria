@@ -185,7 +185,7 @@ export default async function FieldSitePage({
     return (
       <div className="pt-1">
         {justVisited && <JustVisitedBanner />}
-        <ChefSiteView siteId={siteId} userId={user.id} />
+        <ChefSiteView siteId={siteId} userId={user.id} userRole={user.role} />
       </div>
     )
   }

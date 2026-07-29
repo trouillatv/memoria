@@ -10,12 +10,13 @@ import { getSiteAnomalies } from '@/lib/db/site-cockpit'
 import { getSiteCoverPhoto } from '@/lib/db/site-cover'
 import { getSiteRecentActivity } from '@/lib/db/visits'
 import { listDocumentsForTarget } from '@/lib/db/documents'
+import { canViewDocument } from '@/lib/documents/access'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { SiteAccessCard } from '../../intervention/[id]/SiteAccessCard'
 import { SiteActivityCard } from './SiteActivityCard'
-import type { DocumentType } from '@/types/db'
+import type { DocumentType, UserRole } from '@/types/db'
 
 /**
  * Fiche chantier TERRAIN — l'expérience du chef d'équipe (exécutant).
@@ -25,29 +26,33 @@ import type { DocumentType } from '@/types/db'
  * réussite : un chef qui ne connaît pas MemorIA peut intervenir sans jamais
  * revenir sur une vue manager.
  *
- * Chaque bloc répond à « est-ce que ça aide le chef à réussir son intervention
- * aujourd'hui ? ». Hiérarchie centrée sur l'action :
+ * Hiérarchie centrée sur l'action :
  *   1. Où je vais (nom + adresse + itinéraire)
  *   2. Mon intervention ici (le héros)
  *   3. Accès & contacts (codes, tel)
- *   4. Alertes (anomalies ouvertes)
- *   5. À faire ici (actions)
- *   6. Documents terrain (plans, procédures, sécurité — jamais le contractuel)
- *   7. Récemment (ce qui impacte son travail)
+ *   4. Alertes (anomalies ouvertes du lieu — faits physiques/sécurité)
+ *   5. À faire ici (UNIQUEMENT les actions liées à MES interventions/missions)
+ *   6. Documents terrain (gatés par canViewDocument — jamais de contractuel)
+ *   7. Récemment (court, contextualisé)
  *
- * Exclu volontairement : santé chiffrée, IA exploratoire, mémoire complète,
- * budget, contractuel, AO, réseau d'intervenants, statistiques, rituels de
- * préparation (visite/réunion), outils de création, travail des autres équipes.
+ * PÉRIMÈTRE (revue Vincent) :
+ *   - Actions : site_actions n'a pas de scope équipe → on ne montre QUE les
+ *     actions embarquées sur les missions/interventions du chef (jamais toutes
+ *     les actions du chantier = pilotage global).
+ *   - Documents : gatés par la MÊME autorité que la route de téléchargement
+ *     (canViewDocument) — pas de contournement, fermé par défaut. Le chef ne
+ *     verra des documents que si la politique de visibilité l'autorise.
+ *   - Exclu : santé chiffrée, IA, mémoire complète, budget, contractuel, AO,
+ *     réseau intervenants, stats, rituels de préparation, création, autres équipes.
  */
 
-// Types de documents « terrain » visibles par le chef. Le contractuel
-// (contrat, avenant, ao, memoire_technique, litige, facture) et l'ambigu
-// (autre) sont exclus par sécurité — jamais de fuite de pilotage.
+// Nature « terrain » (secondaire — l'AUTORISATION vient de canViewDocument).
 const FIELD_DOC_TYPES: DocumentType[] = [
   'plan_acces', 'procedure', 'protocole', 'securite', 'reference', 'preuve',
 ]
 
 const DOC_SIGNED_TTL = 300
+const RECENT_ACTIVITY_MAX = 5
 
 const INTV_STATUS_META: Record<string, { label: string; cls: string }> = {
   planned: { label: 'Prévue', cls: 'bg-slate-100 text-slate-700' },
@@ -66,9 +71,11 @@ function docIcon(filename: string) {
 export async function ChefSiteView({
   siteId,
   userId,
+  userRole,
 }: {
   siteId: string
   userId: string
+  userRole: UserRole
 }) {
   const supabase = createAdminClient()
 
@@ -84,24 +91,25 @@ export async function ChefSiteView({
   const todayIso = todayLocalIso()
   await ensureTodayInterventionsForSites([siteId], 4).catch(() => {})
 
-  // Missions du chantier (id + nom) pour résoudre les interventions du chef.
+  // Missions du chantier (avec l'équipe affectée) → celles de MON équipe.
   const { data: missionRows } = await supabase
     .from('missions')
-    .select('id, name')
+    .select('id, name, assigned_team_id')
     .eq('site_id', siteId)
     .is('deleted_at', null)
   const missionName = new Map((missionRows ?? []).map((m) => [m.id as string, m.name as string]))
-  const missionIds = [...missionName.keys()]
+  const chefMissionIds = (missionRows ?? [])
+    .filter((m) => m.assigned_team_id && teamIds.includes(m.assigned_team_id as string))
+    .map((m) => m.id as string)
 
   // Interventions de MON équipe sur ce chantier — aujourd'hui + à venir (héros).
-  // Jamais le travail des autres équipes : filtre assigned_team_id.
+  // Jamais le travail des autres équipes.
   type IntvRow = { id: string; status: string; scheduled_for: string | null; slot: 'morning' | 'afternoon' | 'evening' | null; planned_start: string | null; planned_end: string | null; mission_id: string; label: string | null }
   let interventions: IntvRow[] = []
-  if (missionIds.length > 0 && teamIds.length > 0) {
+  if (chefMissionIds.length > 0 && teamIds.length > 0) {
     const { data } = await supabase
       .from('interventions')
       .select('id, status, scheduled_for, slot, planned_start, planned_end, mission_id, label')
-      .in('mission_id', missionIds)
       .in('assigned_team_id', teamIds)
       .in('status', ['planned', 'in_progress'])
       .gte('scheduled_for', todayIso)
@@ -110,18 +118,36 @@ export async function ChefSiteView({
       .limit(4)
     interventions = (data ?? []) as IntvRow[]
   }
+  const chefInterventionIds = new Set(interventions.map((i) => i.id))
 
-  const [openActions, siteAnomalies, cover, recentActivity, docsRaw] = await Promise.all([
+  const [allOpenActions, siteAnomalies, cover, recentActivity, docsRaw] = await Promise.all([
     listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
     getSiteAnomalies(siteId).catch(() => []),
     getSiteCoverPhoto(siteId).catch(() => null),
     getSiteRecentActivity(siteId).catch(() => []),
     listDocumentsForTarget('site', siteId).catch(() => []),
   ])
+
+  // À FAIRE ICI — périmètre : UNIQUEMENT les actions embarquées sur MES missions
+  // ou MES interventions (site_actions n'ayant pas de scope équipe, montrer
+  // toutes les actions du chantier réintroduirait le pilotage global).
+  const chefMissionSet = new Set(chefMissionIds)
+  const myActions = allOpenActions.filter((a) =>
+    (a.converted_to_type === 'mission' && a.converted_to_id && chefMissionSet.has(a.converted_to_id)) ||
+    (a.converted_to_type === 'intervention' && a.converted_to_id && chefInterventionIds.has(a.converted_to_id)),
+  )
+
+  // Alertes — anomalies OUVERTES du lieu : faits physiques/sécurité qui peuvent
+  // bloquer l'intervention, quel que soit qui les a déclarées (le site est
+  // partagé). Plafonné.
   const openAnomalies = siteAnomalies.filter((a) => a.status === 'open')
 
-  // Documents TERRAIN uniquement, avec URL signée courte.
-  const fieldDocs = docsRaw.filter((d) => FIELD_DOC_TYPES.includes(d.document_type))
+  // DOCUMENTS — gatés par l'AUTORITÉ (canViewDocument), comme la route de
+  // téléchargement : aucun contournement. + filtre de nature terrain. Fermé par
+  // défaut (visibility_level défaut = 'manager' → invisible au chef).
+  const fieldDocs = docsRaw.filter(
+    (d) => canViewDocument(userRole, d.visibility_level) && FIELD_DOC_TYPES.includes(d.document_type),
+  )
   const signedDocs = await Promise.all(
     fieldDocs.map(async (d) => {
       const { data } = await supabase.storage.from('documents').createSignedUrl(d.storage_path, DOC_SIGNED_TTL)
@@ -144,7 +170,7 @@ export async function ChefSiteView({
           </div>
         )}
         <h1 className="text-2xl font-bold leading-tight">{site.name}</h1>
-        {site.address && (
+        {site.address ? (
           <div className="flex items-start justify-between gap-3">
             <p className="inline-flex items-start gap-1.5 text-sm text-muted-foreground">
               <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
@@ -161,6 +187,8 @@ export async function ChefSiteView({
               </a>
             )}
           </div>
+        ) : (
+          <p className="text-sm text-muted-foreground italic">Adresse non renseignée.</p>
         )}
       </header>
 
@@ -176,7 +204,6 @@ export async function ChefSiteView({
               const time = formatInterventionTimeLabel({ planned_start: i.planned_start, planned_end: i.planned_end, slot: i.slot })
               const isToday = i.scheduled_for === todayIso
               const name = i.label ?? missionName.get(i.mission_id) ?? 'Intervention'
-              // Le premier (le plus proche) est mis en avant comme CTA.
               if (idx === 0) {
                 const dayLabel = isToday
                   ? "Aujourd'hui"
@@ -196,9 +223,7 @@ export async function ChefSiteView({
                         <span className="block text-[15px] font-semibold leading-snug">
                           {inProgress ? 'Reprendre mon intervention' : 'Commencer mon intervention'}
                         </span>
-                        <span className="mt-0.5 block truncate text-[13px] text-white/85">
-                          {name}
-                        </span>
+                        <span className="mt-0.5 block truncate text-[13px] text-white/85">{name}</span>
                         <span className="mt-0.5 block text-[12px] text-white/70 first-letter:uppercase">
                           {dayLabel}{time ? ` · ${time}` : ''}
                         </span>
@@ -210,7 +235,7 @@ export async function ChefSiteView({
               }
               const meta = INTV_STATUS_META[i.status] ?? INTV_STATUS_META.planned
               const dayShort = isToday
-                ? "Auj."
+                ? 'Auj.'
                 : i.scheduled_for
                   ? new Date(i.scheduled_for + 'T00:00:00.000Z').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', timeZone: 'UTC' })
                   : ''
@@ -236,10 +261,10 @@ export async function ChefSiteView({
         )}
       </section>
 
-      {/* 3 — ACCÈS & CONTACTS : où j'entre, qui j'appelle (carte dédiée chef). */}
+      {/* 3 — ACCÈS & CONTACTS : où j'entre, qui j'appelle. */}
       <SiteAccessCard site={site} />
 
-      {/* 4 — ALERTES : les anomalies ouvertes déclarées ici. */}
+      {/* 4 — ALERTES : anomalies ouvertes du lieu. */}
       {openAnomalies.length > 0 && (
         <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-2">
           <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-amber-800">
@@ -256,14 +281,14 @@ export async function ChefSiteView({
         </section>
       )}
 
-      {/* 5 — À FAIRE ICI : les actions ouvertes sur ce chantier. */}
-      {openActions.length > 0 && (
+      {/* 5 — À FAIRE ICI : uniquement les actions liées à MES interventions. */}
+      {myActions.length > 0 && (
         <section className="space-y-2">
           <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             <ListTodo className="h-4 w-4" /> À faire ici
           </h2>
           <ul className="overflow-hidden rounded-2xl border bg-card divide-y">
-            {openActions.slice(0, 6).map((a) => {
+            {myActions.slice(0, 6).map((a) => {
               const late = a.due_date ? a.due_date.slice(0, 10) < todayIso : false
               return (
                 <li key={a.id}>
@@ -283,7 +308,7 @@ export async function ChefSiteView({
         </section>
       )}
 
-      {/* 6 — DOCUMENTS TERRAIN : plans, procédures, sécurité (jamais le contractuel). */}
+      {/* 6 — DOCUMENTS TERRAIN : gatés par canViewDocument (jamais le contractuel). */}
       {signedDocs.length > 0 && (
         <section className="space-y-2">
           <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -314,8 +339,8 @@ export async function ChefSiteView({
         </section>
       )}
 
-      {/* 7 — RÉCEMMENT : ce qui s'est passé ici et qui impacte mon travail. */}
-      <SiteActivityCard items={recentActivity} />
+      {/* 7 — RÉCEMMENT : court, contextualisé (plafonné). */}
+      <SiteActivityCard items={recentActivity.slice(0, RECENT_ACTIVITY_MAX)} />
     </div>
   )
 }
