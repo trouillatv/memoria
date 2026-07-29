@@ -129,6 +129,8 @@ Ne rien extraire lorsque l'information décrit seulement :
 - les moyens momentanément présents sur site (engins, personnel du jour) sans contexte de retard ou d'anomalie ;
 - l'existence ou l'état administratif d'un document (transmis, reçu, validé) sans conséquence chantier explicite.
 
+**Exception obligatoire** : si l'information administrative contient une **échéance chiffrée ou datée explicite** (ex : "avant le 25 du mois", "d'ici le 15 mars"), l'extraire comme **deadline** — même si elle porte sur une transmission ou une procédure. Une contrainte temporelle explicite a une valeur de suivi, quelle que soit sa nature.
+
 Attention : "Plan des installations de chantier : FAIT" décrit l'état administratif du document, pas l'achèvement physique du chantier. Ne pas convertir l'un en l'autre.
 
 **Question centrale : cette information sera-t-elle encore utile dans 6 mois à un conducteur qui n'était pas à cette réunion ?** Si non → ne rien créer.
@@ -156,6 +158,7 @@ Pour chaque information retenue après la sélection :
 1. Ne jamais inventer des données absentes du texte — extraction pure, zéro inférence.
 2. Ne pas transformer une observation en action implicite : une constatation reste une observation.
 3. Conserver les formulations incertaines (« à vérifier », « à confirmer », « semble ») dans le label ou la description.
+3b. Lorsque le texte source semble corrompu ou ambigu (coquille, OCR dégradé, formulation incohérente), ne pas affirmer plus que ce que le document permet. Formuler avec prudence : "Accès plateforme — indiqué comme réalisé dans le PV" plutôt que "Accès plateforme réalisé".
 4. Distinguer les points ouverts et les points résolus : un point résolu peut être une knowledge_fact ou une decision.
 5. Citer la page exacte (sourcePage) — utilise les marqueurs [[page N]].
 6. Ne pas déduire des intentions — se limiter aux faits et décisions explicitement mentionnés.
@@ -201,7 +204,7 @@ Ajoute également un court \`relevanceReason\` (10 mots max) expliquant le score
 Pour chaque page comportant une ou plusieurs photos :
 
 1. Crée une preuve de type **page_snapshot** avec :
-   - une légende factuelle et prudente décrivant ce qui est visible (ex : "Vue de la plateforme de terrassement depuis l'est", "Détail de la jonction entre le mur de soutènement et la dalle"). Ne jamais affirmer qu'un travail est terminé ou conforme si ce n'est pas explicitement mentionné dans le texte adjacent.
+   - une légende factuelle et descriptive de ce qui est **visuellement visible** sur la page : type de terrain, activité en cours, équipements présents, état apparent de la plateforme ou de l'ouvrage (ex : "Vue de la plateforme terrassée avec zones nivelées visibles", "Engins de terrassement en activité sur la plateforme", "Fossé GDE et busage provisoire posé"). Ne jamais affirmer qu'un travail est terminé ou conforme sur la seule base de la photo, sans confirmation dans le texte adjacent.
    - \`sourcePage\` : le numéro de la page.
    - \`nearbyText\` : le texte immédiatement adjacent à la photo dans le document, s'il existe.
 
