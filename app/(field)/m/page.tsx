@@ -13,7 +13,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
-import { FreePhotoFab, type FreePhotoFabSite } from './FreePhotoFab'
 import { ResumeWorkCard } from './ResumeWorkCard'
 import { RecentActivityCard } from './RecentActivityCard'
 import { listActiveVisitsForUser, listPendingTriageForUser, getRecentActivityForUser } from '@/lib/db/visits'
@@ -413,13 +412,9 @@ export default async function FieldHomePage({
   }
 
   // Étape 3 — Fetch en parallèle : les records récurrents existent maintenant.
-  const fabSitesPromise = agentSiteIds.length > 0
-    ? supabase.from('sites').select('id, name').in('id', agentSiteIds).is('deleted_at', null).order('name')
-    : Promise.resolve({ data: [] as Array<{ id: string; name: string }> })
-  const [interventions, handoverBriefs, fabSitesRes] = await Promise.all([
+  const [interventions, handoverBriefs] = await Promise.all([
     listInterventionsVisibleToUser(user.id),
     listSharedHandoverBriefsForChef(user.id, chefTeamIds),
-    fabSitesPromise,
   ])
 
   // Batch unique : toutes les missions + tous les sites en 1 requête.
@@ -442,8 +437,6 @@ export default async function FieldHomePage({
     ? { data: [] as Array<{ id: string; name: string }> }
     : await supabase.from('sites').select('id, name').in('id', allSiteIds)
   const siteById = new Map((allSitesData ?? []).map((s) => [s.id, s]))
-
-  const fabSites: FreePhotoFabSite[] = (fabSitesRes as { data: FreePhotoFabSite[] | null }).data ?? []
 
   // KPI chef d'équipe : interventions terminées sur les 7 derniers jours glissants
   // avec tâches obligatoires non cochées. Utilise missionById/siteById déjà chargés.
@@ -1038,8 +1031,6 @@ export default async function FieldHomePage({
           </ul>
         </CockpitCard>
       )}
-
-      <FreePhotoFab sites={fabSites} />
     </div>
   )
 }
