@@ -262,14 +262,18 @@ function SiteHistoricalPvDialog({
   return (
     <Modal title="Importer un PV historique" onClose={onClose}>
       <form ref={formRef} className="space-y-4" onSubmit={submit}>
-        <label className="block space-y-2">
-          <span className="text-sm font-medium">PDF du PV</span>
-          <input name="file" type="file" accept="application/pdf" required className="block w-full rounded-lg border p-2 text-sm" />
-        </label>
-        <label className="block space-y-2">
-          <span className="text-sm font-medium">Date du PV <span className="text-destructive">*</span></span>
-          <input name="effective_date" type="date" required className="block w-full rounded-lg border px-3 py-2 text-sm bg-background" />
-        </label>
+        {!documentId && (
+          <>
+            <label className="block space-y-2">
+              <span className="text-sm font-medium">PDF du PV</span>
+              <input name="file" type="file" accept="application/pdf" required className="block w-full rounded-lg border p-2 text-sm" />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-sm font-medium">Date du PV <span className="text-destructive">*</span></span>
+              <input name="effective_date" type="date" required className="block w-full rounded-lg border px-3 py-2 text-sm bg-background" />
+            </label>
+          </>
+        )}
         {message && (
           <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground space-y-1">
             <p>{message}</p>
