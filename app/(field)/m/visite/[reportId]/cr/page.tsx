@@ -13,6 +13,7 @@ import { CrMapSnapshotTrigger } from './CrMapSnapshotTrigger'
 import { MemoriaRetained } from './MemoriaRetained'
 import { CrDocumentSections } from './CrDocumentSections'
 import { CrConcretisation } from './CrConcretisation'
+import { WatchlistBilan } from './WatchlistBilan'
 import { getOrCreateVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { listProposalsByReport } from '@/lib/db/knowledge-proposals'
 import { VisitShareButton } from '../VisitShareButton'
@@ -212,6 +213,10 @@ export default async function VisitCrPreviewPage({
       {/* Les observations brutes (constats, incl. transcriptions vocales) NE sont plus
           affichées ici : « Ce que MemorIA a retenu » ci-dessus EST la lecture. Le
           verbatim reste accessible replié dans la synthèse et dans le CR complet. */}
+
+      {/* Bilan factuel du plan de visite — constat de l'exécution, distinct des
+          watchpoints IA qui sont des conclusions d'analyse. */}
+      <WatchlistBilan reportId={reportId} />
 
       {/* Réserves + Actions — côte à côte quand les deux existent. */}
       {(hasReserves || hasActions) && (
