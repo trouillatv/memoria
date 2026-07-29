@@ -70,7 +70,7 @@ export async function importSiteHistoricalPvAction(
   const result = await uploadDocumentAction(fd)
   if (!result.ok || !result.documentId) return { ok: false, error: result.error ?? 'Import impossible' }
 
-  const secret = process.env.INTERNAL_ANALYZE_SECRET
+  const secret = process.env.CRON_SECRET
   const h = await headers()
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'
   const proto = h.get('x-forwarded-proto') ?? (process.env.NODE_ENV === 'production' ? 'https' : 'http')

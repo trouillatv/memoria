@@ -12,9 +12,9 @@ export const maxDuration = 300
 export async function POST(req: Request) {
   let documentId = ''
   try {
-    const internal = process.env.INTERNAL_ANALYZE_SECRET
+    const secret = process.env.CRON_SECRET
     const trigger = req.headers.get('x-internal-trigger')
-    if (!internal || trigger !== internal) {
+    if (!secret || trigger !== secret) {
       return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
     }
 

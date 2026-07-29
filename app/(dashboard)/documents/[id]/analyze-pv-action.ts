@@ -33,8 +33,8 @@ export async function analyzePvAction(
     return { ok: false, error: 'Ce document ne peut pas être analysé comme PV historique' }
   }
 
-  const secret = process.env.INTERNAL_ANALYZE_SECRET
-  if (!secret) return { ok: false, error: 'INTERNAL_ANALYZE_SECRET non configuré' }
+  const secret = process.env.CRON_SECRET
+  if (!secret) return { ok: false, error: 'CRON_SECRET non configuré' }
 
   const h = await headers()
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'
