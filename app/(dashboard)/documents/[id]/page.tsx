@@ -162,6 +162,7 @@ export default async function DocumentViewerPage({
         {(role === 'admin' || role === 'manager') && (
           <DocumentActions
             documentId={doc.id}
+            documentType={doc.document_type}
             analysisStatus={doc.analysis_status}
             avgCostUsd={docAvgCost.avgUsd}
             costSampleCount={docAvgCost.count}

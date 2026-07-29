@@ -1,6 +1,6 @@
 'use client'
 
-// Boutons « Réanalyser » + « Supprimer » sur la page document.
+// Boutons « Réanalyser » + « Supprimer » + « Analyser ce PV » sur la page document.
 // Manager+ uniquement — gating fait côté server (page.tsx conditionnement),
 // le composant est inerte si pas affiché. Discipline coût IA : la
 // réanalyse RE-OCR et RE-EMBED, donc geste conscient (confirm sur supprimer).
@@ -9,17 +9,20 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { relaunchDocumentAnalysisAction, deleteDocumentAction } from '../actions'
+import { analyzePvAction } from './analyze-pv-action'
 import { AiCostHint } from '../AiCostHint'
 
 const IN_FLIGHT_STATUSES = ['pending', 'extracting', 'ocr', 'chunking']
 
 export function DocumentActions({
   documentId,
+  documentType,
   analysisStatus,
   avgCostUsd,
   costSampleCount,
 }: {
   documentId: string
+  documentType: string
   analysisStatus: string
   avgCostUsd?: number | null
   costSampleCount?: number
@@ -29,6 +32,7 @@ export function DocumentActions({
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   const analysisInFlight = IN_FLIGHT_STATUSES.includes(analysisStatus)
+  const isHistoricalPv = documentType === 'historical_visit_report'
 
   function onRelaunch() {
     setMsg(null)
@@ -38,6 +42,21 @@ export function DocumentActions({
       const r = await relaunchDocumentAnalysisAction(fd)
       if (r.ok) {
         setMsg({ ok: true, text: 'Analyse relancée — patiente quelques instants puis rafraîchis.' })
+        router.refresh()
+      } else {
+        setMsg({ ok: false, text: r.error ?? 'Échec' })
+      }
+    })
+  }
+
+  function onAnalyzePv() {
+    setMsg(null)
+    startTransition(async () => {
+      const fd = new FormData()
+      fd.set('document_id', documentId)
+      const r = await analyzePvAction(fd)
+      if (r.ok) {
+        setMsg({ ok: true, text: 'Extraction lancée — patiente quelques instants puis rafraîchis.' })
         router.refresh()
       } else {
         setMsg({ ok: false, text: r.error ?? 'Échec' })
@@ -66,18 +85,29 @@ export function DocumentActions({
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
-      <span className="inline-flex items-center gap-1.5">
+      {isHistoricalPv ? (
         <Button
           type="button"
           variant="outline"
-          onClick={onRelaunch}
-          disabled={pending || analysisInFlight}
-          title={analysisInFlight ? 'Analyse en cours' : undefined}
+          onClick={onAnalyzePv}
+          disabled={pending}
         >
-          {pending ? '…' : 'Réanalyser'}
+          {pending ? '…' : 'Analyser ce PV'}
         </Button>
-        <AiCostHint avgUsd={avgCostUsd} sampleCount={costSampleCount} label="analyse de document" />
-      </span>
+      ) : (
+        <span className="inline-flex items-center gap-1.5">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onRelaunch}
+            disabled={pending || analysisInFlight}
+            title={analysisInFlight ? 'Analyse en cours' : undefined}
+          >
+            {pending ? '…' : 'Réanalyser'}
+          </Button>
+          <AiCostHint avgUsd={avgCostUsd} sampleCount={costSampleCount} label="analyse de document" />
+        </span>
+      )}
       <Button
         type="button"
         variant="outline"

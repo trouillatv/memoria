@@ -53,7 +53,7 @@ export async function createExtractionRun(input: {
 export async function updateExtractionRunStatus(
   runId: string,
   status: DocumentExtractionRunStatus,
-  extra?: { error_message?: string; completed_at?: string },
+  extra?: { error_message?: string; completed_at?: string; started_at?: string },
 ): Promise<void> {
   const supabase = createAdminClient()
   const { error } = await supabase
@@ -62,6 +62,7 @@ export async function updateExtractionRunStatus(
       status,
       ...(extra?.error_message !== undefined ? { error_message: extra.error_message } : {}),
       ...(extra?.completed_at !== undefined ? { completed_at: extra.completed_at } : {}),
+      ...(extra?.started_at !== undefined ? { started_at: extra.started_at } : {}),
     })
     .eq('id', runId)
   if (error) throw error
