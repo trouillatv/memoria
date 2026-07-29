@@ -153,6 +153,9 @@ export interface VisitNarrative {
   }
   /** Ce que le récit ne sait pas — dit, jamais masqué. */
   limits: NarrativeLimits
+  /** Objets rattachés par report_id mais absents du journal de concrétisation.
+   *  Pour origin='import' : les objets créés directement par le RPC. */
+  historical: ReportLinkedObject[]
 }
 
 export async function buildVisitNarrative(reportId: string): Promise<VisitNarrative | null> {
@@ -275,6 +278,7 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
       discardedCaptures: captured.filter((c) => !c.kept).length,
     },
     produced,
+    historical,
     ignored: {
       byHuman: understood
         .filter((p) => p.status === 'dismissed')

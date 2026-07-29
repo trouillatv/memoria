@@ -88,13 +88,15 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
     ? Math.max(0, Math.round((new Date(visit.ended_at).getTime() - new Date(visit.started_at).getTime()) / 60000))
     : null
 
-  const { captured, understood, produced, enrichment } = narrative
+  const { captured, understood, produced, historical, enrichment } = narrative
+  const isImport = visit.origin === 'import'
   const vocaux = captured.filter((c) => c.kind === 'vocal').length
   const photos = captured.filter((c) => c.kind === 'photo').length
   const videos = captured.filter((c) => c.kind === 'video').length
   const intervenants = understood.filter((p) => p.type === 'stakeholder').length
   const enAttente = understood.filter((p) => p.status === 'proposed')
   const parFamille = FAMILLES.map((f) => ({ ...f, n: enAttente.filter((p) => p.type === f.cle).length })).filter((f) => f.n > 0)
+  const produitsCount = isImport ? historical.length : produced.length
 
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-6">
@@ -120,9 +122,17 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
       {/* ── IDENTITÉ ────────────────────────────────────────────────────────── */}
       <header className="mb-4">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-balance text-3xl font-semibold tracking-tight">Visite du {frDate(debut)}</h1>
+          <h1 className="text-balance text-3xl font-semibold tracking-tight">
+            {isImport && visit.text_input ? visit.text_input : `Visite du ${frDate(debut)}`}
+          </h1>
+          {isImport && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">Visite historique importée</span>
+          )}
           <EtatCr crHref={crHref} doc={narrative.validated.document} />
         </div>
+        {isImport && (
+          <p className="mt-1 text-[13px] text-muted-foreground">{frDate(debut)}</p>
+        )}
         <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
           <span className="tabular-nums">
             {frHeure(debut)}
@@ -175,9 +185,25 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
               />
               <Chiffre icon={Sparkles} teinte="text-violet-600" valeur={understood.length} label="propositions" sous="détectées par MemorIA" />
               <Chiffre icon={Users} teinte="text-emerald-600" valeur={intervenants} label="intervenants" sous="détectés" />
-              <Chiffre icon={FileText} teinte="text-slate-600" valeur={produced.length} label="objets produits" sous="rattachés à ce récit" />
+              <Chiffre icon={FileText} teinte="text-slate-600" valeur={produitsCount} label="objets produits" sous={isImport ? 'importés depuis le PV' : 'rattachés à ce récit'} />
             </dl>
           </section>
+
+          {isImport && historical.length > 0 && (
+            <section className="rounded-xl border bg-card p-4 space-y-3">
+              <h2 className="text-[15px] font-semibold">Objets importés depuis le PV</h2>
+              <div className="divide-y text-[13px]">
+                {historical.map((obj) => (
+                  <div key={`${obj.kind}-${obj.id}`} className="py-2 flex items-center gap-2">
+                    <span className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium bg-muted text-muted-foreground">
+                      {obj.kind === 'action' ? 'Action' : obj.kind === 'reserve' ? 'Réserve' : obj.kind === 'decision' ? 'Décision' : obj.kind === 'echeance' ? 'Échéance' : 'Mémoire'}
+                    </span>
+                    <span>{obj.label}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           <VisitDesk narrative={narrative} media={media} canPromote={doc?.status === 'draft'} crHref={crHref} />
         </div>

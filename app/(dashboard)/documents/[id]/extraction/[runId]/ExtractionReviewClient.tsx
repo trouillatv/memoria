@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import { ProposalCard } from './ProposalCard'
-import { createHistoricalVisitAction } from './review-actions'
+import { createHistoricalVisitAction, acceptAllPendingAction } from './review-actions'
 import type { DocumentExtractionProposalWithEvidence, DbDocumentExtractionEvidence, DocumentEvidenceRelationType } from '@/types/db'
 import type { ReviewSummary } from '@/lib/documents/effective-proposal'
 
@@ -16,7 +16,7 @@ const FAMILY_TITLE: Record<string, string> = {
   observation: 'Observations', deadline: 'Échéances', knowledge_fact: 'Éléments de mémoire',
 }
 
-type Filter = 'all' | 'pending' | 'accepted' | 'edited' | 'rejected'
+type Filter = 'all' | 'pending' | 'accepted' | 'edited' | 'rejected' | 'materialized'
 
 function getRelevanceScore(proposal: import('@/types/db').DbDocumentExtractionProposal): 'strong' | 'medium' | 'weak' {
   const payload = proposal.source_payload as { relevanceScore?: string } | null
@@ -31,6 +31,7 @@ const FILTER_LABELS: { key: Filter; label: string; field: keyof ReviewSummary }[
   { key: 'accepted', label: 'Acceptées', field: 'accepted' },
   { key: 'edited', label: 'Modifiées', field: 'edited' },
   { key: 'rejected', label: 'Refusées', field: 'rejected' },
+  { key: 'materialized', label: 'Matérialisées', field: 'materialized' },
 ]
 
 const RELATION_LABEL: Record<string, string> = {
@@ -98,7 +99,24 @@ export function ExtractionReviewClient({
   const [filter, setFilter] = useState<Filter>('all')
   const [showWeak, setShowWeak] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+  const [acceptAllMsg, setAcceptAllMsg] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  function handleAcceptAll() {
+    setAcceptAllMsg(null)
+    const fd = new FormData()
+    fd.set('run_id', runId)
+    fd.set('document_id', documentId)
+    startTransition(async () => {
+      const result = await acceptAllPendingAction(fd)
+      if (result.ok) {
+        setAcceptAllMsg(`${result.count ?? 0} proposition${(result.count ?? 0) > 1 ? 's' : ''} confirmée${(result.count ?? 0) > 1 ? 's' : ''}.`)
+        router.refresh()
+      } else {
+        setAcceptAllMsg(result.error ?? 'Erreur')
+      }
+    })
+  }
 
   function handleCreateVisit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -131,16 +149,30 @@ export function ExtractionReviewClient({
   return (
     <div className="space-y-6">
       {/* Bilan */}
-      <div className="rounded-[18px] border bg-card p-4">
-        <p className="text-sm font-medium">
-          {summary.total} proposition{summary.total !== 1 ? 's' : ''}
-          {summary.accepted > 0 && <> · <span className="text-green-700 dark:text-green-400">{summary.accepted} acceptée{summary.accepted !== 1 ? 's' : ''}</span></>}
-          {summary.edited > 0 && <> · <span className="text-blue-700 dark:text-blue-400">{summary.edited} modifiée{summary.edited !== 1 ? 's' : ''}</span></>}
-          {summary.rejected > 0 && <> · <span className="text-red-700 dark:text-red-400">{summary.rejected} refusée{summary.rejected !== 1 ? 's' : ''}</span></>}
-          {summary.pending > 0 && <> · <span className="text-muted-foreground">{summary.pending} à examiner</span></>}
-        </p>
+      <div className="rounded-[18px] border bg-card p-4 space-y-2">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <p className="text-sm font-medium">
+            {summary.total} proposition{summary.total !== 1 ? 's' : ''}
+            {summary.materialized > 0 && <> · <span className="text-purple-700 dark:text-purple-400">{summary.materialized} matérialisée{summary.materialized !== 1 ? 's' : ''}</span></>}
+            {summary.accepted > 0 && <> · <span className="text-green-700 dark:text-green-400">{summary.accepted} acceptée{summary.accepted !== 1 ? 's' : ''}</span></>}
+            {summary.edited > 0 && <> · <span className="text-blue-700 dark:text-blue-400">{summary.edited} modifiée{summary.edited !== 1 ? 's' : ''}</span></>}
+            {summary.rejected > 0 && <> · <span className="text-red-700 dark:text-red-400">{summary.rejected} refusée{summary.rejected !== 1 ? 's' : ''}</span></>}
+            {summary.pending > 0 && <> · <span className="text-muted-foreground">{summary.pending} à examiner</span></>}
+          </p>
+          {summary.pending > 0 && (
+            <button
+              type="button"
+              onClick={handleAcceptAll}
+              disabled={isPending}
+              className="shrink-0 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-50"
+            >
+              {isPending ? '…' : `Tout confirmer (${summary.pending})`}
+            </button>
+          )}
+        </div>
+        {acceptAllMsg && <p className="text-xs text-muted-foreground">{acceptAllMsg}</p>}
         {summary.pending === 0 && summary.total > 0 && (
-          <p className="text-xs text-muted-foreground mt-1">Toutes les propositions ont été examinées.</p>
+          <p className="text-xs text-muted-foreground">Toutes les propositions ont été examinées.</p>
         )}
       </div>
 

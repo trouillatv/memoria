@@ -24,6 +24,7 @@ const vide: VisitNarrative = {
     discardedCaptures: 0,
   },
   produced: [],
+  historical: [],
   ignored: { byHuman: [], superseded: [], captures: [] },
   enrichment: { afterVisit: 0, sinceLastAnalysis: 0, lastAnalysisAt: null },
   limits: { historicalAttributions: 0, intervenantProvenanceMissing: true },

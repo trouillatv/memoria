@@ -145,6 +145,37 @@ export async function relinkEvidenceAction(fd: FormData): Promise<ActionResult> 
   return { ok: true }
 }
 
+// ─── Tout confirmer ───────────────────────────────────────────────────────────
+
+export async function acceptAllPendingAction(fd: FormData): Promise<{
+  ok: boolean; count?: number; error?: string
+}> {
+  const runId = fd.get('run_id')?.toString()
+  const documentId = fd.get('document_id')?.toString()
+  if (!runId || !documentId) return { ok: false, error: 'Paramètres manquants' }
+
+  const access = await verifyReviewAccess(documentId)
+  if (!access.ok) return { ok: false, error: access.error }
+
+  const admin = createAdminClient()
+  const { data: pending } = await admin
+    .from('document_extraction_proposal')
+    .select('id')
+    .eq('extraction_run_id', runId)
+    .eq('review_status', 'pending')
+
+  if (!pending?.length) return { ok: true, count: 0 }
+
+  const { error } = await admin
+    .from('document_extraction_proposal')
+    .update({ review_status: 'accepted', reviewed_by: access.userId, reviewed_at: new Date().toISOString() })
+    .eq('extraction_run_id', runId)
+    .eq('review_status', 'pending')
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, count: pending.length }
+}
+
 // ─── Matérialisation — création de la visite historique ──────────────────────
 
 export async function createHistoricalVisitAction(fd: FormData): Promise<{
