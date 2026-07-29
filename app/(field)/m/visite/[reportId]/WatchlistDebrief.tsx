@@ -4,9 +4,17 @@
 // On ne redemande pas tout : seulement les points encore non statués, puis le
 // bilan (« 4 proposés · 3 vérifiés · 1 à suivre »). Un « à suivre » peut être
 // PROMU manuellement en action ou réserve — jamais automatiquement.
+// mig 254 : criticité visible (rouge = irréversible, amber = retard, rien = suivi).
 
 import { useState, useTransition } from 'react'
 import { Check, Eye, X, ListChecks, AlertTriangle, ListTodo } from 'lucide-react'
+import type { WatchlistItemPriority } from '@/types/db'
+
+const PRIORITY_DOT: Record<WatchlistItemPriority, string | null> = {
+  critical: 'bg-red-500',
+  important: 'bg-amber-500',
+  normal: null,
+}
 import { toast } from 'sonner'
 import { setWatchlistItemStateAction } from '@/app/(field)/m/site/[siteId]/watchlist-actions'
 import { promoteWatchlistItemAction } from './debrief-actions'
@@ -59,9 +67,17 @@ export function WatchlistDebrief({ items: initialItems }: { items: DbVisitWatchl
       </div>
 
       {/* Seulement ce qui reste ouvert — on ne redemande jamais tout. */}
-      {pending.map((item) => (
+      {pending.map((item) => {
+        const dot = PRIORITY_DOT[item.priority ?? 'normal']
+        return (
         <div key={item.id} className="space-y-1.5 rounded-lg border bg-background p-2.5">
-          <p className="text-sm leading-snug">{item.label}</p>
+          <div className="flex items-start gap-2">
+            {dot && <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot}`} />}
+            <span className={`text-sm leading-snug ${!dot ? '' : ''}`}>{item.label}</span>
+          </div>
+          {item.reason && (
+            <p className="text-[11px] leading-snug text-muted-foreground pl-4">{item.reason}</p>
+          )}
           <div className="grid grid-cols-3 gap-1.5">
             <button type="button" onClick={() => decide(item, 'verified')} className="inline-flex items-center justify-center gap-1 rounded-lg border px-1 py-2 text-xs font-medium text-emerald-700 active:scale-[0.98]">
               <Check className="h-3.5 w-3.5" /> Vérifié
@@ -74,7 +90,8 @@ export function WatchlistDebrief({ items: initialItems }: { items: DbVisitWatchl
             </button>
           </div>
         </div>
-      ))}
+        )
+      })}
 
       {/* Les « à suivre » : promotion HUMAINE en objet chantier, facultative. */}
       {toFollow.filter((i) => !i.promoted_to).map((item) => (

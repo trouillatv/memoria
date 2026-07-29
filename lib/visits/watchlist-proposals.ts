@@ -6,12 +6,32 @@
 // Aucune dépendance serveur : testable en CI (projet unit).
 
 import type { MemorySignal, SignalKind } from '@/lib/db/site-memory-signals'
-import type { VisitMotive } from '@/types/db'
+import type { VisitMotive, WatchlistItemPriority } from '@/types/db'
 
 export interface WatchlistProposal {
   label: string
   source_kind: string
   source_ref: string | null
+  priority: WatchlistItemPriority
+  reason: string | null
+}
+
+/** Criticité déterministe depuis le type de signal — aucun score opaque.
+ *  critical  = irréversible ou réglementaire (ne pas manquer)
+ *  important = retard ou anomalie ouverte
+ *  normal    = suivi courant */
+function derivePriority(kind: SignalKind): WatchlistItemPriority {
+  switch (kind) {
+    case 'proof_window_closing':  // irréversible — photo maintenant ou jamais
+    case 'obligation_neglected':  // réglementaire (DOE, journal photo…)
+      return 'critical'
+    case 'reserve_open':
+    case 'action_overdue':
+    case 'decision_unapplied':
+      return 'important'
+    default:
+      return 'normal'
+  }
 }
 
 export const WATCHLIST_MAX = 7
@@ -60,9 +80,16 @@ export function buildWatchlistProposals(
     if (!signal) continue
     const toLabel = LABELS[kind]
     if (!toLabel) continue
+    const priority = derivePriority(kind)
     for (const item of signal.items) {
       if (!item.label?.trim()) continue
-      out.push({ label: toLabel(item.label.trim()), source_kind: kind, source_ref: item.id || null })
+      out.push({
+        label: toLabel(item.label.trim()),
+        source_kind: kind,
+        source_ref: item.id || null,
+        priority,
+        reason: item.meta ?? null,
+      })
       if (out.length >= max) return out
     }
   }

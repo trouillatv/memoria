@@ -11,7 +11,7 @@ import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import type { DbVisitWatchlistItem, WatchlistItemState } from '@/types/db'
 import type { WatchlistProposal } from '@/lib/visits/watchlist-proposals'
 
-const COLS = 'id, report_id, site_id, organization_id, label, position, state, note, source_kind, source_ref, capture_id, promoted_to, promoted_ref, created_by, created_at, updated_at'
+const COLS = 'id, report_id, site_id, organization_id, label, position, state, note, source_kind, source_ref, capture_id, promoted_to, promoted_ref, created_by, created_at, updated_at, priority, reason'
 
 export async function listWatchlist(reportId: string): Promise<DbVisitWatchlistItem[]> {
   const supabase = createAdminClient()
@@ -51,6 +51,8 @@ export async function seedWatchlist(input: {
     position: i,
     source_kind: p.source_kind,
     source_ref: p.source_ref,
+    priority: p.priority,
+    reason: p.reason,
     created_by: input.createdBy,
   }))
   const { error } = await supabase.from('visit_watchlist_item').insert(rows)

@@ -53,6 +53,20 @@ describe('buildWatchlistProposals', () => {
     expect(out.every((p) => !!p.source_ref)).toBe(true)
   })
 
+  it('criticité déterministe — irréversible > retard > suivi (mig 254)', () => {
+    const out = buildWatchlistProposals(SIGNALS, 'avancement')
+    const byKind = Object.fromEntries(out.map((p) => [p.source_kind, p.priority]))
+    expect(byKind['proof_window_closing']).toBe('critical')
+    expect(byKind['reserve_open']).toBe('important')
+    expect(byKind['action_overdue']).toBe('important')
+    expect(byKind['decision_unapplied']).toBe('important')
+  })
+
+  it('reason = null quand le signal na pas de meta', () => {
+    const out = buildWatchlistProposals(SIGNALS, 'avancement')
+    expect(out.every((p) => p.reason === null)).toBe(true)
+  })
+
   it('aucun signal → aucune liste (jamais inventée)', () => {
     expect(buildWatchlistProposals([], 'avancement')).toEqual([])
   })

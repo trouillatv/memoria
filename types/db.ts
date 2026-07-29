@@ -563,7 +563,9 @@ export interface DbSiteReportProposal {
 // objet métier. pending = pas encore statué (jamais « non vérifié ») ;
 // verified / to_follow / dismissed = les 3 décisions. Promotion MANUELLE d'un
 // to_follow en action/réserve (promoted_to/promoted_ref), jamais automatique.
+// priority (mig 254) : criticité déterministe au seed (irréversible > retard > suivi).
 export type WatchlistItemState = 'pending' | 'verified' | 'to_follow' | 'dismissed'
+export type WatchlistItemPriority = 'critical' | 'important' | 'normal'
 
 export interface DbVisitWatchlistItem {
   id: string
@@ -582,6 +584,8 @@ export interface DbVisitWatchlistItem {
   created_by: string | null
   created_at: string
   updated_at: string
+  priority: WatchlistItemPriority
+  reason: string | null
 }
 
 // Action ouverte (migration 099) — nouvel objet central. Une réunion produit
