@@ -6,6 +6,7 @@ import { extractHistoricalPvProposals } from './historical-visit-extractor'
 import {
   createExtractionRun,
   updateExtractionRunStatus,
+  updateExtractionStage,
   insertExtractionProposals,
   insertExtractionEvidence,
   linkProposalEvidence,
@@ -74,6 +75,7 @@ export async function extractHistoricalPv(
 
   try {
     await updateExtractionRunStatus(runId, 'processing', { started_at: new Date().toISOString() })
+    await updateExtractionStage(runId, 'downloading')
 
     // 3. Télécharger le fichier
     const { data: blob, error: dlErr } = await supabase.storage
@@ -83,6 +85,7 @@ export async function extractHistoricalPv(
       throw new Error(`download: ${dlErr?.message ?? 'no_blob'}`)
     }
     const buffer = Buffer.from(await blob.arrayBuffer())
+    await updateExtractionStage(runId, 'extracting_text')
 
     // 4. Extraction texte native, OCR si scanné
     let extracted = await extractPdfText(buffer)
@@ -105,6 +108,7 @@ export async function extractHistoricalPv(
     if (text.trim().length < MIN_USABLE_CHARS) {
       throw new Error('no_extractable_text')
     }
+    await updateExtractionStage(runId, 'rendering_pages')
 
     // 5. Rendu des snapshots de pages (mupdf, graceful fallback)
     // Plafonné à MAX_SNAPSHOT_PAGES pour rester dans le budget temps Vercel.
@@ -128,8 +132,12 @@ export async function extractHistoricalPv(
       }
     }
 
+    await updateExtractionStage(runId, 'llm_analysis')
+
     // 6. Extraction LLM structurée
     const llmResult = await extractHistoricalPvProposals(text, extracted.pageCount)
+
+    await updateExtractionStage(runId, 'persisting')
 
     // 7. Persister les preuves
     const evidenceInputs = llmResult.evidence.map((ev) => ({

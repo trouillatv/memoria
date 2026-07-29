@@ -1183,6 +1183,7 @@ export interface DbDocumentExtractionRun {
   extractor_key: string
   extractor_version: string
   status: DocumentExtractionRunStatus
+  current_stage: string | null
   started_at: string | null
   completed_at: string | null
   error_message: string | null

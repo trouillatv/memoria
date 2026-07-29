@@ -51,6 +51,11 @@ export async function createExtractionRun(input: {
   return (data as { id: string }).id
 }
 
+export async function updateExtractionStage(runId: string, stage: string): Promise<void> {
+  const supabase = createAdminClient()
+  await supabase.from('document_extraction_run').update({ current_stage: stage }).eq('id', runId)
+}
+
 export async function updateExtractionRunStatus(
   runId: string,
   status: DocumentExtractionRunStatus,
