@@ -1,13 +1,13 @@
 'use server'
 
 import { after } from 'next/server'
+import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
 import { createDocumentCollection, listDocumentCollections } from '@/lib/db/documents'
 import { uploadDocumentAction } from '@/app/(dashboard)/documents/actions'
 import { importVisitAction } from '@/app/(field)/m/import/import-actions'
-import { extractHistoricalPv } from '@/lib/documents/extract-historical-pv'
 
 async function ensureSiteCollection(siteId: string): Promise<string> {
   const collections = await listDocumentCollections()
@@ -70,11 +70,25 @@ export async function importSiteHistoricalPvAction(
   const result = await uploadDocumentAction(fd)
   if (!result.ok || !result.documentId) return { ok: false, error: result.error ?? 'Import impossible' }
 
-  after(() => {
-    void extractHistoricalPv(result.documentId!, user.id, siteId).catch((e: unknown) => {
-      console.error('importSiteHistoricalPvAction background error:', e)
+  const secret = process.env.INTERNAL_ANALYZE_SECRET
+  const h = await headers()
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'
+  const proto = h.get('x-forwarded-proto') ?? (process.env.NODE_ENV === 'production' ? 'https' : 'http')
+  const extractionUrl = `${proto}://${host}/api/extraction/historical-pv`
+
+  if (secret) {
+    after(async () => {
+      try {
+        await fetch(extractionUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-internal-trigger': secret },
+          body: JSON.stringify({ documentId: result.documentId, userId: user.id, siteId }),
+        })
+      } catch (e) {
+        console.error('importSiteHistoricalPvAction trigger error:', e)
+      }
     })
-  })
+  }
 
   revalidatePath(`/sites/${siteId}`)
   return { ok: true, documentId: result.documentId }

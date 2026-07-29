@@ -1,10 +1,10 @@
 'use server'
 
 import { after } from 'next/server'
+import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
-import { extractHistoricalPv } from '@/lib/documents/extract-historical-pv'
 
 export async function analyzePvAction(
   formData: FormData,
@@ -33,10 +33,24 @@ export async function analyzePvAction(
     return { ok: false, error: 'Ce document ne peut pas être analysé comme PV historique' }
   }
 
-  after(() => {
-    void extractHistoricalPv(documentId, user.id).catch((e: unknown) => {
-      console.error('analyzePvAction background error:', e)
-    })
+  const secret = process.env.INTERNAL_ANALYZE_SECRET
+  if (!secret) return { ok: false, error: 'INTERNAL_ANALYZE_SECRET non configuré' }
+
+  const h = await headers()
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'
+  const proto = h.get('x-forwarded-proto') ?? (process.env.NODE_ENV === 'production' ? 'https' : 'http')
+  const extractionUrl = `${proto}://${host}/api/extraction/historical-pv`
+
+  after(async () => {
+    try {
+      await fetch(extractionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-internal-trigger': secret },
+        body: JSON.stringify({ documentId, userId: user.id }),
+      })
+    } catch (e) {
+      console.error('analyzePvAction trigger error:', e)
+    }
   })
 
   return { ok: true }

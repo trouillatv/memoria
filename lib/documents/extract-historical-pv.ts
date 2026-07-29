@@ -15,6 +15,7 @@ import type { DocumentProposalFamily, DocumentEvidenceType, DocumentEvidenceRela
 const EXTRACTOR_KEY = 'historical_visit_report_v1'
 const EXTRACTOR_VERSION = '1.0.0'
 const MIN_USABLE_CHARS = 100
+const MAX_SNAPSHOT_PAGES = 10
 
 function log(event: string, documentId: string, extra?: Record<string, unknown>) {
   console.error(
@@ -106,9 +107,10 @@ export async function extractHistoricalPv(
     }
 
     // 5. Rendu des snapshots de pages (mupdf, graceful fallback)
-    // Map page 1-based → storage_path | null
+    // Plafonné à MAX_SNAPSHOT_PAGES pour rester dans le budget temps Vercel.
+    const pagesToRender = Math.min(extracted.pageCount, MAX_SNAPSHOT_PAGES)
     const snapshotPaths = new Map<number, string | null>()
-    for (let pageNum = 1; pageNum <= extracted.pageCount; pageNum++) {
+    for (let pageNum = 1; pageNum <= pagesToRender; pageNum++) {
       const rendered = await renderPdfPage(buffer, pageNum - 1)
       if (rendered) {
         const storagePath = `snapshots/${documentId}/page-${pageNum}.png`
