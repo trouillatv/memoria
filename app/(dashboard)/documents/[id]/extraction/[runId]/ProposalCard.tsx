@@ -184,7 +184,14 @@ export function ProposalCard({
     })
   }
 
-  const sourcePayload = proposal.source_payload as { statusAtDocumentDate?: string; dueDate?: string; responsibleParty?: string } | null
+  const sourcePayload = proposal.source_payload as {
+    statusAtDocumentDate?: string
+    dueDate?: string
+    responsibleParty?: string
+    relevanceScore?: 'strong' | 'medium' | 'weak'
+    relevanceReason?: string
+  } | null
+  const relevanceScore = sourcePayload?.relevanceScore ?? null
 
   return (
     <article className="rounded-[18px] border bg-card p-4 space-y-3 shadow-sm">
@@ -196,6 +203,16 @@ export function ProposalCard({
           </span>
           {proposal.source_page && (
             <span className="text-xs text-muted-foreground">Page {proposal.source_page}</span>
+          )}
+          {relevanceScore === 'strong' && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" title={sourcePayload?.relevanceReason ?? undefined}>
+              Prioritaire
+            </span>
+          )}
+          {relevanceScore === 'weak' && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-muted/60 text-muted-foreground/60 border border-dashed" title={sourcePayload?.relevanceReason ?? undefined}>
+              Faible
+            </span>
           )}
         </div>
         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusBadge.className}`}>

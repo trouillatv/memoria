@@ -18,6 +18,13 @@ const FAMILY_TITLE: Record<string, string> = {
 
 type Filter = 'all' | 'pending' | 'accepted' | 'edited' | 'rejected'
 
+function getRelevanceScore(proposal: import('@/types/db').DbDocumentExtractionProposal): 'strong' | 'medium' | 'weak' {
+  const payload = proposal.source_payload as { relevanceScore?: string } | null
+  const s = payload?.relevanceScore
+  if (s === 'strong' || s === 'medium' || s === 'weak') return s
+  return 'medium' // propositions antérieures sans score
+}
+
 const FILTER_LABELS: { key: Filter; label: string; field: keyof ReviewSummary }[] = [
   { key: 'all', label: 'Toutes', field: 'total' },
   { key: 'pending', label: 'À examiner', field: 'pending' },
@@ -89,6 +96,7 @@ export function ExtractionReviewClient({
 }) {
   const router = useRouter()
   const [filter, setFilter] = useState<Filter>('all')
+  const [showWeak, setShowWeak] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -106,9 +114,11 @@ export function ExtractionReviewClient({
     })
   }
 
-  const filtered = filter === 'all'
-    ? proposals
-    : proposals.filter((p) => p.proposal.review_status === filter)
+  const weakCount = proposals.filter((p) => getRelevanceScore(p.proposal) === 'weak').length
+
+  const filtered = proposals
+    .filter((p) => filter === 'all' || p.proposal.review_status === filter)
+    .filter((p) => showWeak || getRelevanceScore(p.proposal) !== 'weak')
 
   // Regroupement par famille
   const grouped = new Map<string, DocumentExtractionProposalWithEvidence[]>()
@@ -135,7 +145,7 @@ export function ExtractionReviewClient({
       </div>
 
       {/* Filtres */}
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 flex-wrap items-center">
         {FILTER_LABELS.map(({ key, label, field }) => (
           <button
             key={key}
@@ -150,6 +160,15 @@ export function ExtractionReviewClient({
             {label} {summary[field] > 0 && <span className="ml-1 opacity-70">({summary[field]})</span>}
           </button>
         ))}
+        {weakCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowWeak((v) => !v)}
+            className="ml-auto px-3 py-1.5 rounded-full text-xs border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-muted-foreground hover:text-foreground transition-colors"
+          >
+            {showWeak ? `Masquer les ${weakCount} faibles` : `Voir les ${weakCount} faibles`}
+          </button>
+        )}
       </div>
 
       {/* Propositions groupées */}
