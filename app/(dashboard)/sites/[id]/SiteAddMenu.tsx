@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import Link from 'next/link'
-import { Camera, ChevronDown, FileText, History, Loader2, Mic, Video, BookOpen } from 'lucide-react'
+import { Camera, ChevronDown, FileText, History, Loader2, Mic, Video } from 'lucide-react'
 import { importSiteEvidenceAction, uploadSiteDocumentAction, importSiteHistoricalPvAction } from './site-add-actions'
 
 type DialogKind = 'document' | 'evidence' | 'historical_pv' | null
