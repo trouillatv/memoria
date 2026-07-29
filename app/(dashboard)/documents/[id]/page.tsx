@@ -194,12 +194,19 @@ export default async function DocumentViewerPage({
               )}
             </div>
           ) : (
-            <Link
-              href={`/documents/${doc.id}/extraction/${latestRun.id}`}
-              className="inline-flex text-sm underline underline-offset-2 hover:text-foreground text-muted-foreground"
-            >
-              {latestRun.status === 'ready_for_review' ? 'Revoir les éléments détectés' : "Voir l’analyse"}
-            </Link>
+            <div className="space-y-1.5">
+              <Link
+                href={`/documents/${doc.id}/extraction/${latestRun.id}`}
+                className="inline-flex text-sm underline underline-offset-2 hover:text-foreground text-muted-foreground"
+              >
+                {latestRun.status === 'ready_for_review' ? 'Revoir les éléments détectés' : "Voir l'analyse"}
+              </Link>
+              {latestRun.status === 'ready_for_review' && (
+                <p className="text-xs text-muted-foreground">
+                  Les éléments détectés sont en attente de validation. Ils ne sont pas encore créés dans le chantier.
+                </p>
+              )}
+            </div>
           )}
         </section>
       )}

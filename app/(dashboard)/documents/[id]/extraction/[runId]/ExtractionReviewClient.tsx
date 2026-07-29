@@ -156,6 +156,15 @@ export function ExtractionReviewClient({
         })
       )}
 
+      {/* Encart état — ce que la revue ne fait pas encore */}
+      <div className="rounded-lg border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground space-y-1">
+        <p className="font-medium text-foreground">Étape suivante non encore disponible</p>
+        <p>
+          Accepter ou modifier des propositions ici ne crée pas encore d'éléments dans le chantier.
+          La création des réserves, actions, décisions et échéances dans l'onglet Travail sera disponible prochainement.
+        </p>
+      </div>
+
       {/* Photos non associées */}
       {orphanEvidence.length > 0 && (
         <section className="space-y-3">
