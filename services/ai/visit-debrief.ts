@@ -234,6 +234,9 @@ export interface VisitDebriefInput {
    *  Injecté avant la transcription dans les deux agents. null = aucune entité
    *  connue → comportement identique à l'absence du module. */
   semanticBlock?: string | null
+  /** Résultats structurés du plan de visite (buildWatchlistDebriefBlock).
+   *  Injecté avant la transcription. null = pas de plan de visite pour cette session. */
+  watchlistBlock?: string | null
 }
 
 export interface VisitDebriefResult {
@@ -258,6 +261,7 @@ function referenceDateBlock(referenceDate: string | null): string {
 function buildContextBlock(input: VisitDebriefInput): string {
   return [
     referenceDateBlock(input.referenceDate),
+    ...(input.watchlistBlock ? [input.watchlistBlock, ''] : []),
     ...(input.semanticBlock ? [input.semanticBlock, ''] : []),
     '=== Vocal / transcription ===',
     input.transcript?.slice(0, 10000) || '(aucun)',
@@ -360,8 +364,9 @@ export async function runVisitDebriefAgent(input: VisitDebriefInput): Promise<Vi
         : '(aucun sujet connu)'
       userMessage = [
         referenceDateBlock(input.referenceDate),
+        ...(input.watchlistBlock ? [input.watchlistBlock, ''] : []),
         ...(input.semanticBlock ? [input.semanticBlock, ''] : []),
-        '=== Débrief opérationnel du conducteur (la lecture d’ensemble) ===',
+        ,
         narrative,
         '',
         '=== Éléments BRUTS de la visite (pour ne RIEN omettre : noms, délais, faits à retenir) ===',
@@ -371,7 +376,7 @@ export async function runVisitDebriefAgent(input: VisitDebriefInput): Promise<Vi
         '=== Sujets connus du site (par index, pour subject_match_index) ===',
         subjectsList,
         '',
-        'Extrais la structure JSON. Le débrief donne la lecture d’ensemble ; les éléments bruts garantissent que tu n’oublies AUCUN fait (intervenant, échéance, information à retenir). N’invente rien qui n’y figure pas.',
+        ,
       ].join('\n')
     }
     const out = await provider.complete({

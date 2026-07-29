@@ -8,8 +8,9 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOrganizationMembership } from '@/lib/auth/memberships'
-import type { DbVisitWatchlistItem, WatchlistItemState } from '@/types/db'
+import type { DbVisitWatchlistItem, WatchlistItemPriority, WatchlistItemState } from '@/types/db'
 import type { WatchlistProposal } from '@/lib/visits/watchlist-proposals'
+import type { WatchlistDebriefItem } from '@/lib/visits/watchlist-debrief-block'
 
 const COLS = 'id, report_id, site_id, organization_id, label, position, state, note, source_kind, source_ref, capture_id, promoted_to, promoted_ref, created_by, created_at, updated_at, priority, reason'
 
@@ -105,6 +106,39 @@ export async function setWatchlistItemState(
   if (note !== undefined) patch.note = note
   const { error } = await supabase.from('visit_watchlist_item').update(patch).eq('id', id)
   if (error) throw error
+}
+
+/** Lit les points de contrôle et leurs preuves pour injection dans le débrief IA.
+ *  Retourne [] si la visite n'a pas de plan de visite (seed non déclenché). */
+export async function getWatchlistForDebrief(reportId: string): Promise<WatchlistDebriefItem[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('visit_watchlist_item')
+    .select('id, label, priority, state, note')
+    .eq('report_id', reportId)
+    .order('position', { ascending: true })
+  if (error) throw error
+  const items = data ?? []
+  if (items.length === 0) return []
+
+  const ids = items.map((i) => i.id)
+  const { data: evidences } = await supabase
+    .from('visit_capture_watchlist_item')
+    .select('item_id')
+    .in('item_id', ids)
+
+  const countMap = new Map<string, number>()
+  for (const e of evidences ?? []) {
+    countMap.set(e.item_id, (countMap.get(e.item_id) ?? 0) + 1)
+  }
+
+  return items.map((row) => ({
+    label: row.label,
+    priority: row.priority as WatchlistItemPriority,
+    state: row.state as WatchlistItemState,
+    note: row.note ?? null,
+    evidenceCount: countMap.get(row.id) ?? 0,
+  }))
 }
 
 /** Lie une capture à un point de contrôle (table M-M mig 255).

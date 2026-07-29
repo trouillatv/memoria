@@ -26,6 +26,7 @@ import { queueVisitCapture, listQueuedVisitCapturesByReport } from '@/lib/field/
 import { setWatchlistItemStateAction, addWatchlistItemAction, getWatchlistContextAction } from './watchlist-actions'
 import type { WatchContext } from '@/lib/visits/watchlist-context'
 import type { DbVisitWatchlistItem, WatchlistItemState } from '@/types/db'
+import { computeWatchlistCoverage } from '@/lib/visits/watchlist-coverage'
 import { compressImageFile } from '@/lib/field/image-compress'
 import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
 
@@ -124,7 +125,7 @@ export function VisitBasket({
   // Lot B — captures déposées localement, pas encore confirmées par le serveur.
   // Affichées en optimiste DANS la timeline pour que la collecte ne s'arrête jamais.
   const [pending, setPending] = useState<PendingCapture[]>([])
-  const [overlay, setOverlay] = useState<'none' | 'note' | 'verify' | 'question' | 'watch' | 'lastlook'>('none')
+  const [overlay, setOverlay] = useState<'none' | 'note' | 'verify' | 'question' | 'watch' | 'coverage'>('none')
   // Caméra fantôme (mig 195) : point de repère en cours de reprise, ou null.
   const [ghost, setGhost] = useState<{ anchorId: string; url: string; label: string | null } | null>(null)
   // Caméra vidéo intégrée (MOB-VID2a) — filmer dans l'app, clips de 20 s.
@@ -584,8 +585,6 @@ export function VisitBasket({
   const [watchItems, setWatchItems] = useState<DbVisitWatchlistItem[]>(watchlist ?? [])
   const [watchNewLabel, setWatchNewLabel] = useState('')
   const pendingWatch = watchItems.filter((w) => w.state === 'pending')
-  // Le dernier regard ne se pose QU'UNE fois — jamais une app qui harcèle.
-  const lastLookAskedRef = useRef(false)
 
   function decideWatch(item: DbVisitWatchlistItem, state: WatchlistItemState) {
     setWatchItems((prev) => prev.map((w) => (w.id === item.id ? { ...w, state } : w)))
@@ -627,11 +626,11 @@ export function VisitBasket({
 
   // ── Terminer la visite ──────────────────────────────────────────────────────
   function end() {
-    // LE DERNIER REGARD — une seule question, jamais plusieurs : s'il reste des
-    // points non statués, on montre le premier avant de partir. Une fois.
-    if (!lastLookAskedRef.current && pendingWatch.length > 0) {
-      lastLookAskedRef.current = true
-      setOverlay('lastlook')
+    // Bilan de couverture : s'il reste des points non statués, afficher le
+    // résumé avant de partir — le terrain reste maître, pas de blocage absolu.
+    const coverage = computeWatchlistCoverage(watchItems)
+    if (!coverage.isComplete) {
+      setOverlay('coverage')
       return
     }
     doEnd()
@@ -1085,35 +1084,63 @@ export function VisitBasket({
         </Overlay>
       )}
 
-      {/* LE DERNIER REGARD — une seule question avant de partir, jamais dix. */}
-      {overlay === 'lastlook' && pendingWatch[0] && (
-        <Overlay title="Un dernier point" icon={<Eye className="h-4 w-4" />} onClose={() => { setOverlay('none'); doEnd() }}>
-          <p className="text-sm leading-snug">
-            Avant de partir — <span className="font-medium">{pendingWatch[0].label}</span>
-          </p>
-          <div className="grid grid-cols-3 gap-1.5">
-            <WatchStateButton
-              icon={<Check className="h-3.5 w-3.5" />} label="Conforme" activeCls=""
-              onClick={() => { decideWatch(pendingWatch[0], 'checked'); setOverlay('none'); doEnd() }}
-            />
-            <WatchStateButton
-              icon={<Eye className="h-3.5 w-3.5" />} label="Toujours ouvert" activeCls=""
-              onClick={() => { decideWatch(pendingWatch[0], 'still_open'); setOverlay('none'); doEnd() }}
-            />
-            <WatchStateButton
-              icon={<X className="h-3.5 w-3.5" />} label="Sans objet" activeCls=""
-              onClick={() => { decideWatch(pendingWatch[0], 'not_applicable'); setOverlay('none'); doEnd() }}
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => { setOverlay('none'); doEnd() }}
-            className="w-full py-1.5 text-center text-xs text-muted-foreground"
+      {/* BILAN DE COUVERTURE — affiché avant la clôture si des points restent
+          en attente. Pas de blocage : le terrain reste maître, mais le
+          contournement est visible. Critique vs normal = deux niveaux d'alerte. */}
+      {overlay === 'coverage' && (() => {
+        const cov = computeWatchlistCoverage(watchItems)
+        const hasCritical = cov.criticalPending > 0
+        const criticalItems = watchItems.filter((w) => w.state === 'pending' && w.priority === 'critical')
+        return (
+          <Overlay
+            title="Plan de visite"
+            icon={<ListChecks className="h-4 w-4" />}
+            onClose={() => { setOverlay('none'); doEnd() }}
           >
-            Terminer sans répondre
-          </button>
-        </Overlay>
-      )}
+            {/* Bilan des 4 états — toujours affiché */}
+            <div className="space-y-1.5 rounded-xl border bg-muted/30 p-3">
+              <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">
+                {cov.total} point{cov.total > 1 ? 's' : ''} préparés
+              </p>
+              <ul className="space-y-0.5 text-sm">
+                {cov.checked > 0 && <li className="flex items-center gap-2"><Check className="h-3.5 w-3.5 text-emerald-600" />{cov.checked} conforme{cov.checked > 1 ? 's' : ''}</li>}
+                {cov.stillOpen > 0 && <li className="flex items-center gap-2"><Eye className="h-3.5 w-3.5 text-amber-600" />{cov.stillOpen} toujours ouvert{cov.stillOpen > 1 ? 's' : ''}</li>}
+                {cov.notApplicable > 0 && <li className="flex items-center gap-2"><X className="h-3.5 w-3.5 text-muted-foreground" />{cov.notApplicable} sans objet</li>}
+                {cov.pending > 0 && <li className="flex items-center gap-2 font-medium text-muted-foreground"><span className="h-3.5 w-3.5 flex items-center justify-center rounded-full border text-[10px]">○</span>{cov.pending} non vérifié{cov.pending > 1 ? 's' : ''}</li>}
+              </ul>
+            </div>
+
+            {/* Alerte critique — points à ne pas oublier avant de partir */}
+            {hasCritical && (
+              <div className="rounded-xl border border-red-200 bg-red-50/60 px-3 py-2.5 dark:border-red-900/40 dark:bg-red-950/20">
+                <p className="text-[13px] font-semibold text-red-800 dark:text-red-300">
+                  {cov.criticalPending} point{cov.criticalPending > 1 ? 's critiques' : ' critique'} non vérifié{cov.criticalPending > 1 ? 's' : ''}&nbsp;:
+                </p>
+                <ul className="mt-1 space-y-0.5 text-[12px] text-red-700 dark:text-red-300/80">
+                  {criticalItems.map((w) => <li key={w.id}>• {w.label}</li>)}
+                </ul>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setOverlay('watch')}
+                className="rounded-xl border bg-card px-3 py-3 text-sm font-medium active:bg-muted/40"
+              >
+                Revenir au plan
+              </button>
+              <button
+                type="button"
+                onClick={() => { setOverlay('none'); doEnd() }}
+                className={`rounded-xl px-3 py-3 text-sm font-semibold text-white active:opacity-90 ${hasCritical ? 'bg-red-600' : 'bg-foreground'}`}
+              >
+                {hasCritical ? 'Terminer malgré tout' : 'Terminer quand même'}
+              </button>
+            </div>
+          </Overlay>
+        )
+      })()}
 
       {/* Caméra fantôme — la photo précédente en surimpression, on aligne, on
           déclenche. Repli : appareil natif, la reprise reste chaînée. */}

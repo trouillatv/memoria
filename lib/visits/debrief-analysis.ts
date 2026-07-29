@@ -33,7 +33,9 @@ import { computeSnapshotDelta, type SnapshotDelta } from '@/lib/visits/source-sn
 import { toDebriefEcheance, type DebriefEcheance } from '@/lib/visits/echeance-labels'
 import { runVisitDebriefAgent, type VisitDebriefInput, type VisitDebriefParsed } from '@/services/ai/visit-debrief'
 import { projectDebriefToProposals } from '@/lib/db/knowledge-proposals'
+import { getWatchlistForDebrief } from '@/lib/db/visit-watchlist'
 import { buildSemanticContextBlock } from '@/lib/knowledge/semantic-entities'
+import { buildWatchlistDebriefBlock } from '@/lib/visits/watchlist-debrief-block'
 import {
   buildDebriefSemanticMemory,
   type DebriefSemanticMemory,
@@ -111,6 +113,7 @@ function buildDebriefInput(
   ctx: NonNullable<Awaited<ReturnType<typeof gatherVisitDebriefContext>>>,
   userId: string | null,
   semanticBlock: string | null = null,
+  watchlistBlock: string | null = null,
 ): VisitDebriefInput {
   const signalLines = ctx.signals.flatMap((s) => [
     s.title,
@@ -133,6 +136,7 @@ function buildDebriefInput(
     referenceDate: (ctx.visit.started_at ?? ctx.visit.created_at)?.slice(0, 10) ?? null,
     userId,
     semanticBlock: semanticBlock || null,
+    watchlistBlock: watchlistBlock || null,
   }
 }
 
@@ -392,7 +396,9 @@ export async function loadOrRunVisitDebrief(
   const semanticBlock = ctx.visit.site_id && ctx.visit.organization_id
     ? await buildSemanticContextBlock(ctx.visit.site_id, ctx.visit.organization_id, userId ?? undefined)
     : null
-  const input = buildDebriefInput(ctx, userId, semanticBlock)
+  const watchlistItems = await getWatchlistForDebrief(reportId)
+  const watchlistBlock = buildWatchlistDebriefBlock(watchlistItems)
+  const input = buildDebriefInput(ctx, userId, semanticBlock, watchlistBlock)
   const hash = computeCorpusHash(input)
   const snapshot = ctx.sourceSnapshot
 
