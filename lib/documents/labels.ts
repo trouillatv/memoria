@@ -44,6 +44,7 @@ export const DOCUMENT_TYPE_OPTIONS: { value: DocumentType; label: string }[] = [
   { value: 'facture', label: 'Facture' },
   { value: 'preuve', label: 'Preuve' },
   { value: 'autre', label: 'Autre' },
+  { value: 'historical_visit_report', label: 'PV / rapport de visite historique' },
 ]
 
 export const VISIBILITY_OPTIONS: { value: string; label: string }[] = [

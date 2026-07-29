@@ -42,6 +42,7 @@ const MAX_PDF_BYTES = 20 * 1024 * 1024 // 20 MB
 const DOCUMENT_TYPES = [
   'contrat', 'avenant', 'procedure', 'protocole', 'plan_acces', 'securite',
   'ao', 'memoire_technique', 'reference', 'litige', 'facture', 'preuve', 'autre',
+  'historical_visit_report',
 ] as const
 const VISIBILITY = [
   'admin_only', 'manager', 'operations', 'field', 'client_portal',
@@ -277,9 +278,11 @@ export async function uploadDocumentAction(
   // Un document non indexé est rangé en couche 'froide', statut 'ready' (pipeline
   // terminé sans chunks) — pas de coût d'embedding, pas de pollution du retrieval.
   //
-  // GARDE-FOU SERVEUR : un litige n'est JAMAIS indexé automatiquement, quoi que
-  // poste le client ([[litige-no-automatic-reading]]).
-  const embed = input.document_type !== 'litige' && input.embed !== 'false'
+  // GARDE-FOU SERVEUR : un litige ou un PV historique n'est JAMAIS indexé
+  // automatiquement, quoi que poste le client. L'extraction sur PV historique
+  // est réservée au Sprint 4B (validation explicite lot par lot).
+  const NEVER_AUTO_EXTRACT: string[] = ['litige', 'historical_visit_report']
+  const embed = !NEVER_AUTO_EXTRACT.includes(input.document_type) && input.embed !== 'false'
   const memoryTier: 'vivante' | 'consultable' | 'froide' | null = embed
     ? (input.memory_tier ?? null)
     : 'froide'

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { frDayMonthPaddedLocal, frDayMonthTimeLocal } from '@/lib/time/local-date'
 import type { SiteDeadline } from '@/lib/db/site-deadlines'
 import { echeanceDateLabel, A_PLANIFIER_LABEL } from '@/lib/visits/echeance-labels'
-import { ChevronDown, History, MessageSquare, Wrench } from 'lucide-react'
+import { ChevronDown, FileText, History, MessageSquare, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SiteActionRow } from '@/lib/db/site-actions'
 import type { SiteBlocage } from '@/lib/db/site-blocages'
@@ -11,6 +11,7 @@ import type { SupervisorInterventionRow } from '@/lib/db/interventions'
 import type { VisitWithCounts } from '@/lib/db/visits'
 import type { OverviewChangeInput } from '@/lib/chantier/overview-projections'
 import { interventionStatusLabel } from '@/lib/chantier/labels'
+import type { DbDocument } from '@/types/db'
 
 interface ChronologyWorkspaceProps {
   siteId: string
@@ -21,6 +22,8 @@ interface ChronologyWorkspaceProps {
   actions: SiteActionRow[]
   blocages: SiteBlocage[]
   interventions: SupervisorInterventionRow[]
+  /** PV et rapports de visite historiques rattachés au chantier (Sprint 4A). */
+  historicalDocs: DbDocument[]
 }
 
 export function ChronologyWorkspace({
@@ -31,9 +34,10 @@ export function ChronologyWorkspace({
   actions,
   blocages,
   interventions,
+  historicalDocs,
 }: ChronologyWorkspaceProps) {
   const interventionEvents = interventions.slice(0, 6)
-  const hasEvents = visits.length > 0 || interventionEvents.length > 0 || changes.length > 0 || deadlines.length > 0
+  const hasEvents = visits.length > 0 || interventionEvents.length > 0 || changes.length > 0 || deadlines.length > 0 || historicalDocs.length > 0
   const lastVisit = visits[0]
 
   return (
@@ -180,6 +184,31 @@ export function ChronologyWorkspace({
                 ) : (
                   <ChangeContent change={change} />
                 )}
+              </article>
+            </li>
+          ))}
+
+          {historicalDocs.map((doc) => (
+            <li key={doc.id} className="relative">
+              <TimelineDot tone="neutral" />
+              <article className="rounded-[18px] border bg-card p-4 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted">
+                    <FileText className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm text-muted-foreground">
+                      PV historique · {doc.effective_date ? formatDate(doc.effective_date) : formatDate(doc.created_at)}
+                    </p>
+                    <p className="mt-0.5 font-semibold leading-snug">{doc.filename}</p>
+                    <Link
+                      href={`/documents/${doc.id}`}
+                      className="mt-1 inline-block text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                    >
+                      Ouvrir le document
+                    </Link>
+                  </div>
+                </div>
               </article>
             </li>
           ))}

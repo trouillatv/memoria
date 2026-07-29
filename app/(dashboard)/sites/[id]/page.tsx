@@ -298,7 +298,7 @@ async function TravailView({ siteId }: { siteId: string }) {
 }
 
 async function ChronologieView({ siteId }: { siteId: string }) {
-  const [recentActivity, lastVisit, deadlines, visits, actions, blocages, interventions] = await Promise.all([
+  const [recentActivity, lastVisit, deadlines, visits, actions, blocages, interventions, allSiteDocs] = await Promise.all([
     getSiteRecentActivity(siteId, 12).catch(() => []),
     getLastEndedVisitForSite(siteId).catch(() => null),
     listSiteDeadlines(siteId).catch(() => []),
@@ -306,9 +306,11 @@ async function ChronologieView({ siteId }: { siteId: string }) {
     listOpenSiteActions({ siteIds: [siteId] }).catch((e) => { console.error('[sites/[id]] actions', e); return [] }),
     listBlocagesBySite(siteId).catch(() => []),
     listInterventionsSupervisor({ siteId, dateRange: 'all', limit: 80 }).catch((e) => { console.error('[sites/[id]] interventions', e); return { items: [], total: 0 } }),
+    listDocumentsForTarget('site', siteId).catch(() => []),
   ])
   const sinceIso = lastVisit?.endedAt ?? lastVisit?.startedAt ?? null
   const changes = selectRecentChanges(toOverviewChanges(recentActivity), { sinceIso, limit: 5 })
+  const historicalDocs = allSiteDocs.filter((d) => d.document_type === 'historical_visit_report')
   return (
     <ChronologyWorkspace
       siteId={siteId}
@@ -318,6 +320,7 @@ async function ChronologieView({ siteId }: { siteId: string }) {
       actions={actions}
       blocages={blocages}
       interventions={interventions.items}
+      historicalDocs={historicalDocs}
     />
   )
 }

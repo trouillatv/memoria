@@ -122,6 +122,7 @@ describe('site operational workspaces', () => {
         interventions={[]}
         actions={[actionFixture()]}
         blocages={[]}
+        historicalDocs={[]}
       />,
     )
 
@@ -153,6 +154,7 @@ describe('site operational workspaces', () => {
         interventions={[]}
         actions={[]}
         blocages={[]}
+        historicalDocs={[]}
       />,
     )
     expect(screen.getByText(/Échéance ajoutée/)).toBeInTheDocument()

@@ -1082,6 +1082,7 @@ export type DocumentType =
   | 'contrat' | 'avenant' | 'procedure' | 'protocole' | 'plan_acces'
   | 'securite' | 'ao' | 'memoire_technique' | 'reference' | 'litige'
   | 'facture' | 'preuve' | 'autre'
+  | 'historical_visit_report'
 
 export type DocumentVisibility =
   | 'admin_only' | 'manager' | 'operations' | 'field' | 'client_portal'
