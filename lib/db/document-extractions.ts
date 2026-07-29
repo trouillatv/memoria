@@ -213,7 +213,7 @@ export async function listExtractionForReview(
   return (proposals as DbDocumentExtractionProposal[]).map((proposal) => ({
     proposal,
     evidence: (relationsByProposal.get(proposal.id) ?? []).map((rel) => ({
-      evidence: (rel as { document_extraction_evidence: DbDocumentExtractionEvidence }).document_extraction_evidence,
+      evidence: (rel as unknown as { document_extraction_evidence: DbDocumentExtractionEvidence }).document_extraction_evidence,
       relationType: (rel as { relation_type: DocumentEvidenceRelationType }).relation_type,
       confidence: (rel as { confidence: number | null }).confidence,
     })),

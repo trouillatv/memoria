@@ -46,12 +46,12 @@ function buildFromChain(tableName: string) {
       const arr = Array.isArray(rows) ? rows : [rows]
       const inserted: Row[] = arr.map((row) => {
         const id = (row.id as string | undefined) ?? nextId()
-        const full = { ...row, id, created_at: new Date().toISOString() }
+        const full: Row = { ...row, id, created_at: new Date().toISOString() }
         if (tableName === 'document_extraction_run')     store.runs.set(id, full)
         if (tableName === 'document_extraction_proposal') store.proposals.set(id, full)
         if (tableName === 'document_extraction_evidence') store.evidence.set(id, full)
         if (tableName === 'document_proposal_materialization') {
-          const key = `${full.proposal_id}:${full.target_entity_type}:${full.target_entity_id}`
+          const key = `${full['proposal_id']}:${full['target_entity_type']}:${full['target_entity_id']}`
           store.materializations.set(key, full)
         }
         return full
@@ -231,7 +231,7 @@ describe('insertExtractionProposals', () => {
       proposal_family: 'observation',
       label: 'Observation sans photo',
     }])
-    const p = store.proposals.get(id) as DbDocumentExtractionProposal
+    const p = store.proposals.get(id) as unknown as DbDocumentExtractionProposal
     expect(p.label).toBe('Observation sans photo')
     expect(p.review_status).toBe('pending')
     expect(store.proposalEvidence.size).toBe(0)   // aucune relation
@@ -261,7 +261,7 @@ describe('insertExtractionEvidence', () => {
       caption: 'Photo page 12 non associée',
     }])
     expect(evId).toBeTruthy()
-    const ev = store.evidence.get(evId) as DbDocumentExtractionEvidence
+    const ev = store.evidence.get(evId) as unknown as DbDocumentExtractionEvidence
     expect(ev.source_page).toBe(12)
     expect(store.proposalEvidence.size).toBe(0)   // aucune relation
   })
@@ -321,7 +321,7 @@ describe('reviewProposal', () => {
   it('acceptation sans modification — review_status devient accepted', async () => {
     const pid = await makeProposal()
     await reviewProposal(pid, { action: 'accept' }, 'user-01')
-    const p = store.proposals.get(pid) as DbDocumentExtractionProposal
+    const p = store.proposals.get(pid) as unknown as DbDocumentExtractionProposal
     expect(p.review_status).toBe('accepted')
     expect(p.reviewed_by).toBe('user-01')
     // Le contenu extrait reste intact — invariant 3
@@ -338,7 +338,7 @@ describe('reviewProposal', () => {
       label: 'Infiltration toiture-terrasse (zone nord)',
       description: 'Visible au niveau du plancher',
     })
-    const p = store.proposals.get(pid) as DbDocumentExtractionProposal
+    const p = store.proposals.get(pid) as unknown as DbDocumentExtractionProposal
     expect(p.review_status).toBe('edited')
     expect(p.reviewed_label).toBe('Infiltration toiture-terrasse (zone nord)')
     expect(p.reviewed_description).toBe('Visible au niveau du plancher')
@@ -349,7 +349,7 @@ describe('reviewProposal', () => {
   it('refus — review_status devient rejected', async () => {
     const pid = await makeProposal()
     await reviewProposal(pid, { action: 'reject' })
-    const p = store.proposals.get(pid) as DbDocumentExtractionProposal
+    const p = store.proposals.get(pid) as unknown as DbDocumentExtractionProposal
     expect(p.review_status).toBe('rejected')
   })
 })
@@ -455,13 +455,13 @@ describe('scénario complet PV historique', () => {
       action: 'edit',
       label: 'Infiltration en toiture-terrasse (zone nord)',
     })
-    const reserve = store.proposals.get(pReserve) as DbDocumentExtractionProposal
+    const reserve = store.proposals.get(pReserve) as unknown as DbDocumentExtractionProposal
     expect(reserve.reviewed_label).toBe('Infiltration en toiture-terrasse (zone nord)')
     expect(reserve.label).toBe('Infiltration en toiture')   // original intact
 
     // 6. Accepter l'action
     await reviewProposal(pAction, { action: 'accept' })
-    expect((store.proposals.get(pAction) as DbDocumentExtractionProposal).review_status).toBe('accepted')
+    expect((store.proposals.get(pAction) as unknown as DbDocumentExtractionProposal).review_status).toBe('accepted')
 
     // 7. Matérialisation idempotente de l'action
     const ENTITY_ID = 'action-site-001'
