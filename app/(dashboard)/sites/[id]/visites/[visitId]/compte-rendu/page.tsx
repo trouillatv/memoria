@@ -41,6 +41,7 @@ import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
 import { getOrCreateVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { MemoriaRetained } from '@/app/(field)/m/visite/[reportId]/cr/MemoriaRetained'
+import { WatchlistBilan } from '@/app/(field)/m/visite/[reportId]/cr/WatchlistBilan'
 import { AtelierColonnes } from './AtelierColonnes'
 
 export const dynamic = 'force-dynamic'
@@ -97,6 +98,11 @@ export default async function VisitCrDesktopPage({
           Retour à la visite
         </Link>
       </header>
+
+      {/* Bilan factuel du plan de visite — constat de l'exécution, même source
+          qu'en mobile. Affiché au-dessus de l'atelier pour que l'éditeur dispose
+          du contexte terrain avant de corriger le texte de l'IA. */}
+      <WatchlistBilan reportId={visitId} />
 
       {crDocument ? (
         // LES TROIS MARCHES ET LES FILS QUI LES RELIENT — côté client, parce
