@@ -48,27 +48,27 @@ const GEMINI_RESPONSE_SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          temporaryKey: { type: 'string' },
+          temporaryKey: { type: 'string', maxLength: 40 },
           family: {
             type: 'string',
             enum: ['reservation', 'action', 'decision', 'observation', 'deadline', 'knowledge_fact'],
           },
-          label: { type: 'string' },
-          description: { type: 'string' },
+          label: { type: 'string', maxLength: 200 },
+          description: { type: 'string', maxLength: 400 },
           sourcePage: { type: 'integer' },
-          sourceExcerpt: { type: 'string' },
+          sourceExcerpt: { type: 'string', maxLength: 300 },
           sourcePayload: {
             type: 'object',
             properties: {
-              statusAtDocumentDate: { type: 'string' },
-              dueDate: { type: 'string' },
-              responsibleParty: { type: 'string' },
+              statusAtDocumentDate: { type: 'string', maxLength: 100 },
+              dueDate: { type: 'string', maxLength: 50 },
+              responsibleParty: { type: 'string', maxLength: 100 },
               relevanceScore: { type: 'string', enum: ['strong', 'medium', 'weak'] },
-              relevanceReason: { type: 'string' },
+              relevanceReason: { type: 'string', maxLength: 80 },
             },
             required: ['relevanceScore'],
           },
-          evidenceKeys: { type: 'array', items: { type: 'string' } },
+          evidenceKeys: { type: 'array', items: { type: 'string', maxLength: 40 } },
         },
         required: ['temporaryKey', 'family', 'label', 'sourcePayload', 'evidenceKeys'],
       },
@@ -78,12 +78,12 @@ const GEMINI_RESPONSE_SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          temporaryKey: { type: 'string' },
+          temporaryKey: { type: 'string', maxLength: 40 },
           evidenceType: { type: 'string', enum: ['text_excerpt', 'page_snapshot'] },
           sourcePage: { type: 'integer' },
-          caption: { type: 'string' },
-          nearbyText: { type: 'string' },
-          text: { type: 'string' },
+          caption: { type: 'string', maxLength: 200 },
+          nearbyText: { type: 'string', maxLength: 300 },
+          text: { type: 'string', maxLength: 500 },
         },
         required: ['temporaryKey', 'evidenceType', 'sourcePage'],
       },
@@ -266,9 +266,16 @@ export async function extractHistoricalPvProposals(
     }
 
     const data = (await res.json()) as {
-      candidates: Array<{ content: { parts: Array<{ text: string }> } }>
+      candidates: Array<{
+        content: { parts: Array<{ text: string }> }
+        finishReason?: string
+      }>
     }
-    outputText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+    const candidate = data.candidates?.[0]
+    if (candidate?.finishReason === 'MAX_TOKENS') {
+      throw new Error('Gemini output truncated (MAX_TOKENS) — réponse JSON incomplète')
+    }
+    outputText = candidate?.content?.parts?.[0]?.text ?? ''
     if (!outputText) throw new Error('Gemini returned empty output')
     const parsed: unknown = JSON.parse(outputText)
     return LlmExtractionResultSchema.parse(parsed)
