@@ -1,7 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { Loader2 } from 'lucide-react'
 import { ProposalCard } from './ProposalCard'
+import { createHistoricalVisitAction } from './review-actions'
 import type { DocumentExtractionProposalWithEvidence, DbDocumentExtractionEvidence, DocumentEvidenceRelationType } from '@/types/db'
 import type { ReviewSummary } from '@/lib/documents/effective-proposal'
 
@@ -68,15 +71,40 @@ export function ExtractionReviewClient({
   orphanEvidence,
   signedUrls,
   documentId,
+  runId,
   summary,
+  effectiveDate,
+  targetSiteId,
+  alreadySiteReportId,
 }: {
   proposals: DocumentExtractionProposalWithEvidence[]
   orphanEvidence: DbDocumentExtractionEvidence[]
   signedUrls: Record<string, string>
   documentId: string
+  runId: string
   summary: ReviewSummary
+  effectiveDate: string | null
+  targetSiteId: string | null
+  alreadySiteReportId: string | null
 }) {
+  const router = useRouter()
   const [filter, setFilter] = useState<Filter>('all')
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  function handleCreateVisit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setCreateError(null)
+    const fd = new FormData(e.currentTarget)
+    startTransition(async () => {
+      const result = await createHistoricalVisitAction(fd)
+      if (result.ok && result.siteReportId && result.siteId) {
+        router.push(`/sites/${result.siteId}/visites/${result.siteReportId}`)
+      } else {
+        setCreateError(result.error ?? 'Erreur inconnue')
+      }
+    })
+  }
 
   const filtered = filter === 'all'
     ? proposals
@@ -156,13 +184,59 @@ export function ExtractionReviewClient({
         })
       )}
 
-      {/* Encart état — ce que la revue ne fait pas encore */}
-      <div className="rounded-lg border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground space-y-1">
-        <p className="font-medium text-foreground">Étape suivante non encore disponible</p>
-        <p>
-          Accepter ou modifier des propositions ici ne crée pas encore d'éléments dans le chantier.
-          La création des réserves, actions, décisions et échéances dans l'onglet Travail sera disponible prochainement.
-        </p>
+      {/* Créer la visite historique */}
+      <div className="rounded-lg border bg-card p-4 space-y-3">
+        <h2 className="text-sm font-medium">Créer la visite historique</h2>
+        {alreadySiteReportId && targetSiteId ? (
+          <div className="space-y-1">
+            <p className="text-sm text-emerald-700 dark:text-emerald-400">Visite créée avec succès.</p>
+            <a
+              href={`/sites/${targetSiteId}/visites/${alreadySiteReportId}`}
+              className="text-sm underline underline-offset-2 hover:text-foreground text-muted-foreground"
+            >
+              Voir la visite historique
+            </a>
+          </div>
+        ) : !targetSiteId ? (
+          <p className="text-sm text-muted-foreground">
+            Aucun chantier associé à ce document. Rattachez le document à un chantier avant de créer la visite.
+          </p>
+        ) : !effectiveDate ? (
+          <p className="text-sm text-muted-foreground">
+            La date du PV n'est pas renseignée. Modifiez le document pour ajouter la date d'effet avant de créer la visite.
+          </p>
+        ) : (
+          <form onSubmit={handleCreateVisit} className="space-y-3">
+            <input type="hidden" name="run_id" value={runId} />
+            <input type="hidden" name="document_id" value={documentId} />
+            {summary.pending > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {summary.pending} proposition{summary.pending > 1 ? 's' : ''} non examinée{summary.pending > 1 ? 's' : ''} — vous pouvez quand même créer la visite.
+              </p>
+            )}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Titre de la visite (optionnel)</label>
+              <input
+                type="text"
+                name="visit_title"
+                placeholder={`Visite importée — ${effectiveDate}`}
+                className="w-full rounded-md border bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground/60"
+                disabled={isPending}
+              />
+            </div>
+            {createError && (
+              <p className="text-xs text-destructive">{createError}</p>
+            )}
+            <button
+              type="submit"
+              disabled={isPending}
+              className="inline-flex items-center gap-2 rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isPending ? 'Création en cours…' : 'Créer la visite historique'}
+            </button>
+          </form>
+        )}
       </div>
 
       {/* Photos non associées */}

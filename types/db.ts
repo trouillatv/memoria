@@ -1179,6 +1179,7 @@ export interface DbDocumentExtractionRun {
   id: string
   organization_id: string
   document_id: string
+  target_site_id: string | null
   extractor_key: string
   extractor_version: string
   status: DocumentExtractionRunStatus

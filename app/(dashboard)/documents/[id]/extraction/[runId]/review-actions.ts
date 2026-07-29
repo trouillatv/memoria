@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { reviewProposal, linkProposalEvidence } from '@/lib/db/document-extractions'
+import { materializeHistoricalVisit } from '@/lib/db/historical-visit-materialization'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType } from '@/types/db'
 
 type ActionResult = { ok: boolean; error?: string }
@@ -142,4 +143,61 @@ export async function relinkEvidenceAction(fd: FormData): Promise<ActionResult> 
 
   await linkProposalEvidence(proposalId, evidenceId, relationType)
   return { ok: true }
+}
+
+// ─── Matérialisation — création de la visite historique ──────────────────────
+
+export async function createHistoricalVisitAction(fd: FormData): Promise<{
+  ok: boolean
+  siteReportId?: string
+  siteId?: string
+  error?: string
+}> {
+  const runId = fd.get('run_id')?.toString()
+  const documentId = fd.get('document_id')?.toString()
+  const visitTitle = fd.get('visit_title')?.toString()?.trim() || null
+
+  if (!runId || !documentId) return { ok: false, error: 'Paramètres manquants' }
+
+  const access = await verifyReviewAccess(documentId)
+  if (!access.ok) return { ok: false, error: access.error }
+
+  const admin = createAdminClient()
+
+  const { data: run } = await admin
+    .from('document_extraction_run')
+    .select('target_site_id, document_id')
+    .eq('id', runId)
+    .eq('document_id', documentId)
+    .maybeSingle()
+  if (!run) return { ok: false, error: 'Run introuvable' }
+
+  const siteId = (run as { target_site_id: string | null }).target_site_id
+  if (!siteId) return { ok: false, error: 'Aucun chantier associé à ce run — rattachez le document à un chantier.' }
+
+  const { data: doc } = await admin
+    .from('documents')
+    .select('effective_date')
+    .eq('id', documentId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (!doc) return { ok: false, error: 'Document introuvable' }
+
+  const visitDate = (doc as { effective_date: string | null }).effective_date
+  if (!visitDate) {
+    return { ok: false, error: "La date du PV est requise. Modifiez le document pour renseigner la date d'effet." }
+  }
+
+  try {
+    const siteReportId = await materializeHistoricalVisit({
+      runId,
+      userId: access.userId,
+      siteId,
+      visitDate,
+      visitTitle,
+    })
+    return { ok: true, siteReportId, siteId }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erreur lors de la matérialisation' }
+  }
 }

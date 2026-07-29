@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import Link from 'next/link'
-import { Camera, ChevronDown, FileText, Loader2, Mic, Video } from 'lucide-react'
+import { Camera, ChevronDown, FileText, History, Loader2, Mic, Video } from 'lucide-react'
 import { importSiteEvidenceAction, uploadSiteDocumentAction } from './site-add-actions'
 
 type DialogKind = 'document' | 'evidence' | null
@@ -63,6 +63,14 @@ export function SiteAddMenu({ siteId }: { siteId: string }) {
         <div role="menu" className="absolute right-0 z-20 mt-2 w-72 rounded-xl border bg-popover p-2 shadow-lg">
           <MenuButton icon={<FileText className="h-4 w-4" />} label="Document PDF" onClick={() => openDialog('document')} />
           <MenuButton icon={<Camera className="h-4 w-4" />} label="Photos, vidéos, vocaux" onClick={() => openDialog('evidence')} />
+          <Link
+            href={`/documents/import?target_type=site&target_id=${siteId}`}
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm hover:bg-muted"
+          >
+            <span className="text-muted-foreground"><History className="h-4 w-4" /></span>
+            <span>Importer un PV historique</span>
+          </Link>
           <Link
             href={`/sites/${siteId}/actions`}
             onClick={() => setOpen(false)}
