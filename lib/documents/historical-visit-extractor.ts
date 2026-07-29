@@ -48,27 +48,27 @@ const GEMINI_RESPONSE_SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          temporaryKey: { type: 'string', maxLength: 40 },
+          temporaryKey: { type: 'string' },
           family: {
             type: 'string',
             enum: ['reservation', 'action', 'decision', 'observation', 'deadline', 'knowledge_fact'],
           },
-          label: { type: 'string', maxLength: 200 },
-          description: { type: 'string', maxLength: 400 },
+          label: { type: 'string' },
+          description: { type: 'string' },
           sourcePage: { type: 'integer' },
-          sourceExcerpt: { type: 'string', maxLength: 300 },
+          sourceExcerpt: { type: 'string' },
           sourcePayload: {
             type: 'object',
             properties: {
-              statusAtDocumentDate: { type: 'string', maxLength: 100 },
-              dueDate: { type: 'string', maxLength: 50 },
-              responsibleParty: { type: 'string', maxLength: 100 },
+              statusAtDocumentDate: { type: 'string' },
+              dueDate: { type: 'string' },
+              responsibleParty: { type: 'string' },
               relevanceScore: { type: 'string', enum: ['strong', 'medium', 'weak'] },
-              relevanceReason: { type: 'string', maxLength: 80 },
+              relevanceReason: { type: 'string' },
             },
             required: ['relevanceScore'],
           },
-          evidenceKeys: { type: 'array', items: { type: 'string', maxLength: 40 } },
+          evidenceKeys: { type: 'array', items: { type: 'string' } },
         },
         required: ['temporaryKey', 'family', 'label', 'sourcePayload', 'evidenceKeys'],
       },
@@ -78,12 +78,12 @@ const GEMINI_RESPONSE_SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          temporaryKey: { type: 'string', maxLength: 40 },
+          temporaryKey: { type: 'string' },
           evidenceType: { type: 'string', enum: ['text_excerpt', 'page_snapshot'] },
           sourcePage: { type: 'integer' },
-          caption: { type: 'string', maxLength: 200 },
-          nearbyText: { type: 'string', maxLength: 300 },
-          text: { type: 'string', maxLength: 500 },
+          caption: { type: 'string' },
+          nearbyText: { type: 'string' },
+          text: { type: 'string' },
         },
         required: ['temporaryKey', 'evidenceType', 'sourcePage'],
       },
@@ -228,7 +228,88 @@ Lie chaque preuve à sa proposition via \`evidenceKeys\`.
 ${text}`
 }
 
-// ─── Appel LLM ───────────────────────────────────────────────────────────────
+// ─── Découpage par pages ──────────────────────────────────────────────────────
+
+const PAGES_PER_CHUNK = 20
+
+function splitTextIntoChunks(text: string): string[] {
+  const parts = text.split(/(?=\[\[page \d+\]\])/g).filter((s) => s.trim())
+  if (parts.length === 0) return [text]
+  const chunks: string[] = []
+  for (let i = 0; i < parts.length; i += PAGES_PER_CHUNK) {
+    chunks.push(parts.slice(i, i + PAGES_PER_CHUNK).join(''))
+  }
+  return chunks
+}
+
+// ─── Appel LLM (chunk unique) ─────────────────────────────────────────────────
+
+async function callGeminiChunk(
+  chunkText: string,
+  totalPageCount: number,
+  apiKey: string,
+  model: string,
+  chunkIndex: number,
+): Promise<{ result: LlmExtractionResult; outputText: string }> {
+  const prompt = buildExtractionPrompt(chunkText, totalPageCount)
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: 65536,
+          responseMimeType: 'application/json',
+          responseSchema: GEMINI_RESPONSE_SCHEMA,
+        },
+      }),
+    },
+  )
+
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`Gemini extraction chunk ${chunkIndex} — HTTP ${res.status}: ${body}`)
+  }
+
+  const data = (await res.json()) as {
+    candidates: Array<{
+      content: { parts: Array<{ text: string }> }
+      finishReason?: string
+    }>
+  }
+  const candidate = data.candidates?.[0]
+  if (candidate?.finishReason === 'MAX_TOKENS') {
+    throw new Error(`Gemini output truncated (MAX_TOKENS) on chunk ${chunkIndex} — réponse JSON incomplète`)
+  }
+  const outputText = candidate?.content?.parts?.[0]?.text ?? ''
+  if (!outputText) throw new Error(`Gemini returned empty output on chunk ${chunkIndex}`)
+
+  const parsed: unknown = JSON.parse(outputText)
+  const result = LlmExtractionResultSchema.parse(parsed)
+
+  // Préfixer les clés temporaires pour garantir l'unicité lors de la fusion
+  const prefix = chunkIndex > 0 ? `c${chunkIndex}-` : ''
+  return {
+    outputText,
+    result: {
+      proposals: result.proposals.map((p) => ({
+        ...p,
+        temporaryKey: prefix + p.temporaryKey,
+        evidenceKeys: p.evidenceKeys.map((k) => prefix + k),
+      })),
+      evidence: result.evidence.map((e) => ({
+        ...e,
+        temporaryKey: prefix + e.temporaryKey,
+      })),
+    },
+  }
+}
+
+// ─── Point d'entrée public ────────────────────────────────────────────────────
 
 export async function extractHistoricalPvProposals(
   text: string,
@@ -238,47 +319,21 @@ export async function extractHistoricalPvProposals(
   if (!apiKey) throw new Error('GOOGLE_GENAI_API_KEY not set')
 
   const model = process.env.AI_MODEL ?? 'gemini-2.5-flash'
-  const prompt = buildExtractionPrompt(text, pageCount)
   const start = Date.now()
-  let outputText = ''
+  let totalOutputText = ''
+
+  const chunks = splitTextIntoChunks(text)
+  const proposals: LlmProposal[] = []
+  const evidence: LlmEvidence[] = []
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0,
-            maxOutputTokens: 65536,
-            responseMimeType: 'application/json',
-            responseSchema: GEMINI_RESPONSE_SCHEMA,
-          },
-        }),
-      },
-    )
-
-    if (!res.ok) {
-      const body = await res.text()
-      throw new Error(`Gemini extraction ${res.status}: ${body}`)
+    for (let i = 0; i < chunks.length; i++) {
+      const { result, outputText } = await callGeminiChunk(chunks[i], pageCount, apiKey, model, i)
+      totalOutputText += outputText
+      proposals.push(...result.proposals)
+      evidence.push(...result.evidence)
     }
-
-    const data = (await res.json()) as {
-      candidates: Array<{
-        content: { parts: Array<{ text: string }> }
-        finishReason?: string
-      }>
-    }
-    const candidate = data.candidates?.[0]
-    if (candidate?.finishReason === 'MAX_TOKENS') {
-      throw new Error('Gemini output truncated (MAX_TOKENS) — réponse JSON incomplète')
-    }
-    outputText = candidate?.content?.parts?.[0]?.text ?? ''
-    if (!outputText) throw new Error('Gemini returned empty output')
-    const parsed: unknown = JSON.parse(outputText)
-    return LlmExtractionResultSchema.parse(parsed)
+    return { proposals, evidence }
   } finally {
     try {
       const { logAIUsageDirect } = await import('@/services/ai/tracking')
@@ -288,9 +343,9 @@ export async function extractHistoricalPvProposals(
         provider: 'gemini',
         model,
         inputTokens: Math.ceil(text.length / 4),
-        outputTokens: Math.ceil(outputText.length / 4),
+        outputTokens: Math.ceil(totalOutputText.length / 4),
         durationMs: Date.now() - start,
-        status: outputText ? 'success' : 'error',
+        status: totalOutputText ? 'success' : 'error',
         errorMsg: null,
       }).catch(() => {})
     } catch {
