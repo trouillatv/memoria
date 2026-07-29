@@ -9,10 +9,17 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Home, Building2, Plus, CheckSquare, NotebookText, X } from 'lucide-react'
+import { Home, Building2, Plus, CheckSquare, NotebookText, X, Play, RotateCcw, Camera, AlertTriangle, CalendarX } from 'lucide-react'
 import { MeetingLauncher } from './MeetingLauncher'
 import { VisitLauncherHome } from './VisitLauncherHome'
 import { InterventionLauncher } from './InterventionLauncher'
+
+export type ChefLaunchIntervention = {
+  id: string
+  missionName: string
+  siteName: string | null
+  status: string
+}
 
 type Item = { href: string; label: string; Icon: typeof Home; isActive: (p: string) => boolean; badge?: boolean }
 
@@ -36,15 +43,23 @@ const IMMERSIVE = ['/m/visite/', '/m/site/', '/m/import', '/m/intervention/']
 // pour comprendre la grammaire voir / faire / décider, puis plus jamais.
 const PLUS_INTRO_KEY = 'memoria_plus_intro_seen'
 
-export function MobileTabBar({ actionsCount, userRole }: { actionsCount: number; userRole: string }) {
+export function MobileTabBar({
+  actionsCount,
+  userRole,
+  chefIntervention = null,
+}: {
+  actionsCount: number
+  userRole: string
+  chefIntervention?: ChefLaunchIntervention | null
+}) {
   const pathname = usePathname() ?? '/m'
   const [createOpen, setCreateOpen] = useState(false)
   const [showIntro, setShowIntro] = useState(false)
-  // Le ➕ est contextuel au rôle (décision Vincent 2026-07-29) : Réunion et
-  // Intervention sont des actes de PILOTAGE (conducteur). Le chef d'équipe est
-  // un EXÉCUTANT — on lui laisse la seule création discrète qui reste de son
-  // ressort : la visite spontanée. Ses gestes d'exécution (démarrer, preuve,
-  // problème, terminer) vivent DANS son intervention, pas dans un menu global.
+  // Le ➕ est contextuel au rôle (décision Vincent 2026-07-29). Le conducteur
+  // (admin/manager) PILOTE : il crée visites, réunions, interventions. Le chef
+  // d'équipe EXÉCUTE : il ne crée ni visite ni réunion libre. Son ➕ ouvre
+  // directement SON intervention affectée (commencer / reprendre / preuve /
+  // problème) — ou affiche « Aucune intervention à démarrer ».
   const isManager = userRole === 'admin' || userRole === 'manager'
   if (IMMERSIVE.some((p) => pathname.startsWith(p))) return null
 
@@ -99,7 +114,7 @@ export function MobileTabBar({ actionsCount, userRole }: { actionsCount: number;
           >
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                {isManager ? 'Que venez-vous faire ?' : 'Créer'}
+                {isManager ? 'Que venez-vous faire ?' : 'Maintenant'}
               </h2>
               <button type="button" onClick={() => setCreateOpen(false)} aria-label="Fermer" className="rounded-lg p-1 text-muted-foreground active:bg-accent">
                 <X className="h-5 w-5" />
@@ -123,12 +138,16 @@ export function MobileTabBar({ actionsCount, userRole }: { actionsCount: number;
                 </button>
               </div>
             )}
-            <div className={`grid gap-3 ${isManager ? 'grid-cols-2' : 'grid-cols-1'}`}>
-              <VisitLauncherHome />
-              {/* Réunion + Intervention = actes de pilotage → conducteur seul. */}
-              {isManager && <MeetingLauncher />}
-              {isManager && <InterventionLauncher />}
-            </div>
+            {isManager ? (
+              <div className="grid grid-cols-2 gap-3">
+                <VisitLauncherHome />
+                {/* Réunion + Intervention = actes de pilotage → conducteur seul. */}
+                <MeetingLauncher />
+                <InterventionLauncher />
+              </div>
+            ) : (
+              <ChefCreateSheet intervention={chefIntervention} onNavigate={() => setCreateOpen(false)} />
+            )}
 
             {/* La grammaire reste consultable À VOLONTÉ (revue 2026-07-13) :
                 le lien rouvre la même fiche courte que la première fois. */}
@@ -145,6 +164,83 @@ export function MobileTabBar({ actionsCount, userRole }: { actionsCount: number;
         </div>
       )}
     </>
+  )
+}
+
+// Le ➕ du chef d'équipe = son intervention « maintenant », jamais un objet de
+// pilotage. Trois issues possibles : reprendre (in_progress), commencer
+// (planned), ou l'état vide honnête « Aucune intervention à démarrer ».
+// Preuve + problème n'apparaissent qu'en cours : leurs sections cibles
+// (#capturer / #signaler) n'existent sur la fiche intervention qu'à ce moment.
+function ChefCreateSheet({
+  intervention,
+  onNavigate,
+}: {
+  intervention: ChefLaunchIntervention | null
+  onNavigate: () => void
+}) {
+  if (!intervention) {
+    return (
+      <div className="rounded-xl border border-dashed border-border bg-muted/20 p-5 text-center">
+        <CalendarX className="mx-auto mb-2 h-6 w-6 text-muted-foreground" />
+        <p className="text-sm font-medium">Aucune intervention à démarrer</p>
+        <p className="mt-1 text-xs text-muted-foreground">Rien ne vous est planifié pour le moment.</p>
+        <Link
+          href="/m/planning"
+          onClick={onNavigate}
+          className="mt-3 inline-block text-[13px] font-medium text-foreground/70 underline underline-offset-2 active:opacity-70"
+        >
+          Voir mon journal →
+        </Link>
+      </div>
+    )
+  }
+
+  const inProgress = intervention.status === 'in_progress'
+  const base = `/m/intervention/${intervention.id}`
+  const subtitle = intervention.siteName
+    ? `${intervention.missionName} · ${intervention.siteName}`
+    : intervention.missionName
+
+  return (
+    <div className="space-y-2.5">
+      <Link
+        href={base}
+        onClick={onNavigate}
+        className="flex items-center gap-3 rounded-xl bg-emerald-600 px-4 py-3.5 text-white active:bg-emerald-700"
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20">
+          {inProgress ? <RotateCcw className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-semibold leading-snug">
+            {inProgress ? 'Reprendre mon intervention' : 'Commencer mon intervention'}
+          </span>
+          <span className="mt-0.5 block truncate text-[13px] text-white/80">{subtitle}</span>
+        </span>
+      </Link>
+
+      {inProgress && (
+        <div className="grid grid-cols-2 gap-2.5">
+          <Link
+            href={`${base}#capturer`}
+            onClick={onNavigate}
+            className="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-3 active:bg-muted/40"
+          >
+            <Camera className="h-5 w-5 text-muted-foreground" />
+            <span className="text-[13px] font-medium">Ajouter une preuve</span>
+          </Link>
+          <Link
+            href={`${base}#signaler`}
+            onClick={onNavigate}
+            className="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-3 active:bg-muted/40"
+          >
+            <AlertTriangle className="h-5 w-5 text-amber-600" />
+            <span className="text-[13px] font-medium">Signaler un problème</span>
+          </Link>
+        </div>
+      )}
+    </div>
   )
 }
 

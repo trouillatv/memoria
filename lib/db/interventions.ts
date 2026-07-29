@@ -822,6 +822,69 @@ export async function listInterventionsVisibleToUser(userId: string): Promise<Db
   })
 }
 
+// ----------------------------------------------------------------------------
+// getChefLaunchIntervention — l'intervention « maintenant » du chef d'équipe
+//
+// Doctrine (Vincent 2026-07-29) : le chef est un EXÉCUTANT. Son point d'entrée
+// n'est ni une visite ni une réunion (actes de pilotage) mais SON intervention
+// affectée. Ce helper alimente le ➕ contextuel de la barre terrain :
+//   1. une intervention en cours (in_progress) → « Reprendre » ;
+//   2. sinon la prochaine planifiée (aujourd'hui ou à venir) → « Commencer » ;
+//   3. sinon null → l'UI affiche « Aucune intervention à démarrer ».
+// ----------------------------------------------------------------------------
+
+export interface ChefLaunchIntervention {
+  id: string
+  missionName: string
+  siteName: string | null
+  status: string
+}
+
+export async function getChefLaunchIntervention(userId: string): Promise<ChefLaunchIntervention | null> {
+  const supabase = createAdminClient()
+  const { data: memberships } = await supabase
+    .from('team_members')
+    .select('team_id')
+    .eq('user_id', userId)
+    .is('left_at', null)
+  const teamIds = (memberships ?? []).map((m) => m.team_id as string)
+  const today = todayLocalIso()
+
+  const sel = 'id, status, mission:missions!inner(name, site:sites(name))'
+  const pick = (rows: unknown): ChefLaunchIntervention | null => {
+    const r = Array.isArray(rows) ? rows[0] : rows
+    if (!r) return null
+    const row = r as { id: string; status: string; mission: unknown }
+    const mission = Array.isArray(row.mission) ? row.mission[0] : row.mission
+    const m = (mission ?? null) as { name?: string; site?: unknown } | null
+    const site = m ? (Array.isArray(m.site) ? m.site[0] : m.site) : null
+    const s = (site ?? null) as { name?: string } | null
+    return { id: row.id, status: row.status, missionName: m?.name ?? 'Intervention', siteName: s?.name ?? null }
+  }
+
+  // 1. En cours — priorité absolue (« Reprendre »).
+  let q1 = supabase.from('interventions').select(sel).eq('status', 'in_progress')
+    .order('scheduled_at', { ascending: false }).limit(1)
+  q1 = teamIds.length > 0
+    ? q1.or(`assigned_team_id.in.(${teamIds.join(',')}),team.cs.{${userId}}`)
+    : q1.contains('team', [userId])
+  const inProgress = await q1
+  const hit = pick(inProgress.data)
+  if (hit) return hit
+
+  // 2. Prochaine planifiée (aujourd'hui ou à venir) — « Commencer ».
+  let q2 = supabase.from('interventions').select(sel).eq('status', 'planned')
+    .gte('scheduled_for', today)
+    .order('scheduled_for', { ascending: true })
+    .order('planned_start', { ascending: true, nullsFirst: true })
+    .limit(1)
+  q2 = teamIds.length > 0
+    ? q2.or(`assigned_team_id.in.(${teamIds.join(',')}),team.cs.{${userId}}`)
+    : q2.contains('team', [userId])
+  const planned = await q2
+  return pick(planned.data)
+}
+
 // =================================
 // Mémoire des lieux — Sprint 2 doctrine V5 (Mode reprise)
 //

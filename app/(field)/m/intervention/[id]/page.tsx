@@ -562,7 +562,7 @@ export default async function FieldInterventionPage({
       {/* CAPTURER UNE PREUVE — les gestes de la visite, groupés dans UNE carte
           (rendu seul : mêmes déclencheurs, mêmes actions serveur). */}
       {isInProgress && (
-        <section className="rounded-2xl border bg-card p-4 space-y-2.5">
+        <section id="capturer" className="scroll-mt-20 rounded-2xl border bg-card p-4 space-y-2.5">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Capturer une preuve
           </h2>
@@ -574,7 +574,9 @@ export default async function FieldInterventionPage({
 
       {/* J'AI DÉCOUVERT — le geste transversal, en grand et en ambre. */}
       {isInProgress && (
-        <AnomalyTrigger interventionId={id} categories={anomalyCategories} />
+        <div id="signaler" className="scroll-mt-20">
+          <AnomalyTrigger interventionId={id} categories={anomalyCategories} />
+        </div>
       )}
 
       <AnomalyList anomalies={anomalies} canDelete={isInProgress} />
