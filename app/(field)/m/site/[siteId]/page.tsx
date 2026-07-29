@@ -49,6 +49,7 @@ import { listDocumentsForTarget } from '@/lib/db/documents'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import { SiteMemoryQuery } from '@/app/(dashboard)/sites/[id]/SiteMemoryQuery'
 import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
+import { ChefSiteView } from './ChefSiteView'
 import { ListTodo, Hammer, AlertTriangle, ChevronRight, Camera, Search } from 'lucide-react'
 import { TogglePanel } from '@/app/(dashboard)/sites/[id]/TogglePanel'
 
@@ -175,6 +176,19 @@ export default async function FieldSitePage({
   const activeVisit =
     activeVisitFromQuery ??
     (liveVisitId ? await getStartedVisitById(liveVisitId, siteId).catch(() => null) : null)
+
+  // Chef d'équipe (exécutant) : fiche chantier TERRAIN dédiée, jamais le cockpit
+  // conducteur. Court-circuit AVANT tous les fetchs lourds ci-dessous (santé,
+  // IA, mémoire, aperçu, snapshot…) : le chef n'en charge et n'en voit rien.
+  // Doctrine Vincent 2026-07-29 — « le conducteur organise, le chef exécute ».
+  if (user.role === 'chef_equipe' && !activeVisit) {
+    return (
+      <div className="pt-1">
+        {justVisited && <JustVisitedBanner />}
+        <ChefSiteView siteId={siteId} userId={user.id} />
+      </div>
+    )
+  }
 
   // PERF — hors visite en cours, TOUTES les données de cockpit sont
   // indépendantes : un seul aller-retour parallèle au lieu d'une chaîne
