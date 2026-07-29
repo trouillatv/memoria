@@ -561,10 +561,10 @@ export interface DbSiteReportProposal {
 
 // Liste « À vérifier » d'une visite (mig 196) — ARTEFACT DE SESSION, pas un
 // objet métier. pending = pas encore statué (jamais « non vérifié ») ;
-// verified / to_follow / dismissed = les 3 décisions. Promotion MANUELLE d'un
-// to_follow en action/réserve (promoted_to/promoted_ref), jamais automatique.
+// checked / still_open / not_applicable = les 3 décisions (mig 255, ex verified/to_follow/dismissed).
+// Promotion MANUELLE d'un still_open en action/réserve, jamais automatique.
 // priority (mig 254) : criticité déterministe au seed (irréversible > retard > suivi).
-export type WatchlistItemState = 'pending' | 'verified' | 'to_follow' | 'dismissed'
+export type WatchlistItemState = 'pending' | 'checked' | 'still_open' | 'not_applicable'
 export type WatchlistItemPriority = 'critical' | 'important' | 'normal'
 
 export interface DbVisitWatchlistItem {

@@ -107,7 +107,17 @@ export async function setWatchlistItemState(
   if (error) throw error
 }
 
-/** Trace la promotion HUMAINE d'un « à suivre » en objet chantier. */
+/** Lie une capture à un point de contrôle (table M-M mig 255).
+ *  Idempotent : la contrainte UNIQUE (item_id, capture_id) absorbe les doublons. */
+export async function addWatchlistEvidence(itemId: string, captureId: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('visit_capture_watchlist_item')
+    .upsert({ item_id: itemId, capture_id: captureId }, { onConflict: 'item_id,capture_id', ignoreDuplicates: true })
+  if (error) throw error
+}
+
+/** Trace la promotion HUMAINE d'un « toujours ouvert » en objet chantier. */
 export async function markWatchlistItemPromoted(
   id: string,
   promotedTo: 'action' | 'reserve',

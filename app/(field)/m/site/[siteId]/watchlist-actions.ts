@@ -13,7 +13,7 @@ import type { DbVisitWatchlistItem } from '@/types/db'
 
 const stateSchema = z.object({
   item_id: z.string().uuid(),
-  state: z.enum(['pending', 'verified', 'to_follow', 'dismissed']),
+  state: z.enum(['pending', 'checked', 'still_open', 'not_applicable']),
   note: z.string().trim().max(500).optional(),
 })
 

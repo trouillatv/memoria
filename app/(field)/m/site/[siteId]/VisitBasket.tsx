@@ -742,7 +742,7 @@ export function VisitBasket({
           className="flex w-full items-center justify-between rounded-xl border border-amber-300 bg-amber-50/60 px-3 py-2 text-sm font-medium text-amber-900 active:scale-[0.99] dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-200"
         >
           <span className="inline-flex items-center gap-1.5">
-            <ListChecks className="h-4 w-4" /> À vérifier
+            <ListChecks className="h-4 w-4" /> Plan de visite
           </span>
           <span className="tabular-nums">
             {pendingWatch.length > 0 ? `${pendingWatch.length} restant${pendingWatch.length > 1 ? 's' : ''}` : 'tout est vu ✓'}
@@ -979,9 +979,27 @@ export function VisitBasket({
         </div>
       )}
 
-      {/* Panneau « À vérifier » — les 3 décisions par point + ajout manuel. */}
+      {/* Panneau « Plan de visite » — les 3 décisions par point + ajout manuel. */}
       {overlay === 'watch' && (
-        <Overlay title="À vérifier pendant cette visite" icon={<ListChecks className="h-4 w-4" />} onClose={() => setOverlay('none')}>
+        <Overlay title="Plan de visite" icon={<ListChecks className="h-4 w-4" />} onClose={() => setOverlay('none')}>
+          {/* Barre de progression — motivant sur le terrain, discret si tout reste ouvert. */}
+          {watchItems.length > 0 && (() => {
+            const done = watchItems.filter((w) => w.state !== 'pending').length
+            return (
+              <div className="space-y-1 pb-1">
+                <div className="flex items-center justify-between text-[12px] text-muted-foreground">
+                  <span>{watchItems.length} point{watchItems.length > 1 ? 's' : ''}</span>
+                  <span className="font-medium tabular-nums">{done} / {watchItems.length}</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-emerald-500 transition-all"
+                    style={{ width: `${(done / watchItems.length) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )
+          })()}
           <div className="max-h-[50vh] space-y-2 overflow-y-auto">
             {watchItems.map((w) => (
               <div key={w.id} className="space-y-1.5 rounded-lg border p-2.5" data-testid="watchlist-item">
@@ -1030,19 +1048,19 @@ export function VisitBasket({
                 )}
                 <div className="grid grid-cols-3 gap-1.5">
                   <WatchStateButton
-                    active={w.state === 'verified'} icon={<Check className="h-3.5 w-3.5" />} label="Vérifié"
+                    active={w.state === 'checked'} icon={<Check className="h-3.5 w-3.5" />} label="Conforme"
                     activeCls="border-emerald-600 bg-emerald-600 text-white"
-                    onClick={() => decideWatch(w, w.state === 'verified' ? 'pending' : 'verified')}
+                    onClick={() => decideWatch(w, w.state === 'checked' ? 'pending' : 'checked')}
                   />
                   <WatchStateButton
-                    active={w.state === 'to_follow'} icon={<Eye className="h-3.5 w-3.5" />} label="À suivre"
+                    active={w.state === 'still_open'} icon={<Eye className="h-3.5 w-3.5" />} label="Toujours ouvert"
                     activeCls="border-amber-500 bg-amber-500 text-white"
-                    onClick={() => decideWatch(w, w.state === 'to_follow' ? 'pending' : 'to_follow')}
+                    onClick={() => decideWatch(w, w.state === 'still_open' ? 'pending' : 'still_open')}
                   />
                   <WatchStateButton
-                    active={w.state === 'dismissed'} icon={<X className="h-3.5 w-3.5" />} label="Sans objet"
+                    active={w.state === 'not_applicable'} icon={<X className="h-3.5 w-3.5" />} label="Sans objet"
                     activeCls="border-slate-500 bg-slate-500 text-white"
-                    onClick={() => decideWatch(w, w.state === 'dismissed' ? 'pending' : 'dismissed')}
+                    onClick={() => decideWatch(w, w.state === 'not_applicable' ? 'pending' : 'not_applicable')}
                   />
                 </div>
               </div>
@@ -1075,16 +1093,16 @@ export function VisitBasket({
           </p>
           <div className="grid grid-cols-3 gap-1.5">
             <WatchStateButton
-              icon={<Check className="h-3.5 w-3.5" />} label="Vérifié" activeCls=""
-              onClick={() => { decideWatch(pendingWatch[0], 'verified'); setOverlay('none'); doEnd() }}
+              icon={<Check className="h-3.5 w-3.5" />} label="Conforme" activeCls=""
+              onClick={() => { decideWatch(pendingWatch[0], 'checked'); setOverlay('none'); doEnd() }}
             />
             <WatchStateButton
-              icon={<Eye className="h-3.5 w-3.5" />} label="À suivre" activeCls=""
-              onClick={() => { decideWatch(pendingWatch[0], 'to_follow'); setOverlay('none'); doEnd() }}
+              icon={<Eye className="h-3.5 w-3.5" />} label="Toujours ouvert" activeCls=""
+              onClick={() => { decideWatch(pendingWatch[0], 'still_open'); setOverlay('none'); doEnd() }}
             />
             <WatchStateButton
               icon={<X className="h-3.5 w-3.5" />} label="Sans objet" activeCls=""
-              onClick={() => { decideWatch(pendingWatch[0], 'dismissed'); setOverlay('none'); doEnd() }}
+              onClick={() => { decideWatch(pendingWatch[0], 'not_applicable'); setOverlay('none'); doEnd() }}
             />
           </div>
           <button
