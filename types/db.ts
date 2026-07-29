@@ -1154,3 +1154,106 @@ export interface DbDocumentLink {
   // humaine, jamais dérivée par IA. NULL = aucune.
   reference_label: string | null
 }
+
+// ===========================================================================
+// Sprint 4B.0 — Modèle générique des propositions documentaires multimodales
+// (migration 257)
+// ===========================================================================
+
+export type DocumentExtractionRunStatus =
+  | 'pending' | 'processing' | 'ready_for_review'
+  | 'partially_materialized' | 'materialized' | 'failed'
+
+export type DocumentProposalFamily =
+  | 'reservation' | 'action' | 'decision' | 'observation'
+  | 'deadline' | 'knowledge_fact' | 'person' | 'company'
+
+export type DocumentProposalReviewStatus =
+  | 'pending' | 'accepted' | 'rejected' | 'edited' | 'materialized' | 'failed'
+
+export type DocumentEvidenceType = 'image' | 'text_excerpt' | 'page_snapshot'
+
+export type DocumentEvidenceRelationType = 'supports' | 'illustrates' | 'source' | 'candidate'
+
+export interface DbDocumentExtractionRun {
+  id: string
+  organization_id: string
+  document_id: string
+  extractor_key: string
+  extractor_version: string
+  status: DocumentExtractionRunStatus
+  started_at: string | null
+  completed_at: string | null
+  error_message: string | null
+  created_at: string
+  created_by: string | null
+}
+
+export interface DbDocumentExtractionProposal {
+  id: string
+  organization_id: string
+  extraction_run_id: string
+  document_id: string
+  target_site_id: string | null
+  proposal_family: DocumentProposalFamily
+  stable_key: string | null
+  // Contenu extrait — immuable après insertion (invariant 3)
+  label: string
+  description: string | null
+  source_page: number | null
+  source_excerpt: string | null
+  source_payload: Record<string, unknown> | null
+  // Validation humaine — séparée du contenu extrait
+  review_status: DocumentProposalReviewStatus
+  reviewed_label: string | null
+  reviewed_description: string | null
+  reviewed_family: string | null
+  reviewed_at: string | null
+  reviewed_by: string | null
+  created_at: string
+}
+
+export interface DbDocumentExtractionEvidence {
+  id: string
+  organization_id: string
+  extraction_run_id: string
+  document_id: string
+  evidence_type: DocumentEvidenceType
+  source_page: number | null
+  storage_path: string | null
+  caption: string | null
+  nearby_text: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface DbDocumentProposalEvidence {
+  proposal_id: string
+  evidence_id: string
+  relation_type: DocumentEvidenceRelationType
+  confidence: number | null
+  created_at: string
+}
+
+export interface DbDocumentProposalMaterialization {
+  id: string
+  organization_id: string
+  proposal_id: string
+  target_entity_type: string
+  target_entity_id: string
+  status: 'done' | 'failed'
+  error_message: string | null
+  created_at: string
+  created_by: string | null
+}
+
+/** Vue agrégée d'une proposition avec ses preuves et matérialisations. */
+export interface DocumentExtractionProposalWithEvidence {
+  proposal: DbDocumentExtractionProposal
+  evidence: Array<{
+    evidence: DbDocumentExtractionEvidence
+    relationType: DocumentEvidenceRelationType
+    confidence: number | null
+  }>
+  materializations: DbDocumentProposalMaterialization[]
+}
