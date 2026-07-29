@@ -158,6 +158,15 @@ export default async function FieldSitePage({
     .maybeSingle()
   if (!site) notFound()
 
+  // Chef d'équipe (exécutant) : fiche chantier TERRAIN dédiée — JAMAIS le cockpit
+  // conducteur NI le flux de visite (acte de pilotage). Court-circuit AVANT toute
+  // la machinerie de visite et les fetchs lourds : le chef n'en charge et n'en
+  // voit rien, même si une visite est active sur le site (démarrée par un
+  // conducteur). Doctrine Vincent 2026-07-29 — « le conducteur organise, le chef exécute ».
+  if (user.role === 'chef_equipe') {
+    return <ChefSiteView siteId={siteId} userId={user.id} userRole={user.role} />
+  }
+
   const [pastVisitDays, resume, siteReadings, siteContinuity] = await Promise.all([
     countDistinctVisitDays(user.id, siteId),
     getSiteResumeContext(siteId, user.id),
@@ -176,19 +185,6 @@ export default async function FieldSitePage({
   const activeVisit =
     activeVisitFromQuery ??
     (liveVisitId ? await getStartedVisitById(liveVisitId, siteId).catch(() => null) : null)
-
-  // Chef d'équipe (exécutant) : fiche chantier TERRAIN dédiée, jamais le cockpit
-  // conducteur. Court-circuit AVANT tous les fetchs lourds ci-dessous (santé,
-  // IA, mémoire, aperçu, snapshot…) : le chef n'en charge et n'en voit rien.
-  // Doctrine Vincent 2026-07-29 — « le conducteur organise, le chef exécute ».
-  if (user.role === 'chef_equipe' && !activeVisit) {
-    return (
-      <div className="pt-1">
-        {justVisited && <JustVisitedBanner />}
-        <ChefSiteView siteId={siteId} userId={user.id} userRole={user.role} />
-      </div>
-    )
-  }
 
   // PERF — hors visite en cours, TOUTES les données de cockpit sont
   // indépendantes : un seul aller-retour parallèle au lieu d'une chaîne
