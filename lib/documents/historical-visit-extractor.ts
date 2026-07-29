@@ -120,6 +120,17 @@ Numéro du CR, titre du CR, validation du CR précédent, ordre du jour, liste d
 **5. Un titre seul sans état associé ?**
 "Plan VRD", "Plan de terrassement" sans mention d'un état (VISA en cours / émis / refusé / à émettre) : ne rien créer. En revanche "Plan de terrassement — VISA en cours" → observation ou knowledge_fact.
 
+**6. Cette information décrit-elle une évolution concrète du chantier, ou seulement son organisation documentaire, contractuelle ou opérationnelle habituelle ?**
+Ne rien extraire lorsque l'information décrit seulement :
+- qui transmet ou diffuse un document (procédure de diffusion, destinataires) ;
+- qui est l'interlocuteur habituel ou comment contacter une entreprise ;
+- comment les entreprises doivent communiquer entre elles ;
+- un accès existant au chantier sans changement signalé ;
+- les moyens momentanément présents sur site (engins, personnel du jour) sans contexte de retard ou d'anomalie ;
+- l'existence ou l'état administratif d'un document (transmis, reçu, validé) sans conséquence chantier explicite.
+
+Attention : "Plan des installations de chantier : FAIT" décrit l'état administratif du document, pas l'achèvement physique du chantier. Ne pas convertir l'un en l'autre.
+
 **Question centrale : cette information sera-t-elle encore utile dans 6 mois à un conducteur qui n'était pas à cette réunion ?** Si non → ne rien créer.
 
 ---
@@ -129,7 +140,7 @@ Numéro du CR, titre du CR, validation du CR précédent, ordre du jour, liste d
 Ne jamais créer de proposition pour :
 - En-têtes, pieds de page, numéros de page, titre et numéro du compte-rendu
 - "CR précédent lu et approuvé", "Acceptation sans réserve"
-- Listes de présence, de diffusion, interlocuteur privilégié général
+- Listes de présence, de diffusion, interlocuteur privilégié général, procédure de communication entre entreprises
 - Règles de sécurité standard : EPI, harnais, PTAC, code de la route, balisage
 - Règles environnementales génériques : tri des déchets, pollution, amiante (contexte générique), bruit
 - Horaires de chantier standard (sauf anomalie documentée)
@@ -183,7 +194,21 @@ Ajoute également un court \`relevanceReason\` (10 mots max) expliquant le score
 ## Types de preuves
 
 - **text_excerpt** : extrait de texte citant un passage clé (renseigne le champ \`text\`).
-- **page_snapshot** : référence à une page contenant une photo ou schéma (pas de \`text\`).
+- **page_snapshot** : page contenant une photo ou un schéma.
+
+### Traitement des pages photographiques
+
+Pour chaque page comportant une ou plusieurs photos :
+
+1. Crée une preuve de type **page_snapshot** avec :
+   - une légende factuelle et prudente décrivant ce qui est visible (ex : "Vue de la plateforme de terrassement depuis l'est", "Détail de la jonction entre le mur de soutènement et la dalle"). Ne jamais affirmer qu'un travail est terminé ou conforme si ce n'est pas explicitement mentionné dans le texte adjacent.
+   - \`sourcePage\` : le numéro de la page.
+   - \`nearbyText\` : le texte immédiatement adjacent à la photo dans le document, s'il existe.
+
+2. Si cette page est associée à une ou plusieurs propositions textuelles (une réserve photographiée, un avancement visible mentionné dans le texte) :
+   - inclus la clé de cette preuve dans les \`evidenceKeys\` de la proposition concernée.
+
+3. Si aucune proposition existante ne correspond clairement à cette photo, crée la preuve seule (sans proposition liée). Ne crée pas de proposition pour décrire la photo.
 
 ---
 
