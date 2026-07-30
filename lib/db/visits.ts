@@ -2142,7 +2142,13 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
 
   // Résumé — la SEULE IA (gatée, sur du texte, jamais les images). Ne bloque
   // jamais le CR : repli déterministe intégré au service.
-  const summary = await runVisitSummary({
+  // Pour les visites importées, la narrative historique (générée à la matérialisation
+  // par generateHistoricalVisitNarrative) est préférée : elle est construite à partir
+  // des propositions extraites et est plus riche que le fallback déterministe.
+  const historicalNarrative = isImportedVisit
+    ? ((visit.debrief_analysis as { historical_summary?: { text?: string } } | null)?.historical_summary?.text?.trim() || null)
+    : null
+  const summary = historicalNarrative ?? await runVisitSummary({
     siteName,
     objective: visit.objective?.trim() || null,
     constats,
