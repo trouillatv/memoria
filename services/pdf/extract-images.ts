@@ -87,7 +87,34 @@ export async function extractPageImages(
             buffer: Buffer.from(png),
           })
         } catch {
-          // Ignore les images non décodables
+          // L'objet image ne peut pas être décodé nativement (JPEG2000, JBIG2, CMYK non-standard…).
+          // Fallback : rendre la région de la page correspondant à la bbox via DrawDevice.
+          try {
+            const scale = 2.0
+            const rx0 = Math.floor(bbox[0] * scale)
+            const ry0 = Math.floor(bbox[1] * scale)
+            const rx1 = Math.ceil(bbox[2] * scale)
+            const ry1 = Math.ceil(bbox[3] * scale)
+            if (rx1 - rx0 > MIN_NATIVE_PX && ry1 - ry0 > MIN_NATIVE_PX) {
+              const clipPx = new mu.Pixmap(mu.ColorSpace.DeviceRGB, [rx0, ry0, rx1, ry1], false)
+              clipPx.clear(255)
+              const device = new mu.DrawDevice(mu.Matrix.identity, clipPx)
+              page.runPageContents(device, mu.Matrix.scale(scale, scale))
+              device.close()
+              const png = clipPx.asPNG() as Uint8Array
+              clipPx.destroy()
+              images.push({
+                pageIndex,
+                imageIndex: imageIndex++,
+                bbox,
+                nativeWidth: rx1 - rx0,
+                nativeHeight: ry1 - ry0,
+                buffer: Buffer.from(png),
+              })
+            }
+          } catch {
+            // Vraiment non récupérable — page ignorée
+          }
         }
       },
     })
