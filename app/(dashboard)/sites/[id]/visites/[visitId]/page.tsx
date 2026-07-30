@@ -120,7 +120,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         .in('evidence_type', ['page_snapshot', 'image']),
       admin
         .from('document_extraction_evidence')
-        .select('id', { count: 'exact', head: true })
+        .select('source_page, evidence_type')
         .eq('extraction_run_id', runId)
         .in('evidence_type', ['page_snapshot', 'image']),
       admin
@@ -153,7 +153,10 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         .filter('source_payload->>statusAtDocumentDate', 'eq', 'réalisé'),
       getIllustratesLinksForRun(runId).catch(() => []),
     ])
-    totalSnapshotCount = countResult.count ?? 0
+    // Déduplication : une page avec images natives ne compte pas son snapshot.
+    const rawVisual = (countResult.data ?? []) as Array<{ source_page: number | null; evidence_type: string }>
+    const pagesWithAnyImg = new Set(rawVisual.filter((e) => e.evidence_type === 'image').map((e) => e.source_page))
+    totalSnapshotCount = rawVisual.filter((e) => e.evidence_type === 'image' || !pagesWithAnyImg.has(e.source_page)).length
     extractionDocumentId = (runResult.data as { document_id: string } | null)?.document_id ?? null
     extractionTotalProposals = totalPropsResult.count ?? 0
     const rawSummary = (visitExtraResult.data as { debrief_analysis?: Record<string, unknown> } | null)?.debrief_analysis?.historical_summary

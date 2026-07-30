@@ -87,7 +87,8 @@ export default async function ExtractionReviewPage({
   }
 
   // Charger les données de revue + visite déjà matérialisée (idempotence)
-  const [proposalsWithEvidence, orphanEvidence, alreadySiteReportId, candidateLinks, illustratesLinks] = await Promise.all([
+  const admin = createAdminClient()
+  const [proposalsWithEvidence, orphanEvidenceRaw, alreadySiteReportId, candidateLinks, illustratesLinks] = await Promise.all([
     listExtractionForReview(runId),
     listOrphanEvidenceForRun(runId),
     getExistingMaterializedVisit(runId),
@@ -95,8 +96,34 @@ export default async function ExtractionReviewPage({
     getIllustratesLinksForRun(runId),
   ])
 
+  // Normalisation idempotente : pour chaque page ayant des images natives,
+  // transférer le pin du snapshot vers les images (snapshot ne doit jamais être
+  // épinglé quand des images existent sur la même page).
+  let orphanEvidence = orphanEvidenceRaw
+  {
+    const { data: allVisual } = await admin
+      .from('document_extraction_evidence')
+      .select('id, source_page, evidence_type, pinned_for_visit')
+      .eq('extraction_run_id', runId)
+      .in('evidence_type', ['page_snapshot', 'image'])
+
+    if (allVisual?.length) {
+      const pagesWithAnyImg = new Set(allVisual.filter((e) => e.evidence_type === 'image').map((e) => e.source_page))
+      const pagesWithPinnedSnap = new Set(
+        allVisual.filter((e) => e.evidence_type === 'page_snapshot' && e.pinned_for_visit && pagesWithAnyImg.has(e.source_page)).map((e) => e.source_page),
+      )
+      const toPin   = allVisual.filter((e) => e.evidence_type === 'image'         && !e.pinned_for_visit && pagesWithPinnedSnap.has(e.source_page)).map((e) => e.id)
+      const toUnpin = allVisual.filter((e) => e.evidence_type === 'page_snapshot' &&  e.pinned_for_visit && pagesWithAnyImg.has(e.source_page)).map((e) => e.id)
+
+      if (toPin.length > 0 || toUnpin.length > 0) {
+        if (toPin.length > 0)   await admin.from('document_extraction_evidence').update({ pinned_for_visit: true  }).in('id', toPin)
+        if (toUnpin.length > 0) await admin.from('document_extraction_evidence').update({ pinned_for_visit: false }).in('id', toUnpin)
+        orphanEvidence = await listOrphanEvidenceForRun(runId)
+      }
+    }
+  }
+
   // Générer des URLs signées pour toutes les preuves avec storage_path
-  const admin = createAdminClient()
   const evidenceMap = new Map<string, string>() // evidenceId → storage_path
 
   for (const pw of proposalsWithEvidence) {
