@@ -291,6 +291,35 @@ export async function dismissPhotoAssociationAction(fd: FormData): Promise<Actio
   return { ok: true }
 }
 
+export async function revertIllustratesAction(fd: FormData): Promise<ActionResult> {
+  const evidenceId = fd.get('evidence_id')?.toString()
+  const proposalId = fd.get('proposal_id')?.toString()
+  const documentId = fd.get('document_id')?.toString()
+  if (!evidenceId || !proposalId || !documentId) return { ok: false, error: 'Paramètres manquants' }
+
+  const access = await verifyReviewAccess(documentId)
+  if (!access.ok) return access
+
+  const admin = createAdminClient()
+  const { data: ev } = await admin
+    .from('document_extraction_evidence')
+    .select('id')
+    .eq('id', evidenceId)
+    .eq('document_id', documentId)
+    .maybeSingle()
+  if (!ev) return { ok: false, error: 'Preuve introuvable' }
+
+  await admin
+    .from('document_proposal_evidence')
+    .delete()
+    .eq('evidence_id', evidenceId)
+    .eq('proposal_id', proposalId)
+    .eq('relation_type', 'illustrates')
+
+  await linkProposalEvidence(proposalId, evidenceId, 'candidate')
+  return { ok: true }
+}
+
 // ─── Matérialisation — création de la visite historique ──────────────────────
 
 export async function createHistoricalVisitAction(fd: FormData): Promise<{

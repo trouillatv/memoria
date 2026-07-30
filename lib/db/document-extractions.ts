@@ -158,6 +158,7 @@ export async function linkProposalEvidence(
   evidenceId: string,
   relationType: DocumentEvidenceRelationType,
   confidence?: number | null,
+  skipIfExists?: boolean,
 ): Promise<void> {
   const supabase = createAdminClient()
   const { error } = await supabase
@@ -169,7 +170,7 @@ export async function linkProposalEvidence(
         relation_type: relationType,
         confidence: confidence ?? null,
       },
-      { onConflict: 'proposal_id,evidence_id,relation_type', ignoreDuplicates: true },
+      { onConflict: 'proposal_id,evidence_id', ignoreDuplicates: skipIfExists ?? false },
     )
   if (error) throw error
 }
@@ -450,6 +451,7 @@ export async function getIllustratesLinksForRun(runId: string): Promise<Array<{
   caption: string | null
   storage_path: string | null
   source_page: number | null
+  proposal_label: string | null
 }>> {
   const supabase = createAdminClient()
 
@@ -464,7 +466,7 @@ export async function getIllustratesLinksForRun(runId: string): Promise<Array<{
 
   const { data, error } = await supabase
     .from('document_proposal_evidence')
-    .select('proposal_id, evidence_id, document_extraction_evidence(caption, storage_path, source_page)')
+    .select('proposal_id, evidence_id, document_extraction_evidence(caption, storage_path, source_page), document_extraction_proposal(label, reviewed_label)')
     .eq('relation_type', 'illustrates')
     .in('evidence_id', evIds)
   if (error) throw error
@@ -473,6 +475,7 @@ export async function getIllustratesLinksForRun(runId: string): Promise<Array<{
     proposal_id: string
     evidence_id: string
     document_extraction_evidence: { caption: string | null; storage_path: string | null; source_page: number | null } | null
+    document_extraction_proposal: { label: string; reviewed_label: string | null } | null
   }
 
   return ((data ?? []) as unknown as Row[]).map((r) => ({
@@ -481,5 +484,6 @@ export async function getIllustratesLinksForRun(runId: string): Promise<Array<{
     caption: r.document_extraction_evidence?.caption ?? null,
     storage_path: r.document_extraction_evidence?.storage_path ?? null,
     source_page: r.document_extraction_evidence?.source_page ?? null,
+    proposal_label: r.document_extraction_proposal?.reviewed_label ?? r.document_extraction_proposal?.label ?? null,
   }))
 }

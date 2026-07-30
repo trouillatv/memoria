@@ -8,6 +8,7 @@ import {
   createHistoricalVisitAction, acceptAllPendingAction,
   toggleEvidencePinAction, pinAllSnapshotsAction,
   confirmPhotoAssociationAction, dismissPhotoAssociationAction,
+  revertIllustratesAction,
 } from './review-actions'
 import type { DocumentExtractionProposalWithEvidence, DbDocumentExtractionEvidence, DocumentEvidenceRelationType } from '@/types/db'
 import type { ReviewSummary } from '@/lib/documents/effective-proposal'
@@ -18,6 +19,15 @@ type CandidateLink = {
   confidence: number | null
   proposal_label: string
   proposal_family: string
+}
+
+type IllustratesLink = {
+  proposal_id: string
+  evidence_id: string
+  caption: string | null
+  storage_path: string | null
+  source_page: number | null
+  proposal_label: string | null
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -63,6 +73,8 @@ function OrphanEvidenceItem({
   pendingLinks,
   onConfirmLink,
   onDismissLink,
+  confirmedForEvidence,
+  onRevertLink,
 }: {
   evidence: DbDocumentExtractionEvidence
   signedUrls: Record<string, string>
@@ -71,8 +83,10 @@ function OrphanEvidenceItem({
   onToggle: () => void
   candidates: CandidateLink[]
   pendingLinks: Set<string>
-  onConfirmLink: (proposalId: string) => void
+  onConfirmLink: (proposalId: string, proposalLabel: string) => void
   onDismissLink: (proposalId: string) => void
+  confirmedForEvidence: Array<{ proposalId: string; label: string }>
+  onRevertLink: (proposalId: string) => void
 }) {
   const imgUrl = signedUrls[evidence.id]
   const excerptText = (evidence.metadata as { text?: string } | null)?.text
@@ -116,7 +130,7 @@ function OrphanEvidenceItem({
       {candidates.length > 0 && (
         <div className="mt-1 pt-2 border-t space-y-1.5">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {candidates.length === 1 ? 'Association suggérée' : 'Associations suggérées'}
+            {candidates.length === 1 ? 'Association suggérée par proximité de page' : 'Associations suggérées par proximité de page'}
           </p>
           {candidates.map((c) => {
             const key = `${evidence.id}:${c.proposal_id}`
@@ -128,14 +142,11 @@ function OrphanEvidenceItem({
                   title={c.proposal_label}
                 >
                   {c.proposal_label}
-                  {c.confidence !== null && c.confidence < 0.6 && (
-                    <span className="ml-1 opacity-60">(ambiguë)</span>
-                  )}
                 </span>
                 <div className="flex shrink-0 items-center gap-1">
                   <button
                     type="button"
-                    onClick={() => onConfirmLink(c.proposal_id)}
+                    onClick={() => onConfirmLink(c.proposal_id, c.proposal_label)}
                     disabled={isLinkPending}
                     title="Confirmer cette association"
                     className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 disabled:opacity-50 transition-colors"
@@ -152,6 +163,32 @@ function OrphanEvidenceItem({
                     ✕
                   </button>
                 </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {confirmedForEvidence.length > 0 && (
+        <div className="mt-1 pt-2 border-t space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+            Associée à
+          </p>
+          {confirmedForEvidence.map((link) => {
+            const key = `${evidence.id}:${link.proposalId}`
+            const isLinkPending = pendingLinks.has(key)
+            return (
+              <div key={link.proposalId} className="flex items-start gap-1.5">
+                <span className="text-emerald-600 dark:text-emerald-400 text-[11px] leading-snug shrink-0">✓</span>
+                <span className="min-w-0 flex-1 leading-snug text-[11px] line-clamp-2">{link.label}</span>
+                <button
+                  type="button"
+                  onClick={() => onRevertLink(link.proposalId)}
+                  disabled={isLinkPending}
+                  title="Retirer l'association"
+                  className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
+                >
+                  {isLinkPending ? '…' : 'Retirer'}
+                </button>
               </div>
             )
           })}
@@ -305,6 +342,7 @@ export function ExtractionReviewClient({
   targetSiteId,
   alreadySiteReportId,
   candidateLinks,
+  initialIllustratesLinks,
 }: {
   proposals: DocumentExtractionProposalWithEvidence[]
   orphanEvidence: DbDocumentExtractionEvidence[]
@@ -316,6 +354,7 @@ export function ExtractionReviewClient({
   targetSiteId: string | null
   alreadySiteReportId: string | null
   candidateLinks: CandidateLink[]
+  initialIllustratesLinks: IllustratesLink[]
 }) {
   const router = useRouter()
   const [filter, setFilter] = useState<Filter>('all')
@@ -331,8 +370,15 @@ export function ExtractionReviewClient({
   )
   const [pendingPins, setPendingPins] = useState<Set<string>>(new Set())
 
-  // Candidats photo ↔ proposition — état optimiste pour confirm/dismiss
-  const [confirmedLinks, setConfirmedLinks] = useState<Set<string>>(new Set())
+  // Candidats photo ↔ proposition — état optimiste pour confirm/dismiss/revert
+  // Map<"evidenceId:proposalId", proposalLabel> pour les liens confirmés (en session)
+  const [confirmedLabels, setConfirmedLabels] = useState<Map<string, string>>(() => {
+    const m = new Map<string, string>()
+    for (const link of initialIllustratesLinks) {
+      m.set(`${link.evidence_id}:${link.proposal_id}`, link.proposal_label ?? link.proposal_id)
+    }
+    return m
+  })
   const [dismissedLinks, setDismissedLinks] = useState<Set<string>>(new Set())
   const [pendingLinks, setPendingLinks] = useState<Set<string>>(new Set())
 
@@ -341,17 +387,17 @@ export function ExtractionReviewClient({
     const map = new Map<string, CandidateLink[]>()
     for (const link of candidateLinks) {
       const key = `${link.evidence_id}:${link.proposal_id}`
-      if (confirmedLinks.has(key) || dismissedLinks.has(key)) continue
+      if (confirmedLabels.has(key) || dismissedLinks.has(key)) continue
       if (!map.has(link.evidence_id)) map.set(link.evidence_id, [])
       map.get(link.evidence_id)!.push(link)
     }
     return map
-  }, [candidateLinks, confirmedLinks, dismissedLinks])
+  }, [candidateLinks, confirmedLabels, dismissedLinks])
 
-  async function handleConfirmLink(evidenceId: string, proposalId: string) {
+  async function handleConfirmLink(evidenceId: string, proposalId: string, proposalLabel: string) {
     const key = `${evidenceId}:${proposalId}`
     setPendingLinks((prev) => new Set([...prev, key]))
-    setConfirmedLinks((prev) => new Set([...prev, key]))
+    setConfirmedLabels((prev) => new Map(prev).set(key, proposalLabel))
     const fd = new FormData()
     fd.set('evidence_id', evidenceId)
     fd.set('proposal_id', proposalId)
@@ -359,9 +405,23 @@ export function ExtractionReviewClient({
     const result = await confirmPhotoAssociationAction(fd)
     setPendingLinks((prev) => { const next = new Set(prev); next.delete(key); return next })
     if (!result.ok) {
-      setConfirmedLinks((prev) => { const next = new Set(prev); next.delete(key); return next })
+      setConfirmedLabels((prev) => { const next = new Map(prev); next.delete(key); return next })
     } else {
       router.refresh()
+    }
+  }
+
+  async function handleRevertLink(evidenceId: string, proposalId: string) {
+    const key = `${evidenceId}:${proposalId}`
+    setPendingLinks((prev) => new Set([...prev, key]))
+    const fd = new FormData()
+    fd.set('evidence_id', evidenceId)
+    fd.set('proposal_id', proposalId)
+    fd.set('document_id', documentId)
+    const result = await revertIllustratesAction(fd)
+    setPendingLinks((prev) => { const next = new Set(prev); next.delete(key); return next })
+    if (result.ok) {
+      setConfirmedLabels((prev) => { const next = new Map(prev); next.delete(key); return next })
     }
   }
 
@@ -624,8 +684,14 @@ export function ExtractionReviewClient({
                   onToggle={() => togglePin(ev.id)}
                   candidates={candidatesByEvidence.get(ev.id) ?? []}
                   pendingLinks={pendingLinks}
-                  onConfirmLink={(proposalId) => handleConfirmLink(ev.id, proposalId)}
+                  onConfirmLink={(proposalId, proposalLabel) => handleConfirmLink(ev.id, proposalId, proposalLabel)}
                   onDismissLink={(proposalId) => handleDismissLink(ev.id, proposalId)}
+                  confirmedForEvidence={
+                    [...confirmedLabels.entries()]
+                      .filter(([key]) => key.startsWith(`${ev.id}:`))
+                      .map(([key, label]) => ({ proposalId: key.split(':')[1], label }))
+                  }
+                  onRevertLink={(proposalId) => handleRevertLink(ev.id, proposalId)}
                 />
               ))}
               {others.map((ev) => (
@@ -640,6 +706,8 @@ export function ExtractionReviewClient({
                   pendingLinks={pendingLinks}
                   onConfirmLink={() => {}}
                   onDismissLink={() => {}}
+                  confirmedForEvidence={[]}
+                  onRevertLink={() => {}}
                 />
               ))}
             </div>

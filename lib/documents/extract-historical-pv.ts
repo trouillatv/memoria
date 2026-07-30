@@ -266,7 +266,7 @@ export async function extractHistoricalPv(
         // Un score sémantique (caption ↔ libellé) viendra en second niveau.
         for (const proposalId of pageProposals) {
           try {
-            await linkProposalEvidence(proposalId, evidenceId, 'candidate', null)
+            await linkProposalEvidence(proposalId, evidenceId, 'candidate', null, true)
             candidateCount++
           } catch { /* non-bloquant */ }
         }
