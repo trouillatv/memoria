@@ -322,6 +322,7 @@ function sectionHas(s: SummarySection): boolean {
 const THEMATIC_ORDER = [
   'progress',
   'test_control',
+  'forecast',
   'safety_environment',
   'resources',
   'administrative',
@@ -333,6 +334,7 @@ const THEMATIC_ORDER = [
 const THEMATIC_LABELS: Record<string, string> = {
   progress: 'Avancement des travaux',
   test_control: 'Essais et contrôles',
+  forecast: 'Prévisions',
   safety_environment: 'Sécurité et environnement',
   resources: 'Moyens',
   administrative: 'Éléments administratifs',

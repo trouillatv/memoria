@@ -29,7 +29,7 @@ export const LlmProposalSchema = z.object({
     linkedCompanyName: z.string().nullish(),
     emailAddress: z.string().nullish(),
     phoneNumber: z.string().nullish(),
-    thematic_category: z.enum(['progress', 'test_control', 'safety_environment', 'resources', 'administrative', 'weather', 'permanent_instruction', 'general_knowledge']).nullish(),
+    thematic_category: z.enum(['progress', 'test_control', 'forecast', 'safety_environment', 'resources', 'administrative', 'weather', 'permanent_instruction', 'general_knowledge']).nullish(),
   }).nullish(),
   evidenceKeys: z.array(z.string()),
 })
@@ -79,7 +79,7 @@ const GEMINI_RESPONSE_SCHEMA = {
               phoneNumber: { type: 'string' },
               thematic_category: {
                 type: 'string',
-                enum: ['progress', 'test_control', 'safety_environment', 'resources', 'administrative', 'weather', 'permanent_instruction', 'general_knowledge'],
+                enum: ['progress', 'test_control', 'forecast', 'safety_environment', 'resources', 'administrative', 'weather', 'permanent_instruction', 'general_knowledge'],
               },
             },
             required: ['relevanceScore'],
@@ -193,11 +193,12 @@ Pour chaque information retenue après la sélection :
 - **observation** : constatation factuelle, alerte ou signal spécifique à ce chantier, sans responsable nommé ni délai explicite. Inclut obligatoirement les formulations du type "Attention à [X]", "Risque de [Y]", "Veiller à [Z]" sans attribution.
 - **deadline** : échéance chiffrée ou datée, spécifique à ce chantier.
 - **knowledge_fact** : information factuelle durable sur le site. Inclut : l'avancement constaté lors de la visite (travaux exécutés ou en cours) avec statusAtDocumentDate = "réalisé" / "en cours" / "non démarré" ; l'état de plans techniques (VISA émis / en cours / refusé / à émettre) ; une contrainte technique permanente (nature du sol, cote NGF) ; l'état d'un ouvrage ou d'un matériau. Pour chaque knowledge_fact, renseigner **sourcePayload.thematic_category** avec la catégorie thématique correspondante :
-  - "progress" — avancement des travaux (terrassement, maçonnerie, finitions, installations)
-  - "test_control" — essais, contrôles, conformité, visas de plans, non-conformités
+  - "progress" — avancement des travaux constatés (réalisés ou en cours) : terrassement, maçonnerie, finitions, installations
+  - "test_control" — essais, contrôles, conformité, visas de plans, non-conformités constatées
+  - "forecast" — travaux, contrôles, coordinations ou livrables annoncés comme futurs, SANS date précise (ex : "récolement en prévision", "coordination LOT02", "essais complémentaires à réaliser"). Distinguer de deadline : si une date explicite est mentionnée, utiliser deadline à la place
   - "safety_environment" — sécurité chantier, consignes de sécurité spécifiques, environnement
   - "resources" — moyens humains et matériels effectivement présents sur site
-  - "administrative" — coordination, documents contractuels, plans, transmission, DICT
+  - "administrative" — coordination documentaire, plans transmis/reçus, DICT, contractuel
   - "weather" — météo, intempéries, arrêts pour cause climatique
   - "permanent_instruction" — consigne répétée dans chaque CR (port EPI, tri déchets, balisage standard) — à distinguer d'une anomalie active
   - "general_knowledge" — autre information factuelle ne rentrant dans aucune catégorie ci-dessus
