@@ -660,7 +660,7 @@ export function ExtractionReviewClient({
                   disabled={pinAllPending || isPending}
                   className="ml-auto text-xs border rounded px-2 py-1 text-muted-foreground hover:text-foreground hover:border-foreground transition-colors disabled:opacity-50"
                 >
-                  {pinAllPending ? '…' : pinnedCount === visiblePhotos.length ? 'Tout désélectionner' : 'Importer toutes'}
+                  {pinAllPending ? '…' : pinnedCount === visiblePhotos.length ? 'Tout retirer' : 'Tout inclure'}
                 </button>
               )}
             </div>
