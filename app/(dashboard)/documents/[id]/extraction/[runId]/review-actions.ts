@@ -252,6 +252,30 @@ export async function pinAllSnapshotsAction(fd: FormData): Promise<ActionResult>
     const { error } = await admin.from('document_extraction_evidence').update({ pinned_for_visit: false }).in('id', toUnpin)
     if (error) return { ok: false, error: error.message }
   }
+
+  // Re-lier la visite existante au run courant pour que revue et fiche partagent
+  // le même extraction_run_id (une ré-extraction crée un nouveau run mais la visite
+  // stocke toujours l'ancien).
+  const { data: run } = await admin
+    .from('document_extraction_run')
+    .select('target_site_id')
+    .eq('id', runId)
+    .maybeSingle()
+  if (run?.target_site_id) {
+    const { data: allDocRuns } = await admin
+      .from('document_extraction_run')
+      .select('id')
+      .eq('document_id', documentId)
+    const docRunIds = (allDocRuns ?? []).map((r: { id: string }) => r.id)
+    if (docRunIds.length > 0) {
+      await admin
+        .from('site_reports')
+        .update({ extraction_run_id: runId })
+        .eq('site_id', run.target_site_id)
+        .in('extraction_run_id', docRunIds)
+    }
+  }
+
   return { ok: true }
 }
 
