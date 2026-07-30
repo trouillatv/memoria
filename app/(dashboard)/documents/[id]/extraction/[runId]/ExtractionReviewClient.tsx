@@ -10,10 +10,11 @@ import type { ReviewSummary } from '@/lib/documents/effective-proposal'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const FAMILY_ORDER = ['reservation', 'action', 'decision', 'observation', 'deadline', 'knowledge_fact']
+const FAMILY_ORDER = ['reservation', 'action', 'decision', 'observation', 'deadline', 'knowledge_fact', 'person', 'company']
 const FAMILY_TITLE: Record<string, string> = {
   reservation: 'Réserves', action: 'Actions', decision: 'Décisions',
   observation: 'Observations', deadline: 'Échéances', knowledge_fact: 'Éléments de mémoire',
+  person: 'Intervenants détectés', company: 'Entreprises détectées',
 }
 
 type Filter = 'all' | 'pending' | 'accepted' | 'edited' | 'rejected' | 'materialized'

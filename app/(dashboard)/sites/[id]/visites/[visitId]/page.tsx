@@ -91,18 +91,35 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
   const { captured, understood, produced, historical, enrichment } = narrative
   const isImport = visit.origin === 'import'
 
-  // Photos épinglées depuis le PV — calculées avant photos pour alimenter le compteur
+  // Photos depuis le PV — calculées avant photos pour alimenter le compteur
   type PinnedSnapshot = { id: string; page: number | null; caption: string | null; url: string }
   const pinnedSnapshots: PinnedSnapshot[] = []
+  let totalSnapshotCount = 0
+  let extractionDocumentId: string | null = null
   const runId = isImport ? (visit.extraction_run_id ?? null) : null
   if (runId) {
     const admin = createAdminClient()
-    const { data: evs } = await admin
-      .from('document_extraction_evidence')
-      .select('id, source_page, caption, storage_path')
-      .eq('extraction_run_id', runId)
-      .eq('pinned_for_visit', true)
-      .eq('evidence_type', 'page_snapshot')
+    const [pinnedResult, countResult, runResult] = await Promise.all([
+      admin
+        .from('document_extraction_evidence')
+        .select('id, source_page, caption, storage_path')
+        .eq('extraction_run_id', runId)
+        .eq('pinned_for_visit', true)
+        .eq('evidence_type', 'page_snapshot'),
+      admin
+        .from('document_extraction_evidence')
+        .select('id', { count: 'exact', head: true })
+        .eq('extraction_run_id', runId)
+        .eq('evidence_type', 'page_snapshot'),
+      admin
+        .from('document_extraction_run')
+        .select('document_id')
+        .eq('id', runId)
+        .maybeSingle(),
+    ])
+    totalSnapshotCount = countResult.count ?? 0
+    extractionDocumentId = (runResult.data as { document_id: string } | null)?.document_id ?? null
+    const evs = pinnedResult.data
     if (evs && evs.length > 0) {
       const rows = evs as Array<{ id: string; source_page: number | null; caption: string | null; storage_path: string | null }>
       const paths = rows.map((e) => e.storage_path).filter((p): p is string => !!p)
@@ -121,6 +138,9 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
       }
     }
   }
+  const extractionReviewHref = extractionDocumentId && runId
+    ? `/documents/${extractionDocumentId}/extraction/${runId}`
+    : null
 
   const vocaux = captured.filter((c) => c.kind === 'vocal').length
   const photos = captured.filter((c) => c.kind === 'photo').length + (isImport ? pinnedSnapshots.length : 0)
@@ -247,30 +267,56 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
             </dl>
           </section>
 
-          {isImport && pinnedSnapshots.length > 0 && (
+          {isImport && totalSnapshotCount > 0 && (
             <section className="rounded-xl border bg-card p-4 space-y-3">
               <h2 className="text-[15px] font-semibold flex items-center gap-2">
                 <Camera className="h-4 w-4 text-sky-600" aria-hidden />
                 Photos depuis le PV
+                <span className="text-xs font-normal text-muted-foreground">
+                  {pinnedSnapshots.length > 0
+                    ? `${pinnedSnapshots.length} / ${totalSnapshotCount} incluse${pinnedSnapshots.length > 1 ? 's' : ''}`
+                    : `${totalSnapshotCount} disponible${totalSnapshotCount > 1 ? 's' : ''}`}
+                </span>
               </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {pinnedSnapshots.map((snap) => (
-                  <a key={snap.id} href={snap.url} target="_blank" rel="noopener noreferrer" className="block group">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={snap.url}
-                      alt={snap.caption ?? `Page ${snap.page ?? ''}`}
-                      className="w-full rounded border object-contain aspect-video bg-muted group-hover:opacity-90 transition-opacity"
-                    />
-                    {snap.caption && (
-                      <p className="text-[11px] text-muted-foreground mt-1 truncate">{snap.caption}</p>
-                    )}
-                    {!snap.caption && snap.page !== null && (
-                      <p className="text-[11px] text-muted-foreground mt-1">Page {snap.page}</p>
-                    )}
-                  </a>
-                ))}
-              </div>
+              {pinnedSnapshots.length === 0 ? (
+                <p className="text-[13px] text-muted-foreground">
+                  {totalSnapshotCount} page{totalSnapshotCount > 1 ? 's' : ''} photographique{totalSnapshotCount > 1 ? 's' : ''} détectée{totalSnapshotCount > 1 ? 's' : ''} dans le PV — aucune n&apos;a été sélectionnée pour cette fiche.
+                  {extractionReviewHref && (
+                    <Link href={extractionReviewHref} className="ml-2 text-primary underline underline-offset-2">
+                      Sélectionner des photos ↗
+                    </Link>
+                  )}
+                </p>
+              ) : (
+                <>
+                  {extractionReviewHref && pinnedSnapshots.length < totalSnapshotCount && (
+                    <p className="text-xs text-muted-foreground">
+                      {totalSnapshotCount - pinnedSnapshots.length} page{totalSnapshotCount - pinnedSnapshots.length > 1 ? 's' : ''} non incluse{totalSnapshotCount - pinnedSnapshots.length > 1 ? 's' : ''}.{' '}
+                      <Link href={extractionReviewHref} className="underline underline-offset-2">
+                        Modifier la sélection ↗
+                      </Link>
+                    </p>
+                  )}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {pinnedSnapshots.map((snap) => (
+                      <a key={snap.id} href={snap.url} target="_blank" rel="noopener noreferrer" className="block group">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={snap.url}
+                          alt={snap.caption ?? `Page ${snap.page ?? ''}`}
+                          className="w-full rounded border object-contain aspect-video bg-muted group-hover:opacity-90 transition-opacity"
+                        />
+                        {snap.caption && (
+                          <p className="text-[11px] text-muted-foreground mt-1 truncate">{snap.caption}</p>
+                        )}
+                        {!snap.caption && snap.page !== null && (
+                          <p className="text-[11px] text-muted-foreground mt-1">Page {snap.page}</p>
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                </>
+              )}
             </section>
           )}
 

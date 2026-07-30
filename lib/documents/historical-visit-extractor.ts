@@ -14,7 +14,7 @@ export const LlmEvidenceSchema = z.object({
 
 export const LlmProposalSchema = z.object({
   temporaryKey: z.string(),
-  family: z.enum(['reservation', 'action', 'decision', 'observation', 'deadline', 'knowledge_fact']),
+  family: z.enum(['reservation', 'action', 'decision', 'observation', 'deadline', 'knowledge_fact', 'person', 'company']),
   label: z.string().min(3),
   description: z.string().nullish(),
   sourcePage: z.number().int().nullish(),
@@ -51,7 +51,7 @@ const GEMINI_RESPONSE_SCHEMA = {
           temporaryKey: { type: 'string' },
           family: {
             type: 'string',
-            enum: ['reservation', 'action', 'decision', 'observation', 'deadline', 'knowledge_fact'],
+            enum: ['reservation', 'action', 'decision', 'observation', 'deadline', 'knowledge_fact', 'person', 'company'],
           },
           label: { type: 'string' },
           description: { type: 'string' },
@@ -115,10 +115,10 @@ Un contexte figé n'a pas de valeur en mémoire durable. Un état qui va changer
 Si cet élément se retrouverait dans 80 % des PV d'autres chantiers : ne rien créer. L'importer 50 fois sur 50 PV rempliraient le chantier de bruit.
 
 **4. Est-ce un contexte documentaire ?**
-Numéro du CR, titre du CR, validation du CR précédent, ordre du jour, liste de diffusion, interlocuteurs principaux généraux : ne rien créer.
+Numéro du CR, titre du CR, validation du CR précédent, ordre du jour, liste de diffusion, interlocuteurs généraux sans nom précis : ne rien créer. **Exception** : les personnes nommées (prénom + nom) et les entreprises avec rôle explicite sur ce chantier → extraire comme **person** ou **company**.
 
 **5. Un titre seul sans état associé ?**
-"Plan VRD", "Plan de terrassement" sans mention d'un état (VISA en cours / émis / refusé / à émettre) : ne rien créer. En revanche "Plan de terrassement — VISA en cours" → observation ou knowledge_fact.
+"Plan VRD", "Plan de terrassement" sans mention d'un état (VISA en cours / émis / refusé / à émettre) : ne rien créer. En revanche "Plan de terrassement — VISA en cours" → **knowledge_fact**.
 
 **6. Cette information décrit-elle une évolution concrète du chantier, ou seulement son organisation documentaire, contractuelle ou opérationnelle habituelle ?**
 Ne rien extraire lorsque l'information décrit seulement :
@@ -142,7 +142,7 @@ Attention : "Plan des installations de chantier : FAIT" décrit l'état administ
 Ne jamais créer de proposition pour :
 - En-têtes, pieds de page, numéros de page, titre et numéro du compte-rendu
 - "CR précédent lu et approuvé", "Acceptation sans réserve"
-- Listes de présence, de diffusion, interlocuteur privilégié général, procédure de communication entre entreprises
+- Listes de diffusion, procédure de communication entre entreprises, mentions génériques d'interlocuteurs sans nom précis ("le maître d'ouvrage", "les entreprises"). **Exception** : les personnes nommées (prénom + nom) et les entreprises avec rôle explicite sur ce chantier → extraire comme **person** ou **company**.
 - Règles de sécurité standard : EPI, harnais, PTAC, code de la route, balisage
 - Règles environnementales génériques : tri des déchets, pollution, amiante (contexte générique), bruit
 - Horaires de chantier standard (sauf anomalie documentée)
@@ -159,7 +159,7 @@ Pour chaque information retenue après la sélection :
 2. Ne pas transformer une observation en action implicite : une constatation reste une observation.
 3. Conserver les formulations incertaines (« à vérifier », « à confirmer », « semble ») dans le label ou la description.
 3b. Lorsque le texte source semble corrompu ou ambigu (coquille, OCR dégradé, formulation incohérente), ne pas affirmer plus que ce que le document permet. Formuler avec prudence : "Accès plateforme — indiqué comme réalisé dans le PV" plutôt que "Accès plateforme réalisé".
-4. Distinguer les points ouverts et les points résolus : un point résolu peut être une knowledge_fact ou une decision.
+4. Distinguer les points ouverts et les points résolus : un travail décrit au passé ou comme terminé (« déblais terminés », « purge exécutée ») → **knowledge_fact** avec statusAtDocumentDate='réalisé', jamais une action ou observation.
 5. Citer la page exacte (sourcePage) — utilise les marqueurs [[page N]].
 6. Ne pas déduire des intentions — se limiter aux faits et décisions explicitement mentionnés.
 7. Pour une réservation : conserver le libellé exact du PV, préciser l'état si mentionné (ouvert/levé/en cours).
@@ -172,11 +172,31 @@ Pour chaque information retenue après la sélection :
 ## Familles de propositions
 
 - **reservation** : réserve de chantier (défaut, malfaçon, non-conformité) — ouverture, suivi ou levée.
-- **action** : tâche à réaliser, avec responsable nommé ou délai explicite.
+- **action** : tâche à réaliser. Créer une action UNIQUEMENT si un responsable est explicitement nommé (entreprise ou personne) OU si un délai précis est mentionné. Sans ces deux conditions → **observation**.
 - **decision** : décision structurante prise lors de la visite.
-- **observation** : constatation factuelle spécifique à ce chantier, sans action requise.
+- **observation** : constatation factuelle, alerte ou signal spécifique à ce chantier, sans responsable nommé ni délai explicite. Inclut obligatoirement les formulations du type "Attention à [X]", "Risque de [Y]", "Veiller à [Z]" sans attribution.
 - **deadline** : échéance chiffrée ou datée, spécifique à ce chantier.
-- **knowledge_fact** : information factuelle durable et utile à la connaissance long terme du site (ex : nature du sol, contrainte technique permanente, état d'un ouvrage).
+- **knowledge_fact** : information factuelle durable sur le site. Inclut : l'avancement constaté lors de la visite (travaux exécutés ou en cours) avec statusAtDocumentDate = "réalisé" / "en cours" / "non démarré" ; l'état de plans techniques (VISA émis / en cours / refusé / à émettre) ; une contrainte technique permanente (nature du sol, cote NGF) ; l'état d'un ouvrage ou d'un matériau.
+- **person** : personne physique identifiable (prénom + nom) présente ou signataire sur ce chantier. Renseigner dans description : sa fonction, son entreprise, son email ou téléphone si mentionnés.
+- **company** : entreprise ou organisme avec rôle explicite sur ce chantier. Renseigner dans description : le rôle (MOE, gros-œuvre, bureau de contrôle…) et le contact nommé si disponible.
+
+---
+
+## Extraction des intervenants (cartouche et liste de présence)
+
+Le cartouche du PV, la liste des signataires et la liste de présence contiennent souvent les intervenants clés du chantier.
+
+Pour chaque **personne physique identifiable** (prénom + nom) mentionnée comme présente, signataire ou interlocuteur nommé :
+- créer une proposition **person** ;
+- label = "Prénom NOM" ;
+- description = "Fonction — Entreprise [— email / téléphone]" selon disponibilité.
+
+Pour chaque **entreprise ou organisme** cité avec un rôle précis sur ce chantier (pas seulement comme destinataire d'un document) :
+- créer une proposition **company** ;
+- label = "Nom de l'entreprise" ;
+- description = "Rôle sur le chantier [— contact nommé]".
+
+Ne pas extraire : mentions génériques sans nom ("le conducteur de travaux", "les entreprises"), noms de famille seuls sans prénom, listes de diffusion.
 
 ---
 
