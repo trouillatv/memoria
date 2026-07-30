@@ -98,12 +98,13 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
   let extractionDocumentId: string | null = null
   let extractionTotalProposals = 0
   let extractionIntervenantCount = 0
+  let historicalSummary: string | null = null
   type ExtPersonProp = { name: string; status: string | null }
   const extractionPersonProps: ExtPersonProp[] = []
   const runId = isImport ? (visit.extraction_run_id ?? null) : null
   if (runId) {
     const admin = createAdminClient()
-    const [pinnedResult, countResult, runResult, totalPropsResult, personPropsResult] = await Promise.all([
+    const [pinnedResult, countResult, runResult, totalPropsResult, personPropsResult, visitExtraResult] = await Promise.all([
       admin
         .from('document_extraction_evidence')
         .select('id, source_page, caption, storage_path')
@@ -131,10 +132,16 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         .eq('extraction_run_id', runId)
         .in('review_status', ['accepted', 'edited', 'materialized'])
         .in('proposal_family', ['person', 'company']),
+      admin
+        .from('site_reports')
+        .select('debrief_analysis')
+        .eq('id', visitId)
+        .maybeSingle(),
     ])
     totalSnapshotCount = countResult.count ?? 0
     extractionDocumentId = (runResult.data as { document_id: string } | null)?.document_id ?? null
     extractionTotalProposals = totalPropsResult.count ?? 0
+    historicalSummary = (visitExtraResult.data as { debrief_analysis?: { historical_summary?: string } } | null)?.debrief_analysis?.historical_summary ?? null
     const intProps = (personPropsResult.data ?? []) as Array<{ label: string; reviewed_label: string | null; proposal_family: string; source_payload: { statusAtDocumentDate?: string } | null }>
     extractionIntervenantCount = intProps.length
     for (const p of intProps) {
@@ -260,8 +267,8 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
               {resume ? (
                 <p className="mt-2 whitespace-pre-line text-[13.5px] leading-relaxed">{resume}</p>
               ) : isImport ? (
-                <p className="mt-2 text-[13px] text-muted-foreground">
-                  {importResumeText ?? "Visite reconstruite depuis un PV historique. Aucun objet détecté."}
+                <p className="mt-2 text-[13.5px] leading-relaxed whitespace-pre-line">
+                  {historicalSummary ?? importResumeText ?? "Visite reconstruite depuis un PV historique. Aucun objet détecté."}
                 </p>
               ) : (
                 <p className="mt-2 text-[13px] text-muted-foreground">

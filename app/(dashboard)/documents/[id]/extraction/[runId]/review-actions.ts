@@ -473,6 +473,39 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
         .update({ status: 'materialized' })
         .eq('id', runId)
         .eq('status', 'partially_materialized')
+
+      // ── Récit narratif (best-effort) ────────────────────────────────────────
+      try {
+        const { data: narProps } = await admin
+          .from('document_extraction_proposal')
+          .select('proposal_family, label, reviewed_label, description, reviewed_description, source_payload')
+          .eq('extraction_run_id', runId)
+          .in('review_status', ['accepted', 'edited', 'materialized'])
+          .in('proposal_family', ['knowledge_fact', 'action', 'deadline', 'decision', 'reservation', 'observation'])
+
+        if (narProps && narProps.length > 0) {
+          type NarProp = {
+            proposal_family: string; label: string; reviewed_label: string | null
+            description: string | null; reviewed_description: string | null
+            source_payload: { statusAtDocumentDate?: string } | null
+          }
+          const proposalsForNarrative = (narProps as NarProp[]).map((p) => ({
+            family: p.proposal_family,
+            label: p.reviewed_label ?? p.label,
+            description: p.reviewed_description ?? p.description ?? null,
+            statusAtDocumentDate: (p.source_payload as { statusAtDocumentDate?: string } | null)?.statusAtDocumentDate ?? null,
+          }))
+          const { generateHistoricalVisitNarrative } = await import('@/lib/documents/historical-visit-narrator')
+          const narrative = await generateHistoricalVisitNarrative(proposalsForNarrative)
+          if (narrative) {
+            const { data: existingSr } = await admin.from('site_reports').select('debrief_analysis').eq('id', siteReportId).maybeSingle()
+            const existingDa = (existingSr as { debrief_analysis: Record<string, unknown> | null } | null)?.debrief_analysis ?? {}
+            await admin.from('site_reports').update({ debrief_analysis: { ...existingDa, historical_summary: narrative } }).eq('id', siteReportId)
+          }
+        }
+      } catch {
+        // Non bloquant
+      }
     }
   } catch {
     // Non bloquant : la visite est créée, le pipeline knowledge est best-effort
