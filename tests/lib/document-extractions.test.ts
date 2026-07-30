@@ -253,7 +253,7 @@ describe('insertExtractionProposals', () => {
 describe('insertExtractionEvidence', () => {
   it('preuve non associée — invariant 4', async () => {
     const runId = await createExtractionRun({ document_id: DOC_ID, organization_id: ORG_A, extractor_key: 'pv_btp_v1' })
-    const [evId] = await insertExtractionEvidence(runId, [{
+    const [{ id: evId }] = await insertExtractionEvidence(runId, [{
       organization_id: ORG_A,
       document_id: DOC_ID,
       evidence_type: 'image',
@@ -276,7 +276,7 @@ describe('linkProposalEvidence', () => {
       { organization_id: ORG_A, document_id: DOC_ID, proposal_family: 'reservation', label: 'Infiltration en toiture', source_page: 7 },
       { organization_id: ORG_A, document_id: DOC_ID, proposal_family: 'action',      label: 'Reprendre le joint de couvertine' },
     ])
-    const [evExtrait, evPhotoG, evPhotoD] = await insertExtractionEvidence(runId, [
+    const [{ id: evExtrait }, { id: evPhotoG }, { id: evPhotoD }] = await insertExtractionEvidence(runId, [
       { organization_id: ORG_A, document_id: DOC_ID, evidence_type: 'text_excerpt',  source_page: 7, nearby_text: 'extrait source p.7' },
       { organization_id: ORG_A, document_id: DOC_ID, evidence_type: 'image',         source_page: 7, caption: 'Photo générale p.7' },
       { organization_id: ORG_A, document_id: DOC_ID, evidence_type: 'image',         source_page: 8, caption: 'Photo de détail p.8' },
@@ -298,7 +298,7 @@ describe('linkProposalEvidence', () => {
   it('relation idempotente — insérer deux fois le même lien ne crée pas de doublon — invariant 5', async () => {
     const runId = await createExtractionRun({ document_id: DOC_ID, organization_id: ORG_A, extractor_key: 'pv_btp_v1' })
     const [pid] = await insertExtractionProposals(runId, [{ organization_id: ORG_A, document_id: DOC_ID, proposal_family: 'observation', label: 'Obs' }])
-    const [eid] = await insertExtractionEvidence(runId, [{ organization_id: ORG_A, document_id: DOC_ID, evidence_type: 'image', source_page: 1 }])
+    const [{ id: eid }] = await insertExtractionEvidence(runId, [{ organization_id: ORG_A, document_id: DOC_ID, evidence_type: 'image', source_page: 1 }])
 
     await linkProposalEvidence(pid, eid, 'supports', 0.9)
     await linkProposalEvidence(pid, eid, 'supports', 0.9)   // doublon
@@ -429,7 +429,7 @@ describe('scénario complet PV historique', () => {
     ])
 
     // 3. Preuves
-    const [evExtrait, evPhotoG, evPhotoD, evPage12] = await insertExtractionEvidence(runId, [
+    const [{ id: evExtrait }, { id: evPhotoG }, { id: evPhotoD }, { id: evPage12 }] = await insertExtractionEvidence(runId, [
       { organization_id: ORG_A, document_id: DOC_ID, evidence_type: 'text_excerpt', source_page: 7,  nearby_text: 'extrait source p.7' },
       { organization_id: ORG_A, document_id: DOC_ID, evidence_type: 'image',        source_page: 7,  caption: 'Photo générale p.7' },
       { organization_id: ORG_A, document_id: DOC_ID, evidence_type: 'image',        source_page: 8,  caption: 'Photo de détail p.8' },

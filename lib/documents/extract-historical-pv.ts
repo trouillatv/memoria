@@ -188,10 +188,10 @@ export async function extractHistoricalPv(
       metadata: ev.text ? { text: ev.text } : null,
     }))
 
-    const evidenceIds = await insertExtractionEvidence(runId, evidenceInputs)
+    const evidenceResults = await insertExtractionEvidence(runId, evidenceInputs)
     const evidenceKeyToId = new Map<string, string>()
     llmResult.evidence.forEach((ev, i) => {
-      evidenceKeyToId.set(ev.temporaryKey, evidenceIds[i])
+      evidenceKeyToId.set(ev.temporaryKey, evidenceResults[i].id)
     })
 
     // 8. Persister les propositions
@@ -240,7 +240,10 @@ export async function extractHistoricalPv(
           bbox: info.bbox,
         },
       }))
-      const imageEvidenceIds = await insertExtractionEvidence(runId, imageEvidenceInputs)
+      const imageEvidenceResults = await insertExtractionEvidence(runId, imageEvidenceInputs)
+      const storagePathToEvidenceId = new Map(
+        imageEvidenceResults.map((r) => [r.storage_path, r.id]),
+      )
 
       // 10b. Candidats photo ↔ proposition par correspondance de page
       // Familles visuelles uniquement — on ne suggère pas une photo pour une action ou une personne.
@@ -254,9 +257,9 @@ export async function extractHistoricalPv(
         pageToProposals.get(proposal.sourcePage)!.push(proposalId)
       }
       let candidateCount = 0
-      for (let i = 0; i < extractedImageInfos.length; i++) {
-        const info = extractedImageInfos[i]
-        const evidenceId = imageEvidenceIds[i]
+      for (const info of extractedImageInfos) {
+        const evidenceId = storagePathToEvidenceId.get(info.storagePath)
+        if (!evidenceId) continue
         const pageProposals = pageToProposals.get(info.pageNum) ?? []
         if (pageProposals.length === 0) continue
         // Confiance inversement proportionnelle au nombre de candidats sur la même page

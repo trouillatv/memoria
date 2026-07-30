@@ -279,7 +279,11 @@ function setupDefaultMocks() {
   mocks.extractHistoricalPvProposals.mockResolvedValue(FIL_ROUGE_LLM_RESULT)
   mocks.createExtractionRun.mockResolvedValue(FAKE_RUN_ID)
   mocks.updateExtractionRunStatus.mockResolvedValue(undefined)
-  mocks.insertExtractionEvidence.mockResolvedValue(['ev-id-1', 'ev-id-2', 'ev-id-3'])
+  mocks.insertExtractionEvidence.mockResolvedValue([
+    { id: 'ev-id-1', storage_path: null },
+    { id: 'ev-id-2', storage_path: null },
+    { id: 'ev-id-3', storage_path: null },
+  ])
   mocks.insertExtractionProposals.mockResolvedValue(['prop-id-1', 'prop-id-2'])
   mocks.linkProposalEvidence.mockResolvedValue(undefined)
 }
@@ -357,7 +361,7 @@ describe('extractHistoricalPv — orchestrateur', () => {
         caption: 'Photo fissure',
       }],
     })
-    mocks.insertExtractionEvidence.mockResolvedValue(['ev-id-1'])
+    mocks.insertExtractionEvidence.mockResolvedValue([{ id: 'ev-id-1', storage_path: null }])
     mocks.insertExtractionProposals.mockResolvedValue([])
 
     await extractHistoricalPv(FAKE_DOC_ID)
@@ -383,7 +387,7 @@ describe('extractHistoricalPv — orchestrateur', () => {
         caption: 'Croquis de chantier',
       }],
     })
-    mocks.insertExtractionEvidence.mockResolvedValue(['ev-id-1'])
+    mocks.insertExtractionEvidence.mockResolvedValue([{ id: 'ev-id-1', storage_path: null }])
     mocks.insertExtractionProposals.mockResolvedValue([])
 
     await extractHistoricalPv(FAKE_DOC_ID)

@@ -129,7 +129,7 @@ export async function insertExtractionEvidence(
     nearby_text?: string | null
     metadata?: Record<string, unknown> | null
   }>,
-): Promise<string[]> {
+): Promise<Array<{ id: string; storage_path: string | null }>> {
   if (items.length === 0) return []
   const supabase = createAdminClient()
   const rows = items.map((e) => ({
@@ -146,9 +146,9 @@ export async function insertExtractionEvidence(
   const { data, error } = await supabase
     .from('document_extraction_evidence')
     .insert(rows)
-    .select('id')
+    .select('id, storage_path')
   if (error) throw error
-  return ((data ?? []) as Array<{ id: string }>).map((r) => r.id)
+  return (data ?? []) as Array<{ id: string; storage_path: string | null }>
 }
 
 // ── Relations M-M (idempotentes) ─────────────────────────────────────────────
