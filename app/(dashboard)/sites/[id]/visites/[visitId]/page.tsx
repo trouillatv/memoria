@@ -28,6 +28,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { buildVisitNarrative } from '@/lib/db/visit-narrative'
 import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { getVisitCapturePreviewUrls, type VisitCaptureRow } from '@/lib/db/visit-captures'
+import { getIllustratesLinksForRun } from '@/lib/db/document-extractions'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { VisitShareButton } from '@/app/(field)/m/visite/[reportId]/VisitShareButton'
 import { VisitDesk, type CaptureMedia } from './VisitDesk'
@@ -104,12 +105,13 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
   let historicalSummary: string | null = null
   type ExtPersonProp = { name: string; status: string | null; description: string | null; linkedCompanyName: string | null }
   const extractionPersonProps: ExtPersonProp[] = []
-  type ChronologieItem = { label: string; page: number | null }
+  type ChronologieItem = { label: string; page: number | null; proposalId: string; photos: Array<{ evidenceId: string; caption: string | null; url: string }> }
   let chronologieItems: ChronologieItem[] = []
+  let illustratedSnapshotIds = new Set<string>()
   const runId = isImport ? (visit.extraction_run_id ?? null) : null
   if (runId) {
     const admin = createAdminClient()
-    const [pinnedResult, countResult, runResult, totalPropsResult, personPropsResult, visitExtraResult, chronoResult] = await Promise.all([
+    const [pinnedResult, countResult, runResult, totalPropsResult, personPropsResult, visitExtraResult, chronoResult, illustratesResult] = await Promise.all([
       admin
         .from('document_extraction_evidence')
         .select('id, source_page, caption, storage_path')
@@ -144,11 +146,12 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         .maybeSingle(),
       admin
         .from('document_extraction_proposal')
-        .select('label, reviewed_label, source_page')
+        .select('id, label, reviewed_label, source_page')
         .eq('extraction_run_id', runId)
         .eq('proposal_family', 'knowledge_fact')
         .in('review_status', ['accepted', 'edited', 'materialized'])
         .filter('source_payload->>statusAtDocumentDate', 'eq', 'réalisé'),
+      getIllustratesLinksForRun(runId),
     ])
     totalSnapshotCount = countResult.count ?? 0
     extractionDocumentId = (runResult.data as { document_id: string } | null)?.document_id ?? null
@@ -171,32 +174,55 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         })
       }
     }
-    chronologieItems = ((chronoResult.data ?? []) as Array<{ label: string; reviewed_label: string | null; source_page: number | null }>)
-      .sort((a, b) => (a.source_page ?? 9999) - (b.source_page ?? 9999))
-      .map((p) => ({ label: p.reviewed_label ?? p.label, page: p.source_page }))
-
-    const evs = pinnedResult.data
-    if (evs && evs.length > 0) {
-      const rows = evs as Array<{ id: string; source_page: number | null; caption: string | null; storage_path: string | null }>
-      const paths = rows.map((e) => e.storage_path).filter((p): p is string => !!p)
-      if (paths.length > 0) {
-        const { data: signed } = await admin.storage.from('documents').createSignedUrls(paths, 3600)
-        const urlByPath = new Map(
-          ((signed ?? []) as Array<{ path: string | null; signedUrl: string }>)
-            .filter((s) => s.path && s.signedUrl)
-            .map((s) => [s.path as string, s.signedUrl]),
-        )
-        for (const e of rows) {
-          if (!e.storage_path) continue
-          const url = urlByPath.get(e.storage_path)
-          if (url) pinnedSnapshots.push({ id: e.id, page: e.source_page, caption: e.caption, url })
-        }
-      }
+    // Build illustratesMap: proposalId → [{evidenceId, caption, storagePath}]
+    type IllustratesLink = { proposal_id: string; evidence_id: string; caption: string | null; storage_path: string | null; source_page: number | null }
+    const illustratesLinks = (illustratesResult ?? []) as IllustratesLink[]
+    const illustratesMap = new Map<string, Array<{ evidenceId: string; caption: string | null; storagePath: string | null }>>()
+    for (const link of illustratesLinks) {
+      const arr = illustratesMap.get(link.proposal_id) ?? []
+      arr.push({ evidenceId: link.evidence_id, caption: link.caption, storagePath: link.storage_path })
+      illustratesMap.set(link.proposal_id, arr)
     }
+    illustratedSnapshotIds = new Set(illustratesLinks.map((l) => l.evidence_id))
+
+    // Sign all paths in one batch (pinned snapshots + illustrates photos)
+    const pinnedRows = (pinnedResult.data ?? []) as Array<{ id: string; source_page: number | null; caption: string | null; storage_path: string | null }>
+    const allPaths = [...new Set([
+      ...pinnedRows.map((e) => e.storage_path).filter((p): p is string => !!p),
+      ...illustratesLinks.map((l) => l.storage_path).filter((p): p is string => !!p),
+    ])]
+    let urlByPath = new Map<string, string>()
+    if (allPaths.length > 0) {
+      const { data: signed } = await admin.storage.from('documents').createSignedUrls(allPaths, 3600)
+      urlByPath = new Map(
+        ((signed ?? []) as Array<{ path: string | null; signedUrl: string }>)
+          .filter((s) => s.path && s.signedUrl)
+          .map((s) => [s.path as string, s.signedUrl]),
+      )
+    }
+
+    for (const e of pinnedRows) {
+      if (!e.storage_path) continue
+      const url = urlByPath.get(e.storage_path)
+      if (url) pinnedSnapshots.push({ id: e.id, page: e.source_page, caption: e.caption, url })
+    }
+
+    chronologieItems = ((chronoResult.data ?? []) as Array<{ id: string; label: string; reviewed_label: string | null; source_page: number | null }>)
+      .sort((a, b) => (a.source_page ?? 9999) - (b.source_page ?? 9999))
+      .map((p) => {
+        const photos = (illustratesMap.get(p.id) ?? [])
+          .map((ill) => {
+            const url = ill.storagePath ? urlByPath.get(ill.storagePath) : undefined
+            return url ? { evidenceId: ill.evidenceId, caption: ill.caption, url } : null
+          })
+          .filter((x): x is { evidenceId: string; caption: string | null; url: string } => x !== null)
+        return { label: p.reviewed_label ?? p.label, page: p.source_page, proposalId: p.id, photos }
+      })
   }
   const extractionReviewHref = extractionDocumentId && runId
     ? `/documents/${extractionDocumentId}/extraction/${runId}`
     : null
+  const unlinkedPinnedSnapshots = pinnedSnapshots.filter((s) => !illustratedSnapshotIds.has(s.id))
 
   const vocaux = captured.filter((c) => c.kind === 'vocal').length
   const photos = captured.filter((c) => c.kind === 'photo').length + (isImport ? pinnedSnapshots.length : 0)
@@ -341,17 +367,21 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
             <section className="rounded-xl border bg-card p-4 space-y-3">
               <h2 className="text-[15px] font-semibold flex items-center gap-2">
                 <Camera className="h-4 w-4 text-sky-600" aria-hidden />
-                Photos depuis le PV
+                {illustratedSnapshotIds.size > 0 ? 'Autres photos de la visite' : 'Photos depuis le PV'}
                 <span className="text-xs font-normal text-muted-foreground">
-                  {pinnedSnapshots.length > 0
-                    ? `${pinnedSnapshots.length} / ${totalSnapshotCount} incluse${pinnedSnapshots.length > 1 ? 's' : ''}`
-                    : `${totalSnapshotCount} disponible${totalSnapshotCount > 1 ? 's' : ''}`}
+                  {unlinkedPinnedSnapshots.length > 0
+                    ? `${unlinkedPinnedSnapshots.length} / ${totalSnapshotCount} incluse${unlinkedPinnedSnapshots.length > 1 ? 's' : ''}`
+                    : pinnedSnapshots.length > 0
+                      ? `${pinnedSnapshots.length} associée${pinnedSnapshots.length > 1 ? 's' : ''} aux constatations`
+                      : `${totalSnapshotCount} disponible${totalSnapshotCount > 1 ? 's' : ''}`}
                 </span>
               </h2>
-              {pinnedSnapshots.length === 0 ? (
+              {unlinkedPinnedSnapshots.length === 0 ? (
                 <p className="text-[13px] text-muted-foreground">
-                  {totalSnapshotCount} page{totalSnapshotCount > 1 ? 's' : ''} photographique{totalSnapshotCount > 1 ? 's' : ''} détectée{totalSnapshotCount > 1 ? 's' : ''} dans le PV — aucune n&apos;a été sélectionnée pour cette fiche.
-                  {extractionReviewHref && (
+                  {pinnedSnapshots.length > 0
+                    ? 'Toutes les photos sélectionnées sont associées aux constatations ci-dessus.'
+                    : `${totalSnapshotCount} page${totalSnapshotCount > 1 ? 's' : ''} photographique${totalSnapshotCount > 1 ? 's' : ''} détectée${totalSnapshotCount > 1 ? 's' : ''} dans le PV — aucune n'a été sélectionnée pour cette fiche.`}
+                  {extractionReviewHref && pinnedSnapshots.length === 0 && (
                     <Link href={extractionReviewHref} className="ml-2 text-primary underline underline-offset-2">
                       Sélectionner des photos ↗
                     </Link>
@@ -359,16 +389,16 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                 </p>
               ) : (
                 <>
-                  {extractionReviewHref && pinnedSnapshots.length < totalSnapshotCount && (
+                  {extractionReviewHref && unlinkedPinnedSnapshots.length < totalSnapshotCount && (
                     <p className="text-xs text-muted-foreground">
-                      {totalSnapshotCount - pinnedSnapshots.length} page{totalSnapshotCount - pinnedSnapshots.length > 1 ? 's' : ''} non incluse{totalSnapshotCount - pinnedSnapshots.length > 1 ? 's' : ''}.{' '}
+                      {totalSnapshotCount - unlinkedPinnedSnapshots.length} page{totalSnapshotCount - unlinkedPinnedSnapshots.length > 1 ? 's' : ''} non incluse{totalSnapshotCount - unlinkedPinnedSnapshots.length > 1 ? 's' : ''}.{' '}
                       <Link href={extractionReviewHref} className="underline underline-offset-2">
                         Modifier la sélection ↗
                       </Link>
                     </p>
                   )}
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {pinnedSnapshots.map((snap) => (
+                    {unlinkedPinnedSnapshots.map((snap) => (
                       <a key={snap.id} href={snap.url} target="_blank" rel="noopener noreferrer" className="block group">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
@@ -420,7 +450,24 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                       <span aria-hidden className="absolute left-[6px] top-[18px] h-[calc(100%-10px)] w-px bg-green-200 dark:bg-green-900/60" />
                     )}
                     <span aria-hidden className="relative mt-0.5 shrink-0 h-3.5 w-3.5 rounded-full border-2 border-green-500 bg-card" />
-                    <span className="min-w-0 pt-px">{item.label}</span>
+                    <div className="min-w-0 pt-px">
+                      <span>{item.label}</span>
+                      {item.photos.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {item.photos.map((photo) => (
+                            <a key={photo.evidenceId} href={photo.url} target="_blank" rel="noopener noreferrer" className="block shrink-0 group">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={photo.url}
+                                alt={photo.caption ?? 'Photo'}
+                                title={photo.caption ?? undefined}
+                                className="h-16 w-24 rounded border object-cover bg-muted group-hover:opacity-90 transition-opacity"
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ol>

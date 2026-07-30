@@ -1175,7 +1175,7 @@ export type DocumentProposalReviewStatus =
 
 export type DocumentEvidenceType = 'image' | 'text_excerpt' | 'page_snapshot'
 
-export type DocumentEvidenceRelationType = 'supports' | 'illustrates' | 'source' | 'candidate'
+export type DocumentEvidenceRelationType = 'supports' | 'illustrates' | 'source' | 'candidate' | 'dismissed'
 
 export interface DbDocumentExtractionRun {
   id: string

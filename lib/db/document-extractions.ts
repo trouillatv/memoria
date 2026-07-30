@@ -408,22 +408,33 @@ export async function listCandidateLinksForRun(runId: string): Promise<Array<{
 
   const evidenceIds = (allEvidence as Array<{ id: string }>).map((e) => e.id)
 
+  // Charger candidates ET dismissed en une seule requête pour filtrer côté client.
+  // Un lien 'dismissed' sur le même couple (evidence_id, proposal_id) masque le 'candidate'
+  // correspondant pour éviter de reproposer un lien déjà refusé par l'humain.
   const { data, error } = await supabase
     .from('document_proposal_evidence')
-    .select('evidence_id, proposal_id, confidence, document_extraction_proposal(label, reviewed_label, proposal_family)')
-    .eq('relation_type', 'candidate')
+    .select('evidence_id, proposal_id, relation_type, confidence, document_extraction_proposal(label, reviewed_label, proposal_family)')
+    .in('relation_type', ['candidate', 'dismissed'])
     .in('evidence_id', evidenceIds)
   if (error) throw error
 
   type Row = {
     evidence_id: string
     proposal_id: string
+    relation_type: string
     confidence: number | null
     document_extraction_proposal: { label: string; reviewed_label: string | null; proposal_family: string } | null
   }
 
-  return ((data ?? []) as unknown as Row[])
-    .filter((r) => r.document_extraction_proposal !== null)
+  const rows = (data ?? []) as unknown as Row[]
+  const dismissedKeys = new Set(
+    rows.filter((r) => r.relation_type === 'dismissed').map((r) => `${r.evidence_id}:${r.proposal_id}`),
+  )
+
+  return rows
+    .filter((r) => r.relation_type === 'candidate'
+      && !dismissedKeys.has(`${r.evidence_id}:${r.proposal_id}`)
+      && r.document_extraction_proposal !== null)
     .map((r) => ({
       evidence_id: r.evidence_id,
       proposal_id: r.proposal_id,
@@ -431,4 +442,44 @@ export async function listCandidateLinksForRun(runId: string): Promise<Array<{
       proposal_label: r.document_extraction_proposal!.reviewed_label ?? r.document_extraction_proposal!.label,
       proposal_family: r.document_extraction_proposal!.proposal_family,
     }))
+}
+
+export async function getIllustratesLinksForRun(runId: string): Promise<Array<{
+  proposal_id: string
+  evidence_id: string
+  caption: string | null
+  storage_path: string | null
+  source_page: number | null
+}>> {
+  const supabase = createAdminClient()
+
+  const { data: evs, error: evErr } = await supabase
+    .from('document_extraction_evidence')
+    .select('id')
+    .eq('extraction_run_id', runId)
+    .eq('evidence_type', 'image')
+  if (evErr || !evs?.length) return []
+
+  const evIds = (evs as Array<{ id: string }>).map((e) => e.id)
+
+  const { data, error } = await supabase
+    .from('document_proposal_evidence')
+    .select('proposal_id, evidence_id, document_extraction_evidence(caption, storage_path, source_page)')
+    .eq('relation_type', 'illustrates')
+    .in('evidence_id', evIds)
+  if (error) throw error
+
+  type Row = {
+    proposal_id: string
+    evidence_id: string
+    document_extraction_evidence: { caption: string | null; storage_path: string | null; source_page: number | null } | null
+  }
+
+  return ((data ?? []) as unknown as Row[]).map((r) => ({
+    proposal_id: r.proposal_id,
+    evidence_id: r.evidence_id,
+    caption: r.document_extraction_evidence?.caption ?? null,
+    storage_path: r.document_extraction_evidence?.storage_path ?? null,
+    source_page: r.document_extraction_evidence?.source_page ?? null,
+  }))
 }

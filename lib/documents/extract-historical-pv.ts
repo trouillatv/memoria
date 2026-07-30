@@ -262,11 +262,11 @@ export async function extractHistoricalPv(
         if (!evidenceId) continue
         const pageProposals = pageToProposals.get(info.pageNum) ?? []
         if (pageProposals.length === 0) continue
-        // Confiance inversement proportionnelle au nombre de candidats sur la même page
-        const confidence = Number((1 / pageProposals.length).toFixed(3))
+        // confidence = null : la co-présence de page ne mesure pas la pertinence réelle.
+        // Un score sémantique (caption ↔ libellé) viendra en second niveau.
         for (const proposalId of pageProposals) {
           try {
-            await linkProposalEvidence(proposalId, evidenceId, 'candidate', confidence)
+            await linkProposalEvidence(proposalId, evidenceId, 'candidate', null)
             candidateCount++
           } catch { /* non-bloquant */ }
         }

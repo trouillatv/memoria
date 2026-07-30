@@ -278,12 +278,16 @@ export async function dismissPhotoAssociationAction(fd: FormData): Promise<Actio
     .maybeSingle()
   if (!ev) return { ok: false, error: 'Preuve introuvable' }
 
+  // On supprime le lien 'candidate' et on insère 'dismissed' pour mémoriser la décision.
+  // Lors d'une future régénération, listCandidateLinksForRun filtrera les paires dismissées.
   await admin
     .from('document_proposal_evidence')
     .delete()
     .eq('evidence_id', evidenceId)
     .eq('proposal_id', proposalId)
     .eq('relation_type', 'candidate')
+
+  await linkProposalEvidence(proposalId, evidenceId, 'dismissed')
   return { ok: true }
 }
 
