@@ -17,6 +17,10 @@ const EXTRACTOR_KEY = 'historical_visit_report_v1'
 const EXTRACTOR_VERSION = '1.0.0'
 const MIN_USABLE_CHARS = 100
 const MAX_SNAPSHOT_PAGES = 10
+// Plafond de légendes IA par run : au-delà, caption = null (trop long sinon).
+const MAX_CAPTIONS = 20
+// Concurrence des appels Gemini pour les légendes (I/O bound, pas CPU).
+const CAPTION_CONCURRENCY = 5
 
 function log(event: string, documentId: string, extra?: Record<string, unknown>) {
   console.error(
@@ -74,10 +78,12 @@ export async function extractHistoricalPv(
   })
 
   try {
+    log('extraction_start', documentId, { runId })
     await updateExtractionRunStatus(runId, 'processing', { started_at: new Date().toISOString() })
     await updateExtractionStage(runId, 'downloading')
 
     // 3. Télécharger le fichier
+    log('step_downloading', documentId, { runId })
     const { data: blob, error: dlErr } = await supabase.storage
       .from('documents')
       .download(d.storage_path)
@@ -88,6 +94,7 @@ export async function extractHistoricalPv(
     await updateExtractionStage(runId, 'extracting_text')
 
     // 4. Extraction texte native, OCR si scanné
+    log('step_extracting_text', documentId, { runId })
     let extracted = await extractPdfText(buffer)
     let text = extracted.text
 
@@ -108,10 +115,12 @@ export async function extractHistoricalPv(
     if (text.trim().length < MIN_USABLE_CHARS) {
       throw new Error('no_extractable_text')
     }
+    log('text_extracted', documentId, { runId, chars: text.length, pages: extracted.pageCount })
     await updateExtractionStage(runId, 'rendering_pages')
 
     // 5. Rendu des snapshots de pages (mupdf, graceful fallback)
     // Plafonné à MAX_SNAPSHOT_PAGES pour rester dans le budget temps Vercel.
+    log('step_rendering_pages', documentId, { runId })
     const pagesToRender = Math.min(extracted.pageCount, MAX_SNAPSHOT_PAGES)
     const snapshotPaths = new Map<number, string | null>()
     for (let pageNum = 1; pageNum <= pagesToRender; pageNum++) {
@@ -131,15 +140,25 @@ export async function extractHistoricalPv(
         snapshotPaths.set(pageNum, null)
       }
     }
+    log('pages_rendered', documentId, { runId, pages: pagesToRender })
 
     await updateExtractionStage(runId, 'extracting_images')
 
     // 5b. Extraction des objets image embarqués (approche native PDF, sans vision)
     // Chaque image découverte devient une evidence de type 'image', indépendante des propositions LLM.
+    //
+    // PERFORMANCE : l'extraction mupdf est séquentielle (thread-safety). En revanche,
+    // le légendes IA (I/O réseau pur) sont traitées en parallèle par lot de CAPTION_CONCURRENCY,
+    // plafonnées à MAX_CAPTIONS. Sur un PV avec 30 photos, cela divise le temps de légende
+    // par ~5 et garantit le respect du timeout Vercel à 300 s.
+    log('step_extracting_images', documentId, { runId })
     const { extractPageImages } = await import('@/services/pdf/extract-images')
     const { generateImageCaption } = await import('@/services/pdf/caption-image')
     type ImageInfo = { storagePath: string; pageNum: number; nativeWidth: number; nativeHeight: number; bbox: [number, number, number, number]; caption: string | null }
-    const extractedImageInfos: ImageInfo[] = []
+    type RawImage = { buffer: Buffer; storagePath: string; pageNum: number; nativeWidth: number; nativeHeight: number; bbox: [number, number, number, number]; pageText: string }
+    const rawImages: RawImage[] = []
+
+    // Passe 1 : extraction mupdf et upload (séquentiels — mupdf n'est pas thread-safe)
     for (let pageNum = 1; pageNum <= pagesToRender; pageNum++) {
       let pageResult: Awaited<ReturnType<typeof extractPageImages>> = { images: [], pageText: '' }
       try {
@@ -154,20 +173,43 @@ export async function extractHistoricalPv(
           .from('documents')
           .upload(storagePath, img.buffer, { contentType: 'image/png', upsert: true })
         if (!uploadErr) {
-          // Légende IA basée sur le texte de la page (best-effort, non bloquant)
-          let caption: string | null = null
-          try {
-            caption = await generateImageCaption(img.buffer, pageResult.pageText)
-          } catch { /* caption reste null */ }
-          extractedImageInfos.push({ storagePath, pageNum, nativeWidth: img.nativeWidth, nativeHeight: img.nativeHeight, bbox: img.bbox, caption })
+          rawImages.push({ buffer: img.buffer, storagePath, pageNum, nativeWidth: img.nativeWidth, nativeHeight: img.nativeHeight, bbox: img.bbox, pageText: pageResult.pageText })
         } else {
           log('image_upload_failed', documentId, { page: pageNum, idx: i, error: uploadErr.message })
         }
       }
     }
+    log('images_extracted_raw', documentId, { runId, count: rawImages.length })
+
+    // Passe 2 : légendes IA en parallèle par lots, plafonnées à MAX_CAPTIONS
+    const toCaption = rawImages.slice(0, MAX_CAPTIONS)
+    const captionMap = new Map<string, string | null>()
+    for (let b = 0; b < toCaption.length; b += CAPTION_CONCURRENCY) {
+      const batch = toCaption.slice(b, b + CAPTION_CONCURRENCY)
+      await Promise.all(
+        batch.map(async (raw) => {
+          let caption: string | null = null
+          try {
+            caption = await generateImageCaption(raw.buffer, raw.pageText)
+          } catch { /* caption reste null */ }
+          captionMap.set(raw.storagePath, caption)
+        }),
+      )
+    }
+    log('captions_done', documentId, { runId, captioned: toCaption.length, total: rawImages.length })
+
+    const extractedImageInfos: ImageInfo[] = rawImages.map((raw) => ({
+      storagePath: raw.storagePath,
+      pageNum: raw.pageNum,
+      nativeWidth: raw.nativeWidth,
+      nativeHeight: raw.nativeHeight,
+      bbox: raw.bbox,
+      caption: captionMap.get(raw.storagePath) ?? null,
+    }))
     log('images_extracted', documentId, { count: extractedImageInfos.length })
 
     await updateExtractionStage(runId, 'llm_analysis')
+    log('step_llm_analysis', documentId, { runId })
 
     // 6. Extraction LLM structurée
     const llmResult = await extractHistoricalPvProposals(text, extracted.pageCount)

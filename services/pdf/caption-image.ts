@@ -42,6 +42,7 @@ ${pageText.slice(0, 1200)}`
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(15000),
         body: JSON.stringify({
           contents: [{
             parts: [
