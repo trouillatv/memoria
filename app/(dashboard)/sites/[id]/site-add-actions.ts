@@ -38,8 +38,7 @@ export async function uploadSiteDocumentAction(
     fd.set('memory_tier', String(formData.get('memory_tier') || 'consultable'))
     const result = await uploadDocumentAction(fd)
     if (result.ok) {
-      revalidatePath(`/sites/${siteId}`)
-      revalidatePath(`/sites/${siteId}?tab=documents-preuves`)
+      revalidatePath(`/sites/${siteId}`, 'page')
     }
     return result
   } catch (e) {
@@ -97,7 +96,7 @@ export async function importSiteHistoricalPvAction(
       })
     }
 
-    revalidatePath(`/sites/${siteId}`)
+    revalidatePath(`/sites/${siteId}`, 'page')
     return { ok: true, documentId: result.documentId }
   } catch (e) {
     console.error('[importSiteHistoricalPvAction]', e)
@@ -121,9 +120,7 @@ export async function importSiteEvidenceAction(
     }
     const result = await importVisitAction(fd)
     if (!result.ok) return result
-    revalidatePath(`/sites/${siteId}`)
-    revalidatePath(`/sites/${siteId}?tab=chronologie`)
-    revalidatePath(`/sites/${siteId}?tab=documents-preuves`)
+    revalidatePath(`/sites/${siteId}`, 'page')
     return {
       ok: true,
       created: result.created,

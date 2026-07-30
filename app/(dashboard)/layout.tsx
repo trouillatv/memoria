@@ -14,7 +14,10 @@ import { shouldRedirectDashboardRequestToField, isMobileUserAgent } from '@/lib/
 import { PwaDesktopModeSync } from '@/components/pwa-desktop-mode-sync'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const user = await getCurrentUserWithProfile()
+  const user = await getCurrentUserWithProfile().catch((e) => {
+    console.error('[dashboard/layout] getCurrentUserWithProfile threw:', e)
+    return null
+  })
   if (!user) redirect('/login')
   if (user.must_change_password) redirect('/change-password')
 
@@ -29,12 +32,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // de ne plus les regarder). Visible managers/admins, dans la nav.
   const actionsHealth =
     user.role === 'admin' || user.role === 'manager'
-      ? await getOpenActionsHealth()
+      ? await getOpenActionsHealth().catch(() => ({ total: 0, critique: 0, surveiller: 0, rythme: 0 }))
       : { total: 0, critique: 0, surveiller: 0, rythme: 0 }
 
   // M4a — indicateur multi-org dans la sidebar. Ne charge que si multi-org.
-  const orgIds = await getOrgIdsOfUser()
-  const orgsMeta = orgIds.length > 1 ? await getOrganizationsMeta(orgIds) : undefined
+  const orgIds = await getOrgIdsOfUser().catch(() => [])
+  const orgsMeta = orgIds.length > 1 ? await getOrganizationsMeta(orgIds).catch(() => undefined) : undefined
 
   return (
     <div className="min-h-screen bg-muted/20">
