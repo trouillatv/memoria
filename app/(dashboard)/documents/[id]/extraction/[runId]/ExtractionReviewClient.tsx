@@ -306,9 +306,15 @@ export function ExtractionReviewClient({
     })
   }
 
+  // Règle de priorité : si des images natives existent, on ne gère que celles-ci ;
+  // les snapshots de page entiers ne servent que de fallback.
+  const _extractedPhotos = orphanEvidence.filter((e) => e.evidence_type === 'image')
+  const _snapshots       = orphanEvidence.filter((e) => e.evidence_type === 'page_snapshot')
+  const visiblePhotos    = _extractedPhotos.length > 0 ? _extractedPhotos : _snapshots
+
   async function handlePinAll(pinAll: boolean) {
     setPinAllPending(true)
-    const photoIds = orphanEvidence.filter((e) => e.evidence_type === 'page_snapshot' || e.evidence_type === 'image').map((e) => e.id)
+    const photoIds = visiblePhotos.map((e) => e.id)
     setPinnedIds(pinAll ? new Set(photoIds) : new Set())
     const fd = new FormData()
     fd.set('run_id', runId)
@@ -336,7 +342,7 @@ export function ExtractionReviewClient({
   const weakCount = proposals.filter((p) => getRelevanceScore(p.proposal) === 'weak').length
   const personCount = proposals.filter((p) => p.proposal.proposal_family === 'person').length
   const companyCount = proposals.filter((p) => p.proposal.proposal_family === 'company').length
-  const snapshotCount = orphanEvidence.filter((e) => e.evidence_type === 'page_snapshot' || e.evidence_type === 'image').length
+  const snapshotCount = visiblePhotos.length
 
   const filtered = proposals
     .filter((p) => filter === 'all' || p.proposal.review_status === filter)
@@ -455,37 +461,35 @@ export function ExtractionReviewClient({
         })
       )}
 
-      {/* Photos et snapshots non associés */}
+      {/* Photos (images extraites ou snapshots en fallback) */}
       {orphanEvidence.length > 0 && (() => {
-        const extractedPhotos = orphanEvidence.filter((e) => e.evidence_type === 'image')
-        const snapshots = orphanEvidence.filter((e) => e.evidence_type === 'page_snapshot')
         const others = orphanEvidence.filter((e) => e.evidence_type !== 'page_snapshot' && e.evidence_type !== 'image')
-        const allPhotos = [...extractedPhotos, ...snapshots]
-        const pinnedCount = allPhotos.filter((e) => pinnedIds.has(e.id)).length
-        if (allPhotos.length === 0 && others.length === 0) return null
+        const pinnedCount = visiblePhotos.filter((e) => pinnedIds.has(e.id)).length
+        if (visiblePhotos.length === 0 && others.length === 0) return null
+        const hasExtracted = _extractedPhotos.length > 0
         return (
           <section className="space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                {extractedPhotos.length > 0 ? 'Photos extraites' : 'Pages photographiques'}
+                {hasExtracted ? 'Photos extraites' : 'Pages photographiques'}
               </h2>
-              {allPhotos.length > 0 && (
+              {visiblePhotos.length > 0 && (
                 <span className="text-xs font-medium">
-                  {pinnedCount} / {allPhotos.length} sélectionnée{pinnedCount !== 1 ? 's' : ''}
+                  {pinnedCount} / {visiblePhotos.length} sélectionnée{pinnedCount !== 1 ? 's' : ''}
                 </span>
               )}
-              {allPhotos.length > 0 && (
+              {visiblePhotos.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => handlePinAll(pinnedCount < allPhotos.length)}
+                  onClick={() => handlePinAll(pinnedCount < visiblePhotos.length)}
                   disabled={pinAllPending || isPending}
                   className="ml-auto text-xs border rounded px-2 py-1 text-muted-foreground hover:text-foreground hover:border-foreground transition-colors disabled:opacity-50"
                 >
-                  {pinAllPending ? '…' : pinnedCount === allPhotos.length ? 'Tout désélectionner' : 'Importer toutes'}
+                  {pinAllPending ? '…' : pinnedCount === visiblePhotos.length ? 'Tout désélectionner' : 'Importer toutes'}
                 </button>
               )}
             </div>
-            {extractedPhotos.length > 0 ? (
+            {hasExtracted ? (
               <p className="text-xs text-muted-foreground">
                 Photos extraites de la structure du PDF. Sélectionnez celles à afficher dans la visite.
               </p>
@@ -495,7 +499,7 @@ export function ExtractionReviewClient({
               </p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {allPhotos.map((ev) => (
+              {visiblePhotos.map((ev) => (
                 <OrphanEvidenceItem
                   key={ev.id}
                   evidence={ev}
