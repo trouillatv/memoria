@@ -25,6 +25,9 @@ export const LlmProposalSchema = z.object({
     responsibleParty: z.string().nullish(),
     relevanceScore: z.enum(['strong', 'medium', 'weak']).nullish(),
     relevanceReason: z.string().nullish(),
+    linkedCompanyName: z.string().nullish(),
+    emailAddress: z.string().nullish(),
+    phoneNumber: z.string().nullish(),
   }).nullish(),
   evidenceKeys: z.array(z.string()),
 })
@@ -65,6 +68,9 @@ const GEMINI_RESPONSE_SCHEMA = {
               responsibleParty: { type: 'string' },
               relevanceScore: { type: 'string', enum: ['strong', 'medium', 'weak'] },
               relevanceReason: { type: 'string' },
+              linkedCompanyName: { type: 'string' },
+              emailAddress: { type: 'string' },
+              phoneNumber: { type: 'string' },
             },
             required: ['relevanceScore'],
           },
@@ -190,7 +196,10 @@ Pour chaque **personne physique identifiable** (prénom + nom) mentionnée dans 
 - créer une proposition **person** ;
 - label = "Prénom NOM" ;
 - description = "Fonction — Entreprise [— email / téléphone]" selon disponibilité ;
-- sourcePayload.statusAtDocumentDate = statut de présence parmi : "présent", "invité", "absent excusé", "absent non excusé", "diffusion uniquement", "inconnu".
+- sourcePayload.statusAtDocumentDate = statut de présence parmi : "présent", "invité", "absent excusé", "absent non excusé", "diffusion uniquement", "inconnu" ;
+- sourcePayload.linkedCompanyName = nom exact de l'entreprise à laquelle appartient cette personne, si identifiable dans le document (ex : "BatiSud") ;
+- sourcePayload.emailAddress = adresse email de la personne si présente dans le document ;
+- sourcePayload.phoneNumber = numéro de téléphone (mobile ou fixe) de la personne si présent dans le document.
 
 Créer une **company distincte** pour l'entreprise de cette personne si elle n'a pas déjà de proposition company.
 

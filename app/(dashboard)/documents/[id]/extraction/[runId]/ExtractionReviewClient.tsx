@@ -96,6 +96,140 @@ function OrphanEvidenceItem({
   )
 }
 
+// ─── Bloc de création (top / bottom) ─────────────────────────────────────────
+
+function CreateVisitBlock({
+  runId, documentId, targetSiteId, effectiveDate, alreadySiteReportId,
+  summary, personCount, companyCount, pinnedCount, snapshotCount,
+  isPending, createError, position, onSubmit,
+}: {
+  runId: string
+  documentId: string
+  targetSiteId: string | null
+  effectiveDate: string | null
+  alreadySiteReportId: string | null
+  summary: ReviewSummary
+  personCount: number
+  companyCount: number
+  pinnedCount: number
+  snapshotCount: number
+  isPending: boolean
+  createError: string | null
+  position: 'top' | 'bottom'
+  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
+}) {
+  const confirmedCount = summary.accepted + summary.edited + summary.materialized
+  const noPhoWarn = snapshotCount > 0 && pinnedCount === 0
+
+  if (alreadySiteReportId && targetSiteId) {
+    return (
+      <div className="rounded-lg border bg-card p-4 space-y-3">
+        <h2 className="text-sm font-medium">Créer la visite historique</h2>
+        <div className="space-y-1">
+          <p className="text-sm text-emerald-700 dark:text-emerald-400">Visite créée avec succès.</p>
+          <a
+            href={`/sites/${targetSiteId}/visites/${alreadySiteReportId}`}
+            className="text-sm underline underline-offset-2 hover:text-foreground text-muted-foreground"
+          >
+            Voir la visite historique
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  if (!targetSiteId) {
+    return (
+      <div className="rounded-lg border bg-card p-4 space-y-3">
+        <h2 className="text-sm font-medium">Créer la visite historique</h2>
+        <p className="text-sm text-muted-foreground">
+          Aucun chantier associé à ce document. Rattachez le document à un chantier avant de créer la visite.
+        </p>
+      </div>
+    )
+  }
+
+  if (!effectiveDate) {
+    return (
+      <div className="rounded-lg border bg-card p-4 space-y-3">
+        <h2 className="text-sm font-medium">Créer la visite historique</h2>
+        <p className="text-sm text-muted-foreground">
+          La date du PV n'est pas renseignée. Modifiez le document pour ajouter la date d'effet avant de créer la visite.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-lg border bg-card p-4 space-y-3">
+      {position === 'top' && (
+        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 pb-3 border-b">
+          <div>
+            <dt className="text-xs text-muted-foreground">Confirmées</dt>
+            <dd className="font-semibold text-sm">{confirmedCount} / {summary.total}</dd>
+          </div>
+          {personCount > 0 && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Personnes</dt>
+              <dd className="font-semibold text-sm">{personCount}</dd>
+            </div>
+          )}
+          {companyCount > 0 && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Entreprises</dt>
+              <dd className="font-semibold text-sm">{companyCount}</dd>
+            </div>
+          )}
+          {snapshotCount > 0 && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Pages photo</dt>
+              <dd className={`font-semibold text-sm ${noPhoWarn ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+                {pinnedCount} / {snapshotCount}
+              </dd>
+            </div>
+          )}
+        </dl>
+      )}
+      <h2 className="text-sm font-medium">Créer la visite historique</h2>
+      {noPhoWarn && (
+        <p className="text-xs rounded bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5 text-amber-700 dark:text-amber-400">
+          ⚠ Aucune page photographique sélectionnée — la visite sera créée sans photos.
+        </p>
+      )}
+      <form onSubmit={onSubmit} className="space-y-3">
+        <input type="hidden" name="run_id" value={runId} />
+        <input type="hidden" name="document_id" value={documentId} />
+        {summary.pending > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {summary.pending} proposition{summary.pending > 1 ? 's' : ''} non examinée{summary.pending > 1 ? 's' : ''} — vous pouvez quand même créer la visite.
+          </p>
+        )}
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Titre de la visite (optionnel)</label>
+          <input
+            type="text"
+            name="visit_title"
+            placeholder={`Visite importée — ${effectiveDate}`}
+            className="w-full rounded-md border bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground/60"
+            disabled={isPending}
+          />
+        </div>
+        {createError && (
+          <p className="text-xs text-destructive">{createError}</p>
+        )}
+        <button
+          type="submit"
+          disabled={isPending}
+          className="inline-flex items-center gap-2 rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+        >
+          {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+          {isPending ? 'Création en cours…' : noPhoWarn ? 'Créer sans photos' : 'Créer la visite historique'}
+        </button>
+      </form>
+    </div>
+  )
+}
+
 // ─── Client principal ─────────────────────────────────────────────────────────
 
 export function ExtractionReviewClient({
@@ -188,6 +322,9 @@ export function ExtractionReviewClient({
   }
 
   const weakCount = proposals.filter((p) => getRelevanceScore(p.proposal) === 'weak').length
+  const personCount = proposals.filter((p) => p.proposal.proposal_family === 'person').length
+  const companyCount = proposals.filter((p) => p.proposal.proposal_family === 'company').length
+  const snapshotCount = orphanEvidence.filter((e) => e.evidence_type === 'page_snapshot').length
 
   const filtered = proposals
     .filter((p) => filter === 'all' || p.proposal.review_status === filter)
@@ -230,6 +367,23 @@ export function ExtractionReviewClient({
           <p className="text-xs text-muted-foreground">Toutes les propositions ont été examinées.</p>
         )}
       </div>
+
+      <CreateVisitBlock
+        position="top"
+        runId={runId}
+        documentId={documentId}
+        targetSiteId={targetSiteId}
+        effectiveDate={effectiveDate}
+        alreadySiteReportId={alreadySiteReportId}
+        summary={summary}
+        personCount={personCount}
+        companyCount={companyCount}
+        pinnedCount={pinnedIds.size}
+        snapshotCount={snapshotCount}
+        isPending={isPending}
+        createError={createError}
+        onSubmit={handleCreateVisit}
+      />
 
       {/* Filtres */}
       <div className="flex gap-2 flex-wrap items-center">
@@ -290,60 +444,22 @@ export function ExtractionReviewClient({
         })
       )}
 
-      {/* Créer la visite historique */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
-        <h2 className="text-sm font-medium">Créer la visite historique</h2>
-        {alreadySiteReportId && targetSiteId ? (
-          <div className="space-y-1">
-            <p className="text-sm text-emerald-700 dark:text-emerald-400">Visite créée avec succès.</p>
-            <a
-              href={`/sites/${targetSiteId}/visites/${alreadySiteReportId}`}
-              className="text-sm underline underline-offset-2 hover:text-foreground text-muted-foreground"
-            >
-              Voir la visite historique
-            </a>
-          </div>
-        ) : !targetSiteId ? (
-          <p className="text-sm text-muted-foreground">
-            Aucun chantier associé à ce document. Rattachez le document à un chantier avant de créer la visite.
-          </p>
-        ) : !effectiveDate ? (
-          <p className="text-sm text-muted-foreground">
-            La date du PV n'est pas renseignée. Modifiez le document pour ajouter la date d'effet avant de créer la visite.
-          </p>
-        ) : (
-          <form onSubmit={handleCreateVisit} className="space-y-3">
-            <input type="hidden" name="run_id" value={runId} />
-            <input type="hidden" name="document_id" value={documentId} />
-            {summary.pending > 0 && (
-              <p className="text-xs text-muted-foreground">
-                {summary.pending} proposition{summary.pending > 1 ? 's' : ''} non examinée{summary.pending > 1 ? 's' : ''} — vous pouvez quand même créer la visite.
-              </p>
-            )}
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">Titre de la visite (optionnel)</label>
-              <input
-                type="text"
-                name="visit_title"
-                placeholder={`Visite importée — ${effectiveDate}`}
-                className="w-full rounded-md border bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground/60"
-                disabled={isPending}
-              />
-            </div>
-            {createError && (
-              <p className="text-xs text-destructive">{createError}</p>
-            )}
-            <button
-              type="submit"
-              disabled={isPending}
-              className="inline-flex items-center gap-2 rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-            >
-              {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              {isPending ? 'Création en cours…' : 'Créer la visite historique'}
-            </button>
-          </form>
-        )}
-      </div>
+      <CreateVisitBlock
+        position="bottom"
+        runId={runId}
+        documentId={documentId}
+        targetSiteId={targetSiteId}
+        effectiveDate={effectiveDate}
+        alreadySiteReportId={alreadySiteReportId}
+        summary={summary}
+        personCount={personCount}
+        companyCount={companyCount}
+        pinnedCount={pinnedIds.size}
+        snapshotCount={snapshotCount}
+        isPending={isPending}
+        createError={createError}
+        onSubmit={handleCreateVisit}
+      />
 
       {/* Photos non associées */}
       {orphanEvidence.length > 0 && (() => {
@@ -354,14 +470,11 @@ export function ExtractionReviewClient({
           <section className="space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                Photos à classer
-                <span className="font-normal normal-case ml-2">({snapshots.length})</span>
+                Pages photographiques
               </h2>
-              {pinnedCount > 0 && (
-                <span className="text-xs font-medium text-sky-700 dark:text-sky-400">
-                  {pinnedCount} incluse{pinnedCount > 1 ? 's' : ''} dans la visite
-                </span>
-              )}
+              <span className="text-xs font-medium">
+                {pinnedCount} / {snapshots.length} sélectionnée{pinnedCount !== 1 ? 's' : ''}
+              </span>
             </div>
             <p className="text-xs text-muted-foreground">
               Sélectionnez les pages à afficher dans la fiche de la visite historique.

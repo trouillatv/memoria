@@ -325,6 +325,126 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
         }
       }
 
+      // ── Pipeline : company + person → companies / company_contacts / site_intervenants ──
+      const { data: companyPropsRaw } = await admin
+        .from('document_extraction_proposal')
+        .select('id, label, reviewed_label, source_payload')
+        .eq('extraction_run_id', runId)
+        .in('review_status', ['accepted', 'edited'])
+        .eq('proposal_family', 'company')
+
+      const { data: personPropsRaw } = await admin
+        .from('document_extraction_proposal')
+        .select('id, label, reviewed_label, description, source_payload')
+        .eq('extraction_run_id', runId)
+        .in('review_status', ['accepted', 'edited'])
+        .eq('proposal_family', 'person')
+
+      type SPCompany = { statusAtDocumentDate?: string }
+      type SPPerson = { statusAtDocumentDate?: string; linkedCompanyName?: string | null; emailAddress?: string | null; phoneNumber?: string | null }
+
+      const companyMap = new Map<string, { companyId: string; siteIntervenantId: string }>()
+
+      for (const rawProp of companyPropsRaw ?? []) {
+        const prop = rawProp as { id: string; label: string; reviewed_label: string | null; source_payload: SPCompany | null }
+        const companyName = prop.reviewed_label ?? prop.label
+        const role = prop.source_payload?.statusAtDocumentDate ?? 'partenaire'
+
+        const { data: existingCo } = await admin
+          .from('companies')
+          .select('id')
+          .eq('organization_id', orgId)
+          .ilike('name', companyName)
+          .is('deleted_at', null)
+          .maybeSingle()
+
+        let companyId: string
+        if (existingCo) {
+          companyId = (existingCo as { id: string }).id
+        } else {
+          const { data: newCo } = await admin
+            .from('companies')
+            .insert({ organization_id: orgId, name: companyName })
+            .select('id')
+            .single()
+          if (!newCo) continue
+          companyId = (newCo as { id: string }).id
+        }
+
+        const { data: existingSi } = await admin
+          .from('site_intervenants')
+          .select('id')
+          .eq('site_id', siteId)
+          .eq('role', role)
+          .eq('company_id', companyId)
+          .is('effective_to', null)
+          .maybeSingle()
+
+        let siteIntervenantId: string
+        if (existingSi) {
+          siteIntervenantId = (existingSi as { id: string }).id
+        } else {
+          const { data: newSi } = await admin
+            .from('site_intervenants')
+            .insert({ site_id: siteId, role, company_id: companyId, effective_from: visitDate.split('T')[0], source_report_id: siteReportId })
+            .select('id')
+            .single()
+          if (!newSi) continue
+          siteIntervenantId = (newSi as { id: string }).id
+        }
+
+        companyMap.set(companyName.toLowerCase(), { companyId, siteIntervenantId })
+        await Promise.all([
+          admin.from('document_extraction_proposal').update({ review_status: 'materialized', reviewed_at: new Date().toISOString() }).eq('id', prop.id),
+          admin.from('document_proposal_materialization').upsert({ organization_id: orgId, proposal_id: prop.id, target_entity_type: 'site_intervenants', target_entity_id: siteIntervenantId, status: 'done', created_by: access.userId }, { onConflict: 'proposal_id, target_entity_type, target_entity_id', ignoreDuplicates: true }),
+        ])
+      }
+
+      for (const rawProp of personPropsRaw ?? []) {
+        const prop = rawProp as { id: string; label: string; reviewed_label: string | null; description: string | null; source_payload: SPPerson | null }
+        const personName = prop.reviewed_label ?? prop.label
+        const sp = prop.source_payload
+        const linkedCompanyName = sp?.linkedCompanyName ?? null
+        const email = sp?.emailAddress ?? null
+        const phone = sp?.phoneNumber ?? null
+        const personFunction = prop.description?.split(' — ')[0]?.trim() ?? null
+
+        if (!linkedCompanyName) continue
+        const entry = companyMap.get(linkedCompanyName.toLowerCase())
+        if (!entry) continue
+        const { companyId, siteIntervenantId } = entry
+
+        const { data: existingContact } = await admin
+          .from('company_contacts')
+          .select('id')
+          .eq('company_id', companyId)
+          .ilike('full_name', personName)
+          .is('deleted_at', null)
+          .maybeSingle()
+
+        let contactId: string
+        if (existingContact) {
+          contactId = (existingContact as { id: string }).id
+          if (email || phone) {
+            await admin.from('company_contacts').update({ ...(email ? { email } : {}), ...(phone ? { phone } : {}) }).eq('id', contactId)
+          }
+        } else {
+          const { data: newContact } = await admin
+            .from('company_contacts')
+            .insert({ company_id: companyId, full_name: personName, function: personFunction, email, phone })
+            .select('id')
+            .single()
+          if (!newContact) continue
+          contactId = (newContact as { id: string }).id
+        }
+
+        await admin.from('site_intervenants').update({ main_contact_id: contactId }).eq('id', siteIntervenantId).is('main_contact_id', null)
+        await Promise.all([
+          admin.from('document_extraction_proposal').update({ review_status: 'materialized', reviewed_at: new Date().toISOString() }).eq('id', prop.id),
+          admin.from('document_proposal_materialization').upsert({ organization_id: orgId, proposal_id: prop.id, target_entity_type: 'company_contacts', target_entity_id: contactId, status: 'done', created_by: access.userId }, { onConflict: 'proposal_id, target_entity_type, target_entity_id', ignoreDuplicates: true }),
+        ])
+      }
+
       // Après pipeline TypeScript, statut du run = fully materialized
       await admin
         .from('document_extraction_run')
