@@ -24,74 +24,84 @@ export async function uploadSiteDocumentAction(
   siteId: string,
   formData: FormData,
 ): Promise<{ ok: boolean; error?: string; documentId?: string; duplicate?: boolean }> {
-  const collectionId = await ensureSiteCollection(siteId)
-  const fd = new FormData()
-  const file = formData.get('file')
-  if (file) fd.set('file', file)
-  fd.set('collection_id', collectionId)
-  fd.set('document_type', String(formData.get('document_type') || 'preuve'))
-  fd.set('visibility_level', String(formData.get('visibility_level') || 'manager'))
-  fd.set('target_type', 'site')
-  fd.set('target_id', siteId)
-  fd.set('embed', String(formData.get('embed') || 'true'))
-  fd.set('memory_tier', String(formData.get('memory_tier') || 'consultable'))
-  const result = await uploadDocumentAction(fd)
-  if (result.ok) {
-    revalidatePath(`/sites/${siteId}`)
-    revalidatePath(`/sites/${siteId}?tab=documents-preuves`)
+  try {
+    const collectionId = await ensureSiteCollection(siteId)
+    const fd = new FormData()
+    const file = formData.get('file')
+    if (file) fd.set('file', file)
+    fd.set('collection_id', collectionId)
+    fd.set('document_type', String(formData.get('document_type') || 'preuve'))
+    fd.set('visibility_level', String(formData.get('visibility_level') || 'manager'))
+    fd.set('target_type', 'site')
+    fd.set('target_id', siteId)
+    fd.set('embed', String(formData.get('embed') || 'true'))
+    fd.set('memory_tier', String(formData.get('memory_tier') || 'consultable'))
+    const result = await uploadDocumentAction(fd)
+    if (result.ok) {
+      revalidatePath(`/sites/${siteId}`)
+      revalidatePath(`/sites/${siteId}?tab=documents-preuves`)
+    }
+    return result
+  } catch (e) {
+    console.error('[uploadSiteDocumentAction]', e)
+    return { ok: false, error: 'Une erreur inattendue est survenue.' }
   }
-  return result
 }
 
 export async function importSiteHistoricalPvAction(
   siteId: string,
   formData: FormData,
 ): Promise<{ ok: boolean; error?: string; documentId?: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { ok: false, error: 'Non authentifié' }
-  const role = await getUserRoleById(user.id)
-  if (role !== 'admin' && role !== 'manager') return { ok: false, error: 'Permissions insuffisantes' }
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { ok: false, error: 'Non authentifié' }
+    const role = await getUserRoleById(user.id)
+    if (role !== 'admin' && role !== 'manager') return { ok: false, error: 'Permissions insuffisantes' }
 
-  const collectionId = await ensureSiteCollection(siteId)
-  const fd = new FormData()
-  const file = formData.get('file')
-  if (file) fd.set('file', file)
-  fd.set('collection_id', collectionId)
-  fd.set('document_type', 'historical_visit_report')
-  fd.set('visibility_level', 'manager')
-  fd.set('target_type', 'site')
-  fd.set('target_id', siteId)
-  fd.set('embed', 'false')
-  fd.set('memory_tier', 'froide')
-  const effectiveDate = formData.get('effective_date')?.toString()
-  if (effectiveDate) fd.set('effective_date', effectiveDate)
+    const collectionId = await ensureSiteCollection(siteId)
+    const fd = new FormData()
+    const file = formData.get('file')
+    if (file) fd.set('file', file)
+    fd.set('collection_id', collectionId)
+    fd.set('document_type', 'historical_visit_report')
+    fd.set('visibility_level', 'manager')
+    fd.set('target_type', 'site')
+    fd.set('target_id', siteId)
+    fd.set('embed', 'false')
+    fd.set('memory_tier', 'froide')
+    const effectiveDate = formData.get('effective_date')?.toString()
+    if (effectiveDate) fd.set('effective_date', effectiveDate)
 
-  const result = await uploadDocumentAction(fd)
-  if (!result.ok || !result.documentId) return { ok: false, error: result.error ?? 'Import impossible' }
+    const result = await uploadDocumentAction(fd)
+    if (!result.ok || !result.documentId) return { ok: false, error: result.error ?? 'Import impossible' }
 
-  const secret = process.env.CRON_SECRET
-  const h = await headers()
-  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'
-  const proto = h.get('x-forwarded-proto') ?? (process.env.NODE_ENV === 'production' ? 'https' : 'http')
-  const extractionUrl = `${proto}://${host}/api/extraction/historical-pv`
+    const secret = process.env.CRON_SECRET
+    const h = await headers()
+    const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'
+    const proto = h.get('x-forwarded-proto') ?? (process.env.NODE_ENV === 'production' ? 'https' : 'http')
+    const extractionUrl = `${proto}://${host}/api/extraction/historical-pv`
 
-  if (secret) {
-    after(async () => {
-      try {
-        await fetch(extractionUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-internal-trigger': secret },
-          body: JSON.stringify({ documentId: result.documentId, userId: user.id, siteId }),
-        })
-      } catch (e) {
-        console.error('importSiteHistoricalPvAction trigger error:', e)
-      }
-    })
+    if (secret) {
+      after(async () => {
+        try {
+          await fetch(extractionUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-internal-trigger': secret },
+            body: JSON.stringify({ documentId: result.documentId, userId: user.id, siteId }),
+          })
+        } catch (e) {
+          console.error('importSiteHistoricalPvAction trigger error:', e)
+        }
+      })
+    }
+
+    revalidatePath(`/sites/${siteId}`)
+    return { ok: true, documentId: result.documentId }
+  } catch (e) {
+    console.error('[importSiteHistoricalPvAction]', e)
+    return { ok: false, error: 'Une erreur inattendue est survenue.' }
   }
-
-  revalidatePath(`/sites/${siteId}`)
-  return { ok: true, documentId: result.documentId }
 }
 
 export async function importSiteEvidenceAction(
