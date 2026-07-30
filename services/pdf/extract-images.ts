@@ -49,7 +49,6 @@ export async function extractPageImages(
 
     const images: ExtractedImage[] = []
     let imageIndex = 0
-    let blockCount = 0
 
     sText.walk({
       onImageBlock(bbox: [number, number, number, number], _transform: unknown, image: unknown) {
@@ -57,36 +56,14 @@ export async function extractPageImages(
         const img = image as any
         const w = img.getWidth() as number
         const h = img.getHeight() as number
-        const blockIdx = blockCount++
-        const bboxArea = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
-        const coverage = pageArea > 0 ? bboxArea / pageArea : 0
-
-        // LOG DIAGNOSTIC — à supprimer après validation terrain
-        console.error(JSON.stringify({
-          service: 'extractPageImages',
-          event: 'block_detected',
-          pageIndex,
-          blockIdx,
-          bbox,
-          nativeWidth: w,
-          nativeHeight: h,
-          coverage: Math.round(coverage * 1000) / 1000,
-          pageArea: Math.round(pageArea),
-          bboxArea: Math.round(bboxArea),
-        }))
 
         // Filtre 1 : la bbox doit couvrir au moins MIN_PAGE_COVERAGE de la page
         // → élimine logos, bandeaux, cadres (logo BECIB = 2.4 %, photo = 19.9 %)
-        if (pageArea > 0 && coverage < MIN_PAGE_COVERAGE) {
-          console.error(JSON.stringify({ service: 'extractPageImages', event: 'block_filtered', pageIndex, blockIdx, reason: 'coverage_too_small', coverage }))
-          return
-        }
+        const bboxArea = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+        if (pageArea > 0 && bboxArea / pageArea < MIN_PAGE_COVERAGE) return
 
         // Filtre 2 : garde-fou sur les dimensions natives minimales
-        if (w < MIN_NATIVE_PX || h < MIN_NATIVE_PX) {
-          console.error(JSON.stringify({ service: 'extractPageImages', event: 'block_filtered', pageIndex, blockIdx, reason: 'native_too_small', w, h }))
-          return
-        }
+        if (w < MIN_NATIVE_PX || h < MIN_NATIVE_PX) return
 
         try {
           let pixmap = img.toPixmap()
@@ -101,7 +78,6 @@ export async function extractPageImages(
           const png = pixmap.asPNG() as Uint8Array
           pixmap.destroy()
 
-          console.error(JSON.stringify({ service: 'extractPageImages', event: 'block_accepted', pageIndex, blockIdx, via: 'toPixmap', imageIndex }))
           images.push({
             pageIndex,
             imageIndex: imageIndex++,
@@ -110,8 +86,7 @@ export async function extractPageImages(
             nativeHeight: h,
             buffer: Buffer.from(png),
           })
-        } catch (toPixmapErr) {
-          console.error(JSON.stringify({ service: 'extractPageImages', event: 'toPixmap_failed', pageIndex, blockIdx, error: toPixmapErr instanceof Error ? toPixmapErr.message : String(toPixmapErr) }))
+        } catch {
           // L'objet image ne peut pas être décodé nativement (JPEG2000, JBIG2, CMYK non-standard…).
           // Fallback : rendre la région de la page correspondant à la bbox via DrawDevice.
           try {
@@ -128,7 +103,6 @@ export async function extractPageImages(
               device.close()
               const png = clipPx.asPNG() as Uint8Array
               clipPx.destroy()
-              console.error(JSON.stringify({ service: 'extractPageImages', event: 'block_accepted', pageIndex, blockIdx, via: 'DrawDevice', imageIndex }))
               images.push({
                 pageIndex,
                 imageIndex: imageIndex++,
@@ -137,17 +111,13 @@ export async function extractPageImages(
                 nativeHeight: ry1 - ry0,
                 buffer: Buffer.from(png),
               })
-            } else {
-              console.error(JSON.stringify({ service: 'extractPageImages', event: 'block_filtered', pageIndex, blockIdx, reason: 'DrawDevice_bbox_too_small', rx0, ry0, rx1, ry1 }))
             }
-          } catch (drawErr) {
-            console.error(JSON.stringify({ service: 'extractPageImages', event: 'block_filtered', pageIndex, blockIdx, reason: 'DrawDevice_failed', error: drawErr instanceof Error ? drawErr.message : String(drawErr) }))
+          } catch {
+            // Vraiment non récupérable — page ignorée
           }
         }
       },
     })
-
-    console.error(JSON.stringify({ service: 'extractPageImages', event: 'page_summary', pageIndex, blocksDetected: blockCount, imagesAccepted: images.length }))
 
     sText.destroy()
     page.destroy()
