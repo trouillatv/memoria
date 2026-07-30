@@ -218,13 +218,40 @@ export async function pinAllSnapshotsAction(fd: FormData): Promise<ActionResult>
   if (!access.ok) return access
 
   const admin = createAdminClient()
-  const { error } = await admin
+
+  if (!pinned) {
+    const { error } = await admin
+      .from('document_extraction_evidence')
+      .update({ pinned_for_visit: false })
+      .eq('extraction_run_id', runId)
+      .in('evidence_type', ['page_snapshot', 'image'])
+    return error ? { ok: false, error: error.message } : { ok: true }
+  }
+
+  // Règle de priorité : si une page a des images natives, le snapshot de cette page
+  // ne doit pas être épinglé — il ne sert que de fallback pour les pages sans images.
+  const { data: allVisual } = await admin
     .from('document_extraction_evidence')
-    .update({ pinned_for_visit: pinned })
+    .select('id, source_page, evidence_type')
     .eq('extraction_run_id', runId)
     .in('evidence_type', ['page_snapshot', 'image'])
 
-  if (error) return { ok: false, error: error.message }
+  if (!allVisual?.length) return { ok: true }
+
+  const pagesWithImages = new Set(
+    allVisual.filter((e) => e.evidence_type === 'image').map((e) => e.source_page),
+  )
+  const toPin   = allVisual.filter((e) => e.evidence_type === 'image' || !pagesWithImages.has(e.source_page)).map((e) => e.id)
+  const toUnpin = allVisual.filter((e) => e.evidence_type === 'page_snapshot' && pagesWithImages.has(e.source_page)).map((e) => e.id)
+
+  if (toPin.length > 0) {
+    const { error } = await admin.from('document_extraction_evidence').update({ pinned_for_visit: true  }).in('id', toPin)
+    if (error) return { ok: false, error: error.message }
+  }
+  if (toUnpin.length > 0) {
+    const { error } = await admin.from('document_extraction_evidence').update({ pinned_for_visit: false }).in('id', toUnpin)
+    if (error) return { ok: false, error: error.message }
+  }
   return { ok: true }
 }
 

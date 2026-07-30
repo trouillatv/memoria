@@ -114,7 +114,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
     const [pinnedResult, countResult, runResult, totalPropsResult, personPropsResult, visitExtraResult, chronoResult, illustratesResult] = await Promise.all([
       admin
         .from('document_extraction_evidence')
-        .select('id, source_page, caption, storage_path')
+        .select('id, source_page, caption, storage_path, evidence_type')
         .eq('extraction_run_id', runId)
         .eq('pinned_for_visit', true)
         .in('evidence_type', ['page_snapshot', 'image']),
@@ -186,7 +186,11 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
     illustratedSnapshotIds = new Set(illustratesLinks.map((l) => l.evidence_id))
 
     // Sign all paths in one batch (pinned snapshots + illustrates photos)
-    const pinnedRows = (pinnedResult.data ?? []) as Array<{ id: string; source_page: number | null; caption: string | null; storage_path: string | null }>
+    // Règle de priorité : si une page a des images natives épinglées, le snapshot
+    // de cette page est exclu — il ne sert que de fallback pour les pages sans images.
+    const allPinnedVisual = (pinnedResult.data ?? []) as Array<{ id: string; source_page: number | null; caption: string | null; storage_path: string | null; evidence_type: string }>
+    const pagesWithPinnedImages = new Set(allPinnedVisual.filter((e) => e.evidence_type === 'image').map((e) => e.source_page))
+    const pinnedRows = allPinnedVisual.filter((e) => e.evidence_type === 'image' || !pagesWithPinnedImages.has(e.source_page))
     const allPaths = [...new Set([
       ...pinnedRows.map((e) => e.storage_path).filter((p): p is string => !!p),
       ...illustratesLinks.map((l) => l.storage_path).filter((p): p is string => !!p),

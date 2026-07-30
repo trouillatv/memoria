@@ -8,8 +8,6 @@ import { AiCostHint } from '../AiCostHint'
 
 const IN_FLIGHT_STATUSES = ['pending', 'extracting', 'ocr', 'chunking']
 
-// Étapes de l'extraction PV historique.
-// pct = valeur cible de la barre quand cette étape est active.
 const EXTRACTION_STAGES = [
   { key: 'downloading',     label: 'Téléchargement',      pct: 10 },
   { key: 'extracting_text', label: 'Extraction du texte', pct: 25 },
@@ -24,6 +22,18 @@ const STAGE_DELAYS_MS = [4000, 12000, 22000, 45000, 95000]
 function stageInfo(key: string | null): { label: string; pct: number } {
   const found = EXTRACTION_STAGES.find((s) => s.key === key)
   return found ?? { label: 'Démarrage', pct: 5 }
+}
+
+// Maximum que le crawl peut atteindre dans l'étape courante (sans empiéter sur la suivante).
+function crawlCeiling(currentPct: number): number {
+  for (let i = EXTRACTION_STAGES.length - 1; i >= 0; i--) {
+    if (currentPct >= EXTRACTION_STAGES[i].pct) {
+      return i < EXTRACTION_STAGES.length - 1
+        ? EXTRACTION_STAGES[i + 1].pct - 3
+        : 97
+    }
+  }
+  return 9
 }
 
 export function DocumentActions({
@@ -51,10 +61,9 @@ export function DocumentActions({
   const [stage, setStage] = useState<string | null>(null)
   const [pct, setPct] = useState(0)
 
-  // Timers pour l'avancement automatique de la barre
   const stageTimers = useRef<ReturnType<typeof setTimeout>[]>([])
-  // Interval pour le polling de statut (run déjà en cours)
   const pollInterval = useRef<ReturnType<typeof setInterval> | null>(null)
+  const crawlInterval = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const clearStageTimers = useCallback(() => {
     stageTimers.current.forEach((t) => clearTimeout(t))
@@ -65,23 +74,41 @@ export function DocumentActions({
     if (pollInterval.current) { clearInterval(pollInterval.current); pollInterval.current = null }
   }, [])
 
-  // Démarre l'avancement automatique de la barre pendant que la route tourne.
-  // Les délais sont calés sur les durées réelles observées pour donner une
-  // impression fidèle même sans polling DB.
+  const stopCrawl = useCallback(() => {
+    if (crawlInterval.current) { clearInterval(crawlInterval.current); crawlInterval.current = null }
+  }, [])
+
+  // +1 % toutes les 5 s dans l'étape courante, plafonné juste avant l'étape suivante.
+  // Évite que la barre reste figée pendant les longues étapes (analyse IA, enregistrement).
+  const startCrawl = useCallback(() => {
+    stopCrawl()
+    crawlInterval.current = setInterval(() => {
+      setPct((prev) => {
+        const ceiling = crawlCeiling(prev)
+        return prev < ceiling ? prev + 1 : prev
+      })
+    }, 5000)
+  }, [stopCrawl])
+
+  // Avancement automatique par timers pour une extraction lancée depuis cette page.
+  // Le crawl démarre après chaque étape pour que la barre bouge pendant les longues phases.
   const startStageTimers = useCallback(() => {
     clearStageTimers()
     EXTRACTION_STAGES.forEach((s, i) => {
       const t = setTimeout(() => {
         setStage(s.key)
         setPct(s.pct)
+        startCrawl()
       }, STAGE_DELAYS_MS[i])
       stageTimers.current.push(t)
     })
-  }, [clearStageTimers])
+  }, [clearStageTimers, startCrawl])
 
-  // Polling du statut d'un run existant (page chargée avec extractionInProgress).
+  // Polling du statut d'un run existant.
+  // La barre ne recule jamais (Math.max) ; le crawl tourne en parallèle.
   const startPolling = useCallback((runId: string) => {
     stopPolling()
+    startCrawl()
     pollInterval.current = setInterval(async () => {
       try {
         const r = await fetch(`/api/extraction/historical-pv?runId=${runId}`)
@@ -90,9 +117,10 @@ export function DocumentActions({
         const { status, currentStage } = data as { status: string; currentStage: string | null; errorMessage: string | null }
         const info = stageInfo(currentStage)
         setStage(currentStage)
-        setPct(info.pct)
+        setPct((prev) => Math.max(prev, info.pct))
         if (status === 'ready_for_review' || status === 'failed') {
           stopPolling()
+          stopCrawl()
           setExtracting(false)
           if (status === 'ready_for_review') {
             setPct(100)
@@ -104,7 +132,7 @@ export function DocumentActions({
         }
       } catch { /* réseau — prochain tick */ }
     }, 3000)
-  }, [stopPolling, router])
+  }, [stopPolling, stopCrawl, startCrawl, router])
 
   // Si la page est chargée avec un run déjà en cours, on poll immédiatement.
   useEffect(() => {
@@ -112,7 +140,7 @@ export function DocumentActions({
     setExtracting(true)
     setPct(5)
     startPolling(latestRunId)
-    return () => { stopPolling(); clearStageTimers() }
+    return () => { stopPolling(); stopCrawl(); clearStageTimers() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -121,9 +149,6 @@ export function DocumentActions({
     setExtracting(true)
     setPct(5)
     setStage(null)
-
-    // Avancement automatique : la barre avance pendant que le fetch attend la réponse.
-    // Quand le fetch retourne (200 ou erreur), on annule les timers.
     startStageTimers()
 
     try {
@@ -133,6 +158,7 @@ export function DocumentActions({
         body: JSON.stringify({ documentId }),
       })
       clearStageTimers()
+      stopCrawl()
       const data = await r.json() as { ok?: boolean; error?: string; runId?: string }
 
       if (r.ok && data.ok) {
@@ -141,9 +167,7 @@ export function DocumentActions({
         setMsg({ ok: true, text: 'Analyse terminée.' })
         router.refresh()
       } else if (r.status === 409 && data.runId) {
-        // Un run est déjà en cours — on s'y attache en polling.
-        setPct(5)
-        setStage(null)
+        // Run déjà en cours — s'y attacher sans réinitialiser la barre.
         startPolling(data.runId)
       } else {
         setExtracting(false)
@@ -151,6 +175,7 @@ export function DocumentActions({
       }
     } catch {
       clearStageTimers()
+      stopCrawl()
       setExtracting(false)
       setMsg({ ok: false, text: 'Erreur réseau.' })
     }
@@ -244,7 +269,7 @@ export function DocumentActions({
           </div>
           <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
             <div
-              className="h-full rounded-full bg-foreground transition-all duration-700 ease-out"
+              className="h-full rounded-full bg-foreground transition-[width] duration-1000 ease-out"
               style={{ width: `${pct}%` }}
             />
           </div>
