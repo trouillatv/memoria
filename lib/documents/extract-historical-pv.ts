@@ -359,11 +359,14 @@ export async function extractHistoricalPv(
       evidence: llmResult.evidence.length,
     })
   } catch (e) {
-    const msg = e instanceof Error ? e.message : (e != null && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : String(e))
+    const raw = e instanceof Error ? e.message : (e != null && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : String(e))
+    const msg = raw || 'erreur inconnue — voir logs Vercel'
     log('extraction_failed', documentId, { runId, error: msg })
     await updateExtractionRunStatus(runId, 'failed', {
       error_message: msg,
       completed_at: new Date().toISOString(),
-    }).catch(() => {})
+    }).catch((updateErr) => {
+      console.error('[extractHistoricalPv] failed to mark run as failed:', updateErr)
+    })
   }
 }
