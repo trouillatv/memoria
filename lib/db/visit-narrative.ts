@@ -303,12 +303,13 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
  *  filtre de date : « pendant » n'est pas « par ». */
 async function readReportLinked(reportId: string): Promise<ReportLinkedObject[]> {
   const db = createAdminClient()
-  const [a, r, d, e, k] = await Promise.all([
+  const [a, r, d, e, k, w] = await Promise.all([
     db.from('site_actions').select('id, title, created_at').eq('report_id', reportId),
     db.from('site_reserve').select('id, label, created_at').eq('report_id', reportId),
     db.from('site_decisions').select('id, titre, created_at').eq('report_id', reportId),
     db.from('site_deadlines').select('id, title, created_at').eq('report_id', reportId).is('deleted_at', null),
     db.from('captured_knowledge').select('id, title, created_at').eq('source_id', reportId),
+    db.from('site_watchpoints').select('id, title, created_at').eq('report_id', reportId).is('deleted_at', null),
   ])
   const rows = (data: unknown, kind: ReportLinkedObject['kind'], field: string): ReportLinkedObject[] =>
     ((data ?? []) as Array<Record<string, unknown>>).map((x) => ({
@@ -323,5 +324,6 @@ async function readReportLinked(reportId: string): Promise<ReportLinkedObject[]>
     ...rows(d.data, 'decision', 'titre'),
     ...rows(e.data, 'echeance', 'title'),
     ...rows(k.data, 'memoire', 'title'),
+    ...rows(w.data, 'vigilance', 'title'),
   ]
 }

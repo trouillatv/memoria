@@ -219,16 +219,92 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
     return { ok: false, error: "La date du PV est requise. Modifiez le document pour renseigner la date d'effet." }
   }
 
+  let siteReportId: string
   try {
-    const siteReportId = await materializeHistoricalVisit({
+    siteReportId = await materializeHistoricalVisit({
       runId,
       userId: access.userId,
       siteId,
       visitDate,
       visitTitle,
     })
-    return { ok: true, siteReportId, siteId }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Erreur lors de la matérialisation' }
   }
+
+  // ── Pipeline post-RPC : knowledge_fact → captured_knowledge ──────────────
+  // Le RPC SQL exclut délibérément ces familles (trop riches pour du PL/pgSQL pur).
+  // On les traite ici, en TypeScript, après que la visite est créée.
+  try {
+    const { data: site } = await admin
+      .from('sites')
+      .select('organization_id')
+      .eq('id', siteId)
+      .maybeSingle()
+    const orgId = (site as { organization_id: string } | null)?.organization_id
+
+    if (orgId) {
+      const { data: kfProps } = await admin
+        .from('document_extraction_proposal')
+        .select('id, label, reviewed_label, description, reviewed_description')
+        .eq('extraction_run_id', runId)
+        .in('review_status', ['accepted', 'edited'])
+        .eq('proposal_family', 'knowledge_fact')
+
+      for (const prop of kfProps ?? []) {
+        const p = prop as {
+          id: string; label: string; reviewed_label: string | null
+          description: string | null; reviewed_description: string | null
+        }
+        const title = p.reviewed_label ?? p.label
+        const body = p.reviewed_description ?? p.description ?? null
+
+        const { data: ck } = await admin
+          .from('captured_knowledge')
+          .insert({
+            organization_id: orgId,
+            site_id: siteId,
+            source_type: 'visit',
+            source_id: siteReportId,
+            kind: 'avancement',
+            title,
+            body,
+            created_by: access.userId,
+          })
+          .select('id')
+          .single()
+
+        if (ck) {
+          const ckId = (ck as { id: string }).id
+          await Promise.all([
+            admin
+              .from('document_extraction_proposal')
+              .update({ review_status: 'materialized', reviewed_at: new Date().toISOString() })
+              .eq('id', p.id),
+            admin
+              .from('document_proposal_materialization')
+              .insert({
+                organization_id: orgId,
+                proposal_id: p.id,
+                target_entity_type: 'captured_knowledge',
+                target_entity_id: ckId,
+                status: 'done',
+                created_by: access.userId,
+              }),
+          ])
+        }
+      }
+
+      // Après pipeline TypeScript, statut du run = fully materialized
+      await admin
+        .from('document_extraction_run')
+        .update({ status: 'materialized' })
+        .eq('id', runId)
+        .eq('status', 'partially_materialized')
+    }
+  } catch {
+    // Non bloquant : la visite est créée, le pipeline knowledge est best-effort
+  }
+
+  return { ok: true, siteReportId, siteId }
 }

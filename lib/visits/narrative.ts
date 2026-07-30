@@ -31,7 +31,7 @@ export type ProvenanceLevel =
    *  antérieur au registre. Vrai, mais moins précis. */
   | 'report'
 
-export type ProducedKind = 'action' | 'reserve' | 'decision' | 'echeance' | 'memoire' | 'intervenant'
+export type ProducedKind = 'action' | 'reserve' | 'decision' | 'echeance' | 'memoire' | 'intervenant' | 'vigilance'
 
 export interface ProducedObject {
   kind: ProducedKind

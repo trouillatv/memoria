@@ -452,11 +452,20 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
   ]
 
   // « À retenir » — la conclusion : ce que la visite a enrichi.
+  // Compte par TYPE d'objet créé (source : read model, pas actionLines).
   const preuves = doc.photoCount + doc.videoCount + doc.vocalCount
+  const nActions = actionsSection.confirmed.length
+  const nEcheances = echeances.confirmed.length
+  const nWatchpoints = watchpoints.confirmed.length
+  const nDecisions = decisions.confirmed.length
+  const nReserves = reserveLines.length
   const retenir: string[] = []
   if (preuves > 0) retenir.push(`${preuves} nouvelle${preuves > 1 ? 's' : ''} preuve${preuves > 1 ? 's' : ''} ajoutée${preuves > 1 ? 's' : ''}`)
-  if (reserveLines.length > 0) retenir.push(`${reserveLines.length} réserve${reserveLines.length > 1 ? 's' : ''} créée${reserveLines.length > 1 ? 's' : ''}`)
-  if (actionLines.length > 0) retenir.push(`${actionLines.length} action${actionLines.length > 1 ? 's' : ''} créée${actionLines.length > 1 ? 's' : ''}`)
+  if (nReserves > 0) retenir.push(`${nReserves} réserve${nReserves > 1 ? 's' : ''} créée${nReserves > 1 ? 's' : ''}`)
+  if (nActions > 0) retenir.push(`${nActions} action${nActions > 1 ? 's' : ''} créée${nActions > 1 ? 's' : ''}`)
+  if (nEcheances > 0) retenir.push(`${nEcheances} échéance${nEcheances > 1 ? 's' : ''} créée${nEcheances > 1 ? 's' : ''}`)
+  if (nWatchpoints > 0) retenir.push(`${nWatchpoints} point${nWatchpoints > 1 ? 's' : ''} de vigilance créé${nWatchpoints > 1 ? 's' : ''}`)
+  if (nDecisions > 0) retenir.push(`${nDecisions} décision${nDecisions > 1 ? 's' : ''} actée${nDecisions > 1 ? 's' : ''}`)
   retenir.push('Compte-rendu généré et disponible')
 
   return (
@@ -717,7 +726,9 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
           </Text>
         )}
 
-        {actionLines.length > 0 && (
+        {/* "Actions à réaliser" : seulement quand un CR humain existe.
+            Sans CR, actionsSection (ligne ~567) couvre déjà les mêmes actions. */}
+        {cr && actionLines.length > 0 && (
           <View style={styles.section}>
             <SectionTitle text={actionsTitle} color="#7c3aed" />
             <Bullets items={actionLines} />

@@ -108,7 +108,9 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
           <ChevronRight className="h-3.5 w-3.5" aria-hidden />
           <Link href={`/sites/${id}/visites`} className="hover:text-foreground">Visites</Link>
           <ChevronRight className="h-3.5 w-3.5" aria-hidden />
-          <span className="font-medium text-foreground">Visite du {frDate(debut)}</span>
+          <span className="font-medium text-foreground">
+            {isImport && visit.text_input ? visit.text_input : `Visite du ${frDate(debut)}`}
+          </span>
         </nav>
         <Link
           href={`/sites/${id}`}
@@ -151,7 +153,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
       <div className="lg:flex lg:items-start lg:gap-4">
         <div className="min-w-0 flex-1 space-y-4">
           {/* ── ÉTAT DE L'ANALYSE — jamais un numéro de version ─────────────── */}
-          <BandeauAnalyse enrichment={enrichment} visitId={visitId} crHref={crHref} />
+          <BandeauAnalyse enrichment={enrichment} visitId={visitId} crHref={crHref} isImport={isImport} />
 
           {/* ── RÉSUMÉ + LES QUATRE CHIFFRES ────────────────────────────────── */}
           <section className="rounded-xl border bg-card p-4 lg:flex lg:gap-6">
@@ -162,6 +164,12 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
               </h2>
               {resume ? (
                 <p className="mt-2 whitespace-pre-line text-[13.5px] leading-relaxed">{resume}</p>
+              ) : isImport ? (
+                <p className="mt-2 text-[13px] text-muted-foreground">
+                  {historical.length > 0
+                    ? `Visite reconstruite depuis un PV historique. ${historical.length} objet${historical.length !== 1 ? "s" : ""} importé${historical.length !== 1 ? "s" : ""}.`
+                    : "Visite reconstruite depuis un PV historique. Aucun objet détecté."}
+                </p>
               ) : (
                 <p className="mt-2 text-[13px] text-muted-foreground">
                   Aucun compte-rendu n’a encore été rédigé pour cette visite.
@@ -196,7 +204,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                 {historical.map((obj) => (
                   <div key={`${obj.kind}-${obj.id}`} className="py-2 flex items-center gap-2">
                     <span className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium bg-muted text-muted-foreground">
-                      {obj.kind === 'action' ? 'Action' : obj.kind === 'reserve' ? 'Réserve' : obj.kind === 'decision' ? 'Décision' : obj.kind === 'echeance' ? 'Échéance' : 'Mémoire'}
+                      {obj.kind === 'action' ? 'Action' : obj.kind === 'reserve' ? 'Réserve' : obj.kind === 'decision' ? 'Décision' : obj.kind === 'echeance' ? 'Échéance' : obj.kind === 'vigilance' ? 'Point de vigilance' : 'Mémoire'}
                     </span>
                     <span>{obj.label}</span>
                   </div>
@@ -309,15 +317,19 @@ function BandeauAnalyse({
   enrichment,
   visitId,
   crHref,
+  isImport,
 }: {
   enrichment: { afterVisit: number; sinceLastAnalysis: number; lastAnalysisAt: string | null }
   visitId: string
   crHref: string | null
+  isImport?: boolean
 }) {
   if (!enrichment.lastAnalysisAt) {
     return (
       <section className="rounded-xl border border-dashed px-4 py-3 text-[13px] text-muted-foreground">
-        Cette visite n’a pas encore été lue par MemorIA.
+        {isImport
+          ? "Visite historique — importée depuis un PV, aucune analyse IA sur place."
+          : "Cette visite n’a pas encore été lue par MemorIA."}
       </section>
     )
   }
