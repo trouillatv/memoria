@@ -96,10 +96,14 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
   const pinnedSnapshots: PinnedSnapshot[] = []
   let totalSnapshotCount = 0
   let extractionDocumentId: string | null = null
+  let extractionTotalProposals = 0
+  let extractionIntervenantCount = 0
+  type ExtPersonProp = { name: string; status: string | null }
+  const extractionPersonProps: ExtPersonProp[] = []
   const runId = isImport ? (visit.extraction_run_id ?? null) : null
   if (runId) {
     const admin = createAdminClient()
-    const [pinnedResult, countResult, runResult] = await Promise.all([
+    const [pinnedResult, countResult, runResult, totalPropsResult, personPropsResult] = await Promise.all([
       admin
         .from('document_extraction_evidence')
         .select('id, source_page, caption, storage_path')
@@ -116,9 +120,28 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         .select('document_id')
         .eq('id', runId)
         .maybeSingle(),
+      admin
+        .from('document_extraction_proposal')
+        .select('id', { count: 'exact', head: true })
+        .eq('extraction_run_id', runId)
+        .in('review_status', ['accepted', 'edited', 'materialized']),
+      admin
+        .from('document_extraction_proposal')
+        .select('label, reviewed_label, proposal_family, source_payload')
+        .eq('extraction_run_id', runId)
+        .in('review_status', ['accepted', 'edited', 'materialized'])
+        .in('proposal_family', ['person', 'company']),
     ])
     totalSnapshotCount = countResult.count ?? 0
     extractionDocumentId = (runResult.data as { document_id: string } | null)?.document_id ?? null
+    extractionTotalProposals = totalPropsResult.count ?? 0
+    const intProps = (personPropsResult.data ?? []) as Array<{ label: string; reviewed_label: string | null; proposal_family: string; source_payload: { statusAtDocumentDate?: string } | null }>
+    extractionIntervenantCount = intProps.length
+    for (const p of intProps) {
+      if (p.proposal_family === 'person') {
+        extractionPersonProps.push({ name: p.reviewed_label ?? p.label, status: p.source_payload?.statusAtDocumentDate ?? null })
+      }
+    }
     const evs = pinnedResult.data
     if (evs && evs.length > 0) {
       const rows = evs as Array<{ id: string; source_page: number | null; caption: string | null; storage_path: string | null }>
@@ -252,18 +275,29 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
               )}
             </div>
             <dl className="mt-4 grid flex-1 grid-cols-2 gap-4 border-t pt-4 sm:grid-cols-4 lg:mt-0 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
-              <Chiffre
-                icon={Camera}
-                teinte="text-sky-600"
-                valeur={captured.length}
-                label="captures"
-                sous={[plural(photos, 'photo', 'photos'), plural(vocaux, 'vocal', 'vocaux'), plural(videos, 'vidéo', 'vidéos')]
-                  .filter(Boolean)
-                  .join(', ')}
-              />
-              <Chiffre icon={Sparkles} teinte="text-violet-600" valeur={understood.length} label="propositions" sous="détectées par MemorIA" />
-              <Chiffre icon={Users} teinte="text-emerald-600" valeur={intervenants} label="intervenants" sous="détectés" />
-              <Chiffre icon={FileText} teinte="text-slate-600" valeur={produitsCount} label="objets produits" sous={isImport ? 'importés depuis le PV' : 'rattachés à ce récit'} />
+              {isImport ? (
+                <>
+                  <Chiffre icon={Images} teinte="text-sky-600" valeur={pinnedSnapshots.length} label={pinnedSnapshots.length !== 1 ? 'photos importées' : 'photo importée'} sous={totalSnapshotCount > pinnedSnapshots.length ? `/ ${totalSnapshotCount} disponibles` : undefined} />
+                  <Chiffre icon={Sparkles} teinte="text-violet-600" valeur={extractionTotalProposals} label="propositions" sous="analysées depuis le PV" />
+                  <Chiffre icon={Users} teinte="text-emerald-600" valeur={extractionIntervenantCount} label="intervenants" sous="personnes et entreprises" />
+                  <Chiffre icon={FileText} teinte="text-slate-600" valeur={produitsCount} label="objets créés" sous="importés depuis le PV" />
+                </>
+              ) : (
+                <>
+                  <Chiffre
+                    icon={Camera}
+                    teinte="text-sky-600"
+                    valeur={captured.length}
+                    label="captures"
+                    sous={[plural(photos, 'photo', 'photos'), plural(vocaux, 'vocal', 'vocaux'), plural(videos, 'vidéo', 'vidéos')]
+                      .filter(Boolean)
+                      .join(', ')}
+                  />
+                  <Chiffre icon={Sparkles} teinte="text-violet-600" valeur={understood.length} label="propositions" sous="détectées par MemorIA" />
+                  <Chiffre icon={Users} teinte="text-emerald-600" valeur={intervenants} label="intervenants" sous="détectés" />
+                  <Chiffre icon={FileText} teinte="text-slate-600" valeur={produitsCount} label="objets produits" sous="rattachés à ce récit" />
+                </>
+              )}
             </dl>
           </section>
 
@@ -330,6 +364,23 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                       {obj.kind === 'action' ? 'Action' : obj.kind === 'reserve' ? 'Réserve' : obj.kind === 'decision' ? 'Décision' : obj.kind === 'echeance' ? 'Échéance' : obj.kind === 'vigilance' ? 'Point de vigilance' : 'Mémoire'}
                     </span>
                     <span>{obj.label}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {isImport && extractionPersonProps.length > 0 && (
+            <section className="rounded-xl border bg-card p-4 space-y-3">
+              <h2 className="text-[15px] font-semibold flex items-center gap-2">
+                <Users className="h-4 w-4 text-emerald-600" aria-hidden />
+                Présences à cette visite
+              </h2>
+              <div className="divide-y text-[13px]">
+                {extractionPersonProps.map((p, idx) => (
+                  <div key={idx} className="py-2 flex items-center justify-between gap-2">
+                    <span className="font-medium">{p.name}</span>
+                    <AttendanceBadge status={p.status} />
                   </div>
                 ))}
               </div>
@@ -560,3 +611,20 @@ const frDate = (iso: string) =>
 const frDateHeure = (iso: string) =>
   new Date(iso).toLocaleString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
 const frDuree = (min: number) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`)
+
+function AttendanceBadge({ status }: { status: string | null }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    'présent':            { label: 'Présent',   cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' },
+    'invité':             { label: 'Invité',    cls: 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300' },
+    'absent excusé':      { label: 'Excusé',    cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' },
+    'absent non excusé':  { label: 'Absent',    cls: 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300' },
+    'diffusion uniquement': { label: 'Diffusion', cls: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
+  }
+  const entry = status ? map[status.toLowerCase()] : null
+  if (!entry) return <span className="text-[11px] text-muted-foreground">–</span>
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${entry.cls}`}>
+      {entry.label}
+    </span>
+  )
+}

@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import { ProposalCard } from './ProposalCard'
-import { createHistoricalVisitAction, acceptAllPendingAction, toggleEvidencePinAction } from './review-actions'
+import { createHistoricalVisitAction, acceptAllPendingAction, toggleEvidencePinAction, pinAllSnapshotsAction } from './review-actions'
 import type { DocumentExtractionProposalWithEvidence, DbDocumentExtractionEvidence, DocumentEvidenceRelationType } from '@/types/db'
 import type { ReviewSummary } from '@/lib/documents/effective-proposal'
 
@@ -101,7 +101,7 @@ function OrphanEvidenceItem({
 function CreateVisitBlock({
   runId, documentId, targetSiteId, effectiveDate, alreadySiteReportId,
   summary, personCount, companyCount, pinnedCount, snapshotCount,
-  isPending, createError, position, onSubmit,
+  isPending, createError, onSubmit,
 }: {
   runId: string
   documentId: string
@@ -115,7 +115,6 @@ function CreateVisitBlock({
   snapshotCount: number
   isPending: boolean
   createError: string | null
-  position: 'top' | 'bottom'
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
 }) {
   const confirmedCount = summary.accepted + summary.edited + summary.materialized
@@ -162,34 +161,32 @@ function CreateVisitBlock({
 
   return (
     <div className="rounded-lg border bg-card p-4 space-y-3">
-      {position === 'top' && (
-        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 pb-3 border-b">
+      <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 pb-3 border-b">
+        <div>
+          <dt className="text-xs text-muted-foreground">Confirmées</dt>
+          <dd className="font-semibold text-sm">{confirmedCount} / {summary.total}</dd>
+        </div>
+        {personCount > 0 && (
           <div>
-            <dt className="text-xs text-muted-foreground">Confirmées</dt>
-            <dd className="font-semibold text-sm">{confirmedCount} / {summary.total}</dd>
+            <dt className="text-xs text-muted-foreground">Personnes</dt>
+            <dd className="font-semibold text-sm">{personCount}</dd>
           </div>
-          {personCount > 0 && (
-            <div>
-              <dt className="text-xs text-muted-foreground">Personnes</dt>
-              <dd className="font-semibold text-sm">{personCount}</dd>
-            </div>
-          )}
-          {companyCount > 0 && (
-            <div>
-              <dt className="text-xs text-muted-foreground">Entreprises</dt>
-              <dd className="font-semibold text-sm">{companyCount}</dd>
-            </div>
-          )}
-          {snapshotCount > 0 && (
-            <div>
-              <dt className="text-xs text-muted-foreground">Pages photo</dt>
-              <dd className={`font-semibold text-sm ${noPhoWarn ? 'text-amber-600 dark:text-amber-400' : ''}`}>
-                {pinnedCount} / {snapshotCount}
-              </dd>
-            </div>
-          )}
-        </dl>
-      )}
+        )}
+        {companyCount > 0 && (
+          <div>
+            <dt className="text-xs text-muted-foreground">Entreprises</dt>
+            <dd className="font-semibold text-sm">{companyCount}</dd>
+          </div>
+        )}
+        {snapshotCount > 0 && (
+          <div>
+            <dt className="text-xs text-muted-foreground">Pages photo</dt>
+            <dd className={`font-semibold text-sm ${noPhoWarn ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+              {pinnedCount} / {snapshotCount}
+            </dd>
+          </div>
+        )}
+      </dl>
       <h2 className="text-sm font-medium">Créer la visite historique</h2>
       {noPhoWarn && (
         <p className="text-xs rounded bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5 text-amber-700 dark:text-amber-400">
@@ -259,6 +256,7 @@ export function ExtractionReviewClient({
   const [createError, setCreateError] = useState<string | null>(null)
   const [acceptAllMsg, setAcceptAllMsg] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [pinAllPending, setPinAllPending] = useState(false)
 
   // Snapshots épinglés — état local optimiste, synchronisé depuis les props
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(
@@ -305,6 +303,19 @@ export function ExtractionReviewClient({
         setAcceptAllMsg(result.error ?? 'Erreur')
       }
     })
+  }
+
+  async function handlePinAll(pinAll: boolean) {
+    setPinAllPending(true)
+    const snapshotIds = orphanEvidence.filter((e) => e.evidence_type === 'page_snapshot').map((e) => e.id)
+    setPinnedIds(pinAll ? new Set(snapshotIds) : new Set())
+    const fd = new FormData()
+    fd.set('run_id', runId)
+    fd.set('document_id', documentId)
+    fd.set('pinned', String(pinAll))
+    await pinAllSnapshotsAction(fd)
+    setPinAllPending(false)
+    router.refresh()
   }
 
   function handleCreateVisit(e: React.FormEvent<HTMLFormElement>) {
@@ -369,7 +380,6 @@ export function ExtractionReviewClient({
       </div>
 
       <CreateVisitBlock
-        position="top"
         runId={runId}
         documentId={documentId}
         targetSiteId={targetSiteId}
@@ -444,23 +454,6 @@ export function ExtractionReviewClient({
         })
       )}
 
-      <CreateVisitBlock
-        position="bottom"
-        runId={runId}
-        documentId={documentId}
-        targetSiteId={targetSiteId}
-        effectiveDate={effectiveDate}
-        alreadySiteReportId={alreadySiteReportId}
-        summary={summary}
-        personCount={personCount}
-        companyCount={companyCount}
-        pinnedCount={pinnedIds.size}
-        snapshotCount={snapshotCount}
-        isPending={isPending}
-        createError={createError}
-        onSubmit={handleCreateVisit}
-      />
-
       {/* Photos non associées */}
       {orphanEvidence.length > 0 && (() => {
         const snapshots = orphanEvidence.filter((e) => e.evidence_type === 'page_snapshot')
@@ -475,6 +468,14 @@ export function ExtractionReviewClient({
               <span className="text-xs font-medium">
                 {pinnedCount} / {snapshots.length} sélectionnée{pinnedCount !== 1 ? 's' : ''}
               </span>
+              <button
+                type="button"
+                onClick={() => handlePinAll(pinnedCount < snapshots.length)}
+                disabled={pinAllPending || isPending}
+                className="ml-auto text-xs border rounded px-2 py-1 text-muted-foreground hover:text-foreground hover:border-foreground transition-colors disabled:opacity-50"
+              >
+                {pinAllPending ? '…' : pinnedCount === snapshots.length ? 'Tout désélectionner' : 'Importer toutes'}
+              </button>
             </div>
             <p className="text-xs text-muted-foreground">
               Sélectionnez les pages à afficher dans la fiche de la visite historique.

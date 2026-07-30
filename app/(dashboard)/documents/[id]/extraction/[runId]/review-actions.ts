@@ -206,6 +206,28 @@ export async function toggleEvidencePinAction(fd: FormData): Promise<ActionResul
   return { ok: true }
 }
 
+// ─── Épingler / désépingler toutes les pages photo d'un run ─────────────────
+
+export async function pinAllSnapshotsAction(fd: FormData): Promise<ActionResult> {
+  const runId = fd.get('run_id')?.toString()
+  const documentId = fd.get('document_id')?.toString()
+  const pinned = fd.get('pinned')?.toString() === 'true'
+  if (!runId || !documentId) return { ok: false, error: 'Paramètres manquants' }
+
+  const access = await verifyReviewAccess(documentId)
+  if (!access.ok) return access
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('document_extraction_evidence')
+    .update({ pinned_for_visit: pinned })
+    .eq('extraction_run_id', runId)
+    .eq('evidence_type', 'page_snapshot')
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
 // ─── Matérialisation — création de la visite historique ──────────────────────
 
 export async function createHistoricalVisitAction(fd: FormData): Promise<{
