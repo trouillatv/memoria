@@ -82,6 +82,9 @@ export interface SummaryItem {
   /** Ce qu'on peut FAIRE de ce fait — dérivé de getPromotionCapability, la source
    *  unique. Jamais recalculé par un écran. */
   capability: PromotionCapability
+  /** Catégorie thématique (Lot B) — uniquement pour les knowledge_fact issus de
+   *  PV historiques. Null pour les faits issus d'une visite terrain. */
+  thematic_category?: string | null
 }
 
 /**
@@ -118,6 +121,58 @@ export interface VisitSummary {
 }
 
 const EMPTY: SummarySection = { confirmed: [], proposed: [] }
+
+// ── Intervenants d'un PV historique ──────────────────────────────────────────
+// Lit directement les propositions (person) de la run d'extraction : c'est là
+// que statusAtDocumentDate est stocké. Le read model (site_intervenants) ne
+// conserve pas la présence par CR — il modélise une relation site ↔ entreprise,
+// pas une liste de présence par réunion.
+
+export type AttendanceStatus = 'present' | 'invited' | 'excused_absent' | 'unexcused_absent' | 'distribution_only' | 'unknown'
+
+export interface HistoricalIntervenant {
+  name: string
+  company: string | null
+  personFunction: string | null
+  attendanceStatus: AttendanceStatus
+}
+
+function mapAttendanceStatus(raw: string | null | undefined): AttendanceStatus {
+  switch ((raw ?? '').toLowerCase().trim()) {
+    case 'présent': return 'present'
+    case 'invité': return 'invited'
+    case 'absent excusé': return 'excused_absent'
+    case 'absent non excusé': return 'unexcused_absent'
+    case 'diffusion uniquement': return 'distribution_only'
+    default: return 'unknown'
+  }
+}
+
+export async function getHistoricalVisitIntervenants(runId: string): Promise<HistoricalIntervenant[]> {
+  const db = createAdminClient()
+  const { data } = await db
+    .from('document_extraction_proposal')
+    .select('label, reviewed_label, description, source_payload')
+    .eq('extraction_run_id', runId)
+    .eq('proposal_family', 'person')
+    .in('review_status', ['accepted', 'edited', 'materialized'])
+    .order('label')
+
+  return ((data ?? []) as Array<{
+    label: string
+    reviewed_label: string | null
+    description: string | null
+    source_payload: Record<string, unknown> | null
+  }>).map((p) => {
+    const name = p.reviewed_label ?? p.label
+    const sp = p.source_payload
+    const company = (sp?.linkedCompanyName as string | null | undefined) ?? null
+    // description = "Fonction — Entreprise [— contact]"
+    const personFunction = p.description?.split(' — ')[0]?.trim() ?? null
+    const attendanceStatus = mapAttendanceStatus(sp?.statusAtDocumentDate as string | null | undefined)
+    return { name, company, personFunction, attendanceStatus }
+  })
+}
 
 export function emptyVisitSummary(reportId: string): VisitSummary {
   return {
@@ -156,7 +211,7 @@ export async function getVisitSummary(
     db.from('site_decisions').select('id, titre, description').eq('report_id', reportId),
     db.from('site_intervenants').select('id, role, company_id').eq('source_report_id', reportId).is('effective_to', null),
     db.from('site_watchpoints').select('id, title, body').eq('report_id', reportId).is('deleted_at', null),
-    db.from('site_knowledge_entries').select('id, title, body, kind').eq('source_report_id', reportId).is('deleted_at', null),
+    db.from('site_knowledge_entries').select('id, title, body, kind, thematic_category').eq('source_report_id', reportId).is('deleted_at', null),
   ])
 
   // Aucune lecture ne se tait : une erreur de SCHÉMA lève ici plutôt que de
@@ -172,7 +227,7 @@ export async function getVisitSummary(
   const decisions = unwrap<{ id: string; titre: string; description: string | null }>('site_decisions', M, decisionsRes)
   const intervenants = unwrap<{ id: string; role: string; company_id: string }>('site_intervenants', M, intervenantsRes)
   const watchpoints = unwrap<{ id: string; title: string; body: string | null }>('site_watchpoints', M, watchpointsRes)
-  const entries = unwrap<{ id: string; title: string; body: string | null; kind: string }>('site_knowledge_entries', M, entriesRes)
+  const entries = unwrap<{ id: string; title: string; body: string | null; kind: string; thematic_category: string | null }>('site_knowledge_entries', M, entriesRes)
 
   // Le nom de l'entreprise : un intervenant validé se dit « Sotrap — ETV », pas
   // par son UUID de société.
@@ -185,10 +240,11 @@ export async function getVisitSummary(
 
   /** Un fait VALIDÉ : il porte son objet, jamais une proposition à promouvoir.
    *  Ni version ni « nouveau » : il ne dépend plus d'une lecture de l'IA. */
-  const obj = (kind: string, id: string, title: string, detail: string | null): SummaryItem => ({
+  const obj = (kind: string, id: string, title: string, detail: string | null, thematic_category?: string | null): SummaryItem => ({
     id, title, detail, proposalId: null, promotedObjectId: id,
     owner: null, priority: null, due: null,
     analysisVersion: null, isNewInVersion: false, capability: getPromotionCapability(kind),
+    thematic_category: thematic_category ?? null,
   })
 
   /** Une priorité que le domaine ne connaît pas n'entre pas dans le contrat. */
@@ -250,8 +306,7 @@ export async function getVisitSummary(
     },
     knowledge: {
       confirmed: entries.map((k) =>
-        // La nature choisie par l'humain survit jusqu'au document.
-        obj('knowledge', k.id, k.title, k.body ?? (k.kind === 'current_information' ? 'Information actuelle' : 'Connaissance durable')),
+        obj('knowledge', k.id, k.title, k.body ?? (k.kind === 'current_information' ? 'Information actuelle' : 'Connaissance durable'), k.thematic_category),
       ),
       proposed: proposedOf('knowledge'),
     },

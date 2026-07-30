@@ -234,6 +234,7 @@ export async function extractHistoricalPv(
       source_page: p.sourcePage ?? null,
       source_excerpt: p.sourceExcerpt ?? null,
       source_payload: (p.sourcePayload as Record<string, unknown> | null | undefined) ?? null,
+      thematic_category: (p.sourcePayload as { thematic_category?: string } | null | undefined)?.thematic_category ?? null,
     }))
 
     const proposalIds = await insertExtractionProposals(runId, proposalInputs)

@@ -427,9 +427,11 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
     return { ok: false, error: e instanceof Error ? e.message : 'Erreur lors de la matérialisation' }
   }
 
-  // ── Pipeline post-RPC : knowledge_fact → captured_knowledge ──────────────
+  // ── Pipeline post-RPC : knowledge_fact → site_knowledge_entries ──────────
   // Le RPC SQL exclut délibérément ces familles (trop riches pour du PL/pgSQL pur).
   // On les traite ici, en TypeScript, après que la visite est créée.
+  // Lot B : destination = site_knowledge_entries (read model), pas captured_knowledge.
+  // La thematic_category est propagée depuis la colonne extraite par le LLM.
   try {
     const { data: site } = await admin
       .from('sites')
@@ -441,7 +443,7 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
     if (orgId) {
       const { data: kfProps } = await admin
         .from('document_extraction_proposal')
-        .select('id, label, reviewed_label, description, reviewed_description')
+        .select('id, label, reviewed_label, description, reviewed_description, thematic_category')
         .eq('extraction_run_id', runId)
         .in('review_status', ['accepted', 'edited'])
         .eq('proposal_family', 'knowledge_fact')
@@ -450,27 +452,29 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
         const p = prop as {
           id: string; label: string; reviewed_label: string | null
           description: string | null; reviewed_description: string | null
+          thematic_category: string | null
         }
         const title = p.reviewed_label ?? p.label
         const body = p.reviewed_description ?? p.description ?? null
 
-        const { data: ck } = await admin
-          .from('captured_knowledge')
+        const { data: ske } = await admin
+          .from('site_knowledge_entries')
           .insert({
             organization_id: orgId,
             site_id: siteId,
-            source_type: 'visit',
-            source_id: siteReportId,
-            kind: 'avancement',
+            source_report_id: siteReportId,
+            kind: 'current_information',
             title,
             body,
-            created_by: access.userId,
+            thematic_category: p.thematic_category ?? null,
+            confirmed_by: access.userId,
+            confirmed_at: new Date().toISOString(),
           })
           .select('id')
           .single()
 
-        if (ck) {
-          const ckId = (ck as { id: string }).id
+        if (ske) {
+          const skeId = (ske as { id: string }).id
           await Promise.all([
             admin
               .from('document_extraction_proposal')
@@ -481,8 +485,8 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
               .insert({
                 organization_id: orgId,
                 proposal_id: p.id,
-                target_entity_type: 'captured_knowledge',
-                target_entity_id: ckId,
+                target_entity_type: 'site_knowledge_entries',
+                target_entity_id: skeId,
                 status: 'done',
                 created_by: access.userId,
               }),

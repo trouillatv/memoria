@@ -13,7 +13,7 @@
 import React from 'react'
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import type { VisitCrDoc } from '@/lib/db/visits'
-import type { VisitSummary, SummarySection, SummaryItem } from '@/lib/knowledge/visit-summary'
+import type { VisitSummary, SummarySection, SummaryItem, HistoricalIntervenant } from '@/lib/knowledge/visit-summary'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
 
 const COLORS = {
@@ -317,6 +317,98 @@ function sectionHas(s: SummarySection): boolean {
   return s.confirmed.length + s.proposed.length > 0
 }
 
+// ── Lot B : sections thématiques pour PV historiques ─────────────────────────
+
+const THEMATIC_ORDER = [
+  'progress',
+  'test_control',
+  'safety_environment',
+  'resources',
+  'administrative',
+  'weather',
+  'permanent_instruction',
+  'general_knowledge',
+] as const
+
+const THEMATIC_LABELS: Record<string, string> = {
+  progress: 'Avancement des travaux',
+  test_control: 'Essais et contrôles',
+  safety_environment: 'Sécurité et environnement',
+  resources: 'Moyens',
+  administrative: 'Éléments administratifs',
+  weather: 'Météo / Intempéries',
+  permanent_instruction: 'Consignes permanentes',
+  general_knowledge: 'Informations générales',
+}
+
+const ATTENDANCE_LABELS: Record<string, string> = {
+  present: 'Présent',
+  invited: 'Invité',
+  excused_absent: 'Absent excusé',
+  unexcused_absent: 'Absent non excusé',
+  distribution_only: 'Diffusion',
+  unknown: '',
+}
+
+function ThemedKnowledge({ items }: { items: SummaryItem[] }) {
+  if (items.length === 0) return null
+  const byTheme = new Map<string, SummaryItem[]>()
+  const noTheme: SummaryItem[] = []
+  for (const item of items) {
+    const t = item.thematic_category
+    if (!t) { noTheme.push(item); continue }
+    if (!byTheme.has(t)) byTheme.set(t, [])
+    byTheme.get(t)!.push(item)
+  }
+  const themes = THEMATIC_ORDER.filter((t) => byTheme.has(t))
+
+  if (themes.length === 0) {
+    // Pas de catégories : affichage plat classique
+    return <Bullets items={[...items, ...noTheme].map((k) => k.title)} />
+  }
+
+  return (
+    <>
+      {themes.map((theme) => (
+        <View key={theme} style={{ marginBottom: 6 }}>
+          <Text style={styles.subTitle}>{THEMATIC_LABELS[theme] ?? theme}</Text>
+          <Bullets items={(byTheme.get(theme) ?? []).map((k) => k.title)} />
+        </View>
+      ))}
+      {noTheme.length > 0 && (
+        <View style={{ marginBottom: 4 }}>
+          <Bullets items={noTheme.map((k) => k.title)} />
+        </View>
+      )}
+    </>
+  )
+}
+
+function HistoricalIntervenantsList({ intervenants }: { intervenants: HistoricalIntervenant[] }) {
+  if (intervenants.length === 0) return null
+  return (
+    <View>
+      {intervenants.map((p, i) => {
+        const parts: string[] = [p.name]
+        if (p.company) parts.push(p.company)
+        if (p.personFunction) parts.push(p.personFunction)
+        const statusLabel = ATTENDANCE_LABELS[p.attendanceStatus] ?? ''
+        return (
+          <View key={i} style={styles.docBulletRow} wrap={false}>
+            <View style={[styles.docBulletDot, { backgroundColor: COLORS.slate }]} />
+            <View style={styles.actionText}>
+              <Text>
+                <Text style={styles.metaStrong}>{parts.join(' — ')}</Text>
+                {statusLabel ? <Text style={styles.actionWhy}> · {statusLabel}</Text> : null}
+              </Text>
+            </View>
+          </View>
+        )
+      })}
+    </View>
+  )
+}
+
 /**
  * LE PIED DE PAGE DIT QUI SIGNE (Vincent, 2026-07-21).
  *
@@ -356,7 +448,7 @@ function ToConfirm({ items }: { items: SummaryItem[] }) {
  * sert plus » : il ne peut plus. Seul le read model connaît ce stockage, donc le
  * document ne peut plus diverger de l'écran par distraction.
  */
-export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
+export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, historicalIntervenants }: {
   doc: VisitCrDoc
   summary: VisitSummary
   exportDate: string
@@ -368,6 +460,9 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
    *  qui s'imprime, à la mise en page près — et aucun récit parallèle ne
    *  subsiste à côté. */
   crDocument?: { sections: ReportDocumentSection[]; status: ReportDocumentStatus } | null
+  /** Lot B — intervenants avec statut de présence pour les PV historiques.
+   *  Null pour les visites terrain (getVisitSummary.stakeholders couvre ce cas). */
+  historicalIntervenants?: HistoricalIntervenant[] | null
 }) {
   const cr = crDocument ?? null
   const isDraft = cr?.status === 'draft'
@@ -621,11 +716,16 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
           </View>
         )}
 
-        {/* À savoir — le contexte important mais non actionnable. */}
+        {/* À savoir — le contexte important mais non actionnable.
+            Pour les PV historiques : rendu par section thématique (Lot B).
+            Pour les visites terrain : rendu plat classique. */}
         {!cr && sectionHas(aSavoir) && (
           <View style={styles.section}>
             <SectionTitle text="À savoir" color={COLORS.muted} />
-            <Bullets items={aSavoir.confirmed.map((k) => k.title)} />
+            {doc.isImportedVisit
+              ? <ThemedKnowledge items={aSavoir.confirmed} />
+              : <Bullets items={aSavoir.confirmed.map((k) => k.title)} />
+            }
             <ToConfirm items={aSavoir.proposed} />
           </View>
         )}
@@ -642,8 +742,16 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
           </View>
         )}
 
-        {/* Intervenants — personnes/entreprises citées, réutilisables. */}
-        {!cr && sectionHas(intervenants) && (
+        {/* Intervenants — personnes/entreprises citées.
+            Pour les PV historiques : liste de présence nominative avec statut (Lot B).
+            Pour les visites terrain : liste des entreprises par rôle. */}
+        {!cr && (historicalIntervenants?.length ?? 0) > 0 && (
+          <View style={styles.section}>
+            <SectionTitle text="Présences" color={COLORS.slate} />
+            <HistoricalIntervenantsList intervenants={historicalIntervenants!} />
+          </View>
+        )}
+        {!cr && !historicalIntervenants && sectionHas(intervenants) && (
           <View style={styles.section}>
             <SectionTitle text="Intervenants" color={COLORS.slate} />
             <Bullets items={intervenants.confirmed.map((i) => i.title)} />

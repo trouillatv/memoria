@@ -12,7 +12,7 @@ import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
 import { loadOrRunVisitDebrief } from '@/lib/visits/debrief-analysis'
 import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { VisitCrPdf } from '@/lib/pdf/visit-cr'
-import { getVisitSummary } from '@/lib/knowledge/visit-summary'
+import { getVisitSummary, getHistoricalVisitIntervenants } from '@/lib/knowledge/visit-summary'
 import { loadCrMapSnapshotDataUri } from '@/lib/pdf/cr-map-snapshot'
 
 export const dynamic = 'force-dynamic'
@@ -64,6 +64,12 @@ export async function GET(req: Request, ctx: RouteCtx) {
     narrative: { text: debrief?.summary ?? '', outdated: false },
   })
 
+  // Lot B — intervenants avec statut de présence pour les PV historiques.
+  // Nul pour les visites terrain (getVisitSummary.stakeholders couvre ce cas).
+  const historicalIntervenants = visit.origin === 'import' && visit.extraction_run_id
+    ? await getHistoricalVisitIntervenants(visit.extraction_run_id).catch(() => null)
+    : null
+
   // Un CR exporté doit porter la date du chantier, pas celle du serveur.
   const exportDate = new Date().toLocaleDateString('fr-FR', {
     day: '2-digit',
@@ -87,6 +93,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
         exportDate,
         mapImage,
         crDocument: crDocument ? { sections: crDocument.sections, status: crDocument.status } : null,
+        historicalIntervenants,
       }),
     )
   } catch (e) {
