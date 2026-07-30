@@ -2072,15 +2072,37 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   const isImportedVisit = visit.origin === 'import'
 
   // Pour les visites importées (PV historiques), les captures terrain sont absentes :
-  // on compte les snapshots pinnés depuis l'extraction à la place.
+  // on charge les preuves visuelles épinglées depuis l'extraction avec leurs URLs signées.
+  // Règle de priorité : image native > snapshot par page (cohérence avec la revue).
   let importedPhotoCount = 0
+  let importedPhotoItems: Array<{ url: string; caption: string | null }> = []
   if (isImportedVisit && visit.extraction_run_id) {
-    const { count } = await supabase
+    const { data: pinnedEvidence } = await supabase
       .from('document_extraction_evidence')
-      .select('id', { count: 'exact', head: true })
+      .select('id, storage_path, caption, source_page, evidence_type')
       .eq('extraction_run_id', visit.extraction_run_id)
       .eq('pinned_for_visit', true)
-    importedPhotoCount = count ?? 0
+      .in('evidence_type', ['image', 'page_snapshot'])
+      .order('source_page', { ascending: true })
+    if (pinnedEvidence?.length) {
+      const pagesWithImg = new Set(
+        pinnedEvidence.filter((e) => e.evidence_type === 'image').map((e) => e.source_page),
+      )
+      const deduped = pinnedEvidence.filter(
+        (e) => e.evidence_type === 'image' || !pagesWithImg.has(e.source_page),
+      )
+      importedPhotoCount = deduped.length
+      const paths = deduped.map((e) => e.storage_path).filter(Boolean) as string[]
+      if (paths.length > 0) {
+        const { data: signed } = await supabase.storage.from('documents').createSignedUrls(paths, 3600)
+        if (signed) {
+          const pathToUrl = new Map(signed.filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]))
+          importedPhotoItems = deduped
+            .map((e) => ({ url: pathToUrl.get(e.storage_path ?? '') ?? '', caption: (e.caption as string | null) ?? null }))
+            .filter((p) => p.url)
+        }
+      }
+    }
   }
 
   // Sélection intelligente (par tag + photo clé, plafonnée) : le CR ne montre que
@@ -2207,8 +2229,8 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     transcriptions,
     reserves: ctx.capturedReserves,
     actions: ctx.capturedActions,
-    photos,
-    photoItems,
+    photos: isImportedVisit ? importedPhotoItems.map((p) => p.url) : photos,
+    photoItems: isImportedVisit ? importedPhotoItems : photoItems,
     evolutions,
     positions,
     photoCount: isImportedVisit ? importedPhotoCount : photoCaptures.length,
