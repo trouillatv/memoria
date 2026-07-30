@@ -269,7 +269,8 @@ function SiteHistoricalPvDialog({
         form.reset()
       } catch (e) {
         console.error('[SiteHistoricalPvDialog]', e)
-        setMessage('Erreur réseau — veuillez réessayer. Si le problème persiste, rechargez la page.')
+        const msg = e instanceof Error ? e.message : String(e)
+        setMessage(`Erreur: ${msg}`)
       }
     })
   }
