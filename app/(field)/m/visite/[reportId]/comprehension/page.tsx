@@ -93,6 +93,8 @@ export default async function VisitComprehensionPage({
     notFound()
   }
 
+  const isImportedVisit = visit.origin === 'import'
+
   const supabase = createAdminClient()
   const { data: site } = await supabase.from('sites').select('name').eq('id', visit.site_id).maybeSingle()
   const siteName = (site as { name: string } | null)?.name ?? 'Chantier'
@@ -126,9 +128,16 @@ export default async function VisitComprehensionPage({
       </header>
 
       {chain.captures.length === 0 && chain.understood.length === 0 ? (
-        <p className="rounded-xl border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
-          Rien n&apos;a été relevé lors de cette visite.
-        </p>
+        isImportedVisit ? (
+          <div className="rounded-xl border bg-sky-50/50 px-4 py-4 text-[13px] text-muted-foreground dark:bg-sky-950/20">
+            <p className="font-medium text-foreground">Visite importée depuis un PV historique</p>
+            <p className="mt-0.5">La chaîne de compréhension s&apos;affiche pour les visites saisies sur le terrain. Les propositions extraites du PV sont visibles depuis la revue d&apos;extraction.</p>
+          </div>
+        ) : (
+          <p className="rounded-xl border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
+            Rien n&apos;a été relevé lors de cette visite.
+          </p>
+        )
       ) : (
         <>
           {/* ── 1. Ce que tu as relevé ──────────────────────────── */}

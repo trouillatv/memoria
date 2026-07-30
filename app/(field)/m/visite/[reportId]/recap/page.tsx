@@ -83,6 +83,8 @@ export default async function VisitRecapPage({
     : null
   const durLabel = durMins == null ? null : durMins < 60 ? `${durMins} min` : `${Math.floor(durMins / 60)} h ${durMins % 60} min`
 
+  const isImportedVisit = visit.origin === 'import'
+
   const tally = {
     photo: captures.filter((c) => c.kind === 'photo').length,
     video: captures.filter((c) => c.kind === 'video').length,
@@ -196,9 +198,16 @@ export default async function VisitRecapPage({
       {!isEnded && <ReopenVisitButton reportId={reportId} siteId={visit.site_id} />}
 
       {captures.length === 0 ? (
-        <p className="rounded-xl border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
-          Rien n&apos;a été retenu pour cette visite.
-        </p>
+        isImportedVisit ? (
+          <div className="rounded-xl border bg-sky-50/50 px-4 py-4 text-[13px] text-muted-foreground dark:bg-sky-950/20">
+            <p className="font-medium text-foreground">Visite importée depuis un PV historique</p>
+            <p className="mt-0.5">Les photos, propositions et objets créés sont accessibles depuis le compte-rendu.</p>
+          </div>
+        ) : (
+          <p className="rounded-xl border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
+            Rien n&apos;a été retenu pour cette visite.
+          </p>
+        )
       ) : (
         <ul className="space-y-2">
           {captures.map((c) => {
