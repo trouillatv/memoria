@@ -33,6 +33,7 @@ import { VisitShareButton } from '@/app/(field)/m/visite/[reportId]/VisitShareBu
 import { VisitDesk, type CaptureMedia } from './VisitDesk'
 import { ReanalyseButton } from './ReanalyseButton'
 import { VerserPiece } from './VerserPiece'
+import { RegenerateNarrativeButton } from './RegenerateNarrativeButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -98,6 +99,8 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
   let extractionDocumentId: string | null = null
   let extractionTotalProposals = 0
   let extractionIntervenantCount = 0
+  let extractionPersonCount = 0
+  let extractionCompanyCount = 0
   let historicalSummary: string | null = null
   type ExtPersonProp = { name: string; status: string | null }
   const extractionPersonProps: ExtPersonProp[] = []
@@ -141,9 +144,14 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
     totalSnapshotCount = countResult.count ?? 0
     extractionDocumentId = (runResult.data as { document_id: string } | null)?.document_id ?? null
     extractionTotalProposals = totalPropsResult.count ?? 0
-    historicalSummary = (visitExtraResult.data as { debrief_analysis?: { historical_summary?: string } } | null)?.debrief_analysis?.historical_summary ?? null
+    const rawSummary = (visitExtraResult.data as { debrief_analysis?: Record<string, unknown> } | null)?.debrief_analysis?.historical_summary
+    historicalSummary = typeof rawSummary === 'string'
+      ? rawSummary
+      : (rawSummary as { text?: string } | null)?.text ?? null
     const intProps = (personPropsResult.data ?? []) as Array<{ label: string; reviewed_label: string | null; proposal_family: string; source_payload: { statusAtDocumentDate?: string } | null }>
     extractionIntervenantCount = intProps.length
+    extractionPersonCount = intProps.filter((p) => p.proposal_family === 'person').length
+    extractionCompanyCount = intProps.filter((p) => p.proposal_family === 'company').length
     for (const p of intProps) {
       if (p.proposal_family === 'person') {
         extractionPersonProps.push({ name: p.reviewed_label ?? p.label, status: p.source_payload?.statusAtDocumentDate ?? null })
@@ -275,6 +283,9 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                   Aucun compte-rendu n’a encore été rédigé pour cette visite.
                 </p>
               )}
+              {isImport && runId && (
+                <RegenerateNarrativeButton siteReportId={visitId} runId={runId} />
+              )}
               {crHref && (
                 <Link href={crHref} className="mt-3 inline-block text-[13px] font-medium text-primary hover:underline">
                   Voir le compte-rendu complet ↗
@@ -286,7 +297,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                 <>
                   <Chiffre icon={Images} teinte="text-sky-600" valeur={pinnedSnapshots.length} label={pinnedSnapshots.length !== 1 ? 'photos importées' : 'photo importée'} sous={totalSnapshotCount > pinnedSnapshots.length ? `/ ${totalSnapshotCount} disponibles` : undefined} />
                   <Chiffre icon={Sparkles} teinte="text-violet-600" valeur={extractionTotalProposals} label="propositions" sous="analysées depuis le PV" />
-                  <Chiffre icon={Users} teinte="text-emerald-600" valeur={extractionIntervenantCount} label="intervenants" sous="personnes et entreprises" />
+                  <Chiffre icon={Users} teinte="text-emerald-600" valeur={extractionIntervenantCount} label="acteurs détectés" sous={`${extractionPersonCount} pers. · ${extractionCompanyCount} entr.`} />
                   <Chiffre icon={FileText} teinte="text-slate-600" valeur={produitsCount} label="objets créés" sous="importés depuis le PV" />
                 </>
               ) : (

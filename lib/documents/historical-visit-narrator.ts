@@ -44,12 +44,13 @@ Structure le résumé ainsi :
 2. Ensuite l'état courant du chantier (ce qui est en cours ou remarquable)
 3. Enfin ce qui reste ouvert ou en attente (actions, réserves, échéances)
 
-Règles :
-- N'invente rien, n'utilise que les informations fournies
-- Sois factuel, précis et concis
-- Commence directement par les faits, sans introduction générique
-- Utilise des phrases courtes et directes
-- Si rien n'est terminé, commence par l'état général du chantier
+Règles impératives :
+- N'utilise que les informations fournies — ne déduis rien d'absent des données.
+- Interdiction d'affirmer une conformité au planning, une cause, une conséquence ou un avancement global non explicitement mentionnés dans le PV.
+- Si deux éléments décrivent le même état avec des formulations proches, fusionne-les en une seule phrase.
+- Commence directement par les faits, sans formule d'introduction générique.
+- Utilise des phrases courtes et directes.
+- Si rien n'est terminé, commence par l'état général du chantier.
 ${input}`
 
   try {

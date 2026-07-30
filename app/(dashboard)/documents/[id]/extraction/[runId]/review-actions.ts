@@ -500,7 +500,17 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
           if (narrative) {
             const { data: existingSr } = await admin.from('site_reports').select('debrief_analysis').eq('id', siteReportId).maybeSingle()
             const existingDa = (existingSr as { debrief_analysis: Record<string, unknown> | null } | null)?.debrief_analysis ?? {}
-            await admin.from('site_reports').update({ debrief_analysis: { ...existingDa, historical_summary: narrative } }).eq('id', siteReportId)
+            await admin.from('site_reports').update({
+              debrief_analysis: {
+                ...existingDa,
+                historical_summary: {
+                  text: narrative,
+                  generatedAt: new Date().toISOString(),
+                  runId,
+                  model: process.env.AI_MODEL ?? 'gemini-2.5-flash',
+                },
+              },
+            }).eq('id', siteReportId)
           }
         }
       } catch {
