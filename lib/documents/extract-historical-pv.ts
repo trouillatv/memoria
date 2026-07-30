@@ -172,6 +172,35 @@ export async function extractHistoricalPv(
     // 6. Extraction LLM structurée
     const llmResult = await extractHistoricalPvProposals(text, extracted.pageCount)
 
+    // 6b. Fallback photo : pages identifiées comme photo par le LLM
+    // mais dont extractPageImages n'a extrait aucune image native.
+    // On promeut le snapshot déjà rendu en preuve 'image' (même fichier stocké,
+    // pas de re-upload) pour qu'il soit compté et affiché comme une vraie photo.
+    {
+      const llmPhotoPages = new Set(
+        llmResult.evidence
+          .filter((ev) => ev.evidenceType === 'page_snapshot')
+          .map((ev) => ev.sourcePage),
+      )
+      for (const pageNum of llmPhotoPages) {
+        const alreadyExtracted = extractedImageInfos.some((i) => i.pageNum === pageNum)
+        if (!alreadyExtracted) {
+          const snapPath = snapshotPaths.get(pageNum)
+          if (snapPath) {
+            extractedImageInfos.push({
+              storagePath: snapPath,
+              pageNum,
+              nativeWidth: 0,
+              nativeHeight: 0,
+              bbox: [0, 0, 0, 0] as [number, number, number, number],
+              caption: null,
+            })
+            log('snapshot_promoted_to_image', documentId, { page: pageNum })
+          }
+        }
+      }
+    }
+
     await updateExtractionStage(runId, 'persisting')
 
     // 7. Persister les preuves
