@@ -47,7 +47,7 @@ export async function createExtractionRun(input: {
     })
     .select('id')
     .single()
-  if (error) throw error
+  if (error) throw new Error(error.message)
   return (data as { id: string }).id
 }
 
@@ -71,7 +71,7 @@ export async function updateExtractionRunStatus(
       ...(extra?.started_at !== undefined ? { started_at: extra.started_at } : {}),
     })
     .eq('id', runId)
-  if (error) throw error
+  if (error) throw new Error(error.message)
 }
 
 // ── Propositions ─────────────────────────────────────────────────────────────
@@ -113,7 +113,7 @@ export async function insertExtractionProposals(
     .from('document_extraction_proposal')
     .insert(rows)
     .select('id')
-  if (error) throw error
+  if (error) throw new Error(error.message)
   return ((data ?? []) as Array<{ id: string }>).map((r) => r.id)
 }
 
@@ -149,7 +149,7 @@ export async function insertExtractionEvidence(
     .from('document_extraction_evidence')
     .insert(rows)
     .select('id, storage_path')
-  if (error) throw error
+  if (error) throw new Error(error.message)
   return (data ?? []) as Array<{ id: string; storage_path: string | null }>
 }
 
@@ -174,7 +174,7 @@ export async function linkProposalEvidence(
       },
       { onConflict: 'proposal_id,evidence_id', ignoreDuplicates: skipIfExists ?? false },
     )
-  if (error) throw error
+  if (error) throw new Error(error.message)
 }
 
 // ── Lecture pour révision ─────────────────────────────────────────────────────
@@ -189,7 +189,7 @@ export async function listExtractionForReview(
     .select('*')
     .eq('extraction_run_id', runId)
     .order('created_at', { ascending: true })
-  if (pErr) throw pErr
+  if (pErr) throw new Error(pErr.message)
 
   if (!proposals || proposals.length === 0) return []
   const proposalIds = (proposals as DbDocumentExtractionProposal[]).map((p) => p.id)
@@ -204,8 +204,8 @@ export async function listExtractionForReview(
       .select('*')
       .in('proposal_id', proposalIds),
   ])
-  if (rErr) throw rErr
-  if (mErr) throw mErr
+  if (rErr) throw new Error(rErr.message)
+  if (mErr) throw new Error(mErr.message)
 
   const relationsByProposal = new Map<string, typeof relations>()
   for (const rel of relations ?? []) {
@@ -257,7 +257,7 @@ export async function reviewProposal(
     .select('review_status')
     .eq('id', proposalId)
     .single()
-  if (fetchErr) throw fetchErr
+  if (fetchErr) throw new Error(fetchErr.message)
   const status = (current as { review_status: DocumentProposalReviewStatus }).review_status
   if (status === 'materialized') {
     throw new Error(`Proposition ${proposalId} déjà matérialisée — révision impossible.`)
@@ -287,7 +287,7 @@ export async function reviewProposal(
     .from('document_extraction_proposal')
     .update(patch)
     .eq('id', proposalId)
-  if (error) throw error
+  if (error) throw new Error(error.message)
 }
 
 // ── Matérialisation (registre idempotent) ────────────────────────────────────
@@ -307,7 +307,7 @@ export async function recordMaterialization(input: {
     .select('review_status')
     .eq('id', input.proposal_id)
     .single()
-  if (pErr) throw pErr
+  if (pErr) throw new Error(pErr.message)
   const reviewStatus = (proposal as { review_status: DocumentProposalReviewStatus }).review_status
   if (reviewStatus === 'rejected') {
     throw new Error(`Proposition ${input.proposal_id} refusée — matérialisation impossible.`)
@@ -327,7 +327,7 @@ export async function recordMaterialization(input: {
       },
       { onConflict: 'proposal_id,target_entity_type,target_entity_id', ignoreDuplicates: true },
     )
-  if (error) throw error
+  if (error) throw new Error(error.message)
 
   // Mettre à jour le statut de la proposition
   await supabase
@@ -347,7 +347,7 @@ export async function getExtractionRun(
     .select('*')
     .eq('id', runId)
     .maybeSingle()
-  if (error) throw error
+  if (error) throw new Error(error.message)
   return (data as DbDocumentExtractionRun | null)
 }
 
@@ -362,7 +362,7 @@ export async function getLatestExtractionRunForDocument(
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
-  if (error) throw error
+  if (error) throw new Error(error.message)
   return (data as DbDocumentExtractionRun | null)
 }
 
@@ -375,7 +375,7 @@ export async function listOrphanEvidenceForRun(
     .from('document_extraction_evidence')
     .select('*')
     .eq('extraction_run_id', runId)
-  if (evErr) throw evErr
+  if (evErr) throw new Error(evErr.message)
   if (!allEvidence || allEvidence.length === 0) return []
 
   const all = allEvidence as DbDocumentExtractionEvidence[]
@@ -388,7 +388,7 @@ export async function listOrphanEvidenceForRun(
     .select('evidence_id')
     .in('evidence_id', evidenceIds)
     .neq('relation_type', 'candidate')
-  if (linkErr) throw linkErr
+  if (linkErr) throw new Error(linkErr.message)
 
   const linkedIds = new Set((linked ?? []).map((r: { evidence_id: string }) => r.evidence_id))
   return all.filter((e) => !linkedIds.has(e.id))
@@ -419,7 +419,7 @@ export async function listCandidateLinksForRun(runId: string): Promise<Array<{
     .select('evidence_id, proposal_id, relation_type, confidence, document_extraction_proposal(label, reviewed_label, proposal_family)')
     .in('relation_type', ['candidate', 'dismissed'])
     .in('evidence_id', evidenceIds)
-  if (error) throw error
+  if (error) throw new Error(error.message)
 
   type Row = {
     evidence_id: string

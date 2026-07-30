@@ -57,7 +57,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true })
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
+    const msg = e instanceof Error ? e.message : (e != null && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : String(e))
     console.error('[POST /api/extraction/historical-pv]:', { documentId, error: e })
     return NextResponse.json({ ok: false, error: msg }, { status: 500 })
   }
@@ -89,6 +89,7 @@ export async function GET(req: Request) {
       errorMessage: run.error_message ?? null,
     })
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 })
+    const msg = e instanceof Error ? e.message : (e != null && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : String(e))
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
