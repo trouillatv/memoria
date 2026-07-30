@@ -80,7 +80,10 @@ type ChantierViewKey = SiteTabKey
 // fiche partout » (arbitrage 2026-07-18). Toute NOUVELLE porte ajoute sa source.
 
 export default async function SitePage({ params, searchParams }: PageProps) {
-  const user = await getCurrentUserWithProfile()
+  const user = await getCurrentUserWithProfile().catch((e) => {
+    console.error('[sites/[id]/page] getCurrentUserWithProfile threw:', e)
+    return null
+  })
   if (!user) redirect('/login')
   if (user.role === 'chef_equipe') redirect('/m')
 
