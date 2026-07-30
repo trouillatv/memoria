@@ -420,21 +420,52 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
             </section>
           )}
 
-          {isImport && historical.length > 0 && (
-            <section className="rounded-xl border bg-card p-4 space-y-3">
-              <h2 className="text-[15px] font-semibold">Objets importés depuis le PV</h2>
-              <div className="divide-y text-[13px]">
-                {historical.map((obj) => (
-                  <div key={`${obj.kind}-${obj.id}`} className="py-2 flex items-center gap-2">
-                    <span className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium bg-muted text-muted-foreground">
-                      {obj.kind === 'action' ? 'Action' : obj.kind === 'reserve' ? 'Réserve' : obj.kind === 'decision' ? 'Décision' : obj.kind === 'echeance' ? 'Échéance' : obj.kind === 'vigilance' ? 'Point de vigilance' : 'Mémoire'}
-                    </span>
-                    <span>{obj.label}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
+          {isImport && historical.length > 0 && (() => {
+            const GROUP_ORDER: Array<{ kind: string; label: string; labelUn: string }> = [
+              { kind: 'action',    label: 'Actions',               labelUn: 'action' },
+              { kind: 'echeance',  label: 'Échéances',             labelUn: 'échéance' },
+              { kind: 'vigilance', label: 'Points de vigilance',   labelUn: 'point de vigilance' },
+              { kind: 'memoire',   label: 'Éléments de mémoire',   labelUn: 'élément de mémoire' },
+              { kind: 'reserve',   label: 'Réserves',              labelUn: 'réserve' },
+              { kind: 'decision',  label: 'Décisions',             labelUn: 'décision' },
+            ]
+            const byKind = new Map<string, typeof historical>()
+            for (const obj of historical) {
+              if (!byKind.has(obj.kind)) byKind.set(obj.kind, [])
+              byKind.get(obj.kind)!.push(obj)
+            }
+            const groups = GROUP_ORDER.filter((g) => byKind.has(g.kind))
+            return (
+              <section className="rounded-xl border bg-card p-4 space-y-2">
+                <h2 className="text-[15px] font-semibold">
+                  Objets importés depuis le PV
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">{historical.length} au total</span>
+                </h2>
+                <div className="space-y-1">
+                  {groups.map((g) => {
+                    const items = byKind.get(g.kind)!
+                    return (
+                      <details key={g.kind} className="group rounded-lg border bg-muted/20 open:bg-card">
+                        <summary className="flex cursor-pointer select-none items-center justify-between gap-2 px-3 py-2 text-[13px] font-medium list-none [&::-webkit-details-marker]:hidden">
+                          <span>{g.label}</span>
+                          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground tabular-nums">
+                            {items.length}
+                          </span>
+                        </summary>
+                        <div className="divide-y border-t px-3 text-[13px]">
+                          {items.map((obj) => (
+                            <div key={`${obj.kind}-${obj.id}`} className="py-2 text-foreground/90">
+                              {obj.label}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )
+                  })}
+                </div>
+              </section>
+            )
+          })()}
 
           {isImport && chronologieItems.length > 0 && (
             <section className="rounded-xl border bg-card p-4 space-y-3">
