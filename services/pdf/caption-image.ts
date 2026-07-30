@@ -16,16 +16,22 @@ export async function generateImageCaption(
   const prompt = `Tu es assistant technique en chantier de construction.
 Cette image est extraite d'un PV de visite de chantier.
 
-Génère une légende factuelle de 5 à 10 mots décrivant ce que tu vois RÉELLEMENT dans l'image.
-Règles :
-- Base-toi d'abord sur ce que tu vois (l'image prime sur le texte).
-- Utilise le contexte textuel uniquement pour préciser (nom d'un ouvrage, localisation).
-- Commence par un nom ou un groupe nominal : "Fossé GDE réalisé", "Plateforme après nivellement", "Talus en cours de terrassement".
-- Interdit : "Vue générale", "Photo du chantier", formules vagues.
-- Réponds avec la légende uniquement, sans guillemets ni ponctuation finale.
+Génère une légende de 4 à 12 mots, CONTEXTUALISÉE au chantier et à la situation réelle.
 
-Contexte de la page (aide uniquement) :
-${pageText.slice(0, 600)}`
+Règles de priorité :
+1. Si le texte de la page nomme un ouvrage, une zone ou un lot (ex : "GDE", "Accès Est", "assainissement"), utilise ce nom en premier.
+2. Si le texte mentionne un statut ("réalisé", "terminé", "en cours"), ajoute-le.
+3. Décris ce que tu vois dans un vocabulaire de chantier : terrassement, remblai, tranchée, talus, plateforme, berge, drainage, etc.
+4. Évite les généralités sans précision : pas de "Vue générale", "Photo du chantier", "Travaux en cours", "Chantier en cours".
+5. Commence par le nom de l'ouvrage ou de la zone si disponible, sinon par le type de travaux.
+
+Bons exemples : "Tranchée GDE réalisée", "Plateforme après nivellement", "Accès Est — remblais en cours", "Zone de prélèvement G3", "Talus après terrassement"
+Mauvais exemples : "Tranch", "Vue de la plateforme", "Berge", "Photo du chantier"
+
+Réponds avec la légende uniquement, sans guillemets ni ponctuation finale.
+
+Contexte de la page (nom d'ouvrage, zone, statuts) :
+${pageText.slice(0, 1200)}`
 
   try {
     const resolvedModel = model ?? process.env.AI_MODEL ?? 'gemini-2.5-flash'
@@ -43,7 +49,7 @@ ${pageText.slice(0, 600)}`
               { inline_data: { mime_type: 'image/png', data: base64 } },
             ],
           }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 32 },
+          generationConfig: { temperature: 0.2, maxOutputTokens: 48 },
         }),
       },
     )
