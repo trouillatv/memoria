@@ -95,7 +95,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   // ouvrir une fiche) re-jouait TOUT, d'où la sensation de rechargement.
   // Désormais chaque onglet paie SES requêtes, et seulement les siennes.
   // Seule l'identité reste commune : l'en-tête l'affiche et le 404 en dépend.
-  const identity = await getSiteIdentity(id)
+  const identity = await getSiteIdentity(id).catch(() => null)
   if (!identity) notFound()
 
   return (

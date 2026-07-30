@@ -111,21 +111,26 @@ export async function importSiteEvidenceAction(
   | { ok: true; created: number; skippedDuplicates: number; firstVisitId?: string }
   | { ok: false; error: string }
 > {
-  const fd = new FormData()
-  fd.set('site_id', siteId)
-  fd.set('source', 'upload')
-  for (const file of formData.getAll('files')) {
-    fd.append('files', file)
-  }
-  const result = await importVisitAction(fd)
-  if (!result.ok) return result
-  revalidatePath(`/sites/${siteId}`)
-  revalidatePath(`/sites/${siteId}?tab=chronologie`)
-  revalidatePath(`/sites/${siteId}?tab=documents-preuves`)
-  return {
-    ok: true,
-    created: result.created,
-    skippedDuplicates: result.skippedDuplicates,
-    firstVisitId: result.sessions[0]?.reportId,
+  try {
+    const fd = new FormData()
+    fd.set('site_id', siteId)
+    fd.set('source', 'upload')
+    for (const file of formData.getAll('files')) {
+      fd.append('files', file)
+    }
+    const result = await importVisitAction(fd)
+    if (!result.ok) return result
+    revalidatePath(`/sites/${siteId}`)
+    revalidatePath(`/sites/${siteId}?tab=chronologie`)
+    revalidatePath(`/sites/${siteId}?tab=documents-preuves`)
+    return {
+      ok: true,
+      created: result.created,
+      skippedDuplicates: result.skippedDuplicates,
+      firstVisitId: result.sessions[0]?.reportId,
+    }
+  } catch (e) {
+    console.error('[importSiteEvidenceAction]', e)
+    return { ok: false, error: 'Une erreur inattendue est survenue.' }
   }
 }
