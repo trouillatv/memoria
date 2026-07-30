@@ -56,15 +56,16 @@ function OrphanEvidenceItem({
 }) {
   const imgUrl = signedUrls[evidence.id]
   const excerptText = (evidence.metadata as { text?: string } | null)?.text
-  const isSnapshot = evidence.evidence_type === 'page_snapshot'
+  const isPhoto = evidence.evidence_type === 'page_snapshot' || evidence.evidence_type === 'image'
+  const typeLabel = evidence.evidence_type === 'image' ? 'Photo' : evidence.evidence_type === 'page_snapshot' ? 'Snapshot' : 'Extrait'
 
   return (
     <div className={`rounded border p-3 space-y-1.5 text-xs transition-colors ${isPinned ? 'border-sky-300 bg-sky-50 dark:border-sky-700 dark:bg-sky-950/20' : 'bg-muted/30'}`}>
       <div className="flex items-center justify-between gap-2">
         <p className="font-medium text-muted-foreground">
-          {isSnapshot ? 'Snapshot' : 'Extrait'} · Page {evidence.source_page}
+          {typeLabel} · Page {evidence.source_page}
         </p>
-        {isSnapshot && (
+        {isPhoto && (
           <button
             type="button"
             onClick={onToggle}
@@ -307,8 +308,8 @@ export function ExtractionReviewClient({
 
   async function handlePinAll(pinAll: boolean) {
     setPinAllPending(true)
-    const snapshotIds = orphanEvidence.filter((e) => e.evidence_type === 'page_snapshot').map((e) => e.id)
-    setPinnedIds(pinAll ? new Set(snapshotIds) : new Set())
+    const photoIds = orphanEvidence.filter((e) => e.evidence_type === 'page_snapshot' || e.evidence_type === 'image').map((e) => e.id)
+    setPinnedIds(pinAll ? new Set(photoIds) : new Set())
     const fd = new FormData()
     fd.set('run_id', runId)
     fd.set('document_id', documentId)
@@ -335,7 +336,7 @@ export function ExtractionReviewClient({
   const weakCount = proposals.filter((p) => getRelevanceScore(p.proposal) === 'weak').length
   const personCount = proposals.filter((p) => p.proposal.proposal_family === 'person').length
   const companyCount = proposals.filter((p) => p.proposal.proposal_family === 'company').length
-  const snapshotCount = orphanEvidence.filter((e) => e.evidence_type === 'page_snapshot').length
+  const snapshotCount = orphanEvidence.filter((e) => e.evidence_type === 'page_snapshot' || e.evidence_type === 'image').length
 
   const filtered = proposals
     .filter((p) => filter === 'all' || p.proposal.review_status === filter)
@@ -454,34 +455,47 @@ export function ExtractionReviewClient({
         })
       )}
 
-      {/* Photos non associées */}
+      {/* Photos et snapshots non associés */}
       {orphanEvidence.length > 0 && (() => {
+        const extractedPhotos = orphanEvidence.filter((e) => e.evidence_type === 'image')
         const snapshots = orphanEvidence.filter((e) => e.evidence_type === 'page_snapshot')
-        const others = orphanEvidence.filter((e) => e.evidence_type !== 'page_snapshot')
-        const pinnedCount = snapshots.filter((e) => pinnedIds.has(e.id)).length
+        const others = orphanEvidence.filter((e) => e.evidence_type !== 'page_snapshot' && e.evidence_type !== 'image')
+        const allPhotos = [...extractedPhotos, ...snapshots]
+        const pinnedCount = allPhotos.filter((e) => pinnedIds.has(e.id)).length
+        if (allPhotos.length === 0 && others.length === 0) return null
         return (
           <section className="space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                Pages photographiques
+                {extractedPhotos.length > 0 ? 'Photos extraites' : 'Pages photographiques'}
               </h2>
-              <span className="text-xs font-medium">
-                {pinnedCount} / {snapshots.length} sélectionnée{pinnedCount !== 1 ? 's' : ''}
-              </span>
-              <button
-                type="button"
-                onClick={() => handlePinAll(pinnedCount < snapshots.length)}
-                disabled={pinAllPending || isPending}
-                className="ml-auto text-xs border rounded px-2 py-1 text-muted-foreground hover:text-foreground hover:border-foreground transition-colors disabled:opacity-50"
-              >
-                {pinAllPending ? '…' : pinnedCount === snapshots.length ? 'Tout désélectionner' : 'Importer toutes'}
-              </button>
+              {allPhotos.length > 0 && (
+                <span className="text-xs font-medium">
+                  {pinnedCount} / {allPhotos.length} sélectionnée{pinnedCount !== 1 ? 's' : ''}
+                </span>
+              )}
+              {allPhotos.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => handlePinAll(pinnedCount < allPhotos.length)}
+                  disabled={pinAllPending || isPending}
+                  className="ml-auto text-xs border rounded px-2 py-1 text-muted-foreground hover:text-foreground hover:border-foreground transition-colors disabled:opacity-50"
+                >
+                  {pinAllPending ? '…' : pinnedCount === allPhotos.length ? 'Tout désélectionner' : 'Importer toutes'}
+                </button>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Sélectionnez les pages à afficher dans la fiche de la visite historique.
-            </p>
+            {extractedPhotos.length > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Photos extraites de la structure du PDF. Sélectionnez celles à afficher dans la visite.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Sélectionnez les pages à afficher dans la fiche de la visite historique.
+              </p>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {snapshots.map((ev) => (
+              {allPhotos.map((ev) => (
                 <OrphanEvidenceItem
                   key={ev.id}
                   evidence={ev}

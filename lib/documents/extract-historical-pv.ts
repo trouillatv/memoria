@@ -132,6 +132,35 @@ export async function extractHistoricalPv(
       }
     }
 
+    await updateExtractionStage(runId, 'extracting_images')
+
+    // 5b. Extraction des objets image embarqués (approche native PDF, sans vision)
+    // Chaque image découverte devient une evidence de type 'image', indépendante des propositions LLM.
+    const { extractPageImages } = await import('@/services/pdf/extract-images')
+    type ImageInfo = { storagePath: string; pageNum: number; nativeWidth: number; nativeHeight: number; bbox: [number, number, number, number] }
+    const extractedImageInfos: ImageInfo[] = []
+    for (let pageNum = 1; pageNum <= pagesToRender; pageNum++) {
+      let imgs: Awaited<ReturnType<typeof extractPageImages>> = []
+      try {
+        imgs = await extractPageImages(buffer, pageNum - 1)
+      } catch {
+        // page ignorée si extraction échoue
+      }
+      for (let i = 0; i < imgs.length; i++) {
+        const img = imgs[i]
+        const storagePath = `snapshots/${documentId}/img-p${pageNum}-${i + 1}.png`
+        const { error: uploadErr } = await supabase.storage
+          .from('documents')
+          .upload(storagePath, img.buffer, { contentType: 'image/png', upsert: true })
+        if (!uploadErr) {
+          extractedImageInfos.push({ storagePath, pageNum, nativeWidth: img.nativeWidth, nativeHeight: img.nativeHeight, bbox: img.bbox })
+        } else {
+          log('image_upload_failed', documentId, { page: pageNum, idx: i, error: uploadErr.message })
+        }
+      }
+    }
+    log('images_extracted', documentId, { count: extractedImageInfos.length })
+
     await updateExtractionStage(runId, 'llm_analysis')
 
     // 6. Extraction LLM structurée
@@ -189,7 +218,26 @@ export async function extractHistoricalPv(
       }
     }
 
-    // 10. Run terminé
+    // 10. Insérer les images extraites comme evidence indépendante (orphanes)
+    if (extractedImageInfos.length > 0) {
+      const imageEvidenceInputs = extractedImageInfos.map((info) => ({
+        organization_id: d.organization_id,
+        document_id: documentId,
+        evidence_type: 'image' as DocumentEvidenceType,
+        source_page: info.pageNum,
+        storage_path: info.storagePath,
+        caption: null,
+        nearby_text: null,
+        metadata: {
+          nativeWidth: info.nativeWidth,
+          nativeHeight: info.nativeHeight,
+          bbox: info.bbox,
+        },
+      }))
+      await insertExtractionEvidence(runId, imageEvidenceInputs)
+    }
+
+    // 11. Run terminé
     await updateExtractionRunStatus(runId, 'ready_for_review', {
       completed_at: new Date().toISOString(),
     })

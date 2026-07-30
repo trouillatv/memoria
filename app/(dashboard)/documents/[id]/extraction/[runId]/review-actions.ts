@@ -222,7 +222,7 @@ export async function pinAllSnapshotsAction(fd: FormData): Promise<ActionResult>
     .from('document_extraction_evidence')
     .update({ pinned_for_visit: pinned })
     .eq('extraction_run_id', runId)
-    .eq('evidence_type', 'page_snapshot')
+    .in('evidence_type', ['page_snapshot', 'image'])
 
   if (error) return { ok: false, error: error.message }
   return { ok: true }

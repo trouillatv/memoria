@@ -113,12 +113,12 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         .select('id, source_page, caption, storage_path')
         .eq('extraction_run_id', runId)
         .eq('pinned_for_visit', true)
-        .eq('evidence_type', 'page_snapshot'),
+        .in('evidence_type', ['page_snapshot', 'image']),
       admin
         .from('document_extraction_evidence')
         .select('id', { count: 'exact', head: true })
         .eq('extraction_run_id', runId)
-        .eq('evidence_type', 'page_snapshot'),
+        .in('evidence_type', ['page_snapshot', 'image']),
       admin
         .from('document_extraction_run')
         .select('document_id')
