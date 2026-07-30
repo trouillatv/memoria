@@ -28,6 +28,7 @@ type IllustratesLink = {
   storage_path: string | null
   source_page: number | null
   proposal_label: string | null
+  pinned_for_visit: boolean
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -394,6 +395,25 @@ export function ExtractionReviewClient({
     return map
   }, [candidateLinks, confirmedLabels, dismissedLinks])
 
+  // Photos confirmées (illustrates) par proposition — pour afficher les vignettes sous chaque observation
+  const confirmedPhotosByProposal = useMemo(() => {
+    const map = new Map<string, Array<{evidenceId: string; caption: string | null}>>()
+    // Liens serveur
+    for (const link of initialIllustratesLinks) {
+      if (!map.has(link.proposal_id)) map.set(link.proposal_id, [])
+      map.get(link.proposal_id)!.push({ evidenceId: link.evidence_id, caption: link.caption })
+    }
+    // Liens confirmés localement dans cette session (pas encore en base)
+    for (const [key] of confirmedLabels) {
+      const [evidenceId, proposalId] = key.split(':')
+      if (map.get(proposalId)?.some((p) => p.evidenceId === evidenceId)) continue
+      if (!map.has(proposalId)) map.set(proposalId, [])
+      const ev = orphanEvidence.find((e) => e.id === evidenceId)
+      map.get(proposalId)!.push({ evidenceId, caption: ev?.caption ?? null })
+    }
+    return map
+  }, [initialIllustratesLinks, confirmedLabels, orphanEvidence])
+
   async function handleConfirmLink(evidenceId: string, proposalId: string, proposalLabel: string) {
     const key = `${evidenceId}:${proposalId}`
     setPendingLinks((prev) => new Set([...prev, key]))
@@ -628,6 +648,13 @@ export function ExtractionReviewClient({
                     }>}
                     signedUrls={signedUrls}
                     documentId={documentId}
+                    confirmedPhotos={(confirmedPhotosByProposal.get(p.proposal.id) ?? []).map((photo) => ({
+                      evidenceId: photo.evidenceId,
+                      caption: photo.caption,
+                      isPinned: pinnedIds.has(photo.evidenceId),
+                      isPinPending: pendingPins.has(photo.evidenceId),
+                    }))}
+                    onPinToggle={togglePin}
                   />
                 ))}
               </div>

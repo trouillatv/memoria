@@ -452,6 +452,7 @@ export async function getIllustratesLinksForRun(runId: string): Promise<Array<{
   storage_path: string | null
   source_page: number | null
   proposal_label: string | null
+  pinned_for_visit: boolean
 }>> {
   const supabase = createAdminClient()
 
@@ -466,7 +467,7 @@ export async function getIllustratesLinksForRun(runId: string): Promise<Array<{
 
   const { data, error } = await supabase
     .from('document_proposal_evidence')
-    .select('proposal_id, evidence_id, document_extraction_evidence(caption, storage_path, source_page), document_extraction_proposal(label, reviewed_label)')
+    .select('proposal_id, evidence_id, document_extraction_evidence(caption, storage_path, source_page, pinned_for_visit), document_extraction_proposal(label, reviewed_label)')
     .eq('relation_type', 'illustrates')
     .in('evidence_id', evIds)
   if (error) return []
@@ -474,7 +475,7 @@ export async function getIllustratesLinksForRun(runId: string): Promise<Array<{
   type Row = {
     proposal_id: string
     evidence_id: string
-    document_extraction_evidence: { caption: string | null; storage_path: string | null; source_page: number | null } | null
+    document_extraction_evidence: { caption: string | null; storage_path: string | null; source_page: number | null; pinned_for_visit: boolean } | null
     document_extraction_proposal: { label: string; reviewed_label: string | null } | null
   }
 
@@ -484,6 +485,7 @@ export async function getIllustratesLinksForRun(runId: string): Promise<Array<{
     caption: r.document_extraction_evidence?.caption ?? null,
     storage_path: r.document_extraction_evidence?.storage_path ?? null,
     source_page: r.document_extraction_evidence?.source_page ?? null,
+    pinned_for_visit: r.document_extraction_evidence?.pinned_for_visit ?? false,
     proposal_label: r.document_extraction_proposal?.reviewed_label ?? r.document_extraction_proposal?.label ?? null,
   }))
 }

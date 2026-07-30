@@ -84,16 +84,27 @@ function EvidenceItem({
 
 // ─── ProposalCard ────────────────────────────────────────────────────────────
 
+type ConfirmedPhoto = {
+  evidenceId: string
+  caption: string | null
+  isPinned: boolean
+  isPinPending: boolean
+}
+
 export function ProposalCard({
   proposal,
   evidence,
   signedUrls,
   documentId,
+  confirmedPhotos = [],
+  onPinToggle,
 }: {
   proposal: DbDocumentExtractionProposal
   evidence: Array<{ evidence: DbDocumentExtractionEvidence; relationType: DocumentEvidenceRelationType; confidence: number | null }>
   signedUrls: Record<string, string>
   documentId: string
+  confirmedPhotos?: ConfirmedPhoto[]
+  onPinToggle?: (evidenceId: string) => void
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -328,6 +339,57 @@ export function ProposalCard({
                 signedUrls={signedUrls}
               />
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Photos illustrant cette proposition */}
+      {confirmedPhotos.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">
+            📷 {confirmedPhotos.length} photo{confirmedPhotos.length > 1 ? 's' : ''} illustr{confirmedPhotos.length > 1 ? 'ent' : 'e'} cette observation
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {confirmedPhotos.map((photo) => {
+              const url = signedUrls[photo.evidenceId]
+              return (
+                <div key={photo.evidenceId} className="space-y-0.5">
+                  <div className="relative group">
+                    {url ? (
+                      <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={url}
+                          alt={photo.caption ?? 'Photo'}
+                          className="h-20 w-20 rounded border object-cover"
+                        />
+                      </a>
+                    ) : (
+                      <div className="h-20 w-20 rounded border bg-muted/40 flex items-center justify-center text-muted-foreground text-xs">
+                        📷
+                      </div>
+                    )}
+                  </div>
+                  {onPinToggle && (
+                    <button
+                      type="button"
+                      onClick={() => onPinToggle(photo.evidenceId)}
+                      disabled={photo.isPinPending}
+                      className={`w-full rounded px-1 py-0.5 text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                        photo.isPinned
+                          ? 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/40 dark:text-sky-300'
+                          : 'bg-muted text-muted-foreground hover:bg-muted-foreground/20'
+                      }`}
+                    >
+                      {photo.isPinPending ? '…' : photo.isPinned ? 'Incluse' : 'Inclure'}
+                    </button>
+                  )}
+                  {photo.caption && (
+                    <p className="text-[10px] text-muted-foreground max-w-[80px] truncate">{photo.caption}</p>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
