@@ -52,6 +52,7 @@ export async function importSiteHistoricalPvAction(
   siteId: string,
   formData: FormData,
 ): Promise<{ ok: boolean; error?: string; documentId?: string }> {
+  console.log('[importSiteHistoricalPvAction] start', { siteId, hasFile: !!formData.get('file'), hasDate: !!formData.get('effective_date') })
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()

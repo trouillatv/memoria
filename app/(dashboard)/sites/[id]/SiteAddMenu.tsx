@@ -138,13 +138,18 @@ function SiteDocumentDialog({
     if (!form) return
     const fd = new FormData(form)
     startTransition(async () => {
-      const result = await uploadSiteDocumentAction(siteId, fd)
-      if (!result.ok) {
-        setMessage(result.error ?? 'Import impossible.')
-        return
+      try {
+        const result = await uploadSiteDocumentAction(siteId, fd)
+        if (!result.ok) {
+          setMessage(result.error ?? 'Import impossible.')
+          return
+        }
+        setMessage(result.duplicate ? 'Document déjà connu, lien ajouté au chantier.' : 'Document ajouté au chantier.')
+        form.reset()
+      } catch (e) {
+        console.error('[SiteDocumentDialog]', e)
+        setMessage('Erreur réseau — veuillez réessayer.')
       }
-      setMessage(result.duplicate ? 'Document déjà connu, lien ajouté au chantier.' : 'Document ajouté au chantier.')
-      form.reset()
     })
   }
 
@@ -192,13 +197,18 @@ function SiteEvidenceDialog({
     if (!form) return
     const fd = new FormData(form)
     startTransition(async () => {
-      const result = await importSiteEvidenceAction(siteId, fd)
-      if (!result.ok) {
-        setMessage(result.error)
-        return
+      try {
+        const result = await importSiteEvidenceAction(siteId, fd)
+        if (!result.ok) {
+          setMessage(result.error)
+          return
+        }
+        setMessage(`${result.created} élément(s) ajouté(s) au chantier.`)
+        form.reset()
+      } catch (e) {
+        console.error('[SiteEvidenceDialog]', e)
+        setMessage('Erreur réseau — veuillez réessayer.')
       }
-      setMessage(`${result.created} élément(s) ajouté(s) au chantier.`)
-      form.reset()
     })
   }
 
@@ -248,14 +258,19 @@ function SiteHistoricalPvDialog({
     if (!form) return
     const fd = new FormData(form)
     startTransition(async () => {
-      const result = await importSiteHistoricalPvAction(siteId, fd)
-      if (!result.ok) {
-        setMessage(result.error ?? 'Import impossible.')
-        return
+      try {
+        const result = await importSiteHistoricalPvAction(siteId, fd)
+        if (!result.ok) {
+          setMessage(result.error ?? 'Import impossible.')
+          return
+        }
+        setDocumentId(result.documentId ?? null)
+        setMessage('Analyse lancée — patientez quelques instants.')
+        form.reset()
+      } catch (e) {
+        console.error('[SiteHistoricalPvDialog]', e)
+        setMessage('Erreur réseau — veuillez réessayer. Si le problème persiste, rechargez la page.')
       }
-      setDocumentId(result.documentId ?? null)
-      setMessage('Analyse lancée — patientez quelques instants.')
-      form.reset()
     })
   }
 
