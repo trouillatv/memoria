@@ -443,7 +443,7 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument }: {
 
   // « En bref » — richesse de la visite (comptes réels par type).
   const stats: Array<{ n: number; label: string }> = [
-    { n: doc.photoCount, label: doc.photoCount > 1 ? 'photos' : 'photo' },
+    { n: doc.photoCount, label: doc.isImportedVisit ? (doc.photoCount > 1 ? 'photos importées' : 'photo importée') : (doc.photoCount > 1 ? 'photos' : 'photo') },
     { n: doc.videoCount, label: doc.videoCount > 1 ? 'vidéos' : 'vidéo' },
     { n: doc.vocalCount, label: doc.vocalCount > 1 ? 'mémos vocaux' : 'mémo vocal' },
     { n: doc.noteCount, label: doc.noteCount > 1 ? 'notes écrites' : 'note écrite' },

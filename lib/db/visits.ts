@@ -1913,6 +1913,9 @@ export interface VisitCrDoc {
    *  côté du logo de l'organisation qui a réalisé la visite. Logo si disponible,
    *  sinon le nom sert de repli discret. */
   concernedCompanies: Array<{ name: string; logoUrl: string | null }>
+  /** Vrai si la visite est une importation de PV historique (origin === 'import').
+   *  Permet aux rendus (PDF, écran) d'adapter les libellés de compteurs. */
+  isImportedVisit: boolean
 }
 
 /**
@@ -2066,6 +2069,19 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   const photoCaptures = captures.filter((c) => c.kind === 'photo')
   const videoCount = captures.filter((c) => c.kind === 'video').length
   const vocalCount = captures.filter((c) => c.kind === 'vocal').length
+  const isImportedVisit = visit.origin === 'import'
+
+  // Pour les visites importées (PV historiques), les captures terrain sont absentes :
+  // on compte les snapshots pinnés depuis l'extraction à la place.
+  let importedPhotoCount = 0
+  if (isImportedVisit && visit.extraction_run_id) {
+    const { count } = await supabase
+      .from('document_extraction_evidence')
+      .select('id', { count: 'exact', head: true })
+      .eq('extraction_run_id', visit.extraction_run_id)
+      .eq('pinned_for_visit', true)
+    importedPhotoCount = count ?? 0
+  }
 
   // Sélection intelligente (par tag + photo clé, plafonnée) : le CR ne montre que
   // ce qui sert à comprendre/décider ; MemorIA garde les autres. URLs signées des
@@ -2133,7 +2149,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     reserves: points.reserve,
     actions: points.action,
     surveiller: points.surveiller,
-    photoCount: photoCaptures.length,
+    photoCount: isImportedVisit ? importedPhotoCount : photoCaptures.length,
     userId,
   }).catch(() => null)
 
@@ -2195,7 +2211,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     photoItems,
     evolutions,
     positions,
-    photoCount: photoCaptures.length,
+    photoCount: isImportedVisit ? importedPhotoCount : photoCaptures.length,
     videoCount,
     vocalCount,
     noteCount,
@@ -2209,6 +2225,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     orgColor,
     orgLabel,
     concernedCompanies,
+    isImportedVisit,
   }
 }
 
