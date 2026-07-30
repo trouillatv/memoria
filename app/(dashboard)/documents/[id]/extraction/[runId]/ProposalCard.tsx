@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { acceptProposalAction, editProposalAction, rejectProposalAction, resetProposalAction } from './review-actions'
@@ -100,8 +100,9 @@ export function ProposalCard({
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [mode, setMode] = useState<'view' | 'editing'>('view')
 
-  // Statut local optimiste
+  // Statut local optimiste — synchronisé depuis les props RSC après router.refresh()
   const [localStatus, setLocalStatus] = useState(proposal.review_status)
+  useEffect(() => { setLocalStatus(proposal.review_status) }, [proposal.review_status])
   // Valeurs affichées (mises à jour après edit réussi)
   const [displayLabel, setDisplayLabel] = useState(proposal.reviewed_label ?? proposal.label)
   const [displayDescription, setDisplayDescription] = useState(proposal.reviewed_description ?? proposal.description)

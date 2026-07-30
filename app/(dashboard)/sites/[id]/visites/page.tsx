@@ -8,7 +8,7 @@ import { listSiteVisitsWithCounts } from '@/lib/db/visits'
 
 export const dynamic = 'force-dynamic'
 
-const ORIGIN_LABEL: Record<string, string> = { planned: 'Planifiée', spontaneous: 'Spontanée', qr: 'QR', gps: 'GPS' }
+const ORIGIN_LABEL: Record<string, string> = { planned: 'Planifiée', spontaneous: 'Spontanée', qr: 'QR', gps: 'GPS', import: 'Historique' }
 const OUTCOME_LABEL: Record<string, { label: string; cls: string }> = {
   ras: { label: 'RAS', cls: 'bg-muted text-muted-foreground' },
   conforme: { label: 'Conforme', cls: 'bg-emerald-50 text-emerald-700' },

@@ -1406,7 +1406,7 @@ export async function getSiteRecentRhythm(
     // Date civile NOUMÉA (timestamptz UTC → jour NC), même raison que ci-dessus.
     for (const a of (actsRes.data ?? []) as Array<{ created_at: string }>) bump(localDateOf(new Date(a.created_at)), 'Action créée')
     for (const r of (repsRes.data ?? []) as Array<{ created_at: string; origin: string | null }>) {
-      bump(localDateOf(new Date(r.created_at)), r.origin ? 'Visite terrain' : 'Compte-rendu')
+      bump(localDateOf(new Date(r.created_at)), r.origin === 'import' ? 'Visite historique' : r.origin ? 'Visite terrain' : 'Compte-rendu')
     }
   }
 

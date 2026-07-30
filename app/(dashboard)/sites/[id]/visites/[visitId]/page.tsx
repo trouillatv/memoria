@@ -98,6 +98,26 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
   const parFamille = FAMILLES.map((f) => ({ ...f, n: enAttente.filter((p) => p.type === f.cle).length })).filter((f) => f.n > 0)
   const produitsCount = isImport ? historical.length : produced.length
 
+  // Résumé ventilé pour les visites historiques importées
+  const importResumeText = (() => {
+    if (!isImport || historical.length === 0) return null
+    const PLURALS: Record<string, [string, string]> = {
+      action:    ['action', 'actions'],
+      reserve:   ['réserve', 'réserves'],
+      decision:  ['décision', 'décisions'],
+      echeance:  ['échéance', 'échéances'],
+      vigilance: ['point de vigilance', 'points de vigilance'],
+      memoire:   ['mémoire', 'mémoires'],
+    }
+    const counts = new Map<string, number>()
+    for (const h of historical) counts.set(h.kind, (counts.get(h.kind) ?? 0) + 1)
+    const parts = [...counts.entries()].map(([kind, n]) => {
+      const [s, p] = PLURALS[kind] ?? [kind, `${kind}s`]
+      return `${n} ${n > 1 ? p : s}`
+    })
+    return `Importé depuis un PV : ${parts.join(', ')}.`
+  })()
+
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-6">
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -166,9 +186,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                 <p className="mt-2 whitespace-pre-line text-[13.5px] leading-relaxed">{resume}</p>
               ) : isImport ? (
                 <p className="mt-2 text-[13px] text-muted-foreground">
-                  {historical.length > 0
-                    ? `Visite reconstruite depuis un PV historique. ${historical.length} objet${historical.length !== 1 ? "s" : ""} importé${historical.length !== 1 ? "s" : ""}.`
-                    : "Visite reconstruite depuis un PV historique. Aucun objet détecté."}
+                  {importResumeText ?? "Visite reconstruite depuis un PV historique. Aucun objet détecté."}
                 </p>
               ) : (
                 <p className="mt-2 text-[13px] text-muted-foreground">
