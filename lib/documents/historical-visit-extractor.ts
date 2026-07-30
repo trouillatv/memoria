@@ -177,8 +177,8 @@ Pour chaque information retenue après la sélection :
 - **observation** : constatation factuelle, alerte ou signal spécifique à ce chantier, sans responsable nommé ni délai explicite. Inclut obligatoirement les formulations du type "Attention à [X]", "Risque de [Y]", "Veiller à [Z]" sans attribution.
 - **deadline** : échéance chiffrée ou datée, spécifique à ce chantier.
 - **knowledge_fact** : information factuelle durable sur le site. Inclut : l'avancement constaté lors de la visite (travaux exécutés ou en cours) avec statusAtDocumentDate = "réalisé" / "en cours" / "non démarré" ; l'état de plans techniques (VISA émis / en cours / refusé / à émettre) ; une contrainte technique permanente (nature du sol, cote NGF) ; l'état d'un ouvrage ou d'un matériau.
-- **person** : personne physique identifiable (prénom + nom) présente ou signataire sur ce chantier. Renseigner dans description : sa fonction, son entreprise, son email ou téléphone si mentionnés.
-- **company** : entreprise ou organisme avec rôle explicite sur ce chantier. Renseigner dans description : le rôle (MOE, gros-œuvre, bureau de contrôle…) et le contact nommé si disponible.
+- **person** : personne physique identifiable (prénom + nom) mentionnée dans le cartouche ou la liste de présence. Renseigner dans description : "Fonction — Entreprise [— email / tel]". Dans sourcePayload, renseigner statusAtDocumentDate avec le statut de présence ("présent" / "invité" / "absent excusé" / "absent non excusé" / "diffusion uniquement" / "inconnu").
+- **company** : entreprise ou organisme cité avec un rôle sur ce chantier. Renseigner dans description : "Rôle chantier [— contact nommé]" avec le rôle parmi : maître d'ouvrage, AMO, maître d'œuvre, entreprise titulaire, sous-traitant, partenaire, diffusion uniquement. Dans sourcePayload, renseigner statusAtDocumentDate avec ce rôle. Une entreprise uniquement destinataire d'un document → "diffusion uniquement".
 
 ---
 
@@ -186,17 +186,23 @@ Pour chaque information retenue après la sélection :
 
 Le cartouche du PV, la liste des signataires et la liste de présence contiennent souvent les intervenants clés du chantier.
 
-Pour chaque **personne physique identifiable** (prénom + nom) mentionnée comme présente, signataire ou interlocuteur nommé :
+Pour chaque **personne physique identifiable** (prénom + nom) mentionnée dans le cartouche, comme signataire ou dans la liste de présence :
 - créer une proposition **person** ;
 - label = "Prénom NOM" ;
-- description = "Fonction — Entreprise [— email / téléphone]" selon disponibilité.
+- description = "Fonction — Entreprise [— email / téléphone]" selon disponibilité ;
+- sourcePayload.statusAtDocumentDate = statut de présence parmi : "présent", "invité", "absent excusé", "absent non excusé", "diffusion uniquement", "inconnu".
 
-Pour chaque **entreprise ou organisme** cité avec un rôle précis sur ce chantier (pas seulement comme destinataire d'un document) :
+Créer une **company distincte** pour l'entreprise de cette personne si elle n'a pas déjà de proposition company.
+
+Pour chaque **entreprise ou organisme** identifiable avec un rôle sur ce chantier :
 - créer une proposition **company** ;
 - label = "Nom de l'entreprise" ;
-- description = "Rôle sur le chantier [— contact nommé]".
+- description = "Rôle chantier [— contact nommé]" ;
+- sourcePayload.statusAtDocumentDate = rôle parmi : "maître d'ouvrage", "AMO", "maître d'œuvre", "entreprise titulaire", "sous-traitant", "partenaire", "diffusion uniquement".
 
-Ne pas extraire : mentions génériques sans nom ("le conducteur de travaux", "les entreprises"), noms de famille seuls sans prénom, listes de diffusion.
+**Règle critique** : une entreprise apparaissant uniquement comme destinataire d'un document (diffusion) sans intervenant nommé sur ce chantier → ne pas créer de proposition company.
+
+Ne pas extraire : rôles génériques sans nom ("le maître d'ouvrage"), initiales seules, noms de famille sans prénom.
 
 ---
 
