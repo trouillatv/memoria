@@ -151,7 +151,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         .eq('proposal_family', 'knowledge_fact')
         .in('review_status', ['accepted', 'edited', 'materialized'])
         .filter('source_payload->>statusAtDocumentDate', 'eq', 'réalisé'),
-      getIllustratesLinksForRun(runId),
+      getIllustratesLinksForRun(runId).catch(() => []),
     ])
     totalSnapshotCount = countResult.count ?? 0
     extractionDocumentId = (runResult.data as { document_id: string } | null)?.document_id ?? null

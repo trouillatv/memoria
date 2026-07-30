@@ -469,7 +469,7 @@ export async function getIllustratesLinksForRun(runId: string): Promise<Array<{
     .select('proposal_id, evidence_id, document_extraction_evidence(caption, storage_path, source_page), document_extraction_proposal(label, reviewed_label)')
     .eq('relation_type', 'illustrates')
     .in('evidence_id', evIds)
-  if (error) throw error
+  if (error) return []
 
   type Row = {
     proposal_id: string

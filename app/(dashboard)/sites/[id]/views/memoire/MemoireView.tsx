@@ -63,7 +63,7 @@ export async function MemoireView({
     content = (
       <div className="space-y-5">
         {searchBlock}
-        <MemoireCausale threads={(await getSiteCausalThreads(siteId)) ?? []} siteId={siteId} />
+        <MemoireCausale threads={(await getSiteCausalThreads(siteId).catch(() => null)) ?? []} siteId={siteId} />
       </div>
     )
   }

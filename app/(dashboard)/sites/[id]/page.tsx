@@ -448,7 +448,7 @@ function captureKindLabel(kind: string): string {
 }
 
 async function IntervenantsView({ siteId }: { siteId: string }) {
-  const view = await getSiteIntervenantsView(siteId)
+  const view = await getSiteIntervenantsView(siteId).catch(() => null)
   if (!view) return null
   // La décision « l'onglet a-t-il sa place ? » se prendra sur l'usage réel
   // (arbitrage 2026-07-18 : en observation) — best-effort, ne retarde rien.
@@ -460,7 +460,7 @@ async function IntervenantsView({ siteId }: { siteId: string }) {
 }
 
 async function ExplorerView({ siteId }: { siteId: string }) {
-  const graph = await getSiteGraph(siteId)
+  const graph = await getSiteGraph(siteId).catch(() => null)
   if (!graph) return null
   // La mesure, dès le premier jour (cadrage) : l'utilise-t-il ? quand ? —
   // best-effort, ne retarde jamais le rendu.
