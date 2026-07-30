@@ -18,7 +18,7 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Camera, CheckCircle2, ChevronRight, FileDown, FileText, Home, Images, Pencil,
+  Camera, CheckCheck, CheckCircle2, ChevronRight, FileDown, FileText, Home, Images, Pencil,
   Sparkles, Users,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -104,10 +104,11 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
   let historicalSummary: string | null = null
   type ExtPersonProp = { name: string; status: string | null }
   const extractionPersonProps: ExtPersonProp[] = []
+  let chronologieItems: string[] = []
   const runId = isImport ? (visit.extraction_run_id ?? null) : null
   if (runId) {
     const admin = createAdminClient()
-    const [pinnedResult, countResult, runResult, totalPropsResult, personPropsResult, visitExtraResult] = await Promise.all([
+    const [pinnedResult, countResult, runResult, totalPropsResult, personPropsResult, visitExtraResult, chronoResult] = await Promise.all([
       admin
         .from('document_extraction_evidence')
         .select('id, source_page, caption, storage_path')
@@ -140,6 +141,13 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         .select('debrief_analysis')
         .eq('id', visitId)
         .maybeSingle(),
+      admin
+        .from('document_extraction_proposal')
+        .select('label, reviewed_label')
+        .eq('extraction_run_id', runId)
+        .eq('proposal_family', 'knowledge_fact')
+        .in('review_status', ['accepted', 'edited', 'materialized'])
+        .filter('source_payload->>statusAtDocumentDate', 'eq', 'réalisé'),
     ])
     totalSnapshotCount = countResult.count ?? 0
     extractionDocumentId = (runResult.data as { document_id: string } | null)?.document_id ?? null
@@ -157,6 +165,9 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         extractionPersonProps.push({ name: p.reviewed_label ?? p.label, status: p.source_payload?.statusAtDocumentDate ?? null })
       }
     }
+    chronologieItems = ((chronoResult.data ?? []) as Array<{ label: string; reviewed_label: string | null }>)
+      .map((p) => p.reviewed_label ?? p.label)
+
     const evs = pinnedResult.data
     if (evs && evs.length > 0) {
       const rows = evs as Array<{ id: string; source_page: number | null; caption: string | null; storage_path: string | null }>
@@ -385,6 +396,24 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                   </div>
                 ))}
               </div>
+            </section>
+          )}
+
+          {isImport && chronologieItems.length > 0 && (
+            <section className="rounded-xl border bg-card p-4 space-y-3">
+              <h2 className="text-[15px] font-semibold flex items-center gap-2">
+                <CheckCheck className="h-4 w-4 text-green-600" aria-hidden />
+                Évolution du chantier
+                <span className="text-xs font-normal text-muted-foreground">{chronologieItems.length} réalisé{chronologieItems.length > 1 ? 's' : ''}</span>
+              </h2>
+              <ul className="space-y-1.5 text-[13px]">
+                {chronologieItems.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="shrink-0 text-green-600 font-bold mt-0.5">✓</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
             </section>
           )}
 

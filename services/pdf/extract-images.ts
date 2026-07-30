@@ -14,6 +14,11 @@ export interface ExtractedImage {
   buffer: Buffer      // PNG
 }
 
+export interface ExtractPageResult {
+  images: ExtractedImage[]
+  pageText: string   // texte de la page, context pour les légendes IA
+}
+
 // Filtre principal : surface de la bbox >= MIN_PAGE_COVERAGE de la surface de la page.
 // Cela élimine les logos, bandeaux, icônes et cadres décoratifs (souvent < 5 % de la page)
 // sans dépendre des dimensions natives (qui peuvent être trompeuses).
@@ -24,7 +29,7 @@ const MIN_NATIVE_PX = 80
 export async function extractPageImages(
   pdfBuffer: Buffer,
   pageIndex: number, // 0-based
-): Promise<ExtractedImage[]> {
+): Promise<ExtractPageResult> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mu = (await import('mupdf')) as any
@@ -39,7 +44,10 @@ export async function extractPageImages(
     // "preserve-images" demande à mupdf d'inclure les blocs image dans le stext
     const sText = page.toStructuredText('preserve-images')
 
-    const results: ExtractedImage[] = []
+    // Texte de la page pour le contexte des légendes IA
+    const pageText: string = sText.asText?.() ?? ''
+
+    const images: ExtractedImage[] = []
     let imageIndex = 0
 
     sText.walk({
@@ -70,7 +78,7 @@ export async function extractPageImages(
           const png = pixmap.asPNG() as Uint8Array
           pixmap.destroy()
 
-          results.push({
+          images.push({
             pageIndex,
             imageIndex: imageIndex++,
             bbox,
@@ -87,8 +95,8 @@ export async function extractPageImages(
     sText.destroy()
     page.destroy()
     doc.destroy()
-    return results
+    return { images, pageText }
   } catch {
-    return []
+    return { images: [], pageText: '' }
   }
 }

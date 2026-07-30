@@ -21,6 +21,7 @@ export const LlmProposalSchema = z.object({
   sourceExcerpt: z.string().nullish(),
   sourcePayload: z.object({
     statusAtDocumentDate: z.string().nullish(),
+    companyRole: z.string().nullish(),
     dueDate: z.string().nullish(),
     responsibleParty: z.string().nullish(),
     relevanceScore: z.enum(['strong', 'medium', 'weak']).nullish(),
@@ -64,6 +65,10 @@ const GEMINI_RESPONSE_SCHEMA = {
             type: 'object',
             properties: {
               statusAtDocumentDate: { type: 'string' },
+              companyRole: {
+                type: 'string',
+                enum: ['maître d\'ouvrage', 'AMO', 'maître d\'œuvre', 'entreprise titulaire', 'sous-traitant', 'partenaire', 'diffusion uniquement'],
+              },
               dueDate: { type: 'string' },
               responsibleParty: { type: 'string' },
               relevanceScore: { type: 'string', enum: ['strong', 'medium', 'weak'] },
@@ -184,7 +189,7 @@ Pour chaque information retenue après la sélection :
 - **deadline** : échéance chiffrée ou datée, spécifique à ce chantier.
 - **knowledge_fact** : information factuelle durable sur le site. Inclut : l'avancement constaté lors de la visite (travaux exécutés ou en cours) avec statusAtDocumentDate = "réalisé" / "en cours" / "non démarré" ; l'état de plans techniques (VISA émis / en cours / refusé / à émettre) ; une contrainte technique permanente (nature du sol, cote NGF) ; l'état d'un ouvrage ou d'un matériau.
 - **person** : personne physique identifiable (prénom + nom) mentionnée dans le cartouche ou la liste de présence. Renseigner dans description : "Fonction — Entreprise [— email / tel]". Dans sourcePayload, renseigner statusAtDocumentDate avec le statut de présence ("présent" / "invité" / "absent excusé" / "absent non excusé" / "diffusion uniquement" / "inconnu").
-- **company** : entreprise ou organisme cité avec un rôle sur ce chantier. Renseigner dans description : "Rôle chantier [— contact nommé]" avec le rôle parmi : maître d'ouvrage, AMO, maître d'œuvre, entreprise titulaire, sous-traitant, partenaire, diffusion uniquement. Dans sourcePayload, renseigner statusAtDocumentDate avec ce rôle. Une entreprise uniquement destinataire d'un document → "diffusion uniquement".
+- **company** : entreprise ou organisme cité avec un rôle sur ce chantier. Renseigner dans description : "Rôle chantier [— contact nommé]". Dans sourcePayload, renseigner **companyRole** (champ obligatoire) avec le rôle exact de l'entreprise. Une entreprise uniquement destinataire d'un document → "diffusion uniquement".
 
 ---
 
@@ -207,7 +212,16 @@ Pour chaque **entreprise ou organisme** identifiable avec un rôle sur ce chanti
 - créer une proposition **company** ;
 - label = "Nom de l'entreprise" ;
 - description = "Rôle chantier [— contact nommé]" ;
-- sourcePayload.statusAtDocumentDate = rôle parmi : "maître d'ouvrage", "AMO", "maître d'œuvre", "entreprise titulaire", "sous-traitant", "partenaire", "diffusion uniquement".
+- sourcePayload.**companyRole** = rôle OBLIGATOIRE — ne jamais laisser vide pour une entreprise présente sur le chantier.
+
+Correspondances habituelles dans les PV français :
+MO / Maître d'ouvrage / Propriétaire → "maître d'ouvrage"
+MOE / Maître d'œuvre / Architecte / BET / Bureau d'études → "maître d'œuvre"
+AMO / Assistant à maîtrise d'ouvrage → "AMO"
+Titulaire / Entreprise / Marché / Adjudicataire → "entreprise titulaire"
+Sous-traitant / ST / Co-traitant → "sous-traitant"
+Autre intervenant présent sans contrat direct → "partenaire"
+Destinataire d'un document uniquement, sans présence → "diffusion uniquement"
 
 **Règle critique** : une entreprise apparaissant uniquement comme destinataire d'un document (diffusion) sans intervenant nommé sur ce chantier → ne pas créer de proposition company.
 

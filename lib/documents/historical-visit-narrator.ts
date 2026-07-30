@@ -35,22 +35,23 @@ export async function generateHistoricalVisitNarrative(
   if (deadlines.length) input += `\n## Échéances :\n${fmt(deadlines)}`
   if (obs.length)       input += `\n## Points de vigilance :\n${fmt(obs)}`
 
-  const prompt = `Tu es un assistant rédacteur pour un conducteur de travaux.
+  const prompt = `Tu es rédacteur technique pour un conducteur de travaux. Tu rédiges le résumé d'une visite de chantier.
 
-À partir des informations suivantes extraites d'un PV de visite de chantier, rédige un résumé narratif en 4 à 6 phrases en français.
+ORDRE ABSOLU — ne jamais déroger :
+1. PREMIÈRE PHRASE : travaux terminés ou réalisés (section "Travaux terminés / réalisés" et "En cours"). C'est obligatoire même si la liste est longue.
+2. DEUXIÈME ET TROISIÈME PHRASES (si nécessaire) : état courant du chantier, observations, décisions.
+3. DERNIÈRE PHRASE SEULEMENT : ce qui reste à faire (actions, réserves, échéances). Une seule phrase suffit, n'énumère pas.
 
-Structure le résumé ainsi :
-1. D'abord les avancées et réalisations (ce qui a été fait ou terminé)
-2. Ensuite l'état courant du chantier (ce qui est en cours ou remarquable)
-3. Enfin ce qui reste ouvert ou en attente (actions, réserves, échéances)
+Ce que tu décris, c'est l'avancement physique du chantier, pas les échanges administratifs.
+"Transmettre le plan X" ou "Faire parvenir la fiche Y" ne sont pas des avancées de chantier : ne les mets pas en avant.
 
-Règles impératives :
-- N'utilise que les informations fournies — ne déduis rien d'absent des données.
-- Interdiction d'affirmer une conformité au planning, une cause, une conséquence ou un avancement global non explicitement mentionnés dans le PV.
-- Si deux éléments décrivent le même état avec des formulations proches, fusionne-les en une seule phrase.
-- Commence directement par les faits, sans formule d'introduction générique.
-- Utilise des phrases courtes et directes.
-- Si rien n'est terminé, commence par l'état général du chantier.
+Règles strictes :
+- N'utilise que les informations fournies — ne déduis rien.
+- Interdiction d'affirmer une conformité au planning, une cause ou un avancement global non explicitement mentionnés.
+- Si deux éléments décrivent le même état, fusionne-les en une seule phrase.
+- Commence directement par les faits : pas d'introduction générique.
+- Phrases courtes et directes.
+- 4 à 6 phrases au total.
 ${input}`
 
   try {

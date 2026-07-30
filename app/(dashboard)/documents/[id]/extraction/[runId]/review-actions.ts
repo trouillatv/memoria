@@ -362,7 +362,7 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
         .in('review_status', ['accepted', 'edited'])
         .eq('proposal_family', 'person')
 
-      type SPCompany = { statusAtDocumentDate?: string }
+      type SPCompany = { companyRole?: string; statusAtDocumentDate?: string }
       type SPPerson = { statusAtDocumentDate?: string; linkedCompanyName?: string | null; emailAddress?: string | null; phoneNumber?: string | null }
 
       const companyMap = new Map<string, { companyId: string; siteIntervenantId: string }>()
@@ -370,7 +370,7 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
       for (const rawProp of companyPropsRaw ?? []) {
         const prop = rawProp as { id: string; label: string; reviewed_label: string | null; source_payload: SPCompany | null }
         const companyName = prop.reviewed_label ?? prop.label
-        const role = prop.source_payload?.statusAtDocumentDate ?? 'partenaire'
+        const role = prop.source_payload?.companyRole ?? prop.source_payload?.statusAtDocumentDate ?? 'partenaire'
 
         const { data: existingCo } = await admin
           .from('companies')
