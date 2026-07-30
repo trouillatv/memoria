@@ -20,10 +20,11 @@ export default function SiteError({
         <p className="text-sm text-muted-foreground">
           Vos données sont en sécurité. Essayez de recharger la page.
         </p>
-        {error.digest && (
-          <p className="font-mono text-xs text-muted-foreground border rounded px-3 py-2 inline-block bg-muted/40">
-            Code&nbsp;: {error.digest}
-          </p>
+        {(error.digest || error.message) && (
+          <div className="font-mono text-xs text-muted-foreground border rounded px-3 py-2 bg-muted/40 text-left space-y-1 max-w-md mx-auto">
+            {error.digest && <p>Code&nbsp;: {error.digest}</p>}
+            {error.message && <p>Message&nbsp;: {error.message}</p>}
+          </div>
         )}
         <div className="flex items-center justify-center gap-3 pt-2">
           <button
