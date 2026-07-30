@@ -494,6 +494,8 @@ export interface DbSiteReport {
   updated_at: string
   /** Soft-delete d'une visite non concluante (mig 190). NULL = active. */
   deleted_at: string | null
+  /** Run d'extraction IA source — posé à la matérialisation d'une visite historique (mig 258). */
+  extraction_run_id?: string | null
 }
 
 export type SiteReportAttachmentKind = 'audio' | 'photo' | 'file' | 'video'
@@ -1227,6 +1229,8 @@ export interface DbDocumentExtractionEvidence {
   nearby_text: string | null
   metadata: Record<string, unknown> | null
   created_at: string
+  /** Snapshot sélectionné pour la fiche visite historique (mig 263). */
+  pinned_for_visit?: boolean
 }
 
 export interface DbDocumentProposalEvidence {

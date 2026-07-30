@@ -90,8 +90,40 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
 
   const { captured, understood, produced, historical, enrichment } = narrative
   const isImport = visit.origin === 'import'
+
+  // Photos épinglées depuis le PV — calculées avant photos pour alimenter le compteur
+  type PinnedSnapshot = { id: string; page: number | null; caption: string | null; url: string }
+  const pinnedSnapshots: PinnedSnapshot[] = []
+  const runId = isImport ? (visit.extraction_run_id ?? null) : null
+  if (runId) {
+    const admin = createAdminClient()
+    const { data: evs } = await admin
+      .from('document_extraction_evidence')
+      .select('id, source_page, caption, storage_path')
+      .eq('extraction_run_id', runId)
+      .eq('pinned_for_visit', true)
+      .eq('evidence_type', 'page_snapshot')
+    if (evs && evs.length > 0) {
+      const rows = evs as Array<{ id: string; source_page: number | null; caption: string | null; storage_path: string | null }>
+      const paths = rows.map((e) => e.storage_path).filter((p): p is string => !!p)
+      if (paths.length > 0) {
+        const { data: signed } = await admin.storage.from('documents').createSignedUrls(paths, 3600)
+        const urlByPath = new Map(
+          ((signed ?? []) as Array<{ path: string | null; signedUrl: string }>)
+            .filter((s) => s.path && s.signedUrl)
+            .map((s) => [s.path as string, s.signedUrl]),
+        )
+        for (const e of rows) {
+          if (!e.storage_path) continue
+          const url = urlByPath.get(e.storage_path)
+          if (url) pinnedSnapshots.push({ id: e.id, page: e.source_page, caption: e.caption, url })
+        }
+      }
+    }
+  }
+
   const vocaux = captured.filter((c) => c.kind === 'vocal').length
-  const photos = captured.filter((c) => c.kind === 'photo').length
+  const photos = captured.filter((c) => c.kind === 'photo').length + (isImport ? pinnedSnapshots.length : 0)
   const videos = captured.filter((c) => c.kind === 'video').length
   const intervenants = understood.filter((p) => p.type === 'stakeholder').length
   const enAttente = understood.filter((p) => p.status === 'proposed')
@@ -214,6 +246,33 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
               <Chiffre icon={FileText} teinte="text-slate-600" valeur={produitsCount} label="objets produits" sous={isImport ? 'importés depuis le PV' : 'rattachés à ce récit'} />
             </dl>
           </section>
+
+          {isImport && pinnedSnapshots.length > 0 && (
+            <section className="rounded-xl border bg-card p-4 space-y-3">
+              <h2 className="text-[15px] font-semibold flex items-center gap-2">
+                <Camera className="h-4 w-4 text-sky-600" aria-hidden />
+                Photos depuis le PV
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {pinnedSnapshots.map((snap) => (
+                  <a key={snap.id} href={snap.url} target="_blank" rel="noopener noreferrer" className="block group">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={snap.url}
+                      alt={snap.caption ?? `Page ${snap.page ?? ''}`}
+                      className="w-full rounded border object-contain aspect-video bg-muted group-hover:opacity-90 transition-opacity"
+                    />
+                    {snap.caption && (
+                      <p className="text-[11px] text-muted-foreground mt-1 truncate">{snap.caption}</p>
+                    )}
+                    {!snap.caption && snap.page !== null && (
+                      <p className="text-[11px] text-muted-foreground mt-1">Page {snap.page}</p>
+                    )}
+                  </a>
+                ))}
+              </div>
+            </section>
+          )}
 
           {isImport && historical.length > 0 && (
             <section className="rounded-xl border bg-card p-4 space-y-3">

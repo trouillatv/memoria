@@ -176,6 +176,36 @@ export async function acceptAllPendingAction(fd: FormData): Promise<{
   return { ok: true, count: pending.length }
 }
 
+// ─── Épingler un snapshot pour la fiche visite ────────────────────────────────
+
+export async function toggleEvidencePinAction(fd: FormData): Promise<ActionResult> {
+  const evidenceId = fd.get('evidence_id')?.toString()
+  const documentId = fd.get('document_id')?.toString()
+  const pinned = fd.get('pinned')?.toString() === 'true'
+
+  if (!evidenceId || !documentId) return { ok: false, error: 'Paramètres manquants' }
+
+  const access = await verifyReviewAccess(documentId)
+  if (!access.ok) return access
+
+  const admin = createAdminClient()
+  const { data: ev } = await admin
+    .from('document_extraction_evidence')
+    .select('id')
+    .eq('id', evidenceId)
+    .eq('document_id', documentId)
+    .maybeSingle()
+  if (!ev) return { ok: false, error: 'Preuve introuvable' }
+
+  const { error } = await admin
+    .from('document_extraction_evidence')
+    .update({ pinned_for_visit: pinned })
+    .eq('id', evidenceId)
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
 // ─── Matérialisation — création de la visite historique ──────────────────────
 
 export async function createHistoricalVisitAction(fd: FormData): Promise<{

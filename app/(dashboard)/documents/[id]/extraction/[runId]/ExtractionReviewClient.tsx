@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import { ProposalCard } from './ProposalCard'
-import { createHistoricalVisitAction, acceptAllPendingAction } from './review-actions'
+import { createHistoricalVisitAction, acceptAllPendingAction, toggleEvidencePinAction } from './review-actions'
 import type { DocumentExtractionProposalWithEvidence, DbDocumentExtractionEvidence, DocumentEvidenceRelationType } from '@/types/db'
 import type { ReviewSummary } from '@/lib/documents/effective-proposal'
 
@@ -43,18 +43,41 @@ const RELATION_LABEL: Record<string, string> = {
 function OrphanEvidenceItem({
   evidence,
   signedUrls,
+  isPinned,
+  isPending,
+  onToggle,
 }: {
   evidence: DbDocumentExtractionEvidence
   signedUrls: Record<string, string>
+  isPinned: boolean
+  isPending: boolean
+  onToggle: () => void
 }) {
   const imgUrl = signedUrls[evidence.id]
   const excerptText = (evidence.metadata as { text?: string } | null)?.text
+  const isSnapshot = evidence.evidence_type === 'page_snapshot'
 
   return (
-    <div className="rounded border bg-muted/30 p-3 space-y-1.5 text-xs">
-      <p className="font-medium text-muted-foreground">
-        {evidence.evidence_type === 'page_snapshot' ? 'Snapshot' : 'Extrait'} · Page {evidence.source_page}
-      </p>
+    <div className={`rounded border p-3 space-y-1.5 text-xs transition-colors ${isPinned ? 'border-sky-300 bg-sky-50 dark:border-sky-700 dark:bg-sky-950/20' : 'bg-muted/30'}`}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-medium text-muted-foreground">
+          {isSnapshot ? 'Snapshot' : 'Extrait'} · Page {evidence.source_page}
+        </p>
+        {isSnapshot && (
+          <button
+            type="button"
+            onClick={onToggle}
+            disabled={isPending}
+            className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-medium transition-colors disabled:opacity-50 ${
+              isPinned
+                ? 'bg-sky-200 text-sky-800 hover:bg-sky-300 dark:bg-sky-800 dark:text-sky-100'
+                : 'bg-muted text-muted-foreground hover:bg-muted-foreground/20'
+            }`}
+          >
+            {isPending ? '…' : isPinned ? 'Incluse dans la visite' : 'Inclure dans la visite'}
+          </button>
+        )}
+      </div>
       {evidence.caption && <p className="text-muted-foreground italic">{evidence.caption}</p>}
       {excerptText && <p className="text-muted-foreground line-clamp-3">{excerptText}</p>}
       {evidence.nearby_text && <p className="text-muted-foreground line-clamp-2">{evidence.nearby_text}</p>}
@@ -101,6 +124,37 @@ export function ExtractionReviewClient({
   const [createError, setCreateError] = useState<string | null>(null)
   const [acceptAllMsg, setAcceptAllMsg] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  // Snapshots épinglés — état local optimiste, synchronisé depuis les props
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(
+    () => new Set(orphanEvidence.filter((e) => e.pinned_for_visit).map((e) => e.id)),
+  )
+  const [pendingPins, setPendingPins] = useState<Set<string>>(new Set())
+
+  async function togglePin(evidenceId: string) {
+    const newPinned = !pinnedIds.has(evidenceId)
+    setPinnedIds((prev) => {
+      const next = new Set(prev)
+      if (newPinned) next.add(evidenceId)
+      else next.delete(evidenceId)
+      return next
+    })
+    setPendingPins((prev) => new Set([...prev, evidenceId]))
+    const fd = new FormData()
+    fd.set('evidence_id', evidenceId)
+    fd.set('document_id', documentId)
+    fd.set('pinned', String(newPinned))
+    const result = await toggleEvidencePinAction(fd)
+    setPendingPins((prev) => { const next = new Set(prev); next.delete(evidenceId); return next })
+    if (!result.ok) {
+      setPinnedIds((prev) => {
+        const next = new Set(prev)
+        if (newPinned) next.delete(evidenceId)
+        else next.add(evidenceId)
+        return next
+      })
+    }
+  }
 
   function handleAcceptAll() {
     setAcceptAllMsg(null)
@@ -291,22 +345,51 @@ export function ExtractionReviewClient({
       </div>
 
       {/* Photos non associées */}
-      {orphanEvidence.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Photos à classer
-            <span className="font-normal normal-case ml-2">({orphanEvidence.length})</span>
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Ces preuves n'ont pas été associées à une proposition par l'extraction.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {orphanEvidence.map((ev) => (
-              <OrphanEvidenceItem key={ev.id} evidence={ev} signedUrls={signedUrls} />
-            ))}
-          </div>
-        </section>
-      )}
+      {orphanEvidence.length > 0 && (() => {
+        const snapshots = orphanEvidence.filter((e) => e.evidence_type === 'page_snapshot')
+        const others = orphanEvidence.filter((e) => e.evidence_type !== 'page_snapshot')
+        const pinnedCount = snapshots.filter((e) => pinnedIds.has(e.id)).length
+        return (
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                Photos à classer
+                <span className="font-normal normal-case ml-2">({snapshots.length})</span>
+              </h2>
+              {pinnedCount > 0 && (
+                <span className="text-xs font-medium text-sky-700 dark:text-sky-400">
+                  {pinnedCount} incluse{pinnedCount > 1 ? 's' : ''} dans la visite
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Sélectionnez les pages à afficher dans la fiche de la visite historique.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {snapshots.map((ev) => (
+                <OrphanEvidenceItem
+                  key={ev.id}
+                  evidence={ev}
+                  signedUrls={signedUrls}
+                  isPinned={pinnedIds.has(ev.id)}
+                  isPending={pendingPins.has(ev.id)}
+                  onToggle={() => togglePin(ev.id)}
+                />
+              ))}
+              {others.map((ev) => (
+                <OrphanEvidenceItem
+                  key={ev.id}
+                  evidence={ev}
+                  signedUrls={signedUrls}
+                  isPinned={false}
+                  isPending={false}
+                  onToggle={() => {}}
+                />
+              ))}
+            </div>
+          </section>
+        )
+      })()}
     </div>
   )
 }
