@@ -102,9 +102,10 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
   let extractionPersonCount = 0
   let extractionCompanyCount = 0
   let historicalSummary: string | null = null
-  type ExtPersonProp = { name: string; status: string | null }
+  type ExtPersonProp = { name: string; status: string | null; description: string | null; linkedCompanyName: string | null }
   const extractionPersonProps: ExtPersonProp[] = []
-  let chronologieItems: string[] = []
+  type ChronologieItem = { label: string; page: number | null }
+  let chronologieItems: ChronologieItem[] = []
   const runId = isImport ? (visit.extraction_run_id ?? null) : null
   if (runId) {
     const admin = createAdminClient()
@@ -132,7 +133,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         .in('review_status', ['accepted', 'edited', 'materialized']),
       admin
         .from('document_extraction_proposal')
-        .select('label, reviewed_label, proposal_family, source_payload')
+        .select('label, reviewed_label, proposal_family, source_payload, description')
         .eq('extraction_run_id', runId)
         .in('review_status', ['accepted', 'edited', 'materialized'])
         .in('proposal_family', ['person', 'company']),
@@ -143,7 +144,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         .maybeSingle(),
       admin
         .from('document_extraction_proposal')
-        .select('label, reviewed_label')
+        .select('label, reviewed_label, source_page')
         .eq('extraction_run_id', runId)
         .eq('proposal_family', 'knowledge_fact')
         .in('review_status', ['accepted', 'edited', 'materialized'])
@@ -156,17 +157,23 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
     historicalSummary = typeof rawSummary === 'string'
       ? rawSummary
       : (rawSummary as { text?: string } | null)?.text ?? null
-    const intProps = (personPropsResult.data ?? []) as Array<{ label: string; reviewed_label: string | null; proposal_family: string; source_payload: { statusAtDocumentDate?: string } | null }>
+    const intProps = (personPropsResult.data ?? []) as Array<{ label: string; reviewed_label: string | null; proposal_family: string; source_payload: { statusAtDocumentDate?: string; linkedCompanyName?: string } | null; description: string | null }>
     extractionIntervenantCount = intProps.length
     extractionPersonCount = intProps.filter((p) => p.proposal_family === 'person').length
     extractionCompanyCount = intProps.filter((p) => p.proposal_family === 'company').length
     for (const p of intProps) {
       if (p.proposal_family === 'person') {
-        extractionPersonProps.push({ name: p.reviewed_label ?? p.label, status: p.source_payload?.statusAtDocumentDate ?? null })
+        extractionPersonProps.push({
+          name: p.reviewed_label ?? p.label,
+          status: p.source_payload?.statusAtDocumentDate ?? null,
+          description: p.description ?? null,
+          linkedCompanyName: p.source_payload?.linkedCompanyName ?? null,
+        })
       }
     }
-    chronologieItems = ((chronoResult.data ?? []) as Array<{ label: string; reviewed_label: string | null }>)
-      .map((p) => p.reviewed_label ?? p.label)
+    chronologieItems = ((chronoResult.data ?? []) as Array<{ label: string; reviewed_label: string | null; source_page: number | null }>)
+      .sort((a, b) => (a.source_page ?? 9999) - (b.source_page ?? 9999))
+      .map((p) => ({ label: p.reviewed_label ?? p.label, page: p.source_page }))
 
     const evs = pinnedResult.data
     if (evs && evs.length > 0) {
@@ -406,14 +413,17 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                 Évolution du chantier
                 <span className="text-xs font-normal text-muted-foreground">{chronologieItems.length} réalisé{chronologieItems.length > 1 ? 's' : ''}</span>
               </h2>
-              <ul className="space-y-1.5 text-[13px]">
+              <ol className="relative text-[13px]">
                 {chronologieItems.map((item, i) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <span className="shrink-0 text-green-600 font-bold mt-0.5">✓</span>
-                    <span>{item}</span>
+                  <li key={i} className="relative flex items-start gap-3 pb-4 last:pb-0">
+                    {i < chronologieItems.length - 1 && (
+                      <span aria-hidden className="absolute left-[6px] top-[18px] h-[calc(100%-10px)] w-px bg-green-200 dark:bg-green-900/60" />
+                    )}
+                    <span aria-hidden className="relative mt-0.5 shrink-0 h-3.5 w-3.5 rounded-full border-2 border-green-500 bg-card" />
+                    <span className="min-w-0 pt-px">{item.label}</span>
                   </li>
                 ))}
-              </ul>
+              </ol>
             </section>
           )}
 
@@ -425,8 +435,15 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
               </h2>
               <div className="divide-y text-[13px]">
                 {extractionPersonProps.map((p, idx) => (
-                  <div key={idx} className="py-2 flex items-center justify-between gap-2">
-                    <span className="font-medium">{p.name}</span>
+                  <div key={idx} className="py-2.5 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium leading-snug">{p.name}</p>
+                      {(p.description || p.linkedCompanyName) && (
+                        <p className="text-[11.5px] text-muted-foreground mt-0.5 truncate">
+                          {p.description ?? p.linkedCompanyName}
+                        </p>
+                      )}
+                    </div>
                     <AttendanceBadge status={p.status} />
                   </div>
                 ))}

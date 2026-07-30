@@ -157,7 +157,7 @@ export async function extractHistoricalPv(
           // Légende IA basée sur le texte de la page (best-effort, non bloquant)
           let caption: string | null = null
           try {
-            caption = await generateImageCaption(pageResult.pageText)
+            caption = await generateImageCaption(img.buffer, pageResult.pageText)
           } catch { /* caption reste null */ }
           extractedImageInfos.push({ storagePath, pageNum, nativeWidth: img.nativeWidth, nativeHeight: img.nativeHeight, bbox: img.bbox, caption })
         } else {
