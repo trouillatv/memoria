@@ -378,12 +378,57 @@ export async function listOrphanEvidenceForRun(
   const all = allEvidence as DbDocumentExtractionEvidence[]
   const evidenceIds = all.map((e) => e.id)
 
+  // Un lien 'candidate' (suggestion par page) ne compte pas comme "liée" :
+  // la preuve reste visible pour confirmation manuelle dans l'interface.
   const { data: linked, error: linkErr } = await supabase
     .from('document_proposal_evidence')
     .select('evidence_id')
     .in('evidence_id', evidenceIds)
+    .neq('relation_type', 'candidate')
   if (linkErr) throw linkErr
 
   const linkedIds = new Set((linked ?? []).map((r: { evidence_id: string }) => r.evidence_id))
   return all.filter((e) => !linkedIds.has(e.id))
+}
+
+export async function listCandidateLinksForRun(runId: string): Promise<Array<{
+  evidence_id: string
+  proposal_id: string
+  confidence: number | null
+  proposal_label: string
+  proposal_family: string
+}>> {
+  const supabase = createAdminClient()
+
+  const { data: allEvidence, error: evErr } = await supabase
+    .from('document_extraction_evidence')
+    .select('id')
+    .eq('extraction_run_id', runId)
+  if (evErr || !allEvidence?.length) return []
+
+  const evidenceIds = (allEvidence as Array<{ id: string }>).map((e) => e.id)
+
+  const { data, error } = await supabase
+    .from('document_proposal_evidence')
+    .select('evidence_id, proposal_id, confidence, document_extraction_proposal(label, reviewed_label, proposal_family)')
+    .eq('relation_type', 'candidate')
+    .in('evidence_id', evidenceIds)
+  if (error) throw error
+
+  type Row = {
+    evidence_id: string
+    proposal_id: string
+    confidence: number | null
+    document_extraction_proposal: { label: string; reviewed_label: string | null; proposal_family: string } | null
+  }
+
+  return ((data ?? []) as unknown as Row[])
+    .filter((r) => r.document_extraction_proposal !== null)
+    .map((r) => ({
+      evidence_id: r.evidence_id,
+      proposal_id: r.proposal_id,
+      confidence: r.confidence,
+      proposal_label: r.document_extraction_proposal!.reviewed_label ?? r.document_extraction_proposal!.label,
+      proposal_family: r.document_extraction_proposal!.proposal_family,
+    }))
 }

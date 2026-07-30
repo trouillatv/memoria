@@ -6,7 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getDocument } from '@/lib/db/documents'
-import { getExtractionRun, listExtractionForReview, listOrphanEvidenceForRun } from '@/lib/db/document-extractions'
+import { getExtractionRun, listExtractionForReview, listOrphanEvidenceForRun, listCandidateLinksForRun } from '@/lib/db/document-extractions'
 import { computeReviewSummary } from '@/lib/documents/effective-proposal'
 import { getExistingMaterializedVisit } from '@/lib/db/historical-visit-materialization'
 import { ExtractionReviewClient } from './ExtractionReviewClient'
@@ -87,10 +87,11 @@ export default async function ExtractionReviewPage({
   }
 
   // Charger les données de revue + visite déjà matérialisée (idempotence)
-  const [proposalsWithEvidence, orphanEvidence, alreadySiteReportId] = await Promise.all([
+  const [proposalsWithEvidence, orphanEvidence, alreadySiteReportId, candidateLinks] = await Promise.all([
     listExtractionForReview(runId),
     listOrphanEvidenceForRun(runId),
     getExistingMaterializedVisit(runId),
+    listCandidateLinksForRun(runId),
   ])
 
   // Générer des URLs signées pour toutes les preuves avec storage_path
@@ -159,6 +160,7 @@ export default async function ExtractionReviewPage({
         effectiveDate={doc.effective_date ?? null}
         targetSiteId={run.target_site_id ?? null}
         alreadySiteReportId={alreadySiteReportId}
+        candidateLinks={candidateLinks}
       />
     </div>
   )

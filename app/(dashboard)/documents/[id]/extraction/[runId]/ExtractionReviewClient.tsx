@@ -1,12 +1,24 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import { ProposalCard } from './ProposalCard'
-import { createHistoricalVisitAction, acceptAllPendingAction, toggleEvidencePinAction, pinAllSnapshotsAction } from './review-actions'
+import {
+  createHistoricalVisitAction, acceptAllPendingAction,
+  toggleEvidencePinAction, pinAllSnapshotsAction,
+  confirmPhotoAssociationAction, dismissPhotoAssociationAction,
+} from './review-actions'
 import type { DocumentExtractionProposalWithEvidence, DbDocumentExtractionEvidence, DocumentEvidenceRelationType } from '@/types/db'
 import type { ReviewSummary } from '@/lib/documents/effective-proposal'
+
+type CandidateLink = {
+  evidence_id: string
+  proposal_id: string
+  confidence: number | null
+  proposal_label: string
+  proposal_family: string
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -47,12 +59,20 @@ function OrphanEvidenceItem({
   isPinned,
   isPending,
   onToggle,
+  candidates,
+  pendingLinks,
+  onConfirmLink,
+  onDismissLink,
 }: {
   evidence: DbDocumentExtractionEvidence
   signedUrls: Record<string, string>
   isPinned: boolean
   isPending: boolean
   onToggle: () => void
+  candidates: CandidateLink[]
+  pendingLinks: Set<string>
+  onConfirmLink: (proposalId: string) => void
+  onDismissLink: (proposalId: string) => void
 }) {
   const imgUrl = signedUrls[evidence.id]
   const excerptText = (evidence.metadata as { text?: string } | null)?.text
@@ -92,6 +112,50 @@ function OrphanEvidenceItem({
             className="max-h-40 rounded border object-contain"
           />
         </a>
+      )}
+      {candidates.length > 0 && (
+        <div className="mt-1 pt-2 border-t space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {candidates.length === 1 ? 'Association suggérée' : 'Associations suggérées'}
+          </p>
+          {candidates.map((c) => {
+            const key = `${evidence.id}:${c.proposal_id}`
+            const isLinkPending = pendingLinks.has(key)
+            return (
+              <div key={c.proposal_id} className="flex items-start gap-1.5">
+                <span
+                  className="min-w-0 flex-1 leading-snug text-muted-foreground line-clamp-2"
+                  title={c.proposal_label}
+                >
+                  {c.proposal_label}
+                  {c.confidence !== null && c.confidence < 0.6 && (
+                    <span className="ml-1 opacity-60">(ambiguë)</span>
+                  )}
+                </span>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onConfirmLink(c.proposal_id)}
+                    disabled={isLinkPending}
+                    title="Confirmer cette association"
+                    className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 disabled:opacity-50 transition-colors"
+                  >
+                    {isLinkPending ? '…' : '✓'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDismissLink(c.proposal_id)}
+                    disabled={isLinkPending}
+                    title="Ignorer cette suggestion"
+                    className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground hover:bg-muted-foreground/20 disabled:opacity-50 transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )
@@ -240,6 +304,7 @@ export function ExtractionReviewClient({
   effectiveDate,
   targetSiteId,
   alreadySiteReportId,
+  candidateLinks,
 }: {
   proposals: DocumentExtractionProposalWithEvidence[]
   orphanEvidence: DbDocumentExtractionEvidence[]
@@ -250,6 +315,7 @@ export function ExtractionReviewClient({
   effectiveDate: string | null
   targetSiteId: string | null
   alreadySiteReportId: string | null
+  candidateLinks: CandidateLink[]
 }) {
   const router = useRouter()
   const [filter, setFilter] = useState<Filter>('all')
@@ -264,6 +330,55 @@ export function ExtractionReviewClient({
     () => new Set(orphanEvidence.filter((e) => e.pinned_for_visit).map((e) => e.id)),
   )
   const [pendingPins, setPendingPins] = useState<Set<string>>(new Set())
+
+  // Candidats photo ↔ proposition — état optimiste pour confirm/dismiss
+  const [confirmedLinks, setConfirmedLinks] = useState<Set<string>>(new Set())
+  const [dismissedLinks, setDismissedLinks] = useState<Set<string>>(new Set())
+  const [pendingLinks, setPendingLinks] = useState<Set<string>>(new Set())
+
+  // Index evidenceId → candidats restants (filtre les déjà traités)
+  const candidatesByEvidence = useMemo(() => {
+    const map = new Map<string, CandidateLink[]>()
+    for (const link of candidateLinks) {
+      const key = `${link.evidence_id}:${link.proposal_id}`
+      if (confirmedLinks.has(key) || dismissedLinks.has(key)) continue
+      if (!map.has(link.evidence_id)) map.set(link.evidence_id, [])
+      map.get(link.evidence_id)!.push(link)
+    }
+    return map
+  }, [candidateLinks, confirmedLinks, dismissedLinks])
+
+  async function handleConfirmLink(evidenceId: string, proposalId: string) {
+    const key = `${evidenceId}:${proposalId}`
+    setPendingLinks((prev) => new Set([...prev, key]))
+    setConfirmedLinks((prev) => new Set([...prev, key]))
+    const fd = new FormData()
+    fd.set('evidence_id', evidenceId)
+    fd.set('proposal_id', proposalId)
+    fd.set('document_id', documentId)
+    const result = await confirmPhotoAssociationAction(fd)
+    setPendingLinks((prev) => { const next = new Set(prev); next.delete(key); return next })
+    if (!result.ok) {
+      setConfirmedLinks((prev) => { const next = new Set(prev); next.delete(key); return next })
+    } else {
+      router.refresh()
+    }
+  }
+
+  async function handleDismissLink(evidenceId: string, proposalId: string) {
+    const key = `${evidenceId}:${proposalId}`
+    setPendingLinks((prev) => new Set([...prev, key]))
+    setDismissedLinks((prev) => new Set([...prev, key]))
+    const fd = new FormData()
+    fd.set('evidence_id', evidenceId)
+    fd.set('proposal_id', proposalId)
+    fd.set('document_id', documentId)
+    const result = await dismissPhotoAssociationAction(fd)
+    setPendingLinks((prev) => { const next = new Set(prev); next.delete(key); return next })
+    if (!result.ok) {
+      setDismissedLinks((prev) => { const next = new Set(prev); next.delete(key); return next })
+    }
+  }
 
   async function togglePin(evidenceId: string) {
     const newPinned = !pinnedIds.has(evidenceId)
@@ -507,6 +622,10 @@ export function ExtractionReviewClient({
                   isPinned={pinnedIds.has(ev.id)}
                   isPending={pendingPins.has(ev.id)}
                   onToggle={() => togglePin(ev.id)}
+                  candidates={candidatesByEvidence.get(ev.id) ?? []}
+                  pendingLinks={pendingLinks}
+                  onConfirmLink={(proposalId) => handleConfirmLink(ev.id, proposalId)}
+                  onDismissLink={(proposalId) => handleDismissLink(ev.id, proposalId)}
                 />
               ))}
               {others.map((ev) => (
@@ -517,6 +636,10 @@ export function ExtractionReviewClient({
                   isPinned={false}
                   isPending={false}
                   onToggle={() => {}}
+                  candidates={[]}
+                  pendingLinks={pendingLinks}
+                  onConfirmLink={() => {}}
+                  onDismissLink={() => {}}
                 />
               ))}
             </div>

@@ -240,7 +240,37 @@ export async function extractHistoricalPv(
           bbox: info.bbox,
         },
       }))
-      await insertExtractionEvidence(runId, imageEvidenceInputs)
+      const imageEvidenceIds = await insertExtractionEvidence(runId, imageEvidenceInputs)
+
+      // 10b. Candidats photo ↔ proposition par correspondance de page
+      // Familles visuelles uniquement — on ne suggère pas une photo pour une action ou une personne.
+      const VISUAL_FAMILIES = new Set(['observation', 'knowledge_fact', 'reservation', 'vigilance'])
+      const pageToProposals = new Map<number, string[]>()
+      for (const proposal of llmResult.proposals) {
+        if (!VISUAL_FAMILIES.has(proposal.family) || !proposal.sourcePage) continue
+        const proposalId = proposalKeyToId.get(proposal.temporaryKey)
+        if (!proposalId) continue
+        if (!pageToProposals.has(proposal.sourcePage)) pageToProposals.set(proposal.sourcePage, [])
+        pageToProposals.get(proposal.sourcePage)!.push(proposalId)
+      }
+      let candidateCount = 0
+      for (let i = 0; i < extractedImageInfos.length; i++) {
+        const info = extractedImageInfos[i]
+        const evidenceId = imageEvidenceIds[i]
+        const pageProposals = pageToProposals.get(info.pageNum) ?? []
+        if (pageProposals.length === 0) continue
+        // Confiance inversement proportionnelle au nombre de candidats sur la même page
+        const confidence = Number((1 / pageProposals.length).toFixed(3))
+        for (const proposalId of pageProposals) {
+          try {
+            await linkProposalEvidence(proposalId, evidenceId, 'candidate', confidence)
+            candidateCount++
+          } catch { /* non-bloquant */ }
+        }
+      }
+      if (candidateCount > 0) {
+        log('photo_candidates_linked', documentId, { count: candidateCount })
+      }
     }
 
     // 11. Run terminé

@@ -228,6 +228,65 @@ export async function pinAllSnapshotsAction(fd: FormData): Promise<ActionResult>
   return { ok: true }
 }
 
+// ─── Association photo ↔ proposition ─────────────────────────────────────────
+
+export async function confirmPhotoAssociationAction(fd: FormData): Promise<ActionResult> {
+  const evidenceId = fd.get('evidence_id')?.toString()
+  const proposalId = fd.get('proposal_id')?.toString()
+  const documentId = fd.get('document_id')?.toString()
+  if (!evidenceId || !proposalId || !documentId) return { ok: false, error: 'Paramètres manquants' }
+
+  const access = await verifyReviewAccess(documentId)
+  if (!access.ok) return access
+
+  const admin = createAdminClient()
+  const { data: ev } = await admin
+    .from('document_extraction_evidence')
+    .select('id')
+    .eq('id', evidenceId)
+    .eq('document_id', documentId)
+    .maybeSingle()
+  if (!ev) return { ok: false, error: 'Preuve introuvable' }
+
+  // Supprimer le lien candidat, créer le lien illustrates (idempotent)
+  await admin
+    .from('document_proposal_evidence')
+    .delete()
+    .eq('evidence_id', evidenceId)
+    .eq('proposal_id', proposalId)
+    .eq('relation_type', 'candidate')
+
+  await linkProposalEvidence(proposalId, evidenceId, 'illustrates')
+  return { ok: true }
+}
+
+export async function dismissPhotoAssociationAction(fd: FormData): Promise<ActionResult> {
+  const evidenceId = fd.get('evidence_id')?.toString()
+  const proposalId = fd.get('proposal_id')?.toString()
+  const documentId = fd.get('document_id')?.toString()
+  if (!evidenceId || !proposalId || !documentId) return { ok: false, error: 'Paramètres manquants' }
+
+  const access = await verifyReviewAccess(documentId)
+  if (!access.ok) return access
+
+  const admin = createAdminClient()
+  const { data: ev } = await admin
+    .from('document_extraction_evidence')
+    .select('id')
+    .eq('id', evidenceId)
+    .eq('document_id', documentId)
+    .maybeSingle()
+  if (!ev) return { ok: false, error: 'Preuve introuvable' }
+
+  await admin
+    .from('document_proposal_evidence')
+    .delete()
+    .eq('evidence_id', evidenceId)
+    .eq('proposal_id', proposalId)
+    .eq('relation_type', 'candidate')
+  return { ok: true }
+}
+
 // ─── Matérialisation — création de la visite historique ──────────────────────
 
 export async function createHistoricalVisitAction(fd: FormData): Promise<{
