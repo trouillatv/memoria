@@ -6,8 +6,6 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
 import { createDocumentCollection, listDocumentCollections } from '@/lib/db/documents'
-import { uploadDocumentAction } from '@/app/(dashboard)/documents/actions'
-import { importVisitAction } from '@/app/(field)/m/import/import-actions'
 
 async function ensureSiteCollection(siteId: string): Promise<string> {
   const collections = await listDocumentCollections()
@@ -25,6 +23,7 @@ export async function uploadSiteDocumentAction(
   formData: FormData,
 ): Promise<{ ok: boolean; error?: string; documentId?: string; duplicate?: boolean }> {
   try {
+    const { uploadDocumentAction } = await import('@/app/(dashboard)/documents/actions')
     const collectionId = await ensureSiteCollection(siteId)
     const fd = new FormData()
     const file = formData.get('file')
@@ -51,8 +50,8 @@ export async function importSiteHistoricalPvAction(
   siteId: string,
   formData: FormData,
 ): Promise<{ ok: boolean; error?: string; documentId?: string }> {
-  console.log('[importSiteHistoricalPvAction] start', { siteId, hasFile: !!formData.get('file'), hasDate: !!formData.get('effective_date') })
   try {
+    const { uploadDocumentAction } = await import('@/app/(dashboard)/documents/actions')
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { ok: false, error: 'Non authentifié' }
@@ -112,6 +111,7 @@ export async function importSiteEvidenceAction(
   | { ok: false; error: string }
 > {
   try {
+    const { importVisitAction } = await import('@/app/(field)/m/import/import-actions')
     const fd = new FormData()
     fd.set('site_id', siteId)
     fd.set('source', 'upload')
