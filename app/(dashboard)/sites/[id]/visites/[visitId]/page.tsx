@@ -35,6 +35,8 @@ import { VisitDesk, type CaptureMedia } from './VisitDesk'
 import { ReanalyseButton } from './ReanalyseButton'
 import { VerserPiece } from './VerserPiece'
 import { RegenerateNarrativeButton } from './RegenerateNarrativeButton'
+import { getVisitSourceDocument } from '@/lib/db/visit-source-document'
+import { VisitSourceDocumentCard } from './VisitSourceDocument'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,11 +58,12 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id, visitId } = await params
-  const [identity, visit, narrative, doc] = await Promise.all([
+  const [identity, visit, narrative, doc, sourceDoc] = await Promise.all([
     getSiteIdentity(id),
     getVisit(visitId),
     buildVisitNarrative(visitId),
     getVisitCrDocument(visitId).catch(() => null),
+    getVisitSourceDocument(visitId).catch(() => null),
   ])
   if (!identity || !visit || visit.site_id !== id || !narrative) notFound()
   // Isolation tenant : le service-role passe outre la RLS, le filtre est ICI.
@@ -295,6 +298,11 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         </div>
         {isImport && (
           <p className="mt-1 text-[13px] text-muted-foreground">{frDate(debut)}</p>
+        )}
+        {sourceDoc && (
+          <div className="mt-3">
+            <VisitSourceDocumentCard doc={sourceDoc} siteId={id} />
+          </div>
         )}
         <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
           <span className="tabular-nums">
