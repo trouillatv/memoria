@@ -49,34 +49,53 @@ export async function requestHistoricalPvUpload(input: {
   | { ok: true; uploadId: string; uploadUrl: string; storagePath: string; expiresAt: string }
   | { ok: false; error: string }
 > {
+  let step = 'initialization'
   try {
+    console.log('[requestHistoricalPvUpload] START', { siteId: input.siteId, fileSize: input.fileSize })
+
+    step = 'authentication'
     const supabase = await createClient()
     const {
       data: { user },
     } = await supabase.auth.getUser()
-    if (!user) return { ok: false, error: 'Non authentifié' }
+    if (!user) {
+      console.error('[requestHistoricalPvUpload] FAIL: no user', { step })
+      return { ok: false, error: 'Non authentifié' }
+    }
+    console.log('[requestHistoricalPvUpload] authenticated', { userId: user.id })
 
+    step = 'role_check'
     const role = await getUserRoleById(user.id)
+    console.log('[requestHistoricalPvUpload] role fetched', { role })
     if (role !== 'admin' && role !== 'manager' && role !== 'chef_equipe') {
+      console.error('[requestHistoricalPvUpload] FAIL: insufficient role', { step, role })
       return { ok: false, error: 'Permissions insuffisantes' }
     }
 
     // Validation
+    step = 'validation'
     if (input.contentType !== 'application/pdf') {
+      console.error('[requestHistoricalPvUpload] FAIL: invalid content type', { step, contentType: input.contentType })
       return { ok: false, error: 'Seuls les fichiers PDF sont acceptés' }
     }
     if (input.fileSize > MAX_FILE_SIZE) {
+      console.error('[requestHistoricalPvUpload] FAIL: file too large', { step, fileSize: input.fileSize, maxSize: MAX_FILE_SIZE })
       return { ok: false, error: `Fichier trop volumineux (max ${MAX_FILE_SIZE / 1024 / 1024} Mo)` }
     }
     if (input.fileSize === 0) {
+      console.error('[requestHistoricalPvUpload] FAIL: empty file', { step })
       return { ok: false, error: 'Fichier vide' }
     }
+    console.log('[requestHistoricalPvUpload] validation passed')
 
+    step = 'generate_storage_path'
     const sanitized = sanitizeFilename(input.fileName)
     const uuid = crypto.randomUUID()
     const storagePath = `${UPLOAD_PATH_PREFIX}/${input.siteId}/${uuid}_${sanitized}`
+    console.log('[requestHistoricalPvUpload] storage path generated', { storagePath })
 
     // Créer l'enregistrement 'pending'
+    step = 'create_pending_upload'
     const uploadId = await createPendingUpload({
       siteId: input.siteId,
       userId: user.id,
@@ -85,21 +104,24 @@ export async function requestHistoricalPvUpload(input: {
       fileSize: input.fileSize,
       fileHashSha256: input.fileHashSha256,
     })
+    console.log('[requestHistoricalPvUpload] pending upload created', { uploadId })
 
     // Générer l'URL signée (valide 15 minutes)
+    step = 'create_signed_upload_url'
     const adminSupabase = createAdminClient()
     const { data: urlData, error: urlError } = await adminSupabase.storage
       .from(STORAGE_BUCKET)
       .createSignedUploadUrl(storagePath)
 
     if (urlError || !urlData?.signedUrl) {
+      console.error('[requestHistoricalPvUpload] FAIL: signed URL error', { step, error: urlError })
       await markUploadAsFailed(uploadId, 'Impossible de générer l\'URL signée')
       return { ok: false, error: 'Impossible de préparer l\'upload' }
     }
 
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString()
 
-    console.log('[requestHistoricalPvUpload]', {
+    console.log('[requestHistoricalPvUpload] SUCCESS', {
       uploadId,
       siteId: input.siteId,
       fileSize: input.fileSize,
@@ -114,7 +136,10 @@ export async function requestHistoricalPvUpload(input: {
       expiresAt,
     }
   } catch (e) {
-    console.error('[requestHistoricalPvUpload]', e)
+    console.error('[requestHistoricalPvUpload] EXCEPTION', {
+      step,
+      error: e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : e,
+    })
     return { ok: false, error: 'Une erreur inattendue est survenue' }
   }
 }
