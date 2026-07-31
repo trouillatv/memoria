@@ -12,6 +12,8 @@ import type { VisitWithCounts } from '@/lib/db/visits'
 import type { OverviewChangeInput } from '@/lib/chantier/overview-projections'
 import { interventionStatusLabel } from '@/lib/chantier/labels'
 import type { DbDocument } from '@/types/db'
+import type { PvDelta } from '@/lib/documents/pv-comparison'
+import type { SincePvSummary } from '@/lib/documents/pv-narrator'
 
 interface ChronologyWorkspaceProps {
   siteId: string
@@ -24,6 +26,11 @@ interface ChronologyWorkspaceProps {
   interventions: SupervisorInterventionRow[]
   /** PV et rapports de visite historiques rattachés au chantier (Sprint 4A). */
   historicalDocs: DbDocument[]
+  /** Lot 4C.1 — delta entre les deux derniers PV (null si < 2 PV disponibles). */
+  pvDelta?: PvDelta | null
+  pvSummary?: SincePvSummary | null
+  pvFromDate?: string | null
+  pvToDate?: string | null
 }
 
 export function ChronologyWorkspace({
@@ -35,6 +42,10 @@ export function ChronologyWorkspace({
   blocages,
   interventions,
   historicalDocs,
+  pvDelta,
+  pvSummary,
+  pvFromDate,
+  pvToDate,
 }: ChronologyWorkspaceProps) {
   const interventionEvents = interventions.slice(0, 6)
   const hasEvents = visits.length > 0 || interventionEvents.length > 0 || changes.length > 0 || deadlines.length > 0 || historicalDocs.length > 0
@@ -48,12 +59,28 @@ export function ChronologyWorkspace({
             <h1 className="text-xl font-semibold tracking-tight">Chronologie</h1>
             <p className="mt-1 text-sm text-muted-foreground">Ici, je peux comprendre comment on en est arrivé là.</p>
           </div>
-          <Link href={`/sites/${siteId}/recit`} className="w-fit shrink-0 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">
-            Lire le récit
-          </Link>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            {historicalDocs.length > 0 && (
+              <Link href={`/sites/${siteId}/historique`} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">
+                Histoire PV
+              </Link>
+            )}
+            <Link href={`/sites/${siteId}/recit`} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">
+              Lire le récit
+            </Link>
+          </div>
         </div>
 
         {lastVisit && <SinceLastVisit siteId={siteId} visit={lastVisit} actions={actions} blocages={blocages} />}
+        {pvDelta && pvSummary && pvFromDate && pvToDate && pvDelta.items.length > 0 && (
+          <SincePvSection
+            siteId={siteId}
+            delta={pvDelta}
+            summary={pvSummary}
+            fromDate={pvFromDate}
+            toDate={pvToDate}
+          />
+        )}
       </section>
 
       {hasEvents ? (
@@ -221,6 +248,115 @@ export function ChronologyWorkspace({
         </section>
       )}
     </main>
+  )
+}
+
+// ── Lot 4C.1 — Depuis le dernier PV ─────────────────────────────────────────
+
+type DeltaTransitionKey =
+  | 'réalisé' | 'levé' | 'nouveau' | 'aggravé' | 'réouvert'
+  | 'progressé' | 'annulé' | 'maintenu' | 'non_mentionné' | 'changé'
+
+const TRANSITION_CONFIG: Record<DeltaTransitionKey, { label: string; icon: string; color: string }> = {
+  réalisé:       { label: 'Réalisés',                  icon: '✓', color: 'text-emerald-700 dark:text-emerald-400' },
+  levé:          { label: 'Levés / résolus',            icon: '✓', color: 'text-emerald-700 dark:text-emerald-400' },
+  nouveau:       { label: 'Nouveaux',                   icon: '+', color: 'text-blue-700 dark:text-blue-400' },
+  aggravé:       { label: 'Aggravés',                   icon: '!', color: 'text-red-700 dark:text-red-400' },
+  réouvert:      { label: 'Réouverts',                  icon: '↩', color: 'text-red-600 dark:text-red-400' },
+  progressé:     { label: 'En progression',             icon: '↑', color: 'text-blue-600 dark:text-blue-400' },
+  annulé:        { label: 'Annulés',                    icon: '×', color: 'text-muted-foreground' },
+  maintenu:      { label: 'Toujours ouverts',           icon: '→', color: 'text-muted-foreground' },
+  non_mentionné: { label: 'Non mentionnés dans ce PV', icon: '○', color: 'text-orange-700 dark:text-orange-400' },
+  changé:        { label: 'Autres changements',         icon: '~', color: 'text-muted-foreground' },
+}
+
+const DISPLAY_ORDER: DeltaTransitionKey[] = [
+  'réalisé', 'levé', 'nouveau', 'aggravé', 'réouvert', 'progressé', 'annulé', 'non_mentionné', 'changé', 'maintenu',
+]
+
+function SincePvSection({
+  siteId,
+  delta,
+  summary,
+  fromDate,
+  toDate,
+}: {
+  siteId: string
+  delta: PvDelta
+  summary: SincePvSummary
+  fromDate: string
+  toDate: string
+}) {
+  const byTransition = new Map<DeltaTransitionKey, typeof delta.items>()
+  for (const item of delta.items) {
+    const key = item.transition as DeltaTransitionKey
+    if (!byTransition.has(key)) byTransition.set(key, [])
+    byTransition.get(key)!.push(item)
+  }
+
+  return (
+    <div className="mt-4 rounded-2xl border bg-muted/20 p-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Depuis le dernier PV
+        </p>
+        <p className="text-xs text-muted-foreground">
+          PV du {formatDate(fromDate)} → PV du {formatDate(toDate)}
+        </p>
+      </div>
+
+      <div className="mt-3 space-y-1">
+        {DISPLAY_ORDER.map((key) => {
+          const items = byTransition.get(key)
+          if (!items?.length) return null
+          const cfg = TRANSITION_CONFIG[key]
+          return (
+            <details key={key} className="group rounded-lg border bg-background/50">
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm">
+                <span className={cn('w-4 shrink-0 font-bold tabular-nums', cfg.color)}>{cfg.icon}</span>
+                <span className={cn('font-medium', cfg.color)}>{items.length}</span>
+                <span className="text-muted-foreground">{cfg.label}</span>
+                <ChevronDown className="ml-auto h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
+              </summary>
+              <ul className="border-t px-3 py-2 space-y-1">
+                {items.map((item) => (
+                  <li key={item.subjectThreadId} className="text-sm">
+                    {item.subjectThreadId ? (
+                      <Link
+                        href={`/sites/${siteId}/historique/${item.subjectThreadId}`}
+                        className="hover:underline underline-offset-2"
+                      >
+                        {item.label}
+                      </Link>
+                    ) : (
+                      item.label
+                    )}
+                    {item.fromStatus && item.toStatus && item.fromStatus !== item.toStatus && (
+                      <span className="ml-1.5 text-xs text-muted-foreground">
+                        ({item.fromStatus} → {item.toStatus})
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )
+        })}
+      </div>
+
+      {byTransition.has('non_mentionné') && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          ○ Non mentionné dans ce PV ne signifie pas levé — le sujet reste ouvert jusqu'à preuve du contraire.
+        </p>
+      )}
+
+      {summary.narrative && (
+        <div className="mt-3 rounded-xl border-l-2 border-muted pl-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Synthèse</p>
+          <p className="mt-1 text-sm leading-relaxed">{summary.narrative}</p>
+        </div>
+      )}
+    </div>
   )
 }
 

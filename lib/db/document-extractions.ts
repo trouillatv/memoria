@@ -493,3 +493,19 @@ export async function getIllustratesLinksForRun(runId: string): Promise<Array<{
     proposal_label: r.document_extraction_proposal?.reviewed_label ?? r.document_extraction_proposal?.label ?? null,
   }))
 }
+
+export async function getLatestRunsForSite(
+  siteId: string,
+  limit = 2,
+): Promise<DbDocumentExtractionRun[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('document_extraction_run')
+    .select('*')
+    .eq('target_site_id', siteId)
+    .eq('status', 'ready_for_review')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw new Error(error.message)
+  return ((data ?? []) as DbDocumentExtractionRun[]).reverse()
+}

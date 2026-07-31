@@ -24,6 +24,11 @@ import {
   type RecentActivityItem,
 } from '@/lib/db/site-cockpit'
 import { listDocumentsForTarget } from '@/lib/db/documents'
+import { getLatestRunsForSite } from '@/lib/db/document-extractions'
+import { getPvDelta } from '@/lib/documents/pv-comparison'
+import { generateSincePvSummary } from '@/lib/documents/pv-narrator'
+import type { PvDelta } from '@/lib/documents/pv-comparison'
+import type { SincePvSummary } from '@/lib/documents/pv-narrator'
 import { listSitePhotos } from '@/lib/db/site-photos'
 import { getVisitCapturePreviewUrls, listVisitCapturesBySite } from '@/lib/db/visit-captures'
 import { listSiteProofDossiers } from '@/lib/db/proof-dossier'
@@ -314,6 +319,19 @@ async function ChronologieView({ siteId }: { siteId: string }) {
   const sinceIso = lastVisit?.endedAt ?? lastVisit?.startedAt ?? null
   const changes = selectRecentChanges(toOverviewChanges(recentActivity), { sinceIso, limit: 5 })
   const historicalDocs = allSiteDocs.filter((d) => d.document_type === 'historical_visit_report')
+
+  let pvData: { delta: PvDelta; summary: SincePvSummary; fromDate: string; toDate: string } | null = null
+  try {
+    const runs = await getLatestRunsForSite(siteId, 2)
+    if (runs.length === 2) {
+      const delta = await getPvDelta(runs[0].id, runs[1].id)
+      const summary = await generateSincePvSummary(delta)
+      pvData = { delta, summary, fromDate: runs[0].created_at, toDate: runs[1].created_at }
+    }
+  } catch {
+    // non-bloquant
+  }
+
   return (
     <ChronologyWorkspace
       siteId={siteId}
@@ -324,6 +342,10 @@ async function ChronologieView({ siteId }: { siteId: string }) {
       blocages={blocages}
       interventions={interventions.items}
       historicalDocs={historicalDocs}
+      pvDelta={pvData?.delta ?? null}
+      pvSummary={pvData?.summary ?? null}
+      pvFromDate={pvData?.fromDate ?? null}
+      pvToDate={pvData?.toDate ?? null}
     />
   )
 }
