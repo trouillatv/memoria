@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, useTransition } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import Link from 'next/link'
 import { Camera, ChevronDown, FileText, History, Loader2, Mic, Video } from 'lucide-react'
-import { importSiteEvidenceAction, uploadSiteDocumentAction, importSiteHistoricalPvAction } from './site-add-actions'
+import { importSiteEvidenceAction, uploadSiteDocumentAction } from './site-add-actions'
+import { HistoricalPvUploadForm } from './HistoricalPvUploadForm'
 
 type DialogKind = 'document' | 'evidence' | 'historical_pv' | null
 
@@ -248,67 +249,9 @@ function SiteHistoricalPvDialog({
   setMessage: (message: string | null) => void
   onClose: () => void
 }) {
-  const formRef = useRef<HTMLFormElement>(null)
-  const [pending, startTransition] = useTransition()
-  const [documentId, setDocumentId] = useState<string | null>(null)
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = formRef.current
-    if (!form) return
-    const fd = new FormData(form)
-    startTransition(async () => {
-      try {
-        const result = await importSiteHistoricalPvAction(siteId, fd)
-        if (!result.ok) {
-          setMessage(result.error ?? 'Import impossible.')
-          return
-        }
-        setDocumentId(result.documentId ?? null)
-        setMessage('Analyse lancée — patientez quelques instants.')
-        form.reset()
-      } catch (e) {
-        console.error('[SiteHistoricalPvDialog]', e)
-        setMessage('Erreur réseau — veuillez réessayer. Si le problème persiste, rechargez la page.')
-      }
-    })
-  }
-
   return (
     <Modal title="Importer un PV historique" onClose={onClose}>
-      <form ref={formRef} className="space-y-4" onSubmit={submit}>
-        {!documentId && (
-          <>
-            <label className="block space-y-2">
-              <span className="text-sm font-medium">PDF du PV</span>
-              <input name="file" type="file" accept="application/pdf" required className="block w-full rounded-lg border p-2 text-sm" />
-            </label>
-            <label className="block space-y-2">
-              <span className="text-sm font-medium">Date du PV <span className="text-destructive">*</span></span>
-              <input name="effective_date" type="date" required className="block w-full rounded-lg border px-3 py-2 text-sm bg-background" />
-            </label>
-          </>
-        )}
-        {message && (
-          <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground space-y-1">
-            <p>{message}</p>
-            {documentId && (
-              <a href={`/documents/${documentId}`} className="underline underline-offset-2 hover:text-foreground text-sm">
-                Suivre l'analyse →
-              </a>
-            )}
-          </div>
-        )}
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">Fermer</button>
-          {!documentId && (
-            <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
-              {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Importer et analyser
-            </button>
-          )}
-        </div>
-      </form>
+      <HistoricalPvUploadForm siteId={siteId} onClose={onClose} />
     </Modal>
   )
 }
