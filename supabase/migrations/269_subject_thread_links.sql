@@ -65,7 +65,7 @@ CREATE POLICY "subject_thread_links_select"
   USING (
     EXISTS (
       SELECT 1 FROM sites s
-      JOIN organization_members om ON om.organization_id = s.organization_id
+      JOIN organization_memberships om ON om.organization_id = s.organization_id
       WHERE s.id = subject_thread_links.site_id
         AND om.user_id = auth.uid()
     )
@@ -76,10 +76,10 @@ CREATE POLICY "subject_thread_links_insert"
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM sites s
-      JOIN organization_members om ON om.organization_id = s.organization_id
+      JOIN organization_memberships om ON om.organization_id = s.organization_id
       WHERE s.id = subject_thread_links.site_id
         AND om.user_id = auth.uid()
-        AND om.role IN ('admin', 'manager', 'supervisor')
+        AND om.role IN ('admin', 'manager', 'chef_equipe')
     )
   );
 
@@ -88,9 +88,9 @@ CREATE POLICY "subject_thread_links_update"
   USING (
     EXISTS (
       SELECT 1 FROM sites s
-      JOIN organization_members om ON om.organization_id = s.organization_id
+      JOIN organization_memberships om ON om.organization_id = s.organization_id
       WHERE s.id = subject_thread_links.site_id
         AND om.user_id = auth.uid()
-        AND om.role IN ('admin', 'manager', 'supervisor')
+        AND om.role IN ('admin', 'manager', 'chef_equipe')
     )
   );
