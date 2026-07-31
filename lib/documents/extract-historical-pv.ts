@@ -32,6 +32,7 @@ export async function extractHistoricalPv(
   documentId: string,
   userId?: string | null,
   siteId?: string | null,
+  preCreatedRunId?: string,
 ): Promise<void> {
   const supabase = createAdminClient()
 
@@ -55,27 +56,30 @@ export async function extractHistoricalPv(
     return
   }
 
-  // 2. Créer le run en état pending
-  // target_site_id : fourni explicitement ou résolu depuis document_links
-  let resolvedSiteId = siteId ?? null
-  if (!resolvedSiteId) {
-    const { data: link } = await supabase
-      .from('document_links')
-      .select('target_id')
-      .eq('document_id', documentId)
-      .eq('target_type', 'site')
-      .maybeSingle()
-    resolvedSiteId = (link as { target_id: string } | null)?.target_id ?? null
+  // 2. Créer le run en état pending (sauf si déjà créé par la route)
+  let runId: string
+  if (preCreatedRunId) {
+    runId = preCreatedRunId
+  } else {
+    let resolvedSiteId = siteId ?? null
+    if (!resolvedSiteId) {
+      const { data: link } = await supabase
+        .from('document_links')
+        .select('target_id')
+        .eq('document_id', documentId)
+        .eq('target_type', 'site')
+        .maybeSingle()
+      resolvedSiteId = (link as { target_id: string } | null)?.target_id ?? null
+    }
+    runId = await createExtractionRun({
+      document_id: documentId,
+      organization_id: d.organization_id,
+      extractor_key: EXTRACTOR_KEY,
+      extractor_version: EXTRACTOR_VERSION,
+      target_site_id: resolvedSiteId ?? undefined,
+      created_by: userId ?? null,
+    })
   }
-
-  const runId = await createExtractionRun({
-    document_id: documentId,
-    organization_id: d.organization_id,
-    extractor_key: EXTRACTOR_KEY,
-    extractor_version: EXTRACTOR_VERSION,
-    target_site_id: resolvedSiteId ?? undefined,
-    created_by: userId ?? null,
-  })
 
   try {
     log('extraction_start', documentId, { runId })

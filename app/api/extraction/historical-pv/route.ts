@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 
 // Durée max : mupdf + Supabase uploads + Gemini LLM dépassent facilement 30 s.
 export const maxDuration = 300
@@ -11,7 +11,9 @@ export const maxDuration = 300
  *   - secret interne CRON_SECRET (x-internal-trigger) — appelé depuis after() dans les server actions
  *
  * Body : { documentId: string, siteId?: string | null }
- * (userId ignoré côté client — déduit du cookie)
+ *
+ * Répond immédiatement avec { ok: true, runId } dès que le run est créé.
+ * L'extraction tourne en arrière-plan via after() — le client poll le statut.
  */
 export async function POST(req: Request) {
   let documentId = ''
@@ -45,17 +47,61 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'documentId manquant' }, { status: 400 })
     }
 
+    const { getLatestExtractionRunForDocument, createExtractionRun } = await import('@/lib/db/document-extractions')
+
     // Garde : ne pas lancer deux extractions en parallèle sur le même document.
-    const { getLatestExtractionRunForDocument } = await import('@/lib/db/document-extractions')
     const existing = await getLatestExtractionRunForDocument(documentId)
     if (existing && (existing.status === 'pending' || existing.status === 'processing')) {
       return NextResponse.json({ ok: false, error: 'Analyse déjà en cours.', runId: existing.id }, { status: 409 })
     }
 
-    const { extractHistoricalPv } = await import('@/lib/documents/extract-historical-pv')
-    await extractHistoricalPv(documentId, userId, siteId)
+    // Charger le document pour obtenir organization_id et valider le type.
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const admin = createAdminClient()
+    const { data: doc } = await admin
+      .from('documents')
+      .select('organization_id, document_type')
+      .eq('id', documentId)
+      .is('deleted_at', null)
+      .maybeSingle()
 
-    return NextResponse.json({ ok: true })
+    if (!doc) return NextResponse.json({ ok: false, error: 'Document introuvable' }, { status: 404 })
+    const d = doc as { organization_id: string; document_type: string }
+    if (d.document_type !== 'historical_visit_report') {
+      return NextResponse.json({ ok: false, error: 'Type de document invalide' }, { status: 400 })
+    }
+
+    // Résoudre le siteId depuis document_links si non fourni.
+    let resolvedSiteId = siteId
+    if (!resolvedSiteId) {
+      const { data: link } = await admin
+        .from('document_links')
+        .select('target_id')
+        .eq('document_id', documentId)
+        .eq('target_type', 'site')
+        .maybeSingle()
+      resolvedSiteId = (link as { target_id: string } | null)?.target_id ?? null
+    }
+
+    // Créer le run immédiatement — on peut renvoyer le runId sans attendre l'extraction.
+    const runId = await createExtractionRun({
+      document_id: documentId,
+      organization_id: d.organization_id,
+      extractor_key: 'historical_visit_report_v1',
+      extractor_version: '1.0.0',
+      target_site_id: resolvedSiteId ?? undefined,
+      created_by: userId ?? null,
+    })
+
+    // Extraction en arrière-plan : la connexion HTTP est libérée immédiatement,
+    // Vercel ne peut pas couper la réponse en cours de traitement.
+    after(async () => {
+      const { extractHistoricalPv } = await import('@/lib/documents/extract-historical-pv')
+      await extractHistoricalPv(documentId, userId, resolvedSiteId, runId)
+    })
+
+    // Le client reçoit le runId et commence à poller — pas besoin d'attendre la fin.
+    return NextResponse.json({ ok: true, runId })
   } catch (e) {
     const msg = e instanceof Error ? e.message : (e != null && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : String(e))
     console.error('[POST /api/extraction/historical-pv]:', { documentId, error: e })

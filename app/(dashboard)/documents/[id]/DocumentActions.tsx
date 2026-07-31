@@ -161,7 +161,11 @@ export function DocumentActions({
       stopCrawl()
       const data = await r.json() as { ok?: boolean; error?: string; runId?: string }
 
-      if (r.ok && data.ok) {
+      if (r.ok && data.ok && data.runId) {
+        // Extraction lancée en arrière-plan — poll jusqu'à la fin.
+        startPolling(data.runId)
+      } else if (r.ok && data.ok) {
+        // Chemin legacy synchrone (ne devrait plus arriver).
         setExtracting(false)
         setPct(100)
         setMsg({ ok: true, text: 'Analyse terminée.' })
