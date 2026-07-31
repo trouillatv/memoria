@@ -11,6 +11,7 @@ import {
   insertExtractionEvidence,
   linkProposalEvidence,
 } from '@/lib/db/document-extractions'
+import { mapDocumentStatus, reconcileSubjectThreads } from './subject-reconciliation'
 import type { DocumentProposalFamily, DocumentEvidenceType, DocumentEvidenceRelationType } from '@/types/db'
 
 const EXTRACTOR_KEY = 'historical_visit_report_v1'
@@ -270,18 +271,22 @@ export async function extractHistoricalPv(
     })
 
     // 8. Persister les propositions
-    const proposalInputs = llmResult.proposals.map((p) => ({
-      organization_id: d.organization_id,
-      document_id: documentId,
-      proposal_family: p.family as DocumentProposalFamily,
-      stable_key: p.temporaryKey,
-      label: p.label,
-      description: p.description ?? null,
-      source_page: p.sourcePage ?? null,
-      source_excerpt: p.sourceExcerpt ?? null,
-      source_payload: (p.sourcePayload as Record<string, unknown> | null | undefined) ?? null,
-      thematic_category: (p.sourcePayload as { thematic_category?: string } | null | undefined)?.thematic_category ?? null,
-    }))
+    const proposalInputs = llmResult.proposals.map((p) => {
+      const payload = p.sourcePayload as { thematic_category?: string; statusAtDocumentDate?: string } | null | undefined
+      return {
+        organization_id: d.organization_id,
+        document_id: documentId,
+        proposal_family: p.family as DocumentProposalFamily,
+        stable_key: p.temporaryKey,
+        label: p.label,
+        description: p.description ?? null,
+        source_page: p.sourcePage ?? null,
+        source_excerpt: p.sourceExcerpt ?? null,
+        source_payload: (payload as Record<string, unknown> | null | undefined) ?? null,
+        thematic_category: payload?.thematic_category ?? null,
+        document_status: mapDocumentStatus(payload?.statusAtDocumentDate, p.family),
+      }
+    })
 
     const proposalIds = await insertExtractionProposals(runId, proposalInputs)
     const proposalKeyToId = new Map<string, string>()
@@ -356,6 +361,30 @@ export async function extractHistoricalPv(
     await updateExtractionRunStatus(runId, 'ready_for_review', {
       completed_at: new Date().toISOString(),
     })
+
+    // 12. Réconciliation des fils thématiques inter-PV (déterministe, sans LLM)
+    // Si le document n'est pas rattaché à un chantier, la réconciliation n'a pas de sens.
+    let siteIdForReconciliation: string | null = null
+    {
+      const { data: link } = await supabase
+        .from('document_extraction_run')
+        .select('target_site_id')
+        .eq('id', runId)
+        .maybeSingle()
+      siteIdForReconciliation = (link as { target_site_id: string | null } | null)?.target_site_id ?? null
+    }
+    if (siteIdForReconciliation) {
+      try {
+        const { matched, created } = await reconcileSubjectThreads(runId, siteIdForReconciliation)
+        log('subject_threads_reconciled', documentId, { runId, matched, created })
+      } catch (reconcileErr) {
+        // Non bloquant : l'extraction est terminée même si la réconciliation échoue
+        log('subject_threads_reconciliation_failed', documentId, {
+          runId,
+          error: reconcileErr instanceof Error ? reconcileErr.message : String(reconcileErr),
+        })
+      }
+    }
 
     log('extraction_complete', documentId, {
       runId,

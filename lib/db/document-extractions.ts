@@ -90,6 +90,7 @@ export async function insertExtractionProposals(
     source_excerpt?: string | null
     source_payload?: Record<string, unknown> | null
     thematic_category?: string | null
+    document_status?: string | null
   }>,
 ): Promise<string[]> {
   if (proposals.length === 0) return []
@@ -107,6 +108,7 @@ export async function insertExtractionProposals(
     source_excerpt: p.source_excerpt ?? null,
     source_payload: p.source_payload ?? null,
     thematic_category: p.thematic_category ?? null,
+    document_status: p.document_status ?? null,
     review_status: 'pending' as DocumentProposalReviewStatus,
   }))
   const { data, error } = await supabase

@@ -1207,6 +1207,9 @@ export interface DbDocumentExtractionProposal {
   source_page: number | null
   source_excerpt: string | null
   source_payload: Record<string, unknown> | null
+  thematic_category: string | null                // mig 267
+  document_status: string | null                  // mig 268 — état normalisé à la date du doc
+  subject_thread_id: string | null                // mig 268 — fil thématique inter-PV
   // Validation humaine — séparée du contenu extrait
   review_status: DocumentProposalReviewStatus
   reviewed_label: string | null
