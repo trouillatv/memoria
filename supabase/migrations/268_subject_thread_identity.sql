@@ -35,49 +35,54 @@ CREATE INDEX IF NOT EXISTS dep_subject_thread_idx
 -- Backfill document_status depuis source_payload.statusAtDocumentDate (texte libre → enum).
 -- Ne couvre pas les familles 'person' et 'company' (attendance, pas document_status).
 --
+-- Utilise unaccent() pour gérer les caractères accentués (ILIKE seul ne suffit pas
+-- dans cette instance Supabase PostgreSQL avec la collation par défaut).
+--
 -- Ordre : du plus spécifique au plus général pour éviter les collisions.
--- Ex. 'non démarré' doit → planned avant que '%démarré%' → in_progress.
+-- Ex. 'non démarré' doit → planned avant que '%demarre%' → in_progress.
 --     'VISA en cours' doit → awaiting_validation avant que '%en cours%' → in_progress.
---     'partiellement réalisé' doit → in_progress avant que '%réalis%' → done.
+--     'partiellement réalisé' doit → in_progress avant que '%realis%' → done.
 UPDATE public.document_extraction_proposal
 SET document_status = CASE
   WHEN source_payload->>'statusAtDocumentDate' IS NULL
     OR source_payload->>'statusAtDocumentDate' = ''
     THEN NULL
-  WHEN source_payload->>'statusAtDocumentDate' ILIKE '%non conform%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%refusé%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%hors tolérance%'
+  WHEN lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%non conform%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%refuse%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%hors tolerance%'
     THEN 'non_compliant'
-  WHEN source_payload->>'statusAtDocumentDate' ILIKE '%non démarré%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%non commencé%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%prévu%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%planifié%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%programmé%'
+  WHEN lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%non demarre%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%a faire%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%prevu%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%planifie%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%programme%'
     THEN 'planned'
-  WHEN source_payload->>'statusAtDocumentDate' ILIKE '%en attente%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%attendu%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%visa%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%validation%'
+  WHEN lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%en attente%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%attendu%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%visa%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%validation%'
     THEN 'awaiting_validation'
-  WHEN source_payload->>'statusAtDocumentDate' ILIKE '%annulé%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%abandonné%'
+  WHEN lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%annule%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%abandonne%'
     THEN 'cancelled'
-  WHEN source_payload->>'statusAtDocumentDate' ILIKE '%en cours%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%partiellement%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%démarré%'
+  WHEN lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%en cours%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%partiellement%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%demarre%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%demarrage%'
     THEN 'in_progress'
-  WHEN source_payload->>'statusAtDocumentDate' ILIKE '%réalis%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%termin%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%levé%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%exécut%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%accompli%'
-    OR lower(source_payload->>'statusAtDocumentDate') = 'fait'
+  WHEN lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%realis%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%termin%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%leve%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%execut%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%accompli%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%mis en place%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) = 'fait'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '100%'
     THEN 'done'
-  WHEN source_payload->>'statusAtDocumentDate' ILIKE '%ouvert%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%signalé%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%constaté%'
+  WHEN lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%ouvert%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%signale%'
+    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%constate%'
     THEN 'open'
   ELSE 'informational'
 END
-WHERE document_status IS NULL
-  AND proposal_family NOT IN ('person', 'company');
+WHERE document_status IS NULL OR document_status = 'informational';
