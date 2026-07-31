@@ -34,28 +34,26 @@ CREATE INDEX IF NOT EXISTS dep_subject_thread_idx
 
 -- Backfill document_status depuis source_payload.statusAtDocumentDate (texte libre → enum).
 -- Ne couvre pas les familles 'person' et 'company' (attendance, pas document_status).
+--
+-- Ordre : du plus spécifique au plus général pour éviter les collisions.
+-- Ex. 'non démarré' doit → planned avant que '%démarré%' → in_progress.
+--     'VISA en cours' doit → awaiting_validation avant que '%en cours%' → in_progress.
+--     'partiellement réalisé' doit → in_progress avant que '%réalis%' → done.
 UPDATE public.document_extraction_proposal
 SET document_status = CASE
-  WHEN source_payload->>'statusAtDocumentDate' ILIKE '%réalis%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%termin%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%levé%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%exécut%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%accompli%'
-    OR lower(source_payload->>'statusAtDocumentDate') = 'fait'
-    THEN 'done'
-  WHEN source_payload->>'statusAtDocumentDate' ILIKE '%en cours%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%partiellement%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%démarré%'
-    THEN 'in_progress'
-  WHEN source_payload->>'statusAtDocumentDate' ILIKE '%prévu%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%planifié%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%programmé%'
-    OR source_payload->>'statusAtDocumentDate' ILIKE '%non démarré%'
-    THEN 'planned'
+  WHEN source_payload->>'statusAtDocumentDate' IS NULL
+    OR source_payload->>'statusAtDocumentDate' = ''
+    THEN NULL
   WHEN source_payload->>'statusAtDocumentDate' ILIKE '%non conform%'
     OR source_payload->>'statusAtDocumentDate' ILIKE '%refusé%'
     OR source_payload->>'statusAtDocumentDate' ILIKE '%hors tolérance%'
     THEN 'non_compliant'
+  WHEN source_payload->>'statusAtDocumentDate' ILIKE '%non démarré%'
+    OR source_payload->>'statusAtDocumentDate' ILIKE '%non commencé%'
+    OR source_payload->>'statusAtDocumentDate' ILIKE '%prévu%'
+    OR source_payload->>'statusAtDocumentDate' ILIKE '%planifié%'
+    OR source_payload->>'statusAtDocumentDate' ILIKE '%programmé%'
+    THEN 'planned'
   WHEN source_payload->>'statusAtDocumentDate' ILIKE '%en attente%'
     OR source_payload->>'statusAtDocumentDate' ILIKE '%attendu%'
     OR source_payload->>'statusAtDocumentDate' ILIKE '%visa%'
@@ -64,13 +62,21 @@ SET document_status = CASE
   WHEN source_payload->>'statusAtDocumentDate' ILIKE '%annulé%'
     OR source_payload->>'statusAtDocumentDate' ILIKE '%abandonné%'
     THEN 'cancelled'
+  WHEN source_payload->>'statusAtDocumentDate' ILIKE '%en cours%'
+    OR source_payload->>'statusAtDocumentDate' ILIKE '%partiellement%'
+    OR source_payload->>'statusAtDocumentDate' ILIKE '%démarré%'
+    THEN 'in_progress'
+  WHEN source_payload->>'statusAtDocumentDate' ILIKE '%réalis%'
+    OR source_payload->>'statusAtDocumentDate' ILIKE '%termin%'
+    OR source_payload->>'statusAtDocumentDate' ILIKE '%levé%'
+    OR source_payload->>'statusAtDocumentDate' ILIKE '%exécut%'
+    OR source_payload->>'statusAtDocumentDate' ILIKE '%accompli%'
+    OR lower(source_payload->>'statusAtDocumentDate') = 'fait'
+    THEN 'done'
   WHEN source_payload->>'statusAtDocumentDate' ILIKE '%ouvert%'
     OR source_payload->>'statusAtDocumentDate' ILIKE '%signalé%'
     OR source_payload->>'statusAtDocumentDate' ILIKE '%constaté%'
     THEN 'open'
-  WHEN source_payload->>'statusAtDocumentDate' IS NULL
-    OR source_payload->>'statusAtDocumentDate' = ''
-    THEN NULL
   ELSE 'informational'
 END
 WHERE document_status IS NULL
