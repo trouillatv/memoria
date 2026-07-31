@@ -12,7 +12,7 @@ import { SubjectLifelineGrid } from './SubjectLifelineGrid'
 
 export const dynamic = 'force-dynamic'
 
-type ViewKey = 'lifelines' | 'history'
+type ViewKey = 'lifelines' | 'synthese' | 'heatmap' | 'deps'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -95,7 +95,8 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
 
   const { id: siteId } = await params
   const sp = await searchParams
-  const view: ViewKey = (sp.view === 'history' ? 'history' : 'lifelines')
+  const VALID_VIEWS: ViewKey[] = ['lifelines', 'synthese', 'heatmap', 'deps']
+  const view: ViewKey = (VALID_VIEWS.includes(sp.view as ViewKey) ? sp.view as ViewKey : 'lifelines')
   const initialThread = sp.thread ?? null
   const initialTheme = sp.theme ?? null
 
@@ -153,80 +154,92 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
 
           {/* Onglets */}
           <nav className="mt-4 flex gap-1 rounded-xl bg-muted/40 p-1">
-            <Link
-              href={viewHref('lifelines')}
-              className={cn(
-                'flex-1 rounded-lg px-3 py-1.5 text-center text-sm font-medium transition-colors',
-                view === 'lifelines' ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              Ligne de vie
-            </Link>
-            <Link
-              href={viewHref('history')}
-              className={cn(
-                'flex-1 rounded-lg px-3 py-1.5 text-center text-sm font-medium transition-colors',
-                view === 'history' ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              Par PV
-            </Link>
+            {([
+              { key: 'lifelines', label: 'Lignes de vie' },
+              { key: 'synthese',  label: 'Synthèse par PV' },
+              { key: 'heatmap',   label: 'Carte d\'activité' },
+              { key: 'deps',      label: 'Dépendances' },
+            ] as const).map(({ key, label }) => (
+              <Link
+                key={key}
+                href={viewHref(key)}
+                className={cn(
+                  'flex-1 rounded-lg px-2 py-1.5 text-center text-xs font-medium transition-colors sm:text-sm sm:px-3',
+                  view === key ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {label}
+              </Link>
+            ))}
           </nav>
+
         </section>
 
-        {/* Vue 1 — Ligne de vie */}
+        {/* Lignes de vie */}
         {view === 'lifelines' && (
-          <>
-            {matrix && matrix.rows.length > 0 ? (
-              <SubjectLifelineGrid
-                matrix={matrix}
-                siteId={siteId}
-                initialThread={initialThread}
-                initialTheme={initialTheme}
-              />
-            ) : (
-              <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
-                <p className="font-medium">Aucun fil thématique reconstruit.</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Les PV doivent être importés, analysés et avoir des threads sujets pour apparaître ici.
-                </p>
-              </section>
-            )}
-          </>
+          matrix && matrix.rows.length > 0 ? (
+            <SubjectLifelineGrid
+              matrix={matrix}
+              siteId={siteId}
+              initialThread={initialThread}
+              initialTheme={initialTheme}
+            />
+          ) : (
+            <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
+              <p className="font-medium">Aucun fil thématique reconstruit.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Les PV doivent être importés, analysés et avoir des threads sujets pour apparaître ici.
+              </p>
+            </section>
+          )
         )}
 
-        {/* Vue 2 — Résumé par PV (4C.3 déplacé ici) */}
-        {view === 'history' && (
+        {/* Synthèse par PV */}
+        {view === 'synthese' && (
           <>
             {narrative && (
               <section className="rounded-[18px] border bg-card p-5 shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Récit chronologique</p>
                 <p className="mt-3 text-sm leading-relaxed whitespace-pre-wrap">{narrative}</p>
                 <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
-                  Ce récit est synthétisé à partir des transitions ci-dessous. Une absence n'est pas une résolution.
+                  Synthétisé à partir des transitions ci-dessous. Une absence n'est pas une résolution.
                 </p>
               </section>
             )}
-
             {timeline.snapshots.length === 0 ? (
               <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
                 <p className="font-medium">Aucun PV historique indexé pour ce chantier.</p>
               </section>
             ) : (
               <section className="space-y-3">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                  Par PV ({timeline.snapshots.length})
-                </h2>
                 <ol className="space-y-3">
                   {timeline.snapshots.map((snapshot, i) => (
-                    <li key={snapshot.runId}>
-                      <SnapshotCard snapshot={snapshot} index={i} />
-                    </li>
+                    <li key={snapshot.runId}><SnapshotCard snapshot={snapshot} index={i} /></li>
                   ))}
                 </ol>
               </section>
             )}
           </>
+        )}
+
+        {/* Carte d'activité — à venir après audit thematic_category */}
+        {view === 'heatmap' && (
+          <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
+            <p className="font-medium">Carte d'activité</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Disponible après audit de la couverture thematic_category sur ce chantier.
+            </p>
+          </section>
+        )}
+
+        {/* Dépendances — liens confirmés entre sujets */}
+        {view === 'deps' && (
+          <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
+            <p className="font-medium">Dépendances</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Les liens de causalité entre sujets s'ajoutent depuis la fiche de chaque sujet.
+            </p>
+          </section>
         )}
       </main>
     </>
