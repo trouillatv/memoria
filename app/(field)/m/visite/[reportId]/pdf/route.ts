@@ -66,13 +66,14 @@ export async function GET(req: Request, ctx: RouteCtx) {
   // terrain vides. À la place, on génère un résumé basé sur le compteur d'éléments extraits.
   let narrativeText = debrief?.summary ?? ''
   if (visit.origin === 'import' && !narrativeText && visit.extraction_run_id) {
-    // Compter les propositions extraites pour ce PV historique
+    // Compter les propositions réellement retenues (exclu rejected)
     const { createClient } = await import('@/lib/supabase/server')
     const supabase = await createClient()
     const { count } = await supabase
       .from('document_extraction_proposal')
       .select('id', { count: 'exact', head: true })
       .eq('extraction_run_id', visit.extraction_run_id)
+      .neq('review_status', 'rejected')
     narrativeText = count ? `${count} éléments extraits de ce PV historique.` : ''
   }
 
