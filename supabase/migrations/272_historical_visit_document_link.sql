@@ -8,7 +8,7 @@
 --
 -- Solution :
 --   Modifier materialize_historical_visit() pour créer automatiquement
---   document_links (document_id, 'report', v_report_id).
+--   document_links (document_id, 'site_report', v_report_id).
 --
 -- Contrainte :
 --   UNIQUE (document_id, target_type, target_id) empêche les doublons.
@@ -77,8 +77,9 @@ BEGIN
     'import',
     COALESCE(
       NULLIF(trim(p_visit_title), ''),
-      v_doc_filename,  -- Utiliser le nom du fichier au lieu de "Visite importée — DD/MM/YYYY"
-      'Visite importée — ' || to_char(p_visit_date, 'DD/MM/YYYY')
+      -- Nom du fichier sans extension .pdf
+      regexp_replace(v_doc_filename, '\.pdf$', '', 'i'),
+      'Visite historique du ' || to_char(p_visit_date, 'DD/MM/YYYY')
     ),
     v_doc_id,
     p_run_id,
@@ -90,13 +91,11 @@ BEGIN
   INSERT INTO public.document_links (
     document_id,
     target_type,
-    target_id,
-    created_by
+    target_id
   ) VALUES (
     v_doc_id,
-    'report',
-    v_report_id,
-    p_user_id
+    'site_report',
+    v_report_id
   )
   ON CONFLICT (document_id, target_type, target_id) DO NOTHING;
 
@@ -271,3 +270,41 @@ COMMENT ON FUNCTION public.materialize_historical_visit IS
   'Crée atomiquement une visite historique importée + tous ses artefacts métier. '
   'Utilise le nom du fichier PV comme titre par défaut. '
   'Lie automatiquement le document PV à la visite via document_links.';
+
+-- ── BACKFILL : créer les document_links manquants pour les visites historiques existantes ──
+
+INSERT INTO public.document_links (
+  document_id,
+  target_type,
+  target_id
+)
+SELECT
+  sr.source_document_id,
+  'site_report',
+  sr.id
+FROM public.site_reports sr
+WHERE sr.origin = 'import'
+  AND sr.source_document_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM public.document_links dl
+    WHERE dl.document_id = sr.source_document_id
+      AND dl.target_type = 'site_report'
+      AND dl.target_id = sr.id
+  );
+
+-- ── BACKFILL : remplacer les titres génériques par le nom du fichier PDF ──
+-- Ne touche QUE les titres commençant par "Visite importée" ou "Visite historique"
+-- pour ne pas écraser les titres personnalisés par l'utilisateur.
+
+UPDATE public.site_reports sr
+SET text_input = regexp_replace(d.filename, '\.pdf$', '', 'i')
+FROM public.documents d
+WHERE sr.origin = 'import'
+  AND sr.source_document_id = d.id
+  AND sr.source_document_id IS NOT NULL
+  AND d.filename IS NOT NULL
+  AND (
+    sr.text_input LIKE 'Visite importée%'
+    OR sr.text_input LIKE 'Visite historique%'
+  );
