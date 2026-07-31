@@ -182,7 +182,12 @@ export async function getUploadById(uploadId: string): Promise<HistoricalPvUploa
 }
 
 /**
- * Liste les uploads orphelins (status='pending', created_at > 24h) pour nettoyage.
+ * Liste les uploads orphelins (status IN ('pending','uploaded'), created_at > olderThanHours) pour nettoyage.
+ *
+ * Inclut 'uploaded' car si l'utilisateur ferme la page après upload mais avant confirmation,
+ * le fichier reste orphelin dans Storage avec status='uploaded'.
+ *
+ * Exclut explicitement 'confirmed' et 'failed' (déjà traités).
  */
 export async function listOrphanedUploads(olderThanHours = 24): Promise<HistoricalPvUpload[]> {
   const supabase = createAdminClient()
@@ -191,7 +196,7 @@ export async function listOrphanedUploads(olderThanHours = 24): Promise<Historic
   const { data, error } = await supabase
     .from('historical_pv_uploads')
     .select('*')
-    .eq('status', 'pending')
+    .in('status', ['pending', 'uploaded'])  // Nettoie les deux états non finalisés
     .lt('created_at', cutoff.toISOString())
   if (error) throw new Error(error.message)
   return ((data ?? []) as RawRow[]).map(mapRow)

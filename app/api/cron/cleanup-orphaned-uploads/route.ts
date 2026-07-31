@@ -1,11 +1,12 @@
-// Cron de nettoyage des uploads orphelins (> 72h en statut 'pending')
+// Cron de nettoyage des uploads orphelins (> 72h en statut 'pending' OU 'uploaded')
 //
 // Doctrine :
-//   Un upload 'pending' depuis > 72h est considéré comme abandonné.
+//   Un upload 'pending' ou 'uploaded' depuis > 72h est considéré comme abandonné.
+//   Cas 'uploaded' : utilisateur a terminé l'upload mais fermé la page avant confirmation.
 //   Le fichier Storage est supprimé (si présent), l'enregistrement passe à 'failed'.
 //
 // Sécurité :
-//   - Les uploads 'confirmed' ne sont JAMAIS supprimés
+//   - Les uploads 'confirmed' et 'failed' ne sont JAMAIS touchés
 //   - Fichier déjà absent = succès (idempotent)
 //   - Erreur de suppression = loggée mais ne bloque pas le lot
 //
@@ -32,10 +33,10 @@ export async function GET(req: NextRequest) {
   const errors: string[] = []
 
   try {
-    // Récupère les uploads orphelins (> 72h en 'pending')
+    // Récupère les uploads orphelins (> 72h en 'pending' OU 'uploaded')
     const orphans = await listOrphanedUploads(72)
 
-    console.log(`[cleanup-orphaned-uploads] Found ${orphans.length} orphaned uploads`)
+    console.log(`[cleanup-orphaned-uploads] Found ${orphans.length} orphaned uploads (pending or uploaded > 72h)`)
 
     for (const orphan of orphans) {
       try {
