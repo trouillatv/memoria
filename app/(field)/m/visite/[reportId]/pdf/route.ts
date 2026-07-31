@@ -60,8 +60,24 @@ export async function GET(req: Request, ctx: RouteCtx) {
   // aussi — seul le read model connaît `debrief_analysis`. Le renderer ignore le
   // stockage : demain le récit peut être versionné sans toucher un écran, et
   // mobile et PDF ont exactement la même prose.
+  //
+  // EXCEPTION : les PV historiques (origin === 'import') ne doivent PAS utiliser
+  // visit-summary.ts qui génère "Aucune observation particulière" pour les visites
+  // terrain vides. À la place, on génère un résumé basé sur le compteur d'éléments extraits.
+  let narrativeText = debrief?.summary ?? ''
+  if (visit.origin === 'import' && !narrativeText && visit.extraction_run_id) {
+    // Compter les propositions extraites pour ce PV historique
+    const { createClient } = await import('@/lib/supabase/server')
+    const supabase = await createClient()
+    const { count } = await supabase
+      .from('document_extraction_proposal')
+      .select('id', { count: 'exact', head: true })
+      .eq('extraction_run_id', visit.extraction_run_id)
+    narrativeText = count ? `${count} éléments extraits de ce PV historique.` : ''
+  }
+
   const summary = await getVisitSummary(reportId, {
-    narrative: { text: debrief?.summary ?? '', outdated: false },
+    narrative: { text: narrativeText, outdated: false },
   })
 
   // Lot B — intervenants avec statut de présence pour les PV historiques.
