@@ -2,6 +2,10 @@
   "regions": ["syd1"],
   "crons": [
     {
+      "path": "/api/cron/cleanup-orphaned-uploads",
+      "schedule": "0 2 * * *"
+    },
+    {
       "path": "/api/cron/refresh-memory-readings",
       "schedule": "0 15 * * *"
     },

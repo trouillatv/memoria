@@ -109,12 +109,13 @@ export async function markUploadAsUploaded(uploadId: string): Promise<void> {
 
 /**
  * Marque un upload comme 'confirmed' avec le document créé.
+ * Retourne `true` si la transition a réussi (atomique), `false` si déjà confirmé.
  */
 export async function markUploadAsConfirmed(
   uploadId: string,
   documentId: string,
   effectiveDate?: string,
-): Promise<void> {
+): Promise<boolean> {
   const supabase = createAdminClient()
   const update: Record<string, unknown> = {
     status: 'confirmed',
@@ -122,12 +123,20 @@ export async function markUploadAsConfirmed(
     confirmed_at: new Date().toISOString(),
   }
   if (effectiveDate) update.effective_date = effectiveDate
-  const { error } = await supabase
+
+  // Transition conditionnelle atomique : UPDATE ... WHERE status IN (...) RETURNING *
+  // Une seule requête concurrente obtiendra une ligne, les autres 0 ligne.
+  const { data, error } = await supabase
     .from('historical_pv_uploads')
     .update(update)
     .eq('id', uploadId)
     .in('status', ['pending', 'uploaded'])  // Accepte les deux états (retry)
+    .select('id')
+
   if (error) throw new Error(error.message)
+
+  // Si data est vide → upload déjà confirmé par une requête concurrente
+  return (data && data.length > 0)
 }
 
 /**

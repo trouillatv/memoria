@@ -243,13 +243,12 @@ export async function confirmHistoricalPvImport(input: {
     // Lier au chantier
     await addDocumentLink(documentId, 'site', input.siteId)
 
-    // Marquer comme confirmé
-    await markUploadAsConfirmed(input.uploadId, documentId, input.effectiveDate)
+    // Marquer comme confirmé (atomique : retourne true si transition réussie, false si déjà confirmé)
+    const transitionSucceeded = await markUploadAsConfirmed(input.uploadId, documentId, input.effectiveDate)
 
-    // Lancer l'extraction en arrière-plan (une seule fois)
+    // Lancer l'extraction en arrière-plan (uniquement si cette requête a gagné la course)
     const secret = process.env.CRON_SECRET
-    if (secret && upload.status !== 'confirmed') {
-      // Protection contre double analyse : ne lance que si pas déjà confirmé
+    if (secret && transitionSucceeded) {
       const h = await headers()
       const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'
       const proto = h.get('x-forwarded-proto') ?? (process.env.NODE_ENV === 'production' ? 'https' : 'http')
