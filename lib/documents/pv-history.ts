@@ -98,6 +98,32 @@ export interface SiteHistoricalTimeline {
   snapshots: SiteRunSnapshot[]
 }
 
+// ── Types Vue 1 — Grille ligne de vie ────────────────────────────────────────
+
+export interface MatrixCell {
+  status: string | null
+  transition: HistoryTransition | null
+  isGap: boolean
+  proposalId: string | null
+  label: string | null
+}
+
+export interface SubjectMatrixRow {
+  subjectThreadId: string
+  canonicalLabel: string
+  family: string
+  thematicCategory: string | null
+  currentStatus: string | null
+  /** Une cellule par run (même longueur que SiteSubjectMatrix.runs). null = antérieur à la première occurrence. */
+  cells: Array<MatrixCell | null>
+}
+
+export interface SiteSubjectMatrix {
+  siteId: string
+  runs: Array<{ id: string; documentId: string; effectiveDate: string }>
+  rows: SubjectMatrixRow[]
+}
+
 // ── Lot 3A — Chronologie d'un sujet ──────────────────────────────────────────
 
 /**
@@ -296,4 +322,153 @@ export async function getSiteHistoricalTimeline(siteId: string): Promise<SiteHis
   }
 
   return { siteId, snapshots }
+}
+
+// ── Vue 1 — Matrice ligne de vie ─────────────────────────────────────────────
+
+/**
+ * Retourne la matrice complète des sujets × runs pour un chantier.
+ *
+ * 2 requêtes DB (identiques à getSiteHistoricalTimeline).
+ * Une cellule `null` signifie que le sujet n'était pas encore apparu à ce run.
+ * Une cellule `isGap=true` signifie que le sujet était connu mais absent du PV.
+ *
+ * Tri par défaut : activité décroissante (dernier run avec présence réelle).
+ */
+export async function getSiteSubjectMatrix(siteId: string): Promise<SiteSubjectMatrix> {
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+
+  const { data: runsRaw, error: runsErr } = await supabase
+    .from('document_extraction_run')
+    .select('id, document_id, created_at')
+    .eq('target_site_id', siteId)
+    .eq('status', 'ready_for_review')
+    .order('created_at', { ascending: true })
+  if (runsErr) throw new Error(runsErr.message)
+
+  const runs = (runsRaw ?? []) as RunRow[]
+  if (runs.length === 0) return { siteId, runs: [], rows: [] }
+
+  const runIds = runs.map((r) => r.id)
+
+  type MatrixPropRow = {
+    id: string
+    extraction_run_id: string
+    proposal_family: string
+    document_status: string | null
+    subject_thread_id: string
+    thematic_category: string | null
+    label: string
+  }
+
+  const { data: propsRaw, error: propsErr } = await supabase
+    .from('document_extraction_proposal')
+    .select('id, extraction_run_id, proposal_family, document_status, subject_thread_id, thematic_category, label')
+    .in('extraction_run_id', runIds)
+    .not('subject_thread_id', 'is', null)
+  if (propsErr) throw new Error(propsErr.message)
+
+  const props = (propsRaw ?? []) as MatrixPropRow[]
+
+  // byRun[runId][threadId] → prop
+  const byRun = new Map<string, Map<string, MatrixPropRow>>()
+  for (const run of runs) byRun.set(run.id, new Map())
+  for (const p of props) byRun.get(p.extraction_run_id)?.set(p.subject_thread_id, p)
+
+  // Collect all threads and their metadata (canonical = latest label)
+  const threadMeta = new Map<string, { family: string; thematicCategory: string | null; label: string; lastRunIndex: number }>()
+  for (let i = 0; i < runs.length; i++) {
+    const curr = byRun.get(runs[i].id)!
+    for (const [threadId, prop] of curr.entries()) {
+      const prev = threadMeta.get(threadId)
+      if (!prev || i >= prev.lastRunIndex) {
+        threadMeta.set(threadId, {
+          family: prop.proposal_family,
+          thematicCategory: prop.thematic_category,
+          label: prop.label,
+          lastRunIndex: i,
+        })
+      }
+    }
+  }
+
+  const rows: SubjectMatrixRow[] = []
+
+  for (const [threadId, meta] of threadMeta.entries()) {
+    const cells: Array<MatrixCell | null> = []
+    let prevProp: MatrixPropRow | null = null
+    let firstRunIndex = -1
+    let gapSinceLastOccurrence = false
+
+    // Find first run index for this thread
+    for (let i = 0; i < runs.length; i++) {
+      if (byRun.get(runs[i].id)!.has(threadId)) { firstRunIndex = i; break }
+    }
+
+    for (let i = 0; i < runs.length; i++) {
+      const curr = byRun.get(runs[i].id)!
+      const prop = curr.get(threadId) ?? null
+
+      if (i < firstRunIndex) {
+        // Not yet appeared
+        cells.push(null)
+        continue
+      }
+
+      if (prop === null) {
+        cells.push({ status: null, transition: 'non_mentionné', isGap: true, proposalId: null, label: null })
+        gapSinceLastOccurrence = true
+      } else {
+        const isFirst = i === firstRunIndex
+        const transition: HistoryTransition | null = isFirst
+          ? null
+          : computeHistoryTransition(
+              prop.proposal_family,
+              prevProp?.document_status ?? null,
+              prop.document_status,
+              gapSinceLastOccurrence,
+            )
+        cells.push({
+          status: prop.document_status,
+          transition,
+          isGap: false,
+          proposalId: prop.id,
+          label: prop.label,
+        })
+        prevProp = prop
+        gapSinceLastOccurrence = false
+      }
+    }
+
+    // Current status = last real cell's status
+    let currentStatus: string | null = null
+    for (let i = cells.length - 1; i >= 0; i--) {
+      const cell = cells[i]
+      if (cell && !cell.isGap) { currentStatus = cell.status; break }
+    }
+
+    rows.push({
+      subjectThreadId: threadId,
+      canonicalLabel: meta.label,
+      family: meta.family,
+      thematicCategory: meta.thematicCategory,
+      currentStatus,
+      cells,
+    })
+  }
+
+  // Sort by most recent active run (desc), then by canonicalLabel
+  rows.sort((a, b) => {
+    const lastA = a.cells.findLastIndex((c) => c !== null && !c.isGap)
+    const lastB = b.cells.findLastIndex((c) => c !== null && !c.isGap)
+    if (lastB !== lastA) return lastB - lastA
+    return a.canonicalLabel.localeCompare(b.canonicalLabel, 'fr')
+  })
+
+  return {
+    siteId,
+    runs: runs.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: r.created_at })),
+    rows,
+  }
 }

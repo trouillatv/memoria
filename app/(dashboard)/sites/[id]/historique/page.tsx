@@ -3,16 +3,25 @@ import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { getSiteHistoricalTimeline } from '@/lib/documents/pv-history'
+import { getSiteHistoricalTimeline, getSiteSubjectMatrix } from '@/lib/documents/pv-history'
 import { generateSiteHistoryNarrative } from '@/lib/documents/pv-narrator'
 import type { SiteRunSnapshot } from '@/lib/documents/pv-history'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
+import { SubjectLifelineGrid } from './SubjectLifelineGrid'
 
 export const dynamic = 'force-dynamic'
 
+type ViewKey = 'lifelines' | 'history'
+
 interface PageProps {
   params: Promise<{ id: string }>
+  searchParams: Promise<{
+    view?: string
+    thread?: string
+    theme?: string
+    status?: string
+  }>
 }
 
 const TRANSITION_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
@@ -73,21 +82,26 @@ function SnapshotCard({ snapshot, index }: { snapshot: SiteRunSnapshot; index: n
 
       {nonMentionne > 0 && (
         <p className="mt-2 text-xs text-muted-foreground">
-          ○ {nonMentionne} sujet{nonMentionne > 1 ? 's' : ''} non mentionné{nonMentionne > 1 ? 's' : ''} — état précédent conservé, pas de résolution implicite.
+          ○ {nonMentionne} sujet{nonMentionne > 1 ? 's' : ''} non mentionné{nonMentionne > 1 ? 's' : ''} — état précédent conservé.
         </p>
       )}
     </article>
   )
 }
 
-export default async function SiteHistoriquePage({ params }: PageProps) {
+export default async function SiteHistoriquePage({ params, searchParams }: PageProps) {
   const user = await getCurrentUserWithProfile().catch(() => null)
   if (!user) redirect('/login')
 
   const { id: siteId } = await params
+  const sp = await searchParams
+  const view: ViewKey = (sp.view === 'history' ? 'history' : 'lifelines')
+  const initialThread = sp.thread ?? null
+  const initialTheme = sp.theme ?? null
 
-  const [site, timeline, historyResult] = await Promise.all([
+  const [site, matrix, timeline, historyResult] = await Promise.all([
     getSiteIdentity(siteId).catch(() => null),
+    getSiteSubjectMatrix(siteId).catch(() => null),
     getSiteHistoricalTimeline(siteId).catch(() => ({ siteId, snapshots: [] })),
     generateSiteHistoryNarrative(siteId).catch(() => null),
   ])
@@ -95,13 +109,22 @@ export default async function SiteHistoriquePage({ params }: PageProps) {
   if (!site) redirect(`/sites/${siteId}`)
 
   const narrative = historyResult?.narrative ?? null
+  const totalRuns = timeline.snapshots.length
+
+  function viewHref(v: ViewKey) {
+    const params = new URLSearchParams()
+    params.set('view', v)
+    if (initialThread) params.set('thread', initialThread)
+    if (initialTheme) params.set('theme', initialTheme)
+    return `/sites/${siteId}/historique?${params.toString()}`
+  }
 
   return (
     <>
       <BreadcrumbPrefix crumbs={[{ href: '/sites', label: 'Sites' }, { href: `/sites/${siteId}`, label: site.name }]} />
       <DynamicCrumb segmentId="historique" label="Histoire du chantier" />
 
-      <main className="mx-auto max-w-2xl space-y-6 px-4 py-6">
+      <main className="mx-auto max-w-5xl space-y-4 px-4 py-6">
         <div>
           <Link
             href={`/sites/${siteId}?tab=chronologie`}
@@ -113,58 +136,97 @@ export default async function SiteHistoriquePage({ params }: PageProps) {
         </div>
 
         <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-          <h1 className="text-xl font-semibold">Histoire du chantier</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Chronologie déterministe de tous les PV — transitions calculées, aucun fait inventé.
-          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h1 className="text-xl font-semibold">Histoire du chantier</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {totalRuns} PV analysé{totalRuns > 1 ? 's' : ''} — transitions calculées, aucun fait inventé.
+              </p>
+            </div>
+            {totalRuns > 0 && (
+              <p className="shrink-0 text-sm text-muted-foreground">
+                {formatDate(timeline.snapshots[0].effectiveDate)}
+                {totalRuns > 1 && ` → ${formatDate(timeline.snapshots[totalRuns - 1].effectiveDate)}`}
+              </p>
+            )}
+          </div>
 
-          {timeline.snapshots.length > 0 && (
-            <dl className="mt-4 flex flex-wrap gap-4 text-sm">
-              <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">PV analysés</dt>
-                <dd className="mt-0.5 text-lg font-semibold">{timeline.snapshots.length}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Période</dt>
-                <dd className="mt-0.5">
-                  {formatDate(timeline.snapshots[0].effectiveDate)}
-                  {timeline.snapshots.length > 1 && ` → ${formatDate(timeline.snapshots[timeline.snapshots.length - 1].effectiveDate)}`}
-                </dd>
-              </div>
-            </dl>
-          )}
+          {/* Onglets */}
+          <nav className="mt-4 flex gap-1 rounded-xl bg-muted/40 p-1">
+            <Link
+              href={viewHref('lifelines')}
+              className={cn(
+                'flex-1 rounded-lg px-3 py-1.5 text-center text-sm font-medium transition-colors',
+                view === 'lifelines' ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Ligne de vie
+            </Link>
+            <Link
+              href={viewHref('history')}
+              className={cn(
+                'flex-1 rounded-lg px-3 py-1.5 text-center text-sm font-medium transition-colors',
+                view === 'history' ? 'bg-card shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Par PV
+            </Link>
+          </nav>
         </section>
 
-        {narrative && (
-          <section className="rounded-[18px] border bg-card p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Récit chronologique</p>
-            <p className="mt-3 text-sm leading-relaxed whitespace-pre-wrap">{narrative}</p>
-            <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
-              Ce récit est synthétisé à partir des transitions ci-dessous. Une absence n'est pas une résolution.
-            </p>
-          </section>
+        {/* Vue 1 — Ligne de vie */}
+        {view === 'lifelines' && (
+          <>
+            {matrix && matrix.rows.length > 0 ? (
+              <SubjectLifelineGrid
+                matrix={matrix}
+                siteId={siteId}
+                initialThread={initialThread}
+                initialTheme={initialTheme}
+              />
+            ) : (
+              <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
+                <p className="font-medium">Aucun fil thématique reconstruit.</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Les PV doivent être importés, analysés et avoir des threads sujets pour apparaître ici.
+                </p>
+              </section>
+            )}
+          </>
         )}
 
-        {timeline.snapshots.length === 0 ? (
-          <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
-            <p className="font-medium">Aucun PV historique indexé pour ce chantier.</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Les PV doivent être importés et traités pour apparaître ici.
-            </p>
-          </section>
-        ) : (
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Par PV ({timeline.snapshots.length})
-            </h2>
-            <ol className="space-y-3">
-              {timeline.snapshots.map((snapshot, i) => (
-                <li key={snapshot.runId}>
-                  <SnapshotCard snapshot={snapshot} index={i} />
-                </li>
-              ))}
-            </ol>
-          </section>
+        {/* Vue 2 — Résumé par PV (4C.3 déplacé ici) */}
+        {view === 'history' && (
+          <>
+            {narrative && (
+              <section className="rounded-[18px] border bg-card p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Récit chronologique</p>
+                <p className="mt-3 text-sm leading-relaxed whitespace-pre-wrap">{narrative}</p>
+                <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
+                  Ce récit est synthétisé à partir des transitions ci-dessous. Une absence n'est pas une résolution.
+                </p>
+              </section>
+            )}
+
+            {timeline.snapshots.length === 0 ? (
+              <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
+                <p className="font-medium">Aucun PV historique indexé pour ce chantier.</p>
+              </section>
+            ) : (
+              <section className="space-y-3">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Par PV ({timeline.snapshots.length})
+                </h2>
+                <ol className="space-y-3">
+                  {timeline.snapshots.map((snapshot, i) => (
+                    <li key={snapshot.runId}>
+                      <SnapshotCard snapshot={snapshot} index={i} />
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
+          </>
         )}
       </main>
     </>
