@@ -75,14 +75,17 @@ export function HistoricalPvUploadForm({
     }
 
     try {
-      // Étape 1 : Demande d'URL signée
+      // Étape 0 : Calcul du hash SHA256 (validation serveur)
       setState({ phase: 'requesting', progress: 0, message: 'Préparation de l\'envoi…' })
+      const fileHash = await computeSHA256(selectedFile)
 
+      // Étape 1 : Demande d'URL signée
       const requestResult = await requestHistoricalPvUpload({
         siteId,
         fileName: selectedFile.name,
         fileSize: selectedFile.size,
         contentType: selectedFile.type,
+        fileHashSha256: fileHash,
       })
 
       if (!requestResult.ok) {
@@ -201,6 +204,13 @@ export function HistoricalPvUploadForm({
         storagePath: state.storagePath,
       })
     }
+  }
+
+  async function computeSHA256(file: File): Promise<string> {
+    const buffer = await file.arrayBuffer()
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer)
+    const hashArray = Array.from(new Uint8Array(hashBuffer))
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
   }
 
   function uploadFileWithProgress(

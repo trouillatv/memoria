@@ -22,6 +22,7 @@ CREATE TABLE historical_pv_uploads (
   storage_path      TEXT NOT NULL UNIQUE,  -- chemin dans Supabase Storage
   original_filename TEXT NOT NULL,
   file_size         BIGINT NOT NULL,       -- octets déclarés au moment de la demande
+  file_hash_sha256  TEXT,                  -- hash calculé côté client, vérifié côté serveur
   effective_date    DATE,                  -- date du PV (peut être fournie à la confirmation)
   status            TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
                       'pending', 'uploaded', 'confirmed', 'failed'

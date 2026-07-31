@@ -44,6 +44,7 @@ export async function requestHistoricalPvUpload(input: {
   fileName: string
   fileSize: number
   contentType: string
+  fileHashSha256?: string
 }): Promise<
   | { ok: true; uploadId: string; uploadUrl: string; storagePath: string; expiresAt: string }
   | { ok: false; error: string }
@@ -82,6 +83,7 @@ export async function requestHistoricalPvUpload(input: {
       storagePath,
       originalFilename: input.fileName,
       fileSize: input.fileSize,
+      fileHashSha256: input.fileHashSha256,
     })
 
     // Générer l'URL signée (valide 15 minutes)
@@ -182,6 +184,46 @@ export async function confirmHistoricalPvImport(input: {
       return { ok: false, error: 'Le fichier uploadé est vide', canRetry: false }
     }
 
+    // Validation serveur : taille réelle
+    if (file.metadata.size > MAX_FILE_SIZE) {
+      await markUploadAsFailed(input.uploadId, `Fichier > ${MAX_FILE_SIZE / 1024 / 1024} Mo`)
+      return { ok: false, error: 'Fichier trop volumineux (validation serveur)', canRetry: false }
+    }
+
+    // Validation serveur : MIME type
+    const mimeType = file.metadata.mimetype ?? ''
+    if (mimeType !== 'application/pdf') {
+      await markUploadAsFailed(input.uploadId, `MIME invalide: ${mimeType}`)
+      return { ok: false, error: 'Le fichier n\'est pas un PDF valide', canRetry: false }
+    }
+
+    // Validation serveur : signature PDF (%PDF-)
+    const { data: fileData, error: downloadError } = await adminSupabase.storage
+      .from(STORAGE_BUCKET)
+      .download(input.storagePath, { transform: { width: 0, height: 0 } })  // HEAD-like
+
+    if (downloadError) {
+      await markUploadAsFailed(input.uploadId, 'Impossible de télécharger le fichier pour validation')
+      return { ok: false, error: 'Erreur de validation du fichier', canRetry: true }
+    }
+
+    const buffer = Buffer.from(await fileData.arrayBuffer())
+    const signature = buffer.slice(0, 5).toString('ascii')
+    if (signature !== '%PDF-') {
+      await markUploadAsFailed(input.uploadId, `Signature invalide: ${signature}`)
+      return { ok: false, error: 'Le fichier n\'est pas un PDF valide (signature manquante)', canRetry: false }
+    }
+
+    // Validation serveur : hash SHA256 (si fourni côté client)
+    if (upload.fileHashSha256) {
+      const crypto = await import('crypto')
+      const actualHash = crypto.createHash('sha256').update(buffer).digest('hex')
+      if (actualHash !== upload.fileHashSha256) {
+        await markUploadAsFailed(input.uploadId, 'Hash SHA256 ne correspond pas')
+        return { ok: false, error: 'Le fichier a été modifié pendant l\'upload', canRetry: false }
+      }
+    }
+
     // Créer le document
     const collectionId = await ensureSiteCollection(input.siteId)
     const { createDocument, addDocumentLink } = await import('@/lib/db/documents')
@@ -204,9 +246,10 @@ export async function confirmHistoricalPvImport(input: {
     // Marquer comme confirmé
     await markUploadAsConfirmed(input.uploadId, documentId, input.effectiveDate)
 
-    // Lancer l'extraction en arrière-plan
+    // Lancer l'extraction en arrière-plan (une seule fois)
     const secret = process.env.CRON_SECRET
-    if (secret) {
+    if (secret && upload.status !== 'confirmed') {
+      // Protection contre double analyse : ne lance que si pas déjà confirmé
       const h = await headers()
       const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'
       const proto = h.get('x-forwarded-proto') ?? (process.env.NODE_ENV === 'production' ? 'https' : 'http')

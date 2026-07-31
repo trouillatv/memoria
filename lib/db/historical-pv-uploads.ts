@@ -19,6 +19,7 @@ export interface HistoricalPvUpload {
   storagePath: string
   originalFilename: string
   fileSize: number
+  fileHashSha256: string | null
   effectiveDate: string | null
   status: HistoricalPvUploadStatus
   documentId: string | null
@@ -35,6 +36,7 @@ type RawRow = {
   storage_path: string
   original_filename: string
   file_size: number
+  file_hash_sha256: string | null
   effective_date: string | null
   status: string
   document_id: string | null
@@ -52,6 +54,7 @@ function mapRow(r: RawRow): HistoricalPvUpload {
     storagePath: r.storage_path,
     originalFilename: r.original_filename,
     fileSize: r.file_size,
+    fileHashSha256: r.file_hash_sha256,
     effectiveDate: r.effective_date,
     status: r.status as HistoricalPvUploadStatus,
     documentId: r.document_id,
@@ -71,6 +74,7 @@ export async function createPendingUpload(input: {
   storagePath: string
   originalFilename: string
   fileSize: number
+  fileHashSha256?: string
 }): Promise<string> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -81,6 +85,7 @@ export async function createPendingUpload(input: {
       storage_path: input.storagePath,
       original_filename: input.originalFilename,
       file_size: input.fileSize,
+      file_hash_sha256: input.fileHashSha256 ?? null,
       status: 'pending',
     })
     .select('id')
