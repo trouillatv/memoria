@@ -24,9 +24,17 @@ export async function VisitSourceDocumentCard({ doc, siteId }: { doc: VisitSourc
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium text-sm">{doc.filename}</p>
-          {doc.sizeBytes && (
-            <p className="mt-0.5 text-xs text-muted-foreground">{formatFileSize(doc.sizeBytes)}</p>
-          )}
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+            {doc.effectiveDate && (
+              <span>PV du {new Date(doc.effectiveDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+            )}
+            {doc.pageCount && (
+              <span>{doc.pageCount} page{doc.pageCount > 1 ? 's' : ''}</span>
+            )}
+            {doc.sizeBytes && (
+              <span>{formatFileSize(doc.sizeBytes)}</span>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           {downloadUrl && (

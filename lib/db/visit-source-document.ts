@@ -7,6 +7,7 @@ export interface VisitSourceDocument {
   storagePath: string
   sizeBytes: number | null
   effectiveDate: string | null
+  pageCount: number | null
 }
 
 /**
@@ -32,7 +33,7 @@ export async function getVisitSourceDocument(reportId: string): Promise<VisitSou
   // 2. Charger les métadonnées du document
   const { data: doc } = await admin
     .from('documents')
-    .select('id, filename, storage_path, size_bytes, effective_date')
+    .select('id, filename, storage_path, size_bytes, effective_date, page_count')
     .eq('id', v.source_document_id)
     .is('deleted_at', null)
     .maybeSingle()
@@ -45,6 +46,7 @@ export async function getVisitSourceDocument(reportId: string): Promise<VisitSou
     storage_path: string
     size_bytes: number | null
     effective_date: string | null
+    page_count: number | null
   }
 
   return {
@@ -53,5 +55,6 @@ export async function getVisitSourceDocument(reportId: string): Promise<VisitSou
     storagePath: d.storage_path,
     sizeBytes: d.size_bytes,
     effectiveDate: d.effective_date,
+    pageCount: d.page_count,
   }
 }
