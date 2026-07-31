@@ -536,7 +536,9 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
             </section>
           )}
 
-          <VisitDesk narrative={narrative} media={media} canPromote={doc?.status === 'draft'} crHref={crHref} />
+          {!isImport && (
+            <VisitDesk narrative={narrative} media={media} canPromote={doc?.status === 'draft'} crHref={crHref} />
+          )}
         </div>
 
         {/* ── RAIL — les gestes, l'arbitrage, le vocabulaire ─────────────────── */}
@@ -557,7 +559,8 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                 <VerserPiece reportId={visitId} visitStartedAt={debut} />
                 <p className="pl-8 text-[11.5px] text-muted-foreground">Photo, vocal, vidéo</p>
               </div>
-              <RailLink href={`/sites/${id}/visites/${visitId}/pdf`} icon={<FileDown className="h-4 w-4" aria-hidden />} label="Télécharger le compte-rendu" sous="PDF" newTab />
+              <RailLink href={`/sites/${id}/visites/${visitId}/pdf`} icon={<FileDown className="h-4 w-4" aria-hidden />} label="Aperçu du compte-rendu" sous="PDF — s'ouvre dans l'onglet" newTab />
+              <RailLink href={`/sites/${id}/visites/${visitId}/pdf?download=1`} icon={<FileDown className="h-4 w-4" aria-hidden />} label="Télécharger le compte-rendu" sous="PDF — téléchargement direct" newTab />
               <RailLink href={`/m/visite/${visitId}/recap`} icon={<Images className="h-4 w-4" aria-hidden />} label="Ouvrir sur mobile" />
             </div>
           </section>

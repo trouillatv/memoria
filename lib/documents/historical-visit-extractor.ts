@@ -142,7 +142,7 @@ Ne rien extraire lorsque l'information décrit seulement :
 - qui est l'interlocuteur habituel ou comment contacter une entreprise ;
 - comment les entreprises doivent communiquer entre elles ;
 - un accès existant au chantier sans changement signalé ;
-- les moyens momentanément présents sur site (engins, personnel du jour) sans contexte de retard ou d'anomalie ;
+- les moyens momentanément présents sur site (engins, personnel du jour) sans contexte de retard ou d'anomalie — **exception** : si le PV comporte une section "MOYENS HUMAINS ET MATÉRIELS" ou similaire, extraire chaque item comme **knowledge_fact** avec thematic_category='resources' ;
 - l'existence ou l'état administratif d'un document (transmis, reçu, validé) sans conséquence chantier explicite.
 
 **Exception obligatoire** : si l'information administrative contient une **échéance chiffrée ou datée explicite** (ex : "avant le 25 du mois", "d'ici le 15 mars"), l'extraire comme **deadline** — même si elle porte sur une transmission ou une procédure. Une contrainte temporelle explicite a une valeur de suivi, quelle que soit sa nature.
@@ -159,7 +159,7 @@ Ne jamais créer de proposition pour :
 - En-têtes, pieds de page, numéros de page, titre et numéro du compte-rendu
 - "CR précédent lu et approuvé", "Acceptation sans réserve"
 - Listes de diffusion, procédure de communication entre entreprises, mentions génériques d'interlocuteurs sans nom précis ("le maître d'ouvrage", "les entreprises"). **Exception** : les personnes nommées (prénom + nom) et les entreprises avec rôle explicite sur ce chantier → extraire comme **person** ou **company**.
-- Règles de sécurité standard : EPI, harnais, PTAC, code de la route, balisage
+- Règles de sécurité génériques applicables à tous les chantiers sans distinction : obligation de port d'EPI en général, harnais, PTAC, code de la route, balisage standard — aucune valeur de suivi spécifique. **Exception** : une anomalie de sécurité constatée sur CE chantier (zone non balisée malgré demande, incident, non-conformité particulière, risque propre au site) → extraire comme **knowledge_fact** avec thematic_category='safety_environment'.
 - Règles environnementales génériques : tri des déchets, pollution, amiante (contexte générique), bruit
 - Horaires de chantier standard (sauf anomalie documentée)
 - Procédures de réunion : convocation, ordre du jour, tour de table, date de la prochaine réunion sauf si décision critique
@@ -195,8 +195,8 @@ Pour chaque information retenue après la sélection :
 - **knowledge_fact** : information factuelle durable sur le site. Inclut : l'avancement constaté lors de la visite (travaux exécutés ou en cours) avec statusAtDocumentDate = "réalisé" / "en cours" / "non démarré" ; l'état de plans techniques (VISA émis / en cours / refusé / à émettre) ; une contrainte technique permanente (nature du sol, cote NGF) ; l'état d'un ouvrage ou d'un matériau. Pour chaque knowledge_fact, renseigner **sourcePayload.thematic_category** avec la catégorie thématique correspondante :
   - "progress" — avancement des travaux constatés (réalisés ou en cours) : terrassement, maçonnerie, finitions, installations
   - "test_control" — essais, contrôles, conformité, visas de plans, non-conformités constatées
-  - "forecast" — travaux, contrôles, coordinations ou livrables annoncés comme futurs, SANS date précise (ex : "récolement en prévision", "coordination LOT02", "essais complémentaires à réaliser"). Distinguer de deadline : si une date explicite est mentionnée, utiliser deadline à la place
-  - "safety_environment" — sécurité chantier, consignes de sécurité spécifiques, environnement
+  - "forecast" — travaux, contrôles, coordinations, livrables ou étapes planifiées pour la prochaine période (ex : "récolement en prévision", "coordination LOT02", "essais complémentaires à réaliser"). **Règle prioritaire** : toute section intitulée "PRÉVISIONS", "PROGRAMME", "TRAVAUX PRÉVUS", "PROCHAINE PÉRIODE", "SUITE À DONNER" ou similaire dans le PV → extraire **chaque item** comme **knowledge_fact** avec thematic_category='forecast', même sans responsable ni date explicite. Ne jamais classer un item d'une section PRÉVISIONS comme observation ou action s'il s'agit d'une étape planifiée. Distinguer de deadline : si une date précise est mentionnée pour un item → créer un **deadline** pour cette échéance ET conserver les autres items sans date comme knowledge_fact.forecast.
+  - "safety_environment" — anomalies et constats de sécurité **spécifiques à ce chantier** (risque identifié sur ce site, zone non protégée, incident, accident, non-conformité de sécurité particulière, consigne propre à ce chantier) et impacts environnementaux propres au chantier. Exclure les règles génériques applicables à tous les chantiers → voir 'permanent_instruction'.
   - "resources" — moyens humains et matériels effectivement présents sur site
   - "administrative" — coordination documentaire, plans transmis/reçus, DICT, contractuel
   - "weather" — météo, intempéries, arrêts pour cause climatique
