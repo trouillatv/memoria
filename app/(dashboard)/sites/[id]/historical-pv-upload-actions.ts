@@ -225,10 +225,11 @@ export async function confirmHistoricalPvImport(input: {
     // Validation serveur : signature PDF (%PDF-)
     const { data: fileData, error: downloadError } = await adminSupabase.storage
       .from(STORAGE_BUCKET)
-      .download(input.storagePath, { transform: { width: 0, height: 0 } })  // HEAD-like
+      .download(input.storagePath)
 
     if (downloadError) {
-      await markUploadAsFailed(input.uploadId, 'Impossible de télécharger le fichier pour validation')
+      console.error('[confirmHistoricalPvImport] download error', downloadError)
+      await markUploadAsFailed(input.uploadId, `Download error: ${downloadError.message}`)
       return { ok: false, error: 'Erreur de validation du fichier', canRetry: true }
     }
 
