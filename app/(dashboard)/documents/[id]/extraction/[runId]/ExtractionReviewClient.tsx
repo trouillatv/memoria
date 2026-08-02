@@ -669,10 +669,8 @@ export function ExtractionReviewClient({
       )}
 
       {/* Photos (images extraites ou snapshots en fallback) */}
-      {orphanEvidence.length > 0 && (() => {
-        const others = orphanEvidence.filter((e) => e.evidence_type !== 'page_snapshot' && e.evidence_type !== 'image')
+      {visiblePhotos.length > 0 && (() => {
         const pinnedCount = visiblePhotos.filter((e) => pinnedIds.has(e.id)).length
-        if (visiblePhotos.length === 0 && others.length === 0) return null
         const hasExtracted = _extractedPhotos.length > 0
         return (
           <section className="space-y-3">
@@ -680,21 +678,17 @@ export function ExtractionReviewClient({
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
                 {hasExtracted ? 'Photos extraites' : 'Pages photographiques'}
               </h2>
-              {visiblePhotos.length > 0 && (
-                <span className="text-xs font-medium">
-                  {pinnedCount} / {visiblePhotos.length} sélectionnée{pinnedCount !== 1 ? 's' : ''}
-                </span>
-              )}
-              {visiblePhotos.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => handlePinAll(pinnedCount < visiblePhotos.length)}
-                  disabled={pinAllPending || isPending}
-                  className="ml-auto text-xs border rounded px-2 py-1 text-muted-foreground hover:text-foreground hover:border-foreground transition-colors disabled:opacity-50"
-                >
-                  {pinAllPending ? '…' : pinnedCount === visiblePhotos.length ? 'Tout retirer' : 'Tout inclure'}
-                </button>
-              )}
+              <span className="text-xs font-medium">
+                {pinnedCount} / {visiblePhotos.length} sélectionnée{pinnedCount !== 1 ? 's' : ''}
+              </span>
+              <button
+                type="button"
+                onClick={() => handlePinAll(pinnedCount < visiblePhotos.length)}
+                disabled={pinAllPending || isPending}
+                className="ml-auto text-xs border rounded px-2 py-1 text-muted-foreground hover:text-foreground hover:border-foreground transition-colors disabled:opacity-50"
+              >
+                {pinAllPending ? '…' : pinnedCount === visiblePhotos.length ? 'Tout retirer' : 'Tout inclure'}
+              </button>
             </div>
             {hasExtracted ? (
               <p className="text-xs text-muted-foreground">
@@ -724,22 +718,6 @@ export function ExtractionReviewClient({
                       .map(([key, label]) => ({ proposalId: key.split(':')[1], label }))
                   }
                   onRevertLink={(proposalId) => handleRevertLink(ev.id, proposalId)}
-                />
-              ))}
-              {others.map((ev) => (
-                <OrphanEvidenceItem
-                  key={ev.id}
-                  evidence={ev}
-                  signedUrls={signedUrls}
-                  isPinned={false}
-                  isPending={false}
-                  onToggle={() => {}}
-                  candidates={[]}
-                  pendingLinks={pendingLinks}
-                  onConfirmLink={() => {}}
-                  onDismissLink={() => {}}
-                  confirmedForEvidence={[]}
-                  onRevertLink={() => {}}
                 />
               ))}
             </div>
