@@ -137,7 +137,7 @@ export function jaccardSimilarity(labelA: string, labelB: string): number {
   return intersection / union
 }
 
-type ProposalStub = {
+export type ProposalStub = {
   id: string
   proposal_family: string
   thematic_category: string | null
@@ -145,67 +145,120 @@ type ProposalStub = {
   subject_thread_id: string | null
 }
 
+type ScoredCandidate = {
+  propId: string
+  thread: string
+  /** 1.0 = exact, 0.85 = containment, 0.5–0.84 = Jaccard */
+  score: number
+}
+
 function isPersonLike(family: string): boolean {
   return family === 'person' || family === 'company'
 }
 
 /**
- * Cherche la meilleure correspondance dans les propositions antérieures.
- * Retourne le subject_thread_id du meilleur match, ou null si aucun.
+ * Calcule le meilleur match scoré pour une proposition dans un ensemble de précédentes.
+ * Score : 1.0 = exact après strip, 0.85 = containment, sinon score Jaccard.
  */
-function findBestThread(newProp: ProposalStub, priors: ProposalStub[]): string | null {
+function computeBestCandidate(newProp: ProposalStub, priors: ProposalStub[]): ScoredCandidate | null {
   const sameFamilyPriors = priors.filter(
     (p) => p.proposal_family === newProp.proposal_family && p.subject_thread_id !== null,
   )
 
   if (isPersonLike(newProp.proposal_family)) {
-    // Intervenants : correspondance exacte sur nom normalisé
     const newNorm = normalizeLabel(newProp.label)
     const match = sameFamilyPriors.find((p) => normalizeLabel(p.label) === newNorm)
-    return match?.subject_thread_id ?? null
+    return match ? { propId: newProp.id, thread: match.subject_thread_id!, score: 1.0 } : null
   }
 
-  // Propositions de contenu : famille + thème, puis cascade de matching
   const sameTheme = sameFamilyPriors.filter(
     (p) => p.thematic_category === newProp.thematic_category,
   )
 
-  // Étape 1 : correspondance exacte sur label normalisé (après strip formatage)
+  // Exact après stripping
   const newNormStripped = normalizeLabel(stripCategoryFormatting(newProp.label))
   const exactMatch = sameTheme.find(
     (p) => normalizeLabel(stripCategoryFormatting(p.label)) === newNormStripped,
   )
-  if (exactMatch) return exactMatch.subject_thread_id
+  if (exactMatch) return { propId: newProp.id, thread: exactMatch.subject_thread_id!, score: 1.0 }
 
-  // Étape 2 : containment fort (label court ⊂ label long, avec gardes)
-  // Prend le premier match — si plusieurs, le plus long label antérieur (plus spécifique)
-  let containmentMatch: ProposalStub | null = null
-  let containmentLabelLen = 0
+  // Containment fort
+  let bestContainment: ProposalStub | null = null
+  let bestContainmentLen = 0
   for (const prior of sameTheme) {
     if (strongContainmentMatch(newProp.label, prior.label)) {
       const priorLen = normalizeLabel(stripCategoryFormatting(prior.label)).length
-      if (priorLen > containmentLabelLen) {
-        containmentMatch = prior
-        containmentLabelLen = priorLen
+      if (priorLen > bestContainmentLen) {
+        bestContainment = prior
+        bestContainmentLen = priorLen
       }
     }
   }
-  if (containmentMatch) return containmentMatch.subject_thread_id
+  if (bestContainment) return { propId: newProp.id, thread: bestContainment.subject_thread_id!, score: 0.85 }
 
-  // Étape 3 : Jaccard ≥ seuil sur labels strippés du formatage catégorie/statut.
-  // Stripping des deux côtés améliore le score quand les labels divergent uniquement
-  // par un préfixe "Catégorie : " ou un suffixe " = Statut".
-  let bestScore = 0
+  // Jaccard sur labels strippés
+  let bestJaccard = 0
   let bestThread: string | null = null
-  const newLabelStripped = stripCategoryFormatting(newProp.label)
+  const newStripped = stripCategoryFormatting(newProp.label)
   for (const prior of sameTheme) {
-    const score = jaccardSimilarity(newLabelStripped, stripCategoryFormatting(prior.label))
-    if (score > bestScore) {
-      bestScore = score
+    const score = jaccardSimilarity(newStripped, stripCategoryFormatting(prior.label))
+    if (score > bestJaccard) {
+      bestJaccard = score
       bestThread = prior.subject_thread_id
     }
   }
-  return bestScore >= SIMILARITY_THRESHOLD ? bestThread : null
+  if (bestJaccard >= SIMILARITY_THRESHOLD && bestThread) {
+    return { propId: newProp.id, thread: bestThread, score: bestJaccard }
+  }
+  return null
+}
+
+/**
+ * Résout les matches 1:1 entre nouvelles propositions et threads précédents.
+ * Retourne un map propId → subject_thread_id à écrire en DB.
+ *
+ * Algorithme glouton par score décroissant :
+ * - On calcule le meilleur candidat pour chaque nouvelle proposition.
+ * - On trie par score décroissant (exact > containment > Jaccard).
+ * - On assigne en priorité les meilleurs couples.
+ * - Un thread précédent déjà consommé ne peut être attribué à une autre proposition.
+ * - Une proposition sans match ou en conflit reçoit un nouveau UUID.
+ *
+ * Exporté pour les tests unitaires. Le `generateUUID` est injectable pour rendre
+ * les tests déterministes.
+ */
+export function resolveMatches1to1(
+  newProposals: ProposalStub[],
+  priorProposals: ProposalStub[],
+  generateUUID: () => string = () => crypto.randomUUID(),
+): Map<string, string> {
+  const candidates: ScoredCandidate[] = []
+  for (const p of newProposals) {
+    const cand = computeBestCandidate(p, priorProposals)
+    if (cand) candidates.push(cand)
+  }
+
+  candidates.sort((a, b) => b.score - a.score)
+
+  const claimedThreads = new Set<string>()
+  const assignedProps = new Set<string>()
+  const result = new Map<string, string>()
+
+  for (const cand of candidates) {
+    if (!assignedProps.has(cand.propId) && !claimedThreads.has(cand.thread)) {
+      assignedProps.add(cand.propId)
+      claimedThreads.add(cand.thread)
+      result.set(cand.propId, cand.thread)
+    }
+  }
+
+  for (const p of newProposals) {
+    if (!result.has(p.id)) {
+      result.set(p.id, generateUUID())
+    }
+  }
+
+  return result
 }
 
 /**
@@ -257,13 +310,14 @@ export async function reconcileSubjectThreads(
     priorProposals = (priorRaw ?? []) as ProposalStub[]
   }
 
+  const threadMap = resolveMatches1to1(newProposals, priorProposals)
+
   let matched = 0
   let created = 0
-
   const assignments = newProposals.map((p) => {
-    const existingThread = findBestThread(p, priorProposals)
-    const subject_thread_id = existingThread ?? crypto.randomUUID()
-    if (existingThread) matched++; else created++
+    const subject_thread_id = threadMap.get(p.id)!
+    const isNew = !priorProposals.some((pr) => pr.subject_thread_id === subject_thread_id)
+    if (isNew) created++; else matched++
     return { id: p.id, subject_thread_id }
   })
 

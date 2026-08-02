@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { jaccardSimilarity, normalizeLabel, mapDocumentStatus, stripCategoryFormatting, strongContainmentMatch } from './subject-reconciliation'
+import { jaccardSimilarity, normalizeLabel, mapDocumentStatus, stripCategoryFormatting, strongContainmentMatch, resolveMatches1to1, type ProposalStub } from './subject-reconciliation'
+
+// Construit un ProposalStub minimal pour les tests
+function stub(id: string, label: string, thread: string | null, cat: string | null = null, family = 'knowledge_fact'): ProposalStub {
+  return { id, proposal_family: family, thematic_category: cat, label, subject_thread_id: thread }
+}
 
 // ── normalizeLabel ────────────────────────────────────────────────────────────
 
@@ -246,6 +251,101 @@ describe('strongContainmentMatch — faux positifs à rejeter', () => {
 
   it('labels sans token commun ne matchent pas', () => {
     expect(strongContainmentMatch('Rapport G3', 'Regard R4 non conforme')).toBe(false)
+  })
+})
+
+// ── resolveMatches1to1 — contrainte 1:1 ──────────────────────────────────────
+
+describe('resolveMatches1to1 — assignation sans collision', () => {
+  it('assigne le thread précédent quand un seul match existe', () => {
+    const priors = [stub('p1', 'Purge', 'thread-purge')]
+    const news = [stub('n1', 'Terrassement plateforme : Purge = Fait', null)]
+    const map = resolveMatches1to1(news, priors, () => 'new-uuid')
+    expect(map.get('n1')).toBe('thread-purge')
+  })
+
+  it('crée un nouveau thread si aucun match', () => {
+    const priors = [stub('p1', 'Rapport G3', 'thread-rapport')]
+    const news = [stub('n1', 'Pose de fondation béton armé', null)]
+    let uuidN = 0
+    const map = resolveMatches1to1(news, priors, () => `uuid-${++uuidN}`)
+    expect(map.get('n1')).toBe('uuid-1')
+  })
+
+  it('deux nouvelles props matchant deux threads différents — pas de collision', () => {
+    const priors = [
+      stub('p1', 'Purge', 'thread-purge'),
+      stub('p2', 'Débroussaillage', 'thread-deb'),
+    ]
+    const news = [
+      stub('n1', 'Terrassement plateforme : Purge = Fait', null),
+      stub('n2', 'Débroussaillage : 100% réalisé', null),
+    ]
+    const map = resolveMatches1to1(news, priors, () => 'new-uuid')
+    expect(map.get('n1')).toBe('thread-purge')
+    expect(map.get('n2')).toBe('thread-deb')
+  })
+})
+
+describe('resolveMatches1to1 — résolution de collisions 1:1', () => {
+  it('collision "Couche de forme" : deux PV07 sur le même thread PV06 — premier gagne', () => {
+    // PV06 : une seule entrée "Couche de forme accès plateforme"
+    const priors = [stub('p1', 'Couche de forme accès plateforme', 'thread-cf')]
+    // PV07 : deux entrées, les deux matchent "thread-cf" par containment
+    const news = [
+      stub('n1', 'Accès Plateforme : Couche de forme = Fait', null),
+      stub('n2', 'Terrassement plateforme : Couche de forme = Fait', null),
+    ]
+    let uuidN = 0
+    const map = resolveMatches1to1(news, priors, () => `uuid-${++uuidN}`)
+    // Exactement un seul hérite du thread existant
+    const hasThread = [map.get('n1'), map.get('n2')].filter(v => v === 'thread-cf')
+    expect(hasThread).toHaveLength(1)
+    // L'autre reçoit un nouveau UUID
+    const hasNew = [map.get('n1'), map.get('n2')].filter(v => v !== 'thread-cf')
+    expect(hasNew).toHaveLength(1)
+    expect(hasNew[0]).toMatch(/^uuid-/)
+  })
+
+  it('collision "Intempéries" : deux périodes PV07 sur le même thread PV06', () => {
+    const priors = [stub('p1', 'Jours d\'intempéries', 'thread-intemp')]
+    const news = [
+      stub('n1', 'Intempéries : 3 jours du 24/03 au 26/03', null),
+      stub('n2', 'Intempéries : 14,5 jours du 16/02 au 27/02 et du 02/03', null),
+    ]
+    let uuidN = 0
+    const map = resolveMatches1to1(news, priors, () => `uuid-${++uuidN}`)
+    const shared = [map.get('n1'), map.get('n2')].filter(v => v === 'thread-intemp')
+    expect(shared).toHaveLength(1)
+    const fresh = [map.get('n1'), map.get('n2')].filter(v => v !== 'thread-intemp')
+    expect(fresh).toHaveLength(1)
+    expect(fresh[0]).toMatch(/^uuid-/)
+  })
+
+  it('collision "Plan de gestion des eaux" : deux variantes PV07 sur le même thread PV06', () => {
+    const priors = [stub('p1', 'Plan de gestion des eaux transmis', 'thread-pgde')]
+    const news = [
+      stub('n1', 'Plan de gestion des eaux transmis par l\'entreprise', null),
+      stub('n2', 'Plan de gestion des eaux pluviales : FAIT', null),
+    ]
+    let uuidN = 0
+    const map = resolveMatches1to1(news, priors, () => `uuid-${++uuidN}`)
+    const shared = [map.get('n1'), map.get('n2')].filter(v => v === 'thread-pgde')
+    expect(shared).toHaveLength(1)
+  })
+
+  it('le meilleur score gagne en cas de collision', () => {
+    // n1 matche par containment (0.85), n2 par Jaccard (0.5) — n1 doit gagner
+    const priors = [stub('p1', 'Busage provisoire', 'thread-busage')]
+    const news = [
+      stub('n2', 'Busage', null),         // Jaccard : "busage" seul, score ~0.5 si "busage" n'est pas générique
+      stub('n1', 'GDE : Busage Provisoire mis en place', null),  // containment : score 0.85
+    ]
+    let uuidN = 0
+    const map = resolveMatches1to1(news, priors, () => `uuid-${++uuidN}`)
+    // n1 (containment, score 0.85) doit récupérer le thread, n2 (Jaccard plus faible) → nouveau UUID
+    expect(map.get('n1')).toBe('thread-busage')
+    expect(map.get('n2')).toMatch(/^uuid-/)
   })
 })
 
