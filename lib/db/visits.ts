@@ -47,6 +47,13 @@ export function isProofMotive(motive: VisitMotive): boolean {
   return VISIT_PROOF_MOTIVES.includes(motive)
 }
 
+/**
+ * Origines considérées comme des visites terrain réelles.
+ * Liste blanche explicite : toute valeur ajoutée demain (ex. 'import') ne
+ * devient pas accidentellement une visite terrain dans les vues UI.
+ */
+export const TERRAIN_ORIGINS = ['planned', 'spontaneous', 'qr', 'gps'] as const
+
 // ── Démarrage (zéro question) ────────────────────────────────────────────────
 
 export interface CreateVisitInput {
@@ -267,14 +274,14 @@ export async function closeVisit(input: CloseVisitInput): Promise<void> {
 
 // ── Lecture ──────────────────────────────────────────────────────────────────
 
-/** Liste les visites d'un site (les plus récentes d'abord). */
+/** Liste les visites terrain d'un site (les plus récentes d'abord). Exclut les imports historiques. */
 export async function listSiteVisits(siteId: string, limit = 50): Promise<DbSiteReport[]> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('site_reports')
     .select('*')
     .eq('site_id', siteId)
-    .not('origin', 'is', null)
+    .in('origin', TERRAIN_ORIGINS)
     .is('deleted_at', null)
     .order('started_at', { ascending: false })
     .limit(limit)
@@ -289,7 +296,7 @@ export async function getActiveVisit(siteId: string): Promise<DbSiteReport | nul
     .from('site_reports')
     .select('*')
     .eq('site_id', siteId)
-    .not('origin', 'is', null)
+    .in('origin', TERRAIN_ORIGINS)
     .is('deleted_at', null)
     .is('ended_at', null)
     .order('started_at', { ascending: false })
@@ -551,7 +558,7 @@ export async function getLastEndedVisitForSite(siteId: string): Promise<LastVisi
     .from('site_reports')
     .select('id, started_at, ended_at, created_at')
     .eq('site_id', siteId)
-    .not('origin', 'is', null)
+    .in('origin', TERRAIN_ORIGINS)
     .is('deleted_at', null)
     .not('ended_at', 'is', null)
     .order('ended_at', { ascending: false })

@@ -91,14 +91,28 @@ export async function createSiteDeadline(input: {
   return (data as { id: string }).id
 }
 
-/** Les échéances vivantes d'un chantier : à planifier + planifiées. */
-export async function listSiteDeadlines(siteId: string): Promise<SiteDeadline[]> {
-  const { data, error } = await createAdminClient()
+/**
+ * Les échéances vivantes d'un chantier : à planifier + planifiées.
+ *
+ * Par défaut, les échéances `created_from='historical_import'` sont exclues :
+ * elles constituent la mémoire historique du chantier mais ne sont pas des
+ * engagements opérationnels actifs. Passer `includeHistorical: true` pour les
+ * surfaces qui ont besoin de l'historique complet (lignes de vie, mémoire).
+ */
+export async function listSiteDeadlines(
+  siteId: string,
+  { includeHistorical = false }: { includeHistorical?: boolean } = {},
+): Promise<SiteDeadline[]> {
+  let query = createAdminClient()
     .from('site_deadlines')
     .select('id, site_id, report_id, title, constraint_text, due_date, status, created_at, source_document_effective_date')
     .eq('site_id', siteId)
     .is('deleted_at', null)
     .in('status', ['to_plan', 'planned'])
+  if (!includeHistorical) {
+    query = query.neq('created_from', 'historical_import')
+  }
+  const { data, error } = await query
     // Les non datées en dernier : `nullsFirst: false` — « à planifier » n'est pas
     // « urgent », c'est « pas encore décidé ».
     .order('due_date', { ascending: true, nullsFirst: false })
