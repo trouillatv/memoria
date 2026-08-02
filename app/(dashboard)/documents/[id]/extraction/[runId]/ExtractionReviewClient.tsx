@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import { ProposalCard } from './ProposalCard'
 import {
@@ -41,6 +41,7 @@ const FAMILY_TITLE: Record<string, string> = {
 }
 
 type Filter = 'all' | 'pending' | 'accepted' | 'edited' | 'rejected' | 'materialized'
+type FamilyFilter = 'all' | 'knowledge_fact' | 'action' | 'observation' | 'deadline' | 'reservation' | 'decision' | 'person' | 'company'
 
 function getRelevanceScore(proposal: import('@/types/db').DbDocumentExtractionProposal): 'strong' | 'medium' | 'weak' {
   const payload = proposal.source_payload as { relevanceScore?: string } | null
@@ -57,6 +58,29 @@ const FILTER_LABELS: { key: Filter; label: string; field: keyof ReviewSummary }[
   { key: 'rejected', label: 'Refusées', field: 'rejected' },
   { key: 'materialized', label: 'Matérialisées', field: 'materialized' },
 ]
+
+const FAMILY_FILTER_LABELS: { key: FamilyFilter; label: string }[] = [
+  { key: 'all', label: 'Tout type' },
+  { key: 'knowledge_fact', label: 'Mémoire' },
+  { key: 'action', label: 'Action' },
+  { key: 'observation', label: 'Observation' },
+  { key: 'deadline', label: 'Échéance' },
+  { key: 'reservation', label: 'Réserve' },
+  { key: 'decision', label: 'Décision' },
+  { key: 'person', label: 'Personne' },
+  { key: 'company', label: 'Entreprise' },
+]
+
+const FAMILY_TO_URL: Partial<Record<FamilyFilter, string>> = {
+  knowledge_fact: 'memory', action: 'action', observation: 'observation',
+  deadline: 'deadline', reservation: 'reservation', decision: 'decision',
+  person: 'person', company: 'company',
+}
+const URL_TO_FAMILY: Record<string, FamilyFilter> = {
+  memory: 'knowledge_fact', action: 'action', observation: 'observation',
+  deadline: 'deadline', reservation: 'reservation', decision: 'decision',
+  person: 'person', company: 'company',
+}
 
 const RELATION_LABEL: Record<string, string> = {
   supports: 'Preuve', illustrates: 'Illustration', source: 'Source', candidate: 'À confirmer',
@@ -349,6 +373,8 @@ export function ExtractionReviewClient({
   alreadySiteReportId,
   candidateLinks,
   initialIllustratesLinks,
+  initialStatus,
+  initialType,
 }: {
   proposals: DocumentExtractionProposalWithEvidence[]
   orphanEvidence: DbDocumentExtractionEvidence[]
@@ -361,9 +387,29 @@ export function ExtractionReviewClient({
   alreadySiteReportId: string | null
   candidateLinks: CandidateLink[]
   initialIllustratesLinks: IllustratesLink[]
+  initialStatus?: string | null
+  initialType?: string | null
 }) {
   const router = useRouter()
-  const [filter, setFilter] = useState<Filter>('all')
+  const pathname = usePathname()
+
+  const [filter, setFilterState] = useState<Filter>(() => {
+    const s = initialStatus as Filter | null
+    return FILTER_LABELS.some((f) => f.key === s) ? s! : 'all'
+  })
+  const [familyFilter, setFamilyFilterState] = useState<FamilyFilter>(
+    () => URL_TO_FAMILY[initialType ?? ''] ?? 'all',
+  )
+
+  function pushUrl(status: Filter, family: FamilyFilter) {
+    const p = new URLSearchParams()
+    if (status !== 'all') p.set('status', status)
+    if (family !== 'all') p.set('type', FAMILY_TO_URL[family] ?? family)
+    const qs = p.toString()
+    router.replace(`${pathname}${qs ? `?${qs}` : ''}`, { scroll: false })
+  }
+  function setFilter(f: Filter) { setFilterState(f); pushUrl(f, familyFilter) }
+  function setFamilyFilter(f: FamilyFilter) { setFamilyFilterState(f); pushUrl(filter, f) }
   const [showWeak, setShowWeak] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [acceptAllMsg, setAcceptAllMsg] = useState<string | null>(null)
@@ -544,8 +590,18 @@ export function ExtractionReviewClient({
   const companyCount = proposals.filter((p) => p.proposal.proposal_family === 'company').length
   const snapshotCount = visiblePhotos.length
 
+  const familyCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const p of proposals) {
+      const fam = p.proposal.proposal_family
+      m.set(fam, (m.get(fam) ?? 0) + 1)
+    }
+    return m
+  }, [proposals])
+
   const filtered = proposals
     .filter((p) => filter === 'all' || p.proposal.review_status === filter)
+    .filter((p) => familyFilter === 'all' || p.proposal.proposal_family === familyFilter)
     .filter((p) => showWeak || getRelevanceScore(p.proposal) !== 'weak')
 
   // Regroupement par famille
@@ -602,7 +658,7 @@ export function ExtractionReviewClient({
         onSubmit={handleCreateVisit}
       />
 
-      {/* Filtres */}
+      {/* Filtres statut */}
       <div className="flex gap-2 flex-wrap items-center">
         {FILTER_LABELS.map(({ key, label, field }) => (
           <button
@@ -627,6 +683,29 @@ export function ExtractionReviewClient({
             {showWeak ? `Masquer les ${weakCount} faibles` : `Voir les ${weakCount} faibles`}
           </button>
         )}
+      </div>
+
+      {/* Filtres famille — scroll horizontal sur mobile, wrap sur desktop */}
+      <div className="flex gap-1.5 items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-wrap">
+        {FAMILY_FILTER_LABELS
+          .filter(({ key }) => key === 'all' || (familyCounts.get(key) ?? 0) > 0)
+          .map(({ key, label }) => {
+            const count = key === 'all' ? proposals.length : (familyCounts.get(key) ?? 0)
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setFamilyFilter(key)}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                  familyFilter === key
+                    ? 'bg-foreground text-background border-foreground'
+                    : 'border-muted-foreground/30 text-muted-foreground hover:border-foreground hover:text-foreground'
+                }`}
+              >
+                {label} <span className="opacity-70">{count}</span>
+              </button>
+            )
+          })}
       </div>
 
       {/* Propositions groupées */}

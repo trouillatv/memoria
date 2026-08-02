@@ -26,10 +26,13 @@ function frDate(iso: string | null): string {
 
 export default async function ExtractionReviewPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; runId: string }>
+  searchParams: Promise<Record<string, string | undefined>>
 }) {
   const { id: documentId, runId } = await params
+  const sp = await searchParams
 
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -193,6 +196,8 @@ export default async function ExtractionReviewPage({
         alreadySiteReportId={alreadySiteReportId}
         candidateLinks={candidateLinks}
         initialIllustratesLinks={illustratesLinks}
+        initialStatus={sp.status ?? null}
+        initialType={sp.type ?? null}
       />
     </div>
   )
