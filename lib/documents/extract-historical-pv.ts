@@ -343,6 +343,16 @@ export async function extractHistoricalPv(
       completed_at: new Date().toISOString(),
     })
 
+    // 11b. Ce run devient le run canonique du document.
+    // Les re-analyses précédentes (is_canonical = true) sont rétrogradées.
+    await supabase.from('document_extraction_run')
+      .update({ is_canonical: false })
+      .eq('document_id', documentId)
+      .neq('id', runId)
+    await supabase.from('document_extraction_run')
+      .update({ is_canonical: true })
+      .eq('id', runId)
+
     // 12. Réconciliation des fils thématiques inter-PV (déterministe, sans LLM)
     // Si le document n'est pas rattaché à un chantier, la réconciliation n'a pas de sens.
     let siteIdForReconciliation: string | null = null

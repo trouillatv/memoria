@@ -34,6 +34,31 @@ function runEffectiveDate(run: RunRow): string {
   const doc = Array.isArray(run.documents) ? run.documents[0] : run.documents
   return doc?.effective_date ?? run.created_at
 }
+
+/**
+ * Retourne les runs canoniques d'un chantier, triés par date métier du PV (ASC).
+ *
+ * Invariant : 1 document = 1 snapshot temporel = 1 run canonique.
+ * Seuls les runs `is_canonical = true` sont inclus — les re-analyses du même PDF
+ * restent en base comme historique technique mais sont exclus des vues temporelles.
+ */
+async function canonicalRunsForSite(siteId: string): Promise<RunRow[]> {
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('document_extraction_run')
+    .select('id, document_id, created_at, documents!document_id(effective_date)')
+    .eq('target_site_id', siteId)
+    .eq('is_canonical', true)
+    .order('created_at', { ascending: true })
+  if (error) throw new Error(error.message)
+  const rows = ((data ?? []) as unknown as RunRow[])
+  rows.sort((a, b) => {
+    const da = runEffectiveDate(a), db = runEffectiveDate(b)
+    return da !== db ? da.localeCompare(db) : a.created_at.localeCompare(b.created_at)
+  })
+  return rows
+}
 type PropRow = {
   id: string
   extraction_run_id: string
@@ -161,19 +186,8 @@ export async function getSubjectTimeline(subjectThreadId: string): Promise<Subje
   const siteId = props.find((p) => p.target_site_id)?.target_site_id ?? null
   if (!siteId) return null
 
-  const { data: runsRaw, error: runsErr } = await supabase
-    .from('document_extraction_run')
-    .select('id, document_id, created_at, documents!document_id(effective_date)')
-    .eq('target_site_id', siteId)
-    .eq('status', 'ready_for_review')
-    .order('created_at', { ascending: true })
-  if (runsErr) throw new Error(runsErr.message)
-
-  // Tri par date métier du PV (effective_date), puis created_at en tiebreaker.
-  const allRuns = ((runsRaw ?? []) as unknown as RunRow[]).sort((a, b) => {
-    const da = runEffectiveDate(a), db = runEffectiveDate(b)
-    return da !== db ? da.localeCompare(db) : a.created_at.localeCompare(b.created_at)
-  })
+  // 1 document = 1 snapshot temporel. Seul le run canonique par document est inclus.
+  const allRuns = await canonicalRunsForSite(siteId)
   const propByRun = new Map<string, PropRow>()
   for (const p of props) propByRun.set(p.extraction_run_id, p)
 
@@ -268,18 +282,7 @@ export async function getSiteHistoricalTimeline(siteId: string): Promise<SiteHis
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabase = createAdminClient()
 
-  const { data: runsRaw, error: runsErr } = await supabase
-    .from('document_extraction_run')
-    .select('id, document_id, created_at, documents!document_id(effective_date)')
-    .eq('target_site_id', siteId)
-    .eq('status', 'ready_for_review')
-    .order('created_at', { ascending: true })
-  if (runsErr) throw new Error(runsErr.message)
-
-  const runs = ((runsRaw ?? []) as unknown as RunRow[]).sort((a, b) => {
-    const da = runEffectiveDate(a), db = runEffectiveDate(b)
-    return da !== db ? da.localeCompare(db) : a.created_at.localeCompare(b.created_at)
-  })
+  const runs = await canonicalRunsForSite(siteId)
   if (runs.length === 0) return { siteId, snapshots: [] }
 
   const runIds = runs.map((r) => r.id)
@@ -360,18 +363,7 @@ export async function getSiteSubjectMatrix(siteId: string): Promise<SiteSubjectM
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabase = createAdminClient()
 
-  const { data: runsRaw, error: runsErr } = await supabase
-    .from('document_extraction_run')
-    .select('id, document_id, created_at, documents!document_id(effective_date)')
-    .eq('target_site_id', siteId)
-    .eq('status', 'ready_for_review')
-    .order('created_at', { ascending: true })
-  if (runsErr) throw new Error(runsErr.message)
-
-  const runs = ((runsRaw ?? []) as unknown as RunRow[]).sort((a, b) => {
-    const da = runEffectiveDate(a), db = runEffectiveDate(b)
-    return da !== db ? da.localeCompare(db) : a.created_at.localeCompare(b.created_at)
-  })
+  const runs = await canonicalRunsForSite(siteId)
   if (runs.length === 0) return { siteId, runs: [], rows: [] }
 
   const runIds = runs.map((r) => r.id)

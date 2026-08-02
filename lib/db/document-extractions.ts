@@ -503,53 +503,40 @@ export type RunWithDocDate = {
 }
 
 /**
- * Retourne les `limit` derniers PV distincts du chantier, ordonnés par
+ * Retourne les `limit` derniers PV canoniques du chantier, ordonnés par
  * documents.effective_date ASC (temps métier, pas temps d'extraction).
  *
- * Déduplique par document_id : si un même document a été extrait plusieurs fois,
- * seul le run le plus récent est retenu.
+ * Filtre par is_canonical = true : 1 document = 1 snapshot, les re-analyses
+ * du même PDF n'apparaissent pas comme des PV distincts (migration 276).
  */
 export async function getLatestRunsForSite(
   siteId: string,
   limit = 2,
 ): Promise<RunWithDocDate[]> {
   const supabase = createAdminClient()
-  // On charge plus de runs que nécessaire pour absorber les doublons après dédup.
   const { data, error } = await supabase
     .from('document_extraction_run')
     .select('id, document_id, created_at, documents!document_id(effective_date)')
     .eq('target_site_id', siteId)
-    .eq('status', 'ready_for_review')
-    .order('created_at', { ascending: false })
-    .limit(limit * 10)
+    .eq('is_canonical', true)
+    .order('created_at', { ascending: true })
   if (error) throw new Error(error.message)
 
   type Raw = { id: string; document_id: string; created_at: string; documents: Array<{ effective_date: string | null }> | { effective_date: string | null } | null }
   const rows = (data ?? []) as unknown as Raw[]
-
-  // Déduplication : on a déjà le run le plus récent en tête (DESC), on garde le premier vu par document_id.
-  const seenDocs = new Set<string>()
-  const unique: Raw[] = []
-  for (const r of rows) {
-    if (!seenDocs.has(r.document_id)) {
-      seenDocs.add(r.document_id)
-      unique.push(r)
-    }
-  }
 
   function docEffDate(r: Raw): string {
     const doc = Array.isArray(r.documents) ? r.documents[0] : r.documents
     return doc?.effective_date ?? r.created_at
   }
 
-  // Tri par date métier du PV (effective_date), puis created_at en tiebreaker.
-  unique.sort((a, b) => {
+  rows.sort((a, b) => {
     const dateA = docEffDate(a)
     const dateB = docEffDate(b)
     return dateA !== dateB ? dateA.localeCompare(dateB) : a.created_at.localeCompare(b.created_at)
   })
 
-  return unique.slice(-limit).map((r) => ({
+  return rows.slice(-limit).map((r) => ({
     id: r.id,
     document_id: r.document_id,
     created_at: r.created_at,

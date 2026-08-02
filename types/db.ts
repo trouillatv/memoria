@@ -1191,6 +1191,7 @@ export interface DbDocumentExtractionRun {
   error_message: string | null
   created_at: string
   created_by: string | null
+  is_canonical: boolean
 }
 
 export interface DbDocumentExtractionProposal {
