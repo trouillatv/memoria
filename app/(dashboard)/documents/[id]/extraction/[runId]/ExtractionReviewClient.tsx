@@ -41,7 +41,7 @@ const FAMILY_TITLE: Record<string, string> = {
 }
 
 type Filter = 'all' | 'pending' | 'accepted' | 'edited' | 'rejected' | 'materialized'
-type FamilyFilter = 'all' | 'knowledge_fact' | 'action' | 'observation' | 'deadline' | 'reservation' | 'decision' | 'person' | 'company'
+type FamilyFilter = 'all' | 'knowledge_fact' | 'action' | 'observation' | 'deadline' | 'reservation' | 'decision' | 'person' | 'company' | 'photos'
 
 function getRelevanceScore(proposal: import('@/types/db').DbDocumentExtractionProposal): 'strong' | 'medium' | 'weak' {
   const payload = proposal.source_payload as { relevanceScore?: string } | null
@@ -60,7 +60,7 @@ const FILTER_LABELS: { key: Filter; label: string; field: keyof ReviewSummary }[
 ]
 
 const FAMILY_FILTER_LABELS: { key: FamilyFilter; label: string }[] = [
-  { key: 'all', label: 'Tout type' },
+  { key: 'all', label: 'Propositions' },
   { key: 'knowledge_fact', label: 'Mémoire' },
   { key: 'action', label: 'Action' },
   { key: 'observation', label: 'Observation' },
@@ -69,17 +69,18 @@ const FAMILY_FILTER_LABELS: { key: FamilyFilter; label: string }[] = [
   { key: 'decision', label: 'Décision' },
   { key: 'person', label: 'Personne' },
   { key: 'company', label: 'Entreprise' },
+  { key: 'photos', label: 'Photos' },
 ]
 
 const FAMILY_TO_URL: Partial<Record<FamilyFilter, string>> = {
   knowledge_fact: 'memory', action: 'action', observation: 'observation',
   deadline: 'deadline', reservation: 'reservation', decision: 'decision',
-  person: 'person', company: 'company',
+  person: 'person', company: 'company', photos: 'photos',
 }
 const URL_TO_FAMILY: Record<string, FamilyFilter> = {
   memory: 'knowledge_fact', action: 'action', observation: 'observation',
   deadline: 'deadline', reservation: 'reservation', decision: 'decision',
-  person: 'person', company: 'company',
+  person: 'person', company: 'company', photos: 'photos',
 }
 
 const RELATION_LABEL: Record<string, string> = {
@@ -688,9 +689,15 @@ export function ExtractionReviewClient({
       {/* Filtres famille — scroll horizontal sur mobile, wrap sur desktop */}
       <div className="flex gap-1.5 items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-wrap">
         {FAMILY_FILTER_LABELS
-          .filter(({ key }) => key === 'all' || (familyCounts.get(key) ?? 0) > 0)
+          .filter(({ key }) => {
+            if (key === 'all') return true
+            if (key === 'photos') return visiblePhotos.length > 0
+            return (familyCounts.get(key) ?? 0) > 0
+          })
           .map(({ key, label }) => {
-            const count = key === 'all' ? proposals.length : (familyCounts.get(key) ?? 0)
+            const count = key === 'all' ? proposals.length
+              : key === 'photos' ? visiblePhotos.length
+              : (familyCounts.get(key) ?? 0)
             return (
               <button
                 key={key}
@@ -709,7 +716,7 @@ export function ExtractionReviewClient({
       </div>
 
       {/* Propositions groupées */}
-      {filtered.length === 0 ? (
+      {familyFilter !== 'photos' && (filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">Aucune proposition dans ce filtre.</p>
       ) : (
         FAMILY_ORDER.filter((fam) => grouped.has(fam)).map((family) => {
@@ -745,10 +752,10 @@ export function ExtractionReviewClient({
             </section>
           )
         })
-      )}
+      ))}
 
-      {/* Photos (images extraites ou snapshots en fallback) */}
-      {visiblePhotos.length > 0 && (() => {
+      {/* Photos (images extraites ou snapshots en fallback) — uniquement quand filtre Photos actif */}
+      {familyFilter === 'photos' && visiblePhotos.length > 0 && (() => {
         const pinnedCount = visiblePhotos.filter((e) => pinnedIds.has(e.id)).length
         const hasExtracted = _extractedPhotos.length > 0
         return (
