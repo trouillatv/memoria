@@ -1,0 +1,67 @@
+-- 271 — Correction : suppression de la dépendance à l'extension unaccent
+--
+-- La migration 268 utilisait unaccent() mais PostgreSQL ILIKE est déjà insensible
+-- aux accents lorsque la locale est configurée en conséquence.
+-- Cette migration re-backfill document_status sans unaccent().
+
+UPDATE public.document_extraction_proposal
+SET document_status = CASE
+  WHEN source_payload->>'statusAtDocumentDate' IS NULL
+    OR source_payload->>'statusAtDocumentDate' = ''
+    THEN NULL
+  WHEN lower(source_payload->>'statusAtDocumentDate') ILIKE '%non conform%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%refuse%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%refusé%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%hors tolerance%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%hors tolérance%'
+    THEN 'non_compliant'
+  WHEN lower(source_payload->>'statusAtDocumentDate') ILIKE '%non demarre%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%non démarré%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%a faire%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%à faire%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%prevu%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%prévu%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%planifie%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%planifié%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%programme%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%programmé%'
+    THEN 'planned'
+  WHEN lower(source_payload->>'statusAtDocumentDate') ILIKE '%en attente%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%attendu%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%visa%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%validation%'
+    THEN 'awaiting_validation'
+  WHEN lower(source_payload->>'statusAtDocumentDate') ILIKE '%annule%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%annulé%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%abandonne%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%abandonné%'
+    THEN 'cancelled'
+  WHEN lower(source_payload->>'statusAtDocumentDate') ILIKE '%en cours%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%partiellement%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%demarre%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%démarré%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%demarrage%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%démarrage%'
+    THEN 'in_progress'
+  WHEN lower(source_payload->>'statusAtDocumentDate') ILIKE '%realis%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%réalisé%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%termin%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%terminé%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%leve%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%levé%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%execut%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%exécuté%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%accompli%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%mis en place%'
+    OR lower(source_payload->>'statusAtDocumentDate') = 'fait'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '100%'
+    THEN 'done'
+  WHEN lower(source_payload->>'statusAtDocumentDate') ILIKE '%ouvert%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%signale%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%signalé%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%constate%'
+    OR lower(source_payload->>'statusAtDocumentDate') ILIKE '%constaté%'
+    THEN 'open'
+  ELSE 'informational'
+END
+WHERE document_status IS NULL OR document_status = 'informational';

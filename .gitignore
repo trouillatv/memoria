@@ -74,3 +74,4 @@ docs/AO/extract*
 cr-becib-preview.pdf
 
 .preview/
+.env*

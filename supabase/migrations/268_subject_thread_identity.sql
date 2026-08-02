@@ -32,57 +32,5 @@ CREATE INDEX IF NOT EXISTS dep_subject_thread_idx
   ON public.document_extraction_proposal (subject_thread_id)
   WHERE subject_thread_id IS NOT NULL;
 
--- Backfill document_status depuis source_payload.statusAtDocumentDate (texte libre → enum).
--- Ne couvre pas les familles 'person' et 'company' (attendance, pas document_status).
---
--- Utilise unaccent() pour gérer les caractères accentués (ILIKE seul ne suffit pas
--- dans cette instance Supabase PostgreSQL avec la collation par défaut).
---
--- Ordre : du plus spécifique au plus général pour éviter les collisions.
--- Ex. 'non démarré' doit → planned avant que '%demarre%' → in_progress.
---     'VISA en cours' doit → awaiting_validation avant que '%en cours%' → in_progress.
---     'partiellement réalisé' doit → in_progress avant que '%realis%' → done.
-UPDATE public.document_extraction_proposal
-SET document_status = CASE
-  WHEN source_payload->>'statusAtDocumentDate' IS NULL
-    OR source_payload->>'statusAtDocumentDate' = ''
-    THEN NULL
-  WHEN lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%non conform%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%refuse%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%hors tolerance%'
-    THEN 'non_compliant'
-  WHEN lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%non demarre%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%a faire%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%prevu%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%planifie%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%programme%'
-    THEN 'planned'
-  WHEN lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%en attente%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%attendu%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%visa%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%validation%'
-    THEN 'awaiting_validation'
-  WHEN lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%annule%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%abandonne%'
-    THEN 'cancelled'
-  WHEN lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%en cours%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%partiellement%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%demarre%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%demarrage%'
-    THEN 'in_progress'
-  WHEN lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%realis%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%termin%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%leve%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%execut%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%accompli%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%mis en place%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) = 'fait'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '100%'
-    THEN 'done'
-  WHEN lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%ouvert%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%signale%'
-    OR lower(unaccent(source_payload->>'statusAtDocumentDate')) ILIKE '%constate%'
-    THEN 'open'
-  ELSE 'informational'
-END
-WHERE document_status IS NULL OR document_status = 'informational';
+-- Backfill supprimé : voir migration 271 pour le backfill sans unaccent()
+-- (conserve la définition de colonnes et index ci-dessus)

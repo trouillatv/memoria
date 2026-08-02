@@ -385,7 +385,7 @@ export function ProposalCard({
                     </button>
                   )}
                   {photo.caption && (
-                    <p className="text-[10px] text-muted-foreground max-w-[80px] truncate">{photo.caption}</p>
+                    <p className="text-[10px] text-muted-foreground max-w-[80px] truncate" title={photo.caption}>{photo.caption}</p>
                   )}
                 </div>
               )
