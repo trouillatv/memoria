@@ -59,7 +59,9 @@ function EvidenceItem({
           {isCandidate ? 'Association à confirmer' : (RELATION_LABEL[relationType] ?? relationType)}
         </span>
       </div>
-      {evidence.caption && <p className="text-muted-foreground italic">{evidence.caption}</p>}
+      {evidence.caption && evidence.caption.length >= 15 && evidence.caption.includes(' ') && (
+        <p className="text-muted-foreground italic">{evidence.caption}</p>
+      )}
       {excerptText && (
         <blockquote className="border-l-2 border-muted pl-2 text-muted-foreground line-clamp-3">
           {excerptText}
@@ -384,7 +386,7 @@ export function ProposalCard({
                       {photo.isPinPending ? '…' : photo.isPinned ? 'Incluse' : 'Inclure'}
                     </button>
                   )}
-                  {photo.caption && (
+                  {photo.caption && photo.caption.length >= 15 && photo.caption.includes(' ') && (
                     <p className="text-[10px] text-muted-foreground max-w-[80px] truncate" title={`IA · ${photo.caption}`}>
                       <span className="opacity-60">IA ·</span> {photo.caption}
                     </p>

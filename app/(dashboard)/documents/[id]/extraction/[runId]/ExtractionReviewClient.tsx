@@ -115,7 +115,7 @@ function OrphanEvidenceItem({
           </button>
         )}
       </div>
-      {evidence.caption && (
+      {evidence.caption && evidence.caption.length >= 15 && evidence.caption.includes(' ') && (
         <p className="text-muted-foreground italic">
           <span className="not-italic text-[10px] font-semibold uppercase tracking-wide opacity-60">IA ·</span>{' '}
           {evidence.caption}

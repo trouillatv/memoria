@@ -295,7 +295,11 @@ export async function extractHistoricalPv(
     })
 
     // 9. Lier preuves ↔ propositions
+    // Seules les familles visuellement observables peuvent recevoir un lien photo automatique.
+    // knowledge_fact, deadline, decision, person, company → jamais de lien supports automatique.
+    const PHOTO_LINKABLE_FAMILIES = new Set(['reservation', 'observation', 'action'])
     for (const proposal of llmResult.proposals) {
+      if (!PHOTO_LINKABLE_FAMILIES.has(proposal.family)) continue
       const proposalId = proposalKeyToId.get(proposal.temporaryKey)
       if (!proposalId) continue
       for (const evidenceKey of proposal.evidenceKeys) {

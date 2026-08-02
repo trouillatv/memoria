@@ -271,8 +271,10 @@ Pour chaque page comportant une ou plusieurs photos :
    - \`sourcePage\` : le numéro de la page.
    - \`nearbyText\` : le texte immédiatement adjacent à la photo dans le document, s'il existe.
 
-2. Si cette page est associée à une ou plusieurs propositions textuelles (une réserve photographiée, un avancement visible mentionné dans le texte) :
-   - inclus la clé de cette preuve dans les \`evidenceKeys\` de la proposition concernée.
+2. Si cette page montre **visuellement et spécifiquement** une réserve, une anomalie ou un avancement physique décrit dans une proposition de famille \`reservation\`, \`observation\` ou \`action\` :
+   - inclus la clé de cette preuve dans les \`evidenceKeys\` de cette proposition.
+   - **N'ajoute jamais** de \`evidenceKeys\` à une proposition de famille \`knowledge_fact\`, \`deadline\`, \`decision\`, \`person\` ou \`company\` : une photo générale ne constitue pas une preuve de mémoire, d'échéance ou de décision.
+   - Si la photo est générale (vue de chantier, engins, terrain) sans lien direct et spécifique à une proposition précise, ne l'associe à aucune proposition.
 
 3. Si aucune proposition existante ne correspond clairement à cette photo, crée la preuve seule (sans proposition liée). Ne crée pas de proposition pour décrire la photo.
 
