@@ -326,35 +326,12 @@ export async function extractHistoricalPv(
         imageEvidenceResults.map((r) => [r.storage_path, r.id]),
       )
 
-      // 10b. Candidats photo ↔ proposition par correspondance de page
-      // Familles visuelles uniquement — on ne suggère pas une photo pour une action ou une personne.
-      const VISUAL_FAMILIES = new Set(['observation', 'knowledge_fact', 'reservation', 'vigilance'])
-      const pageToProposals = new Map<number, string[]>()
-      for (const proposal of llmResult.proposals) {
-        if (!VISUAL_FAMILIES.has(proposal.family) || !proposal.sourcePage) continue
-        const proposalId = proposalKeyToId.get(proposal.temporaryKey)
-        if (!proposalId) continue
-        if (!pageToProposals.has(proposal.sourcePage)) pageToProposals.set(proposal.sourcePage, [])
-        pageToProposals.get(proposal.sourcePage)!.push(proposalId)
-      }
-      let candidateCount = 0
-      for (const info of extractedImageInfos) {
-        const evidenceId = storagePathToEvidenceId.get(info.storagePath)
-        if (!evidenceId) continue
-        const pageProposals = pageToProposals.get(info.pageNum) ?? []
-        if (pageProposals.length === 0) continue
-        // confidence = null : la co-présence de page ne mesure pas la pertinence réelle.
-        // Un score sémantique (caption ↔ libellé) viendra en second niveau.
-        for (const proposalId of pageProposals) {
-          try {
-            await linkProposalEvidence(proposalId, evidenceId, 'candidate', null, true)
-            candidateCount++
-          } catch { /* non-bloquant */ }
-        }
-      }
-      if (candidateCount > 0) {
-        log('photo_candidates_linked', documentId, { count: candidateCount })
-      }
+      // 10b. Candidats par proximité de page — SUPPRIMÉ
+      // La coprésence sur une page ne constitue pas une preuve visuelle.
+      // Sur les PV denses (ex. page 8 avec 10+ propositions), une seule photo
+      // se retrouvait suggérée pour tous les sujets de la page, créant
+      // autant de faux positifs que d'associations.
+      // Seuls les liens 'supports' créés par le LLM à l'étape 9 sont conservés.
     }
 
     // 11. Run terminé

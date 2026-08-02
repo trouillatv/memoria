@@ -115,7 +115,12 @@ function OrphanEvidenceItem({
           </button>
         )}
       </div>
-      {evidence.caption && <p className="text-muted-foreground italic">{evidence.caption}</p>}
+      {evidence.caption && (
+        <p className="text-muted-foreground italic">
+          <span className="not-italic text-[10px] font-semibold uppercase tracking-wide opacity-60">IA ·</span>{' '}
+          {evidence.caption}
+        </p>
+      )}
       {excerptText && <p className="text-muted-foreground line-clamp-3">{excerptText}</p>}
       {evidence.nearby_text && <p className="text-muted-foreground line-clamp-2">{evidence.nearby_text}</p>}
       {imgUrl && (
