@@ -343,15 +343,20 @@ export async function extractHistoricalPv(
       completed_at: new Date().toISOString(),
     })
 
-    // 11b. Ce run devient le run canonique du document.
-    // Les re-analyses précédentes (is_canonical = true) sont rétrogradées.
-    await supabase.from('document_extraction_run')
-      .update({ is_canonical: false })
+    // 11b. Devient canonique seulement si aucun canonique n'existe encore pour ce document.
+    // Une réanalyse ne remplace jamais automatiquement le canonique existant.
+    // L'index unique partiel (migration 277) garantit l'unicité au niveau PostgreSQL.
+    const { data: existingCanonical } = await supabase
+      .from('document_extraction_run')
+      .select('id')
       .eq('document_id', documentId)
-      .neq('id', runId)
-    await supabase.from('document_extraction_run')
-      .update({ is_canonical: true })
-      .eq('id', runId)
+      .eq('is_canonical', true)
+      .maybeSingle()
+    if (!existingCanonical) {
+      await supabase.from('document_extraction_run')
+        .update({ is_canonical: true })
+        .eq('id', runId)
+    }
 
     // 12. Réconciliation des fils thématiques inter-PV (déterministe, sans LLM)
     // Si le document n'est pas rattaché à un chantier, la réconciliation n'a pas de sens.

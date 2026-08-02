@@ -118,15 +118,26 @@ export async function reconcileSubjectThreads(
   if (!newRaw?.length) return { matched: 0, created: 0 }
   const newProposals = newRaw as ProposalStub[]
 
-  // Charger les propositions antérieures sur ce chantier (autres runs, déjà assignées)
-  const { data: priorRaw, error: priorErr } = await supabase
-    .from('document_extraction_proposal')
-    .select('id, proposal_family, thematic_category, label, subject_thread_id')
+  // Charger les propositions antérieures issues uniquement des runs canoniques.
+  // Les re-analyses non-canoniques sont exclues pour éviter la pollution du graphe thématique.
+  const { data: canonicalRunsData } = await supabase
+    .from('document_extraction_run')
+    .select('id')
     .eq('target_site_id', siteId)
-    .neq('extraction_run_id', runId)
-    .not('subject_thread_id', 'is', null)
-  if (priorErr) throw new Error(priorErr.message)
-  const priorProposals = (priorRaw ?? []) as ProposalStub[]
+    .eq('is_canonical', true)
+    .neq('id', runId)
+  const canonicalRunIds = ((canonicalRunsData ?? []) as Array<{ id: string }>).map((r) => r.id)
+
+  let priorProposals: ProposalStub[] = []
+  if (canonicalRunIds.length > 0) {
+    const { data: priorRaw, error: priorErr } = await supabase
+      .from('document_extraction_proposal')
+      .select('id, proposal_family, thematic_category, label, subject_thread_id')
+      .in('extraction_run_id', canonicalRunIds)
+      .not('subject_thread_id', 'is', null)
+    if (priorErr) throw new Error(priorErr.message)
+    priorProposals = (priorRaw ?? []) as ProposalStub[]
+  }
 
   let matched = 0
   let created = 0
