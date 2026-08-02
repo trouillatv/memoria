@@ -124,9 +124,10 @@ BEGIN
         INSERT INTO public.document_proposal_materialization (
           organization_id, proposal_id,
           target_entity_type, target_entity_id,
-          materialized_at, materialized_by
+          created_at, created_by
         ) VALUES (
           v_org_id, rec.id, 'site_reserve', v_entity_id, now(), p_user_id
+
         ) ON CONFLICT DO NOTHING;
 
       WHEN 'action' THEN
@@ -148,7 +149,7 @@ BEGIN
         INSERT INTO public.document_proposal_materialization (
           organization_id, proposal_id,
           target_entity_type, target_entity_id,
-          materialized_at, materialized_by
+          created_at, created_by
         ) VALUES (
           v_org_id, rec.id, 'site_action', v_entity_id, now(), p_user_id
         ) ON CONFLICT DO NOTHING;
@@ -174,7 +175,7 @@ BEGIN
         INSERT INTO public.document_proposal_materialization (
           organization_id, proposal_id,
           target_entity_type, target_entity_id,
-          materialized_at, materialized_by
+          created_at, created_by
         ) VALUES (
           v_org_id, rec.id, 'site_decision', v_entity_id, now(), p_user_id
         ) ON CONFLICT DO NOTHING;
@@ -196,7 +197,7 @@ BEGIN
         INSERT INTO public.document_proposal_materialization (
           organization_id, proposal_id,
           target_entity_type, target_entity_id,
-          materialized_at, materialized_by
+          created_at, created_by
         ) VALUES (
           v_org_id, rec.id, 'site_watchpoint', v_entity_id, now(), p_user_id
         ) ON CONFLICT DO NOTHING;
@@ -224,7 +225,7 @@ BEGIN
         INSERT INTO public.document_proposal_materialization (
           organization_id, proposal_id,
           target_entity_type, target_entity_id,
-          materialized_at, materialized_by
+          created_at, created_by
         ) VALUES (
           v_org_id, rec.id, 'site_deadline', v_entity_id, now(), p_user_id
         ) ON CONFLICT DO NOTHING;
