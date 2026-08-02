@@ -305,14 +305,15 @@ WHERE id IN (${dupDocIds.map((id) => `'${id}'`).join(',')})
 DO $$
 DECLARE v int;
 BEGIN
-  -- 1. Exactement 1 document PV avec ce hash reste (le canonique)
+  -- 1. Exactement 1 document PV avec ce hash reste — actif (deleted_at IS NULL)
   SELECT COUNT(*) INTO v
   FROM public.documents d
   JOIN public.document_links dl ON dl.document_id = d.id AND dl.target_type = 'site'
   WHERE d.content_hash = '${CANONICAL_HASH}'
-    AND d.document_type = 'historical_visit_report';
+    AND d.document_type = 'historical_visit_report'
+    AND d.deleted_at IS NULL;
   IF v != 1 THEN
-    RAISE EXCEPTION 'ASSERTION 1 FAILED: % document(s) PV001 restant(s) (attendu: 1)', v;
+    RAISE EXCEPTION 'ASSERTION 1 FAILED: % document(s) PV001 actifs restants (attendu: 1 non supprime)', v;
   END IF;
 
 ${siteReportIds.length > 0 ? `
@@ -349,13 +350,14 @@ COMMIT;
   sep('VÉRIFICATIONS POST-SUPPRESSION')
 
   const remaining = await sql(`
-    SELECT d.id, d.filename, d.effective_date, d.content_hash
+    SELECT d.id, d.filename, d.effective_date, d.content_hash, d.deleted_at
     FROM documents d
     JOIN document_links dl ON dl.document_id = d.id AND dl.target_type = 'site'
     WHERE d.content_hash = '${CANONICAL_HASH}'
-      AND d.document_type = 'historical_visit_report';
+      AND d.document_type = 'historical_visit_report'
+      AND d.deleted_at IS NULL;
   `)
-  console.log(`\n  Documents restants avec ce hash: ${remaining.length}`)
+  console.log(`\n  Documents actifs restants avec ce hash: ${remaining.length} (attendu: 1)`)
   for (const r of remaining) row(r)
 
   const orphanActions = actionIds.length > 0 ? await sql(`
@@ -375,8 +377,11 @@ COMMIT;
   console.log(`  Deadlines orphelines restantes: ${orphanDeadlines[0]?.n ?? 0} (attendu: 0)`)
   console.log(`  site_reports orphelins restants: ${orphanReports[0]?.n ?? 0} (attendu: 0)`)
 
-  if (remaining.length === 1 && remaining[0].id === canonicalId) {
-    console.log('\n  ✓ Un seul document PV001 restant — document canonique confirmé.')
+  const remainingDoc = remaining[0] as { id: string } | undefined
+  if (remaining.length === 1 && remainingDoc?.id === canonicalId) {
+    console.log('\n  ✓ Un seul document PV001 actif restant — document canonique confirmé.')
+  } else if (remaining.length === 0) {
+    console.log('\n  ✗ ERREUR : aucun document PV001 actif restant — le canonique est peut-être soft-deleted.')
   } else {
     console.log('\n  ✗ Attention : état inattendu après suppression — vérifier manuellement.')
   }
