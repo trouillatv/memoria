@@ -39,10 +39,10 @@ export async function GET(
   }
 
   const admin = createAdminClient()
-  const { data: signed } = await admin.storage
+  const { data: fileData, error: downloadError } = await admin.storage
     .from('documents')
-    .createSignedUrl(doc.storage_path, SIGNED_URL_TTL, { download: doc.filename })
-  if (!signed?.signedUrl) {
+    .download(doc.storage_path)
+  if (downloadError || !fileData) {
     return new NextResponse('Fichier indisponible', { status: 503 })
   }
 
@@ -54,5 +54,12 @@ export async function GET(
     metadata: { filename: doc.filename, document_type: doc.document_type },
   })
 
-  return NextResponse.redirect(signed.signedUrl)
+  const safeName = doc.filename.replace(/[^\w\s.()\-]/g, '_')
+  return new NextResponse(fileData.stream(), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${safeName}"`,
+      'Cache-Control': 'private, no-store',
+    },
+  })
 }

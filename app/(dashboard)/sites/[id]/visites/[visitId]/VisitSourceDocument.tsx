@@ -13,7 +13,8 @@ function formatFileSize(bytes: number | null): string {
 export async function VisitSourceDocumentCard({ doc, siteId }: { doc: VisitSourceDocument; siteId: string }) {
   const admin = createAdminClient()
   const { data } = await admin.storage.from('documents').createSignedUrl(doc.storagePath, 3600)
-  const downloadUrl = data?.signedUrl ?? null
+  const openUrl = data?.signedUrl ?? null
+  const downloadHref = `/documents/${doc.id}/download`
 
   return (
     <div className="rounded-lg border bg-card p-4">
@@ -37,20 +38,21 @@ export async function VisitSourceDocumentCard({ doc, siteId }: { doc: VisitSourc
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {downloadUrl && (
+          {(openUrl || downloadHref) && (
             <>
+              {openUrl && (
+                <a
+                  href={openUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs hover:bg-muted"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Ouvrir
+                </a>
+              )}
               <a
-                href={downloadUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs hover:bg-muted"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                Ouvrir
-              </a>
-              <a
-                href={downloadUrl}
-                download={doc.filename}
+                href={downloadHref}
                 className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs hover:bg-muted"
               >
                 <Download className="h-3.5 w-3.5" />
