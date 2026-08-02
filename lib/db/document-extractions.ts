@@ -508,6 +508,8 @@ export type RunWithDocDate = {
  *
  * Filtre par is_canonical = true : 1 document = 1 snapshot, les re-analyses
  * du même PDF n'apparaissent pas comme des PV distincts (migration 276).
+ * Filtre également documents.deleted_at IS NULL : les runs dont le document
+ * parent a été soft-deleted ne participent jamais au comparateur.
  */
 export async function getLatestRunsForSite(
   siteId: string,
@@ -516,14 +518,17 @@ export async function getLatestRunsForSite(
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('document_extraction_run')
-    .select('id, document_id, created_at, documents!document_id(effective_date)')
+    .select('id, document_id, created_at, documents!document_id(effective_date, deleted_at)')
     .eq('target_site_id', siteId)
     .eq('is_canonical', true)
     .order('created_at', { ascending: true })
   if (error) throw new Error(error.message)
 
-  type Raw = { id: string; document_id: string; created_at: string; documents: Array<{ effective_date: string | null }> | { effective_date: string | null } | null }
-  const rows = (data ?? []) as unknown as Raw[]
+  type Raw = { id: string; document_id: string; created_at: string; documents: Array<{ effective_date: string | null; deleted_at: string | null }> | { effective_date: string | null; deleted_at: string | null } | null }
+  const rows = ((data ?? []) as unknown as Raw[]).filter((r) => {
+    const doc = Array.isArray(r.documents) ? r.documents[0] : r.documents
+    return doc?.deleted_at == null
+  })
 
   function docEffDate(r: Raw): string {
     const doc = Array.isArray(r.documents) ? r.documents[0] : r.documents
