@@ -3,7 +3,7 @@
 import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { acceptProposalAction, editProposalAction, rejectProposalAction, resetProposalAction } from './review-actions'
+import { acceptProposalAction, editProposalAction, rejectProposalAction, resetProposalAction, updatePersonAttendanceAction } from './review-actions'
 import type { DbDocumentExtractionProposal, DbDocumentExtractionEvidence, DocumentEvidenceRelationType } from '@/types/db'
 
 // ─── Labels ──────────────────────────────────────────────────────────────────
@@ -35,6 +35,24 @@ const FAMILY_OPTIONS = [
   { value: 'deadline', label: 'Échéance' },
   { value: 'knowledge_fact', label: 'Élément de mémoire' },
 ]
+
+const ATTENDANCE_OPTIONS: Array<{ value: string; label: string; className: string }> = [
+  { value: 'présent',             label: 'Présent',           className: 'border-green-400 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30' },
+  { value: 'absent excusé',       label: 'Absent excusé',     className: 'border-amber-400 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30' },
+  { value: 'absent non excusé',   label: 'Absent non excusé', className: 'border-red-400 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30' },
+  { value: 'invité',              label: 'Invité',             className: 'border-blue-400 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30' },
+  { value: 'diffusion uniquement',label: 'Diffusion',          className: 'border-slate-400 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-950/30' },
+  { value: 'non déterminé',       label: 'Non déterminé',      className: 'border-muted-foreground/40 text-muted-foreground hover:bg-muted/60' },
+]
+
+const ATTENDANCE_ACTIVE: Record<string, string> = {
+  'présent':             'bg-green-100 border-green-500 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+  'absent excusé':       'bg-amber-100 border-amber-500 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  'absent non excusé':   'bg-red-100 border-red-500 text-red-800 dark:bg-red-900/40 dark:text-red-300',
+  'invité':              'bg-blue-100 border-blue-500 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
+  'diffusion uniquement':'bg-slate-100 border-slate-500 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300',
+  'non déterminé':       'bg-muted border-muted-foreground/40 text-muted-foreground',
+}
 
 // ─── Preuve individuelle ─────────────────────────────────────────────────────
 
@@ -200,12 +218,30 @@ export function ProposalCard({
 
   const sourcePayload = proposal.source_payload as {
     statusAtDocumentDate?: string
+    linkedCompanyName?: string | null
     dueDate?: string
     responsibleParty?: string
     relevanceScore?: 'strong' | 'medium' | 'weak'
     relevanceReason?: string
   } | null
   const relevanceScore = sourcePayload?.relevanceScore ?? null
+
+  const isPerson = proposal.proposal_family === 'person'
+  const [localAttendance, setLocalAttendance] = useState<string>(
+    sourcePayload?.statusAtDocumentDate?.toLowerCase() ?? 'non déterminé'
+  )
+  const isAttendanceConfirmed = localStatus === 'edited' || localStatus === 'accepted' || localStatus === 'materialized'
+
+  function onUpdateAttendance(status: string) {
+    const fd = new FormData()
+    fd.set('proposal_id', proposal.id)
+    fd.set('document_id', documentId)
+    fd.set('attendance_status', status)
+    handleAction(() => updatePersonAttendanceAction(fd), () => {
+      setLocalAttendance(status)
+      setLocalStatus('edited')
+    })
+  }
 
   return (
     <article className="rounded-[18px] border bg-card p-4 space-y-3 shadow-sm">
@@ -297,8 +333,44 @@ export function ProposalCard({
         </div>
       )}
 
+      {/* Statut de présence — section dédiée pour les personnes */}
+      {isPerson && (
+        <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-medium text-muted-foreground">Statut de présence</span>
+            {!isAttendanceConfirmed && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                IA · à confirmer
+              </span>
+            )}
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${ATTENDANCE_ACTIVE[localAttendance] ?? ATTENDANCE_ACTIVE['non déterminé']}`}>
+              {ATTENDANCE_OPTIONS.find((o) => o.value === localAttendance)?.label ?? localAttendance}
+            </span>
+          </div>
+          {!isMaterialized && (
+            <div className="flex flex-wrap gap-1.5">
+              {ATTENDANCE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => onUpdateAttendance(opt.value)}
+                  disabled={pending}
+                  className={`text-[11px] px-2 py-0.5 rounded border transition-colors disabled:opacity-50 ${
+                    localAttendance === opt.value
+                      ? ATTENDANCE_ACTIVE[opt.value] ?? ''
+                      : `bg-transparent ${opt.className}`
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Source */}
-      {(proposal.source_excerpt || sourcePayload) && (
+      {(proposal.source_excerpt || (sourcePayload && !isPerson)) && (
         <details>
           <summary className="text-xs text-muted-foreground cursor-pointer select-none hover:text-foreground">
             Source documentaire
@@ -308,11 +380,6 @@ export function ProposalCard({
               <blockquote className="text-xs text-muted-foreground italic">
                 « {proposal.source_excerpt} »
               </blockquote>
-            )}
-            {sourcePayload?.statusAtDocumentDate && (
-              <p className="text-xs text-muted-foreground">
-                Statut au PV : <span className="font-medium">{sourcePayload.statusAtDocumentDate}</span>
-              </p>
             )}
             {sourcePayload?.dueDate && (
               <p className="text-xs text-muted-foreground">

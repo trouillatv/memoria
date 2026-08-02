@@ -126,6 +126,48 @@ export async function resetProposalAction(fd: FormData): Promise<ActionResult> {
   return { ok: true }
 }
 
+const VALID_ATTENDANCE_STATUSES = new Set([
+  'présent', 'absent excusé', 'absent non excusé', 'invité', 'diffusion uniquement', 'non déterminé',
+])
+
+export async function updatePersonAttendanceAction(fd: FormData): Promise<ActionResult> {
+  const proposalId = fd.get('proposal_id')?.toString()
+  const documentId = fd.get('document_id')?.toString()
+  const status = fd.get('attendance_status')?.toString()
+
+  if (!proposalId || !documentId || !status) return { ok: false, error: 'Paramètres manquants' }
+  if (!VALID_ATTENDANCE_STATUSES.has(status)) return { ok: false, error: 'Statut invalide' }
+
+  const access = await verifyReviewAccess(documentId)
+  if (!access.ok) return access
+
+  if (!(await verifyProposalOwnership(proposalId, documentId))) {
+    return { ok: false, error: 'Proposition introuvable' }
+  }
+
+  const admin = createAdminClient()
+  const { data: proposal } = await admin
+    .from('document_extraction_proposal')
+    .select('source_payload')
+    .eq('id', proposalId)
+    .single()
+
+  if (!proposal) return { ok: false, error: 'Proposition introuvable' }
+
+  const newPayload = {
+    ...((proposal.source_payload as Record<string, unknown>) ?? {}),
+    statusAtDocumentDate: status,
+  }
+
+  const { error } = await admin
+    .from('document_extraction_proposal')
+    .update({ source_payload: newPayload, review_status: 'edited' })
+    .eq('id', proposalId)
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
 export async function relinkEvidenceAction(fd: FormData): Promise<ActionResult> {
   const proposalId = fd.get('proposal_id')?.toString()
   const evidenceId = fd.get('evidence_id')?.toString()
