@@ -326,7 +326,12 @@ async function ChronologieView({ siteId }: { siteId: string }) {
     if (runs.length === 2) {
       const delta = await getPvDelta(runs[0].id, runs[1].id)
       const summary = await generateSincePvSummary(delta)
-      pvData = { delta, summary, fromDate: runs[0].created_at, toDate: runs[1].created_at }
+      pvData = {
+        delta,
+        summary,
+        fromDate: runs[0].documentEffectiveDate ?? runs[0].created_at,
+        toDate: runs[1].documentEffectiveDate ?? runs[1].created_at,
+      }
     }
   } catch {
     // non-bloquant

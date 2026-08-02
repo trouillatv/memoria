@@ -190,7 +190,9 @@ export function ChronologyWorkspace({
               <TimelineDot tone="orange" />
               <article className="rounded-[18px] border bg-card p-4 shadow-sm">
                 <p className="text-sm text-muted-foreground">
-                  Échéance ajoutée · {formatDate(d.created_at)}
+                  {d.source_document_effective_date
+                    ? `Mentionnée dans le PV du ${formatDate(d.source_document_effective_date)}`
+                    : `Échéance ajoutée · ${formatDate(d.created_at)}`}
                 </p>
                 <p className="mt-0.5 font-medium">{d.title}</p>
                 <p className="mt-0.5 text-sm text-muted-foreground">

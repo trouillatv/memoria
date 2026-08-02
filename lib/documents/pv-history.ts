@@ -21,7 +21,19 @@ export type HistoryTransition = DeltaTransition | 'réapparu'
 
 const OBSERVATION_FAMILIES = new Set(['observation', 'reservation', 'non_conformity'])
 
-type RunRow = { id: string; document_id: string; created_at: string }
+// Le SDK Supabase peut retourner les embeds en tableau ou en objet selon la version.
+type RunRow = {
+  id: string
+  document_id: string
+  created_at: string
+  documents: Array<{ effective_date: string | null }> | { effective_date: string | null } | null
+}
+
+/** Date métier du PV : documents.effective_date si disponible, sinon created_at du run. */
+function runEffectiveDate(run: RunRow): string {
+  const doc = Array.isArray(run.documents) ? run.documents[0] : run.documents
+  return doc?.effective_date ?? run.created_at
+}
 type PropRow = {
   id: string
   extraction_run_id: string
@@ -151,13 +163,17 @@ export async function getSubjectTimeline(subjectThreadId: string): Promise<Subje
 
   const { data: runsRaw, error: runsErr } = await supabase
     .from('document_extraction_run')
-    .select('id, document_id, created_at')
+    .select('id, document_id, created_at, documents!document_id(effective_date)')
     .eq('target_site_id', siteId)
     .eq('status', 'ready_for_review')
     .order('created_at', { ascending: true })
   if (runsErr) throw new Error(runsErr.message)
 
-  const allRuns = (runsRaw ?? []) as RunRow[]
+  // Tri par date métier du PV (effective_date), puis created_at en tiebreaker.
+  const allRuns = ((runsRaw ?? []) as unknown as RunRow[]).sort((a, b) => {
+    const da = runEffectiveDate(a), db = runEffectiveDate(b)
+    return da !== db ? da.localeCompare(db) : a.created_at.localeCompare(b.created_at)
+  })
   const propByRun = new Map<string, PropRow>()
   for (const p of props) propByRun.set(p.extraction_run_id, p)
 
@@ -167,8 +183,10 @@ export async function getSubjectTimeline(subjectThreadId: string): Promise<Subje
   const relevantRuns = allRuns.slice(firstRunIndex)
 
   // Métadonnées canoniques : label/statut de la dernière occurrence
+  const runDateMap = new Map<string, string>()
+  for (const r of allRuns) runDateMap.set(r.id, runEffectiveDate(r))
   const propsWithDate = props
-    .map((p) => ({ p, date: allRuns.find((r) => r.id === p.extraction_run_id)?.created_at ?? '' }))
+    .map((p) => ({ p, date: runDateMap.get(p.extraction_run_id) ?? '' }))
     .sort((a, b) => a.date.localeCompare(b.date))
 
   const firstEntry = propsWithDate[0]
@@ -187,7 +205,7 @@ export async function getSubjectTimeline(subjectThreadId: string): Promise<Subje
         runId: run.id,
         documentId: run.document_id,
         proposalId: null,
-        effectiveDate: run.created_at,
+        effectiveDate: runEffectiveDate(run),
         status: null,
         label: null,
         description: null,
@@ -212,7 +230,7 @@ export async function getSubjectTimeline(subjectThreadId: string): Promise<Subje
         runId: run.id,
         documentId: run.document_id,
         proposalId: prop.id,
-        effectiveDate: run.created_at,
+        effectiveDate: runEffectiveDate(run),
         status: prop.document_status,
         label: prop.label,
         description: prop.description,
@@ -252,13 +270,16 @@ export async function getSiteHistoricalTimeline(siteId: string): Promise<SiteHis
 
   const { data: runsRaw, error: runsErr } = await supabase
     .from('document_extraction_run')
-    .select('id, document_id, created_at')
+    .select('id, document_id, created_at, documents!document_id(effective_date)')
     .eq('target_site_id', siteId)
     .eq('status', 'ready_for_review')
     .order('created_at', { ascending: true })
   if (runsErr) throw new Error(runsErr.message)
 
-  const runs = (runsRaw ?? []) as RunRow[]
+  const runs = ((runsRaw ?? []) as unknown as RunRow[]).sort((a, b) => {
+    const da = runEffectiveDate(a), db = runEffectiveDate(b)
+    return da !== db ? da.localeCompare(db) : a.created_at.localeCompare(b.created_at)
+  })
   if (runs.length === 0) return { siteId, snapshots: [] }
 
   const runIds = runs.map((r) => r.id)
@@ -315,7 +336,7 @@ export async function getSiteHistoricalTimeline(siteId: string): Promise<SiteHis
     snapshots.push({
       runId: run.id,
       documentId: run.document_id,
-      effectiveDate: run.created_at,
+      effectiveDate: runEffectiveDate(run),
       isFirstRun: i === 0,
       transitionCounts: counts,
     })
@@ -341,13 +362,16 @@ export async function getSiteSubjectMatrix(siteId: string): Promise<SiteSubjectM
 
   const { data: runsRaw, error: runsErr } = await supabase
     .from('document_extraction_run')
-    .select('id, document_id, created_at')
+    .select('id, document_id, created_at, documents!document_id(effective_date)')
     .eq('target_site_id', siteId)
     .eq('status', 'ready_for_review')
     .order('created_at', { ascending: true })
   if (runsErr) throw new Error(runsErr.message)
 
-  const runs = (runsRaw ?? []) as RunRow[]
+  const runs = ((runsRaw ?? []) as unknown as RunRow[]).sort((a, b) => {
+    const da = runEffectiveDate(a), db = runEffectiveDate(b)
+    return da !== db ? da.localeCompare(db) : a.created_at.localeCompare(b.created_at)
+  })
   if (runs.length === 0) return { siteId, runs: [], rows: [] }
 
   const runIds = runs.map((r) => r.id)
@@ -468,7 +492,7 @@ export async function getSiteSubjectMatrix(siteId: string): Promise<SiteSubjectM
 
   return {
     siteId,
-    runs: runs.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: r.created_at })),
+    runs: runs.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) })),
     rows,
   }
 }
