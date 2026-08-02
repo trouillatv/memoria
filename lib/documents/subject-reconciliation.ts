@@ -14,6 +14,21 @@ const STOPWORDS = new Set([
   'son','ses','l','d','est','sont','été','être','avoir','y','il','ils',
 ])
 
+// Tokens trop génériques pour être discriminants seuls dans un containment match.
+// Un label court composé uniquement de ces tokens ne peut pas matcher par containment.
+const GENERIC_TOKENS = new Set([
+  'plan','essais','travaux','fait','prevision','realisation',
+  'acces','raccordement','mise','place','rapport','controle','verification',
+  'inspection','suivi','bilan','point','test','visite','reunion','compte',
+  'rendu','note','fiche','releve','mesure','calcul','etude','analyse',
+])
+
+// Qualificatifs qui changent le sens d'un sujet quand le long les ajoute au court.
+// "Purge complémentaire" ≠ "Purge" — "complémentaire" est discriminant.
+const QUALIFIERS = new Set([
+  'complementaire','supplementaire','additionnel','partiel','temporaire',
+])
+
 /**
  * Normalise un label pour la comparaison :
  * minuscules → suppression accents → alphanumériques uniquement → filtrage stopwords
@@ -28,6 +43,82 @@ export function normalizeLabel(label: string): string {
     .filter((t) => t.length > 1 && !STOPWORDS.has(t))
     .join(' ')
     .trim()
+}
+
+/**
+ * Retire le préfixe catégorie ("Catégorie : texte" → "texte")
+ * et le suffixe statut ("texte = Statut" → "texte") avant le matching par containment.
+ * Les PV07+ utilisent ce format enrichi ; PV06 n'a que le sujet nu.
+ */
+export function stripCategoryFormatting(label: string): string {
+  let s = label
+  // Retirer le préfixe "Catégorie : " (premier " : " seulement)
+  const colonIdx = s.indexOf(' : ')
+  if (colonIdx !== -1) s = s.slice(colonIdx + 3)
+  // Retirer le suffixe " = Statut" (dernière occurrence de " = ")
+  const eqIdx = s.lastIndexOf(' = ')
+  if (eqIdx !== -1) s = s.slice(0, eqIdx)
+  return s.trim()
+}
+
+/**
+ * Matching par containment fort : vérifie que les tokens du label court sont tous
+ * présents dans les tokens du label long, avec assez de tokens discriminants.
+ *
+ * Étape 0 : correspondance exacte après stripCategoryFormatting (ex. "Purge" = stripped de
+ *   "Terrassement plateforme : Purge = Fait") → retourne true immédiatement.
+ *
+ * Étape 1 : containment sur labels RAW normalisés (sans stripping), pour capter les cas
+ *   où le sujet est le préfixe du PV07 (ex. "Débroussaillage" ⊂ "Débroussaillage : 100% réalisé").
+ *
+ * Gardes :
+ * - ≥ 2 tokens significatifs (hors GENERIC_TOKENS) dans le court
+ * - OU 1 token significatif de longueur ≥ 7 (terme métier spécifique)
+ * - Si le long ajoute un qualificatif discriminant (QUALIFIERS) et le court n'a qu'un seul
+ *   token significatif : rejeter ("Purge" ⊄ "Purge complémentaire")
+ */
+export function strongContainmentMatch(labelA: string, labelB: string): boolean {
+  // Étape 0 : exact après stripping des deux côtés
+  const strippedA = normalizeLabel(stripCategoryFormatting(labelA))
+  const strippedB = normalizeLabel(stripCategoryFormatting(labelB))
+  if (strippedA.length > 0 && strippedA === strippedB) return true
+
+  // Étape 1 : containment sur labels RAW normalisés
+  const normA = normalizeLabel(labelA)
+  const normB = normalizeLabel(labelB)
+
+  const tokA = normA.split(' ').filter(Boolean)
+  const tokB = normB.split(' ').filter(Boolean)
+
+  if (tokA.length === 0 || tokB.length === 0) return false
+
+  const setA = new Set(tokA)
+  const setB = new Set(tokB)
+  // Le label avec moins de tokens uniques est le "court"
+  const [shortToks, shortSet, longSet] = setA.size <= setB.size
+    ? [tokA, setA, setB]
+    : [tokB, setB, setA]
+
+  // Tous les tokens du court doivent être dans le long
+  for (const t of shortSet) {
+    if (!longSet.has(t)) return false
+  }
+
+  // Tokens significatifs du court (hors génériques)
+  const sigShort = shortToks.filter((t) => !GENERIC_TOKENS.has(t))
+
+  if (sigShort.length >= 2) return true
+
+  if (sigShort.length === 1) {
+    // Token unique : accepté seulement s'il est assez spécifique (≥ 7 chars)
+    if (sigShort[0].length < 7) return false
+    // Garde : rejeter si le long ajoute un qualificatif que le court n'a pas
+    const longOnlyToks = [...longSet].filter((t) => !shortSet.has(t))
+    if (longOnlyToks.some((t) => QUALIFIERS.has(t))) return false
+    return true
+  }
+
+  return false
 }
 
 /**
@@ -74,14 +165,41 @@ function findBestThread(newProp: ProposalStub, priors: ProposalStub[]): string |
     return match?.subject_thread_id ?? null
   }
 
-  // Propositions de contenu : famille + thème + Jaccard
+  // Propositions de contenu : famille + thème, puis cascade de matching
   const sameTheme = sameFamilyPriors.filter(
     (p) => p.thematic_category === newProp.thematic_category,
   )
+
+  // Étape 1 : correspondance exacte sur label normalisé (après strip formatage)
+  const newNormStripped = normalizeLabel(stripCategoryFormatting(newProp.label))
+  const exactMatch = sameTheme.find(
+    (p) => normalizeLabel(stripCategoryFormatting(p.label)) === newNormStripped,
+  )
+  if (exactMatch) return exactMatch.subject_thread_id
+
+  // Étape 2 : containment fort (label court ⊂ label long, avec gardes)
+  // Prend le premier match — si plusieurs, le plus long label antérieur (plus spécifique)
+  let containmentMatch: ProposalStub | null = null
+  let containmentLabelLen = 0
+  for (const prior of sameTheme) {
+    if (strongContainmentMatch(newProp.label, prior.label)) {
+      const priorLen = normalizeLabel(stripCategoryFormatting(prior.label)).length
+      if (priorLen > containmentLabelLen) {
+        containmentMatch = prior
+        containmentLabelLen = priorLen
+      }
+    }
+  }
+  if (containmentMatch) return containmentMatch.subject_thread_id
+
+  // Étape 3 : Jaccard ≥ seuil sur labels strippés du formatage catégorie/statut.
+  // Stripping des deux côtés améliore le score quand les labels divergent uniquement
+  // par un préfixe "Catégorie : " ou un suffixe " = Statut".
   let bestScore = 0
   let bestThread: string | null = null
+  const newLabelStripped = stripCategoryFormatting(newProp.label)
   for (const prior of sameTheme) {
-    const score = jaccardSimilarity(newProp.label, prior.label)
+    const score = jaccardSimilarity(newLabelStripped, stripCategoryFormatting(prior.label))
     if (score > bestScore) {
       bestScore = score
       bestThread = prior.subject_thread_id

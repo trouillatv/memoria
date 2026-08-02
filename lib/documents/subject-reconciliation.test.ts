@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { jaccardSimilarity, normalizeLabel, mapDocumentStatus } from './subject-reconciliation'
+import { jaccardSimilarity, normalizeLabel, mapDocumentStatus, stripCategoryFormatting, strongContainmentMatch } from './subject-reconciliation'
 
 // ── normalizeLabel ────────────────────────────────────────────────────────────
 
@@ -79,6 +79,173 @@ describe('jaccardSimilarity', () => {
     expect(jaccardSimilarity('', '')).toBe(1)
     expect(jaccardSimilarity('rapport g3', '')).toBe(0)
     expect(jaccardSimilarity('', 'rapport g3')).toBe(0)
+  })
+})
+
+// ── stripCategoryFormatting ───────────────────────────────────────────────────
+
+describe('stripCategoryFormatting', () => {
+  it('strips category prefix', () => {
+    expect(stripCategoryFormatting('Assainissement : Busage entre la plateforme et le lagunage'))
+      .toBe('Busage entre la plateforme et le lagunage')
+  })
+
+  it('strips status suffix', () => {
+    expect(stripCategoryFormatting('Purge = Fait'))
+      .toBe('Purge')
+  })
+
+  it('strips both prefix and suffix', () => {
+    expect(stripCategoryFormatting('Terrassement plateforme : Purge = Fait'))
+      .toBe('Purge')
+  })
+
+  it('leaves plain labels unchanged', () => {
+    expect(stripCategoryFormatting('Purge')).toBe('Purge')
+    expect(stripCategoryFormatting('Busage provisoire')).toBe('Busage provisoire')
+  })
+
+  it('handles multiple = signs (strips only last)', () => {
+    expect(stripCategoryFormatting('Zone de prélèvement : Zone de prélèvement à retailler = FAIT'))
+      .toBe('Zone de prélèvement à retailler')
+  })
+})
+
+// ── strongContainmentMatch — vrais positifs PV006→PV007 ──────────────────────
+//
+// Cascade dans findBestThread : exact → containment → Jaccard.
+// Ces tests couvrent les paires capturées par exact (early exit) ou containment.
+// Paires 7, 9, 10 (Débourbeur, Retaillage, Essais bétons) : non couvertes par containment,
+// rattrapées par Jaccard sur labels strippés dans findBestThread — non testées ici.
+// Paire 13 (Moyens humains/matériels) : non matchable sans stemming — miss accepté.
+
+describe('strongContainmentMatch — vrais positifs', () => {
+  it('Purge ↔ Terrassement plateforme : Purge = Fait (exact après strip)', () => {
+    // Les deux se strippent en "Purge" → exact match → true
+    expect(strongContainmentMatch(
+      'Purge',
+      'Terrassement plateforme : Purge = Fait',
+    )).toBe(true)
+  })
+
+  it('Purge complémentaire ↔ Terrassement plateforme : Purge complémentaire a été fait', () => {
+    // sig = ["complementaire"] (purge est générique), length 13 ≥ 7 → true
+    expect(strongContainmentMatch(
+      'Purge complémentaire',
+      'Terrassement plateforme : Purge complémentaire a été fait',
+    )).toBe(true)
+  })
+
+  it('Récolement ↔ Récolement fait = VISA réalisé, Reprise FAIT en attente plan récolement', () => {
+    // sig = ["recolement"], length 9 ≥ 7 → true
+    expect(strongContainmentMatch(
+      'Récolement',
+      'Récolement fait = VISA réalisé, Reprise FAIT en attente plan récolement',
+    )).toBe(true)
+  })
+
+  it('Débroussaillage ↔ Débroussaillage : 100% réalisé', () => {
+    // raw containment : "debroussaillage" ⊂ {"debroussaillage", "100", "realise"}
+    // sig = ["debroussaillage"], length 14 ≥ 7 → true
+    expect(strongContainmentMatch(
+      'Débroussaillage',
+      'Débroussaillage : 100% réalisé',
+    )).toBe(true)
+  })
+
+  it('Busage entre plateforme et lagunage ↔ Assainissement : Busage entre la plateforme... (exact après strip)', () => {
+    // strip B → "Busage entre la plateforme et le lagunage" → norm = "busage entre plateforme lagunage"
+    // strip A → norm = "busage entre plateforme lagunage" → exact
+    expect(strongContainmentMatch(
+      'Busage entre plateforme et lagunage',
+      'Assainissement : Busage entre la plateforme et le lagunage = Remblai réalisé',
+    )).toBe(true)
+  })
+
+  it('Busages sous plateforme et fonds de regard ↔ Assainissement : Mise en place des busages...', () => {
+    // sig ≥ 2 : [busages, fonds, regard] → true
+    expect(strongContainmentMatch(
+      'Busages sous plateforme et fonds de regard',
+      'Assainissement : Mise en place des busages sous la plateforme et réalisation des fonds de regard',
+    )).toBe(true)
+  })
+
+  it('Busage provisoire ↔ GDE : Busage Provisoire mis en place', () => {
+    // sig = [busage, provisoire] → length 2 ≥ 2 → true
+    expect(strongContainmentMatch(
+      'Busage provisoire',
+      'GDE : Busage Provisoire mis en place',
+    )).toBe(true)
+  })
+
+  it('Validation raccordement lagunage ↔ Raccordement sur le lagunage fera l\'objet d\'une validation du MOA/MOE', () => {
+    // sig = [lagunage, validation] (raccordement est générique) → ≥ 2 → true
+    expect(strongContainmentMatch(
+      'Validation raccordement lagunage',
+      'Raccordement sur le lagunage fera l\'objet d\'une validation du MOA/MOE',
+    )).toBe(true)
+  })
+
+  it('Visite mairie secteur sous plateforme ↔ Assainissement : Visite de la mairie pour le secteur sous plateforme...', () => {
+    // sig = [mairie, secteur] (visite et plateforme sont génériques) → ≥ 2 → true
+    expect(strongContainmentMatch(
+      'Visite mairie secteur sous plateforme',
+      'Assainissement : Visite de la mairie pour le secteur sous plateforme fait le 02/04/2026',
+    )).toBe(true)
+  })
+})
+
+// ── strongContainmentMatch — paires rattrapées par Jaccard (non containment) ─
+
+describe('strongContainmentMatch — non matchées (rattrapées par Jaccard dans le pipeline)', () => {
+  it('Débourbeur déshuileur mis en place ↔ Assainissement : Mise en place du Débourbeur déshuileur... (mis ≠ mise)', () => {
+    // "mis" absent de longSet qui a "mise" → containment fail → Jaccard = 0.6 avec stripping
+    expect(strongContainmentMatch(
+      'Débourbeur déshuileur mis en place',
+      'Assainissement : Mise en place du Débourbeur déshuileur = FT transmise non conforme',
+    )).toBe(false)
+  })
+
+  it('Retaillage zone de prélèvement ↔ Zone de prélèvement : Zone de prélèvement à retailler... (retaillage ≠ retailler)', () => {
+    // "retaillage" absent de longSet qui a "retailler" → containment fail → Jaccard = 0.5 avec stripping
+    expect(strongContainmentMatch(
+      'Retaillage zone de prélèvement',
+      'Zone de prélèvement : Zone de prélèvement à retailler = FAIT',
+    )).toBe(false)
+  })
+})
+
+// ── strongContainmentMatch — faux positifs à rejeter ─────────────────────────
+
+describe('strongContainmentMatch — faux positifs à rejeter', () => {
+  it('Purge ne doit pas matcher Purge complémentaire', () => {
+    // "purge" seul : sig=[], length 5 < 7 → false
+    expect(strongContainmentMatch('Purge', 'Purge complémentaire')).toBe(false)
+  })
+
+  it('Purge complémentaire ne doit pas matcher Purge (sens inverse)', () => {
+    expect(strongContainmentMatch('Purge complémentaire', 'Purge')).toBe(false)
+  })
+
+  it('token générique seul ne matche pas', () => {
+    expect(strongContainmentMatch('Plan', 'Plan de terrassement général')).toBe(false)
+    expect(strongContainmentMatch('Essais', 'Essais de compactage couche de forme')).toBe(false)
+    expect(strongContainmentMatch('Travaux', 'Travaux de terrassement plateforme nord')).toBe(false)
+    expect(strongContainmentMatch('Accès', 'Accès plateforme nord réalisé')).toBe(false)
+  })
+
+  it('Essais sol non conforme vs Essais compactage conforme — tokens différents', () => {
+    // "sol" absent de [essais, compactage, conforme] → pas de containment
+    expect(strongContainmentMatch('Essais sol non conforme', 'Essais compactage conforme')).toBe(false)
+  })
+
+  it('Couche de forme ne doit pas matcher Couche de GNT', () => {
+    // "forme" absent de [couche, gnt] → pas de containment
+    expect(strongContainmentMatch('Couche de forme', 'Couche de GNT')).toBe(false)
+  })
+
+  it('labels sans token commun ne matchent pas', () => {
+    expect(strongContainmentMatch('Rapport G3', 'Regard R4 non conforme')).toBe(false)
   })
 })
 
