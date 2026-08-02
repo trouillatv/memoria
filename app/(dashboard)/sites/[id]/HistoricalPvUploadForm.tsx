@@ -23,6 +23,9 @@ interface UploadState {
   canRetry?: boolean
   uploadId?: string
   storagePath?: string
+  isDuplicate?: boolean          // même contenu déjà importé
+  existingFilename?: string
+  dateWarning?: { count: number }
 }
 
 export function HistoricalPvUploadForm({
@@ -135,6 +138,18 @@ export function HistoricalPvUploadForm({
         return
       }
 
+      if (confirmResult.status === 'duplicate_content') {
+        setState({
+          phase: 'done',
+          progress: 100,
+          message: `Ce PDF a déjà été importé (${confirmResult.existingFilename})`,
+          documentId: confirmResult.documentId,
+          isDuplicate: true,
+          existingFilename: confirmResult.existingFilename,
+        })
+        return
+      }
+
       setState({
         phase: 'done',
         progress: 100,
@@ -143,6 +158,7 @@ export function HistoricalPvUploadForm({
             ? 'Analyse déjà lancée'
             : 'Analyse lancée — patientez quelques instants',
         documentId: confirmResult.documentId,
+        dateWarning: confirmResult.status === 'analysis_started' ? confirmResult.dateWarning : undefined,
       })
     } catch (err) {
       console.error('[HistoricalPvUploadForm]', err)
@@ -184,6 +200,18 @@ export function HistoricalPvUploadForm({
         return
       }
 
+      if (confirmResult.status === 'duplicate_content') {
+        setState({
+          phase: 'done',
+          progress: 100,
+          message: `Ce PDF a déjà été importé (${confirmResult.existingFilename})`,
+          documentId: confirmResult.documentId,
+          isDuplicate: true,
+          existingFilename: confirmResult.existingFilename,
+        })
+        return
+      }
+
       setState({
         phase: 'done',
         progress: 100,
@@ -192,6 +220,7 @@ export function HistoricalPvUploadForm({
             ? 'Analyse déjà lancée'
             : 'Analyse lancée — patientez quelques instants',
         documentId: confirmResult.documentId,
+        dateWarning: confirmResult.status === 'analysis_started' ? confirmResult.dateWarning : undefined,
       })
     } catch (err) {
       console.error('[retryConfirmation]', err)
@@ -327,8 +356,14 @@ export function HistoricalPvUploadForm({
               href={`/documents/${state.documentId}`}
               className="inline-block underline underline-offset-2 hover:text-foreground text-sm"
             >
-              Suivre l'analyse →
+              {state.isDuplicate ? 'Ouvrir l\'analyse existante →' : 'Suivre l\'analyse →'}
             </a>
+          )}
+
+          {isDone && state.dateWarning && !state.isDuplicate && (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              ⚠ {state.dateWarning.count} PV existant{state.dateWarning.count > 1 ? 's' : ''} pour cette date sur ce chantier.
+            </p>
           )}
 
           {isError && state.canRetry && state.uploadId && (

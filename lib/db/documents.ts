@@ -195,6 +195,44 @@ export async function createDocument(input: {
   return data.id
 }
 
+/** Trouve un PV historique déjà importé sur ce chantier avec exactement le même contenu (SHA-256). */
+export async function findHistoricalPvByHashForSite(
+  contentHash: string,
+  siteId: string,
+): Promise<{ documentId: string; filename: string; createdAt: string } | null> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('document_links')
+    .select('document_id, documents!inner(id, filename, created_at, content_hash, document_type, deleted_at)')
+    .eq('target_type', 'site')
+    .eq('target_id', siteId)
+    .filter('documents.content_hash', 'eq', contentHash)
+    .filter('documents.document_type', 'eq', 'historical_visit_report')
+    .is('documents.deleted_at', null)
+    .limit(1)
+    .maybeSingle()
+  if (!data) return null
+  const doc = data.documents as unknown as { id: string; filename: string; created_at: string }
+  return { documentId: doc.id, filename: doc.filename, createdAt: doc.created_at }
+}
+
+/** Compte les PV historiques déjà importés sur ce chantier pour la même date effective. */
+export async function countHistoricalPvsByDateForSite(
+  effectiveDate: string,
+  siteId: string,
+): Promise<number> {
+  const supabase = createAdminClient()
+  const { count } = await supabase
+    .from('document_links')
+    .select('document_id, documents!inner(effective_date, document_type, deleted_at)', { count: 'exact', head: true })
+    .eq('target_type', 'site')
+    .eq('target_id', siteId)
+    .filter('documents.effective_date', 'eq', effectiveDate)
+    .filter('documents.document_type', 'eq', 'historical_visit_report')
+    .is('documents.deleted_at', null)
+  return count ?? 0
+}
+
 export async function getDocument(id: string): Promise<DbDocument | null> {
   const supabase = createAdminClient()
   const { data, error } = await supabase

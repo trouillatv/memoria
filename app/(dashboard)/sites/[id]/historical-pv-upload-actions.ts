@@ -154,7 +154,9 @@ export async function confirmHistoricalPvImport(input: {
   storagePath: string
   effectiveDate?: string
 }): Promise<
-  | { ok: true; documentId: string; status: 'analysis_started' | 'already_confirmed' }
+  | { ok: true; documentId: string; status: 'analysis_started'; dateWarning?: { count: number } }
+  | { ok: true; documentId: string; status: 'already_confirmed' }
+  | { ok: true; documentId: string; status: 'duplicate_content'; existingFilename: string; existingCreatedAt: string }
   | { ok: false; error: string; canRetry?: boolean }
 > {
   try {
@@ -240,19 +242,36 @@ export async function confirmHistoricalPvImport(input: {
       return { ok: false, error: 'Le fichier n\'est pas un PDF valide (signature manquante)', canRetry: false }
     }
 
-    // Validation serveur : hash SHA256 (si fourni côté client)
-    if (upload.fileHashSha256) {
-      const crypto = await import('crypto')
-      const actualHash = crypto.createHash('sha256').update(buffer).digest('hex')
-      if (actualHash !== upload.fileHashSha256) {
-        await markUploadAsFailed(input.uploadId, 'Hash SHA256 ne correspond pas')
-        return { ok: false, error: 'Le fichier a été modifié pendant l\'upload', canRetry: false }
+    // Hash SHA256 : toujours calculé côté serveur, vérifié si fourni par le client
+    const nodeCrypto = await import('crypto')
+    const actualHash = nodeCrypto.createHash('sha256').update(buffer).digest('hex')
+    if (upload.fileHashSha256 && actualHash !== upload.fileHashSha256) {
+      await markUploadAsFailed(input.uploadId, 'Hash SHA256 ne correspond pas')
+      return { ok: false, error: 'Le fichier a été modifié pendant l\'upload', canRetry: false }
+    }
+
+    // Niveau 1 — Doublon de contenu (même PDF, même ou autre nom)
+    const { createDocument, addDocumentLink, findHistoricalPvByHashForSite, countHistoricalPvsByDateForSite } = await import('@/lib/db/documents')
+    const existingByHash = await findHistoricalPvByHashForSite(actualHash, input.siteId)
+    if (existingByHash) {
+      return {
+        ok: true,
+        documentId: existingByHash.documentId,
+        status: 'duplicate_content',
+        existingFilename: existingByHash.filename,
+        existingCreatedAt: existingByHash.createdAt,
       }
     }
 
-    // Créer le document
+    // Niveau 2 — Doublon métier (même date, contenu différent) — avertissement non bloquant
+    let dateWarning: { count: number } | undefined
+    if (input.effectiveDate) {
+      const sameDate = await countHistoricalPvsByDateForSite(input.effectiveDate, input.siteId)
+      if (sameDate > 0) dateWarning = { count: sameDate }
+    }
+
+    // Créer le document (avec hash pour future dédup)
     const collectionId = await ensureSiteCollection(input.siteId)
-    const { createDocument, addDocumentLink } = await import('@/lib/db/documents')
     const documentId = await createDocument({
       filename: upload.originalFilename,
       collection_id: collectionId,
@@ -261,12 +280,12 @@ export async function confirmHistoricalPvImport(input: {
       visibility_level: 'manager',
       size_bytes: file.metadata.size,
       effective_date: input.effectiveDate ?? null,
+      content_hash: actualHash,
       memory_tier: 'froide',
       analysis_status: 'pending',
       created_by: user.id,
     })
 
-    // Lier au chantier
     await addDocumentLink(documentId, 'site', input.siteId)
 
     // Marquer comme confirmé (atomique : retourne true si transition réussie, false si déjà confirmé)
@@ -302,7 +321,7 @@ export async function confirmHistoricalPvImport(input: {
       fileSize: file.metadata.size,
     })
 
-    return { ok: true, documentId, status: 'analysis_started' }
+    return { ok: true, documentId, status: 'analysis_started', ...(dateWarning ? { dateWarning } : {}) }
   } catch (e) {
     console.error('[confirmHistoricalPvImport]', e)
     try {
