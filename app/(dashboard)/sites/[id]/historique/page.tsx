@@ -4,15 +4,21 @@ import { ArrowLeft } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getSiteHistoricalTimeline, getSiteSubjectMatrix } from '@/lib/documents/pv-history'
-import { generateSiteHistoryNarrative } from '@/lib/documents/pv-narrator'
-import type { SiteRunSnapshot } from '@/lib/documents/pv-history'
+import { getPvDelta } from '@/lib/documents/pv-comparison'
+import {
+  getRunsMeta,
+  computeWatchlist,
+  computeProgressByCategory,
+  computeDeltaSummary,
+} from '@/lib/documents/site-synthesis'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
 import { SubjectLifelineGrid } from './SubjectLifelineGrid'
+import { SyntheseView } from './SyntheseView'
 
 export const dynamic = 'force-dynamic'
 
-type ViewKey = 'lifelines' | 'synthese' | 'heatmap' | 'deps'
+type ViewKey = 'synthese' | 'lifelines' | 'heatmap' | 'deps'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -24,69 +30,8 @@ interface PageProps {
   }>
 }
 
-const TRANSITION_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
-  réalisé:       { label: 'Réalisés',              icon: '✓', color: 'text-emerald-700 dark:text-emerald-400' },
-  levé:          { label: 'Levés',                 icon: '✓', color: 'text-emerald-700 dark:text-emerald-400' },
-  nouveau:       { label: 'Nouveaux',              icon: '+', color: 'text-blue-700 dark:text-blue-400' },
-  aggravé:       { label: 'Aggravés',              icon: '!', color: 'text-red-700 dark:text-red-400' },
-  réouvert:      { label: 'Réouverts',             icon: '↩', color: 'text-red-600 dark:text-red-400' },
-  progressé:     { label: 'En progression',        icon: '↑', color: 'text-blue-600 dark:text-blue-400' },
-  annulé:        { label: 'Annulés',               icon: '×', color: 'text-muted-foreground' },
-  maintenu:      { label: 'Inchangés',             icon: '→', color: 'text-muted-foreground' },
-  non_mentionné: { label: 'Non mentionnés',        icon: '○', color: 'text-orange-700 dark:text-orange-400' },
-  réapparu:      { label: 'Réapparus',             icon: '↗', color: 'text-purple-700 dark:text-purple-400' },
-  changé:        { label: 'Autres changements',    icon: '~', color: 'text-muted-foreground' },
-}
-
-const DISPLAY_ORDER = [
-  'réalisé', 'levé', 'nouveau', 'aggravé', 'réouvert', 'progressé', 'annulé', 'non_mentionné', 'réapparu', 'changé', 'maintenu',
-]
-
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
-function SnapshotCard({ snapshot, index }: { snapshot: SiteRunSnapshot; index: number }) {
-  const counts = snapshot.transitionCounts
-  const total = Object.values(counts).reduce((s, v) => s + (v ?? 0), 0)
-  const nonMentionne = counts['non_mentionné'] ?? 0
-
-  return (
-    <article className="rounded-[18px] border bg-card p-4 shadow-sm">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            PV {index + 1}
-            {snapshot.isFirstRun && <span className="ml-1.5 text-[10px] text-muted-foreground">(premier)</span>}
-          </p>
-          <p className="mt-0.5 font-medium">{formatDate(snapshot.effectiveDate)}</p>
-        </div>
-        <p className="text-sm text-muted-foreground">{total} sujet{total > 1 ? 's' : ''}</p>
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
-        {DISPLAY_ORDER.map((key) => {
-          const count = counts[key as keyof typeof counts] ?? 0
-          if (!count) return null
-          const cfg = TRANSITION_CONFIG[key]
-          if (!cfg) return null
-          return (
-            <span key={key} className={cn('text-sm tabular-nums', cfg.color)}>
-              <span className="font-bold">{cfg.icon}</span>{' '}
-              <span className="font-semibold">{count}</span>{' '}
-              <span>{cfg.label.toLowerCase()}</span>
-            </span>
-          )
-        })}
-      </div>
-
-      {nonMentionne > 0 && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          ○ {nonMentionne} sujet{nonMentionne > 1 ? 's' : ''} non mentionné{nonMentionne > 1 ? 's' : ''} — état précédent conservé.
-        </p>
-      )}
-    </article>
-  )
 }
 
 export default async function SiteHistoriquePage({ params, searchParams }: PageProps) {
@@ -95,29 +40,58 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
 
   const { id: siteId } = await params
   const sp = await searchParams
-  const VALID_VIEWS: ViewKey[] = ['lifelines', 'synthese', 'heatmap', 'deps']
-  const view: ViewKey = (VALID_VIEWS.includes(sp.view as ViewKey) ? sp.view as ViewKey : 'lifelines')
+  const VALID_VIEWS: ViewKey[] = ['synthese', 'lifelines', 'heatmap', 'deps']
+  const view: ViewKey = (VALID_VIEWS.includes(sp.view as ViewKey) ? sp.view as ViewKey : 'synthese')
   const initialThread = sp.thread ?? null
   const initialTheme = sp.theme ?? null
 
-  const [site, matrix, timeline, historyResult] = await Promise.all([
+  const [site, matrix, timeline] = await Promise.all([
     getSiteIdentity(siteId).catch(() => null),
     getSiteSubjectMatrix(siteId).catch(() => null),
     getSiteHistoricalTimeline(siteId).catch(() => ({ siteId, snapshots: [] })),
-    generateSiteHistoryNarrative(siteId).catch(() => null),
   ])
 
   if (!site) redirect(`/sites/${siteId}`)
 
-  const narrative = historyResult?.narrative ?? null
   const totalRuns = timeline.snapshots.length
 
+  // Métadonnées enrichies : dates réelles des PV + reportId pour les liens
+  const matrixRuns = matrix?.runs ?? []
+  const runs = await getRunsMeta(matrixRuns).catch(() => matrixRuns.map((r) => ({
+    runId: r.id,
+    documentId: r.documentId,
+    effectiveDate: r.effectiveDate,
+    reportId: null,
+  })))
+
+  // Delta entre les deux derniers PV (si ≥ 2)
+  let deltaData: { summary: ReturnType<typeof computeDeltaSummary>; fromIdx: number; toIdx: number } | null = null
+  if (timeline.snapshots.length >= 2) {
+    const fromSnap = timeline.snapshots[timeline.snapshots.length - 2]
+    const toSnap   = timeline.snapshots[timeline.snapshots.length - 1]
+    try {
+      const delta = await getPvDelta(fromSnap.runId, toSnap.runId)
+      deltaData = {
+        summary: computeDeltaSummary(delta),
+        fromIdx: timeline.snapshots.length - 2,
+        toIdx:   timeline.snapshots.length - 1,
+      }
+    } catch {
+      // delta non disponible, on affiche sans
+    }
+  }
+
+  // Computations pures depuis la matrice
+  const watchlist = matrix ? computeWatchlist(matrix) : []
+  const categories = matrix ? computeProgressByCategory(matrix) : []
+  const totalSubjects = matrix?.rows.length ?? 0
+
   function viewHref(v: ViewKey) {
-    const params = new URLSearchParams()
-    params.set('view', v)
-    if (initialThread) params.set('thread', initialThread)
-    if (initialTheme) params.set('theme', initialTheme)
-    return `/sites/${siteId}/historique?${params.toString()}`
+    const p = new URLSearchParams()
+    p.set('view', v)
+    if (initialThread) p.set('thread', initialThread)
+    if (initialTheme) p.set('theme', initialTheme)
+    return `/sites/${siteId}/historique?${p.toString()}`
   }
 
   return (
@@ -144,10 +118,10 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
                 {totalRuns} PV analysé{totalRuns > 1 ? 's' : ''} — transitions calculées, aucun fait inventé.
               </p>
             </div>
-            {totalRuns > 0 && (
+            {runs.length > 0 && (
               <p className="shrink-0 text-sm text-muted-foreground">
-                {formatDate(timeline.snapshots[0].effectiveDate)}
-                {totalRuns > 1 && ` → ${formatDate(timeline.snapshots[totalRuns - 1].effectiveDate)}`}
+                {formatDate(runs[0].effectiveDate)}
+                {runs.length > 1 && ` → ${formatDate(runs[runs.length - 1].effectiveDate)}`}
               </p>
             )}
           </div>
@@ -155,9 +129,9 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
           {/* Onglets */}
           <nav className="mt-4 flex gap-1 rounded-xl bg-muted/40 p-1">
             {([
+              { key: 'synthese',  label: 'Synthèse' },
               { key: 'lifelines', label: 'Lignes de vie' },
-              { key: 'synthese',  label: 'Synthèse par PV' },
-              { key: 'heatmap',   label: 'Carte d\'activité' },
+              { key: 'heatmap',   label: 'Activité' },
               { key: 'deps',      label: 'Dépendances' },
             ] as const).map(({ key, label }) => (
               <Link
@@ -172,8 +146,20 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
               </Link>
             ))}
           </nav>
-
         </section>
+
+        {/* Synthèse */}
+        {view === 'synthese' && (
+          <SyntheseView
+            siteId={siteId}
+            runs={runs}
+            timeline={timeline}
+            watchlist={watchlist}
+            categories={categories}
+            delta={deltaData}
+            totalSubjects={totalSubjects}
+          />
+        )}
 
         {/* Lignes de vie */}
         {view === 'lifelines' && (
@@ -194,45 +180,17 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
           )
         )}
 
-        {/* Synthèse par PV */}
-        {view === 'synthese' && (
-          <>
-            {narrative && (
-              <section className="rounded-[18px] border bg-card p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Récit chronologique</p>
-                <p className="mt-3 text-sm leading-relaxed whitespace-pre-wrap">{narrative}</p>
-                <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
-                  Synthétisé à partir des transitions ci-dessous. Une absence n'est pas une résolution.
-                </p>
-              </section>
-            )}
-            {timeline.snapshots.length === 0 ? (
-              <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
-                <p className="font-medium">Aucun PV historique indexé pour ce chantier.</p>
-              </section>
-            ) : (
-              <section className="space-y-3">
-                <ol className="space-y-3">
-                  {timeline.snapshots.map((snapshot, i) => (
-                    <li key={snapshot.runId}><SnapshotCard snapshot={snapshot} index={i} /></li>
-                  ))}
-                </ol>
-              </section>
-            )}
-          </>
-        )}
-
-        {/* Carte d'activité — à venir après audit thematic_category */}
+        {/* Carte d'activité — à venir */}
         {view === 'heatmap' && (
           <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
             <p className="font-medium">Carte d'activité</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Disponible après audit de la couverture thematic_category sur ce chantier.
+              Disponible après recette de la Synthèse.
             </p>
           </section>
         )}
 
-        {/* Dépendances — liens confirmés entre sujets */}
+        {/* Dépendances */}
         {view === 'deps' && (
           <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
             <p className="font-medium">Dépendances</p>
