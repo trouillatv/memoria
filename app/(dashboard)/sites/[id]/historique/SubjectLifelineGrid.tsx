@@ -270,7 +270,9 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                   {FAMILY_LABELS[row.family] ?? row.family.slice(0, 4)}
                 </span>
                 <Link
-                  href={`/sites/${siteId}/historique/${row.subjectThreadId}`}
+                  href={row.canonicalSubjectId
+                    ? `/sites/${siteId}/historique/sujets/${row.canonicalSubjectId}`
+                    : `/sites/${siteId}/historique/${row.subjectThreadId}`}
                   className="truncate text-xs font-medium hover:underline"
                   onClick={(e) => e.stopPropagation()}
                   title={row.canonicalLabel}
@@ -336,10 +338,12 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                 <p className="mt-0.5 font-semibold">{row.canonicalLabel}</p>
               </div>
               <Link
-                href={`/sites/${siteId}/historique/${row.subjectThreadId}`}
+                href={row.canonicalSubjectId
+                  ? `/sites/${siteId}/historique/sujets/${row.canonicalSubjectId}`
+                  : `/sites/${siteId}/historique/${row.subjectThreadId}`}
                 className="shrink-0 rounded-lg border px-2.5 py-1.5 text-xs font-medium hover:bg-muted"
               >
-                Voir la fiche
+                Voir la vie du sujet
               </Link>
             </div>
             <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs">

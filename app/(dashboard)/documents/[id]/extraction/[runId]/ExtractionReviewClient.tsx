@@ -665,7 +665,7 @@ export function ExtractionReviewClient({
 
       {/* Rapprochements sémantiques */}
       {subjectSuggestions && subjectSuggestions.length > 0 && (
-        <SubjectSuggestionsSection initialSuggestions={subjectSuggestions} />
+        <SubjectSuggestionsSection initialSuggestions={subjectSuggestions} siteId={targetSiteId ?? undefined} />
       )}
 
       {/* Filtres statut */}

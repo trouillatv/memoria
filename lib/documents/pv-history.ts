@@ -30,7 +30,7 @@ type RunRow = {
 }
 
 /** Date métier du PV : documents.effective_date si disponible, sinon created_at du run. */
-function runEffectiveDate(run: RunRow): string {
+export function runEffectiveDate(run: RunRow): string {
   const doc = Array.isArray(run.documents) ? run.documents[0] : run.documents
   return doc?.effective_date ?? run.created_at
 }
@@ -42,7 +42,7 @@ function runEffectiveDate(run: RunRow): string {
  * Seuls les runs `is_canonical = true` sont inclus — les re-analyses du même PDF
  * restent en base comme historique technique mais sont exclus des vues temporelles.
  */
-async function canonicalRunsForSite(siteId: string): Promise<RunRow[]> {
+export async function canonicalRunsForSite(siteId: string): Promise<RunRow[]> {
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -151,6 +151,8 @@ export interface SubjectMatrixRow {
   family: string
   thematicCategory: string | null
   currentStatus: string | null
+  /** canonical_subject_id si le thread est rattaché (null = thread non encore résolu). */
+  canonicalSubjectId: string | null
   /** Une cellule par run (même longueur que SiteSubjectMatrix.runs). null = antérieur à la première occurrence. */
   cells: Array<MatrixCell | null>
 }
@@ -409,6 +411,18 @@ export async function getSiteSubjectMatrix(siteId: string): Promise<SiteSubjectM
     }
   }
 
+  // Canonical subject IDs par thread (pour lien vers la vue "Vie du sujet")
+  const threadToCanonical = new Map<string, string | null>()
+  if (threadMeta.size > 0) {
+    const { data: stiRows } = await supabase
+      .from('subject_thread_identity')
+      .select('subject_thread_id, canonical_subject_id')
+      .in('subject_thread_id', [...threadMeta.keys()])
+    for (const r of ((stiRows ?? []) as Array<{ subject_thread_id: string; canonical_subject_id: string }>)) {
+      threadToCanonical.set(r.subject_thread_id, r.canonical_subject_id)
+    }
+  }
+
   const rows: SubjectMatrixRow[] = []
 
   for (const [threadId, meta] of threadMeta.entries()) {
@@ -470,6 +484,7 @@ export async function getSiteSubjectMatrix(siteId: string): Promise<SiteSubjectM
       family: meta.family,
       thematicCategory: meta.thematicCategory,
       currentStatus,
+      canonicalSubjectId: threadToCanonical.get(threadId) ?? null,
       cells,
     })
   }

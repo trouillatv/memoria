@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import type { SubjectSuggestionRow } from '@/lib/db/subject-suggestions'
 import {
   acceptSuggestionAction,
@@ -31,12 +32,14 @@ function SuggestionCard({
   onReject,
   onUndo,
   isPending,
+  siteId,
 }: {
   suggestion: SubjectSuggestionRow & { optimisticResolution?: string }
   onAccept: () => void
   onReject: () => void
   onUndo: () => void
   isPending: boolean
+  siteId?: string
 }) {
   const resolution = suggestion.optimisticResolution ?? suggestion.resolution
 
@@ -58,9 +61,18 @@ function SuggestionCard({
         </p>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="shrink-0">→</span>
-          <span className="font-medium text-foreground">
-            {suggestion.candidate_label ?? suggestion.candidate_canonical_subject_id ?? '—'}
-          </span>
+          {siteId && suggestion.candidate_canonical_subject_id ? (
+            <Link
+              href={`/sites/${siteId}/historique/sujets/${suggestion.candidate_canonical_subject_id}`}
+              className="font-medium text-foreground hover:underline"
+            >
+              {suggestion.candidate_label ?? suggestion.candidate_canonical_subject_id}
+            </Link>
+          ) : (
+            <span className="font-medium text-foreground">
+              {suggestion.candidate_label ?? suggestion.candidate_canonical_subject_id ?? '—'}
+            </span>
+          )}
         </div>
       </div>
 
@@ -135,8 +147,10 @@ function SuggestionCard({
 
 export function SubjectSuggestionsSection({
   initialSuggestions,
+  siteId,
 }: {
   initialSuggestions: SubjectSuggestionRow[]
+  siteId?: string
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -201,6 +215,7 @@ export function SubjectSuggestionsSection({
               key={s.id}
               suggestion={{ ...s, optimisticResolution: optimistic.get(s.id) }}
               isPending={isPending}
+              siteId={siteId}
               onAccept={() => act(s.id, 'accepted', () => acceptSuggestionAction(s.id))}
               onReject={() => act(s.id, 'rejected', () => rejectSuggestionAction(s.id))}
               onUndo={() => act(s.id, 'pending', () => undoSuggestionAction(s.id))}
@@ -222,6 +237,7 @@ export function SubjectSuggestionsSection({
                 key={s.id}
                 suggestion={{ ...s, optimisticResolution: optimistic.get(s.id) }}
                 isPending={isPending}
+                siteId={siteId}
                 onAccept={() => act(s.id, 'accepted', () => acceptSuggestionAction(s.id))}
                 onReject={() => act(s.id, 'rejected', () => rejectSuggestionAction(s.id))}
                 onUndo={() => act(s.id, 'pending', () => undoSuggestionAction(s.id))}
