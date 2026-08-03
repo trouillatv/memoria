@@ -177,6 +177,7 @@ export function computeProgressByCategory(matrix: SiteSubjectMatrix): CategoryPr
   }
 
   for (const row of matrix.rows) {
+    if (DELTA_EXCLUDED_FAMILIES.has(row.family)) continue
     const cat = row.thematicCategory ?? 'Non catégorisé'
     const entry = getOrCreate(cat)
     entry.total++
