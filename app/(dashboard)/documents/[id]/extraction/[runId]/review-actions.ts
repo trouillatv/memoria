@@ -57,6 +57,7 @@ export async function verifyProposalOwnership(
 export async function acceptProposalAction(fd: FormData): Promise<ActionResult> {
   const proposalId = fd.get('proposal_id')?.toString()
   const documentId = fd.get('document_id')?.toString()
+  const subjectId = fd.get('subject_id')?.toString() ?? null
   if (!proposalId || !documentId) return { ok: false, error: 'Paramètres manquants' }
 
   const access = await verifyReviewAccess(documentId)
@@ -67,6 +68,22 @@ export async function acceptProposalAction(fd: FormData): Promise<ActionResult> 
   }
 
   await reviewProposal(proposalId, { action: 'accept' }, access.userId)
+
+  // Choix de sujet — stocké dans source_payload pour lecture à la matérialisation
+  if (subjectId) {
+    const admin = createAdminClient()
+    const { data: existing } = await admin
+      .from('document_extraction_proposal')
+      .select('source_payload')
+      .eq('id', proposalId)
+      .maybeSingle()
+    const currentPayload = (existing as { source_payload: Record<string, unknown> | null } | null)?.source_payload ?? {}
+    await admin
+      .from('document_extraction_proposal')
+      .update({ source_payload: { ...currentPayload, __subjectId: subjectId } })
+      .eq('id', proposalId)
+  }
+
   return { ok: true }
 }
 
@@ -750,6 +767,50 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
                   : { decisionnaire_contact_id: a.actorId },
               ).eq('id', a.siteDecisionId),
             ),
+          )
+        }
+      }
+
+      // ── Rattachement sujet choisi → site_decisions.subject_id ───────────────
+      // Lit les décisions dont l'opérateur a sélectionné un sujet au moment de l'acceptation
+      // (stocké dans source_payload.__subjectId, sans migration).
+      {
+        const { data: decSubjectProps } = await admin
+          .from('document_extraction_proposal')
+          .select('id, source_payload')
+          .eq('extraction_run_id', runId)
+          .in('review_status', ['accepted', 'edited', 'materialized'])
+          .eq('proposal_family', 'decision')
+
+        const propsWithSubject = (decSubjectProps ?? []).filter((p) => {
+          const sp = p as { id: string; source_payload: Record<string, unknown> | null }
+          return typeof sp.source_payload?.__subjectId === 'string'
+        }) as Array<{ id: string; source_payload: Record<string, unknown> }>
+
+        if (propsWithSubject.length > 0) {
+          const { attachToSubject } = await import('@/lib/db/subjects')
+
+          const propIds = propsWithSubject.map((p) => p.id)
+          const { data: matRowsSubj } = await admin
+            .from('document_proposal_materialization')
+            .select('proposal_id, target_entity_id')
+            .in('proposal_id', propIds)
+            .eq('target_entity_type', 'site_decision')
+
+          const propToDecision = new Map<string, string>(
+            (matRowsSubj ?? []).map((r) => {
+              const row = r as { proposal_id: string; target_entity_id: string }
+              return [row.proposal_id, row.target_entity_id]
+            }),
+          )
+
+          await Promise.all(
+            propsWithSubject.map((p) => {
+              const decisionId = propToDecision.get(p.id)
+              const subjectId = p.source_payload.__subjectId as string
+              if (!decisionId) return Promise.resolve()
+              return attachToSubject('site_decisions', decisionId, subjectId)
+            }),
           )
         }
       }

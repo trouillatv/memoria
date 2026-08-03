@@ -116,6 +116,7 @@ export function ProposalCard({
   evidence,
   signedUrls,
   documentId,
+  siteSubjects,
   confirmedPhotos = [],
   onPinToggle,
 }: {
@@ -123,6 +124,7 @@ export function ProposalCard({
   evidence: Array<{ evidence: DbDocumentExtractionEvidence; relationType: DocumentEvidenceRelationType; confidence: number | null }>
   signedUrls: Record<string, string>
   documentId: string
+  siteSubjects?: Array<{ id: string; name: string }>
   confirmedPhotos?: ConfirmedPhoto[]
   onPinToggle?: (evidenceId: string) => void
 }) {
@@ -134,6 +136,9 @@ export function ProposalCard({
   // Statut local optimiste — synchronisé depuis les props RSC après router.refresh()
   const [localStatus, setLocalStatus] = useState(proposal.review_status)
   useEffect(() => { setLocalStatus(proposal.review_status) }, [proposal.review_status])
+  // Sujet canonique choisi pour cette décision (optionnel, decision uniquement)
+  const [localSubjectId, setLocalSubjectId] = useState<string | null>(null)
+  const [subjectSearch, setSubjectSearch] = useState('')
   // Valeurs affichées (mises à jour après edit réussi)
   const [displayLabel, setDisplayLabel] = useState(proposal.reviewed_label ?? proposal.label)
   const [displayDescription, setDisplayDescription] = useState(proposal.reviewed_description ?? proposal.description)
@@ -172,9 +177,10 @@ export function ProposalCard({
     const fd = new FormData()
     fd.set('proposal_id', proposal.id)
     fd.set('document_id', documentId)
+    if (localSubjectId) fd.set('subject_id', localSubjectId)
     handleAction(() => acceptProposalAction(fd), () => {
       setLocalStatus('accepted')
-      setMsg({ ok: true, text: 'Acceptée' })
+      setMsg({ ok: true, text: localSubjectId ? 'Acceptée et liée au sujet' : 'Acceptée' })
     })
   }
 
@@ -462,6 +468,56 @@ export function ProposalCard({
               )
             })}
           </div>
+        </div>
+      )}
+
+      {/* Sujet canonique — uniquement pour les décisions, avant matérialisation */}
+      {!isMaterialized && displayFamily === 'decision' && siteSubjects && siteSubjects.length > 0 && (
+        <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 space-y-1.5">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Sujet concerné (optionnel)</p>
+          {localSubjectId ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-foreground/90">
+                {siteSubjects.find((s) => s.id === localSubjectId)?.name ?? localSubjectId}
+              </span>
+              <button
+                type="button"
+                className="text-xs text-muted-foreground hover:text-foreground underline"
+                onClick={() => { setLocalSubjectId(null); setSubjectSearch('') }}
+              >
+                Changer
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <input
+                type="text"
+                value={subjectSearch}
+                onChange={(e) => setSubjectSearch(e.target.value)}
+                placeholder="Rechercher un sujet…"
+                className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              {subjectSearch.trim().length > 0 && (() => {
+                const filtered = siteSubjects.filter((s) => s.name.toLowerCase().includes(subjectSearch.toLowerCase())).slice(0, 8)
+                if (filtered.length === 0) return <p className="text-xs text-muted-foreground px-1">Aucun sujet trouvé.</p>
+                return (
+                  <ul className="rounded-md border border-border bg-background shadow-sm divide-y divide-border max-h-40 overflow-y-auto">
+                    {filtered.map((s) => (
+                      <li key={s.id}>
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted/60 transition-colors"
+                          onClick={() => { setLocalSubjectId(s.id); setSubjectSearch('') }}
+                        >
+                          {s.name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              })()}
+            </div>
+          )}
         </div>
       )}
 

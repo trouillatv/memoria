@@ -379,6 +379,7 @@ export function ExtractionReviewClient({
   initialStatus,
   initialType,
   subjectSuggestions,
+  siteSubjects,
 }: {
   proposals: DocumentExtractionProposalWithEvidence[]
   orphanEvidence: DbDocumentExtractionEvidence[]
@@ -394,6 +395,7 @@ export function ExtractionReviewClient({
   initialStatus?: string | null
   initialType?: string | null
   subjectSuggestions?: SubjectSuggestionRow[]
+  siteSubjects?: Array<{ id: string; name: string }>
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -748,6 +750,7 @@ export function ExtractionReviewClient({
                     }>}
                     signedUrls={signedUrls}
                     documentId={documentId}
+                    siteSubjects={siteSubjects}
                     confirmedPhotos={(confirmedPhotosByProposal.get(p.proposal.id) ?? []).map((photo) => ({
                       evidenceId: photo.evidenceId,
                       caption: photo.caption,

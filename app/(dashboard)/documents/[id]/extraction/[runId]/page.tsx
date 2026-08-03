@@ -92,14 +92,18 @@ export default async function ExtractionReviewPage({
 
   // Charger les données de revue + visite déjà matérialisée (idempotence)
   const admin = createAdminClient()
-  const [proposalsWithEvidence, orphanEvidenceRaw, alreadySiteReportId, candidateLinks, illustratesLinks, subjectSuggestions] = await Promise.all([
+  const [proposalsWithEvidence, orphanEvidenceRaw, alreadySiteReportId, candidateLinks, illustratesLinks, subjectSuggestions, siteSubjectsRes] = await Promise.all([
     listExtractionForReview(runId),
     listOrphanEvidenceForRun(runId),
     getExistingMaterializedVisit(runId),
     listCandidateLinksForRun(runId),
     getIllustratesLinksForRun(runId),
     listSuggestionsForReview(runId, run.target_site_id ?? null),
+    run.target_site_id
+      ? admin.from('subjects').select('id, name').eq('site_id', run.target_site_id).neq('status', 'closed').order('name').limit(200)
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
   ])
+  const siteSubjects = (siteSubjectsRes.data ?? []) as Array<{ id: string; name: string }>
 
   // Normalisation idempotente : pour chaque page ayant des images natives,
   // transférer le pin du snapshot vers les images (snapshot ne doit jamais être
@@ -201,6 +205,7 @@ export default async function ExtractionReviewPage({
         initialStatus={sp.status ?? null}
         initialType={sp.type ?? null}
         subjectSuggestions={subjectSuggestions}
+        siteSubjects={siteSubjects}
       />
     </div>
   )
