@@ -60,11 +60,6 @@ export function ChronologyWorkspace({
             <p className="mt-1 text-sm text-muted-foreground">Ici, je peux comprendre comment on en est arrivé là.</p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
-            {historicalDocs.length > 0 && (
-              <Link href={`/sites/${siteId}/historique`} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">
-                Histoire PV
-              </Link>
-            )}
             <Link href={`/sites/${siteId}/recit`} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">
               Lire le récit
             </Link>

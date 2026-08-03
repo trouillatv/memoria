@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
+import { SiteTabsNav } from '../SiteTabsNav'
 import { getSiteHistoricalTimeline, getSiteSubjectMatrix } from '@/lib/documents/pv-history'
 import { getPvDelta } from '@/lib/documents/pv-comparison'
 import { getSuggestedLinkCountsBySite } from '@/lib/db/subject-thread-links'
@@ -134,24 +134,18 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   return (
     <>
       <BreadcrumbPrefix crumbs={[{ href: '/sites', label: 'Sites' }, { href: `/sites/${siteId}`, label: site.name }]} />
-      <DynamicCrumb segmentId="historique" label="Histoire du chantier" />
+      <DynamicCrumb segmentId="historique" label="Histoire" />
 
       <main className="mx-auto max-w-5xl space-y-4 px-4 py-6">
-        <div>
-          <Link
-            href={`/sites/${siteId}?tab=chronologie`}
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Retour à la chronologie
-          </Link>
+        {/* Nav principale du chantier — Histoire est l'onglet actif */}
+        <div className="rounded-[18px] border bg-card px-4 pb-0 pt-4 shadow-sm">
+          <SiteTabsNav active="histoire" siteId={siteId} />
         </div>
 
         <section className="rounded-[22px] border bg-card p-5 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h1 className="text-xl font-semibold">Histoire du chantier</h1>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 {totalRuns} PV analysé{totalRuns > 1 ? 's' : ''} — transitions calculées, aucun fait inventé.
               </p>
             </div>
@@ -163,7 +157,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
             )}
           </div>
 
-          {/* Onglets */}
+          {/* Sous-onglets Histoire */}
           <nav className="mt-4 flex gap-1 rounded-xl bg-muted/40 p-1">
             {([
               { key: 'synthese',   label: 'Synthèse' },

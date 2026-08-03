@@ -2,20 +2,22 @@ import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
 export const SITE_TABS = [
-  { key: 'apercu', label: 'Aperçu' },
-  { key: 'travail', label: 'Travail' },
-  { key: 'chronologie', label: 'Chronologie' },
-  { key: 'planning', label: 'Planning' },
-  { key: 'documents-preuves', label: 'Documents & preuves' },
-  // « Intervenants » (cadrage + maquette validés 2026-07-18) : « qui travaille
-  // ici ? » — question durable, distincte de l'Aperçu (« où en est-on ? »).
-  // La même personne se retrouve ici sur chaque chantier où elle apparaît.
-  { key: 'intervenants', label: 'Intervenants' },
-  { key: 'memoire', label: 'Mémoire' },
-  // « Explorer », jamais « Connexions » (cadrage 2026-07-18) : la Mémoire dit ce
-  // que MemorIA sait ; Explorer montre comment tout est relié. Un outil, pas un
-  // CRUD — mêmes données, autre lecture.
-  { key: 'explorer', label: 'Explorer' },
+  { key: 'apercu',           label: 'Aperçu' },
+  { key: 'travail',          label: 'Travail' },
+  { key: 'chronologie',      label: 'Chronologie' },
+  // Histoire = onglet de premier niveau depuis 2026-08-04. Doctrine :
+  //   Chronologie = qu'est-ce qui s'est passé, événement après événement ?
+  //   Histoire = qu'est-ce qui a évolué dans le temps et comment en est-on arrivé là ?
+  // Route dédiée (/historique) → href calculé spécifiquement dans SiteTabsNav.
+  { key: 'histoire',         label: 'Histoire',   pathSuffix: '/historique' },
+  { key: 'planning',         label: 'Planning' },
+  { key: 'documents-preuves', label: 'Documents' },
+  // « Intervenants » (cadrage + maquette validés 2026-07-18).
+  { key: 'intervenants',     label: 'Intervenants' },
+  { key: 'memoire',          label: 'Mémoire' },
+  // « Explorer » (cadrage 2026-07-18) : Mémoire dit ce que MemorIA sait ;
+  // Explorer montre comment tout est relié.
+  { key: 'explorer',         label: 'Explorer' },
 ] as const
 
 export type SiteTabKey = typeof SITE_TABS[number]['key']
@@ -31,6 +33,12 @@ export function resolveSiteTab(raw: string | null | undefined): SiteTabKey {
     : 'apercu'
 }
 
+function tabHref(t: typeof SITE_TABS[number], siteId: string): string {
+  if (t.key === 'apercu') return `/sites/${siteId}`
+  if ('pathSuffix' in t) return `/sites/${siteId}${t.pathSuffix}`
+  return `/sites/${siteId}?tab=${t.key}`
+}
+
 export function SiteTabsNav({ active, siteId }: { active: SiteTabKey; siteId: string }) {
   return (
     <nav
@@ -40,8 +48,8 @@ export function SiteTabsNav({ active, siteId }: { active: SiteTabKey; siteId: st
       {SITE_TABS.map((t) => (
         <Link
           key={t.key}
-          scroll={false}
-          href={t.key === 'apercu' ? `/sites/${siteId}` : `/sites/${siteId}?tab=${t.key}`}
+          scroll={'pathSuffix' in t ? true : false}
+          href={tabHref(t, siteId)}
           className={cn(
             'shrink-0 border-b-2 px-0 py-3 text-sm font-medium transition-colors',
             active === t.key
