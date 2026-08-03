@@ -13,6 +13,7 @@ import {
   getImportantSubjects,
   getActivityMap,
   getSiteHealthTimeline,
+  getSiteDependencyGraph,
 } from '@/lib/documents/site-synthesis'
 import { buildEvolutionReadModel, generateEvolutionNarrative } from '@/lib/documents/pv-evolution'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
@@ -21,6 +22,7 @@ import { SubjectLifelineGrid } from './SubjectLifelineGrid'
 import { SyntheseView } from './SyntheseView'
 import { ActivityMapView } from './ActivityMapView'
 import { EvolutionView } from './EvolutionView'
+import { DependencyGraphView } from './DependencyGraphView'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,6 +62,10 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
 
   const activityMap = view === 'heatmap'
     ? await getActivityMap(siteId).catch(() => null)
+    : null
+
+  const depsGraph = view === 'deps'
+    ? await getSiteDependencyGraph(siteId).catch(() => null)
     : null
 
   const evolutionData = view === 'evolution'
@@ -243,12 +249,16 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
 
         {/* Dépendances */}
         {view === 'deps' && (
-          <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
-            <p className="font-medium">Dépendances</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Les liens de causalité entre sujets s'ajoutent depuis la fiche de chaque sujet.
-            </p>
-          </section>
+          depsGraph ? (
+            <DependencyGraphView siteId={siteId} graph={depsGraph} />
+          ) : (
+            <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
+              <p className="font-medium">Données non disponibles.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Les sujets canoniques doivent exister pour afficher les dépendances.
+              </p>
+            </section>
+          )
         )}
       </main>
     </>

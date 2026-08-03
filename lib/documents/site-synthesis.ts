@@ -3,6 +3,7 @@ import 'server-only'
 import { canonicalRunsForSite, runEffectiveDate } from './pv-history'
 import type { SiteSubjectMatrix, SubjectMatrixRow } from './pv-history'
 import type { DeltaItem, PvDelta } from './pv-comparison'
+import type { SubjectLinkType } from '@/lib/db/subject-thread-links'
 
 // ── Types publics ────────────────────────────────────────────────────────────
 
@@ -813,4 +814,93 @@ export async function getSiteHealthTimeline(siteId: string): Promise<SiteHealthT
   }))
 
   return { siteId, points, peakActive: Math.max(...activeCounts, 1) }
+}
+
+// ── Graphe de dépendances inter-sujets ───────────────────────────────────────
+
+export interface SiteDependencyLink {
+  id: string
+  fromCanonicalSubjectId: string
+  fromLabel: string
+  toCanonicalSubjectId: string | null
+  toLabel: string
+  linkType: SubjectLinkType
+  justification: string | null
+}
+
+export interface SiteDependencyGraph {
+  siteId: string
+  links: SiteDependencyLink[]
+}
+
+/**
+ * Retourne tous les liens causaux confirmés entre canonical subjects.
+ * Source : subject_thread_links (status='confirmed'), mappés vers les IDs et labels canoniques.
+ * Déduplique les paires (fromCanonical, toCanonical, linkType) pour éviter
+ * les doublons quand plusieurs thread pairs se résolvent au même pair canonique.
+ */
+export async function getSiteDependencyGraph(siteId: string): Promise<SiteDependencyGraph> {
+  const { listConfirmedLinksForSite } = await import('@/lib/db/subject-thread-links')
+  const rawLinks = await listConfirmedLinksForSite(siteId)
+  if (rawLinks.length === 0) return { siteId, links: [] }
+
+  const allThreadIds = [...new Set([
+    ...rawLinks.map((l) => l.fromThreadId),
+    ...rawLinks.map((l) => l.toThreadId),
+  ])]
+
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+
+  const { data: stiData, error: stiErr } = await supabase
+    .from('subject_thread_identity')
+    .select('subject_thread_id, canonical_subject_id')
+    .in('subject_thread_id', allThreadIds)
+  if (stiErr) throw new Error(stiErr.message)
+
+  const threadToCanonical = new Map<string, string>()
+  for (const r of (stiData ?? []) as Array<{ subject_thread_id: string; canonical_subject_id: string }>) {
+    threadToCanonical.set(r.subject_thread_id, r.canonical_subject_id)
+  }
+
+  const canonicalIds = [...new Set([...threadToCanonical.values()])]
+  if (canonicalIds.length === 0) return { siteId, links: [] }
+
+  const { data: csData, error: csErr } = await supabase
+    .from('canonical_subject')
+    .select('id, label')
+    .in('id', canonicalIds)
+  if (csErr) throw new Error(csErr.message)
+
+  const canonicalToLabel = new Map<string, string>()
+  for (const r of (csData ?? []) as Array<{ id: string; label: string }>) {
+    canonicalToLabel.set(r.id, r.label)
+  }
+
+  const seen = new Set<string>()
+  const links: SiteDependencyLink[] = []
+
+  for (const link of rawLinks) {
+    const fromCanonicalId = threadToCanonical.get(link.fromThreadId) ?? null
+    if (!fromCanonicalId) continue
+
+    const toCanonicalId = threadToCanonical.get(link.toThreadId) ?? null
+    if (fromCanonicalId === toCanonicalId) continue  // self-loop canonique
+
+    const dedupeKey = `${fromCanonicalId}:${toCanonicalId ?? link.toThreadId}:${link.linkType}`
+    if (seen.has(dedupeKey)) continue
+    seen.add(dedupeKey)
+
+    links.push({
+      id: link.id,
+      fromCanonicalSubjectId: fromCanonicalId,
+      fromLabel: canonicalToLabel.get(fromCanonicalId) ?? 'Sujet inconnu',
+      toCanonicalSubjectId: toCanonicalId,
+      toLabel: (toCanonicalId ? canonicalToLabel.get(toCanonicalId) : null) ?? 'Sujet inconnu',
+      linkType: link.linkType,
+      justification: link.justification,
+    })
+  }
+
+  return { siteId, links }
 }
