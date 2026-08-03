@@ -180,61 +180,6 @@ function TensionCurve({ timeline }: { timeline: SiteHealthTimeline }) {
 
 // ── Courbe de santé dérivée (SVG pur) ─────────────────────────────────────────
 
-function HealthCurve({ timeline }: { timeline: SiteHealthTimeline }) {
-  const { points, peakActive } = timeline
-  if (points.length < 2) return null
-
-  const W = 320, H = 90
-  const PAD = { t: 10, r: 8, b: 26, l: 32 }
-  const plotW = W - PAD.l - PAD.r
-  const plotH = H - PAD.t - PAD.b
-  const n = points.length
-
-  const xOf = (i: number) => PAD.l + (i / (n - 1)) * plotW
-  // Santé = 100 - (active/peak)*100 → 100 en haut, 0 en bas
-  const health = (active: number) => Math.round(100 - (active / peakActive) * 100)
-  const yOf = (h: number) => PAD.t + plotH - (h / 100) * plotH
-
-  const linePoints = points.map((p, i) => `${xOf(i)},${yOf(health(p.activeCount))}`).join(' ')
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" aria-label="Courbe de santé du chantier">
-      {/* Grid */}
-      {[0, 50, 100].map((v) => (
-        <line key={v}
-          x1={PAD.l} x2={W - PAD.r} y1={yOf(v)} y2={yOf(v)}
-          stroke="#e5e7eb" strokeWidth="0.5" strokeDasharray="3,2" />
-      ))}
-      {/* Zone rouge (santé < 40%) */}
-      <rect x={PAD.l} y={yOf(40)} width={plotW} height={yOf(0) - yOf(40)} fill="#fef2f2" fillOpacity="0.6" />
-      {/* Zone verte (santé > 70%) */}
-      <rect x={PAD.l} y={yOf(100)} width={plotW} height={yOf(70) - yOf(100)} fill="#f0fdf4" fillOpacity="0.6" />
-      {/* Line avec dégradé couleur par segment */}
-      <polyline points={linePoints} fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinejoin="round" />
-      {/* Dots */}
-      {points.map((p, i) => {
-        const h = health(p.activeCount)
-        const color = h < 40 ? '#ef4444' : h < 70 ? '#f59e0b' : '#10b981'
-        return <circle key={i} cx={xOf(i)} cy={yOf(h)} r="2.5" fill={color} />
-      })}
-      {/* Y labels */}
-      {[100, 50, 0].map((v) => (
-        <text key={v} x={PAD.l - 3} y={yOf(v) + 3} textAnchor="end" fontSize="7" fill="#9ca3af">{v}%</text>
-      ))}
-      {/* X labels */}
-      {points.map((p, i) => {
-        const step = Math.max(1, Math.floor(n / 9))
-        if (i % step !== 0 && i !== n - 1) return null
-        return (
-          <text key={i} x={xOf(i)} y={H - 4} textAnchor="middle" fontSize="7" fill="#9ca3af">
-            PV{p.pvNumber}
-          </text>
-        )
-      })}
-    </svg>
-  )
-}
-
 // ── Groupe de sujets dans une carte de période ────────────────────────────────
 
 const FACT_CONFIG = {
@@ -481,35 +426,34 @@ export function EvolutionView({ siteId, readModel, narrative, healthTimeline }: 
         </div>
       </section>
 
-      {/* ── 2. COURBES (santé + tension) ─────────────────────────────────── */}
-      {healthTimeline && healthTimeline.points.length >= 2 && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {/* Tension */}
+      {/* ── 2. COURBE DE TENSION ─────────────────────────────────────────── */}
+      {healthTimeline && healthTimeline.points.length >= 2 && (() => {
+        const pts       = healthTimeline.points
+        const peak      = healthTimeline.peakActive
+        const current   = pts[pts.length - 1].activeCount
+        const peakPv    = pts.find((p) => p.activeCount === peak)?.pvNumber ?? '?'
+        const deltaPct  = peak > 0 ? Math.round((peak - current) / peak * 100) : 0
+        const deltaText = current < peak
+          ? `−${deltaPct} % depuis le pic`
+          : current === peak
+            ? 'au niveau du pic'
+            : `+${Math.round((current - peak) / peak * 100)} % au-dessus du pic`
+        return (
           <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tension du chantier</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Sujets actifs par PV — pic à {healthTimeline.peakActive}
-            </p>
+            <div className="flex items-start justify-between gap-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tension du chantier</p>
+              <p className="shrink-0 text-right text-xs text-muted-foreground">
+                Pic : <span className="font-medium text-foreground">{peak}</span> sujets au PV{peakPv}
+                {' · '}Aujourd&apos;hui : <span className="font-medium text-foreground">{current}</span>
+                {' · '}{deltaText}
+              </p>
+            </div>
             <div className="mt-3">
               <TensionCurve timeline={healthTimeline} />
             </div>
           </section>
-
-          {/* Santé */}
-          <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Niveau de maîtrise</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Indice relatif : sujets actifs vs pic observé · tous les sujets canoniques
-            </p>
-            <div className="mt-3">
-              <HealthCurve timeline={healthTimeline} />
-            </div>
-            <p className="mt-1.5 text-[10px] italic text-muted-foreground/60">
-              Un chantier actif peut être à forte tension tout en progressant normalement.
-            </p>
-          </section>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ── 3. FRISE COMPLÈTE ────────────────────────────────────────────── */}
       <section className="rounded-[22px] border bg-card p-5 shadow-sm">

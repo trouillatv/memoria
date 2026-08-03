@@ -201,12 +201,17 @@ export function computeProgressByCategory(matrix: SiteSubjectMatrix): CategoryPr
   return cats
 }
 
+// Mêmes familles exclues que dans watchlist et health timeline : acteurs et faits purement informationnels
+// ne sont pas des sujets pilotables — les inclure fausse tous les compteurs de transition.
+const DELTA_EXCLUDED_FAMILIES = new Set(['person', 'company', 'knowledge_fact'])
+
 export function computeDeltaSummary(delta: PvDelta): DeltaSummary {
   const s: DeltaSummary = {
     réalisésLevés: [], nouveaux: [], progressés: [],
     aggravésRéouverts: [], toujoursOuverts: [], nonMentionnés: [], annulés: [],
   }
   for (const item of delta.items) {
+    if (DELTA_EXCLUDED_FAMILIES.has(item.family)) continue
     switch (item.transition) {
       case 'réalisé':
       case 'levé':          s.réalisésLevés.push(item);     break
