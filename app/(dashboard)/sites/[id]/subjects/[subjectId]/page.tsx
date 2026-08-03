@@ -169,6 +169,21 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   const sortedCompanyActors = [...companyActors.entries()].sort((a, b) => b[1].openCount - a[1].openCount || b[1].totalCount - a[1].totalCount)
   const sortedContactActors = [...contactActors.entries()].sort((a, b) => b[1].openCount - a[1].openCount || b[1].totalCount - a[1].totalCount)
 
+  // RÉSUMÉ DÉTERMINISTE — uniquement depuis les données déjà chargées, zéro requête.
+  const summaryPvCount = meetingSources.length
+  const summaryOpenActions = actions.filter((a) => a.status === 'open' || a.status === 'planned').length
+  const summaryTotalActions = actions.length
+  const summaryOpenReserves = reserves.filter((r) => r.status === 'open').length
+  const summaryTotalReserves = reserves.length
+  const summaryDecisionsCount = siteDecisions.length
+  const firstEventDate = timeline.length > 0 ? fr(timeline[0].date) : null
+  const lastEventDate = lastEvent ? fr(lastEvent.date) : null
+  // Acteurs séparés par rôle : exécutants (actions) vs décisionnaires (décisions).
+  const summaryExecutants = sortedCompanyActors.filter(([, a]) => a.totalCount > 0).slice(0, 3).map(([, a]) => a.name)
+  const summaryDecideurs = sortedCompanyActors.filter(([, a]) => a.decisionCount > 0).slice(0, 3).map(([, a]) => a.name)
+  const summaryLastEvolution = insights?.lastEvolution ?? (lastEvent ? lastEvent.label : null)
+  const hasSummaryContent = summaryPvCount > 0 || summaryTotalActions > 0 || summaryTotalReserves > 0 || summaryDecisionsCount > 0
+
   // Sujets candidats à bloquer : les autres sujets du site, sauf soi-même et ceux déjà
   // bloqués par ce sujet (l'arête from=ce sujet existe déjà).
   const alreadyBlocked = new Set(relations.blocks.map((r) => r.subjectId))
@@ -198,6 +213,63 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
         </div>
         <p className="text-xs text-muted-foreground">{identity.name}{identity.clientName ? ` · ${identity.clientName}` : ''}</p>
       </header>
+
+      {/* RÉSUMÉ DÉTERMINISTE — carte de synthèse factuelle. Zéro LLM, zéro diagnostic :
+          uniquement ce que les données prouvent. Répond à « où en est ce sujet en 5 s ». */}
+      {hasSummaryContent && (
+        <section className="rounded-xl border border-border/50 bg-card/60 px-4 py-3 space-y-1.5">
+          {/* Ligne 1 : compteurs bruts */}
+          <p className="text-sm text-foreground/80 font-medium flex flex-wrap gap-x-3 gap-y-0.5">
+            {summaryPvCount > 0 && <span>{summaryPvCount} PV{summaryPvCount > 1 ? ' concernés' : ' concerné'}</span>}
+            {summaryTotalActions > 0 && (
+              <span>
+                {summaryOpenActions > 0 ? `${summaryOpenActions} action${summaryOpenActions > 1 ? 's' : ''} ouverte${summaryOpenActions > 1 ? 's' : ''}` : 'aucune action ouverte'}
+                {summaryTotalActions > summaryOpenActions ? <span className="font-normal text-muted-foreground"> / {summaryTotalActions} au total</span> : null}
+              </span>
+            )}
+            {summaryTotalReserves > 0 && (
+              <span>
+                {summaryOpenReserves > 0 ? `${summaryOpenReserves} réserve${summaryOpenReserves > 1 ? 's' : ''} ouverte${summaryOpenReserves > 1 ? 's' : ''}` : 'réserve levée'}
+                {summaryTotalReserves > summaryOpenReserves && summaryOpenReserves > 0 ? <span className="font-normal text-muted-foreground"> / {summaryTotalReserves}</span> : null}
+              </span>
+            )}
+            {summaryDecisionsCount > 0 && <span>{summaryDecisionsCount} décision{summaryDecisionsCount > 1 ? 's' : ''}</span>}
+          </p>
+          {/* Ligne 2 : acteurs par rôle (séparation exécution / décision) */}
+          {(summaryExecutants.length > 0 || summaryDecideurs.length > 0) && (
+            <p className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5">
+              {summaryExecutants.length > 0 && (
+                <span>
+                  <span className="text-foreground/70">{summaryExecutants.join(', ')}</span>
+                  {' '}porte{summaryExecutants.length > 1 ? 'nt' : ''} les actions
+                </span>
+              )}
+              {summaryDecideurs.length > 0 && (() => {
+                // N'afficher "décide" que si distinct des exécutants (évite la répétition)
+                const uniqueDecideurs = summaryDecideurs.filter((n) => !summaryExecutants.includes(n))
+                if (uniqueDecideurs.length === 0) return null
+                return (
+                  <span>
+                    <span className="text-foreground/70">{uniqueDecideurs.join(', ')}</span>
+                    {' '}porte{uniqueDecideurs.length > 1 ? 'nt' : ''} les décisions
+                  </span>
+                )
+              })()}
+            </p>
+          )}
+          {/* Ligne 3 : dernière évolution + bornes temporelles */}
+          <p className="text-xs text-muted-foreground">
+            {summaryLastEvolution && <span className="text-foreground/70">{summaryLastEvolution}</span>}
+            {(firstEventDate || lastEventDate) && (
+              <span className="ml-1">
+                {firstEventDate && lastEventDate && firstEventDate !== lastEventDate
+                  ? `· ${firstEventDate} → ${lastEventDate}`
+                  : lastEventDate ? `· ${lastEventDate}` : ''}
+              </span>
+            )}
+          </p>
+        </section>
+      )}
 
       {/* VIGILANCE (P1 « Sujet actif ») — l'attention AVANT l'histoire. Le sujet ne se
           contente plus de raconter : il signale ce qui appelle une action. */}
