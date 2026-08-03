@@ -138,7 +138,7 @@ function ActionRow({ action }: { action: CompanyFiche['actions'][number] }) {
       href={action.href}
       icon={<ArrowRight className="h-4 w-4" aria-hidden />}
       label={action.title}
-      sub={[action.siteName, action.hasReferent ? null : 'sans contact référent'].filter(Boolean).join(' · ')}
+      sub={[action.siteName, action.assignedContactName ?? (action.hasReferent ? null : 'sans contact référent')].filter(Boolean).join(' · ')}
       trailing={
         action.overdue ? (
           <span className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium text-red-700 dark:text-red-400">

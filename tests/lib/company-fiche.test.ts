@@ -24,7 +24,7 @@ describe('buildCompanyFiche', () => {
     const f = buildCompanyFiche({
       ...base(),
       casting: [{ siteId: 's1', siteName: 'Lycée', role: 'ETV', active: true, mainContactId: null }],
-      actions: Array.from({ length: 5 }, (_, i) => ({ id: `a${i}`, title: `A${i}`, siteId: 's1', siteName: 'Lycée', dueDate: '2027-01-01', hasReferent: true })),
+      actions: Array.from({ length: 5 }, (_, i) => ({ id: `a${i}`, title: `A${i}`, siteId: 's1', siteName: 'Lycée', dueDate: '2027-01-01', hasReferent: true, assignedContactName: null })),
     })
     expect(f.openCount).toBe(5)
     expect(f.overdueCount).toBe(0)
@@ -38,8 +38,8 @@ describe('buildCompanyFiche', () => {
       ...base(),
       casting: [{ siteId: 's1', siteName: 'Lycée', role: 'ETV', active: true, mainContactId: null }],
       actions: [
-        { id: 'a1', title: 'À jour', siteId: 's1', siteName: 'Lycée', dueDate: '2027-01-01', hasReferent: true },
-        { id: 'a2', title: 'En retard', siteId: 's1', siteName: 'Lycée', dueDate: '2026-07-01', hasReferent: false },
+        { id: 'a1', title: 'À jour', siteId: 's1', siteName: 'Lycée', dueDate: '2027-01-01', hasReferent: true, assignedContactName: null },
+        { id: 'a2', title: 'En retard', siteId: 's1', siteName: 'Lycée', dueDate: '2026-07-01', hasReferent: false, assignedContactName: null },
       ],
     })
     expect(f.attention.level).toBe('urgent')
@@ -53,7 +53,7 @@ describe('buildCompanyFiche', () => {
     const f = buildCompanyFiche({
       ...base(),
       casting: [{ siteId: 's1', siteName: 'Lycée', role: 'ETV', active: false, mainContactId: null }], // clôturé
-      actions: [{ id: 'a1', title: 'Reste', siteId: 's1', siteName: 'Lycée', dueDate: null, hasReferent: true }],
+      actions: [{ id: 'a1', title: 'Reste', siteId: 's1', siteName: 'Lycée', dueDate: null, hasReferent: true, assignedContactName: null }],
     })
     expect(f.attention.level).toBe('attention')
     expect(f.attention.reasons.map((r) => r.code)).toContain('company_left_casting')

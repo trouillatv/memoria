@@ -27,6 +27,7 @@ export interface CompanyFicheAction {
   dueDate: string | null
   overdue: boolean
   hasReferent: boolean
+  assignedContactName: string | null
   href: string // /sites/{siteId}/action/{id}
 }
 
@@ -77,7 +78,7 @@ export interface CompanyFicheInputs {
   today: string
   company: { id: string; name: string; short_name: string | null; siret: string | null; address: string | null; phone: string | null; email: string | null; website: string | null; deleted_at: string | null }
   casting: Array<{ siteId: string; siteName: string; role: string; active: boolean; mainContactId: string | null }>
-  actions: Array<{ id: string; title: string; siteId: string; siteName: string; dueDate: string | null; hasReferent: boolean }>
+  actions: Array<{ id: string; title: string; siteId: string; siteName: string; dueDate: string | null; hasReferent: boolean; assignedContactName: string | null }>
   contacts: Array<{ id: string; name: string; function: string | null }>
   /** Ids des contacts référents d'au moins une action ouverte de cette entreprise. */
   referentContactIds: string[]
@@ -178,12 +179,17 @@ export async function getCompanyFiche(companyId: string, orgIds: string[]): Prom
   const siteName = (id: string) => siteNameById.get(id) ?? 'Chantier'
 
   const addressLine = [company.address, [company.postal_code, company.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') || null
+  const contactNameById = new Map(contactRows.map((c) => [c.id, c.full_name]))
 
   return buildCompanyFiche({
     today,
     company: { id: company.id, name: company.name, short_name: company.short_name, siret: company.siret, address: addressLine, phone: company.phone, email: company.email, website: company.website, deleted_at: company.deleted_at },
     casting: cast.map((c) => ({ siteId: c.site_id, siteName: siteName(c.site_id), role: c.role, active: c.effective_to === null, mainContactId: c.main_contact_id })),
-    actions: act.map((a) => ({ id: a.id, title: a.title, siteId: a.site_id, siteName: siteName(a.site_id), dueDate: a.due_date, hasReferent: a.assigned_contact_id !== null })),
+    actions: act.map((a) => ({
+      id: a.id, title: a.title, siteId: a.site_id, siteName: siteName(a.site_id), dueDate: a.due_date,
+      hasReferent: a.assigned_contact_id !== null,
+      assignedContactName: a.assigned_contact_id ? (contactNameById.get(a.assigned_contact_id) ?? null) : null,
+    })),
     contacts: contactRows.map((c) => ({ id: c.id, name: c.full_name, function: c.function })),
     referentContactIds: [...new Set(act.map((a) => a.assigned_contact_id).filter((v): v is string => !!v))],
   })

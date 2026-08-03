@@ -71,12 +71,18 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   // Candidats à rattacher (existant non encore rattaché à ce sujet).
   const supabase = createAdminClient()
   const linkedDocIds = new Set(documents.map((d) => d.id))
-  const [{ data: candActions }, { data: candReserves }, { data: candDecisions }, siteDocs] = await Promise.all([
+  const assignedCompanyIds = [...new Set(actions.map((a) => a.assigned_company_id).filter((v): v is string => !!v))]
+  const assignedContactIds = [...new Set(actions.map((a) => a.assigned_contact_id).filter((v): v is string => !!v))]
+  const [{ data: candActions }, { data: candReserves }, { data: candDecisions }, siteDocs, { data: assignedCompanyRows }, { data: assignedContactRows }] = await Promise.all([
     supabase.from('site_actions').select('id, title').eq('site_id', id).is('subject_id', null).in('status', ['open', 'planned']).limit(50),
     supabase.from('site_reserve').select('id, label').eq('site_id', id).is('subject_id', null).eq('status', 'open').limit(50),
     supabase.from('site_report_proposals').select('id, short_label').eq('site_id', id).is('subject_id', null).eq('status', 'accepted').limit(50),
     listDocumentsForTarget('site', id).catch(() => []),
+    assignedCompanyIds.length ? supabase.from('companies').select('id, name, short_name').in('id', assignedCompanyIds) : Promise.resolve({ data: [] as Array<{ id: string; name: string; short_name: string | null }> }),
+    assignedContactIds.length ? supabase.from('company_contacts').select('id, full_name').in('id', assignedContactIds) : Promise.resolve({ data: [] as Array<{ id: string; full_name: string }> }),
   ])
+  const companyNameById = new Map(((assignedCompanyRows ?? []) as Array<{ id: string; name: string; short_name: string | null }>).map((c) => [c.id, (c.short_name as string | null) || c.name]))
+  const contactNameById = new Map(((assignedContactRows ?? []) as Array<{ id: string; full_name: string }>).map((c) => [c.id, c.full_name]))
   // Anomalies candidates : intervention (non résolues, via missions→interventions) +
   // anomalies saisies en séance (report_added_points kind anomalie via les CR du site).
   const { data: missions } = await supabase.from('missions').select('id').eq('site_id', id).is('deleted_at', null)
@@ -104,6 +110,16 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
     anomalies: candAnomalies,
     addedAnomalies: candAddedAnomalies,
     documents: siteDocs.filter((d) => !linkedDocIds.has(d.id)).map((d) => ({ id: d.id, label: d.filename })),
+  }
+
+  // Responsable structurel par action : priorité FK (assigned_company_id / assigned_contact_id)
+  // sur le texte libre assigned_to. Jamais de matching flou — uniquement via les UUIDs déjà résolus.
+  const actionResponsibleLabel = new Map<string, string>()
+  for (const a of actions) {
+    const co = a.assigned_company_id ? (companyNameById.get(a.assigned_company_id) ?? null) : null
+    const ct = a.assigned_contact_id ? (contactNameById.get(a.assigned_contact_id) ?? null) : null
+    const label = co && ct ? `${co} · ${ct}` : co ?? ct ?? a.assigned_to ?? null
+    if (label) actionResponsibleLabel.set(a.id, label)
   }
 
   // Sujets candidats à bloquer : les autres sujets du site, sauf soi-même et ceux déjà
@@ -350,7 +366,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
               <li key={a.id} className="text-sm rounded-md border bg-card px-3 py-1.5">
                 {/* Le dossier vivant OUVRE les objets qu'il cite : l'action mène à sa fiche. */}
                 <Link href={`/sites/${id}/action/${a.id}`} scroll={false} className="font-medium hover:underline">{a.title}</Link>
-                {a.assigned_to && <span className="text-muted-foreground"> — {a.assigned_to}</span>}
+                {actionResponsibleLabel.get(a.id) && <span className="text-muted-foreground"> — {actionResponsibleLabel.get(a.id)}</span>}
                 {a.due_date && <span className="text-muted-foreground"> · échéance {a.due_date}</span>}
                 <span className="text-muted-foreground"> · {ACTION_STATUS_FR[a.status] ?? a.status}</span>
               </li>
