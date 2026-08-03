@@ -52,10 +52,12 @@ interface EvolutionPeriod {
   endDate: string
   pvNumbers: number[]
   isSilence: boolean
-  appeared:  EvolutionSubjectFact[]
+  silenceDays?: number
+  appeared:   EvolutionSubjectFact[]
   aggravated: EvolutionSubjectFact[]
-  resolved:  EvolutionSubjectFact[]
-  persistent: EvolutionSubjectFact[]
+  resolved:   EvolutionSubjectFact[]
+  stillOpen:  EvolutionSubjectFact[]
+  importanceScore: number
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -101,11 +103,23 @@ function cellState(status: string | null, prevStatus: string | null): ActivityCe
   return 'open'
 }
 
+function lastKnownCellState(cells: ActivityCellState[], upToIdx: number): ActivityCellState {
+  for (let i = Math.min(upToIdx, cells.length - 1); i >= 0; i--) {
+    if (cells[i] !== 'absent') return cells[i]
+  }
+  return 'absent'
+}
+
+function isOpenState(state: ActivityCellState): boolean {
+  return state === 'first' || state === 'open' || state === 'non_compliant' || state === 'reopened'
+}
+
 // ── Détection des périodes ─────────────────────────────────────────────────────
 
 interface RawGroup {
   runs: RunEntry[]
   isSilence: boolean
+  silenceDays?: number
   silenceStart?: string
   silenceEnd?: string
 }
@@ -128,6 +142,7 @@ function groupRunsIntoPeriods(runs: RunEntry[]): RawGroup[] {
       before.setDate(before.getDate() - 1)
       groups.push({
         runs: [], isSilence: true,
+        silenceDays: gap,
         silenceStart: after.toISOString().slice(0, 10),
         silenceEnd:   before.toISOString().slice(0, 10),
       })
@@ -145,44 +160,64 @@ function groupRunsIntoPeriods(runs: RunEntry[]): RawGroup[] {
   return groups
 }
 
-function computePeriodFacts(group: RawGroup, runs: RunEntry[], rows: SubjectRow[]): EvolutionPeriod {
+function computePeriodFacts(group: RawGroup, runs: RunEntry[], rows: SubjectRow[], lastKnownIdx: number): EvolutionPeriod {
   if (group.isSilence) {
+    const stillOpen: EvolutionSubjectFact[] = []
+    for (const row of rows) {
+      const last = lastKnownCellState(row.cells, lastKnownIdx)
+      if (isOpenState(last)) stillOpen.push({ canonicalSubjectId: row.canonicalSubjectId, label: row.label })
+    }
     return {
       label:      buildPeriodLabel(group.silenceStart!, group.silenceEnd!, true),
       startDate:  group.silenceStart!,
       endDate:    group.silenceEnd!,
       pvNumbers:  [],
       isSilence:  true,
+      silenceDays: group.silenceDays,
       appeared:   [],
       aggravated: [],
       resolved:   [],
-      persistent: [],
+      stillOpen,
+      importanceScore: 2,
     }
   }
 
-  const runToIdx   = new Map(runs.map((r, i) => [r.id, i]))
-  const periodIdxs = group.runs.map((r) => runToIdx.get(r.id) ?? -1).filter((i) => i >= 0)
+  const runToIdx      = new Map(runs.map((r, i) => [r.id, i]))
+  const periodIdxs    = group.runs.map((r) => runToIdx.get(r.id) ?? -1).filter((i) => i >= 0)
+  const firstPeriodIdx = periodIdxs[0] ?? 0
 
-  const appeared:  EvolutionSubjectFact[] = []
+  const appeared:   EvolutionSubjectFact[] = []
   const aggravated: EvolutionSubjectFact[] = []
-  const resolved:  EvolutionSubjectFact[] = []
-  const persistent: EvolutionSubjectFact[] = []
+  const resolved:   EvolutionSubjectFact[] = []
+  const stillOpen:  EvolutionSubjectFact[] = []
 
   for (const row of rows) {
-    const states = periodIdxs.map((i) => row.cells[i] ?? 'absent')
-    if (states.every((s) => s === 'absent')) continue
+    const periodCells = periodIdxs.map((i) => row.cells[i] ?? 'absent')
+    if (periodCells.every((s) => s === 'absent')) continue
 
-    const isFirst   = states.includes('first')
-    const isAggr    = states.some((s) => s === 'non_compliant' || s === 'reopened')
-    const isDone    = !isFirst && !isAggr && states.includes('done')
-    const openCount = states.filter((s) => s === 'open').length
-    const fact      = { canonicalSubjectId: row.canonicalSubjectId, label: row.label }
+    const isFirst = periodCells.includes('first')
+    const isAggr  = periodCells.some((s) => s === 'non_compliant' || s === 'reopened')
+
+    const preState = firstPeriodIdx > 0 ? lastKnownCellState(row.cells, firstPeriodIdx - 1) : 'absent'
+    const isDone   = !isFirst && !isAggr && periodCells.includes('done') && preState !== 'done'
+
+    const lastState = lastKnownCellState(row.cells, lastKnownIdx)
+    const isOpenEnd = isOpenState(lastState)
+
+    const fact = { canonicalSubjectId: row.canonicalSubjectId, label: row.label }
 
     if (isFirst)    appeared.push(fact)
-    if (isAggr)     aggravated.push(fact)
-    if (isDone)     resolved.push(fact)
-    if (!isFirst && !isAggr && !isDone && openCount >= 2) persistent.push(fact)
+    else if (isAggr) aggravated.push(fact)
+    else if (isDone) resolved.push(fact)
+
+    if (!isFirst && !isAggr && !isDone && isOpenEnd) stillOpen.push(fact)
   }
+
+  const importanceScore =
+    appeared.length  * 8 +
+    aggravated.length * 6 +
+    resolved.length  * 3 +
+    stillOpen.length * 1
 
   return {
     label:     buildPeriodLabel(group.runs[0].effectiveDate, group.runs[group.runs.length - 1].effectiveDate),
@@ -193,7 +228,8 @@ function computePeriodFacts(group: RawGroup, runs: RunEntry[], rows: SubjectRow[
     appeared,
     aggravated,
     resolved,
-    persistent,
+    stillOpen,
+    importanceScore,
   }
 }
 
@@ -207,11 +243,15 @@ function printPeriod(p: EvolutionPeriod, idx: number): void {
       : `PV${p.pvNumbers[0]}–PV${p.pvNumbers[p.pvNumbers.length - 1]}`
 
   console.log(`\n${'─'.repeat(60)}`)
-  console.log(`Période ${idx + 1} — ${p.label}  [${pvRange}]`)
+  console.log(`Période ${idx + 1} — ${p.label}  [${pvRange}]  score=${p.importanceScore}`)
   console.log('─'.repeat(60))
 
   if (p.isSilence) {
-    console.log('  (aucun PV — silence documentaire)')
+    console.log(`  ${p.silenceDays ?? '?'} jours sans procès-verbal.`)
+    if (p.stillOpen.length > 0) {
+      console.log(`  Sujets encore ouverts au début du silence (${p.stillOpen.length}) :`)
+      for (const s of p.stillOpen) console.log(`      · ${s.label}`)
+    }
     return
   }
 
@@ -227,12 +267,12 @@ function printPeriod(p: EvolutionPeriod, idx: number): void {
     console.log(`\n  ✓ Traités (${p.resolved.length}) :`)
     for (const s of p.resolved) console.log(`      · ${s.label}`)
   }
-  if (p.persistent.length > 0) {
-    console.log(`\n  → Persistants (${p.persistent.length}) :`)
-    for (const s of p.persistent) console.log(`      · ${s.label}`)
+  if (p.stillOpen.length > 0) {
+    console.log(`\n  → Encore ouverts (${p.stillOpen.length}) :`)
+    for (const s of p.stillOpen) console.log(`      · ${s.label}`)
   }
 
-  if (p.appeared.length === 0 && p.aggravated.length === 0 && p.resolved.length === 0 && p.persistent.length === 0) {
+  if (p.appeared.length === 0 && p.aggravated.length === 0 && p.resolved.length === 0 && p.stillOpen.length === 0) {
     console.log('  (aucun signal structurant)')
   }
 }
@@ -467,8 +507,21 @@ async function main() {
   }
 
   // 8. Détection des périodes
-  const groups  = groupRunsIntoPeriods(runs)
-  const periods = groups.map((g) => computePeriodFacts(g, runs, subjectRows))
+  const groups   = groupRunsIntoPeriods(runs)
+  const runToIdx = new Map(runs.map((r, i) => [r.id, i]))
+
+  let lastNonSilenceRunIdx = -1
+  const periods: EvolutionPeriod[] = []
+  for (const group of groups) {
+    if (group.isSilence) {
+      periods.push(computePeriodFacts(group, runs, subjectRows, lastNonSilenceRunIdx))
+    } else {
+      const lastRun = group.runs[group.runs.length - 1]
+      const idx     = runToIdx.get(lastRun.id) ?? -1
+      periods.push(computePeriodFacts(group, runs, subjectRows, idx))
+      if (idx >= 0) lastNonSilenceRunIdx = idx
+    }
+  }
 
   console.log(`\n\n=== READ-MODEL — ${periods.length} période(s) détectée(s) ===`)
   for (let i = 0; i < periods.length; i++) printPeriod(periods[i], i)

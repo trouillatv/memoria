@@ -1,7 +1,7 @@
 import 'server-only'
 import { z } from 'zod'
 import { getActivityMap } from './site-synthesis'
-import type { ActivityMap } from './site-synthesis'
+import type { ActivityMap, ActivityCellState } from './site-synthesis'
 
 // ── Types publics ─────────────────────────────────────────────────────────────
 
@@ -23,11 +23,17 @@ export interface EvolutionPeriod {
   pvNumbers: number[]
   runIds: string[]
   isSilence: boolean
+  silenceDays?: number          // nb de jours de silence documentaire
 
-  appeared: EvolutionSubjectFact[]
-  aggravated: EvolutionSubjectFact[]
-  resolved: EvolutionSubjectFact[]
-  persistent: EvolutionSubjectFact[]
+  // Événements pendant la période (transitions)
+  appeared: EvolutionSubjectFact[]    // première apparition dans ce chantier
+  aggravated: EvolutionSubjectFact[]  // aggravé ou réouvert (non-conforme, réouverture)
+  resolved: EvolutionSubjectFact[]    // traité/clos pour la première fois dans cette période
+
+  // État en fin de période (distinct des transitions)
+  stillOpen: EvolutionSubjectFact[]   // encore ouvert à la fin de la période, sans transition notable
+
+  importanceScore: number
 }
 
 export interface EvolutionReadModel {
@@ -51,8 +57,7 @@ export interface EvolutionNarrative {
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
-const GAP_THRESHOLD_DAYS = 35      // gap > 35j → nouvelle période
-const SILENCE_THRESHOLD_DAYS = 45  // gap > 45j → insérer une période de silence documentaire
+const SILENCE_THRESHOLD_DAYS = 45  // gap > 45j → période de silence documentaire
 
 // ── Helpers purs ──────────────────────────────────────────────────────────────
 
@@ -86,6 +91,19 @@ function buildPeriodLabel(startDate: string, endDate: string, isSilence = false)
   return isSilence ? `Silence documentaire — ${range}` : range
 }
 
+/** Dernier état connu (non absent) d'une cellule jusqu'à l'indice upToIdx inclus. */
+function lastKnownCellState(cells: ActivityCellState[], upToIdx: number): ActivityCellState {
+  for (let i = Math.min(upToIdx, cells.length - 1); i >= 0; i--) {
+    if (cells[i] !== 'absent') return cells[i]
+  }
+  return 'absent'
+}
+
+/** Vrai si l'état représente un sujet encore ouvert (non clos). */
+function isOpenState(state: ActivityCellState): boolean {
+  return state === 'first' || state === 'open' || state === 'non_compliant' || state === 'reopened'
+}
+
 // ── Détection des périodes ────────────────────────────────────────────────────
 
 interface RunEntry { id: string; effectiveDate: string; pvNumber: number }
@@ -93,10 +111,15 @@ interface RunEntry { id: string; effectiveDate: string; pvNumber: number }
 interface RawGroup {
   runs: RunEntry[]
   isSilence: boolean
+  silenceDays?: number
   silenceStart?: string
   silenceEnd?: string
 }
 
+/**
+ * Regroupe les PV par mois calendaire.
+ * Un gap > SILENCE_THRESHOLD_DAYS insère une période de silence documentaire.
+ */
 function groupRunsIntoPeriods(runs: RunEntry[]): RawGroup[] {
   if (runs.length === 0) return []
 
@@ -109,7 +132,6 @@ function groupRunsIntoPeriods(runs: RunEntry[]): RawGroup[] {
     const runMonth = runs[i].effectiveDate.slice(0, 7)
 
     if (gap > SILENCE_THRESHOLD_DAYS) {
-      // Silence documentaire
       groups.push({ runs: current, isSilence: false })
       const after  = new Date(runs[i - 1].effectiveDate)
       const before = new Date(runs[i].effectiveDate)
@@ -118,13 +140,13 @@ function groupRunsIntoPeriods(runs: RunEntry[]): RawGroup[] {
       groups.push({
         runs: [],
         isSilence: true,
+        silenceDays: gap,
         silenceStart: after.toISOString().slice(0, 10),
         silenceEnd:   before.toISOString().slice(0, 10),
       })
       current      = [runs[i]]
       currentMonth = runMonth
     } else if (runMonth !== currentMonth) {
-      // Changement de mois calendaire → nouvelle période
       groups.push({ runs: current, isSilence: false })
       current      = [runs[i]]
       currentMonth = runMonth
@@ -138,8 +160,40 @@ function groupRunsIntoPeriods(runs: RunEntry[]): RawGroup[] {
 
 // ── Calcul des faits par période ──────────────────────────────────────────────
 
-function computePeriodFacts(group: RawGroup, activityMap: ActivityMap): EvolutionPeriod {
+/**
+ * @param group          Groupe de PV (ou silence)
+ * @param activityMap    Grille complète runs × sujets
+ * @param lastKnownIdx   Index global du dernier run dont on connaît l'état
+ *                       (= dernier run du groupe pour les périodes normales,
+ *                        = dernier run avant le silence pour les périodes de silence)
+ */
+function computePeriodFacts(
+  group: RawGroup,
+  activityMap: ActivityMap,
+  lastKnownIdx: number,
+): EvolutionPeriod {
   if (group.isSilence) {
+    // Pour le silence : sujets encore ouverts au moment où il débute
+    const stillOpen: EvolutionSubjectFact[] = []
+    for (const row of activityMap.rows) {
+      const last = lastKnownCellState(
+        row.cells.map((c) => c.state),
+        lastKnownIdx,
+      )
+      if (isOpenState(last)) {
+        stillOpen.push({
+          canonicalSubjectId: row.canonicalSubjectId,
+          label:       row.label,
+          hasActions:  row.hasActions,
+          hasReserves: row.hasReserves,
+          hasDecisions: row.hasDecisions,
+          hasDeadlines: row.hasDeadlines,
+          openActions:  row.openActions,
+          openReserves: row.openReserves,
+        })
+      }
+    }
+
     return {
       label:     buildPeriodLabel(group.silenceStart!, group.silenceEnd!, true),
       startDate: group.silenceStart!,
@@ -147,33 +201,40 @@ function computePeriodFacts(group: RawGroup, activityMap: ActivityMap): Evolutio
       pvNumbers: [],
       runIds:    [],
       isSilence: true,
+      silenceDays: group.silenceDays,
       appeared:  [],
       aggravated: [],
       resolved:  [],
-      persistent: [],
+      stillOpen,
+      importanceScore: 2,
     }
   }
 
   const runToIdx   = new Map(activityMap.runs.map((r, i) => [r.id, i]))
   const periodIdxs = group.runs.map((r) => runToIdx.get(r.id) ?? -1).filter((i) => i >= 0)
-
-  const startDate = group.runs[0].effectiveDate
-  const endDate   = group.runs[group.runs.length - 1].effectiveDate
+  const firstPeriodIdx = periodIdxs[0] ?? 0
 
   const appeared:  EvolutionSubjectFact[] = []
   const aggravated: EvolutionSubjectFact[] = []
   const resolved:  EvolutionSubjectFact[] = []
-  const persistent: EvolutionSubjectFact[] = []
+  const stillOpen: EvolutionSubjectFact[] = []
 
   for (const row of activityMap.rows) {
-    const periodCells = periodIdxs.map((i) => row.cells[i]).filter(Boolean)
-    if (periodCells.length === 0) continue
+    const rawCells   = row.cells.map((c) => c.state)
+    const periodCells = periodIdxs.map((i) => rawCells[i] ?? 'absent')
+    if (periodCells.every((s) => s === 'absent')) continue
 
-    const states    = periodCells.map((c) => c.state)
-    const isFirst   = states.includes('first')
-    const isAggr    = states.some((s) => s === 'non_compliant' || s === 'reopened')
-    const isDone    = !isFirst && !isAggr && states.includes('done')
-    const openCount = states.filter((s) => s === 'open').length
+    const isFirst = periodCells.includes('first')
+    const isAggr  = periodCells.some((s) => s === 'non_compliant' || s === 'reopened')
+
+    // État juste avant la période (pour détecter les "nouvellement résolus")
+    const preState = firstPeriodIdx > 0 ? lastKnownCellState(rawCells, firstPeriodIdx - 1) : 'absent'
+    // Un sujet est "nouvellement résolu" s'il était ouvert avant la période et passe à done
+    const isDone = !isFirst && !isAggr && periodCells.includes('done') && preState !== 'done'
+
+    // État en fin de période
+    const lastState = lastKnownCellState(rawCells, lastKnownIdx)
+    const isOpenEnd = isOpenState(lastState)
 
     const fact: EvolutionSubjectFact = {
       canonicalSubjectId: row.canonicalSubjectId,
@@ -187,22 +248,32 @@ function computePeriodFacts(group: RawGroup, activityMap: ActivityMap): Evolutio
     }
 
     if (isFirst)    appeared.push(fact)
-    if (isAggr)     aggravated.push(fact)
-    if (isDone && !isFirst && !isAggr) resolved.push(fact)
-    if (!isFirst && !isAggr && !isDone && openCount >= 2) persistent.push(fact)
+    else if (isAggr) aggravated.push(fact)
+    else if (isDone) resolved.push(fact)
+
+    // Reste ouvert : aucune transition notable et encore ouvert en fin de période
+    if (!isFirst && !isAggr && !isDone && isOpenEnd) stillOpen.push(fact)
   }
 
+  // Score d'importance de la période
+  const importanceScore =
+    appeared.length  * 8 +
+    aggravated.length * 6 +
+    resolved.length  * 3 +
+    stillOpen.length * 1
+
   return {
-    label: buildPeriodLabel(startDate, endDate),
-    startDate,
-    endDate,
+    label:     buildPeriodLabel(group.runs[0].effectiveDate, group.runs[group.runs.length - 1].effectiveDate),
+    startDate: group.runs[0].effectiveDate,
+    endDate:   group.runs[group.runs.length - 1].effectiveDate,
     pvNumbers: group.runs.map((r) => r.pvNumber),
     runIds:    group.runs.map((r) => r.id),
     isSilence: false,
     appeared,
     aggravated,
     resolved,
-    persistent,
+    stillOpen,
+    importanceScore,
   }
 }
 
@@ -215,8 +286,22 @@ export async function buildEvolutionReadModel(siteId: string): Promise<Evolution
     return { siteId, totalRuns: 0, dateRange: null, periods: [] }
   }
 
-  const groups  = groupRunsIntoPeriods(activityMap.runs)
-  const periods = groups.map((g) => computePeriodFacts(g, activityMap))
+  const groups = groupRunsIntoPeriods(activityMap.runs)
+  const runToIdx = new Map(activityMap.runs.map((r, i) => [r.id, i]))
+
+  let lastNonSilenceRunIdx = -1
+  const periods: EvolutionPeriod[] = []
+
+  for (const group of groups) {
+    if (group.isSilence) {
+      periods.push(computePeriodFacts(group, activityMap, lastNonSilenceRunIdx))
+    } else {
+      const lastRun = group.runs[group.runs.length - 1]
+      const idx     = runToIdx.get(lastRun.id) ?? -1
+      periods.push(computePeriodFacts(group, activityMap, idx))
+      if (idx >= 0) lastNonSilenceRunIdx = idx
+    }
+  }
 
   return {
     siteId,
@@ -232,7 +317,10 @@ export async function buildEvolutionReadModel(siteId: string): Promise<Evolution
 // ── Narration ─────────────────────────────────────────────────────────────────
 
 function buildDeterministicText(period: EvolutionPeriod): string {
-  if (period.isSilence) return 'Aucun PV sur cette période — aucune observation documentée.'
+  if (period.isSilence) {
+    const days = period.silenceDays ? `${period.silenceDays} jours` : 'une longue période'
+    return `${days} sans procès-verbal. Les sujets ouverts continuent d'exister, mais leur évolution reste inconnue.`
+  }
 
   const pvLabel = period.pvNumbers.length === 1
     ? `PV${period.pvNumbers[0]}`
@@ -252,8 +340,8 @@ function buildDeterministicText(period: EvolutionPeriod): string {
   if (period.resolved.length > 0) {
     parts.push(`${period.resolved.length} sujet(s) traité(s).`)
   }
-  if (period.persistent.length > 0) {
-    parts.push(`${period.persistent.length} sujet(s) persistant(s).`)
+  if (period.stillOpen.length > 0) {
+    parts.push(`${period.stillOpen.length} sujet(s) encore ouvert(s).`)
   }
   if (parts.length === 0) parts.push('Aucun signal structurant.')
 
@@ -265,7 +353,7 @@ const narrativeSchema = z.object({
     periodLabel:          z.string(),
     text:                 z.string().min(10).max(600),
     supportingSubjectIds: z.array(z.string()),
-  })).max(8),
+  })).max(10),
 })
 
 const NARRATIVE_SYSTEM = `Tu es un analyste chantier. Tu produis une narration historique courte et factuelle
@@ -276,8 +364,8 @@ Règles absolues :
 - Absence de mention dans un PV ≠ résolution — ne conclus jamais qu'un sujet est clos sans le voir dans les données.
 - Pas de causalité implicite entre sujets différents.
 - Pas de jugement sur des personnes ou entreprises.
-- 2 à 4 phrases par période, sobres, concrètes, en français.
-- Pour une période de silence, une seule phrase courte.
+- 2 à 4 phrases par période normale, sobres, concrètes, en français.
+- Pour une période de silence : 1 seule phrase factuelle mentionnant le nombre de jours.
 - Dans supportingSubjectIds, liste uniquement les canonicalSubjectIds des sujets nommés dans le texte.`
 
 function buildNarrativePrompt(model: EvolutionReadModel): string {
@@ -291,7 +379,11 @@ function buildNarrativePrompt(model: EvolutionReadModel): string {
     lines.push(`=== ${p.label} ===`)
 
     if (p.isSilence) {
-      lines.push('Aucun PV sur cette période.')
+      lines.push(`${p.silenceDays ?? '?'} jours sans procès-verbal.`)
+      if (p.stillOpen.length > 0) {
+        lines.push(`Sujets toujours ouverts au début du silence :`)
+        for (const s of p.stillOpen) lines.push(`  [${s.canonicalSubjectId}] ${s.label}`)
+      }
       lines.push('')
       continue
     }
@@ -327,9 +419,9 @@ function buildNarrativePrompt(model: EvolutionReadModel): string {
       for (const s of p.resolved) lines.push(`  [${s.canonicalSubjectId}] ${s.label}`)
     }
 
-    if (p.persistent.length > 0) {
-      lines.push(`Persistants (${p.persistent.length}) :`)
-      for (const s of p.persistent) {
+    if (p.stillOpen.length > 0) {
+      lines.push(`Encore ouverts (${p.stillOpen.length}) :`)
+      for (const s of p.stillOpen) {
         const work = [
           s.openActions  > 0 ? `${s.openActions} action(s)` : null,
           s.openReserves > 0 ? `${s.openReserves} réserve(s)` : null,
@@ -373,7 +465,7 @@ export async function generateEvolutionNarrative(
       userMessage:     buildNarrativePrompt(readModel),
       responseSchema:  narrativeSchema,
       modelTier:       'light',
-      maxOutputTokens: 2000,
+      maxOutputTokens: 2500,
     })
 
     let parsed: z.infer<typeof narrativeSchema> | undefined
