@@ -97,16 +97,12 @@ async function main() {
 
   const { data: csRows } = await supabase
     .from('canonical_subject')
-    .select('id, label, family')
+    .select('id, label')
     .eq('site_id', SITE_ID)
 
-  type CsRow = { id: string; label: string; family: string | null }
-  const csLabels   = new Map<string, string>()
-  const csFamilies = new Map<string, string>()
-  for (const r of (csRows ?? []) as CsRow[]) {
-    csLabels.set(r.id, r.label)
-    if (r.family) csFamilies.set(r.id, r.family)
-  }
+  const csLabels = new Map<string, string>(
+    ((csRows ?? []) as Array<{ id: string; label: string }>).map((r) => [r.id, r.label])
+  )
 
   // ── 5. Liens existants — pour filtrage des doublons ──────────────────────────
 
@@ -135,13 +131,13 @@ async function main() {
     // Propositions du run avec sourceExcerpt non vide
     const { data: props } = await supabase
       .from('document_extraction_proposal')
-      .select('id, subject_thread_id, label, source_excerpt')
+      .select('id, subject_thread_id, label, source_excerpt, proposal_family')
       .eq('extraction_run_id', run.id)
       .not('subject_thread_id', 'is', null)
       .not('source_excerpt', 'is', null)
       .neq('source_excerpt', '')
 
-    type PropRow = { id: string; subject_thread_id: string; label: string; source_excerpt: string }
+    type PropRow = { id: string; subject_thread_id: string; label: string; source_excerpt: string; proposal_family: string | null }
     const propRows = (props ?? []) as PropRow[]
 
     // Grouper par canonical_subject_id — un seul extrait représentatif par canonical
@@ -149,8 +145,7 @@ async function main() {
     for (const p of propRows) {
       const csId = threadToCs.get(p.subject_thread_id)
       if (!csId) continue
-      const family = csFamilies.get(csId)
-      if (family === 'person' || family === 'company') continue
+      if (p.proposal_family === 'person' || p.proposal_family === 'company') continue
       if (byCs.has(csId)) continue // premier extrait gagné
       byCs.set(csId, {
         canonicalSubjectId: csId,
