@@ -37,7 +37,7 @@ export interface SubjectSummary {
   criticality: SubjectCriticality
 }
 
-export interface SubjectDecisionLite { id: string; titre: string; statut: string; dateDecision: string | null }
+export interface SubjectDecisionLite { id: string; titre: string; statut: string; dateDecision: string | null; decisionnaireCompanyId: string | null; decisionnaireContactId: string | null }
 export interface SubjectAnomalyLite { id: string; label: string; open: boolean }
 export interface SubjectThread {
   subject: DbSubject
@@ -251,7 +251,7 @@ export async function getSubjectThread(subjectId: string): Promise<SubjectThread
     supabase.from('site_actions').select('*').eq('subject_id', subjectId).order('created_at', { ascending: false }),
     supabase.from('site_reserve').select('id, label, status, issued_on').eq('subject_id', subjectId).order('created_at', { ascending: false }),
     supabase.from('site_report_proposals').select('*').eq('subject_id', subjectId).order('created_at', { ascending: false }),
-    supabase.from('site_decisions').select('id, titre, statut, date_decision').eq('subject_id', subjectId).order('date_decision', { ascending: false }),
+    supabase.from('site_decisions').select('id, titre, statut, date_decision, decisionnaire_company_id, decisionnaire_contact_id').eq('subject_id', subjectId).order('date_decision', { ascending: false }),
     supabase.from('intervention_anomalies').select('id, description, category_other, resolved_at').eq('subject_id', subjectId),
     supabase.from('report_added_points').select('id, label').eq('subject_id', subjectId).eq('kind', 'anomalie'),
     listDocumentsForTarget('subject', subjectId).catch(() => []),
@@ -269,8 +269,8 @@ export async function getSubjectThread(subjectId: string): Promise<SubjectThread
     reserves: ((reserves ?? []) as Array<{ id: string; label: string; status: string; issued_on: string | null }>)
       .map((r) => ({ id: r.id, label: r.label, status: r.status, issuedOn: r.issued_on })),
     decisions: (decisions ?? []) as DbSiteReportProposal[],
-    siteDecisions: ((siteDecisions ?? []) as Array<{ id: string; titre: string; statut: string; date_decision: string | null }>)
-      .map((d) => ({ id: d.id, titre: d.titre, statut: d.statut, dateDecision: d.date_decision })),
+    siteDecisions: ((siteDecisions ?? []) as Array<{ id: string; titre: string; statut: string; date_decision: string | null; decisionnaire_company_id: string | null; decisionnaire_contact_id: string | null }>)
+      .map((d) => ({ id: d.id, titre: d.titre, statut: d.statut, dateDecision: d.date_decision, decisionnaireCompanyId: d.decisionnaire_company_id, decisionnaireContactId: d.decisionnaire_contact_id })),
     anomalies,
     // `document_type` voyage jusqu’à l’écran : c’est lui qui décide de la
     // destination. Sans lui, un LITIGE partait vers le graphe, qui le refuse.

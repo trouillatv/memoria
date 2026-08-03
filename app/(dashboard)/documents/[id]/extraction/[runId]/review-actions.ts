@@ -707,6 +707,53 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
         }
       }
 
+      // ── Résolution linkedActorTemporaryKey → site_decisions.decisionnaire_* ────
+      // Même règle que pour les actions : stable_key uniquement, aucun fallback.
+      if (stableKeyToCompanyId.size > 0 || stableKeyToContactId.size > 0) {
+        const { resolveLinkedActorsForDecisions } = await import('@/lib/documents/linked-actor-resolution')
+
+        const { data: decisionPropsRaw } = await admin
+          .from('document_extraction_proposal')
+          .select('id, source_payload')
+          .eq('extraction_run_id', runId)
+          .in('review_status', ['accepted', 'edited', 'materialized'])
+          .eq('proposal_family', 'decision')
+
+        if (decisionPropsRaw && decisionPropsRaw.length > 0) {
+          const decisionProposalIds = (decisionPropsRaw as Array<{ id: string }>).map((p) => p.id)
+
+          const { data: decMatRows } = await admin
+            .from('document_proposal_materialization')
+            .select('proposal_id, target_entity_id')
+            .in('proposal_id', decisionProposalIds)
+            .eq('target_entity_type', 'site_decision')
+
+          const materializedDecisions = new Map<string, string>(
+            (decMatRows ?? []).map((r) => {
+              const row = r as { proposal_id: string; target_entity_id: string }
+              return [row.proposal_id, row.target_entity_id]
+            }),
+          )
+
+          const decAssignments = resolveLinkedActorsForDecisions(
+            decisionPropsRaw as Array<{ id: string; source_payload: Record<string, unknown> | null }>,
+            materializedDecisions,
+            stableKeyToCompanyId,
+            stableKeyToContactId,
+          )
+
+          await Promise.all(
+            decAssignments.map((a) =>
+              admin.from('site_decisions').update(
+                a.kind === 'company'
+                  ? { decisionnaire_company_id: a.actorId }
+                  : { decisionnaire_contact_id: a.actorId },
+              ).eq('id', a.siteDecisionId),
+            ),
+          )
+        }
+      }
+
       // Après pipeline TypeScript, statut du run = fully materialized
       await admin
         .from('document_extraction_run')

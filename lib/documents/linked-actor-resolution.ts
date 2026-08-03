@@ -7,6 +7,12 @@ export type ActorAssignment = {
   actorId: string
 }
 
+export type DecisionActorAssignment = {
+  siteDecisionId: string
+  kind: 'company' | 'contact'
+  actorId: string
+}
+
 /**
  * Résout les références linkedActorTemporaryKey des propositions action
  * vers les IDs de compagnie ou contact déjà matérialisés dans le même run.
@@ -44,6 +50,44 @@ export function resolveLinkedActors(
     const contactId = stableKeyToContactId.get(actorKey)
     if (contactId) {
       results.push({ siteActionId, kind: 'contact', actorId: contactId })
+    }
+  }
+
+  return results
+}
+
+/**
+ * Résout les références linkedActorTemporaryKey des propositions decision
+ * vers les IDs de compagnie ou contact déjà matérialisés dans le même run.
+ * Même règles que resolveLinkedActors — résolution exclusive par stable_key.
+ */
+export function resolveLinkedActorsForDecisions(
+  decisionProposals: Array<{
+    id: string
+    source_payload: Record<string, unknown> | null
+  }>,
+  materializedDecisions: Map<string, string>,  // proposalId → siteDecisionId
+  stableKeyToCompanyId: Map<string, string>,
+  stableKeyToContactId: Map<string, string>,
+): DecisionActorAssignment[] {
+  const results: DecisionActorAssignment[] = []
+
+  for (const dp of decisionProposals) {
+    const actorKey = dp.source_payload?.['linkedActorTemporaryKey']
+    if (!actorKey || typeof actorKey !== 'string') continue
+
+    const siteDecisionId = materializedDecisions.get(dp.id)
+    if (!siteDecisionId) continue
+
+    const companyId = stableKeyToCompanyId.get(actorKey)
+    if (companyId) {
+      results.push({ siteDecisionId, kind: 'company', actorId: companyId })
+      continue
+    }
+
+    const contactId = stableKeyToContactId.get(actorKey)
+    if (contactId) {
+      results.push({ siteDecisionId, kind: 'contact', actorId: contactId })
     }
   }
 

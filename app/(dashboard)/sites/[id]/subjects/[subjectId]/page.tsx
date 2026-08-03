@@ -71,8 +71,14 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   // Candidats à rattacher (existant non encore rattaché à ce sujet).
   const supabase = createAdminClient()
   const linkedDocIds = new Set(documents.map((d) => d.id))
-  const assignedCompanyIds = [...new Set(actions.map((a) => a.assigned_company_id).filter((v): v is string => !!v))]
-  const assignedContactIds = [...new Set(actions.map((a) => a.assigned_contact_id).filter((v): v is string => !!v))]
+  const assignedCompanyIds = [...new Set([
+    ...actions.map((a) => a.assigned_company_id).filter((v): v is string => !!v),
+    ...siteDecisions.map((d) => d.decisionnaireCompanyId).filter((v): v is string => !!v),
+  ])]
+  const assignedContactIds = [...new Set([
+    ...actions.map((a) => a.assigned_contact_id).filter((v): v is string => !!v),
+    ...siteDecisions.map((d) => d.decisionnaireContactId).filter((v): v is string => !!v),
+  ])]
   const [{ data: candActions }, { data: candReserves }, { data: candDecisions }, siteDocs, { data: assignedCompanyRows }, { data: assignedContactRows }] = await Promise.all([
     supabase.from('site_actions').select('id, title').eq('site_id', id).is('subject_id', null).in('status', ['open', 'planned']).limit(50),
     supabase.from('site_reserve').select('id, label').eq('site_id', id).is('subject_id', null).eq('status', 'open').limit(50),
@@ -122,27 +128,43 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
     if (label) actionResponsibleLabel.set(a.id, label)
   }
 
-  // Acteurs impliqués : grouper les actions par entreprise / contact référent (FK uniquement).
+  // Acteurs impliqués : grouper les actions + décisions par entreprise / contact (FK uniquement).
   // Aucun matching textuel : assigned_to est ignoré ici, seules les FKs résolues comptent.
-  const companyActors = new Map<string, { name: string; openCount: number; totalCount: number }>()
+  const companyActors = new Map<string, { name: string; openCount: number; totalCount: number; decisionCount: number }>()
   for (const a of actions) {
     if (!a.assigned_company_id) continue
     const name = companyNameById.get(a.assigned_company_id) ?? null
     if (!name) continue
-    const e = companyActors.get(a.assigned_company_id) ?? { name, openCount: 0, totalCount: 0 }
+    const e = companyActors.get(a.assigned_company_id) ?? { name, openCount: 0, totalCount: 0, decisionCount: 0 }
     e.totalCount++
     if (a.status === 'open' || a.status === 'planned') e.openCount++
     companyActors.set(a.assigned_company_id, e)
   }
-  const contactActors = new Map<string, { name: string; openCount: number; totalCount: number }>()
+  for (const d of siteDecisions) {
+    if (!d.decisionnaireCompanyId) continue
+    const name = companyNameById.get(d.decisionnaireCompanyId) ?? null
+    if (!name) continue
+    const e = companyActors.get(d.decisionnaireCompanyId) ?? { name, openCount: 0, totalCount: 0, decisionCount: 0 }
+    e.decisionCount++
+    companyActors.set(d.decisionnaireCompanyId, e)
+  }
+  const contactActors = new Map<string, { name: string; openCount: number; totalCount: number; decisionCount: number }>()
   for (const a of actions) {
     if (!a.assigned_contact_id) continue
     const name = contactNameById.get(a.assigned_contact_id) ?? null
     if (!name) continue
-    const e = contactActors.get(a.assigned_contact_id) ?? { name, openCount: 0, totalCount: 0 }
+    const e = contactActors.get(a.assigned_contact_id) ?? { name, openCount: 0, totalCount: 0, decisionCount: 0 }
     e.totalCount++
     if (a.status === 'open' || a.status === 'planned') e.openCount++
     contactActors.set(a.assigned_contact_id, e)
+  }
+  for (const d of siteDecisions) {
+    if (!d.decisionnaireContactId) continue
+    const name = contactNameById.get(d.decisionnaireContactId) ?? null
+    if (!name) continue
+    const e = contactActors.get(d.decisionnaireContactId) ?? { name, openCount: 0, totalCount: 0, decisionCount: 0 }
+    e.decisionCount++
+    contactActors.set(d.decisionnaireContactId, e)
   }
   const sortedCompanyActors = [...companyActors.entries()].sort((a, b) => b[1].openCount - a[1].openCount || b[1].totalCount - a[1].totalCount)
   const sortedContactActors = [...contactActors.entries()].sort((a, b) => b[1].openCount - a[1].openCount || b[1].totalCount - a[1].totalCount)
@@ -351,6 +373,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
                     ? `${actor.openCount} action${actor.openCount > 1 ? 's' : ''} ouverte${actor.openCount > 1 ? 's' : ''}`
                     : 'aucune action ouverte'}
                   {actor.totalCount > actor.openCount ? ` · ${actor.totalCount} au total` : ''}
+                  {actor.decisionCount > 0 ? ` · ${actor.decisionCount} décision${actor.decisionCount > 1 ? 's' : ''}` : ''}
                 </span>
               </li>
             ))}
@@ -358,7 +381,8 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
               <li key={contactId} className="text-sm rounded-md border bg-card px-3 py-1.5">
                 <Link href={`/intervenants/personne/${contactId}`} scroll={false} className="font-medium hover:underline">{actor.name}</Link>
                 <span className="text-muted-foreground">
-                  {' '}— référent ({actor.totalCount} action{actor.totalCount > 1 ? 's' : ''})
+                  {' '}— référent ({actor.totalCount} action{actor.totalCount > 1 ? 's' : ''}
+                  {actor.decisionCount > 0 ? ` · ${actor.decisionCount} décision${actor.decisionCount > 1 ? 's' : ''}` : ''})
                 </span>
               </li>
             ))}
