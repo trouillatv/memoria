@@ -11,11 +11,13 @@ import {
   computeProgressByCategory,
   computeDeltaSummary,
   getImportantSubjects,
+  getActivityMap,
 } from '@/lib/documents/site-synthesis'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
 import { SubjectLifelineGrid } from './SubjectLifelineGrid'
 import { SyntheseView } from './SyntheseView'
+import { ActivityMapView } from './ActivityMapView'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,6 +54,10 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
     getSiteHistoricalTimeline(siteId).catch(() => ({ siteId, snapshots: [] })),
     getImportantSubjects(siteId).catch(() => []),
   ])
+
+  const activityMap = view === 'heatmap'
+    ? await getActivityMap(siteId).catch(() => null)
+    : null
 
   if (!site) redirect(`/sites/${siteId}`)
 
@@ -183,14 +189,18 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
           )
         )}
 
-        {/* Carte d'activité — à venir */}
+        {/* Carte d'activité */}
         {view === 'heatmap' && (
-          <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
-            <p className="font-medium">Carte d'activité</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Disponible après recette de la Synthèse.
-            </p>
-          </section>
+          activityMap ? (
+            <ActivityMapView activityMap={activityMap} siteId={siteId} />
+          ) : (
+            <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
+              <p className="font-medium">Données non disponibles.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Les PV doivent être importés et analysés pour afficher la carte d'activité.
+              </p>
+            </section>
+          )
         )}
 
         {/* Dépendances */}
