@@ -24,6 +24,7 @@ export const LlmProposalSchema = z.object({
     companyRole: z.string().nullish(),
     dueDate: z.string().nullish(),
     responsibleParty: z.string().nullish(),
+    linkedActorTemporaryKey: z.string().nullish(),
     relevanceScore: z.enum(['strong', 'medium', 'weak']).nullish(),
     relevanceReason: z.string().nullish(),
     linkedCompanyName: z.string().nullish(),
@@ -72,6 +73,7 @@ const GEMINI_RESPONSE_SCHEMA = {
               },
               dueDate: { type: 'string' },
               responsibleParty: { type: 'string' },
+              linkedActorTemporaryKey: { type: 'string' },
               relevanceScore: { type: 'string', enum: ['strong', 'medium', 'weak'] },
               relevanceReason: { type: 'string' },
               linkedCompanyName: { type: 'string' },
@@ -188,7 +190,7 @@ Pour chaque information retenue après la sélection :
 ## Familles de propositions
 
 - **reservation** : réserve de chantier (défaut, malfaçon, non-conformité) — ouverture, suivi ou levée.
-- **action** : tâche à réaliser. Créer une action UNIQUEMENT si un responsable est explicitement nommé (entreprise ou personne) OU si un délai précis est mentionné. Sans ces deux conditions → **observation**.
+- **action** : tâche à réaliser. Créer une action UNIQUEMENT si un responsable est explicitement nommé (entreprise ou personne) OU si un délai précis est mentionné. Sans ces deux conditions → **observation**. Lorsque le responsable nommé correspond à une proposition 'person' ou 'company' du même document, renseigner sourcePayload.linkedActorTemporaryKey avec la temporaryKey exacte de cette proposition. Utiliser uniquement une temporaryKey réelle produite dans ce même run. Ne jamais inventer une clé, ne jamais relier par proximité de page ou de nom : soit la clé existe dans les propositions du run, soit le champ est absent.
 - **decision** : décision structurante prise lors de la visite.
 - **observation** : constatation factuelle, alerte ou signal spécifique à ce chantier, sans responsable nommé ni délai explicite. Inclut obligatoirement les formulations du type "Attention à [X]", "Risque de [Y]", "Veiller à [Z]" sans attribution.
 - **deadline** : échéance chiffrée ou datée, spécifique à ce chantier.
@@ -293,6 +295,24 @@ Lie chaque preuve à sa proposition via \`evidenceKeys\`.
 ${text}`
 }
 
+// ─── Préfixage des clés temporaires (chunk merge) ────────────────────────────
+
+export function prefixChunkResult(result: LlmExtractionResult, chunkIndex: number): LlmExtractionResult {
+  const prefix = chunkIndex > 0 ? `c${chunkIndex}-` : ''
+  if (!prefix) return result
+  return {
+    proposals: result.proposals.map((p) => ({
+      ...p,
+      temporaryKey: prefix + p.temporaryKey,
+      evidenceKeys: p.evidenceKeys.map((k) => prefix + k),
+      sourcePayload: p.sourcePayload?.linkedActorTemporaryKey
+        ? { ...p.sourcePayload, linkedActorTemporaryKey: prefix + p.sourcePayload.linkedActorTemporaryKey }
+        : p.sourcePayload,
+    })),
+    evidence: result.evidence.map((e) => ({ ...e, temporaryKey: prefix + e.temporaryKey })),
+  }
+}
+
 // ─── Découpage par pages ──────────────────────────────────────────────────────
 
 const PAGES_PER_CHUNK = 20
@@ -357,22 +377,7 @@ async function callGeminiChunk(
   const parsed: unknown = JSON.parse(outputText)
   const result = LlmExtractionResultSchema.parse(parsed)
 
-  // Préfixer les clés temporaires pour garantir l'unicité lors de la fusion
-  const prefix = chunkIndex > 0 ? `c${chunkIndex}-` : ''
-  return {
-    outputText,
-    result: {
-      proposals: result.proposals.map((p) => ({
-        ...p,
-        temporaryKey: prefix + p.temporaryKey,
-        evidenceKeys: p.evidenceKeys.map((k) => prefix + k),
-      })),
-      evidence: result.evidence.map((e) => ({
-        ...e,
-        temporaryKey: prefix + e.temporaryKey,
-      })),
-    },
-  }
+  return { outputText, result: prefixChunkResult(result, chunkIndex) }
 }
 
 // ─── Point d'entrée public ────────────────────────────────────────────────────

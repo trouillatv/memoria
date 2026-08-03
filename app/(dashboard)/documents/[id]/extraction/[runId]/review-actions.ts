@@ -539,14 +539,14 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
       // ── Pipeline : company + person → companies / company_contacts / site_intervenants ──
       const { data: companyPropsRaw } = await admin
         .from('document_extraction_proposal')
-        .select('id, label, reviewed_label, source_payload')
+        .select('id, label, reviewed_label, source_payload, stable_key')
         .eq('extraction_run_id', runId)
         .in('review_status', ['accepted', 'edited'])
         .eq('proposal_family', 'company')
 
       const { data: personPropsRaw } = await admin
         .from('document_extraction_proposal')
-        .select('id, label, reviewed_label, description, source_payload')
+        .select('id, label, reviewed_label, description, source_payload, stable_key')
         .eq('extraction_run_id', runId)
         .in('review_status', ['accepted', 'edited'])
         .eq('proposal_family', 'person')
@@ -555,9 +555,11 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
       type SPPerson = { statusAtDocumentDate?: string; linkedCompanyName?: string | null; emailAddress?: string | null; phoneNumber?: string | null }
 
       const companyMap = new Map<string, { companyId: string; siteIntervenantId: string }>()
+      const stableKeyToCompanyId = new Map<string, string>()
+      const stableKeyToContactId = new Map<string, string>()
 
       for (const rawProp of companyPropsRaw ?? []) {
-        const prop = rawProp as { id: string; label: string; reviewed_label: string | null; source_payload: SPCompany | null }
+        const prop = rawProp as { id: string; label: string; reviewed_label: string | null; source_payload: SPCompany | null; stable_key: string | null }
         const companyName = prop.reviewed_label ?? prop.label
         const role = prop.source_payload?.companyRole ?? prop.source_payload?.statusAtDocumentDate ?? 'partenaire'
 
@@ -605,6 +607,7 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
         }
 
         companyMap.set(companyName.toLowerCase(), { companyId, siteIntervenantId })
+        if (prop.stable_key) stableKeyToCompanyId.set(prop.stable_key, companyId)
         await Promise.all([
           admin.from('document_extraction_proposal').update({ review_status: 'materialized', reviewed_at: new Date().toISOString() }).eq('id', prop.id),
           admin.from('document_proposal_materialization').upsert({ organization_id: orgId, proposal_id: prop.id, target_entity_type: 'site_intervenants', target_entity_id: siteIntervenantId, status: 'done', created_by: access.userId }, { onConflict: 'proposal_id, target_entity_type, target_entity_id', ignoreDuplicates: true }),
@@ -612,7 +615,7 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
       }
 
       for (const rawProp of personPropsRaw ?? []) {
-        const prop = rawProp as { id: string; label: string; reviewed_label: string | null; description: string | null; source_payload: SPPerson | null }
+        const prop = rawProp as { id: string; label: string; reviewed_label: string | null; description: string | null; source_payload: SPPerson | null; stable_key: string | null }
         const personName = prop.reviewed_label ?? prop.label
         const sp = prop.source_payload
         const linkedCompanyName = sp?.linkedCompanyName ?? null
@@ -650,10 +653,58 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
         }
 
         await admin.from('site_intervenants').update({ main_contact_id: contactId }).eq('id', siteIntervenantId).is('main_contact_id', null)
+        if (prop.stable_key) stableKeyToContactId.set(prop.stable_key, contactId)
         await Promise.all([
           admin.from('document_extraction_proposal').update({ review_status: 'materialized', reviewed_at: new Date().toISOString() }).eq('id', prop.id),
           admin.from('document_proposal_materialization').upsert({ organization_id: orgId, proposal_id: prop.id, target_entity_type: 'company_contacts', target_entity_id: contactId, status: 'done', created_by: access.userId }, { onConflict: 'proposal_id, target_entity_type, target_entity_id', ignoreDuplicates: true }),
         ])
+      }
+
+      // ── Résolution linkedActorTemporaryKey → site_actions.assigned_* ─────────
+      // Aucun fallback par nom ou page : résolution exclusivement par stable_key.
+      if (stableKeyToCompanyId.size > 0 || stableKeyToContactId.size > 0) {
+        const { resolveLinkedActors } = await import('@/lib/documents/linked-actor-resolution')
+
+        const { data: actionPropsRaw } = await admin
+          .from('document_extraction_proposal')
+          .select('id, source_payload')
+          .eq('extraction_run_id', runId)
+          .in('review_status', ['accepted', 'edited', 'materialized'])
+          .eq('proposal_family', 'action')
+
+        if (actionPropsRaw && actionPropsRaw.length > 0) {
+          const actionProposalIds = (actionPropsRaw as Array<{ id: string }>).map((p) => p.id)
+
+          const { data: matRows } = await admin
+            .from('document_proposal_materialization')
+            .select('proposal_id, target_entity_id')
+            .in('proposal_id', actionProposalIds)
+            .eq('target_entity_type', 'site_action')
+
+          const materializedActions = new Map<string, string>(
+            (matRows ?? []).map((r) => {
+              const row = r as { proposal_id: string; target_entity_id: string }
+              return [row.proposal_id, row.target_entity_id]
+            }),
+          )
+
+          const assignments = resolveLinkedActors(
+            actionPropsRaw as Array<{ id: string; source_payload: Record<string, unknown> | null }>,
+            materializedActions,
+            stableKeyToCompanyId,
+            stableKeyToContactId,
+          )
+
+          await Promise.all(
+            assignments.map((a) =>
+              admin.from('site_actions').update(
+                a.kind === 'company'
+                  ? { assigned_company_id: a.actorId }
+                  : { assigned_contact_id: a.actorId },
+              ).eq('id', a.siteActionId),
+            ),
+          )
+        }
       }
 
       // Après pipeline TypeScript, statut du run = fully materialized
