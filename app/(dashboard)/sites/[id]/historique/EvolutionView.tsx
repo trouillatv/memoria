@@ -497,13 +497,16 @@ export function EvolutionView({ siteId, readModel, narrative, healthTimeline }: 
 
           {/* Santé */}
           <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Santé du chantier</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Niveau de maîtrise</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              100 % = aucun sujet ouvert · calculé sur tous les sujets
+              Indice relatif : sujets actifs vs pic observé · tous les sujets canoniques
             </p>
             <div className="mt-3">
               <HealthCurve timeline={healthTimeline} />
             </div>
+            <p className="mt-1.5 text-[10px] italic text-muted-foreground/60">
+              Un chantier actif peut être à forte tension tout en progressant normalement.
+            </p>
           </section>
         </div>
       )}
