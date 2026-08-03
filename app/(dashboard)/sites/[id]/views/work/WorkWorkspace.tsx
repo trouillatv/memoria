@@ -101,7 +101,7 @@ export function WorkWorkspace({
                 { label: 'Missions', value: missions.length },
                 { label: 'Interventions', value: plannedInterventions.length },
                 { label: 'Actions', value: actions.length },
-                { label: 'Réserves', value: blocages.length },
+                { label: 'Points à lever', value: blocages.length },
               ]}
             />
             <FilterRow
@@ -134,7 +134,7 @@ export function WorkWorkspace({
                     <div className="min-w-0">
                       <p className="font-semibold">{mission.name}</p>
                       <p className="mt-0.5 text-sm text-muted-foreground">
-                        {mission.active ? 'En cours' : 'Inactive'} · {countLabel(missionInterventions.length, 'intervention')} · {countLabel(missionActions.length, 'action')} · {countLabel(missionBlocages.length, 'réserve')}
+                        {mission.active ? 'En cours' : 'Inactive'} · {countLabel(missionInterventions.length, 'intervention')} · {countLabel(missionActions.length, 'action')} · {countLabel(missionBlocages.length, 'point à lever')}
                       </p>
                       {mission.assigned_team_id ? (
                         <p className="mt-0.5 text-sm text-muted-foreground">Équipe affectée</p>
@@ -171,8 +171,8 @@ export function WorkWorkspace({
                         items={missionActions.slice(0, 4).map((action) => ({ id: action.id, label: action.title, href: `/sites/${siteId}/actions` }))}
                       />
                       <MiniList
-                        title="Réserves"
-                        empty="Aucune réserve rattachée."
+                        title="Points à lever"
+                        empty="Aucun point rattaché."
                         items={missionBlocages.slice(0, 4).map((blocage) => ({ id: blocage.id, label: blocage.title, href: `/sites/${siteId}/reserves` }))}
                       />
                     </div>
@@ -342,7 +342,7 @@ export function WorkWorkspace({
 
         <aside className="space-y-4">
           <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-            <SectionTitle icon={ShieldAlert} tone="reserve" title={`Réserves et blocages (${blocages.length})`} detail="Ce qui empêche ou ralentit le chantier." />
+            <SectionTitle icon={ShieldAlert} tone="reserve" title={`Points à lever et blocages (${blocages.length})`} detail="Ce qui empêche ou ralentit le chantier." />
             <div className="mt-4 space-y-2">
               {blocages.length > 0 ? blocages.map((blocage) => (
                 <Link key={blocage.id} href={`/sites/${siteId}/reserves`} className="block rounded-2xl border bg-rose-50/50 p-4 hover:bg-rose-50 dark:bg-rose-950/15 dark:hover:bg-rose-950/25">

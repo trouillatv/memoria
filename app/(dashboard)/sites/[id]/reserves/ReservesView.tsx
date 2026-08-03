@@ -6,10 +6,11 @@
 // jamais "résolu" (juridiquement dangereux).
 
 import { documentHref } from '@/lib/knowledge/document-href'
-import { useRef, useState, useTransition } from 'react'
+import { useRef, useState, useTransition, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
+  ChevronDown,
   ClipboardCheck,
   MapPin,
   UserSquare,
@@ -269,21 +270,37 @@ function LinkDocumentForm({ reserveId, siteId, siteDocuments, linkedIds }: {
 // Carte d'une réserve
 // ---------------------------------------------------------------------------
 
+function StatusBadge({ isLifted }: { isLifted: boolean }) {
+  if (isLifted) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-emerald-900 shrink-0">
+        Levé
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-amber-900 shrink-0">
+      Ouvert
+    </span>
+  )
+}
+
+function Expandable({ children }: { children: ReactNode }) {
+  return <div className="space-y-2.5 border-t pt-2.5 mt-1">{children}</div>
+}
+
 function ReserveCard({ reserve, siteId, siteDocuments }: { reserve: ReserveWithPhotos; siteId: string; siteDocuments: SiteDoc[] }) {
+  const [expanded, setExpanded] = useState(false)
   const isLifted = reserve.status === 'lifted'
   const linkedIds = new Set(reserve.documents.map((d) => d.id))
   const issuedOn = formatDate(reserve.issuedOn)
   const liftedAt = formatDate(reserve.liftedAt)
 
   return (
-    <div className="rounded-lg border bg-card p-4 space-y-2.5">
-      {/* Ligne titre : libellé + statut */}
+    <div className="rounded-lg border bg-card p-4 space-y-1.5">
+      {/* Ligne titre : libellé + statut + toggle */}
       <div className="flex items-start gap-2 flex-wrap">
         <ClipboardCheck className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" aria-hidden />
-        {/* « Toutes les portes » : l'écran qui LISTE un objet doit l'ouvrir. Cet
-            écran-ci reste l'espace de GESTION (lever, joindre une preuve, créer une
-            action) ; le libellé, lui, mène à la fiche du graphe — d'où l'on peut
-            suivre les relations sans revenir ici. */}
         <Link
           href={`/sites/${siteId}/reserve/${reserve.id}`}
           scroll={false}
@@ -291,114 +308,118 @@ function ReserveCard({ reserve, siteId, siteDocuments }: { reserve: ReserveWithP
         >
           {reserve.label}
         </Link>
-        {isLifted ? (
-          <span className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-emerald-900 shrink-0">
-            Levé
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-amber-900 shrink-0">
-            Ouvert
-          </span>
-        )}
+        <StatusBadge isLifted={isLifted} />
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+          aria-label={expanded ? 'Réduire' : 'Développer'}
+        >
+          <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+        </button>
       </div>
 
-      {/* Chips info : zone, émetteur, date d'émission */}
-      <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
-        {reserve.location && (
-          <span className="inline-flex items-center gap-1">
-            <MapPin className="h-3 w-3" aria-hidden />
-            {reserve.location}
-          </span>
-        )}
-        {reserve.issuedBy && (
-          <span className="inline-flex items-center gap-1">
-            <UserSquare className="h-3 w-3" aria-hidden />
-            {reserve.issuedBy}
-          </span>
-        )}
-        {issuedOn && (
-          <span className="inline-flex items-center gap-1">
-            <CalendarDays className="h-3 w-3" aria-hidden />
-            Émise le {issuedOn}
-          </span>
-        )}
-      </div>
-
-      {/* Photos avant / après */}
-      {(reserve.photoBeforeUrl || reserve.photoAfterUrl) && (
-        <div className="flex flex-wrap gap-4">
-          {reserve.photoBeforeUrl && <PhotoThumb url={reserve.photoBeforeUrl} label="Constat (avant)" />}
-          {reserve.photoAfterUrl && <PhotoThumb url={reserve.photoAfterUrl} label="Preuve (après)" />}
-        </div>
-      )}
-
-      {/* Actions correctives liées (mini-dossier) */}
-      <div className="space-y-1">
-        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          <ListTodo className="h-3 w-3" /> Actions correctives
-        </div>
-        {reserve.actions.length > 0 ? (
-          <ul className="space-y-0.5">
-            {reserve.actions.map((a) => (
-              <li key={a.id} className="text-xs">
-                • {a.title}
-                {a.assignedTo && <span className="text-muted-foreground"> — {a.assignedTo}</span>}
-                {a.dueDate && <span className="text-muted-foreground"> (éch. {a.dueDate})</span>}
-                <span className="text-muted-foreground"> · {ACTION_STATUS_FR[a.status] ?? a.status}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-xs text-muted-foreground/70 italic">Aucune action corrective.</p>
-        )}
-        <CorrectiveActionForm reserveId={reserve.id} siteId={siteId} />
-      </div>
-
-      {/* Documents associés (clauses, fiches, PV…) */}
-      <div className="space-y-1">
-        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          <FileText className="h-3 w-3" /> Documents associés
-        </div>
-        {reserve.documents.length > 0 ? (
-          <ul className="space-y-0.5">
-            {reserve.documents.map((d) => (
-              <li key={d.id} className="text-xs">
-                {/* La liste ouvre l'objet du graphe : le chantier est connu ici,
-                    donc on vise la fiche document. La visionneuse /documents/<id>
-                    reste la sortie nommée depuis cette fiche. */}
-                • <Link href={documentHref(d, siteId)} scroll={false} className="hover:underline">{d.filename}</Link>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-xs text-muted-foreground/70 italic">Aucun document lié.</p>
-        )}
-        <LinkDocumentForm reserveId={reserve.id} siteId={siteId} siteDocuments={siteDocuments} linkedIds={linkedIds} />
-      </div>
-
-      {/* Détails de levée */}
-      {isLifted && (
-        <div className="space-y-1 border-l-2 border-emerald-200 pl-3">
-          {liftedAt && (
-            <p className="text-xs text-emerald-800 inline-flex items-center gap-1">
-              <CheckCircle2 className="h-3 w-3" aria-hidden />
-              Levé le {liftedAt}
-            </p>
+      {/* Chips info — toujours visibles */}
+      {(reserve.location || reserve.issuedBy || issuedOn) && (
+        <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
+          {reserve.location && (
+            <span className="inline-flex items-center gap-1">
+              <MapPin className="h-3 w-3" aria-hidden />
+              {reserve.location}
+            </span>
           )}
-          {reserve.liftNote && (
-            <p className="text-sm text-foreground/80 italic inline-flex items-start gap-1.5">
-              <StickyNote className="h-3 w-3 shrink-0 mt-1 not-italic" aria-hidden />
-              {reserve.liftNote}
-            </p>
+          {reserve.issuedBy && (
+            <span className="inline-flex items-center gap-1">
+              <UserSquare className="h-3 w-3" aria-hidden />
+              {reserve.issuedBy}
+            </span>
+          )}
+          {issuedOn && (
+            <span className="inline-flex items-center gap-1">
+              <CalendarDays className="h-3 w-3" aria-hidden />
+              Émise le {issuedOn}
+            </span>
           )}
         </div>
       )}
 
-      {/* Action de levée (réserves ouvertes uniquement) */}
-      {!isLifted && (
-        <div className="pt-1">
-          <LiftForm reserve={reserve} siteId={siteId} />
-        </div>
+      {/* Détails — affichés uniquement si expanded */}
+      {expanded && (
+        <Expandable>
+          {/* Photos avant / après */}
+          {(reserve.photoBeforeUrl || reserve.photoAfterUrl) && (
+            <div className="flex flex-wrap gap-4">
+              {reserve.photoBeforeUrl && <PhotoThumb url={reserve.photoBeforeUrl} label="Constat (avant)" />}
+              {reserve.photoAfterUrl && <PhotoThumb url={reserve.photoAfterUrl} label="Preuve (après)" />}
+            </div>
+          )}
+
+          {/* Actions correctives liées */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <ListTodo className="h-3 w-3" /> Actions correctives
+            </div>
+            {reserve.actions.length > 0 ? (
+              <ul className="space-y-0.5">
+                {reserve.actions.map((a) => (
+                  <li key={a.id} className="text-xs">
+                    • {a.title}
+                    {a.assignedTo && <span className="text-muted-foreground"> — {a.assignedTo}</span>}
+                    {a.dueDate && <span className="text-muted-foreground"> (éch. {a.dueDate})</span>}
+                    <span className="text-muted-foreground"> · {ACTION_STATUS_FR[a.status] ?? a.status}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-muted-foreground/70 italic">Aucune action corrective.</p>
+            )}
+            <CorrectiveActionForm reserveId={reserve.id} siteId={siteId} />
+          </div>
+
+          {/* Documents associés */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <FileText className="h-3 w-3" /> Documents associés
+            </div>
+            {reserve.documents.length > 0 ? (
+              <ul className="space-y-0.5">
+                {reserve.documents.map((d) => (
+                  <li key={d.id} className="text-xs">
+                    • <Link href={documentHref(d, siteId)} scroll={false} className="hover:underline">{d.filename}</Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-muted-foreground/70 italic">Aucun document lié.</p>
+            )}
+            <LinkDocumentForm reserveId={reserve.id} siteId={siteId} siteDocuments={siteDocuments} linkedIds={linkedIds} />
+          </div>
+
+          {/* Détails de levée */}
+          {isLifted && (
+            <div className="space-y-1 border-l-2 border-emerald-200 pl-3">
+              {liftedAt && (
+                <p className="text-xs text-emerald-800 inline-flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3" aria-hidden />
+                  Levé le {liftedAt}
+                </p>
+              )}
+              {reserve.liftNote && (
+                <p className="text-sm text-foreground/80 italic inline-flex items-start gap-1.5">
+                  <StickyNote className="h-3 w-3 shrink-0 mt-1 not-italic" aria-hidden />
+                  {reserve.liftNote}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Action de levée */}
+          {!isLifted && (
+            <div className="pt-1">
+              <LiftForm reserve={reserve} siteId={siteId} />
+            </div>
+          )}
+        </Expandable>
       )}
     </div>
   )

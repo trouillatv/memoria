@@ -76,12 +76,12 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
             detail={blockages.open > 0 ? 'Peut ralentir le chantier' : 'Aucun blocage déclaré'}
           />
           <StateCard
-            href={`/semaine?site=${siteId}`}
-            icon={Calendar}
-            tone="blue"
-            value={nextEvent ? formatShortEventDate(nextEvent.startsAt) : 'Aucune'}
-            title="Prochaine étape"
-            detail={nextEvent?.title ?? 'Rien de planifié'}
+            href={`/sites/${siteId}/actions`}
+            icon={Clock}
+            tone={actions.summary.overdue > 0 ? 'red' : 'green'}
+            value={actions.summary.overdue}
+            title="En retard"
+            detail={actions.summary.overdue > 0 ? `${actions.summary.overdue} action${actions.summary.overdue > 1 ? 's' : ''} à traiter en priorité` : 'Aucune action en retard'}
           />
         </div>
       </section>
@@ -521,7 +521,6 @@ function urgencyTone(urgency: ActionUrgency): 'green' | 'orange' | 'red' | 'blue
 // Rendu SERVEUR (Vercel = UTC) : sans fuseau explicite, l'heure d'une réunion
 // s'affiche décalée de 11 h et sa date peut reculer d'un jour. Le fuseau de
 // l'organisation est la seule vérité pour un conducteur.
-const shortDateFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'short' })
 const longEventFmt = new Intl.DateTimeFormat('fr-FR', {
   timeZone: NOUMEA_TZ,
   weekday: 'long',
@@ -530,10 +529,6 @@ const longEventFmt = new Intl.DateTimeFormat('fr-FR', {
   hour: '2-digit',
   minute: '2-digit',
 })
-
-function formatShortEventDate(iso: string): string {
-  return shortDateFmt.format(new Date(iso))
-}
 
 function formatLongEventDate(iso: string): string {
   return longEventFmt.format(new Date(iso))
