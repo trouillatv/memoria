@@ -7,18 +7,19 @@ export function isMobileUserAgent(ua: string | null): boolean {
   return /iphone|ipod|mobile|blackberry|windows phone/i.test(ua)
 }
 
+// Doctrine (2026-08-04) :
+//   chef_equipe    → toujours /m, sans exception
+//   PWA standalone → toujours /m (le mode bureau temporaire est géré côté client)
+//   manager/admin  → home_preference fait foi, quel que soit l'UA
+//
+// L'UA ne surcharge plus la préférence. La protection "petit viewport sur faux
+// UA desktop" est assurée côté client par <ViewportGuard> dans le layout dashboard.
 export function resolveHomeDestination(user: {
   role: UserRole
   home_preference: 'dashboard' | 'terrain'
-}, isMobile: boolean, isPwa: boolean = false): '/dashboard' | '/m' {
-  // PWA standalone → terrain par défaut ; le mode bureau est géré côté client
-  // via localStorage (PwaDesktopModeSync) et non côté serveur.
+}, isPwa: boolean = false): '/dashboard' | '/m' {
   if (isPwa) return '/m'
-  // Le chef d'équipe n'a PAS de dashboard conducteur : toujours le terrain,
-  // desktop comme mobile. En mode bureau (mobile → UA desktop) il était envoyé
-  // sur /dashboard, une page conçue pour le conducteur qui plante pour son rôle.
   if (user.role === 'chef_equipe') return '/m'
-  if (!isMobile) return '/dashboard'
   return user.home_preference === 'terrain' ? '/m' : '/dashboard'
 }
 

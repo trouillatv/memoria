@@ -1,4 +1,4 @@
-﻿import type { Metadata } from "next"
+﻿import type { Metadata, Viewport } from "next"
 import { Inter } from "next/font/google"
 import { Toaster } from "@/components/ui/sonner"
 import { ThemeProvider } from "@/components/providers/ThemeProvider"
@@ -25,7 +25,9 @@ export const metadata: Metadata = {
   },
 }
 
-export const viewport = {
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
   themeColor: "#0f172a",
 }
 

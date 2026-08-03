@@ -4,8 +4,8 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { getCurrentUserMiniProfile } from '@/lib/db/users'
-import { headers, cookies } from 'next/headers'
-import { resolveHomeDestination, isMobileUserAgent } from '@/lib/navigation/home'
+import { cookies } from 'next/headers'
+import { resolveHomeDestination } from '@/lib/navigation/home'
 import { COOKIE_PWA_STANDALONE } from '@/lib/navigation/pwa-mode'
 
 const schema = z.object({
@@ -46,12 +46,11 @@ export async function loginAction(formData: FormData) {
     // - admin / manager → /dashboard (cockpit mémoriel = vitrine du produit ;
     //   /missions est une liste ERP, mauvaise porte d'entrée — audit live 2026-05-26)
     const jar = await cookies()
-    const ua = (await headers()).get('user-agent')
     const isPwa = jar.get(COOKIE_PWA_STANDALONE)?.value === '1'
-    // PWA standalone → toujours /m, même si un paramètre `next` est présent
+    // PWA standalone → toujours /m, y compris si un paramètre `next` est présent
     // (ex. session expirée depuis /dashboard → /login?next=/dashboard).
     if (isPwa) redirect('/m')
-    redirect(parsed.data.next ?? resolveHomeDestination(profile, isMobileUserAgent(ua), isPwa))
+    redirect(parsed.data.next ?? resolveHomeDestination(profile, isPwa))
   }
 
   redirect('/dashboard')

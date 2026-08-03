@@ -12,6 +12,7 @@ import { PageViewLogger } from './PageViewLogger'
 import { ThemeSync } from '@/components/layout/ThemeSync'
 import { shouldRedirectDashboardRequestToField, isMobileUserAgent } from '@/lib/navigation/home'
 import { PwaDesktopModeSync } from '@/components/pwa-desktop-mode-sync'
+import { ViewportGuard } from '@/components/viewport-guard'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUserWithProfile().catch((e) => {
@@ -73,6 +74,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* Réapplique le thème persisté de l'user au login (cross-device). */}
       <ThemeSync theme={user.theme_preference} />
       <PwaDesktopModeSync userId={user.id} context="dashboard" />
+      <ViewportGuard serverSaidDesktop={!isMobile} />
     </div>
   )
 }

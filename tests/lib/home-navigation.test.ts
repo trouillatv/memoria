@@ -19,27 +19,61 @@ describe('isMobileUserAgent', () => {
     expect(isMobileUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36')).toBe(false)
     expect(isMobileUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')).toBe(false)
   })
+
+  it('treats Chrome Android in desktop mode as desktop UA (Mobile absent)', () => {
+    // Chrome en "site pour ordinateur" : Android présent, Mobile absent.
+    // La détection côté serveur doit le lire comme desktop.
+    // La protection viewport côté client (ViewportGuard) rattrapera le cas.
+    expect(isMobileUserAgent('Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')).toBe(false)
+  })
 })
 
-describe('resolveHomeDestination', () => {
-  it('sends managers to /dashboard on desktop, but chefs always to /m', () => {
-    expect(resolveHomeDestination({ role: 'manager', home_preference: 'dashboard' }, false)).toBe('/dashboard')
-    expect(resolveHomeDestination({ role: 'manager', home_preference: 'terrain' }, false)).toBe('/dashboard')
-    // Chef d'équipe : jamais le dashboard conducteur, même en desktop / mode bureau.
-    expect(resolveHomeDestination({ role: 'chef_equipe', home_preference: 'dashboard' }, false)).toBe('/m')
+describe('resolveHomeDestination — doctrine 2026-08-04', () => {
+  // Chef d'équipe : toujours terrain, sans exception
+  it('sends chef_equipe to /m regardless of preference', () => {
+    expect(resolveHomeDestination({ role: 'chef_equipe', home_preference: 'dashboard' })).toBe('/m')
+    expect(resolveHomeDestination({ role: 'chef_equipe', home_preference: 'terrain' })).toBe('/m')
   })
 
-  it('keeps roles separate from home experience preferences on mobile', () => {
-    expect(resolveHomeDestination({ role: 'manager', home_preference: 'dashboard' }, true)).toBe('/dashboard')
+  // PWA : toujours /m (le mode bureau temporaire est géré côté client)
+  it('sends everyone to /m in PWA standalone mode', () => {
+    expect(resolveHomeDestination({ role: 'manager', home_preference: 'dashboard' }, true)).toBe('/m')
     expect(resolveHomeDestination({ role: 'manager', home_preference: 'terrain' }, true)).toBe('/m')
+    expect(resolveHomeDestination({ role: 'admin', home_preference: 'dashboard' }, true)).toBe('/m')
     expect(resolveHomeDestination({ role: 'chef_equipe', home_preference: 'dashboard' }, true)).toBe('/m')
+  })
+
+  // Manager : la préférence fait foi — l'UA n'intervient plus
+  it('manager follows home_preference regardless of UA', () => {
+    expect(resolveHomeDestination({ role: 'manager', home_preference: 'dashboard' })).toBe('/dashboard')
+    expect(resolveHomeDestination({ role: 'manager', home_preference: 'terrain' })).toBe('/m')
+  })
+
+  // Admin : identique à manager
+  it('admin follows home_preference regardless of UA', () => {
+    expect(resolveHomeDestination({ role: 'admin', home_preference: 'dashboard' })).toBe('/dashboard')
+    expect(resolveHomeDestination({ role: 'admin', home_preference: 'terrain' })).toBe('/m')
+  })
+
+  // Chrome Android "site pour ordinateur" : l'UA dit desktop, la préférence dit terrain.
+  // Avant 2026-08-04 : envoyé sur /dashboard (préférence ignorée). Maintenant : /m.
+  it('manager with terrain preference goes to /m even when UA looks like desktop', () => {
+    // Simulation : isMobile=false (UA desktop menteur), mais home_preference=terrain
+    // resolveHomeDestination ne prend plus isMobile — la préférence fait foi.
+    expect(resolveHomeDestination({ role: 'manager', home_preference: 'terrain' })).toBe('/m')
+  })
+
+  // Changement de préférence → pris en compte immédiatement
+  it('destination changes immediately after preference update', () => {
+    const user = { role: 'manager' as const, home_preference: 'dashboard' as const }
+    expect(resolveHomeDestination(user)).toBe('/dashboard')
+    const updated = { ...user, home_preference: 'terrain' as const }
+    expect(resolveHomeDestination(updated)).toBe('/m')
   })
 })
 
 describe('shouldRedirectDashboardRequestToField', () => {
-  it('redirects field users off the conductor dashboard on desktop too (mode bureau)', () => {
-    // Régression : en mode bureau (UA desktop) le chef n'était PAS redirigé et
-    // rendait le dashboard conducteur, qui plante pour son rôle.
+  it('redirects chef_equipe off the dashboard (mode bureau inclus)', () => {
     expect(shouldRedirectDashboardRequestToField({
       role: 'chef_equipe',
       home_preference: 'dashboard',
@@ -47,7 +81,7 @@ describe('shouldRedirectDashboardRequestToField', () => {
     }, false)).toBe(true)
   })
 
-  it('lets managers open dashboard pages even when their home preference is terrain', () => {
+  it('lets managers open dashboard pages regardless of home_preference', () => {
     expect(shouldRedirectDashboardRequestToField({
       role: 'manager',
       home_preference: 'terrain',
@@ -60,7 +94,7 @@ describe('shouldRedirectDashboardRequestToField', () => {
     }, false)).toBe(false)
   })
 
-  it('keeps field users on the mobile app except for their account page', () => {
+  it('keeps chef_equipe on mobile app except for their account page', () => {
     expect(shouldRedirectDashboardRequestToField({
       role: 'chef_equipe',
       home_preference: 'dashboard',
