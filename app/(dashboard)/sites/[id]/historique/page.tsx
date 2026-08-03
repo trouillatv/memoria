@@ -10,6 +10,7 @@ import {
   computeWatchlist,
   computeProgressByCategory,
   computeDeltaSummary,
+  getImportantSubjects,
 } from '@/lib/documents/site-synthesis'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
@@ -45,10 +46,11 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   const initialThread = sp.thread ?? null
   const initialTheme = sp.theme ?? null
 
-  const [site, matrix, timeline] = await Promise.all([
+  const [site, matrix, timeline, importantSubjects] = await Promise.all([
     getSiteIdentity(siteId).catch(() => null),
     getSiteSubjectMatrix(siteId).catch(() => null),
     getSiteHistoricalTimeline(siteId).catch(() => ({ siteId, snapshots: [] })),
+    getImportantSubjects(siteId).catch(() => []),
   ])
 
   if (!site) redirect(`/sites/${siteId}`)
@@ -158,6 +160,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
             categories={categories}
             delta={deltaData}
             totalSubjects={totalSubjects}
+            importantSubjects={importantSubjects}
           />
         )}
 

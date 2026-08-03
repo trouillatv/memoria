@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { canonicalRunsForSite, runEffectiveDate } from './pv-history'
 import type { SiteSubjectMatrix, SubjectMatrixRow } from './pv-history'
 import type { DeltaItem, PvDelta } from './pv-comparison'
 
@@ -221,4 +222,213 @@ export function computeDeltaSummary(delta: PvDelta): DeltaSummary {
     }
   }
   return s
+}
+
+// ── Sujets importants (ranking canonique) ────────────────────────────────────
+
+export interface ImportantSubject {
+  canonicalSubjectId: string
+  label: string
+  pvCount: number
+  openActions: number
+  openReserves: number
+  activeDeadlines: number
+  overdueDeadlines: number
+  reappearance: boolean
+  recentOccurrence: boolean
+  score: number
+}
+
+const IMPORTANT_MAX = 6
+const IMPORTANT_THRESHOLD = 12
+
+/**
+ * Retourne les sujets canoniques les plus importants d'un chantier,
+ * classés par score déterministe (présence PV + travail ouvert + signaux temporels).
+ * Aucun LLM. Lecture seule.
+ */
+export async function getImportantSubjects(siteId: string): Promise<ImportantSubject[]> {
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+  const today = new Date()
+
+  // 1. Runs canoniques + sujets actifs + threads — en parallèle
+  const rawRuns = await canonicalRunsForSite(siteId)
+  if (rawRuns.length === 0) return []
+
+  const runIndex  = new Map(rawRuns.map((r, i) => [r.id, i]))
+  const runDate   = new Map(rawRuns.map((r) => [r.id, runEffectiveDate(r)]))
+  const lastRunIds = new Set(rawRuns.slice(-2).map((r) => r.id))
+  const runIds    = rawRuns.map((r) => r.id)
+
+  const [{ data: csRows }, { data: stiRows }] = await Promise.all([
+    supabase.from('canonical_subject').select('id, label').eq('site_id', siteId).eq('status', 'active'),
+    supabase.from('subject_thread_identity').select('subject_thread_id, canonical_subject_id').eq('site_id', siteId),
+  ])
+
+  type CsRow  = { id: string; label: string }
+  type StiRow = { subject_thread_id: string; canonical_subject_id: string }
+
+  const subjects = (csRows ?? []) as CsRow[]
+  if (subjects.length === 0) return []
+
+  const threadToCs = new Map(((stiRows ?? []) as StiRow[]).map((r) => [r.subject_thread_id, r.canonical_subject_id]))
+  const threadSet  = new Set(threadToCs.keys())
+
+  // 2. Propositions par batch de runs (évite la limite URL avec des centaines de thread IDs)
+  type PropRow = { id: string; extraction_run_id: string; subject_thread_id: string; document_status: string | null; proposal_family: string }
+  const PROP_BATCH = 10
+  const propBatches = await Promise.all(
+    Array.from({ length: Math.ceil(runIds.length / PROP_BATCH) }, (_, i) =>
+      supabase
+        .from('document_extraction_proposal')
+        .select('id, extraction_run_id, subject_thread_id, document_status, proposal_family')
+        .in('extraction_run_id', runIds.slice(i * PROP_BATCH, (i + 1) * PROP_BATCH)),
+    ),
+  )
+  const proposals: PropRow[] = []
+  for (const { data } of propBatches) {
+    for (const p of (data ?? []) as PropRow[]) {
+      if (threadSet.has(p.subject_thread_id)) proposals.push(p)
+    }
+  }
+
+  const csFamilies = new Map<string, Set<string>>()
+  const csRunMap   = new Map<string, Set<string>>()
+  const csPropIds  = new Map<string, string[]>()
+  const csStatuses = new Map<string, string[]>()
+  const propToCs   = new Map<string, string>()
+
+  for (const p of proposals) {
+    const csId = threadToCs.get(p.subject_thread_id)
+    if (!csId) continue
+    propToCs.set(p.id, csId)
+    if (!csFamilies.has(csId)) csFamilies.set(csId, new Set())
+    if (!csRunMap.has(csId))   csRunMap.set(csId, new Set())
+    if (!csPropIds.has(csId))  csPropIds.set(csId, [])
+    if (!csStatuses.has(csId)) csStatuses.set(csId, [])
+    csFamilies.get(csId)!.add(p.proposal_family)
+    csRunMap.get(csId)!.add(p.extraction_run_id)
+    csPropIds.get(csId)!.push(p.id)
+    if (p.document_status) csStatuses.get(csId)!.push(p.document_status)
+  }
+
+  // 3. Matérialisations (batches de 80 pour éviter la limite URL)
+  const allPropIds = proposals.map((p) => p.id)
+  type MatRow = { proposal_id: string; target_entity_type: string; target_entity_id: string }
+  const MAT_BATCH = 80
+  const matBatches = await Promise.all(
+    Array.from({ length: Math.ceil(allPropIds.length / MAT_BATCH) || 1 }, (_, i) =>
+      allPropIds.length > 0
+        ? supabase
+            .from('document_proposal_materialization')
+            .select('proposal_id, target_entity_type, target_entity_id')
+            .in('proposal_id', allPropIds.slice(i * MAT_BATCH, (i + 1) * MAT_BATCH))
+            .in('target_entity_type', ['site_action', 'site_reserve', 'site_deadline'])
+        : Promise.resolve({ data: [] }),
+    ),
+  )
+  const matRows: MatRow[] = []
+  for (const { data } of matBatches) matRows.push(...((data ?? []) as MatRow[]))
+
+  const csEntities = new Map<string, Map<string, string[]>>()
+  for (const m of matRows) {
+    const csId = propToCs.get(m.proposal_id)
+    if (!csId) continue
+    if (!csEntities.has(csId)) csEntities.set(csId, new Map())
+    const byType = csEntities.get(csId)!
+    if (!byType.has(m.target_entity_type)) byType.set(m.target_entity_type, [])
+    byType.get(m.target_entity_type)!.push(m.target_entity_id)
+  }
+
+  // 4. Statuts des entités matérialisées — en parallèle
+  const actionIds: string[]   = []
+  const reserveIds: string[]  = []
+  const deadlineIds: string[] = []
+  for (const byType of csEntities.values()) {
+    actionIds.push(...(byType.get('site_action') ?? []))
+    reserveIds.push(...(byType.get('site_reserve') ?? []))
+    deadlineIds.push(...(byType.get('site_deadline') ?? []))
+  }
+
+  const [{ data: actData }, { data: resData }, { data: dlData }] = await Promise.all([
+    actionIds.length > 0 ? supabase.from('site_actions').select('id, status').in('id', actionIds) : Promise.resolve({ data: [] }),
+    reserveIds.length > 0 ? supabase.from('site_reserve').select('id, status').in('id', reserveIds) : Promise.resolve({ data: [] }),
+    deadlineIds.length > 0 ? supabase.from('site_deadlines').select('id, status, due_date').in('id', deadlineIds) : Promise.resolve({ data: [] }),
+  ])
+
+  const actionStatusMap   = new Map<string, string>()
+  const reserveStatusMap  = new Map<string, string>()
+  const deadlineStatusMap = new Map<string, { status: string; dueDate: string | null }>()
+
+  for (const r of (actData ?? []) as Array<{ id: string; status: string }>) actionStatusMap.set(r.id, r.status)
+  for (const r of (resData ?? []) as Array<{ id: string; status: string }>) reserveStatusMap.set(r.id, r.status)
+  for (const r of (dlData ?? []) as Array<{ id: string; status: string; due_date: string | null }>) {
+    deadlineStatusMap.set(r.id, { status: r.status, dueDate: r.due_date })
+  }
+
+  // 5. Score par sujet
+  const NON_SUBJECT_FAMILIES = new Set(['person', 'company'])
+  const scored: ImportantSubject[] = []
+
+  for (const cs of subjects) {
+    const families = csFamilies.get(cs.id) ?? new Set()
+    if (families.size > 0 && [...families].every((f) => NON_SUBJECT_FAMILIES.has(f))) continue
+    if (families.size > 0 && [...families].every((f) => f === 'deadline')) continue
+
+    const csRuns  = [...(csRunMap.get(cs.id) ?? [])]
+    const pvCount = csRuns.length
+    if (pvCount === 0) continue
+
+    const positions = csRuns.map((r) => runIndex.get(r) ?? -1).filter((p) => p >= 0).sort((a, b) => a - b)
+    let reappearance = false
+    for (let i = 1; i < positions.length; i++) {
+      if (positions[i] - positions[i - 1] >= 3) { reappearance = true; break }
+    }
+
+    const recentOccurrence = csRuns.some((r) => lastRunIds.has(r))
+    const lastRunId = csRuns.reduce((best, r) => ((runIndex.get(r) ?? -1) > (runIndex.get(best) ?? -1) ? r : best), csRuns[0])
+    const lastDateStr = runDate.get(lastRunId)
+    const daysSilent  = lastDateStr
+      ? Math.round(Math.abs(today.getTime() - new Date(lastDateStr).getTime()) / 86400000)
+      : 999
+
+    const byType = csEntities.get(cs.id) ?? new Map<string, string[]>()
+    const openActions = (byType.get('site_action') ?? []).filter((id) => {
+      const s = actionStatusMap.get(id)
+      return s !== 'done' && s !== 'cancelled'
+    }).length
+    const openReserves = (byType.get('site_reserve') ?? []).filter((id) => reserveStatusMap.get(id) === 'open').length
+    const activeDeadlines = (byType.get('site_deadline') ?? []).filter((id) => {
+      const d = deadlineStatusMap.get(id)
+      return d?.status === 'to_plan' || d?.status === 'planned'
+    }).length
+    const overdueDeadlines = (byType.get('site_deadline') ?? []).filter((id) => {
+      const d = deadlineStatusMap.get(id)
+      if (!d || (d.status !== 'to_plan' && d.status !== 'planned')) return false
+      if (!d.dueDate) return false
+      return new Date(d.dueDate) < today
+    }).length
+
+    const statuses   = csStatuses.get(cs.id) ?? []
+    const fullyDone  = statuses.length > 0 && statuses.every((s) => s === 'done') && openActions === 0 && openReserves === 0 && activeDeadlines === 0
+    if (fullyDone) continue
+
+    const score = Math.round(
+      pvCount * 2 +
+      (reappearance ? 3 : 0) +
+      openActions * 4 +
+      openReserves * 5 +
+      activeDeadlines * 4 +
+      overdueDeadlines * 6 +
+      (recentOccurrence ? 2 : 0) -
+      daysSilent / 30,
+    )
+    if (score < IMPORTANT_THRESHOLD) continue
+
+    scored.push({ canonicalSubjectId: cs.id, label: cs.label, pvCount, openActions, openReserves, activeDeadlines, overdueDeadlines, reappearance, recentOccurrence, score })
+  }
+
+  scored.sort((a, b) => b.score - a.score)
+  return scored.slice(0, IMPORTANT_MAX)
 }

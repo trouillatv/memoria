@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { AlertTriangle, Clock, TrendingUp, CheckCircle2, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { WatchlistEntry, WatchReason, CategoryProgress, DeltaSummary, RunMeta } from '@/lib/documents/site-synthesis'
+import type { WatchlistEntry, WatchReason, CategoryProgress, DeltaSummary, RunMeta, ImportantSubject } from '@/lib/documents/site-synthesis'
 import type { SiteHistoricalTimeline } from '@/lib/documents/pv-history'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -145,7 +145,64 @@ function FirstPvBloc({ meta, pvNumber, totalSubjects }: { meta: RunMeta; pvNumbe
   )
 }
 
-// ── Bloc 2 — Sujets à surveiller ─────────────────────────────────────────────
+// ── Bloc 2 — Sujets importants (ranking canonique) ───────────────────────────
+
+function SujetsImportantsBloc({ items, siteId }: { items: ImportantSubject[]; siteId: string }) {
+  if (items.length === 0) {
+    return (
+      <section className="rounded-[18px] border bg-card p-5 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sujets importants</p>
+        <p className="mt-3 text-sm text-muted-foreground">Aucun sujet structurant identifié pour ce chantier.</p>
+      </section>
+    )
+  }
+
+  return (
+    <section className="rounded-[18px] border bg-card p-5 shadow-sm">
+      <div className="flex items-baseline justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sujets importants</p>
+        <span className="text-xs text-muted-foreground">{items.length}</span>
+      </div>
+
+      <ul className="mt-3 space-y-2">
+        {items.map((item) => {
+          const parts: string[] = []
+          if (item.pvCount >= 2) parts.push(`${item.pvCount} PV`)
+          if (item.reappearance) parts.push('réapparition')
+          if (item.openActions > 0)
+            parts.push(`${item.openActions} action${item.openActions > 1 ? 's' : ''} ouverte${item.openActions > 1 ? 's' : ''}`)
+          if (item.openReserves > 0)
+            parts.push(`${item.openReserves} réserve${item.openReserves > 1 ? 's' : ''} ouverte${item.openReserves > 1 ? 's' : ''}`)
+          if (item.overdueDeadlines > 0)
+            parts.push(`⚠ ${item.overdueDeadlines} en retard`)
+          const nonOverdue = item.activeDeadlines - item.overdueDeadlines
+          if (nonOverdue > 0)
+            parts.push(`${nonOverdue} échéance${nonOverdue > 1 ? 's' : ''}`)
+          if (item.recentOccurrence) parts.push('vu récemment')
+
+          return (
+            <li key={item.canonicalSubjectId}>
+              <Link
+                href={`/sites/${siteId}/historique/sujets/${item.canonicalSubjectId}`}
+                className="flex items-start gap-3 rounded-lg bg-muted/20 px-3 py-2.5 transition-colors hover:bg-muted/60"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{item.label}</p>
+                  {parts.length > 0 && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">{parts.join(' · ')}</p>
+                  )}
+                </div>
+                <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
+// ── Bloc 3 — Sujets à surveiller ─────────────────────────────────────────────
 
 const WATCH_CONFIG: Record<WatchReason, { label: string; icon: string; color: string; bgColor: string }> = {
   non_conforme:    { label: 'Non conforme',           icon: '✗', color: 'text-red-700 dark:text-red-400',    bgColor: 'bg-red-50 dark:bg-red-950/30' },
@@ -379,6 +436,7 @@ export interface SyntheseViewProps {
   categories: CategoryProgress[]
   delta: { summary: DeltaSummary; fromIdx: number; toIdx: number } | null
   totalSubjects: number
+  importantSubjects: ImportantSubject[]
 }
 
 export function SyntheseView({
@@ -389,6 +447,7 @@ export function SyntheseView({
   categories,
   delta,
   totalSubjects,
+  importantSubjects,
 }: SyntheseViewProps) {
   if (runs.length === 0) {
     return (
@@ -416,7 +475,10 @@ export function SyntheseView({
         <FirstPvBloc meta={runs[0]} pvNumber={1} totalSubjects={totalSubjects} />
       )}
 
-      {/* Bloc 2 : Sujets à surveiller */}
+      {/* Bloc 2 : Sujets importants */}
+      <SujetsImportantsBloc items={importantSubjects} siteId={siteId} />
+
+      {/* Bloc 3 : Sujets à surveiller */}
       <WatchlistBloc items={watchlist} siteId={siteId} runs={runs} />
 
       {/* Bloc 3 : Progression par catégorie */}
