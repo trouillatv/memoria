@@ -115,11 +115,17 @@ function isStagnant(row: SubjectMatrixRow): boolean {
   return afterFirst.every((c) => c?.transition === 'maintenu')
 }
 
+// Familles exclues de la watchlist : acteurs (toujours "ouverts") et faits informationnels.
+// Un sujet n'entre dans "À surveiller" que s'il porte un signal opérationnel réel.
+const WATCHLIST_EXCLUDED_FAMILIES = new Set(['person', 'company', 'knowledge_fact'])
+
 export function computeWatchlist(matrix: SiteSubjectMatrix): WatchlistEntry[] {
   const result: WatchlistEntry[] = []
   const totalRuns = matrix.runs.length
 
   for (const row of matrix.rows) {
+    if (WATCHLIST_EXCLUDED_FAMILIES.has(row.family)) continue
+
     const pvCount = row.cells.filter((c) => c !== null && !c.isGap).length
     if (pvCount === 0) continue
 

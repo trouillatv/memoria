@@ -114,7 +114,8 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
   const filtered = useMemo(() => {
     let rows = matrix.rows
 
-    if (hideInfo) rows = rows.filter((r) => r.family !== 'knowledge_fact')
+    const HIDE_BY_DEFAULT = new Set(['knowledge_fact', 'person', 'company'])
+    if (hideInfo) rows = rows.filter((r) => !HIDE_BY_DEFAULT.has(r.family))
 
     if (statusFilter === 'open') {
       rows = rows.filter((r) => {
@@ -202,7 +203,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
             onChange={(e) => setHideInfo(e.target.checked)}
             className="rounded"
           />
-          Masquer informationnels
+          Masquer acteurs et informationnels
         </label>
 
         <span className="ml-auto text-xs text-muted-foreground">

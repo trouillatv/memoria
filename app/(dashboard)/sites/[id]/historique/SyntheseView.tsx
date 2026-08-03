@@ -268,7 +268,21 @@ function WatchlistBloc({ items, siteId, runs }: { items: WatchlistEntry[]; siteI
   )
 }
 
-// ── Bloc 3 — Progression par catégorie ───────────────────────────────────────
+// ── Bloc 4 — Progression par catégorie ───────────────────────────────────────
+
+const CATEGORY_LABELS: Record<string, string> = {
+  test_control:       'Contrôle qualité',
+  progress:           'Avancement',
+  administrative:     'Administratif',
+  forecast:           'Planning / Prévisions',
+  safety_environment: 'Sécurité / Environnement',
+  general_knowledge:  'Connaissances générales',
+  resources:          'Ressources',
+  weather:            'Conditions météo',
+}
+
+// Catégories informationnelles — agrégées dans une section repliée
+const INFORMATIONAL_CATEGORIES = new Set(['general_knowledge', 'resources', 'weather'])
 
 function pill(n: number, label: string, color: string) {
   if (n === 0) return null
@@ -279,7 +293,7 @@ function pill(n: number, label: string, color: string) {
   )
 }
 
-function CategoryRow({ cat }: { cat: CategoryProgress }) {
+function CategoryRow({ cat, label }: { cat: CategoryProgress; label: string }) {
   const hasProblem = cat.nonCompliant > 0
   const pills = [
     pill(cat.nonCompliant, 'non conf.', 'text-red-600 dark:text-red-400'),
@@ -295,7 +309,7 @@ function CategoryRow({ cat }: { cat: CategoryProgress }) {
     <div className={cn('flex items-start gap-3 py-2.5 first:pt-0 last:pb-0', hasProblem && 'pl-0')}>
       <div className="min-w-0 w-32 shrink-0">
         <p className={cn('truncate text-sm font-medium', hasProblem && 'text-red-600 dark:text-red-400')}>
-          {cat.category}
+          {label}
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -313,12 +327,39 @@ function ProgressionBloc({ categories }: { categories: CategoryProgress[] }) {
     </section>
   )
 
+  const operational    = categories.filter((c) => !INFORMATIONAL_CATEGORIES.has(c.category))
+  const informational  = categories.filter((c) =>  INFORMATIONAL_CATEGORIES.has(c.category))
+  const infoTotal      = informational.reduce((s, c) => s + c.total, 0)
+
   return (
     <section className="rounded-[18px] border bg-card p-5 shadow-sm">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Progression du chantier</p>
       <div className="mt-3 divide-y divide-border">
-        {categories.map((cat) => <CategoryRow key={cat.category} cat={cat} />)}
+        {operational.map((cat) => (
+          <CategoryRow
+            key={cat.category}
+            cat={cat}
+            label={CATEGORY_LABELS[cat.category] ?? cat.category}
+          />
+        ))}
       </div>
+
+      {informational.length > 0 && (
+        <details className="mt-3 group">
+          <summary className="cursor-pointer select-none text-xs text-muted-foreground hover:text-foreground">
+            {infoTotal} sujet{infoTotal > 1 ? 's' : ''} informationnels (contexte chantier)
+          </summary>
+          <div className="mt-2 divide-y divide-border border-t pt-1">
+            {informational.map((cat) => (
+              <CategoryRow
+                key={cat.category}
+                cat={cat}
+                label={CATEGORY_LABELS[cat.category] ?? cat.category}
+              />
+            ))}
+          </div>
+        </details>
+      )}
     </section>
   )
 }
