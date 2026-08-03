@@ -63,9 +63,10 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'MemorIA',
     short_name: 'MemorIA',
     description: 'Mémoire opérationnelle de vos chantiers',
-    // Racine : laisse `/` router selon rôle + home_preference + appareil
-    // (un manager « dashboard » ne doit pas être forcé sur /m à chaque ouverture).
-    start_url: '/',
+    // Doctrine 2026-08-04 : la PWA est une surface terrain.
+    // start_url = /m → déterministe, pas de dépendance au cookie pwa_standalone.
+    // Le mode bureau depuis la PWA reste une action volontaire (PwaDesktopModeSync).
+    start_url: '/m',
     display: 'standalone',
     background_color: '#ffffff',
     theme_color: '#0f172a',

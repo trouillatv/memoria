@@ -25,7 +25,7 @@ interface ShareTargetShape {
   params: { files: Array<{ name: string; accept: string[] }> }
 }
 
-describe('Le manifeste — sans lui, MemorIA n’apparaît pas dans « Partager »', () => {
+describe("Le manifeste — sans lui, MemorIA n'apparaît pas dans « Partager »", () => {
   const m = manifest() as unknown as { share_target?: ShareTargetShape; start_url: string }
 
   it('déclare une cible de partage', () => {
@@ -39,7 +39,7 @@ describe('Le manifeste — sans lui, MemorIA n’apparaît pas dans « Partager 
     expect(m.share_target?.enctype).toBe('multipart/form-data')
   })
 
-  it('le champ de fichiers s’appelle « files » — le handler lit ce nom-là', () => {
+  it("le champ de fichiers s'appelle « files » — le handler lit ce nom-là", () => {
     const files = m.share_target?.params.files
     expect(files).toHaveLength(1)
     expect(files?.[0].name).toBe('files')
@@ -49,15 +49,22 @@ describe('Le manifeste — sans lui, MemorIA n’apparaît pas dans « Partager 
     expect(files?.[0].accept).toContain('video/*')
   })
 
-  it('l’action pointe sur la porte réelle', () => {
+  it("l'action pointe sur la porte réelle", () => {
     expect(m.share_target?.action).toBe('/api/partage')
+  })
+
+  it('start_url = /m — la PWA est une surface terrain, pas un dashboard', () => {
+    // Doctrine 2026-08-04 : ouverture PWA → /m, sans dépendance au cookie
+    // pwa_standalone (qui est posé après le premier rendu, trop tard).
+    // Changer cette valeur recrée la race condition qu'on a résolue.
+    expect(m.start_url).toBe('/m')
   })
 })
 
 describe('La porte — ce qui entre, ce qui est refusé (et pourquoi)', () => {
   const photo = (size = 200_000) => ({ size, type: 'image/jpeg' })
 
-  it('laisse passer les photos, dans l’ORDRE reçu', () => {
+  it("laisse passer les photos, dans l'ORDRE reçu", () => {
     // L'ordre de WhatsApp est souvent l'ordre chronologique de la visite : le
     // moteur d'ingestion s'en sert pour reconstituer la journée.
     const v = acceptShared([
@@ -134,7 +141,7 @@ describe('Le lot se DIT en français — jamais « 5 fichiers »', () => {
     expect(describeLotFr(describeLot(['audio/ogg']))).toBe('1 enregistrement')
   })
 
-  it('trois natures s’énumèrent proprement', () => {
+  it("trois natures s'énumèrent proprement", () => {
     expect(describeLotFr(describeLot(['image/jpeg', 'audio/ogg', 'application/pdf'])))
       .toBe('1 photo, 1 enregistrement et 1 document')
   })
