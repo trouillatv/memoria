@@ -145,6 +145,14 @@ export type ProposalStub = {
   subject_thread_id: string | null
 }
 
+/** Proposition qui n'a trouvé aucun thread antérieur et a reçu un nouveau UUID. */
+export type OrphanInfo = {
+  propId: string
+  threadId: string
+  label: string
+  family: string
+}
+
 type ScoredCandidate = {
   propId: string
   thread: string
@@ -270,12 +278,12 @@ export function resolveMatches1to1(
  * Appelé après la fin de l'extraction (run → ready_for_review).
  * Idempotent : les propositions déjà assignées sont ignorées.
  *
- * Retourne { matched, created } pour logging.
+ * Retourne { matched, created, orphans } pour logging et résolution sémantique.
  */
 export async function reconcileSubjectThreads(
   runId: string,
   siteId: string,
-): Promise<{ matched: number; created: number }> {
+): Promise<{ matched: number; created: number; orphans: OrphanInfo[] }> {
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabase = createAdminClient()
 
@@ -314,10 +322,16 @@ export async function reconcileSubjectThreads(
 
   let matched = 0
   let created = 0
+  const orphans: OrphanInfo[] = []
   const assignments = newProposals.map((p) => {
     const subject_thread_id = threadMap.get(p.id)!
     const isNew = !priorProposals.some((pr) => pr.subject_thread_id === subject_thread_id)
-    if (isNew) created++; else matched++
+    if (isNew) {
+      created++
+      orphans.push({ propId: p.id, threadId: subject_thread_id, label: p.label, family: p.proposal_family })
+    } else {
+      matched++
+    }
     return { id: p.id, subject_thread_id }
   })
 
@@ -334,7 +348,7 @@ export async function reconcileSubjectThreads(
   )
   if (errors.length > 0) throw new Error(`subject_thread assignment: ${errors.join('; ')}`)
 
-  return { matched, created }
+  return { matched, created, orphans }
 }
 
 /**

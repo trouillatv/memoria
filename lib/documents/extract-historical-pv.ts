@@ -12,6 +12,7 @@ import {
   linkProposalEvidence,
 } from '@/lib/db/document-extractions'
 import { mapDocumentStatus, reconcileSubjectThreads } from './subject-reconciliation'
+import { resolveOrphansSemantically } from './semantic-subject-resolution'
 import type { DocumentProposalFamily, DocumentEvidenceType, DocumentEvidenceRelationType } from '@/types/db'
 
 const EXTRACTOR_KEY = 'historical_visit_report_v1'
@@ -370,15 +371,33 @@ export async function extractHistoricalPv(
       siteIdForReconciliation = (link as { target_site_id: string | null } | null)?.target_site_id ?? null
     }
     if (siteIdForReconciliation) {
+      // Étape 12 : réconciliation lexicale (déterministe, sans LLM)
+      let orphans: import('./subject-reconciliation').OrphanInfo[] = []
       try {
-        const { matched, created } = await reconcileSubjectThreads(runId, siteIdForReconciliation)
-        log('subject_threads_reconciled', documentId, { runId, matched, created })
+        const { matched, created, orphans: o } = await reconcileSubjectThreads(runId, siteIdForReconciliation)
+        orphans = o
+        log('subject_threads_reconciled', documentId, { runId, matched, created, orphans: o.length })
       } catch (reconcileErr) {
         // Non bloquant : l'extraction est terminée même si la réconciliation échoue
         log('subject_threads_reconciliation_failed', documentId, {
           runId,
           error: reconcileErr instanceof Error ? reconcileErr.message : String(reconcileErr),
         })
+      }
+
+      // Étape 12b : résolution sémantique shadow (LLM, uniquement sur les orphelins)
+      // Exécutée dans le même contexte after() que l'extraction — await sûr.
+      // N'écrit PAS dans subject_thread_identity — shadow mode strict.
+      if (orphans.length > 0) {
+        try {
+          const stats = await resolveOrphansSemantically(orphans, siteIdForReconciliation, runId)
+          log('semantic_resolution_complete', documentId, { runId, ...stats })
+        } catch (semanticErr) {
+          log('semantic_resolution_failed', documentId, {
+            runId,
+            error: semanticErr instanceof Error ? semanticErr.message : String(semanticErr),
+          })
+        }
       }
     }
 
