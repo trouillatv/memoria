@@ -28,9 +28,9 @@ const DELTA_ROWS: Array<{
   hideIfEmpty?: boolean
 }> = [
   { key: 'aggravésRéouverts', label: 'Aggravés / réouverts', icon: '!', color: 'text-red-600 dark:text-red-400' },
-  { key: 'nouveaux',          label: 'Nouveaux',             icon: '+', color: 'text-blue-600 dark:text-blue-400' },
   { key: 'réalisésLevés',     label: 'Réalisés / levés',    icon: '✓', color: 'text-emerald-600 dark:text-emerald-400' },
   { key: 'progressés',        label: 'En progression',       icon: '↑', color: 'text-blue-500 dark:text-blue-300' },
+  { key: 'nouveaux',          label: 'sujets apparus',       icon: '+', color: 'text-blue-600 dark:text-blue-400' },
   { key: 'toujoursOuverts',   label: 'Toujours ouverts',    icon: '→', color: 'text-muted-foreground' },
   { key: 'nonMentionnés',     label: 'Non mentionnés',      icon: '○', color: 'text-muted-foreground', hideIfEmpty: true },
   { key: 'annulés',           label: 'Annulés',             icon: '×', color: 'text-muted-foreground', hideIfEmpty: true },
@@ -205,12 +205,10 @@ function SujetsImportantsBloc({ items, siteId }: { items: ImportantSubject[]; si
 // ── Bloc 3 — Sujets à surveiller ─────────────────────────────────────────────
 
 const WATCH_CONFIG: Record<WatchReason, { label: string; icon: string; color: string; bgColor: string }> = {
-  non_conforme:    { label: 'Non conforme',           icon: '✗', color: 'text-red-700 dark:text-red-400',    bgColor: 'bg-red-50 dark:bg-red-950/30' },
-  aggravé:         { label: 'Aggravé',                icon: '↑!', color: 'text-red-600 dark:text-red-400',   bgColor: 'bg-red-50 dark:bg-red-950/30' },
-  réouvert:        { label: 'Réouvert',               icon: '↩',  color: 'text-orange-600 dark:text-orange-400', bgColor: 'bg-orange-50 dark:bg-orange-950/30' },
-  ouvert_longtemps:{ label: 'Ouvert depuis longtemps', icon: '⏱', color: 'text-amber-700 dark:text-amber-400', bgColor: 'bg-amber-50 dark:bg-amber-950/30' },
-  en_attente:      { label: 'En attente prolongée',   icon: '…',  color: 'text-blue-600 dark:text-blue-400',  bgColor: 'bg-blue-50 dark:bg-blue-950/30' },
-  sans_évolution:  { label: 'Sans évolution',         icon: '→',  color: 'text-muted-foreground',             bgColor: 'bg-muted/40' },
+  non_conforme:   { label: 'Non conforme',  icon: '✗',  color: 'text-red-700 dark:text-red-400',        bgColor: 'bg-red-50 dark:bg-red-950/30' },
+  aggravé:        { label: 'Aggravé',       icon: '↑!', color: 'text-red-600 dark:text-red-400',        bgColor: 'bg-red-50 dark:bg-red-950/30' },
+  réouvert:       { label: 'Réouvert',      icon: '↩',  color: 'text-orange-600 dark:text-orange-400',  bgColor: 'bg-orange-50 dark:bg-orange-950/30' },
+  sans_évolution: { label: 'Sans évolution', icon: '→', color: 'text-muted-foreground',                 bgColor: 'bg-muted/40' },
 }
 
 function WatchlistBloc({ items, siteId, runs }: { items: WatchlistEntry[]; siteId: string; runs: RunMeta[] }) {
@@ -302,7 +300,6 @@ function CategoryRow({ cat, label }: { cat: CategoryProgress; label: string }) {
     pill(cat.awaitingValidation, 'en attente', 'text-blue-500 dark:text-blue-300'),
     pill(cat.planned, 'prévu', 'text-muted-foreground'),
     pill(cat.done, 'réalisé', 'text-emerald-600 dark:text-emerald-400'),
-    pill(cat.other, 'autre', 'text-muted-foreground'),
   ].filter(Boolean)
 
   return (

@@ -10,8 +10,6 @@ export type WatchReason =
   | 'non_conforme'
   | 'aggravé'
   | 'réouvert'
-  | 'ouvert_longtemps'
-  | 'en_attente'
   | 'sans_évolution'
 
 export interface WatchlistEntry {
@@ -152,17 +150,13 @@ export function computeWatchlist(matrix: SiteSubjectMatrix): WatchlistEntry[] {
       result.push({ ...base, reason: 'aggravé' })
     } else if (lastRealCell?.transition === 'réouvert') {
       result.push({ ...base, reason: 'réouvert' })
-    } else if (pvCount >= 3 && !isResolved(row.currentStatus)) {
-      result.push({ ...base, reason: 'ouvert_longtemps' })
-    } else if (row.currentStatus === 'awaiting_validation' && pvCount >= 2) {
-      result.push({ ...base, reason: 'en_attente' })
     } else if (isStagnant(row)) {
       result.push({ ...base, reason: 'sans_évolution' })
     }
   }
 
   const priority: Record<WatchReason, number> = {
-    non_conforme: 0, aggravé: 1, réouvert: 2, ouvert_longtemps: 3, en_attente: 4, sans_évolution: 5,
+    non_conforme: 0, aggravé: 1, réouvert: 2, sans_évolution: 3,
   }
   result.sort((a, b) => priority[a.reason] - priority[b.reason] || b.pvCount - a.pvCount)
   return result
