@@ -78,9 +78,10 @@ interface Props {
   siteId: string
   initialThread?: string | null
   initialTheme?: string | null
+  suggestedCounts?: Record<string, number>
 }
 
-export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialTheme }: Props) {
+export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialTheme, suggestedCounts }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -274,12 +275,22 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                   href={row.canonicalSubjectId
                     ? `/sites/${siteId}/historique/sujets/${row.canonicalSubjectId}`
                     : `/sites/${siteId}/historique/${row.subjectThreadId}`}
-                  className="truncate text-xs font-medium hover:underline"
+                  className="min-w-0 flex-1 truncate text-xs font-medium hover:underline"
                   onClick={(e) => e.stopPropagation()}
                   title={row.canonicalLabel}
                 >
                   {row.canonicalLabel}
                 </Link>
+                {row.canonicalSubjectId && (suggestedCounts?.[row.canonicalSubjectId] ?? 0) > 0 && (
+                  <Link
+                    href={`/sites/${siteId}/historique/sujets/${row.canonicalSubjectId}#relations`}
+                    onClick={(e) => e.stopPropagation()}
+                    title="Suggestions de dépendances à valider"
+                    className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 hover:bg-amber-200 dark:bg-amber-950 dark:text-amber-300"
+                  >
+                    {suggestedCounts![row.canonicalSubjectId]}
+                  </Link>
+                )}
               </div>
             ))}
           </div>

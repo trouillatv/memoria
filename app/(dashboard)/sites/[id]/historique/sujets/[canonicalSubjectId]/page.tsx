@@ -605,7 +605,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
 
         {/* Relations */}
         {life.links.length > 0 && (
-          <section className="rounded-[18px] border bg-card px-5 py-4 space-y-3">
+          <section id="relations" className="rounded-[18px] border bg-card px-5 py-4 space-y-3">
             <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <Link2 className="h-3.5 w-3.5" />
               Relations

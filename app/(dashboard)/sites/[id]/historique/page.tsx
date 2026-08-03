@@ -5,6 +5,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getSiteHistoricalTimeline, getSiteSubjectMatrix } from '@/lib/documents/pv-history'
 import { getPvDelta } from '@/lib/documents/pv-comparison'
+import { getSuggestedLinkCountsBySite } from '@/lib/db/subject-thread-links'
 import {
   getRunsMeta,
   computeWatchlist,
@@ -67,6 +68,10 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   const depsGraph = view === 'deps'
     ? await getSiteDependencyGraph(siteId).catch(() => null)
     : null
+
+  const suggestedCounts = view === 'lifelines'
+    ? await getSuggestedLinkCountsBySite(siteId).catch(() => ({}))
+    : {}
 
   const evolutionData = view === 'evolution'
     ? await (async () => {
@@ -203,6 +208,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
               siteId={siteId}
               initialThread={initialThread}
               initialTheme={initialTheme}
+              suggestedCounts={suggestedCounts}
             />
           ) : (
             <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">

@@ -187,6 +187,49 @@ export async function rejectSubjectLink(linkId: string): Promise<void> {
 }
 
 /**
+ * Compte les suggestions en attente (status='suggested') par canonical_subject_id pour un chantier.
+ * Retourne un Record canonicalSubjectId → nombre de suggestions impliquant ce sujet.
+ */
+export async function getSuggestedLinkCountsBySite(siteId: string): Promise<Record<string, number>> {
+  const supabase = createAdminClient()
+
+  const { data: links } = await supabase
+    .from('subject_thread_links')
+    .select('from_thread_id, to_thread_id')
+    .eq('site_id', siteId)
+    .eq('status', 'suggested')
+
+  if (!links?.length) return {}
+
+  const threadIds = new Set<string>()
+  for (const l of links as Array<{ from_thread_id: string; to_thread_id: string }>) {
+    threadIds.add(l.from_thread_id)
+    threadIds.add(l.to_thread_id)
+  }
+
+  const { data: stiRows } = await supabase
+    .from('subject_thread_identity')
+    .select('subject_thread_id, canonical_subject_id')
+    .in('subject_thread_id', [...threadIds])
+    .eq('site_id', siteId)
+
+  const threadToCs = new Map<string, string>(
+    ((stiRows ?? []) as Array<{ subject_thread_id: string; canonical_subject_id: string }>)
+      .map((r) => [r.subject_thread_id, r.canonical_subject_id])
+  )
+
+  const counts: Record<string, number> = {}
+  for (const l of links as Array<{ from_thread_id: string; to_thread_id: string }>) {
+    const fromCs = threadToCs.get(l.from_thread_id)
+    const toCs   = threadToCs.get(l.to_thread_id)
+    if (fromCs) counts[fromCs] = (counts[fromCs] ?? 0) + 1
+    if (toCs && toCs !== fromCs) counts[toCs] = (counts[toCs] ?? 0) + 1
+  }
+
+  return counts
+}
+
+/**
  * Supprime définitivement un lien (uniquement les liens humains confirmés).
  */
 export async function deleteSubjectLink(linkId: string): Promise<void> {
