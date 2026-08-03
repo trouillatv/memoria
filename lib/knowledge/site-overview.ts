@@ -61,7 +61,7 @@ import {
   type WatchlistEntry,
   type ImportantSubject,
 } from '@/lib/documents/site-synthesis'
-import { getPvDelta } from '@/lib/documents/pv-comparison'
+import { getCanonicalDelta } from '@/lib/documents/canonical-transitions'
 import { getSuggestedLinkCountsBySite } from '@/lib/db/subject-thread-links'
 
 const TOP = 3
@@ -460,7 +460,7 @@ async function fetchPvSignalData(siteId: string): Promise<{
   if (runs.length >= 2) {
     const fromRun = runs[runs.length - 2]
     const toRun   = runs[runs.length - 1]
-    const delta   = await getPvDelta(fromRun.id, toRun.id).catch(() => null)
+    const delta   = await getCanonicalDelta(fromRun.id, toRun.id).catch(() => null)
     if (delta) {
       const summary = computeDeltaSummary(delta)
       pvLastDelta = {

@@ -2,8 +2,17 @@ import 'server-only'
 
 import { canonicalRunsForSite, runEffectiveDate } from './pv-history'
 import type { SiteSubjectMatrix, SubjectMatrixRow } from './pv-history'
-import type { DeltaItem, PvDelta } from './pv-comparison'
 import type { SubjectLinkType } from '@/lib/db/subject-thread-links'
+import {
+  STATUS_RANK,
+  OPERATIONAL_EXCLUDED_FAMILIES,
+  computeCanonicalCellState,
+} from './canonical-transitions'
+import type { CanonicalCellState, CanonicalDelta, CanonicalDeltaItem } from './canonical-transitions'
+
+// Re-export pour compatibilité avec pv-evolution.ts et les vues
+export type ActivityCellState = CanonicalCellState
+export type { CanonicalDeltaItem }
 
 // ── Types publics ────────────────────────────────────────────────────────────
 
@@ -37,13 +46,13 @@ export interface CategoryProgress {
 }
 
 export interface DeltaSummary {
-  réalisésLevés: DeltaItem[]
-  nouveaux: DeltaItem[]
-  progressés: DeltaItem[]
-  aggravésRéouverts: DeltaItem[]
-  toujoursOuverts: DeltaItem[]
-  nonMentionnés: DeltaItem[]
-  annulés: DeltaItem[]
+  réalisésLevés: CanonicalDeltaItem[]
+  nouveaux: CanonicalDeltaItem[]
+  progressés: CanonicalDeltaItem[]
+  aggravésRéouverts: CanonicalDeltaItem[]
+  toujoursOuverts: CanonicalDeltaItem[]
+  nonMentionnés: CanonicalDeltaItem[]
+  annulés: CanonicalDeltaItem[]
 }
 
 export interface RunMeta {
@@ -102,10 +111,6 @@ export async function getRunsMeta(
 
 // ── Computations pures ───────────────────────────────────────────────────────
 
-function isResolved(status: string | null): boolean {
-  return status === 'done' || status === 'cancelled' || status === 'informational'
-}
-
 function isStagnant(row: SubjectMatrixRow): boolean {
   const realCells = row.cells.filter((c) => c !== null && !c.isGap)
   if (realCells.length < 3) return false
@@ -114,9 +119,8 @@ function isStagnant(row: SubjectMatrixRow): boolean {
   return afterFirst.every((c) => c?.transition === 'maintenu')
 }
 
-// Familles exclues de la watchlist : acteurs (toujours "ouverts") et faits informationnels.
-// Un sujet n'entre dans "À surveiller" que s'il porte un signal opérationnel réel.
-const WATCHLIST_EXCLUDED_FAMILIES = new Set(['person', 'company', 'knowledge_fact'])
+// Familles exclues de la watchlist — même périmètre que OPERATIONAL_EXCLUDED_FAMILIES.
+const WATCHLIST_EXCLUDED_FAMILIES = OPERATIONAL_EXCLUDED_FAMILIES
 
 export function computeWatchlist(matrix: SiteSubjectMatrix): WatchlistEntry[] {
   const result: WatchlistEntry[] = []
@@ -177,7 +181,7 @@ export function computeProgressByCategory(matrix: SiteSubjectMatrix): CategoryPr
   }
 
   for (const row of matrix.rows) {
-    if (DELTA_EXCLUDED_FAMILIES.has(row.family)) continue
+    if (OPERATIONAL_EXCLUDED_FAMILIES.has(row.family)) continue
     const cat = row.thematicCategory ?? 'Non catégorisé'
     const entry = getOrCreate(cat)
     entry.total++
@@ -202,30 +206,22 @@ export function computeProgressByCategory(matrix: SiteSubjectMatrix): CategoryPr
   return cats
 }
 
-// Mêmes familles exclues que dans watchlist et health timeline : acteurs et faits purement informationnels
-// ne sont pas des sujets pilotables — les inclure fausse tous les compteurs de transition.
-const DELTA_EXCLUDED_FAMILIES = new Set(['person', 'company', 'knowledge_fact'])
-
-export function computeDeltaSummary(delta: PvDelta): DeltaSummary {
+export function computeDeltaSummary(delta: CanonicalDelta): DeltaSummary {
   const s: DeltaSummary = {
     réalisésLevés: [], nouveaux: [], progressés: [],
     aggravésRéouverts: [], toujoursOuverts: [], nonMentionnés: [], annulés: [],
   }
   for (const item of delta.items) {
-    if (DELTA_EXCLUDED_FAMILIES.has(item.family)) continue
+    // Les exclusions de familles sont déjà appliquées dans getCanonicalDelta.
     switch (item.transition) {
-      case 'réalisé':
-      case 'levé':          s.réalisésLevés.push(item);     break
-      case 'nouveau':       s.nouveaux.push(item);           break
-      case 'progressé':     s.progressés.push(item);         break
-      case 'aggravé':
-      case 'réouvert':      s.aggravésRéouverts.push(item);  break
-      case 'non_mentionné': s.nonMentionnés.push(item);      break
-      case 'annulé':        s.annulés.push(item);            break
-      case 'maintenu':
-      case 'changé':
-        if (!isResolved(item.toStatus)) s.toujoursOuverts.push(item)
-        break
+      case 'resolved':      s.réalisésLevés.push(item);     break
+      case 'appeared':      s.nouveaux.push(item);           break
+      case 'progressed':    s.progressés.push(item);         break
+      case 'aggravated':
+      case 'reopened':      s.aggravésRéouverts.push(item);  break
+      case 'notMentioned':  s.nonMentionnés.push(item);      break
+      case 'cancelled':     s.annulés.push(item);            break
+      case 'stillOpen':     s.toujoursOuverts.push(item);    break
     }
   }
   return s
@@ -442,8 +438,6 @@ export async function getImportantSubjects(siteId: string): Promise<ImportantSub
 
 // ── Carte d'activité ─────────────────────────────────────────────────────────
 
-export type ActivityCellState = 'absent' | 'first' | 'open' | 'non_compliant' | 'done' | 'reopened'
-
 export interface ActivityCell {
   state: ActivityCellState
 }
@@ -469,11 +463,6 @@ export interface ActivityMap {
 }
 
 const ACTIVITY_MAX = 8
-
-// Priorité décroissante : 0 = plus sévère (non_compliant passe devant done).
-const STATUS_RANK: Record<string, number> = {
-  non_compliant: 0, open: 1, awaiting_validation: 2, in_progress: 3, planned: 4, done: 5, cancelled: 5, informational: 6,
-}
 
 /**
  * Retourne la carte d'activité du chantier : top ACTIVITY_MAX canonical_subjects
@@ -663,19 +652,7 @@ export async function getActivityMap(siteId: string): Promise<ActivityMap> {
         cells.push({ state: 'absent' })
         continue
       }
-      let state: ActivityCellState
-      if (prevStatus === null) {
-        state = 'first'
-      } else if (status === 'non_compliant') {
-        state = 'non_compliant'
-      } else if (status === 'done' || status === 'cancelled' || status === 'informational') {
-        state = 'done'
-      } else if (prevStatus === 'done' || prevStatus === 'cancelled' || prevStatus === 'informational') {
-        state = 'reopened'
-      } else {
-        state = 'open'
-      }
-      cells.push({ state })
+      cells.push({ state: computeCanonicalCellState(prevStatus, status) })
       prevStatus = status
     }
 
@@ -716,8 +693,6 @@ export interface SiteHealthTimeline {
   /** Pic d'activité sur toute la durée du chantier. */
   peakActive: number
 }
-
-const HEALTH_EXCLUDED_FAMILIES = new Set(['person', 'company', 'knowledge_fact'])
 
 /**
  * Calcule la courbe de tension et de santé du chantier à partir de
@@ -788,23 +763,17 @@ export async function getSiteHealthTimeline(siteId: string): Promise<SiteHealthT
 
   for (const [csId, runStatuses] of csRunStatus.entries()) {
     const families = csFamilies.get(csId) ?? new Set()
-    if (families.size > 0 && [...families].every((f) => HEALTH_EXCLUDED_FAMILIES.has(f))) continue
+    if (families.size > 0 && [...families].every((f) => OPERATIONAL_EXCLUDED_FAMILIES.has(f))) continue
 
     let prevStatus: string | null = null
     for (let i = 0; i < sortedRuns.length; i++) {
       const status = runStatuses.get(sortedRuns[i].id) ?? null
       if (status !== null) {
-        // Même logique cellState que getActivityMap
-        let isActive = true
-        let isFirst  = false
-        if (prevStatus === null) {
-          isFirst = true
-        } else if (status === 'done' || status === 'cancelled' || status === 'informational') {
-          isActive = false
-        }
+        const cellState = computeCanonicalCellState(prevStatus, status)
+        const isActive  = cellState === 'first' || cellState === 'open' || cellState === 'non_compliant' || cellState === 'reopened'
         if (isActive) {
           activeCounts[i]++
-          if (isFirst) newCounts[i]++
+          if (cellState === 'first') newCounts[i]++
         }
         prevStatus = status
       }

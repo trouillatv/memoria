@@ -90,9 +90,9 @@ function DeltaBloc({
                 {items.length > 0 && items.length <= 4 && (
                   <ul className="mt-1 space-y-0.5">
                     {items.map((item) => (
-                      <li key={item.subjectThreadId}>
+                      <li key={item.canonicalSubjectId}>
                         <Link
-                          href={`/sites/${siteId}/historique/${item.subjectThreadId}`}
+                          href={`/sites/${siteId}/historique/sujets/${item.canonicalSubjectId}`}
                           className="block truncate text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                         >
                           {item.label}
@@ -108,9 +108,9 @@ function DeltaBloc({
                     </summary>
                     <ul className="mt-1 space-y-0.5">
                       {items.map((item) => (
-                        <li key={item.subjectThreadId}>
+                        <li key={item.canonicalSubjectId}>
                           <Link
-                            href={`/sites/${siteId}/historique/${item.subjectThreadId}`}
+                            href={`/sites/${siteId}/historique/sujets/${item.canonicalSubjectId}`}
                             className="block truncate text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                           >
                             {item.label}

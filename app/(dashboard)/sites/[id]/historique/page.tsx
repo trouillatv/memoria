@@ -4,7 +4,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { SiteTabsNav } from '../SiteTabsNav'
 import { getSiteHistoricalTimeline, getSiteSubjectMatrix } from '@/lib/documents/pv-history'
-import { getPvDelta } from '@/lib/documents/pv-comparison'
+import { getCanonicalDelta } from '@/lib/documents/canonical-transitions'
 import { getSuggestedLinkCountsBySite } from '@/lib/db/subject-thread-links'
 import {
   getRunsMeta,
@@ -111,7 +111,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
     const fromSnap = timeline.snapshots[timeline.snapshots.length - 2]
     const toSnap   = timeline.snapshots[timeline.snapshots.length - 1]
     try {
-      const delta = await getPvDelta(fromSnap.runId, toSnap.runId)
+      const delta = await getCanonicalDelta(fromSnap.runId, toSnap.runId)
       deltaData = {
         summary: computeDeltaSummary(delta),
         fromIdx: timeline.snapshots.length - 2,
