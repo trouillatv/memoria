@@ -144,39 +144,55 @@ function TransitionBadge({ transition }: { transition: string }) {
   )
 }
 
+const LIFELINE_EVENT_ORDER: MaterializedEntityType[] = ['site_reserve', 'site_action', 'site_decision', 'site_deadline']
+
 /**
  * Lifeline horizontale — axe temporel proportionnel à la vraie durée.
  *
  * Chaque PV est positionné en fonction de sa date réelle : un silence de 2 mois
  * occupe 2× plus d'espace qu'un silence de 1 mois.
  * Les PV où le sujet n'est pas mentionné apparaissent en grisé.
+ * Sous chaque dot, des badges compacts indiquent les objets métier rattachés à ce PV.
  */
 function LifelineBar({
   occurrences,
+  materializedEvents,
 }: {
   occurrences: SubjectOccurrenceMerged[]
+  materializedEvents: MaterializedEvent[]
 }) {
   if (occurrences.length === 0) return null
 
   const minMs = dateToMs(occurrences[0].effectiveDate)
   const maxMs = dateToMs(occurrences[occurrences.length - 1].effectiveDate)
-
-  // Si un seul PV, on l'affiche centré
   const isSingle = minMs === maxMs
 
+  // Index des événements par runId pour éviter une itération dans le render
+  const eventsByRun = new Map<string, Map<MaterializedEntityType, number>>()
+  for (const ev of materializedEvents) {
+    if (!ev.runId) continue
+    let typeMap = eventsByRun.get(ev.runId)
+    if (!typeMap) { typeMap = new Map(); eventsByRun.set(ev.runId, typeMap) }
+    typeMap.set(ev.entityType, (typeMap.get(ev.entityType) ?? 0) + 1)
+  }
+
   return (
-    <div className="relative h-20 select-none overflow-visible" aria-hidden="true">
+    <div className="relative select-none overflow-visible" style={{ minHeight: '6rem' }} aria-hidden="true">
       {/* Ligne de fond */}
       <div className="absolute left-0 right-0 top-8 h-px bg-border" />
 
       {occurrences.map((occ, i) => {
         const pct = isSingle ? 50 : toPct(dateToMs(occ.effectiveDate), minMs, maxMs)
         const { symbol, colorClass } = lifelineDot(occ)
+        const typeMap = (!occ.isGap && eventsByRun.get(occ.runId)) || null
+        const badges = typeMap
+          ? LIFELINE_EVENT_ORDER.filter((t) => typeMap.has(t)).map((t) => ({ t, count: typeMap.get(t)! }))
+          : []
 
         return (
           <div
             key={`${occ.runId}-${i}`}
-            className="absolute -translate-x-1/2"
+            className="absolute -translate-x-1/2 flex flex-col items-center"
             style={{ left: `${pct}%`, top: 0 }}
           >
             {/* Lien vers le document (cliquable) */}
@@ -199,6 +215,29 @@ function LifelineBar({
                 {frDateShort(occ.effectiveDate)}
               </span>
             </Link>
+
+            {/* Badges objets métier — groupés par type, compacts */}
+            {badges.length > 0 && (
+              <div className="mt-1 flex flex-col items-center gap-0.5">
+                {badges.map(({ t, count }) => {
+                  const meta = ENTITY_TYPE_META[t]
+                  const label = count > 1 ? `${count} ${meta.plural.toLowerCase()}` : meta.label
+                  return (
+                    <a
+                      key={t}
+                      href={`#objets-metier-${t}`}
+                      aria-label={`Voir ${label}`}
+                      className={cn(
+                        'whitespace-nowrap rounded-full px-1.5 py-px text-[9px] font-semibold leading-4 transition-opacity hover:opacity-80',
+                        meta.color,
+                      )}
+                    >
+                      {label}
+                    </a>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )
       })}
@@ -302,7 +341,7 @@ function MaterializedEventsSection({ events }: { events: MaterializedEvent[] }) 
         const meta = ENTITY_TYPE_META[t]
         const items = byType.get(t)!
         return (
-          <div key={t}>
+          <div key={t} id={`objets-metier-${t}`}>
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               {meta.plural} ({items.length})
             </p>
@@ -517,7 +556,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
             <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-4">
               Ligne de vie
             </h2>
-            <LifelineBar occurrences={life.occurrences} />
+            <LifelineBar occurrences={life.occurrences} materializedEvents={life.materializedEvents} />
             <p className="mt-1 text-[10px] text-muted-foreground">
               Espacé selon les dates réelles · les cercles grisés = PV où le sujet n'est pas mentionné
             </p>

@@ -57,6 +57,7 @@ export interface MaterializedEvent {
   entityType: MaterializedEntityType
   entityId: string
   proposalId: string
+  runId: string
   title: string
   description: string | null
   date: string | null
@@ -186,6 +187,9 @@ export async function getCanonicalSubjectLife(
   ])
 
   const props = (propsResult.data ?? []) as ProposalRow[]
+
+  // Map locale — aucun fetch supplémentaire
+  const proposalToRun = new Map<string, string>(props.map((p) => [p.id, p.extraction_run_id]))
 
   // Compteur de preuves par proposition (toutes propositions du chantier — on filtrera)
   const proposalIds = props.map((p) => p.id)
@@ -327,7 +331,7 @@ export async function getCanonicalSubjectLife(
             for (const e of actionItems) {
               const r = byId.get(e.entityId)
               if (!r) continue
-              materializedEvents.push({ entityType: 'site_action', entityId: e.entityId, proposalId: e.proposalId, title: r.title, description: r.body, date: r.due_date, status: r.status })
+              materializedEvents.push({ entityType: 'site_action', entityId: e.entityId, proposalId: e.proposalId, runId: proposalToRun.get(e.proposalId) ?? '', title: r.title, description: r.body, date: r.due_date, status: r.status })
             }
           }),
       )
@@ -346,7 +350,7 @@ export async function getCanonicalSubjectLife(
             for (const e of decisionItems) {
               const r = byId.get(e.entityId)
               if (!r) continue
-              materializedEvents.push({ entityType: 'site_decision', entityId: e.entityId, proposalId: e.proposalId, title: r.titre, description: r.description, date: r.date_decision, status: r.statut })
+              materializedEvents.push({ entityType: 'site_decision', entityId: e.entityId, proposalId: e.proposalId, runId: proposalToRun.get(e.proposalId) ?? '', title: r.titre, description: r.description, date: r.date_decision, status: r.statut })
             }
           }),
       )
@@ -365,7 +369,7 @@ export async function getCanonicalSubjectLife(
             for (const e of reserveItems) {
               const r = byId.get(e.entityId)
               if (!r) continue
-              materializedEvents.push({ entityType: 'site_reserve', entityId: e.entityId, proposalId: e.proposalId, title: r.label, description: null, date: r.issued_on, status: r.status })
+              materializedEvents.push({ entityType: 'site_reserve', entityId: e.entityId, proposalId: e.proposalId, runId: proposalToRun.get(e.proposalId) ?? '', title: r.label, description: null, date: r.issued_on, status: r.status })
             }
           }),
       )
@@ -384,7 +388,7 @@ export async function getCanonicalSubjectLife(
             for (const e of deadlineItems) {
               const r = byId.get(e.entityId)
               if (!r) continue
-              materializedEvents.push({ entityType: 'site_deadline', entityId: e.entityId, proposalId: e.proposalId, title: r.title, description: r.constraint_text, date: r.due_date ?? r.source_document_effective_date, status: r.status })
+              materializedEvents.push({ entityType: 'site_deadline', entityId: e.entityId, proposalId: e.proposalId, runId: proposalToRun.get(e.proposalId) ?? '', title: r.title, description: r.constraint_text, date: r.due_date ?? r.source_document_effective_date, status: r.status })
             }
           }),
       )
