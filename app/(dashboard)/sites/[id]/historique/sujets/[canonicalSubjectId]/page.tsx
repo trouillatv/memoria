@@ -468,10 +468,19 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
   const realOccurrences = life.occurrences.filter((o) => !o.isGap)
   const confirmedLinks = life.links.filter((l) => l.status === 'confirmed')
 
-  const headerParts: string[] = []
-  if (life.firstSeenAt) headerParts.push(`Ouvert depuis le ${frDate(life.firstSeenAt)}`)
-  if (life.pvCount > 0) headerParts.push(`${life.pvCount} PV`)
-  if (confirmedLinks.length > 0) headerParts.push(`${confirmedLinks.length} lien${confirmedLinks.length > 1 ? 's' : ''}`)
+  // Résumé déterministe — dérivé de la provenance sans requête supplémentaire
+  const matCounts: Record<MaterializedEntityType, number> = {
+    site_reserve: 0, site_action: 0, site_decision: 0, site_deadline: 0,
+  }
+  for (const e of life.materializedEvents) matCounts[e.entityType]++
+
+  const summaryParts: string[] = []
+  if (life.pvCount > 0) summaryParts.push(`${life.pvCount} PV`)
+  if (matCounts.site_reserve > 0) summaryParts.push(`${matCounts.site_reserve} réserve${matCounts.site_reserve > 1 ? 's' : ''}`)
+  if (matCounts.site_action > 0) summaryParts.push(`${matCounts.site_action} action${matCounts.site_action > 1 ? 's' : ''}`)
+  if (matCounts.site_decision > 0) summaryParts.push(`${matCounts.site_decision} décision${matCounts.site_decision > 1 ? 's' : ''}`)
+  if (matCounts.site_deadline > 0) summaryParts.push(`${matCounts.site_deadline} échéance${matCounts.site_deadline > 1 ? 's' : ''}`)
+  if (life.lastSeenAt) summaryParts.push(`dernière évolution le ${frDate(life.lastSeenAt)}`)
 
   return (
     <>
@@ -520,34 +529,17 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
             )}
           </div>
 
-          {headerParts.length > 0 && (
-            <p className="mt-3 text-sm text-muted-foreground">{headerParts.join(' · ')}</p>
+          {summaryParts.length > 0 && (
+            <p className="mt-3 text-sm text-muted-foreground">{summaryParts.join(' · ')}</p>
           )}
 
-          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-            {life.firstSeenAt && (
-              <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Premier PV</dt>
-                <dd className="mt-0.5">{frDate(life.firstSeenAt)}</dd>
-              </div>
-            )}
-            {life.lastSeenAt && (
-              <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Dernier PV</dt>
-                <dd className="mt-0.5">{frDate(life.lastSeenAt)}</dd>
-              </div>
-            )}
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Occurrences</dt>
-              <dd className="mt-0.5">{realOccurrences.length} PV</dd>
-            </div>
-            {life.threadIds.length > 1 && (
-              <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Fils fusionnés</dt>
-                <dd className="mt-0.5">{life.threadIds.length}</dd>
-              </div>
-            )}
-          </dl>
+          {life.firstSeenAt && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Apparu le {frDate(life.firstSeenAt)}
+              {life.threadIds.length > 1 && ` · ${life.threadIds.length} formulations fusionnées`}
+              {confirmedLinks.length > 0 && ` · ${confirmedLinks.length} lien${confirmedLinks.length > 1 ? 's' : ''} confirmé${confirmedLinks.length > 1 ? 's' : ''}`}
+            </p>
+          )}
         </section>
 
         {/* Ligne de vie horizontale */}
