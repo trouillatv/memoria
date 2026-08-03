@@ -51,6 +51,18 @@ export interface CanonicalLink {
   direction: 'outgoing' | 'incoming'
 }
 
+export type MaterializedEntityType = 'site_action' | 'site_decision' | 'site_reserve' | 'site_deadline'
+
+export interface MaterializedEvent {
+  entityType: MaterializedEntityType
+  entityId: string
+  proposalId: string
+  title: string
+  description: string | null
+  date: string | null
+  status: string | null
+}
+
 export interface CanonicalSubjectLife {
   canonicalSubjectId: string
   siteId: string
@@ -67,6 +79,7 @@ export interface CanonicalSubjectLife {
   runs: Array<{ id: string; documentId: string; effectiveDate: string }>
   occurrences: SubjectOccurrenceMerged[]
   links: CanonicalLink[]
+  materializedEvents: MaterializedEvent[]
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -144,6 +157,7 @@ export async function getCanonicalSubjectLife(
       runs: [],
       occurrences: [],
       links: [],
+      materializedEvents: [],
     }
   }
 
@@ -155,7 +169,7 @@ export async function getCanonicalSubjectLife(
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
       firstSeenAt: null, lastSeenAt: null, currentStatus: null, primaryFamily: null,
-      threadIds, pvCount: 0, runs: [], occurrences: [], links: [],
+      threadIds, pvCount: 0, runs: [], occurrences: [], links: [], materializedEvents: [],
     }
   }
 
@@ -200,7 +214,7 @@ export async function getCanonicalSubjectLife(
       firstSeenAt: null, lastSeenAt: null, currentStatus: null, primaryFamily: null,
       threadIds, pvCount: 0,
       runs: allRuns.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) })),
-      occurrences: [], links: [],
+      occurrences: [], links: [], materializedEvents: [],
     }
   }
 
@@ -281,7 +295,105 @@ export async function getCanonicalSubjectLife(
   const currentStatus = realOccurrences[realOccurrences.length - 1]?.documentStatus ?? null
   const primaryFamily = realOccurrences[0]?.proposalFamily ?? null
 
-  // 6. Liens inter-threads (confirmed + suggested, pas rejected)
+  // 6. Objets matérialisés (provenance exacte via document_proposal_materialization)
+  const materializedEvents: MaterializedEvent[] = []
+  if (proposalIds.length > 0) {
+    const { data: matRows } = await supabase
+      .from('document_proposal_materialization')
+      .select('proposal_id, target_entity_type, target_entity_id')
+      .in('proposal_id', proposalIds)
+      .in('target_entity_type', ['site_action', 'site_decision', 'site_reserve', 'site_deadline'])
+
+    type MatRow = { proposal_id: string; target_entity_type: string; target_entity_id: string }
+    const byType = new Map<string, Array<{ proposalId: string; entityId: string }>>()
+    for (const m of (matRows ?? []) as MatRow[]) {
+      const list = byType.get(m.target_entity_type) ?? []
+      list.push({ proposalId: m.proposal_id, entityId: m.target_entity_id })
+      byType.set(m.target_entity_type, list)
+    }
+
+    const fetches: PromiseLike<void>[] = []
+
+    const actionItems = byType.get('site_action') ?? []
+    if (actionItems.length > 0) {
+      fetches.push(
+        supabase
+          .from('site_actions')
+          .select('id, title, body, due_date, status')
+          .in('id', actionItems.map((e) => e.entityId))
+          .then(({ data }) => {
+            type AR = { id: string; title: string; body: string | null; due_date: string | null; status: string }
+            const byId = new Map(((data ?? []) as AR[]).map((r) => [r.id, r]))
+            for (const e of actionItems) {
+              const r = byId.get(e.entityId)
+              if (!r) continue
+              materializedEvents.push({ entityType: 'site_action', entityId: e.entityId, proposalId: e.proposalId, title: r.title, description: r.body, date: r.due_date, status: r.status })
+            }
+          }),
+      )
+    }
+
+    const decisionItems = byType.get('site_decision') ?? []
+    if (decisionItems.length > 0) {
+      fetches.push(
+        supabase
+          .from('site_decisions')
+          .select('id, titre, description, date_decision, statut')
+          .in('id', decisionItems.map((e) => e.entityId))
+          .then(({ data }) => {
+            type DR = { id: string; titre: string; description: string | null; date_decision: string | null; statut: string | null }
+            const byId = new Map(((data ?? []) as DR[]).map((r) => [r.id, r]))
+            for (const e of decisionItems) {
+              const r = byId.get(e.entityId)
+              if (!r) continue
+              materializedEvents.push({ entityType: 'site_decision', entityId: e.entityId, proposalId: e.proposalId, title: r.titre, description: r.description, date: r.date_decision, status: r.statut })
+            }
+          }),
+      )
+    }
+
+    const reserveItems = byType.get('site_reserve') ?? []
+    if (reserveItems.length > 0) {
+      fetches.push(
+        supabase
+          .from('site_reserve')
+          .select('id, label, issued_on, status')
+          .in('id', reserveItems.map((e) => e.entityId))
+          .then(({ data }) => {
+            type RR = { id: string; label: string; issued_on: string | null; status: string }
+            const byId = new Map(((data ?? []) as RR[]).map((r) => [r.id, r]))
+            for (const e of reserveItems) {
+              const r = byId.get(e.entityId)
+              if (!r) continue
+              materializedEvents.push({ entityType: 'site_reserve', entityId: e.entityId, proposalId: e.proposalId, title: r.label, description: null, date: r.issued_on, status: r.status })
+            }
+          }),
+      )
+    }
+
+    const deadlineItems = byType.get('site_deadline') ?? []
+    if (deadlineItems.length > 0) {
+      fetches.push(
+        supabase
+          .from('site_deadlines')
+          .select('id, title, constraint_text, due_date, status, source_document_effective_date')
+          .in('id', deadlineItems.map((e) => e.entityId))
+          .then(({ data }) => {
+            type DL = { id: string; title: string; constraint_text: string | null; due_date: string | null; status: string; source_document_effective_date: string | null }
+            const byId = new Map(((data ?? []) as DL[]).map((r) => [r.id, r]))
+            for (const e of deadlineItems) {
+              const r = byId.get(e.entityId)
+              if (!r) continue
+              materializedEvents.push({ entityType: 'site_deadline', entityId: e.entityId, proposalId: e.proposalId, title: r.title, description: r.constraint_text, date: r.due_date ?? r.source_document_effective_date, status: r.status })
+            }
+          }),
+      )
+    }
+
+    await Promise.all(fetches)
+  }
+
+  // 7. Liens inter-threads (confirmed + suggested, pas rejected)
   const [outLinksRes, inLinksRes] = await Promise.all([
     supabase
       .from('subject_thread_links')
@@ -376,5 +488,6 @@ export async function getCanonicalSubjectLife(
     runs: allRuns.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) })),
     occurrences,
     links,
+    materializedEvents,
   }
 }

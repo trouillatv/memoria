@@ -1,10 +1,10 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Calendar, FileText, Link2 } from 'lucide-react'
+import { ArrowLeft, Calendar, FileText, Link2, LayoutList } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getCanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
-import type { SubjectOccurrenceMerged, CanonicalLink } from '@/lib/db/canonical-subject-life'
+import type { SubjectOccurrenceMerged, CanonicalLink, MaterializedEvent, MaterializedEntityType } from '@/lib/db/canonical-subject-life'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
 
@@ -62,6 +62,32 @@ const TRANSITION_CONFIG: Record<string, { label: string; icon: string; color: st
   non_mentionné:  { label: 'Non mentionné',  icon: '○',  color: 'bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-300' },
   réapparu:       { label: 'Réapparu',       icon: '↗',  color: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300' },
   changé:         { label: 'Changé',         icon: '~',  color: 'bg-muted text-muted-foreground' },
+}
+
+const ENTITY_TYPE_META: Record<MaterializedEntityType, { label: string; plural: string; color: string }> = {
+  site_action:   { label: 'Action',    plural: 'Actions',    color: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' },
+  site_decision: { label: 'Décision',  plural: 'Décisions',  color: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300' },
+  site_reserve:  { label: 'Réserve',   plural: 'Réserves',   color: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' },
+  site_deadline: { label: 'Échéance',  plural: 'Échéances',  color: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' },
+}
+
+const ENTITY_STATUS_LABELS: Record<string, string> = {
+  // actions
+  open:       'Ouverte',
+  done:       'Clôturée',
+  cancelled:  'Annulée',
+  planned:    'Planifiée',
+  // decisions
+  actee:      'Actée',
+  appliquee:  'Appliquée',
+  caduque:    'Caduque',
+  proposee:   'Proposée',
+  contredite: 'Contredite',
+  // reserves
+  lifted:     'Levée',
+  // deadlines
+  to_plan:    'À planifier',
+  superseded: 'Remplacée',
 }
 
 const LINK_LABELS: Record<string, { out: string; in: string }> = {
@@ -261,6 +287,58 @@ function OccurrenceCard({ occ }: { occ: SubjectOccurrenceMerged }) {
   )
 }
 
+function MaterializedEventsSection({ events }: { events: MaterializedEvent[] }) {
+  const ORDER: MaterializedEntityType[] = ['site_reserve', 'site_action', 'site_decision', 'site_deadline']
+  const byType = new Map<MaterializedEntityType, MaterializedEvent[]>()
+  for (const e of events) {
+    const list = byType.get(e.entityType) ?? []
+    list.push(e)
+    byType.set(e.entityType, list)
+  }
+
+  return (
+    <div className="space-y-4">
+      {ORDER.filter((t) => byType.has(t)).map((t) => {
+        const meta = ENTITY_TYPE_META[t]
+        const items = byType.get(t)!
+        return (
+          <div key={t}>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {meta.plural} ({items.length})
+            </p>
+            <ul className="space-y-1.5">
+              {items.map((ev) => (
+                <li key={ev.entityId} className="flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm">
+                  <span className={cn('mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold', meta.color)}>
+                    {meta.label}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium leading-snug">{ev.title}</p>
+                    {ev.description && (
+                      <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{ev.description}</p>
+                    )}
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      {ev.date && <span>{frDate(ev.date)}</span>}
+                      {ev.status && (
+                        <span className={cn(
+                          'rounded-full px-1.5 py-0.5',
+                          STATUS_COLORS[ev.status] ?? 'bg-muted text-muted-foreground',
+                        )}>
+                          {ENTITY_STATUS_LABELS[ev.status] ?? ev.status}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function RelationsSection({
   links,
   siteId,
@@ -443,6 +521,17 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
             <p className="mt-1 text-[10px] text-muted-foreground">
               Espacé selon les dates réelles · les cercles grisés = PV où le sujet n'est pas mentionné
             </p>
+          </section>
+        )}
+
+        {/* Objets métier matérialisés */}
+        {life.materializedEvents.length > 0 && (
+          <section className="rounded-[18px] border bg-card px-5 py-4 space-y-3">
+            <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <LayoutList className="h-3.5 w-3.5" />
+              Objets métier ({life.materializedEvents.length})
+            </h2>
+            <MaterializedEventsSection events={life.materializedEvents} />
           </section>
         )}
 
