@@ -74,6 +74,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   const assignedCompanyIds = [...new Set([
     ...actions.map((a) => a.assigned_company_id).filter((v): v is string => !!v),
     ...siteDecisions.map((d) => d.decisionnaireCompanyId).filter((v): v is string => !!v),
+    ...reserves.map((r) => r.responsibleCompanyId).filter((v): v is string => !!v),
   ])]
   const assignedContactIds = [...new Set([
     ...actions.map((a) => a.assigned_contact_id).filter((v): v is string => !!v),
@@ -554,6 +555,9 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
                 {/* Le dossier vivant OUVRE les objets qu'il cite : la réserve mène à sa fiche. */}
                 <Link href={`/sites/${id}/reserve/${r.id}`} scroll={false} className="font-medium hover:underline">{r.label}</Link>
                 <span className="text-muted-foreground"> · {r.status === 'lifted' ? 'levée' : 'ouverte'}</span>
+                {r.responsibleCompanyId && companyNameById.get(r.responsibleCompanyId) && (
+                  <span className="text-muted-foreground"> · à lever par {companyNameById.get(r.responsibleCompanyId)}</span>
+                )}
               </li>
             ))}
           </ul>

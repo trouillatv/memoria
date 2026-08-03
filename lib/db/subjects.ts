@@ -16,7 +16,7 @@ import type { DbSubject, SubjectStatus, DbSiteAction, DbSiteReportProposal } fro
 export type SubjectCriticality = 'basse' | 'moyenne' | 'haute'
 
 export interface SubjectReserveLite {
-  id: string; label: string; status: string; issuedOn: string | null
+  id: string; label: string; status: string; issuedOn: string | null; responsibleCompanyId: string | null
 }
 /** `document_type` est NÉCESSAIRE à la destination : un litige ne s ouvre jamais
  *  dans le graphe (cf. lib/knowledge/document-href.ts). Le tronquer ici rendait
@@ -249,7 +249,7 @@ export async function getSubjectThread(subjectId: string): Promise<SubjectThread
 
   const [{ data: actions }, { data: reserves }, { data: decisions }, { data: siteDecisions }, { data: anomI }, { data: anomA }, documents] = await Promise.all([
     supabase.from('site_actions').select('*').eq('subject_id', subjectId).order('created_at', { ascending: false }),
-    supabase.from('site_reserve').select('id, label, status, issued_on').eq('subject_id', subjectId).order('created_at', { ascending: false }),
+    supabase.from('site_reserve').select('id, label, status, issued_on, responsible_company_id').eq('subject_id', subjectId).order('created_at', { ascending: false }),
     supabase.from('site_report_proposals').select('*').eq('subject_id', subjectId).order('created_at', { ascending: false }),
     supabase.from('site_decisions').select('id, titre, statut, date_decision, decisionnaire_company_id, decisionnaire_contact_id').eq('subject_id', subjectId).order('date_decision', { ascending: false }),
     supabase.from('intervention_anomalies').select('id, description, category_other, resolved_at').eq('subject_id', subjectId),
@@ -266,8 +266,8 @@ export async function getSubjectThread(subjectId: string): Promise<SubjectThread
   return {
     subject,
     actions: (actions ?? []) as DbSiteAction[],
-    reserves: ((reserves ?? []) as Array<{ id: string; label: string; status: string; issued_on: string | null }>)
-      .map((r) => ({ id: r.id, label: r.label, status: r.status, issuedOn: r.issued_on })),
+    reserves: ((reserves ?? []) as Array<{ id: string; label: string; status: string; issued_on: string | null; responsible_company_id: string | null }>)
+      .map((r) => ({ id: r.id, label: r.label, status: r.status, issuedOn: r.issued_on, responsibleCompanyId: r.responsible_company_id })),
     decisions: (decisions ?? []) as DbSiteReportProposal[],
     siteDecisions: ((siteDecisions ?? []) as Array<{ id: string; titre: string; statut: string; date_decision: string | null; decisionnaire_company_id: string | null; decisionnaire_contact_id: string | null }>)
       .map((d) => ({ id: d.id, titre: d.titre, statut: d.statut, dateDecision: d.date_decision, decisionnaireCompanyId: d.decisionnaire_company_id, decisionnaireContactId: d.decisionnaire_contact_id })),

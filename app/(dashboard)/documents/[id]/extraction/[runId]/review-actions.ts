@@ -771,6 +771,48 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
         }
       }
 
+      // ── Résolution linkedActorTemporaryKey → site_reserve.responsible_company_id ──
+      // Même règle : stable_key uniquement, company seulement (pas de contact pour les réserves).
+      if (stableKeyToCompanyId.size > 0) {
+        const { resolveLinkedActorsForReserves } = await import('@/lib/documents/linked-actor-resolution')
+
+        const { data: reservePropsRaw } = await admin
+          .from('document_extraction_proposal')
+          .select('id, source_payload')
+          .eq('extraction_run_id', runId)
+          .in('review_status', ['accepted', 'edited', 'materialized'])
+          .eq('proposal_family', 'reservation')
+
+        if (reservePropsRaw && reservePropsRaw.length > 0) {
+          const reserveProposalIds = (reservePropsRaw as Array<{ id: string }>).map((p) => p.id)
+
+          const { data: resMatRows } = await admin
+            .from('document_proposal_materialization')
+            .select('proposal_id, target_entity_id')
+            .in('proposal_id', reserveProposalIds)
+            .eq('target_entity_type', 'site_reserve')
+
+          const materializedReserves = new Map<string, string>(
+            (resMatRows ?? []).map((r) => {
+              const row = r as { proposal_id: string; target_entity_id: string }
+              return [row.proposal_id, row.target_entity_id]
+            }),
+          )
+
+          const resAssignments = resolveLinkedActorsForReserves(
+            reservePropsRaw as Array<{ id: string; source_payload: Record<string, unknown> | null }>,
+            materializedReserves,
+            stableKeyToCompanyId,
+          )
+
+          await Promise.all(
+            resAssignments.map((a) =>
+              admin.from('site_reserve').update({ responsible_company_id: a.companyId }).eq('id', a.siteReserveId),
+            ),
+          )
+        }
+      }
+
       // ── Rattachement sujet choisi → site_decisions.subject_id ───────────────
       // Lit les décisions dont l'opérateur a sélectionné un sujet au moment de l'acceptation
       // (stocké dans source_payload.__subjectId, sans migration).

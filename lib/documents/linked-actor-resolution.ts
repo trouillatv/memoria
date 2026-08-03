@@ -56,6 +56,43 @@ export function resolveLinkedActors(
   return results
 }
 
+export type ReserveActorAssignment = {
+  siteReserveId: string
+  companyId: string
+}
+
+/**
+ * Résout les références linkedActorTemporaryKey des propositions reservation
+ * vers l'ID de compagnie responsable de la levée.
+ * Résolution exclusive par stable_key, aucun fallback. Seule la company est
+ * ciblée (responsible_company_id) — pas de contact pour les réserves.
+ */
+export function resolveLinkedActorsForReserves(
+  reservationProposals: Array<{
+    id: string
+    source_payload: Record<string, unknown> | null
+  }>,
+  materializedReserves: Map<string, string>,  // proposalId → siteReserveId
+  stableKeyToCompanyId: Map<string, string>,
+): ReserveActorAssignment[] {
+  const results: ReserveActorAssignment[] = []
+
+  for (const rp of reservationProposals) {
+    const actorKey = rp.source_payload?.['linkedActorTemporaryKey']
+    if (!actorKey || typeof actorKey !== 'string') continue
+
+    const siteReserveId = materializedReserves.get(rp.id)
+    if (!siteReserveId) continue
+
+    const companyId = stableKeyToCompanyId.get(actorKey)
+    if (companyId) {
+      results.push({ siteReserveId, companyId })
+    }
+  }
+
+  return results
+}
+
 /**
  * Résout les références linkedActorTemporaryKey des propositions decision
  * vers les IDs de compagnie ou contact déjà matérialisés dans le même run.
