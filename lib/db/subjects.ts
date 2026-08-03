@@ -38,6 +38,7 @@ export interface SubjectSummary {
 }
 
 export interface SubjectDecisionLite { id: string; titre: string; statut: string; dateDecision: string | null; decisionnaireCompanyId: string | null; decisionnaireContactId: string | null }
+export interface SubjectDeadlineLite { id: string; title: string; status: string; dueDate: string | null; assignedCompanyId: string | null; assignedContactId: string | null }
 export interface SubjectAnomalyLite { id: string; label: string; open: boolean }
 export interface SubjectThread {
   subject: DbSubject
@@ -45,6 +46,7 @@ export interface SubjectThread {
   reserves: SubjectReserveLite[]
   decisions: DbSiteReportProposal[]
   siteDecisions: SubjectDecisionLite[]
+  siteDeadlines: SubjectDeadlineLite[]
   anomalies: SubjectAnomalyLite[]
   documents: SubjectDocLite[]
 }
@@ -146,7 +148,7 @@ export async function renameSubject(id: string, name: string): Promise<void> {
 
 /** Rattache (ou détache si subjectId=null) un objet à un sujet. */
 export async function attachToSubject(
-  table: 'site_actions' | 'site_reserve' | 'site_report_proposals' | 'site_decisions' | 'intervention_anomalies' | 'report_added_points' | 'site_obligation',
+  table: 'site_actions' | 'site_reserve' | 'site_report_proposals' | 'site_decisions' | 'site_deadlines' | 'intervention_anomalies' | 'report_added_points' | 'site_obligation',
   rowId: string,
   subjectId: string | null,
 ): Promise<void> {
@@ -247,11 +249,12 @@ export async function getSubjectThread(subjectId: string): Promise<SubjectThread
   if (!subject) return null
   const supabase = createAdminClient()
 
-  const [{ data: actions }, { data: reserves }, { data: decisions }, { data: siteDecisions }, { data: anomI }, { data: anomA }, documents] = await Promise.all([
+  const [{ data: actions }, { data: reserves }, { data: decisions }, { data: siteDecisions }, { data: siteDeadlinesRaw }, { data: anomI }, { data: anomA }, documents] = await Promise.all([
     supabase.from('site_actions').select('*').eq('subject_id', subjectId).order('created_at', { ascending: false }),
     supabase.from('site_reserve').select('id, label, status, issued_on, responsible_company_id').eq('subject_id', subjectId).order('created_at', { ascending: false }),
     supabase.from('site_report_proposals').select('*').eq('subject_id', subjectId).order('created_at', { ascending: false }),
     supabase.from('site_decisions').select('id, titre, statut, date_decision, decisionnaire_company_id, decisionnaire_contact_id').eq('subject_id', subjectId).order('date_decision', { ascending: false }),
+    supabase.from('site_deadlines').select('id, title, status, due_date, assigned_company_id, assigned_contact_id').eq('subject_id', subjectId).is('deleted_at', null).order('due_date', { ascending: true }),
     supabase.from('intervention_anomalies').select('id, description, category_other, resolved_at').eq('subject_id', subjectId),
     supabase.from('report_added_points').select('id, label').eq('subject_id', subjectId).eq('kind', 'anomalie'),
     listDocumentsForTarget('subject', subjectId).catch(() => []),
@@ -271,6 +274,8 @@ export async function getSubjectThread(subjectId: string): Promise<SubjectThread
     decisions: (decisions ?? []) as DbSiteReportProposal[],
     siteDecisions: ((siteDecisions ?? []) as Array<{ id: string; titre: string; statut: string; date_decision: string | null; decisionnaire_company_id: string | null; decisionnaire_contact_id: string | null }>)
       .map((d) => ({ id: d.id, titre: d.titre, statut: d.statut, dateDecision: d.date_decision, decisionnaireCompanyId: d.decisionnaire_company_id, decisionnaireContactId: d.decisionnaire_contact_id })),
+    siteDeadlines: ((siteDeadlinesRaw ?? []) as Array<{ id: string; title: string; status: string; due_date: string | null; assigned_company_id: string | null; assigned_contact_id: string | null }>)
+      .map((d) => ({ id: d.id, title: d.title, status: d.status, dueDate: d.due_date, assignedCompanyId: d.assigned_company_id, assignedContactId: d.assigned_contact_id })),
     anomalies,
     // `document_type` voyage jusqu’à l’écran : c’est lui qui décide de la
     // destination. Sans lui, un LITIGE partait vers le graphe, qui le refuse.

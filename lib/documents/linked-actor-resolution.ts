@@ -130,3 +130,47 @@ export function resolveLinkedActorsForDecisions(
 
   return results
 }
+
+export type DeadlineActorAssignment = {
+  siteDeadlineId: string
+  kind: 'company' | 'contact'
+  actorId: string
+}
+
+/**
+ * Résout les références linkedActorTemporaryKey des propositions deadline
+ * vers l'ID de compagnie ou contact responsable.
+ * Même règles que resolveLinkedActors — résolution exclusive par stable_key.
+ */
+export function resolveLinkedActorsForDeadlines(
+  deadlineProposals: Array<{
+    id: string
+    source_payload: Record<string, unknown> | null
+  }>,
+  materializedDeadlines: Map<string, string>,  // proposalId → siteDeadlineId
+  stableKeyToCompanyId: Map<string, string>,
+  stableKeyToContactId: Map<string, string>,
+): DeadlineActorAssignment[] {
+  const results: DeadlineActorAssignment[] = []
+
+  for (const dp of deadlineProposals) {
+    const actorKey = dp.source_payload?.['linkedActorTemporaryKey']
+    if (!actorKey || typeof actorKey !== 'string') continue
+
+    const siteDeadlineId = materializedDeadlines.get(dp.id)
+    if (!siteDeadlineId) continue
+
+    const companyId = stableKeyToCompanyId.get(actorKey)
+    if (companyId) {
+      results.push({ siteDeadlineId, kind: 'company', actorId: companyId })
+      continue
+    }
+
+    const contactId = stableKeyToContactId.get(actorKey)
+    if (contactId) {
+      results.push({ siteDeadlineId, kind: 'contact', actorId: contactId })
+    }
+  }
+
+  return results
+}

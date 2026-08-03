@@ -34,7 +34,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   const { thread, insights } = dossier.detail
   // Niveau 3 — le même sujet canonique à l'échelle de l'org (du local au collectif).
   const orgHistory = await getSubjectOrgHistory((await getOrgIdsOfUser())[0] ?? null, thread.subject.name).catch(() => null) // TODO M4-UX-multiorg : getSubjectOrgHistory multi-org sémantique différé
-  const { subject, actions, reserves, decisions, siteDecisions, anomalies, documents } = thread
+  const { subject, actions, reserves, decisions, siteDecisions, siteDeadlines, anomalies, documents } = thread
   const fr = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : null
 
   // Vue Sujet enrichie (Sprint A) — « répondre en 5 secondes ». Tout dérivé de la
@@ -75,10 +75,12 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
     ...actions.map((a) => a.assigned_company_id).filter((v): v is string => !!v),
     ...siteDecisions.map((d) => d.decisionnaireCompanyId).filter((v): v is string => !!v),
     ...reserves.map((r) => r.responsibleCompanyId).filter((v): v is string => !!v),
+    ...siteDeadlines.map((d) => d.assignedCompanyId).filter((v): v is string => !!v),
   ])]
   const assignedContactIds = [...new Set([
     ...actions.map((a) => a.assigned_contact_id).filter((v): v is string => !!v),
     ...siteDecisions.map((d) => d.decisionnaireContactId).filter((v): v is string => !!v),
+    ...siteDeadlines.map((d) => d.assignedContactId).filter((v): v is string => !!v),
   ])]
   const [{ data: candActions }, { data: candReserves }, { data: candDecisions }, siteDocs, { data: assignedCompanyRows }, { data: assignedContactRows }] = await Promise.all([
     supabase.from('site_actions').select('id, title').eq('site_id', id).is('subject_id', null).in('status', ['open', 'planned']).limit(50),
@@ -563,6 +565,30 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
           </ul>
         )}
       </section>
+
+      {/* Échéances structurées (site_deadlines) — seules les actives (to_plan / planned) montrent une urgence ;
+          les done/cancelled/superseded restent de la mémoire et sont affichées en grisé. */}
+      {siteDeadlines.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold inline-flex items-center gap-2"><CalendarClock className="h-4 w-4 text-orange-500" /> Échéances ({siteDeadlines.length})</h2>
+          <ul className="space-y-1">
+            {siteDeadlines.map((d) => {
+              const isActive = d.status === 'to_plan' || d.status === 'planned'
+              const responsibleCo = d.assignedCompanyId ? companyNameById.get(d.assignedCompanyId) : null
+              const responsibleCt = d.assignedContactId ? contactNameById.get(d.assignedContactId) : null
+              const responsible = responsibleCo && responsibleCt ? `${responsibleCo} · ${responsibleCt}` : responsibleCo ?? responsibleCt ?? null
+              return (
+                <li key={d.id} className={`text-sm rounded-md border bg-card px-3 py-1.5 ${isActive ? '' : 'opacity-60'}`}>
+                  <span className="font-medium">{d.title}</span>
+                  {d.dueDate && <span className="text-muted-foreground"> · {fr(d.dueDate)}</span>}
+                  <span className="text-muted-foreground"> · {d.status === 'to_plan' ? 'à planifier' : d.status === 'planned' ? 'planifiée' : d.status === 'done' ? 'réalisée' : d.status === 'superseded' ? 'remplacée' : 'annulée'}</span>
+                  {responsible && <span className="text-muted-foreground"> · {responsible}</span>}
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
 
       {/* Décisions issues des CR (site_report_proposals). PAS de lien : ces
           propositions ne sont pas des décisions structurées (site_decisions) et

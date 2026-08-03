@@ -813,6 +813,95 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
         }
       }
 
+      // ── Résolution linkedActorTemporaryKey → site_deadlines.assigned_* ──────
+      // Même règle : stable_key uniquement, company + contact (comme les actions).
+      if (stableKeyToCompanyId.size > 0 || stableKeyToContactId.size > 0) {
+        const { resolveLinkedActorsForDeadlines } = await import('@/lib/documents/linked-actor-resolution')
+
+        const { data: deadlinePropsRaw } = await admin
+          .from('document_extraction_proposal')
+          .select('id, source_payload')
+          .eq('extraction_run_id', runId)
+          .in('review_status', ['accepted', 'edited', 'materialized'])
+          .eq('proposal_family', 'deadline')
+
+        if (deadlinePropsRaw && deadlinePropsRaw.length > 0) {
+          const deadlineProposalIds = (deadlinePropsRaw as Array<{ id: string }>).map((p) => p.id)
+
+          const { data: dlMatRows } = await admin
+            .from('document_proposal_materialization')
+            .select('proposal_id, target_entity_id')
+            .in('proposal_id', deadlineProposalIds)
+            .eq('target_entity_type', 'site_deadline')
+
+          const materializedDeadlines = new Map<string, string>(
+            (dlMatRows ?? []).map((r) => {
+              const row = r as { proposal_id: string; target_entity_id: string }
+              return [row.proposal_id, row.target_entity_id]
+            }),
+          )
+
+          const dlAssignments = resolveLinkedActorsForDeadlines(
+            deadlinePropsRaw as Array<{ id: string; source_payload: Record<string, unknown> | null }>,
+            materializedDeadlines,
+            stableKeyToCompanyId,
+            stableKeyToContactId,
+          )
+
+          await Promise.all(
+            dlAssignments.map((a) =>
+              admin.from('site_deadlines').update(
+                a.kind === 'company'
+                  ? { assigned_company_id: a.actorId }
+                  : { assigned_contact_id: a.actorId },
+              ).eq('id', a.siteDeadlineId),
+            ),
+          )
+        }
+      }
+
+      // ── Rattachement sujet choisi → site_deadlines.subject_id ───────────────
+      {
+        const { data: dlSubjectProps } = await admin
+          .from('document_extraction_proposal')
+          .select('id, source_payload')
+          .eq('extraction_run_id', runId)
+          .in('review_status', ['accepted', 'edited', 'materialized'])
+          .eq('proposal_family', 'deadline')
+
+        const dlPropsWithSubject = (dlSubjectProps ?? []).filter((p) => {
+          const sp = p as { id: string; source_payload: Record<string, unknown> | null }
+          return typeof sp.source_payload?.__subjectId === 'string'
+        }) as Array<{ id: string; source_payload: Record<string, unknown> }>
+
+        if (dlPropsWithSubject.length > 0) {
+          const { attachToSubject } = await import('@/lib/db/subjects')
+
+          const propIds = dlPropsWithSubject.map((p) => p.id)
+          const { data: matRowsDl } = await admin
+            .from('document_proposal_materialization')
+            .select('proposal_id, target_entity_id')
+            .in('proposal_id', propIds)
+            .eq('target_entity_type', 'site_deadline')
+
+          const propToDeadline = new Map<string, string>(
+            (matRowsDl ?? []).map((r) => {
+              const row = r as { proposal_id: string; target_entity_id: string }
+              return [row.proposal_id, row.target_entity_id]
+            }),
+          )
+
+          await Promise.all(
+            dlPropsWithSubject.map((p) => {
+              const deadlineId = propToDeadline.get(p.id)
+              const subjectId = p.source_payload.__subjectId as string
+              if (!deadlineId) return Promise.resolve()
+              return attachToSubject('site_deadlines', deadlineId, subjectId)
+            }),
+          )
+        }
+      }
+
       // ── Rattachement sujet choisi → site_decisions.subject_id ───────────────
       // Lit les décisions dont l'opérateur a sélectionné un sujet au moment de l'acceptation
       // (stocké dans source_payload.__subjectId, sans migration).

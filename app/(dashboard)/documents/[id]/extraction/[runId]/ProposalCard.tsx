@@ -471,8 +471,8 @@ export function ProposalCard({
         </div>
       )}
 
-      {/* Sujet canonique — uniquement pour les décisions, avant matérialisation */}
-      {!isMaterialized && displayFamily === 'decision' && siteSubjects && siteSubjects.length > 0 && (
+      {/* Sujet canonique — décisions et échéances, avant matérialisation */}
+      {!isMaterialized && (displayFamily === 'decision' || displayFamily === 'deadline') && siteSubjects && siteSubjects.length > 0 && (
         <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 space-y-1.5">
           <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Sujet concerné (optionnel)</p>
           {localSubjectId ? (
