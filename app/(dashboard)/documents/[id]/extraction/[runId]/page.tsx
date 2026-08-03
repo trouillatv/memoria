@@ -9,6 +9,7 @@ import { getDocument } from '@/lib/db/documents'
 import { getExtractionRun, listExtractionForReview, listOrphanEvidenceForRun, listCandidateLinksForRun, getIllustratesLinksForRun } from '@/lib/db/document-extractions'
 import { computeReviewSummary } from '@/lib/documents/effective-proposal'
 import { getExistingMaterializedVisit } from '@/lib/db/historical-visit-materialization'
+import { listSuggestionsForReview } from '@/lib/db/subject-suggestions'
 import { ExtractionReviewClient } from './ExtractionReviewClient'
 
 const SIGNED_URL_TTL = 300
@@ -91,12 +92,13 @@ export default async function ExtractionReviewPage({
 
   // Charger les données de revue + visite déjà matérialisée (idempotence)
   const admin = createAdminClient()
-  const [proposalsWithEvidence, orphanEvidenceRaw, alreadySiteReportId, candidateLinks, illustratesLinks] = await Promise.all([
+  const [proposalsWithEvidence, orphanEvidenceRaw, alreadySiteReportId, candidateLinks, illustratesLinks, subjectSuggestions] = await Promise.all([
     listExtractionForReview(runId),
     listOrphanEvidenceForRun(runId),
     getExistingMaterializedVisit(runId),
     listCandidateLinksForRun(runId),
     getIllustratesLinksForRun(runId),
+    listSuggestionsForReview(runId, run.target_site_id ?? null),
   ])
 
   // Normalisation idempotente : pour chaque page ayant des images natives,
@@ -198,6 +200,7 @@ export default async function ExtractionReviewPage({
         initialIllustratesLinks={illustratesLinks}
         initialStatus={sp.status ?? null}
         initialType={sp.type ?? null}
+        subjectSuggestions={subjectSuggestions}
       />
     </div>
   )

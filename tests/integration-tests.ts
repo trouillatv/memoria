@@ -76,4 +76,5 @@ export const INTEGRATION_TESTS: string[] = [
   'tests/lib/occurrence-identity.test.ts',
   'tests/lib/site-resume-context.test.ts',
   'tests/lib/skip-intervention.test.ts',
+  'tests/lib/subject-suggestion-rpcs.test.ts',
 ]

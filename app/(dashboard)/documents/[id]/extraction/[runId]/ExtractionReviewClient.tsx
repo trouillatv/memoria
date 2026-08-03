@@ -4,6 +4,7 @@ import { useState, useTransition, useMemo } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import { ProposalCard } from './ProposalCard'
+import { SubjectSuggestionsSection } from './SubjectSuggestionsSection'
 import {
   createHistoricalVisitAction, acceptAllPendingAction,
   toggleEvidencePinAction, pinAllSnapshotsAction,
@@ -12,6 +13,7 @@ import {
 } from './review-actions'
 import type { DocumentExtractionProposalWithEvidence, DbDocumentExtractionEvidence, DocumentEvidenceRelationType } from '@/types/db'
 import type { ReviewSummary } from '@/lib/documents/effective-proposal'
+import type { SubjectSuggestionRow } from '@/lib/db/subject-suggestions'
 
 type CandidateLink = {
   evidence_id: string
@@ -376,6 +378,7 @@ export function ExtractionReviewClient({
   initialIllustratesLinks,
   initialStatus,
   initialType,
+  subjectSuggestions,
 }: {
   proposals: DocumentExtractionProposalWithEvidence[]
   orphanEvidence: DbDocumentExtractionEvidence[]
@@ -390,6 +393,7 @@ export function ExtractionReviewClient({
   initialIllustratesLinks: IllustratesLink[]
   initialStatus?: string | null
   initialType?: string | null
+  subjectSuggestions?: SubjectSuggestionRow[]
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -658,6 +662,11 @@ export function ExtractionReviewClient({
         createError={createError}
         onSubmit={handleCreateVisit}
       />
+
+      {/* Rapprochements sémantiques */}
+      {subjectSuggestions && subjectSuggestions.length > 0 && (
+        <SubjectSuggestionsSection initialSuggestions={subjectSuggestions} />
+      )}
 
       {/* Filtres statut */}
       <div className="flex gap-2 flex-wrap items-center">

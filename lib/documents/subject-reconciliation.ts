@@ -294,7 +294,7 @@ export async function reconcileSubjectThreads(
     .eq('extraction_run_id', runId)
     .is('subject_thread_id', null)
   if (newErr) throw new Error(newErr.message)
-  if (!newRaw?.length) return { matched: 0, created: 0 }
+  if (!newRaw?.length) return { matched: 0, created: 0, orphans: [] }
   const newProposals = newRaw as ProposalStub[]
 
   // Charger les propositions antérieures issues uniquement des runs canoniques.
