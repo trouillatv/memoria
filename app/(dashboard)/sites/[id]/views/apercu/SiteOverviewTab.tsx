@@ -20,9 +20,11 @@ import { cn } from '@/lib/utils'
 import {
   getSiteOverview,
   emptySiteOverview,
-  type AttentionKind,
   type ActionUrgency,
   type SiteOverview,
+  type PvAttentionItem,
+  type PvVerifyItem,
+  type PvLastDelta,
 } from '@/lib/knowledge/site-overview'
 import { sourceLabels, pendingLabel, visitDateLabel, durationLabel } from '@/lib/chantier/overview-labels'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
@@ -40,8 +42,9 @@ import { SiteBriefButton } from '../../SiteBriefButton'
 export async function SiteOverviewTab({ siteId }: { siteId: string }) {
   const overview = await getSiteOverview(siteId).catch(() => emptySiteOverview(siteId))
   const {
-    actions, attention, nextEvent, recentChanges, reserves, blockages, activity, synthesis,
+    actions, nextEvent, reserves, blockages, activity, synthesis,
     knowledge, stakeholders, deadlines, watchpoints, decisions,
+    pvAttention, pvLastDelta, pvToVerify,
   } = overview
   // La synthèse de la dernière visite est l'endroit où l'on confirme les propositions.
   const synthesisHref = activity.lastVisit
@@ -240,28 +243,60 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
         </section>
       )}
 
-      <div className="grid items-start gap-4 xl:grid-cols-[0.9fr_1.2fr_0.9fr]">
-        {/* L'attention NOMME ses raisons — jamais un simple voyant. */}
-        <OverviewPanel title="Ce qui réclame mon attention">
-          {attention.reasons.length > 0 ? (
+      {/* ── SIGNAUX PV CANONIQUES ─────────────────────────────────────────────
+          Trois blocs qui répondent aux trois questions d'un conducteur qui arrive :
+          Qu'est-ce qui me pose problème ? / Qu'est-ce qui a changé ? / Où regarder ?
+          Source : moteurs Histoire (computeWatchlist, computeDeltaSummary, getImportantSubjects).
+          JAMAIS de nouveau scoring opaque — on compose les moteurs stabilisés. */}
+
+      {/* Depuis le dernier PV — signal compact, pas une liste */}
+      {pvLastDelta && (
+        <PvDeltaBanner delta={pvLastDelta} siteId={siteId} />
+      )}
+
+      <div className="grid items-start gap-4 xl:grid-cols-3">
+        {/* Ce qui demande votre attention — sujets canoniques classés par sévérité */}
+        <OverviewPanel title="Ce qui demande votre attention">
+          {pvAttention.length > 0 ? (
             <ul className="space-y-3">
-              {attention.reasons.map((reason) => (
-                <li key={reason.id}>
+              {pvAttention.map((item, i) => (
+                <li key={item.canonicalSubjectId ?? `watch-${i}`}>
                   <OverviewRow
-                    href={reason.href}
-                    icon={attentionIcon(reason.kind)}
-                    tone={attentionTone(reason.kind)}
-                    title={reason.title}
-                    detail={reason.detail}
+                    href={item.href}
+                    icon={pvAttentionIcon(item.reason)}
+                    tone={pvAttentionTone(item.reason)}
+                    title={item.label}
+                    detail={pvAttentionDetail(item)}
                   />
                 </li>
               ))}
             </ul>
           ) : (
-            <EmptyLine>Rien ne réclame votre attention pour l&apos;instant.</EmptyLine>
+            <EmptyLine>Aucun sujet canonique ne signale de problème.</EmptyLine>
           )}
         </OverviewPanel>
 
+        {/* À vérifier — sujets importants classés par score, avec signaux forts */}
+        <OverviewPanel title="À vérifier">
+          {pvToVerify.length > 0 ? (
+            <ul className="space-y-2.5">
+              {pvToVerify.map((item) => (
+                <li key={item.canonicalSubjectId}>
+                  <PvVerifyRow item={item} />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyLine>Aucun sujet canonique à vérifier pour l&apos;instant.</EmptyLine>
+          )}
+          <div className="pt-2">
+            <Link href={`/sites/${siteId}/historique?view=lifelines`} className="text-sm font-medium text-primary hover:underline">
+              Voir tous les sujets
+            </Link>
+          </div>
+        </OverviewPanel>
+
+        {/* Que reste-t-il à faire ? — actions métier (distinctes des sujets canoniques) */}
         <OverviewPanel title="Que reste-t-il à faire ?">
           {actions.priority.length > 0 ? (
             <ul className="space-y-2.5">
@@ -285,22 +320,6 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
               Voir toutes les actions
             </Link>
           </div>
-        </OverviewPanel>
-
-        <OverviewPanel title="Depuis ma dernière venue">
-          {recentChanges.length > 0 ? (
-            <ol className="relative space-y-3 border-l border-border pl-4">
-              {recentChanges.map((change) => (
-                <li key={change.id} className="relative">
-                  <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-background" />
-                  <p className="text-sm font-medium">{change.title}</p>
-                  <p className="text-xs text-muted-foreground">{formatRelativeDate(change.occurredAt)}</p>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <EmptyLine>Aucun changement significatif à afficher.</EmptyLine>
-          )}
         </OverviewPanel>
       </div>
 
@@ -340,6 +359,81 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
       </section>
     </main>
   )
+}
+
+// ── Composants des 3 blocs PV ────────────────────────────────────────────────
+
+/** Banner compact "Depuis le dernier PV" — signal uniquement, lien vers Histoire. */
+function PvDeltaBanner({ delta, siteId }: { delta: PvLastDelta; siteId: string }) {
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+
+  const parts: string[] = []
+  if (delta.nouveaux > 0) parts.push(`${delta.nouveaux} apparu${delta.nouveaux > 1 ? 's' : ''}`)
+  if (delta.aggravésRéouverts > 0) parts.push(`${delta.aggravésRéouverts} aggravé${delta.aggravésRéouverts > 1 ? 's' : ''}`)
+  if (delta.réalisésLevés > 0) parts.push(`${delta.réalisésLevés} traité${delta.réalisésLevés > 1 ? 's' : ''}`)
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[14px] border bg-card px-4 py-2.5 shadow-sm">
+      <span className="text-[13px] font-medium text-muted-foreground">
+        Depuis le PV du {fmtDate(delta.fromDate)}
+      </span>
+      <span className="text-muted-foreground/40">·</span>
+      {parts.length > 0 ? (
+        <span className="text-[13px] text-foreground/80">{parts.join(' · ')}</span>
+      ) : (
+        <span className="text-[13px] text-muted-foreground">Aucune transition notable</span>
+      )}
+      <Link
+        href={`/sites/${siteId}/historique?view=synthese`}
+        className="ml-auto shrink-0 text-[13px] font-medium text-primary hover:underline"
+      >
+        Voir les détails →
+      </Link>
+    </div>
+  )
+}
+
+/** Ligne du bloc "À vérifier" avec signaux et badge dépendances. */
+function PvVerifyRow({ item }: { item: PvVerifyItem }) {
+  return (
+    <Link
+      href={item.href}
+      className="flex items-start gap-3 rounded-xl p-1.5 hover:bg-muted/60"
+    >
+      <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-50 dark:bg-sky-950/30">
+        <ChevronRight className="h-4 w-4 text-sky-600 dark:text-sky-300" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium">{item.label}</span>
+        <span className="mt-0.5 block text-xs text-muted-foreground">{item.signals.join(' · ')}</span>
+        {item.pendingLinks > 0 && (
+          <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+            {item.pendingLinks} relation{item.pendingLinks > 1 ? 's' : ''} à valider
+          </span>
+        )}
+      </span>
+    </Link>
+  )
+}
+
+function pvAttentionIcon(reason: PvAttentionItem['reason']) {
+  if (reason === 'non_conforme') return ShieldAlert
+  if (reason === 'aggravé' || reason === 'réouvert') return AlertTriangle
+  return Clock
+}
+
+function pvAttentionTone(reason: PvAttentionItem['reason']): 'green' | 'orange' | 'red' | 'blue' {
+  if (reason === 'non_conforme') return 'red'
+  if (reason === 'aggravé' || reason === 'réouvert') return 'orange'
+  return 'blue'
+}
+
+function pvAttentionDetail(item: PvAttentionItem): string {
+  if (item.reason === 'non_conforme')  return 'Non-conformité signalée'
+  if (item.reason === 'aggravé')       return 'Aggravé au dernier PV'
+  if (item.reason === 'réouvert')      return 'Réouvert au dernier PV'
+  return `Sans évolution depuis ${item.pvCount} PV${item.pvCount > 1 ? 's' : ''}`
 }
 
 /** Un groupe de « ce que MemorIA a retenu » : le VALIDÉ d'abord, le PROPOSÉ ensuite —
@@ -596,19 +690,6 @@ function urgencyTone(urgency: ActionUrgency): 'green' | 'orange' | 'red' | 'blue
   return 'blue'
 }
 
-function attentionIcon(kind: AttentionKind) {
-  if (kind === 'blocage_active') return ShieldAlert
-  if (kind === 'action_overdue') return Clock
-  if (kind === 'event_upcoming') return Calendar
-  return AlertTriangle
-}
-
-function attentionTone(kind: AttentionKind): 'green' | 'orange' | 'red' | 'blue' {
-  if (kind === 'blocage_active') return 'red'
-  if (kind === 'event_upcoming') return 'blue'
-  return 'orange'
-}
-
 // Rendu SERVEUR (Vercel = UTC) : sans fuseau explicite, l'heure d'une réunion
 // s'affiche décalée de 11 h et sa date peut reculer d'un jour. Le fuseau de
 // l'organisation est la seule vérité pour un conducteur.
@@ -621,7 +702,6 @@ const longEventFmt = new Intl.DateTimeFormat('fr-FR', {
   hour: '2-digit',
   minute: '2-digit',
 })
-const relativeFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: NOUMEA_TZ, day: '2-digit', month: 'short' })
 
 function formatShortEventDate(iso: string): string {
   return shortDateFmt.format(new Date(iso))
@@ -629,8 +709,4 @@ function formatShortEventDate(iso: string): string {
 
 function formatLongEventDate(iso: string): string {
   return longEventFmt.format(new Date(iso))
-}
-
-function formatRelativeDate(iso: string): string {
-  return relativeFmt.format(new Date(iso))
 }

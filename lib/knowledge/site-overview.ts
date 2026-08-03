@@ -49,6 +49,20 @@ import {
   type OverviewChangeInput,
   type OverviewEventInput,
 } from '@/lib/chantier/overview-projections'
+import {
+  canonicalRunsForSite,
+  runEffectiveDate,
+  getSiteSubjectMatrix,
+} from '@/lib/documents/pv-history'
+import {
+  computeWatchlist,
+  computeDeltaSummary,
+  getImportantSubjects,
+  type WatchlistEntry,
+  type ImportantSubject,
+} from '@/lib/documents/site-synthesis'
+import { getPvDelta } from '@/lib/documents/pv-comparison'
+import { getSuggestedLinkCountsBySite } from '@/lib/db/subject-thread-links'
 
 const TOP = 3
 const HISTORY_LIMIT = 5
@@ -58,6 +72,34 @@ const GENERATING_LEASE_MS = 120_000
 
 export interface KnowledgeItem { id: string; title: string }
 export interface HistoryItem { id: string; label: string; at: string; kind: string; href: string; detail: string | null }
+
+// ── Signaux PV canoniques (3 blocs Aperçu) ───────────────────────────────────
+/** Un sujet qui demande de l'attention — classé par sévérité décroissante. */
+export interface PvAttentionItem {
+  canonicalSubjectId: string | null
+  label: string
+  reason: 'non_conforme' | 'aggravé' | 'réouvert' | 'sans_évolution'
+  pvCount: number
+  href: string
+}
+
+/** Signal compact du dernier delta inter-PV. */
+export interface PvLastDelta {
+  fromDate: string
+  toDate: string
+  nouveaux: number
+  aggravésRéouverts: number
+  réalisésLevés: number
+}
+
+/** Un sujet canonique à vérifier, avec les signaux forts qui le qualifient. */
+export interface PvVerifyItem {
+  canonicalSubjectId: string
+  label: string
+  signals: string[]
+  pendingLinks: number
+  href: string
+}
 
 // ── Attention ────────────────────────────────────────────────────────────────
 // JAMAIS un niveau opaque : l'écran doit pouvoir dire POURQUOI le chantier réclame
@@ -197,6 +239,12 @@ export interface SiteOverview {
    *  par /recit ou /subjects — la Mémoire mobile, elle, les montrait. */
   decisions: KnowledgeSection
   history: HistoryItem[]
+  /** Sujets canoniques qui demandent de l'attention (non-conformes, aggravés, stagnants). */
+  pvAttention: PvAttentionItem[]
+  /** Signal compact du dernier intervalle inter-PV (null si < 2 PVs). */
+  pvLastDelta: PvLastDelta | null
+  /** Sujets canoniques à vérifier en priorité (score + signaux forts + suggestions). */
+  pvToVerify: PvVerifyItem[]
 }
 
 // `proposedOnly` a été SUPPRIMÉE : elle affichait le proposé sans le validé, pour
@@ -360,7 +408,91 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
     knowledge: { ...emptySection },
     decisions: { ...emptySection },
     history: [],
+    pvAttention: [],
+    pvLastDelta: null,
+    pvToVerify: [],
   }
+}
+
+const PV_ATTENTION_MAX = 5
+const PV_VERIFY_MAX    = 5
+
+/** Construit les 3 blocs PV en parallèle. Retourne null si le chantier n'a pas de PV analysés. */
+async function fetchPvSignalData(siteId: string): Promise<{
+  pvAttention: PvAttentionItem[]
+  pvLastDelta: PvLastDelta | null
+  pvToVerify: PvVerifyItem[]
+} | null> {
+  const [runs, matrix, importantSubjects, suggestedCounts] = await Promise.all([
+    canonicalRunsForSite(siteId).catch(() => []),
+    getSiteSubjectMatrix(siteId).catch(() => null),
+    getImportantSubjects(siteId).catch(() => [] as ImportantSubject[]),
+    getSuggestedLinkCountsBySite(siteId).catch(() => ({} as Record<string, number>)),
+  ])
+
+  if (runs.length === 0 && !matrix) return null
+
+  // Map threadId → canonicalSubjectId pour enrichir les WatchlistEntry
+  const threadToCs = new Map<string, string | null>()
+  if (matrix) {
+    for (const row of matrix.rows) {
+      if (row.canonicalSubjectId) threadToCs.set(row.subjectThreadId, row.canonicalSubjectId)
+    }
+  }
+
+  // Bloc 1 — Ce qui demande votre attention
+  const watchlist: WatchlistEntry[] = matrix ? computeWatchlist(matrix) : []
+  const pvAttention: PvAttentionItem[] = watchlist.slice(0, PV_ATTENTION_MAX).map((w) => {
+    const csId = threadToCs.get(w.subjectThreadId) ?? null
+    return {
+      canonicalSubjectId: csId,
+      label: w.label,
+      reason: w.reason,
+      pvCount: w.pvCount,
+      href: csId
+        ? `/sites/${siteId}/historique/sujets/${csId}`
+        : `/sites/${siteId}/historique?view=lifelines`,
+    }
+  })
+
+  // Bloc 2 — Depuis le dernier PV
+  let pvLastDelta: PvLastDelta | null = null
+  if (runs.length >= 2) {
+    const fromRun = runs[runs.length - 2]
+    const toRun   = runs[runs.length - 1]
+    const delta   = await getPvDelta(fromRun.id, toRun.id).catch(() => null)
+    if (delta) {
+      const summary = computeDeltaSummary(delta)
+      pvLastDelta = {
+        fromDate:          runEffectiveDate(fromRun),
+        toDate:            runEffectiveDate(toRun),
+        nouveaux:          summary.nouveaux.length,
+        aggravésRéouverts: summary.aggravésRéouverts.length,
+        réalisésLevés:     summary.réalisésLevés.length,
+      }
+    }
+  }
+
+  // Bloc 3 — À vérifier
+  const pvToVerify: PvVerifyItem[] = importantSubjects
+    .slice(0, PV_VERIFY_MAX)
+    .map((s) => {
+      const signals: string[] = []
+      if (s.overdueDeadlines > 0)  signals.push(`${s.overdueDeadlines} échéance${s.overdueDeadlines > 1 ? 's' : ''} en retard`)
+      if (s.openReserves > 0)      signals.push(`${s.openReserves} réserve${s.openReserves > 1 ? 's' : ''} ouverte${s.openReserves > 1 ? 's' : ''}`)
+      if (s.reappearance)          signals.push('réapparu après absence')
+      if (signals.length === 0)    signals.push(`${s.pvCount} PV · score ${s.score}`)
+      const pendingLinks = suggestedCounts[s.canonicalSubjectId] ?? 0
+      return {
+        canonicalSubjectId: s.canonicalSubjectId,
+        label:              s.label,
+        signals,
+        pendingLinks,
+        href:               `/sites/${siteId}/historique/sujets/${s.canonicalSubjectId}`,
+      }
+    })
+
+  return { pvAttention, pvLastDelta, pvToVerify }
 }
 
 /**
@@ -368,7 +500,7 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
  * a son repli, et la forme est toujours complète (aucun `undefined`).
  */
 export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
-  const [proj, actionRows, aSavoir, intervenants, recent, identity, synth, blocages, statusSummary, memorySignals, currentState, activity, deadlineRows, watchpointRows, knowledgeRows, decisionRows] = await Promise.all([
+  const [proj, actionRows, aSavoir, intervenants, recent, identity, synth, blocages, statusSummary, memorySignals, currentState, activity, deadlineRows, watchpointRows, knowledgeRows, decisionRows, pvSignal] = await Promise.all([
     getSiteProjection(siteId).catch(() => emptySiteProjection()),
     readSiteActionSummaries(siteId).catch(() => [] as ActionSummaryRow[]),
     listSiteASavoirActive(siteId).catch(() => []),
@@ -389,6 +521,8 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     // Les décisions ACTÉES — même source que la Mémoire mobile, pour qu'un fait
     // ne soit pas vrai sur un écran et absent de l'autre.
     listDecisionsBySite(siteId).catch(() => [] as SiteDecision[]),
+    // Signaux PV canoniques : 3 blocs de l'Aperçu construits sur la structure Histoire.
+    fetchPvSignalData(siteId).catch(() => null),
   ])
 
   // ── Actions : proposé (projection) + validé (site_actions actives) ──
@@ -576,5 +710,8 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
       href: a.href,
       detail: a.detail,
     })),
+    pvAttention:  pvSignal?.pvAttention  ?? [],
+    pvLastDelta:  pvSignal?.pvLastDelta  ?? null,
+    pvToVerify:   pvSignal?.pvToVerify   ?? [],
   }
 }
