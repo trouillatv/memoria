@@ -3,18 +3,13 @@ import type { ComponentType, ReactNode } from 'react'
 import {
   AlertTriangle,
   Calendar,
-  CalendarClock,
   Check,
   ChevronRight,
   Clock,
   Footprints,
-  Gavel,
-  Info,
   ListTodo,
   RefreshCw,
   ShieldAlert,
-  Sparkles,
-  Users,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -43,18 +38,12 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
   const overview = await getSiteOverview(siteId).catch(() => emptySiteOverview(siteId))
   const {
     actions, nextEvent, reserves, blockages, activity, synthesis,
-    knowledge, stakeholders, deadlines, watchpoints, decisions,
     pvAttention, pvLastDelta, pvToVerify,
   } = overview
   // La synthèse de la dernière visite est l'endroit où l'on confirme les propositions.
   const synthesisHref = activity.lastVisit
     ? `/sites/${siteId}/visites/${activity.lastVisit.reportId}`
     : undefined
-  const retainedTotal = stakeholders.summary.proposed + stakeholders.summary.confirmed
-    + deadlines.summary.proposed + deadlines.summary.confirmed
-    + knowledge.summary.proposed + knowledge.summary.confirmed
-    + watchpoints.summary.proposed + watchpoints.summary.confirmed
-    + decisions.summary.proposed + decisions.summary.confirmed
 
   return (
     <main className="space-y-4">
@@ -146,71 +135,6 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
               </span>
             </p>
           )}
-        </section>
-      )}
-
-      {/* ── CE QUE MEMORIA A RETENU ──────────────────────────────────────────
-          La visite raconte UNE histoire, pas quatre widgets : elle suit le bloc
-          « Dernière visite » et précède les actions. Ces objets vivaient déjà dans
-          le contrat sans jamais atteindre l'écran — la connaissance existait, elle
-          était invisible. Un objet métier n'est terminé que lorsqu'il est visible
-          là où il doit apparaître. */}
-      {retainedTotal > 0 && (
-        <section className="rounded-[18px] border bg-card p-4 shadow-sm">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Ce que MemorIA a retenu
-            </h2>
-          </div>
-          <div className="mt-3 grid items-start gap-x-6 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
-            {/* L'Aperçu ne porte qu'une SYNTHÈSE des intervenants (arbitrage
-                2026-07-18) : entreprises + compte + « Voir tous ». La liste
-                complète et « À identifier » vivent dans l'onglet Intervenants —
-                sinon l'Aperçu grossirait bloc après bloc. */}
-            <IntervenantsSummaryCard
-              siteId={siteId}
-              companies={overview.stakeholderCompanies}
-              confirmed={stakeholders.summary.confirmed}
-              toIdentify={stakeholders.summary.proposed}
-            />
-            <KnowledgeGroup
-              title="Échéances"
-              icon={CalendarClock}
-              proposed={deadlines.proposed}
-              confirmed={deadlines.confirmed}
-              summary={deadlines.summary}
-              href={`/sites/${siteId}?tab=planning`}
-            />
-            <KnowledgeGroup
-              title="À savoir"
-              icon={Info}
-              proposed={knowledge.proposed}
-              confirmed={knowledge.confirmed}
-              summary={knowledge.summary}
-              href={`/sites/${siteId}?tab=memoire`}
-            />
-            <KnowledgeGroup
-              title="Points de vigilance"
-              icon={ShieldAlert}
-              proposed={watchpoints.proposed}
-              confirmed={watchpoints.confirmed}
-              summary={watchpoints.summary}
-              href={synthesisHref}
-            />
-            {/* Les décisions ACTÉES. L'objet le plus durable du produit était
-                absent de la vue qui prétend résumer le chantier — la Mémoire
-                mobile les montrait, l'Aperçu non. Un fait ne peut pas être vrai
-                sur un écran et inexistant sur l'autre. */}
-            <KnowledgeGroup
-              title="Décisions"
-              icon={Gavel}
-              proposed={decisions.proposed}
-              confirmed={decisions.confirmed}
-              summary={decisions.summary}
-              href={synthesisHref}
-            />
-          </div>
         </section>
       )}
 
@@ -434,102 +358,6 @@ function pvAttentionDetail(item: PvAttentionItem): string {
   if (item.reason === 'aggravé')       return 'Aggravé au dernier PV'
   if (item.reason === 'réouvert')      return 'Réouvert au dernier PV'
   return `Sans évolution depuis ${item.pvCount} PV${item.pvCount > 1 ? 's' : ''}`
-}
-
-/** Un groupe de « ce que MemorIA a retenu » : le VALIDÉ d'abord, le PROPOSÉ ensuite —
- *  jamais mélangés. Silence total quand l'objet n'a rien à dire (pas de carte vide). */
-/** La synthèse Intervenants de l'Aperçu — la carte validée sur maquette
- *  (2026-07-18) : entreprises, compte, « à identifier », Voir tous. */
-function IntervenantsSummaryCard({
-  siteId,
-  companies,
-  confirmed,
-  toIdentify,
-}: {
-  siteId: string
-  companies: string[]
-  confirmed: number
-  toIdentify: number
-}) {
-  if (confirmed + toIdentify === 0) return null
-  return (
-    <div>
-      <div className="flex items-center gap-2">
-        <Users className="h-3.5 w-3.5 text-muted-foreground" />
-        <h3 className="text-[13px] font-medium text-muted-foreground">Intervenants</h3>
-        <span className="text-[13px] font-semibold tabular-nums">{confirmed + toIdentify}</span>
-        {toIdentify > 0 && (
-          <span className="rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
-            {toIdentify} à identifier
-          </span>
-        )}
-      </div>
-      {companies.length > 0 && (
-        <p className="mt-1.5 text-[13px] font-medium text-foreground/90">
-          {companies.slice(0, 4).join(' · ')}
-          {companies.length > 4 && ` · +${companies.length - 4}`}
-        </p>
-      )}
-      <Link
-        href={`/sites/${siteId}?tab=intervenants`}
-        className="mt-1 inline-block text-[13px] font-medium text-primary hover:underline"
-      >
-        Voir tous →
-      </Link>
-    </div>
-  )
-}
-
-function KnowledgeGroup({
-  title,
-  icon: Icon,
-  proposed,
-  confirmed,
-  summary,
-  href,
-}: {
-  title: string
-  icon: ComponentType<{ className?: string }>
-  proposed: Array<{ id: string; title: string }>
-  confirmed: Array<{ id: string; title: string }>
-  summary: { proposed: number; confirmed: number }
-  href?: string
-}) {
-  const total = summary.proposed + summary.confirmed
-  if (total === 0) return null
-  const body = (
-    <>
-      <div className="flex items-center gap-2">
-        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-        <h3 className="text-[13px] font-medium text-muted-foreground">{title}</h3>
-        <span className="text-[13px] font-semibold tabular-nums">{total}</span>
-        {summary.proposed > 0 && (
-          <span className="rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
-            {summary.proposed} à confirmer
-          </span>
-        )}
-      </div>
-      <ul className="mt-1.5 space-y-1">
-        {confirmed.map((item) => (
-          <li key={item.id} className="line-clamp-2 text-[13px] text-foreground/90">
-            {item.title}
-          </li>
-        ))}
-        {proposed.map((item) => (
-          <li key={item.id} className="line-clamp-2 text-[13px] text-muted-foreground">
-            {item.title}
-          </li>
-        ))}
-      </ul>
-    </>
-  )
-  return href ? (
-    <Link href={href} className="block rounded-xl p-1.5 transition hover:bg-muted/50">
-      {body}
-    </Link>
-  ) : (
-    <div className="rounded-xl p-1.5">{body}</div>
-  )
 }
 
 /** L'état de la synthèse, dit en clair — jamais un jargon de développeur. */

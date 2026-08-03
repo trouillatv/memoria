@@ -73,6 +73,10 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
     ? await getSuggestedLinkCountsBySite(siteId).catch(() => ({}))
     : {}
 
+  const importanceScoreMap: Record<string, number> = Object.fromEntries(
+    importantSubjects.map((s) => [s.canonicalSubjectId, s.score])
+  )
+
   const evolutionData = view === 'evolution'
     ? await (async () => {
         try {
@@ -203,6 +207,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
               initialThread={initialThread}
               initialTheme={initialTheme}
               suggestedCounts={suggestedCounts}
+              importanceScores={importanceScoreMap}
             />
           ) : (
             <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">

@@ -36,7 +36,7 @@ function cellStyle(cell: MatrixCell | null): CellStyle {
 
 // ── Filtres ───────────────────────────────────────────────────────────────────
 
-type SortKey = 'recent' | 'duration' | 'severity' | 'theme' | 'alpha'
+type SortKey = 'importance' | 'recent' | 'duration' | 'severity' | 'theme' | 'alpha'
 type StatusFilter = 'all' | 'open' | 'alert'
 
 const FAMILY_LABELS: Record<string, string> = {
@@ -79,14 +79,15 @@ interface Props {
   initialThread?: string | null
   initialTheme?: string | null
   suggestedCounts?: Record<string, number>
+  importanceScores?: Record<string, number>
 }
 
-export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialTheme, suggestedCounts }: Props) {
+export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialTheme, suggestedCounts, importanceScores }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  const [sort, setSort] = useState<SortKey>('recent')
+  const [sort, setSort] = useState<SortKey>('importance')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [themeFilter, setThemeFilter] = useState<string>(initialTheme ?? 'all')
   const [hideInfo, setHideInfo] = useState(true)
@@ -134,14 +135,20 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
     }
 
     const sorted = [...rows]
-    if (sort === 'recent') sorted.sort((a, b) => rowLastActiveIndex(b) - rowLastActiveIndex(a))
+    if (sort === 'importance') {
+      sorted.sort((a, b) => {
+        const sa = a.canonicalSubjectId ? (importanceScores?.[a.canonicalSubjectId] ?? 0) : 0
+        const sb = b.canonicalSubjectId ? (importanceScores?.[b.canonicalSubjectId] ?? 0) : 0
+        return sb - sa
+      })
+    } else if (sort === 'recent') sorted.sort((a, b) => rowLastActiveIndex(b) - rowLastActiveIndex(a))
     else if (sort === 'duration') sorted.sort((a, b) => rowDuration(b) - rowDuration(a))
     else if (sort === 'severity') sorted.sort((a, b) => rowSeverity(a) - rowSeverity(b))
     else if (sort === 'theme') sorted.sort((a, b) => (a.thematicCategory ?? '').localeCompare(b.thematicCategory ?? '', 'fr'))
     else sorted.sort((a, b) => a.canonicalLabel.localeCompare(b.canonicalLabel, 'fr'))
 
     return sorted
-  }, [matrix.rows, sort, statusFilter, themeFilter, hideInfo])
+  }, [matrix.rows, sort, statusFilter, themeFilter, hideInfo, importanceScores])
 
   const runs = matrix.runs
   const CELL_W = 52
@@ -169,6 +176,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
           onChange={(e) => setSort(e.target.value as SortKey)}
           className="rounded-lg border bg-card px-2.5 py-1.5 text-sm"
         >
+          <option value="importance">Trier : importance</option>
           <option value="recent">Trier : activité récente</option>
           <option value="duration">Trier : durée</option>
           <option value="severity">Trier : gravité</option>
