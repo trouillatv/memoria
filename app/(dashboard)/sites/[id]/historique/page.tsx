@@ -13,15 +13,17 @@ import {
   getImportantSubjects,
   getActivityMap,
 } from '@/lib/documents/site-synthesis'
+import { buildEvolutionReadModel, generateEvolutionNarrative } from '@/lib/documents/pv-evolution'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
 import { SubjectLifelineGrid } from './SubjectLifelineGrid'
 import { SyntheseView } from './SyntheseView'
 import { ActivityMapView } from './ActivityMapView'
+import { EvolutionView } from './EvolutionView'
 
 export const dynamic = 'force-dynamic'
 
-type ViewKey = 'synthese' | 'lifelines' | 'heatmap' | 'deps'
+type ViewKey = 'synthese' | 'lifelines' | 'heatmap' | 'evolution' | 'deps'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -43,7 +45,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
 
   const { id: siteId } = await params
   const sp = await searchParams
-  const VALID_VIEWS: ViewKey[] = ['synthese', 'lifelines', 'heatmap', 'deps']
+  const VALID_VIEWS: ViewKey[] = ['synthese', 'lifelines', 'heatmap', 'evolution', 'deps']
   const view: ViewKey = (VALID_VIEWS.includes(sp.view as ViewKey) ? sp.view as ViewKey : 'synthese')
   const initialThread = sp.thread ?? null
   const initialTheme = sp.theme ?? null
@@ -57,6 +59,18 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
 
   const activityMap = view === 'heatmap'
     ? await getActivityMap(siteId).catch(() => null)
+    : null
+
+  const evolutionData = view === 'evolution'
+    ? await (async () => {
+        try {
+          const readModel = await buildEvolutionReadModel(siteId)
+          const narrative = await generateEvolutionNarrative(readModel)
+          return { readModel, narrative }
+        } catch {
+          return null
+        }
+      })()
     : null
 
   if (!site) redirect(`/sites/${siteId}`)
@@ -137,10 +151,11 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
           {/* Onglets */}
           <nav className="mt-4 flex gap-1 rounded-xl bg-muted/40 p-1">
             {([
-              { key: 'synthese',  label: 'Synthèse' },
-              { key: 'lifelines', label: 'Lignes de vie' },
-              { key: 'heatmap',   label: 'Activité' },
-              { key: 'deps',      label: 'Dépendances' },
+              { key: 'synthese',   label: 'Synthèse' },
+              { key: 'lifelines',  label: 'Lignes de vie' },
+              { key: 'heatmap',    label: 'Activité' },
+              { key: 'evolution',  label: 'Évolution' },
+              { key: 'deps',       label: 'Dépendances' },
             ] as const).map(({ key, label }) => (
               <Link
                 key={key}
@@ -198,6 +213,24 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
               <p className="font-medium">Données non disponibles.</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 Les PV doivent être importés et analysés pour afficher la carte d'activité.
+              </p>
+            </section>
+          )
+        )}
+
+        {/* Évolution */}
+        {view === 'evolution' && (
+          evolutionData ? (
+            <EvolutionView
+              siteId={siteId}
+              readModel={evolutionData.readModel}
+              narrative={evolutionData.narrative}
+            />
+          ) : (
+            <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
+              <p className="font-medium">Données non disponibles.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Les PV doivent être importés, analysés et associés à des sujets canoniques.
               </p>
             </section>
           )
