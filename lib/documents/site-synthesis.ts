@@ -690,3 +690,127 @@ export async function getActivityMap(siteId: string): Promise<ActivityMap> {
 
   return { runs: emptyRuns, rows }
 }
+
+// ── Courbe de santé globale (tous les sujets canoniques) ─────────────────────
+
+export interface HealthDataPoint {
+  runId: string
+  effectiveDate: string
+  pvNumber: number
+  /** Sujets actifs (first | open | non_compliant | reopened) à ce PV. */
+  activeCount: number
+  /** Sujets qui apparaissent pour la première fois (first, sous-ensemble de active). */
+  newCount: number
+}
+
+export interface SiteHealthTimeline {
+  siteId: string
+  points: HealthDataPoint[]
+  /** Pic d'activité sur toute la durée du chantier. */
+  peakActive: number
+}
+
+const HEALTH_EXCLUDED_FAMILIES = new Set(['person', 'company', 'knowledge_fact'])
+
+/**
+ * Calcule la courbe de tension et de santé du chantier à partir de
+ * TOUS les canonical subjects actifs (pas seulement le top-8 editorial).
+ * Pas de requête d'entités : uniquement runs + propositions.
+ */
+export async function getSiteHealthTimeline(siteId: string): Promise<SiteHealthTimeline> {
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+
+  const rawRuns = await canonicalRunsForSite(siteId)
+  if (rawRuns.length === 0) return { siteId, points: [], peakActive: 0 }
+
+  const sortedRuns = rawRuns.map((r, i) => ({
+    id: r.id,
+    effectiveDate: runEffectiveDate(r),
+    pvNumber: i + 1,
+  }))
+  const runIds = sortedRuns.map((r) => r.id)
+
+  const { data: stiRows } = await supabase
+    .from('subject_thread_identity')
+    .select('subject_thread_id, canonical_subject_id')
+    .eq('site_id', siteId)
+
+  type StiRow = { subject_thread_id: string; canonical_subject_id: string }
+  const threadToCs = new Map(((stiRows ?? []) as StiRow[]).map((r) => [r.subject_thread_id, r.canonical_subject_id]))
+  const threadSet  = new Set(threadToCs.keys())
+
+  type PropRow = {
+    extraction_run_id: string
+    subject_thread_id: string
+    document_status: string | null
+    proposal_family: string
+  }
+  const PROP_BATCH = 10
+  const propBatches = await Promise.all(
+    Array.from({ length: Math.ceil(runIds.length / PROP_BATCH) }, (_, i) =>
+      supabase
+        .from('document_extraction_proposal')
+        .select('extraction_run_id, subject_thread_id, document_status, proposal_family')
+        .in('extraction_run_id', runIds.slice(i * PROP_BATCH, (i + 1) * PROP_BATCH)),
+    ),
+  )
+
+  // (csId → runId → worst_status) + families
+  const csRunStatus = new Map<string, Map<string, string>>()
+  const csFamilies  = new Map<string, Set<string>>()
+
+  for (const { data } of propBatches) {
+    for (const p of (data ?? []) as PropRow[]) {
+      if (!threadSet.has(p.subject_thread_id)) continue
+      const csId = threadToCs.get(p.subject_thread_id)!
+      if (!csFamilies.has(csId))  csFamilies.set(csId, new Set())
+      if (!csRunStatus.has(csId)) csRunStatus.set(csId, new Map())
+      csFamilies.get(csId)!.add(p.proposal_family)
+      const incoming    = p.document_status ?? 'open'
+      const runStatuses = csRunStatus.get(csId)!
+      const current     = runStatuses.get(p.extraction_run_id)
+      if (!current || (STATUS_RANK[incoming] ?? 99) < (STATUS_RANK[current] ?? 99)) {
+        runStatuses.set(p.extraction_run_id, incoming)
+      }
+    }
+  }
+
+  const activeCounts = new Array<number>(sortedRuns.length).fill(0)
+  const newCounts    = new Array<number>(sortedRuns.length).fill(0)
+
+  for (const [csId, runStatuses] of csRunStatus.entries()) {
+    const families = csFamilies.get(csId) ?? new Set()
+    if (families.size > 0 && [...families].every((f) => HEALTH_EXCLUDED_FAMILIES.has(f))) continue
+
+    let prevStatus: string | null = null
+    for (let i = 0; i < sortedRuns.length; i++) {
+      const status = runStatuses.get(sortedRuns[i].id) ?? null
+      if (status !== null) {
+        // Même logique cellState que getActivityMap
+        let isActive = true
+        let isFirst  = false
+        if (prevStatus === null) {
+          isFirst = true
+        } else if (status === 'done' || status === 'cancelled' || status === 'informational') {
+          isActive = false
+        }
+        if (isActive) {
+          activeCounts[i]++
+          if (isFirst) newCounts[i]++
+        }
+        prevStatus = status
+      }
+    }
+  }
+
+  const points: HealthDataPoint[] = sortedRuns.map((run, i) => ({
+    runId:         run.id,
+    effectiveDate: run.effectiveDate,
+    pvNumber:      run.pvNumber,
+    activeCount:   activeCounts[i],
+    newCount:      newCounts[i],
+  }))
+
+  return { siteId, points, peakActive: Math.max(...activeCounts, 1) }
+}

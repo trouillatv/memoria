@@ -12,6 +12,7 @@ import {
   computeDeltaSummary,
   getImportantSubjects,
   getActivityMap,
+  getSiteHealthTimeline,
 } from '@/lib/documents/site-synthesis'
 import { buildEvolutionReadModel, generateEvolutionNarrative } from '@/lib/documents/pv-evolution'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
@@ -64,9 +65,12 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   const evolutionData = view === 'evolution'
     ? await (async () => {
         try {
-          const readModel = await buildEvolutionReadModel(siteId)
+          const [readModel, healthTimeline] = await Promise.all([
+            buildEvolutionReadModel(siteId),
+            getSiteHealthTimeline(siteId).catch(() => null),
+          ])
           const narrative = await generateEvolutionNarrative(readModel)
-          return { readModel, narrative }
+          return { readModel, narrative, healthTimeline }
         } catch {
           return null
         }
@@ -225,6 +229,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
               siteId={siteId}
               readModel={evolutionData.readModel}
               narrative={evolutionData.narrative}
+              healthTimeline={evolutionData.healthTimeline}
             />
           ) : (
             <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
