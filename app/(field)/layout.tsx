@@ -11,7 +11,7 @@ import { FieldSyncDrainer } from './sync-drainer'
 import { ThemeSync } from '@/components/layout/ThemeSync'
 import { PageViewLogger } from '@/app/(dashboard)/PageViewLogger'
 import { PwaDesktopModeSync } from '@/components/pwa-desktop-mode-sync'
-import { ViewportDiagnostic } from '@/components/viewport-diagnostic'
+import { FieldViewportFix } from '@/components/field-viewport-fix'
 
 export default async function FieldLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUserWithProfile()
@@ -78,8 +78,7 @@ export default async function FieldLayout({ children }: { children: React.ReactN
       <SyncToastBridge />
       <FieldSyncDrainer userId={user.id} />
       <PwaDesktopModeSync userId={user.id} context="field" />
-      {/* TEMPORAIRE — panneau de diagnostic viewport, visible avec ?diag=1 */}
-      <ViewportDiagnostic />
+      <FieldViewportFix />
     </div>
   )
 }
