@@ -1,7 +1,7 @@
 import { documentHref } from '@/lib/knowledge/document-href'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { Layers, ListTodo, ClipboardCheck, FileCheck2, FileText, Gavel, History, CalendarClock, AlertTriangle, Target, Quote, Lightbulb, Camera } from 'lucide-react'
+import { Building2, Layers, ListTodo, ClipboardCheck, FileCheck2, FileText, Gavel, History, CalendarClock, AlertTriangle, Target, Quote, Lightbulb, Camera } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getLivingDossier } from '@/lib/db/living-dossier'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
@@ -121,6 +121,31 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
     const label = co && ct ? `${co} · ${ct}` : co ?? ct ?? a.assigned_to ?? null
     if (label) actionResponsibleLabel.set(a.id, label)
   }
+
+  // Acteurs impliqués : grouper les actions par entreprise / contact référent (FK uniquement).
+  // Aucun matching textuel : assigned_to est ignoré ici, seules les FKs résolues comptent.
+  const companyActors = new Map<string, { name: string; openCount: number; totalCount: number }>()
+  for (const a of actions) {
+    if (!a.assigned_company_id) continue
+    const name = companyNameById.get(a.assigned_company_id) ?? null
+    if (!name) continue
+    const e = companyActors.get(a.assigned_company_id) ?? { name, openCount: 0, totalCount: 0 }
+    e.totalCount++
+    if (a.status === 'open' || a.status === 'planned') e.openCount++
+    companyActors.set(a.assigned_company_id, e)
+  }
+  const contactActors = new Map<string, { name: string; openCount: number; totalCount: number }>()
+  for (const a of actions) {
+    if (!a.assigned_contact_id) continue
+    const name = contactNameById.get(a.assigned_contact_id) ?? null
+    if (!name) continue
+    const e = contactActors.get(a.assigned_contact_id) ?? { name, openCount: 0, totalCount: 0 }
+    e.totalCount++
+    if (a.status === 'open' || a.status === 'planned') e.openCount++
+    contactActors.set(a.assigned_contact_id, e)
+  }
+  const sortedCompanyActors = [...companyActors.entries()].sort((a, b) => b[1].openCount - a[1].openCount || b[1].totalCount - a[1].totalCount)
+  const sortedContactActors = [...contactActors.entries()].sort((a, b) => b[1].openCount - a[1].openCount || b[1].totalCount - a[1].totalCount)
 
   // Sujets candidats à bloquer : les autres sujets du site, sauf soi-même et ceux déjà
   // bloqués par ce sujet (l'arête from=ce sujet existe déjà).
@@ -307,6 +332,39 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
         siteId={id} subjectId={subjectId} subjectName={subject.name}
         blocks={relations.blocks} blockedBy={relations.blockedBy} candidates={relationCandidates}
       />
+
+      {/* ACTEURS IMPLIQUÉS — graphe bidirectionnel sujet → acteurs (FK uniquement).
+          Uniquement assigned_company_id / assigned_contact_id résolus ; pas de matching
+          textuel sur assigned_to. Miroir de la section "Sujets portés" dans la fiche entreprise. */}
+      {(sortedCompanyActors.length > 0 || sortedContactActors.length > 0) && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold inline-flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-muted-foreground" /> Acteurs impliqués
+          </h2>
+          <ul className="space-y-1">
+            {sortedCompanyActors.map(([companyId, actor]) => (
+              <li key={companyId} className="text-sm rounded-md border bg-card px-3 py-1.5">
+                <Link href={`/intervenants/entreprise/${companyId}`} scroll={false} className="font-medium hover:underline">{actor.name}</Link>
+                <span className="text-muted-foreground">
+                  {' '}—{' '}
+                  {actor.openCount > 0
+                    ? `${actor.openCount} action${actor.openCount > 1 ? 's' : ''} ouverte${actor.openCount > 1 ? 's' : ''}`
+                    : 'aucune action ouverte'}
+                  {actor.totalCount > actor.openCount ? ` · ${actor.totalCount} au total` : ''}
+                </span>
+              </li>
+            ))}
+            {sortedContactActors.map(([contactId, actor]) => (
+              <li key={contactId} className="text-sm rounded-md border bg-card px-3 py-1.5">
+                <Link href={`/intervenants/personne/${contactId}`} scroll={false} className="font-medium hover:underline">{actor.name}</Link>
+                <span className="text-muted-foreground">
+                  {' '}— référent ({actor.totalCount} action{actor.totalCount > 1 ? 's' : ''})
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* HISTORIQUE CHRONOLOGIQUE — l'histoire complète du sujet (Vincent : « un sujet =
           l'histoire d'un problème, pas une liste d'occurrences »). Tous les objets

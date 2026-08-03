@@ -1,7 +1,7 @@
 // Corps de la fiche ENTREPRISE — PARTAGÉ entre la page dédiée et le panneau maître-
 // détail de /intervenants. Une seule source de rendu. Purement présentationnel.
 
-import { Building2, MapPin, User, ArrowRight, Clock, Mail, Phone, Globe } from 'lucide-react'
+import { Building2, Layers, MapPin, User, ArrowRight, Clock, Mail, Phone, Globe } from 'lucide-react'
 import type { CompanyFiche } from '@/lib/db/company-fiche'
 import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
 import { AttentionBadge, FicheSection, FicheLinkRow, FicheEmpty } from './fiche-ui'
@@ -109,6 +109,27 @@ export function CompanyFicheBody({ fiche, network, onSelectActor }: {
           ))
         )}
       </FicheSection>
+
+      {/* ── SUJETS PORTÉS — graphe bidirectionnel acteur → sujets canoniques ─────── */}
+      {fiche.subjectsCarried.length > 0 && (
+        <FicheSection title="Sujets portés" count={fiche.subjectsCarried.length}>
+          {fiche.subjectsCarried.map((s) => (
+            <FicheLinkRow
+              key={s.subjectId}
+              href={s.href}
+              icon={<Layers className="h-4 w-4" aria-hidden />}
+              label={s.subjectName}
+              sub={[
+                s.siteName,
+                s.openCount > 0
+                  ? `${s.openCount} action${s.openCount > 1 ? 's' : ''} ouverte${s.openCount > 1 ? 's' : ''}`
+                  : 'aucune action ouverte',
+                s.totalCount > s.openCount ? `${s.totalCount} au total` : null,
+              ].filter(Boolean).join(' · ')}
+            />
+          ))}
+        </FicheSection>
+      )}
 
       {/* ── TRAVAIL EN COURS — actions ──────────────────────────────────────────── */}
       <FicheSection title="Travail en cours" count={fiche.openCount}>

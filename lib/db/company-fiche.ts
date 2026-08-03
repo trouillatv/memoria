@@ -39,6 +39,16 @@ export interface CompanyCastingRow {
   href: string // /sites/{siteId}
 }
 
+export interface CompanySubjectRow {
+  subjectId: string
+  subjectName: string
+  siteId: string
+  siteName: string
+  openCount: number
+  totalCount: number
+  href: string // /sites/{siteId}/subjects/{subjectId}
+}
+
 export interface CompanyContactRow {
   id: string
   name: string
@@ -72,6 +82,8 @@ export interface CompanyFiche {
   historicalCasting: CompanyCastingRow[]
   // Contacts
   contacts: CompanyContactRow[]
+  // Sujets portés : sujets canoniques rattachés à des actions dont cette entreprise est responsable
+  subjectsCarried: CompanySubjectRow[]
 }
 
 export interface CompanyFicheInputs {
@@ -82,6 +94,7 @@ export interface CompanyFicheInputs {
   contacts: Array<{ id: string; name: string; function: string | null }>
   /** Ids des contacts référents d'au moins une action ouverte de cette entreprise. */
   referentContactIds: string[]
+  subjectsCarried: CompanySubjectRow[]
 }
 
 /** Composition PURE. Déterministe ; attention via la politique commune. */
@@ -139,6 +152,7 @@ export function buildCompanyFiche(input: CompanyFicheInputs): CompanyFiche {
     activeCasting,
     historicalCasting,
     contacts,
+    subjectsCarried: input.subjectsCarried,
   }
 }
 
@@ -162,21 +176,49 @@ export async function getCompanyFiche(companyId: string, orgIds: string[]): Prom
   // Fail-closed : hors org, ou placeholder « À identifier » (jamais de fiche).
   if (!company || company.is_placeholder || !orgIds.includes(company.organization_id)) return null
 
-  const [castRes, actRes, contactRes] = await Promise.all([
+  const [castRes, actRes, contactRes, subjectActRes] = await Promise.all([
     db.from('site_intervenants').select('site_id, role, effective_to, main_contact_id').eq('company_id', companyId),
     db.from('site_actions').select('id, title, site_id, due_date, assigned_contact_id').eq('assigned_company_id', companyId).eq('status', 'open'),
     db.from('company_contacts').select('id, full_name, function').eq('company_id', companyId).is('deleted_at', null),
+    // Toutes les actions (tous statuts) avec subject_id pour agréger les sujets portés.
+    db.from('site_actions').select('subject_id, status, site_id').eq('assigned_company_id', companyId).not('subject_id', 'is', null),
   ])
   const cast = (castRes.data ?? []) as Array<{ site_id: string; role: string; effective_to: string | null; main_contact_id: string | null }>
   const act = (actRes.data ?? []) as Array<{ id: string; title: string; site_id: string; due_date: string | null; assigned_contact_id: string | null }>
   const contactRows = (contactRes.data ?? []) as Array<{ id: string; full_name: string; function: string | null }>
+  const subjectAct = (subjectActRes.data ?? []) as Array<{ subject_id: string; status: string; site_id: string }>
 
-  const siteIds = [...new Set([...cast.map((r) => r.site_id), ...act.map((r) => r.site_id)])]
+  const siteIds = [...new Set([...cast.map((r) => r.site_id), ...act.map((r) => r.site_id), ...subjectAct.map((a) => a.site_id)])]
   const { data: siteRows } = siteIds.length
     ? await db.from('sites').select('id, name').in('id', siteIds).in('organization_id', orgIds).is('deleted_at', null)
     : { data: [] as Array<{ id: string; name: string }> }
   const siteNameById = new Map(((siteRows ?? []) as Array<{ id: string; name: string }>).map((s) => [s.id, s.name]))
   const siteName = (id: string) => siteNameById.get(id) ?? 'Chantier'
+
+  // Agrégation des sujets portés (par sujet canonique via FK subject_id — aucun matching).
+  const subjectBuckets = new Map<string, { openCount: number; totalCount: number; siteId: string }>()
+  for (const a of subjectAct) {
+    const b = subjectBuckets.get(a.subject_id) ?? { openCount: 0, totalCount: 0, siteId: a.site_id }
+    b.totalCount++
+    if (a.status === 'open' || a.status === 'planned') b.openCount++
+    subjectBuckets.set(a.subject_id, b)
+  }
+  const subjectIds = [...subjectBuckets.keys()]
+  const { data: subjectRows } = subjectIds.length
+    ? await db.from('subjects').select('id, name').in('id', subjectIds)
+    : { data: [] as Array<{ id: string; name: string }> }
+  const subjectNameById = new Map(((subjectRows ?? []) as Array<{ id: string; name: string }>).map((s) => [s.id, s.name]))
+  const subjectsCarried: CompanySubjectRow[] = [...subjectBuckets.entries()]
+    .map(([subjectId, { openCount, totalCount, siteId }]) => ({
+      subjectId,
+      subjectName: subjectNameById.get(subjectId) ?? '(sujet)',
+      siteId,
+      siteName: siteName(siteId),
+      openCount,
+      totalCount,
+      href: `/sites/${siteId}/subjects/${subjectId}`,
+    }))
+    .sort((a, b) => b.openCount - a.openCount || b.totalCount - a.totalCount)
 
   const addressLine = [company.address, [company.postal_code, company.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') || null
   const contactNameById = new Map(contactRows.map((c) => [c.id, c.full_name]))
@@ -192,5 +234,6 @@ export async function getCompanyFiche(companyId: string, orgIds: string[]): Prom
     })),
     contacts: contactRows.map((c) => ({ id: c.id, name: c.full_name, function: c.function })),
     referentContactIds: [...new Set(act.map((a) => a.assigned_contact_id).filter((v): v is string => !!v))],
+    subjectsCarried,
   })
 }
