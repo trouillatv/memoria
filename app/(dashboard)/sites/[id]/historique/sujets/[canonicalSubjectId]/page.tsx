@@ -1,12 +1,13 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Calendar, FileText, Link2, LayoutList } from 'lucide-react'
+import { ArrowLeft, Calendar, Check, FileText, Link2, LayoutList, X } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getCanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
 import type { SubjectOccurrenceMerged, CanonicalLink, MaterializedEvent, MaterializedEntityType } from '@/lib/db/canonical-subject-life'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
+import { confirmSuggestedLink, rejectSuggestedLink } from './link-actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -381,10 +382,12 @@ function MaterializedEventsSection({ events }: { events: MaterializedEvent[] }) 
 function RelationsSection({
   links,
   siteId,
+  canonicalSubjectId,
   csLabel,
 }: {
   links: CanonicalLink[]
   siteId: string
+  canonicalSubjectId: string
   csLabel: string
 }) {
   const confirmed = links.filter((l) => l.status === 'confirmed')
@@ -405,44 +408,78 @@ function RelationsSection({
     const targetCsId = link.direction === 'outgoing' ? link.toCanonicalSubjectId : link.fromCanonicalSubjectId
 
     return (
-      <div className={cn(
-        'flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm',
-        link.linkType === 'relates_to' ? 'border-dashed' : '',
-      )}>
-        <div className="min-w-0 flex-1">
-          <p className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">{csLabel}</span>
-            {' '}<span>{verb}</span>
-          </p>
-          {targetCsId ? (
-            <Link
-              href={`/sites/${siteId}/historique/sujets/${targetCsId}`}
-              className="mt-0.5 block font-medium hover:underline"
-            >
-              {targetLabel}
-            </Link>
-          ) : (
-            <p className="mt-0.5 font-medium">{targetLabel}</p>
-          )}
-          {link.justification && (
-            <p className="mt-1 text-xs text-muted-foreground italic">{link.justification}</p>
-          )}
-        </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{csLabel}</span>
+          {' '}<span>{verb}</span>
+        </p>
+        {targetCsId ? (
+          <Link
+            href={`/sites/${siteId}/historique/sujets/${targetCsId}`}
+            className="mt-0.5 block font-medium hover:underline"
+          >
+            {targetLabel}
+          </Link>
+        ) : (
+          <p className="mt-0.5 font-medium">{targetLabel}</p>
+        )}
+        {link.justification && (
+          <p className="mt-1 text-xs text-muted-foreground italic">{link.justification}</p>
+        )}
       </div>
     )
   }
 
   return (
     <div className="space-y-2">
-      {confirmed.map((l) => <LinkRow key={l.id} link={l} />)}
+      {confirmed.map((l) => (
+        <div key={l.id} className={cn(
+          'flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm',
+          l.linkType === 'relates_to' ? 'border-dashed' : '',
+        )}>
+          <LinkRow link={l} />
+        </div>
+      ))}
+
       {suggested.length > 0 && (
         <>
-          <p className="text-xs text-muted-foreground pt-1">Liens suggérés (à confirmer) :</p>
-          {suggested.map((l) => (
-            <div key={l.id} className="opacity-60">
-              <LinkRow link={l} />
-            </div>
-          ))}
+          <p className="text-xs font-medium text-muted-foreground pt-1">
+            Suggestion{suggested.length > 1 ? 's' : ''} à valider :
+          </p>
+          {suggested.map((l) => {
+            return (
+              <div key={l.id} className="rounded-lg border border-dashed bg-muted/20 px-3 py-2.5 text-sm space-y-2">
+                <LinkRow link={l} />
+                <div className="flex items-center gap-2">
+                  <form action={confirmSuggestedLink}>
+                    <input type="hidden" name="linkId" value={l.id} />
+                    <input type="hidden" name="siteId" value={siteId} />
+                    <input type="hidden" name="canonicalSubjectId" value={canonicalSubjectId} />
+                    <button
+                      type="submit"
+                      className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900"
+                    >
+                      <Check className="h-3 w-3" />
+                      Accepter
+                    </button>
+                  </form>
+                  <form action={rejectSuggestedLink}>
+                    <input type="hidden" name="linkId" value={l.id} />
+                    <input type="hidden" name="siteId" value={siteId} />
+                    <input type="hidden" name="canonicalSubjectId" value={canonicalSubjectId} />
+                    <button
+                      type="submit"
+                      className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted/80"
+                    >
+                      <X className="h-3 w-3" />
+                      Refuser
+                    </button>
+                  </form>
+                  <span className="text-xs text-muted-foreground/60 italic">suggéré · non confirmé</span>
+                </div>
+              </div>
+            )
+          })}
         </>
       )}
     </div>
@@ -573,7 +610,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
               <Link2 className="h-3.5 w-3.5" />
               Relations
             </h2>
-            <RelationsSection links={life.links} siteId={siteId} csLabel={life.label} />
+            <RelationsSection links={life.links} siteId={siteId} canonicalSubjectId={canonicalSubjectId} csLabel={life.label} />
           </section>
         )}
 
