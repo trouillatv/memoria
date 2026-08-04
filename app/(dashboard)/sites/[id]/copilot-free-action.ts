@@ -125,7 +125,23 @@ export async function askCopilotFreeAction(
         // On retourne immédiatement la clarification — pas d'appel LLM
         clarificationCandidates.push(...resolution.candidates)
       }
-      // not_found → on continue sans ce sujet (le LLM dira qu'il ne trouve pas)
+      // not_found → sujet inconnu de la mémoire structurée
+    }
+  }
+
+  // not_found déterministe : intent subject_detail avec entités extraites mais aucune résolue
+  // → réponse directe sans LLM, sans références parasites
+  const hasExtractedLabels = classification.entities.subjectLabels.length > 0
+  const allLabelsUnresolved = hasExtractedLabels
+    && subjectIdsToLoad.size === 0
+    && clarificationCandidates.length === 0
+  if (classification.primary === 'subject_detail' && allLabelsUnresolved) {
+    const labels = classification.entities.subjectLabels.join(', ')
+    return {
+      kind: 'answer',
+      text: `Je ne trouve aucun sujet correspondant à "${labels}" dans la mémoire structurée de ce chantier. Essayez avec le label exact ou un code technique (R4, G3, DN160…).`,
+      references: [],
+      source: 'fallback',
     }
   }
 
