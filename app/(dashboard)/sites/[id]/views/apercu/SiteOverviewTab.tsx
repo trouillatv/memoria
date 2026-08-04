@@ -57,7 +57,7 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
             icon={ListTodo}
             tone={actions.summary.overdue > 0 ? 'orange' : actions.summary.active > 0 ? 'blue' : 'green'}
             value={actions.summary.active}
-            title="Actions actives"
+            title="Sujets d'action"
             detail={activeActionsDetail(actions.summary)}
           />
           <StateCard
@@ -413,9 +413,9 @@ function SynthesisBadge({
   )
 }
 
-/** « Actions actives : 5 / dont 2 planifiées » — la charge réelle du chantier. */
+/** Detail du KPI sujets d'action — charge opérationnelle dédupliquée. */
 function activeActionsDetail(summary: { active: number; planned: number; overdue: number }): string {
-  if (summary.active === 0) return 'Aucune action active'
+  if (summary.active === 0) return 'Aucun sujet d\'action actif'
   const parts: string[] = []
   if (summary.overdue > 0) parts.push(`${summary.overdue} en retard`)
   if (summary.planned > 0) parts.push(`dont ${summary.planned} planifiée${summary.planned > 1 ? 's' : ''}`)

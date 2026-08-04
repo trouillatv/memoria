@@ -17,6 +17,7 @@ import 'server-only'
 import { getSiteProjection, emptySiteProjection, type ProposalProjection } from '@/lib/knowledge/projection'
 import {
   readSiteActionSummaries,
+  deduplicateByThread,
   readLatestVisitSynthesis,
   readVisitSourceSnapshot,
   type ActionSummaryRow,
@@ -526,20 +527,23 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
   ])
 
   // ── Actions : proposé (projection) + validé (site_actions actives) ──
+  // Déduplication V1 : même subject_thread_id = une seule entrée opérationnelle.
+  // Les 52 lignes OCEF Compostage → 36 sujets distincts.
   const active = actionRows.filter((a) => a.status === 'open' || a.status === 'planned')
-  const planned = actionRows.filter((a) => a.status === 'planned').length
+  const activeDedup = deduplicateByThread(active)
   const completed = actionRows.filter((a) => a.status === 'done').length
+  const planned = activeDedup.filter((a) => a.status === 'planned').length
   const todayIso = new Date().toISOString().slice(0, 10)
-  const overdue = active.filter((a) => a.due_date && a.due_date.slice(0, 10) < todayIso).length
-  const week = active.filter((a) => {
+  const overdue = activeDedup.filter((a) => a.due_date && a.due_date.slice(0, 10) < todayIso).length
+  const week = activeDedup.filter((a) => {
     if (!a.due_date) return false
     const due = a.due_date.slice(0, 10)
     const days = Math.floor((Date.parse(`${due}T00:00:00.000Z`) - Date.parse(`${todayIso}T00:00:00.000Z`)) / 86_400_000)
     return days >= 0 && days <= 7
   }).length
-  const undated = active.filter((a) => !a.due_date).length
+  const undated = activeDedup.filter((a) => !a.due_date).length
   const priority = selectPriorityActions(
-    actionRows.map((a) => ({
+    [...activeDedup, ...actionRows.filter((a) => a.status === 'done')].map((a) => ({
       id: a.id,
       title: a.title,
       status: a.status,
@@ -565,17 +569,17 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
 
   const actions: ActionsSection = {
     proposed: proj.actions.proposedTop.slice(0, TOP),
-    confirmed: active.slice(0, TOP).map((a) => ({ id: a.id, title: a.title })),
+    confirmed: activeDedup.slice(0, TOP).map((a) => ({ id: a.id, title: a.title })),
     completedRecent,
     priority,
-    summary: { proposed: proj.actions.proposed, active: active.length, planned, overdue, week, undated, completed },
+    summary: { proposed: proj.actions.proposed, active: activeDedup.length, planned, overdue, week, undated, completed },
   }
 
   // ── Attention : des RAISONS nommées, pas un voyant ──
   const reasons: AttentionReason[] = buildOverviewAttention([
     ...toBlocageReasons(openBlocages(blocages), siteId),
     ...toMemoryReasons(memorySignals, siteId),
-    ...toOverdueActionReasons(active, todayIso, siteId),
+    ...toOverdueActionReasons(activeDedup, todayIso, siteId),
   ]).map((r) => ({ id: r.id, kind: r.kind as AttentionKind, title: r.title, detail: r.detail ?? null, href: r.href ?? null }))
 
   // ── Prochaine étape / changements depuis la dernière venue ──

@@ -85,14 +85,37 @@ export interface ActionSummaryRow {
    *  date, « terminées récemment » ne peut pas exister : `created_at` dit quand on
    *  l'a écrite, jamais quand on l'a faite. */
   done_at: string | null
+  /** Thread de déduplication : même subject_thread_id = une seule entrée opérationnelle.
+   *  null = pas de thread, traité individuellement. Backfillé par mig 288. */
+  subject_thread_id: string | null
 }
 export async function readSiteActionSummaries(siteId: string): Promise<ActionSummaryRow[]> {
   const { data, error } = await createAdminClient()
     .from('site_actions')
-    .select('id, title, status, due_date, created_at, done_at')
+    .select('id, title, status, due_date, created_at, done_at, subject_thread_id')
     .eq('site_id', siteId)
   if (error) return []
   return (data ?? []) as ActionSummaryRow[]
+}
+
+/**
+ * Déduplication opérationnelle par subject_thread_id.
+ * Règle V1 : même thread = une seule entrée (représentant = la plus récente).
+ * Sans thread = conservé distinct. Aucun fuzzy matching.
+ * Ne modifie jamais les données source.
+ */
+export function deduplicateByThread<T extends { id: string; subject_thread_id: string | null; created_at: string }>(
+  rows: T[],
+): T[] {
+  const threadMap = new Map<string, T>()
+  const noThread: T[] = []
+  for (const row of rows) {
+    const t = row.subject_thread_id
+    if (!t) { noThread.push(row); continue }
+    const existing = threadMap.get(t)
+    if (!existing || row.created_at > existing.created_at) threadMap.set(t, row)
+  }
+  return [...threadMap.values(), ...noThread]
 }
 
 /** État de synthèse de la DERNIÈRE visite terminée — en une lecture (id + fin +
