@@ -189,6 +189,8 @@ export interface SiteActionRow {
    *  reste ouverte (attente client/matériel, météo…). null = pas reportée. */
   snooze_reason: string | null
   snoozed_at: string | null
+  /** Fil thématique inter-PV (mig 288). null = action non matérialisée depuis un PV. */
+  subject_thread_id: string | null
 }
 
 /**
@@ -268,6 +270,7 @@ export async function listOpenSiteActions(opts?: {
       last_progress_at: a.last_progress_at ?? null,
       snooze_reason: a.snooze_reason ?? null,
       snoozed_at: a.snoozed_at ?? null,
+      subject_thread_id: a.subject_thread_id ?? null,
     }
   })
 }
@@ -322,6 +325,7 @@ export async function listOpenSiteActionsByReports(reportIds: string[]): Promise
       last_progress_at: a.last_progress_at ?? null,
       snooze_reason: a.snooze_reason ?? null,
       snoozed_at: a.snoozed_at ?? null,
+      subject_thread_id: a.subject_thread_id ?? null,
     }
   })
 }

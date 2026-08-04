@@ -655,6 +655,9 @@ export interface DbSiteAction {
   // non bloquant — l'action reste 'open'. NULL = pas reportée.
   snooze_reason: string | null
   snoozed_at: string | null
+  // Fil thématique inter-PV (mig 288 backfill depuis mig 268 sur les proposals).
+  // NULL = action non issue d'une matérialisation documentaire.
+  subject_thread_id: string | null
 }
 
 // Sujets vivants (migration 124) — fil persistant qui agrège dans le temps

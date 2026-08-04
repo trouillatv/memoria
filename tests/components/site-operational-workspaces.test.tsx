@@ -312,6 +312,7 @@ function actionFixture(overrides: Partial<SiteActionRow> = {}): SiteActionRow {
     last_progress_at: null,
     snooze_reason: null,
     snoozed_at: null,
+    subject_thread_id: null,
     ...overrides,
   }
 }

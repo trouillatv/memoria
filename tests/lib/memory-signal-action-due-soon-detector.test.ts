@@ -17,7 +17,7 @@ const row = (over: Partial<SiteActionRow> = {}): SiteActionRow => ({
   report_id: null, converted_to_type: null, converted_to_id: null,
   site_id: 'site-1', organizationId: 'org-1', site_name: 'Lycée PETRO ATTITI',
   contract_id: null, contract_name: null, subject_id: null,
-  last_progress_at: null, snooze_reason: null, snoozed_at: null, ...over,
+  last_progress_at: null, snooze_reason: null, snoozed_at: null, subject_thread_id: null, ...over,
 })
 
 describe('ActionDueSoonDetector', () => {

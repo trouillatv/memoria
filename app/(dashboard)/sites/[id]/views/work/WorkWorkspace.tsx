@@ -42,10 +42,14 @@ export function WorkWorkspace({
 }: WorkWorkspaceProps) {
   const todayIso = todayLocalIso()
   const plannedInterventions = interventions.filter((intervention) => !isDone(intervention))
-  const overdueActions = actions.filter((action) => action.due_date && action.due_date < todayIso)
-  const todayActions = actions.filter((action) => action.due_date === todayIso)
-  const weekActions = actions.filter((action) => action.due_date && action.due_date > todayIso && action.due_date <= addDays(todayIso, 7))
-  const undatedActions = actions.filter((action) => !action.due_date)
+  // Déduplique par fil thématique : N occurrences du même sujet → 1 entrée affichée.
+  const threadGroups = groupActionsByThread(actions)
+  const overdueGroups = threadGroups.filter((g) => g.representative.due_date && g.representative.due_date < todayIso)
+  const todayGroups = threadGroups.filter((g) => g.representative.due_date === todayIso)
+  const weekGroups = threadGroups.filter((g) => g.representative.due_date && g.representative.due_date > todayIso && g.representative.due_date <= addDays(todayIso, 7))
+  const undatedGroups = threadGroups.filter((g) => !g.representative.due_date)
+  // Pour suggestPriority : compatibilité avec le type SiteActionRow[]
+  const overdueActions = overdueGroups.map((g) => g.representative)
   // Les échéances, lues des échéances. Une date passée sans que rien n'arrive
   // est un retard ; une échéance sans date attend une décision, elle n'est pas
   // incomplète.
@@ -55,11 +59,12 @@ export function WorkWorkspace({
   const weekDeadlines = deadlines.filter((d) => dueOf(d) && dueOf(d)! > todayIso && dueOf(d)! <= addDays(todayIso, 7))
   const toPlanDeadlines = deadlines.filter((d) => !dueOf(d))
   const unteamedMissions = missions.filter((mission) => !mission.assigned_team_id)
-  const sortedActions = [...actions].sort((a, b) => {
-    const aDue = a.due_date ?? '9999-12-31'
-    const bDue = b.due_date ?? '9999-12-31'
-    return aDue.localeCompare(bDue) || a.created_at.localeCompare(b.created_at)
+  const sortedGroups = [...threadGroups].sort((a, b) => {
+    const aDue = a.representative.due_date ?? '9999-12-31'
+    const bDue = b.representative.due_date ?? '9999-12-31'
+    return aDue.localeCompare(bDue) || a.representative.created_at.localeCompare(b.representative.created_at)
   })
+  const sortedActions = sortedGroups.map((g) => g.representative)
 
   const priority = suggestPriority({ blocages, overdueActions, unteamedMissions, plannedInterventions, siteId })
 
@@ -74,8 +79,8 @@ export function WorkWorkspace({
             <div className="mt-4 rounded-2xl bg-muted/40 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">À faire maintenant</p>
               <ul className="mt-2 space-y-1 text-sm">
-                <SummaryLine count={overdueActions.length} singular="action en retard" plural="actions en retard" tone="red" />
-                <SummaryLine count={undatedActions.length} singular="action sans échéance" plural="actions sans échéance" />
+                <SummaryLine count={overdueGroups.length} singular="action en retard" plural="actions en retard" tone="red" />
+                <SummaryLine count={undatedGroups.length} singular="action sans échéance" plural="actions sans échéance" />
                 <SummaryLine count={unteamedMissions.length} singular="mission sans équipe" plural="missions sans équipe" />
                 <SummaryLine count={blocages.length} singular="blocage ouvert" plural="blocages ouverts" tone="red" />
                 <SummaryLine count={plannedInterventions.length} singular="intervention prévue" plural="interventions prévues" />
@@ -97,20 +102,20 @@ export function WorkWorkspace({
             <FilterRow
               label="Par objet"
               items={[
-                { label: 'Tout', value: missions.length + plannedInterventions.length + actions.length + blocages.length, active: true },
+                { label: 'Tout', value: missions.length + plannedInterventions.length + threadGroups.length + blocages.length, active: true },
                 { label: 'Missions', value: missions.length },
                 { label: 'Interventions', value: plannedInterventions.length },
-                { label: 'Actions', value: actions.length },
+                { label: 'Actions', value: threadGroups.length },
                 { label: 'Points à lever', value: blocages.length },
               ]}
             />
             <FilterRow
               label="Par urgence"
               items={[
-                { label: 'En retard', value: overdueActions.length, tone: overdueActions.length > 0 ? 'red' : undefined },
-                { label: "Aujourd'hui", value: todayActions.length },
-                { label: 'Cette semaine', value: weekActions.length },
-                { label: 'Sans échéance', value: undatedActions.length },
+                { label: 'En retard', value: overdueGroups.length, tone: overdueGroups.length > 0 ? 'red' : undefined },
+                { label: "Aujourd'hui", value: todayGroups.length },
+                { label: 'Cette semaine', value: weekGroups.length },
+                { label: 'Sans échéance', value: undatedGroups.length },
               ]}
             />
           </div>
@@ -266,28 +271,24 @@ export function WorkWorkspace({
               </div>
             )}
 
-            <h3 className="mt-4 text-sm font-semibold text-muted-foreground">Ouvertes ({sortedActions.length})</h3>
+            <h3 className="mt-4 text-sm font-semibold text-muted-foreground">Ouvertes ({sortedGroups.length})</h3>
             <div className="mt-2 space-y-2">
-              {sortedActions.length > 0 ? sortedActions.slice(0, 10).map((action) => {
+              {sortedGroups.length > 0 ? sortedGroups.slice(0, 10).map(({ representative: action, count, reportIds }) => {
                 const late = Boolean(action.due_date && action.due_date < todayIso)
                 return (
                   <article key={action.id} className="rounded-2xl border p-4">
-                    {/* Le titre menait a `/sites/<id>/actions`, un HUB qui ne liste
-                        aucune action : le clic ne donnait rien. Il ouvre desormais la
-                        fiche de l action. Les chips d edition ci-dessous gardent le hub,
-                        qui est leur destination legitime. */}
                     <Link href={`/sites/${siteId}/action/${action.id}`} scroll={false} className="font-semibold hover:underline">
                       {action.title}
                     </Link>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {action.corps_etat ? `Mission : ${action.corps_etat}` : 'Mission non renseignée'}
-                      {!action.report_id && ' · Origine non renseignée'}
                     </p>
-                    {/* « Créée lors d'une visite » était une affirmation morte.
-                        Elle devient une question qui répond : la chaîne remontée
-                        jusqu'au mémo, mot pour mot. Rendu SEULEMENT quand la
-                        provenance existe — un bouton qui ne tient pas sa
-                        promesse est pire qu'aucun bouton. */}
+                    {/* Badge de consolidation : N occurrences du même fil thématique → 1 entrée */}
+                    {count > 1 && (
+                      <p className="mt-0.5 text-[12px] text-muted-foreground">
+                        {count} occurrences · {reportIds.length} PV{reportIds.length > 1 ? 's' : ''}
+                      </p>
+                    )}
                     {action.report_id && (
                       <div className="mt-1.5">
                         <WhyButton objectType="action" objectId={action.id} label="Pourquoi cette action ?" />
@@ -310,7 +311,7 @@ export function WorkWorkspace({
                       {action.converted_to_type ? (
                         <Chip tone="green">Suite donnée</Chip>
                       ) : (
-                        <ChipAction href={`/semaine?site=${siteId}`}>Planifier l’intervention</ChipAction>
+                        <ChipAction href={`/semaine?site=${siteId}`}>Planifier l'intervention</ChipAction>
                       )}
                     </div>
                   </article>
@@ -520,14 +521,14 @@ function suggestPriority({
     return { label: `Lever le blocage « ${blocages[0].title} »`, href: `/sites/${siteId}/reserves` }
   }
   if (overdueActions[0]) {
-    return { label: `Traiter l’action en retard « ${overdueActions[0].title} »`, href: `/sites/${siteId}/actions` }
+    return { label: `Traiter l'action en retard « ${overdueActions[0].title} »`, href: `/sites/${siteId}/actions` }
   }
   if (unteamedMissions[0]) {
     return { label: `Affecter une équipe à « ${unteamedMissions[0].name} »`, href: `/sites/${siteId}?tab=organisation` }
   }
   const unteamedIntervention = plannedInterventions.find((intervention) => !intervention.assigned_team_id)
   if (unteamedIntervention) {
-    return { label: 'Affecter une équipe à l’intervention prévue', href: `/semaine?site=${siteId}` }
+    return { label: "Affecter une équipe à l'intervention prévue", href: `/semaine?site=${siteId}` }
   }
   return null
 }
@@ -557,4 +558,37 @@ function formatDate(value: string): string {
 
 function formatDateTime(value: string): string {
   return new Date(value).toLocaleString('fr-FR', { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })
+}
+
+interface ThreadGroup {
+  threadId: string | null
+  representative: SiteActionRow
+  count: number
+  reportIds: string[]
+}
+
+function groupActionsByThread(actions: SiteActionRow[]): ThreadGroup[] {
+  const threadMap = new Map<string, SiteActionRow[]>()
+  const noThread: SiteActionRow[] = []
+
+  for (const action of actions) {
+    const t = action.subject_thread_id
+    if (!t) { noThread.push(action); continue }
+    if (!threadMap.has(t)) threadMap.set(t, [])
+    threadMap.get(t)!.push(action)
+  }
+
+  const groups: ThreadGroup[] = []
+
+  for (const [threadId, occurrences] of threadMap) {
+    const sorted = [...occurrences].sort((a, b) => b.created_at.localeCompare(a.created_at))
+    const reportIds = [...new Set(occurrences.map((a) => a.report_id).filter((r): r is string => !!r))]
+    groups.push({ threadId, representative: sorted[0], count: occurrences.length, reportIds })
+  }
+
+  for (const action of noThread) {
+    groups.push({ threadId: null, representative: action, count: 1, reportIds: action.report_id ? [action.report_id] : [] })
+  }
+
+  return groups
 }
