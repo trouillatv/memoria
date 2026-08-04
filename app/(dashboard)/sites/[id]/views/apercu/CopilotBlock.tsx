@@ -7,7 +7,7 @@
 
 import { useState, useRef, useEffect, type FormEvent } from 'react'
 import Link from 'next/link'
-import { Sparkles, Loader2, ExternalLink, SendHorizontal, ChevronDown, ChevronUp, Check } from 'lucide-react'
+import { Sparkles, Loader2, ExternalLink, SendHorizontal, ChevronDown, ChevronUp, Check, X } from 'lucide-react'
 import {
   askCopilotFreeAction,
   type CopilotFreeResult,
@@ -16,6 +16,7 @@ import {
 import { askCopilotAction, type CopilotActionResult } from '../../copilot-action'
 import { createCopilotAction, addCopilotToBriefing } from '../../copilot-write-action'
 import { trackCopilotReferenceClick, trackCopilotProposalCancelled } from '../../copilot-event-action'
+import { fetchPlanItems, removePlanItem, type PlanItemSummary } from '../../copilot-plan-actions'
 import type { CopilotIntent } from '@/lib/visits/copilot-context'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { cn } from '@/lib/utils'
@@ -47,11 +48,13 @@ function ProposalCard({
   proposal,
   interactionId,
   onDone,
+  onPlanChange,
 }: {
   siteId: string
   proposal: CopilotProposal
   interactionId: string | null
   onDone: (successText: string) => void
+  onPlanChange?: () => void
 }) {
   const [title, setTitle] = useState(proposal.title)
   const [body, setBody] = useState(proposal.body ?? '')
@@ -92,9 +95,11 @@ function ProposalCard({
           canonicalSubjectId: proposal.canonicalSubjectId,
           copilotProposalId: proposal.proposalId,
           interactionId,
+          reason: proposal.whyText,
         })
         if (res.ok) {
-          onDone('Ajouté au plan de visite.')
+          onDone('Ajouté au plan de prochaine visite.')
+          onPlanChange?.()
         } else {
           onDone(`Erreur : ${res.error}`)
         }
@@ -114,9 +119,6 @@ function ProposalCard({
           {CONFIDENCE_LABELS[proposal.confidence]}
         </span>
         <span className="text-[11px] text-muted-foreground">{kindLabel}</span>
-        {proposal.canonicalSubjectLabel && (
-          <span className="text-[11px] text-muted-foreground">· {proposal.canonicalSubjectLabel}</span>
-        )}
       </div>
 
       {/* Titre éditable */}
@@ -145,6 +147,34 @@ function ProposalCard({
           />
         </div>
       )}
+
+      {/* Lignes info — non éditables */}
+      <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border text-[12px]">
+        {proposal.canonicalSubjectLabel && (
+          <div className="flex items-center gap-2 px-2.5 py-1.5">
+            <span className="w-28 shrink-0 text-muted-foreground">Sujet suivi</span>
+            <span className="font-medium">{proposal.canonicalSubjectLabel}</span>
+          </div>
+        )}
+        {proposal.kind === 'action' && (
+          <>
+            <div className="flex items-center gap-2 px-2.5 py-1.5">
+              <span className="w-28 shrink-0 text-muted-foreground">Responsable</span>
+              <span className="italic text-muted-foreground">Non attribué</span>
+            </div>
+            <div className="flex items-center gap-2 px-2.5 py-1.5">
+              <span className="w-28 shrink-0 text-muted-foreground">Échéance</span>
+              <span className="italic text-muted-foreground">Non définie</span>
+            </div>
+          </>
+        )}
+        {proposal.kind === 'visit_item' && (
+          <div className="flex items-center gap-2 px-2.5 py-1.5">
+            <span className="w-28 shrink-0 text-muted-foreground">Priorité</span>
+            <span className="italic text-muted-foreground">Normale</span>
+          </div>
+        )}
+      </div>
 
       {/* Pourquoi ? — section dépliable */}
       <button
@@ -209,7 +239,13 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
   const [resolvedSubjectIds, setResolvedIds]  = useState<string[]>([])
   // UUID stable de session — regroupe les échanges d'une conversation côté télémétrie
   const [conversationId]                      = useState<string>(() => crypto.randomUUID())
+  // Plan de prochaine visite — chargé au montage, rafraîchi après ajout
+  const [planItems, setPlanItems]             = useState<PlanItemSummary[]>([])
   const bottomRef                             = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    fetchPlanItems(siteId).then(setPlanItems).catch(() => {})
+  }, [siteId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -336,6 +372,11 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
     send(`Parle-moi de ${candidate.label}`, [candidate.id], candidate.id)
   }
 
+  async function removeItem(id: string) {
+    const res = await removePlanItem(id, siteId)
+    if (res.ok) setPlanItems((prev) => prev.filter((i) => i.id !== id))
+  }
+
   function clear() {
     setMessages([])
     setResolvedIds([])
@@ -451,6 +492,7 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
                         )
                       )
                     }}
+                    onPlanChange={() => { fetchPlanItems(siteId).then(setPlanItems).catch(() => {}) }}
                   />
                 </div>
               )
@@ -522,6 +564,48 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
           }
         </button>
       </form>
+
+      {/* Plan de prochaine visite — zone fixe hors conversation */}
+      {planItems.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-border/60">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+            Plan de prochaine visite · {planItems.length} point{planItems.length > 1 ? 's' : ''}
+          </p>
+          <ul className="space-y-2">
+            {planItems.map((item) => (
+              <li key={item.id} className="flex items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[13px] font-medium">{item.label}</span>
+                    {item.priority !== 'normal' && (
+                      <span className={cn(
+                        'rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                        item.priority === 'critical' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700',
+                      )}>
+                        {item.priority === 'critical' ? 'Critique' : 'Important'}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-muted-foreground/50">
+                      {item.sourceKind === 'copilot_suggestion' ? 'Copilote' : item.sourceKind === 'manual' ? 'Manuel' : 'MemorIA'}
+                    </span>
+                  </div>
+                  {item.reason && (
+                    <p className="text-[12px] text-muted-foreground leading-snug mt-0.5">{item.reason}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeItem(item.id)}
+                  aria-label="Retirer du plan"
+                  className="shrink-0 p-0.5 text-muted-foreground/40 hover:text-foreground transition-colors mt-0.5"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   )
 }

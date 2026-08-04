@@ -9,19 +9,12 @@ import 'server-only'
 // LA RÈGLE (Vincent, 2026-07-17), non négociable :
 //
 //   Le Planning affiche immédiatement tout événement RÉEL ou toute proposition
-//   DATÉE qui existe. Les événements futurs qui n'ont pas encore de modèle métier
-//   sont créés dans des sprints séparés — JAMAIS simulés.
+//   DATÉE qui existe.
 //
-// Deux conséquences qu'on assume, et qu'on ne contourne pas :
-//
-//   · Aucune VISITE PRÉVUE. Une visite naît en démarrant (`started_at = maintenant`) :
-//     il n'existe aucune visite planifiée dans le modèle. On affiche donc « visite
-//     en cours » et « visite terminée », jamais « visite prévue ». Le futur proche
-//     n'a aucune visite — et c'est honnête.
-//   · `next_meeting_at` N'EST PAS une réunion. C'est une date portée par le CR
-//     précédent, sans heure, sans participants, sans déroulé. On la montre comme
-//     « Réunion à organiser · date indicative · à confirmer » — une intention.
-//     Lui inventer une heure donnerait une certitude que le modèle ne possède pas.
+// 3D (2026-08) : site_scheduled_events est LE modèle des moments prévus.
+// La restriction « aucune visite prévue » datait d'avant la mig 216. Désormais
+// une visite planifiée (status planned/postponed) existe dans site_scheduled_events
+// et doit apparaître dans toutes les surfaces de planning.
 //
 // Les objets restent spécialisés en ÉCRITURE ; la timeline les unifie en LECTURE.
 
@@ -33,6 +26,7 @@ import { listActiveClosuresForSites, type SiteClosure } from '@/lib/db/site-clos
 import { projectClosures, CLOSURE_REASON_FR } from '@/lib/planning/closures'
 import { echeanceDateLabel } from '@/lib/visits/echeance-labels'
 import { todayLocalIso } from '@/lib/time/local-date'
+import { listScheduledEvents, scheduledTypeLabel } from '@/lib/db/scheduled-events'
 import {
   sortTimeline,
   type PlanningTimelineEvent,
@@ -308,6 +302,42 @@ export async function getPlanningTimeline(
       detail: b.impact ?? b.description,
     })
   })
+
+  // ── ÉVÉNEMENTS PLANIFIÉS (site_scheduled_events, mig 216) ────────────────────
+  // Visites et réunions prévues (status planned/postponed) — les types qui ont
+  // un cycle avec compte-rendu. Les autres types (delivery, other) n'ont pas
+  // vocation à apparaître dans la chronologie de planning chantier.
+  const scheduledLists = await Promise.all(
+    siteIds.map((siteId) =>
+      listScheduledEvents(siteId, { from: range.from, to: range.to }).catch(() => [])
+    )
+  )
+  for (const events of scheduledLists) {
+    for (const ev of events) {
+      if (ev.type !== 'visit' && ev.type !== 'meeting') continue
+      if (ev.status !== 'planned' && ev.status !== 'postponed') continue
+      const siteId = ev.siteId
+      const siteName = nameOf.get(siteId) ?? ''
+      const type = ev.type === 'visit' ? 'visite' : 'reunion'
+      const href = ev.type === 'visit'
+        ? `/sites/${siteId}/visites/prevue/${ev.id}`
+        : `/sites/${siteId}/reunions/prevue/${ev.id}`
+      out.push({
+        id: `scheduled-${ev.id}`,
+        type,
+        siteId,
+        siteName,
+        title: ev.title ?? scheduledTypeLabel(ev.type),
+        start: ev.plannedStart,
+        end: ev.plannedEnd,
+        status: ev.status === 'postponed' ? 'overdue' : 'upcoming',
+        certainty: 'confirmed',
+        source: 'site_scheduled_event',
+        href,
+        detail: ev.status === 'postponed' ? 'Reportée' : null,
+      })
+    }
+  }
 
   const filtered = filters.types?.length
     ? out.filter((e) => filters.types!.includes(e.type))

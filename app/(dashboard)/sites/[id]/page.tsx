@@ -9,6 +9,7 @@ import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { listBlocagesBySite } from '@/lib/db/site-blocages'
 import { listMissionsBySite } from '@/lib/db/missions'
 import { listInterventionsSupervisor } from '@/lib/db/interventions'
+import { listScheduledEvents, scheduledTypeLabel, type ScheduledEvent } from '@/lib/db/scheduled-events'
 import { listCyclesBySite } from '@/lib/db/planning-cycles'
 import { listSiteDeadlines, listSiteDeadlineHistory } from '@/lib/db/site-deadlines'
 import { listMaskedDeadlineProposals } from '@/lib/db/knowledge-proposals'
@@ -362,7 +363,7 @@ async function PlanningView({ siteId }: { siteId: string }) {
   const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate() + 6)
   const iso = (d: Date) => d.toISOString().slice(0, 10)
 
-  const [currentState, interventions, missions, blocages, cycles, deadlines, deadlineHistory, maskedProposals, teams, timeline] = await Promise.all([
+  const [currentState, interventions, missions, blocages, cycles, deadlines, deadlineHistory, maskedProposals, teams, timeline, scheduledEvents] = await Promise.all([
     getSiteCurrentState(siteId).catch(() => null),
     listInterventionsSupervisor({ siteId, dateRange: 'all', limit: 80 }).catch((e) => { console.error('[sites/[id]] interventions', e); return { items: [], total: 0 } }),
     listMissionsBySite(siteId).catch(() => []),
@@ -373,11 +374,12 @@ async function PlanningView({ siteId }: { siteId: string }) {
     listMaskedDeadlineProposals(siteId).catch(() => []),
     listTeams().catch(() => []),
     getPlanningTimeline({ from: iso(lundi), to: iso(dimanche) }, { siteIds: [siteId] }).catch((): PlanningTimelineEvent[] => []),
+    listScheduledEvents(siteId, { from: new Date().toISOString() }).catch((): ScheduledEvent[] => []),
   ])
   return (
     <PlanningWorkspace
       siteId={siteId}
-      nextEvent={selectNextEvent(toOverviewEvents(currentState, siteId), new Date().toISOString())}
+      nextEvent={selectNextEvent(toOverviewEvents(currentState, siteId, scheduledEvents), new Date().toISOString())}
       interventions={interventions.items}
       missions={missions}
       blocages={blocages.filter((b) => b.dateEnd === null)}
@@ -563,16 +565,37 @@ async function buildDocumentsQrState(siteId: string): Promise<DocumentsQrState> 
   }
 }
 
-function toOverviewEvents(currentState: Awaited<ReturnType<typeof getSiteCurrentState>> | null, siteId: string): OverviewEventInput[] {
-  if (!currentState?.nextScheduledAt) return []
-  return [{
-    id: currentState.nextScheduledAt,
-    kind: 'intervention',
-    title: 'Intervention planifiée',
-    startsAt: currentState.nextScheduledAt,
-    detail: currentState.nextScheduledSlot,
-    href: `/semaine?site=${siteId}`,
-  }]
+function toOverviewEvents(
+  currentState: Awaited<ReturnType<typeof getSiteCurrentState>> | null,
+  siteId: string,
+  scheduledEvents: ScheduledEvent[] = [],
+): OverviewEventInput[] {
+  const inputs: OverviewEventInput[] = []
+  for (const ev of scheduledEvents) {
+    if (ev.type !== 'visit' && ev.type !== 'meeting') continue
+    if (ev.status !== 'planned' && ev.status !== 'postponed') continue
+    inputs.push({
+      id: ev.id,
+      kind: ev.type === 'visit' ? 'visit' : 'meeting',
+      title: ev.title ?? scheduledTypeLabel(ev.type),
+      startsAt: ev.plannedStart,
+      detail: null,
+      href: ev.type === 'visit'
+        ? `/sites/${siteId}/visites/prevue/${ev.id}`
+        : `/sites/${siteId}/reunions/prevue/${ev.id}`,
+    })
+  }
+  if (currentState?.nextScheduledAt) {
+    inputs.push({
+      id: currentState.nextScheduledAt,
+      kind: 'intervention',
+      title: 'Intervention planifiée',
+      startsAt: currentState.nextScheduledAt,
+      detail: currentState.nextScheduledSlot,
+      href: `/semaine?site=${siteId}`,
+    })
+  }
+  return inputs
 }
 
 function toOverviewChanges(items: RecentActivityItem[]): OverviewChangeInput[] {

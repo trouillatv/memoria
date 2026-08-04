@@ -50,6 +50,7 @@ import {
   type OverviewChangeInput,
   type OverviewEventInput,
 } from '@/lib/chantier/overview-projections'
+import { listScheduledEvents, scheduledTypeLabel, type ScheduledEvent } from '@/lib/db/scheduled-events'
 import {
   canonicalRunsForSite,
   runEffectiveDate,
@@ -351,16 +352,41 @@ function toChangeInputs(items: RecentActivityItem[]): OverviewChangeInput[] {
   }))
 }
 
-function toEventInputs(nextScheduledAt: string | null, slot: string | null, siteId: string): OverviewEventInput[] {
-  if (!nextScheduledAt) return []
-  return [{
-    id: nextScheduledAt,
-    kind: 'intervention',
-    title: 'Intervention planifiée',
-    startsAt: nextScheduledAt,
-    detail: slot,
-    href: `/semaine?site=${siteId}`,
-  }]
+function toEventInputs(
+  nextScheduledAt: string | null,
+  slot: string | null,
+  siteId: string,
+  scheduledEvents: ScheduledEvent[],
+): OverviewEventInput[] {
+  const inputs: OverviewEventInput[] = []
+
+  for (const ev of scheduledEvents) {
+    if (ev.type !== 'visit' && ev.type !== 'meeting') continue
+    if (ev.status !== 'planned' && ev.status !== 'postponed') continue
+    inputs.push({
+      id: ev.id,
+      kind: ev.type === 'visit' ? 'visit' : 'meeting',
+      title: ev.title ?? scheduledTypeLabel(ev.type),
+      startsAt: ev.plannedStart,
+      detail: null,
+      href: ev.type === 'visit'
+        ? `/sites/${siteId}/visites/prevue/${ev.id}`
+        : `/sites/${siteId}/reunions/prevue/${ev.id}`,
+    })
+  }
+
+  if (nextScheduledAt) {
+    inputs.push({
+      id: nextScheduledAt,
+      kind: 'intervention',
+      title: 'Intervention planifiée',
+      startsAt: nextScheduledAt,
+      detail: slot,
+      href: `/semaine?site=${siteId}`,
+    })
+  }
+
+  return inputs
 }
 
 function numberOf(value: string | undefined): number {
@@ -501,7 +527,7 @@ async function fetchPvSignalData(siteId: string): Promise<{
  * a son repli, et la forme est toujours complète (aucun `undefined`).
  */
 export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
-  const [proj, actionRows, aSavoir, intervenants, recent, identity, synth, blocages, statusSummary, memorySignals, currentState, activity, deadlineRows, watchpointRows, knowledgeRows, decisionRows, pvSignal] = await Promise.all([
+  const [proj, actionRows, aSavoir, intervenants, recent, identity, synth, blocages, statusSummary, memorySignals, currentState, activity, deadlineRows, watchpointRows, knowledgeRows, decisionRows, pvSignal, scheduledEvents] = await Promise.all([
     getSiteProjection(siteId).catch(() => emptySiteProjection()),
     readSiteActionSummaries(siteId).catch(() => [] as ActionSummaryRow[]),
     listSiteASavoirActive(siteId).catch(() => []),
@@ -524,6 +550,8 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     listDecisionsBySite(siteId).catch(() => [] as SiteDecision[]),
     // Signaux PV canoniques : 3 blocs de l'Aperçu construits sur la structure Histoire.
     fetchPvSignalData(siteId).catch(() => null),
+    // Moments prévus (visites, réunions) — convergence 3D.
+    listScheduledEvents(siteId, { from: new Date().toISOString() }).catch(() => [] as ScheduledEvent[]),
   ])
 
   // ── Actions : proposé (projection) + validé (site_actions actives) ──
@@ -584,7 +612,7 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
 
   // ── Prochaine étape / changements depuis la dernière venue ──
   const nextEvent = selectNextEvent(
-    toEventInputs(currentState?.nextScheduledAt ?? null, currentState?.nextScheduledSlot ?? null, siteId),
+    toEventInputs(currentState?.nextScheduledAt ?? null, currentState?.nextScheduledSlot ?? null, siteId, scheduledEvents),
     new Date().toISOString(),
   )
   const sinceIso = synth?.endedAt ?? null
