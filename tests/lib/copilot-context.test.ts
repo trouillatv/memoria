@@ -138,6 +138,25 @@ describe('buildSiteCopilotContext', () => {
     expect(ctx.delta!.traités).toBe(5)    // même valeur que Histoire
   })
 
+  it('PV8 02/07 + PV9 16/07 → delta.fromDate = PV précédent, delta.toDate = PV analysé', () => {
+    // Invariant : fromDate est le PV de référence (PV8), toDate est le PV analysé (PV9).
+    // Le LLM ne doit jamais présenter fromDate comme étant la date du dernier PV.
+    const pvLastDelta: PvLastDelta = {
+      fromDate: '2026-07-02',
+      toDate: '2026-07-16',
+      nouveaux: 6,
+      aggravésRéouverts: 0,
+      réalisésLevés: 1,
+    }
+    const overview = makeOverview({ pvLastDelta })
+    const ctx = buildSiteCopilotContext('site-1', 'OCEF', overview, [])
+    expect(ctx.delta).not.toBeNull()
+    expect(ctx.delta!.fromDate).toBe('2026-07-02') // PV précédent (référence)
+    expect(ctx.delta!.toDate).toBe('2026-07-16')   // PV analysé (le plus récent)
+    expect(ctx.delta!.nouveaux).toBe(6)
+    expect(ctx.delta!.traités).toBe(1)
+  })
+
   it('pvLastDelta null → delta null', () => {
     const ctx = buildSiteCopilotContext('site-1', 'Test', makeOverview(), [])
     expect(ctx.delta).toBeNull()
@@ -234,12 +253,15 @@ describe('buildFallbackText', () => {
     expect(text).not.toBe('')
   })
 
-  it('changes avec delta → reprend exactement les chiffres du delta', () => {
-    const delta = { fromDate: '2026-06-01', nouveaux: 3, aggravés: 1, traités: 4 }
+  it('changes avec delta → reprend les chiffres et les deux bornes de date', () => {
+    const delta = { fromDate: '2026-07-02', toDate: '2026-07-16', nouveaux: 3, aggravés: 1, traités: 4 }
     const text = buildFallbackText([], 'changes', delta, [])
     expect(text).toContain('3')
     expect(text).toContain('1 aggravé')
     expect(text).toContain('4 traité')
+    // Les deux bornes doivent apparaître — fromDate est le PV de référence, pas le dernier
+    expect(text).toMatch(/2 juil/)
+    expect(text).toMatch(/16 juil/)
   })
 
   it('changes sans delta → message neutre (pas une erreur)', () => {

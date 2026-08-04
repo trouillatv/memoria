@@ -38,7 +38,7 @@ export function DeltaBlock({ delta }: { delta: PvLastDeltaProps }) {
   return (
     <section className="space-y-2">
       <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Depuis le PV du {from}
+        Du PV du {from} au PV du {to}
       </h2>
       <div className="flex flex-wrap gap-3 rounded-2xl border border-foreground/[0.06] bg-card px-4 py-3 text-[13px]">
         {delta.nouveaux > 0 && (
@@ -59,7 +59,6 @@ export function DeltaBlock({ delta }: { delta: PvLastDeltaProps }) {
         {delta.nouveaux === 0 && delta.aggravésRéouverts === 0 && delta.réalisésLevés === 0 && (
           <span className="text-muted-foreground">Aucun changement</span>
         )}
-        <span className="text-muted-foreground ml-auto text-[11px]">jusqu'au {to}</span>
       </div>
     </section>
   )

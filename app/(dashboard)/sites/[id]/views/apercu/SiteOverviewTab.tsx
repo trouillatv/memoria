@@ -310,7 +310,7 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
 
 // ── Composants des 3 blocs PV ────────────────────────────────────────────────
 
-/** Banner compact "Depuis le dernier PV" — signal uniquement, lien vers Histoire. */
+/** Banner compact delta PV — signal uniquement, lien vers Histoire. */
 function PvDeltaBanner({ delta, siteId }: { delta: PvLastDelta; siteId: string }) {
   const fmtDate = (iso: string) =>
     new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
@@ -323,7 +323,7 @@ function PvDeltaBanner({ delta, siteId }: { delta: PvLastDelta; siteId: string }
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[14px] border bg-card px-4 py-2.5 shadow-sm">
       <span className="text-[13px] font-medium text-muted-foreground">
-        Depuis le PV du {fmtDate(delta.fromDate)}
+        Du PV du {fmtDate(delta.fromDate)} au PV du {fmtDate(delta.toDate)}
       </span>
       <span className="text-muted-foreground/40">·</span>
       {parts.length > 0 ? (

@@ -17,7 +17,8 @@ export interface CopilotItem {
 }
 
 export interface SiteCopilotDelta {
-  fromDate: string | null
+  fromDate: string | null  // date du PV précédent (référence)
+  toDate: string | null    // date du PV analysé (le plus récent)
   nouveaux: number
   aggravés: number
   traités: number
@@ -100,6 +101,7 @@ export function buildSiteCopilotContext(
   const delta: SiteCopilotDelta | null = overview.pvLastDelta
     ? {
         fromDate: overview.pvLastDelta.fromDate,
+        toDate:   overview.pvLastDelta.toDate,
         nouveaux: overview.pvLastDelta.nouveaux,
         aggravés: overview.pvLastDelta.aggravésRéouverts,
         traités: overview.pvLastDelta.réalisésLevés,
@@ -157,12 +159,17 @@ export function buildFallbackText(
 ): string {
   if (intent === 'changes') {
     if (!delta) return 'Aucun delta inter-PV disponible sur ce chantier.'
+    const fmtShort = (iso: string | null) =>
+      iso ? new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '?'
+    const range = delta.fromDate && delta.toDate
+      ? `Du PV du ${fmtShort(delta.fromDate)} au PV du ${fmtShort(delta.toDate)}`
+      : 'Entre les deux derniers PV'
     const parts: string[] = []
     if (delta.nouveaux > 0)  parts.push(`${delta.nouveaux} nouveau${delta.nouveaux > 1 ? 'x point' : ' point'}`)
     if (delta.aggravés > 0)  parts.push(`${delta.aggravés} aggravé${delta.aggravés > 1 ? 's' : ''}`)
     if (delta.traités > 0)   parts.push(`${delta.traités} traité${delta.traités > 1 ? 's' : ''}`)
-    if (parts.length === 0) return 'Aucun changement entre les deux derniers PV.'
-    return `Depuis le dernier PV : ${parts.join(', ')}.`
+    if (parts.length === 0) return `${range} : aucun changement notable.`
+    return `${range} : ${parts.join(', ')}.`
   }
 
   if (intent === 'next_visit') {
