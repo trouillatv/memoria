@@ -48,6 +48,7 @@ CREATE INDEX IF NOT EXISTS idx_cso_source_ref        ON canonical_subject_occurr
 
 ALTER TABLE canonical_subject_occurrence ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "cso_select" ON canonical_subject_occurrence;
 CREATE POLICY "cso_select" ON canonical_subject_occurrence
   FOR SELECT USING (
     EXISTS (
