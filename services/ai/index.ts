@@ -6,6 +6,10 @@ export interface CompletionInput {
   systemPrompt: string
   userMessage: string
   responseSchema?: z.ZodTypeAny
+  // Schéma JSON natif à passer au provider (Gemini responseSchema).
+  // Quand fourni, le provider l'utilise pour contraindre la structure de sortie
+  // et éviter les variations de nommage de champs (snake_case vs camelCase, etc.)
+  geminiSchema?: Record<string, unknown>
   modelTier: 'light' | 'heavy'
   maxOutputTokens?: number
 }

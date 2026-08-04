@@ -41,7 +41,10 @@ export class GeminiProvider implements AIProvider {
           // doit aller à la SORTIE. (Auparavant le thinking n'était coupé que pour
           // le JSON — d'où la troncature silencieuse des sorties en texte libre.)
           thinkingConfig: { thinkingBudget: 0 },
-          ...(input.responseSchema ? { responseMimeType: 'application/json' } : {}),
+          ...(input.responseSchema ? {
+            responseMimeType: 'application/json',
+            ...(input.geminiSchema ? { responseSchema: input.geminiSchema } : {}),
+          } : {}),
         },
         contents: input.userMessage,
       })

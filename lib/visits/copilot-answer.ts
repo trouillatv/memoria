@@ -16,6 +16,17 @@ const AnswerSchema = z.object({
   citedIds: z.array(z.string()),
 })
 
+// Schéma JSON natif passé à Gemini pour forcer la structure de sortie.
+// Évite les variations de nommage (cited_ids vs citedIds) qui causent un fallback silencieux.
+const ANSWER_GEMINI_SCHEMA = {
+  type: 'object',
+  properties: {
+    text: { type: 'string' },
+    citedIds: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['text', 'citedIds'],
+}
+
 const SYSTEM_PROMPT = `Tu es MemorIA Copilote, assistant de suivi de chantier.
 Tu reçois un contexte JSON structuré, calculé de façon déterministe depuis les données du projet.
 
@@ -76,6 +87,7 @@ export async function answerCopilotQuestion(
       systemPrompt: SYSTEM_PROMPT,
       userMessage: `${INTENT_PROMPTS[intent]}\n\nContexte :\n${contextJson}`,
       responseSchema: AnswerSchema,
+      geminiSchema: ANSWER_GEMINI_SCHEMA,
       modelTier: 'light',
       maxOutputTokens: 600,
     })
@@ -88,16 +100,20 @@ export async function answerCopilotQuestion(
         const citedIds = maybeValid.data.citedIds.filter((id) => validIds.has(id))
         return { text: maybeValid.data.text, citedIds, source: 'llm' }
       }
+      // Le JSON est là mais ne correspond pas au schéma attendu
+      console.warn('[copilot] schema mismatch — parsed:', JSON.stringify(result.parsed).slice(0, 200))
+    } else {
+      console.warn('[copilot] result.parsed is null — raw text:', result.text.slice(0, 200))
     }
 
-    // Parse échoué → fallback
     return {
       text: buildFallbackText(items, intent, delta, prepItems),
       citedIds: [],
       source: 'fallback',
     }
-  } catch {
+  } catch (err) {
     // Provider IA indisponible (timeout, quota, réseau) → réponse déterministe utile
+    console.error('[copilot] provider error:', err instanceof Error ? err.message : String(err))
     return {
       text: buildFallbackText(items, intent, delta, prepItems),
       citedIds: [],
