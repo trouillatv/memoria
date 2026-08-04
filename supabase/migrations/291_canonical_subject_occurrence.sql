@@ -48,11 +48,11 @@ CREATE INDEX IF NOT EXISTS idx_cso_source_ref        ON canonical_subject_occurr
 
 ALTER TABLE canonical_subject_occurrence ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "org members can read cso" ON canonical_subject_occurrence
+CREATE POLICY "cso_select" ON canonical_subject_occurrence
   FOR SELECT USING (
     EXISTS (
-      SELECT 1 FROM sites s
-      JOIN organization_members om ON om.organization_id = s.organization_id
+      SELECT 1 FROM public.sites s
+      JOIN public.organization_memberships om ON om.organization_id = s.organization_id
       WHERE s.id = canonical_subject_occurrence.site_id
         AND om.user_id = auth.uid()
     )
