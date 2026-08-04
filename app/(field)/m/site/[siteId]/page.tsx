@@ -50,6 +50,7 @@ import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import { SiteMemoryQuery } from '@/app/(dashboard)/sites/[id]/SiteMemoryQuery'
 import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
 import { ChefSiteView } from './ChefSiteView'
+import { CopilotMobileSheet } from './CopilotMobileSheet'
 import { ListTodo, Hammer, AlertTriangle, ChevronRight, Camera, Search } from 'lucide-react'
 import { TogglePanel } from '@/app/(dashboard)/sites/[id]/TogglePanel'
 
@@ -474,6 +475,7 @@ export default async function FieldSitePage({
           <section className="space-y-2.5">
             <SiteBriefButton siteId={siteId} variant="mobile" mode="visit" />
             <SiteBriefButton siteId={siteId} variant="mobile" mode="meeting" />
+            <CopilotMobileSheet siteId={siteId} />
           </section>
 
           {/* Contexte du lieu — référence & secondaire (sous la narration). */}

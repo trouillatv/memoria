@@ -11,6 +11,7 @@ import { SiteStatusCard } from '../SiteStatusCard'
 import { VisitLauncher } from '../VisitLauncher'
 import { DeltaBlock, VisitBriefClient } from './VisitBriefClient'
 import type { PrepItemSeed } from './VisitBriefClient'
+import { CopilotMobileSheet } from '../CopilotMobileSheet'
 
 /**
  * « Préparer ma visite » — le brief décisionnel avant d'aller sur le chantier.
@@ -87,6 +88,9 @@ export default async function PrepareVisitPage({
       {overview.pvLastDelta && (
         <DeltaBlock delta={overview.pvLastDelta} />
       )}
+
+      {/* Copilote — poser une question avant d'arriver sur le chantier */}
+      <CopilotMobileSheet siteId={siteId} />
 
       {/* 3 — Brief interactif : Priorités + Sujets + Mon plan */}
       {(overview.pvAttention.length > 0 || overview.pvToVerify.length > 0 || planCount > 0) && (
