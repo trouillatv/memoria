@@ -23,6 +23,8 @@ import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-res
 import { getCanonicalSubjectLifeForSite } from '@/lib/db/canonical-subject-life'
 import { buildSubjectDetailForCopilot } from '@/lib/visits/copilot-subject-context'
 import { answerCopilotFreeQuestion } from '@/lib/visits/copilot-free-answer'
+import type { FreeAnswerContext, RecentChangeContext, VisitPlanItemContext } from '@/lib/visits/copilot-free-answer'
+import { getSiteActorContext } from '@/lib/db/site-actor-responsibilities'
 import type { CopilotRef } from './copilot-action'
 
 // ── Schémas ───────────────────────────────────────────────────────────────────
@@ -155,10 +157,16 @@ export async function askCopilotFreeAction(
   }
 
   // ── Chargement des données ────────────────────────────────────────────────────
-  const [overview, prepItemsRaw, ...subjectLives] = await Promise.all([
+  const needsActor = classification.primary === 'actor' || classification.secondary.includes('actor')
+
+  const [overview, prepItemsRaw, actorContext, ...subjectLives] = await Promise.all([
     getSiteOverview(siteId).catch(() => emptySiteOverview(siteId)),
     userId
       ? listActivePreparationItems(siteId, userId).catch(() => [])
+      : Promise.resolve([]),
+    // Outil actor — chargement paresseux
+    needsActor
+      ? getSiteActorContext(siteId, classification.entities.actorLabels).catch(() => [])
       : Promise.resolve([]),
     ...[...subjectIdsToLoad].map((id) =>
       getCanonicalSubjectLifeForSite(siteId, id).catch(() => null),
@@ -170,22 +178,53 @@ export async function askCopilotFreeAction(
   // Contexte de base Phase 2 (items + delta)
   const context = buildSiteCopilotContext(siteId, overview.identity.name, overview, prepItems)
 
-  // Pour les questions globales, filtrer selon l'intent primaire
-  // Pour les sujets détaillés, passer le contexte complet (pas de filtre intent)
-  const intentForFilter = (
-    classification.primary === 'subject_detail' ? 'attention' : classification.primary
-  ) as Parameters<typeof filterContextForIntent>[1]
-
-  const safeIntent = ['attention', 'changes', 'stale', 'next_visit'].includes(intentForFilter)
-    ? intentForFilter
-    : 'attention'
-
+  // Mapping intent primaire → filtre Phase 2
+  const INTENT_FILTER_MAP: Record<string, 'attention' | 'changes' | 'stale' | 'next_visit'> = {
+    timeline:      'changes',
+    plan_visite:   'next_visit',
+    action_status: 'attention',
+    subject_detail:'attention',
+    actor:         'attention',
+    global:        'attention',
+  }
+  const safeIntent = INTENT_FILTER_MAP[classification.primary] ?? 'attention'
   const { items, delta, prepItems: filteredPrep } = filterContextForIntent(context, safeIntent)
 
   // Enrichissement sujets détaillés
   const subjectDetails = subjectLives
     .filter((l): l is NonNullable<typeof l> => l !== null)
     .map(buildSubjectDetailForCopilot)
+
+  // ── Contexte 3B — modules chargés à la demande ───────────────────────────────
+  const extra: FreeAnswerContext = {}
+
+  // Timeline : transmettre les changements récents du chantier
+  const needsTimeline = classification.primary === 'timeline' || classification.secondary.includes('timeline')
+  if (needsTimeline && overview.recentChanges.length > 0) {
+    extra.recentChanges = overview.recentChanges
+      .slice(0, 15)
+      .map((c): RecentChangeContext => ({
+        title: c.title,
+        occurredAt: c.occurredAt,
+        detail: c.detail,
+      }))
+  }
+
+  // Actor : déjà chargé dans actorContext
+  if (actorContext.length > 0) {
+    extra.actorContext = actorContext
+  }
+
+  // Plan de visite enrichi : ajouter les sujets à vérifier avec leurs signaux
+  const needsPlan = safeIntent === 'next_visit'
+  if (needsPlan && overview.pvToVerify.length > 0) {
+    extra.visitPlanDetail = overview.pvToVerify.map((v): VisitPlanItemContext => ({
+      label: v.label,
+      priority: 'normal',
+      reason: null,
+      signals: v.signals,
+    }))
+  }
 
   // ── Appel LLM ────────────────────────────────────────────────────────────────
   const answer = await answerCopilotFreeQuestion(
@@ -196,6 +235,7 @@ export async function askCopilotFreeAction(
     delta,
     filteredPrep,
     overview.identity.name,
+    extra,
   )
 
   // Résolution des références depuis la liste FERMÉE (items + sujets détaillés)

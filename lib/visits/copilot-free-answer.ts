@@ -15,6 +15,20 @@ import type { CopilotItem } from './copilot-context'
 import type { SubjectDetailContext } from './copilot-subject-context'
 import type { SiteCopilotDelta } from './copilot-context'
 import { buildFallbackText } from './copilot-context'
+import type { ActorContext } from '@/lib/db/site-actor-responsibilities'
+
+export interface RecentChangeContext {
+  title: string
+  occurredAt: string
+  detail: string | null
+}
+
+export interface VisitPlanItemContext {
+  label: string
+  priority: string
+  reason: string | null
+  signals: string[]
+}
 
 const FreeAnswerSchema = z.object({
   text: z.string().max(2000),
@@ -57,6 +71,12 @@ export interface FreeAnswer {
   source: 'llm' | 'fallback'
 }
 
+export interface FreeAnswerContext {
+  actorContext?: ActorContext[]
+  recentChanges?: RecentChangeContext[]
+  visitPlanDetail?: VisitPlanItemContext[]
+}
+
 export async function answerCopilotFreeQuestion(
   question: string,
   history: HistoryMessage[],
@@ -65,6 +85,7 @@ export async function answerCopilotFreeQuestion(
   delta: SiteCopilotDelta | null,
   prepItems: { label: string; stableKey: string }[],
   siteName: string,
+  extra?: FreeAnswerContext,
 ): Promise<FreeAnswer> {
   // Construire la liste fermée d'ids valides pour le garde anti-hallucination
   const validIds = new Set([
@@ -85,6 +106,15 @@ export async function answerCopilotFreeQuestion(
       })),
       ...(subjectDetails.length > 0 ? { sujets_detail: subjectDetails } : {}),
       ...(delta ? { delta } : {}),
+      ...(extra?.recentChanges && extra.recentChanges.length > 0
+        ? { changements_recents: extra.recentChanges }
+        : {}),
+      ...(extra?.actorContext && extra.actorContext.length > 0
+        ? { intervenants_detail: extra.actorContext }
+        : {}),
+      ...(extra?.visitPlanDetail && extra.visitPlanDetail.length > 0
+        ? { plan_de_visite_detail: extra.visitPlanDetail }
+        : {}),
       ...(prepItems.length > 0 ? { planDeVisite: prepItems.map((p) => p.label) } : {}),
     },
     null,
