@@ -495,3 +495,21 @@ export async function getCanonicalSubjectLife(
     materializedEvents,
   }
 }
+
+/**
+ * Wrapper sécurisé : vérifie que le canonical_subject appartient bien au siteId
+ * demandé avant de retourner les données.
+ *
+ * À utiliser dans le Copilote Phase 3 et partout où le canonicalSubjectId
+ * est fourni par un client (et ne doit pas traverser les frontières de chantier).
+ */
+export async function getCanonicalSubjectLifeForSite(
+  siteId: string,
+  canonicalSubjectId: string,
+): Promise<CanonicalSubjectLife | null> {
+  const life = await getCanonicalSubjectLife(canonicalSubjectId)
+  if (!life) return null
+  // Refus explicite si le sujet appartient à un autre chantier
+  if (life.siteId !== siteId) return null
+  return life
+}
