@@ -24,6 +24,7 @@ import {
 import { sourceLabels, pendingLabel, visitDateLabel, durationLabel } from '@/lib/chantier/overview-labels'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { SiteBriefButton } from '../../SiteBriefButton'
+import { CopilotBlock } from './CopilotBlock'
 
 // ── ONGLET APERÇU ────────────────────────────────────────────────────────────
 // DOCTRINE (test : tests/lib/site-overview-tab.doctrine.test.ts) : cet onglet ne
@@ -85,6 +86,11 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
           />
         </div>
       </section>
+
+      {/* ── COPILOTE ──────────────────────────────────────────────────────────
+          4 questions guidées → réponse courte sourcée.
+          Lecture seule : aucune écriture, aucun RAG PDF, aucun scoring nouveau. */}
+      <CopilotBlock siteId={siteId} />
 
       {/* ── LA VIE DU CHANTIER ────────────────────────────────────────────────
           Le chantier doit RESPIRER : on doit sentir qu'une visite vient d'avoir
