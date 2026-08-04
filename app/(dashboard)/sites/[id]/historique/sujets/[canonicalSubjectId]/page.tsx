@@ -38,6 +38,10 @@ const STATUS_LABELS: Record<string, string> = {
   awaiting_validation: 'En attente de validation',
   cancelled: 'Annulé',
   informational: 'Informatif',
+  // statuts visites terrain
+  field_checked:   'Vérifié sur le terrain',
+  still_open:      'Toujours ouvert',
+  not_applicable:  'Sans objet',
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -49,6 +53,10 @@ const STATUS_COLORS: Record<string, string> = {
   awaiting_validation:'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
   cancelled:          'bg-muted text-muted-foreground',
   informational:      'bg-muted text-muted-foreground',
+  // statuts visites terrain
+  field_checked:      'bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300',
+  still_open:         'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
+  not_applicable:     'bg-muted text-muted-foreground',
 }
 
 const TRANSITION_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
@@ -123,13 +131,19 @@ function toPct(ms: number, minMs: number, maxMs: number): number {
 /** Couleur et symbole du point de la lifeline selon status et transition. */
 function lifelineDot(occ: SubjectOccurrenceMerged): { symbol: string; colorClass: string } {
   if (occ.isGap) return { symbol: '○', colorClass: 'text-muted-foreground/40' }
+  if (occ.sourceKind === 'field_visit') {
+    if (occ.visitStatus === 'field_checked')  return { symbol: '✓', colorClass: 'text-teal-600 dark:text-teal-400' }
+    if (occ.visitStatus === 'still_open')     return { symbol: '●', colorClass: 'text-orange-500 dark:text-orange-400' }
+    if (occ.visitStatus === 'not_applicable') return { symbol: '○', colorClass: 'text-muted-foreground/60' }
+    return { symbol: '▶', colorClass: 'text-teal-500' }
+  }
   const status = occ.documentStatus
   if (status === 'done')          return { symbol: '✓', colorClass: 'text-emerald-600 dark:text-emerald-400' }
   if (status === 'non_compliant') return { symbol: '⚠', colorClass: 'text-red-600 dark:text-red-400' }
   if (status === 'open')          return { symbol: '●', colorClass: 'text-orange-500 dark:text-orange-400' }
   if (status === 'in_progress')   return { symbol: '↗', colorClass: 'text-blue-600 dark:text-blue-400' }
   if (status === 'planned')       return { symbol: '○', colorClass: 'text-sky-500' }
-  if (!occ.transition)            return { symbol: '●', colorClass: 'text-blue-500' } // première apparition
+  if (!occ.transition)            return { symbol: '●', colorClass: 'text-blue-500' }
   return { symbol: '●', colorClass: 'text-muted-foreground' }
 }
 
@@ -158,9 +172,11 @@ const LIFELINE_EVENT_ORDER: MaterializedEntityType[] = ['site_reserve', 'site_ac
 function LifelineBar({
   occurrences,
   materializedEvents,
+  siteId,
 }: {
   occurrences: SubjectOccurrenceMerged[]
   materializedEvents: MaterializedEvent[]
+  siteId: string
 }) {
   if (occurrences.length === 0) return null
 
@@ -196,26 +212,31 @@ function LifelineBar({
             className="absolute -translate-x-1/2 flex flex-col items-center"
             style={{ left: `${pct}%`, top: 0 }}
           >
-            {/* Lien vers le document (cliquable) */}
-            <Link
-              href={`/documents/${occ.documentId}`}
-              className={cn(
-                'group flex flex-col items-center gap-0.5',
-                occ.isGap ? 'pointer-events-none opacity-40' : '',
-              )}
-              title={occ.isGap ? 'Non mentionné' : (occ.label ?? '')}
-            >
-              {/* Symbole */}
-              <span className={cn('text-base font-bold leading-none transition-transform group-hover:scale-125', colorClass)}>
-                {symbol}
-              </span>
-              {/* Trait vertical vers la ligne */}
-              <div className={cn('h-4 w-px', occ.isGap ? 'bg-muted-foreground/20' : 'bg-border')} />
-              {/* Date courte */}
-              <span className="whitespace-nowrap text-[10px] text-muted-foreground">
-                {frDateShort(occ.effectiveDate)}
-              </span>
-            </Link>
+            {/* Lien vers la source — PDF→document, terrain→visite, null→non cliquable */}
+            {(() => {
+              const href =
+                occ.sourceKind === 'field_visit' && occ.reportId
+                  ? `/sites/${siteId}/visites/${occ.reportId}`
+                  : !occ.isGap && occ.documentId
+                    ? `/documents/${occ.documentId}`
+                    : null
+              const cls   = cn('group flex flex-col items-center gap-0.5', occ.isGap ? 'pointer-events-none opacity-40' : '')
+              const title = occ.isGap ? 'Non mentionné' : (occ.label ?? '')
+              const inner = (
+                <>
+                  <span className={cn('text-base font-bold leading-none transition-transform group-hover:scale-125', colorClass)}>
+                    {symbol}
+                  </span>
+                  <div className={cn('h-4 w-px', occ.isGap ? 'bg-muted-foreground/20' : 'bg-border')} />
+                  <span className="whitespace-nowrap text-[10px] text-muted-foreground">
+                    {frDateShort(occ.effectiveDate)}
+                  </span>
+                </>
+              )
+              return href
+                ? <Link href={href} className={cls} title={title}>{inner}</Link>
+                : <div className={cls} title={title}>{inner}</div>
+            })()}
 
             {/* Badges objets métier — groupés par type, compacts */}
             {badges.length > 0 && (
@@ -274,12 +295,25 @@ function OccurrenceCard({ occ }: { occ: SubjectOccurrenceMerged }) {
         </div>
         <div className="flex flex-wrap gap-1.5">
           {occ.transition && <TransitionBadge transition={occ.transition} />}
+          {occ.sourceKind === 'field_visit' && (
+            <span className="inline-flex items-center rounded-full bg-teal-50 text-teal-700 dark:bg-teal-950 dark:text-teal-300 px-2 py-0.5 text-xs font-medium">
+              Visite terrain
+            </span>
+          )}
           {occ.documentStatus && (
             <span className={cn(
               'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
               STATUS_COLORS[occ.documentStatus] ?? 'bg-muted text-muted-foreground',
             )}>
               {STATUS_LABELS[occ.documentStatus] ?? occ.documentStatus}
+            </span>
+          )}
+          {occ.visitStatus && (
+            <span className={cn(
+              'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+              STATUS_COLORS[occ.visitStatus] ?? 'bg-muted text-muted-foreground',
+            )}>
+              {STATUS_LABELS[occ.visitStatus] ?? occ.visitStatus}
             </span>
           )}
           {occ.proposalFamily && occ.proposalFamily !== 'knowledge_fact' && (
@@ -513,6 +547,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
 
   const summaryParts: string[] = []
   if (life.pvCount > 0) summaryParts.push(`${life.pvCount} PV`)
+  if (life.fieldVisitCount > 0) summaryParts.push(`${life.fieldVisitCount} visite${life.fieldVisitCount > 1 ? 's' : ''} terrain`)
   if (matCounts.site_reserve > 0) summaryParts.push(`${matCounts.site_reserve} réserve${matCounts.site_reserve > 1 ? 's' : ''}`)
   if (matCounts.site_action > 0) summaryParts.push(`${matCounts.site_action} action${matCounts.site_action > 1 ? 's' : ''}`)
   if (matCounts.site_decision > 0) summaryParts.push(`${matCounts.site_decision} décision${matCounts.site_decision > 1 ? 's' : ''}`)
@@ -585,7 +620,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
             <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-4">
               Ligne de vie
             </h2>
-            <LifelineBar occurrences={life.occurrences} materializedEvents={life.materializedEvents} />
+            <LifelineBar occurrences={life.occurrences} materializedEvents={life.materializedEvents} siteId={siteId} />
             <p className="mt-1 text-[10px] text-muted-foreground">
               Espacé selon les dates réelles · les cercles grisés = PV où le sujet n'est pas mentionné
             </p>

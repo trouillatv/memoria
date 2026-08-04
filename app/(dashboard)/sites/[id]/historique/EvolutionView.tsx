@@ -124,8 +124,8 @@ function TensionCurve({ timeline }: { timeline: SiteHealthTimeline }) {
   const { points, peakActive } = timeline
   if (points.length < 2) return null
 
-  const W = 320, H = 90
-  const PAD = { t: 10, r: 8, b: 26, l: 32 }
+  const W = 320, H = 55
+  const PAD = { t: 10, r: 8, b: 18, l: 32 }
   const plotW = W - PAD.l - PAD.r
   const plotH = H - PAD.t - PAD.b
   const n = points.length
@@ -444,7 +444,7 @@ export function EvolutionView({ siteId, readModel, narrative, healthTimeline }: 
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tension du chantier</p>
               <p className="shrink-0 text-right text-xs text-muted-foreground">
                 Pic : <span className="font-medium text-foreground">{peak}</span> sujets au PV{peakPv}
-                {' · '}Aujourd&apos;hui : <span className="font-medium text-foreground">{current}</span>
+                {' · '}Au dernier PV : <span className="font-medium text-foreground">{current}</span>
                 {' · '}{deltaText}
               </p>
             </div>

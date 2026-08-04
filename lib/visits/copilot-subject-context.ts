@@ -51,6 +51,17 @@ export interface SubjectDetailContext {
 const MAX_OCCURRENCES = 20
 const MAX_DESCRIPTION_LENGTH = 300
 
+const VISIT_STATUS_LABELS: Record<string, string> = {
+  field_checked:  'vérifié sur le terrain',
+  still_open:     'toujours ouvert',
+  not_applicable: 'sans objet lors de la visite',
+}
+
+function visitStatusLabel(status: string | null): string | null {
+  if (!status) return null
+  return VISIT_STATUS_LABELS[status] ?? status
+}
+
 function truncate(text: string | null, maxLength: number): string | null {
   if (!text) return null
   return text.length > maxLength ? text.slice(0, maxLength) + '…' : text
@@ -70,7 +81,7 @@ export function buildSubjectDetailForCopilot(
       transition: o.transition,
       description: truncate(o.description, MAX_DESCRIPTION_LENGTH),
       // PDF : documentStatus ; terrain : visitStatus (field_checked/still_open/not_applicable)
-      documentStatus: o.documentStatus ?? o.visitStatus,
+      documentStatus: o.documentStatus ?? visitStatusLabel(o.visitStatus),
     }))
 
   // Événements matérialisés

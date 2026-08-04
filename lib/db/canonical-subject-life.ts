@@ -82,6 +82,7 @@ export interface CanonicalSubjectLife {
   primaryFamily: string | null
   threadIds: string[]
   pvCount: number
+  fieldVisitCount: number
   /** Tous les runs canoniques du chantier (axe temporel complet). */
   runs: Array<{ id: string; documentId: string; effectiveDate: string }>
   occurrences: SubjectOccurrenceMerged[]
@@ -161,6 +162,7 @@ export async function getCanonicalSubjectLife(
       primaryFamily: null,
       threadIds: [],
       pvCount: 0,
+      fieldVisitCount: 0,
       runs: [],
       occurrences: [],
       links: [],
@@ -176,7 +178,7 @@ export async function getCanonicalSubjectLife(
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
       firstSeenAt: null, lastSeenAt: null, currentStatus: null, primaryFamily: null,
-      threadIds, pvCount: 0, runs: [], occurrences: [], links: [], materializedEvents: [],
+      threadIds, pvCount: 0, fieldVisitCount: 0, runs: [], occurrences: [], links: [], materializedEvents: [],
     }
   }
 
@@ -222,7 +224,7 @@ export async function getCanonicalSubjectLife(
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
       firstSeenAt: null, lastSeenAt: null, currentStatus: null, primaryFamily: null,
-      threadIds, pvCount: 0,
+      threadIds, pvCount: 0, fieldVisitCount: 0,
       runs: allRuns.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) })),
       occurrences: [], links: [], materializedEvents: [],
     }
@@ -551,7 +553,8 @@ export async function getCanonicalSubjectLife(
     currentStatus,
     primaryFamily,
     threadIds,
-    pvCount: realOccurrences.length,
+    pvCount: realOccurrences.filter((o) => o.sourceKind === 'historical_pdf').length,
+    fieldVisitCount: realOccurrences.filter((o) => o.sourceKind === 'field_visit').length,
     runs: allRuns.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) })),
     occurrences,
     links,
