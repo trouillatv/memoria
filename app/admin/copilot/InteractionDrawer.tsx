@@ -160,10 +160,10 @@ export function InteractionDrawer({ interactionId, onClose }: Props) {
               <div className="rounded border divide-y text-sm">
                 <Row label="Modèle" value={d.model} />
                 <Row label="Version prompt" value={d.promptVersion} />
-                <Row label="Tokens entrée" value={d.inputTokens?.toLocaleString('fr-FR')} />
-                <Row label="Tokens sortie" value={d.outputTokens?.toLocaleString('fr-FR')} />
+                <Row label="Tokens entrée" value={d.inputTokens ? d.inputTokens.toLocaleString('fr-FR') : null} />
+                <Row label="Tokens sortie" value={d.outputTokens ? d.outputTokens.toLocaleString('fr-FR') : null} />
                 <Row label="Coût estimé" value={
-                  d.estimatedCostEur != null
+                  d.estimatedCostEur
                     ? `${(d.estimatedCostEur * 119.33).toFixed(4)} XPF`
                     : null
                 } />

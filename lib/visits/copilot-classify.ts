@@ -36,11 +36,17 @@ const SUBJECT_SIGNALS = [
   /\brevient\b/i,
   /\bdepuis quand\b/i,
   /\ben est où\b/i,
+  /\boù en est\b/i,
+  /\boù en sont\b/i,
+  /\bqu.en est.il\b/i,
   /\bé[tv]at de\b/i,
   /\bparle.{0,5}moi\b/i,
   /\bhistoire\b/i,
   /\bévolution\b/i,
   /\bprogression\b/i,
+  /\binfos? sur\b/i,
+  /\bsituation\b/i,
+  /\bpoint sur\b/i,
 ]
 
 const TIMELINE_SIGNALS = [
@@ -113,6 +119,37 @@ function extractSubjectLabels(question: string): string[] {
   }
 
   return [...labels]
+}
+
+// Préfixes interrogatifs à supprimer pour isoler le syntagme sujet
+const QUESTION_PREFIXES = [
+  /^où en est[\s'l]+/i,
+  /^où en sont[\s'l]+/i,
+  /^qu.en est.il de[\s'l]+/i,
+  /^qu.en est[\s'l]+/i,
+  /^quel est l.état de[\s'l]+/i,
+  /^quelle est la situation de[\s'l]+/i,
+  /^comment va[\s'l]+/i,
+  /^parle.moi de[\s'l]+/i,
+  /^point sur[\s'l]+/i,
+  /^infos? sur[\s'l]+/i,
+  /^dis.moi[\s'l]+/i,
+]
+
+/**
+ * Tente d'extraire un syntagme nominal sujet en supprimant les préfixes
+ * interrogatifs courants. Retourne null si aucun préfixe connu n'est trouvé.
+ * Utilisé comme fallback quand aucun code technique n'est extrait.
+ */
+export function extractQuestionSubjectPhrase(question: string): string | null {
+  const q = question.trim().replace(/\s*[?!.]+\s*$/, '')
+  for (const prefix of QUESTION_PREFIXES) {
+    if (prefix.test(q)) {
+      const stripped = q.replace(prefix, '').replace(/^(le|la|les|l.)\s+/i, '').trim()
+      if (stripped.length >= 4) return stripped
+    }
+  }
+  return null
 }
 
 /**

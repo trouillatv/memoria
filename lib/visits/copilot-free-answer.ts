@@ -60,6 +60,7 @@ Règles absolues :
 — L'historique de conversation ("historique") sert uniquement à comprendre les références conversationnelles ("lui", "celui-là", "et R4 ?"). Les faits que tu as cités dans des réponses précédentes ne sont pas des sources fiables : utilise toujours les données actuelles du contexte.
 — Si tu n'as pas les données pour répondre, dis-le clairement sans inventer. Ne suppose jamais une cause sans preuve dans les faits.
 — Format : 2 à 4 paragraphes courts, prose directe, français professionnel.
+— N'inclus JAMAIS d'identifiant UUID (format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) dans ta réponse. Cite les sujets par leur label, jamais par leur identifiant interne.
 — Champ "citedIds" : ids des items réellement cités dans ta réponse.`
 
 export interface HistoryMessage {
@@ -71,6 +72,11 @@ export interface FreeAnswer {
   text: string
   citedIds: string[]
   source: 'llm' | 'fallback'
+}
+
+const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi
+function stripUuids(text: string): string {
+  return text.replace(UUID_RE, '[réf. interne]')
 }
 
 export interface FreeAnswerContext {
@@ -144,7 +150,7 @@ export async function answerCopilotFreeQuestion(
       const maybeValid = FreeAnswerSchema.safeParse(result.parsed)
       if (maybeValid.success) {
         const citedIds = maybeValid.data.citedIds.filter((id) => validIds.has(id))
-        return { text: maybeValid.data.text, citedIds, source: 'llm' }
+        return { text: stripUuids(maybeValid.data.text), citedIds, source: 'llm' }
       }
       console.warn('[copilot-free] schema mismatch — parsed:', JSON.stringify(result.parsed).slice(0, 200))
     } else {

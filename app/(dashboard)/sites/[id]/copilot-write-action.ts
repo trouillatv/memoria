@@ -88,6 +88,7 @@ const addToBriefingSchema = z.object({
   label: z.string().min(1).max(255),
   canonicalSubjectId: z.string().uuid().nullable().optional(),
   copilotProposalId: z.string().uuid(),
+  interactionId: z.string().uuid().nullable().optional(),
 })
 
 export type AddCopilotToBriefingResult =
@@ -97,7 +98,7 @@ export type AddCopilotToBriefingResult =
 export async function addCopilotToBriefing(rawInput: unknown): Promise<AddCopilotToBriefingResult> {
   const parsed = addToBriefingSchema.safeParse(rawInput)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides.' }
-  const { siteId, label, canonicalSubjectId, copilotProposalId } = parsed.data
+  const { siteId, label, canonicalSubjectId, copilotProposalId, interactionId } = parsed.data
 
   try {
     await requireSiteAccess(siteId)
@@ -129,5 +130,6 @@ export async function addCopilotToBriefing(rawInput: unknown): Promise<AddCopilo
     return { ok: false, error: (err as Error).message }
   }
 
+  if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
   return { ok: true }
 }

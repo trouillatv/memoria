@@ -91,6 +91,7 @@ function ProposalCard({
           label: title.trim(),
           canonicalSubjectId: proposal.canonicalSubjectId,
           copilotProposalId: proposal.proposalId,
+          interactionId,
         })
         if (res.ok) {
           onDone('Ajouté au plan de visite.')
@@ -224,7 +225,7 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
     return result
   }
 
-  async function send(question: string, extraResolvedIds?: string[]) {
+  async function send(question: string, extraResolvedIds?: string[], selectedCandidateId?: string) {
     if (loading || !question.trim()) return
     setLoading(true)
 
@@ -245,6 +246,7 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
         history: buildHistory(),
         resolvedSubjectIds: allResolvedIds,
         conversationId,
+        ...(selectedCandidateId ? { selectedCandidateId } : {}),
       })
 
       setMessages((prev) => {
@@ -328,10 +330,10 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
     }
   }
 
-  // Sélection d'un candidat après clarification
+  // Sélection d'un candidat après clarification — bypasse la résolution lexicale
   function selectCandidate(candidate: CopilotFreeCandidate) {
     setResolvedIds((prev) => [...prev, candidate.id])
-    send(`Parle-moi de ${candidate.label}`, [candidate.id])
+    send(`Parle-moi de ${candidate.label}`, [candidate.id], candidate.id)
   }
 
   function clear() {

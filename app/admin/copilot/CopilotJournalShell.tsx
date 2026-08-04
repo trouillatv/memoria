@@ -144,8 +144,12 @@ export function CopilotJournalShell({ stats, scopeBreakdown, rows, total, filter
         {stats.medianLatencyMs != null && <span>Latence médiane <strong className="text-foreground">{stats.medianLatencyMs} ms</strong></span>}
         {stats.p95LatencyMs != null && <span>P95 <strong className="text-foreground">{stats.p95LatencyMs} ms</strong></span>}
         <span>Clics réf. <strong className="text-foreground">{stats.totalReferenceClicks}</strong></span>
-        <span>Coût estimé <strong className="text-foreground">{(stats.estimatedTotalCostEur * 119.33).toFixed(2)} XPF</strong></span>
-        <span>Tokens <strong className="text-foreground">{(stats.totalInputTokens + stats.totalOutputTokens).toLocaleString('fr-FR')}</strong></span>
+        {(stats.totalInputTokens + stats.totalOutputTokens) > 0
+          ? <span>Coût estimé <strong className="text-foreground">{(stats.estimatedTotalCostEur * 119.33).toFixed(2)} XPF</strong></span>
+          : <span className="italic">Coût <strong className="text-muted-foreground">non mesuré</strong></span>}
+        {(stats.totalInputTokens + stats.totalOutputTokens) > 0
+          ? <span>Tokens <strong className="text-foreground">{(stats.totalInputTokens + stats.totalOutputTokens).toLocaleString('fr-FR')}</strong></span>
+          : null}
       </div>
 
       {/* ── Filtres ────────────────────────────────────────────────────────── */}

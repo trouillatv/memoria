@@ -23,6 +23,7 @@ import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-res
 import { buildCopilotProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { logCopilotInteraction } from '@/lib/db/copilot-telemetry'
 import type { CopilotScope } from '@/lib/db/copilot-telemetry'
+import { extractQuestionSubjectPhrase } from '@/lib/visits/copilot-classify'
 import { getCanonicalSubjectLifeForSite } from '@/lib/db/canonical-subject-life'
 import { buildSubjectDetailForCopilot } from '@/lib/visits/copilot-subject-context'
 import { answerCopilotFreeQuestion } from '@/lib/visits/copilot-free-answer'
@@ -46,6 +47,11 @@ const inputSchema = z.object({
   resolvedSubjectIds: z.array(z.string().uuid()).max(5).default([]),
   /** UUID stable de session locale — regroupe les échanges sans persister l'historique. */
   conversationId: z.string().uuid().optional(),
+  /**
+   * ID d'un sujet canonique sélectionné explicitement par l'utilisateur suite à une clarification.
+   * Quand présent, court-circuite entièrement la résolution lexicale.
+   */
+  selectedCandidateId: z.string().uuid().optional(),
 })
 
 // ── Types de résultat ─────────────────────────────────────────────────────────
@@ -90,7 +96,7 @@ export async function askCopilotFreeAction(
   if (!parsed.success) {
     return { kind: 'answer', text: 'Paramètres invalides.', references: [], source: 'fallback', interactionId: null }
   }
-  const { siteId, question, history, resolvedSubjectIds, conversationId } = parsed.data
+  const { siteId, question, history, resolvedSubjectIds, conversationId, selectedCandidateId } = parsed.data
   const t0 = Date.now()
 
   // Vérification d'accès — l'utilisateur doit avoir accès au chantier
@@ -198,30 +204,49 @@ export async function askCopilotFreeAction(
     classification.secondary.includes('subject_detail') ||
     classification.entities.subjectLabels.length > 0
 
-  if (needsSubjectDetail && classification.entities.subjectLabels.length > 0) {
-    // Résoudre chaque entité extraite — s'arrêter au premier ambiguous
+  if (selectedCandidateId) {
+    // Court-circuit : l'utilisateur a explicitement sélectionné un sujet après clarification.
+    // Pas de résolution lexicale — on charge directement l'ID choisi.
+    subjectIdsToLoad.add(selectedCandidateId)
+  } else if (needsSubjectDetail && classification.entities.subjectLabels.length > 0) {
+    // Résoudre chaque entité extraite (codes techniques ou guillemets)
     for (const label of classification.entities.subjectLabels) {
-      // Pas besoin de résoudre si déjà dans resolvedSubjectIds (court-circuit utilisateur)
       const resolution = await resolveCanonicalSubjectReference(siteId, label)
-
       if (resolution.kind === 'resolved') {
         subjectIdsToLoad.add(resolution.candidate.id)
       } else if (resolution.kind === 'ambiguous') {
-        // On retourne immédiatement la clarification — pas d'appel LLM
         clarificationCandidates.push(...resolution.candidates)
       }
-      // not_found → sujet inconnu de la mémoire structurée
+      // not_found → sujet inconnu, on continue
+    }
+  } else if (needsSubjectDetail && classification.entities.subjectLabels.length === 0 && resolvedSubjectIds.length === 0) {
+    // Fallback : intent sujet détecté (signal "où en est", "parle-moi"…) mais aucun code/guillemet extrait.
+    // Tenter une résolution sur le syntagme nominal extrait de la question.
+    const phrase = extractQuestionSubjectPhrase(question)
+    if (phrase) {
+      const resolution = await resolveCanonicalSubjectReference(siteId, phrase)
+      if (resolution.kind === 'resolved') {
+        subjectIdsToLoad.add(resolution.candidate.id)
+      } else if (resolution.kind === 'ambiguous') {
+        clarificationCandidates.push(...resolution.candidates)
+      }
+      // not_found → tombe dans le not_found déterministe ci-dessous
     }
   }
 
-  // not_found déterministe : intent subject_detail avec entités extraites mais aucune résolue
+  // not_found déterministe : intent subject_detail, résolution tentée, rien trouvé
   // → réponse directe sans LLM, sans références parasites
   const hasExtractedLabels = classification.entities.subjectLabels.length > 0
-  const allLabelsUnresolved = hasExtractedLabels
+  const extractedPhrase = !hasExtractedLabels ? extractQuestionSubjectPhrase(question) : null
+  const attemptedResolution = hasExtractedLabels || extractedPhrase !== null
+  const allLabelsUnresolved = attemptedResolution
     && subjectIdsToLoad.size === 0
     && clarificationCandidates.length === 0
+    && !selectedCandidateId
   if (classification.primary === 'subject_detail' && allLabelsUnresolved) {
-    const labels = classification.entities.subjectLabels.join(', ')
+    const labels = hasExtractedLabels
+      ? classification.entities.subjectLabels.join(', ')
+      : (extractedPhrase ?? question.slice(0, 60))
     const notFoundText = `Je ne trouve aucun sujet correspondant à "${labels}" dans la mémoire structurée de ce chantier. Essayez avec le label exact ou un code technique (R4, G3, DN160…).`
     const iid = await logCopilotInteraction({
       siteId, userId, conversationId: conversationId ?? null,
