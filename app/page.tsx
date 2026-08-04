@@ -14,7 +14,7 @@ export default async function Home() {
     if (profile) {
       const jar = await cookies()
       const isPwa = jar.get(COOKIE_PWA_STANDALONE)?.value === '1'
-      redirect(resolveHomeDestination(profile, isPwa))
+      redirect(resolveHomeDestination(profile.role, isPwa))
     }
     redirect('/dashboard')
   }

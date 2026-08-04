@@ -2,22 +2,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { AccountProfileForm } from '@/app/(dashboard)/account/AccountProfileForm'
 import { AccountPasswordForm } from '@/app/(dashboard)/account/AccountPasswordForm'
-import { HomePreferenceToggle } from '@/app/(dashboard)/account/HomePreferenceToggle'
 
 // Mock the server actions + sonner.toast — hoisted refs so vi.mock factories see them.
 type ActionResult = { ok: boolean; error?: string }
 const {
   updateProfileMock,
-  updateHomePreferenceMock,
-  applyHomePreferenceMock,
   changePasswordMock,
   logoutMock,
   toastSuccess,
   toastError,
 } = vi.hoisted(() => ({
   updateProfileMock: vi.fn<(input: unknown) => Promise<ActionResult>>(async () => ({ ok: true })),
-  updateHomePreferenceMock: vi.fn<(pref: 'dashboard' | 'terrain') => Promise<{ ok: boolean; destination?: string }>>(async () => ({ ok: true, destination: '/dashboard' })),
-  applyHomePreferenceMock: vi.fn<(pref: 'dashboard' | 'terrain') => Promise<{ ok: boolean; destination?: string }>>(async () => ({ ok: true, destination: '/dashboard' })),
   changePasswordMock: vi.fn<(input: unknown) => Promise<ActionResult>>(async () => ({ ok: true })),
   logoutMock: vi.fn(async () => {}),
   toastSuccess: vi.fn(),
@@ -30,8 +25,6 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/app/(dashboard)/account/actions', () => ({
   updateProfileAction: (input: unknown) => updateProfileMock(input),
-  updateHomePreferenceAction: (pref: 'dashboard' | 'terrain') => updateHomePreferenceMock(pref),
-  applyHomePreferenceAction: (pref: 'dashboard' | 'terrain') => applyHomePreferenceMock(pref),
   changePasswordAction: (input: unknown) => changePasswordMock(input),
   logoutAction: () => logoutMock(),
 }))
@@ -138,33 +131,6 @@ describe('AccountProfileForm', () => {
   })
 })
 
-describe('HomePreferenceToggle', () => {
-  beforeEach(() => {
-    updateHomePreferenceMock.mockClear()
-    applyHomePreferenceMock.mockClear()
-    toastSuccess.mockClear()
-    toastError.mockClear()
-    updateHomePreferenceMock.mockResolvedValue({ ok: true })
-    applyHomePreferenceMock.mockResolvedValue({ ok: true, destination: '/dashboard' })
-  })
-
-  it('enregistre la vue choisie et l ouvre — sans deconnecter', async () => {
-    render(<HomePreferenceToggle current="terrain" />)
-
-    fireEvent.click(screen.getByRole('button', { name: /tableau de bord/i }))
-
-    expect(updateHomePreferenceMock).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: /tableau de bord/i })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: /vue terrain/i })).toHaveAttribute('aria-pressed', 'false')
-
-    fireEvent.click(screen.getByRole('button', { name: /appliquer/i }))
-
-    await waitFor(() => {
-      expect(applyHomePreferenceMock).toHaveBeenCalledWith('dashboard')
-    })
-    expect(updateHomePreferenceMock).not.toHaveBeenCalled()
-  })
-})
 
 describe('AccountPasswordForm', () => {
   beforeEach(() => {

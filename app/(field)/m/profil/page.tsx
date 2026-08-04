@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { User, ChevronRight, UserCircle2, Moon } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { LogoutButton } from '../logout-button'
-import { SwitchToDesktopLink } from '../../switch-to-desktop-link'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
 
 export const dynamic = 'force-dynamic'
@@ -56,12 +55,6 @@ export default async function ProfilPage() {
           </li>
         </ul>
       </section>
-
-      {(user.role === 'admin' || user.role === 'manager') && (
-        <div className="rounded-xl border bg-card px-3.5 py-3 text-sm">
-          <SwitchToDesktopLink userId={user.id} />
-        </div>
-      )}
 
       <div className="pt-1">
         <LogoutButton />

@@ -10,9 +10,6 @@ import { BreadcrumbProvider } from '@/components/layout/BreadcrumbProvider'
 import { FeedbackButton } from '@/components/ui/FeedbackButton'
 import { PageViewLogger } from './PageViewLogger'
 import { ThemeSync } from '@/components/layout/ThemeSync'
-import { shouldRedirectDashboardRequestToField, isMobileUserAgent } from '@/lib/navigation/home'
-import { PwaDesktopModeSync } from '@/components/pwa-desktop-mode-sync'
-import { ViewportGuard } from '@/components/viewport-guard'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUserWithProfile().catch((e) => {
@@ -24,9 +21,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const h = await headers()
   const pathname = h.get('x-pathname') ?? ''
-  const isMobile = isMobileUserAgent(h.get('user-agent'))
-  // home_preference choisit l'accueil au login, pas un verrou de navigation.
-  if (shouldRedirectDashboardRequestToField({ ...user, pathname }, isMobile)) redirect('/m')
+  // chef_equipe ne pilote pas, il exécute — sauf pour ses réglages de compte.
+  if (user.role === 'chef_equipe' && !pathname.startsWith('/account')) redirect('/m')
 
   const fullName = user.full_name || user.email
   // Compteur global d'actions ouvertes (le danger n'est pas de les créer, c'est
@@ -73,8 +69,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <PageViewLogger />
       {/* Réapplique le thème persisté de l'user au login (cross-device). */}
       <ThemeSync theme={user.theme_preference} />
-      <PwaDesktopModeSync userId={user.id} context="dashboard" />
-      <ViewportGuard serverSaidDesktop={!isMobile} />
     </div>
   )
 }

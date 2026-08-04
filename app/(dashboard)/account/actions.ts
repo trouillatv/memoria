@@ -84,41 +84,6 @@ const PERSISTABLE_THEMES = ['light', 'dark', 'ocre', 'petrole', 'archive', 'mono
  * cross-device). Best-effort : silencieux si non connecté / thème inconnu.
  * Pas de revalidate (le thème est déjà appliqué côté client par next-themes).
  */
-export async function updateHomePreferenceAction(
-  pref: 'dashboard' | 'terrain',
-): Promise<{ ok: boolean }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { ok: false }
-  const admin = createAdminClient()
-  const { error } = await admin
-    .from('users')
-    .update({ home_preference: pref })
-    .eq('id', user.id)
-  if (!error) revalidatePath('/account')
-  return { ok: !error }
-}
-
-/**
- * CHANGER DE VUE NE DÉCONNECTE PLUS (G5, Guillaume 2026-07-21).
- *
- * Cette action faisait `signOut()` puis renvoyait au login — et le message le
- * disait : « Reconnectez-vous pour ouvrir la vue choisie. » Aucune raison
- * technique : la préférence est relue à chaud par `resolveHomeDestination`, à
- * la connexion comme sur `/`. On déconnectait donc un conducteur en plein
- * chantier pour un changement d'affichage.
- *
- * Bureau et Terrain sont deux vues d'une même application. On enregistre le
- * choix, et on rend la destination — l'écran y navigue. La session ne bouge pas.
- */
-export async function applyHomePreferenceAction(
-  pref: 'dashboard' | 'terrain',
-): Promise<{ ok: boolean; destination?: '/m' | '/dashboard' }> {
-  const result = await updateHomePreferenceAction(pref)
-  if (!result.ok) return { ok: false }
-  return { ok: true, destination: pref === 'terrain' ? '/m' : '/dashboard' }
-}
-
 export async function updateThemePreferenceAction(theme: string): Promise<{ ok: boolean }> {
   if (!(PERSISTABLE_THEMES as readonly string[]).includes(theme)) return { ok: false }
   const supabase = await createClient()

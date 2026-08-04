@@ -47,10 +47,7 @@ export async function loginAction(formData: FormData) {
     //   /missions est une liste ERP, mauvaise porte d'entrée — audit live 2026-05-26)
     const jar = await cookies()
     const isPwa = jar.get(COOKIE_PWA_STANDALONE)?.value === '1'
-    // PWA standalone → toujours /m, y compris si un paramètre `next` est présent
-    // (ex. session expirée depuis /dashboard → /login?next=/dashboard).
-    if (isPwa) redirect('/m')
-    redirect(parsed.data.next ?? resolveHomeDestination(profile, isPwa))
+    redirect(parsed.data.next ?? resolveHomeDestination(profile.role, isPwa))
   }
 
   redirect('/dashboard')

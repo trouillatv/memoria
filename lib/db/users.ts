@@ -16,7 +16,7 @@ export const getCurrentUserWithProfile = cache(async (): Promise<DbUser | null> 
 
   const { data, error } = await supabase
     .from('users')
-    .select('id, email, full_name, role, must_change_password, created_at, deleted_at, organization_id, phone, commune, employment_type, theme_preference, home_preference')
+    .select('id, email, full_name, role, must_change_password, created_at, deleted_at, organization_id, phone, commune, employment_type, theme_preference')
     .eq('id', user.id)
     .is('deleted_at', null)
     .single()
@@ -182,14 +182,13 @@ export async function getCurrentUserRole(): Promise<UserRole | null> {
 export async function getCurrentUserMiniProfile(): Promise<{
   role: UserRole
   must_change_password: boolean
-  home_preference: 'dashboard' | 'terrain'
 } | null> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   const { data, error } = await supabase
     .from('users')
-    .select('role, must_change_password, home_preference')
+    .select('role, must_change_password')
     .eq('id', user.id)
     .is('deleted_at', null)
     .maybeSingle()
@@ -197,7 +196,6 @@ export async function getCurrentUserMiniProfile(): Promise<{
   return {
     role: data.role as UserRole,
     must_change_password: data.must_change_password,
-    home_preference: data.home_preference as 'dashboard' | 'terrain',
   }
 }
 

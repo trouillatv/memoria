@@ -8,7 +8,6 @@ import type { UserRole } from '@/types/db'
 import { getProfileConsultationSummary } from '@/lib/db/activity-logs'
 import { AccountProfileForm } from './AccountProfileForm'
 import { AccountLogoutSection } from './AccountLogoutSection'
-import { HomePreferenceToggle } from './HomePreferenceToggle'
 
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Administrateur',
@@ -92,21 +91,6 @@ export default async function AccountPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Masqué pour chef_equipe : toujours sur /m, pas de choix. */}
-      {user.role !== 'chef_equipe' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Page d&apos;accueil</CardTitle>
-            <CardDescription>
-              Choisissez votre espace de travail par défaut. Vous pourrez toujours passer de l&apos;un à l&apos;autre.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <HomePreferenceToggle current={user.home_preference ?? 'dashboard'} />
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardHeader>
