@@ -2,7 +2,6 @@
 
 // Détecte le mode standalone (PWA installée sur l'écran d'accueil) et pose
 // le cookie `pwa_standalone=1` lisible côté serveur pour le routing.
-// La gestion des redirections (terrain vs bureau) appartient à PwaDesktopModeSync.
 
 import { useEffect } from 'react'
 import { COOKIE_PWA_STANDALONE } from '@/lib/navigation/pwa-mode'

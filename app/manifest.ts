@@ -63,9 +63,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'MemorIA',
     short_name: 'MemorIA',
     description: 'Mémoire opérationnelle de vos chantiers',
-    // Doctrine 2026-08-04 : la PWA est une surface terrain.
-    // start_url = /m → déterministe, pas de dépendance au cookie pwa_standalone.
-    // Le mode bureau depuis la PWA reste une action volontaire (PwaDesktopModeSync).
+    // Doctrine : la PWA est toujours terrain — start_url fixe.
     start_url: '/m',
     display: 'standalone',
     background_color: '#ffffff',

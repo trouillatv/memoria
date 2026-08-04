@@ -7858,7 +7858,6 @@ export type Database = {
           email: string
           employment_type: Database["public"]["Enums"]["employment_type"] | null
           full_name: string | null
-          home_preference: string
           id: string
           must_change_password: boolean | null
           organization_id: string | null
@@ -7876,7 +7875,6 @@ export type Database = {
             | Database["public"]["Enums"]["employment_type"]
             | null
           full_name?: string | null
-          home_preference?: string
           id: string
           must_change_password?: boolean | null
           organization_id?: string | null
@@ -7894,7 +7892,6 @@ export type Database = {
             | Database["public"]["Enums"]["employment_type"]
             | null
           full_name?: string | null
-          home_preference?: string
           id?: string
           must_change_password?: boolean | null
           organization_id?: string | null
