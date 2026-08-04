@@ -198,16 +198,24 @@ export async function askCopilotFreeAction(
   // ── Contexte 3B — modules chargés à la demande ───────────────────────────────
   const extra: FreeAnswerContext = {}
 
-  // Timeline : transmettre les changements récents du chantier
+  // Timeline : filtrer les changements récents à l'intervalle du delta
+  // Ne remonter que les événements dont occurredAt est dans [fromDate, toDate].
+  // Évite de présenter des signaux anciens comme des événements de l'intervalle.
   const needsTimeline = classification.primary === 'timeline' || classification.secondary.includes('timeline')
-  if (needsTimeline && overview.recentChanges.length > 0) {
-    extra.recentChanges = overview.recentChanges
-      .slice(0, 15)
-      .map((c): RecentChangeContext => ({
+  if (needsTimeline) {
+    const fromIso = delta?.fromDate ?? null
+    const toIso   = delta?.toDate   ?? null
+    const filtered = overview.recentChanges.filter((c) => {
+      if (!fromIso || !toIso) return true
+      return c.occurredAt >= fromIso && c.occurredAt <= toIso
+    }).slice(0, 15)
+    if (filtered.length > 0) {
+      extra.recentChanges = filtered.map((c): RecentChangeContext => ({
         title: c.title,
         occurredAt: c.occurredAt,
         detail: c.detail,
       }))
+    }
   }
 
   // Actor : déjà chargé dans actorContext
@@ -215,9 +223,11 @@ export async function askCopilotFreeAction(
     extra.actorContext = actorContext
   }
 
-  // Plan de visite enrichi : ajouter les sujets à vérifier avec leurs signaux
+  // Plan de visite : toujours définir visitPlanDetail pour intent plan_visite
+  // (même vide → le LLM sait que le plan humain est vide et peut distinguer
+  //  plan_utilisateur de recommandations_memoria)
   const needsPlan = safeIntent === 'next_visit'
-  if (needsPlan && overview.pvToVerify.length > 0) {
+  if (needsPlan) {
     extra.visitPlanDetail = overview.pvToVerify.map((v): VisitPlanItemContext => ({
       label: v.label,
       priority: 'normal',

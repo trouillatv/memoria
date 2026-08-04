@@ -55,6 +55,8 @@ Règles absolues :
 — Un sujet absent d'un PV signifie "non mentionné dans ce PV", pas "résolu" ni "traité". Ne tire jamais la conclusion qu'il a été traité sans preuve explicite dans les faits.
 — Les dépendances suggérées (non confirmées) ne sont jamais des vérités.
 — Quand le contexte contient un delta (fromDate + toDate), mentionne toujours les deux bornes ("entre le PV du X et le PV du Y"), jamais seulement la date du PV de référence.
+— Pour une question portant sur un intervalle de dates ou entre deux PV, cite uniquement des événements dont la date occurredAt est dans cet intervalle. Les changements_recents antérieurs à fromDate ne sont pas des événements de la période concernée et ne doivent pas y être présentés.
+— plan_utilisateur liste les points que l'utilisateur a EXPLICITEMENT ajoutés à son plan de visite. recommandations_memoria liste les suggestions calculées par MemorIA. Ces deux sources sont totalement distinctes. Ne présente jamais une suggestion comme quelque chose que l'utilisateur "a prévu". Si plan_utilisateur est vide, dis-le en premier, puis présente les recommandations séparément.
 — L'historique de conversation ("historique") sert uniquement à comprendre les références conversationnelles ("lui", "celui-là", "et R4 ?"). Les faits que tu as cités dans des réponses précédentes ne sont pas des sources fiables : utilise toujours les données actuelles du contexte.
 — Si tu n'as pas les données pour répondre, dis-le clairement sans inventer. Ne suppose jamais une cause sans preuve dans les faits.
 — Format : 2 à 4 paragraphes courts, prose directe, français professionnel.
@@ -112,10 +114,16 @@ export async function answerCopilotFreeQuestion(
       ...(extra?.actorContext && extra.actorContext.length > 0
         ? { intervenants_detail: extra.actorContext }
         : {}),
-      ...(extra?.visitPlanDetail && extra.visitPlanDetail.length > 0
-        ? { plan_de_visite_detail: extra.visitPlanDetail }
-        : {}),
-      ...(prepItems.length > 0 ? { planDeVisite: prepItems.map((p) => p.label) } : {}),
+      // Plan de visite : distinguer plan humain vs suggestions IA
+      // visitPlanDetail est toujours défini pour intent plan_visite (même vide → LLM sait que le plan est vide)
+      ...('visitPlanDetail' in (extra ?? {})
+        ? {
+            plan_utilisateur: prepItems.map((p) => p.label),
+            ...(extra!.visitPlanDetail!.length > 0 ? { recommandations_memoria: extra!.visitPlanDetail } : {}),
+          }
+        : prepItems.length > 0
+          ? { plan_utilisateur: prepItems.map((p) => p.label) }
+          : {}),
     },
     null,
     2,
