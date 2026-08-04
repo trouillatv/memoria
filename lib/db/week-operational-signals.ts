@@ -140,8 +140,8 @@ export async function getWeekOperationalSignals(
   }
   if (siteIds.length === 0) return []
 
-  // 2) Les 5 couches, fenêtrées par site_id IN (sites de l'org), en parallèle.
-  const [meetingsRes, actionsRes, deliveriesRes, blocagesRes, reservesRes] = await Promise.all([
+  // 2) Les 6 couches, fenêtrées par site_id IN (sites de l'org), en parallèle.
+  const [meetingsRes, actionsRes, deliveriesRes, blocagesRes, reservesRes, scheduledRes] = await Promise.all([
     // — Événements datés —
     supabase
       .from('site_reports')
@@ -175,10 +175,20 @@ export async function getWeekOperationalSignals(
       .select('id, site_id, label, location, issued_on, status')
       .in('site_id', siteIds)
       .eq('status', 'open'),
+    // — Rendez-vous planifiés (visites + réunions futures) —
+    supabase
+      .from('site_scheduled_events')
+      .select('id, site_id, type, title, planned_start')
+      .in('site_id', siteIds)
+      .in('type', ['visit', 'meeting'])
+      .in('status', ['planned', 'postponed'])
+      .is('deleted_at', null)
+      .gte('planned_start', weekStart)
+      .lte('planned_start', weekEnd + 'T23:59:59Z'),
   ])
 
   // Une couche absente (migration non appliquée) ne fait pas échouer le tout.
-  for (const res of [meetingsRes, actionsRes, deliveriesRes, blocagesRes, reservesRes]) {
+  for (const res of [meetingsRes, actionsRes, deliveriesRes, blocagesRes, reservesRes, scheduledRes]) {
     if (res.error && !isMissingTable(res.error)) throw res.error
   }
 
@@ -288,6 +298,26 @@ export async function getWeekOperationalSignals(
       label: r.label?.trim() || 'Réserve',
       detail: r.location,
       since: r.issued_on ?? null,
+    })
+  }
+
+  const noumea = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Pacific/Noumea', year: 'numeric', month: '2-digit', day: '2-digit',
+  })
+  for (const ev of (scheduledRes.data ?? []) as Array<{
+    id: string; site_id: string | null; type: string | null; title: string | null; planned_start: string | null
+  }>) {
+    if (!ev.site_id || !ev.planned_start) continue
+    const day = noumea.format(new Date(ev.planned_start))
+    if (day < weekStart || day > weekEnd) continue
+    const kind = ev.type === 'visit' ? 'visit' : 'meeting'
+    pushDay(ev.site_id, day, {
+      id: ev.id,
+      kind,
+      day,
+      label: ev.title?.trim() || (ev.type === 'visit' ? 'Visite planifiée' : 'Réunion planifiée'),
+      detail: null,
+      since: null,
     })
   }
 

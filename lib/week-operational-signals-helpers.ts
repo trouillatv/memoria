@@ -6,7 +6,7 @@
 
 // Événements datés (posés sur un jour) vs conditions en cours (au site, datées
 // par leur ancienneté). Volontairement deux ensembles disjoints de `kind`.
-export type WeekDayKind = 'action_due' | 'reserve_open' | 'meeting' | 'delivery'
+export type WeekDayKind = 'action_due' | 'reserve_open' | 'meeting' | 'delivery' | 'visit'
 export type WeekStandingKind = 'blocage' | 'reserve_open'
 export type WeekSignalKind = WeekDayKind | WeekStandingKind
 

@@ -189,7 +189,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
   // site). Les événements datés `days` (réunion/échéance/livraison) attendent le
   // Niveau 2 (icônes en cellule). On indexe par site pour la grille.
   const standingBySite: Record<string, WeekOperationalSignal[]> = {}
-  // Niveau 2 : événements datés (réunion/échéance/livraison) par site puis par
+  // Niveau 2 : événements datés (réunion/échéance/livraison/visite) par site puis par
   // jour → icônes discrètes en cellule.
   const daysBySite: Record<string, Record<string, WeekOperationalSignal[]>> = {}
   for (const s of weekSignals) {
@@ -200,6 +200,32 @@ export default async function SemainePage({ searchParams }: PageProps) {
     }
     if (Object.keys(nonEmpty).length > 0) daysBySite[s.siteId] = nonEmpty
   }
+
+  // Sites ayant des visites/réunions planifiées mais AUCUNE intervention cette semaine :
+  // on les ajoute comme lignes vides pour que leurs icônes de jour soient visibles.
+  const siteRowIds = new Set(siteRows.map((r) => r.site_id))
+  const weekDaysList = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(range.weekStart + 'T00:00:00Z')
+    d.setUTCDate(d.getUTCDate() + i)
+    return d.toISOString().slice(0, 10)
+  })
+  const scheduledOnlySiteRows: SiteRow[] = view === 'site'
+    ? weekSignals
+        .filter((ws) => !siteRowIds.has(ws.siteId))
+        .filter((ws) =>
+          Object.values(ws.days).some((evts) =>
+            evts.some((e) => e.kind === 'visit' || e.kind === 'meeting'),
+          ),
+        )
+        .map((ws) => ({
+          site_id: ws.siteId,
+          site_name: ws.siteName,
+          contract_id: ws.contractId ?? '',
+          contract_name: ws.contractName ?? '',
+          days: Object.fromEntries(weekDaysList.map((d) => [d, []])),
+        }))
+    : []
+  const allSiteRows = [...siteRows, ...scheduledOnlySiteRows]
 
   // LE CALENDRIER DU CHANTIER D'ABORD, le conflit ensuite.
   //
@@ -344,7 +370,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
 
   const total = view === 'site' ? totalSite(siteRows) : totalTeam(teamRows)
   const isEmpty =
-    (view === 'site' && (siteRows.length === 0 || total === 0)) ||
+    (view === 'site' && allSiteRows.length === 0) ||
     (view === 'team' && total === 0)
   const lectureLinks = lecture
     ? {
@@ -438,8 +464,8 @@ export default async function SemainePage({ searchParams }: PageProps) {
           ← Faites glisser pour voir toute la semaine →
         </p>
         {view === 'site' ? (
-          <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite} conflictsBySite={conflictsBySite} closuresBySite={closuresBySite} decisions={decisions} optionsBySite={optionsBySite} exceptionsById={exceptionsById} initialCellKey={params.cell ?? null}>
-            <WeekGrid range={range} rows={siteRows} todayIso={todayIso} signalsBySite={signalsBySite} standingBySite={standingBySite} daysBySite={daysBySite} conflictsBySite={conflictsBySite} closuresBySite={closuresBySite} />
+          <WeekGridClient rows={allSiteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite} conflictsBySite={conflictsBySite} closuresBySite={closuresBySite} decisions={decisions} optionsBySite={optionsBySite} exceptionsById={exceptionsById} initialCellKey={params.cell ?? null}>
+            <WeekGrid range={range} rows={allSiteRows} todayIso={todayIso} signalsBySite={signalsBySite} standingBySite={standingBySite} daysBySite={daysBySite} conflictsBySite={conflictsBySite} closuresBySite={closuresBySite} />
           </WeekGridClient>
         ) : (
           <TeamWeekGridClient rows={teamRows} todayIso={todayIso} teams={teams}>

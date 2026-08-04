@@ -1,4 +1,4 @@
-import Link from 'next/link'
+﻿import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { CalendarClock, CalendarDays, Clock, Layers3, ListOrdered, Route, ShieldAlert, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -90,7 +90,7 @@ export function PlanningWorkspace({
   const unteamedMissions = missions.filter((mission) => !mission.assigned_team_id)
   const unpublishedCycles = cycles.filter((cycle) => cycle.status !== 'published')
   const activeBlocages = blocages.filter((blocage) => blocage.dateEnd === null)
-  const scheduled = [...interventionsThisWeek].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
+  const listEvents = [...inWeek].sort((a, b) => a.start.localeCompare(b.start))
 
   return (
     <main className="space-y-4">
@@ -240,13 +240,13 @@ export function PlanningWorkspace({
           {/* La grille montre la forme de la semaine ; la liste montre l'enchaînement.
               Sur un chantier peu chargé, c'est la liste qui se lit. */}
           <div className="rounded-[22px] border bg-card p-5 shadow-sm">
-            <SectionTitle icon={ListOrdered} title="Liste de la semaine" detail="Le même contenu, lu dans l’ordre." />
+            <SectionTitle icon={ListOrdered} title="Liste de la semaine" detail="Le même contenu, lu dans l'ordre." />
             <div className="mt-4 divide-y rounded-2xl border">
-              {scheduled.length > 0 ? scheduled.map((intervention) => (
-                <Link key={intervention.id} href={`/interventions/${intervention.id}`} className="flex flex-col gap-1 p-3 hover:bg-muted/40 md:flex-row md:items-center md:gap-4">
-                  <span className="w-44 shrink-0 text-sm font-medium">{formatDayAndTime(intervention.scheduled_at)}</span>
-                  <span className="min-w-0 flex-1 text-sm">{intervention.mission?.name ?? 'Intervention'}</span>
-                  <span className="shrink-0 text-sm text-muted-foreground">{intervention.team?.name ?? 'Non affectée'}</span>
+              {listEvents.length > 0 ? listEvents.map((e) => (
+                <Link key={e.id} href={e.href ?? '#'} className="flex flex-col gap-1 p-3 hover:bg-muted/40 md:flex-row md:items-center md:gap-4">
+                  <span className="w-44 shrink-0 text-sm font-medium">{formatEventStart(e.start)}</span>
+                  <span className="min-w-0 flex-1 text-sm">{e.title}</span>
+                  <span className="shrink-0 text-sm text-muted-foreground">{PLANNING_LABEL[e.type] ?? e.type}</span>
                 </Link>
               )) : (
                 <Empty>Rien de planifié cette semaine.</Empty>
@@ -343,7 +343,7 @@ export function PlanningWorkspace({
         </section>
 
         <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-          <SectionTitle icon={ShieldAlert} title="Contraintes" detail="Ce qui peut empêcher d’exécuter le planning." />
+          <SectionTitle icon={ShieldAlert} title="Contraintes" detail="Ce qui peut empêcher d'exécuter le planning." />
           <div className="mt-4 space-y-2">
             {activeBlocages.length > 0 ? activeBlocages.map((blocage) => (
               <Link key={blocage.id} href={`/sites/${siteId}/reserves`} className="block rounded-2xl border bg-rose-50/50 p-4 hover:bg-rose-50 dark:bg-rose-950/15 dark:hover:bg-rose-950/25">
@@ -559,4 +559,17 @@ function formatTime(value: string): string {
 
 function formatDayAndTime(value: string): string {
   return new Date(value).toLocaleString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })
+}
+
+function formatEventStart(value: string): string {
+  const hasTime = value.length > 10
+  const d = new Date(hasTime ? value : value + 'T00:00:00Z')
+  if (hasTime) {
+    return d.toLocaleString('fr-FR', {
+      weekday: 'long', day: '2-digit', month: 'long',
+      hour: '2-digit', minute: '2-digit',
+      timeZone: 'Pacific/Noumea',
+    })
+  }
+  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', timeZone: 'UTC' })
 }

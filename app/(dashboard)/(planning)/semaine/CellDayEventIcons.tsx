@@ -13,7 +13,7 @@
 // donc au `<td>` parent et démarre le drag dnd-kit comme avant. (C'est l'inverse
 // du bouton d'intervention, qui lui stoppe la propagation pour NE PAS dragger.)
 
-import { Users, CalendarClock, Package } from 'lucide-react'
+import { Users, CalendarClock, Package, Calendar } from 'lucide-react'
 import {
   Tooltip,
   TooltipContent,
@@ -23,18 +23,20 @@ import {
 import type { WeekDayKind, WeekOperationalSignal } from '@/lib/week-operational-signals-helpers'
 
 // Ordre de priorité d'affichage (le plus « à discuter » d'abord).
-const KIND_PRIORITY: Record<string, number> = { meeting: 0, action_due: 1, delivery: 2 }
+const KIND_PRIORITY: Record<string, number> = { meeting: 0, visit: 1, action_due: 2, delivery: 3 }
 
 // Convention app (règle 2026-07-12) : réunion = Users, échéance = CalendarClock
 // — les mêmes formes que sur la fiche chantier et l'agenda.
 const KIND_ICON: Partial<Record<WeekDayKind, typeof CalendarClock>> = {
   meeting: Users,
+  visit: Calendar,
   action_due: CalendarClock,
   delivery: Package,
 }
 
 const KIND_NOUN: Partial<Record<WeekDayKind, string>> = {
   meeting: 'réunion',
+  visit: 'visite',
   action_due: 'échéance',
   delivery: 'livraison',
 }
