@@ -10,8 +10,11 @@ import type { CanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
 
 export interface SubjectOccurrenceContext {
   date: string
+  /** 'historical_pdf' pour les PV importés, 'field_visit' pour les visites terrain. */
+  sourceKind: 'historical_pdf' | 'field_visit'
   transition: string | null
   description: string | null
+  /** Statut normalisé. Pour les PDF: documentStatus. Pour le terrain: visitStatus. */
   documentStatus: string | null
 }
 
@@ -63,9 +66,11 @@ export function buildSubjectDetailForCopilot(
     .slice(0, MAX_OCCURRENCES)
     .map((o) => ({
       date: o.effectiveDate,
+      sourceKind: o.sourceKind,
       transition: o.transition,
       description: truncate(o.description, MAX_DESCRIPTION_LENGTH),
-      documentStatus: o.documentStatus,
+      // PDF : documentStatus ; terrain : visitStatus (field_checked/still_open/not_applicable)
+      documentStatus: o.documentStatus ?? o.visitStatus,
     }))
 
   // Événements matérialisés

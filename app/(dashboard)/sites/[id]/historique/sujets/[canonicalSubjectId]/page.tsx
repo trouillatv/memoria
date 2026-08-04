@@ -185,14 +185,14 @@ function LifelineBar({
       {occurrences.map((occ, i) => {
         const pct = isSingle ? 50 : toPct(dateToMs(occ.effectiveDate), minMs, maxMs)
         const { symbol, colorClass } = lifelineDot(occ)
-        const typeMap = (!occ.isGap && eventsByRun.get(occ.runId)) || null
+        const typeMap = (!occ.isGap && occ.runId && eventsByRun.get(occ.runId)) || null
         const badges = typeMap
           ? LIFELINE_EVENT_ORDER.filter((t) => typeMap.has(t)).map((t) => ({ t, count: typeMap.get(t)! }))
           : []
 
         return (
           <div
-            key={`${occ.runId}-${i}`}
+            key={`${occ.runId ?? occ.reportId ?? 'gap'}-${i}`}
             className="absolute -translate-x-1/2 flex flex-col items-center"
             style={{ left: `${pct}%`, top: 0 }}
           >

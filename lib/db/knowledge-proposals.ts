@@ -30,6 +30,7 @@ import { canonicalFamily, signatureOf } from '@/lib/visits/cr-concretisation'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 import { toDebriefEcheance } from '@/lib/visits/echeance-labels'
 import { listExtractionSuppressions, matchSuppression, DEFAULT_SUPPRESSION_THRESHOLD, deleteExtractionSuppression } from '@/lib/db/extraction-suppressions'
+import { reconcileProposalToCanonical } from '@/lib/db/canonical-subject-reconcile'
 
 export type ProposalKind = 'action' | 'vigilance' | 'decision' | 'knowledge' | 'stakeholder' | 'deadline'
 /**
@@ -838,6 +839,25 @@ export async function promoteProposal(params: {
   // Les retours anticipés au-dessus (not_found, needs_input, unsupported, déjà
   // promue) n'écrivent rien : ils n'ont rien à invalider.
   invalidateSiteProjection(p.site_id)
+
+  // ── Réconciliation canonique (fire-and-forget, non bloquante) ────────────────
+  // Si la proposition a un report_id (visite terrain), tenter de la raccorder à un
+  // canonical_subject. Une erreur ici ne remet jamais en cause la promotion métier.
+  if (p.report_id && ['action', 'vigilance', 'decision', 'knowledge'].includes(p.kind)) {
+    reconcileProposalToCanonical({
+      proposalId: params.id,
+      siteId: p.site_id,
+      reportId: p.report_id,
+      proposalKind: p.kind,
+      proposalTitle: p.title,
+      proposalBody: p.body,
+      proposalCreatedAt: p.created_at,
+      createdBy: params.userId,
+    }).catch((err) => {
+      console.error('[canonical-reconcile] non-blocking error on proposal', params.id, err instanceof Error ? err.message : String(err))
+    })
+  }
+
   return { status: 'promoted', objectType: result.objectType, objectId: result.objectId }
 }
 

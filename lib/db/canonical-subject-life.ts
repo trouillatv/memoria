@@ -17,8 +17,12 @@ export type { HistoryTransition }
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface SubjectOccurrenceMerged {
-  runId: string
-  documentId: string
+  /** 'historical_pdf' pour les extractions PV ; 'field_visit' pour les visites terrain. */
+  sourceKind: 'historical_pdf' | 'field_visit'
+  runId: string | null         // null pour field_visit
+  documentId: string | null    // null pour field_visit
+  /** ID du rapport de visite terrain (null pour historical_pdf). */
+  reportId: string | null
   effectiveDate: string
   /** Identifiant de la proposition principale (null pour les gaps). */
   proposalId: string | null
@@ -26,12 +30,14 @@ export interface SubjectOccurrenceMerged {
   label: string | null
   description: string | null
   documentStatus: string | null
+  /** Statut constaté terrain (field_checked / still_open / not_applicable). Null pour les PDF. */
+  visitStatus: string | null
   proposalFamily: string | null
   thematicCategory: string | null
   sourcePage: number | null
   transition: HistoryTransition | null
   isGap: boolean
-  /** Nombre de preuves (images + snapshots) liées à la proposition principale. */
+  /** Nombre de preuves liées. */
   evidenceCount: number
   /** Labels supplémentaires si plusieurs threads actifs dans ce run (rare). */
   additionalLabels: string[]
@@ -233,14 +239,17 @@ export async function getCanonicalSubjectLife(
 
     if (runProps.length === 0) {
       occurrences.push({
+        sourceKind: 'historical_pdf',
         runId: run.id,
         documentId: run.document_id,
+        reportId: null,
         effectiveDate,
         proposalId: null,
         threadId: null,
         label: null,
         description: null,
         documentStatus: null,
+        visitStatus: null,
         proposalFamily: null,
         thematicCategory: null,
         sourcePage: null,
@@ -271,14 +280,17 @@ export async function getCanonicalSubjectLife(
           )
 
       occurrences.push({
+        sourceKind: 'historical_pdf',
         runId: run.id,
         documentId: run.document_id,
+        reportId: null,
         effectiveDate,
         proposalId: primary.id,
         threadId: primary.subject_thread_id,
         label: primary.label,
         description: primary.description ?? null,
         documentStatus: primary.document_status ?? null,
+        visitStatus: null,
         proposalFamily: primary.proposal_family,
         thematicCategory: primary.thematic_category ?? null,
         sourcePage: primary.source_page ?? null,
@@ -292,14 +304,8 @@ export async function getCanonicalSubjectLife(
     }
   }
 
-  // Stats
-  const realOccurrences = occurrences.filter((o) => !o.isGap)
-  const firstSeenAt = realOccurrences[0]?.effectiveDate ?? null
-  const lastSeenAt = realOccurrences[realOccurrences.length - 1]?.effectiveDate ?? null
-  const currentStatus = realOccurrences[realOccurrences.length - 1]?.documentStatus ?? null
-  const primaryFamily = realOccurrences[0]?.proposalFamily ?? null
-
   // 6. Objets matérialisés (provenance exacte via document_proposal_materialization)
+  // (les stats sont calculées après la fusion PDF + terrain — voir plus bas)
   const materializedEvents: MaterializedEvent[] = []
   if (proposalIds.length > 0) {
     const { data: matRows } = await supabase
@@ -397,7 +403,64 @@ export async function getCanonicalSubjectLife(
     await Promise.all(fetches)
   }
 
-  // 7. Liens inter-threads (confirmed + suggested, pas rejected)
+  // 7. Occurrences terrain (canonical_subject_occurrence, source_kind = field_visit)
+  // Indépendantes du pipeline PDF — ajoutées après la timeline PV et triées par date.
+  // Note V1 : si threadIds est vide (sujet sans PV historique), la fonction est déjà
+  // revenue plus haut. Ce cas ne peut pas survenir en V1 (les field_visit sont toujours
+  // créées sur des sujets déjà connus via PV). À corriger en V2.
+  const { data: csoRows } = await supabase
+    .from('canonical_subject_occurrence')
+    .select('id, source_ref_id, source_proposal_id, visit_status, label, note, evidence_count, effective_date')
+    .eq('canonical_subject_id', canonicalSubjectId)
+    .eq('source_kind', 'field_visit')
+    .order('effective_date', { ascending: true })
+
+  type CsoRow = {
+    id: string
+    source_ref_id: string
+    source_proposal_id: string | null
+    visit_status: string | null
+    label: string
+    note: string | null
+    evidence_count: number
+    effective_date: string
+  }
+  for (const row of (csoRows ?? []) as CsoRow[]) {
+    occurrences.push({
+      sourceKind: 'field_visit',
+      runId: null,
+      documentId: null,
+      reportId: row.source_ref_id,
+      effectiveDate: row.effective_date,
+      proposalId: row.source_proposal_id,
+      threadId: null,
+      label: row.label,
+      description: row.note,
+      documentStatus: null,
+      visitStatus: row.visit_status,
+      proposalFamily: null,
+      thematicCategory: null,
+      sourcePage: null,
+      transition: null,
+      isGap: false,
+      evidenceCount: row.evidence_count,
+      additionalLabels: [],
+    })
+  }
+
+  // Re-trier la timeline fusionnée par date (PDF + terrain)
+  occurrences.sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))
+
+  // Stats — calculées sur la timeline fusionnée complète
+  const realOccurrences = occurrences.filter((o) => !o.isGap)
+  const firstSeenAt = realOccurrences[0]?.effectiveDate ?? null
+  const lastSeenAt = realOccurrences[realOccurrences.length - 1]?.effectiveDate ?? null
+  const currentStatus = realOccurrences[realOccurrences.length - 1]?.documentStatus
+    ?? realOccurrences[realOccurrences.length - 1]?.visitStatus
+    ?? null
+  const primaryFamily = realOccurrences[0]?.proposalFamily ?? null
+
+  // 8. Liens inter-threads (confirmed + suggested, pas rejected)
   const [outLinksRes, inLinksRes] = await Promise.all([
     supabase
       .from('subject_thread_links')
