@@ -88,25 +88,6 @@ function ActionRow({ group }: { group: ActionGroupDisplay }) {
           </p>
         </div>
 
-        {/* Actions rapides */}
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          {!group.assignedTo && (
-            <Link
-              href={group.actionHref}
-              className="rounded-md px-2 py-0.5 text-[11px] font-medium text-muted-foreground ring-1 ring-border hover:bg-muted"
-            >
-              + Affecter
-            </Link>
-          )}
-          {!group.due_date && (
-            <Link
-              href={group.actionHref}
-              className="rounded-md px-2 py-0.5 text-[11px] font-medium text-muted-foreground ring-1 ring-border hover:bg-muted"
-            >
-              + Planifier
-            </Link>
-          )}
-        </div>
       </div>
     </li>
   )
