@@ -222,6 +222,23 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
 
         {/* Que reste-t-il à faire ? — actions métier (distinctes des sujets canoniques) */}
         <OverviewPanel title="Que reste-t-il à faire ?">
+          {actions.summary.active > 0 && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${actions.summary.overdue > 0 ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300' : 'bg-muted text-muted-foreground'}`}>
+                {actions.summary.overdue > 0 ? `${actions.summary.overdue} en retard` : 'Aucune en retard'}
+              </span>
+              {actions.summary.week > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                  {actions.summary.week} cette semaine
+                </span>
+              )}
+              {actions.summary.undated > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                  {actions.summary.undated} sans date
+                </span>
+              )}
+            </div>
+          )}
           {actions.priority.length > 0 ? (
             <ul className="space-y-2.5">
               {actions.priority.slice(0, 3).map((action) => (

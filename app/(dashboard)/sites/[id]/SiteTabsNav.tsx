@@ -3,7 +3,6 @@ import { cn } from '@/lib/utils'
 
 export const SITE_TABS = [
   { key: 'apercu',           label: 'Aperçu' },
-  { key: 'travail',          label: 'Travail' },
   { key: 'chronologie',      label: 'Chronologie' },
   // Histoire = onglet de premier niveau depuis 2026-08-04. Doctrine :
   //   Chronologie = qu'est-ce qui s'est passé, événement après événement ?

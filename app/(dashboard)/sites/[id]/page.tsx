@@ -199,8 +199,6 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         <Suspense key={tab} fallback={null}>
           {tab === 'apercu' ? (
             <SiteOverviewTab siteId={id} />
-          ) : tab === 'travail' ? (
-            <TravailView siteId={id} />
           ) : tab === 'chronologie' ? (
             <ChronologieView siteId={id} />
           ) : tab === 'planning' ? (

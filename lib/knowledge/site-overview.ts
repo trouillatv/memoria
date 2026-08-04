@@ -170,7 +170,7 @@ export interface ActionsSection {
    *  qu'on n'avance jamais. */
   completedRecent: KnowledgeItem[]
   priority: PriorityAction[]
-  summary: { proposed: number; active: number; planned: number; overdue: number; completed: number }
+  summary: { proposed: number; active: number; planned: number; overdue: number; week: number; undated: number; completed: number }
 }
 
 export type SynthesisStatus = 'missing' | 'up_to_date' | 'outdated' | 'generating'
@@ -395,7 +395,7 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
       pending: { photos: 0, videos: 0, vocals: 0, notes: 0 },
       projectionFailed: false,
     },
-    actions: { proposed: [], confirmed: [], completedRecent: [], priority: [], summary: { proposed: 0, active: 0, planned: 0, overdue: 0, completed: 0 } },
+    actions: { proposed: [], confirmed: [], completedRecent: [], priority: [], summary: { proposed: 0, active: 0, planned: 0, overdue: 0, week: 0, undated: 0, completed: 0 } },
     attention: { level: 'calm', reasons: [] },
     nextEvent: null,
     recentChanges: [],
@@ -531,6 +531,13 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
   const completed = actionRows.filter((a) => a.status === 'done').length
   const todayIso = new Date().toISOString().slice(0, 10)
   const overdue = active.filter((a) => a.due_date && a.due_date.slice(0, 10) < todayIso).length
+  const week = active.filter((a) => {
+    if (!a.due_date) return false
+    const due = a.due_date.slice(0, 10)
+    const days = Math.floor((Date.parse(`${due}T00:00:00.000Z`) - Date.parse(`${todayIso}T00:00:00.000Z`)) / 86_400_000)
+    return days >= 0 && days <= 7
+  }).length
+  const undated = active.filter((a) => !a.due_date).length
   const priority = selectPriorityActions(
     actionRows.map((a) => ({
       id: a.id,
@@ -561,7 +568,7 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     confirmed: active.slice(0, TOP).map((a) => ({ id: a.id, title: a.title })),
     completedRecent,
     priority,
-    summary: { proposed: proj.actions.proposed, active: active.length, planned, overdue, completed },
+    summary: { proposed: proj.actions.proposed, active: active.length, planned, overdue, week, undated, completed },
   }
 
   // ── Attention : des RAISONS nommées, pas un voyant ──
