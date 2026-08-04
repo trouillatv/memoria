@@ -85,6 +85,8 @@ export interface ActionSummaryRow {
    *  date, « terminées récemment » ne peut pas exister : `created_at` dit quand on
    *  l'a écrite, jamais quand on l'a faite. */
   done_at: string | null
+  assigned_to: string | null
+  report_id: string | null
   /** Thread de déduplication : même subject_thread_id = une seule entrée opérationnelle.
    *  null = pas de thread, traité individuellement. Backfillé par mig 288. */
   subject_thread_id: string | null
@@ -92,7 +94,7 @@ export interface ActionSummaryRow {
 export async function readSiteActionSummaries(siteId: string): Promise<ActionSummaryRow[]> {
   const { data, error } = await createAdminClient()
     .from('site_actions')
-    .select('id, title, status, due_date, created_at, done_at, subject_thread_id')
+    .select('id, title, status, due_date, created_at, done_at, assigned_to, report_id, subject_thread_id')
     .eq('site_id', siteId)
   if (error) return []
   return (data ?? []) as ActionSummaryRow[]
@@ -116,6 +118,48 @@ export function deduplicateByThread<T extends { id: string; subject_thread_id: s
     if (!existing || row.created_at > existing.created_at) threadMap.set(t, row)
   }
   return [...threadMap.values(), ...noThread]
+}
+
+/** Groupe enrichi pour l'affichage : représentant + compteur d'occurrences + PV sources. */
+export interface ActionThreadGroup {
+  representative: ActionSummaryRow
+  count: number
+  reportIds: string[]
+}
+
+/** Regroupe les actions par subject_thread_id pour l'affichage de la liste enrichie.
+ *  Représentant = action la plus récente du thread. Sans thread = groupe propre. */
+export function groupActionsByThread(rows: ActionSummaryRow[]): ActionThreadGroup[] {
+  const threadMap = new Map<string, ActionSummaryRow[]>()
+  const noThread: ActionSummaryRow[] = []
+  for (const row of rows) {
+    const t = row.subject_thread_id
+    if (!t) { noThread.push(row); continue }
+    if (!threadMap.has(t)) threadMap.set(t, [])
+    threadMap.get(t)!.push(row)
+  }
+  const groups: ActionThreadGroup[] = []
+  for (const occurrences of threadMap.values()) {
+    const sorted = [...occurrences].sort((a, b) => b.created_at.localeCompare(a.created_at))
+    const reportIds = [...new Set(occurrences.map((a) => a.report_id).filter((r): r is string => Boolean(r)))]
+    groups.push({ representative: sorted[0], count: occurrences.length, reportIds })
+  }
+  for (const action of noThread) {
+    groups.push({ representative: action, count: 1, reportIds: action.report_id ? [action.report_id] : [] })
+  }
+  return groups
+}
+
+/** Dates de démarrage des rapports sources — pour afficher la date du PV sur chaque action. */
+export async function readReportStartDates(reportIds: string[]): Promise<Map<string, string | null>> {
+  if (!reportIds.length) return new Map()
+  const { data } = await createAdminClient()
+    .from('site_reports')
+    .select('id, started_at')
+    .in('id', reportIds)
+  const result = new Map<string, string | null>()
+  for (const r of data ?? []) result.set(r.id, r.started_at ?? null)
+  return result
 }
 
 /** État de synthèse de la DERNIÈRE visite terminée — en une lecture (id + fin +

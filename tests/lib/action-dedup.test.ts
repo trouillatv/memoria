@@ -12,6 +12,8 @@ function makeRow(overrides: Partial<ActionSummaryRow> & { id: string }): ActionS
     due_date: null,
     created_at: '2026-08-01T10:00:00Z',
     done_at: null,
+    assigned_to: null,
+    report_id: null,
     subject_thread_id: null,
     ...overrides,
   }
