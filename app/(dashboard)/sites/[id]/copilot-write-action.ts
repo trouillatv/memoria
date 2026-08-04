@@ -11,6 +11,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { upsertPreparationItem } from '@/lib/db/visit-preparation'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
+import { updateCopilotProposalStatus } from '@/lib/db/copilot-telemetry'
 
 // ── Créer une action depuis une proposition copilote ─────────────────────────
 
@@ -22,6 +23,7 @@ const createActionSchema = z.object({
   copilotProposalId: z.string().uuid(),
   llmModel: z.string().max(100),
   promptVersion: z.string().max(50),
+  interactionId: z.string().uuid().nullable().optional(),
 })
 
 export type CreateCopilotActionResult =
@@ -31,7 +33,7 @@ export type CreateCopilotActionResult =
 export async function createCopilotAction(rawInput: unknown): Promise<CreateCopilotActionResult> {
   const parsed = createActionSchema.safeParse(rawInput)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides.' }
-  const { siteId, title, body, canonicalSubjectId, copilotProposalId, llmModel, promptVersion } = parsed.data
+  const { siteId, title, body, canonicalSubjectId, copilotProposalId, llmModel, promptVersion, interactionId } = parsed.data
 
   try {
     await requireSiteAccess(siteId)
@@ -74,6 +76,8 @@ export async function createCopilotAction(rawInput: unknown): Promise<CreateCopi
   if (error) return { ok: false, error: error.message }
 
   invalidateSiteProjection(siteId)
+  // Mise à jour best-effort du statut de proposition dans la télémétrie
+  if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
   return { ok: true, actionId: (data as { id: string }).id }
 }
 

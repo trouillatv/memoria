@@ -16,10 +16,19 @@ import {
   type CopilotItem,
 } from '@/lib/visits/copilot-context'
 import { answerCopilotQuestion } from '@/lib/visits/copilot-answer'
+import { logCopilotInteraction } from '@/lib/db/copilot-telemetry'
+
+const GUIDED_SCOPE_MAP: Record<string, 'site' | 'action' | 'visit_plan'> = {
+  attention:  'site',
+  changes:    'site',
+  stale:      'action',
+  next_visit: 'visit_plan',
+}
 
 const inputSchema = z.object({
   siteId: z.string().uuid(),
   intent: z.enum(['attention', 'changes', 'stale', 'next_visit']),
+  conversationId: z.string().uuid().optional(),
 })
 
 export interface CopilotRef {
@@ -32,16 +41,18 @@ export interface CopilotActionResult {
   text: string
   references: CopilotRef[]
   source: 'llm' | 'fallback'
+  interactionId: string | null
 }
 
 export async function askCopilotAction(
-  input: { siteId: string; intent: CopilotIntent },
+  input: { siteId: string; intent: CopilotIntent; conversationId?: string },
 ): Promise<CopilotActionResult> {
   const parsed = inputSchema.safeParse(input)
   if (!parsed.success) {
-    return { text: 'Paramètres invalides.', references: [], source: 'fallback' }
+    return { text: 'Paramètres invalides.', references: [], source: 'fallback', interactionId: null }
   }
-  const { siteId, intent } = parsed.data
+  const { siteId, intent, conversationId } = parsed.data
+  const t0 = Date.now()
 
   // Récupérer l'utilisateur connecté pour enrichir avec son plan de visite.
   // Optionnel : si l'auth échoue, le copilote fonctionne sans les prep items.
@@ -89,5 +100,34 @@ export async function askCopilotAction(
     })
     .filter((r): r is CopilotRef => r !== null)
 
-  return { text: answer.text, references, source: answer.source }
+  const latencyMs = Date.now() - t0
+  const scope = GUIDED_SCOPE_MAP[intent] ?? 'site'
+  const sourcesUsed = ['site_overview', ...(userId ? ['visit_preparation'] : [])]
+
+  const interactionId = await logCopilotInteraction({
+    siteId,
+    userId,
+    conversationId: conversationId ?? null,
+    question: input.intent,   // intent label comme question pour les guidées
+    conversationMode: 'guided',
+    guidedIntent: intent,
+    primaryIntent: intent,
+    secondaryIntents: [],
+    scope,
+    resolvedSubjectIds: [],
+    answerText: answer.text,
+    answerMode: answer.source === 'llm' ? 'llm' : 'deterministic_fallback',
+    answerStatus: answer.source === 'llm' ? 'answered' : (references.length === 0 ? 'insufficient_data' : 'answered'),
+    citedReferenceCount: references.length,
+    sourcesUsed,
+    model: null,
+    promptVersion: null,
+    inputTokens: null,
+    outputTokens: null,
+    estimatedCostEur: null,
+    latencyMs,
+    usedFallback: answer.source === 'fallback',
+  })
+
+  return { text: answer.text, references, source: answer.source, interactionId }
 }

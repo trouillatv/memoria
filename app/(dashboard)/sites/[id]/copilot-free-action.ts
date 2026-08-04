@@ -21,6 +21,8 @@ import { buildSiteCopilotContext, filterContextForIntent } from '@/lib/visits/co
 import { classifyIntent } from '@/lib/visits/copilot-classify'
 import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
 import { buildCopilotProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
+import { logCopilotInteraction } from '@/lib/db/copilot-telemetry'
+import type { CopilotScope } from '@/lib/db/copilot-telemetry'
 import { getCanonicalSubjectLifeForSite } from '@/lib/db/canonical-subject-life'
 import { buildSubjectDetailForCopilot } from '@/lib/visits/copilot-subject-context'
 import { answerCopilotFreeQuestion } from '@/lib/visits/copilot-free-answer'
@@ -42,6 +44,8 @@ const inputSchema = z.object({
   history: z.array(HistoryMessageSchema).max(6).default([]),
   /** IDs déjà résolus après une clarification utilisateur — court-circuite la résolution. */
   resolvedSubjectIds: z.array(z.string().uuid()).max(5).default([]),
+  /** UUID stable de session locale — regroupe les échanges sans persister l'historique. */
+  conversationId: z.string().uuid().optional(),
 })
 
 // ── Types de résultat ─────────────────────────────────────────────────────────
@@ -57,17 +61,20 @@ export type CopilotFreeResult =
       text: string
       references: CopilotRef[]
       source: 'llm' | 'fallback'
+      interactionId: string | null
     }
   | {
       kind: 'clarification'
       /** Texte de présentation des candidats (déterministe, pas de LLM) */
       text: string
       candidates: CopilotFreeCandidate[]
+      interactionId: string | null
     }
   | {
       kind: 'proposal'
       text: string
       proposal: CopilotProposal
+      interactionId: string | null
     }
   | {
       kind: 'write_not_supported'
@@ -81,15 +88,16 @@ export async function askCopilotFreeAction(
 ): Promise<CopilotFreeResult> {
   const parsed = inputSchema.safeParse(rawInput)
   if (!parsed.success) {
-    return { kind: 'answer', text: 'Paramètres invalides.', references: [], source: 'fallback' }
+    return { kind: 'answer', text: 'Paramètres invalides.', references: [], source: 'fallback', interactionId: null }
   }
-  const { siteId, question, history, resolvedSubjectIds } = parsed.data
+  const { siteId, question, history, resolvedSubjectIds, conversationId } = parsed.data
+  const t0 = Date.now()
 
   // Vérification d'accès — l'utilisateur doit avoir accès au chantier
   try {
     await requireSiteAccess(siteId)
   } catch {
-    return { kind: 'answer', text: 'Accès non autorisé.', references: [], source: 'fallback' }
+    return { kind: 'answer', text: 'Accès non autorisé.', references: [], source: 'fallback', interactionId: null }
   }
 
   // Utilisateur courant (pour les prep items)
@@ -102,6 +110,18 @@ export async function askCopilotFreeAction(
 
   // ── Classification déterministe ───────────────────────────────────────────────
   const classification = classifyIntent(question)
+
+  // Scope dérivé de l'intention primaire (pour la télémétrie)
+  const INTENT_SCOPE_MAP: Record<string, CopilotScope> = {
+    subject_detail:   'canonical_subject',
+    timeline:         'historical_pv',
+    action_status:    'action',
+    actor:            'actor',
+    plan_visite:      'visit_plan',
+    global:           'site',
+    proposal_request: 'site',
+  }
+  const baseScope: CopilotScope = INTENT_SCOPE_MAP[classification.primary] ?? 'unknown'
 
   // Écriture détectée — Copilote 3C : résoudre le sujet puis construire un brouillon.
   if (classification.isWriteRequest) {
@@ -117,10 +137,21 @@ export async function askCopilotFreeAction(
         resolvedWithConfidence = true
       } else if (resolution.kind === 'ambiguous') {
         const labels = resolution.candidates.map((c) => `• ${c.label}`).join('\n')
+        const iid = await logCopilotInteraction({
+          siteId, userId, conversationId: conversationId ?? null,
+          question, conversationMode: 'free',
+          primaryIntent: 'proposal_request', secondaryIntents: [],
+          scope: 'unknown', resolvedSubjectIds: [],
+          answerText: null, answerMode: 'clarification', answerStatus: 'ambiguous',
+          citedReferenceCount: 0, sourcesUsed: [],
+          model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+          estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+        })
         return {
           kind: 'clarification',
           text: `Plusieurs sujets correspondent. Lequel souhaitez-vous associer à cette proposition ?\n\n${labels}`,
           candidates: resolution.candidates,
+          interactionId: iid,
         }
       }
     }
@@ -132,11 +163,28 @@ export async function askCopilotFreeAction(
       resolvedWithConfidence,
     })
 
+    const proposalScope: CopilotScope = proposal.kind === 'visit_item' ? 'visit_plan' : 'action'
+    const iid = await logCopilotInteraction({
+      siteId, userId, conversationId: conversationId ?? null,
+      question, conversationMode: 'free',
+      primaryIntent: 'proposal_request', secondaryIntents: [],
+      scope: proposalScope,
+      resolvedSubjectIds: canonicalSubjectId ? [canonicalSubjectId] : [],
+      answerText: null, answerMode: 'deterministic_fallback', answerStatus: 'answered',
+      citedReferenceCount: 0, sourcesUsed: [],
+      model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+      estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+      proposalKind: proposal.kind,
+      proposalId: proposal.proposalId,
+      proposalStatus: 'shown',
+    })
+
     const kindLabel = proposal.kind === 'visit_item' ? 'point de visite' : 'action'
     return {
       kind: 'proposal',
       text: `Voici le brouillon de ${kindLabel} que je propose. Vérifiez et ajustez avant de valider.`,
       proposal,
+      interactionId: iid,
     }
   }
 
@@ -174,20 +222,44 @@ export async function askCopilotFreeAction(
     && clarificationCandidates.length === 0
   if (classification.primary === 'subject_detail' && allLabelsUnresolved) {
     const labels = classification.entities.subjectLabels.join(', ')
+    const notFoundText = `Je ne trouve aucun sujet correspondant à "${labels}" dans la mémoire structurée de ce chantier. Essayez avec le label exact ou un code technique (R4, G3, DN160…).`
+    const iid = await logCopilotInteraction({
+      siteId, userId, conversationId: conversationId ?? null,
+      question, conversationMode: 'free',
+      primaryIntent: classification.primary, secondaryIntents: classification.secondary,
+      scope: 'canonical_subject', resolvedSubjectIds: [],
+      answerText: notFoundText, answerMode: 'deterministic_fallback', answerStatus: 'not_found',
+      citedReferenceCount: 0, sourcesUsed: [],
+      model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+      estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+    })
     return {
       kind: 'answer',
-      text: `Je ne trouve aucun sujet correspondant à "${labels}" dans la mémoire structurée de ce chantier. Essayez avec le label exact ou un code technique (R4, G3, DN160…).`,
+      text: notFoundText,
       references: [],
       source: 'fallback',
+      interactionId: iid,
     }
   }
 
   if (clarificationCandidates.length > 0) {
     const labels = clarificationCandidates.map((c) => `• ${c.label}`).join('\n')
+    const clarText = `Je trouve plusieurs sujets correspondant à votre question sur ce chantier. Lequel souhaitez-vous examiner ?\n\n${labels}`
+    const iid = await logCopilotInteraction({
+      siteId, userId, conversationId: conversationId ?? null,
+      question, conversationMode: 'free',
+      primaryIntent: classification.primary, secondaryIntents: classification.secondary,
+      scope: baseScope, resolvedSubjectIds: [],
+      answerText: clarText, answerMode: 'clarification', answerStatus: 'ambiguous',
+      citedReferenceCount: 0, sourcesUsed: [],
+      model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+      estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+    })
     return {
       kind: 'clarification',
-      text: `Je trouve plusieurs sujets correspondant à votre question sur ce chantier. Lequel souhaitez-vous examiner ?\n\n${labels}`,
+      text: clarText,
       candidates: clarificationCandidates,
+      interactionId: iid,
     }
   }
 
@@ -296,5 +368,34 @@ export async function askCopilotFreeAction(
     })
     .filter((r): r is CopilotRef => r !== null)
 
-  return { kind: 'answer', text: answer.text, references, source: answer.source }
+  // Calcul des sources réellement chargées
+  const sourcesUsed: string[] = ['site_overview']
+  if (userId) sourcesUsed.push('visit_preparation')
+  if (subjectDetails.length > 0) sourcesUsed.push('canonical_subject_life')
+  if (needsActor && actorContext.length > 0) sourcesUsed.push('actors')
+  if (needsTimeline) sourcesUsed.push('historical_pv')
+  if (needsPlan) sourcesUsed.push('visit_plan')
+
+  const latencyMs = Date.now() - t0
+  const resolvedIds = [...subjectIdsToLoad]
+  const answerStatus = answer.source === 'llm'
+    ? 'answered'
+    : (references.length === 0 ? 'insufficient_data' : 'answered')
+
+  const iid = await logCopilotInteraction({
+    siteId, userId, conversationId: conversationId ?? null,
+    question, conversationMode: 'free',
+    primaryIntent: classification.primary, secondaryIntents: classification.secondary,
+    scope: baseScope, resolvedSubjectIds: resolvedIds,
+    answerText: answer.text,
+    answerMode: answer.source === 'llm' ? 'llm' : 'deterministic_fallback',
+    answerStatus,
+    citedReferenceCount: references.length,
+    sourcesUsed,
+    model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+    estimatedCostEur: null, latencyMs,
+    usedFallback: answer.source === 'fallback',
+  })
+
+  return { kind: 'answer', text: answer.text, references, source: answer.source, interactionId: iid }
 }

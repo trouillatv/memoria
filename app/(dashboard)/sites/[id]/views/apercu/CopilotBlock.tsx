@@ -15,6 +15,7 @@ import {
 } from '../../copilot-free-action'
 import { askCopilotAction, type CopilotActionResult } from '../../copilot-action'
 import { createCopilotAction, addCopilotToBriefing } from '../../copilot-write-action'
+import { trackCopilotReferenceClick, trackCopilotProposalCancelled } from '../../copilot-event-action'
 import type { CopilotIntent } from '@/lib/visits/copilot-context'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { cn } from '@/lib/utils'
@@ -23,9 +24,9 @@ import { cn } from '@/lib/utils'
 
 type Msg =
   | { kind: 'user';          id: string; text: string }
-  | { kind: 'answer';        id: string; text: string; source: 'llm' | 'fallback'; refs: { id: string; label: string; href: string | null }[] }
-  | { kind: 'clarification'; id: string; text: string; candidates: CopilotFreeCandidate[] }
-  | { kind: 'proposal';      id: string; text: string; proposal: CopilotProposal }
+  | { kind: 'answer';        id: string; text: string; source: 'llm' | 'fallback'; refs: { id: string; label: string; href: string | null }[]; interactionId: string | null }
+  | { kind: 'clarification'; id: string; text: string; candidates: CopilotFreeCandidate[]; interactionId: string | null }
+  | { kind: 'proposal';      id: string; text: string; proposal: CopilotProposal; interactionId: string | null }
   | { kind: 'thinking';      id: string }
 
 // ── Carte de proposition 3C ───────────────────────────────────────────────────
@@ -44,10 +45,12 @@ const CONFIDENCE_CLASSES: Record<CopilotProposal['confidence'], string> = {
 function ProposalCard({
   siteId,
   proposal,
+  interactionId,
   onDone,
 }: {
   siteId: string
   proposal: CopilotProposal
+  interactionId: string | null
   onDone: (successText: string) => void
 }) {
   const [title, setTitle] = useState(proposal.title)
@@ -75,6 +78,7 @@ function ProposalCard({
           copilotProposalId: proposal.proposalId,
           llmModel: proposal.llmModel,
           promptVersion: proposal.promptVersion,
+          interactionId,
         })
         if (res.ok) {
           onDone('Action créée.')
@@ -169,7 +173,10 @@ function ProposalCard({
         </button>
         <button
           type="button"
-          onClick={() => setCancelled(true)}
+          onClick={() => {
+            setCancelled(true)
+            if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+          }}
           disabled={saving}
           className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
         >
@@ -199,6 +206,8 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
   const [loading, setLoading]                 = useState(false)
   // Sujets déjà résolus dans la session (court-circuit la résolution pour les suivis)
   const [resolvedSubjectIds, setResolvedIds]  = useState<string[]>([])
+  // UUID stable de session — regroupe les échanges d'une conversation côté télémétrie
+  const [conversationId]                      = useState<string>(() => crypto.randomUUID())
   const bottomRef                             = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -235,6 +244,7 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
         question,
         history: buildHistory(),
         resolvedSubjectIds: allResolvedIds,
+        conversationId,
       })
 
       setMessages((prev) => {
@@ -246,6 +256,7 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
             text: result.text,
             source: result.source,
             refs: result.references,
+            interactionId: result.interactionId,
           }]
         }
         if (result.kind === 'clarification') {
@@ -254,6 +265,7 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
             id: uid(),
             text: result.text,
             candidates: result.candidates,
+            interactionId: result.interactionId,
           }]
         }
         if (result.kind === 'proposal') {
@@ -262,6 +274,7 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
             id: uid(),
             text: result.text,
             proposal: result.proposal,
+            interactionId: result.interactionId,
           }]
         }
         // write_not_supported (fallback legacy)
@@ -271,6 +284,7 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
           text: result.text,
           source: 'fallback',
           refs: [],
+          interactionId: null,
         }]
       })
     } catch {
@@ -279,7 +293,7 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
         return [...withoutThinking, {
           kind: 'answer', id: uid(),
           text: 'Une erreur est survenue. Réessayez dans quelques instants.',
-          source: 'fallback', refs: [],
+          source: 'fallback', refs: [], interactionId: null,
         }]
       })
     } finally {
@@ -297,13 +311,14 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
     setMessages((prev) => [...prev, userMsg, thinkingMsg])
 
     try {
-      const result: CopilotActionResult = await askCopilotAction({ siteId, intent })
+      const result: CopilotActionResult = await askCopilotAction({ siteId, intent, conversationId })
       setMessages((prev) => {
         const withoutThinking = prev.filter((m) => m.kind !== 'thinking')
         return [...withoutThinking, {
           kind: 'answer', id: uid(),
           text: result.text, source: result.source,
           refs: result.references,
+          interactionId: result.interactionId,
         }]
       })
     } catch {
@@ -424,11 +439,12 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
                   <ProposalCard
                     siteId={siteId}
                     proposal={msg.proposal}
+                    interactionId={msg.interactionId}
                     onDone={(successText) => {
                       setMessages((prev) =>
                         prev.map((m) =>
                           m.id === msg.id
-                            ? { kind: 'answer', id: m.id, text: successText, source: 'fallback', refs: [] }
+                            ? { kind: 'answer', id: m.id, text: successText, source: 'fallback', refs: [], interactionId: null }
                             : m
                         )
                       )
@@ -454,6 +470,11 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
                           <Link
                             key={ref.id}
                             href={ref.href!}
+                            onClick={() => {
+                              if (msg.interactionId) {
+                                void trackCopilotReferenceClick({ interactionId: msg.interactionId, siteId })
+                              }
+                            }}
                             className="inline-flex items-center gap-1 rounded-lg border border-foreground/10 bg-background px-2.5 py-1 text-[12px] font-medium text-foreground/70 hover:bg-muted"
                           >
                             Voir {ref.label}
