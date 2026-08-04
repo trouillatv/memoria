@@ -200,13 +200,29 @@ function LifelineBar({
     typeMap.set(ev.entityType, (typeMap.get(ev.entityType) ?? 0) + 1)
   }
 
+  // Positions (%) et décalages verticaux anti-collision
+  const MIN_PCT_GAP = 4
+  const positions = occurrences.map((occ) =>
+    isSingle ? 50 : toPct(dateToMs(occ.effectiveDate), minMs, maxMs)
+  )
+  const yOffsets: number[] = []
+  for (let k = 0; k < positions.length; k++) {
+    if (k === 0) { yOffsets.push(0); continue }
+    if (positions[k] - positions[k - 1] < MIN_PCT_GAP) {
+      yOffsets.push(yOffsets[k - 1] <= 0 ? 14 : -14)
+    } else {
+      yOffsets.push(0)
+    }
+  }
+
   return (
     <div className="relative select-none overflow-visible" style={{ minHeight: '6rem' }} aria-hidden="true">
       {/* Ligne de fond */}
       <div className="absolute left-0 right-0 top-8 h-px bg-border" />
 
       {occurrences.map((occ, i) => {
-        const pct = isSingle ? 50 : toPct(dateToMs(occ.effectiveDate), minMs, maxMs)
+        const pct = positions[i]
+        const yOff = yOffsets[i]
         const { symbol, colorClass } = lifelineDot(occ)
         const typeMap = (!occ.isGap && occ.runId && eventsByRun.get(occ.runId)) || null
         const badges = typeMap
@@ -216,8 +232,8 @@ function LifelineBar({
         return (
           <div
             key={`${occ.runId ?? occ.reportId ?? 'gap'}-${i}`}
-            className="absolute -translate-x-1/2 flex flex-col items-center"
-            style={{ left: `${pct}%`, top: 0 }}
+            className="absolute flex flex-col items-center"
+            style={{ left: `${pct}%`, top: 0, transform: `translate(-50%, ${yOff}px)` }}
           >
             {/* Lien vers la source — PDF→document, visite→visites, réunion→reunion, null→non cliquable */}
             {(() => {

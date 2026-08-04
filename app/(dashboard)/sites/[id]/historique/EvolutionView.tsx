@@ -364,9 +364,10 @@ export interface EvolutionViewProps {
   readModel: EvolutionReadModel
   narrative: EvolutionNarrative
   healthTimeline: SiteHealthTimeline | null
+  nativeEvents?: Array<{ date: string; sourceKind: 'field_visit' | 'meeting'; label: string; canonicalSubjectId: string }>
 }
 
-export function EvolutionView({ siteId, readModel, narrative, healthTimeline }: EvolutionViewProps) {
+export function EvolutionView({ siteId, readModel, narrative, healthTimeline, nativeEvents }: EvolutionViewProps) {
   if (readModel.periods.length === 0) {
     return (
       <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
@@ -489,6 +490,35 @@ export function EvolutionView({ siteId, readModel, narrative, healthTimeline }: 
           </div>
         </div>
       </section>
+
+      {/* ── 4. ACTIVITÉ NATIVE POST-DERNIER PV ──────────────────────────── */}
+      {nativeEvents && nativeEvents.length > 0 && (
+        <section className="rounded-[22px] border bg-card p-5 shadow-sm">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Activité native depuis le dernier PV
+          </p>
+          <div className="space-y-2">
+            {nativeEvents.map((ev, i) => (
+              <div key={i} className="flex items-start gap-3">
+                <span className={cn(
+                  'mt-0.5 shrink-0 text-xs font-medium',
+                  ev.sourceKind === 'field_visit' ? 'text-teal-600 dark:text-teal-400' : 'text-violet-600 dark:text-violet-400',
+                )}>
+                  {ev.sourceKind === 'field_visit' ? '✓' : '◇'}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{ev.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(ev.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {' · '}
+                    {ev.sourceKind === 'field_visit' ? 'Visite terrain' : 'Réunion'}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }

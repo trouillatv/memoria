@@ -70,12 +70,11 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
     ? await getSiteDependencyGraph(siteId).catch(() => null)
     : null
 
-  const [suggestedCounts, nativeOccurrences] = view === 'lifelines'
-    ? await Promise.all([
-        getSuggestedLinkCountsBySite(siteId).catch(() => ({})),
-        getSiteNativeOccurrencesBySubject(siteId).catch(() => ({})),
-      ])
-    : [{}, {}]
+  // nativeOccurrences chargé pour tous les onglets (header + lifelines + évolution)
+  const nativeOccurrences = await getSiteNativeOccurrencesBySubject(siteId).catch(() => ({}))
+  const suggestedCounts = view === 'lifelines'
+    ? await getSuggestedLinkCountsBySite(siteId).catch(() => ({}))
+    : {}
 
   const importanceScoreMap: Record<string, number> = Object.fromEntries(
     importantSubjects.map((s) => [s.canonicalSubjectId, s.score])
@@ -99,6 +98,18 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   if (!site) redirect(`/sites/${siteId}`)
 
   const totalRuns = timeline.snapshots.length
+
+  // Résumé des occurrences natives pour le header
+  let nativeVisitCount = 0
+  let nativeMeetingCount = 0
+  let nativeLastDate: string | null = null
+  for (const occs of Object.values(nativeOccurrences)) {
+    for (const o of occs) {
+      if (o.sourceKind === 'field_visit') nativeVisitCount++
+      else nativeMeetingCount++
+      if (!nativeLastDate || o.date > nativeLastDate) nativeLastDate = o.date
+    }
+  }
 
   // Métadonnées enrichies : dates réelles des PV + reportId pour les liens
   const matrixRuns = matrix?.runs ?? []
@@ -125,6 +136,19 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
       // delta non disponible, on affiche sans
     }
   }
+
+  // Événements natifs post-dernier-PV pour EvolutionView
+  const lastPvDate = runs.length > 0 ? runs[runs.length - 1].effectiveDate : null
+  const subjectLabelMap: Record<string, string> = Object.fromEntries(
+    (matrix?.rows ?? []).map((row) => [row.canonicalSubjectId, row.canonicalLabel])
+  )
+  const nativeEventsForEvolution = Object.entries(nativeOccurrences)
+    .flatMap(([csId, occs]) =>
+      occs
+        .filter((o) => !lastPvDate || o.date > lastPvDate)
+        .map((o) => ({ date: o.date, sourceKind: o.sourceKind, label: subjectLabelMap[csId] ?? csId, canonicalSubjectId: csId }))
+    )
+    .sort((a, b) => a.date.localeCompare(b.date))
 
   // Computations pures depuis la matrice
   const watchlist = matrix ? computeWatchlist(matrix) : []
@@ -154,13 +178,19 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-sm text-muted-foreground">
-                {totalRuns} PV analysé{totalRuns > 1 ? 's' : ''} — transitions calculées, aucun fait inventé.
+                {totalRuns} PV historique{totalRuns > 1 ? 's' : ''}
+                {nativeVisitCount > 0 && ` · ${nativeVisitCount} visite${nativeVisitCount > 1 ? 's' : ''} terrain`}
+                {nativeMeetingCount > 0 && ` · ${nativeMeetingCount} réunion${nativeMeetingCount > 1 ? 's' : ''}`}
               </p>
             </div>
-            {runs.length > 0 && (
+            {(runs.length > 0 || nativeLastDate) && (
               <p className="shrink-0 text-sm text-muted-foreground">
-                {formatDate(runs[0].effectiveDate)}
-                {runs.length > 1 && ` → ${formatDate(runs[runs.length - 1].effectiveDate)}`}
+                {runs.length > 0 && formatDate(runs[0].effectiveDate)}
+                {(runs.length > 1 || nativeLastDate) && ` → ${formatDate(
+                  nativeLastDate && (!runs.length || nativeLastDate > runs[runs.length - 1].effectiveDate)
+                    ? nativeLastDate
+                    : runs[runs.length - 1].effectiveDate
+                )}`}
               </p>
             )}
           </div>
@@ -227,7 +257,10 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
         {/* Carte d'activité */}
         {view === 'heatmap' && (
           activityMap ? (
-            <ActivityMapView activityMap={activityMap} siteId={siteId} />
+            <>
+              <p className="px-1 text-xs text-muted-foreground">Comparaison des PV historiques — visites terrain et réunions non incluses</p>
+              <ActivityMapView activityMap={activityMap} siteId={siteId} />
+            </>
           ) : (
             <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
               <p className="font-medium">Données non disponibles.</p>
@@ -246,6 +279,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
               readModel={evolutionData.readModel}
               narrative={evolutionData.narrative}
               healthTimeline={evolutionData.healthTimeline}
+              nativeEvents={nativeEventsForEvolution}
             />
           ) : (
             <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">

@@ -156,6 +156,21 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
   const CELL_W = 52
   const LABEL_W = 220
 
+  // Dates uniques des événements natifs (visites + réunions)
+  const nativeDates = useMemo(() => {
+    if (!nativeOccurrences) return []
+    const dateMap = new Map<string, { date: string; hasVisit: boolean; hasMeeting: boolean }>()
+    for (const occs of Object.values(nativeOccurrences)) {
+      for (const o of occs) {
+        const existing = dateMap.get(o.date) ?? { date: o.date, hasVisit: false, hasMeeting: false }
+        if (o.sourceKind === 'field_visit') existing.hasVisit = true
+        else existing.hasMeeting = true
+        dateMap.set(o.date, existing)
+      }
+    }
+    return [...dateMap.values()].sort((a, b) => a.date.localeCompare(b.date))
+  }, [nativeOccurrences])
+
   // Sync horizontal scroll between header and body
   function onBodyScroll(e: React.UIEvent<HTMLDivElement>) {
     if (headerRef.current) headerRef.current.scrollLeft = (e.target as HTMLDivElement).scrollLeft
@@ -219,19 +234,22 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
 
         <span className="ml-auto text-xs text-muted-foreground">
           {filtered.length} sujet{filtered.length > 1 ? 's' : ''} · {runs.length} PV
+          {nativeDates.length > 0 && ` · ${nativeDates.length} événement${nativeDates.length > 1 ? 's' : ''} terrain`}
         </span>
       </div>
 
       {/* Légende */}
       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
         {[
-          { icon: '○', label: 'Apparition', color: 'text-blue-600' },
-          { icon: '●', label: 'Maintenu', color: 'text-muted-foreground' },
+          { icon: '○', label: 'Apparition PV', color: 'text-blue-600' },
+          { icon: '●', label: 'Maintenu PV', color: 'text-muted-foreground' },
           { icon: '⚠', label: 'Aggravé', color: 'text-red-600' },
           { icon: '↩', label: 'Réouvert', color: 'text-red-500' },
-          { icon: '✓', label: 'Clôturé', color: 'text-emerald-600' },
+          { icon: '✓', label: 'Clôturé PV', color: 'text-emerald-600' },
           { icon: '✖', label: 'Annulé', color: 'text-muted-foreground' },
           { icon: '╌', label: 'Non mentionné', color: 'text-muted-foreground/40' },
+          { icon: '✓', label: 'Visite terrain', color: 'text-teal-600' },
+          { icon: '◇', label: 'Réunion', color: 'text-violet-600' },
         ].map(({ icon, label, color }) => (
           <span key={label} className="flex items-center gap-1">
             <span className={`font-bold ${color}`}>{icon}</span>
@@ -248,9 +266,9 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
           <div className="shrink-0 border-r px-3 py-2" style={{ width: LABEL_W }}>
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sujet</span>
           </div>
-          {/* Dates PV — scroll */}
+          {/* Dates PV + événements natifs — scroll */}
           <div ref={headerRef} className="overflow-hidden" style={{ flex: 1 }}>
-            <div className="flex" style={{ minWidth: runs.length * CELL_W }}>
+            <div className="flex" style={{ minWidth: (runs.length + nativeDates.length) * CELL_W }}>
               {runs.map((run, i) => (
                 <div
                   key={run.id}
@@ -260,6 +278,20 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                   <p className="text-[10px] font-semibold text-muted-foreground">PV{i + 1}</p>
                   <p className="text-[9px] text-muted-foreground">
                     {new Date(run.effectiveDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
+                  </p>
+                </div>
+              ))}
+              {nativeDates.map((nd) => (
+                <div
+                  key={nd.date}
+                  className="shrink-0 border-l-2 border-r border-teal-200/60 dark:border-teal-700/40 bg-teal-50/40 dark:bg-teal-950/20 px-1 py-2 text-center last:border-r-0"
+                  style={{ width: CELL_W }}
+                >
+                  <p className={`text-[10px] font-semibold ${nd.hasVisit ? 'text-teal-600 dark:text-teal-400' : 'text-violet-600 dark:text-violet-400'}`}>
+                    {nd.hasVisit ? '✓' : '◇'}
+                  </p>
+                  <p className="text-[9px] text-muted-foreground">
+                    {new Date(nd.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
                   </p>
                 </div>
               ))}
@@ -334,7 +366,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
               if (labelColRef.current) labelColRef.current.scrollTop = (e.target as HTMLDivElement).scrollTop
             }}
           >
-            <div style={{ minWidth: runs.length * CELL_W }}>
+            <div style={{ minWidth: (runs.length + nativeDates.length) * CELL_W }}>
               {filtered.map((row) => (
                 <div
                   key={row.subjectThreadId}
@@ -356,6 +388,35 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                         title={[style.title, cell.label].filter(Boolean).join(' · ')}
                       >
                         <span className={`text-base font-bold leading-none ${style.text}`}>{style.icon}</span>
+                      </div>
+                    )
+                  })}
+                  {nativeDates.map((nd) => {
+                    const rowOccs = row.canonicalSubjectId ? (nativeOccurrences?.[row.canonicalSubjectId] ?? []) : []
+                    const occ = rowOccs.find((o) => o.date === nd.date)
+                    if (!occ) {
+                      return (
+                        <div key={nd.date} className="shrink-0 border-l-2 border-r border-teal-200/40 dark:border-teal-700/30 bg-teal-50/10 dark:bg-teal-950/10 last:border-r-0" style={{ width: CELL_W }} />
+                      )
+                    }
+                    return (
+                      <div
+                        key={nd.date}
+                        className={`shrink-0 border-l-2 border-r last:border-r-0 flex items-center justify-center ${
+                          occ.sourceKind === 'field_visit'
+                            ? 'border-teal-300/60 dark:border-teal-600/40 bg-teal-50 dark:bg-teal-950/40'
+                            : 'border-violet-300/60 dark:border-violet-600/40 bg-violet-50 dark:bg-violet-950/40'
+                        }`}
+                        style={{ width: CELL_W }}
+                        title={occ.sourceKind === 'field_visit' ? 'Visite terrain' : 'Réunion'}
+                      >
+                        <span className={`text-sm font-bold leading-none ${
+                          occ.sourceKind === 'field_visit'
+                            ? 'text-teal-600 dark:text-teal-400'
+                            : 'text-violet-600 dark:text-violet-400'
+                        }`}>
+                          {occ.sourceKind === 'field_visit' ? '✓' : '◇'}
+                        </span>
                       </div>
                     )
                   })}
