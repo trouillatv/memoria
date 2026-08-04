@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { ArrowLeft, Info, ListTodo } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { readSiteActionSummaries, groupActionsByThread, readReportStartDates } from '@/lib/knowledge/repository'
+import { readSiteActionSummaries, groupActionsByThread, readReportMeta, classifyProvenance } from '@/lib/knowledge/repository'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { SiteTabsNav } from '../SiteTabsNav'
 import { ActionsListClient, type ActionGroupDisplay } from './ActionsListClient'
@@ -44,9 +44,9 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
   const groups = groupActionsByThread(rawOpen)
     .sort((a, b) => (a.representative.due_date ?? '9999').localeCompare(b.representative.due_date ?? '9999'))
 
-  // Dates des PV sources
+  // Métadonnées des rapports sources (type + has_doc + date)
   const allReportIds = [...new Set(groups.flatMap((g) => g.reportIds))]
-  const reportDates = await readReportStartDates(allReportIds)
+  const reportMeta = await readReportMeta(allReportIds)
 
   // KPI counts
   const lateCount    = groups.filter((g) => g.representative.due_date && g.representative.due_date < today).length
@@ -57,40 +57,62 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
   }).length
   const undatedCount = groups.filter((g) => !g.representative.due_date).length
 
-  // Provenance : décompter les origines distinctes
-  const pvReportIds = new Set(groups.flatMap((g) => g.reportIds))
-  const pvCount = pvReportIds.size
-  // Plage dates PV
-  const pvDates = [...pvReportIds]
-    .map((rid) => reportDates.get(rid) ?? null)
+  // Distribution des provenances (par groupe dédupliqué, pas par occurrence DB)
+  const provDist = { pv_historique: 0, visite: 0, reunion: 0, manuel: 0, autre: 0 }
+  for (const g of groups) {
+    const mainReportId = g.reportIds[0] ?? null
+    const prov = classifyProvenance(mainReportId ? reportMeta.get(mainReportId) : undefined, Boolean(mainReportId))
+    provDist[prov]++
+  }
+  const docCount = allReportIds.length
+  // Plage dates
+  const metaDates = allReportIds
+    .map((rid) => reportMeta.get(rid)?.started_at ?? null)
     .filter((d): d is string => Boolean(d))
     .sort()
-  const pvDateRange = pvDates.length >= 2
-    ? `${new Date(pvDates[0]).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })} → ${new Date(pvDates[pvDates.length - 1]).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })}`
-    : pvDates.length === 1
-    ? new Date(pvDates[0]).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+  const dateRange = metaDates.length >= 2
+    ? `${new Date(metaDates[0]).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })} → ${new Date(metaDates[metaDates.length - 1]).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })}`
+    : metaDates.length === 1
+    ? new Date(metaDates[0]).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
     : null
 
   // Groupes normalisés pour le composant client (uniquement JSON-serializable)
+  const PROV_LABEL: Record<string, string> = {
+    pv_historique: 'PV historique', visite: 'Visite', reunion: 'Réunion', manuel: 'Manuel', autre: 'Rapport',
+  }
   const displayGroups: ActionGroupDisplay[] = groups.map((g) => {
     const rep = g.representative
-    // Date PV = date du premier report_id disponible
-    const pvDate = g.reportIds.length > 0 ? (reportDates.get(g.reportIds[0]) ?? null) : null
+    const mainReportId = g.reportIds[0] ?? null
+    const meta = mainReportId ? reportMeta.get(mainReportId) : undefined
+    const prov = classifyProvenance(meta, Boolean(mainReportId))
+    const provenanceDate = meta?.started_at
+      ? new Date(meta.started_at).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })
+      : null
     return {
       id: rep.id,
       title: rep.title,
-      href: `/sites/${id}/actions`,
       count: g.count,
-      pvDate,
-      pvCount: g.reportIds.length,
+      docCount: g.reportIds.length,
+      provenanceLabel: PROV_LABEL[prov] ?? 'Rapport',
+      provenanceDate,
       due_date: rep.due_date,
-      assigned_to: rep.assigned_to ?? null,
+      assignedTo: rep.assigned_to ?? null,
+      corpsEtat: rep.corps_etat ?? null,
       urgency: urgencyOf(rep.due_date, today, weekEnd),
       actionHref: `/sites/${id}/action/${rep.id}`,
     }
   })
 
   const hasUrgency = lateCount > 0 || todayCount > 0 || weekCount > 0
+  const totalGroups = groups.length
+
+  // Ligne de distribution lisible
+  const provLines: string[] = []
+  if (provDist.pv_historique > 0) provLines.push(`${provDist.pv_historique} PV historique${provDist.pv_historique > 1 ? 's' : ''}`)
+  if (provDist.visite > 0) provLines.push(`${provDist.visite} visite${provDist.visite > 1 ? 's' : ''}`)
+  if (provDist.reunion > 0) provLines.push(`${provDist.reunion} réunion${provDist.reunion > 1 ? 's' : ''}`)
+  if (provDist.manuel > 0) provLines.push(`${provDist.manuel} manuelle${provDist.manuel > 1 ? 's' : ''}`)
+  if (provDist.autre > 0) provLines.push(`${provDist.autre} autre${provDist.autre > 1 ? 's' : ''}`)
 
   return (
     <div className="max-w-3xl space-y-6 py-6">
@@ -127,22 +149,24 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
         </div>
 
         {/* Message rassurant si aucune urgence */}
-        {!hasUrgency && groups.length > 0 && (
+        {!hasUrgency && totalGroups > 0 && (
           <p className="text-sm text-muted-foreground">
-            Aucune urgence aujourd&apos;hui · {groups.length} sujet{groups.length > 1 ? 's' : ''} à organiser.
+            Aucune urgence aujourd&apos;hui · {totalGroups} sujet{totalGroups > 1 ? 's' : ''} à organiser.
           </p>
         )}
       </header>
 
-      {/* Provenance */}
-      {pvCount > 0 && (
-        <div className="rounded-xl border bg-muted/30 px-4 py-3">
+      {/* Provenance — distribution réelle */}
+      {provLines.length > 0 && (
+        <div className="rounded-xl border bg-muted/30 px-4 py-3 space-y-0.5">
           <p className="text-sm font-medium">Origine des sujets</p>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {groups.length} sujet{groups.length > 1 ? 's' : ''} issu{groups.length > 1 ? 's' : ''} de PV historiques
-            {' · '}{pvCount} document{pvCount > 1 ? 's' : ''}
-            {pvDateRange && ` · ${pvDateRange}`}
-          </p>
+          <p className="text-sm text-muted-foreground">{provLines.join(' · ')}</p>
+          {docCount > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {docCount} document{docCount > 1 ? 's' : ''} source{docCount > 1 ? 's' : ''}
+              {dateRange && ` · ${dateRange}`}
+            </p>
+          )}
         </div>
       )}
 

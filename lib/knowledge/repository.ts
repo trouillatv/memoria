@@ -87,6 +87,7 @@ export interface ActionSummaryRow {
   done_at: string | null
   assigned_to: string | null
   report_id: string | null
+  corps_etat: string | null
   /** Thread de déduplication : même subject_thread_id = une seule entrée opérationnelle.
    *  null = pas de thread, traité individuellement. Backfillé par mig 288. */
   subject_thread_id: string | null
@@ -94,7 +95,7 @@ export interface ActionSummaryRow {
 export async function readSiteActionSummaries(siteId: string): Promise<ActionSummaryRow[]> {
   const { data, error } = await createAdminClient()
     .from('site_actions')
-    .select('id, title, status, due_date, created_at, done_at, assigned_to, report_id, subject_thread_id')
+    .select('id, title, status, due_date, created_at, done_at, assigned_to, report_id, corps_etat, subject_thread_id')
     .eq('site_id', siteId)
   if (error) return []
   return (data ?? []) as ActionSummaryRow[]
@@ -150,16 +151,40 @@ export function groupActionsByThread(rows: ActionSummaryRow[]): ActionThreadGrou
   return groups
 }
 
-/** Dates de démarrage des rapports sources — pour afficher la date du PV sur chaque action. */
-export async function readReportStartDates(reportIds: string[]): Promise<Map<string, string | null>> {
+/** Métadonnées des rapports sources pour la classification de provenance.
+ *  type + source_document_id permettent de distinguer PV historique / visite / réunion. */
+export interface ReportMeta {
+  started_at: string | null
+  type: string | null
+  has_doc: boolean
+}
+
+export async function readReportMeta(reportIds: string[]): Promise<Map<string, ReportMeta>> {
   if (!reportIds.length) return new Map()
   const { data } = await createAdminClient()
     .from('site_reports')
-    .select('id, started_at')
+    .select('id, started_at, type, source_document_id')
     .in('id', reportIds)
-  const result = new Map<string, string | null>()
-  for (const r of data ?? []) result.set(r.id, r.started_at ?? null)
+  const result = new Map<string, ReportMeta>()
+  for (const r of data ?? []) {
+    result.set(r.id, {
+      started_at: r.started_at ?? null,
+      type: r.type ?? null,
+      has_doc: Boolean(r.source_document_id),
+    })
+  }
   return result
+}
+
+export type ProvenanceType = 'pv_historique' | 'visite' | 'reunion' | 'manuel' | 'autre'
+
+export function classifyProvenance(meta: ReportMeta | undefined, hasReportId: boolean): ProvenanceType {
+  if (!hasReportId) return 'manuel'
+  if (!meta) return 'autre'
+  if (meta.has_doc) return 'pv_historique'
+  if (meta.type === 'visit') return 'visite'
+  if (meta.type === 'meeting') return 'reunion'
+  return 'autre'
 }
 
 /** État de synthèse de la DERNIÈRE visite terminée — en une lecture (id + fin +

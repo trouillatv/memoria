@@ -7,20 +7,15 @@ import { useState } from 'react'
 export interface ActionGroupDisplay {
   id: string
   title: string
-  href: string
   count: number
-  pvDate: string | null
-  pvCount: number
+  docCount: number
+  provenanceLabel: string
+  provenanceDate: string | null
   due_date: string | null
-  assigned_to: string | null
+  assignedTo: string | null
+  corpsEtat: string | null
   urgency: 'late' | 'today' | 'week' | 'later' | 'undated'
   actionHref: string
-}
-
-function formatPvDate(iso: string | null): string {
-  if (!iso) return 'PV historique'
-  const d = new Date(iso)
-  return d.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })
 }
 
 function formatDue(iso: string): string {
@@ -40,6 +35,9 @@ function ActionRow({ group }: { group: ActionGroupDisplay }) {
     ? 'border-blue-200 bg-blue-50/30 dark:border-blue-900/40 dark:bg-blue-950/20'
     : 'border-dashed border-muted-foreground/20'
 
+  const provenanceBadge = [group.provenanceLabel, group.provenanceDate].filter(Boolean).join(' · ')
+  const mentionLabel = group.count > 1 ? `${group.count} mentions` : null
+
   return (
     <li className={`rounded-xl border px-4 py-3 ${rowClass}`}>
       <div className="flex items-start justify-between gap-3">
@@ -50,18 +48,28 @@ function ActionRow({ group }: { group: ActionGroupDisplay }) {
           >
             {group.title}
           </Link>
+
           <div className="flex flex-wrap items-center gap-2">
-            {/* Provenance PV */}
+            {/* Provenance */}
             <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
               <FileText className="h-3 w-3" />
-              {formatPvDate(group.pvDate)}
+              {provenanceBadge}
             </span>
-            {/* ×N occurrences */}
-            {group.count > 1 && (
+
+            {/* Nb mentions */}
+            {mentionLabel && (
               <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                ×{group.count} PV{group.pvCount > 1 ? ` · ${group.pvCount} documents` : ''}
+                {mentionLabel}
               </span>
             )}
+
+            {/* Corps d'état */}
+            {group.corpsEtat && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                {group.corpsEtat}
+              </span>
+            )}
+
             {/* Échéance */}
             {group.due_date && isLate && (
               <span className="text-[11px] text-rose-600">depuis le {formatDue(group.due_date)}</span>
@@ -70,10 +78,19 @@ function ActionRow({ group }: { group: ActionGroupDisplay }) {
               <span className="text-[11px] text-amber-600">le {formatDue(group.due_date)}</span>
             )}
           </div>
+
+          {/* Responsable */}
+          <p className="text-[11px] text-muted-foreground">
+            {group.assignedTo
+              ? <span>Responsable : <span className="font-medium text-foreground">{group.assignedTo}</span></span>
+              : <span className="italic">Non affecté</span>
+            }
+          </p>
         </div>
+
         {/* Actions rapides */}
         <div className="flex shrink-0 flex-col items-end gap-1.5">
-          {!group.assigned_to && (
+          {!group.assignedTo && (
             <Link
               href={group.actionHref}
               className="rounded-md px-2 py-0.5 text-[11px] font-medium text-muted-foreground ring-1 ring-border hover:bg-muted"
@@ -143,7 +160,7 @@ export function ActionsListClient({
       {/* Aujourd'hui */}
       {today_.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-sm font-semibold text-amber-600">Aujourd'hui ({today_.length})</h2>
+          <h2 className="text-sm font-semibold text-amber-600">Aujourd&apos;hui ({today_.length})</h2>
           <ul className="space-y-1.5">{today_.map((g) => <ActionRow key={g.id} group={g} />)}</ul>
         </section>
       )}
