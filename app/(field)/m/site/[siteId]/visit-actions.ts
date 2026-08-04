@@ -13,6 +13,8 @@ import { createVisit, endVisit, closeVisit, reopenVisit, getActiveVisit } from '
 import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
 import { buildWatchlistProposals } from '@/lib/visits/watchlist-proposals'
 import { seedWatchlist } from '@/lib/db/visit-watchlist'
+import { consumePreparationItems } from '@/lib/db/visit-preparation'
+import { mergeProposals } from '@/lib/visits/watchlist-merge'
 
 const MOTIVES = [
   'inspection', 'controle', 'reunion', 'avancement', 'reception',
@@ -62,12 +64,16 @@ export async function startVisitAction(
     // au démarrage — déterministe (signaux mémoire × motif), 1 à 7 points,
     // silencieuse (friction zéro), best-effort (ne bloque JAMAIS le démarrage).
     try {
-      const signals = await buildSiteMemorySignals(parsed.data.site_id)
+      const [signals, humanItems] = await Promise.all([
+        buildSiteMemorySignals(parsed.data.site_id),
+        consumePreparationItems(parsed.data.site_id, auth.userId, reportId).catch(() => []),
+      ])
+      const autoProposals = buildWatchlistProposals(signals, parsed.data.motive ?? null)
       await seedWatchlist({
         reportId,
         siteId: parsed.data.site_id,
         createdBy: auth.userId,
-        proposals: buildWatchlistProposals(signals, parsed.data.motive ?? null),
+        proposals: mergeProposals(humanItems, autoProposals),
       })
     } catch { /* une visite sans liste vaut mieux qu'une visite qui ne démarre pas */ }
     revalidatePath(`/m/site/${parsed.data.site_id}`)

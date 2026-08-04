@@ -1,34 +1,25 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ChevronRight, HelpCircle } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { requireSiteAccess as requireFieldSiteAccess } from '@/lib/field/site-access'
 import { requireSiteAccess } from '@/lib/auth/resource-access'
 import { createAdminClient } from '@/lib/supabase/admin'
-import {
-  getActiveVisit,
-  buildSiteStatusSummary,
-  buildSinceLastVisitSummary,
-  getSiteMemorySnapshot,
-  prepareVisitBriefing,
-} from '@/lib/db/visits'
-import { getSiteNextSteps } from '@/lib/db/site-next-steps'
+import { getActiveVisit, buildSiteStatusSummary } from '@/lib/db/visits'
 import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
+import { listActivePreparationItems } from '@/lib/db/visit-preparation'
 import { SiteStatusCard } from '../SiteStatusCard'
-import { SinceLastVisitCard } from '../SinceLastVisitCard'
-import { SiteMemoryCard } from '../SiteMemoryCard'
-import { NextStepCard } from '../NextStepCard'
-import { VisitKnowledgeCard } from '../VisitKnowledgeCard'
 import { VisitLauncher } from '../VisitLauncher'
+import { DeltaBlock, VisitBriefClient } from './VisitBriefClient'
+import type { PrepItemSeed } from './VisitBriefClient'
 
 /**
- * « Préparer ma visite » — le briefing avant d'aller sur le chantier.
- * RÉARRANGEMENT du cockpit chantier (mêmes composants, mêmes read models),
- * ordonné pour la préparation : état → ce qui a changé → questions à poser
- * sur place → agenda → connaissance — puis démarrer la visite.
+ * « Préparer ma visite » — le brief décisionnel avant d'aller sur le chantier.
+ * Structure cible :
+ *   État rapide → Depuis le dernier PV → Priorités proposées → Sujets à garder
+ *   → Mon plan → Démarrer la visite · N points
  *
- * La seule brique nouvelle est « Points à vérifier sur place » : le moteur
- * déterministe prepareVisitBriefing (signaux mémoire → questions + pourquoi),
- * qui existait sans être branché sur aucune surface.
+ * Les blocs pvAttention / pvLastDelta / pvToVerify viennent de getSiteOverview()
+ * (déjà calculé) — aucun fetch supplémentaire.
  */
 export default async function PrepareVisitPage({
   params,
@@ -48,23 +39,37 @@ export default async function PrepareVisitPage({
     .maybeSingle()
   if (!site) notFound()
 
-  const [status, since, snapshot, steps, briefing, activeVisit, overview] = await Promise.all([
+  const [status, activeVisit, overview, rawPrepItems] = await Promise.all([
     buildSiteStatusSummary(siteId).catch(() => []),
-    buildSinceLastVisitSummary(siteId, user.id).catch(() => null),
-    getSiteMemorySnapshot(siteId).catch(() => null),
-    getSiteNextSteps(siteId).catch(() => []),
-    prepareVisitBriefing(siteId).catch(() => ({ signals: [], questions: [] })),
     getActiveVisit(siteId).catch(() => null),
     getSiteOverview(siteId).catch(() => emptySiteOverview(siteId)),
+    listActivePreparationItems(siteId, user.id).catch(() => []),
   ])
 
-  const questions = briefing.questions.slice(0, 5)
+  // Sérialisation JSON-safe pour le client component
+  const prepItems: PrepItemSeed[] = rawPrepItems.map((p) => ({
+    id: p.id,
+    stableKey: p.stableKey,
+    label: p.label,
+    sourceKind: p.sourceKind as PrepItemSeed['sourceKind'],
+    sourceRef: p.sourceRef,
+    canonicalSubjectId: p.canonicalSubjectId,
+    priority: p.priority,
+    reason: p.reason,
+  }))
+
+  const planCount = prepItems.length
 
   return (
     <div className="space-y-6 max-w-md pb-32">
       <header className="space-y-1 pt-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Préparer ma visite
+          {planCount > 0 && (
+            <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+              {planCount} sélectionné{planCount > 1 ? 's' : ''}
+            </span>
+          )}
         </p>
         <h1 className="text-2xl font-bold leading-tight">{site.name}</h1>
         <Link
@@ -75,45 +80,33 @@ export default async function PrepareVisitPage({
         </Link>
       </header>
 
-      {/* 1 — État du chantier : où on en est avant de partir. */}
+      {/* 1 — État rapide du chantier */}
       <SiteStatusCard cells={status} />
 
-      {/* 2 — Ce qui a bougé depuis le dernier passage : reprendre le fil. */}
-      {since && <SinceLastVisitCard summary={since} siteId={siteId} />}
-
-      {/* 3 — Questions à poser sur place : le fait, puis son POURQUOI. */}
-      {questions.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Points à vérifier sur place
-          </h2>
-          <ul className="space-y-2">
-            {questions.map((q, i) => (
-              <li key={i} className="flex items-start gap-3 rounded-2xl border border-foreground/[0.08] bg-card px-4 py-3">
-                <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" strokeWidth={2} />
-                <span className="min-w-0">
-                  <span className="block text-[14px] font-medium leading-snug">{q.question}</span>
-                  {q.why && (
-                    <span className="mt-0.5 block text-[12px] text-muted-foreground">{q.why}</span>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
+      {/* 2 — Depuis le dernier PV */}
+      {overview.pvLastDelta && (
+        <DeltaBlock delta={overview.pvLastDelta} />
       )}
 
-      {/* 4 — Agenda du chantier : ce qui arrive. */}
-      <NextStepCard steps={steps} />
+      {/* 3 — Brief interactif : Priorités + Sujets + Mon plan */}
+      {(overview.pvAttention.length > 0 || overview.pvToVerify.length > 0 || planCount > 0) && (
+        <VisitBriefClient
+          siteId={siteId}
+          pvAttention={overview.pvAttention}
+          pvToVerify={overview.pvToVerify}
+          initialPrepItems={prepItems}
+        />
+      )}
 
-      {/* 5 — Ce que MemorIA a retenu : échéances, à savoir, vigilances. */}
-      <VisitKnowledgeCard overview={overview} synthesisHref={`/m/site/${siteId}`} />
+      {/* Aucune donnée PV : message d'état */}
+      {overview.pvAttention.length === 0 && overview.pvToVerify.length === 0 && planCount === 0 && (
+        <p className="rounded-2xl border border-dashed border-foreground/10 px-4 py-4 text-[13px] text-muted-foreground">
+          Pas encore de sujets analysés sur ce chantier. Importez un PV pour obtenir des priorités.
+        </p>
+      )}
 
-      {/* 6 — Mémoire longue du chantier. */}
-      {snapshot && <SiteMemoryCard snapshot={snapshot} />}
-
-      {/* Démarrer (ou reprendre) la visite — l'aboutissement du briefing. */}
-      <VisitLauncher siteId={siteId} activeVisit={activeVisit} />
+      {/* CTA — démarrer avec le nombre de points sélectionnés */}
+      <VisitLauncher siteId={siteId} activeVisit={activeVisit} planCount={planCount} />
     </div>
   )
 }
