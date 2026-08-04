@@ -52,7 +52,7 @@ export default async function VisitePrevuePage({
     ? 'bg-amber-100 text-amber-800'
     : 'bg-emerald-100 text-emerald-800'
 
-  const startAction = startScheduledEventAction.bind(null, eventId, id)
+  const startAction = startScheduledEventAction.bind(null, eventId, id, 'visit')
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-4 px-1 py-6">

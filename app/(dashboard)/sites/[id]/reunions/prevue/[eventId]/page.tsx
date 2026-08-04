@@ -50,7 +50,7 @@ export default async function ReunionPrevuePage({
     ? 'bg-amber-100 text-amber-800'
     : 'bg-sky-100 text-sky-800'
 
-  const startAction = startScheduledEventAction.bind(null, eventId, id)
+  const startAction = startScheduledEventAction.bind(null, eventId, id, 'meeting')
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-4 px-1 py-6">
