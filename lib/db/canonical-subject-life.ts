@@ -150,23 +150,38 @@ export async function getCanonicalSubjectLife(
     .eq('canonical_subject_id', canonicalSubjectId)
   const threadIds: string[] = ((stiRows ?? []) as Array<{ subject_thread_id: string }>).map((r) => r.subject_thread_id)
   if (threadIds.length === 0) {
+    // Sujet 100 % natif (aucun PV historique) — on cherche quand même les occurrences terrain.
+    // "À corriger en V2" (note mig 291) : désormais géré ici.
+    const { data: nativeCsoRows } = await supabase
+      .from('canonical_subject_occurrence')
+      .select('id, source_ref_id, source_proposal_id, source_kind, visit_status, label, note, evidence_count, effective_date')
+      .eq('canonical_subject_id', canonicalSubjectId)
+      .in('source_kind', ['field_visit', 'meeting'])
+      .order('effective_date', { ascending: true })
+    type NativeCsoRow = {
+      id: string; source_ref_id: string; source_proposal_id: string | null
+      source_kind: 'field_visit' | 'meeting'; visit_status: string | null
+      label: string; note: string | null; evidence_count: number; effective_date: string
+    }
+    const nativeOccs: SubjectOccurrenceMerged[] = ((nativeCsoRows ?? []) as NativeCsoRow[]).map((row) => ({
+      sourceKind: row.source_kind,
+      runId: null, documentId: null, reportId: row.source_ref_id,
+      effectiveDate: row.effective_date, proposalId: row.source_proposal_id,
+      threadId: null, label: row.label, description: row.note,
+      documentStatus: null, visitStatus: row.visit_status,
+      proposalFamily: null, thematicCategory: null, sourcePage: null,
+      transition: null, isGap: false, evidenceCount: row.evidence_count, additionalLabels: [],
+    }))
+    const nativeReal = nativeOccs.filter((o) => !o.isGap)
     return {
-      canonicalSubjectId,
-      siteId,
-      label: csLabel,
-      aliases: csAliases,
-      csStatus,
-      firstSeenAt: null,
-      lastSeenAt: null,
-      currentStatus: null,
-      primaryFamily: null,
-      threadIds: [],
+      canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
+      firstSeenAt: nativeReal[0]?.effectiveDate ?? null,
+      lastSeenAt: nativeReal[nativeReal.length - 1]?.effectiveDate ?? null,
+      currentStatus: nativeReal[nativeReal.length - 1]?.visitStatus ?? null,
+      primaryFamily: null, threadIds: [],
       pvCount: 0,
-      fieldVisitCount: 0,
-      runs: [],
-      occurrences: [],
-      links: [],
-      materializedEvents: [],
+      fieldVisitCount: nativeReal.filter((o) => o.sourceKind === 'field_visit' || o.sourceKind === 'meeting').length,
+      runs: [], occurrences: nativeOccs, links: [], materializedEvents: [],
     }
   }
 
