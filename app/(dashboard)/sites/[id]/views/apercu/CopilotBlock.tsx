@@ -1,28 +1,184 @@
 'use client'
 
-// Copilote Phase 3 — conversation libre, lecture seule.
+// Copilote Phase 3 — conversation libre + propositions (3C).
 // Les 4 questions rapides restent comme raccourcis.
 // L'historique est maintenu localement (3 échanges max, stateless côté serveur).
 // Les liens suggested ne sont jamais envoyés au LLM (filtrage côté serveur).
 
 import { useState, useRef, useEffect, type FormEvent } from 'react'
 import Link from 'next/link'
-import { Sparkles, Loader2, ExternalLink, SendHorizontal, X } from 'lucide-react'
+import { Sparkles, Loader2, ExternalLink, SendHorizontal, ChevronDown, ChevronUp, Check } from 'lucide-react'
 import {
   askCopilotFreeAction,
   type CopilotFreeResult,
   type CopilotFreeCandidate,
 } from '../../copilot-free-action'
 import { askCopilotAction, type CopilotActionResult } from '../../copilot-action'
+import { createCopilotAction, addCopilotToBriefing } from '../../copilot-write-action'
 import type { CopilotIntent } from '@/lib/visits/copilot-context'
+import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
+import { cn } from '@/lib/utils'
 
 // ── Types locaux ──────────────────────────────────────────────────────────────
 
 type Msg =
-  | { kind: 'user';        id: string; text: string }
-  | { kind: 'answer';      id: string; text: string; source: 'llm' | 'fallback'; refs: { id: string; label: string; href: string | null }[] }
+  | { kind: 'user';          id: string; text: string }
+  | { kind: 'answer';        id: string; text: string; source: 'llm' | 'fallback'; refs: { id: string; label: string; href: string | null }[] }
   | { kind: 'clarification'; id: string; text: string; candidates: CopilotFreeCandidate[] }
-  | { kind: 'thinking';    id: string }
+  | { kind: 'proposal';      id: string; text: string; proposal: CopilotProposal }
+  | { kind: 'thinking';      id: string }
+
+// ── Carte de proposition 3C ───────────────────────────────────────────────────
+
+const CONFIDENCE_LABELS: Record<CopilotProposal['confidence'], string> = {
+  strong:     'Je recommande fortement',
+  medium:     'Je recommande',
+  suggestion: 'Suggestion',
+}
+const CONFIDENCE_CLASSES: Record<CopilotProposal['confidence'], string> = {
+  strong:     'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+  medium:     'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+  suggestion: 'bg-muted text-muted-foreground',
+}
+
+function ProposalCard({
+  siteId,
+  proposal,
+  onDone,
+}: {
+  siteId: string
+  proposal: CopilotProposal
+  onDone: (successText: string) => void
+}) {
+  const [title, setTitle] = useState(proposal.title)
+  const [body, setBody] = useState(proposal.body ?? '')
+  const [whyOpen, setWhyOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [cancelled, setCancelled] = useState(false)
+
+  if (cancelled) {
+    return (
+      <p className="text-[12px] text-muted-foreground italic">Proposition annulée.</p>
+    )
+  }
+
+  async function confirm() {
+    if (saving || !title.trim()) return
+    setSaving(true)
+    try {
+      if (proposal.kind === 'action') {
+        const res = await createCopilotAction({
+          siteId,
+          title: title.trim(),
+          body: body.trim() || null,
+          canonicalSubjectId: proposal.canonicalSubjectId,
+          copilotProposalId: proposal.proposalId,
+          llmModel: proposal.llmModel,
+          promptVersion: proposal.promptVersion,
+        })
+        if (res.ok) {
+          onDone('Action créée.')
+        } else {
+          onDone(`Erreur : ${res.error}`)
+        }
+      } else {
+        const res = await addCopilotToBriefing({
+          siteId,
+          label: title.trim(),
+          canonicalSubjectId: proposal.canonicalSubjectId,
+          copilotProposalId: proposal.proposalId,
+        })
+        if (res.ok) {
+          onDone('Ajouté au plan de visite.')
+        } else {
+          onDone(`Erreur : ${res.error}`)
+        }
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const kindLabel = proposal.kind === 'action' ? 'Action' : 'Point de visite'
+
+  return (
+    <div className="rounded-2xl border border-foreground/10 bg-card p-3 space-y-2.5">
+      {/* En-tête : badge confiance + nature */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', CONFIDENCE_CLASSES[proposal.confidence])}>
+          {CONFIDENCE_LABELS[proposal.confidence]}
+        </span>
+        <span className="text-[11px] text-muted-foreground">{kindLabel}</span>
+        {proposal.canonicalSubjectLabel && (
+          <span className="text-[11px] text-muted-foreground">· {proposal.canonicalSubjectLabel}</span>
+        )}
+      </div>
+
+      {/* Titre éditable */}
+      <div>
+        <label className="block text-[11px] text-muted-foreground mb-0.5">Titre</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          maxLength={255}
+          className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+        />
+      </div>
+
+      {/* Corps — seulement pour les actions */}
+      {proposal.kind === 'action' && (
+        <div>
+          <label className="block text-[11px] text-muted-foreground mb-0.5">Détail (optionnel)</label>
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={2}
+            maxLength={2000}
+            placeholder="Précisions, contexte…"
+            className="w-full resize-none rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+          />
+        </div>
+      )}
+
+      {/* Pourquoi ? — section dépliable */}
+      <button
+        type="button"
+        onClick={() => setWhyOpen((v) => !v)}
+        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+      >
+        {whyOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        Pourquoi cette proposition ?
+      </button>
+      {whyOpen && (
+        <p className="text-[12px] text-muted-foreground leading-relaxed pl-4 border-l border-border">
+          {proposal.whyText}
+        </p>
+      )}
+
+      {/* Actions */}
+      <div className="flex gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={confirm}
+          disabled={saving || !title.trim()}
+          className="flex items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-[12px] font-medium text-white hover:bg-violet-600 disabled:opacity-40 transition-colors"
+        >
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+          Valider
+        </button>
+        <button
+          type="button"
+          onClick={() => setCancelled(true)}
+          disabled={saving}
+          className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+        >
+          Annuler
+        </button>
+      </div>
+    </div>
+  )
+}
 
 const QUICK_QUESTIONS: { intent: CopilotIntent; label: string }[] = [
   { intent: 'attention',  label: "Qu'est-ce qui mérite mon attention ?" },
@@ -100,7 +256,15 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
             candidates: result.candidates,
           }]
         }
-        // write_not_supported
+        if (result.kind === 'proposal') {
+          return [...withoutThinking, {
+            kind: 'proposal',
+            id: uid(),
+            text: result.text,
+            proposal: result.proposal,
+          }]
+        }
+        // write_not_supported (fallback legacy)
         return [...withoutThinking, {
           kind: 'answer',
           id: uid(),
@@ -247,6 +411,29 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
                       </button>
                     ))}
                   </div>
+                </div>
+              )
+            }
+
+            if (msg.kind === 'proposal') {
+              return (
+                <div key={msg.id} className="space-y-2">
+                  <div className="rounded-2xl rounded-bl-sm border border-foreground/[0.06] bg-muted/40 px-3 py-2">
+                    <p className="text-[13px] leading-relaxed text-foreground">{msg.text}</p>
+                  </div>
+                  <ProposalCard
+                    siteId={siteId}
+                    proposal={msg.proposal}
+                    onDone={(successText) => {
+                      setMessages((prev) =>
+                        prev.map((m) =>
+                          m.id === msg.id
+                            ? { kind: 'answer', id: m.id, text: successText, source: 'fallback', refs: [] }
+                            : m
+                        )
+                      )
+                    }}
+                  />
                 </div>
               )
             }

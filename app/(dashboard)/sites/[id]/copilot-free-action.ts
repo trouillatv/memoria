@@ -20,6 +20,7 @@ import { listActivePreparationItems } from '@/lib/db/visit-preparation'
 import { buildSiteCopilotContext, filterContextForIntent } from '@/lib/visits/copilot-context'
 import { classifyIntent } from '@/lib/visits/copilot-classify'
 import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
+import { buildCopilotProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { getCanonicalSubjectLifeForSite } from '@/lib/db/canonical-subject-life'
 import { buildSubjectDetailForCopilot } from '@/lib/visits/copilot-subject-context'
 import { answerCopilotFreeQuestion } from '@/lib/visits/copilot-free-answer'
@@ -64,6 +65,11 @@ export type CopilotFreeResult =
       candidates: CopilotFreeCandidate[]
     }
   | {
+      kind: 'proposal'
+      text: string
+      proposal: CopilotProposal
+    }
+  | {
       kind: 'write_not_supported'
       text: string
     }
@@ -97,11 +103,40 @@ export async function askCopilotFreeAction(
   // ── Classification déterministe ───────────────────────────────────────────────
   const classification = classifyIntent(question)
 
-  // Les écritures ne sont pas supportées en Phase 3 Lot 3A
+  // Écriture détectée — Copilote 3C : résoudre le sujet puis construire un brouillon.
   if (classification.isWriteRequest) {
+    let canonicalSubjectId: string | null = null
+    let canonicalSubjectLabel: string | null = null
+    let resolvedWithConfidence = false
+
+    if (classification.entities.subjectLabels.length > 0) {
+      const resolution = await resolveCanonicalSubjectReference(siteId, classification.entities.subjectLabels[0])
+      if (resolution.kind === 'resolved') {
+        canonicalSubjectId = resolution.candidate.id
+        canonicalSubjectLabel = resolution.candidate.label
+        resolvedWithConfidence = true
+      } else if (resolution.kind === 'ambiguous') {
+        const labels = resolution.candidates.map((c) => `• ${c.label}`).join('\n')
+        return {
+          kind: 'clarification',
+          text: `Plusieurs sujets correspondent. Lequel souhaitez-vous associer à cette proposition ?\n\n${labels}`,
+          candidates: resolution.candidates,
+        }
+      }
+    }
+
+    const proposal = buildCopilotProposal({
+      question,
+      canonicalSubjectId,
+      canonicalSubjectLabel,
+      resolvedWithConfidence,
+    })
+
+    const kindLabel = proposal.kind === 'visit_item' ? 'point de visite' : 'action'
     return {
-      kind: 'write_not_supported',
-      text: "Je peux analyser et répondre à vos questions sur ce chantier, mais la création d'actions ou d'éléments sera disponible dans une prochaine version. Pour l'instant, utilisez les écrans dédiés.",
+      kind: 'proposal',
+      text: `Voici le brouillon de ${kindLabel} que je propose. Vérifiez et ajustez avant de valider.`,
+      proposal,
     }
   }
 
