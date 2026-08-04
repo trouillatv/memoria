@@ -80,9 +80,11 @@ interface Props {
   initialTheme?: string | null
   suggestedCounts?: Record<string, number>
   importanceScores?: Record<string, number>
+  /** Occurrences terrain (visites + réunions) par canonicalSubjectId — Option B sparkline. */
+  nativeOccurrences?: Record<string, Array<{ date: string; sourceKind: 'field_visit' | 'meeting' }>>
 }
 
-export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialTheme, suggestedCounts, importanceScores }: Props) {
+export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialTheme, suggestedCounts, importanceScores, nativeOccurrences }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -299,6 +301,24 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                     {suggestedCounts![row.canonicalSubjectId]}
                   </Link>
                 )}
+                {row.canonicalSubjectId && nativeOccurrences?.[row.canonicalSubjectId]?.length ? (
+                  <span
+                    title={`${nativeOccurrences[row.canonicalSubjectId].length} observation${nativeOccurrences[row.canonicalSubjectId].length > 1 ? 's' : ''} terrain`}
+                    className="shrink-0 flex items-center gap-0.5"
+                  >
+                    {nativeOccurrences[row.canonicalSubjectId].slice(0, 3).map((o, i) => (
+                      <span
+                        key={i}
+                        className={o.sourceKind === 'field_visit'
+                          ? 'h-1.5 w-1.5 rounded-full bg-teal-500'
+                          : 'h-1.5 w-1.5 rotate-45 bg-violet-500 inline-block'}
+                      />
+                    ))}
+                    {nativeOccurrences[row.canonicalSubjectId].length > 3 && (
+                      <span className="text-[8px] text-muted-foreground leading-none">+{nativeOccurrences[row.canonicalSubjectId].length - 3}</span>
+                    )}
+                  </span>
+                ) : null}
               </div>
             ))}
           </div>

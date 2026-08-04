@@ -17,8 +17,8 @@ export type { HistoryTransition }
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface SubjectOccurrenceMerged {
-  /** 'historical_pdf' pour les extractions PV ; 'field_visit' pour les visites terrain. */
-  sourceKind: 'historical_pdf' | 'field_visit'
+  /** 'historical_pdf' pour les extractions PV ; 'field_visit' pour les visites terrain ; 'meeting' pour les réunions. */
+  sourceKind: 'historical_pdf' | 'field_visit' | 'meeting'
   runId: string | null         // null pour field_visit
   documentId: string | null    // null pour field_visit
   /** ID du rapport de visite terrain (null pour historical_pdf). */
@@ -412,15 +412,16 @@ export async function getCanonicalSubjectLife(
   // créées sur des sujets déjà connus via PV). À corriger en V2.
   const { data: csoRows } = await supabase
     .from('canonical_subject_occurrence')
-    .select('id, source_ref_id, source_proposal_id, visit_status, label, note, evidence_count, effective_date')
+    .select('id, source_ref_id, source_proposal_id, source_kind, visit_status, label, note, evidence_count, effective_date')
     .eq('canonical_subject_id', canonicalSubjectId)
-    .eq('source_kind', 'field_visit')
+    .in('source_kind', ['field_visit', 'meeting'])
     .order('effective_date', { ascending: true })
 
   type CsoRow = {
     id: string
     source_ref_id: string
     source_proposal_id: string | null
+    source_kind: 'field_visit' | 'meeting'
     visit_status: string | null
     label: string
     note: string | null
@@ -429,7 +430,7 @@ export async function getCanonicalSubjectLife(
   }
   for (const row of (csoRows ?? []) as CsoRow[]) {
     occurrences.push({
-      sourceKind: 'field_visit',
+      sourceKind: row.source_kind,
       runId: null,
       documentId: null,
       reportId: row.source_ref_id,
@@ -554,12 +555,38 @@ export async function getCanonicalSubjectLife(
     primaryFamily,
     threadIds,
     pvCount: realOccurrences.filter((o) => o.sourceKind === 'historical_pdf').length,
-    fieldVisitCount: realOccurrences.filter((o) => o.sourceKind === 'field_visit').length,
+    fieldVisitCount: realOccurrences.filter((o) => o.sourceKind === 'field_visit' || o.sourceKind === 'meeting').length,
     runs: allRuns.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) })),
     occurrences,
     links,
     materializedEvents,
   }
+}
+
+/**
+ * Occurrences terrain (visites + réunions) par canonical_subject_id pour un chantier.
+ * Utilisé par la vue "Lignes de vie" pour les sparklines multi-sources.
+ * Retourne un map : canonicalSubjectId → tableau trié par date croissante.
+ */
+export async function getSiteNativeOccurrencesBySubject(
+  siteId: string,
+): Promise<Record<string, Array<{ date: string; sourceKind: 'field_visit' | 'meeting' }>>> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('canonical_subject_occurrence')
+    .select('canonical_subject_id, effective_date, source_kind')
+    .eq('site_id', siteId)
+    .in('source_kind', ['field_visit', 'meeting'])
+    .order('effective_date', { ascending: true })
+
+  type Row = { canonical_subject_id: string; effective_date: string; source_kind: 'field_visit' | 'meeting' }
+  const result: Record<string, Array<{ date: string; sourceKind: 'field_visit' | 'meeting' }>> = {}
+  for (const row of (data ?? []) as Row[]) {
+    const list = result[row.canonical_subject_id] ?? []
+    list.push({ date: row.effective_date, sourceKind: row.source_kind })
+    result[row.canonical_subject_id] = list
+  }
+  return result
 }
 
 /**

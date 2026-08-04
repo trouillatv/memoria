@@ -42,6 +42,8 @@ const STATUS_LABELS: Record<string, string> = {
   field_checked:   'Vérifié sur le terrain',
   still_open:      'Toujours ouvert',
   not_applicable:  'Sans objet',
+  // statut réunion
+  mentioned:       'Évoqué en réunion',
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -57,6 +59,8 @@ const STATUS_COLORS: Record<string, string> = {
   field_checked:      'bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300',
   still_open:         'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
   not_applicable:     'bg-muted text-muted-foreground',
+  // statut réunion
+  mentioned:          'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
 }
 
 const TRANSITION_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
@@ -137,6 +141,9 @@ function lifelineDot(occ: SubjectOccurrenceMerged): { symbol: string; colorClass
     if (occ.visitStatus === 'not_applicable') return { symbol: '○', colorClass: 'text-muted-foreground/60' }
     return { symbol: '▶', colorClass: 'text-teal-500' }
   }
+  if (occ.sourceKind === 'meeting') {
+    return { symbol: '◇', colorClass: 'text-violet-600 dark:text-violet-400' }
+  }
   const status = occ.documentStatus
   if (status === 'done')          return { symbol: '✓', colorClass: 'text-emerald-600 dark:text-emerald-400' }
   if (status === 'non_compliant') return { symbol: '⚠', colorClass: 'text-red-600 dark:text-red-400' }
@@ -212,14 +219,16 @@ function LifelineBar({
             className="absolute -translate-x-1/2 flex flex-col items-center"
             style={{ left: `${pct}%`, top: 0 }}
           >
-            {/* Lien vers la source — PDF→document, terrain→visite, null→non cliquable */}
+            {/* Lien vers la source — PDF→document, visite→visites, réunion→reunion, null→non cliquable */}
             {(() => {
               const href =
                 occ.sourceKind === 'field_visit' && occ.reportId
                   ? `/sites/${siteId}/visites/${occ.reportId}`
-                  : !occ.isGap && occ.documentId
-                    ? `/documents/${occ.documentId}`
-                    : null
+                  : occ.sourceKind === 'meeting' && occ.reportId
+                    ? `/sites/${siteId}/reunion/${occ.reportId}`
+                    : !occ.isGap && occ.documentId
+                      ? `/documents/${occ.documentId}`
+                      : null
               const cls   = cn('group flex flex-col items-center gap-0.5', occ.isGap ? 'pointer-events-none opacity-40' : '')
               const title = occ.isGap ? 'Non mentionné' : (occ.label ?? '')
               const inner = (
@@ -267,7 +276,7 @@ function LifelineBar({
   )
 }
 
-function OccurrenceCard({ occ }: { occ: SubjectOccurrenceMerged }) {
+function OccurrenceCard({ occ, siteId }: { occ: SubjectOccurrenceMerged; siteId: string }) {
   if (occ.isGap) {
     return (
       <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-3">
@@ -298,6 +307,11 @@ function OccurrenceCard({ occ }: { occ: SubjectOccurrenceMerged }) {
           {occ.sourceKind === 'field_visit' && (
             <span className="inline-flex items-center rounded-full bg-teal-50 text-teal-700 dark:bg-teal-950 dark:text-teal-300 px-2 py-0.5 text-xs font-medium">
               Visite terrain
+            </span>
+          )}
+          {occ.sourceKind === 'meeting' && (
+            <span className="inline-flex items-center rounded-full bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300 px-2 py-0.5 text-xs font-medium">
+              Réunion
             </span>
           )}
           {occ.documentStatus && (
@@ -341,16 +355,36 @@ function OccurrenceCard({ occ }: { occ: SubjectOccurrenceMerged }) {
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Link
-          href={`/documents/${occ.documentId}`}
-          className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
-        >
-          <FileText className="h-3.5 w-3.5" />
-          Ouvrir le PV source
-          {occ.sourcePage != null && (
-            <span className="text-muted-foreground">· p.{occ.sourcePage}</span>
-          )}
-        </Link>
+        {occ.sourceKind === 'historical_pdf' && occ.documentId && (
+          <Link
+            href={`/documents/${occ.documentId}`}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Ouvrir le PV source
+            {occ.sourcePage != null && (
+              <span className="text-muted-foreground">· p.{occ.sourcePage}</span>
+            )}
+          </Link>
+        )}
+        {occ.sourceKind === 'field_visit' && occ.reportId && (
+          <Link
+            href={`/sites/${siteId}/visites/${occ.reportId}`}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Voir la visite terrain
+          </Link>
+        )}
+        {occ.sourceKind === 'meeting' && occ.reportId && (
+          <Link
+            href={`/sites/${siteId}/reunion/${occ.reportId}`}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Voir la réunion
+          </Link>
+        )}
         {occ.evidenceCount > 0 && (
           <span className="text-xs text-muted-foreground">
             {occ.evidenceCount} preuve{occ.evidenceCount > 1 ? 's' : ''}
@@ -545,9 +579,13 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
   }
   for (const e of life.materializedEvents) matCounts[e.entityType]++
 
+  const visitCount = life.occurrences.filter((o) => !o.isGap && o.sourceKind === 'field_visit').length
+  const meetingCount = life.occurrences.filter((o) => !o.isGap && o.sourceKind === 'meeting').length
+
   const summaryParts: string[] = []
   if (life.pvCount > 0) summaryParts.push(`${life.pvCount} PV`)
-  if (life.fieldVisitCount > 0) summaryParts.push(`${life.fieldVisitCount} visite${life.fieldVisitCount > 1 ? 's' : ''} terrain`)
+  if (visitCount > 0) summaryParts.push(`${visitCount} visite${visitCount > 1 ? 's' : ''} terrain`)
+  if (meetingCount > 0) summaryParts.push(`${meetingCount} réunion${meetingCount > 1 ? 's' : ''}`)
   if (matCounts.site_reserve > 0) summaryParts.push(`${matCounts.site_reserve} réserve${matCounts.site_reserve > 1 ? 's' : ''}`)
   if (matCounts.site_action > 0) summaryParts.push(`${matCounts.site_action} action${matCounts.site_action > 1 ? 's' : ''}`)
   if (matCounts.site_decision > 0) summaryParts.push(`${matCounts.site_decision} décision${matCounts.site_decision > 1 ? 's' : ''}`)
@@ -657,7 +695,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
           <ol className="space-y-2">
             {life.occurrences.map((occ, i) => (
               <li key={`${occ.runId}-${i}`}>
-                <OccurrenceCard occ={occ} />
+                <OccurrenceCard occ={occ} siteId={siteId} />
               </li>
             ))}
           </ol>

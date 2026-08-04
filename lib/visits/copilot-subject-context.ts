@@ -10,8 +10,8 @@ import type { CanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
 
 export interface SubjectOccurrenceContext {
   date: string
-  /** 'historical_pdf' pour les PV importés, 'field_visit' pour les visites terrain. */
-  sourceKind: 'historical_pdf' | 'field_visit'
+  /** 'historical_pdf' pour les PV importés, 'field_visit' pour les visites terrain, 'meeting' pour les réunions. */
+  sourceKind: 'historical_pdf' | 'field_visit' | 'meeting'
   transition: string | null
   description: string | null
   /** Statut normalisé. Pour les PDF: documentStatus. Pour le terrain: visitStatus. */
@@ -55,6 +55,7 @@ const VISIT_STATUS_LABELS: Record<string, string> = {
   field_checked:  'vérifié sur le terrain',
   still_open:     'toujours ouvert',
   not_applicable: 'sans objet lors de la visite',
+  mentioned:      'évoqué en réunion',
 }
 
 function visitStatusLabel(status: string | null): string | null {
@@ -81,7 +82,9 @@ export function buildSubjectDetailForCopilot(
       transition: o.transition,
       description: truncate(o.description, MAX_DESCRIPTION_LENGTH),
       // PDF : documentStatus ; terrain : visitStatus (field_checked/still_open/not_applicable)
-      documentStatus: o.documentStatus ?? visitStatusLabel(o.visitStatus),
+      documentStatus: o.sourceKind === 'historical_pdf'
+        ? o.documentStatus
+        : visitStatusLabel(o.visitStatus),
     }))
 
   // Événements matérialisés

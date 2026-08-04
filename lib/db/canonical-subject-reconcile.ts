@@ -38,13 +38,17 @@ export async function reconcileProposalToCanonical(params: {
 
   const supabase = createAdminClient()
 
-  // Date effective de la visite — préférer started_at si disponible
+  // Date effective + discriminant réunion/visite
+  // origin IS NOT NULL → 'field_visit' ; origin IS NULL → 'meeting' (mig 162)
   const { data: reportRow } = await supabase
     .from('site_reports')
-    .select('created_at')
+    .select('created_at, started_at, origin')
     .eq('id', reportId)
     .maybeSingle()
-  const visitDate = ((reportRow as { created_at?: string } | null)?.created_at ?? proposalCreatedAt).slice(0, 10)
+  type ReportRow = { created_at?: string; started_at?: string | null; origin?: string | null } | null
+  const rr = reportRow as ReportRow
+  const visitDate = (rr?.started_at ?? rr?.created_at ?? proposalCreatedAt).slice(0, 10)
+  const sourceKind: 'field_visit' | 'meeting' = rr?.origin != null ? 'field_visit' : 'meeting'
 
   // Résolution 3 passes (exact → code+Jaccard → Jaccard)
   const resolution = await resolveCanonicalSubjectReference(siteId, proposalTitle)
@@ -58,10 +62,10 @@ export async function reconcileProposalToCanonical(params: {
         {
           canonical_subject_id: canonicalSubjectId,
           site_id: siteId,
-          source_kind: 'field_visit',
+          source_kind: sourceKind,
           source_ref_id: reportId,
           source_proposal_id: proposalId,
-          visit_status: 'field_checked',
+          visit_status: sourceKind === 'field_visit' ? 'field_checked' : 'mentioned',
           label: proposalTitle,
           note: proposalBody,
           evidence_count: 0,
@@ -121,9 +125,21 @@ export async function resolveProposalCanonicalManually(params: {
   proposalBody: string | null
   visitDate: string   // ISO date string (slice à 10 chars si nécessaire)
   resolvedBy: string | null
+  sourceKind?: 'field_visit' | 'meeting'  // déduit automatiquement si omis
 }): Promise<void> {
   const { proposalId, siteId, canonicalSubjectId, reportId, proposalTitle, proposalBody, visitDate, resolvedBy } = params
   const supabase = createAdminClient()
+
+  // Déduire sourceKind depuis origin si non fourni
+  let sourceKind = params.sourceKind
+  if (!sourceKind) {
+    const { data: rr } = await supabase
+      .from('site_reports')
+      .select('origin')
+      .eq('id', reportId)
+      .maybeSingle()
+    sourceKind = ((rr as { origin?: string | null } | null)?.origin != null) ? 'field_visit' : 'meeting'
+  }
 
   await supabase
     .from('canonical_subject_occurrence')
@@ -131,10 +147,10 @@ export async function resolveProposalCanonicalManually(params: {
       {
         canonical_subject_id: canonicalSubjectId,
         site_id: siteId,
-        source_kind: 'field_visit',
+        source_kind: sourceKind,
         source_ref_id: reportId,
         source_proposal_id: proposalId,
-        visit_status: 'field_checked',
+        visit_status: sourceKind === 'field_visit' ? 'field_checked' : 'mentioned',
         label: proposalTitle,
         note: proposalBody,
         evidence_count: 0,

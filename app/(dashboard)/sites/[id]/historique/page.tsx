@@ -6,6 +6,7 @@ import { SiteTabsNav } from '../SiteTabsNav'
 import { getSiteHistoricalTimeline, getSiteSubjectMatrix } from '@/lib/documents/pv-history'
 import { getCanonicalDelta } from '@/lib/documents/canonical-transitions'
 import { getSuggestedLinkCountsBySite } from '@/lib/db/subject-thread-links'
+import { getSiteNativeOccurrencesBySubject } from '@/lib/db/canonical-subject-life'
 import {
   getRunsMeta,
   computeWatchlist,
@@ -69,9 +70,12 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
     ? await getSiteDependencyGraph(siteId).catch(() => null)
     : null
 
-  const suggestedCounts = view === 'lifelines'
-    ? await getSuggestedLinkCountsBySite(siteId).catch(() => ({}))
-    : {}
+  const [suggestedCounts, nativeOccurrences] = view === 'lifelines'
+    ? await Promise.all([
+        getSuggestedLinkCountsBySite(siteId).catch(() => ({})),
+        getSiteNativeOccurrencesBySubject(siteId).catch(() => ({})),
+      ])
+    : [{}, {}]
 
   const importanceScoreMap: Record<string, number> = Object.fromEntries(
     importantSubjects.map((s) => [s.canonicalSubjectId, s.score])
@@ -208,6 +212,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
               initialTheme={initialTheme}
               suggestedCounts={suggestedCounts}
               importanceScores={importanceScoreMap}
+              nativeOccurrences={nativeOccurrences}
             />
           ) : (
             <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
