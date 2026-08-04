@@ -52,6 +52,9 @@ export async function reconcileProposalToCanonical(params: {
   type ReportRow = { created_at?: string; started_at?: string | null; origin?: string | null } | null
   const rr = reportRow as ReportRow
   const visitDate = (rr?.started_at ?? rr?.created_at ?? proposalCreatedAt).slice(0, 10)
+  if (rr?.origin && !VISIT_ORIGINS.has(rr.origin)) {
+    console.warn(`[reconcile] origin inconnue "${rr.origin}" pour report ${reportId} — classé comme "meeting" par défaut. Vérifier si VISIT_ORIGINS doit être étendu.`)
+  }
   const sourceKind: 'field_visit' | 'meeting' = (rr?.origin && VISIT_ORIGINS.has(rr.origin)) ? 'field_visit' : 'meeting'
 
   // Résolution 3 passes (exact → code+Jaccard → Jaccard)
