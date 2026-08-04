@@ -38,8 +38,12 @@ export async function reconcileProposalToCanonical(params: {
 
   const supabase = createAdminClient()
 
-  // Date effective + discriminant réunion/visite
-  // origin IS NOT NULL → 'field_visit' ; origin IS NULL → 'meeting' (mig 162)
+  // Date effective + discriminant réunion/visite (mig 162 + 202).
+  // VISIT_ORIGINS liste explicitement toutes les valeurs terrain connues.
+  // Une valeur inconnue tombe dans 'meeting' par défaut (faux négatif < faux positif).
+  // Invariant schéma : origin IS NULL ≡ réunion (garanti dans mig 162 et 202).
+  const VISIT_ORIGINS = new Set(['planned', 'spontaneous', 'qr', 'gps', 'import'])
+
   const { data: reportRow } = await supabase
     .from('site_reports')
     .select('created_at, started_at, origin')
@@ -48,7 +52,7 @@ export async function reconcileProposalToCanonical(params: {
   type ReportRow = { created_at?: string; started_at?: string | null; origin?: string | null } | null
   const rr = reportRow as ReportRow
   const visitDate = (rr?.started_at ?? rr?.created_at ?? proposalCreatedAt).slice(0, 10)
-  const sourceKind: 'field_visit' | 'meeting' = rr?.origin != null ? 'field_visit' : 'meeting'
+  const sourceKind: 'field_visit' | 'meeting' = (rr?.origin && VISIT_ORIGINS.has(rr.origin)) ? 'field_visit' : 'meeting'
 
   // Résolution 3 passes (exact → code+Jaccard → Jaccard)
   const resolution = await resolveCanonicalSubjectReference(siteId, proposalTitle)
@@ -138,7 +142,9 @@ export async function resolveProposalCanonicalManually(params: {
       .select('origin')
       .eq('id', reportId)
       .maybeSingle()
-    sourceKind = ((rr as { origin?: string | null } | null)?.origin != null) ? 'field_visit' : 'meeting'
+    const VISIT_ORIGINS = new Set(['planned', 'spontaneous', 'qr', 'gps', 'import'])
+    const origin = (rr as { origin?: string | null } | null)?.origin ?? null
+    sourceKind = (origin && VISIT_ORIGINS.has(origin)) ? 'field_visit' : 'meeting'
   }
 
   await supabase
