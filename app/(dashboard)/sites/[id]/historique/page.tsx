@@ -6,7 +6,7 @@ import { SiteTabsNav } from '../SiteTabsNav'
 import { getSiteHistoricalTimeline, getSiteSubjectMatrix } from '@/lib/documents/pv-history'
 import { getCanonicalDelta } from '@/lib/documents/canonical-transitions'
 import { getSuggestedLinkCountsBySite } from '@/lib/db/subject-thread-links'
-import { getSiteNativeOccurrencesBySubject } from '@/lib/db/canonical-subject-life'
+import { getSiteNativeOccurrencesBySubject, getCanonicalSubjectLabelsByIds } from '@/lib/db/canonical-subject-life'
 import {
   getRunsMeta,
   computeWatchlist,
@@ -99,17 +99,19 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
 
   const totalRuns = timeline.snapshots.length
 
-  // Résumé des occurrences natives pour le header
-  let nativeVisitCount = 0
-  let nativeMeetingCount = 0
+  // Résumé des occurrences natives pour le header — comptage par dates distinctes (un report = un événement)
+  const nativeVisitDates = new Set<string>()
+  const nativeMeetingDates = new Set<string>()
   let nativeLastDate: string | null = null
   for (const occs of Object.values(nativeOccurrences)) {
     for (const o of occs) {
-      if (o.sourceKind === 'field_visit') nativeVisitCount++
-      else nativeMeetingCount++
+      if (o.sourceKind === 'field_visit') nativeVisitDates.add(o.date)
+      else nativeMeetingDates.add(o.date)
       if (!nativeLastDate || o.date > nativeLastDate) nativeLastDate = o.date
     }
   }
+  const nativeVisitCount = nativeVisitDates.size
+  const nativeMeetingCount = nativeMeetingDates.size
 
   // Métadonnées enrichies : dates réelles des PV + reportId pour les liens
   const matrixRuns = matrix?.runs ?? []
@@ -142,6 +144,12 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   const subjectLabelMap: Record<string, string> = Object.fromEntries(
     (matrix?.rows ?? []).map((row) => [row.canonicalSubjectId, row.canonicalLabel])
   )
+  // Labels des sujets 100% natifs (absents de la matrice PV) — évite l'affichage d'UUID
+  const nativeOnlyIds = Object.keys(nativeOccurrences).filter((id) => !subjectLabelMap[id])
+  if (nativeOnlyIds.length > 0) {
+    const nativeLabels = await getCanonicalSubjectLabelsByIds(nativeOnlyIds).catch(() => ({}))
+    Object.assign(subjectLabelMap, nativeLabels)
+  }
   const nativeEventsForEvolution = Object.entries(nativeOccurrences)
     .flatMap(([csId, occs]) =>
       occs

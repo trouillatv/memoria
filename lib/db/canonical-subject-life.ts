@@ -604,6 +604,23 @@ export async function getSiteNativeOccurrencesBySubject(
   return result
 }
 
+/** Labels de canonical_subjects par IDs — pour résoudre les sujets 100% natifs absents de la matrice PV. */
+export async function getCanonicalSubjectLabelsByIds(
+  ids: string[],
+): Promise<Record<string, string>> {
+  if (ids.length === 0) return {}
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('canonical_subject')
+    .select('id, label')
+    .in('id', ids)
+  const result: Record<string, string> = {}
+  for (const row of (data ?? []) as Array<{ id: string; label: string }>) {
+    result[row.id] = row.label
+  }
+  return result
+}
+
 /**
  * Wrapper sécurisé : vérifie que le canonical_subject appartient bien au siteId
  * demandé avant de retourner les données.
