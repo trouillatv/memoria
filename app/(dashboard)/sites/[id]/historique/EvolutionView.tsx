@@ -191,7 +191,14 @@ const FACT_CONFIG = {
 
 type FactKey = keyof typeof FACT_CONFIG
 
-function SubjectList({ kind, facts, siteId }: { kind: FactKey; facts: EvolutionSubjectFact[]; siteId: string }) {
+function SubjectList({
+  kind, facts, siteId, subjectLabelMap,
+}: {
+  kind: FactKey
+  facts: EvolutionSubjectFact[]
+  siteId: string
+  subjectLabelMap?: Record<string, string>
+}) {
   if (facts.length === 0) return null
   const cfg = FACT_CONFIG[kind]
   return (
@@ -205,12 +212,21 @@ function SubjectList({ kind, facts, siteId }: { kind: FactKey; facts: EvolutionS
           if (fact.openActions > 0)  tags.push(`${fact.openActions} act.`)
           if (fact.openReserves > 0) tags.push(`${fact.openReserves} rés.`)
           if (fact.hasDeadlines)     tags.push('éch.')
+          const canonicalLabel = subjectLabelMap?.[fact.canonicalSubjectId]
+          const showCanonical = canonicalLabel && canonicalLabel.toLowerCase().trim() !== fact.label.toLowerCase().trim()
           return (
             <li key={fact.canonicalSubjectId} className="flex items-start gap-2">
-              <Link href={`/sites/${siteId}/historique/sujets/${fact.canonicalSubjectId}`}
-                className={cn('flex-1 truncate text-sm underline-offset-2', cfg.linkColor)}>
-                {fact.label}
-              </Link>
+              <div className="min-w-0 flex-1">
+                <Link href={`/sites/${siteId}/historique/sujets/${fact.canonicalSubjectId}`}
+                  className={cn('block truncate text-sm underline-offset-2', cfg.linkColor)}>
+                  {fact.label}
+                </Link>
+                {showCanonical && (
+                  <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                    Sujet suivi · {canonicalLabel}
+                  </p>
+                )}
+              </div>
               {tags.length > 0 && <span className="shrink-0 text-xs text-muted-foreground">{tags.join(' · ')}</span>}
             </li>
           )
@@ -317,12 +333,13 @@ function SilenceCard({ period, styles, narrativeText, siteId }: {
   )
 }
 
-function PeriodCard({ period, phase, styles, narrativeText, siteId }: {
+function PeriodCard({ period, phase, styles, narrativeText, siteId, subjectLabelMap }: {
   period: EvolutionReadModel['periods'][number]
   phase: PhaseInfo
   styles: (typeof PHASE_STYLES)[PhaseType]
   narrativeText: string | null
   siteId: string
+  subjectLabelMap?: Record<string, string>
 }) {
   const pvLabel = period.pvNumbers.length === 0 ? null
     : period.pvNumbers.length === 1 ? `PV${period.pvNumbers[0]}`
@@ -347,10 +364,10 @@ function PeriodCard({ period, phase, styles, narrativeText, siteId }: {
 
       {(period.appeared.length > 0 || period.aggravated.length > 0 || period.resolved.length > 0 || period.stillOpen.length > 0) && (
         <div className={cn('mt-3 space-y-3 border-t border-border pt-3', narrativeText && 'mt-3')}>
-          <SubjectList kind="appeared"   facts={period.appeared}   siteId={siteId} />
-          <SubjectList kind="aggravated" facts={period.aggravated} siteId={siteId} />
-          <SubjectList kind="resolved"   facts={period.resolved}   siteId={siteId} />
-          <SubjectList kind="stillOpen"  facts={period.stillOpen}  siteId={siteId} />
+          <SubjectList kind="appeared"   facts={period.appeared}   siteId={siteId} subjectLabelMap={subjectLabelMap} />
+          <SubjectList kind="aggravated" facts={period.aggravated} siteId={siteId} subjectLabelMap={subjectLabelMap} />
+          <SubjectList kind="resolved"   facts={period.resolved}   siteId={siteId} subjectLabelMap={subjectLabelMap} />
+          <SubjectList kind="stillOpen"  facts={period.stillOpen}  siteId={siteId} subjectLabelMap={subjectLabelMap} />
         </div>
       )}
     </div>
@@ -365,9 +382,10 @@ export interface EvolutionViewProps {
   narrative: EvolutionNarrative
   healthTimeline: SiteHealthTimeline | null
   nativeEvents?: Array<{ date: string; sourceKind: 'field_visit' | 'meeting'; label: string; canonicalSubjectId: string }>
+  subjectLabelMap?: Record<string, string>
 }
 
-export function EvolutionView({ siteId, readModel, narrative, healthTimeline, nativeEvents }: EvolutionViewProps) {
+export function EvolutionView({ siteId, readModel, narrative, healthTimeline, nativeEvents, subjectLabelMap }: EvolutionViewProps) {
   if (readModel.periods.length === 0) {
     return (
       <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
@@ -482,7 +500,7 @@ export function EvolutionView({ siteId, readModel, narrative, healthTimeline, na
                   {period.isSilence ? (
                     <SilenceCard period={period} styles={styles} narrativeText={narrativeText} siteId={siteId} />
                   ) : (
-                    <PeriodCard period={period} phase={phase} styles={styles} narrativeText={narrativeText} siteId={siteId} />
+                    <PeriodCard period={period} phase={phase} styles={styles} narrativeText={narrativeText} siteId={siteId} subjectLabelMap={subjectLabelMap} />
                   )}
                 </div>
               )

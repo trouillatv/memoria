@@ -158,6 +158,11 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
     )
     .sort((a, b) => a.date.localeCompare(b.date))
 
+  // Labels natifs pour la section "Sujets nés dans MemorIA" dans Lignes de vie
+  const nativeSubjectLabels = Object.fromEntries(
+    nativeOnlyIds.map((id) => [id, subjectLabelMap[id] ?? id])
+  )
+
   // Computations pures depuis la matrice
   const watchlist = matrix ? computeWatchlist(matrix) : []
   const categories = matrix ? computeProgressByCategory(matrix) : []
@@ -208,7 +213,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
             {([
               { key: 'synthese',   label: 'Synthèse' },
               { key: 'lifelines',  label: 'Lignes de vie' },
-              { key: 'heatmap',    label: 'Activité' },
+              { key: 'heatmap',    label: 'Historique PV' },
               { key: 'evolution',  label: 'Évolution' },
               { key: 'deps',       label: 'Dépendances' },
             ] as const).map(({ key, label }) => (
@@ -251,6 +256,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
               suggestedCounts={suggestedCounts}
               importanceScores={importanceScoreMap}
               nativeOccurrences={nativeOccurrences}
+              nativeSubjectLabels={nativeSubjectLabels}
             />
           ) : (
             <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
@@ -266,7 +272,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
         {view === 'heatmap' && (
           activityMap ? (
             <>
-              <p className="px-1 text-xs text-muted-foreground">Comparaison des PV historiques — visites terrain et réunions non incluses</p>
+              <p className="px-1 text-xs text-muted-foreground">Comparaison des sujets entre les PV historiques importés — visites terrain et réunions visibles dans Lignes de vie</p>
               <ActivityMapView activityMap={activityMap} siteId={siteId} />
             </>
           ) : (
@@ -288,6 +294,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
               narrative={evolutionData.narrative}
               healthTimeline={evolutionData.healthTimeline}
               nativeEvents={nativeEventsForEvolution}
+              subjectLabelMap={subjectLabelMap}
             />
           ) : (
             <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">

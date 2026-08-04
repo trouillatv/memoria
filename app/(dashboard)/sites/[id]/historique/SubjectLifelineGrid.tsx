@@ -82,9 +82,11 @@ interface Props {
   importanceScores?: Record<string, number>
   /** Occurrences terrain (visites + réunions) par canonicalSubjectId — Option B sparkline. */
   nativeOccurrences?: Record<string, Array<{ date: string; sourceKind: 'field_visit' | 'meeting' }>>
+  /** Labels des sujets 100% natifs (absents de la matrice PV). */
+  nativeSubjectLabels?: Record<string, string>
 }
 
-export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialTheme, suggestedCounts, importanceScores, nativeOccurrences }: Props) {
+export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialTheme, suggestedCounts, importanceScores, nativeOccurrences, nativeSubjectLabels }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -155,6 +157,24 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
   const runs = matrix.runs
   const CELL_W = 52
   const LABEL_W = 220
+
+  // Sujets 100% natifs — canonicalSubjectId présent dans nativeOccurrences mais absent de la matrice PV
+  const matrixCanonicalIds = useMemo(
+    () => new Set(matrix.rows.map((r) => r.canonicalSubjectId).filter(Boolean)),
+    [matrix.rows],
+  )
+
+  const nativeOnlySubjects = useMemo(() => {
+    if (!nativeOccurrences || !nativeSubjectLabels) return []
+    return Object.entries(nativeOccurrences)
+      .filter(([csId]) => !matrixCanonicalIds.has(csId))
+      .map(([csId, occs]) => ({
+        csId,
+        label: nativeSubjectLabels[csId] ?? csId,
+        occurrences: occs,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'fr'))
+  }, [nativeOccurrences, nativeSubjectLabels, matrixCanonicalIds])
 
   // Dates uniques des événements natifs (visites + réunions)
   const nativeDates = useMemo(() => {
@@ -426,6 +446,43 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
           </div>
         </div>
       </div>
+
+      {/* Sujets nés dans MemorIA — canonical subjects sans aucun PV */}
+      {nativeOnlySubjects.length > 0 && (
+        <section className="rounded-[22px] border bg-card p-5 shadow-sm">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Sujets nés dans MemorIA
+          </p>
+          <div className="divide-y">
+            {nativeOnlySubjects.map(({ csId, label, occurrences }) => (
+              <div key={csId} className="flex items-center gap-4 py-2.5 first:pt-0 last:pb-0">
+                <Link
+                  href={`/sites/${siteId}/historique/sujets/${csId}`}
+                  className="min-w-0 flex-1 truncate text-sm font-medium hover:underline"
+                >
+                  {label}
+                </Link>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  {occurrences.map((o, i) => (
+                    <span
+                      key={i}
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                        o.sourceKind === 'field_visit'
+                          ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300'
+                          : 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300'
+                      }`}
+                    >
+                      <span>{o.sourceKind === 'field_visit' ? '✓' : '◇'}</span>
+                      <span>{new Date(o.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}</span>
+                      <span className="opacity-70">{o.sourceKind === 'field_visit' ? 'Visite' : 'Réunion'}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Panneau de détail du sujet sélectionné */}
       {selectedThread && (() => {
