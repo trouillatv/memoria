@@ -5,6 +5,7 @@
 // AUCUNE écriture DB ici — le brouillon est éditable avant confirmation humaine.
 
 import { formatScheduleLabel } from '@/lib/visits/copilot-schedule-parse'
+import { detectIntent } from '@/lib/visits/copilot-intent-router'
 
 export type CopilotProposalKind = 'action' | 'visit_item' | 'schedule_visit' | 'schedule_meeting'
 
@@ -30,62 +31,19 @@ export type CopilotProposal = {
 export const COPILOT_PROMPT_VERSION = '3c-v1'
 export const COPILOT_LLM_MODEL = 'classifier-deterministic'
 
-// ── Signaux de détection du kind ─────────────────────────────────────────────
+// ── Mapping intent router → CopilotProposalKind ──────────────────────────────
 
-// Planifier une visite terrain (date future explicite)
-// [rsz]? couvre les conjugaisons courantes : planifie/planifies/planifier/planifiez
-const SCHEDULE_VISIT_SIGNALS = [
-  /\bplanifie[rsz]?\s+(?:une?\s+)?visite\b/i,
-  /\borganise[rsz]?\s+(?:une?\s+)?visite\b/i,
-  /\bprogramme[rsz]?\s+(?:une?\s+)?visite\b/i,
-  /\bfixe[rsz]?\s+(?:une?\s+)?(?:(?:la\s+)?date\s+(?:de\s+)?|rendez-vous\s+(?:de\s+)?)?visite\b/i,
-  /\bpr[eé]vois?\s+(?:une?\s+)?visite\b/i,
-  /\bpose[rsz]?\s+(?:une?\s+)?visite\b/i,
-  /\bcr[eé]e[rsz]?\s+(?:une?\s+)?visite\b/i,
-  /\bmarque[rsz]?\s+(?:une?\s+)?visite\b/i,
-  /\binscri(?:s|t|re|vez)?\s+(?:une?\s+)?visite\b/i,
-  /\bajoute[rsz]?\s+(?:une?\s+)?visite\b/i,
-]
+const INTENT_TO_KIND: Partial<Record<string, CopilotProposalKind>> = {
+  SCHEDULE_VISIT:   'schedule_visit',
+  SCHEDULE_MEETING: 'schedule_meeting',
+  ADD_VISIT_ITEM:   'visit_item',
+  CREATE_ACTION:    'action',
+}
 
-// Planifier une réunion de chantier
-const SCHEDULE_MEETING_SIGNALS = [
-  /\bplanifie[rsz]?\s+(?:une?\s+)?r[eé]union\b/i,
-  /\borganise[rsz]?\s+(?:une?\s+)?r[eé]union\b/i,
-  /\bprogramme[rsz]?\s+(?:une?\s+)?r[eé]union\b/i,
-  /\bfixe[rsz]?\s+(?:une?\s+)?(?:(?:la\s+)?date\s+(?:de\s+)?|rendez-vous\s+(?:de\s+)?)?r[eé]union\b/i,
-  /\bpr[eé]vois?\s+(?:une?\s+)?r[eé]union\b/i,
-  /\bconvoque[rsz]?\b/i,
-  /\bcr[eé]e[rsz]?\s+(?:une?\s+)?r[eé]union\b/i,
-  /\bmarque[rsz]?\s+(?:une?\s+)?r[eé]union\b/i,
-  /\binscri(?:s|t|re|vez)?\s+(?:une?\s+)?r[eé]union\b/i,
-  /\bajoute[rsz]?\s+(?:une?\s+)?r[eé]union\b/i,
-]
-
-// Création explicite d'action — priorité sur VISIT_ITEM_SIGNALS pour éviter que
-// "vérifier" dans "crée une action pour vérifier R4" ne détourne vers visit_item.
-const EXPLICIT_ACTION_SIGNALS = [
-  /\bcr[eé]e[rsz]?\s+(?:une?\s+)?action\b/i,
-  /\bajoute[rsz]?\s+(?:une?\s+)?action\b/i,
-  /\bprogramme[rsz]?\s+(?:une?\s+)?action\b/i,
-]
-
-// Préparer le plan de prochaine visite (pas de date propre)
-const VISIT_ITEM_SIGNALS = [
-  /\bpr[eé]parer\b/i,
-  /\bprochaine\s+visite\b/i,
-  /\bv[eé]rifier\b/i,
-  /\bplan\s+(de\s+)?visite\b/i,
-  /\bpoint[s]?\s+[àa]\s+voir\b/i,
-  /\bajoute[rsz]?\s+(?:au\s+)?plan\b/i,
-  /\bmets?\s+en\s+plan\b/i,
-]
-
+/** Délègue au routeur centralisé et mappe vers CopilotProposalKind. */
 export function detectKind(question: string): CopilotProposalKind {
-  if (SCHEDULE_MEETING_SIGNALS.some((r) => r.test(question))) return 'schedule_meeting'
-  if (SCHEDULE_VISIT_SIGNALS.some((r) => r.test(question))) return 'schedule_visit'
-  if (EXPLICIT_ACTION_SIGNALS.some((r) => r.test(question))) return 'action'
-  if (VISIT_ITEM_SIGNALS.some((r) => r.test(question))) return 'visit_item'
-  return 'action'
+  const { intent } = detectIntent(question)
+  return INTENT_TO_KIND[intent] ?? 'action'
 }
 
 // ── Builders ──────────────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@
 // nécessaires à l'intent primaire (+ secondaires) sont chargés.
 
 import { extractTechnicalCodes } from '@/lib/documents/semantic-subject-resolution'
+import { detectIntent } from '@/lib/visits/copilot-intent-router'
 
 export type IntentFamily =
   | 'subject_detail'  // question sur un sujet nommé (G3, R4…)
@@ -88,21 +89,8 @@ const PLAN_SIGNALS = [
   /\bpoint[s]?\s+[àa]\s+voir\b/i,
 ]
 
-const PROPOSAL_SIGNALS = [
-  /\bcr[eé]e[rsz]?\b/i,           // crée, crées, créer, créez
-  /\bajoute[rsz]?\b/i,             // ajoute, ajoutes, ajouter, ajoutez
-  /\bplanifie[rsz]?\b/i,           // planifie, planifies, planifier, planifiez
-  /\bmets?\s+en\s+plan\b/i,
-  /\bprogramme[rsz]?\b/i,          // programme, programmes, programmer, programmez
-  /\borganise[rsz]?\b/i,           // organise, organises, organiser, organisez
-  /\bnote[rsz]?\b/i,               // note, notes, noter, notez
-  /\brappe?l\b/i,
-  /\bpr[eé]vois?\b/i,              // prévois, prévoit
-  /\bpose[rsz]?\s+(?:une?\s+)?(?:visite|r[eé]union|rdv|rendez-vous)\b/i,
-  /\bfixe[rsz]?\s+(?:une?\s+)?(?:visite|r[eé]union|date|rdv|rendez-vous)\b/i,
-  /\bmarque[rsz]?\s+(?:une?\s+)?(?:visite|r[eé]union|rdv|rendez-vous)\b/i,
-  /\binscri(?:s|t|re|vez)?\s+(?:une?\s+)?(?:visite|r[eé]union|rdv|rendez-vous)\b/i,
-]
+// PROPOSAL_SIGNALS remplacé par le routeur centralisé (copilot-intent-router).
+// isWriteRequest est désormais dérivé de detectIntent(question).intent !== 'READ'.
 
 // ── Extraction d'entités ───────────────────────────────────────────────────────
 
@@ -188,8 +176,8 @@ export function classifyIntent(question: string): IntentClassification {
   const subjectLabels = extractSubjectLabels(question)
   const actorLabels = extractActorLabels(question)
 
-  // Vérification écriture en premier (ne crée pas une subject_detail si c'est un write)
-  const isWriteRequest = countSignals(question, PROPOSAL_SIGNALS) >= 1
+  // Vérification écriture via le routeur centralisé
+  const isWriteRequest = detectIntent(question).intent !== 'READ'
 
   // Score par famille (hors proposal)
   const scores: Record<Exclude<IntentFamily, 'proposal_request'>, number> = {

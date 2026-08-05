@@ -20,8 +20,9 @@ import { listActivePreparationItems } from '@/lib/db/visit-preparation'
 import { buildSiteCopilotContext, filterContextForIntent } from '@/lib/visits/copilot-context'
 import { classifyIntent } from '@/lib/visits/copilot-classify'
 import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
-import { buildCopilotProposal, buildScheduleProposal, detectKind, type CopilotProposal } from '@/lib/visits/copilot-proposal'
+import { buildCopilotProposal, buildScheduleProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { parseScheduleFromQuestion, toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
+import { detectIntent } from '@/lib/visits/copilot-intent-router'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logCopilotInteraction } from '@/lib/db/copilot-telemetry'
 import type { CopilotScope } from '@/lib/db/copilot-telemetry'
@@ -131,16 +132,23 @@ export async function askCopilotFreeAction(
   }
   const baseScope: CopilotScope = INTENT_SCOPE_MAP[classification.primary] ?? 'unknown'
 
-  // Filet secondaire : detectKind détecte schedule même si PROPOSAL_SIGNALS a manqué
-  // une conjugaison (planifies, organises…). On force isWriteRequest dans ce cas.
-  const earlyKind = detectKind(question)
-  const isScheduleIntent = earlyKind === 'schedule_visit' || earlyKind === 'schedule_meeting'
+  // Routeur d'intention V2 — source unique de vérité pour toutes les intentions d'écriture.
+  const intentResult = detectIntent(question)
 
   // Écriture détectée — Copilote 3C : résoudre le sujet puis construire un brouillon.
-  if (classification.isWriteRequest || isScheduleIntent) {
-    // ── Planification (schedule_visit / schedule_meeting) ───────────────────
-    const proposalKind = isScheduleIntent ? earlyKind : detectKind(question)
-    if (proposalKind === 'schedule_visit' || proposalKind === 'schedule_meeting') {
+  if (intentResult.intent !== 'READ') {
+    // ── Intention non supportée (réserve, échéance…) ou ambiguë → clarification ──
+    if (intentResult.intent === 'UNKNOWN_WRITE') {
+      const hasUnsupported = intentResult.signals.includes('unsupported_object')
+      const clarText = hasUnsupported
+        ? "Cette commande n'est pas encore disponible via le Copilote. Vous pouvez créer une action ou ajouter un point au plan de votre prochaine visite."
+        : "Je n'ai pas bien compris votre intention. Souhaitez-vous créer une action, ajouter un point au plan de visite, ou planifier une visite / réunion ?"
+      return { kind: 'answer', text: clarText, references: [], source: 'fallback', interactionId: null }
+    }
+
+    // ── Planification (SCHEDULE_VISIT / SCHEDULE_MEETING) ──────────────────
+    if (intentResult.intent === 'SCHEDULE_VISIT' || intentResult.intent === 'SCHEDULE_MEETING') {
+      const proposalKind = intentResult.intent === 'SCHEDULE_VISIT' ? 'schedule_visit' : 'schedule_meeting'
       const parsed = parseScheduleFromQuestion(question)
       const eventLabel = proposalKind === 'schedule_visit' ? 'visite' : 'réunion'
 
