@@ -78,6 +78,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ text: '', code: 'TRANSCRIBE_EMPTY' })
   }
 
+  // Détection de fuite lexique : si ≥ 3 termes du lexique apparaissent dans la
+  // transcription, c'est probablement une contamination prompt→sortie.
+  if (lexicalPrompt) {
+    const terms = lexicalPrompt.split(',').map((t) => t.trim().toLowerCase()).filter((t) => t.length > 4)
+    const outputLower = result.text.toLowerCase()
+    const leaked = terms.filter((t) => outputLower.includes(t))
+    if (leaked.length >= 3) {
+      console.error('[Voice] STT_LEXICON_LEAK', { leakedCount: leaked.length, textLen: result.text.length, model: result.model })
+    }
+  }
+
   console.log('[Voice] provider_call_ok', { chars: result.text.length, model: result.model })
 
   return NextResponse.json({
@@ -104,12 +115,17 @@ async function buildLexicalPrompt(siteId: string): Promise<string> {
     const terms: string[] = []
     if (siteRes.data?.name) terms.push(siteRes.data.name)
     if (subjectsRes.data?.length) {
-      // Garder uniquement les labels courts (≤ 40 chars) : ce sont les noms de sujets,
-      // pas des descriptions longues qui risquent d'être répétées par le STT.
+      const STOP_WORDS = /^(le|la|les|un|une|des|de|du|au|aux|en|à|et|ou|sur|pour|par|dans|avec|sans)\b/i
       const shortLabels = subjectsRes.data
         .map((s) => s.label.trim())
-        .filter((l) => l.length > 0 && l.length <= 40)
-      terms.push(...shortLabels)
+        .filter((l) =>
+          l.length > 0 &&
+          l.length <= 40 &&         // pas de descriptions longues
+          l.split(/\s+/).length <= 4 && // max 4 mots (codes, noms, sigles)
+          !STOP_WORDS.test(l) &&    // pas de phrases débutant par un article
+          !/\d{1,2}\/\d{2}/.test(l), // pas de dates (ex: "30/03")
+        )
+      terms.push(...shortLabels.slice(0, 15))
     }
     // Format : liste de termes séparés par des virgules — pas de phrases complètes.
     return terms.join(', ')
