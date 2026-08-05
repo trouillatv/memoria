@@ -44,13 +44,11 @@ export async function transcribeAudio(
 const GEMINI_INLINE_MAX_BYTES = 12 * 1024 * 1024
 
 const GEMINI_MODEL = 'gemini-2.5-flash'
-const TRANSCRIBE_PROMPT =
-  'Transcris cet audio en français. Retourne uniquement la transcription brute, sans explication ni ponctuation ajoutée.'
 
-function buildGeminiPrompt(lexicalPrompt?: string): string {
-  if (!lexicalPrompt) return TRANSCRIBE_PROMPT
-  return `Transcris cet audio en français. Vocabulaire spécialisé susceptible d'apparaître : ${lexicalPrompt}. Retourne uniquement la transcription brute, sans explication ni ponctuation ajoutée.`
-}
+// L'instruction de transcription va dans systemInstruction (jamais répétée en sortie).
+// Le contenu utilisateur contient uniquement l'audio + hint vocabulaire minimal.
+const GEMINI_SYSTEM_INSTRUCTION =
+  'Transcris exactement ce qui est dit dans cet audio en français. Retourne uniquement la transcription brute, sans ajout, sans commentaire, sans ponctuation inventée.'
 
 async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string, lexicalPrompt?: string): Promise<string> {
   const apiKey = process.env.GOOGLE_GENAI_API_KEY!
@@ -63,13 +61,18 @@ async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string, le
       ? { file_data: { mime_type: safeMime, file_uri: await uploadToGeminiFiles(rawBuffer, safeMime, apiKey) } }
       : { inline_data: { mime_type: safeMime, data: Buffer.from(rawBuffer).toString('base64') } }
 
+  // Le vocabulaire est un indice compact, jamais une instruction pleine phrase.
+  const userParts: unknown[] = [audioPart]
+  if (lexicalPrompt) userParts.push({ text: `Vocabulaire : ${lexicalPrompt}` })
+
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [audioPart, { text: buildGeminiPrompt(lexicalPrompt) }] }],
+        systemInstruction: { parts: [{ text: GEMINI_SYSTEM_INSTRUCTION }] },
+        contents: [{ role: 'user', parts: userParts }],
         // maxOutputTokens au plafond du modèle : une réunion d'1 h dépasse
         // largement 8192 tokens — sinon la transcription est tronquée.
         generationConfig: { temperature: 0, maxOutputTokens: 65536, thinkingConfig: { thinkingBudget: 0 } },

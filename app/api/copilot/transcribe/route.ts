@@ -101,10 +101,18 @@ async function buildLexicalPrompt(siteId: string): Promise<string> {
         .order('created_at', { ascending: false })
         .limit(20),
     ])
-    const parts: string[] = []
-    if (siteRes.data?.name) parts.push(siteRes.data.name)
-    if (subjectsRes.data?.length) parts.push(subjectsRes.data.map((s) => s.label).join(', '))
-    return parts.join('. ')
+    const terms: string[] = []
+    if (siteRes.data?.name) terms.push(siteRes.data.name)
+    if (subjectsRes.data?.length) {
+      // Garder uniquement les labels courts (≤ 40 chars) : ce sont les noms de sujets,
+      // pas des descriptions longues qui risquent d'être répétées par le STT.
+      const shortLabels = subjectsRes.data
+        .map((s) => s.label.trim())
+        .filter((l) => l.length > 0 && l.length <= 40)
+      terms.push(...shortLabels)
+    }
+    // Format : liste de termes séparés par des virgules — pas de phrases complètes.
+    return terms.join(', ')
   } catch {
     return ''
   }
