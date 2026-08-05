@@ -19,7 +19,7 @@ import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
 import { VisitLauncher } from './VisitLauncher'
 import { VisitBasket, type SubjectMemoryLite } from './VisitBasket'
 import { VisitObjectivePrompt } from './VisitObjectivePrompt'
-import { getActiveVisit, getStartedVisitById, buildSiteStatusSummary, getSiteRecentActivity, buildSinceLastVisitSummary, getSiteMemorySnapshot } from '@/lib/db/visits'
+import { getActiveVisit, getStartedVisitById, buildSiteStatusSummary, getSiteRecentActivity, buildSinceLastVisitDelta, getSiteMemorySnapshot } from '@/lib/db/visits'
 import { getSiteIdentity } from '@/lib/db/sites'
 import { getSiteCoverPhoto } from '@/lib/db/site-cover'
 import { getSiteReserves } from '@/lib/db/site-reserve'
@@ -192,7 +192,7 @@ export default async function FieldSitePage({
   let identity: Awaited<ReturnType<typeof getSiteIdentity>> = null
   let openReserves: { id: string; label: string; location: string | null }[] = []
   let recentActivity: Awaited<ReturnType<typeof getSiteRecentActivity>> = []
-  let sinceLastVisit: Awaited<ReturnType<typeof buildSinceLastVisitSummary>> = null
+  let sinceLastVisit: Awaited<ReturnType<typeof buildSinceLastVisitDelta>> = null
   let memorySnapshot: Awaited<ReturnType<typeof getSiteMemorySnapshot>> | null = null
   let nextSteps: Awaited<ReturnType<typeof getSiteNextSteps>> = []
   let visitBrief: Awaited<ReturnType<typeof buildVisitBrief>> = null
@@ -202,7 +202,7 @@ export default async function FieldSitePage({
       getSiteIdentity(siteId).catch(() => null),
       getSiteReserves(siteId).catch(() => []),
       getSiteRecentActivity(siteId).catch(() => []),
-      buildSinceLastVisitSummary(siteId, user.id).catch(() => null),
+      buildSinceLastVisitDelta(siteId, user.id).catch(() => null),
       getSiteMemorySnapshot(siteId).catch(() => null),
       getSiteNextSteps(siteId).catch(() => []),
       buildVisitBrief(siteId).catch(() => null),
@@ -447,7 +447,7 @@ export default async function FieldSitePage({
           )}
 
           {/* 2 — Depuis votre dernière visite : ce qui a bougé (déterministe). */}
-          {sinceLastVisit && <SinceLastVisitCard summary={sinceLastVisit} siteId={siteId} />}
+          {sinceLastVisit && <SinceLastVisitCard delta={sinceLastVisit} siteId={siteId} />}
 
           {/* 2bis — Si vous revenez aujourd'hui : les éléments ouverts qui
               justifient une attention immédiate. Actions en retard → réserves

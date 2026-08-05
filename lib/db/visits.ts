@@ -1385,6 +1385,110 @@ export async function buildSinceLastVisitSummary(siteId: string, userId: string 
   return { at: ref, dateLabel: relativeDayLabel(ref), daysAgo, personal, actionsDone, newReserves, liftedReserves, meetings, newPhotos, newDocuments, doubts, total }
 }
 
+export type DeltaItemKind = 'reserve_lifted' | 'reserve_new' | 'decision_new' | 'action_done' | 'meeting'
+
+export interface DeltaItem {
+  kind: DeltaItemKind
+  label: string
+  at: string
+}
+
+export interface SinceLastVisitDelta {
+  at: string
+  /** "4 août" — format long, fuseau Nouméa — pour l'état vide. */
+  visitDateLabel: string
+  daysAgo: number
+  personal: boolean
+  items: DeltaItem[]
+  overflow: number
+}
+
+/**
+ * Ce qui a changé sur le chantier depuis la dernière visite (personnelle ou du site).
+ * Quatre familles : réserves apparues/levées, décisions, actions terminées, réunions.
+ * Contrairement à buildSinceLastVisitSummary, retourne items=[] plutôt que null
+ * quand rien n'a changé — l'état vide est explicite, pas un silence.
+ */
+export async function buildSinceLastVisitDelta(siteId: string, userId: string | null = null): Promise<SinceLastVisitDelta | null> {
+  const supabase = createAdminClient()
+  let ref: string | null = null
+  let personal = false
+  if (userId) {
+    const { data: mine } = await supabase
+      .from('site_reports')
+      .select('ended_at')
+      .eq('site_id', siteId)
+      .eq('created_by', userId)
+      .not('origin', 'is', null)
+      .not('ended_at', 'is', null)
+      .is('deleted_at', null)
+      .order('ended_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    ref = (mine as { ended_at: string | null } | null)?.ended_at ?? null
+    personal = !!ref
+  }
+  if (!ref) {
+    const { data: last } = await supabase
+      .from('site_reports')
+      .select('ended_at')
+      .eq('site_id', siteId)
+      .not('origin', 'is', null)
+      .not('ended_at', 'is', null)
+      .order('ended_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    ref = (last as { ended_at: string | null } | null)?.ended_at ?? null
+  }
+  if (!ref) return null
+
+  const [liftedRes, newRes, decisionsRes, doneRes, meetingsRes] = await Promise.all([
+    supabase.from('site_reserve').select('label, lifted_at').eq('site_id', siteId).eq('status', 'lifted').not('lifted_at', 'is', null).gt('lifted_at', ref).order('lifted_at', { ascending: false }).limit(30),
+    supabase.from('site_reserve').select('label, created_at').eq('site_id', siteId).gt('created_at', ref).order('created_at', { ascending: false }).limit(30),
+    supabase.from('site_decisions').select('titre, created_at').eq('site_id', siteId).gt('created_at', ref).order('created_at', { ascending: false }).limit(30),
+    supabase.from('site_actions').select('title, done_at').eq('site_id', siteId).eq('status', 'done').not('done_at', 'is', null).gt('done_at', ref).order('done_at', { ascending: false }).limit(30),
+    supabase.from('site_reports').select('title, created_at').eq('site_id', siteId).is('origin', null).neq('status', 'draft').gt('created_at', ref).order('created_at', { ascending: false }).limit(30),
+  ])
+
+  const all: DeltaItem[] = [
+    ...((liftedRes.data ?? []) as Array<{ label: string; lifted_at: string }>).map((r) => ({
+      kind: 'reserve_lifted' as DeltaItemKind,
+      label: r.label?.trim() || 'Réserve',
+      at: r.lifted_at,
+    })),
+    ...((newRes.data ?? []) as Array<{ label: string; created_at: string }>).map((r) => ({
+      kind: 'reserve_new' as DeltaItemKind,
+      label: r.label?.trim() || 'Réserve',
+      at: r.created_at,
+    })),
+    ...((decisionsRes.data ?? []) as Array<{ titre: string; created_at: string }>).map((d) => ({
+      kind: 'decision_new' as DeltaItemKind,
+      label: d.titre?.trim() || 'Décision',
+      at: d.created_at,
+    })),
+    ...((doneRes.data ?? []) as Array<{ title: string; done_at: string }>).map((a) => ({
+      kind: 'action_done' as DeltaItemKind,
+      label: a.title?.trim() || 'Action',
+      at: a.done_at,
+    })),
+    ...((meetingsRes.data ?? []) as Array<{ title: string; created_at: string }>).map((m) => ({
+      kind: 'meeting' as DeltaItemKind,
+      label: m.title?.trim() || 'Réunion',
+      at: m.created_at,
+    })),
+  ]
+
+  all.sort((a, b) => b.at.localeCompare(a.at))
+
+  const MAX = 5
+  const items = all.slice(0, MAX)
+  const overflow = Math.max(0, all.length - MAX)
+  const daysAgo = Math.max(0, Math.floor((Date.now() - new Date(ref).getTime()) / 86_400_000))
+  const visitDateLabel = new Date(ref).toLocaleDateString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'long' })
+
+  return { at: ref, visitDateLabel, daysAgo, personal, items, overflow }
+}
+
 // ── Fiche chantier : « Mémoire » — le cumul DEPUIS LA CRÉATION ─────────────────
 // Le chantier « parle » : combien de visites, de photos, d'actions, de réserves
 // il a accumulé depuis son premier jour. Déterministe (comptes bruts), zéro IA.
