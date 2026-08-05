@@ -47,7 +47,12 @@ const GEMINI_MODEL = 'gemini-2.5-flash'
 const TRANSCRIBE_PROMPT =
   'Transcris cet audio en français. Retourne uniquement la transcription brute, sans explication ni ponctuation ajoutée.'
 
-async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string): Promise<string> {
+function buildGeminiPrompt(lexicalPrompt?: string): string {
+  if (!lexicalPrompt) return TRANSCRIBE_PROMPT
+  return `Transcris cet audio en français. Vocabulaire spécialisé susceptible d'apparaître : ${lexicalPrompt}. Retourne uniquement la transcription brute, sans explication ni ponctuation ajoutée.`
+}
+
+async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string, lexicalPrompt?: string): Promise<string> {
   const apiKey = process.env.GOOGLE_GENAI_API_KEY!
   // Gemini n'accepte pas le suffixe codec (ex: "audio/webm;codecs=opus" → "audio/webm")
   const safeMime = mimeType.split(';')[0].trim()
@@ -64,7 +69,7 @@ async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string): P
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [audioPart, { text: TRANSCRIBE_PROMPT }] }],
+        contents: [{ parts: [audioPart, { text: buildGeminiPrompt(lexicalPrompt) }] }],
         // maxOutputTokens au plafond du modèle : une réunion d'1 h dépasse
         // largement 8192 tokens — sinon la transcription est tronquée.
         generationConfig: { temperature: 0, maxOutputTokens: 65536, thinkingConfig: { thinkingBudget: 0 } },
@@ -161,8 +166,8 @@ export type CopilotTranscriptionResult = {
 
 /**
  * Transcription dédiée au Copilote vocal.
- * Utilise gpt-4o-mini-transcribe avec prompt lexical optionnel (nom chantier, sujets, intervenants).
- * N'utilise jamais Gemini — le prompt lexical n'est supporté que par les modèles OpenAI.
+ * Priorité : gpt-4o-mini-transcribe (prompt lexical natif) → Gemini (prompt lexical en texte) → erreur.
+ * Bascule sur Gemini si OpenAI retourne 429 quota exhausted ou si la clé est absente.
  */
 export async function transcribeAudioForCopilot(
   rawBuffer: ArrayBuffer,
@@ -170,58 +175,72 @@ export async function transcribeAudioForCopilot(
   ext: string,
   lexicalPrompt?: string,
 ): Promise<CopilotTranscriptionResult> {
-  if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY manquante')
-
   const filename = `voice.${ext}`
   const fileSize = rawBuffer.byteLength
 
-  const form = new FormData()
-  form.append('file', new Blob([rawBuffer], { type: mimeType }), filename)
-  form.append('model', 'gpt-4o-mini-transcribe')
-  form.append('language', 'fr')
-  if (lexicalPrompt) form.append('prompt', lexicalPrompt)
+  // ── Tentative OpenAI ──────────────────────────────────────────────────────
+  if (process.env.OPENAI_API_KEY) {
+    const form = new FormData()
+    form.append('file', new Blob([rawBuffer], { type: mimeType }), filename)
+    form.append('model', 'gpt-4o-mini-transcribe')
+    form.append('language', 'fr')
+    if (lexicalPrompt) form.append('prompt', lexicalPrompt)
 
-  console.log('[Voice] openai_call', { model: 'gpt-4o-mini-transcribe', filename, mimeType, fileSize, promptLen: lexicalPrompt?.length ?? 0 })
+    console.log('[Voice] openai_call', { model: 'gpt-4o-mini-transcribe', filename, mimeType, fileSize, promptLen: lexicalPrompt?.length ?? 0 })
 
-  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-    body: form,
-  })
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      body: form,
+    })
 
-  if (!res.ok) {
+    if (res.ok) {
+      const data = (await res.json()) as {
+        text: string
+        usage?: {
+          input_tokens?: number
+          input_token_details?: { audio_tokens?: number }
+          output_tokens?: number
+        }
+      }
+      return {
+        text:        data.text?.trim() ?? '',
+        model:       'gpt-4o-mini-transcribe',
+        tokensAudio: data.usage?.input_token_details?.audio_tokens,
+        tokensOutput: data.usage?.output_tokens,
+      }
+    }
+
     let body: unknown = null
     try { body = await res.json() } catch { body = await res.text().catch(() => null) }
-    const err = (typeof body === 'object' && body !== null)
+    const errObj = (typeof body === 'object' && body !== null)
       ? (body as Record<string, unknown>).error as Record<string, unknown> | undefined
       : undefined
     console.error('[Voice] openai_error', {
       status:  res.status,
-      type:    err?.type,
-      code:    err?.code,
-      param:   err?.param,
-      message: err?.message ?? body,
+      type:    errObj?.type,
+      code:    errObj?.code,
+      param:   errObj?.param,
+      message: errObj?.message ?? body,
       model:   'gpt-4o-mini-transcribe',
       mimeType,
       filename,
       fileSize,
     })
-    throw new Error(`gpt-4o-mini-transcribe ${res.status}: ${JSON.stringify(body)}`)
-  }
 
-  const data = (await res.json()) as {
-    text: string
-    usage?: {
-      input_tokens?: number
-      input_token_details?: { audio_tokens?: number }
-      output_tokens?: number
+    const isQuotaError = res.status === 429 || String(errObj?.code).includes('credit') || String(errObj?.code).includes('quota')
+    if (!isQuotaError) {
+      throw new Error(`gpt-4o-mini-transcribe ${res.status}: ${JSON.stringify(body)}`)
     }
+    console.warn('[Voice] openai_quota_exhausted — fallback Gemini')
   }
 
-  return {
-    text: data.text?.trim() ?? '',
-    model: 'gpt-4o-mini-transcribe',
-    tokensAudio: data.usage?.input_token_details?.audio_tokens,
-    tokensOutput: data.usage?.output_tokens,
+  // ── Fallback Gemini ───────────────────────────────────────────────────────
+  if (process.env.GOOGLE_GENAI_API_KEY) {
+    console.log('[Voice] gemini_call', { mimeType, fileSize, promptLen: lexicalPrompt?.length ?? 0 })
+    const text = await transcribeWithGemini(rawBuffer, mimeType, lexicalPrompt)
+    return { text, model: GEMINI_MODEL }
   }
+
+  throw new Error('Aucun provider de transcription disponible (OpenAI quota exhausted, GOOGLE_GENAI_API_KEY absent)')
 }
