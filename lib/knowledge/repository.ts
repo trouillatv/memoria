@@ -509,6 +509,23 @@ export async function readMaterializedCountsByReport(reportIds: string[]): Promi
   return result
 }
 
+/** Nombre de propositions en attente (status='proposed') par visite. Permet à la
+ *  Frise de dire « 27 propositions à examiner » plutôt que « Rien à retenir ». */
+export async function readPendingProposalCountsByReport(reportIds: string[]): Promise<Map<string, number>> {
+  if (!reportIds.length) return new Map()
+  const { data } = await createAdminClient()
+    .from('site_knowledge_proposals')
+    .select('report_id')
+    .in('report_id', reportIds)
+    .eq('status', 'proposed')
+  const out = new Map<string, number>()
+  for (const r of (data ?? []) as Array<{ report_id: string | null }>) {
+    if (!r.report_id) continue
+    out.set(r.report_id, (out.get(r.report_id) ?? 0) + 1)
+  }
+  return out
+}
+
 /** Compte des actions proposées pour PLUSIEURS chantiers (accueil multi-sites). */
 export async function countProposedActionsForSites(siteIds: string[]): Promise<Record<string, number>> {
   const out: Record<string, number> = {}

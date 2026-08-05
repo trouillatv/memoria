@@ -19,7 +19,7 @@ import 'server-only'
 import { getSiteOverview, type KnowledgeItem, type SynthesisStatus } from '@/lib/knowledge/site-overview'
 import {
   readEvents, readVisitCaptureCounts, readFirstVisitId, readUserNames, readSiteOrganizations,
-  readReportOrigins, readMaterializedCountsByReport,
+  readReportOrigins, readMaterializedCountsByReport, readPendingProposalCountsByReport,
   type SiteEventRow, type MaterializedCounts,
 } from '@/lib/knowledge/repository'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
@@ -61,6 +61,9 @@ export interface HistoryVisit {
     watchpoints: number
     reserves: number
   }
+  /** Propositions IA en attente de validation pour cette visite.
+   *  Permet d'afficher « 27 propositions à examiner » plutôt que « Rien à retenir ». */
+  pendingProposals: number
 }
 
 /** Une décision HUMAINE — ce que le conducteur a fait de ce que MemorIA a compris. */
@@ -247,10 +250,11 @@ export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promi
   // Deux chemins vers la base = deux vérités possibles, et plus personne ne croit
   // ni l'une ni l'autre.
   const reportIds = [...byReport.keys()]
-  const [captureRows, firstReportId, reportOrigins] = await Promise.all([
+  const [captureRows, firstReportId, reportOrigins, pendingMap] = await Promise.all([
     readVisitCaptureCounts(reportIds),
     readFirstVisitId(siteId),
     readReportOrigins(reportIds),
+    readPendingProposalCountsByReport(reportIds),
   ])
   // Les visites historiques (origin='import') ont leurs objets matérialisés
   // DIRECTEMENT dans les tables métier — elles ne passent pas par les propositions.
@@ -282,6 +286,7 @@ export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promi
       durationMin: durationMin(visit.started_at ?? null, visit.at),
       photos: cap?.photos ?? 0,
       vocals: cap?.vocals ?? 0,
+      pendingProposals: pendingMap.get(reportId) ?? 0,
       produced: mat
         ? {
             actions: mat.actions,

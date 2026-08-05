@@ -464,6 +464,21 @@ export default async function FieldSitePage({
           {memorySnapshot && <SiteMemoryCard snapshot={memorySnapshot} />}
 
 
+          {/* Hub chantier — accès compact à l'histoire et au patrimoine. Une seule
+              porte, cinq destinations (onglets internes). Sans cette ligne,
+              quitter la synthèse pour voir les visites ou la frise nécessitait
+              de remonter en haut ou de naviguer en aveugle. */}
+          <Link
+            href={`/m/site/${siteId}/visites`}
+            className="flex items-center justify-between rounded-xl border bg-card px-4 py-3 shadow-sm active:brightness-95"
+          >
+            <div>
+              <p className="text-[14px] font-medium">Explorer le chantier</p>
+              <p className="text-[12px] text-muted-foreground">Visites · Réunions · Frise · Patrimoine</p>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </Link>
+
           {/* 6 — Préparer : LE rituel « avant de partir ». Deux CTA proéminents,
               pas des cartes passives — c'est un MOMENT du parcours (« j'appuie
               avant d'aller sur le chantier »). Présence (plus bas, « Aujourd'hui

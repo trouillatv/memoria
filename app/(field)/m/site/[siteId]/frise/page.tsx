@@ -126,8 +126,12 @@ export default async function SiteFriseMobilePage({
                         ))}
                       </ul>
                     </>
+                  ) : entry.pendingProposals > 0 ? (
+                    <p className="mt-1 text-[13px] text-muted-foreground">
+                      Aucun élément confirmé · {entry.pendingProposals} proposition{entry.pendingProposals > 1 ? 's' : ''} à examiner
+                    </p>
                   ) : (
-                    <p className="mt-1 text-[13px] text-muted-foreground">Rien à retenir de cette visite.</p>
+                    <p className="mt-1 text-[13px] text-muted-foreground">Aucun élément retenu de cette visite.</p>
                   )}
                   <span className="mt-2 flex items-center gap-1 text-[13px] font-medium text-primary">
                     Consulter la synthèse <ChevronRight className="h-3.5 w-3.5" />

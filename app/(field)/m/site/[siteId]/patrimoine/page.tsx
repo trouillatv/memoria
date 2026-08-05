@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
-  ArrowLeft, ChevronRight, Brain, Footprints, Users, Wrench, MapPin, Star, Gavel,
+  ArrowLeft, ChevronRight, Brain, Footprints, Users, Wrench, MapPin, Star, Gavel, ClipboardCheck,
 } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -87,7 +87,7 @@ export default async function SitePatrimoinePage({
         </Link>
         <div>
           <h1 className="text-xl font-semibold">Patrimoine</h1>
-          <p className="text-[13px] text-muted-foreground">Qu’est-ce que ce chantier sait aujourd’hui ?</p>
+          <p className="text-[13px] text-muted-foreground">Qu'est-ce que ce chantier sait aujourd'hui ?</p>
         </div>
         <SiteTabs siteId={siteId} active="patrimoine" userRole={user.role} />
       </header>
@@ -96,37 +96,41 @@ export default async function SitePatrimoinePage({
       <SitePatrimoineSearch siteId={siteId} suggestions={suggestions} />
 
       {/* ── CE QUE MEMORIA SAIT ────────────────────────────────────────────
-          Cet écran demandait « qu'est-ce que ce chantier sait aujourd'hui ? » et
-          ne savait pas y répondre : il lisait tout SAUF la connaissance. La
-          mémoire ne commence pas à la troisième visite, elle commence à la
-          PREMIÈRE — dès qu'un fait durable est su, il est su.
-          Les échéances ne sont PAS ici : elles répondent à « quand agir ? », donc
-          au Planning. Le même objet à deux endroits sous deux noms, c'est le
-          conducteur qui ne sait plus lequel fait foi. */}
-      {(review.confirmed.length + review.toReview.length) > 0 && (
+          Le patrimoine répond à « qu'est-ce que ce chantier sait ? ».
+          Les éléments confirmés sont affichés directement.
+          Les propositions en attente sont regroupées dans une carte d'appel
+          vers l'écran dédié — elles n'ont pas vocation à remplir cette vue. */}
+      {review.confirmed.length > 0 && (
         <section className="space-y-3 rounded-2xl border bg-card p-4">
-          {/* La Mémoire ne se contente plus de MONTRER : on peut agir. Elle était
-              vide en « confirmées » parce que personne ne pouvait confirmer — 4
-              types sur 6 levaient « promotion non supportée ». Le cycle est
-              complet ; l'écran est la moitié visible.
-              Les actions et les échéances ne sont PAS ici : leur contexte naturel
-              est le Travail et le Planning. La Mémoire n'est pas un centre de
-              validation universel. */}
-          <MemoryReviewPanel siteId={siteId} review={review} />
-
-          {/* « Habitudes observées » : une ligne, pas une carte. Une habitude se
-              constate sur plusieurs visites — l'annoncer avant serait inventer une
-              régularité qui n'existe pas. */}
-          <p className="border-t pt-2 text-[12px] text-muted-foreground">
-            Aucune habitude détectée pour l’instant. Elles apparaîtront après plusieurs visites.
-          </p>
+          <MemoryReviewPanel siteId={siteId} review={{ confirmed: review.confirmed, toReview: [] }} />
         </section>
+      )}
+
+      {/* Propositions en attente — carte compacte vers l'écran de validation. */}
+      {review.toReview.length > 0 && (
+        <Link
+          href={`/m/site/${siteId}/patrimoine/examiner`}
+          className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 shadow-sm active:brightness-95 dark:border-amber-900/40 dark:bg-amber-950/20"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-950/40">
+            <ClipboardCheck className="h-[18px] w-[18px] text-amber-700 dark:text-amber-400" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[14px] font-medium text-amber-900 dark:text-amber-200">
+              {review.toReview.length} proposition{review.toReview.length > 1 ? 's' : ''} à examiner
+            </span>
+            <span className="block text-[12px] text-amber-700/80 dark:text-amber-400/80">
+              Propositions de MemorIA en attente de votre validation
+            </span>
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-amber-700/60" />
+        </Link>
       )}
 
       {/* ── Bloc : Le chantier aujourd'hui (état + prochaine échéance) ── */}
       {statusCells.length > 0 && (
         <section className="space-y-2">
-          <SectionTitle>Le chantier aujourd’hui</SectionTitle>
+          <SectionTitle>Le chantier aujourd'hui</SectionTitle>
           <SiteStatusCard cells={statusCells} />
         </section>
       )}
