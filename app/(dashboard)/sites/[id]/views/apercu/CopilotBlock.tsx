@@ -14,7 +14,7 @@ import {
   type CopilotFreeCandidate,
 } from '../../copilot-free-action'
 import { askCopilotAction, type CopilotActionResult } from '../../copilot-action'
-import { createCopilotAction, addCopilotToBriefing } from '../../copilot-write-action'
+import { createCopilotAction, addCopilotToBriefing, createCopilotScheduledEvent } from '../../copilot-write-action'
 import { trackCopilotReferenceClick, trackCopilotProposalCancelled } from '../../copilot-event-action'
 import { fetchPlanItems, removePlanItem, type PlanItemSummary } from '../../copilot-plan-actions'
 import type { CopilotIntent } from '@/lib/visits/copilot-context'
@@ -197,6 +197,170 @@ function ProposalCard({
           type="button"
           onClick={confirm}
           disabled={saving || !title.trim()}
+          className="flex items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-[12px] font-medium text-white hover:bg-violet-600 disabled:opacity-40 transition-colors"
+        >
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+          Valider
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setCancelled(true)
+            if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+          }}
+          disabled={saving}
+          className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+        >
+          Annuler
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Carte de planification (schedule_visit / schedule_meeting) ────────────────
+
+function ScheduleProposalCard({
+  siteId,
+  proposal,
+  interactionId,
+  planItemCount,
+  onDone,
+}: {
+  siteId: string
+  proposal: CopilotProposal
+  interactionId: string | null
+  planItemCount: number
+  onDone: (successText: string) => void
+}) {
+  const [title, setTitle]         = useState(proposal.title)
+  const [date, setDate]           = useState(proposal.scheduledDate ?? '')
+  const [time, setTime]           = useState(proposal.scheduledTime ?? '')
+  const [objective, setObjective] = useState(proposal.scheduledObjective ?? '')
+  const [whyOpen, setWhyOpen]     = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [cancelled, setCancelled] = useState(false)
+
+  if (cancelled) {
+    return <p className="text-[12px] text-muted-foreground italic">Proposition annulée.</p>
+  }
+
+  const isVisit     = proposal.kind === 'schedule_visit'
+  const typeLabel   = isVisit ? 'Visite' : 'Réunion'
+  const objectiveLabel = isVisit ? 'Objectif' : 'Ordre du jour'
+  const canConfirm  = !!title.trim() && !!date && !!time
+
+  async function confirm() {
+    if (saving || !canConfirm) return
+    setSaving(true)
+    try {
+      const res = await createCopilotScheduledEvent({
+        siteId,
+        type: isVisit ? 'visit' : 'meeting',
+        title: title.trim(),
+        scheduledDate: date,
+        scheduledTime: time,
+        objective: objective.trim() || null,
+        copilotProposalId: proposal.proposalId,
+        interactionId,
+      })
+      onDone(res.ok ? `${typeLabel} planifiée.` : `Erreur : ${res.error}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-foreground/10 bg-card p-3 space-y-2.5">
+      {/* En-tête */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="rounded-full bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300 px-2 py-0.5 text-[11px] font-medium">
+          Planification
+        </span>
+        <span className="text-[11px] text-muted-foreground">{typeLabel}</span>
+      </div>
+
+      {/* Titre */}
+      <div>
+        <label className="block text-[11px] text-muted-foreground mb-0.5">Titre</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          maxLength={255}
+          className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+        />
+      </div>
+
+      {/* Date + Heure */}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-[11px] text-muted-foreground mb-0.5">Date</label>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+          />
+        </div>
+        <div>
+          <label className="block text-[11px] text-muted-foreground mb-0.5">Heure (Nouméa)</label>
+          <input
+            type="time"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+            className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+          />
+        </div>
+      </div>
+
+      {/* Objectif / Agenda */}
+      <div>
+        <label className="block text-[11px] text-muted-foreground mb-0.5">{objectiveLabel} (optionnel)</label>
+        <textarea
+          value={objective}
+          onChange={(e) => setObjective(e.target.value)}
+          rows={2}
+          maxLength={500}
+          className="w-full resize-none rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+        />
+      </div>
+
+      {/* Lignes info — non éditables */}
+      <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border text-[12px]">
+        {isVisit && planItemCount > 0 && (
+          <div className="flex items-center gap-2 px-2.5 py-1.5">
+            <span className="w-28 shrink-0 text-muted-foreground">Plan de visite</span>
+            <span className="font-medium">{planItemCount} point{planItemCount > 1 ? 's' : ''} prêt{planItemCount > 1 ? 's' : ''}</span>
+          </div>
+        )}
+        <div className="flex items-center gap-2 px-2.5 py-1.5">
+          <span className="w-28 shrink-0 text-muted-foreground">Fuseau</span>
+          <span className="italic text-muted-foreground">Pacific/Nouméa (UTC+11)</span>
+        </div>
+      </div>
+
+      {/* Pourquoi ? */}
+      <button
+        type="button"
+        onClick={() => setWhyOpen((v) => !v)}
+        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+      >
+        {whyOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        Détails
+      </button>
+      {whyOpen && (
+        <p className="text-[12px] text-muted-foreground leading-relaxed pl-4 border-l border-border">
+          {proposal.whyText}
+        </p>
+      )}
+
+      {/* Actions */}
+      <div className="flex gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={confirm}
+          disabled={saving || !canConfirm}
           className="flex items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-[12px] font-medium text-white hover:bg-violet-600 disabled:opacity-40 transition-colors"
         >
           {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
@@ -474,26 +638,38 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
             }
 
             if (msg.kind === 'proposal') {
+              const isSchedule = msg.proposal.kind === 'schedule_visit' || msg.proposal.kind === 'schedule_meeting'
+              const replaceDone = (successText: string) => {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === msg.id
+                      ? { kind: 'answer', id: m.id, text: successText, source: 'fallback' as const, refs: [], interactionId: null }
+                      : m
+                  )
+                )
+              }
               return (
                 <div key={msg.id} className="space-y-2">
                   <div className="rounded-2xl rounded-bl-sm border border-foreground/[0.06] bg-muted/40 px-3 py-2">
                     <p className="text-[13px] leading-relaxed text-foreground">{msg.text}</p>
                   </div>
-                  <ProposalCard
-                    siteId={siteId}
-                    proposal={msg.proposal}
-                    interactionId={msg.interactionId}
-                    onDone={(successText) => {
-                      setMessages((prev) =>
-                        prev.map((m) =>
-                          m.id === msg.id
-                            ? { kind: 'answer', id: m.id, text: successText, source: 'fallback', refs: [], interactionId: null }
-                            : m
-                        )
-                      )
-                    }}
-                    onPlanChange={() => { fetchPlanItems(siteId).then(setPlanItems).catch(() => {}) }}
-                  />
+                  {isSchedule ? (
+                    <ScheduleProposalCard
+                      siteId={siteId}
+                      proposal={msg.proposal}
+                      interactionId={msg.interactionId}
+                      planItemCount={planItems.length}
+                      onDone={replaceDone}
+                    />
+                  ) : (
+                    <ProposalCard
+                      siteId={siteId}
+                      proposal={msg.proposal}
+                      interactionId={msg.interactionId}
+                      onDone={replaceDone}
+                      onPlanChange={() => { fetchPlanItems(siteId).then(setPlanItems).catch(() => {}) }}
+                    />
+                  )}
                 </div>
               )
             }

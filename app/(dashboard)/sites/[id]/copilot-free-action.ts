@@ -20,7 +20,9 @@ import { listActivePreparationItems } from '@/lib/db/visit-preparation'
 import { buildSiteCopilotContext, filterContextForIntent } from '@/lib/visits/copilot-context'
 import { classifyIntent } from '@/lib/visits/copilot-classify'
 import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
-import { buildCopilotProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
+import { buildCopilotProposal, buildScheduleProposal, detectKind, type CopilotProposal } from '@/lib/visits/copilot-proposal'
+import { parseScheduleFromQuestion, toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { logCopilotInteraction } from '@/lib/db/copilot-telemetry'
 import type { CopilotScope } from '@/lib/db/copilot-telemetry'
 import { extractQuestionSubjectPhrase } from '@/lib/visits/copilot-classify'
@@ -131,6 +133,80 @@ export async function askCopilotFreeAction(
 
   // Écriture détectée — Copilote 3C : résoudre le sujet puis construire un brouillon.
   if (classification.isWriteRequest) {
+    // ── Planification (schedule_visit / schedule_meeting) ───────────────────
+    const proposalKind = detectKind(question)
+    if (proposalKind === 'schedule_visit' || proposalKind === 'schedule_meeting') {
+      const parsed = parseScheduleFromQuestion(question)
+      const eventLabel = proposalKind === 'schedule_visit' ? 'visite' : 'réunion'
+
+      if (!parsed) {
+        // Pas de date trouvée → demander une précision (pas de brouillon).
+        return {
+          kind: 'answer',
+          text: `Pour planifier une ${eventLabel}, précisez la date et l'heure.\nEx. : « Planifie une ${eventLabel} le 12 août à 9h »`,
+          references: [],
+          source: 'fallback',
+          interactionId: null,
+        }
+      }
+
+      // Avertissement doux : événement existant dans les ±2 h du créneau demandé.
+      let conflictWarning: string | null = null
+      if (parsed.time) {
+        try {
+          const admin = createAdminClient()
+          const ts = new Date(toNomeaTimestamp(parsed.date, parsed.time)).getTime()
+          const fromTs = new Date(ts - 2 * 3_600_000).toISOString()
+          const toTs   = new Date(ts + 2 * 3_600_000).toISOString()
+          const { data: conflicts } = await admin
+            .from('site_scheduled_events')
+            .select('title, type')
+            .eq('site_id', siteId)
+            .is('deleted_at', null)
+            .in('status', ['planned', 'postponed'])
+            .gte('planned_start', fromTs)
+            .lte('planned_start', toTs)
+          const TYPE_FR: Record<string, string> = { visit: 'visite', meeting: 'réunion' }
+          const rows = (conflicts ?? []) as { title: string | null; type: string }[]
+          if (rows.length > 0) {
+            const first = rows[0]
+            const label = first.title?.trim() || TYPE_FR[first.type] || first.type
+            conflictWarning = `Un événement existe déjà dans ce créneau : « ${label} ».`
+          }
+        } catch { /* best-effort — ne bloque pas la proposition */ }
+      }
+
+      const proposal = buildScheduleProposal({
+        kind: proposalKind,
+        parsedDate: parsed.date,
+        parsedTime: parsed.time,
+        conflictWarning,
+      })
+
+      const iid = await logCopilotInteraction({
+        siteId, userId, conversationId: conversationId ?? null,
+        question, conversationMode: 'free',
+        primaryIntent: 'proposal_request', secondaryIntents: [],
+        scope: 'site',
+        resolvedSubjectIds: [],
+        answerText: null, answerMode: 'deterministic_fallback', answerStatus: 'answered',
+        citedReferenceCount: 0, sourcesUsed: [],
+        model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+        estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+        proposalKind: proposal.kind,
+        proposalId: proposal.proposalId,
+        proposalStatus: 'shown',
+      })
+
+      return {
+        kind: 'proposal',
+        text: `Voici le brouillon pour planifier cette ${eventLabel}. Vérifiez et ajustez avant de valider.`,
+        proposal,
+        interactionId: iid,
+      }
+    }
+
+    // ── Action / visit_item ─────────────────────────────────────────────────
     let canonicalSubjectId: string | null = null
     let canonicalSubjectLabel: string | null = null
     let resolvedWithConfidence = false

@@ -12,6 +12,7 @@ import { upsertPreparationItem } from '@/lib/db/visit-preparation'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import { updateCopilotProposalStatus } from '@/lib/db/copilot-telemetry'
+import { toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
 
 // ── Créer une action depuis une proposition copilote ─────────────────────────
 
@@ -133,4 +134,89 @@ export async function addCopilotToBriefing(rawInput: unknown): Promise<AddCopilo
 
   if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
   return { ok: true }
+}
+
+// ── Planifier un événement depuis une proposition copilote ────────────────────
+
+const createScheduledEventSchema = z.object({
+  siteId: z.string().uuid(),
+  type: z.enum(['visit', 'meeting']),
+  title: z.string().min(1).max(255),
+  scheduledDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format de date invalide (yyyy-mm-dd)'),
+  scheduledTime: z.string().regex(/^\d{2}:\d{2}$/, 'Format heure invalide (HH:MM)'),
+  objective: z.string().max(500).nullable().optional(),
+  copilotProposalId: z.string().uuid(),
+  interactionId: z.string().uuid().nullable().optional(),
+})
+
+export type CreateCopilotScheduledEventResult =
+  | { ok: true; eventId: string }
+  | { ok: false; error: string }
+
+export async function createCopilotScheduledEvent(
+  rawInput: unknown,
+): Promise<CreateCopilotScheduledEventResult> {
+  const parsed = createScheduledEventSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides.' }
+  const { siteId, type, title, scheduledDate, scheduledTime, objective, copilotProposalId, interactionId } = parsed.data
+
+  try {
+    await requireSiteAccess(siteId)
+  } catch {
+    return { ok: false, error: 'Accès non autorisé.' }
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Non authentifié.' }
+
+  const admin = createAdminClient()
+
+  // Idempotence : la même proposition ne peut créer qu'un seul événement
+  const { data: existing } = await admin
+    .from('site_scheduled_events')
+    .select('id')
+    .eq('copilot_proposal_id', copilotProposalId)
+    .maybeSingle()
+  if (existing) return { ok: true, eventId: (existing as { id: string }).id }
+
+  // Récupérer organization_id (NOT NULL sur site_scheduled_events)
+  const { data: site } = await admin
+    .from('sites')
+    .select('organization_id')
+    .eq('id', siteId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  const orgId = (site as { organization_id: string } | null)?.organization_id
+  if (!orgId) return { ok: false, error: 'Chantier introuvable.' }
+
+  // Construire le payload discriminé selon le type
+  const payload = type === 'visit'
+    ? { type: 'visit', ...(objective?.trim() ? { objective: objective.trim() } : {}) }
+    : { type: 'meeting', ...(objective?.trim() ? { agenda: objective.trim() } : {}) }
+
+  const plannedStart = toNomeaTimestamp(scheduledDate, scheduledTime)
+
+  const { data, error } = await admin
+    .from('site_scheduled_events')
+    .insert({
+      organization_id: orgId,
+      site_id: siteId,
+      type,
+      status: 'planned',
+      planned_start: plannedStart,
+      title: title.trim(),
+      payload,
+      created_from: 'manual',
+      created_by: user.id,
+      copilot_proposal_id: copilotProposalId,
+    })
+    .select('id')
+    .single()
+
+  if (error || !data) return { ok: false, error: 'Impossible de créer cet événement.' }
+
+  invalidateSiteProjection(siteId)
+  if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
+  return { ok: true, eventId: (data as { id: string }).id }
 }
