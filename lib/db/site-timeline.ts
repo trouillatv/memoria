@@ -98,21 +98,10 @@ async function buildSiteTimelineInner(siteId: string, limit: number): Promise<Ti
   for (const r of (repsRes.data ?? []) as Array<{ id: string; title: string | null; origin: string | null; visit_motive: string | null; started_at: string | null; ended_at: string | null; created_at: string }>) {
     const at = r.ended_at ?? r.started_at ?? r.created_at
     if (r.origin) {
-      // Les visites historiques (origin='import') sont déjà représentées dans la
-      // section knowledge (getSiteHistory). Les dupliquer ici crée un doublon sémantique.
-      if (r.origin === 'import') continue
-      // La frise raconte une HISTOIRE : la visite porte son intention (Première
-      // visite / Prévisite AO / Suivi) plutôt qu'un générique « Visite ».
-      events.push({
-        at,
-        dateLabel: frDate(at),
-        kind: 'visit',
-        title: visitIntentLabel(r.visit_motive) ?? VISIT_TYPE_LABEL[r.origin] ?? 'Visite',
-        detail: null,
-        href: `/m/visite/${r.id}/recap`,
-        // ⭐ La première visite = le point zéro du chantier, mis en avant.
-        star: r.visit_motive === 'premiere' || undefined,
-      })
+      // Toutes les visites (terrain ET import) sont représentées dans la section
+      // knowledge (getSiteHistory) avec leur contexte complet. Les dupliquer ici
+      // violerait la doctrine « une visite = une carte ».
+      continue
     } else {
       events.push({
         at,

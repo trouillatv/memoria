@@ -62,7 +62,8 @@ export default async function SiteFriseMobilePage({
   // rapporté ».
   const [events, knowledge] = await Promise.all([
     buildSiteTimeline(siteId).catch(() => []),
-    getSiteHistory(siteId).catch(() => []),
+    // La frise affiche toute l'histoire du chantier, sans fenêtre temporelle.
+    getSiteHistory(siteId, 365 * 10).catch(() => []),
   ])
 
   return (
