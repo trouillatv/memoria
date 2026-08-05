@@ -11,6 +11,8 @@ import {
 } from '@/app/(dashboard)/sites/[id]/copilot-free-action'
 import { askCopilotAction, type CopilotActionResult } from '@/app/(dashboard)/sites/[id]/copilot-action'
 import type { CopilotIntent } from '@/lib/visits/copilot-context'
+import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
+import { ProposalCard, ScheduleProposalCard } from '@/components/copilot/CopilotProposalCards'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -19,6 +21,7 @@ type Msg =
   | { kind: 'user';          id: string; text: string }
   | { kind: 'answer';        id: string; text: string; source: 'llm' | 'fallback'; refs: { id: string; label: string; href: string | null }[] }
   | { kind: 'clarification'; id: string; text: string; candidates: CopilotFreeCandidate[] }
+  | { kind: 'proposal';      id: string; text: string; proposal: CopilotProposal; interactionId: string | null }
   | { kind: 'thinking';      id: string }
 
 const QUICK_QUESTIONS: { intent: CopilotIntent; label: string }[] = [
@@ -92,6 +95,9 @@ export function CopilotMobileSheet({ siteId }: { siteId: string }) {
         }
         if (result.kind === 'clarification') {
           return [...without, { kind: 'clarification', id: uid(), text: result.text, candidates: result.candidates }]
+        }
+        if (result.kind === 'proposal') {
+          return [...without, { kind: 'proposal', id: uid(), text: result.text, proposal: result.proposal, interactionId: result.interactionId }]
         }
         return [...without, { kind: 'answer', id: uid(), text: result.text, source: 'fallback', refs: [] }]
       })
@@ -221,6 +227,43 @@ export function CopilotMobileSheet({ siteId }: { siteId: string }) {
                           </button>
                         ))}
                       </div>
+                    </div>
+                  )
+                }
+
+                if (msg.kind === 'proposal') {
+                  const isSchedule = msg.proposal.kind === 'schedule_visit' || msg.proposal.kind === 'schedule_meeting'
+                  const msgId = msg.id
+                  const replaceDone = (successText: string) => {
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === msgId
+                          ? { kind: 'answer' as const, id: m.id, text: successText, source: 'fallback' as const, refs: [] }
+                          : m
+                      )
+                    )
+                  }
+                  return (
+                    <div key={msg.id} className="space-y-2">
+                      <div className="rounded-2xl rounded-bl-sm border border-foreground/[0.06] bg-muted/40 px-3 py-2">
+                        <p className="text-[14px] leading-relaxed text-foreground">{msg.text}</p>
+                      </div>
+                      {isSchedule ? (
+                        <ScheduleProposalCard
+                          siteId={siteId}
+                          proposal={msg.proposal}
+                          interactionId={msg.interactionId}
+                          planItemCount={0}
+                          onDone={replaceDone}
+                        />
+                      ) : (
+                        <ProposalCard
+                          siteId={siteId}
+                          proposal={msg.proposal}
+                          interactionId={msg.interactionId}
+                          onDone={replaceDone}
+                        />
+                      )}
                     </div>
                   )
                 }
