@@ -19,7 +19,8 @@ import 'server-only'
 import { getSiteOverview, type KnowledgeItem, type SynthesisStatus } from '@/lib/knowledge/site-overview'
 import {
   readEvents, readVisitCaptureCounts, readFirstVisitId, readUserNames, readSiteOrganizations,
-  type SiteEventRow,
+  readReportOrigins, readMaterializedCountsByReport,
+  type SiteEventRow, type MaterializedCounts,
 } from '@/lib/knowledge/repository'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { listSiteDeadlines } from '@/lib/db/site-deadlines'
@@ -242,16 +243,28 @@ export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promi
   // Les lectures passent par le REPOSITORY : ce fichier ne connaît pas Supabase.
   // Deux chemins vers la base = deux vérités possibles, et plus personne ne croit
   // ni l'une ni l'autre.
-  const [captureRows, firstReportId] = await Promise.all([
-    readVisitCaptureCounts([...byReport.keys()]),
+  const reportIds = [...byReport.keys()]
+  const [captureRows, firstReportId, reportOrigins] = await Promise.all([
+    readVisitCaptureCounts(reportIds),
     readFirstVisitId(siteId),
+    readReportOrigins(reportIds),
   ])
+  // Les visites historiques (origin='import') ont leurs objets matérialisés
+  // DIRECTEMENT dans les tables métier — elles ne passent pas par les propositions.
+  // On lit leurs compteurs depuis les tables sources plutôt que de compter des
+  // propositions qui n'existent pas.
+  const importIds = reportIds.filter((id) => reportOrigins.get(id) === 'import')
+  const materializedByReport: Map<string, MaterializedCounts> = importIds.length > 0
+    ? await readMaterializedCountsByReport(importIds)
+    : new Map()
+
   const captures = new Map(captureRows.map((c) => [c.report_id, c]))
   for (const [reportId, list] of byReport) {
     const visit = list.find((r) => r.kind === 'visit_ended')
     if (!visit) continue
-    const produced = list.filter((r) => r.kind === 'proposal_created')
+    const proposalEvents = list.filter((r) => r.kind === 'proposal_created')
     const cap = captures.get(reportId)
+    const mat = materializedByReport.get(reportId)
     entries.push({
       kind: 'visit',
       id: `visit-${reportId}`,
@@ -261,14 +274,23 @@ export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promi
       durationMin: durationMin(visit.started_at ?? null, visit.at),
       photos: cap?.photos ?? 0,
       vocals: cap?.vocals ?? 0,
-      produced: {
-        actions: produced.filter((r) => r.proposal_kind === 'action').length,
-        deadlines: produced.filter((r) => r.proposal_kind === 'deadline').length,
-        stakeholders: produced.filter((r) => r.proposal_kind === 'stakeholder').length,
-        knowledge: produced.filter((r) => r.proposal_kind === 'knowledge').length,
-        decisions: produced.filter((r) => r.proposal_kind === 'decision').length,
-        watchpoints: produced.filter((r) => r.proposal_kind === 'vigilance').length,
-      },
+      produced: mat
+        ? {
+            actions: mat.actions,
+            deadlines: mat.deadlines,
+            stakeholders: mat.stakeholders,
+            knowledge: mat.knowledge,
+            decisions: mat.decisions,
+            watchpoints: mat.watchpoints,
+          }
+        : {
+            actions: proposalEvents.filter((r) => r.proposal_kind === 'action').length,
+            deadlines: proposalEvents.filter((r) => r.proposal_kind === 'deadline').length,
+            stakeholders: proposalEvents.filter((r) => r.proposal_kind === 'stakeholder').length,
+            knowledge: proposalEvents.filter((r) => r.proposal_kind === 'knowledge').length,
+            decisions: proposalEvents.filter((r) => r.proposal_kind === 'decision').length,
+            watchpoints: proposalEvents.filter((r) => r.proposal_kind === 'vigilance').length,
+          },
     })
   }
 
@@ -309,13 +331,16 @@ function decisionLabel(kind: string): string | null {
   }
 }
 
-/** La durée réelle du passage sur le chantier. Null si le début n'est pas su :
- *  une durée inventée serait un temps passé inventé — précisément ce qu'on refuse. */
+/** La durée réelle du passage sur le chantier. Null si le début n'est pas su ou si
+ *  la durée calculée dépasse 24 h : un tel écart trahit des horodatages incohérents
+ *  (import historique, décalage d'import), jamais un temps réel sur chantier. */
 function durationMin(startedAt: string | null, endedAt: string): number | null {
   if (!startedAt) return null
   const ms = new Date(endedAt).getTime() - new Date(startedAt).getTime()
   if (!Number.isFinite(ms) || ms <= 0) return null
-  return Math.max(1, Math.round(ms / 60_000))
+  const min = Math.round(ms / 60_000)
+  if (min > 1440) return null  // > 24 h = horodatages incohérents, durée inconnue
+  return Math.max(1, min)
 }
 
 /** Le PRÉNOM de qui a validé — « Guillaume confirme », pas « Guillaume Martin ».

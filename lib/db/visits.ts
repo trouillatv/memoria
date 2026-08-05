@@ -1056,7 +1056,7 @@ const VISIT_TYPE_LABEL: Record<string, string> = {
   spontaneous: 'Visite',
   qr: 'QR',
   gps: 'GPS',
-  import: 'Import',
+  import: 'Visite historique',
 }
 
 export interface SiteVisitListItem {

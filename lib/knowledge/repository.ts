@@ -441,6 +441,69 @@ export async function readUserNames(userIds: string[]): Promise<Array<{ id: stri
   return (data ?? []) as Array<{ id: string; full_name: string | null }>
 }
 
+/** L'origine de chaque report (visit, import, …) — pour détecter les PV historiques. */
+export async function readReportOrigins(reportIds: string[]): Promise<Map<string, string | null>> {
+  if (!reportIds.length) return new Map()
+  const { data } = await createAdminClient()
+    .from('site_reports')
+    .select('id, origin')
+    .in('id', reportIds)
+  const result = new Map<string, string | null>()
+  for (const r of (data ?? []) as Array<{ id: string; origin: string | null }>) {
+    result.set(r.id, r.origin ?? null)
+  }
+  return result
+}
+
+/** Objets matérialisés directement (PV historiques) — comptés par report_id. */
+export interface MaterializedCounts {
+  actions: number
+  watchpoints: number
+  knowledge: number
+  decisions: number
+  deadlines: number
+  stakeholders: number
+}
+
+/**
+ * Compte les objets matérialisés directement liés à un set de reports.
+ * Sert pour les visites historiques (origin='import') dont les objets n'ont pas
+ * transité par site_knowledge_proposals.
+ */
+export async function readMaterializedCountsByReport(reportIds: string[]): Promise<Map<string, MaterializedCounts>> {
+  if (!reportIds.length) return new Map()
+  const db = createAdminClient()
+  const zero = (): MaterializedCounts => ({ actions: 0, watchpoints: 0, knowledge: 0, decisions: 0, deadlines: 0, stakeholders: 0 })
+  const result = new Map<string, MaterializedCounts>()
+  for (const id of reportIds) result.set(id, zero())
+
+  const [actionsRes, watchpointsRes, knowledgeRes, decisionsRes, deadlinesRes] = await Promise.all([
+    db.from('site_actions').select('report_id').in('report_id', reportIds).neq('status', 'rejected'),
+    db.from('site_watchpoints').select('report_id').in('report_id', reportIds).is('deleted_at', null),
+    db.from('site_knowledge_entries').select('source_report_id').in('source_report_id', reportIds).is('deleted_at', null),
+    db.from('site_decisions').select('report_id').in('report_id', reportIds),
+    db.from('site_deadlines').select('report_id').in('report_id', reportIds).neq('status', 'cancelled'),
+  ])
+
+  for (const r of (actionsRes.data ?? []) as Array<{ report_id: string | null }>) {
+    const e = r.report_id && result.get(r.report_id); if (e) e.actions++
+  }
+  for (const r of (watchpointsRes.data ?? []) as Array<{ report_id: string | null }>) {
+    const e = r.report_id && result.get(r.report_id); if (e) e.watchpoints++
+  }
+  for (const r of (knowledgeRes.data ?? []) as Array<{ source_report_id: string | null }>) {
+    const e = r.source_report_id && result.get(r.source_report_id); if (e) e.knowledge++
+  }
+  for (const r of (decisionsRes.data ?? []) as Array<{ report_id: string | null }>) {
+    const e = r.report_id && result.get(r.report_id); if (e) e.decisions++
+  }
+  for (const r of (deadlinesRes.data ?? []) as Array<{ report_id: string | null }>) {
+    const e = r.report_id && result.get(r.report_id); if (e) e.deadlines++
+  }
+
+  return result
+}
+
 /** Compte des actions proposées pour PLUSIEURS chantiers (accueil multi-sites). */
 export async function countProposedActionsForSites(siteIds: string[]): Promise<Record<string, number>> {
   const out: Record<string, number> = {}

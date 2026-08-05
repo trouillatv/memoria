@@ -50,7 +50,7 @@ const VISIT_TYPE_LABEL: Record<string, string> = {
   spontaneous: 'Visite',
   qr: 'Visite',
   gps: 'Visite',
-  import: 'Visite importée',
+  import: 'Visite historique',
 }
 
 /** ISO → « 12 juin 2026 » (date civile, fuseau chantier). */
