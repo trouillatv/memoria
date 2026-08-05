@@ -131,10 +131,15 @@ export async function askCopilotFreeAction(
   }
   const baseScope: CopilotScope = INTENT_SCOPE_MAP[classification.primary] ?? 'unknown'
 
+  // Filet secondaire : detectKind détecte schedule même si PROPOSAL_SIGNALS a manqué
+  // une conjugaison (planifies, organises…). On force isWriteRequest dans ce cas.
+  const earlyKind = detectKind(question)
+  const isScheduleIntent = earlyKind === 'schedule_visit' || earlyKind === 'schedule_meeting'
+
   // Écriture détectée — Copilote 3C : résoudre le sujet puis construire un brouillon.
-  if (classification.isWriteRequest) {
+  if (classification.isWriteRequest || isScheduleIntent) {
     // ── Planification (schedule_visit / schedule_meeting) ───────────────────
-    const proposalKind = detectKind(question)
+    const proposalKind = isScheduleIntent ? earlyKind : detectKind(question)
     if (proposalKind === 'schedule_visit' || proposalKind === 'schedule_meeting') {
       const parsed = parseScheduleFromQuestion(question)
       const eventLabel = proposalKind === 'schedule_visit' ? 'visite' : 'réunion'

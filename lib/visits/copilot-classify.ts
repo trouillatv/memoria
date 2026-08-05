@@ -89,27 +89,35 @@ const PLAN_SIGNALS = [
 ]
 
 const PROPOSAL_SIGNALS = [
-  /\bcr[eé]e[rz]?\b/i,
-  /\bajoute[rz]?\b/i,
-  /\bplanifie[rz]?\b/i,
+  /\bcr[eé]e[rsz]?\b/i,           // crée, crées, créer, créez
+  /\bajoute[rsz]?\b/i,             // ajoute, ajoutes, ajouter, ajoutez
+  /\bplanifie[rsz]?\b/i,           // planifie, planifies, planifier, planifiez
   /\bmets?\s+en\s+plan\b/i,
-  /\bprogramme[rz]?\b/i,
-  /\bnote[rz]?\b/i,
+  /\bprogramme[rsz]?\b/i,          // programme, programmes, programmer, programmez
+  /\borganise[rsz]?\b/i,           // organise, organises, organiser, organisez
+  /\bnote[rsz]?\b/i,               // note, notes, noter, notez
   /\brappe?l\b/i,
+  /\bpr[eé]vois?\b/i,              // prévois, prévoit
+  /\bpose[rsz]?\s+(?:une?\s+)?(?:visite|r[eé]union|rdv|rendez-vous)\b/i,
+  /\bfixe[rsz]?\s+(?:une?\s+)?(?:visite|r[eé]union|date|rdv|rendez-vous)\b/i,
 ]
 
 // ── Extraction d'entités ───────────────────────────────────────────────────────
 
+// Pattern horaire : 9H, 09H, 9H30, 14H00, etc. — jamais un code de sujet.
+const TIME_CODE_RE = /^\d{1,2}[hH]\d{0,2}$/
+
 /**
  * Extrait les codes techniques détectables dans la question.
  * Complète extractTechnicalCodes avec les références entre guillemets.
+ * Les expressions horaires (9H, 14H30…) sont explicitement exclues.
  */
 function extractSubjectLabels(question: string): string[] {
   const labels = new Set<string>()
 
-  // Codes techniques (G3, R4, DN160…)
+  // Codes techniques (G3, R4, DN160…) — sauf patterns horaires
   for (const code of extractTechnicalCodes(question)) {
-    labels.add(code)
+    if (!TIME_CODE_RE.test(code)) labels.add(code)
   }
 
   // Références entre guillemets droits ou typographiques

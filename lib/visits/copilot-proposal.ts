@@ -33,25 +33,34 @@ export const COPILOT_LLM_MODEL = 'classifier-deterministic'
 // ── Signaux de détection du kind ─────────────────────────────────────────────
 
 // Planifier une visite terrain (date future explicite)
+// [rsz]? couvre les conjugaisons courantes : planifie/planifies/planifier/planifiez
 const SCHEDULE_VISIT_SIGNALS = [
-  /\bplanifie[rz]?\s+(?:une?\s+)?visite\b/i,
-  /\borganise[rz]?\s+(?:une?\s+)?visite\b/i,
-  /\bprogramme[rz]?\s+(?:une?\s+)?visite\b/i,
-  /\bfixe[rz]?\s+(?:une?\s+)?(?:(?:la\s+)?date\s+(?:de\s+)?|rendez-vous\s+(?:de\s+)?)?visite\b/i,
+  /\bplanifie[rsz]?\s+(?:une?\s+)?visite\b/i,
+  /\borganise[rsz]?\s+(?:une?\s+)?visite\b/i,
+  /\bprogramme[rsz]?\s+(?:une?\s+)?visite\b/i,
+  /\bfixe[rsz]?\s+(?:une?\s+)?(?:(?:la\s+)?date\s+(?:de\s+)?|rendez-vous\s+(?:de\s+)?)?visite\b/i,
   /\bpr[eé]vois?\s+(?:une?\s+)?visite\b/i,
-  /\bpose[rz]?\s+(?:une?\s+)?visite\b/i,
-  /\bcr[eé]e[rz]?\s+(?:une?\s+)?visite\b/i,
+  /\bpose[rsz]?\s+(?:une?\s+)?visite\b/i,
+  /\bcr[eé]e[rsz]?\s+(?:une?\s+)?visite\b/i,
 ]
 
 // Planifier une réunion de chantier
 const SCHEDULE_MEETING_SIGNALS = [
-  /\bplanifie[rz]?\s+(?:une?\s+)?r[eé]union\b/i,
-  /\borganise[rz]?\s+(?:une?\s+)?r[eé]union\b/i,
-  /\bprogramme[rz]?\s+(?:une?\s+)?r[eé]union\b/i,
-  /\bfixe[rz]?\s+(?:une?\s+)?(?:(?:la\s+)?date\s+(?:de\s+)?|rendez-vous\s+(?:de\s+)?)?r[eé]union\b/i,
+  /\bplanifie[rsz]?\s+(?:une?\s+)?r[eé]union\b/i,
+  /\borganise[rsz]?\s+(?:une?\s+)?r[eé]union\b/i,
+  /\bprogramme[rsz]?\s+(?:une?\s+)?r[eé]union\b/i,
+  /\bfixe[rsz]?\s+(?:une?\s+)?(?:(?:la\s+)?date\s+(?:de\s+)?|rendez-vous\s+(?:de\s+)?)?r[eé]union\b/i,
   /\bpr[eé]vois?\s+(?:une?\s+)?r[eé]union\b/i,
-  /\bconvoque[rz]?\b/i,
-  /\bcr[eé]e[rz]?\s+(?:une?\s+)?r[eé]union\b/i,
+  /\bconvoque[rsz]?\b/i,
+  /\bcr[eé]e[rsz]?\s+(?:une?\s+)?r[eé]union\b/i,
+]
+
+// Création explicite d'action — priorité sur VISIT_ITEM_SIGNALS pour éviter que
+// "vérifier" dans "crée une action pour vérifier R4" ne détourne vers visit_item.
+const EXPLICIT_ACTION_SIGNALS = [
+  /\bcr[eé]e[rsz]?\s+(?:une?\s+)?action\b/i,
+  /\bajoute[rsz]?\s+(?:une?\s+)?action\b/i,
+  /\bprogramme[rsz]?\s+(?:une?\s+)?action\b/i,
 ]
 
 // Préparer le plan de prochaine visite (pas de date propre)
@@ -68,6 +77,7 @@ const VISIT_ITEM_SIGNALS = [
 export function detectKind(question: string): CopilotProposalKind {
   if (SCHEDULE_MEETING_SIGNALS.some((r) => r.test(question))) return 'schedule_meeting'
   if (SCHEDULE_VISIT_SIGNALS.some((r) => r.test(question))) return 'schedule_visit'
+  if (EXPLICIT_ACTION_SIGNALS.some((r) => r.test(question))) return 'action'
   if (VISIT_ITEM_SIGNALS.some((r) => r.test(question))) return 'visit_item'
   return 'action'
 }
