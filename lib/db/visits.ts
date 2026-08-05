@@ -1284,6 +1284,7 @@ export interface SinceLastVisitSummary {
   liftedReserves: number
   meetings: number
   newPhotos: number
+  newDocuments: number
   /** « Vous étiez reparti avec un doute — il existe toujours. » : questions
    *  « à vérifier » posées AVANT/PENDANT cette visite, toujours actives (max 2). */
   doubts: string[]
@@ -1329,7 +1330,15 @@ export async function buildSinceLastVisitSummary(siteId: string, userId: string 
   const { data: missions } = await supabase.from('missions').select('id').eq('site_id', siteId).is('deleted_at', null)
   const missionIds = (missions ?? []).map((m) => m.id as string)
 
-  const [actionsRes, reservesRes, liftedRes, meetingsRes, capPhotosRes, doubtsRes] = await Promise.all([
+  // Identifiants des documents liés au chantier (nécessaire pour filtrer par created_at).
+  const { data: docLinks } = await supabase
+    .from('document_links')
+    .select('document_id')
+    .eq('target_type', 'site')
+    .eq('target_id', siteId)
+  const docIds = (docLinks ?? []).map((l) => (l as { document_id: string }).document_id)
+
+  const [actionsRes, reservesRes, liftedRes, meetingsRes, capPhotosRes, doubtsRes, docsRes] = await Promise.all([
     // Actions RÉELLEMENT terminées depuis la visite (done_at postérieur).
     supabase.from('site_actions').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('status', 'done').gt('done_at', ref),
     // Réserves ouvertes depuis (création postérieure).
@@ -1343,6 +1352,10 @@ export async function buildSinceLastVisitSummary(siteId: string, userId: string 
     // Le doute d'alors, toujours ouvert : questions « à vérifier » posées au plus
     // tard À cette visite, encore actives aujourd'hui.
     supabase.from('captured_knowledge').select('title').eq('site_id', siteId).eq('kind', 'question').eq('status', 'active').lte('created_at', ref).order('created_at', { ascending: false }).limit(2),
+    // Documents ajoutés au chantier depuis la dernière visite (hors PV historiques).
+    docIds.length > 0
+      ? supabase.from('documents').select('id', { count: 'exact', head: true }).in('id', docIds).gt('created_at', ref).is('deleted_at', null).neq('document_type', 'historical_visit_report')
+      : Promise.resolve({ count: 0, data: null, error: null }),
   ])
 
   // Photos d'intervention postérieures à la visite (le chantier bouge entre deux visites).
@@ -1361,14 +1374,15 @@ export async function buildSinceLastVisitSummary(siteId: string, userId: string 
   const liftedReserves = liftedRes.count ?? 0
   const meetings = meetingsRes.count ?? 0
   const newPhotos = (capPhotosRes.count ?? 0) + intvPhotos
+  const newDocuments = docsRes.count ?? 0
   const doubts = ((doubtsRes.data ?? []) as Array<{ title: string }>)
     .map((d) => d.title?.trim())
     .filter((t): t is string => !!t)
-  const total = actionsDone + newReserves + liftedReserves + meetings + newPhotos
+  const total = actionsDone + newReserves + liftedReserves + meetings + newPhotos + newDocuments
   // Silence positif — SAUF si un doute d'alors existe toujours : ça, ça se dit.
   if (total === 0 && doubts.length === 0) return null
   const daysAgo = Math.max(0, Math.floor((Date.now() - new Date(ref).getTime()) / 86_400_000))
-  return { at: ref, dateLabel: relativeDayLabel(ref), daysAgo, personal, actionsDone, newReserves, liftedReserves, meetings, newPhotos, doubts, total }
+  return { at: ref, dateLabel: relativeDayLabel(ref), daysAgo, personal, actionsDone, newReserves, liftedReserves, meetings, newPhotos, newDocuments, doubts, total }
 }
 
 // ── Fiche chantier : « Mémoire » — le cumul DEPUIS LA CRÉATION ─────────────────

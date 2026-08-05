@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Users, ClipboardList, CheckCircle2, Camera, ChevronRight, CircleCheckBig, Eye } from 'lucide-react'
+import { Users, ClipboardList, CheckCircle2, Camera, ChevronRight, CircleCheckBig, Eye, FileText } from 'lucide-react'
 import type { SinceLastVisitSummary } from '@/lib/db/visits'
 
 /**
@@ -16,6 +16,7 @@ export function SinceLastVisitCard({ summary, siteId }: { summary: SinceLastVisi
     { key: 'a', Icon: CheckCircle2, cls: 'text-emerald-600', n: summary.actionsDone, label: summary.actionsDone > 1 ? 'actions terminées' : 'action terminée' },
     { key: 'm', Icon: Users, cls: 'text-sky-600', n: summary.meetings, label: summary.meetings > 1 ? 'réunions' : 'réunion' },
     { key: 'p', Icon: Camera, cls: 'text-violet-600', n: summary.newPhotos, label: summary.newPhotos > 1 ? 'photos ajoutées' : 'photo ajoutée' },
+    { key: 'd', Icon: FileText, cls: 'text-amber-600', n: summary.newDocuments, label: summary.newDocuments > 1 ? 'nouveaux documents' : 'nouveau document' },
   ].filter((c) => c.n > 0)
 
   if (cells.length === 0 && summary.doubts.length === 0) return null
