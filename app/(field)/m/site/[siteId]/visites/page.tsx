@@ -69,7 +69,7 @@ export default async function SiteVisitsMobilePage({
                   : <Footprints className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />}
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2">
-                    <span className="text-[12px] font-medium text-muted-foreground first-letter:uppercase">{v.dateLabel}</span>
+                    <span className="text-[12px] font-medium text-muted-foreground first-letter:uppercase">{v.dateLabel}{v.timeLabel ? ` · ${v.timeLabel}` : ''}</span>
                     {v.isPlanned && (
                       <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-950/20 dark:text-violet-300">
                         Planifiée

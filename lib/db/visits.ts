@@ -905,6 +905,15 @@ function relativeDayLabel(iso: string): string {
   return d.toLocaleDateString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'short' })
 }
 
+/** Heure d'une visite planifiée en zone Nouméa — « 09:00 ». Null si invalide. */
+function planTime(iso: string): string | null {
+  try {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return null
+    return d.toLocaleTimeString('fr-FR', { timeZone: NOUMEA_TZ, hour: '2-digit', minute: '2-digit' })
+  } catch { return null }
+}
+
 export async function listRecentSitesForUser(userId: string, limit = 3): Promise<RecentSiteItem[]> {
   const supabase = createAdminClient()
   const { data: reps } = await supabase
@@ -1063,6 +1072,8 @@ export interface SiteVisitListItem {
   id: string
   at: string
   dateLabel: string
+  /** Heure Nouméa « 09:00 » pour les visites planifiées, null sinon. */
+  timeLabel: string | null
   typeLabel: string
   /** Contexte AO : le chantier est en phase Prospect/AO → « pré-visite » (pas un
    *  nouveau type d'objet, juste le vocabulaire du contexte). */
@@ -1131,10 +1142,13 @@ export async function listSiteVisitsForMobile(siteId: string, limit = 50): Promi
 
   const plannedItems: SiteVisitListItem[] = planned.map((p) => {
     const at = p.planned_start ?? new Date().toISOString()
+    const dateLabel = p.planned_start ? relativeDayLabel(p.planned_start) : 'Date à définir'
+    const timeLabel = p.planned_start ? planTime(p.planned_start) : null
     return {
       id: p.id,
       at,
-      dateLabel: relativeDayLabel(at),
+      dateLabel,
+      timeLabel,
       typeLabel: 'Visite planifiée',
       isPrevisite: false,
       objective: p.title?.trim() || null,
@@ -1154,6 +1168,7 @@ export async function listSiteVisitsForMobile(siteId: string, limit = 50): Promi
       id: r.id,
       at,
       dateLabel: relativeDayLabel(at),
+      timeLabel: null as string | null,
       // Priorité à l'INTENTION explicite (mig 186) ; sinon contexte AO du dossier ;
       // sinon le type dérivé de l'origine.
       typeLabel: visitIntentLabel(r.visit_motive) ?? (aoContext ? 'Pré-visite AO' : VISIT_TYPE_LABEL[r.origin ?? ''] ?? 'Visite'),
