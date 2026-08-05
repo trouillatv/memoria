@@ -133,6 +133,9 @@ export function parseScheduleFromQuestion(question: string, todayIso?: string): 
   }
 
   if (!date) return null
+  // Date passée (avant aujourd'hui) → pas de proposition silencieuse avec une mauvaise date.
+  // "aujourd'hui" = today → autorisé ; hier ou avant → clarification.
+  if (date < today) return null
   if (date > `${currentYear + 2}-12-31`) return null
 
   return { date, time: parseTime(question) }
