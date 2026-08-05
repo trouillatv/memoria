@@ -47,12 +47,10 @@ import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
-import { SiteMemoryQuery } from '@/app/(dashboard)/sites/[id]/SiteMemoryQuery'
 import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
 import { ChefSiteView } from './ChefSiteView'
 import { CopilotMobileSheet } from './CopilotMobileSheet'
-import { ListTodo, Hammer, AlertTriangle, ChevronRight, Camera, Search } from 'lucide-react'
-import { TogglePanel } from '@/app/(dashboard)/sites/[id]/TogglePanel'
+import { ListTodo, Hammer, AlertTriangle, ChevronRight, Camera } from 'lucide-react'
 
 const INTV_STATUS_META: Record<string, { label: string; cls: string }> = {
   planned: { label: 'Prévue', cls: 'bg-slate-100 text-slate-700' },
@@ -566,15 +564,6 @@ export default async function FieldSitePage({
             </section>
           )}
 
-          {/* Mémoire du chantier — cible de l'onglet « Mémoire » (ancre). */}
-          <section id="memoire-lieu" className="scroll-mt-4 space-y-2 pt-3 border-t border-border/40">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Mémoire du chantier
-            </h2>
-            <TogglePanel label="Rechercher dans la mémoire" icon={<Search className="h-4 w-4" />}>
-              <SiteMemoryQuery siteId={siteId} variant="mobile" />
-            </TogglePanel>
-          </section>
 
           {/* Ajouter… — outils de CRÉATION du lieu (grille d'outils, pas des CTA).
               On comprend d'un coup que ce sont des créations rapides. */}
