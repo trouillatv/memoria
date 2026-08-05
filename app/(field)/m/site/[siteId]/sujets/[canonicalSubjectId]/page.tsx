@@ -1,0 +1,350 @@
+import { notFound } from 'next/navigation'
+import Link from 'next/link'
+import { ArrowLeft, FileText, MapPin, Users } from 'lucide-react'
+import { requireSiteAccess } from '@/lib/field/site-access'
+import { getCanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
+import type { SubjectOccurrenceMerged, MaterializedEvent, MaterializedEntityType } from '@/lib/db/canonical-subject-life'
+import { cn } from '@/lib/utils'
+import { CopilotMobileSheet } from '../../CopilotMobileSheet'
+
+export const dynamic = 'force-dynamic'
+
+interface PageProps {
+  params: Promise<{ siteId: string; canonicalSubjectId: string }>
+}
+
+// ── Display constants ─────────────────────────────────────────────────────────
+
+const STATUS_LABELS: Record<string, string> = {
+  open:               'Ouvert',
+  in_progress:        'En cours',
+  planned:            'Planifié',
+  done:               'Clôturé',
+  non_compliant:      'Non conforme',
+  awaiting_validation:'En attente',
+  cancelled:          'Annulé',
+  informational:      'Informatif',
+  field_checked:      'Vérifié terrain',
+  still_open:         'Toujours ouvert',
+  not_applicable:     'Sans objet',
+  mentioned:          'Évoqué en réunion',
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  done:               'bg-emerald-100 text-emerald-800',
+  non_compliant:      'bg-red-100 text-red-700',
+  open:               'bg-orange-100 text-orange-700',
+  in_progress:        'bg-blue-100 text-blue-700',
+  planned:            'bg-sky-100 text-sky-700',
+  awaiting_validation:'bg-amber-100 text-amber-700',
+  cancelled:          'bg-muted text-muted-foreground',
+  informational:      'bg-muted text-muted-foreground',
+  field_checked:      'bg-teal-100 text-teal-700',
+  still_open:         'bg-orange-100 text-orange-700',
+  not_applicable:     'bg-muted text-muted-foreground',
+  mentioned:          'bg-violet-100 text-violet-700',
+}
+
+const ENTITY_TYPE_META: Record<MaterializedEntityType, { label: string; plural: string; color: string }> = {
+  site_action:   { label: 'Action',   plural: 'Actions',   color: 'bg-blue-100 text-blue-700' },
+  site_decision: { label: 'Décision', plural: 'Décisions', color: 'bg-violet-100 text-violet-700' },
+  site_reserve:  { label: 'Réserve',  plural: 'Réserves',  color: 'bg-red-100 text-red-700' },
+  site_deadline: { label: 'Échéance', plural: 'Échéances', color: 'bg-amber-100 text-amber-700' },
+}
+
+const ENTITY_STATUS_LABELS: Record<string, string> = {
+  open:       'Ouverte',
+  done:       'Clôturée',
+  cancelled:  'Annulée',
+  planned:    'Planifiée',
+  actee:      'Actée',
+  appliquee:  'Appliquée',
+  caduque:    'Caduque',
+  proposee:   'Proposée',
+  contredite: 'Contredite',
+  lifted:     'Levée',
+  to_plan:    'À planifier',
+  superseded: 'Remplacée',
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function frDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+function frDateShort(iso: string): string {
+  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function SourceBadge({ sourceKind }: { sourceKind: SubjectOccurrenceMerged['sourceKind'] }) {
+  if (sourceKind === 'field_visit') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 text-[11px] font-medium text-teal-700">
+        <MapPin className="h-3 w-3" />
+        Visite terrain
+      </span>
+    )
+  }
+  if (sourceKind === 'meeting') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700">
+        <Users className="h-3 w-3" />
+        Réunion
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+      <FileText className="h-3 w-3" />
+      PV
+    </span>
+  )
+}
+
+function OccurrenceRow({ occ, index, total }: { occ: SubjectOccurrenceMerged; index: number; total: number }) {
+  const sourceHref =
+    occ.sourceKind === 'field_visit' && occ.reportId
+      ? `/m/visite/${occ.reportId}/cr`
+      : occ.sourceKind === 'meeting' && occ.reportId
+        ? `/m/reunion/${occ.reportId}`
+        : null
+
+  const statusKey = occ.visitStatus ?? occ.documentStatus
+  const statusLabel = statusKey ? (STATUS_LABELS[statusKey] ?? statusKey) : null
+  const statusColor = statusKey ? (STATUS_COLORS[statusKey] ?? 'bg-muted text-muted-foreground') : null
+
+  const dotColor =
+    occ.sourceKind === 'field_visit'
+      ? 'bg-teal-500 ring-teal-200'
+      : occ.sourceKind === 'meeting'
+        ? 'bg-violet-500 ring-violet-200'
+        : 'bg-sky-500 ring-sky-200'
+
+  return (
+    <div className="relative pl-8">
+      {/* Vertical connector — skip for last item */}
+      {index < total - 1 && (
+        <div className="absolute left-[11px] top-4 h-full w-px bg-border" />
+      )}
+      {/* Timeline dot */}
+      <span className={cn(
+        'absolute left-[7px] top-[7px] h-2.5 w-2.5 rounded-full ring-2 ring-background',
+        dotColor,
+      )} />
+
+      {/* Date label above card */}
+      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {frDateShort(occ.effectiveDate)}
+      </p>
+
+      {/* Card */}
+      <div className="rounded-xl border bg-card px-3.5 py-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <SourceBadge sourceKind={occ.sourceKind} />
+          {statusLabel && statusColor && (
+            <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', statusColor)}>
+              {statusLabel}
+            </span>
+          )}
+        </div>
+
+        {occ.label && (
+          <p className="mt-2 text-[14px] font-medium leading-snug">{occ.label}</p>
+        )}
+
+        {occ.description && (
+          <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground line-clamp-3">
+            {occ.description}
+          </p>
+        )}
+
+        {occ.additionalLabels.length > 0 && (
+          <div className="mt-1 space-y-0.5">
+            {occ.additionalLabels.slice(0, 2).map((l, i) => (
+              <p key={i} className="text-[12px] italic text-muted-foreground">+ {l}</p>
+            ))}
+          </div>
+        )}
+
+        {sourceHref && (
+          <Link
+            href={sourceHref}
+            className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium active:bg-muted transition-colors"
+          >
+            <FileText className="h-3 w-3" />
+            {occ.sourceKind === 'field_visit' ? 'Voir la visite' : 'Voir la réunion'}
+          </Link>
+        )}
+        {!sourceHref && occ.sourcePage != null && (
+          <p className="mt-1.5 text-[11px] text-muted-foreground">p. {occ.sourcePage}</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function EventsSection({ events }: { events: MaterializedEvent[] }) {
+  const ORDER: MaterializedEntityType[] = ['site_reserve', 'site_action', 'site_decision', 'site_deadline']
+  const byType = new Map<MaterializedEntityType, MaterializedEvent[]>()
+  for (const e of events) {
+    const list = byType.get(e.entityType) ?? []
+    list.push(e)
+    byType.set(e.entityType, list)
+  }
+
+  return (
+    <div className="space-y-3">
+      {ORDER.filter((t) => byType.has(t)).map((t) => {
+        const meta = ENTITY_TYPE_META[t]
+        const items = byType.get(t)!
+        return (
+          <div key={t}>
+            <p className="mb-1.5 text-[11px] text-muted-foreground">
+              {meta.plural} ({items.length})
+            </p>
+            <ul className="space-y-1.5">
+              {items.map((ev) => (
+                <li key={ev.entityId} className="flex items-start gap-2.5 rounded-xl border bg-card px-3 py-2.5">
+                  <span className={cn('mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold', meta.color)}>
+                    {meta.label}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-medium leading-snug">{ev.title}</p>
+                    {ev.description && (
+                      <p className="mt-0.5 text-[12px] text-muted-foreground line-clamp-2">{ev.description}</p>
+                    )}
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                      {ev.date && <span>{frDate(ev.date)}</span>}
+                      {ev.status && (
+                        <span className={cn(
+                          'rounded-full px-1.5 py-0.5',
+                          STATUS_COLORS[ev.status] ?? 'bg-muted text-muted-foreground',
+                        )}>
+                          {ENTITY_STATUS_LABELS[ev.status] ?? ev.status}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+export default async function SubjectLifeMobilePage({ params }: PageProps) {
+  const { siteId, canonicalSubjectId } = await params
+  await requireSiteAccess(siteId)
+
+  const life = await getCanonicalSubjectLife(canonicalSubjectId).catch(() => null)
+  if (!life || life.siteId !== siteId) notFound()
+
+  const realOccs = life.occurrences
+    .filter((o) => !o.isGap)
+    .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))
+
+  const visitCount  = realOccs.filter((o) => o.sourceKind === 'field_visit').length
+  const meetingCount = realOccs.filter((o) => o.sourceKind === 'meeting').length
+
+  const pills: string[] = []
+  if (life.pvCount > 0)    pills.push(`${life.pvCount} PV`)
+  if (visitCount > 0)      pills.push(`${visitCount} visite${visitCount > 1 ? 's' : ''} terrain`)
+  if (meetingCount > 0)    pills.push(`${meetingCount} réunion${meetingCount > 1 ? 's' : ''}`)
+
+  const matTotal = life.materializedEvents.length
+
+  return (
+    <div className="mx-auto max-w-md space-y-5 px-4 pb-28 pt-5">
+
+      {/* Back */}
+      <Link
+        href={`/m/site/${siteId}/patrimoine`}
+        className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground active:text-foreground"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" />
+        Patrimoine
+      </Link>
+
+      {/* Header card */}
+      <header className="rounded-2xl border bg-card px-4 py-4 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="min-w-0 text-lg font-semibold leading-snug">{life.label}</h1>
+          {life.currentStatus && (
+            <span className={cn(
+              'shrink-0 rounded-full px-2.5 py-1 text-[12px] font-medium',
+              STATUS_COLORS[life.currentStatus] ?? 'bg-muted text-muted-foreground',
+            )}>
+              {STATUS_LABELS[life.currentStatus] ?? life.currentStatus}
+            </span>
+          )}
+        </div>
+
+        {life.aliases.length > 0 && (
+          <p className="mt-0.5 text-[12px] text-muted-foreground">
+            {life.aliases.slice(0, 3).join(' · ')}{life.aliases.length > 3 ? ` +${life.aliases.length - 3}` : ''}
+          </p>
+        )}
+
+        {pills.length > 0 && (
+          <p className="mt-2.5 text-[12px] text-muted-foreground">{pills.join(' · ')}</p>
+        )}
+
+        <div className="mt-1 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[12px] text-muted-foreground">
+          {life.firstSeenAt && (
+            <span>Apparu le {frDate(life.firstSeenAt)}</span>
+          )}
+          {life.lastSeenAt && life.lastSeenAt !== life.firstSeenAt && (
+            <span>· dernière évolution le {frDate(life.lastSeenAt)}</span>
+          )}
+        </div>
+      </header>
+
+      {/* Vertical timeline */}
+      {realOccs.length > 0 ? (
+        <section>
+          <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Vie du sujet
+          </h2>
+          <ol className="space-y-4">
+            {realOccs.map((occ, i) => (
+              <li key={`${occ.runId ?? occ.reportId}-${i}`}>
+                <OccurrenceRow occ={occ} index={i} total={realOccs.length} />
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : (
+        <p className="rounded-xl border border-dashed px-4 py-8 text-center text-[13px] text-muted-foreground">
+          Aucune occurrence enregistrée pour ce sujet.
+        </p>
+      )}
+
+      {/* Linked business objects */}
+      {matTotal > 0 && (
+        <section>
+          <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Lié à ce sujet
+          </h2>
+          <EventsSection events={life.materializedEvents} />
+        </section>
+      )}
+
+      {/* Ask MemorIA */}
+      <section className="pt-2">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Demander à MemorIA
+        </p>
+        <CopilotMobileSheet siteId={siteId} />
+      </section>
+
+    </div>
+  )
+}

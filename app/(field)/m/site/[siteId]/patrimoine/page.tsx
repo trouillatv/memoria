@@ -52,7 +52,7 @@ export default async function SitePatrimoinePage({
   const { data: site } = await supabase.from('sites').select('id, name').eq('id', siteId).is('deleted_at', null).maybeSingle()
   if (!site) notFound()
 
-  const [statusCells, patrimoine, subjects, activity, mapCaptures, evidence, review] = await Promise.all([
+  const [statusCells, patrimoine, subjects, activity, mapCaptures, evidence, review, canonicalSubjects] = await Promise.all([
     buildSiteStatusSummary(siteId).catch(() => []),
     buildSitePatrimoine(siteId).catch(() => null),
     listSubjectsBySite(siteId).catch(() => []),
@@ -64,6 +64,16 @@ export default async function SitePatrimoinePage({
     // Ce qu'on peut CONFIRMER — chaque élément porte déjà son geste et sa
     // provenance : l'écran ne décide d'aucun bouton.
     getMemoryReview(siteId).catch(() => ({ confirmed: [], toReview: [] })),
+    (async (): Promise<Array<{ id: string; label: string }>> => {
+      const { data } = await supabase
+        .from('canonical_subject')
+        .select('id, label')
+        .eq('site_id', siteId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: true })
+        .limit(10)
+      return (data ?? []) as Array<{ id: string; label: string }>
+    })().catch(() => [] as Array<{ id: string; label: string }>),
   ])
   const hasEvidence = evidence.photos.length > 0 || evidence.decisions.length > 0
 
@@ -237,6 +247,29 @@ export default async function SitePatrimoinePage({
           </div>
         )}
       </section>
+
+      {/* ── Bloc : Sujets suivis (canonical_subject) ── */}
+      {canonicalSubjects.length > 0 && (
+        <section className="space-y-2">
+          <SectionTitle>Sujets suivis</SectionTitle>
+          <ul className="space-y-1.5">
+            {canonicalSubjects.map((cs) => (
+              <li key={cs.id}>
+                <Link
+                  href={`/m/site/${siteId}/sujets/${cs.id}`}
+                  className="flex items-center gap-3 rounded-2xl border bg-background px-3.5 py-3 shadow-sm active:brightness-95"
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-50 dark:bg-indigo-950/40">
+                    <Brain className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                  </span>
+                  <span className="min-w-0 flex-1 text-[13px] font-medium leading-snug">{cs.label}</span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* ── Bloc : Les meilleures ressources (dernière de chaque type) ── */}
       {resources.length > 0 && (
