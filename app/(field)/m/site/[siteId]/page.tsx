@@ -27,7 +27,6 @@ import { SiteStatusCard } from './SiteStatusCard'
 import { IdentityCard } from './IdentityCard'
 import { SiteTodoCard } from './SiteTodoCard'
 import { SiteActivityCard } from './SiteActivityCard'
-import { SiteQuickAccessCard } from './SiteQuickAccessCard'
 import { SinceLastVisitCard } from './SinceLastVisitCard'
 import { SiteMemoryCard } from './SiteMemoryCard'
 import { JustVisitedBanner } from './JustVisitedBanner'
@@ -45,7 +44,6 @@ import { DeliverFieldPanel } from './DeliverFieldPanel'
 import { AddDocumentPanel } from './AddDocumentPanel'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
-import { listDocumentsForTarget } from '@/lib/db/documents'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
 import { ChefSiteView } from './ChefSiteView'
@@ -188,26 +186,21 @@ export default async function FieldSitePage({
   // PERF — hors visite en cours, TOUTES les données de cockpit sont
   // indépendantes : un seul aller-retour parallèle au lieu d'une chaîne
   // séquentielle (la fiche est la page la plus ouverte : elle doit être rapide).
-  const canSeeDocs = !activeVisit && (user.role === 'admin' || user.role === 'manager')
   let siteStatus: Awaited<ReturnType<typeof buildSiteStatusSummary>> = []
   let identity: Awaited<ReturnType<typeof getSiteIdentity>> = null
   let openReserves: { id: string; label: string; location: string | null }[] = []
   let recentActivity: Awaited<ReturnType<typeof getSiteRecentActivity>> = []
   let sinceLastVisit: Awaited<ReturnType<typeof buildSinceLastVisitSummary>> = null
   let memorySnapshot: Awaited<ReturnType<typeof getSiteMemorySnapshot>> | null = null
-  let siteDocCount = 0
-  let hasEvolution = false
   let nextSteps: Awaited<ReturnType<typeof getSiteNextSteps>> = []
   if (!activeVisit) {
-    const [status, id, reservesRaw, activity, since, snapshot, docList, vpRows, steps] = await Promise.all([
+    const [status, id, reservesRaw, activity, since, snapshot, steps] = await Promise.all([
       buildSiteStatusSummary(siteId).catch(() => []),
       getSiteIdentity(siteId).catch(() => null),
       getSiteReserves(siteId).catch(() => []),
       getSiteRecentActivity(siteId).catch(() => []),
       buildSinceLastVisitSummary(siteId, user.id).catch(() => null),
       getSiteMemorySnapshot(siteId).catch(() => null),
-      canSeeDocs ? listDocumentsForTarget('site', siteId).catch(() => []) : Promise.resolve([]),
-      listSiteViewpointRows(siteId).catch(() => []),
       getSiteNextSteps(siteId).catch(() => []),
     ])
     siteStatus = status
@@ -218,8 +211,6 @@ export default async function FieldSitePage({
     recentActivity = activity
     sinceLastVisit = since
     memorySnapshot = snapshot
-    siteDocCount = docList.length
-    hasEvolution = groupViewpointChains(vpRows).length > 0
     nextSteps = steps
   }
   // Connaissance du chantier : le MÊME read model que la fiche desktop (`SiteOverview`).
@@ -462,8 +453,6 @@ export default async function FieldSitePage({
           {/* Mémoire — le cumul depuis la création : le chantier « parle ». */}
           {memorySnapshot && <SiteMemoryCard snapshot={memorySnapshot} />}
 
-          {/* 5 — Accès rapides : les vues du chantier (Visites / Réunions / Frise…). */}
-          <SiteQuickAccessCard siteId={siteId} showDocuments={siteDocCount > 0} showEvolution={hasEvolution} />
 
           {/* 6 — Préparer : LE rituel « avant de partir ». Deux CTA proéminents,
               pas des cartes passives — c'est un MOMENT du parcours (« j'appuie
