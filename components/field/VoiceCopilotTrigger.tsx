@@ -36,32 +36,53 @@ export function VoiceCopilotTrigger({ siteId, onTranscriptionReady, disabled }: 
     try {
       console.log('[Voice] getUserMedia requested')
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      console.log('[Voice] getUserMedia_ok')
 
-      const recorder = new MediaRecorder(stream)
-      console.log('[Voice] recorder_started mimeType:', recorder.mimeType)
+      const tracks = stream.getAudioTracks()
+      const track = tracks[0]
+      if (track) {
+        console.log('[Voice] track_info enabled:', track.enabled, 'muted:', track.muted, 'readyState:', track.readyState, 'label:', track.label)
+      } else {
+        console.warn('[Voice] no_audio_track_found — stream has 0 audio tracks')
+      }
+
+      const MIME_CANDIDATES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus', '']
+      const supportedMime = MIME_CANDIDATES.find((m) => !m || MediaRecorder.isTypeSupported(m)) ?? ''
+      console.log('[Voice] getUserMedia_ok mime_elected:', supportedMime || '(browser default)')
+
+      const recorderOpts = supportedMime ? { mimeType: supportedMime } : undefined
+      const recorder = new MediaRecorder(stream, recorderOpts)
+      console.log('[Voice] recorder_created mimeType:', recorder.mimeType)
       chunksRef.current = []
       startTimeRef.current = Date.now()
 
       recorder.ondataavailable = (e) => {
-        console.log('[Voice] data_available blob.size:', e.data.size)
+        console.log('[Voice] data_available chunk.size:', e.data.size, 'chunk.type:', e.data.type)
         if (e.data.size > 0) chunksRef.current.push(e.data)
       }
 
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop())
         const audioDurationMs = Date.now() - startTimeRef.current
-        console.log('[Voice] recorder_stopped audioDurationMs:', audioDurationMs)
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
-        console.log('[Voice] blob ready size:', blob.size, 'type:', blob.type)
-        await sendForTranscription(blob, recorder.mimeType || 'audio/webm')
+        const totalChunks = chunksRef.current.length
+        console.log('[Voice] recorder_stopped audioDurationMs:', audioDurationMs, 'chunks:', totalChunks)
+        const blobType = recorder.mimeType || 'audio/webm'
+        const blob = new Blob(chunksRef.current, { type: blobType })
+        console.log('[Voice] blob_ready size:', blob.size, 'type:', blob.type, 'durationMs:', audioDurationMs)
+        if (blob.size === 0) {
+          console.error('[Voice] blob_empty — no audio data captured')
+          setErrorMsg('Aucun audio capturé — réessayez')
+          setState('error')
+          return
+        }
+        await sendForTranscription(blob, blobType, audioDurationMs)
       }
 
       recorderRef.current = recorder
       recorder.start()
+      console.log('[Voice] recording_started')
       setState('recording')
     } catch (err) {
-      console.error('[Voice] getUserMedia error:', err)
+      console.error('[Voice] getUserMedia_error:', err)
       setErrorMsg('Microphone non accessible')
       setState('error')
     }
@@ -75,35 +96,42 @@ export function VoiceCopilotTrigger({ siteId, onTranscriptionReady, disabled }: 
     }
   }, [])
 
-  async function sendForTranscription(blob: Blob, mimeType: string) {
+  async function sendForTranscription(blob: Blob, mimeType: string, durationMs: number) {
     try {
-      console.log('[Voice] transcribe_request_started')
+      const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
+      console.log('[Voice] upload_started size:', blob.size, 'type:', mimeType, 'ext:', ext, 'durationMs:', durationMs)
       const form = new FormData()
-      form.append('audio', blob, 'voice.webm')
+      form.append('audio', blob, `voice.${ext}`)
       form.append('siteId', siteId)
 
       const res = await fetch('/api/copilot/transcribe', { method: 'POST', body: form })
-      console.log('[Voice] transcribe_response status:', res.status)
+      console.log('[Voice] upload_response status:', res.status)
 
       if (!res.ok) {
         const body = await res.text()
-        console.error('[Voice] transcribe_error body:', body)
-        throw new Error(`HTTP ${res.status}`)
-      }
-
-      const data = (await res.json()) as { text?: string; error?: string }
-      console.log('[Voice] transcription_ready:', data.text?.slice(0, 80))
-
-      if (!data.text?.trim()) {
-        setErrorMsg('Audio non compris — réessayez')
+        console.error('[Voice] upload_error body:', body)
+        let code = `HTTP_${res.status}`
+        try { const j = JSON.parse(body); code = j.code ?? code } catch { /* raw body */ }
+        setErrorMsg(`Erreur serveur (${code})`)
         setState('error')
         return
       }
 
+      const data = (await res.json()) as { text?: string; error?: string; code?: string }
+      console.log('[Voice] transcription_text_len:', data.text?.length ?? 0, 'preview:', data.text?.slice(0, 60))
+
+      if (!data.text?.trim()) {
+        console.warn('[Voice] transcription_empty — server returned no text')
+        setErrorMsg("Je n'ai rien entendu — réessayez plus près du téléphone")
+        setState('error')
+        return
+      }
+
+      console.log('[Voice] transcription_ready — calling onTranscriptionReady')
       setState('idle')
       onTranscriptionReady(data.text.trim())
     } catch (err) {
-      console.error('[Voice] voice_error:', err)
+      console.error('[Voice] send_error:', err)
       setErrorMsg('Transcription impossible — réessayez')
       setState('error')
     }
@@ -150,11 +178,11 @@ export function VoiceCopilotTrigger({ siteId, onTranscriptionReady, disabled }: 
       <button
         type="button"
         onClick={reset}
-        title={errorMsg}
         aria-label={`Erreur : ${errorMsg}. Appuyer pour réessayer.`}
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-red-300 dark:border-red-800 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
+        className="flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-red-300 dark:border-red-800 px-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
       >
-        <Mic className="h-4 w-4" />
+        <Mic className="h-4 w-4 shrink-0" />
+        <span className="max-w-[100px] text-[11px] font-medium leading-tight">{errorMsg}</span>
       </button>
     )
   }

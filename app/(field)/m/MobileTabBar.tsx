@@ -9,10 +9,11 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { Home, Building2, Plus, CheckSquare, NotebookText, X, Play, RotateCcw, Camera, AlertTriangle, CalendarX, ChevronRight } from 'lucide-react'
+import { Home, Building2, Plus, CheckSquare, NotebookText, X, Play, RotateCcw, Camera, AlertTriangle, CalendarX, ChevronRight, Mic } from 'lucide-react'
 import { MeetingLauncher } from './MeetingLauncher'
 import { VisitLauncherHome } from './VisitLauncherHome'
 import { InterventionLauncher } from './InterventionLauncher'
+import { GlobalVoiceCopilotSheet } from './GlobalVoiceCopilotSheet'
 
 export type ChefLaunchIntervention = {
   id: string
@@ -61,6 +62,7 @@ export function MobileTabBar({
   const router = useRouter()
   const [createOpen, setCreateOpen] = useState(false)
   const [showIntro, setShowIntro] = useState(false)
+  const [voiceCopilotOpen, setVoiceCopilotOpen] = useState(false)
   // Le bouton central est contextuel au rôle (décision Vincent 2026-07-29). Le
   // conducteur (admin/manager) PILOTE : ➕ « Créer » (visites, réunions,
   // interventions). Le chef d'équipe EXÉCUTE : bouton ▶ qui pointe vers SON
@@ -116,6 +118,8 @@ export function MobileTabBar({
         </div>
       </nav>
 
+      <GlobalVoiceCopilotSheet open={voiceCopilotOpen} onClose={() => setVoiceCopilotOpen(false)} />
+
       {/* Bottom sheet « Créer » — Réunion · Nouvelle visite. Chaque lanceur porte
           ensuite son flux (visite : chantier → intention → mode de démarrage). */}
       {createOpen && (
@@ -163,6 +167,19 @@ export function MobileTabBar({
                 {/* Réunion + Intervention = actes de pilotage → conducteur seul. */}
                 <MeetingLauncher />
                 <InterventionLauncher />
+                <button
+                  type="button"
+                  onClick={() => { setCreateOpen(false); setVoiceCopilotOpen(true) }}
+                  className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-violet-300 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-950/10 px-3 py-4 text-center active:opacity-70"
+                >
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-500">
+                    <Mic className="h-5 w-5" />
+                  </span>
+                  <span>
+                    <span className="block text-[13px] font-semibold text-violet-700 dark:text-violet-300">Parler à MemorIA</span>
+                    <span className="block text-[11px] text-violet-500/80 dark:text-violet-400/60 mt-0.5 leading-snug">Demander, planifier ou créer par la voix</span>
+                  </span>
+                </button>
               </div>
             ) : (
               <ChefCreateSheet inProgress={inProgress} upcoming={upcoming} onNavigate={() => setCreateOpen(false)} />
