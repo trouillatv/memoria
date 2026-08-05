@@ -1,19 +1,16 @@
 'use client'
 
-// Niveau 2 + 3 (Vincent 2026-06-24) — icônes d'événements DATÉS dans une cellule
-// (jour × site) de la grille semaine : réunion, échéance, livraison.
+// Niveau 2 + 3 (Vincent 2026-06-24) — indicateurs d'événements DATÉS dans une
+// cellule (jour × site) de la grille semaine : visite, réunion, échéance, livraison.
 //
-// Niveau 2 : de simples indicateurs. 3 icônes max + « +N » d'overflow, ordre de
-// priorité fixe (réunion > échéance > livraison) pour une lecture instantanée.
-// Niveau 3 : le DÉTAIL au survol (tooltip sous/au-dessus, une ligne par
-// événement). Aucun clic, aucune navigation, aucun drawer.
+// Niveau 2 : badges lisibles pour visite/réunion (type + heure Noumea depuis
+// `detail`) ; icône discrète pour action_due/delivery. 2 badges max + « +N ».
+// Niveau 3 : tooltip au survol (une ligne par événement).
 //
-// DRAG préservé : la couche passe en `pointer-events-auto` (indispensable pour
-// déclencher le survol), MAIS sans `stopPropagation` — le `pointerdown` remonte
-// donc au `<td>` parent et démarre le drag dnd-kit comme avant. (C'est l'inverse
-// du bouton d'intervention, qui lui stoppe la propagation pour NE PAS dragger.)
+// DRAG préservé : pointer-events-auto SANS stopPropagation.
 
 import { Users, CalendarClock, Package, Calendar } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import {
   Tooltip,
   TooltipContent,
@@ -22,11 +19,8 @@ import {
 } from '@/components/ui/tooltip'
 import type { WeekDayKind, WeekOperationalSignal } from '@/lib/week-operational-signals-helpers'
 
-// Ordre de priorité d'affichage (le plus « à discuter » d'abord).
 const KIND_PRIORITY: Record<string, number> = { meeting: 0, visit: 1, action_due: 2, delivery: 3 }
 
-// Convention app (règle 2026-07-12) : réunion = Users, échéance = CalendarClock
-// — les mêmes formes que sur la fiche chantier et l'agenda.
 const KIND_ICON: Partial<Record<WeekDayKind, typeof CalendarClock>> = {
   meeting: Users,
   visit: Calendar,
@@ -41,9 +35,15 @@ const KIND_NOUN: Partial<Record<WeekDayKind, string>> = {
   delivery: 'livraison',
 }
 
-const MAX_ICONS = 3
+// Visites et réunions planifiées = badges colorés lisibles (type + heure).
+// Signaux opérationnels = icône discrète (pas d'heure connue).
+const KIND_BADGE_COLOR: Partial<Record<WeekDayKind, string>> = {
+  visit: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300',
+  meeting: 'bg-sky-100 text-sky-800 dark:bg-sky-950/50 dark:text-sky-300',
+}
 
-/** Libellé a11y : « 1 réunion, 1 livraison ». */
+const MAX_SHOWN = 2
+
 function summarize(events: WeekOperationalSignal[]): string {
   const counts = new Map<string, number>()
   for (const e of events) counts.set(e.kind, (counts.get(e.kind) ?? 0) + 1)
@@ -61,7 +61,7 @@ export function CellDayEventIcons({ events }: { events: WeekOperationalSignal[] 
   const sorted = [...events].sort(
     (a, b) => (KIND_PRIORITY[a.kind] ?? 9) - (KIND_PRIORITY[b.kind] ?? 9),
   )
-  const shown = sorted.slice(0, MAX_ICONS)
+  const shown = sorted.slice(0, MAX_SHOWN)
   const extra = sorted.length - shown.length
   const summary = summarize(events)
 
@@ -70,22 +70,44 @@ export function CellDayEventIcons({ events }: { events: WeekOperationalSignal[] 
       <Tooltip>
         <TooltipTrigger
           render={
-            // pointer-events-auto pour le survol ; PAS de stopPropagation → le
-            // pointerdown remonte au <td> et le drag fonctionne toujours.
             <span
               aria-label={summary}
-              className="absolute bottom-1 right-1 flex cursor-default items-center gap-0.5 text-muted-foreground/70"
+              className="absolute bottom-1 right-0 left-0 flex cursor-default flex-col items-end gap-0.5 px-1"
             />
           }
         >
           {shown.map((e) => {
             const Icon = KIND_ICON[e.kind as WeekDayKind]
-            return Icon ? <Icon key={e.id} aria-hidden className="h-3 w-3" /> : null
+            const badgeColor = KIND_BADGE_COLOR[e.kind as WeekDayKind]
+            if (badgeColor) {
+              // Badge coloré : icône + nom + heure (si disponible dans detail).
+              return (
+                <span
+                  key={e.id}
+                  className={cn(
+                    'inline-flex w-full items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-medium leading-none',
+                    badgeColor,
+                  )}
+                >
+                  {Icon && <Icon aria-hidden className="h-2.5 w-2.5 shrink-0" />}
+                  <span className="truncate">
+                    {KIND_NOUN[e.kind as WeekDayKind] ?? e.kind}
+                    {e.detail && <span className="font-normal opacity-80"> · {e.detail}</span>}
+                  </span>
+                </span>
+              )
+            }
+            // Icône discrète pour signaux sans heure propre.
+            return Icon ? (
+              <Icon key={e.id} aria-hidden className="h-3 w-3 text-muted-foreground/70" />
+            ) : null
           })}
-          {extra > 0 && <span className="text-[9px] font-medium leading-none">+{extra}</span>}
+          {extra > 0 && (
+            <span className="text-[9px] font-medium leading-none text-muted-foreground/70">
+              +{extra}
+            </span>
+          )}
         </TooltipTrigger>
-        {/* side=top : au-dessus de la cellule, n'est pas masqué par la ligne
-            suivante de la grille. Une ligne par événement, avec son détail. */}
         <TooltipContent side="top" align="end" className="flex-col items-start gap-1 py-2 text-left">
           <span className="font-semibold">Ce jour-là</span>
           <ul className="space-y-0.5">

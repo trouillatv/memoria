@@ -301,14 +301,18 @@ export async function getWeekOperationalSignals(
     })
   }
 
-  const noumea = new Intl.DateTimeFormat('en-CA', {
+  const nomeaDay = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Pacific/Noumea', year: 'numeric', month: '2-digit', day: '2-digit',
+  })
+  const nomeaTime = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Pacific/Noumea', hour: '2-digit', minute: '2-digit',
   })
   for (const ev of (scheduledRes.data ?? []) as Array<{
     id: string; site_id: string | null; type: string | null; title: string | null; planned_start: string | null
   }>) {
     if (!ev.site_id || !ev.planned_start) continue
-    const day = noumea.format(new Date(ev.planned_start))
+    const d = new Date(ev.planned_start)
+    const day = nomeaDay.format(d)
     if (day < weekStart || day > weekEnd) continue
     const kind = ev.type === 'visit' ? 'visit' : 'meeting'
     pushDay(ev.site_id, day, {
@@ -316,7 +320,8 @@ export async function getWeekOperationalSignals(
       kind,
       day,
       label: ev.title?.trim() || (ev.type === 'visit' ? 'Visite planifiée' : 'Réunion planifiée'),
-      detail: null,
+      // detail = heure Noumea (HH:MM) — consommé par CellDayEventIcons pour le badge.
+      detail: nomeaTime.format(d),
       since: null,
     })
   }

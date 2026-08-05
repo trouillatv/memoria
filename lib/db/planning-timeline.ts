@@ -307,9 +307,15 @@ export async function getPlanningTimeline(
   // Visites et réunions prévues (status planned/postponed) — les types qui ont
   // un cycle avec compte-rendu. Les autres types (delivery, other) n'ont pas
   // vocation à apparaître dans la chronologie de planning chantier.
+  //
+  // NOTE : on passe `from`/`to` (bornes Noumea T00:00+11:00…T23:59+11:00) et
+  // NON `range.from`/`range.to` (dates nues). PostgreSQL caste une date nue en
+  // midnight UTC : un événement à 03:00 UTC le dernier jour de la semaine serait
+  // exclu par `.lte('planned_start', '2026-08-09')` → `T00:00Z`, alors qu'il
+  // est bien dans la fenêtre Noumea (14:00 Pacific/Noumea).
   const scheduledLists = await Promise.all(
     siteIds.map((siteId) =>
-      listScheduledEvents(siteId, { from: range.from, to: range.to }).catch(() => [])
+      listScheduledEvents(siteId, { from, to }).catch(() => [])
     )
   )
   for (const events of scheduledLists) {

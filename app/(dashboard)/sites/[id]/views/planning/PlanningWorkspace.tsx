@@ -78,8 +78,10 @@ export function PlanningWorkspace({
     return date >= week[0].iso && date <= week[6].iso
   })
   // Les VRAIS événements de la semaine, quels qu'ils soient.
+  // eventDay() convertit en date Noumea : un timestamp 2026-08-07T22:00Z est le
+  // samedi 8 août en Noumea, pas le vendredi 7. slice(0,10) donnerait « 7 ».
   const inWeek = (timeline ?? []).filter((e) => {
-    const day = e.start.slice(0, 10)
+    const day = eventDay(e.start)
     return day >= week[0].iso && day <= week[6].iso
   })
   const visitesThisWeek = inWeek.filter((e) => e.type === 'visite')
@@ -200,7 +202,7 @@ export function PlanningWorkspace({
                 // base ne contient aucune ligne, sur aucune organisation. Elle
                 // était donc vide par construction, la semaine où une visite a eu
                 // lieu. Elle montre désormais tout ce qui est daté.
-                const dayEvents = inWeek.filter((e) => e.start.slice(0, 10) === day.iso)
+                const dayEvents = inWeek.filter((e) => eventDay(e.start) === day.iso)
                 return (
                   <div
                     key={day.iso}
@@ -361,6 +363,17 @@ export function PlanningWorkspace({
 }
 
 const historyDateFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long', year: 'numeric' })
+
+// Extrait la date Noumea d'un `start` qui peut être une date nue (yyyy-mm-dd) ou
+// un timestamptz. `slice(0,10)` donne la date UTC : 2026-08-07T22:00Z → « 7 »
+// alors qu'en Noumea (UTC+11) c'est le 8. On convertit explicitement.
+const nomeaDayFmt = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Pacific/Noumea', year: 'numeric', month: '2-digit', day: '2-digit',
+})
+function eventDay(start: string): string {
+  if (start.length <= 10) return start
+  return nomeaDayFmt.format(new Date(start))
+}
 
 /** Historique des échéances (repliable) : réalisées / annulées / remplacées.
  *  Chaque ligne raconte ce qui s'est passé, avec l'acteur et la raison. */
