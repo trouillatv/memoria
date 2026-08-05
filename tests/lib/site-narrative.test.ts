@@ -35,7 +35,7 @@ function reserve(over: Partial<SiteReserve> = {}): SiteReserve {
   return {
     id: 'r', siteId: 's', label: 'Porte CF', location: null, issuedBy: null,
     issuedOn: '2026-03-19', status: 'open', photoBeforePath: null, photoAfterPath: null,
-    liftedAt: null, liftNote: null, createdAt: '2026-03-19T00:00:00Z', ...over,
+    liftedAt: null, liftNote: null, createdAt: '2026-03-19T00:00:00Z', reportId: null, ...over,
   }
 }
 

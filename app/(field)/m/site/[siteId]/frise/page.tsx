@@ -101,7 +101,7 @@ export default async function SiteFriseMobilePage({
                     <span className="min-w-0 truncate">{site.name}</span>
                   </p>
                   <p className="mt-1 font-medium">
-                    {frDayMonthLocal(entry.at)} — {entry.isFirst ? 'Première visite' : 'Visite terrain'}
+                    {frDayMonthLocal(entry.at)} — {entry.isFirst ? 'Première visite' : entry.isImport ? 'Visite historique' : 'Visite terrain'}
                   </p>
                   {/* Le geste terrain : la preuve que quelqu'un y est allé. */}
                   <p className="mt-0.5 text-[12px] text-muted-foreground">
@@ -223,6 +223,7 @@ function producedLines(p: {
   knowledge: number
   decisions: number
   watchpoints: number
+  reserves: number
 }): Array<{ key: string; Icon: typeof Users; cls: string; text: string }> {
   const s = (n: number) => (n > 1 ? 's' : '')
   const out: Array<{ key: string; Icon: typeof Users; cls: string; text: string }> = []
@@ -230,6 +231,8 @@ function producedLines(p: {
     out.push({ key: 'a', Icon: CheckSquare, cls: 'text-emerald-600', text: `${p.actions} action${s(p.actions)} à réaliser` })
   if (p.deadlines > 0)
     out.push({ key: 'd', Icon: CalendarClock, cls: 'text-sky-600', text: `${p.deadlines} échéance${s(p.deadlines)} à tenir` })
+  if (p.reserves > 0)
+    out.push({ key: 'r', Icon: ClipboardList, cls: 'text-rose-600', text: `${p.reserves} réserve${s(p.reserves)}` })
   if (p.watchpoints > 0)
     out.push({ key: 'w', Icon: AlertTriangle, cls: 'text-amber-600', text: `${p.watchpoints} point${s(p.watchpoints)} de vigilance` })
   if (p.stakeholders > 0)

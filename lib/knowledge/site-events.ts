@@ -45,6 +45,8 @@ export interface HistoryVisit {
    *  Calculé sur toute l'histoire du site, jamais sur la fenêtre affichée : la
    *  première visite des 90 derniers jours n'est pas la première visite. */
   isFirst: boolean
+  /** Vrai pour les PV historiques (origin='import') : label et comportement différents. */
+  isImport: boolean
   /** Le geste terrain : durée réelle et captures. « 38 min · 4 photos · 2 mémos »
    *  dit que quelqu'un y est allé — ce qu'aucun compte de propositions ne dit. */
   durationMin: number | null
@@ -57,6 +59,7 @@ export interface HistoryVisit {
     knowledge: number
     decisions: number
     watchpoints: number
+    reserves: number
   }
 }
 
@@ -265,12 +268,17 @@ export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promi
     const proposalEvents = list.filter((r) => r.kind === 'proposal_created')
     const cap = captures.get(reportId)
     const mat = materializedByReport.get(reportId)
+    // Pour les imports, ended_at = date de matérialisation (pas la date métier).
+    // On positionne la carte à started_at = date réelle du PV.
+    const isImport = reportOrigins.get(reportId) === 'import'
+    const displayAt = isImport && visit.started_at ? visit.started_at : visit.at
     entries.push({
       kind: 'visit',
       id: `visit-${reportId}`,
-      at: visit.at,
+      at: displayAt,
       reportId,
       isFirst: reportId === firstReportId,
+      isImport,
       durationMin: durationMin(visit.started_at ?? null, visit.at),
       photos: cap?.photos ?? 0,
       vocals: cap?.vocals ?? 0,
@@ -282,6 +290,7 @@ export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promi
             knowledge: mat.knowledge,
             decisions: mat.decisions,
             watchpoints: mat.watchpoints,
+            reserves: mat.reserves,
           }
         : {
             actions: proposalEvents.filter((r) => r.proposal_kind === 'action').length,
@@ -290,6 +299,7 @@ export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promi
             knowledge: proposalEvents.filter((r) => r.proposal_kind === 'knowledge').length,
             decisions: proposalEvents.filter((r) => r.proposal_kind === 'decision').length,
             watchpoints: proposalEvents.filter((r) => r.proposal_kind === 'vigilance').length,
+            reserves: 0,
           },
     })
   }

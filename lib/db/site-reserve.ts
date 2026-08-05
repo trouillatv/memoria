@@ -26,6 +26,8 @@ export interface SiteReserve {
   liftedAt: string | null // ISO
   liftNote: string | null
   createdAt: string // ISO
+  /** Lien vers le site_report source (PV historique). Null pour les réserves manuelles. */
+  reportId: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -73,6 +75,7 @@ type ReserveRow = {
   lifted_at: string | null
   lift_note: string | null
   created_at: string
+  report_id: string | null
 }
 
 function mapRow(r: ReserveRow): SiteReserve {
@@ -89,6 +92,7 @@ function mapRow(r: ReserveRow): SiteReserve {
     liftedAt: r.lifted_at ?? null,
     liftNote: r.lift_note ?? null,
     createdAt: r.created_at,
+    reportId: r.report_id ?? null,
   }
 }
 
@@ -108,7 +112,7 @@ export async function getSiteReserves(siteId: string): Promise<SiteReserve[]> {
   const { data, error } = await sb
     .from('site_reserve')
     .select(
-      'id, site_id, label, location, issued_by, issued_on, status, photo_before_path, photo_after_path, lifted_at, lift_note, created_at',
+      'id, site_id, label, location, issued_by, issued_on, status, photo_before_path, photo_after_path, lifted_at, lift_note, created_at, report_id',
     )
     .eq('site_id', siteId)
     // Ouvertes d'abord, puis par date d'émission la plus récente.

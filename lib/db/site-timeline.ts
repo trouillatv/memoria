@@ -98,6 +98,9 @@ async function buildSiteTimelineInner(siteId: string, limit: number): Promise<Ti
   for (const r of (repsRes.data ?? []) as Array<{ id: string; title: string | null; origin: string | null; visit_motive: string | null; started_at: string | null; ended_at: string | null; created_at: string }>) {
     const at = r.ended_at ?? r.started_at ?? r.created_at
     if (r.origin) {
+      // Les visites historiques (origin='import') sont déjà représentées dans la
+      // section knowledge (getSiteHistory). Les dupliquer ici crée un doublon sémantique.
+      if (r.origin === 'import') continue
       // La frise raconte une HISTOIRE : la visite porte son intention (Première
       // visite / Prévisite AO / Suivi) plutôt qu'un générique « Visite ».
       events.push({
@@ -147,16 +150,22 @@ async function buildSiteTimelineInner(siteId: string, limit: number): Promise<Ti
   }
 
   // Réserves — ouverture + levée = deux jalons.
+  // Exception : l'ouverture d'une réserve issue d'un PV historique (reportId != null)
+  // est déjà absorbée dans le chapitre visite (section knowledge). Seule la levée
+  // ultérieure mérite son propre événement (il s'est passé quelque chose après).
   for (const r of reserves) {
-    const openIso = r.issuedOn ? `${r.issuedOn}T12:00:00Z` : r.createdAt
-    events.push({
-      at: openIso,
-      dateLabel: frDate(openIso),
-      kind: 'reserve_open',
-      title: `Réserve : ${r.label}`,
-      detail: r.location,
-      href: null,
-    })
+    if (!r.reportId) {
+      // Réserve manuelle : l'ouverture est un événement à part entière.
+      const openIso = r.issuedOn ? `${r.issuedOn}T12:00:00Z` : r.createdAt
+      events.push({
+        at: openIso,
+        dateLabel: frDate(openIso),
+        kind: 'reserve_open',
+        title: `Réserve : ${r.label}`,
+        detail: r.location,
+        href: null,
+      })
+    }
     if (r.status === 'lifted' && r.liftedAt) {
       events.push({
         at: r.liftedAt,

@@ -463,6 +463,7 @@ export interface MaterializedCounts {
   decisions: number
   deadlines: number
   stakeholders: number
+  reserves: number
 }
 
 /**
@@ -473,16 +474,17 @@ export interface MaterializedCounts {
 export async function readMaterializedCountsByReport(reportIds: string[]): Promise<Map<string, MaterializedCounts>> {
   if (!reportIds.length) return new Map()
   const db = createAdminClient()
-  const zero = (): MaterializedCounts => ({ actions: 0, watchpoints: 0, knowledge: 0, decisions: 0, deadlines: 0, stakeholders: 0 })
+  const zero = (): MaterializedCounts => ({ actions: 0, watchpoints: 0, knowledge: 0, decisions: 0, deadlines: 0, stakeholders: 0, reserves: 0 })
   const result = new Map<string, MaterializedCounts>()
   for (const id of reportIds) result.set(id, zero())
 
-  const [actionsRes, watchpointsRes, knowledgeRes, decisionsRes, deadlinesRes] = await Promise.all([
+  const [actionsRes, watchpointsRes, knowledgeRes, decisionsRes, deadlinesRes, reservesRes] = await Promise.all([
     db.from('site_actions').select('report_id').in('report_id', reportIds).neq('status', 'rejected'),
     db.from('site_watchpoints').select('report_id').in('report_id', reportIds).is('deleted_at', null),
     db.from('site_knowledge_entries').select('source_report_id').in('source_report_id', reportIds).is('deleted_at', null),
     db.from('site_decisions').select('report_id').in('report_id', reportIds),
     db.from('site_deadlines').select('report_id').in('report_id', reportIds).neq('status', 'cancelled'),
+    db.from('site_reserve').select('report_id').in('report_id', reportIds),
   ])
 
   for (const r of (actionsRes.data ?? []) as Array<{ report_id: string | null }>) {
@@ -499,6 +501,9 @@ export async function readMaterializedCountsByReport(reportIds: string[]): Promi
   }
   for (const r of (deadlinesRes.data ?? []) as Array<{ report_id: string | null }>) {
     const e = r.report_id && result.get(r.report_id); if (e) e.deadlines++
+  }
+  for (const r of (reservesRes.data ?? []) as Array<{ report_id: string | null }>) {
+    const e = r.report_id && result.get(r.report_id); if (e) e.reserves++
   }
 
   return result
