@@ -32,7 +32,7 @@ import { listSiteConcernedCompanies } from '@/lib/db/site-intervenants'
 // Le chantier est à Nouméa, le serveur tourne en UTC. Toute date de visite
 // rendue sans fuseau recule d'un jour dès que la visite a commencé avant 11 h
 // locale — c'est-à-dire presque toujours. Cf. `lib/time/local-date.ts`.
-import { NOUMEA_TZ, localDateOf, todayLocalIso, yesterdayLocalIso } from '@/lib/time/local-date'
+import { NOUMEA_TZ, localDateOf, todayLocalIso, tomorrowLocalIso, yesterdayLocalIso } from '@/lib/time/local-date'
 import type {
   DbSiteReport,
   VisitMotive,
@@ -897,7 +897,10 @@ function relativeDayLabel(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
   const jour = localDateOf(d)
-  if (jour >= todayLocalIso()) return "Aujourd'hui"
+  // Comparaison exacte (===) — >= capturait toutes les dates futures comme "Aujourd'hui",
+  // ce qui était inoffensif pour les visites passées mais brise les visites planifiées.
+  if (jour === todayLocalIso())     return "Aujourd'hui"
+  if (jour === tomorrowLocalIso())  return 'Demain'
   if (jour === yesterdayLocalIso()) return 'Hier'
   return d.toLocaleDateString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'short' })
 }
