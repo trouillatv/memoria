@@ -37,6 +37,8 @@ import { groupViewpointChains } from '@/lib/visits/viewpoints'
 import { listWatchlist } from '@/lib/db/visit-watchlist'
 import { getSiteNextSteps } from '@/lib/db/site-next-steps'
 import { NextStepCard } from './NextStepCard'
+import { buildVisitBrief } from '@/lib/db/site-visit-brief'
+import { VisitBriefCard } from './VisitBriefCard'
 import { VisitKnowledgeCard } from './VisitKnowledgeCard'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
@@ -193,8 +195,9 @@ export default async function FieldSitePage({
   let sinceLastVisit: Awaited<ReturnType<typeof buildSinceLastVisitSummary>> = null
   let memorySnapshot: Awaited<ReturnType<typeof getSiteMemorySnapshot>> | null = null
   let nextSteps: Awaited<ReturnType<typeof getSiteNextSteps>> = []
+  let visitBrief: Awaited<ReturnType<typeof buildVisitBrief>> = null
   if (!activeVisit) {
-    const [status, id, reservesRaw, activity, since, snapshot, steps] = await Promise.all([
+    const [status, id, reservesRaw, activity, since, snapshot, steps, brief] = await Promise.all([
       buildSiteStatusSummary(siteId).catch(() => []),
       getSiteIdentity(siteId).catch(() => null),
       getSiteReserves(siteId).catch(() => []),
@@ -202,6 +205,7 @@ export default async function FieldSitePage({
       buildSinceLastVisitSummary(siteId, user.id).catch(() => null),
       getSiteMemorySnapshot(siteId).catch(() => null),
       getSiteNextSteps(siteId).catch(() => []),
+      buildVisitBrief(siteId).catch(() => null),
     ])
     siteStatus = status
     identity = id
@@ -212,6 +216,7 @@ export default async function FieldSitePage({
     sinceLastVisit = since
     memorySnapshot = snapshot
     nextSteps = steps
+    visitBrief = brief
   }
   // Connaissance du chantier : le MÊME read model que la fiche desktop (`SiteOverview`).
   // Une action proposée doit apparaître à l'identique sur les deux surfaces — c'est le
@@ -443,6 +448,11 @@ export default async function FieldSitePage({
 
           {/* 2 — Depuis votre dernière visite : ce qui a bougé (déterministe). */}
           {sinceLastVisit && <SinceLastVisitCard summary={sinceLastVisit} siteId={siteId} />}
+
+          {/* 2bis — Si vous revenez aujourd'hui : les éléments ouverts qui
+              justifient une attention immédiate. Actions en retard → réserves
+              vieillissantes → échéances imminentes. 4 max + overflow. */}
+          {visitBrief && <VisitBriefCard brief={visitBrief} />}
 
           {/* 3 — Que reste-t-il à faire : les actions ouvertes / en retard. */}
           <SiteTodoCard actions={openActions} reserves={openReserves} todayIso={todayIso} totalActions={openActions.length} siteId={siteId} />
