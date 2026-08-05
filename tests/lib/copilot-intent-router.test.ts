@@ -182,6 +182,38 @@ describe('SCHEDULE_VISIT — signals collectés', () => {
   })
 })
 
+describe('SCHEDULE_VISIT — création sans temporalité (hasCreateVisit)', () => {
+  const cases = [
+    'crée une visite',
+    'crée-moi une visite',
+    'créer une visite',
+    'nouvelle visite',
+    'une nouvelle visite',
+    'crée une visite demain',
+    'crée une visite jeudi à 9h',
+  ]
+  for (const q of cases) {
+    it(`"${q}" → SCHEDULE_VISIT`, () => {
+      expect(intent(q)).toBe('SCHEDULE_VISIT')
+    })
+  }
+})
+
+describe('SCHEDULE_VISIT — non-régression lancement opérationnel', () => {
+  it('"démarre une visite" → NOT SCHEDULE_VISIT', () => {
+    expect(intent('démarre une visite')).not.toBe('SCHEDULE_VISIT')
+  })
+  it('"commence une visite" → NOT SCHEDULE_VISIT', () => {
+    expect(intent('commence une visite')).not.toBe('SCHEDULE_VISIT')
+  })
+  it('"je commence ma visite" → NOT SCHEDULE_VISIT', () => {
+    expect(intent('je commence ma visite')).not.toBe('SCHEDULE_VISIT')
+  })
+  it('"lance la visite" → NOT SCHEDULE_VISIT', () => {
+    expect(intent('lance la visite')).not.toBe('SCHEDULE_VISIT')
+  })
+})
+
 // ── SCHEDULE_MEETING ──────────────────────────────────────────────────────────
 
 describe('SCHEDULE_MEETING — familles de verbes', () => {

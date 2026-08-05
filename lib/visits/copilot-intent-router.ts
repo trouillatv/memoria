@@ -73,6 +73,11 @@ const DATETIME_RE = /\b(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|de
 // prevois = 2ème personne impératif ("Prévois une visite") — exclut prevoit (3ème pers., descriptif)
 const SCHEDULE_VERB_RE = /\b(?:planifi|programm|organis|prevois|inscri|marqu|convoque)\w*\b/
 
+// Verbes de création générique (cree/creer) ou déterminant de nouveauté (nouveau/nouvelle).
+// Utilisé UNIQUEMENT en combinaison avec hasVisit pour SCHEDULE_VISIT sans temporalité.
+// N'inclut pas "démarrer/commencer" (lancement opérationnel, pas planification).
+const CREATE_VISIT_RE = /\bcree\w*\b|\bnouve(?:aux?|ll?e[sx]?)\b/
+
 // Verbes d'écriture forts — intention de commande claire
 // "faut" seul (il faut) est un signal fort ; "faudrait" (conditionnel) est faible.
 // note\w* : impératif "note" et infinitif "noter" (noter\w* ne capturait pas l'impératif).
@@ -97,10 +102,11 @@ export function detectIntent(question: string): IntentResult {
   const hasAction      = ACTION_RE.test(q)
   const hasDatetime    = DATETIME_RE.test(q)
   const hasSchedVerb   = SCHEDULE_VERB_RE.test(q)
-  const hasStrongWrite = STRONG_WRITE_RE.test(q)
-  const hasWeakWrite   = WEAK_WRITE_RE.test(q)
-  const hasUnsupported = UNSUPPORTED_RE.test(q)
-  const isWrite        = hasStrongWrite || hasSchedVerb
+  const hasStrongWrite  = STRONG_WRITE_RE.test(q)
+  const hasWeakWrite    = WEAK_WRITE_RE.test(q)
+  const hasUnsupported  = UNSUPPORTED_RE.test(q)
+  const hasCreateVisit  = hasVisit && CREATE_VISIT_RE.test(q)
+  const isWrite         = hasStrongWrite || hasSchedVerb
 
   if (isRead)                            signals.push('read_signal')
   if (hasNextVisit)                      signals.push('next_visit')
@@ -109,6 +115,7 @@ export function detectIntent(question: string): IntentResult {
   if (hasAction)                         signals.push('action')
   if (hasDatetime)                       signals.push('future_datetime')
   if (hasSchedVerb)                      signals.push('schedule_verb')
+  if (hasCreateVisit)                    signals.push('create_visit')
   if (hasStrongWrite && !hasSchedVerb)   signals.push('write_verb')
   if (hasWeakWrite)                      signals.push('implicit_write')
   if (hasUnsupported)                    signals.push('unsupported_object')
@@ -132,8 +139,10 @@ export function detectIntent(question: string): IntentResult {
   }
 
   // ── Priorité 2 : SCHEDULE_VISIT ──────────────────────────────────────────
-  // "visite" + verbe de planification ou temporalité, sans "prochaine visite", sans "action".
-  if (hasVisit && !hasNextVisit && !hasAction && (hasSchedVerb || hasDatetime)) {
+  // "visite" + verbe de planification OU temporalité OU verbe de création.
+  // hasCreateVisit ("crée/nouvelle") = planification implicite sans date → ambiguous.
+  // "démarrer/commencer" ≠ hasCreateVisit : lancement opérationnel, non couvert ici.
+  if (hasVisit && !hasNextVisit && !hasAction && (hasSchedVerb || hasDatetime || hasCreateVisit)) {
     const confidence: IntentConfidence = hasSchedVerb ? 'strong' : 'ambiguous'
     return { intent: 'SCHEDULE_VISIT', confidence, signals }
   }
