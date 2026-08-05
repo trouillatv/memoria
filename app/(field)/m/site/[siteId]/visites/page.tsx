@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, ChevronRight, Footprints } from 'lucide-react'
+import { ArrowLeft, CalendarClock, ChevronRight, Footprints } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteVisitsForMobile } from '@/lib/db/visits'
@@ -62,31 +62,49 @@ export default async function SiteVisitsMobilePage({
               v.photos > 0 ? `${v.photos} photo${v.photos > 1 ? 's' : ''}` : null,
               v.observations > 0 ? `${v.observations} observation${v.observations > 1 ? 's' : ''}` : null,
             ].filter(Boolean)
-            return (
-              <li key={v.id}>
-                <Link href={v.href} className="flex items-start gap-3 rounded-xl border bg-muted/30 px-3.5 py-3 shadow-sm active:brightness-95">
-                  <Footprints className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2">
-                      <span className="text-[12px] font-medium text-muted-foreground first-letter:uppercase">{v.dateLabel}</span>
-                      {v.inProgress && (
-                        <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
-                          En cours
-                        </span>
-                      )}
-                    </span>
-                    <span className="mt-0.5 flex items-center gap-1.5">
-                      <span className="truncate text-sm font-medium">{v.objective ?? v.typeLabel}</span>
-                      {v.isPrevisite && (
-                        <span className="shrink-0 rounded bg-violet-100 px-1 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">AO</span>
-                      )}
-                    </span>
-                    {meta.length > 0 && (
-                      <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">{meta.join(' · ')}</span>
+            const inner = (
+              <>
+                {v.isPlanned
+                  ? <CalendarClock className="mt-0.5 h-5 w-5 shrink-0 text-violet-500" />
+                  : <Footprints className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />}
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    <span className="text-[12px] font-medium text-muted-foreground first-letter:uppercase">{v.dateLabel}</span>
+                    {v.isPlanned && (
+                      <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-950/20 dark:text-violet-300">
+                        Planifiée
+                      </span>
+                    )}
+                    {v.inProgress && !v.isPlanned && (
+                      <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                        En cours
+                      </span>
                     )}
                   </span>
-                  <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                </Link>
+                  <span className="mt-0.5 flex items-center gap-1.5">
+                    <span className="truncate text-sm font-medium">{v.objective ?? v.typeLabel}</span>
+                    {v.isPrevisite && (
+                      <span className="shrink-0 rounded bg-violet-100 px-1 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">AO</span>
+                    )}
+                  </span>
+                  {meta.length > 0 && (
+                    <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">{meta.join(' · ')}</span>
+                  )}
+                </span>
+                {!v.isPlanned && <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
+              </>
+            )
+            return (
+              <li key={v.id}>
+                {v.isPlanned ? (
+                  <div className="flex items-start gap-3 rounded-xl border bg-muted/30 px-3.5 py-3 shadow-sm opacity-90">
+                    {inner}
+                  </div>
+                ) : (
+                  <Link href={v.href} className="flex items-start gap-3 rounded-xl border bg-muted/30 px-3.5 py-3 shadow-sm active:brightness-95">
+                    {inner}
+                  </Link>
+                )}
               </li>
             )
           })}

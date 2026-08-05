@@ -197,6 +197,8 @@ export async function createCopilotScheduledEvent(
 
   const plannedStart = toNomeaTimestamp(scheduledDate, scheduledTime)
 
+  console.log('[ScheduleVisit] SCHEDULE_VISIT_CONFIRM_START', { siteId, type, scheduledDate, scheduledTime, title: title.trim() })
+
   const { data, error } = await admin
     .from('site_scheduled_events')
     .insert({
@@ -214,9 +216,15 @@ export async function createCopilotScheduledEvent(
     .select('id')
     .single()
 
-  if (error || !data) return { ok: false, error: 'Impossible de créer cet événement.' }
+  if (error || !data) {
+    console.error('[ScheduleVisit] SCHEDULE_VISIT_CONFIRM_ERROR', { code: error?.code, message: error?.message, details: error?.details, hint: error?.hint })
+    return { ok: false, error: 'Impossible de créer cet événement.' }
+  }
 
+  const eventId = (data as { id: string }).id
+  console.log('[ScheduleVisit] SCHEDULE_VISIT_DB_CREATED', { eventId, siteId, plannedStart })
   invalidateSiteProjection(siteId)
   if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
-  return { ok: true, eventId: (data as { id: string }).id }
+  console.log('[ScheduleVisit] SCHEDULE_VISIT_CONFIRM_SUCCESS', { eventId })
+  return { ok: true, eventId }
 }

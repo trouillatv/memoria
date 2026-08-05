@@ -29,7 +29,7 @@ export function invalidateSiteProjection(siteId: string): void {
   // `revalidatePath` est EXACT : `/m/site/x` ne couvre pas `/m/site/x/patrimoine`.
   // La Mémoire du terrain manquait à cette liste — c'est pourquoi son écran
   // rattrapait lui-même, ce que la doctrine ci-dessus interdit.
-  for (const path of ['/m', '/m/actions', '/m/planning', `/m/site/${siteId}`, `/m/site/${siteId}/patrimoine`, '/dashboard', `/sites/${siteId}`, `/sites/${siteId}/actions`]) {
+  for (const path of ['/m', '/m/actions', '/m/planning', `/m/site/${siteId}`, `/m/site/${siteId}/patrimoine`, `/m/site/${siteId}/visites`, '/dashboard', `/sites/${siteId}`, `/sites/${siteId}/actions`]) {
     try { revalidatePath(path) } catch { /* hors requête */ }
   }
 }

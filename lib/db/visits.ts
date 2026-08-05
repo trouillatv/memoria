@@ -1070,44 +1070,81 @@ export interface SiteVisitListItem {
   photos: number
   observations: number
   inProgress: boolean
+  isPlanned?: boolean
   href: string
 }
 
 export async function listSiteVisitsForMobile(siteId: string, limit = 50): Promise<SiteVisitListItem[]> {
   const supabase = createAdminClient()
-  const { data: rows } = await supabase
-    .from('site_reports')
-    .select('id, origin, visit_motive, objective, started_at, ended_at, created_at, created_by')
-    .eq('site_id', siteId)
-    .not('origin', 'is', null)
-    .is('deleted_at', null)
-    .order('started_at', { ascending: false, nullsFirst: false })
-    .limit(limit)
+
+  const [{ data: rows }, { data: plannedRows }] = await Promise.all([
+    supabase
+      .from('site_reports')
+      .select('id, origin, visit_motive, objective, started_at, ended_at, created_at, created_by')
+      .eq('site_id', siteId)
+      .not('origin', 'is', null)
+      .is('deleted_at', null)
+      .order('started_at', { ascending: false, nullsFirst: false })
+      .limit(limit),
+    supabase
+      .from('site_scheduled_events')
+      .select('id, planned_start, title, created_by')
+      .eq('site_id', siteId)
+      .eq('type', 'visit')
+      .eq('status', 'planned')
+      .order('planned_start', { ascending: true }),
+  ])
+
   const reps = (rows ?? []) as Array<{ id: string; origin: string | null; visit_motive: string | null; objective: string | null; started_at: string | null; ended_at: string | null; created_at: string; created_by: string | null }>
-  if (reps.length === 0) return []
+  const planned = (plannedRows ?? []) as Array<{ id: string; planned_start: string | null; title: string | null; created_by: string | null }>
+
+  if (reps.length === 0 && planned.length === 0) return []
 
   // Contexte AO du chantier : si son dossier est en phase prospect/AO, ses visites
   // sont des « pré-visites AO ». Aucune donnée nouvelle — on lit la phase du dossier.
   const aoContext = await isSiteInAoPhase(siteId)
 
-  const authorById = await resolveAuthorNames(reps.map((r) => r.created_by))
+  const authorById = await resolveAuthorNames([
+    ...reps.map((r) => r.created_by),
+    ...planned.map((p) => p.created_by),
+  ])
 
   // Photos + observations capturées pendant la visite (visit_capture par report) —
   // pour que la ligne RACONTE ce qui s'est passé, pas juste une date.
   const countsByReport = new Map<string, { photos: number; observations: number }>()
-  await Promise.all(
-    reps.map(async (r) => {
-      const [photosRes, obsRes] = await Promise.all([
-        supabase.from('visit_capture').select('id', { count: 'exact', head: true })
-          .eq('report_id', r.id).eq('kind', 'photo').is('hidden_at', null),
-        supabase.from('visit_capture').select('id', { count: 'exact', head: true })
-          .eq('report_id', r.id).in('kind', ['note', 'vocal', 'verification']).is('hidden_at', null),
-      ])
-      countsByReport.set(r.id, { photos: photosRes.count ?? 0, observations: obsRes.count ?? 0 })
-    }),
-  )
+  if (reps.length > 0) {
+    await Promise.all(
+      reps.map(async (r) => {
+        const [photosRes, obsRes] = await Promise.all([
+          supabase.from('visit_capture').select('id', { count: 'exact', head: true })
+            .eq('report_id', r.id).eq('kind', 'photo').is('hidden_at', null),
+          supabase.from('visit_capture').select('id', { count: 'exact', head: true })
+            .eq('report_id', r.id).in('kind', ['note', 'vocal', 'verification']).is('hidden_at', null),
+        ])
+        countsByReport.set(r.id, { photos: photosRes.count ?? 0, observations: obsRes.count ?? 0 })
+      }),
+    )
+  }
 
-  return reps.map((r) => {
+  const plannedItems: SiteVisitListItem[] = planned.map((p) => {
+    const at = p.planned_start ?? new Date().toISOString()
+    return {
+      id: p.id,
+      at,
+      dateLabel: relativeDayLabel(at),
+      typeLabel: 'Visite planifiée',
+      isPrevisite: false,
+      objective: p.title?.trim() || null,
+      authorName: p.created_by ? authorById.get(p.created_by) ?? null : null,
+      photos: 0,
+      observations: 0,
+      inProgress: false,
+      isPlanned: true,
+      href: `/m/site/${siteId}`,
+    }
+  })
+
+  const historicalItems = reps.map((r) => {
     const at = r.started_at ?? r.created_at
     const c = countsByReport.get(r.id) ?? { photos: 0, observations: 0 }
     return {
@@ -1126,6 +1163,9 @@ export async function listSiteVisitsForMobile(siteId: string, limit = 50): Promi
       href: `/m/visite/${r.id}/recap`,
     }
   })
+
+  // Visites planifiées en tête (les plus proches d'abord), puis visites passées (les plus récentes d'abord)
+  return [...plannedItems, ...historicalItems]
 }
 
 /** Le chantier est-il en contexte AO (dossier en phase prospect/en_ao) ? Sert à

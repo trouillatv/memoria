@@ -269,12 +269,38 @@ export function ScheduleProposalCard({
         </div>
         <div>
           <label className="block text-[11px] text-muted-foreground mb-0.5">Heure (Nouméa)</label>
-          <input
-            type="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
-          />
+          <div className="flex items-center gap-1">
+            <select
+              value={time ? time.slice(0, 2) : ''}
+              onChange={(e) => {
+                const h = e.target.value
+                const m = time ? time.slice(3, 5) : '00'
+                setTime(h ? `${h}:${m}` : '')
+              }}
+              className="flex-1 rounded-lg border border-border bg-background px-1.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+            >
+              <option value="">--</option>
+              {Array.from({ length: 24 }, (_, i) => {
+                const h = String(i).padStart(2, '0')
+                return <option key={h} value={h}>{h}</option>
+              })}
+            </select>
+            <span className="text-[13px] font-medium text-muted-foreground">h</span>
+            <select
+              value={time ? time.slice(3, 5) : ''}
+              onChange={(e) => {
+                const m = e.target.value
+                const h = time ? time.slice(0, 2) : ''
+                if (h && m) setTime(`${h}:${m}`)
+              }}
+              className="w-14 rounded-lg border border-border bg-background px-1.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+            >
+              <option value="">--</option>
+              {['00', '15', '30', '45'].map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
