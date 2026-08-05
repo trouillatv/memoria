@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, type FormEvent } from 'react'
 import Link from 'next/link'
-import { Sparkles, Loader2, ExternalLink, SendHorizontal } from 'lucide-react'
+import { Sparkles, Loader2, ExternalLink, SendHorizontal, RotateCcw, Check } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import {
   askCopilotFreeAction,
@@ -11,6 +11,7 @@ import {
 } from '@/app/(dashboard)/sites/[id]/copilot-free-action'
 import { askCopilotAction, type CopilotActionResult } from '@/app/(dashboard)/sites/[id]/copilot-action'
 import type { CopilotIntent } from '@/lib/visits/copilot-context'
+import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,7 @@ export function CopilotMobileSheet({ siteId }: { siteId: string }) {
   const [inputText, setInputText]            = useState('')
   const [loading, setLoading]                = useState(false)
   const [resolvedSubjectIds, setResolvedIds] = useState<string[]>([])
+  const [voiceText, setVoiceText]            = useState<string | null>(null)
   const bottomRef                            = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -51,6 +53,7 @@ export function CopilotMobileSheet({ siteId }: { siteId: string }) {
       setMessages([])
       setInputText('')
       setResolvedIds([])
+      setVoiceText(null)
     }
   }
 
@@ -262,6 +265,33 @@ export function CopilotMobileSheet({ siteId }: { siteId: string }) {
             </div>
           )}
 
+          {/* Review vocale — au-dessus de la saisie quand une transcription attend confirmation */}
+          {voiceText !== null && (
+            <div className="flex-none rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50/60 dark:bg-violet-950/20 px-3 py-3 mb-2">
+              <p className="text-[11px] text-violet-500 dark:text-violet-400 mb-1">J'ai entendu :</p>
+              <p className="text-[14px] text-violet-900 dark:text-violet-100 mb-3 leading-snug">{voiceText}</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setVoiceText(null)}
+                  className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-[13px] text-muted-foreground hover:bg-muted"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Recommencer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { send(voiceText); setVoiceText(null) }}
+                  disabled={loading}
+                  className="flex items-center gap-1.5 rounded-lg bg-violet-500 px-3 py-2 text-[13px] font-medium text-white hover:bg-violet-600 disabled:opacity-50"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  Envoyer
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Input fixe en bas */}
           <form onSubmit={onSubmit} className="flex-none flex items-center gap-2 pt-2 border-t border-foreground/[0.06]">
             <input
@@ -271,6 +301,11 @@ export function CopilotMobileSheet({ siteId }: { siteId: string }) {
               placeholder="Posez une question…"
               disabled={loading}
               className="flex-1 rounded-full border border-border bg-background px-4 py-2.5 text-[14px] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-violet-400/40 disabled:opacity-50"
+            />
+            <VoiceCopilotTrigger
+              siteId={siteId}
+              onTranscriptionReady={setVoiceText}
+              disabled={loading || voiceText !== null}
             />
             <button
               type="submit"

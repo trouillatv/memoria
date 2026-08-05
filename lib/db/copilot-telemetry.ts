@@ -68,6 +68,15 @@ export interface CopilotInteractionInput {
   proposalKind?: 'action' | 'visit_item' | 'schedule_visit' | 'schedule_meeting' | null
   proposalId?: string | null
   proposalStatus?: 'none' | 'shown'
+
+  // Copilote vocal (mig 296)
+  voiceUsed?: boolean
+  audioDurationMs?: number | null
+  transcriptionLatencyMs?: number | null
+  transcriptionModel?: string | null
+  transcriptionTokensAudio?: number | null
+  transcriptionTokensOutput?: number | null
+  transcriptionError?: string | null
 }
 
 /**
@@ -111,6 +120,13 @@ export async function logCopilotInteraction(
         proposal_kind:         input.proposalKind ?? null,
         proposal_id:           input.proposalId ?? null,
         proposal_status:       input.proposalStatus ?? 'none',
+        voice_used:                   input.voiceUsed ?? false,
+        audio_duration_ms:            input.audioDurationMs ?? null,
+        transcription_latency_ms:     input.transcriptionLatencyMs ?? null,
+        transcription_model:          input.transcriptionModel ?? null,
+        transcription_tokens_audio:   input.transcriptionTokensAudio ?? null,
+        transcription_tokens_output:  input.transcriptionTokensOutput ?? null,
+        transcription_error:          input.transcriptionError ?? null,
       })
       .select('id')
       .single()

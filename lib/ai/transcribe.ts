@@ -149,3 +149,56 @@ async function transcribeWithWhisper(rawBuffer: ArrayBuffer, mimeType: string, e
   const { text } = (await res.json()) as { text: string }
   return text
 }
+
+// ── gpt-4o-mini-transcribe (Copilote vocal) ───────────────────────────────────
+
+export type CopilotTranscriptionResult = {
+  text: string
+  model: string
+  tokensAudio?: number
+  tokensOutput?: number
+}
+
+/**
+ * Transcription dédiée au Copilote vocal.
+ * Utilise gpt-4o-mini-transcribe avec prompt lexical optionnel (nom chantier, sujets, intervenants).
+ * N'utilise jamais Gemini — le prompt lexical n'est supporté que par les modèles OpenAI.
+ */
+export async function transcribeAudioForCopilot(
+  rawBuffer: ArrayBuffer,
+  mimeType: string,
+  ext: string,
+  lexicalPrompt?: string,
+): Promise<CopilotTranscriptionResult> {
+  if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY manquante')
+
+  const form = new FormData()
+  form.append('file', new Blob([rawBuffer], { type: mimeType }), `voice.${ext}`)
+  form.append('model', 'gpt-4o-mini-transcribe')
+  form.append('language', 'fr')
+  if (lexicalPrompt) form.append('prompt', lexicalPrompt)
+
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    body: form,
+  })
+
+  if (!res.ok) throw new Error(`gpt-4o-mini-transcribe ${res.status}: ${await res.text()}`)
+
+  const data = (await res.json()) as {
+    text: string
+    usage?: {
+      input_tokens?: number
+      input_token_details?: { audio_tokens?: number }
+      output_tokens?: number
+    }
+  }
+
+  return {
+    text: data.text?.trim() ?? '',
+    model: 'gpt-4o-mini-transcribe',
+    tokensAudio: data.usage?.input_token_details?.audio_tokens,
+    tokensOutput: data.usage?.output_tokens,
+  }
+}
