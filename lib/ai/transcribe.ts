@@ -172,11 +172,16 @@ export async function transcribeAudioForCopilot(
 ): Promise<CopilotTranscriptionResult> {
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY manquante')
 
+  const filename = `voice.${ext}`
+  const fileSize = rawBuffer.byteLength
+
   const form = new FormData()
-  form.append('file', new Blob([rawBuffer], { type: mimeType }), `voice.${ext}`)
+  form.append('file', new Blob([rawBuffer], { type: mimeType }), filename)
   form.append('model', 'gpt-4o-mini-transcribe')
   form.append('language', 'fr')
   if (lexicalPrompt) form.append('prompt', lexicalPrompt)
+
+  console.log('[Voice] openai_call', { model: 'gpt-4o-mini-transcribe', filename, mimeType, fileSize, promptLen: lexicalPrompt?.length ?? 0 })
 
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
@@ -184,7 +189,25 @@ export async function transcribeAudioForCopilot(
     body: form,
   })
 
-  if (!res.ok) throw new Error(`gpt-4o-mini-transcribe ${res.status}: ${await res.text()}`)
+  if (!res.ok) {
+    let body: unknown = null
+    try { body = await res.json() } catch { body = await res.text().catch(() => null) }
+    const err = (typeof body === 'object' && body !== null)
+      ? (body as Record<string, unknown>).error as Record<string, unknown> | undefined
+      : undefined
+    console.error('[Voice] openai_error', {
+      status:  res.status,
+      type:    err?.type,
+      code:    err?.code,
+      param:   err?.param,
+      message: err?.message ?? body,
+      model:   'gpt-4o-mini-transcribe',
+      mimeType,
+      filename,
+      fileSize,
+    })
+    throw new Error(`gpt-4o-mini-transcribe ${res.status}: ${JSON.stringify(body)}`)
+  }
 
   const data = (await res.json()) as {
     text: string
