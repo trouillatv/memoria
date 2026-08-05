@@ -34,29 +34,42 @@ export function VoiceCopilotTrigger({ siteId, onTranscriptionReady, disabled }: 
   const startRecording = useCallback(async () => {
     if (disabled || state !== 'idle') return
     try {
-      console.log('[Voice] getUserMedia requested')
+      console.log('[Voice] get_user_media_start')
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      console.log('[Voice] get_user_media_success')
 
       const tracks = stream.getAudioTracks()
       const track = tracks[0]
       if (track) {
-        console.log('[Voice] track_info enabled:', track.enabled, 'muted:', track.muted, 'readyState:', track.readyState, 'label:', track.label)
+        console.log('[Voice] track_info', {
+          enabled:    track.enabled,
+          muted:      track.muted,
+          readyState: track.readyState,
+          label:      track.label,
+        })
+        const s = track.getSettings()
+        console.log('[Voice] track_settings', {
+          deviceId:         s.deviceId,
+          sampleRate:       s.sampleRate,
+          channelCount:     s.channelCount,
+          echoCancellation: s.echoCancellation,
+          noiseSuppression: (s as Record<string, unknown>).noiseSuppression,
+          autoGainControl:  (s as Record<string, unknown>).autoGainControl,
+        })
       } else {
         console.warn('[Voice] no_audio_track_found — stream has 0 audio tracks')
       }
 
       const MIME_CANDIDATES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus', '']
       const supportedMime = MIME_CANDIDATES.find((m) => !m || MediaRecorder.isTypeSupported(m)) ?? ''
-      console.log('[Voice] getUserMedia_ok mime_elected:', supportedMime || '(browser default)')
 
       const recorderOpts = supportedMime ? { mimeType: supportedMime } : undefined
       const recorder = new MediaRecorder(stream, recorderOpts)
-      console.log('[Voice] recorder_created mimeType:', recorder.mimeType)
       chunksRef.current = []
       startTimeRef.current = Date.now()
 
       recorder.ondataavailable = (e) => {
-        console.log('[Voice] data_available chunk.size:', e.data.size, 'chunk.type:', e.data.type)
+        console.log('[Voice] data_available', { size: e.data.size, type: e.data.type })
         if (e.data.size > 0) chunksRef.current.push(e.data)
       }
 
@@ -64,32 +77,34 @@ export function VoiceCopilotTrigger({ siteId, onTranscriptionReady, disabled }: 
         stream.getTracks().forEach((t) => t.stop())
         const audioDurationMs = Date.now() - startTimeRef.current
         const totalChunks = chunksRef.current.length
-        console.log('[Voice] recorder_stopped audioDurationMs:', audioDurationMs, 'chunks:', totalChunks)
+        const totalBytes  = chunksRef.current.reduce((acc, c) => acc + c.size, 0)
+        console.log('[Voice] recorder_stop', { state: recorder.state, mimeType: recorder.mimeType, chunks: totalChunks, totalBytes, durationMs: audioDurationMs })
         const blobType = recorder.mimeType || 'audio/webm'
         const blob = new Blob(chunksRef.current, { type: blobType })
-        console.log('[Voice] blob_ready size:', blob.size, 'type:', blob.type, 'durationMs:', audioDurationMs)
         if (blob.size === 0) {
           console.error('[Voice] blob_empty — no audio data captured')
           setErrorMsg('Aucun audio capturé — réessayez')
           setState('error')
           return
         }
+        console.log('[Voice] blob_ready', { size: blob.size, type: blob.type, durationMs: audioDurationMs })
         await sendForTranscription(blob, blobType, audioDurationMs)
       }
 
       recorderRef.current = recorder
       recorder.start()
-      console.log('[Voice] recording_started')
+      console.log('[Voice] recorder_start', { state: recorder.state, mimeType: recorder.mimeType })
       setState('recording')
     } catch (err) {
-      console.error('[Voice] getUserMedia_error:', err)
+      const e = err as Error
+      console.error('[Voice] get_user_media_error', { name: e?.name, message: e?.message })
       setErrorMsg('Microphone non accessible')
       setState('error')
     }
   }, [disabled, state, siteId])
 
   const stopRecording = useCallback(() => {
-    console.log('[Voice] stop_requested recorder.state:', recorderRef.current?.state)
+    console.log('[Voice] stop_requested', { recorderState: recorderRef.current?.state })
     if (recorderRef.current?.state === 'recording') {
       setState('transcribing')
       recorderRef.current.stop()
