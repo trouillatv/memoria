@@ -173,7 +173,7 @@ describe('parseScheduleFromQuestion — heure', () => {
     expect(parseScheduleFromQuestion('visite le 12 août à 14:00', TODAY)?.time).toBe('14:00')
   })
   it('9 heures → 09:00', () => {
-    expect(parseScheduleFromQuestion('visite mercredi à 9 heures', TODAY)?.time).toBeNull() // "9 heures" n'est pas un pattern h:
+    expect(parseScheduleFromQuestion('visite mercredi à 9 heures', TODAY)?.time).toBe('09:00')
   })
   it('sans heure → time null', () => {
     expect(parseScheduleFromQuestion('visite le 12 août', TODAY)?.time).toBeNull()
@@ -187,4 +187,92 @@ describe('parseTime', () => {
   it('14h00 → 14:00', () => expect(parseTime('14h00')).toBe('14:00'))
   it('14:30 → 14:30', () => expect(parseTime('14:30')).toBe('14:30'))
   it('texte sans heure → null', () => expect(parseTime('bonjour')).toBeNull())
+  // Formats "heures" en toutes lettres
+  it('9 heures → 09:00', () => expect(parseTime('9 heures')).toBe('09:00'))
+  it('9 heure → 09:00', () => expect(parseTime('9 heure')).toBe('09:00'))
+  it('9 heures 30 → 09:30', () => expect(parseTime('9 heures 30')).toBe('09:30'))
+  it('9 h → 09:00', () => expect(parseTime('9 h')).toBe('09:00'))
+  it('9 h 30 → 09:30', () => expect(parseTime('9 h 30')).toBe('09:30'))
+  it('14 heures → 14:00', () => expect(parseTime('14 heures')).toBe('14:00'))
+  it('14 heures 30 → 14:30', () => expect(parseTime('14 heures 30')).toBe('14:30'))
+})
+
+// ── Nouveaux verbes schedule ───────────────────────────────────────────────────
+
+describe('detectKind — schedule_visit (marquer / inscrire / ajouter)', () => {
+  const cases = [
+    'Marque une visite le 12 août à 9h',
+    'Marques une visite le 15 août',
+    'Inscris une visite mercredi à 10h',
+    'Inscrit une visite vendredi à 14h',
+    'Ajoute une visite le 20 août à 8h',
+    'Ajoutes une visite demain à 9h',
+  ]
+  for (const q of cases) {
+    it(`"${q}" → schedule_visit`, () => {
+      expect(detectKind(q)).toBe('schedule_visit')
+    })
+  }
+})
+
+describe('detectKind — schedule_meeting (marquer / inscrire / ajouter)', () => {
+  const cases = [
+    'Marque une réunion le 12 août à 9h',
+    'Marques une réunion dimanche à 14h',
+    'Inscris une réunion jeudi à 10h',
+    'Ajoute une réunion vendredi à 14h',
+    'Ajoutes une réunion le 13 août à 14h',
+  ]
+  for (const q of cases) {
+    it(`"${q}" → schedule_meeting`, () => {
+      expect(detectKind(q)).toBe('schedule_meeting')
+    })
+  }
+})
+
+describe('detectKind — visit_item non affecté par "ajoute" seul (régression)', () => {
+  // "Ajoute une visite" → schedule_visit, mais "ajoute X au plan de visite" → visit_item
+  const cases = [
+    'Ajoute R4 au plan de visite',
+    'Ajoutes R4 au plan de visite',
+  ]
+  for (const q of cases) {
+    it(`"${q}" → visit_item`, () => {
+      expect(detectKind(q)).toBe('visit_item')
+    })
+  }
+})
+
+describe('classifyIntent — isWriteRequest pour marquer / inscrire', () => {
+  const cases = [
+    'Marque une réunion le 12 août à 9h',
+    'Marques une visite dimanche à 14h',
+    'Inscris une réunion jeudi à 10h',
+    'Inscrit une visite vendredi à 9h',
+  ]
+  for (const q of cases) {
+    it(`"${q.slice(0, 55)}" → isWriteRequest=true`, () => {
+      expect(classifyIntent(q).isWriteRequest).toBe(true)
+    })
+  }
+})
+
+describe('parseScheduleFromQuestion — heure en toutes lettres', () => {
+  const TODAY = '2026-08-05'
+
+  it('Planifie une visite le 13 août à 9 heures → time 09:00', () => {
+    expect(parseScheduleFromQuestion('Planifie une visite le 13 août à 9 heures', TODAY)?.time).toBe('09:00')
+  })
+  it('à 9 heures 30 → time 09:30', () => {
+    expect(parseScheduleFromQuestion('visite le 12 août à 9 heures 30', TODAY)?.time).toBe('09:30')
+  })
+  it('à 9 h → time 09:00', () => {
+    expect(parseScheduleFromQuestion('visite le 12 août à 9 h', TODAY)?.time).toBe('09:00')
+  })
+  it('à 9 h 30 → time 09:30', () => {
+    expect(parseScheduleFromQuestion('visite le 12 août à 9 h 30', TODAY)?.time).toBe('09:30')
+  })
+  it('à 14 heures 30 → time 14:30', () => {
+    expect(parseScheduleFromQuestion('réunion le 13 août à 14 heures 30', TODAY)?.time).toBe('14:30')
+  })
 })

@@ -61,7 +61,8 @@ Règles absolues :
 — Si tu n'as pas les données pour répondre, dis-le clairement sans inventer. Ne suppose jamais une cause sans preuve dans les faits.
 — Format : 2 à 4 paragraphes courts, prose directe, français professionnel.
 — N'inclus JAMAIS d'identifiant UUID (format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) dans ta réponse. Cite les sujets par leur label, jamais par leur identifiant interne.
-— Champ "citedIds" : ids des items réellement cités dans ta réponse.`
+— Champ "citedIds" : ids des items réellement cités dans ta réponse.
+— MemorIA peut proposer et confirmer la planification de visites et de réunions de chantier. Si la question porte sur la planification d'une visite ou d'une réunion, indique que l'utilisateur peut formuler sa demande naturellement (ex. : "Planifie une visite le 12 août à 9h") pour déclencher une proposition confirmable. Ne dis jamais que tu ne peux pas planifier de visites ou de réunions.`
 
 export interface HistoryMessage {
   role: 'user' | 'assistant'

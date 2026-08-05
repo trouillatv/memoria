@@ -51,14 +51,32 @@ function nextWeekday(todayIso: string, targetDow: number): string {
 
 // ── Parsing heure ─────────────────────────────────────────────────────────────
 
-/** "09h00", "09:00", "9h", "14h30" → "HH:MM" ; null si absent ou invalide. */
+/** "9h30", "9h", "14:30", "9 heures 30", "9 heures", "9 h" → "HH:MM" ; null si absent ou invalide. */
 export function parseTime(text: string): string | null {
-  const m = text.match(/\b(\d{1,2})[h:](\d{0,2})\b/)
-  if (!m) return null
-  const h = parseInt(m[1], 10)
-  const min = m[2] ? parseInt(m[2], 10) : 0
-  if (h > 23 || min > 59) return null
-  return `${pad2(h)}:${pad2(min)}`
+  // Format compact : "9h30", "09h", "14:30" — h ou : collé au chiffre
+  const m1 = text.match(/\b(\d{1,2})[h:](\d{0,2})\b/)
+  if (m1) {
+    const h = parseInt(m1[1], 10)
+    const min = m1[2] ? parseInt(m1[2], 10) : 0
+    if (h <= 23 && min <= 59) return `${pad2(h)}:${pad2(min)}`
+  }
+
+  // "9 heures 30", "9 h 30" — heure en toutes lettres avec minutes
+  const m2 = text.match(/\b(\d{1,2})\s+(?:heures?|h)\s+(\d{1,2})\b/i)
+  if (m2) {
+    const h = parseInt(m2[1], 10)
+    const min = parseInt(m2[2], 10)
+    if (h <= 23 && min <= 59) return `${pad2(h)}:${pad2(min)}`
+  }
+
+  // "9 heures", "9 heure", "9 h" — heure seule avec espace
+  const m3 = text.match(/\b(\d{1,2})\s+(?:heures?|h)\b/i)
+  if (m3) {
+    const h = parseInt(m3[1], 10)
+    if (h <= 23) return `${pad2(h)}:00`
+  }
+
+  return null
 }
 
 // ── Parsing date ──────────────────────────────────────────────────────────────

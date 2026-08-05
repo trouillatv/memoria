@@ -100,6 +100,8 @@ const PROPOSAL_SIGNALS = [
   /\bpr[eé]vois?\b/i,              // prévois, prévoit
   /\bpose[rsz]?\s+(?:une?\s+)?(?:visite|r[eé]union|rdv|rendez-vous)\b/i,
   /\bfixe[rsz]?\s+(?:une?\s+)?(?:visite|r[eé]union|date|rdv|rendez-vous)\b/i,
+  /\bmarque[rsz]?\s+(?:une?\s+)?(?:visite|r[eé]union|rdv|rendez-vous)\b/i,
+  /\binscri(?:s|t|re|vez)?\s+(?:une?\s+)?(?:visite|r[eé]union|rdv|rendez-vous)\b/i,
 ]
 
 // ── Extraction d'entités ───────────────────────────────────────────────────────

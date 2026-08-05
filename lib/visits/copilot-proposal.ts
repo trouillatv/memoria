@@ -42,6 +42,9 @@ const SCHEDULE_VISIT_SIGNALS = [
   /\bpr[eé]vois?\s+(?:une?\s+)?visite\b/i,
   /\bpose[rsz]?\s+(?:une?\s+)?visite\b/i,
   /\bcr[eé]e[rsz]?\s+(?:une?\s+)?visite\b/i,
+  /\bmarque[rsz]?\s+(?:une?\s+)?visite\b/i,
+  /\binscri(?:s|t|re|vez)?\s+(?:une?\s+)?visite\b/i,
+  /\bajoute[rsz]?\s+(?:une?\s+)?visite\b/i,
 ]
 
 // Planifier une réunion de chantier
@@ -53,6 +56,9 @@ const SCHEDULE_MEETING_SIGNALS = [
   /\bpr[eé]vois?\s+(?:une?\s+)?r[eé]union\b/i,
   /\bconvoque[rsz]?\b/i,
   /\bcr[eé]e[rsz]?\s+(?:une?\s+)?r[eé]union\b/i,
+  /\bmarque[rsz]?\s+(?:une?\s+)?r[eé]union\b/i,
+  /\binscri(?:s|t|re|vez)?\s+(?:une?\s+)?r[eé]union\b/i,
+  /\bajoute[rsz]?\s+(?:une?\s+)?r[eé]union\b/i,
 ]
 
 // Création explicite d'action — priorité sur VISIT_ITEM_SIGNALS pour éviter que
@@ -70,7 +76,7 @@ const VISIT_ITEM_SIGNALS = [
   /\bv[eé]rifier\b/i,
   /\bplan\s+(de\s+)?visite\b/i,
   /\bpoint[s]?\s+[àa]\s+voir\b/i,
-  /\bajoute[rz]?\s+(?:au\s+)?plan\b/i,
+  /\bajoute[rsz]?\s+(?:au\s+)?plan\b/i,
   /\bmets?\s+en\s+plan\b/i,
 ]
 
