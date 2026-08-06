@@ -685,3 +685,230 @@ export async function getCanonicalSubjectLifeForSite(
   if (life.siteId !== siteId) return null
   return life
 }
+
+// ── Vue liste chantier ────────────────────────────────────────────────────────
+
+export interface NavigableSubjectSummary {
+  canonicalSubjectId: string
+  title: string
+  aliases: string[]
+  /** Famille dominante (reservation / action / decision / …). */
+  kind: string | null
+  currentStatus: string | null
+  firstSeenAt: string | null
+  lastSeenAt: string | null
+  lastMeaningfulChangeAt: string | null
+  pvCount: number
+  threadCount: number
+  nativeOccurrenceCount: number
+  /** Objets métier actifs liés — enrichi dans un lot ultérieur (V1 = 0). */
+  activeObjectCount: number
+  isStagnant: boolean
+  stagnationDays: number
+  consecutiveMentionsWithoutChange: number
+}
+
+const OPEN_NAV_STATUSES = new Set([
+  'open', 'in_progress', 'still_open', 'non_compliant',
+  'planned', 'awaiting_validation', 'field_checked',
+])
+const CLOSED_NAV_STATUSES = new Set(['done', 'cancelled', 'not_applicable'])
+
+function navSortPriority(s: NavigableSubjectSummary): 0 | 1 | 2 | 3 {
+  const isOpen = OPEN_NAV_STATUSES.has(s.currentStatus ?? '')
+  if (s.isStagnant && isOpen) return 0    // à surveiller
+  if (!s.isStagnant && isOpen) return 1   // en évolution active
+  if (CLOSED_NAV_STATUSES.has(s.currentStatus ?? '')) return 3
+  return 2                                 // informatif / statut inconnu
+}
+
+/**
+ * Retourne tous les canonical_subjects navigables sur un chantier.
+ *
+ * Un sujet est navigable s'il possède au moins une occurrence réelle :
+ * - documentaire : thread présent dans un run canonique du chantier
+ * - native : entrée dans canonical_subject_occurrence (visite / réunion)
+ *
+ * Les deux sources alimentent la même mémoire sans mélanger leurs tables.
+ * Le read-model est pré-calculé (stagnation, tri, compteurs) pour éviter
+ * une deuxième refonte de requête lors de l'enrichissement de l'UI.
+ */
+export async function getNavigableSubjectsForSite(siteId: string): Promise<NavigableSubjectSummary[]> {
+  const supabase = createAdminClient()
+
+  // 1. Runs canoniques avec dates effectives
+  const allRuns = await canonicalRunsForSite(siteId)
+  const runIds = allRuns.map((r) => r.id)
+  const runEffDate = new Map<string, string>(allRuns.map((r) => [r.id, runEffectiveDate(r)]))
+
+  // 2. Propositions des runs canoniques (projection minimale)
+  type PropRow = { extraction_run_id: string; subject_thread_id: string; document_status: string | null; proposal_family: string }
+  let props: PropRow[] = []
+  if (runIds.length > 0) {
+    const { data } = await supabase
+      .from('document_extraction_proposal')
+      .select('extraction_run_id, subject_thread_id, document_status, proposal_family')
+      .in('extraction_run_id', runIds)
+      .not('subject_thread_id', 'is', null)
+    props = (data ?? []) as PropRow[]
+  }
+
+  const allThreadIds = [...new Set(props.map((p) => p.subject_thread_id))]
+
+  // 3. Thread → canonical_subject_id
+  const threadToCsId = new Map<string, string>()
+  if (allThreadIds.length > 0) {
+    const { data } = await supabase
+      .from('subject_thread_identity')
+      .select('subject_thread_id, canonical_subject_id')
+      .in('subject_thread_id', allThreadIds)
+    for (const r of (data ?? []) as Array<{ subject_thread_id: string; canonical_subject_id: string }>) {
+      threadToCsId.set(r.subject_thread_id, r.canonical_subject_id)
+    }
+  }
+
+  // 4. Occurrences natives du chantier (visites terrain + réunions)
+  type NativeRow = { canonical_subject_id: string; effective_date: string; visit_status: string | null; source_kind: string }
+  const { data: nativeRaw } = await supabase
+    .from('canonical_subject_occurrence')
+    .select('canonical_subject_id, effective_date, visit_status, source_kind')
+    .eq('site_id', siteId)
+    .in('source_kind', ['field_visit', 'meeting'])
+    .order('effective_date', { ascending: true })
+  const nativeOccs = (nativeRaw ?? []) as NativeRow[]
+
+  // 5. Union des CS IDs (PV canoniques ∪ natif)
+  const pvCsIds = new Set([...threadToCsId.values()])
+  const nativeCsIds = new Set(nativeOccs.map((o) => o.canonical_subject_id))
+  const allCsIds = [...new Set([...pvCsIds, ...nativeCsIds])]
+  if (allCsIds.length === 0) return []
+
+  // 6. Métadonnées CS (actifs uniquement)
+  type CsRow = { id: string; label: string; aliases: string[]; status: string }
+  const { data: csRaw } = await supabase
+    .from('canonical_subject')
+    .select('id, label, aliases, status')
+    .in('id', allCsIds)
+    .eq('status', 'active')
+  const csById = new Map<string, CsRow>(((csRaw ?? []) as CsRow[]).map((cs) => [cs.id, cs]))
+
+  // 7. Pré-calculs : thread count et native count par CS
+  const threadCountByCsId = new Map<string, number>()
+  for (const [, csId] of threadToCsId.entries()) {
+    if (csById.has(csId)) threadCountByCsId.set(csId, (threadCountByCsId.get(csId) ?? 0) + 1)
+  }
+  const nativeCountByCsId = new Map<string, number>()
+  for (const o of nativeOccs) {
+    if (csById.has(o.canonical_subject_id)) {
+      nativeCountByCsId.set(o.canonical_subject_id, (nativeCountByCsId.get(o.canonical_subject_id) ?? 0) + 1)
+    }
+  }
+
+  // 8. Timeline fusionnée par CS (une occurrence par CS×run, proposition dominante)
+  const FAMILY_RANK = ['reservation', 'action', 'decision', 'deadline', 'observation', 'knowledge_fact', 'person', 'company']
+  type OccEntry = { effectiveDate: string; status: string | null; proposalFamily: string | null }
+
+  // csId → runId → {status, family} — proposition la plus sémantiquement forte
+  const bestByCsRun = new Map<string, Map<string, { status: string | null; family: string }>>()
+  for (const prop of props) {
+    const csId = threadToCsId.get(prop.subject_thread_id)
+    if (!csId || !csById.has(csId)) continue
+    let runMap = bestByCsRun.get(csId)
+    if (!runMap) { runMap = new Map(); bestByCsRun.set(csId, runMap) }
+    const existing = runMap.get(prop.extraction_run_id)
+    const newRank = FAMILY_RANK.indexOf(prop.proposal_family)
+    const existingRank = existing ? FAMILY_RANK.indexOf(existing.family) : Infinity
+    if (!existing || newRank < existingRank) {
+      runMap.set(prop.extraction_run_id, { status: prop.document_status, family: prop.proposal_family })
+    }
+  }
+
+  const occsByCsId = new Map<string, OccEntry[]>()
+
+  // Ajouter les occurrences PV dans l'ordre chronologique des runs
+  for (const [csId, runMap] of bestByCsRun.entries()) {
+    const occs: OccEntry[] = []
+    for (const run of allRuns) {
+      const entry = runMap.get(run.id)
+      if (entry) occs.push({ effectiveDate: runEffDate.get(run.id) ?? '', status: entry.status, proposalFamily: entry.family })
+    }
+    occsByCsId.set(csId, occs)
+  }
+
+  // Ajouter les occurrences natives (déjà triées par date asc depuis la DB)
+  for (const o of nativeOccs) {
+    if (!csById.has(o.canonical_subject_id)) continue
+    const existing = occsByCsId.get(o.canonical_subject_id) ?? []
+    existing.push({ effectiveDate: o.effective_date, status: o.visit_status, proposalFamily: null })
+    occsByCsId.set(o.canonical_subject_id, existing)
+  }
+
+  // Tri final par date (nécessaire après ajout des natifs)
+  for (const [csId, occs] of occsByCsId.entries()) {
+    occs.sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))
+    occsByCsId.set(csId, occs)
+  }
+
+  // 9. Read-model par CS
+  const results: NavigableSubjectSummary[] = []
+
+  for (const [csId, cs] of csById.entries()) {
+    const occs = occsByCsId.get(csId) ?? []
+    if (occs.length === 0) continue
+
+    // Stagnation — même algorithme que getCanonicalSubjectLife
+    let lastMeaningfulChangeAt: string | null = null
+    let lastKnownStatus: string | null = null
+    let consecutiveMentionsWithoutChange = 0
+    for (let i = 0; i < occs.length; i++) {
+      const st = occs[i].status ?? null
+      if (i === 0 || st !== lastKnownStatus) {
+        lastMeaningfulChangeAt = occs[i].effectiveDate
+        lastKnownStatus = st
+        consecutiveMentionsWithoutChange = 0
+      } else {
+        consecutiveMentionsWithoutChange++
+      }
+    }
+
+    const firstSeenAt = occs[0].effectiveDate
+    const lastSeenAt = occs[occs.length - 1].effectiveDate
+    const currentStatus = occs[occs.length - 1].status ?? null
+    // kind = famille la plus dominante parmi toutes les occurrences PV
+    const kind = occs.find((o) => o.proposalFamily) ?.proposalFamily ?? null
+
+    const stagnationDays = (lastMeaningfulChangeAt && lastSeenAt && lastMeaningfulChangeAt !== lastSeenAt)
+      ? Math.floor((new Date(lastSeenAt).getTime() - new Date(lastMeaningfulChangeAt).getTime()) / 86_400_000)
+      : 0
+    const isStagnant = stagnationDays >= 30 && consecutiveMentionsWithoutChange >= 2
+
+    results.push({
+      canonicalSubjectId: csId,
+      title: cs.label,
+      aliases: cs.aliases ?? [],
+      kind,
+      currentStatus,
+      firstSeenAt,
+      lastSeenAt,
+      lastMeaningfulChangeAt,
+      pvCount: bestByCsRun.get(csId)?.size ?? 0,
+      threadCount: threadCountByCsId.get(csId) ?? 0,
+      nativeOccurrenceCount: nativeCountByCsId.get(csId) ?? 0,
+      activeObjectCount: 0,
+      isStagnant,
+      stagnationDays,
+      consecutiveMentionsWithoutChange,
+    })
+  }
+
+  // 10. Tri : stagnants ouverts → ouverts actifs → autres → clôturés
+  results.sort((a, b) => {
+    const pa = navSortPriority(a), pb = navSortPriority(b)
+    if (pa !== pb) return pa - pb
+    if (pa === 0) return b.stagnationDays - a.stagnationDays
+    if (pa === 1) return (b.lastMeaningfulChangeAt ?? '').localeCompare(a.lastMeaningfulChangeAt ?? '')
+    return (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? '')
+  })
+
+  return results
+}
