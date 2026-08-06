@@ -88,6 +88,10 @@ export interface CanonicalSubjectLife {
   occurrences: SubjectOccurrenceMerged[]
   links: CanonicalLink[]
   materializedEvents: MaterializedEvent[]
+  lastMeaningfulChangeAt: string | null
+  stagnationDays: number | null
+  consecutiveMentionsWithoutChange: number
+  isStagnant: boolean
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -173,15 +177,32 @@ export async function getCanonicalSubjectLife(
       transition: null, isGap: false, evidenceCount: row.evidence_count, additionalLabels: [],
     }))
     const nativeReal = nativeOccs.filter((o) => !o.isGap)
+    const nativeLastSeenAt = nativeReal[nativeReal.length - 1]?.effectiveDate ?? null
+    let nativeLMCA: string | null = null
+    let nativeLKS: string | null = null
+    let nativeCMWC = 0
+    for (let i = 0; i < nativeReal.length; i++) {
+      const occ = nativeReal[i]
+      const st = occ.visitStatus ?? occ.documentStatus ?? null
+      if (i === 0 || st !== nativeLKS) { nativeLMCA = occ.effectiveDate; nativeLKS = st; nativeCMWC = 0 }
+      else { nativeCMWC++ }
+    }
+    const nativeStagDays = (nativeLMCA && nativeLastSeenAt && nativeLMCA !== nativeLastSeenAt)
+      ? Math.floor((new Date(nativeLastSeenAt).getTime() - new Date(nativeLMCA).getTime()) / 86_400_000)
+      : 0
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
       firstSeenAt: nativeReal[0]?.effectiveDate ?? null,
-      lastSeenAt: nativeReal[nativeReal.length - 1]?.effectiveDate ?? null,
+      lastSeenAt: nativeLastSeenAt,
       currentStatus: nativeReal[nativeReal.length - 1]?.visitStatus ?? null,
       primaryFamily: null, threadIds: [],
       pvCount: 0,
       fieldVisitCount: nativeReal.filter((o) => o.sourceKind === 'field_visit' || o.sourceKind === 'meeting').length,
       runs: [], occurrences: nativeOccs, links: [], materializedEvents: [],
+      lastMeaningfulChangeAt: nativeLMCA,
+      stagnationDays: nativeStagDays,
+      consecutiveMentionsWithoutChange: nativeCMWC,
+      isStagnant: nativeStagDays >= 30 && nativeCMWC >= 2,
     }
   }
 
@@ -194,6 +215,7 @@ export async function getCanonicalSubjectLife(
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
       firstSeenAt: null, lastSeenAt: null, currentStatus: null, primaryFamily: null,
       threadIds, pvCount: 0, fieldVisitCount: 0, runs: [], occurrences: [], links: [], materializedEvents: [],
+      lastMeaningfulChangeAt: null, stagnationDays: null, consecutiveMentionsWithoutChange: 0, isStagnant: false,
     }
   }
 
@@ -242,6 +264,7 @@ export async function getCanonicalSubjectLife(
       threadIds, pvCount: 0, fieldVisitCount: 0,
       runs: allRuns.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) })),
       occurrences: [], links: [], materializedEvents: [],
+      lastMeaningfulChangeAt: null, stagnationDays: null, consecutiveMentionsWithoutChange: 0, isStagnant: false,
     }
   }
 
@@ -478,6 +501,26 @@ export async function getCanonicalSubjectLife(
     ?? null
   const primaryFamily = realOccurrences[0]?.proposalFamily ?? null
 
+  // Primitive stagnation — compare statut entre occurrences consécutives (non-gaps, triées)
+  let lastMeaningfulChangeAt: string | null = null
+  let lastKnownStatus: string | null = null
+  let consecutiveMentionsWithoutChange = 0
+  for (let i = 0; i < realOccurrences.length; i++) {
+    const occ = realOccurrences[i]
+    const st = occ.visitStatus ?? occ.documentStatus ?? null
+    if (i === 0 || st !== lastKnownStatus) {
+      lastMeaningfulChangeAt = occ.effectiveDate
+      lastKnownStatus = st
+      consecutiveMentionsWithoutChange = 0
+    } else {
+      consecutiveMentionsWithoutChange++
+    }
+  }
+  const stagnationDays = (lastMeaningfulChangeAt && lastSeenAt && lastMeaningfulChangeAt !== lastSeenAt)
+    ? Math.floor((new Date(lastSeenAt).getTime() - new Date(lastMeaningfulChangeAt).getTime()) / 86_400_000)
+    : 0
+  const isStagnant = stagnationDays >= 30 && consecutiveMentionsWithoutChange >= 2
+
   // 8. Liens inter-threads (confirmed + suggested, pas rejected)
   const [outLinksRes, inLinksRes] = await Promise.all([
     supabase
@@ -575,6 +618,10 @@ export async function getCanonicalSubjectLife(
     occurrences,
     links,
     materializedEvents,
+    lastMeaningfulChangeAt,
+    stagnationDays,
+    consecutiveMentionsWithoutChange,
+    isStagnant,
   }
 }
 

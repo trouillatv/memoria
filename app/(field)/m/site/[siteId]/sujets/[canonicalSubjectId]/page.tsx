@@ -1,12 +1,11 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, FileText, MapPin, Users } from 'lucide-react'
+import { ArrowLeft, AlertCircle, FileText, MapPin, Users } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
 import type { SubjectOccurrenceMerged, MaterializedEvent, MaterializedEntityType } from '@/lib/db/canonical-subject-life'
 import { cn } from '@/lib/utils'
-import { CopilotMobileSheet } from '../../CopilotMobileSheet'
 
 export const dynamic = 'force-dynamic'
 
@@ -239,6 +238,12 @@ function EventsSection({ events }: { events: MaterializedEvent[] }) {
   )
 }
 
+// Statuts considérés comme "actifs" (objet encore en cours / à traiter)
+const ACTIVE_STATUSES = new Set([
+  'open', 'in_progress', 'to_plan', 'planned', 'non_compliant',
+  'still_open', 'awaiting_validation', 'proposee',
+])
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default async function SubjectLifeMobilePage({ params }: PageProps) {
@@ -256,7 +261,7 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
     .filter((o) => !o.isGap)
     .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))
 
-  const visitCount  = realOccs.filter((o) => o.sourceKind === 'field_visit').length
+  const visitCount   = realOccs.filter((o) => o.sourceKind === 'field_visit').length
   const meetingCount = realOccs.filter((o) => o.sourceKind === 'meeting').length
 
   const pills: string[] = []
@@ -264,10 +269,11 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
   if (visitCount > 0)      pills.push(`${visitCount} visite${visitCount > 1 ? 's' : ''} terrain`)
   if (meetingCount > 0)    pills.push(`${meetingCount} réunion${meetingCount > 1 ? 's' : ''}`)
 
-  const matTotal = life.materializedEvents.length
-  // Occurrence la plus récente — base de l'« état actuel ».
-  const latestOcc = realOccs.length > 0 ? realOccs[realOccs.length - 1] : null
+  const latestOcc        = realOccs.length > 0 ? realOccs[realOccs.length - 1] : null
   const currentStateText = latestOcc?.description ?? latestOcc?.label ?? null
+  const activeEvents     = life.materializedEvents.filter((e) => !e.status || ACTIVE_STATUSES.has(e.status))
+
+  void siteRow // utilisé uniquement si l'orbe est réintégré plus tard
 
   return (
     <div className="mx-auto max-w-md space-y-5 px-4 pb-28 pt-5">
@@ -281,7 +287,7 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
         Sujets
       </Link>
 
-      {/* Header card */}
+      {/* Header */}
       <header className="rounded-2xl border bg-card px-4 py-4 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <h1 className="min-w-0 text-lg font-semibold leading-snug">{life.label}</h1>
@@ -305,21 +311,18 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
           <p className="mt-2.5 text-[12px] text-muted-foreground">{pills.join(' · ')}</p>
         )}
 
-        <div className="mt-1 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[12px] text-muted-foreground">
-          {life.firstSeenAt && (
-            <span>Apparu le {frDate(life.firstSeenAt)}</span>
-          )}
-          {life.lastSeenAt && life.lastSeenAt !== life.firstSeenAt && (
-            <span>· dernière évolution le {frDate(life.lastSeenAt)}</span>
-          )}
-        </div>
+        {life.firstSeenAt && (
+          <p className="mt-1 text-[12px] text-muted-foreground">
+            Apparu le {frDate(life.firstSeenAt)}
+          </p>
+        )}
       </header>
 
-      {/* État actuel — dernière information connue sur ce sujet */}
+      {/* 1 — Situation actuelle */}
       {currentStateText && (
         <section className="rounded-2xl border bg-card px-4 py-3 shadow-sm">
           <h2 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            État actuel
+            Situation actuelle
           </h2>
           <p className="text-[14px] leading-snug">{currentStateText}</p>
           {latestOcc && (
@@ -334,11 +337,39 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
         </section>
       )}
 
-      {/* Vertical timeline */}
+      {/* 2 — À surveiller (stagnation signal — uniquement si calculé) */}
+      {life.isStagnant && life.firstSeenAt && life.stagnationDays !== null && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm">
+          <div className="flex items-center gap-2 mb-1.5">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+              À surveiller
+            </h2>
+          </div>
+          <p className="text-[13px] leading-snug text-amber-900">
+            Mentionné{realOccs.length > 1 ? ` ${realOccs.length} fois` : ''} depuis le {frDate(life.firstSeenAt)}.
+          </p>
+          <p className="mt-0.5 text-[13px] leading-snug text-amber-900">
+            Aucune évolution significative depuis {life.stagnationDays} jour{life.stagnationDays > 1 ? 's' : ''}.
+          </p>
+        </section>
+      )}
+
+      {/* 3 — Objets actifs */}
+      {activeEvents.length > 0 && (
+        <section>
+          <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Objets actifs
+          </h2>
+          <EventsSection events={activeEvents} />
+        </section>
+      )}
+
+      {/* 4 — Ligne de vie */}
       {realOccs.length > 0 ? (
         <section>
           <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Vie du sujet
+            Ligne de vie
           </h2>
           <ol className="space-y-4">
             {realOccs.map((occ, i) => (
@@ -353,24 +384,6 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
           Aucune occurrence enregistrée pour ce sujet.
         </p>
       )}
-
-      {/* Linked business objects */}
-      {matTotal > 0 && (
-        <section>
-          <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Lié à ce sujet
-          </h2>
-          <EventsSection events={life.materializedEvents} />
-        </section>
-      )}
-
-      {/* Ask MemorIA */}
-      <section className="pt-2">
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Demander à MemorIA
-        </p>
-        <CopilotMobileSheet siteId={siteId} siteName={siteRow?.name ?? undefined} initialSubjectIds={[canonicalSubjectId]} />
-      </section>
 
     </div>
   )
