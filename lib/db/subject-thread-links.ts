@@ -243,6 +243,70 @@ export async function deleteSubjectLink(linkId: string): Promise<void> {
 }
 
 /**
+ * Crée un lien confirmé entre deux canonical_subjects.
+ * Résout les threads représentatifs en interne — l'appelant ne manipule jamais les threads.
+ * Idempotent : retourne 'already_exists' si un lien non-rejeté du même type existe déjà.
+ */
+export async function createCanonicalSubjectLink(input: {
+  siteId: string
+  fromCanonicalSubjectId: string
+  toCanonicalSubjectId: string
+  linkType: SubjectLinkType
+  justification?: string | null
+  userId: string
+}): Promise<'created' | 'already_exists' | 'self_link' | 'no_thread'> {
+  if (input.fromCanonicalSubjectId === input.toCanonicalSubjectId) return 'self_link'
+
+  const supabase = createAdminClient()
+
+  type StiRow = { subject_thread_id: string }
+  const [fromSti, toSti] = await Promise.all([
+    supabase.from('subject_thread_identity').select('subject_thread_id')
+      .eq('canonical_subject_id', input.fromCanonicalSubjectId).eq('site_id', input.siteId),
+    supabase.from('subject_thread_identity').select('subject_thread_id')
+      .eq('canonical_subject_id', input.toCanonicalSubjectId).eq('site_id', input.siteId),
+  ])
+
+  const fromThreadIds = ((fromSti.data ?? []) as StiRow[]).map((r) => r.subject_thread_id).sort()
+  const toThreadIds   = ((toSti.data ?? []) as StiRow[]).map((r) => r.subject_thread_id).sort()
+
+  if (fromThreadIds.length === 0 || toThreadIds.length === 0) return 'no_thread'
+
+  // Vérification idempotente au niveau canonical (N threads × M threads)
+  const { data: existing } = await supabase
+    .from('subject_thread_links')
+    .select('id')
+    .eq('site_id', input.siteId)
+    .in('from_thread_id', fromThreadIds)
+    .in('to_thread_id', toThreadIds)
+    .eq('link_type', input.linkType)
+    .neq('status', 'rejected')
+    .maybeSingle()
+
+  if (existing) return 'already_exists'
+
+  const now = new Date().toISOString()
+  const { error } = await supabase.from('subject_thread_links').insert({
+    site_id:        input.siteId,
+    from_thread_id: fromThreadIds[0]!,
+    to_thread_id:   toThreadIds[0]!,
+    link_type:      input.linkType,
+    status:         'confirmed',
+    source:         'human',
+    justification:  input.justification ?? null,
+    created_by:     input.userId,
+    confirmed_by:   input.userId,
+    confirmed_at:   now,
+  })
+
+  if (error) {
+    if (error.code === '23505') return 'already_exists'
+    throw new Error(error.message)
+  }
+  return 'created'
+}
+
+/**
  * Retourne les labels canoniques des threads voisins d'un fil (pour l'affichage).
  * Charge les proposals les plus récentes pour chaque thread.
  */

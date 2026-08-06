@@ -1,13 +1,13 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Calendar, Check, FileText, Link2, LayoutList, X } from 'lucide-react'
+import { ArrowLeft, Calendar, Check, FileText, Link2, LayoutList, Trash2, X } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { getCanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
-import type { SubjectOccurrenceMerged, CanonicalLink, MaterializedEvent, MaterializedEntityType } from '@/lib/db/canonical-subject-life'
+import { getCanonicalSubjectLife, listActiveCanonicalSubjects } from '@/lib/db/canonical-subject-life'
+import type { SubjectOccurrenceMerged, CanonicalLink, MaterializedEvent, MaterializedEntityType, CanonicalSubjectSummary } from '@/lib/db/canonical-subject-life'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
-import { confirmSuggestedLink, rejectSuggestedLink } from './link-actions'
+import { confirmSuggestedLink, rejectSuggestedLink, createCanonicalLinkAction, deleteCanonicalLinkAction } from './link-actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -468,22 +468,17 @@ function RelationsSection({
   siteId,
   canonicalSubjectId,
   csLabel,
+  allSubjects,
 }: {
   links: CanonicalLink[]
   siteId: string
   canonicalSubjectId: string
   csLabel: string
+  allSubjects: CanonicalSubjectSummary[]
 }) {
   const confirmed = links.filter((l) => l.status === 'confirmed')
   const suggested = links.filter((l) => l.status === 'suggested')
-
-  if (confirmed.length === 0 && suggested.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Aucune relation définie avec d'autres sujets.
-      </p>
-    )
-  }
+  const otherSubjects = allSubjects.filter((s) => s.id !== canonicalSubjectId)
 
   function LinkRow({ link }: { link: CanonicalLink }) {
     const cfg = LINK_LABELS[link.linkType]
@@ -516,12 +511,30 @@ function RelationsSection({
 
   return (
     <div className="space-y-2">
+      {confirmed.length === 0 && suggested.length === 0 && (
+        <p className="text-sm text-muted-foreground">Aucune relation définie avec d'autres sujets.</p>
+      )}
+
       {confirmed.map((l) => (
         <div key={l.id} className={cn(
           'flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm',
           l.linkType === 'relates_to' ? 'border-dashed' : '',
         )}>
           <LinkRow link={l} />
+          {l.source === 'human' && (
+            <form action={deleteCanonicalLinkAction}>
+              <input type="hidden" name="linkId" value={l.id} />
+              <input type="hidden" name="siteId" value={siteId} />
+              <input type="hidden" name="canonicalSubjectId" value={canonicalSubjectId} />
+              <button
+                type="submit"
+                title="Supprimer ce lien"
+                className="mt-0.5 shrink-0 rounded-md p-1 text-muted-foreground/50 hover:text-destructive hover:bg-muted transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </form>
+          )}
         </div>
       ))}
 
@@ -530,41 +543,81 @@ function RelationsSection({
           <p className="text-xs font-medium text-muted-foreground pt-1">
             Suggestion{suggested.length > 1 ? 's' : ''} à valider :
           </p>
-          {suggested.map((l) => {
-            return (
-              <div key={l.id} className="rounded-lg border border-dashed bg-muted/20 px-3 py-2.5 text-sm space-y-2">
-                <LinkRow link={l} />
-                <div className="flex items-center gap-2">
-                  <form action={confirmSuggestedLink}>
-                    <input type="hidden" name="linkId" value={l.id} />
-                    <input type="hidden" name="siteId" value={siteId} />
-                    <input type="hidden" name="canonicalSubjectId" value={canonicalSubjectId} />
-                    <button
-                      type="submit"
-                      className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900"
-                    >
-                      <Check className="h-3 w-3" />
-                      Accepter
-                    </button>
-                  </form>
-                  <form action={rejectSuggestedLink}>
-                    <input type="hidden" name="linkId" value={l.id} />
-                    <input type="hidden" name="siteId" value={siteId} />
-                    <input type="hidden" name="canonicalSubjectId" value={canonicalSubjectId} />
-                    <button
-                      type="submit"
-                      className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted/80"
-                    >
-                      <X className="h-3 w-3" />
-                      Refuser
-                    </button>
-                  </form>
-                  <span className="text-xs text-muted-foreground/60 italic">suggéré · non confirmé</span>
-                </div>
+          {suggested.map((l) => (
+            <div key={l.id} className="rounded-lg border border-dashed bg-muted/20 px-3 py-2.5 text-sm space-y-2">
+              <LinkRow link={l} />
+              <div className="flex items-center gap-2">
+                <form action={confirmSuggestedLink}>
+                  <input type="hidden" name="linkId" value={l.id} />
+                  <input type="hidden" name="siteId" value={siteId} />
+                  <input type="hidden" name="canonicalSubjectId" value={canonicalSubjectId} />
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900"
+                  >
+                    <Check className="h-3 w-3" />
+                    Accepter
+                  </button>
+                </form>
+                <form action={rejectSuggestedLink}>
+                  <input type="hidden" name="linkId" value={l.id} />
+                  <input type="hidden" name="siteId" value={siteId} />
+                  <input type="hidden" name="canonicalSubjectId" value={canonicalSubjectId} />
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted/80"
+                  >
+                    <X className="h-3 w-3" />
+                    Refuser
+                  </button>
+                </form>
+                <span className="text-xs text-muted-foreground/60 italic">suggéré · non confirmé</span>
               </div>
-            )
-          })}
+            </div>
+          ))}
         </>
+      )}
+
+      {otherSubjects.length > 0 && (
+        <div className="mt-1 rounded-lg border border-dashed bg-muted/10 px-3 py-3">
+          <p className="mb-2 text-xs font-medium text-muted-foreground">Ajouter une relation</p>
+          <form action={createCanonicalLinkAction} className="space-y-2">
+            <input type="hidden" name="siteId" value={siteId} />
+            <input type="hidden" name="canonicalSubjectId" value={canonicalSubjectId} />
+            <select
+              name="toCanonicalSubjectId"
+              required
+              className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+            >
+              <option value="">Choisir un sujet…</option>
+              {otherSubjects.map((s) => (
+                <option key={s.id} value={s.id}>{s.label}</option>
+              ))}
+            </select>
+            <select
+              name="linkType"
+              required
+              className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+            >
+              {Object.entries(LINK_LABELS).map(([type, { out }]) => (
+                <option key={type} value={type}>{out}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              name="justification"
+              placeholder="Justification (optionnel)"
+              className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+            />
+            <button
+              type="submit"
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              <Link2 className="h-3 w-3" />
+              Lier
+            </button>
+          </form>
+        </div>
       )}
     </div>
   )
@@ -578,9 +631,10 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
 
   const { id: siteId, canonicalSubjectId } = await params
 
-  const [site, life] = await Promise.all([
+  const [site, life, allSubjects] = await Promise.all([
     getSiteIdentity(siteId).catch(() => null),
     getCanonicalSubjectLife(canonicalSubjectId).catch(() => null),
+    listActiveCanonicalSubjects(siteId).catch(() => [] as CanonicalSubjectSummary[]),
   ])
 
   if (!site) notFound()
@@ -693,15 +747,13 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
         )}
 
         {/* Relations */}
-        {life.links.length > 0 && (
-          <section id="relations" className="rounded-[18px] border bg-card px-5 py-4 space-y-3">
-            <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <Link2 className="h-3.5 w-3.5" />
-              Relations
-            </h2>
-            <RelationsSection links={life.links} siteId={siteId} canonicalSubjectId={canonicalSubjectId} csLabel={life.label} />
-          </section>
-        )}
+        <section id="relations" className="rounded-[18px] border bg-card px-5 py-4 space-y-3">
+          <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <Link2 className="h-3.5 w-3.5" />
+            Relations
+          </h2>
+          <RelationsSection links={life.links} siteId={siteId} canonicalSubjectId={canonicalSubjectId} csLabel={life.label} allSubjects={allSubjects} />
+        </section>
 
         {/* Fil métier */}
         <section className="space-y-3">

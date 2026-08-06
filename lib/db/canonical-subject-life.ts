@@ -10,7 +10,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { canonicalRunsForSite, runEffectiveDate, computeHistoryTransition } from '@/lib/documents/pv-history'
 import type { HistoryTransition } from '@/lib/documents/pv-history'
-import type { SubjectLinkType, SubjectLinkStatus } from '@/lib/db/subject-thread-links'
+import type { SubjectLinkType, SubjectLinkStatus, SubjectLinkSource } from '@/lib/db/subject-thread-links'
 import { isOperationalSubject } from '@/lib/subjects/kind'
 
 export type { HistoryTransition }
@@ -54,6 +54,7 @@ export interface CanonicalLink {
   toLabel: string
   linkType: SubjectLinkType
   status: SubjectLinkStatus
+  source: SubjectLinkSource
   justification: string | null
   direction: 'outgoing' | 'incoming'
 }
@@ -611,6 +612,7 @@ export async function getCanonicalSubjectLife(
       toLabel: l.direction === 'outgoing' ? (otherCS?.csLabel ?? `[${l.to_thread_id.slice(0, 8)}]`) : csLabel,
       linkType: l.link_type as SubjectLinkType,
       status: l.status as SubjectLinkStatus,
+      source: l.source as SubjectLinkSource,
       justification: l.justification,
       direction: l.direction,
     }
@@ -1075,4 +1077,27 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
   })
 
   return results
+}
+
+// ── Sélecteur liaison manuelle ────────────────────────────────────────────────
+
+export interface CanonicalSubjectSummary {
+  id: string
+  label: string
+}
+
+/** Liste allégée des sujets actifs d'un chantier — pour le sélecteur de liaison manuelle. */
+export async function listActiveCanonicalSubjects(siteId: string): Promise<CanonicalSubjectSummary[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('canonical_subject')
+    .select('id, label')
+    .eq('site_id', siteId)
+    .eq('status', 'active')
+    .order('label', { ascending: true })
+  if (error) throw new Error(error.message)
+  return ((data ?? []) as Array<{ id: string; label: string }>).map((r) => ({
+    id: r.id as string,
+    label: r.label as string,
+  }))
 }

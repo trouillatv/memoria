@@ -1,11 +1,11 @@
 import { notFound } from 'next/navigation'
 import React, { Suspense } from 'react'
 import Link from 'next/link'
-import { AlertCircle, ArrowLeft, Building2, FileText, MapPin, User, Users } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Building2, FileText, Link2, MapPin, User, Users } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
-import type { CanonicalSubjectLife, SubjectOccurrenceMerged, MaterializedEvent, MaterializedEntityType } from '@/lib/db/canonical-subject-life'
+import type { CanonicalSubjectLife, CanonicalLink, SubjectOccurrenceMerged, MaterializedEvent, MaterializedEntityType } from '@/lib/db/canonical-subject-life'
 import { getActorIdentity, getActorResponsibilities } from '@/lib/db/actor-subject-life'
 import type { ActorLinkedIdentity, ActorResponsibilities } from '@/lib/db/actor-subject-life'
 import { SubjectTrajectorySection, SubjectTrajectorySkeleton } from './SubjectTrajectorySection'
@@ -71,6 +71,15 @@ const ENTITY_STATUS_LABELS: Record<string, string> = {
   superseded: 'Remplacée',
 }
 
+const LINK_LABELS: Record<string, { out: string; in: string }> = {
+  requires:   { out: 'nécessite',            in: 'est requis par' },
+  enables:    { out: 'permet',               in: 'est rendu possible par' },
+  causes:     { out: 'entraîne',             in: 'est causé par' },
+  validates:  { out: 'valide',               in: 'est validé par' },
+  replaces:   { out: 'remplace',             in: 'est remplacé par' },
+  relates_to: { out: 'est associé à',        in: 'est associé à' },
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function frDate(iso: string): string {
@@ -82,6 +91,57 @@ function frDateShort(iso: string): string {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
+
+function ConfirmedRelationsSection({
+  links,
+  siteId,
+  csLabel,
+}: {
+  links: CanonicalLink[]
+  siteId: string
+  csLabel: string
+}) {
+  const confirmed = links.filter((l) => l.status === 'confirmed')
+  if (confirmed.length === 0) return null
+
+  return (
+    <section>
+      <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+        <Link2 className="h-3 w-3" />
+        Relations ({confirmed.length})
+      </h2>
+      <ul className="space-y-1.5">
+        {confirmed.map((l) => {
+          const cfg = LINK_LABELS[l.linkType]
+          const verb = l.direction === 'outgoing' ? cfg?.out : cfg?.in
+          const targetLabel = l.direction === 'outgoing' ? l.toLabel : l.fromLabel
+          const targetCsId = l.direction === 'outgoing' ? l.toCanonicalSubjectId : l.fromCanonicalSubjectId
+          return (
+            <li key={l.id} className="rounded-xl border bg-card px-3 py-2.5">
+              <p className="text-[11px] text-muted-foreground">
+                <span className="font-medium text-foreground">{csLabel}</span>{' '}
+                <span>{verb}</span>
+              </p>
+              {targetCsId ? (
+                <Link
+                  href={`/m/site/${siteId}/sujets/${targetCsId}`}
+                  className="mt-0.5 block text-[13px] font-medium hover:underline"
+                >
+                  {targetLabel}
+                </Link>
+              ) : (
+                <p className="mt-0.5 text-[13px] font-medium">{targetLabel}</p>
+              )}
+              {l.justification && (
+                <p className="mt-0.5 text-[11px] text-muted-foreground italic">{l.justification}</p>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
 
 function SourceBadge({ sourceKind }: { sourceKind: SubjectOccurrenceMerged['sourceKind'] }) {
   if (sourceKind === 'field_visit') {
@@ -693,7 +753,10 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
             </section>
           )}
 
-          {/* 5 — Ligne de vie */}
+          {/* 5 — Relations confirmées */}
+          <ConfirmedRelationsSection links={life.links} siteId={siteId} csLabel={life.label} />
+
+          {/* 6 — Ligne de vie */}
           {realOccs.length > 0 ? (
             <section>
               <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
