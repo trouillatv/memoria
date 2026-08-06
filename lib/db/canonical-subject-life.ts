@@ -836,6 +836,29 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     }
   }
 
+  // 2B-bis. Chemin direct : site_action.subject_thread_id (backfill mig 288)
+  // Complément de document_proposal_materialization : capture les actions rattachées
+  // directement à un thread, indépendamment du run is_canonical qui les a créées.
+  // Les IDs s'ajoutent au même Set csEntityIds → le fetch 2C les prend en charge.
+  if (allThreadIds.length > 0) {
+    for (let i = 0; i < allThreadIds.length; i += 500) {
+      const chunk = allThreadIds.slice(i, i + 500)
+      const { data: directActs } = await supabase
+        .from('site_actions')
+        .select('id, subject_thread_id')
+        .in('subject_thread_id', chunk)
+      for (const a of (directActs ?? []) as Array<{ id: string; subject_thread_id: string }>) {
+        const csId = threadToCsId.get(a.subject_thread_id)
+        if (!csId) continue
+        let typeMap = csEntityIds.get(csId)
+        if (!typeMap) { typeMap = new Map(); csEntityIds.set(csId, typeMap) }
+        let idSet = typeMap.get('site_action')
+        if (!idSet) { idSet = new Set(); typeMap.set('site_action', idSet) }
+        idSet.add(a.id)
+      }
+    }
+  }
+
   // 2C. Statuts des objets métier — pour activeObjects par CS (4 requêtes parallèles légères)
   const OPEN_ACTION_STATUS   = new Set(['open', 'planned'])
   const OPEN_RESERVE_STATUS  = new Set(['open'])
