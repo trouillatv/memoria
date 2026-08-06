@@ -4,6 +4,7 @@
 // (« ETV ») aux vrais acteurs (« ETV · BatiSud · Jean Dupont »).
 import { createAdminClient } from '@/lib/supabase/admin'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
+import { ensureActorCanonicalSubject } from '@/lib/db/actor-auto-link'
 
 export interface SiteIntervenant {
   id: string
@@ -110,6 +111,10 @@ export async function openSiteIntervenant(input: {
   if (input.effectiveFrom) row.effective_from = input.effectiveFrom
   const { data: ins, error } = await sb.from('site_intervenants').insert(row).select('id').single()
   if (error) throw new Error(error.message)
+  // Hook liaison acteur : crée ou retrouve un canonical_subject pour cet acteur
+  // sur ce chantier. Silencieux et non-bloquant. Couvre toutes les sources
+  // (visites, casting, CR) car openSiteIntervenant est le point d'entrée commun.
+  ensureActorCanonicalSubject(input.siteId, input.companyId, input.mainContactId ?? null).catch(() => undefined)
   invalidateSiteProjection(input.siteId)
   return ins.id as string
 }

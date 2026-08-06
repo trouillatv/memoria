@@ -2,6 +2,14 @@ import 'server-only'
 
 // ── Liaison automatique canonical_subject → company / contact ─────────────────
 //
+// Deux fonctions :
+//
+//   tryActorAutoLink()         — résolution depuis un label : cherche l'identité
+//                                dans l'org, écrit si unique (PV historique)
+//
+//   ensureActorCanonicalSubject() — identité déjà connue (companyId/contactId) :
+//                                crée le CS + STI si absent (visites/casting)
+//
 // Règle stricte :
 //   company : match exact normalisé dans la même organisation → link si unique
 //   person  : comparerNoms() règle identique|initiale-et-nom → link si unique
@@ -165,4 +173,66 @@ async function tryLinkPerson(
 
   if (error) return { outcome: 'error', detail: error.message }
   return { outcome: 'linked', matchedId: matched.id }
+}
+
+// ── Ensure actor canonical subject (visites / casting) ────────────────────────
+//
+// Appelé depuis openSiteIntervenant() — point d'entrée commun pour toutes les
+// sources (visites terrain, casting, CR). Crée un canonical_subject + STI si
+// aucun n'existe encore pour cet acteur (company ou contact) sur ce chantier.
+//
+// Le label est résolu depuis le répertoire (company.name / contact.full_name)
+// pour garantir la cohérence avec l'identité canonique, pas la variante extraite.
+//
+// Non-bloquant : silencieux si le CS existe déjà (idempotent).
+
+export async function ensureActorCanonicalSubject(
+  siteId: string,
+  companyId: string,
+  contactId: string | null,
+): Promise<void> {
+  const sb = createAdminClient()
+
+  // Clé de recherche : contact prime sur entreprise (person vs company actor)
+  const existsQuery = contactId
+    ? sb.from('canonical_subject').select('id').eq('site_id', siteId).eq('contact_id', contactId).eq('status', 'active').maybeSingle()
+    : sb.from('canonical_subject').select('id').eq('site_id', siteId).eq('company_id', companyId).eq('status', 'active').maybeSingle()
+
+  const { data: existing } = await existsQuery
+  if (existing) return
+
+  // Résoudre le label depuis le répertoire (nom canonique, pas la variante extraite)
+  let label: string
+  if (contactId) {
+    const { data: contact } = await sb.from('company_contacts').select('full_name').eq('id', contactId).maybeSingle()
+    if (!contact) return
+    label = contact.full_name as string
+  } else {
+    const { data: company } = await sb.from('companies').select('name').eq('id', companyId).maybeSingle()
+    if (!company) return
+    label = company.name as string
+  }
+
+  // Créer le canonical_subject avec l'identité déjà résolue
+  const { data: newCs, error: csErr } = await sb
+    .from('canonical_subject')
+    .insert({
+      site_id: siteId,
+      label,
+      status: 'active',
+      ...(contactId
+        ? { contact_id: contactId, actor_link_source: 'auto', actor_link_confidence: 1.000 }
+        : { company_id: companyId, actor_link_source: 'auto', actor_link_confidence: 1.000 }),
+    })
+    .select('id')
+    .single()
+
+  if (csErr || !newCs) return // Silencieux sur contrainte unique (race condition)
+
+  await sb.from('subject_thread_identity').insert({
+    subject_thread_id: crypto.randomUUID(),
+    site_id: siteId,
+    canonical_subject_id: (newCs as { id: string }).id,
+    source: 'auto',
+  })
 }
