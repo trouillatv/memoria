@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import React, { Suspense } from 'react'
 import Link from 'next/link'
-import { AlertCircle, ArrowLeft, Building2, CheckCircle2, Clock, FileText, MapPin, ShieldAlert, TriangleAlert, User, Users } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Building2, FileText, MapPin, User, Users } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
@@ -308,14 +308,6 @@ function ActorRolePill({ role }: { role: string }) {
   )
 }
 
-function ResponsibilityRow({ icon, label, count, colorClass }: { icon: React.ReactNode; label: string; count: number; colorClass: string }) {
-  return (
-    <div className={cn('flex items-center gap-2.5 rounded-xl px-3.5 py-2.5', colorClass)}>
-      <span className="shrink-0">{icon}</span>
-      <p className="text-[13px] font-medium leading-tight">{count} {label}</p>
-    </div>
-  )
-}
 
 function CompactItemList({ items }: { items: { id: string; title: string; sub?: string | null; date?: string | null }[] }) {
   return (
@@ -337,28 +329,40 @@ function CompactItemList({ items }: { items: { id: string; title: string; sub?: 
 function ActorFicheView({ life, identity, resp, realOccs, pills }: ActorFicheProps) {
   const isCompany = life.primaryFamily === 'company'
 
-  // Primary role (most recent active intervenant)
+  // Active roles only (effective_to IS NULL) — historical ones never shown as current
   const activeRoles = resp?.roles.filter(r => !r.effectiveTo) ?? []
   const primaryRole = activeRoles[0]?.role ?? null
 
-  // Summary numbers
-  const openActionsCount  = resp?.openActions.length ?? 0
-  const openReservesCount = resp?.openReserves.length ?? 0
+  // Counts
+  const openActionsCount   = resp?.openActions.length ?? 0
+  const openReservesCount  = resp?.openReserves.length ?? 0
   const openDeadlinesCount = resp?.openDeadlines.length ?? 0
   const totalOpen = openActionsCount + openReservesCount + openDeadlinesCount
 
   const doneActionsCount  = resp?.doneActions.length ?? 0
+  const liftedCount       = resp?.liftedReserves.length ?? 0
   const decisionsCount    = (resp?.openDecisions.length ?? 0) + (resp?.doneDecisions.length ?? 0)
-  const totalDone = doneActionsCount + (resp?.liftedReserves.length ?? 0) + decisionsCount
+  const totalDone = doneActionsCount + liftedCount + decisionsCount
 
   const linkedSubjects = resp?.linkedSubjects ?? []
+  const lastActivity   = resp?.lastActivityAt ?? life.lastSeenAt
 
-  // Last activity: prefer resp data, fall back to lastSeenAt
-  const lastActivity = resp?.lastActivityAt ?? life.lastSeenAt
+  // Build summary text fragments
+  const aFaireFrags = [
+    openActionsCount   > 0 ? `${openActionsCount} action${openActionsCount > 1 ? 's' : ''}`   : null,
+    openReservesCount  > 0 ? `${openReservesCount} réserve${openReservesCount > 1 ? 's' : ''}` : null,
+    openDeadlinesCount > 0 ? `${openDeadlinesCount} échéance${openDeadlinesCount > 1 ? 's' : ''}` : null,
+  ].filter(Boolean) as string[]
+
+  const realiseFrags = [
+    doneActionsCount > 0 ? `${doneActionsCount} action${doneActionsCount > 1 ? 's' : ''} terminée${doneActionsCount > 1 ? 's' : ''}` : null,
+    liftedCount      > 0 ? `${liftedCount} réserve${liftedCount > 1 ? 's' : ''} levée${liftedCount > 1 ? 's' : ''}` : null,
+    decisionsCount   > 0 ? `${decisionsCount} décision${decisionsCount > 1 ? 's' : ''}` : null,
+  ].filter(Boolean) as string[]
 
   return (
     <>
-      {/* ── Header ── */}
+      {/* ── 1. Header ── */}
       <header className="rounded-2xl border bg-card px-4 py-4 shadow-sm">
         <div className="flex items-start gap-3">
           <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300">
@@ -387,151 +391,45 @@ function ActorFicheView({ life, identity, resp, realOccs, pills }: ActorFichePro
             {life.threadIds.length} formulations regroupées
           </p>
         )}
-
-        {/* Présence + dernière activité */}
-        <div className="mt-2.5 space-y-0.5">
-          {pills.length > 0 && (
-            <p className="text-[12px] text-muted-foreground">{pills.join(' · ')}</p>
-          )}
-          {lastActivity && (
-            <p className="text-[12px] text-muted-foreground">
-              Dernière activité le {frDate(lastActivity)}
-            </p>
-          )}
-          {life.firstSeenAt && !lastActivity && (
-            <p className="text-[12px] text-muted-foreground">
-              Première mention le {frDate(life.firstSeenAt)}
-            </p>
-          )}
+        <div className="mt-2 space-y-0.5">
+          {pills.length > 0 && <p className="text-[12px] text-muted-foreground">{pills.join(' · ')}</p>}
+          {lastActivity
+            ? <p className="text-[12px] text-muted-foreground">Dernière activité le {frDate(lastActivity)}</p>
+            : life.firstSeenAt
+              ? <p className="text-[12px] text-muted-foreground">Première mention le {frDate(life.firstSeenAt)}</p>
+              : null
+          }
         </div>
       </header>
 
-      {/* ── Ce qui est attendu ── */}
-      {totalOpen > 0 && (
-        <section>
-          <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Ce qui est attendu
-          </h2>
-          <div className="space-y-2">
-            {openActionsCount > 0 && (
-              <div>
-                <ResponsibilityRow
-                  icon={<Clock className="h-3.5 w-3.5 text-orange-600" />}
-                  label={`action${openActionsCount > 1 ? 's' : ''} ouverte${openActionsCount > 1 ? 's' : ''}`}
-                  count={openActionsCount}
-                  colorClass="bg-orange-50 border border-orange-100"
-                />
-                <div className="mt-1.5">
-                  <CompactItemList items={resp!.openActions.map(a => ({
-                    id: a.id,
-                    title: a.title,
-                    sub: a.status === 'planned' ? 'Planifiée' : a.status === 'in_progress' ? 'En cours' : null,
-                    date: a.dueDate ? `échéance ${frDateShort(a.dueDate)}` : null,
-                  }))} />
-                </div>
-              </div>
-            )}
-            {openReservesCount > 0 && (
-              <div>
-                <ResponsibilityRow
-                  icon={<ShieldAlert className="h-3.5 w-3.5 text-red-600" />}
-                  label={`réserve${openReservesCount > 1 ? 's' : ''} sous responsabilité`}
-                  count={openReservesCount}
-                  colorClass="bg-red-50 border border-red-100"
-                />
-                <div className="mt-1.5">
-                  <CompactItemList items={resp!.openReserves.map(r => ({
-                    id: r.id,
-                    title: r.label,
-                    sub: r.location,
-                    date: r.issuedOn ? `émise le ${frDateShort(r.issuedOn)}` : null,
-                  }))} />
-                </div>
-              </div>
-            )}
-            {openDeadlinesCount > 0 && (
-              <div>
-                <ResponsibilityRow
-                  icon={<TriangleAlert className="h-3.5 w-3.5 text-amber-600" />}
-                  label={`échéance${openDeadlinesCount > 1 ? 's' : ''} à venir`}
-                  count={openDeadlinesCount}
-                  colorClass="bg-amber-50 border border-amber-100"
-                />
-                <div className="mt-1.5">
-                  <CompactItemList items={resp!.openDeadlines.map(d => ({
-                    id: d.id,
-                    title: d.title,
-                    sub: d.status === 'to_plan' ? 'À planifier' : 'Planifiée',
-                    date: d.dueDate ? frDateShort(d.dueDate) : null,
-                  }))} />
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
+      {/* ── 2. Synthèse compacte ── */}
+      {(totalOpen > 0 || totalDone > 0) && (
+        <div className="rounded-2xl border bg-card px-4 shadow-sm divide-y">
+          {totalOpen > 0 && (
+            <div className="flex items-baseline gap-3 py-3">
+              <span className="shrink-0 text-[12px] font-semibold text-orange-700 w-16">À faire</span>
+              <p className="text-[13px] text-foreground">{aFaireFrags.join(' · ')}</p>
+            </div>
+          )}
+          {totalDone > 0 && (
+            <div className="flex items-baseline gap-3 py-3">
+              <span className="shrink-0 text-[12px] font-semibold text-emerald-700 w-16">Réalisé</span>
+              <p className="text-[13px] text-foreground">{realiseFrags.join(' · ')}</p>
+            </div>
+          )}
+        </div>
       )}
 
-      {/* ── Ce qui a été fait ── */}
-      {(doneActionsCount > 0 || (resp?.liftedReserves.length ?? 0) > 0 || decisionsCount > 0) && (
-        <section>
-          <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Ce qui a été fait
-          </h2>
-          <div className="space-y-2">
-            {doneActionsCount > 0 && (
-              <div>
-                <ResponsibilityRow
-                  icon={<CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
-                  label={`action${doneActionsCount > 1 ? 's' : ''} terminée${doneActionsCount > 1 ? 's' : ''}`}
-                  count={doneActionsCount}
-                  colorClass="bg-emerald-50 border border-emerald-100"
-                />
-                <div className="mt-1.5">
-                  <CompactItemList items={resp!.doneActions.slice(0, 5).map(a => ({
-                    id: a.id,
-                    title: a.title,
-                    date: a.doneAt ? `clôturée le ${frDateShort(a.doneAt)}` : null,
-                  }))} />
-                  {doneActionsCount > 5 && (
-                    <p className="mt-1.5 px-1 text-[11px] text-muted-foreground">
-                      + {doneActionsCount - 5} autres actions terminées
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-            {(resp?.liftedReserves.length ?? 0) > 0 && (
-              <ResponsibilityRow
-                icon={<CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
-                label={`réserve${resp!.liftedReserves.length > 1 ? 's' : ''} levée${resp!.liftedReserves.length > 1 ? 's' : ''}`}
-                count={resp!.liftedReserves.length}
-                colorClass="bg-emerald-50 border border-emerald-100"
-              />
-            )}
-            {decisionsCount > 0 && (
-              <ResponsibilityRow
-                icon={<CheckCircle2 className="h-3.5 w-3.5 text-violet-600" />}
-                label={`décision${decisionsCount > 1 ? 's' : ''} associée${decisionsCount > 1 ? 's' : ''}`}
-                count={decisionsCount}
-                colorClass="bg-violet-50 border border-violet-100"
-              />
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* ── Sujets concernés ── */}
+      {/* ── 3. Sujets principaux ── */}
       {linkedSubjects.length > 0 && (
         <section>
-          <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Sujets concernés
           </h2>
           <div className="flex flex-wrap gap-2">
             {linkedSubjects.map(s => (
-              <span
-                key={s.canonicalSubjectId}
-                className="rounded-full border bg-card px-3 py-1.5 text-[13px] font-medium"
-              >
+              <span key={s.canonicalSubjectId}
+                className="rounded-full border bg-card px-3 py-1.5 text-[13px] font-medium">
                 {s.label}
               </span>
             ))}
@@ -539,7 +437,71 @@ function ActorFicheView({ life, identity, resp, realOccs, pills }: ActorFichePro
         </section>
       )}
 
-      {/* ── Présence sur le chantier ── */}
+      {/* ── 4. Détail : actions ouvertes ── */}
+      {openActionsCount > 0 && (
+        <section>
+          <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Actions ouvertes ({openActionsCount})
+          </h2>
+          <CompactItemList items={resp!.openActions.map(a => ({
+            id: a.id,
+            title: a.title,
+            sub: a.status === 'planned' ? 'Planifiée' : a.status === 'in_progress' ? 'En cours' : null,
+            date: a.dueDate ? `échéance ${frDateShort(a.dueDate)}` : null,
+          }))} />
+        </section>
+      )}
+
+      {/* ── 5. Détail : réserves ouvertes ── */}
+      {openReservesCount > 0 && (
+        <section>
+          <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Réserves sous responsabilité ({openReservesCount})
+          </h2>
+          <CompactItemList items={resp!.openReserves.map(r => ({
+            id: r.id,
+            title: r.label,
+            sub: r.location,
+            date: r.issuedOn ? `émise le ${frDateShort(r.issuedOn)}` : null,
+          }))} />
+        </section>
+      )}
+
+      {/* ── 6. Détail : échéances ouvertes ── */}
+      {openDeadlinesCount > 0 && (
+        <section>
+          <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Échéances ({openDeadlinesCount})
+          </h2>
+          <CompactItemList items={resp!.openDeadlines.map(d => ({
+            id: d.id,
+            title: d.title,
+            sub: d.status === 'to_plan' ? 'À planifier' : 'Planifiée',
+            date: d.dueDate ? frDateShort(d.dueDate) : null,
+          }))} />
+        </section>
+      )}
+
+      {/* ── 7. Détail : actions terminées (3 max + overflow) ── */}
+      {doneActionsCount > 0 && (
+        <section>
+          <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Actions terminées ({doneActionsCount})
+          </h2>
+          <CompactItemList items={resp!.doneActions.slice(0, 3).map(a => ({
+            id: a.id,
+            title: a.title,
+            date: a.doneAt ? `clôturée le ${frDateShort(a.doneAt)}` : null,
+          }))} />
+          {doneActionsCount > 3 && (
+            <p className="mt-1.5 px-1 text-[11px] text-muted-foreground">
+              + {doneActionsCount - 3} autres
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* ── 8. Présence sur le chantier ── */}
       {realOccs.length > 0 ? (
         <section>
           <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
