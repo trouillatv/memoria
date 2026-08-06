@@ -501,16 +501,30 @@ export async function getCanonicalSubjectLife(
     ?? null
   const primaryFamily = realOccurrences[0]?.proposalFamily ?? null
 
-  // Primitive stagnation — compare statut entre occurrences consécutives (non-gaps, triées)
+  // Primitive stagnation V1B — signature combinée : statut + objets métier liés (création + changement d'état)
+  const matByRunTemp = new Map<string, string[]>()
+  for (const ev of materializedEvents) {
+    if (!ev.runId) continue
+    const list = matByRunTemp.get(ev.runId) ?? []
+    list.push(`${ev.entityType}:${ev.entityId}:${ev.status ?? ''}`)
+    matByRunTemp.set(ev.runId, list)
+  }
+  const matSigByRun = new Map<string, string>()
+  for (const [runId, items] of matByRunTemp.entries()) {
+    matSigByRun.set(runId, items.sort().join(';'))
+  }
+
   let lastMeaningfulChangeAt: string | null = null
-  let lastKnownStatus: string | null = null
+  let lastKnownSig: string | null = null
   let consecutiveMentionsWithoutChange = 0
   for (let i = 0; i < realOccurrences.length; i++) {
     const occ = realOccurrences[i]
-    const st = occ.visitStatus ?? occ.documentStatus ?? null
-    if (i === 0 || st !== lastKnownStatus) {
+    const statusPart = occ.visitStatus ?? occ.documentStatus ?? ''
+    const matPart = occ.runId ? (matSigByRun.get(occ.runId) ?? '') : ''
+    const sig = `${statusPart}|${matPart}`
+    if (i === 0 || sig !== lastKnownSig) {
       lastMeaningfulChangeAt = occ.effectiveDate
-      lastKnownStatus = st
+      lastKnownSig = sig
       consecutiveMentionsWithoutChange = 0
     } else {
       consecutiveMentionsWithoutChange++
@@ -746,12 +760,12 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
   const runEffDate = new Map<string, string>(allRuns.map((r) => [r.id, runEffectiveDate(r)]))
 
   // 2. Propositions des runs canoniques (projection minimale)
-  type PropRow = { extraction_run_id: string; subject_thread_id: string; document_status: string | null; proposal_family: string }
+  type PropRow = { id: string; extraction_run_id: string; subject_thread_id: string; document_status: string | null; proposal_family: string }
   let props: PropRow[] = []
   if (runIds.length > 0) {
     const { data } = await supabase
       .from('document_extraction_proposal')
-      .select('extraction_run_id, subject_thread_id, document_status, proposal_family')
+      .select('id, extraction_run_id, subject_thread_id, document_status, proposal_family')
       .in('extraction_run_id', runIds)
       .not('subject_thread_id', 'is', null)
     props = (data ?? []) as PropRow[]
@@ -768,6 +782,42 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
       .in('subject_thread_id', allThreadIds)
     for (const r of (data ?? []) as Array<{ subject_thread_id: string; canonical_subject_id: string }>) {
       threadToCsId.set(r.subject_thread_id, r.canonical_subject_id)
+    }
+  }
+
+  // 2B. Matérialisations par proposition — détection création d'objets métier (signal V1B)
+  // Un nouvel objet (action/réserve/décision/échéance) apparu dans un run = évolution significative.
+  type MatLightRow = { proposal_id: string; target_entity_id: string; target_entity_type: string }
+  // propId → { csId, runId } — index pour éviter O(n²) dans la boucle mat
+  const propMeta = new Map<string, { csId: string; runId: string }>()
+  for (const p of props) {
+    const csId = threadToCsId.get(p.subject_thread_id)
+    if (csId) propMeta.set(p.id, { csId, runId: p.extraction_run_id })
+  }
+  // csId → runId → signature triée (entityType:entityId)
+  const matByCsRun = new Map<string, Map<string, string>>()
+  if (props.length > 0) {
+    const { data: matRows } = await supabase
+      .from('document_proposal_materialization')
+      .select('proposal_id, target_entity_id, target_entity_type')
+      .in('proposal_id', props.map((p) => p.id))
+      .in('target_entity_type', ['site_action', 'site_decision', 'site_reserve', 'site_deadline'])
+    const rawByKey = new Map<string, string[]>()
+    for (const m of (matRows ?? []) as MatLightRow[]) {
+      const meta = propMeta.get(m.proposal_id)
+      if (!meta) continue
+      const key = `${meta.csId}\x00${meta.runId}`
+      const list = rawByKey.get(key) ?? []
+      list.push(`${m.target_entity_type}:${m.target_entity_id}`)
+      rawByKey.set(key, list)
+    }
+    for (const [key, items] of rawByKey.entries()) {
+      const sep = key.indexOf('\x00')
+      const csId = key.slice(0, sep)
+      const runId = key.slice(sep + 1)
+      let csMap = matByCsRun.get(csId)
+      if (!csMap) { csMap = new Map(); matByCsRun.set(csId, csMap) }
+      csMap.set(runId, items.sort().join(';'))
     }
   }
 
@@ -810,7 +860,7 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
 
   // 8. Timeline fusionnée par CS (une occurrence par CS×run, proposition dominante)
   const FAMILY_RANK = ['reservation', 'action', 'decision', 'deadline', 'observation', 'knowledge_fact', 'person', 'company']
-  type OccEntry = { effectiveDate: string; status: string | null; proposalFamily: string | null }
+  type OccEntry = { effectiveDate: string; status: string | null; proposalFamily: string | null; matSig: string }
 
   // csId → runId → {status, family} — proposition la plus sémantiquement forte
   const bestByCsRun = new Map<string, Map<string, { status: string | null; family: string }>>()
@@ -834,7 +884,14 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     const occs: OccEntry[] = []
     for (const run of allRuns) {
       const entry = runMap.get(run.id)
-      if (entry) occs.push({ effectiveDate: runEffDate.get(run.id) ?? '', status: entry.status, proposalFamily: entry.family })
+      if (entry) {
+        occs.push({
+          effectiveDate: runEffDate.get(run.id) ?? '',
+          status: entry.status,
+          proposalFamily: entry.family,
+          matSig: matByCsRun.get(csId)?.get(run.id) ?? '',
+        })
+      }
     }
     occsByCsId.set(csId, occs)
   }
@@ -843,7 +900,7 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
   for (const o of nativeOccs) {
     if (!csById.has(o.canonical_subject_id)) continue
     const existing = occsByCsId.get(o.canonical_subject_id) ?? []
-    existing.push({ effectiveDate: o.effective_date, status: o.visit_status, proposalFamily: null })
+    existing.push({ effectiveDate: o.effective_date, status: o.visit_status, proposalFamily: null, matSig: '' })
     occsByCsId.set(o.canonical_subject_id, existing)
   }
 
@@ -860,15 +917,16 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     const occs = occsByCsId.get(csId) ?? []
     if (occs.length === 0) continue
 
-    // Stagnation — même algorithme que getCanonicalSubjectLife
+    // Stagnation V1B — signature combinée : statut + objets métier créés dans le run
     let lastMeaningfulChangeAt: string | null = null
-    let lastKnownStatus: string | null = null
+    let lastKnownSig: string | null = null
     let consecutiveMentionsWithoutChange = 0
     for (let i = 0; i < occs.length; i++) {
-      const st = occs[i].status ?? null
-      if (i === 0 || st !== lastKnownStatus) {
-        lastMeaningfulChangeAt = occs[i].effectiveDate
-        lastKnownStatus = st
+      const occ = occs[i]
+      const sig = `${occ.status ?? ''}|${occ.matSig}`
+      if (i === 0 || sig !== lastKnownSig) {
+        lastMeaningfulChangeAt = occ.effectiveDate
+        lastKnownSig = sig
         consecutiveMentionsWithoutChange = 0
       } else {
         consecutiveMentionsWithoutChange++
