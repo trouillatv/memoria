@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { AlertCircle, Brain, BookOpen, CheckCircle2, ChevronRight } from 'lucide-react'
 import type { NavigableSubjectSummary } from '@/lib/db/canonical-subject-life'
-import { isOperationalSubject } from '@/lib/subjects/kind'
+import { computeAttentionSignals, formatAttentionFragments } from '@/lib/subjects/attention'
 import { cn } from '@/lib/utils'
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
@@ -58,9 +58,12 @@ const SIXTY_DAYS_MS   = 60 * 86_400_000
 type Bucket = 'watch' | 'moving' | 'open' | 'knowledge' | 'closed'
 
 function getBucket(s: NavigableSubjectSummary, nowMs: number): Bucket {
-  if (CLOSED_STATUSES.has(s.currentStatus ?? '')) return 'closed'
-  if (!isOperationalSubject(s.kind))              return 'knowledge'
-  if (s.isStagnant)                               return 'watch'
+  const signals = computeAttentionSignals(s)
+  // Vetos absolus — jamais court-circuités par un signal.
+  if (signals.isClosed)       return 'closed'
+  if (!signals.isOperational) return 'knowledge'
+  // Au moins un signal d'attention → À surveiller.
+  if (signals.attentionReasons.length > 0) return 'watch'
   const recentChange = s.lastMeaningfulChangeAt &&
     new Date(s.lastMeaningfulChangeAt).getTime() > nowMs - SIXTY_DAYS_MS
   return recentChange ? 'moving' : 'open'
@@ -129,26 +132,33 @@ function SubjectCard({ subject, siteId, bucket }: {
   if (nativeOccurrenceCount > 0) sourceFragments.push('terrain')
   const sourceLine = sourceFragments.join(' · ')
 
+  const isWatch    = bucket === 'watch'
   const isKnowledge = bucket === 'knowledge'
   const isClosed    = bucket === 'closed'
+
+  // Raisons d'attention — calculées uniquement pour les cartes dans "À surveiller"
+  const attentionSignals = isWatch ? computeAttentionSignals(subject) : null
+  const attentionFragments = attentionSignals
+    ? formatAttentionFragments(subject, attentionSignals.attentionReasons)
+    : []
 
   return (
     <Link
       href={`/m/site/${siteId}/sujets/${canonicalSubjectId}`}
       className={cn(
         'flex items-start gap-3 rounded-2xl border bg-card px-3.5 py-3 shadow-sm active:brightness-95',
-        isStagnant && 'border-amber-200',
+        isWatch && isStagnant && 'border-amber-200',
         isClosed   && 'opacity-60',
       )}
     >
       <span className={cn(
         'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-        isStagnant  ? 'bg-amber-50' :
-        isKnowledge ? 'bg-muted' :
-        isClosed    ? 'bg-muted' :
-                      'bg-indigo-50 dark:bg-indigo-950/40',
+        isWatch && isStagnant ? 'bg-amber-50' :
+        isKnowledge           ? 'bg-muted' :
+        isClosed              ? 'bg-muted' :
+                                'bg-indigo-50 dark:bg-indigo-950/40',
       )}>
-        {isStagnant
+        {isWatch && isStagnant
           ? <AlertCircle className="h-4 w-4 text-amber-600" />
           : isKnowledge
             ? <BookOpen className="h-4 w-4 text-muted-foreground" />
@@ -171,17 +181,28 @@ function SubjectCard({ subject, siteId, bucket }: {
           )}
         </span>
 
-        {isStagnant && stagnationDays > 0 && (
+        {/* Ligne d'attention — remplace les lignes séparées stagnation / dernier changement pour les cartes dans watch */}
+        {isWatch && attentionFragments.length > 0 && (
+          <span className={cn(
+            'mt-1 block text-[11px]',
+            isStagnant ? 'text-amber-700' : 'text-indigo-700 dark:text-indigo-400',
+          )}>
+            {attentionFragments.join(' · ')}
+          </span>
+        )}
+
+        {/* Hors watch : comportement existant */}
+        {!isWatch && isStagnant && stagnationDays > 0 && (
           <span className="mt-1 block text-[11px] text-amber-700">
             Sans évolution depuis {stagnationDays} jour{stagnationDays > 1 ? 's' : ''}
           </span>
         )}
-        {!isStagnant && !isClosed && lastMeaningfulChangeAt && (
+        {!isWatch && !isClosed && lastMeaningfulChangeAt && (
           <span className="mt-0.5 block text-[11px] text-muted-foreground">
             Évolué le {new Date(lastMeaningfulChangeAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
           </span>
         )}
-        {activeObjects.total > 0 && (
+        {!isWatch && activeObjects.total > 0 && (
           <span className="mt-0.5 block text-[11px] font-medium text-indigo-700 dark:text-indigo-400">
             {activeObjects.total} objet{activeObjects.total > 1 ? 's' : ''} actif{activeObjects.total > 1 ? 's' : ''}
             {activeObjects.actionsOpen > 0 && activeObjects.total > 1 &&

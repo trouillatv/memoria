@@ -701,9 +701,12 @@ export async function getCanonicalSubjectLifeForSite(
   return life
 }
 
-// Familles dont le sujet ne peut pas "stagner" par nature (personne, entreprise, info stable).
-// La stagnation ne s'applique qu'aux sujets dont on attend une évolution métier.
-const STAGNATION_INELIGIBLE = new Set(['person', 'company', 'knowledge_fact'])
+// Familles dont le sujet ne peut pas "stagner" par nature.
+// deadline est exclu provisoirement : les échéances récurrentes (réunion mensuelle, situations)
+// changent de statut cycliquement — leur statut stable est un artefact de répétition,
+// pas un vrai blocage. Limite V1 : une vraie échéance unique dépassée devra être traitée
+// explicitement (via champ is_recurring ou type distinct) pour réintégrer ce signal.
+const STAGNATION_INELIGIBLE = new Set(['person', 'company', 'knowledge_fact', 'deadline'])
 
 // ── Vue liste chantier ────────────────────────────────────────────────────────
 
@@ -1018,7 +1021,11 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     const stagnationDays = (lastMeaningfulChangeAt && lastSeenAt && lastMeaningfulChangeAt !== lastSeenAt)
       ? Math.floor((new Date(lastSeenAt).getTime() - new Date(lastMeaningfulChangeAt).getTime()) / 86_400_000)
       : 0
-    const isStagnant = !STAGNATION_INELIGIBLE.has(kind ?? '') && stagnationDays >= 30 && consecutiveMentionsWithoutChange >= 2
+    // Veto absolu : un sujet clôturé ne peut jamais être stagnant, quelle que soit son historique.
+    const isStagnant = !STAGNATION_INELIGIBLE.has(kind ?? '')
+      && !CLOSED_NAV_STATUSES.has(currentStatus ?? '')
+      && stagnationDays >= 30
+      && consecutiveMentionsWithoutChange >= 2
 
     results.push({
       canonicalSubjectId: csId,
