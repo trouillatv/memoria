@@ -29,6 +29,7 @@ import { openSiteIntervenant, closeSiteIntervenant, listSiteCandidateCompanies }
 import { listSiteActionResponsibleCandidates, resolveActionResponsibility } from '@/lib/knowledge/action-responsible-candidates'
 import { recordCorrections, type CorrectionEvent } from '@/lib/db/memory-corrections'
 import { generatePv } from '@/services/ai/document-generation'
+import { buildExtractionSiteContext } from '@/lib/db/extraction-context'
 import {
   createReportDocument,
   updateReportDocumentSections,
@@ -70,8 +71,13 @@ export async function generatePvAction(reportId: string): Promise<{ ok: true; id
     return { ok: false, error: 'Aucune transcription/note exploitable pour générer le PV.' }
   }
 
-  const actions = await listSiteActionsByReport(reportId)
-  const followup = await getMeetingFollowup({ id: report.id, site_id: report.site_id, created_at: report.created_at })
+  const [actions, followup, siteContext] = await Promise.all([
+    listSiteActionsByReport(reportId),
+    getMeetingFollowup({ id: report.id, site_id: report.site_id, created_at: report.created_at }),
+    report.site_id
+      ? buildExtractionSiteContext(report.site_id).catch(() => null)
+      : Promise.resolve(null),
+  ])
   const template = resolveReportTemplate()
 
   try {
@@ -86,6 +92,7 @@ export async function generatePvAction(reportId: string): Promise<{ ok: true; id
       meetingTitle: report.title,
       meetingDateLabel: meetingDateLabel(report.created_at),
       userId: user.id,
+      siteContext,
     })
 
     const id = await createReportDocument({

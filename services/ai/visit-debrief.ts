@@ -237,6 +237,10 @@ export interface VisitDebriefInput {
   /** Résultats structurés du plan de visite (buildWatchlistDebriefBlock).
    *  Injecté avant la transcription. null = pas de plan de visite pour cette session. */
   watchlistBlock?: string | null
+  /** Contexte compact du chantier (canonical subjects + aliases confirmés).
+   *  Aide à la compréhension des noms propres et termes métier — jamais source de vérité.
+   *  Exclu du corpus_hash (volatile). null = aucun sujet connu → comportement inchangé. */
+  siteContext?: string | null
 }
 
 export interface VisitDebriefResult {
@@ -263,6 +267,7 @@ function buildContextBlock(input: VisitDebriefInput): string {
     referenceDateBlock(input.referenceDate),
     ...(input.watchlistBlock ? [input.watchlistBlock, ''] : []),
     ...(input.semanticBlock ? [input.semanticBlock, ''] : []),
+    ...(input.siteContext ? [input.siteContext, ''] : []),
     '=== Vocal / transcription ===',
     input.transcript?.slice(0, 10000) || '(aucun)',
     '',

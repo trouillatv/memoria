@@ -36,6 +36,7 @@ import { projectDebriefToProposals } from '@/lib/db/knowledge-proposals'
 import { getWatchlistForDebrief } from '@/lib/db/visit-watchlist'
 import { buildSemanticContextBlock } from '@/lib/knowledge/semantic-entities'
 import { buildWatchlistDebriefBlock } from '@/lib/visits/watchlist-debrief-block'
+import { buildExtractionSiteContext } from '@/lib/db/extraction-context'
 import {
   buildDebriefSemanticMemory,
   type DebriefSemanticMemory,
@@ -114,6 +115,7 @@ function buildDebriefInput(
   userId: string | null,
   semanticBlock: string | null = null,
   watchlistBlock: string | null = null,
+  siteContext: string | null = null,
 ): VisitDebriefInput {
   const signalLines = ctx.signals.flatMap((s) => [
     s.title,
@@ -137,6 +139,7 @@ function buildDebriefInput(
     userId,
     semanticBlock: semanticBlock || null,
     watchlistBlock: watchlistBlock || null,
+    siteContext: siteContext || null,
   }
 }
 
@@ -393,12 +396,17 @@ export async function loadOrRunVisitDebrief(
 ): Promise<DebriefLoadResult> {
   const ctx = await gatherVisitDebriefContext(reportId)
   if (!ctx) return { ok: false, error: 'Visite introuvable' }
-  const semanticBlock = ctx.visit.site_id && ctx.visit.organization_id
-    ? await buildSemanticContextBlock(ctx.visit.site_id, ctx.visit.organization_id, userId ?? undefined)
-    : null
-  const watchlistItems = await getWatchlistForDebrief(reportId)
+  const [semanticBlock, siteContext, watchlistItems] = await Promise.all([
+    ctx.visit.site_id && ctx.visit.organization_id
+      ? buildSemanticContextBlock(ctx.visit.site_id, ctx.visit.organization_id, userId ?? undefined)
+      : Promise.resolve(null),
+    ctx.visit.site_id
+      ? buildExtractionSiteContext(ctx.visit.site_id).catch(() => null)
+      : Promise.resolve(null),
+    getWatchlistForDebrief(reportId),
+  ])
   const watchlistBlock = buildWatchlistDebriefBlock(watchlistItems)
-  const input = buildDebriefInput(ctx, userId, semanticBlock, watchlistBlock)
+  const input = buildDebriefInput(ctx, userId, semanticBlock, watchlistBlock, siteContext)
   const hash = computeCorpusHash(input)
   const snapshot = ctx.sourceSnapshot
 

@@ -291,7 +291,7 @@ Lie chaque preuve à sa proposition via \`evidenceKeys\`.
 ---
 
 ${siteContext
-  ? `## Contexte connu du chantier\n\nLorsqu'une formulation du PV correspond à un sujet ou acteur listé ci-dessous, utilise son label canonique dans le champ \`label\`. Si la correspondance est incertaine, utilise la formulation du document.\n\n${siteContext}\n\n---\n\n`
+  ? `## Contexte connu du chantier\n\nLes éléments ci-dessous sont des connaissances déjà structurées de ce chantier : sujets suivis, acteurs connus et formulations alternatives déjà validées.\n\nUtilise ce contexte pour reconnaître les noms propres, acronymes, acteurs et termes métier du document. Extrais le contenu **fidèlement à la source** : ne remplace pas la formulation du document par un label canonique. La résolution d'identité vers un sujet canonique est effectuée séparément, après extraction.\n\n${siteContext}\n\n---\n\n`
   : ''}## Texte du document
 
 ${text}`

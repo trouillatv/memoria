@@ -32,6 +32,9 @@ export interface GeneratePvInput {
   /** Bloc « suivi réunion précédente » pré-calculé (déterministe, hors LLM). */
   followupText?: string | null
   userId: string | null
+  /** Contexte compact du chantier (canonical subjects + aliases confirmés).
+   *  Aide à la compréhension des termes métier — jamais source de vérité. */
+  siteContext?: string | null
 }
 
 export interface GeneratePvResult {
@@ -132,6 +135,7 @@ export async function generatePv(input: GeneratePvInput): Promise<GeneratePvResu
       const glossaryBlock = await buildGlossaryPromptBlock().catch(() => '')
       userMessage = [
         glossaryBlock ? `${glossaryBlock}\n` : '',
+        input.siteContext ? `${input.siteContext}\nLe contexte ci-dessus aide à reconnaître les termes métier. Extrais fidèlement la source — ne remplace pas les formulations par des labels canoniques.\n` : '',
         `Réunion : ${input.meetingTitle ?? '(sans titre)'} — ${input.meetingDateLabel}`,
         '',
         '=== Transcription ===',

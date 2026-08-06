@@ -3,11 +3,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { isActorKind } from '@/lib/subjects/kind'
 
 // Taille maximale du bloc de contexte injecté dans le prompt LLM.
-// Assez compact pour ne pas noyer les règles d'extraction, assez riche
-// pour couvrir les acteurs et sujets fréquents d'un chantier mature.
 const MAX_CONTEXT_CHARS = 3000
+// Sujets avec aliases confirmés (formulations validées par des humains) — priorité 1
+const MAX_SUBJECTS_WITH_ALIASES = 25
+// Sujets sans alias — contexte secondaire, limité pour ne pas diluer le signal
+const MAX_SUBJECTS_WITHOUT_ALIASES = 10
 const MAX_ACTORS = 15
-const MAX_SUBJECTS = 30
 
 /**
  * Construit un bloc de contexte compact pour l'extraction LLM d'un PV.
@@ -43,14 +44,12 @@ export async function buildExtractionSiteContext(siteId: string): Promise<string
   if (!siteName && csRows.length === 0) return ''
 
   const actors = csRows.filter((s) => isActorKind(s.kind))
-  const operationalSubjects = csRows.filter((s) => !isActorKind(s.kind))
+  const nonActors = csRows.filter((s) => !isActorKind(s.kind))
 
-  // Les sujets avec aliases confirmés par des humains en priorité
-  operationalSubjects.sort((a, b) => {
-    const aHas = (a.aliases ?? []).length > 0 ? 1 : 0
-    const bHas = (b.aliases ?? []).length > 0 ? 1 : 0
-    return bHas - aHas
-  })
+  // Séparation : sujets avec aliases (formulations validées) vs sans
+  // Les deux groupes arrivent déjà triés par created_at DESC (les plus récents en premier)
+  const withAliases    = nonActors.filter((s) => (s.aliases ?? []).length > 0).slice(0, MAX_SUBJECTS_WITH_ALIASES)
+  const withoutAliases = nonActors.filter((s) => (s.aliases ?? []).length === 0).slice(0, MAX_SUBJECTS_WITHOUT_ALIASES)
 
   const lines: string[] = []
 
@@ -66,17 +65,26 @@ export async function buildExtractionSiteContext(siteId: string): Promise<string
     }
   }
 
-  if (operationalSubjects.length > 0) {
+  // Sujets avec aliases en premier : formulations déjà validées par un humain
+  if (withAliases.length > 0) {
     lines.push('')
-    lines.push('Sujets suivis — si une formulation du PV correspond, utiliser ce label :')
-    for (const s of operationalSubjects.slice(0, MAX_SUBJECTS)) {
+    lines.push('Sujets suivis avec formulations alternatives connues :')
+    for (const s of withAliases) {
       const aliases = s.aliases ?? []
-      const aliasStr = aliases.length > 0 ? ` [alias : "${aliases.join('", "')}"]` : ''
-      lines.push(`- ${s.label}${aliasStr}`)
+      lines.push(`- ${s.label} [alias : "${aliases.join('", "')}"]`)
     }
   }
 
-  const header = '=== Contexte connu du chantier ==='
+  // Sujets sans alias : labels connus mais sans validation de formulation alternative
+  if (withoutAliases.length > 0) {
+    lines.push('')
+    lines.push('Autres sujets actifs :')
+    for (const s of withoutAliases) {
+      lines.push(`- ${s.label}`)
+    }
+  }
+
+  const header = '=== Mémoire du chantier (aide à la compréhension, pas à la réécriture) ==='
   let block = header + '\n' + lines.join('\n')
 
   if (block.length > MAX_CONTEXT_CHARS) {
