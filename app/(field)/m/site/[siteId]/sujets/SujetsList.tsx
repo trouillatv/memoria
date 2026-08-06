@@ -194,11 +194,12 @@ function SubjectSection({ subjects, siteId, label, bucketFor }: {
   )
 }
 
-function EmptyTab({ message }: { message: string }) {
+function EmptyTab({ message, detail }: { message: string; detail?: string }) {
   return (
-    <p className="rounded-xl border border-dashed px-4 py-8 text-center text-[13px] text-muted-foreground">
-      {message}
-    </p>
+    <div className="rounded-xl border border-dashed px-4 py-8 text-center">
+      <p className="text-[13px] text-muted-foreground">{message}</p>
+      {detail && <p className="mt-1 text-[12px] text-muted-foreground/70">{detail}</p>}
+    </div>
   )
 }
 
@@ -220,11 +221,44 @@ export function SujetsList({ subjects, siteId }: {
     buckets[b].push(s)
   }
 
+  // Chantier "jeune" = aucun sujet n'a été vu dans plus d'un PV.
+  // Sur un tel chantier, la stagnation est structurellement impossible (2 occurrences
+  // consécutives requises), donc "À surveiller" sera naturellement vide.
+  const sitePvCount = subjects.length > 0 ? Math.max(...subjects.map((s) => s.pvCount)) : 0
+  const isYoungSite = sitePvCount <= 1
+
+  // Sujets à mettre en avant sur un chantier jeune (top 5, priorité aux objets actifs)
+  const toKnowNow = isYoungSite
+    ? [...buckets.moving, ...buckets.open]
+        .sort((a, b) => (b.activeObjects.total - a.activeObjects.total) || (b.pvCount - a.pvCount))
+        .slice(0, 5)
+    : []
+
   function renderContent() {
     if (tab === 'surveiller') {
-      return buckets.watch.length > 0
-        ? <ul className="space-y-1.5">{buckets.watch.map((s) => <li key={s.canonicalSubjectId}><SubjectCard subject={s} siteId={siteId} bucket="watch" /></li>)}</ul>
-        : <EmptyTab message="Aucun sujet ne nécessite d'attention particulière." />
+      if (buckets.watch.length > 0) {
+        return <ul className="space-y-1.5">{buckets.watch.map((s) => <li key={s.canonicalSubjectId}><SubjectCard subject={s} siteId={siteId} bucket="watch" /></li>)}</ul>
+      }
+      return (
+        <div className="space-y-4">
+          <EmptyTab
+            message="Aucun signal de stagnation pour l'instant."
+            detail={isYoungSite ? "Ce chantier ne dispose encore que d'un PV." : undefined}
+          />
+          {isYoungSite && toKnowNow.length > 0 && (
+            <section className="space-y-1.5">
+              <SectionHeader label="À connaître dès maintenant" count={toKnowNow.length} />
+              <ul className="space-y-1.5">
+                {toKnowNow.map((s) => (
+                  <li key={s.canonicalSubjectId}>
+                    <SubjectCard subject={s} siteId={siteId} bucket={bucketOf.get(s.canonicalSubjectId) ?? 'moving'} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+      )
     }
 
     if (tab === 'mouvement') {
@@ -236,7 +270,7 @@ export function SujetsList({ subjects, siteId }: {
     if (tab === 'attente') {
       return buckets.open.length > 0
         ? <ul className="space-y-1.5">{buckets.open.map((s) => <li key={s.canonicalSubjectId}><SubjectCard subject={s} siteId={siteId} bucket="open" /></li>)}</ul>
-        : <EmptyTab message="Aucun sujet en attente." />
+        : <EmptyTab message="Aucun sujet actuellement identifié comme en attente." />
     }
 
     // Tout — regroupé par nature du sujet
