@@ -103,6 +103,29 @@ Règles strictes :
 
 Réponds en JSON : { "headline": "...", "trajectory": "...", "evidence": [{ "kind": "occurrence"|"event", "id": "...", "date": "..." }] }`
 
+// Schéma Gemini natif — contraint la structure de sortie au niveau du provider.
+// Les type values suivent l'enum Type du SDK @google/genai (uppercase).
+const GEMINI_SCHEMA: Record<string, unknown> = {
+  type: 'OBJECT',
+  properties: {
+    headline:  { type: 'STRING' },
+    trajectory: { type: 'STRING' },
+    evidence: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          kind: { type: 'STRING', enum: ['occurrence', 'event'] },
+          id:   { type: 'STRING' },
+          date: { type: 'STRING' },
+        },
+        required: ['kind', 'id', 'date'],
+      },
+    },
+  },
+  required: ['headline', 'trajectory', 'evidence'],
+}
+
 function emptyResult(model: string, provider: string): SubjectTrajectoryResult {
   return { headline: '', trajectory: '', evidence: [], generatedAt: new Date().toISOString(), model, provider }
 }
@@ -152,36 +175,47 @@ export async function generateSubjectTrajectory(
       systemPrompt: SYSTEM,
       userMessage,
       responseSchema: trajectorySchema,
+      geminiSchema: GEMINI_SCHEMA,
       modelTier: 'light',
       maxOutputTokens: 400,
     })
 
+    const empty = { headline: '', trajectory: '', evidence: [] } as z.infer<typeof trajectorySchema>
+
+    // Troncature détectée → section absente (trajectoire partielle = pire que rien)
+    if (out.finishReason && out.finishReason !== 'STOP' && out.finishReason !== 'FINISH_REASON_UNSPECIFIED') {
+      return { result: empty, tokens: out.tokens, model: out.model, provider: provider.name, durationMs: out.durationMs }
+    }
+
     let result: z.infer<typeof trajectorySchema> | undefined
 
-    // 1. Sortie structurée du provider (chemin privilégié)
+    // 1. Sortie structurée du provider (chemin privilégié — actif quand geminiSchema est fourni)
     if (out.parsed !== undefined && out.parsed !== null) {
       const r = trajectorySchema.safeParse(out.parsed)
       if (r.success) result = r.data
     }
-    // 2. Parse direct du texte brut
+    // 2. Parse direct du texte brut (provider sans sortie structurée ou parsing échoué)
     if (!result) {
       try {
         const r = trajectorySchema.safeParse(JSON.parse(out.text))
         if (r.success) result = r.data
       } catch { /* ignore */ }
     }
-    // 3. Extraction regex : Gemini peut ajouter du texte après le JSON
+    // 3. Extraction du premier objet JSON (premier '{' → dernier '}') : garde-fou
+    // si Gemini ajoute du texte avant ou après le JSON malgré geminiSchema.
     if (!result) {
-      const match = (out.text ?? '').match(/\{[\s\S]*\}/)
-      if (match) {
+      const text = out.text ?? ''
+      const start = text.indexOf('{')
+      const end = text.lastIndexOf('}')
+      if (start !== -1 && end > start) {
         try {
-          const r = trajectorySchema.safeParse(JSON.parse(match[0]))
+          const r = trajectorySchema.safeParse(JSON.parse(text.slice(start, end + 1)))
           if (r.success) result = r.data
         } catch { /* ignore */ }
       }
     }
     // 4. Aucune extraction réussie → section absente (ne jamais afficher le texte brut)
-    if (!result) result = { headline: '', trajectory: '', evidence: [] }
+    if (!result) result = empty
 
     return { result, tokens: out.tokens, model: out.model, provider: provider.name, durationMs: out.durationMs }
   })

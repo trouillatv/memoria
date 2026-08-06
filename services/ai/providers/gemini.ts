@@ -84,6 +84,7 @@ export class GeminiProvider implements AIProvider {
       },
       model,
       durationMs: Date.now() - start,
+      finishReason: response.candidates?.[0]?.finishReason ?? undefined,
     }
   }
 }

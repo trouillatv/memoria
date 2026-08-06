@@ -25,6 +25,8 @@ export interface CompletionOutput {
   tokens: TokenUsage
   model: string
   durationMs: number
+  /** Raison d'arrêt du provider (ex. 'STOP', 'MAX_TOKENS'). Absent si le provider ne l'expose pas. */
+  finishReason?: string
 }
 
 export interface AIProvider {
