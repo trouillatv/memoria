@@ -1094,6 +1094,8 @@ export async function listActiveCanonicalSubjects(siteId: string): Promise<Canon
     .select('id, label')
     .eq('site_id', siteId)
     .eq('status', 'active')
+    .is('company_id', null)
+    .is('contact_id', null)
     .order('label', { ascending: true })
   if (error) throw new Error(error.message)
   return ((data ?? []) as Array<{ id: string; label: string }>).map((r) => ({

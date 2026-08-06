@@ -8,6 +8,7 @@ import type { SubjectOccurrenceMerged, CanonicalLink, MaterializedEvent, Materia
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
 import { confirmSuggestedLink, rejectSuggestedLink, createCanonicalLinkAction, deleteCanonicalLinkAction } from './link-actions'
+import SubjectCombobox from './SubjectCombobox'
 
 export const dynamic = 'force-dynamic'
 
@@ -584,16 +585,7 @@ function RelationsSection({
           <form action={createCanonicalLinkAction} className="space-y-2">
             <input type="hidden" name="siteId" value={siteId} />
             <input type="hidden" name="canonicalSubjectId" value={canonicalSubjectId} />
-            <select
-              name="toCanonicalSubjectId"
-              required
-              className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
-            >
-              <option value="">Choisir un sujet…</option>
-              {otherSubjects.map((s) => (
-                <option key={s.id} value={s.id}>{s.label}</option>
-              ))}
-            </select>
+            <SubjectCombobox subjects={otherSubjects} name="toCanonicalSubjectId" required />
             <select
               name="linkType"
               required

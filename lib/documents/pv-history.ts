@@ -423,7 +423,7 @@ export async function getSiteSubjectMatrix(siteId: string): Promise<SiteSubjectM
     }
   }
 
-  const rows: SubjectMatrixRow[] = []
+  let rows: SubjectMatrixRow[] = []
 
   for (const [threadId, meta] of threadMeta.entries()) {
     const cells: Array<MatrixCell | null> = []
@@ -488,6 +488,71 @@ export async function getSiteSubjectMatrix(siteId: string): Promise<SiteSubjectM
       cells,
     })
   }
+
+  // Grouper les lignes par canonical_subject_id pour éviter les doublons
+  // (un canonical peut avoir plusieurs subject_thread_id via subject_thread_identity)
+  const canonicalGroups = new Map<string, SubjectMatrixRow[]>()
+  const ungrouped: SubjectMatrixRow[] = []
+  for (const row of rows) {
+    if (row.canonicalSubjectId !== null) {
+      const g = canonicalGroups.get(row.canonicalSubjectId) ?? []
+      g.push(row)
+      canonicalGroups.set(row.canonicalSubjectId, g)
+    } else {
+      ungrouped.push(row)
+    }
+  }
+
+  // Récupérer les labels canoniques depuis canonical_subject
+  const allCanonicalIds = [...canonicalGroups.keys()]
+  const canonicalLabelMap = new Map<string, string>()
+  if (allCanonicalIds.length > 0) {
+    const { data: csRows } = await supabase
+      .from('canonical_subject')
+      .select('id, label')
+      .in('id', allCanonicalIds)
+    for (const r of ((csRows ?? []) as Array<{ id: string; label: string }>)) {
+      canonicalLabelMap.set(r.id, r.label)
+    }
+  }
+
+  const mergedRows: SubjectMatrixRow[] = []
+  for (const [csId, group] of canonicalGroups.entries()) {
+    const numCols = runs.length
+    // Fusionner les cellules : non-gap > gap > null
+    const mergedCells: Array<MatrixCell | null> = Array.from({ length: numCols }, (_, i) => {
+      let best: MatrixCell | null = null
+      for (const row of group) {
+        const cell = row.cells[i]
+        if (cell === null) continue
+        if (best === null || (!cell.isGap && best.isGap)) best = cell
+      }
+      return best
+    })
+    // Recalculer currentStatus depuis les cellules fusionnées
+    let currentStatus: string | null = null
+    for (let i = mergedCells.length - 1; i >= 0; i--) {
+      const c = mergedCells[i]
+      if (c && !c.isGap) { currentStatus = c.status; break }
+    }
+    // Représentant = thread avec le run réel le plus récent
+    const representative = group.reduce((best, row) => {
+      const lastReal = row.cells.findLastIndex((c) => c !== null && !c.isGap)
+      const bestLastReal = best.cells.findLastIndex((c) => c !== null && !c.isGap)
+      return lastReal >= bestLastReal ? row : best
+    })
+    mergedRows.push({
+      subjectThreadId: csId,
+      canonicalLabel: canonicalLabelMap.get(csId) ?? representative.canonicalLabel,
+      family: representative.family,
+      thematicCategory: representative.thematicCategory,
+      currentStatus,
+      canonicalSubjectId: csId,
+      cells: mergedCells,
+    })
+  }
+
+  rows = [...mergedRows, ...ungrouped]
 
   // Sort by most recent active run (desc), then by canonicalLabel
   rows.sort((a, b) => {

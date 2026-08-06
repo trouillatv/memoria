@@ -156,7 +156,8 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
 
   const runs = matrix.runs
   const CELL_W = 52
-  const LABEL_W = 220
+  const [labelWidth, setLabelWidth] = useState(280)
+  const resizeDragRef = useRef<{ startX: number; startWidth: number } | null>(null)
 
   // Sujets 100% natifs — canonicalSubjectId présent dans nativeOccurrences mais absent de la matrice PV
   const matrixCanonicalIds = useMemo(
@@ -194,6 +195,23 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
   // Sync horizontal scroll between header and body
   function onBodyScroll(e: React.UIEvent<HTMLDivElement>) {
     if (headerRef.current) headerRef.current.scrollLeft = (e.target as HTMLDivElement).scrollLeft
+  }
+
+  function onResizeMouseDown(e: React.MouseEvent) {
+    e.preventDefault()
+    resizeDragRef.current = { startX: e.clientX, startWidth: labelWidth }
+    function onMove(ev: MouseEvent) {
+      if (!resizeDragRef.current) return
+      const delta = ev.clientX - resizeDragRef.current.startX
+      setLabelWidth(Math.max(160, Math.min(480, resizeDragRef.current.startWidth + delta)))
+    }
+    function onUp() {
+      resizeDragRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
   }
 
   if (runs.length === 0) {
@@ -283,7 +301,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
         {/* En-tête PV — scroll synchronisé */}
         <div className="flex border-b bg-muted/40">
           {/* Coin fixe */}
-          <div className="shrink-0 border-r px-3 py-2" style={{ width: LABEL_W }}>
+          <div className="shrink-0 border-r px-3 py-2" style={{ width: labelWidth }}>
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sujet</span>
           </div>
           {/* Dates PV + événements natifs — scroll */}
@@ -322,7 +340,13 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
         {/* Corps — scroll horizontal partagé */}
         <div className="flex" style={{ maxHeight: '70vh' }}>
           {/* Première colonne fixe */}
-          <div ref={labelColRef} className="shrink-0 overflow-y-auto border-r" style={{ width: LABEL_W }}>
+          <div ref={labelColRef} className="relative shrink-0 overflow-y-auto border-r" style={{ width: labelWidth }}>
+            {/* Poignée de resize */}
+            <div
+              onMouseDown={onResizeMouseDown}
+              className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize hover:bg-primary/20"
+              title="Glisser pour redimensionner"
+            />
             {filtered.map((row) => (
               <div
                 key={row.subjectThreadId}
