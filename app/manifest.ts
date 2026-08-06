@@ -63,8 +63,9 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'MemorIA',
     short_name: 'MemorIA',
     description: 'Mémoire opérationnelle de vos chantiers',
-    // Doctrine : la PWA est toujours terrain — start_url fixe.
-    start_url: '/m',
+    // Doctrine : point d'entrée stable. Si /m devient /terrain un jour,
+    // on modifie app/pwa/page.tsx — pas le manifest, pas le WebAPK.
+    start_url: '/pwa',
     display: 'standalone',
     background_color: '#ffffff',
     theme_color: '#0f172a',

@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { resolveHomeDestination } from '@/lib/navigation/home'
+import { HomeResolver } from './HomeResolver'
+import { StandaloneLoginRedirect } from './StandaloneLoginRedirect'
 import LandingPage from './LandingPage'
 
 export default async function Home() {
@@ -10,9 +11,17 @@ export default async function Home() {
   if (user) {
     const profile = await getCurrentUserWithProfile()
     if (profile) {
-      redirect(resolveHomeDestination(profile.role))
+      // Résolution côté client : le serveur ne connaît pas display-mode.
+      // HomeResolver redirige vers /m (standalone) ou resolveHomeDestination(role).
+      return <HomeResolver role={profile.role} />
     }
     redirect('/dashboard')
   }
-  return <LandingPage />
+  return (
+    <>
+      {/* Couche de compatibilité : ancienne PWA non auth → login?next=/m. */}
+      <StandaloneLoginRedirect />
+      <LandingPage />
+    </>
+  )
 }
