@@ -73,7 +73,7 @@ function SectionHeader({ label, count, className }: { label: string; count: numb
 
 function SubjectCard({ subject, siteId, bucket }: { subject: NavigableSubjectSummary; siteId: string; bucket: Bucket }) {
   const { canonicalSubjectId, title, currentStatus, pvCount, nativeOccurrenceCount,
-    isStagnant, stagnationDays, lastMeaningfulChangeAt } = subject
+    isStagnant, stagnationDays, lastMeaningfulChangeAt, activeObjects } = subject
 
   const statusLabel = currentStatus ? (STATUS_LABELS[currentStatus] ?? currentStatus) : null
   const statusColor = currentStatus ? (STATUS_COLORS[currentStatus] ?? 'bg-muted text-muted-foreground') : null
@@ -136,6 +136,12 @@ function SubjectCard({ subject, siteId, bucket }: { subject: NavigableSubjectSum
         {!isStagnant && !isClosed && lastMeaningfulChangeAt && (
           <span className="mt-0.5 block text-[11px] text-muted-foreground">
             Évolué le {new Date(lastMeaningfulChangeAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
+          </span>
+        )}
+        {activeObjects.total > 0 && (
+          <span className="mt-0.5 block text-[11px] font-medium text-indigo-700 dark:text-indigo-400">
+            {activeObjects.total} objet{activeObjects.total > 1 ? 's' : ''} actif{activeObjects.total > 1 ? 's' : ''}
+            {activeObjects.actionsOpen > 0 && activeObjects.total > 1 && ` · ${activeObjects.actionsOpen} action${activeObjects.actionsOpen > 1 ? 's' : ''}`}
           </span>
         )}
       </span>

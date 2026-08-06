@@ -719,8 +719,14 @@ export interface NavigableSubjectSummary {
   pvCount: number
   threadCount: number
   nativeOccurrenceCount: number
-  /** Objets métier actifs liés — enrichi dans un lot ultérieur (V1 = 0). */
-  activeObjectCount: number
+  /** Objets métier actifs liés, ventilés par type. */
+  activeObjects: {
+    actionsOpen: number
+    reservesOpen: number
+    deadlinesActive: number
+    decisionsOpen: number
+    total: number
+  }
   isStagnant: boolean
   stagnationDays: number
   consecutiveMentionsWithoutChange: number
@@ -796,6 +802,8 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
   }
   // csId → runId → signature triée (entityType:entityId)
   const matByCsRun = new Map<string, Map<string, string>>()
+  // csId → entityType → Set<entityId> — dédupliqué cross-runs (pour activeObjects)
+  const csEntityIds = new Map<string, Map<string, Set<string>>>()
   if (props.length > 0) {
     const { data: matRows } = await supabase
       .from('document_proposal_materialization')
@@ -806,10 +814,17 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     for (const m of (matRows ?? []) as MatLightRow[]) {
       const meta = propMeta.get(m.proposal_id)
       if (!meta) continue
+      // Signature stagnation (csId × runId)
       const key = `${meta.csId}\x00${meta.runId}`
       const list = rawByKey.get(key) ?? []
       list.push(`${m.target_entity_type}:${m.target_entity_id}`)
       rawByKey.set(key, list)
+      // Index entités cross-runs (pour activeObjects)
+      let typeMap = csEntityIds.get(meta.csId)
+      if (!typeMap) { typeMap = new Map(); csEntityIds.set(meta.csId, typeMap) }
+      let idSet = typeMap.get(m.target_entity_type)
+      if (!idSet) { idSet = new Set(); typeMap.set(m.target_entity_type, idSet) }
+      idSet.add(m.target_entity_id)
     }
     for (const [key, items] of rawByKey.entries()) {
       const sep = key.indexOf('\x00')
@@ -820,6 +835,41 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
       csMap.set(runId, items.sort().join(';'))
     }
   }
+
+  // 2C. Statuts des objets métier — pour activeObjects par CS (4 requêtes parallèles légères)
+  const OPEN_ACTION_STATUS   = new Set(['open', 'planned'])
+  const OPEN_RESERVE_STATUS  = new Set(['open'])
+  const OPEN_DEADLINE_STATUS = new Set(['to_plan', 'planned'])
+  const OPEN_DECISION_STATUT = new Set(['proposee'])
+
+  const actionStatusById   = new Map<string, string>()
+  const reserveStatusById  = new Map<string, string>()
+  const deadlineStatusById = new Map<string, string>()
+  const decisionStatutById = new Map<string, string>()
+
+  const allActionIds   = [...new Set([...csEntityIds.values()].flatMap(m => [...(m.get('site_action')  ?? [])]))]
+  const allReserveIds  = [...new Set([...csEntityIds.values()].flatMap(m => [...(m.get('site_reserve')  ?? [])]))]
+  const allDeadlineIds = [...new Set([...csEntityIds.values()].flatMap(m => [...(m.get('site_deadline') ?? [])]))]
+  const allDecisionIds = [...new Set([...csEntityIds.values()].flatMap(m => [...(m.get('site_decision') ?? [])]))]
+
+  const statusFetches: PromiseLike<void>[] = []
+  if (allActionIds.length > 0) {
+    statusFetches.push(supabase.from('site_actions').select('id, status').in('id', allActionIds)
+      .then(({ data }) => { for (const r of (data ?? []) as Array<{ id: string; status: string }>) actionStatusById.set(r.id, r.status) }))
+  }
+  if (allReserveIds.length > 0) {
+    statusFetches.push(supabase.from('site_reserve').select('id, status').in('id', allReserveIds)
+      .then(({ data }) => { for (const r of (data ?? []) as Array<{ id: string; status: string }>) reserveStatusById.set(r.id, r.status) }))
+  }
+  if (allDeadlineIds.length > 0) {
+    statusFetches.push(supabase.from('site_deadlines').select('id, status').in('id', allDeadlineIds)
+      .then(({ data }) => { for (const r of (data ?? []) as Array<{ id: string; status: string }>) deadlineStatusById.set(r.id, r.status) }))
+  }
+  if (allDecisionIds.length > 0) {
+    statusFetches.push(supabase.from('site_decisions').select('id, statut').in('id', allDecisionIds)
+      .then(({ data }) => { for (const r of (data ?? []) as Array<{ id: string; statut: string | null }>) decisionStatutById.set(r.id, r.statut ?? '') }))
+  }
+  await Promise.all(statusFetches)
 
   // 4. Occurrences natives du chantier (visites terrain + réunions)
   type NativeRow = { canonical_subject_id: string; effective_date: string; visit_status: string | null; source_kind: string }
@@ -956,7 +1006,14 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
       pvCount: bestByCsRun.get(csId)?.size ?? 0,
       threadCount: threadCountByCsId.get(csId) ?? 0,
       nativeOccurrenceCount: nativeCountByCsId.get(csId) ?? 0,
-      activeObjectCount: 0,
+      activeObjects: (() => {
+        const em = csEntityIds.get(csId)
+        const actionsOpen   = [...(em?.get('site_action')  ?? [])].filter(id => OPEN_ACTION_STATUS.has(actionStatusById.get(id) ?? '')).length
+        const reservesOpen  = [...(em?.get('site_reserve')  ?? [])].filter(id => OPEN_RESERVE_STATUS.has(reserveStatusById.get(id) ?? '')).length
+        const deadlinesActive = [...(em?.get('site_deadline') ?? [])].filter(id => OPEN_DEADLINE_STATUS.has(deadlineStatusById.get(id) ?? '')).length
+        const decisionsOpen = [...(em?.get('site_decision') ?? [])].filter(id => OPEN_DECISION_STATUT.has(decisionStatutById.get(id) ?? '')).length
+        return { actionsOpen, reservesOpen, deadlinesActive, decisionsOpen, total: actionsOpen + reservesOpen + deadlinesActive + decisionsOpen }
+      })(),
       isStagnant,
       stagnationDays,
       consecutiveMentionsWithoutChange,
@@ -964,11 +1021,23 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
   }
 
   // 10. Tri : stagnants ouverts → ouverts actifs → autres → clôturés
+  // À priorité égale, les objets actifs remontent (sujets avec conséquences opérationnelles > sujets cités)
   results.sort((a, b) => {
     const pa = navSortPriority(a), pb = navSortPriority(b)
     if (pa !== pb) return pa - pb
-    if (pa === 0) return b.stagnationDays - a.stagnationDays
-    if (pa === 1) return (b.lastMeaningfulChangeAt ?? '').localeCompare(a.lastMeaningfulChangeAt ?? '')
+    if (pa === 0) {
+      // Dans "à surveiller" : stagnation la plus longue d'abord, puis objets actifs
+      if (b.stagnationDays !== a.stagnationDays) return b.stagnationDays - a.stagnationDays
+      return b.activeObjects.total - a.activeObjects.total
+    }
+    if (pa === 1) {
+      // Dans "en mouvement" : plus récent d'abord, puis objets actifs
+      const byDate = (b.lastMeaningfulChangeAt ?? '').localeCompare(a.lastMeaningfulChangeAt ?? '')
+      if (byDate !== 0) return byDate
+      return b.activeObjects.total - a.activeObjects.total
+    }
+    // Autres groupes : objets actifs d'abord, puis date
+    if (b.activeObjects.total !== a.activeObjects.total) return b.activeObjects.total - a.activeObjects.total
     return (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? '')
   })
 
