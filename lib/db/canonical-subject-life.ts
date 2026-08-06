@@ -11,6 +11,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { canonicalRunsForSite, runEffectiveDate, computeHistoryTransition } from '@/lib/documents/pv-history'
 import type { HistoryTransition } from '@/lib/documents/pv-history'
 import type { SubjectLinkType, SubjectLinkStatus } from '@/lib/db/subject-thread-links'
+import { isOperationalSubject } from '@/lib/subjects/kind'
 
 export type { HistoryTransition }
 
@@ -739,6 +740,8 @@ const OPEN_NAV_STATUSES = new Set([
 const CLOSED_NAV_STATUSES = new Set(['done', 'cancelled', 'not_applicable'])
 
 function navSortPriority(s: NavigableSubjectSummary): 0 | 1 | 2 | 3 {
+  // person/company/knowledge_fact : jamais dans les buckets opérationnels
+  if (!isOperationalSubject(s.kind)) return 2
   const isOpen = OPEN_NAV_STATUSES.has(s.currentStatus ?? '')
   if (s.isStagnant && isOpen) return 0    // à surveiller
   if (!s.isStagnant && isOpen) return 1   // en évolution active

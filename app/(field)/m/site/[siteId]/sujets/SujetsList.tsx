@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { AlertCircle, Brain, BookOpen, CheckCircle2, ChevronRight } from 'lucide-react'
 import type { NavigableSubjectSummary } from '@/lib/db/canonical-subject-life'
+import { isOperationalSubject } from '@/lib/subjects/kind'
 import { cn } from '@/lib/utils'
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
@@ -51,15 +52,14 @@ const STATUS_COLORS: Record<string, string> = {
 
 // ── Bucketing ─────────────────────────────────────────────────────────────────
 
-const CLOSED_STATUSES  = new Set(['done', 'cancelled', 'not_applicable'])
-const KNOWLEDGE_KINDS  = new Set(['person', 'company', 'knowledge_fact'])
-const SIXTY_DAYS_MS    = 60 * 86_400_000
+const CLOSED_STATUSES = new Set(['done', 'cancelled', 'not_applicable'])
+const SIXTY_DAYS_MS   = 60 * 86_400_000
 
 type Bucket = 'watch' | 'moving' | 'open' | 'knowledge' | 'closed'
 
 function getBucket(s: NavigableSubjectSummary, nowMs: number): Bucket {
   if (CLOSED_STATUSES.has(s.currentStatus ?? '')) return 'closed'
-  if (KNOWLEDGE_KINDS.has(s.kind ?? ''))          return 'knowledge'
+  if (!isOperationalSubject(s.kind))              return 'knowledge'
   if (s.isStagnant)                               return 'watch'
   const recentChange = s.lastMeaningfulChangeAt &&
     new Date(s.lastMeaningfulChangeAt).getTime() > nowMs - SIXTY_DAYS_MS
