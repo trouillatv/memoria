@@ -11,7 +11,7 @@ export function LogoutButton() {
   function handleLogout() {
     startTransition(async () => {
       await logoutAction()
-      router.push('/login')
+      router.push('/login?next=/m')
       router.refresh()
     })
   }
