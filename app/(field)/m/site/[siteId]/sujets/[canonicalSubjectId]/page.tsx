@@ -1,13 +1,13 @@
 import { notFound } from 'next/navigation'
-import { Suspense } from 'react'
+import React, { Suspense } from 'react'
 import Link from 'next/link'
-import { AlertCircle, ArrowLeft, Building2, FileText, MapPin, User, Users } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Building2, CheckCircle2, Clock, FileText, MapPin, ShieldAlert, TriangleAlert, User, Users } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
-import type { SubjectOccurrenceMerged, MaterializedEvent, MaterializedEntityType } from '@/lib/db/canonical-subject-life'
-import { getActorIdentity } from '@/lib/db/actor-subject-life'
-import type { ActorLinkedIdentity } from '@/lib/db/actor-subject-life'
+import type { CanonicalSubjectLife, SubjectOccurrenceMerged, MaterializedEvent, MaterializedEntityType } from '@/lib/db/canonical-subject-life'
+import { getActorIdentity, getActorResponsibilities } from '@/lib/db/actor-subject-life'
+import type { ActorLinkedIdentity, ActorResponsibilities } from '@/lib/db/actor-subject-life'
 import { SubjectTrajectorySection, SubjectTrajectorySkeleton } from './SubjectTrajectorySection'
 import { cn } from '@/lib/utils'
 
@@ -242,6 +242,326 @@ function EventsSection({ events }: { events: MaterializedEvent[] }) {
   )
 }
 
+// ── Actor fiche components ────────────────────────────────────────────────────
+
+interface ActorFicheProps {
+  life: CanonicalSubjectLife
+  identity: ActorLinkedIdentity | null
+  resp: ActorResponsibilities | null
+  realOccs: SubjectOccurrenceMerged[]
+  pills: string[]
+}
+
+function ActorIdentityBlock({ identity, label }: { identity: ActorLinkedIdentity; label: string }) {
+  const hasDetails =
+    identity.kind === 'company'
+      ? !!(identity.phone || identity.email || identity.name !== label || identity.shortName)
+      : !!(identity.function || identity.companyName || identity.phone || identity.mobile)
+
+  if (!hasDetails) {
+    return (
+      <p className="mt-2 text-[12px] text-violet-600 dark:text-violet-400">
+        Entreprise identifiée dans le répertoire
+      </p>
+    )
+  }
+
+  return (
+    <div className="mt-2 space-y-0.5">
+      {identity.kind === 'company' ? (
+        <>
+          {identity.name !== label && (
+            <p className="text-[13px] font-medium">{identity.name}</p>
+          )}
+          {identity.shortName && identity.shortName !== label && identity.shortName !== identity.name && (
+            <p className="text-[12px] text-muted-foreground">{identity.shortName}</p>
+          )}
+          {identity.phone && <p className="text-[12px] text-muted-foreground">{identity.phone}</p>}
+          {identity.email && <p className="text-[12px] text-muted-foreground">{identity.email}</p>}
+        </>
+      ) : (
+        <>
+          {identity.fullName !== label && (
+            <p className="text-[13px] font-medium">{identity.fullName}</p>
+          )}
+          {identity.function && <p className="text-[12px] text-muted-foreground">{identity.function}</p>}
+          {identity.companyName && <p className="text-[12px] text-muted-foreground">{identity.companyName}</p>}
+          {(identity.phone ?? identity.mobile) && (
+            <p className="text-[12px] text-muted-foreground">{identity.phone ?? identity.mobile}</p>
+          )}
+        </>
+      )}
+      {identity.linkSource === 'manual' && identity.linkValidatedAt && (
+        <p className="text-[11px] text-violet-600 dark:text-violet-400">
+          Lien validé le {frDate(identity.linkValidatedAt)}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function ActorRolePill({ role }: { role: string }) {
+  return (
+    <span className="inline-flex items-center rounded-full bg-violet-100 px-2.5 py-0.5 text-[11px] font-semibold text-violet-700 dark:bg-violet-900/20 dark:text-violet-300">
+      {role}
+    </span>
+  )
+}
+
+function ResponsibilityRow({ icon, label, count, colorClass }: { icon: React.ReactNode; label: string; count: number; colorClass: string }) {
+  return (
+    <div className={cn('flex items-center gap-2.5 rounded-xl px-3.5 py-2.5', colorClass)}>
+      <span className="shrink-0">{icon}</span>
+      <p className="text-[13px] font-medium leading-tight">{count} {label}</p>
+    </div>
+  )
+}
+
+function CompactItemList({ items }: { items: { id: string; title: string; sub?: string | null; date?: string | null }[] }) {
+  return (
+    <ul className="space-y-1.5">
+      {items.map(item => (
+        <li key={item.id} className="rounded-xl border bg-card px-3 py-2.5">
+          <p className="text-[13px] font-medium leading-snug">{item.title}</p>
+          {(item.sub || item.date) && (
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {[item.sub, item.date].filter(Boolean).join(' · ')}
+            </p>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function ActorFicheView({ life, identity, resp, realOccs, pills }: ActorFicheProps) {
+  const isCompany = life.primaryFamily === 'company'
+
+  // Primary role (most recent active intervenant)
+  const activeRoles = resp?.roles.filter(r => !r.effectiveTo) ?? []
+  const primaryRole = activeRoles[0]?.role ?? null
+
+  // Summary numbers
+  const openActionsCount  = resp?.openActions.length ?? 0
+  const openReservesCount = resp?.openReserves.length ?? 0
+  const openDeadlinesCount = resp?.openDeadlines.length ?? 0
+  const totalOpen = openActionsCount + openReservesCount + openDeadlinesCount
+
+  const doneActionsCount  = resp?.doneActions.length ?? 0
+  const decisionsCount    = (resp?.openDecisions.length ?? 0) + (resp?.doneDecisions.length ?? 0)
+  const totalDone = doneActionsCount + (resp?.liftedReserves.length ?? 0) + decisionsCount
+
+  const linkedSubjects = resp?.linkedSubjects ?? []
+
+  // Last activity: prefer resp data, fall back to lastSeenAt
+  const lastActivity = resp?.lastActivityAt ?? life.lastSeenAt
+
+  return (
+    <>
+      {/* ── Header ── */}
+      <header className="rounded-2xl border bg-card px-4 py-4 shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300">
+            {isCompany ? <Building2 className="h-5 w-5" aria-hidden /> : <User className="h-5 w-5" aria-hidden />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg font-semibold leading-snug">{life.label}</h1>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {primaryRole
+                ? <ActorRolePill role={primaryRole} />
+                : <span className="text-[12px] text-muted-foreground">
+                    {isCompany ? 'Entreprise intervenante' : 'Acteur du chantier'}
+                  </span>
+              }
+              {activeRoles.length > 1 && activeRoles.slice(1).map(r => (
+                <ActorRolePill key={r.id} role={r.role} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {identity && <ActorIdentityBlock identity={identity} label={life.label} />}
+
+        {life.threadIds.length > 1 && (
+          <p className="mt-2.5 text-[11px] text-muted-foreground/60">
+            {life.threadIds.length} formulations regroupées
+          </p>
+        )}
+
+        {/* Présence + dernière activité */}
+        <div className="mt-2.5 space-y-0.5">
+          {pills.length > 0 && (
+            <p className="text-[12px] text-muted-foreground">{pills.join(' · ')}</p>
+          )}
+          {lastActivity && (
+            <p className="text-[12px] text-muted-foreground">
+              Dernière activité le {frDate(lastActivity)}
+            </p>
+          )}
+          {life.firstSeenAt && !lastActivity && (
+            <p className="text-[12px] text-muted-foreground">
+              Première mention le {frDate(life.firstSeenAt)}
+            </p>
+          )}
+        </div>
+      </header>
+
+      {/* ── Ce qui est attendu ── */}
+      {totalOpen > 0 && (
+        <section>
+          <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Ce qui est attendu
+          </h2>
+          <div className="space-y-2">
+            {openActionsCount > 0 && (
+              <div>
+                <ResponsibilityRow
+                  icon={<Clock className="h-3.5 w-3.5 text-orange-600" />}
+                  label={`action${openActionsCount > 1 ? 's' : ''} ouverte${openActionsCount > 1 ? 's' : ''}`}
+                  count={openActionsCount}
+                  colorClass="bg-orange-50 border border-orange-100"
+                />
+                <div className="mt-1.5">
+                  <CompactItemList items={resp!.openActions.map(a => ({
+                    id: a.id,
+                    title: a.title,
+                    sub: a.status === 'planned' ? 'Planifiée' : a.status === 'in_progress' ? 'En cours' : null,
+                    date: a.dueDate ? `échéance ${frDateShort(a.dueDate)}` : null,
+                  }))} />
+                </div>
+              </div>
+            )}
+            {openReservesCount > 0 && (
+              <div>
+                <ResponsibilityRow
+                  icon={<ShieldAlert className="h-3.5 w-3.5 text-red-600" />}
+                  label={`réserve${openReservesCount > 1 ? 's' : ''} sous responsabilité`}
+                  count={openReservesCount}
+                  colorClass="bg-red-50 border border-red-100"
+                />
+                <div className="mt-1.5">
+                  <CompactItemList items={resp!.openReserves.map(r => ({
+                    id: r.id,
+                    title: r.label,
+                    sub: r.location,
+                    date: r.issuedOn ? `émise le ${frDateShort(r.issuedOn)}` : null,
+                  }))} />
+                </div>
+              </div>
+            )}
+            {openDeadlinesCount > 0 && (
+              <div>
+                <ResponsibilityRow
+                  icon={<TriangleAlert className="h-3.5 w-3.5 text-amber-600" />}
+                  label={`échéance${openDeadlinesCount > 1 ? 's' : ''} à venir`}
+                  count={openDeadlinesCount}
+                  colorClass="bg-amber-50 border border-amber-100"
+                />
+                <div className="mt-1.5">
+                  <CompactItemList items={resp!.openDeadlines.map(d => ({
+                    id: d.id,
+                    title: d.title,
+                    sub: d.status === 'to_plan' ? 'À planifier' : 'Planifiée',
+                    date: d.dueDate ? frDateShort(d.dueDate) : null,
+                  }))} />
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ── Ce qui a été fait ── */}
+      {(doneActionsCount > 0 || (resp?.liftedReserves.length ?? 0) > 0 || decisionsCount > 0) && (
+        <section>
+          <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Ce qui a été fait
+          </h2>
+          <div className="space-y-2">
+            {doneActionsCount > 0 && (
+              <div>
+                <ResponsibilityRow
+                  icon={<CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
+                  label={`action${doneActionsCount > 1 ? 's' : ''} terminée${doneActionsCount > 1 ? 's' : ''}`}
+                  count={doneActionsCount}
+                  colorClass="bg-emerald-50 border border-emerald-100"
+                />
+                <div className="mt-1.5">
+                  <CompactItemList items={resp!.doneActions.slice(0, 5).map(a => ({
+                    id: a.id,
+                    title: a.title,
+                    date: a.doneAt ? `clôturée le ${frDateShort(a.doneAt)}` : null,
+                  }))} />
+                  {doneActionsCount > 5 && (
+                    <p className="mt-1.5 px-1 text-[11px] text-muted-foreground">
+                      + {doneActionsCount - 5} autres actions terminées
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+            {(resp?.liftedReserves.length ?? 0) > 0 && (
+              <ResponsibilityRow
+                icon={<CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
+                label={`réserve${resp!.liftedReserves.length > 1 ? 's' : ''} levée${resp!.liftedReserves.length > 1 ? 's' : ''}`}
+                count={resp!.liftedReserves.length}
+                colorClass="bg-emerald-50 border border-emerald-100"
+              />
+            )}
+            {decisionsCount > 0 && (
+              <ResponsibilityRow
+                icon={<CheckCircle2 className="h-3.5 w-3.5 text-violet-600" />}
+                label={`décision${decisionsCount > 1 ? 's' : ''} associée${decisionsCount > 1 ? 's' : ''}`}
+                count={decisionsCount}
+                colorClass="bg-violet-50 border border-violet-100"
+              />
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ── Sujets concernés ── */}
+      {linkedSubjects.length > 0 && (
+        <section>
+          <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Sujets concernés
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {linkedSubjects.map(s => (
+              <span
+                key={s.canonicalSubjectId}
+                className="rounded-full border bg-card px-3 py-1.5 text-[13px] font-medium"
+              >
+                {s.label}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Présence sur le chantier ── */}
+      {realOccs.length > 0 ? (
+        <section>
+          <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Présence sur le chantier
+          </h2>
+          <ol className="space-y-4">
+            {realOccs.map((occ, i) => (
+              <li key={`${occ.runId ?? occ.reportId}-${i}`}>
+                <OccurrenceRow occ={occ} index={i} total={realOccs.length} />
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : (
+        <p className="rounded-xl border border-dashed px-4 py-8 text-center text-[13px] text-muted-foreground">
+          Aucune occurrence enregistrée pour cet acteur.
+        </p>
+      )}
+    </>
+  )
+}
+
 // Statuts considérés comme "actifs" (objet encore en cours / à traiter)
 const ACTIVE_STATUSES = new Set([
   'open', 'in_progress', 'to_plan', 'planned', 'non_compliant',
@@ -254,11 +574,12 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
   const { siteId, canonicalSubjectId } = await params
   await requireSiteAccess(siteId)
 
-  const [life, siteRow, actorIdentity] = await Promise.all([
+  const [life, siteRow, actorIdentity, actorResp] = await Promise.all([
     getCanonicalSubjectLife(canonicalSubjectId).catch(() => null),
     createAdminClient().from('sites').select('name').eq('id', siteId).single()
       .then(({ data }) => data as { name: string } | null, () => null as null),
     getActorIdentity(canonicalSubjectId).catch(() => null as ActorLinkedIdentity | null),
+    getActorResponsibilities(siteId, canonicalSubjectId).catch(() => null as ActorResponsibilities | null),
   ])
   if (!life || life.siteId !== siteId) notFound()
 
@@ -308,113 +629,13 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
       </Link>
 
       {isActorSubject ? (
-        <>
-          {/* Header acteur */}
-          <header className="rounded-2xl border bg-card px-4 py-4 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300">
-                {life.primaryFamily === 'person'
-                  ? <User className="h-5 w-5" aria-hidden />
-                  : <Building2 className="h-5 w-5" aria-hidden />}
-              </div>
-              <div className="min-w-0 flex-1">
-                <h1 className="text-lg font-semibold leading-snug">{life.label}</h1>
-                <p className="mt-0.5 text-[12px] text-muted-foreground">
-                  {life.primaryFamily === 'person' ? 'Acteur du chantier' : 'Entreprise intervenante'}
-                </p>
-              </div>
-            </div>
-
-            {/* Identité réelle liée */}
-            {actorIdentity && (
-              <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50/50 px-3 py-2.5 dark:border-violet-900/20 dark:bg-violet-900/10">
-                {actorIdentity.kind === 'company' ? (
-                  <div className="space-y-0.5">
-                    {actorIdentity.name !== life.label && (
-                      <p className="text-[13px] font-medium">{actorIdentity.name}</p>
-                    )}
-                    {actorIdentity.shortName && actorIdentity.shortName !== life.label && actorIdentity.shortName !== actorIdentity.name && (
-                      <p className="text-[12px] text-muted-foreground">{actorIdentity.shortName}</p>
-                    )}
-                    {actorIdentity.phone && (
-                      <p className="text-[12px] text-muted-foreground">{actorIdentity.phone}</p>
-                    )}
-                    {actorIdentity.email && (
-                      <p className="text-[12px] text-muted-foreground">{actorIdentity.email}</p>
-                    )}
-                    {!actorIdentity.phone && !actorIdentity.email && actorIdentity.name === life.label && (
-                      <p className="text-[12px] text-violet-700 dark:text-violet-400">Entreprise identifiée dans le répertoire</p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-0.5">
-                    <p className="text-[13px] font-medium">{actorIdentity.fullName}</p>
-                    {actorIdentity.function && (
-                      <p className="text-[12px] text-muted-foreground">{actorIdentity.function}</p>
-                    )}
-                    {actorIdentity.companyName && (
-                      <p className="text-[12px] text-muted-foreground">{actorIdentity.companyName}</p>
-                    )}
-                    {(actorIdentity.phone ?? actorIdentity.mobile) && (
-                      <p className="text-[12px] text-muted-foreground">
-                        {actorIdentity.phone ?? actorIdentity.mobile}
-                      </p>
-                    )}
-                  </div>
-                )}
-                {actorIdentity.linkSource === 'manual' && (
-                  <p className="mt-1 text-[11px] text-violet-600 dark:text-violet-400">
-                    Lien validé manuellement{actorIdentity.linkValidatedAt ? ` le ${frDate(actorIdentity.linkValidatedAt)}` : ''}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {life.threadIds.length > 1 && (
-              <p className="mt-2 text-[11px] text-muted-foreground/60">
-                {life.threadIds.length} formulations regroupées
-              </p>
-            )}
-            {pills.length > 0 && (
-              <p className="mt-2.5 text-[12px] text-muted-foreground">{pills.join(' · ')}</p>
-            )}
-            {life.firstSeenAt && (
-              <p className="mt-1 text-[12px] text-muted-foreground">
-                Première mention le {frDate(life.firstSeenAt)}
-              </p>
-            )}
-          </header>
-
-          {/* Objets liés — uniquement si la relation est déjà matérialisée (déterministe) */}
-          {activeEvents.length > 0 && (
-            <section>
-              <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Objets liés
-              </h2>
-              <EventsSection events={activeEvents} />
-            </section>
-          )}
-
-          {/* Présence sur le chantier */}
-          {realOccs.length > 0 ? (
-            <section>
-              <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Présence sur le chantier
-              </h2>
-              <ol className="space-y-4">
-                {realOccs.map((occ, i) => (
-                  <li key={`${occ.runId ?? occ.reportId}-${i}`}>
-                    <OccurrenceRow occ={occ} index={i} total={realOccs.length} />
-                  </li>
-                ))}
-              </ol>
-            </section>
-          ) : (
-            <p className="rounded-xl border border-dashed px-4 py-8 text-center text-[13px] text-muted-foreground">
-              Aucune occurrence enregistrée pour cet acteur.
-            </p>
-          )}
-        </>
+        <ActorFicheView
+          life={life}
+          identity={actorIdentity}
+          resp={actorResp}
+          realOccs={realOccs}
+          pills={pills}
+        />
       ) : (
         <>
           {/* Header sujet opérationnel */}
