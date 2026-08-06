@@ -97,20 +97,31 @@
   animation: orb-halo-b 6.7s ease-in-out infinite;
 }
 
-/* Halo externe audio-réactif — multiplicateur fort (0.50) vs core (0.18).
-   orb-halo-a anime seulement l'opacité → pas de conflit avec ce transform. */
+/* Halo externe — audio-réactif fort pendant l'écoute.
+   --audio-delta est normalisé [0,1] (pas le RMS brut) → les multiplicateurs CSS
+   indiquent directement l'amplitude cible : 0.50 = +50% à signal max. */
 .orb-halo-outer-reactive {
   transform: scale(calc(1 + var(--audio-delta, 0) * 0.50));
   transition: transform 55ms linear;
 }
 /* Core audio-réactif — multiplicateur doux, composition avec le breathing du parent. */
 .orb-audio-reactive {
-  transform: scale(calc(1 + var(--audio-delta, 0) * 0.18));
+  transform: scale(calc(1 + var(--audio-delta, 0) * 0.22));
   transition: transform 55ms linear;
 }
 
+/* Halo externe pendant l'état RÉFLEXION : circule lentement, pas de réaction micro. */
+@keyframes orb-halo-processing {
+  0%    { opacity: 0.05; transform: scale(0.93); }
+  45%   { opacity: 0.26; transform: scale(1.10); }
+  100%  { opacity: 0.05; transform: scale(0.93); }
+}
+.orb-halo-processing {
+  animation: orb-halo-processing 3.2s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .orb-breathing, .orb-halo-a, .orb-halo-b { animation: none; }
+  .orb-breathing, .orb-halo-a, .orb-halo-b, .orb-halo-processing { animation: none; }
   .orb-audio-reactive, .orb-halo-outer-reactive { transition: none; transform: none; }
 }
 

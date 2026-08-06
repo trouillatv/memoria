@@ -51,6 +51,8 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
   const rafRef         = useRef<number | null>(null)
   const cleanupRef     = useRef<() => void>(() => {})
   const resultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Lissage asymétrique du signal audio — persiste entre les frames RAF.
+  const smoothedRef    = useRef(0)
 
   // Détection de prefers-reduced-motion côté client uniquement.
   useEffect(() => {
@@ -96,6 +98,7 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
 
   function stopAudioLoop() {
     if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+    smoothedRef.current = 0
     orbAudioRef.current?.style.setProperty('--audio-delta', '0')
     haloOuterRef.current?.style.setProperty('--audio-delta', '0')
   }
@@ -129,10 +132,25 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
       analyser.smoothingTimeConstant = 0.85
       source.connect(analyser)
 
-      // RAF : --audio-delta écrit sur le wrapper core (scale doux 0.18×)
-      // ET sur le halo externe (scale fort 0.50×) via la même propriété CSS
-      // héritée — seul le multiplicateur CSS diffère, pas la variable.
+      // Traitement audio — pipeline complet pour rendre la réactivité perceptible
+      // sur téléphone réel où le RMS brut reste dans 0.01–0.08.
+      //
+      // 1. RMS sur la fenêtre temporelle (256 samples)
+      // 2. Noise floor : ignorer le bruit de fond < NOISE_FLOOR
+      // 3. Normalisation vers [0,1] (max RMS attendu ~MAX_EXPECTED)
+      // 4. Courbe non-linéaire sqrt : amplifier les niveaux intermédiaires
+      //    (voix normale → valeur normalisée ~0.4–0.7 au lieu de ~0.05)
+      // 5. Smoothing asymétrique : montée rapide (ATTACK), descente douce (DECAY)
+      //    → pas de tremblements, mais réaction immédiate à la voix
+      //
+      // --audio-delta résultant [0,1] est multiplié par les constantes CSS :
+      //   core × 0.22, halo externe × 0.50
       if (!reducedMotion) {
+        const NOISE_FLOOR   = 0.012
+        const MAX_EXPECTED  = 0.28
+        const ATTACK        = 0.80   // fraction du nouveau signal en montée
+        const DECAY         = 0.14   // fraction du nouveau signal en descente
+
         const buf = new Uint8Array(analyser.fftSize)
         const loop = () => {
           analyser.getByteTimeDomainData(buf)
@@ -142,7 +160,16 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
             sum += n * n
           }
           const rms = Math.sqrt(sum / buf.length)
-          const delta = rms.toFixed(3)
+
+          // Normalisation + courbe sqrt
+          const normalized = Math.min(1, Math.max(0, (rms - NOISE_FLOOR) / (MAX_EXPECTED - NOISE_FLOOR)))
+          const curved = Math.sqrt(normalized)
+
+          // Smoothing asymétrique
+          const alpha = curved > smoothedRef.current ? ATTACK : DECAY
+          smoothedRef.current = alpha * curved + (1 - alpha) * smoothedRef.current
+
+          const delta = smoothedRef.current.toFixed(3)
           orbAudioRef.current?.style.setProperty('--audio-delta', delta)
           haloOuterRef.current?.style.setProperty('--audio-delta', delta)
           rafRef.current = requestAnimationFrame(loop)
@@ -310,10 +337,16 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
             orbClasses,
           ].join(' ')}
         >
-          {/* Halo externe — audio-réactif fort (multiplicateur CSS 0.50×) */}
+          {/* Halo externe — audio-réactif (écoute) ou circulation lente (réflexion). */}
           <div
             ref={haloOuterRef}
-            className={`absolute h-56 w-56 rounded-full bg-violet-400/[0.08] ${reducedMotion ? '' : 'orb-halo-a orb-halo-outer-reactive'}`}
+            className={[
+              'absolute h-56 w-56 rounded-full bg-violet-400/[0.08]',
+              reducedMotion ? '' :
+                (phase === 'transcribing' && slowLabel)
+                  ? 'orb-halo-processing'
+                  : 'orb-halo-a orb-halo-outer-reactive',
+            ].join(' ')}
             style={{ '--audio-delta': '0' } as React.CSSProperties}
           />
 
