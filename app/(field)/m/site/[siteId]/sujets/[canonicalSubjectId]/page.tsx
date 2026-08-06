@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, AlertCircle, FileText, MapPin, Users } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Building2, FileText, MapPin, User, Users } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
@@ -277,6 +277,21 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
 
   void siteRow // utilisé uniquement si l'orbe est réintégré plus tard
 
+  // Acteur du chantier : rendu différencié, pas de trajectoire ni de stagnation
+  const isActorSubject = life.primaryFamily === 'person' || life.primaryFamily === 'company'
+
+  // Mirrors computeAttentionSignals() — lib/subjects/attention.ts
+  const isClosedSubject      = new Set(['done', 'cancelled', 'not_applicable']).has(life.currentStatus ?? '')
+  const isOperationalKind    = !new Set(['person', 'company', 'knowledge_fact']).has(life.primaryFamily ?? '')
+  const watchReasons: Array<'open_objects' | 'non_conformity' | 'reservation' | 'awaiting' | 'stagnant'> = []
+  if (isOperationalKind && !isClosedSubject) {
+    if (activeEvents.length > 0)                       watchReasons.push('open_objects')
+    if (life.currentStatus === 'non_compliant')         watchReasons.push('non_conformity')
+    if (life.primaryFamily === 'reservation')           watchReasons.push('reservation')
+    if (life.currentStatus === 'awaiting_validation')   watchReasons.push('awaiting')
+    if (life.isStagnant)                               watchReasons.push('stagnant')
+  }
+
   return (
     <div className="mx-auto max-w-md space-y-5 px-4 pb-28 pt-5">
 
@@ -289,107 +304,184 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
         Sujets
       </Link>
 
-      {/* Header */}
-      <header className="rounded-2xl border bg-card px-4 py-4 shadow-sm">
-        <div className="flex items-start justify-between gap-3">
-          <h1 className="min-w-0 text-lg font-semibold leading-snug">{life.label}</h1>
-          {life.currentStatus && (
-            <span className={cn(
-              'shrink-0 rounded-full px-2.5 py-1 text-[12px] font-medium',
-              STATUS_COLORS[life.currentStatus] ?? 'bg-muted text-muted-foreground',
-            )}>
-              {STATUS_LABELS[life.currentStatus] ?? life.currentStatus}
-            </span>
+      {isActorSubject ? (
+        <>
+          {/* Header acteur */}
+          <header className="rounded-2xl border bg-card px-4 py-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300">
+                {life.primaryFamily === 'person'
+                  ? <User className="h-5 w-5" aria-hidden />
+                  : <Building2 className="h-5 w-5" aria-hidden />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h1 className="text-lg font-semibold leading-snug">{life.label}</h1>
+                <p className="mt-0.5 text-[12px] text-muted-foreground">
+                  {life.primaryFamily === 'person' ? 'Acteur du chantier' : 'Entreprise intervenante'}
+                </p>
+              </div>
+            </div>
+
+            {life.threadIds.length > 1 && (
+              <p className="mt-2 text-[11px] text-muted-foreground/60">
+                {life.threadIds.length} formulations regroupées
+              </p>
+            )}
+            {pills.length > 0 && (
+              <p className="mt-2.5 text-[12px] text-muted-foreground">{pills.join(' · ')}</p>
+            )}
+            {life.firstSeenAt && (
+              <p className="mt-1 text-[12px] text-muted-foreground">
+                Première mention le {frDate(life.firstSeenAt)}
+              </p>
+            )}
+          </header>
+
+          {/* Objets liés — uniquement si la relation est déjà matérialisée (déterministe) */}
+          {activeEvents.length > 0 && (
+            <section>
+              <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Objets liés
+              </h2>
+              <EventsSection events={activeEvents} />
+            </section>
           )}
-        </div>
 
-        {life.threadIds.length > 1 && (
-          <p className="mt-0.5 text-[11px] text-muted-foreground/60">
-            {life.threadIds.length} formulations regroupées
-          </p>
-        )}
-
-        {pills.length > 0 && (
-          <p className="mt-2.5 text-[12px] text-muted-foreground">{pills.join(' · ')}</p>
-        )}
-
-        {life.firstSeenAt && (
-          <p className="mt-1 text-[12px] text-muted-foreground">
-            Apparu le {frDate(life.firstSeenAt)}
-          </p>
-        )}
-      </header>
-
-      {/* 1 — Situation actuelle */}
-      {currentStateText && (
-        <section className="rounded-2xl border bg-card px-4 py-3 shadow-sm">
-          <h2 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Situation actuelle
-          </h2>
-          <p className="text-[14px] leading-snug">{currentStateText}</p>
-          {latestOcc && (
-            <p className="mt-1.5 text-[11px] text-muted-foreground">
-              {latestOcc.sourceKind === 'field_visit'
-                ? `Visite du ${frDateShort(latestOcc.effectiveDate)}`
-                : latestOcc.sourceKind === 'meeting'
-                  ? `Réunion du ${frDateShort(latestOcc.effectiveDate)}`
-                  : `PV du ${frDateShort(latestOcc.effectiveDate)}`}
+          {/* Présence sur le chantier */}
+          {realOccs.length > 0 ? (
+            <section>
+              <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Présence sur le chantier
+              </h2>
+              <ol className="space-y-4">
+                {realOccs.map((occ, i) => (
+                  <li key={`${occ.runId ?? occ.reportId}-${i}`}>
+                    <OccurrenceRow occ={occ} index={i} total={realOccs.length} />
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ) : (
+            <p className="rounded-xl border border-dashed px-4 py-8 text-center text-[13px] text-muted-foreground">
+              Aucune occurrence enregistrée pour cet acteur.
             </p>
           )}
-        </section>
-      )}
-
-      {/* 2 — Ce qui s'est passé (trajectoire synthétique — async, ne bloque pas la page) */}
-      <Suspense fallback={<SubjectTrajectorySkeleton />}>
-        <SubjectTrajectorySection life={life} />
-      </Suspense>
-
-      {/* 3 — À surveiller (stagnation signal — uniquement si calculé) */}
-      {life.isStagnant && life.firstSeenAt && life.stagnationDays !== null && (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm">
-          <div className="flex items-center gap-2 mb-1.5">
-            <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
-            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
-              À surveiller
-            </h2>
-          </div>
-          <p className="text-[13px] leading-snug text-amber-900">
-            Mentionné{realOccs.length > 1 ? ` ${realOccs.length} fois` : ''} depuis le {frDate(life.firstSeenAt)}.
-          </p>
-          <p className="mt-0.5 text-[13px] leading-snug text-amber-900">
-            Aucune évolution significative depuis {life.stagnationDays} jour{life.stagnationDays > 1 ? 's' : ''}.
-          </p>
-        </section>
-      )}
-
-      {/* 3 — Objets actifs */}
-      {activeEvents.length > 0 && (
-        <section>
-          <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Objets actifs
-          </h2>
-          <EventsSection events={activeEvents} />
-        </section>
-      )}
-
-      {/* 4 — Ligne de vie */}
-      {realOccs.length > 0 ? (
-        <section>
-          <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Ligne de vie
-          </h2>
-          <ol className="space-y-4">
-            {realOccs.map((occ, i) => (
-              <li key={`${occ.runId ?? occ.reportId}-${i}`}>
-                <OccurrenceRow occ={occ} index={i} total={realOccs.length} />
-              </li>
-            ))}
-          </ol>
-        </section>
+        </>
       ) : (
-        <p className="rounded-xl border border-dashed px-4 py-8 text-center text-[13px] text-muted-foreground">
-          Aucune occurrence enregistrée pour ce sujet.
-        </p>
+        <>
+          {/* Header sujet opérationnel */}
+          <header className="rounded-2xl border bg-card px-4 py-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <h1 className="min-w-0 text-lg font-semibold leading-snug">{life.label}</h1>
+              {life.currentStatus && (
+                <span className={cn(
+                  'shrink-0 rounded-full px-2.5 py-1 text-[12px] font-medium',
+                  STATUS_COLORS[life.currentStatus] ?? 'bg-muted text-muted-foreground',
+                )}>
+                  {STATUS_LABELS[life.currentStatus] ?? life.currentStatus}
+                </span>
+              )}
+            </div>
+
+            {life.threadIds.length > 1 && (
+              <p className="mt-0.5 text-[11px] text-muted-foreground/60">
+                {life.threadIds.length} formulations regroupées
+              </p>
+            )}
+            {pills.length > 0 && (
+              <p className="mt-2.5 text-[12px] text-muted-foreground">{pills.join(' · ')}</p>
+            )}
+            {life.firstSeenAt && (
+              <p className="mt-1 text-[12px] text-muted-foreground">
+                Apparu le {frDate(life.firstSeenAt)}
+              </p>
+            )}
+          </header>
+
+          {/* 1 — Situation actuelle */}
+          {currentStateText && (
+            <section className="rounded-2xl border bg-card px-4 py-3 shadow-sm">
+              <h2 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Situation actuelle
+              </h2>
+              <p className="text-[14px] leading-snug">{currentStateText}</p>
+              {latestOcc && (
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  {latestOcc.sourceKind === 'field_visit'
+                    ? `Visite du ${frDateShort(latestOcc.effectiveDate)}`
+                    : latestOcc.sourceKind === 'meeting'
+                      ? `Réunion du ${frDateShort(latestOcc.effectiveDate)}`
+                      : `PV du ${frDateShort(latestOcc.effectiveDate)}`}
+                </p>
+              )}
+            </section>
+          )}
+
+          {/* 2 — Ce qui s'est passé (trajectoire synthétique — async, ne bloque pas la page) */}
+          <Suspense fallback={<SubjectTrajectorySkeleton />}>
+            <SubjectTrajectorySection life={life} />
+          </Suspense>
+
+          {/* 3 — À surveiller (multi-signal) */}
+          {watchReasons.length > 0 && (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm">
+              <div className="flex items-center gap-2 mb-1.5">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                <h2 className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                  À surveiller
+                </h2>
+              </div>
+              <p className="text-[13px] leading-snug text-amber-900">
+                {[
+                  watchReasons.includes('open_objects')
+                    ? `${activeEvents.length} objet${activeEvents.length > 1 ? 's' : ''} actif${activeEvents.length > 1 ? 's' : ''}`
+                    : null,
+                  watchReasons.includes('non_conformity') ? 'non conforme' : null,
+                  watchReasons.includes('reservation')    ? 'réserve ouverte' : null,
+                  watchReasons.includes('awaiting')       ? 'en attente de validation' : null,
+                  watchReasons.includes('stagnant') && life.stagnationDays
+                    ? `sans évolution depuis ${life.stagnationDays} j`
+                    : null,
+                ].filter(Boolean).join(' · ')}
+              </p>
+              {watchReasons.includes('stagnant') && life.firstSeenAt && life.stagnationDays !== null && (
+                <p className="mt-0.5 text-[12px] text-muted-foreground">
+                  Mentionné{realOccs.length > 1 ? ` ${realOccs.length} fois` : ''} depuis le {frDate(life.firstSeenAt)}.
+                </p>
+              )}
+            </section>
+          )}
+
+          {/* 4 — Objets actifs */}
+          {activeEvents.length > 0 && (
+            <section>
+              <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Objets actifs
+              </h2>
+              <EventsSection events={activeEvents} />
+            </section>
+          )}
+
+          {/* 5 — Ligne de vie */}
+          {realOccs.length > 0 ? (
+            <section>
+              <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Ligne de vie
+              </h2>
+              <ol className="space-y-4">
+                {realOccs.map((occ, i) => (
+                  <li key={`${occ.runId ?? occ.reportId}-${i}`}>
+                    <OccurrenceRow occ={occ} index={i} total={realOccs.length} />
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ) : (
+            <p className="rounded-xl border border-dashed px-4 py-8 text-center text-[13px] text-muted-foreground">
+              Aucune occurrence enregistrée pour ce sujet.
+            </p>
+          )}
+        </>
       )}
 
     </div>
