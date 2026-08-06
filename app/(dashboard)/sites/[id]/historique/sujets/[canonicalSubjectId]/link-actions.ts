@@ -62,3 +62,27 @@ export async function deleteCanonicalLinkAction(formData: FormData) {
   revalidatePath(`/sites/${siteId}/historique/sujets/${canonicalSubjectId}`)
   revalidatePath(`/sites/${siteId}/historique`)
 }
+
+/** Crée un nouveau canonical_subject opérationnel (statut active, sans acteur).
+ *  Retourne {id, label} ou {error} en cas d'échec. */
+export async function createCanonicalSubjectForLink(
+  siteId: string,
+  label: string,
+): Promise<{ id: string; label: string } | { error: string }> {
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+
+  const trimmed = label.trim()
+  if (!trimmed) return { error: 'Label vide' }
+
+  const { data, error } = await supabase
+    .from('canonical_subject')
+    .insert({ site_id: siteId, label: trimmed, status: 'active' })
+    .select('id')
+    .single()
+
+  if (error || !data) return { error: error?.message ?? 'Erreur inconnue' }
+
+  revalidatePath(`/sites/${siteId}/historique`)
+  return { id: (data as { id: string }).id, label: trimmed }
+}

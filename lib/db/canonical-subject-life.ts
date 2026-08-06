@@ -1084,22 +1084,28 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
 export interface CanonicalSubjectSummary {
   id: string
   label: string
+  aliases: string[]
+  /** 'active' | 'merged' | 'split' */
+  status: string
 }
 
-/** Liste allégée des sujets actifs d'un chantier — pour le sélecteur de liaison manuelle. */
+/** Liste de tous les sujets opérationnels d'un chantier — pour le sélecteur de liaison manuelle.
+ *  Inclut les sujets clôturés (merged/split) afin d'éviter les doublons.
+ *  Exclut les acteurs (persons, companies). */
 export async function listActiveCanonicalSubjects(siteId: string): Promise<CanonicalSubjectSummary[]> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('canonical_subject')
-    .select('id, label')
+    .select('id, label, aliases, status')
     .eq('site_id', siteId)
-    .eq('status', 'active')
     .is('company_id', null)
     .is('contact_id', null)
     .order('label', { ascending: true })
   if (error) throw new Error(error.message)
-  return ((data ?? []) as Array<{ id: string; label: string }>).map((r) => ({
-    id: r.id as string,
-    label: r.label as string,
+  return ((data ?? []) as Array<{ id: string; label: string; aliases: string[]; status: string }>).map((r) => ({
+    id: r.id,
+    label: r.label,
+    aliases: r.aliases ?? [],
+    status: r.status,
   }))
 }

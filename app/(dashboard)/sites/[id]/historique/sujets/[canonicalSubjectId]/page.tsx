@@ -585,7 +585,7 @@ function RelationsSection({
           <form action={createCanonicalLinkAction} className="space-y-2">
             <input type="hidden" name="siteId" value={siteId} />
             <input type="hidden" name="canonicalSubjectId" value={canonicalSubjectId} />
-            <SubjectCombobox subjects={otherSubjects} name="toCanonicalSubjectId" required />
+            <SubjectCombobox subjects={otherSubjects} name="toCanonicalSubjectId" siteId={siteId} required />
             <select
               name="linkType"
               required
