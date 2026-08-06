@@ -6,6 +6,8 @@ import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
 import type { SubjectOccurrenceMerged, MaterializedEvent, MaterializedEntityType } from '@/lib/db/canonical-subject-life'
+import { getActorIdentity } from '@/lib/db/actor-subject-life'
+import type { ActorLinkedIdentity } from '@/lib/db/actor-subject-life'
 import { SubjectTrajectorySection, SubjectTrajectorySkeleton } from './SubjectTrajectorySection'
 import { cn } from '@/lib/utils'
 
@@ -252,10 +254,11 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
   const { siteId, canonicalSubjectId } = await params
   await requireSiteAccess(siteId)
 
-  const [life, siteRow] = await Promise.all([
+  const [life, siteRow, actorIdentity] = await Promise.all([
     getCanonicalSubjectLife(canonicalSubjectId).catch(() => null),
     createAdminClient().from('sites').select('name').eq('id', siteId).single()
       .then(({ data }) => data as { name: string } | null, () => null as null),
+    getActorIdentity(canonicalSubjectId).catch(() => null as ActorLinkedIdentity | null),
   ])
   if (!life || life.siteId !== siteId) notFound()
 
@@ -321,6 +324,51 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
                 </p>
               </div>
             </div>
+
+            {/* Identité réelle liée */}
+            {actorIdentity && (
+              <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50/50 px-3 py-2.5 dark:border-violet-900/20 dark:bg-violet-900/10">
+                {actorIdentity.kind === 'company' ? (
+                  <div className="space-y-0.5">
+                    {actorIdentity.name !== life.label && (
+                      <p className="text-[13px] font-medium">{actorIdentity.name}</p>
+                    )}
+                    {actorIdentity.shortName && actorIdentity.shortName !== life.label && actorIdentity.shortName !== actorIdentity.name && (
+                      <p className="text-[12px] text-muted-foreground">{actorIdentity.shortName}</p>
+                    )}
+                    {actorIdentity.phone && (
+                      <p className="text-[12px] text-muted-foreground">{actorIdentity.phone}</p>
+                    )}
+                    {actorIdentity.email && (
+                      <p className="text-[12px] text-muted-foreground">{actorIdentity.email}</p>
+                    )}
+                    {!actorIdentity.phone && !actorIdentity.email && actorIdentity.name === life.label && (
+                      <p className="text-[12px] text-violet-700 dark:text-violet-400">Entreprise identifiée dans le répertoire</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-0.5">
+                    <p className="text-[13px] font-medium">{actorIdentity.fullName}</p>
+                    {actorIdentity.function && (
+                      <p className="text-[12px] text-muted-foreground">{actorIdentity.function}</p>
+                    )}
+                    {actorIdentity.companyName && (
+                      <p className="text-[12px] text-muted-foreground">{actorIdentity.companyName}</p>
+                    )}
+                    {(actorIdentity.phone ?? actorIdentity.mobile) && (
+                      <p className="text-[12px] text-muted-foreground">
+                        {actorIdentity.phone ?? actorIdentity.mobile}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {actorIdentity.linkSource === 'manual' && (
+                  <p className="mt-1 text-[11px] text-violet-600 dark:text-violet-400">
+                    Lien validé manuellement{actorIdentity.linkValidatedAt ? ` le ${frDate(actorIdentity.linkValidatedAt)}` : ''}
+                  </p>
+                )}
+              </div>
+            )}
 
             {life.threadIds.length > 1 && (
               <p className="mt-2 text-[11px] text-muted-foreground/60">
