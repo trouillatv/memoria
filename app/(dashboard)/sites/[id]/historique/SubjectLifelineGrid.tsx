@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect } from 'react'
+import { GripVertical } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import type { SiteSubjectMatrix, SubjectMatrixRow, MatrixCell } from '@/lib/documents/pv-history'
@@ -300,9 +301,16 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
       <div className="overflow-hidden rounded-xl border bg-card">
         {/* En-tête PV — scroll synchronisé */}
         <div className="flex border-b bg-muted/40">
-          {/* Coin fixe */}
-          <div className="shrink-0 border-r px-3 py-2" style={{ width: labelWidth }}>
+          {/* Coin fixe + poignée de resize */}
+          <div className="relative shrink-0 border-r px-3 py-2" style={{ width: labelWidth }}>
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sujet</span>
+            <div
+              onMouseDown={onResizeMouseDown}
+              className="absolute right-0 top-0 flex h-full w-4 cursor-col-resize items-center justify-center text-muted-foreground/40 hover:bg-primary/10 hover:text-muted-foreground"
+              title="Glisser pour redimensionner"
+            >
+              <GripVertical className="h-3.5 w-3.5" />
+            </div>
           </div>
           {/* Dates PV + événements natifs — scroll */}
           <div ref={headerRef} className="overflow-hidden" style={{ flex: 1 }}>
@@ -340,13 +348,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
         {/* Corps — scroll horizontal partagé */}
         <div className="flex" style={{ maxHeight: '70vh' }}>
           {/* Première colonne fixe */}
-          <div ref={labelColRef} className="relative shrink-0 overflow-y-auto border-r" style={{ width: labelWidth }}>
-            {/* Poignée de resize */}
-            <div
-              onMouseDown={onResizeMouseDown}
-              className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize hover:bg-primary/20"
-              title="Glisser pour redimensionner"
-            />
+          <div ref={labelColRef} className="shrink-0 overflow-y-auto border-r" style={{ width: labelWidth }}>
             {filtered.map((row) => (
               <div
                 key={row.subjectThreadId}
