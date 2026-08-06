@@ -19,6 +19,81 @@
   }
 }
 
+/* ── VoiceOrbOverlay — animations MemorIA ────────────────────────────────────
+   Deux couches de breathing désynchronisées (3.1 s + 5.3 s) → irrégularité
+   naturelle sans JS. L'amplitude audio est portée par --audio-delta (RAF loop
+   sur l'élément enfant) et ne touche pas ces keyframes. */
+
+@keyframes orb-breathe-a {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.07); }
+}
+@keyframes orb-breathe-b {
+  0%, 100% { transform: scale(1.02); }
+  33%      { transform: scale(0.97); }
+  66%      { transform: scale(1.09); }
+}
+@keyframes orb-slow-pulse {
+  0%, 100% { transform: scale(1);    opacity: 0.9; }
+  50%       { transform: scale(0.94); opacity: 0.65; }
+}
+@keyframes orb-reduced-pulse {
+  0%, 100% { opacity: 0.85; }
+  50%       { opacity: 0.50; }
+}
+@keyframes orb-halo-a {
+  0%, 100% { opacity: 0.07; transform: scale(1); }
+  50%       { opacity: 0.14; transform: scale(1.05); }
+}
+@keyframes orb-halo-b {
+  0%, 100% { opacity: 0.12; transform: scale(1.02); }
+  40%       { opacity: 0.20; transform: scale(0.97); }
+  80%       { opacity: 0.08; transform: scale(1.06); }
+}
+@keyframes orb-enter {
+  from { transform: scale(0.15); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+@keyframes orb-exit {
+  from { transform: scale(1);    opacity: 1; }
+  to   { transform: scale(0.15); opacity: 0; }
+}
+
+.orb-breathing {
+  animation: orb-breathe-a 3.1s ease-in-out infinite,
+             orb-breathe-b 5.3s ease-in-out infinite;
+}
+.orb-breathing.orb-transcribing {
+  animation: orb-slow-pulse 2s ease-in-out infinite;
+}
+.orb-reduced-motion {
+  animation: orb-reduced-pulse 2.5s ease-in-out infinite;
+}
+.orb-enter {
+  animation: orb-enter 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both !important;
+}
+.orb-exit {
+  animation: orb-exit 0.25s ease-in both !important;
+}
+.orb-halo-a {
+  animation: orb-halo-a 4.1s ease-in-out infinite;
+}
+.orb-halo-b {
+  animation: orb-halo-b 6.7s ease-in-out infinite;
+}
+
+/* Niveau audio — --audio-delta mis à jour par requestAnimationFrame (0..~0.3).
+   Sur l'élément ENFANT du wrapper breathing → composition multiplicative. */
+.orb-audio-reactive {
+  transform: scale(calc(1 + var(--audio-delta, 0) * 0.18));
+  transition: transform 55ms linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orb-breathing, .orb-halo-a, .orb-halo-b { animation: none; }
+  .orb-audio-reactive { transition: none; transform: none; }
+}
+
 @theme {
   /* Palette `brand-*` : RÉSERVÉE à l'identité (logo, séparateur sidebar active,
      icône de section "rare" comme Calendar de /semaine).

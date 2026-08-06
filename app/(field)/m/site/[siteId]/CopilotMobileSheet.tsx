@@ -14,6 +14,7 @@ import type { CopilotIntent } from '@/lib/visits/copilot-context'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { ProposalCard, ScheduleProposalCard } from '@/components/copilot/CopilotProposalCards'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
+import { useVoiceOrb } from '@/app/(field)/m/VoiceOrbContext'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -39,11 +40,14 @@ function uid() {
 
 export function CopilotMobileSheet({
   siteId,
+  siteName,
   initialSubjectIds = [],
 }: {
   siteId: string
+  siteName?: string
   initialSubjectIds?: string[]
 }) {
+  const { openOrb } = useVoiceOrb()
   const [open, setOpen]                      = useState(false)
   const [messages, setMessages]              = useState<Msg[]>([])
   const [inputText, setInputText]            = useState('')
@@ -355,6 +359,7 @@ export function CopilotMobileSheet({
               siteId={siteId}
               onTranscriptionReady={setVoiceText}
               disabled={loading || voiceText !== null}
+              onOpenOrb={() => openOrb({ siteId, siteName, onResult: setVoiceText })}
             />
             <button
               type="submit"

@@ -12,6 +12,7 @@ import {
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { ProposalCard, ScheduleProposalCard } from '@/components/copilot/CopilotProposalCards'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
+import { useVoiceOrb } from './VoiceOrbContext'
 import { listMeetingSitesAction } from './meeting-actions'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -96,6 +97,7 @@ function SitePicker({ onSelect }: { onSelect: (site: Site) => void }) {
 // ── Chat copilote (après sélection du chantier) ────────────────────────────────
 
 function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string }) {
+  const { openOrb } = useVoiceOrb()
   const [messages, setMessages]              = useState<Msg[]>([])
   const [inputText, setInputText]            = useState('')
   const [loading, setLoading]                = useState(false)
@@ -337,6 +339,7 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
           siteId={siteId}
           onTranscriptionReady={setVoiceText}
           disabled={loading || voiceText !== null}
+          onOpenOrb={() => openOrb({ siteId, siteName, onResult: setVoiceText })}
         />
         <button
           type="submit"

@@ -9,9 +9,26 @@ interface Props {
   siteId: string
   onTranscriptionReady: (text: string) => void
   disabled?: boolean
+  /** Quand fourni, le tap délègue entièrement à l'orbe global — aucun enregistrement inline. */
+  onOpenOrb?: () => void
 }
 
-export function VoiceCopilotTrigger({ siteId, onTranscriptionReady, disabled }: Props) {
+export function VoiceCopilotTrigger({ siteId, onTranscriptionReady, disabled, onOpenOrb }: Props) {
+  // Quand onOpenOrb est fourni : bouton simple, toute la logique d'enregistrement
+  // vit dans VoiceOrbOverlay. Le composant n'entre jamais en état recording/transcribing.
+  if (onOpenOrb) {
+    return (
+      <button
+        type="button"
+        onClick={onOpenOrb}
+        disabled={disabled}
+        aria-label="Commande vocale"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-violet-300 dark:border-violet-700 text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-950/30 disabled:opacity-40 transition-colors"
+      >
+        <Mic className="h-4 w-4" />
+      </button>
+    )
+  }
   const [state, setState] = useState<VoiceState>('idle')
   const [elapsed, setElapsed] = useState(0)
   const [errorMsg, setErrorMsg] = useState('')

@@ -5,6 +5,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getOpenActionsHealth } from '@/lib/db/site-actions'
 import { getChefLaunchState } from '@/lib/db/interventions'
 import { MobileTabBar } from './m/MobileTabBar'
+import { VoiceOrbProvider } from './m/VoiceOrbProvider'
 import { SyncIndicator } from './sync-indicator'
 import { SyncToastBridge } from './sync-toast-bridge'
 import { FieldSyncDrainer } from './sync-drainer'
@@ -38,6 +39,7 @@ export default async function FieldLayout({ children }: { children: React.ReactN
     : null
 
   return (
+    <VoiceOrbProvider>
     <div className="min-h-dvh overflow-x-hidden bg-background text-foreground">
       <header className="sticky top-0 z-10 backdrop-blur-sm border-b border-foreground/[0.08] bg-background/95">
         <div className="max-w-md mx-auto flex items-center justify-between px-3 py-3.5">
@@ -81,6 +83,7 @@ export default async function FieldLayout({ children }: { children: React.ReactN
       <FieldSyncDrainer userId={user.id} />
       <FieldViewportFix />
     </div>
+    </VoiceOrbProvider>
   )
 }
 
