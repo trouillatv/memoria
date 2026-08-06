@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { normalizeCanonicalLabel } from '@/lib/db/canonical-subject-resolve'
 
 type ActionResult = { ok: boolean; error?: string }
 
@@ -47,12 +48,48 @@ async function verifySuggestionSiteAccess(suggestionId: string, userId: string):
   return orgIds.includes((site as { organization_id: string }).organization_id)
 }
 
+// ── Alias learning ────────────────────────────────────────────────────────────
+
+/**
+ * Ajoute le label original de la proposition comme alias du canonical_subject cible.
+ * Idempotent : aucun ajout si le label (normalisé) est déjà présent dans label ou aliases.
+ * Stocke le label original (non normalisé) pour que la résolution puisse le comparer
+ * via normalizeCanonicalLabel() au moment de la requête.
+ */
+async function learnAliasFromAcceptedSuggestion(
+  admin: ReturnType<typeof createAdminClient>,
+  canonicalSubjectId: string,
+  proposalLabel: string,
+): Promise<void> {
+  const normalized = normalizeCanonicalLabel(proposalLabel)
+
+  const { data: cs } = await admin
+    .from('canonical_subject')
+    .select('label, aliases')
+    .eq('id', canonicalSubjectId)
+    .maybeSingle()
+
+  if (!cs) return
+  const { label, aliases } = cs as { label: string; aliases: string[] }
+
+  const alreadyPresent = [label, ...(aliases ?? [])].some(
+    (l) => normalizeCanonicalLabel(l) === normalized
+  )
+  if (alreadyPresent) return
+
+  await admin
+    .from('canonical_subject')
+    .update({ aliases: [...(aliases ?? []), proposalLabel] })
+    .eq('id', canonicalSubjectId)
+}
+
 // ── Accept (RPC transactionnel) ────────────────────────────────────────────────
 
 /**
  * Associe un thread à son canonical_subject suggéré.
  * Appelle le RPC PostgreSQL `accept_subject_suggestion` — atomique.
  * Stocke l'ancienne identité dans `previous_canonical_subject_id` pour l'undo.
+ * En cas de succès, ajoute le proposal_label comme alias du canonical_subject cible.
  */
 export async function acceptSuggestionAction(suggestionId: string): Promise<ActionResult> {
   const auth = await verifyUserAndRole()
@@ -62,6 +99,15 @@ export async function acceptSuggestionAction(suggestionId: string): Promise<Acti
   if (!hasAccess) return { ok: false, error: 'Accès refusé' }
 
   const admin = createAdminClient()
+
+  // Pré-lecture pour l'apprentissage d'alias — avant le RPC pour éviter un aller-retour
+  // si la suggestion disparaît entre-temps (cas marginal, non bloquant).
+  const { data: sugMeta } = await admin
+    .from('canonical_subject_suggestion')
+    .select('proposal_label, candidate_canonical_subject_id')
+    .eq('id', suggestionId)
+    .maybeSingle()
+
   const { data, error } = await admin.rpc('accept_subject_suggestion', {
     p_suggestion_id: suggestionId,
     p_user_id: auth.userId,
@@ -73,7 +119,17 @@ export async function acceptSuggestionAction(suggestionId: string): Promise<Acti
   }
 
   const result = data as string
-  if (result === 'ok') return { ok: true }
+  if (result === 'ok') {
+    if (sugMeta) {
+      const { proposal_label, candidate_canonical_subject_id } = sugMeta as {
+        proposal_label: string
+        candidate_canonical_subject_id: string
+      }
+      await learnAliasFromAcceptedSuggestion(admin, candidate_canonical_subject_id, proposal_label)
+        .catch((err) => console.error('[suggestion-actions] alias learning error', err))
+    }
+    return { ok: true }
+  }
   if (result === 'not_pending') return { ok: false, error: 'Cette suggestion a déjà été traitée' }
   if (result === 'invalid_candidate') return { ok: false, error: 'Le sujet canonique proposé n\'est plus disponible' }
   if (result === 'invalid_thread') return { ok: false, error: 'Thread introuvable pour ce site' }
