@@ -202,7 +202,7 @@ export async function getCanonicalSubjectLife(
       lastMeaningfulChangeAt: nativeLMCA,
       stagnationDays: nativeStagDays,
       consecutiveMentionsWithoutChange: nativeCMWC,
-      isStagnant: nativeStagDays >= 30 && nativeCMWC >= 2,
+      isStagnant: nativeStagDays >= 30 && nativeCMWC >= 2, // familles stables exclues par défaut (null = éligible)
     }
   }
 
@@ -519,7 +519,7 @@ export async function getCanonicalSubjectLife(
   const stagnationDays = (lastMeaningfulChangeAt && lastSeenAt && lastMeaningfulChangeAt !== lastSeenAt)
     ? Math.floor((new Date(lastSeenAt).getTime() - new Date(lastMeaningfulChangeAt).getTime()) / 86_400_000)
     : 0
-  const isStagnant = stagnationDays >= 30 && consecutiveMentionsWithoutChange >= 2
+  const isStagnant = !STAGNATION_INELIGIBLE.has(primaryFamily ?? '') && stagnationDays >= 30 && consecutiveMentionsWithoutChange >= 2
 
   // 8. Liens inter-threads (confirmed + suggested, pas rejected)
   const [outLinksRes, inLinksRes] = await Promise.all([
@@ -685,6 +685,10 @@ export async function getCanonicalSubjectLifeForSite(
   if (life.siteId !== siteId) return null
   return life
 }
+
+// Familles dont le sujet ne peut pas "stagner" par nature (personne, entreprise, info stable).
+// La stagnation ne s'applique qu'aux sujets dont on attend une évolution métier.
+const STAGNATION_INELIGIBLE = new Set(['person', 'company', 'knowledge_fact'])
 
 // ── Vue liste chantier ────────────────────────────────────────────────────────
 
@@ -880,7 +884,7 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     const stagnationDays = (lastMeaningfulChangeAt && lastSeenAt && lastMeaningfulChangeAt !== lastSeenAt)
       ? Math.floor((new Date(lastSeenAt).getTime() - new Date(lastMeaningfulChangeAt).getTime()) / 86_400_000)
       : 0
-    const isStagnant = stagnationDays >= 30 && consecutiveMentionsWithoutChange >= 2
+    const isStagnant = !STAGNATION_INELIGIBLE.has(kind ?? '') && stagnationDays >= 30 && consecutiveMentionsWithoutChange >= 2
 
     results.push({
       canonicalSubjectId: csId,

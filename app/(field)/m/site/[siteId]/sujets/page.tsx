@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, AlertCircle, Brain, ChevronRight } from 'lucide-react'
+import { ArrowLeft, AlertCircle, Brain, BookOpen, CheckCircle2, ChevronRight } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavigableSubjectsForSite } from '@/lib/db/canonical-subject-life'
@@ -42,9 +42,36 @@ const STATUS_COLORS: Record<string, string> = {
   mentioned:          'bg-violet-100 text-violet-700',
 }
 
-// ── Sub-component ─────────────────────────────────────────────────────────────
+// ── Bucketing ─────────────────────────────────────────────────────────────────
 
-function SubjectCard({ subject, siteId }: { subject: NavigableSubjectSummary; siteId: string }) {
+const CLOSED_STATUSES  = new Set(['done', 'cancelled', 'not_applicable'])
+const KNOWLEDGE_KINDS  = new Set(['person', 'company', 'knowledge_fact'])
+const SIXTY_DAYS_MS    = 60 * 86_400_000
+
+type Bucket = 'watch' | 'moving' | 'open' | 'knowledge' | 'closed'
+
+function getBucket(s: NavigableSubjectSummary, nowMs: number): Bucket {
+  if (CLOSED_STATUSES.has(s.currentStatus ?? ''))  return 'closed'
+  if (KNOWLEDGE_KINDS.has(s.kind ?? ''))           return 'knowledge'
+  if (s.isStagnant)                                return 'watch'
+  const recentChange = s.lastMeaningfulChangeAt &&
+    new Date(s.lastMeaningfulChangeAt).getTime() > nowMs - SIXTY_DAYS_MS
+  if (recentChange) return 'moving'
+  return 'open'
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function SectionHeader({ label, count, className }: { label: string; count: number; className?: string }) {
+  return (
+    <div className={cn('flex items-center gap-2 pt-1', className)}>
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">{count}</span>
+    </div>
+  )
+}
+
+function SubjectCard({ subject, siteId, bucket }: { subject: NavigableSubjectSummary; siteId: string; bucket: Bucket }) {
   const { canonicalSubjectId, title, currentStatus, pvCount, nativeOccurrenceCount,
     isStagnant, stagnationDays, lastMeaningfulChangeAt } = subject
 
@@ -56,22 +83,34 @@ function SubjectCard({ subject, siteId }: { subject: NavigableSubjectSummary; si
   if (nativeOccurrenceCount > 0) sourceFragments.push('terrain')
   const sourceLine = sourceFragments.join(' · ')
 
+  const isKnowledge = bucket === 'knowledge'
+  const isClosed    = bucket === 'closed'
+
   return (
     <Link
       href={`/m/site/${siteId}/sujets/${canonicalSubjectId}`}
       className={cn(
         'flex items-start gap-3 rounded-2xl border bg-card px-3.5 py-3 shadow-sm active:brightness-95',
         isStagnant && 'border-amber-200',
+        isClosed && 'opacity-60',
       )}
     >
       {/* Icône */}
       <span className={cn(
         'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-        isStagnant ? 'bg-amber-50' : 'bg-indigo-50 dark:bg-indigo-950/40',
+        isStagnant  ? 'bg-amber-50' :
+        isKnowledge ? 'bg-muted' :
+        isClosed    ? 'bg-muted' :
+                      'bg-indigo-50 dark:bg-indigo-950/40',
       )}>
         {isStagnant
           ? <AlertCircle className="h-4 w-4 text-amber-600" />
-          : <Brain className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />}
+          : isKnowledge
+            ? <BookOpen className="h-4 w-4 text-muted-foreground" />
+            : isClosed
+              ? <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+              : <Brain className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+        }
       </span>
 
       {/* Corps */}
@@ -94,7 +133,7 @@ function SubjectCard({ subject, siteId }: { subject: NavigableSubjectSummary; si
             Sans évolution depuis {stagnationDays} jour{stagnationDays > 1 ? 's' : ''}
           </span>
         )}
-        {!isStagnant && lastMeaningfulChangeAt && (
+        {!isStagnant && !isClosed && lastMeaningfulChangeAt && (
           <span className="mt-0.5 block text-[11px] text-muted-foreground">
             Évolué le {new Date(lastMeaningfulChangeAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
           </span>
@@ -103,6 +142,27 @@ function SubjectCard({ subject, siteId }: { subject: NavigableSubjectSummary; si
 
       <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
     </Link>
+  )
+}
+
+function SubjectGroup({ subjects, siteId, bucket, label }: {
+  subjects: NavigableSubjectSummary[]
+  siteId: string
+  bucket: Bucket
+  label: string
+}) {
+  if (subjects.length === 0) return null
+  return (
+    <section className="space-y-1.5">
+      <SectionHeader label={label} count={subjects.length} />
+      <ul className="space-y-1.5">
+        {subjects.map((s) => (
+          <li key={s.canonicalSubjectId}>
+            <SubjectCard subject={s} siteId={siteId} bucket={bucket} />
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
@@ -134,9 +194,15 @@ export default async function SujetsPage({
       .eq('is_canonical', true),
   ])
 
-  const runCount    = runsResult.count ?? 0
-  const stagnantCount = subjects.filter((s) => s.isStagnant).length
-  const closedCount   = subjects.filter((s) => ['done', 'cancelled', 'not_applicable'].includes(s.currentStatus ?? '')).length
+  const runCount = runsResult.count ?? 0
+  const nowMs    = Date.now()
+
+  const buckets: Record<Bucket, NavigableSubjectSummary[]> = {
+    watch: [], moving: [], open: [], knowledge: [], closed: [],
+  }
+  for (const s of subjects) {
+    buckets[getBucket(s, nowMs)].push(s)
+  }
 
   return (
     <div className="max-w-md space-y-5 pb-16">
@@ -154,15 +220,6 @@ export default async function SujetsPage({
             {subjects.length} sujet{subjects.length !== 1 ? 's' : ''} suivi{subjects.length !== 1 ? 's' : ''}
             {runCount > 0 && <span> · {runCount} PV</span>}
           </p>
-          {(stagnantCount > 0 || closedCount > 0) && (
-            <p className="text-[12px] text-muted-foreground">
-              {stagnantCount > 0 && (
-                <span className="text-amber-700">{stagnantCount} à surveiller</span>
-              )}
-              {stagnantCount > 0 && closedCount > 0 && ' · '}
-              {closedCount > 0 && `${closedCount} clôturé${closedCount > 1 ? 's' : ''}`}
-            </p>
-          )}
         </div>
 
         <SiteTabs siteId={siteId} active="sujets" userRole={user.role} />
@@ -173,13 +230,13 @@ export default async function SujetsPage({
           Aucun sujet documenté sur ce chantier.
         </p>
       ) : (
-        <ul className="space-y-1.5">
-          {subjects.map((s) => (
-            <li key={s.canonicalSubjectId}>
-              <SubjectCard subject={s} siteId={siteId} />
-            </li>
-          ))}
-        </ul>
+        <div className="space-y-4">
+          <SubjectGroup subjects={buckets.watch}     siteId={siteId} bucket="watch"     label="À surveiller" />
+          <SubjectGroup subjects={buckets.moving}    siteId={siteId} bucket="moving"    label="En mouvement" />
+          <SubjectGroup subjects={buckets.open}      siteId={siteId} bucket="open"      label="En attente · ouverts" />
+          <SubjectGroup subjects={buckets.knowledge} siteId={siteId} bucket="knowledge" label="Connaissances du chantier" />
+          <SubjectGroup subjects={buckets.closed}    siteId={siteId} bucket="closed"    label="Clôturés" />
+        </div>
       )}
     </div>
   )

@@ -301,9 +301,9 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
           )}
         </div>
 
-        {life.aliases.length > 0 && (
-          <p className="mt-0.5 text-[12px] text-muted-foreground">
-            {life.aliases.slice(0, 3).join(' · ')}{life.aliases.length > 3 ? ` +${life.aliases.length - 3}` : ''}
+        {life.threadIds.length > 1 && (
+          <p className="mt-0.5 text-[11px] text-muted-foreground/60">
+            {life.threadIds.length} formulations regroupées
           </p>
         )}
 
