@@ -90,7 +90,7 @@ export default async function PrepareVisitPage({
       )}
 
       {/* Copilote — poser une question avant d'arriver sur le chantier */}
-      <CopilotMobileSheet siteId={siteId} />
+      <CopilotMobileSheet siteId={siteId} siteName={site.name} />
 
       {/* 3 — Brief interactif : Priorités + Sujets + Mon plan */}
       {(overview.pvAttention.length > 0 || overview.pvToVerify.length > 0 || planCount > 0) && (

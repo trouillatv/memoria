@@ -487,7 +487,7 @@ export default async function FieldSitePage({
           <section className="space-y-2.5">
             <SiteBriefButton siteId={siteId} variant="mobile" mode="visit" />
             <SiteBriefButton siteId={siteId} variant="mobile" mode="meeting" />
-            <CopilotMobileSheet siteId={siteId} />
+            <CopilotMobileSheet siteId={siteId} siteName={site.name} />
           </section>
 
           {/* Contexte du lieu — référence & secondaire (sous la narration). */}

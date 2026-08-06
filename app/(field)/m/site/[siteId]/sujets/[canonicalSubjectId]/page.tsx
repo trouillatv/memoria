@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, FileText, MapPin, Users } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getCanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
 import type { SubjectOccurrenceMerged, MaterializedEvent, MaterializedEntityType } from '@/lib/db/canonical-subject-life'
 import { cn } from '@/lib/utils'
@@ -244,7 +245,10 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
   const { siteId, canonicalSubjectId } = await params
   await requireSiteAccess(siteId)
 
-  const life = await getCanonicalSubjectLife(canonicalSubjectId).catch(() => null)
+  const [life, siteRow] = await Promise.all([
+    getCanonicalSubjectLife(canonicalSubjectId).catch(() => null),
+    createAdminClient().from('sites').select('name').eq('id', siteId).single().then((r) => r.data).catch(() => null),
+  ])
   if (!life || life.siteId !== siteId) notFound()
 
   const realOccs = life.occurrences
@@ -364,7 +368,7 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Demander à MemorIA
         </p>
-        <CopilotMobileSheet siteId={siteId} initialSubjectIds={[canonicalSubjectId]} />
+        <CopilotMobileSheet siteId={siteId} siteName={siteRow?.name ?? undefined} initialSubjectIds={[canonicalSubjectId]} />
       </section>
 
     </div>
