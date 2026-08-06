@@ -13,6 +13,7 @@ import { z } from 'zod'
 import { getAIProvider } from './factory'
 import { withAITracking } from './tracking'
 import { isActorKind } from '@/lib/subjects/kind'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { CanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
 
 export interface SubjectTrajectoryResult {
@@ -112,8 +113,17 @@ export async function generateSubjectTrajectory(
 ): Promise<SubjectTrajectoryResult> {
   const provider = getAIProvider()
 
-  // Guards déterministes — pas d'appel LLM
-  if (isActorKind(life.kind)) {
+  // Guard acteur : query kind séparément (colonne pas encore dans getCanonicalSubjectLife)
+  let kind: string | null = null
+  try {
+    const { data: csKindRow } = await createAdminClient()
+      .from('canonical_subject')
+      .select('kind')
+      .eq('id', life.canonicalSubjectId)
+      .maybeSingle()
+    kind = (csKindRow as { kind: string | null } | null)?.kind ?? null
+  } catch { /* colonne absente → traité comme non-acteur */ }
+  if (isActorKind(kind)) {
     return { headline: life.label, trajectory: '', evidence: [], generatedAt: new Date().toISOString(), model: 'none', provider: provider.name }
   }
 
