@@ -1,33 +1,27 @@
 import { describe, expect, it } from 'vitest'
 import { resolveHomeDestination } from '@/lib/navigation/home'
 
-// Matrice doctrine 2026-08-04 :
-//   chef_equipe          → /m (navigateur ou PWA, sans exception)
-//   admin / manager PWA  → /m (le contenant décide)
-//   admin / manager nav  → /dashboard
+// Doctrine 2026-08-06 :
+//   La surface est déterminée par le rôle uniquement.
+//   La PWA entre par /m via manifest start_url — pas de détection client nécessaire.
+//
+//   chef_equipe → /m  (il exécute, il ne pilote pas)
+//   admin / manager → /dashboard
+//
+// Coexistence garantie : un admin peut avoir la PWA ouverte sur /m
+// et Chrome ouvert sur /dashboard simultanément, avec le même compte,
+// sans se déconnecter — le routage est structurel, pas via cookie.
 
 describe('resolveHomeDestination', () => {
-  it('admin + navigateur → /dashboard', () => {
-    expect(resolveHomeDestination('admin', false)).toBe('/dashboard')
+  it('admin → /dashboard', () => {
+    expect(resolveHomeDestination('admin')).toBe('/dashboard')
   })
 
-  it('admin + PWA → /m', () => {
-    expect(resolveHomeDestination('admin', true)).toBe('/m')
+  it('manager → /dashboard', () => {
+    expect(resolveHomeDestination('manager')).toBe('/dashboard')
   })
 
-  it('manager + navigateur → /dashboard', () => {
-    expect(resolveHomeDestination('manager', false)).toBe('/dashboard')
-  })
-
-  it('manager + PWA → /m', () => {
-    expect(resolveHomeDestination('manager', true)).toBe('/m')
-  })
-
-  it('chef_equipe + navigateur → /m', () => {
-    expect(resolveHomeDestination('chef_equipe', false)).toBe('/m')
-  })
-
-  it('chef_equipe + PWA → /m', () => {
-    expect(resolveHomeDestination('chef_equipe', true)).toBe('/m')
+  it('chef_equipe → /m', () => {
+    expect(resolveHomeDestination('chef_equipe')).toBe('/m')
   })
 })

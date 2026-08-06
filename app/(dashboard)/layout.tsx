@@ -12,15 +12,17 @@ import { PageViewLogger } from './PageViewLogger'
 import { ThemeSync } from '@/components/layout/ThemeSync'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const h = await headers()
+  const pathname = h.get('x-pathname') ?? '/dashboard'
+
   const user = await getCurrentUserWithProfile().catch((e) => {
     console.error('[dashboard/layout] getCurrentUserWithProfile threw:', e)
     return null
   })
-  if (!user) redirect('/login')
+  // Préserver la destination (session expirée, refresh échoué) pour y revenir après login.
+  if (!user) redirect(`/login?next=${encodeURIComponent(pathname)}`)
   if (user.must_change_password) redirect('/change-password')
 
-  const h = await headers()
-  const pathname = h.get('x-pathname') ?? ''
   // chef_equipe ne pilote pas, il exécute — sauf pour ses réglages de compte.
   if (user.role === 'chef_equipe' && !pathname.startsWith('/account')) redirect('/m')
 

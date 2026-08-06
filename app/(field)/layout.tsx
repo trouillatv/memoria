@@ -15,9 +15,6 @@ import { FieldViewportFix } from '@/components/field-viewport-fix'
 
 export default async function FieldLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUserWithProfile()
-  // `?next=/m` garantit le retour sur la surface terrain après login,
-  // même si pwa_standalone cookie n'est pas encore posé (race condition
-  // entre la redirection serveur et le useEffect de PwaStandaloneDetector).
   if (!user) redirect('/login?next=/m')
   if (user.must_change_password) redirect('/change-password')
 

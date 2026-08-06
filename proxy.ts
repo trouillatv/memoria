@@ -1,12 +1,10 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { COOKIE_PWA_STANDALONE } from '@/lib/navigation/pwa-mode'
-
 // Middleware (renommé "proxy" en Next 16). Trois rôles :
 //  1. Exposer pathname aux Server Components via header `x-pathname` (utilisé
 //     par (dashboard)/layout.tsx pour le cas /account, accessible à tous rôles).
 //  2. Rediriger /login vers la destination principale si l'utilisateur est déjà
-//     authentifié (PWA → /m, classique → / qui résout via resolveHomeDestination),
+//     authentifié (→ next param si présent, sinon / qui résout via resolveHomeDestination),
 //     et bloquer l'accès aux routes protégées si non authentifié.
 //  3. Enforce le flag must_change_password depuis app_metadata du JWT (posé
 //     par app/admin/users/actions.ts, effacé par change-password/actions.ts).
@@ -84,9 +82,8 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
   if (user && pathname.startsWith('/login')) {
-    const isPwa = request.cookies.get(COOKIE_PWA_STANDALONE)?.value === '1'
-    // PWA standalone → toujours /m. Classique → / (app/page.tsx résout via resolveHomeDestination).
-    const dest = isPwa ? '/m' : '/'
+    const next = url.searchParams.get('next')
+    const dest = (next?.startsWith('/') ? next : null) ?? '/'
     return NextResponse.redirect(new URL(dest, request.url))
   }
 

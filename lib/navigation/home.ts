@@ -1,13 +1,12 @@
 import type { UserRole } from '@/types/db'
 
-// Doctrine 2026-08-04 :
-//   Le support détermine la surface par défaut, sauf quand le rôle appartient
-//   exclusivement à une surface.
+// Doctrine 2026-08-06 :
+//   La surface est déterminée par le rôle (exception métier) et le point d'entrée.
+//   La PWA entre naturellement par /m via manifest start_url — pas besoin de détecter.
 //
 //   chef_equipe → toujours /m (il exécute, il ne pilote pas)
-//   PWA standalone + tout rôle → toujours /m (le contenant décide)
-//   admin / manager en navigateur → /dashboard
-export function resolveHomeDestination(role: UserRole, isPwa: boolean): '/m' | '/dashboard' {
+//   admin / manager → /dashboard (pilotage)
+export function resolveHomeDestination(role: UserRole): '/m' | '/dashboard' {
   if (role === 'chef_equipe') return '/m'
-  return isPwa ? '/m' : '/dashboard'
+  return '/dashboard'
 }

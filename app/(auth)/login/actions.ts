@@ -4,9 +4,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { getCurrentUserMiniProfile } from '@/lib/db/users'
-import { cookies } from 'next/headers'
 import { resolveHomeDestination } from '@/lib/navigation/home'
-import { COOKIE_PWA_STANDALONE } from '@/lib/navigation/pwa-mode'
 
 const schema = z.object({
   email: z.string().email(),
@@ -41,13 +39,9 @@ export async function loginAction(formData: FormData) {
       redirect('/change-password')
     }
 
-    // Redirect par rôle :
-    // - chef_equipe (agent terrain) → /m (route mobile bornée, Slice 3.0)
-    // - admin / manager → /dashboard (cockpit mémoriel = vitrine du produit ;
-    //   /missions est une liste ERP, mauvaise porte d'entrée — audit live 2026-05-26)
-    const jar = await cookies()
-    const isPwa = jar.get(COOKIE_PWA_STANDALONE)?.value === '1'
-    redirect(parsed.data.next ?? resolveHomeDestination(profile.role, isPwa))
+    // next doit être une URL relative interne (prévenir open redirect)
+    const safeNext = parsed.data.next?.startsWith('/') ? parsed.data.next : undefined
+    redirect(safeNext ?? resolveHomeDestination(profile.role))
   }
 
   redirect('/dashboard')

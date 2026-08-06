@@ -2,7 +2,6 @@
 import { Inter } from "next/font/google"
 import { Toaster } from "@/components/ui/sonner"
 import { ThemeProvider } from "@/components/providers/ThemeProvider"
-import { PwaStandaloneDetector } from "@/components/pwa-standalone-detector"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
@@ -48,7 +47,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             peut explicitement passer en dark via le toggle, sa préférence
             sera persistée en localStorage. */}
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} themes={['light', 'dark', 'ocre', 'petrole', 'archive', 'monolithe']}>
-          <PwaStandaloneDetector />
           {children}
           <Toaster />
         </ThemeProvider>
