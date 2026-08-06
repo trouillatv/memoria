@@ -153,21 +153,35 @@ export async function generateSubjectTrajectory(
       userMessage,
       responseSchema: trajectorySchema,
       modelTier: 'light',
-      maxOutputTokens: 250,
+      maxOutputTokens: 400,
     })
 
     let result: z.infer<typeof trajectorySchema> | undefined
+
+    // 1. Sortie structurée du provider (chemin privilégié)
     if (out.parsed !== undefined && out.parsed !== null) {
       const r = trajectorySchema.safeParse(out.parsed)
       if (r.success) result = r.data
     }
+    // 2. Parse direct du texte brut
     if (!result) {
       try {
         const r = trajectorySchema.safeParse(JSON.parse(out.text))
         if (r.success) result = r.data
       } catch { /* ignore */ }
     }
-    if (!result) result = { headline: '', trajectory: (out.text ?? '').slice(0, 400), evidence: [] }
+    // 3. Extraction regex : Gemini peut ajouter du texte après le JSON
+    if (!result) {
+      const match = (out.text ?? '').match(/\{[\s\S]*\}/)
+      if (match) {
+        try {
+          const r = trajectorySchema.safeParse(JSON.parse(match[0]))
+          if (r.success) result = r.data
+        } catch { /* ignore */ }
+      }
+    }
+    // 4. Aucune extraction réussie → section absente (ne jamais afficher le texte brut)
+    if (!result) result = { headline: '', trajectory: '', evidence: [] }
 
     return { result, tokens: out.tokens, model: out.model, provider: provider.name, durationMs: out.durationMs }
   })
