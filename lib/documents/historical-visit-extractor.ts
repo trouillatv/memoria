@@ -112,7 +112,7 @@ const GEMINI_RESPONSE_SCHEMA = {
 
 // ─── Prompt système ───────────────────────────────────────────────────────────
 
-function buildExtractionPrompt(text: string, pageCount: number): string {
+function buildExtractionPrompt(text: string, pageCount: number, siteContext?: string): string {
   return `Tu es un assistant d'analyse de PV de visite technique pour un conducteur de travaux.
 
 Ce document comporte ${pageCount} page(s). Le texte est balisé avec [[page N]] pour indiquer les changements de page.
@@ -290,7 +290,9 @@ Lie chaque preuve à sa proposition via \`evidenceKeys\`.
 
 ---
 
-## Texte du document
+${siteContext
+  ? `## Contexte connu du chantier\n\nLorsqu'une formulation du PV correspond à un sujet ou acteur listé ci-dessous, utilise son label canonique dans le champ \`label\`. Si la correspondance est incertaine, utilise la formulation du document.\n\n${siteContext}\n\n---\n\n`
+  : ''}## Texte du document
 
 ${text}`
 }
@@ -335,8 +337,9 @@ async function callGeminiChunk(
   apiKey: string,
   model: string,
   chunkIndex: number,
+  siteContext?: string,
 ): Promise<{ result: LlmExtractionResult; outputText: string }> {
-  const prompt = buildExtractionPrompt(chunkText, totalPageCount)
+  const prompt = buildExtractionPrompt(chunkText, totalPageCount, siteContext)
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -385,6 +388,7 @@ async function callGeminiChunk(
 export async function extractHistoricalPvProposals(
   text: string,
   pageCount: number,
+  siteContext?: string,
 ): Promise<LlmExtractionResult> {
   const apiKey = process.env.GOOGLE_GENAI_API_KEY
   if (!apiKey) throw new Error('GOOGLE_GENAI_API_KEY not set')
@@ -399,7 +403,7 @@ export async function extractHistoricalPvProposals(
 
   try {
     for (let i = 0; i < chunks.length; i++) {
-      const { result, outputText } = await callGeminiChunk(chunks[i], pageCount, apiKey, model, i)
+      const { result, outputText } = await callGeminiChunk(chunks[i], pageCount, apiKey, model, i, siteContext)
       totalOutputText += outputText
       proposals.push(...result.proposals)
       evidence.push(...result.evidence)

@@ -13,6 +13,7 @@ import {
 } from '@/lib/db/document-extractions'
 import { mapDocumentStatus, reconcileSubjectThreads } from './subject-reconciliation'
 import { resolveOrphansSemantically } from './semantic-subject-resolution'
+import { buildExtractionSiteContext } from '@/lib/db/extraction-context'
 import type { DocumentProposalFamily, DocumentEvidenceType, DocumentEvidenceRelationType } from '@/types/db'
 
 const EXTRACTOR_KEY = 'historical_visit_report_v1'
@@ -60,25 +61,26 @@ export async function extractHistoricalPv(
 
   // 2. Créer le run en état pending (sauf si déjà créé par la route)
   let runId: string
+  let siteIdResolved: string | null = siteId ?? null
   if (preCreatedRunId) {
     runId = preCreatedRunId
+    // siteIdResolved sera complété depuis le run si nécessaire (cf. étape 6)
   } else {
-    let resolvedSiteId = siteId ?? null
-    if (!resolvedSiteId) {
+    if (!siteIdResolved) {
       const { data: link } = await supabase
         .from('document_links')
         .select('target_id')
         .eq('document_id', documentId)
         .eq('target_type', 'site')
         .maybeSingle()
-      resolvedSiteId = (link as { target_id: string } | null)?.target_id ?? null
+      siteIdResolved = (link as { target_id: string } | null)?.target_id ?? null
     }
     runId = await createExtractionRun({
       document_id: documentId,
       organization_id: d.organization_id,
       extractor_key: EXTRACTOR_KEY,
       extractor_version: EXTRACTOR_VERSION,
-      target_site_id: resolvedSiteId ?? undefined,
+      target_site_id: siteIdResolved ?? undefined,
       created_by: userId ?? null,
     })
   }
@@ -217,10 +219,28 @@ export async function extractHistoricalPv(
     await updateExtractionStage(runId, 'llm_analysis')
     log('step_llm_analysis', documentId, { runId })
 
-    // 6. Extraction LLM structurée
-    const llmResult = await extractHistoricalPvProposals(text, extracted.pageCount)
+    // 6. Résoudre le siteId depuis le run si non encore disponible (cas preCreatedRunId sans param)
+    if (!siteIdResolved) {
+      const { data: runMeta } = await supabase
+        .from('document_extraction_run')
+        .select('target_site_id')
+        .eq('id', runId)
+        .maybeSingle()
+      siteIdResolved = (runMeta as { target_site_id: string | null } | null)?.target_site_id ?? null
+    }
 
-    // 6b. Fallback photo : pages identifiées comme photo par le LLM
+    // 6b. Contexte chantier compact pour le LLM (sujets actifs + aliases confirmés)
+    const siteContext = siteIdResolved
+      ? await buildExtractionSiteContext(siteIdResolved).catch((err) => {
+          log('site_context_failed', documentId, { error: err instanceof Error ? err.message : String(err) })
+          return undefined
+        })
+      : undefined
+
+    // 6c. Extraction LLM structurée
+    const llmResult = await extractHistoricalPvProposals(text, extracted.pageCount, siteContext || undefined)
+
+    // 6d. Fallback photo : pages identifiées comme photo par le LLM
     // mais dont extractPageImages n'a extrait aucune image native.
     // On promeut le snapshot déjà rendu en preuve 'image' (même fichier stocké,
     // pas de re-upload) pour qu'il soit compté et affiché comme une vraie photo.
@@ -361,16 +381,9 @@ export async function extractHistoricalPv(
 
     // 12. Réconciliation des fils thématiques inter-PV (déterministe, sans LLM)
     // Si le document n'est pas rattaché à un chantier, la réconciliation n'a pas de sens.
-    let siteIdForReconciliation: string | null = null
-    {
-      const { data: link } = await supabase
-        .from('document_extraction_run')
-        .select('target_site_id')
-        .eq('id', runId)
-        .maybeSingle()
-      siteIdForReconciliation = (link as { target_site_id: string | null } | null)?.target_site_id ?? null
-    }
-    if (siteIdForReconciliation) {
+    // siteIdResolved est déjà disponible depuis l'étape 6.
+    if (siteIdResolved) {
+      const siteIdForReconciliation = siteIdResolved
       // Étape 12 : réconciliation lexicale (déterministe, sans LLM)
       let orphans: import('./subject-reconciliation').OrphanInfo[] = []
       try {
