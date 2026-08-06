@@ -247,7 +247,8 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
 
   const [life, siteRow] = await Promise.all([
     getCanonicalSubjectLife(canonicalSubjectId).catch(() => null),
-    createAdminClient().from('sites').select('name').eq('id', siteId).single().then((r) => r.data).catch(() => null),
+    createAdminClient().from('sites').select('name').eq('id', siteId).single()
+      .then(({ data }) => data as { name: string } | null, () => null as null),
   ])
   if (!life || life.siteId !== siteId) notFound()
 

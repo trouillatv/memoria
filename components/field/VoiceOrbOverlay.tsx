@@ -13,9 +13,7 @@ interface Props {
   onClose: () => void
 }
 
-// Tone de bienvenue généré par Web Audio API — aucun fichier externe.
-// Deux AudioContext distincts : un pour le son d'activation (court, fermé
-// immédiatement), un pour l'AnalyserNode qui vit pendant toute la capture.
+// Ton de bienvenue généré par Web Audio API — aucun fichier externe.
 function playActivationCue() {
   try {
     const ctx = new AudioContext()
@@ -38,18 +36,21 @@ function playActivationCue() {
 }
 
 export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: Props) {
-  // Ref pour éviter les fermetures stales dans les effets liés à open.
   const [phase, _setPhase] = useState<OrbPhase>('idle')
   const phaseRef = useRef<OrbPhase>('idle')
   const setPhase = useCallback((p: OrbPhase) => { phaseRef.current = p; _setPhase(p) }, [])
 
-  const [errorMsg, setErrorMsg]     = useState('')
-  const [slowLabel, setSlowLabel]   = useState(false)
-  const [reducedMotion, setReduced] = useState(false)
+  const [errorMsg, setErrorMsg]       = useState('')
+  const [slowLabel, setSlowLabel]     = useState(false)
+  const [reducedMotion, setReduced]   = useState(false)
+  // Texte reconnu — affiché brièvement dans l'orbe avant fermeture.
+  const [resultPreview, setResultPreview] = useState<string | null>(null)
 
-  const orbAudioRef  = useRef<HTMLDivElement>(null)
-  const rafRef       = useRef<number | null>(null)
-  const cleanupRef   = useRef<() => void>(() => {})
+  const orbAudioRef    = useRef<HTMLDivElement>(null)
+  const haloOuterRef   = useRef<HTMLDivElement>(null)
+  const rafRef         = useRef<number | null>(null)
+  const cleanupRef     = useRef<() => void>(() => {})
+  const resultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Détection de prefers-reduced-motion côté client uniquement.
   useEffect(() => {
@@ -66,6 +67,7 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
     if (open) {
       setErrorMsg('')
       setSlowLabel(false)
+      setResultPreview(null)
       setPhase('entering')
       const t = setTimeout(() => {
         setPhase('listening')
@@ -73,6 +75,7 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
       }, 220)
       return () => clearTimeout(t)
     } else if (phaseRef.current !== 'idle') {
+      if (resultTimerRef.current) { clearTimeout(resultTimerRef.current); resultTimerRef.current = null }
       cleanupRef.current()
       setPhase('exiting')
       const t = setTimeout(() => setPhase('idle'), 250)
@@ -94,13 +97,13 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
   function stopAudioLoop() {
     if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
     orbAudioRef.current?.style.setProperty('--audio-delta', '0')
+    haloOuterRef.current?.style.setProperty('--audio-delta', '0')
   }
 
   async function startListening() {
     let stream: MediaStream | null = null
     let audioCtx: AudioContext | null = null
 
-    // Cleanup mis à jour à chaque étape pour toujours refléter l'état réel.
     const doCleanup = (recorder?: MediaRecorder) => {
       stopAudioLoop()
       if (recorder?.state === 'recording') recorder.stop()
@@ -112,7 +115,6 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
 
-      // L'utilisateur a peut-être fermé l'orbe pendant getUserMedia.
       if (phaseRef.current === 'exiting' || phaseRef.current === 'idle') {
         stream.getTracks().forEach((t) => t.stop())
         return
@@ -120,7 +122,6 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
 
       playActivationCue()
 
-      // AnalyserNode sur le même stream — MediaRecorder n'est pas perturbé.
       audioCtx = new AudioContext()
       const source = audioCtx.createMediaStreamSource(stream)
       const analyser = audioCtx.createAnalyser()
@@ -128,7 +129,9 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
       analyser.smoothingTimeConstant = 0.85
       source.connect(analyser)
 
-      // Boucle RAF : --audio-delta mis à jour directement sur le DOM (pas de re-render).
+      // RAF : --audio-delta écrit sur le wrapper core (scale doux 0.18×)
+      // ET sur le halo externe (scale fort 0.50×) via la même propriété CSS
+      // héritée — seul le multiplicateur CSS diffère, pas la variable.
       if (!reducedMotion) {
         const buf = new Uint8Array(analyser.fftSize)
         const loop = () => {
@@ -139,7 +142,9 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
             sum += n * n
           }
           const rms = Math.sqrt(sum / buf.length)
-          orbAudioRef.current?.style.setProperty('--audio-delta', rms.toFixed(3))
+          const delta = rms.toFixed(3)
+          orbAudioRef.current?.style.setProperty('--audio-delta', delta)
+          haloOuterRef.current?.style.setProperty('--audio-delta', delta)
           rafRef.current = requestAnimationFrame(loop)
         }
         rafRef.current = requestAnimationFrame(loop)
@@ -200,8 +205,15 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
         setPhase('error')
         return
       }
-      onResult(data.text.trim())
-      doExit()
+
+      // Flash du texte reconnu avant fermeture — moment fort de l'expérience.
+      const text = data.text.trim()
+      setResultPreview(text)
+      resultTimerRef.current = setTimeout(() => {
+        resultTimerRef.current = null
+        onResult(text)
+        doExit()
+      }, 420)
     } catch {
       setErrorMsg('La transcription n\'a pas fonctionné')
       setPhase('error')
@@ -218,12 +230,14 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
   }
 
   function handleClose() {
+    if (resultTimerRef.current) { clearTimeout(resultTimerRef.current); resultTimerRef.current = null }
     cleanupRef.current()
     doExit()
   }
 
   function handleRetry() {
     setErrorMsg('')
+    setResultPreview(null)
     setPhase('entering')
     setTimeout(() => { setPhase('listening'); void startListening() }, 220)
   }
@@ -231,6 +245,28 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
   if (phase === 'idle') return null
 
   const visible = phase !== 'exiting'
+
+  // Classes CSS de l'orbe selon l'état.
+  const orbClasses = reducedMotion
+    ? 'orb-reduced-motion'
+    : [
+        'orb-breathing',
+        phase === 'transcribing' && !slowLabel && 'orb-transcribing',
+        phase === 'transcribing' && slowLabel  && 'orb-processing',
+        phase === 'entering'                   && 'orb-enter',
+        phase === 'exiting'                    && 'orb-exit',
+      ].filter(Boolean).join(' ')
+
+  // Style du noyau : radial-gradient centré → lumière émise de l'intérieur,
+  // sans effet 3D directionnel. Rose en état d'erreur.
+  const coreStyle: React.CSSProperties = {
+    background: phase === 'error'
+      ? 'radial-gradient(circle at 50% 42%, #fda4af, #e11d48 55%, #9f1239)'
+      : 'radial-gradient(circle at 50% 42%, #ede9fe, #8b5cf6 52%, #4338ca)',
+    boxShadow: phase === 'error'
+      ? '0 0 40px 6px rgba(225,29,72,0.35), 0 0 80px 16px rgba(225,29,72,0.10)'
+      : '0 0 40px 6px rgba(139,92,246,0.38), 0 0 80px 16px rgba(139,92,246,0.10)',
+  }
 
   return (
     <div
@@ -253,78 +289,98 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
         <X className="h-5 w-5" />
       </button>
 
-      {/* Nom du chantier — apparaît légèrement décalé puis remonte */}
-      {siteName && (
-        <p
-          className="mb-8 text-[13px] font-medium text-white/45 transition-all duration-400"
-          style={{ opacity: phase === 'entering' ? 0 : 0.45, transform: phase === 'entering' ? 'translateY(6px)' : 'translateY(0)' }}
-        >
-          {siteName}
-        </p>
-      )}
+      {/* Groupe orbe + label — légèrement au-dessus du centre (le siteName
+          n'est plus au-dessus : il descend sous le label, libérant l'espace). */}
+      <div style={{ marginTop: '-6vh' }} className="flex flex-col items-center">
 
-      {/* ── Orbe ──
-          Couche 1 (button) : animation CSS breathing — deux keyframes désynchronisés.
-          Couche 2 (orbAudioRef) : scale piloté par --audio-delta via RAF.
-          Halos : absolute, animations propres (désynchronisées du noyau). */}
-      <button
-        type="button"
-        onClick={handleOrbTap}
-        disabled={phase !== 'listening'}
-        aria-label="Toucher pour terminer"
-        className={[
-          'relative flex items-center justify-center cursor-default disabled:cursor-default',
-          reducedMotion ? 'orb-reduced-motion' : [
-            'orb-breathing',
-            phase === 'transcribing' && 'orb-transcribing',
-            phase === 'entering'     && 'orb-enter',
-            phase === 'exiting'      && 'orb-exit',
-          ].filter(Boolean).join(' '),
-        ].join(' ')}
-      >
-        <div
-          ref={orbAudioRef}
-          className="orb-audio-reactive relative flex items-center justify-center"
-          style={{ ['--audio-delta' as string]: '0' }}
+        {/* ── Orbe ──
+            Couche 1 (button) : animation CSS breathing.
+            Couche 2 (haloOuterRef) : absolute, opacité animée (orb-halo-a)
+              + scale audio-réactif fort (orb-halo-outer-reactive via --audio-delta).
+            Couche 3 (orbAudioRef) : scale audio-réactif doux (orb-audio-reactive).
+              Couche 4 (halo interne) : absolute, opacité + scale animés.
+              Couche 5 (noyau) : radial-gradient centré, glow symétrique. */}
+        <button
+          type="button"
+          onClick={handleOrbTap}
+          disabled={phase !== 'listening'}
+          aria-label="Toucher pour terminer"
+          className={[
+            'relative flex items-center justify-center cursor-default disabled:cursor-default',
+            orbClasses,
+          ].join(' ')}
         >
-          {/* Halo externe — animation lente désynchronisée */}
-          <div className={`absolute h-56 w-56 rounded-full bg-violet-400/[0.06] ${reducedMotion ? '' : 'orb-halo-a'}`} />
-          {/* Halo interne — légèrement plus vif, timing différent */}
-          <div className={`absolute h-40 w-40 rounded-full bg-violet-400/[0.11] ${reducedMotion ? '' : 'orb-halo-b'}`} />
-          {/* Noyau — gradient MemorIA violet/indigo ; rose en état d'erreur */}
+          {/* Halo externe — audio-réactif fort (multiplicateur CSS 0.50×) */}
           <div
-            className={[
-              'relative h-28 w-28 rounded-full transition-colors duration-500',
-              'shadow-[0_0_70px_rgba(139,92,246,0.50),0_0_28px_rgba(99,102,241,0.35)]',
-              phase === 'error'
-                ? 'bg-gradient-to-br from-rose-400 to-rose-600'
-                : 'bg-gradient-to-br from-violet-400 via-violet-500 to-indigo-600',
-            ].join(' ')}
+            ref={haloOuterRef}
+            className={`absolute h-56 w-56 rounded-full bg-violet-400/[0.08] ${reducedMotion ? '' : 'orb-halo-a orb-halo-outer-reactive'}`}
+            style={{ '--audio-delta': '0' } as React.CSSProperties}
           />
-        </div>
-      </button>
 
-      {/* Label d'état */}
-      <div className="mt-10 text-center">
-        <p className="text-[16px] font-medium text-white/88 tracking-tight">
-          {(phase === 'entering' || phase === 'listening') && 'MemorIA écoute…'}
-          {phase === 'transcribing' && (slowLabel ? 'Je prépare ça…' : 'Je vous ai entendu…')}
-          {phase === 'error' && errorMsg}
-        </p>
-
-        {phase === 'listening' && (
-          <p className="mt-2 text-[12px] text-white/35">Touchez pour terminer</p>
-        )}
-
-        {phase === 'error' && (
-          <button
-            type="button"
-            onClick={handleRetry}
-            className="mt-5 rounded-full border border-white/22 px-6 py-2.5 text-[14px] font-medium text-white/80 active:bg-white/10"
+          {/* Wrapper audio-réactif doux — noyau + halo interne */}
+          <div
+            ref={orbAudioRef}
+            className="orb-audio-reactive relative flex items-center justify-center"
+            style={{ '--audio-delta': '0' } as React.CSSProperties}
           >
-            Réessayer
-          </button>
-        )}
+            {/* Halo interne */}
+            <div className={`absolute h-40 w-40 rounded-full bg-violet-400/[0.14] ${reducedMotion ? '' : 'orb-halo-b'}`} />
+
+            {/* Noyau */}
+            <div
+              className="relative h-28 w-28 rounded-full transition-[background] duration-500"
+              style={coreStyle}
+            />
+          </div>
+        </button>
+
+        {/* Label d'état + siteName en dessous */}
+        <div className="mt-10 text-center">
+          {resultPreview ? (
+            /* Flash transcription — texte reconnu visible brièvement avant fermeture. */
+            <div
+              className="transition-opacity duration-200"
+              style={{ opacity: resultPreview ? 1 : 0 }}
+            >
+              <p className="text-[12px] text-white/45 mb-1.5">J'ai compris&nbsp;:</p>
+              <p className="text-[16px] font-medium text-white/90 leading-snug max-w-[260px] mx-auto">
+                {resultPreview}
+              </p>
+            </div>
+          ) : (
+            <>
+              <p className="text-[16px] font-medium text-white/88 tracking-tight">
+                {(phase === 'entering' || phase === 'listening') && 'MemorIA écoute…'}
+                {phase === 'transcribing' && (slowLabel ? 'Je prépare ça…' : 'Je vous ai entendu…')}
+                {phase === 'error' && errorMsg}
+              </p>
+
+              {/* Chantier sous le statut — hiérarchie : présence → état → contexte. */}
+              {siteName && phase !== 'error' && (
+                <p
+                  className="mt-1 text-[13px] text-white/38 transition-all duration-400"
+                  style={{ opacity: phase === 'entering' ? 0 : 0.38 }}
+                >
+                  {siteName}
+                </p>
+              )}
+
+              {phase === 'listening' && (
+                <p className="mt-2 text-[12px] text-white/35">Touchez pour terminer</p>
+              )}
+
+              {phase === 'error' && (
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className="mt-5 rounded-full border border-white/22 px-6 py-2.5 text-[14px] font-medium text-white/80 active:bg-white/10"
+                >
+                  Réessayer
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   )

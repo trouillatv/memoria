@@ -20,9 +20,12 @@
 }
 
 /* ── VoiceOrbOverlay — animations MemorIA ────────────────────────────────────
-   Deux couches de breathing désynchronisées (3.1 s + 5.3 s) → irrégularité
-   naturelle sans JS. L'amplitude audio est portée par --audio-delta (RAF loop
-   sur l'élément enfant) et ne touche pas ces keyframes. */
+   Breathing : deux keyframes désynchronisés (3.1 s + 5.3 s) → irrégularité
+   naturelle sans JS.
+   Audio : --audio-delta (RAF loop) sur le wrapper core, et via héritage CSS
+   var() sur le halo externe (multiplicateur plus fort → énergie qui se propage).
+   orb-halo-a : opacité seule (pas de transform) — le halo externe porte son
+   propre transform audio via .orb-halo-outer-reactive, les deux ne conflictent pas. */
 
 @keyframes orb-breathe-a {
   0%, 100% { transform: scale(1); }
@@ -33,22 +36,29 @@
   33%      { transform: scale(0.97); }
   66%      { transform: scale(1.09); }
 }
-@keyframes orb-slow-pulse {
-  0%, 100% { transform: scale(1);    opacity: 0.9; }
-  50%       { transform: scale(0.94); opacity: 0.65; }
+/* Transcribing : contraction nette (forward-fill) — l'utilisateur perçoit immédiatement qu'on ne l'écoute plus. */
+@keyframes orb-contract {
+  from { transform: scale(1); }
+  to   { transform: scale(0.88); }
+}
+/* Processing : micro-pulsation à taille réduite — le traitement est en cours. */
+@keyframes orb-process-pulse {
+  0%, 100% { transform: scale(0.82); }
+  50%       { transform: scale(0.87); }
 }
 @keyframes orb-reduced-pulse {
   0%, 100% { opacity: 0.85; }
   50%       { opacity: 0.50; }
 }
+/* Halo externe : opacité seulement — le transform est géré par .orb-halo-outer-reactive. */
 @keyframes orb-halo-a {
-  0%, 100% { opacity: 0.07; transform: scale(1); }
-  50%       { opacity: 0.14; transform: scale(1.05); }
+  0%, 100% { opacity: 0.07; }
+  50%       { opacity: 0.18; }
 }
 @keyframes orb-halo-b {
   0%, 100% { opacity: 0.12; transform: scale(1.02); }
-  40%       { opacity: 0.20; transform: scale(0.97); }
-  80%       { opacity: 0.08; transform: scale(1.06); }
+  40%       { opacity: 0.22; transform: scale(0.97); }
+  80%       { opacity: 0.09; transform: scale(1.06); }
 }
 @keyframes orb-enter {
   from { transform: scale(0.15); opacity: 0; }
@@ -63,8 +73,13 @@
   animation: orb-breathe-a 3.1s ease-in-out infinite,
              orb-breathe-b 5.3s ease-in-out infinite;
 }
+/* Transcribing (écoute terminée, en attente de résultat) : contraction rapide puis stable. */
 .orb-breathing.orb-transcribing {
-  animation: orb-slow-pulse 2s ease-in-out infinite;
+  animation: orb-contract 0.35s ease-out forwards;
+}
+/* Processing (800ms+ de traitement) : pulsation lente à taille réduite. */
+.orb-breathing.orb-processing {
+  animation: orb-process-pulse 2.4s ease-in-out infinite;
 }
 .orb-reduced-motion {
   animation: orb-reduced-pulse 2.5s ease-in-out infinite;
@@ -82,8 +97,13 @@
   animation: orb-halo-b 6.7s ease-in-out infinite;
 }
 
-/* Niveau audio — --audio-delta mis à jour par requestAnimationFrame (0..~0.3).
-   Sur l'élément ENFANT du wrapper breathing → composition multiplicative. */
+/* Halo externe audio-réactif — multiplicateur fort (0.50) vs core (0.18).
+   orb-halo-a anime seulement l'opacité → pas de conflit avec ce transform. */
+.orb-halo-outer-reactive {
+  transform: scale(calc(1 + var(--audio-delta, 0) * 0.50));
+  transition: transform 55ms linear;
+}
+/* Core audio-réactif — multiplicateur doux, composition avec le breathing du parent. */
 .orb-audio-reactive {
   transform: scale(calc(1 + var(--audio-delta, 0) * 0.18));
   transition: transform 55ms linear;
@@ -91,7 +111,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .orb-breathing, .orb-halo-a, .orb-halo-b { animation: none; }
-  .orb-audio-reactive { transition: none; transform: none; }
+  .orb-audio-reactive, .orb-halo-outer-reactive { transition: none; transform: none; }
 }
 
 @theme {
