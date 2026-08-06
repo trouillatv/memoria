@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 // ── LA MÉMOIRE ACTIONNABLE ───────────────────────────────────────────────────
 // « À confirmer » est une INBOX, pas une page de lecture : voici ce que l'IA
@@ -88,7 +88,7 @@ export function MemoryInbox({ siteId, items, withFilters = false }: {
   const ordered = [...filtered].sort((a, b) =>
     FAMILY_ORDER.indexOf(FAMILY_OF[a.kind] ?? 'connaissances') - FAMILY_ORDER.indexOf(FAMILY_OF[b.kind] ?? 'connaissances'))
 
-  if (remaining.length === 0) return <p className="text-[13px] text-muted-foreground">Rien à confirmer pour l’instant.</p>
+  if (remaining.length === 0) return <p className="text-[13px] text-muted-foreground">Rien à confirmer pour l'instant.</p>
 
   return (
     <div>
@@ -130,9 +130,17 @@ export function MemoryInbox({ siteId, items, withFilters = false }: {
 }
 
 /** Le panneau du TERRAIN : connaissances validées + inbox — deux mondes, deux
- *  sections, jamais mélangés dans une même pile. */
+ *  sections, jamais mélangés dans une même pile.
+ *  Affichage synthétique : 3 éléments max par groupe + compte + « ... et N autres ».
+ *  La nature (« Information actuelle ») est portée par le groupe, pas répétée ligne à ligne. */
 export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: MemoryReview }) {
   const groups = [...new Set(review.confirmed.map((c) => c.group))]
+  const byGroup = new Map<string, typeof review.confirmed>()
+  for (const c of review.confirmed) {
+    if (!byGroup.has(c.group)) byGroup.set(c.group, [])
+    byGroup.get(c.group)!.push(c)
+  }
+  const PREVIEW = 3
 
   return (
     <section className="space-y-4">
@@ -141,32 +149,44 @@ export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: 
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Ce que le chantier sait
           </h2>
-          <p className="mt-1 text-[13px] text-muted-foreground">Rien de confirmé pour l’instant.</p>
+          <p className="mt-1 text-[13px] text-muted-foreground">Rien de confirmé pour l'instant.</p>
         </div>
       ) : (
-        groups.map((g) => (
-          <div key={g}>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{g}</h2>
-            <ul className="mt-2 space-y-1">
-              {review.confirmed.filter((c) => c.group === g).map((c) => (
-                <li key={c.id} className="flex items-start gap-2 text-[13px] text-foreground/90">
-                  <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                  <span className="min-w-0">
-                    {c.title}
-                    {c.nature && (
-                      <span className="ml-1.5 text-[11px] text-muted-foreground">· {c.nature}</span>
-                    )}
-                    {c.group === 'Décisions' && (
-                      <span className="mt-0.5 block">
-                        <WhyButton objectType="decision" objectId={c.id} label="Voir l’origine" />
-                      </span>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))
+        groups.map((g) => {
+          const items = byGroup.get(g)!
+          const visible = items.slice(0, PREVIEW)
+          const hidden = items.length - visible.length
+          return (
+            <div key={g}>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{g}</h2>
+                <span className="text-[12px] font-semibold tabular-nums text-muted-foreground">{items.length}</span>
+              </div>
+              <ul className="mt-1.5 space-y-1">
+                {visible.map((c) => (
+                  <li key={c.id} className="flex items-start gap-2 text-[13px] text-foreground/90">
+                    <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                    <span className="min-w-0">
+                      {c.href ? (
+                        <Link href={c.href} className="hover:underline underline-offset-2">{c.title}</Link>
+                      ) : c.title}
+                      {c.group === 'Décisions' && (
+                        <span className="mt-0.5 block">
+                          <WhyButton objectType="decision" objectId={c.id} label="Voir l'origine" />
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {hidden > 0 && (
+                <p className="mt-1.5 text-[12px] text-muted-foreground">
+                  ... et {hidden} autre{hidden > 1 ? 's' : ''}
+                </p>
+              )}
+            </div>
+          )
+        })
       )}
 
       {review.toReview.length > 0 && (
@@ -370,7 +390,7 @@ function ReviewCard({
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground active:opacity-80 disabled:opacity-50"
             >
               {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              {personName.trim() ? 'Ajouter la personne' : 'Ajouter l’entreprise'}
+              {personName.trim() ? 'Ajouter la personne' : "Ajouter l'entreprise"}
             </button>
             <button
               type="button"
@@ -614,7 +634,7 @@ function Provenance({ item }: { item: ReviewItem }) {
       className="mt-0.5 inline-flex items-center gap-1 text-[11.5px] text-muted-foreground active:text-foreground"
     >
       <MapPin className="h-3 w-3 shrink-0" />
-      {p.visitedAt ? `Visite du ${frDayMonthLocal(p.visitedAt)}` : 'Issue d’une visite'}
+      {p.visitedAt ? `Visite du ${frDayMonthLocal(p.visitedAt)}` : "Issue d'une visite"}
       {traces > 0 && ` · ${traces} trace${traces > 1 ? 's' : ''}`}
       <ChevronRight className="h-3 w-3 shrink-0" />
     </a>

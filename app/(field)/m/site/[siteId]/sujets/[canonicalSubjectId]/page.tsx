@@ -260,17 +260,20 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
   if (meetingCount > 0)    pills.push(`${meetingCount} réunion${meetingCount > 1 ? 's' : ''}`)
 
   const matTotal = life.materializedEvents.length
+  // Occurrence la plus récente — base de l'« état actuel ».
+  const latestOcc = realOccs.length > 0 ? realOccs[realOccs.length - 1] : null
+  const currentStateText = latestOcc?.description ?? latestOcc?.label ?? null
 
   return (
     <div className="mx-auto max-w-md space-y-5 px-4 pb-28 pt-5">
 
       {/* Back */}
       <Link
-        href={`/m/site/${siteId}/patrimoine`}
+        href={`/m/site/${siteId}/sujets`}
         className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground active:text-foreground"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
-        Patrimoine
+        Sujets
       </Link>
 
       {/* Header card */}
@@ -307,6 +310,25 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
         </div>
       </header>
 
+      {/* État actuel — dernière information connue sur ce sujet */}
+      {currentStateText && (
+        <section className="rounded-2xl border bg-card px-4 py-3 shadow-sm">
+          <h2 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            État actuel
+          </h2>
+          <p className="text-[14px] leading-snug">{currentStateText}</p>
+          {latestOcc && (
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              {latestOcc.sourceKind === 'field_visit'
+                ? `Visite du ${frDateShort(latestOcc.effectiveDate)}`
+                : latestOcc.sourceKind === 'meeting'
+                  ? `Réunion du ${frDateShort(latestOcc.effectiveDate)}`
+                  : `PV du ${frDateShort(latestOcc.effectiveDate)}`}
+            </p>
+          )}
+        </section>
+      )}
+
       {/* Vertical timeline */}
       {realOccs.length > 0 ? (
         <section>
@@ -342,7 +364,7 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Demander à MemorIA
         </p>
-        <CopilotMobileSheet siteId={siteId} />
+        <CopilotMobileSheet siteId={siteId} initialSubjectIds={[canonicalSubjectId]} />
       </section>
 
     </div>

@@ -37,12 +37,18 @@ function uid() {
 
 // ── Composant ─────────────────────────────────────────────────────────────────
 
-export function CopilotMobileSheet({ siteId }: { siteId: string }) {
+export function CopilotMobileSheet({
+  siteId,
+  initialSubjectIds = [],
+}: {
+  siteId: string
+  initialSubjectIds?: string[]
+}) {
   const [open, setOpen]                      = useState(false)
   const [messages, setMessages]              = useState<Msg[]>([])
   const [inputText, setInputText]            = useState('')
   const [loading, setLoading]                = useState(false)
-  const [resolvedSubjectIds, setResolvedIds] = useState<string[]>([])
+  const [resolvedSubjectIds, setResolvedIds] = useState<string[]>(initialSubjectIds)
   const [voiceText, setVoiceText]            = useState<string | null>(null)
   const bottomRef                            = useRef<HTMLDivElement>(null)
 
