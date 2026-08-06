@@ -66,6 +66,28 @@ function getBucket(s: NavigableSubjectSummary, nowMs: number): Bucket {
   return recentChange ? 'moving' : 'open'
 }
 
+// ── Radar premier PV ─────────────────────────────────────────────────────────
+
+const NON_OPERATIONAL_KINDS = new Set(['person', 'company', 'knowledge_fact'])
+
+function youngSiteRadarPriority(s: NavigableSubjectSummary): number {
+  if (NON_OPERATIONAL_KINDS.has(s.kind ?? ''))          return 99
+  if (CLOSED_STATUSES.has(s.currentStatus ?? ''))       return 99
+  if (s.activeObjects.total > 0)                        return 0
+  if (s.currentStatus === 'non_compliant')              return 1
+  if (s.kind === 'reservation')                         return 2
+  if (s.currentStatus === 'awaiting_validation')        return 3
+  if (s.kind === 'decision')                            return 4
+  if (s.kind === 'deadline')                            return 5
+  if (s.currentStatus === 'in_progress')                return 6
+  if (s.kind === 'action')                              return 7
+  if (s.currentStatus === 'open')                       return 8
+  if (s.currentStatus === 'planned')                    return 9
+  if (s.kind === 'observation')                         return 10
+  if (s.currentStatus === 'mentioned')                  return 11
+  return 99
+}
+
 // ── Kind grouping (vue "Tout") ─────────────────────────────────────────────────
 
 type KindGroup = 'operational' | 'knowledge' | 'deadline' | 'actor'
@@ -227,12 +249,17 @@ export function SujetsList({ subjects, siteId }: {
   const sitePvCount = subjects.length > 0 ? Math.max(...subjects.map((s) => s.pvCount)) : 0
   const isYoungSite = sitePvCount <= 1
 
-  // Sujets à mettre en avant sur un chantier jeune (top 5, priorité aux objets actifs)
-  const toKnowNow = isYoungSite
-    ? [...buckets.moving, ...buckets.open]
-        .sort((a, b) => (b.activeObjects.total - a.activeObjects.total) || (b.pvCount - a.pvCount))
-        .slice(0, 5)
+  // Radar de premier PV — tous les sujets opérationnels, triés par priorité déterministe
+  const radarSorted = isYoungSite
+    ? subjects
+        .filter((s) => youngSiteRadarPriority(s) < 99)
+        .sort((a, b) =>
+          youngSiteRadarPriority(a) - youngSiteRadarPriority(b) ||
+          b.activeObjects.total - a.activeObjects.total
+        )
     : []
+  const radarToTreat = radarSorted.filter((s) => s.activeObjects.total > 0)
+  const radarToKnow  = radarSorted.filter((s) => s.activeObjects.total === 0)
 
   function renderContent() {
     if (tab === 'surveiller') {
@@ -245,17 +272,33 @@ export function SujetsList({ subjects, siteId }: {
             message="Aucun signal de stagnation pour l'instant."
             detail={isYoungSite ? "Ce chantier ne dispose encore que d'un PV." : undefined}
           />
-          {isYoungSite && toKnowNow.length > 0 && (
-            <section className="space-y-1.5">
-              <SectionHeader label="À connaître dès maintenant" count={toKnowNow.length} />
-              <ul className="space-y-1.5">
-                {toKnowNow.map((s) => (
-                  <li key={s.canonicalSubjectId}>
-                    <SubjectCard subject={s} siteId={siteId} bucket={bucketOf.get(s.canonicalSubjectId) ?? 'moving'} />
-                  </li>
-                ))}
-              </ul>
-            </section>
+          {isYoungSite && radarSorted.length > 0 && (
+            <>
+              {radarToTreat.length > 0 && (
+                <section className="space-y-1.5">
+                  <SectionHeader label="À traiter maintenant" count={radarToTreat.length} />
+                  <ul className="space-y-1.5">
+                    {radarToTreat.map((s) => (
+                      <li key={s.canonicalSubjectId}>
+                        <SubjectCard subject={s} siteId={siteId} bucket={bucketOf.get(s.canonicalSubjectId) ?? 'moving'} />
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {radarToKnow.length > 0 && (
+                <section className="space-y-1.5">
+                  <SectionHeader label="À connaître dès maintenant" count={radarToKnow.length} />
+                  <ul className="space-y-1.5">
+                    {radarToKnow.map((s) => (
+                      <li key={s.canonicalSubjectId}>
+                        <SubjectCard subject={s} siteId={siteId} bucket={bucketOf.get(s.canonicalSubjectId) ?? 'open'} />
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </>
           )}
         </div>
       )
