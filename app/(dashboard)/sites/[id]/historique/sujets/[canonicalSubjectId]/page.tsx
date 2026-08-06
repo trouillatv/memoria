@@ -3,12 +3,12 @@ import Link from 'next/link'
 import { ArrowLeft, Calendar, Check, FileText, Link2, LayoutList, Trash2, X } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { getCanonicalSubjectLife, listActiveCanonicalSubjects } from '@/lib/db/canonical-subject-life'
-import type { SubjectOccurrenceMerged, CanonicalLink, MaterializedEvent, MaterializedEntityType, CanonicalSubjectSummary } from '@/lib/db/canonical-subject-life'
+import { getCanonicalSubjectLife, listSubjectsForPicker } from '@/lib/db/canonical-subject-life'
+import type { SubjectOccurrenceMerged, CanonicalLink, MaterializedEvent, MaterializedEntityType, SubjectPickerItem } from '@/lib/db/canonical-subject-life'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
 import { confirmSuggestedLink, rejectSuggestedLink, createCanonicalLinkAction, deleteCanonicalLinkAction } from './link-actions'
-import SubjectCombobox from './SubjectCombobox'
+import SubjectPicker from './SubjectPicker'
 
 export const dynamic = 'force-dynamic'
 
@@ -469,17 +469,16 @@ function RelationsSection({
   siteId,
   canonicalSubjectId,
   csLabel,
-  allSubjects,
+  pickerItems,
 }: {
   links: CanonicalLink[]
   siteId: string
   canonicalSubjectId: string
   csLabel: string
-  allSubjects: CanonicalSubjectSummary[]
+  pickerItems: SubjectPickerItem[]
 }) {
   const confirmed = links.filter((l) => l.status === 'confirmed')
   const suggested = links.filter((l) => l.status === 'suggested')
-  const otherSubjects = allSubjects.filter((s) => s.id !== canonicalSubjectId)
 
   function LinkRow({ link }: { link: CanonicalLink }) {
     const cfg = LINK_LABELS[link.linkType]
@@ -579,13 +578,13 @@ function RelationsSection({
         </>
       )}
 
-      {otherSubjects.length > 0 && (
+      {pickerItems.length > 0 && (
         <div className="mt-1 rounded-lg border border-dashed bg-muted/10 px-3 py-3">
           <p className="mb-2 text-xs font-medium text-muted-foreground">Ajouter une relation</p>
           <form action={createCanonicalLinkAction} className="space-y-2">
             <input type="hidden" name="siteId" value={siteId} />
             <input type="hidden" name="canonicalSubjectId" value={canonicalSubjectId} />
-            <SubjectCombobox subjects={otherSubjects} name="toCanonicalSubjectId" siteId={siteId} required />
+            <SubjectPicker items={pickerItems} name="toCanonicalSubjectId" siteId={siteId} required />
             <select
               name="linkType"
               required
@@ -623,10 +622,10 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
 
   const { id: siteId, canonicalSubjectId } = await params
 
-  const [site, life, allSubjects] = await Promise.all([
+  const [site, life, pickerItems] = await Promise.all([
     getSiteIdentity(siteId).catch(() => null),
     getCanonicalSubjectLife(canonicalSubjectId).catch(() => null),
-    listActiveCanonicalSubjects(siteId).catch(() => [] as CanonicalSubjectSummary[]),
+    listSubjectsForPicker(siteId, canonicalSubjectId).catch(() => [] as SubjectPickerItem[]),
   ])
 
   if (!site) notFound()
@@ -744,7 +743,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
             <Link2 className="h-3.5 w-3.5" />
             Relations
           </h2>
-          <RelationsSection links={life.links} siteId={siteId} canonicalSubjectId={canonicalSubjectId} csLabel={life.label} allSubjects={allSubjects} />
+          <RelationsSection links={life.links} siteId={siteId} canonicalSubjectId={canonicalSubjectId} csLabel={life.label} pickerItems={pickerItems} />
         </section>
 
         {/* Fil métier */}

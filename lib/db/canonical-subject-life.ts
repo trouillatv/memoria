@@ -1089,6 +1089,109 @@ export interface CanonicalSubjectSummary {
   status: string
 }
 
+// ── Picker navigable ──────────────────────────────────────────────────────────
+
+export interface SubjectPickerItem {
+  id: string
+  label: string
+  aliases: string[]
+  /** 'active' | 'merged' | 'split' */
+  status: string
+  /** Famille principale issue des propositions (null = sujet terrain uniquement) */
+  family: string | null
+  /** Nombre de PV distincts où ce sujet a été observé */
+  pvCount: number
+  /** Nombre de PV partagés avec le sujet courant (signal de proximité) */
+  coOccurrenceCount: number
+}
+
+/**
+ * Liste enrichie de tous les sujets opérationnels du chantier pour le picker de liaison.
+ * - Exclut le sujet courant et les acteurs (persons/companies).
+ * - Calcule pvCount et coOccurrenceCount depuis les propositions et STI.
+ */
+export async function listSubjectsForPicker(
+  siteId: string,
+  currentCanonicalSubjectId: string,
+): Promise<SubjectPickerItem[]> {
+  const supabase = createAdminClient()
+
+  // Canonical subjects du chantier (hors acteurs)
+  const { data: csRaw, error: csErr } = await supabase
+    .from('canonical_subject')
+    .select('id, label, aliases, status')
+    .eq('site_id', siteId)
+    .is('company_id', null)
+    .is('contact_id', null)
+    .order('label', { ascending: true })
+  if (csErr) throw new Error(csErr.message)
+  const allCs = (csRaw ?? []) as Array<{ id: string; label: string; aliases: string[]; status: string }>
+
+  // Runs du chantier
+  const runs = await canonicalRunsForSite(siteId)
+  if (runs.length === 0) {
+    return allCs
+      .filter((cs) => cs.id !== currentCanonicalSubjectId)
+      .map((cs) => ({ id: cs.id, label: cs.label, aliases: cs.aliases ?? [], status: cs.status, family: null, pvCount: 0, coOccurrenceCount: 0 }))
+  }
+  const runIds = runs.map((r) => r.id)
+
+  // Propositions (thread + run + family uniquement)
+  const { data: propsRaw } = await supabase
+    .from('document_extraction_proposal')
+    .select('subject_thread_id, extraction_run_id, proposal_family')
+    .in('extraction_run_id', runIds)
+    .not('subject_thread_id', 'is', null)
+  const props = (propsRaw ?? []) as Array<{ subject_thread_id: string; extraction_run_id: string; proposal_family: string }>
+
+  if (props.length === 0) {
+    return allCs
+      .filter((cs) => cs.id !== currentCanonicalSubjectId)
+      .map((cs) => ({ id: cs.id, label: cs.label, aliases: cs.aliases ?? [], status: cs.status, family: null, pvCount: 0, coOccurrenceCount: 0 }))
+  }
+
+  // STI pour tous les threads trouvés
+  const allThreadIds = [...new Set(props.map((p) => p.subject_thread_id))]
+  const { data: stiRaw } = await supabase
+    .from('subject_thread_identity')
+    .select('subject_thread_id, canonical_subject_id')
+    .in('subject_thread_id', allThreadIds)
+  const threadToCanonical = new Map<string, string>(
+    ((stiRaw ?? []) as Array<{ subject_thread_id: string; canonical_subject_id: string }>)
+      .map((r) => [r.subject_thread_id, r.canonical_subject_id]),
+  )
+
+  // Par canonical : runs présents + comptage de famille
+  const csRunIds = new Map<string, Set<string>>()
+  const csFamilyCounts = new Map<string, Map<string, number>>()
+  for (const p of props) {
+    const csId = threadToCanonical.get(p.subject_thread_id)
+    if (!csId) continue
+    if (!csRunIds.has(csId)) csRunIds.set(csId, new Set())
+    csRunIds.get(csId)!.add(p.extraction_run_id)
+    if (!csFamilyCounts.has(csId)) csFamilyCounts.set(csId, new Map())
+    const fc = csFamilyCounts.get(csId)!
+    fc.set(p.proposal_family, (fc.get(p.proposal_family) ?? 0) + 1)
+  }
+
+  const currentRunIds = csRunIds.get(currentCanonicalSubjectId) ?? new Set<string>()
+
+  return allCs
+    .filter((cs) => cs.id !== currentCanonicalSubjectId)
+    .map((cs) => {
+      const runs = csRunIds.get(cs.id) ?? new Set<string>()
+      let coOccurrenceCount = 0
+      for (const runId of runs) if (currentRunIds.has(runId)) coOccurrenceCount++
+      const fc = csFamilyCounts.get(cs.id)
+      let family: string | null = null
+      if (fc) {
+        let max = 0
+        for (const [fam, count] of fc.entries()) if (count > max) { max = count; family = fam }
+      }
+      return { id: cs.id, label: cs.label, aliases: cs.aliases ?? [], status: cs.status, family, pvCount: runs.size, coOccurrenceCount }
+    })
+}
+
 /** Liste de tous les sujets opérationnels d'un chantier — pour le sélecteur de liaison manuelle.
  *  Inclut les sujets clôturés (merged/split) afin d'éviter les doublons.
  *  Exclut les acteurs (persons, companies). */
