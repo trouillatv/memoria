@@ -1,10 +1,12 @@
 import { notFound } from 'next/navigation'
+import { Suspense } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, AlertCircle, FileText, MapPin, Users } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
 import type { SubjectOccurrenceMerged, MaterializedEvent, MaterializedEntityType } from '@/lib/db/canonical-subject-life'
+import { SubjectTrajectorySection, SubjectTrajectorySkeleton } from './SubjectTrajectorySection'
 import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
@@ -337,7 +339,12 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
         </section>
       )}
 
-      {/* 2 — À surveiller (stagnation signal — uniquement si calculé) */}
+      {/* 2 — Ce qui s'est passé (trajectoire synthétique — async, ne bloque pas la page) */}
+      <Suspense fallback={<SubjectTrajectorySkeleton />}>
+        <SubjectTrajectorySection life={life} />
+      </Suspense>
+
+      {/* 3 — À surveiller (stagnation signal — uniquement si calculé) */}
       {life.isStagnant && life.firstSeenAt && life.stagnationDays !== null && (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm">
           <div className="flex items-center gap-2 mb-1.5">

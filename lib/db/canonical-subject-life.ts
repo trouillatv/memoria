@@ -77,6 +77,8 @@ export interface CanonicalSubjectLife {
   label: string
   aliases: string[]
   csStatus: string
+  /** Kind du canonical_subject (person / company / knowledge_fact / null = opérationnel générique). */
+  kind: string | null
   firstSeenAt: string | null
   lastSeenAt: string | null
   currentStatus: string | null
@@ -138,15 +140,18 @@ export async function getCanonicalSubjectLife(
   // 1. Canonical subject
   const { data: cs } = await supabase
     .from('canonical_subject')
-    .select('id, site_id, label, aliases, status')
+    .select('id, site_id, label, aliases, status, kind')
     .eq('id', canonicalSubjectId)
     .maybeSingle()
   if (!cs) return null
 
-  const siteId: string = (cs as { id: string; site_id: string; label: string; aliases: string[]; status: string }).site_id
-  const csLabel: string = (cs as { label: string }).label
-  const csAliases: string[] = (cs as { aliases: string[] }).aliases ?? []
-  const csStatus: string = (cs as { status: string }).status
+  type CsRow = { id: string; site_id: string; label: string; aliases: string[]; status: string; kind: string | null }
+  const csRow = cs as CsRow
+  const siteId: string = csRow.site_id
+  const csLabel: string = csRow.label
+  const csAliases: string[] = csRow.aliases ?? []
+  const csStatus: string = csRow.status
+  const csKind: string | null = csRow.kind ?? null
 
   // 2. Tous les threads rattachés à ce sujet
   const { data: stiRows } = await supabase
@@ -192,7 +197,7 @@ export async function getCanonicalSubjectLife(
       ? Math.floor((new Date(nativeLastSeenAt).getTime() - new Date(nativeLMCA).getTime()) / 86_400_000)
       : 0
     return {
-      canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
+      canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus, kind: csKind,
       firstSeenAt: nativeReal[0]?.effectiveDate ?? null,
       lastSeenAt: nativeLastSeenAt,
       currentStatus: nativeReal[nativeReal.length - 1]?.visitStatus ?? null,
@@ -203,7 +208,7 @@ export async function getCanonicalSubjectLife(
       lastMeaningfulChangeAt: nativeLMCA,
       stagnationDays: nativeStagDays,
       consecutiveMentionsWithoutChange: nativeCMWC,
-      isStagnant: nativeStagDays >= 30 && nativeCMWC >= 2, // familles stables exclues par défaut (null = éligible)
+      isStagnant: nativeStagDays >= 30 && nativeCMWC >= 2,
     }
   }
 
@@ -213,7 +218,7 @@ export async function getCanonicalSubjectLife(
 
   if (canonicalRunIds.length === 0) {
     return {
-      canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
+      canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus, kind: csKind,
       firstSeenAt: null, lastSeenAt: null, currentStatus: null, primaryFamily: null,
       threadIds, pvCount: 0, fieldVisitCount: 0, runs: [], occurrences: [], links: [], materializedEvents: [],
       lastMeaningfulChangeAt: null, stagnationDays: null, consecutiveMentionsWithoutChange: 0, isStagnant: false,
@@ -260,7 +265,7 @@ export async function getCanonicalSubjectLife(
   const firstRunIndex = allRuns.findIndex((r) => propsByRun.has(r.id))
   if (firstRunIndex < 0) {
     return {
-      canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
+      canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus, kind: csKind,
       firstSeenAt: null, lastSeenAt: null, currentStatus: null, primaryFamily: null,
       threadIds, pvCount: 0, fieldVisitCount: 0,
       runs: allRuns.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) })),
@@ -622,6 +627,7 @@ export async function getCanonicalSubjectLife(
     label: csLabel,
     aliases: csAliases,
     csStatus,
+    kind: csKind,
     firstSeenAt,
     lastSeenAt,
     currentStatus,
