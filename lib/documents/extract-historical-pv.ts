@@ -412,6 +412,63 @@ export async function extractHistoricalPv(
           })
         }
       }
+
+      // Étape 12c : création canonical_subject + liaison automatique pour les orphelins acteurs
+      // Famille person|company → nouveau thread = nouvel acteur non encore suivi sur ce chantier.
+      // Règle stricte : match exact unique → company_id/contact_id ; ambigu/absent → aucune écriture.
+      const actorOrphans = orphans.filter(
+        (o) => o.family === 'person' || o.family === 'company',
+      )
+      if (actorOrphans.length > 0) {
+        try {
+          const { tryActorAutoLink } = await import('@/lib/db/actor-auto-link')
+          const stats = { linked: 0, skipped: 0, no_match: 0, ambiguous: 0, conflict: 0, error: 0 }
+
+          for (const orphan of actorOrphans) {
+            // Créer le canonical_subject
+            const { data: newCs, error: csErr } = await supabase
+              .from('canonical_subject')
+              .insert({ site_id: siteIdForReconciliation, label: orphan.label, status: 'active' })
+              .select('id')
+              .single()
+
+            if (csErr || !newCs) {
+              stats.error++
+              log('actor_cs_create_failed', documentId, { threadId: orphan.threadId, error: csErr?.message })
+              continue
+            }
+
+            // Créer le subject_thread_identity (idempotent si déjà existant)
+            const { error: stiErr } = await supabase
+              .from('subject_thread_identity')
+              .upsert(
+                { subject_thread_id: orphan.threadId, site_id: siteIdForReconciliation, canonical_subject_id: (newCs as { id: string }).id, source: 'auto' },
+                { onConflict: 'subject_thread_id', ignoreDuplicates: true },
+              )
+
+            if (stiErr) {
+              stats.error++
+              log('actor_sti_create_failed', documentId, { threadId: orphan.threadId, error: stiErr.message })
+              continue
+            }
+
+            // Tentative de liaison automatique
+            const result = await tryActorAutoLink(
+              (newCs as { id: string }).id,
+              siteIdForReconciliation,
+              orphan.family as 'person' | 'company',
+            )
+            stats[result.outcome]++
+          }
+
+          log('actor_auto_link_complete', documentId, { runId, ...stats })
+        } catch (actorErr) {
+          log('actor_auto_link_failed', documentId, {
+            runId,
+            error: actorErr instanceof Error ? actorErr.message : String(actorErr),
+          })
+        }
+      }
     }
 
     log('extraction_complete', documentId, {
