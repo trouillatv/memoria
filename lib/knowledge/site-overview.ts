@@ -394,11 +394,13 @@ function numberOf(value: string | undefined): number {
   return Number.isFinite(n) ? n : 0
 }
 
-/** Durée d'une visite, en minutes. Null si l'une des bornes manque. */
+/** Durée d'une visite, en minutes. Null si l'une des bornes manque ou si la
+ *  durée dépasse 24h (visite laissée ouverte accidentellement). */
 function durationMinutes(startedAt: string | null, endedAt: string | null): number | null {
   if (!startedAt || !endedAt) return null
   const ms = Date.parse(endedAt) - Date.parse(startedAt)
   if (!Number.isFinite(ms) || ms <= 0) return null
+  if (ms > 24 * 60 * 60_000) return null
   return Math.max(1, Math.round(ms / 60_000))
 }
 

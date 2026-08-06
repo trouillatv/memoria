@@ -80,9 +80,9 @@ export function VisitKnowledgeCard({
             </h2>
           </div>
           <div className="mt-2 space-y-3">
-            <KnowledgeGroup title="Échéances" icon={CalendarClock} section={deadlines} />
-            <KnowledgeGroup title="À savoir" icon={Info} section={knowledge} />
-            <KnowledgeGroup title="Points de vigilance" icon={ShieldAlert} section={watchpoints} />
+            <KnowledgeGroup title="Échéances" icon={CalendarClock} section={deadlines} moreHref={synthesisHref} />
+            <KnowledgeGroup title="À savoir" icon={Info} section={knowledge} moreHref={synthesisHref} />
+            <KnowledgeGroup title="Points de vigilance" icon={ShieldAlert} section={watchpoints} moreHref={synthesisHref} />
           </div>
         </div>
       )}
@@ -104,13 +104,17 @@ function KnowledgeGroup({
   title,
   icon: Icon,
   section,
+  moreHref,
 }: {
   title: string
   icon: ComponentType<{ className?: string }>
   section: SiteOverview['knowledge']
+  moreHref?: string
 }) {
   const total = section.summary.proposed + section.summary.confirmed
   if (total === 0) return null
+  const displayed = section.confirmed.length + section.proposed.length
+  const hidden = total - displayed
   return (
     <div>
       <div className="flex items-center gap-2">
@@ -131,6 +135,14 @@ function KnowledgeGroup({
           <li key={item.id} className="line-clamp-2 text-[13px] text-muted-foreground">{item.title}</li>
         ))}
       </ul>
+      {hidden > 0 && moreHref && (
+        <Link
+          href={moreHref}
+          className="mt-1 inline-flex items-center gap-0.5 text-[12px] font-medium text-primary active:opacity-70"
+        >
+          Voir les {hidden} autres <ChevronRight className="h-3 w-3" />
+        </Link>
+      )}
     </div>
   )
 }

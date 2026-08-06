@@ -49,7 +49,7 @@ function BriefRow({ item }: { item: BriefItem }) {
   return <li>{inner}</li>
 }
 
-export function VisitBriefCard({ brief }: { brief: VisitBrief }) {
+export function VisitBriefCard({ brief, siteId }: { brief: VisitBrief; siteId: string }) {
   if (brief.items.length === 0) return null
 
   return (
@@ -63,9 +63,13 @@ export function VisitBriefCard({ brief }: { brief: VisitBrief }) {
         ))}
       </ul>
       {brief.overflow > 0 && (
-        <p className="mt-2 text-[12px] text-muted-foreground">
+        <Link
+          href={`/m/actions?site=${siteId}`}
+          className="mt-2 inline-flex items-center gap-0.5 text-[12px] text-primary active:opacity-70"
+        >
           +{brief.overflow} autre{brief.overflow > 1 ? 's' : ''} à traiter
-        </p>
+          <ChevronRight className="h-3 w-3" />
+        </Link>
       )}
     </section>
   )

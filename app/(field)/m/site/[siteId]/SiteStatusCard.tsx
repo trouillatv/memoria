@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ListChecks, AlertTriangle, Footprints, Users, ChevronRight } from 'lucide-react'
+import { ListChecks, AlertTriangle, Footprints, Brain, ChevronRight } from 'lucide-react'
 import type { SiteStatusCell, SiteStatusMetric, SiteStatusTone } from '@/lib/db/visits'
 
 /**
@@ -12,14 +12,14 @@ const ICON: Record<SiteStatusMetric, typeof ListChecks> = {
   actions: ListChecks,
   reserves: AlertTriangle,
   lastVisit: Footprints,
-  nextMeeting: Users,
+  canonicalSubjects: Brain,
 }
 // La couleur est portée par l'icône + un fond très pâle ; le texte reste sombre.
 const METRIC_TINT: Record<SiteStatusMetric, string> = {
   actions: 'bg-slate-50/70 dark:bg-slate-900/30',
   reserves: 'bg-amber-50/60 dark:bg-amber-950/25',
   lastVisit: 'bg-emerald-50/60 dark:bg-emerald-950/25',
-  nextMeeting: 'bg-sky-50/60 dark:bg-sky-950/25',
+  canonicalSubjects: 'bg-indigo-50/60 dark:bg-indigo-950/25',
 }
 const TONE_ICON: Record<SiteStatusTone, string> = {
   alert: 'text-red-600 dark:text-red-400',

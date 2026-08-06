@@ -802,7 +802,7 @@ export async function buildSiteImportantEvidence(siteId: string): Promise<SiteIm
 // · 1 réserve ouverte · +12 photos depuis la dernière visite. » Déterministe.
 
 export type SiteStatusTone = 'alert' | 'warn' | 'info'
-export type SiteStatusMetric = 'actions' | 'reserves' | 'lastVisit' | 'nextMeeting'
+export type SiteStatusMetric = 'actions' | 'reserves' | 'lastVisit' | 'canonicalSubjects'
 /** Une cellule de la grille « État du chantier » : la santé en 4 chiffres, chacun
  *  cliquable vers son détail. `value` peut être un nombre (« 9 ») ou une date. */
 export interface SiteStatusCell {
@@ -821,19 +821,15 @@ function shortDate(iso: string): string {
 
 export async function buildSiteStatusSummary(siteId: string): Promise<SiteStatusCell[]> {
   const supabase = createAdminClient()
-  const [overdue, lastVisit, reserves, meeting, openActionsAll] = await Promise.all([
+  const [overdue, lastVisit, reserves, csRes, openActionsAll] = await Promise.all([
     detectOverdueActions(siteId).catch(() => null),
     getLastEndedVisitForSite(siteId).catch(() => null),
     getSiteReserves(siteId).catch(() => []),
     supabase
-      .from('site_reports')
-      .select('next_meeting_at')
+      .from('canonical_subject')
+      .select('*', { count: 'exact', head: true })
       .eq('site_id', siteId)
-      .not('next_meeting_at', 'is', null)
-      .gte('next_meeting_at', new Date().toISOString())
-      .order('next_meeting_at', { ascending: true })
-      .limit(1)
-      .maybeSingle(),
+      .eq('status', 'active'),
     listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
   ])
 
@@ -841,7 +837,7 @@ export async function buildSiteStatusSummary(siteId: string): Promise<SiteStatus
   const openActionsN = openActionsAll.length
   const openReserves = (reserves as Array<{ status: string }>).filter((r) => r.status === 'open').length
   const lastIso = lastVisit ? (lastVisit.endedAt ?? lastVisit.startedAt) : null
-  const nextMeeting = (meeting.data as { next_meeting_at: string } | null)?.next_meeting_at
+  const canonicalSubjectsN = csRes.count ?? 0
 
   // Toujours 4 cellules (grille stable) ; « colonne vide » → « 0 » ou « Aucune ».
   return [
@@ -867,11 +863,11 @@ export async function buildSiteStatusSummary(siteId: string): Promise<SiteStatus
       href: lastIso ? `/m/site/${siteId}/visites` : undefined,
     },
     {
-      key: 'nextMeeting',
-      value: nextMeeting ? shortDate(nextMeeting) : 'Aucune',
-      label: 'Prochaine réunion',
+      key: 'canonicalSubjects',
+      value: String(canonicalSubjectsN),
+      label: canonicalSubjectsN === 1 ? 'Sujet mémorisé' : 'Sujets mémorisés',
       tone: 'info',
-      href: `/m/site/${siteId}/reunions`,
+      href: `/m/site/${siteId}/patrimoine`,
     },
   ]
 }
@@ -1473,7 +1469,7 @@ export async function buildSinceLastVisitDelta(siteId: string, userId: string | 
     })),
     ...((meetingsRes.data ?? []) as Array<{ title: string; created_at: string }>).map((m) => ({
       kind: 'meeting' as DeltaItemKind,
-      label: m.title?.trim() || 'Réunion',
+      label: m.title?.trim() || `Réunion du ${new Date(m.created_at).toLocaleDateString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'long' })}`,
       at: m.created_at,
     })),
   ]

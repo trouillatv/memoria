@@ -452,7 +452,7 @@ export default async function FieldSitePage({
           {/* 2bis — Si vous revenez aujourd'hui : les éléments ouverts qui
               justifient une attention immédiate. Actions en retard → réserves
               vieillissantes → échéances imminentes. 4 max + overflow. */}
-          {visitBrief && <VisitBriefCard brief={visitBrief} />}
+          {visitBrief && <VisitBriefCard brief={visitBrief} siteId={siteId} />}
 
           {/* 3 — Que reste-t-il à faire : les actions ouvertes / en retard. */}
           <SiteTodoCard actions={openActions} reserves={openReserves} todayIso={todayIso} totalActions={openActions.length} siteId={siteId} />
