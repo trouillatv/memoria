@@ -1,21 +1,25 @@
 import 'server-only'
 
-// Pont synchrone : proposition terrain confirmée → occurrence canonique.
+// Pont synchrone : proposition terrain → occurrence canonique.
 //
-// Appelé après promoteProposal() pour les kinds éligibles, en fire-and-forget.
-// N'est jamais bloquant : le métier (confirmation de proposition) ne dépend pas
-// de la réussite de la réconciliation.
+// Appelé en deux contextes (fire-and-forget dans les deux cas) :
+//   1. À la création de la proposition (projectDebriefToProposals) → validationStatus='observed'
+//   2. Après promoteProposal() → validationStatus='confirmed'
+//
+// Règle de priorité :
+//   confirmed > observed : une promotion n'est jamais rétrogradée par un appel observed
+//   rejected  → uniquement via dismissProposal() ; jamais écrasé automatiquement
 //
 // Résultats possibles :
-//   resolved        → occurrence créée ; canonical_subject_id renseigné
+//   resolved         → occurrence créée/mise à jour ; canonical_subject_id renseigné
 //   needs_resolution → ambiguïté ; candidats stockés dans payload, état marqué
-//   not_found       → aucun sujet connu ; état marqué ; aucune occurrence
-//   skipped         → kind non éligible ou source hors terrain
+//   not_found        → aucun sujet connu ; état marqué ; aucune occurrence
+//   skipped          → kind non éligible ou source hors terrain
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
 
-const ELIGIBLE_KINDS = new Set(['action', 'vigilance', 'decision', 'knowledge'])
+export const ELIGIBLE_KINDS = new Set(['action', 'vigilance', 'decision', 'knowledge'])
 
 export interface ReconcileResult {
   status: 'resolved' | 'needs_resolution' | 'not_found' | 'skipped'
@@ -31,8 +35,10 @@ export async function reconcileProposalToCanonical(params: {
   proposalBody: string | null
   proposalCreatedAt: string // fallback si le report n'a pas de date
   createdBy: string | null
+  validationStatus?: 'observed' | 'confirmed'  // défaut : 'confirmed' (compat V1)
 }): Promise<ReconcileResult> {
   const { proposalId, siteId, reportId, proposalKind, proposalTitle, proposalBody, proposalCreatedAt, createdBy } = params
+  const validationStatus = params.validationStatus ?? 'confirmed'
 
   if (!ELIGIBLE_KINDS.has(proposalKind)) return { status: 'skipped' }
 
@@ -63,24 +69,41 @@ export async function reconcileProposalToCanonical(params: {
   if (resolution.kind === 'resolved') {
     const canonicalSubjectId = resolution.candidate.id
 
-    await supabase
-      .from('canonical_subject_occurrence')
-      .upsert(
-        {
-          canonical_subject_id: canonicalSubjectId,
-          site_id: siteId,
-          source_kind: sourceKind,
-          source_ref_id: reportId,
-          source_proposal_id: proposalId,
-          visit_status: sourceKind === 'field_visit' ? 'field_checked' : 'mentioned',
-          label: proposalTitle,
-          note: proposalBody,
-          evidence_count: 0,
-          effective_date: visitDate,
-          created_by: createdBy,
-        },
-        { onConflict: 'source_kind,source_proposal_id', ignoreDuplicates: true },
-      )
+    const occurrenceData = {
+      canonical_subject_id: canonicalSubjectId,
+      site_id: siteId,
+      source_kind: sourceKind,
+      source_ref_id: reportId,
+      source_proposal_id: proposalId,
+      visit_status: sourceKind === 'field_visit' ? 'field_checked' : 'mentioned',
+      label: proposalTitle,
+      note: proposalBody,
+      evidence_count: 0,
+      effective_date: visitDate,
+      created_by: createdBy,
+      validation_status: validationStatus,
+    }
+
+    if (validationStatus === 'observed') {
+      // observed n'écrase jamais confirmed ni rejected — ignoreDuplicates préserve l'existant
+      await supabase
+        .from('canonical_subject_occurrence')
+        .upsert(occurrenceData, { onConflict: 'source_kind,source_proposal_id', ignoreDuplicates: true })
+    } else {
+      // confirmed : INSERT puis upgrade de observed→confirmed si conflit
+      // (ne touche pas rejected — rejected ne bouge que sur action humaine explicite)
+      const { error: insertErr } = await supabase
+        .from('canonical_subject_occurrence')
+        .insert(occurrenceData)
+      if (insertErr?.code === '23505') {
+        await supabase
+          .from('canonical_subject_occurrence')
+          .update({ validation_status: 'confirmed' })
+          .eq('source_kind', sourceKind)
+          .eq('source_proposal_id', proposalId)
+          .eq('validation_status', 'observed')
+      }
+    }
 
     await supabase
       .from('site_knowledge_proposals')
@@ -150,24 +173,33 @@ export async function resolveProposalCanonicalManually(params: {
     sourceKind = (origin && VISIT_ORIGINS.has(origin)) ? 'field_visit' : 'meeting'
   }
 
-  await supabase
+  // Résolution manuelle = action humaine → confirmed.
+  // Même logique que reconcileProposalToCanonical avec validationStatus='confirmed' :
+  // upgrade de observed→confirmed, mais ne touche pas rejected.
+  const { error: insertErr } = await supabase
     .from('canonical_subject_occurrence')
-    .upsert(
-      {
-        canonical_subject_id: canonicalSubjectId,
-        site_id: siteId,
-        source_kind: sourceKind,
-        source_ref_id: reportId,
-        source_proposal_id: proposalId,
-        visit_status: sourceKind === 'field_visit' ? 'field_checked' : 'mentioned',
-        label: proposalTitle,
-        note: proposalBody,
-        evidence_count: 0,
-        effective_date: visitDate.slice(0, 10),
-        created_by: resolvedBy,
-      },
-      { onConflict: 'source_kind,source_proposal_id', ignoreDuplicates: true },
-    )
+    .insert({
+      canonical_subject_id: canonicalSubjectId,
+      site_id: siteId,
+      source_kind: sourceKind,
+      source_ref_id: reportId,
+      source_proposal_id: proposalId,
+      visit_status: sourceKind === 'field_visit' ? 'field_checked' : 'mentioned',
+      label: proposalTitle,
+      note: proposalBody,
+      evidence_count: 0,
+      effective_date: visitDate.slice(0, 10),
+      created_by: resolvedBy,
+      validation_status: 'confirmed',
+    })
+  if (insertErr?.code === '23505') {
+    await supabase
+      .from('canonical_subject_occurrence')
+      .update({ validation_status: 'confirmed', canonical_subject_id: canonicalSubjectId })
+      .eq('source_kind', sourceKind)
+      .eq('source_proposal_id', proposalId)
+      .eq('validation_status', 'observed')
+  }
 
   await supabase
     .from('site_knowledge_proposals')

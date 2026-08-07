@@ -30,7 +30,7 @@ import { canonicalFamily, signatureOf } from '@/lib/visits/cr-concretisation'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 import { toDebriefEcheance } from '@/lib/visits/echeance-labels'
 import { listExtractionSuppressions, matchSuppression, DEFAULT_SUPPRESSION_THRESHOLD, deleteExtractionSuppression } from '@/lib/db/extraction-suppressions'
-import { reconcileProposalToCanonical } from '@/lib/db/canonical-subject-reconcile'
+import { reconcileProposalToCanonical, ELIGIBLE_KINDS as RECONCILE_ELIGIBLE_KINDS } from '@/lib/db/canonical-subject-reconcile'
 
 export type ProposalKind = 'action' | 'vigilance' | 'decision' | 'knowledge' | 'stakeholder' | 'deadline'
 /**
@@ -251,8 +251,30 @@ export async function projectDebriefToProposals(params: {
   }
 
   if (toInsert.length > 0) {
-    const { error: insErr } = await supabase.from('site_knowledge_proposals').insert(toInsert)
+    const { data: insertedRows, error: insErr } = await supabase
+      .from('site_knowledge_proposals')
+      .insert(toInsert)
+      .select('id, kind, title, body, created_at, status')
     if (insErr) throw insErr
+
+    // Résolution canonical fire-and-forget pour les nouvelles propositions éligibles.
+    // validationStatus='observed' : l'IA a détecté, pas encore confirmé par l'humain.
+    // Aucune matérialisation d'objet métier à ce stade.
+    for (const p of (insertedRows ?? []) as Array<{ id: string; kind: string; title: string; body: string | null; created_at: string; status: string }>) {
+      if (p.status !== 'proposed') continue
+      if (!RECONCILE_ELIGIBLE_KINDS.has(p.kind)) continue
+      reconcileProposalToCanonical({
+        proposalId: p.id,
+        siteId,
+        reportId,
+        proposalKind: p.kind,
+        proposalTitle: p.title,
+        proposalBody: p.body,
+        proposalCreatedAt: p.created_at,
+        createdBy: null,
+        validationStatus: 'observed',
+      }).catch(() => {})
+    }
   }
 
   const obsolete = await markObsoleteProposals(reportId, version, new Set(keys), now)
@@ -429,7 +451,20 @@ export async function dismissProposal(
   if (error) throw error
   // Une proposition écartée disparaît des « à confirmer » : la mutation invalide.
   const siteId = (data as Array<{ site_id: string }> | null)?.[0]?.site_id
-  if (siteId) invalidateSiteProjection(siteId)
+  if (siteId) {
+    invalidateSiteProjection(siteId)
+    // Marquer l'occurrence canonical comme rejected si elle existe.
+    // Action humaine explicite — le seul chemin qui peut écrire rejected.
+    void (async () => {
+      try {
+        const supabaseDismiss = createAdminClient()
+        await supabaseDismiss
+          .from('canonical_subject_occurrence')
+          .update({ validation_status: 'rejected' })
+          .eq('source_proposal_id', id)
+      } catch { /* non bloquant */ }
+    })()
+  }
   return true
 }
 
@@ -843,7 +878,7 @@ export async function promoteProposal(params: {
   // ── Réconciliation canonique (fire-and-forget, non bloquante) ────────────────
   // Si la proposition a un report_id (visite terrain), tenter de la raccorder à un
   // canonical_subject. Une erreur ici ne remet jamais en cause la promotion métier.
-  if (p.report_id && ['action', 'vigilance', 'decision', 'knowledge'].includes(p.kind)) {
+  if (p.report_id && RECONCILE_ELIGIBLE_KINDS.has(p.kind)) {
     reconcileProposalToCanonical({
       proposalId: params.id,
       siteId: p.site_id,
@@ -853,6 +888,7 @@ export async function promoteProposal(params: {
       proposalBody: p.body,
       proposalCreatedAt: p.created_at,
       createdBy: params.userId,
+      validationStatus: 'confirmed',
     }).catch((err) => {
       console.error('[canonical-reconcile] non-blocking error on proposal', params.id, err instanceof Error ? err.message : String(err))
     })

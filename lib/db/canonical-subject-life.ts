@@ -163,6 +163,7 @@ export async function getCanonicalSubjectLife(
       .select('id, source_ref_id, source_proposal_id, source_kind, visit_status, label, note, evidence_count, effective_date')
       .eq('canonical_subject_id', canonicalSubjectId)
       .in('source_kind', ['field_visit', 'meeting'])
+      .neq('validation_status', 'rejected')
       .order('effective_date', { ascending: true })
     type NativeCsoRow = {
       id: string; source_ref_id: string; source_proposal_id: string | null
@@ -455,6 +456,7 @@ export async function getCanonicalSubjectLife(
     .select('id, source_ref_id, source_proposal_id, source_kind, visit_status, label, note, evidence_count, effective_date')
     .eq('canonical_subject_id', canonicalSubjectId)
     .in('source_kind', ['field_visit', 'meeting'])
+    .neq('validation_status', 'rejected')
     .order('effective_date', { ascending: true })
 
   type CsoRow = {
@@ -656,6 +658,7 @@ export async function getSiteNativeOccurrencesBySubject(
     .select('canonical_subject_id, effective_date, source_kind')
     .eq('site_id', siteId)
     .in('source_kind', ['field_visit', 'meeting'])
+    .neq('validation_status', 'rejected')
     .order('effective_date', { ascending: true })
 
   type Row = { canonical_subject_id: string; effective_date: string; source_kind: 'field_visit' | 'meeting' }
@@ -909,6 +912,7 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     .select('canonical_subject_id, effective_date, visit_status, source_kind')
     .eq('site_id', siteId)
     .in('source_kind', ['field_visit', 'meeting'])
+    .neq('validation_status', 'rejected')
     .order('effective_date', { ascending: true })
   const nativeOccs = (nativeRaw ?? []) as NativeRow[]
 
