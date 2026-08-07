@@ -7,8 +7,8 @@ import { getCanonicalSubjectLife, listSubjectsForPicker } from '@/lib/db/canonic
 import type { SubjectOccurrenceMerged, CanonicalLink, MaterializedEvent, MaterializedEntityType, SubjectPickerItem } from '@/lib/db/canonical-subject-life'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
-import { confirmSuggestedLink, rejectSuggestedLink, createCanonicalLinkAction, deleteCanonicalLinkAction } from './link-actions'
-import SubjectPicker from './SubjectPicker'
+import { confirmSuggestedLink, rejectSuggestedLink, deleteCanonicalLinkAction } from './link-actions'
+import CreateLinkForm from './CreateLinkForm'
 
 export const dynamic = 'force-dynamic'
 
@@ -579,36 +579,7 @@ function RelationsSection({
       )}
 
       {pickerItems.length > 0 && (
-        <div className="mt-1 rounded-lg border border-dashed bg-muted/10 px-3 py-3">
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Ajouter une relation</p>
-          <form action={createCanonicalLinkAction} className="space-y-2">
-            <input type="hidden" name="siteId" value={siteId} />
-            <input type="hidden" name="canonicalSubjectId" value={canonicalSubjectId} />
-            <SubjectPicker items={pickerItems} name="toCanonicalSubjectId" siteId={siteId} required />
-            <select
-              name="linkType"
-              required
-              className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
-            >
-              {Object.entries(LINK_LABELS).map(([type, { out }]) => (
-                <option key={type} value={type}>{out}</option>
-              ))}
-            </select>
-            <input
-              type="text"
-              name="justification"
-              placeholder="Justification (optionnel)"
-              className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
-            />
-            <button
-              type="submit"
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-            >
-              <Link2 className="h-3 w-3" />
-              Lier
-            </button>
-          </form>
-        </div>
+        <CreateLinkForm siteId={siteId} canonicalSubjectId={canonicalSubjectId} pickerItems={pickerItems} />
       )}
     </div>
   )

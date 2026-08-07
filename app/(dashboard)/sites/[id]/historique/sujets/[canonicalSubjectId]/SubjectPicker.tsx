@@ -94,6 +94,7 @@ export default function SubjectPicker({ items, name, siteId, required }: Props) 
   const [selectedId, setSelectedId] = useState('')
   const [localItems, setLocalItems] = useState(items)
   const [showArchived, setShowArchived] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -121,6 +122,7 @@ export default function SubjectPicker({ items, name, siteId, required }: Props) 
   function handleCreate() {
     const label = query.trim()
     if (!label) return
+    setCreateError(null)
     startTransition(async () => {
       const result = await createCanonicalSubjectForLink(siteId, label)
       if ('id' in result) {
@@ -135,6 +137,8 @@ export default function SubjectPicker({ items, name, siteId, required }: Props) 
         }
         setLocalItems((prev) => [...prev, newItem])
         handleSelect(newItem)
+      } else {
+        setCreateError(result.error)
       }
     })
   }
@@ -192,7 +196,7 @@ export default function SubjectPicker({ items, name, siteId, required }: Props) 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
           showCloseButton={false}
-          className="flex max-h-[80vh] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[480px]"
+          className="flex max-h-[75vh] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[560px]"
         >
           <DialogTitle className="sr-only">Choisir un sujet</DialogTitle>
 
@@ -275,19 +279,24 @@ export default function SubjectPicker({ items, name, siteId, required }: Props) 
             <div className="mt-1 border-t px-4 py-3">
               <p className="mb-1.5 text-xs text-muted-foreground">Vous ne trouvez pas le sujet ?</p>
               {query.trim() ? (
-                <button
-                  type="button"
-                  onClick={handleCreate}
-                  disabled={isPending}
-                  className="flex items-center gap-1.5 text-sm text-primary hover:underline disabled:opacity-50"
-                >
-                  {isPending ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Plus className="h-3.5 w-3.5" />
+                <>
+                  <button
+                    type="button"
+                    onClick={handleCreate}
+                    disabled={isPending}
+                    className="flex items-center gap-1.5 text-sm text-primary hover:underline disabled:opacity-50"
+                  >
+                    {isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="h-3.5 w-3.5" />
+                    )}
+                    Créer un nouveau sujet &ldquo;{query.trim()}&rdquo;
+                  </button>
+                  {createError && (
+                    <p className="mt-1 text-xs text-destructive">{createError}</p>
                   )}
-                  Créer un nouveau sujet &ldquo;{query.trim()}&rdquo;
-                </button>
+                </>
               ) : (
                 <p className="text-xs text-muted-foreground">
                   Tapez un nom ci-dessus pour le rechercher ou le créer.

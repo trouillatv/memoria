@@ -27,19 +27,24 @@ export async function rejectSuggestedLink(formData: FormData) {
   revalidatePath(`/sites/${siteId}/historique/sujets/${canonicalSubjectId}`)
 }
 
-export async function createCanonicalLinkAction(formData: FormData) {
+/** Compatible useActionState (React 19) — retourne null en cas de succès, string en cas d'erreur. */
+export async function createCanonicalLinkAction(
+  _prevState: string | null,
+  formData: FormData,
+): Promise<string | null> {
   const siteId               = formData.get('siteId') as string
   const canonicalSubjectId   = formData.get('canonicalSubjectId') as string
   const toCanonicalSubjectId = formData.get('toCanonicalSubjectId') as string
   const linkType             = formData.get('linkType') as SubjectLinkType
   const justification        = ((formData.get('justification') as string | null) ?? '').trim() || null
 
-  if (!toCanonicalSubjectId || !linkType) return
+  if (!toCanonicalSubjectId) return 'Aucun sujet cible sélectionné.'
+  if (!linkType) return 'Type de relation manquant.'
 
   const user = await getCurrentUserWithProfile()
-  if (!user) throw new Error('Non authentifié')
+  if (!user) return 'Non authentifié.'
 
-  await createCanonicalSubjectLink({
+  const result = await createCanonicalSubjectLink({
     siteId,
     fromCanonicalSubjectId: canonicalSubjectId,
     toCanonicalSubjectId,
@@ -48,9 +53,14 @@ export async function createCanonicalLinkAction(formData: FormData) {
     userId: user.id,
   })
 
+  if (result === 'self_link') return 'Un sujet ne peut pas être lié à lui-même.'
+  if (result === 'no_thread') return 'Impossible de créer la liaison : ce sujet n\'a pas encore de thread représentatif.'
+  // 'already_exists' et 'created' → succès
+
   revalidatePath(`/sites/${siteId}/historique/sujets/${canonicalSubjectId}`)
   revalidatePath(`/sites/${siteId}/historique/sujets/${toCanonicalSubjectId}`)
   revalidatePath(`/sites/${siteId}/historique`)
+  return null
 }
 
 export async function deleteCanonicalLinkAction(formData: FormData) {
@@ -83,6 +93,22 @@ export async function createCanonicalSubjectForLink(
 
   if (error || !data) return { error: error?.message ?? 'Erreur inconnue' }
 
+  const csId = (data as { id: string }).id
+
+  // Crée un thread synthétique (UUID libre) pour que le nouveau canonical soit immédiatement
+  // relationnable via createCanonicalSubjectLink(), qui résout les threads depuis STI.
+  const { error: stiError } = await supabase.from('subject_thread_identity').insert({
+    subject_thread_id: crypto.randomUUID(),
+    site_id: siteId,
+    canonical_subject_id: csId,
+    source: 'manual',
+  })
+  if (stiError) {
+    // Rollback : on supprime le canonical si le STI échoue, pour éviter un fantôme non-relationnable.
+    await supabase.from('canonical_subject').delete().eq('id', csId)
+    return { error: `Erreur STI : ${stiError.message}` }
+  }
+
   revalidatePath(`/sites/${siteId}/historique`)
-  return { id: (data as { id: string }).id, label: trimmed }
+  return { id: csId, label: trimmed }
 }
