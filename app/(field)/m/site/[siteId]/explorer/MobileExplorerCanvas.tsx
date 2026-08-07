@@ -8,7 +8,6 @@ import { GraphToolbar } from '@/components/graph/GraphToolbar'
 import { GraphTimeline } from '@/app/(dashboard)/intervenants/graph/GraphTimeline'
 import {
   COLOR, COLOR_DARK, SIZE, TYPE_LABEL,
-  PROOF, GLOBAL_DEFAULT,
   computeVisible, enUnePhrase, recit, ifGone, chainToSource,
 } from '@/lib/graph/site-graph-logic'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -55,17 +54,21 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
     for (const n of graph.nodes) if (n.type !== 'site') c[n.type] = (c[n.type] ?? 0) + (n.count ?? 1)
     return c
   }, [graph])
+  const totalCount = useMemo(
+    () => Object.values(typeCounts).reduce((s, v) => s + v, 0),
+    [typeCounts],
+  )
 
   // ── Miroir hors-React pour le moteur ─────────────────────────────────────────
   const E = useRef({
-    center:      'site',
-    depth:       2 as 1 | 2,
-    timeMax:     null as string | null,
-    hiddenTypes: new Set<GraphNodeType>() as ReadonlySet<GraphNodeType>,
+    center:        'site',
+    depth:         2 as 1 | 2,
+    timeMax:       null as string | null,
+    hiddenTypes:   new Set<GraphNodeType>() as ReadonlySet<GraphNodeType>,
     revealedTypes: new Set<GraphNodeType>() as ReadonlySet<GraphNodeType>,
-    selectedId:  null as string | null,
-    refreshVis:  undefined as (() => void) | undefined,
-    redraw:      undefined as (() => void) | undefined,
+    selectedId:    null as string | null,
+    refreshVis:    undefined as (() => void) | undefined,
+    redraw:        undefined as (() => void) | undefined,
   })
 
   // Sync selectedId → redraw (aucune physique)
@@ -76,11 +79,10 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
 
   // ── Helpers d'action ─────────────────────────────────────────────────────────
 
-  // Naviguer vers un nœud (changer le centre) : kick court pour réajustement local.
   function navigateTo(id: string, newDepth: 1 | 2 = 2) {
-    E.current.center      = id
-    E.current.depth       = newDepth
-    E.current.selectedId  = null
+    E.current.center     = id
+    E.current.depth      = newDepth
+    E.current.selectedId = null
     setCenter(id)
     setDepth(newDepth)
     setSheetId(null)
@@ -97,6 +99,36 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
       E.current.refreshVis?.()
       return next
     })
+  }
+
+  function resetHidden() {
+    setHidden((prev) => {
+      if (prev.size === 0) return prev
+      const next = new Set<GraphNodeType>()
+      E.current.hiddenTypes = next
+      E.current.refreshVis?.()
+      return next
+    })
+  }
+
+  // Réorganiser : seule action autorisée à relancer la physique complète.
+  function handleReorganize() {
+    const api = engineRef.current
+    if (!api) return
+    api.pinned.clear()
+    const { W, H } = api.size()
+    for (const k in api.P) delete api.P[k]
+    const ring = [...(neigh[E.current.center] ?? [])]
+    api.P[E.current.center] = { x: W / 2, y: H / 2, vx: 0, vy: 0, alpha: 1 }
+    ring.forEach((id, i) => {
+      const a = -Math.PI / 2 + (i * 2 * Math.PI) / Math.max(1, ring.length)
+      api.P[id] = { x: W / 2 + 180 * Math.cos(a), y: H / 2 + 180 * Math.sin(a), vx: 0, vy: 0, alpha: 1 }
+    })
+    for (const n of graph.nodes) {
+      if (!api.P[n.id])
+        api.P[n.id] = { x: W / 2 + (Math.random() - 0.5) * 440, y: H / 2 + (Math.random() - 0.5) * 440, vx: 0, vy: 0, alpha: 0 }
+    }
+    api.kick(1200)
   }
 
   // ── Moteur canvas (créé une fois) ─────────────────────────────────────────────
@@ -132,10 +164,10 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
         P[E.current.center] ??= { x: W / 2, y: H / 2, vx: 0, vy: 0, alpha: 0 }
         ring.forEach((id, i) => {
           const a = -Math.PI / 2 + (i * 2 * Math.PI) / Math.max(1, ring.length)
-          P[id] ??= { x: W / 2 + 130 * Math.cos(a), y: H / 2 + 130 * Math.sin(a), vx: 0, vy: 0, alpha: 0 }
+          P[id] ??= { x: W / 2 + 180 * Math.cos(a), y: H / 2 + 180 * Math.sin(a), vx: 0, vy: 0, alpha: 0 }
         })
         for (const n of graph.nodes)
-          P[n.id] ??= { x: W / 2 + (Math.random() - 0.5) * 280, y: H / 2 + (Math.random() - 0.5) * 280, vx: 0, vy: 0, alpha: 0 }
+          P[n.id] ??= { x: W / 2 + (Math.random() - 0.5) * 440, y: H / 2 + (Math.random() - 0.5) * 440, vx: 0, vy: 0, alpha: 0 }
       },
 
       draw(ctx, f) {
@@ -146,34 +178,44 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
         const sel      = E.current.selectedId
         const selNeigh = sel ? (neigh[sel] ?? new Set<string>()) : null
         const labelVisible = (id: string) =>
-          id === E.current.center || (neigh[E.current.center] ?? new Set()).has(id) || id === sel
+          id === E.current.center ||
+          (neigh[E.current.center] ?? new Set()).has(id) ||
+          id === sel ||
+          (selNeigh?.has(id) ?? false)
 
         // ── Arêtes ──
         for (const e of graph.edges) {
           const A = f.P[e.a], B = f.P[e.b]; if (!A || !B) continue
           const al = Math.min(A.alpha, B.alpha); if (al < 0.02) continue
-          const isSelEdge = sel ? (e.a === sel || e.b === sel) : false
+          const isSelEdge = sel !== null && (e.a === sel || e.b === sel)
           const active    = e.a === E.current.center || e.b === E.current.center
-          const dim       = sel && !isSelEdge ? 0.10 : 1
+          let edgeAlpha: number
+          if (sel === null) {
+            edgeAlpha = active ? 0.8 : 0.3
+          } else if (isSelEdge) {
+            edgeAlpha = 0.9
+          } else {
+            edgeAlpha = 0.08
+          }
           ctx.strokeStyle = col(e.type)
-          ctx.globalAlpha = al * dim * (active ? 0.8 : isSelEdge ? 0.9 : 0.3)
-          ctx.lineWidth   = isSelEdge ? 2.2 : active ? 1.4 : 1
+          ctx.globalAlpha = al * edgeAlpha
+          ctx.lineWidth   = isSelEdge ? 2.5 : (!sel && active) ? 1.4 : 1
           ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke()
         }
 
         // ── Nœuds ──
         for (const n of graph.nodes) {
           const p = f.P[n.id]; if (!p || p.alpha < 0.02) continue
-          const isSel   = sel ? n.id === sel : false
-          const isNear  = selNeigh ? selNeigh.has(n.id) : false
-          const dim     = sel && !isSel && !isNear ? 0.25 : 1
-          const baseR   = n.id === E.current.center ? SIZE[n.type] + 6 : SIZE[n.type]
-          const r       = isSel ? Math.round(baseR * 1.3) : baseR
+          const isSel  = sel !== null && n.id === sel
+          const isNear = selNeigh !== null && selNeigh.has(n.id)
+          const dim    = (sel !== null && !isSel && !isNear) ? 0.18 : 1
+          const baseR  = n.id === E.current.center ? SIZE[n.type] + 6 : SIZE[n.type]
+          const r      = isSel ? Math.round(baseR * 1.3) : baseR
 
           // Halo sélection
           if (isSel) {
-            ctx.globalAlpha = p.alpha * 0.28
-            ctx.beginPath(); ctx.arc(p.x, p.y, r + 11, 0, 7)
+            ctx.globalAlpha = p.alpha * 0.30
+            ctx.beginPath(); ctx.arc(p.x, p.y, r + 12, 0, 7)
             ctx.fillStyle = col(n.type); ctx.fill()
           }
 
@@ -193,8 +235,8 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
 
           if (labelVisible(n.id)) {
             ctx.globalAlpha = p.alpha * dim
-            ctx.fillStyle = n.id === E.current.center ? inkC : mutedC
-            ctx.font = (n.id === E.current.center ? '600 13' : '500 11') + 'px system-ui'
+            ctx.fillStyle   = (n.id === E.current.center || isSel) ? inkC : mutedC
+            ctx.font        = (n.id === E.current.center || isSel ? '600 13' : '500 11') + 'px system-ui'
             ctx.textAlign = 'center'; ctx.textBaseline = 'top'
             const words = n.label.split(' '), lines: string[] = []; let cur = ''
             for (const w of words) {
@@ -217,32 +259,31 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
         friction:  0.85,
         bounds:    { padX: 30, padTop: 34, padBottom: 80 },
       },
-      fade:               { in: 0.12, out: 0.14 },
-      loop:               'settle',
-      zoom:               { min: 0.35, max: 2.6, factorIn: 1.12, factorOut: 0.89 },
+      fade:                  { in: 0.12, out: 0.14 },
+      loop:                  'settle',
+      zoom:                  { min: 0.35, max: 2.6, factorIn: 1.12, factorOut: 0.89 },
       placeNewNearNeighbors: true,
-      hitNodeRadius:      (id) => Math.max(26, SIZE[nodeById[id]?.type ?? 'visite'] + 12),
-      edgeHit:            null,
-      features:           { pin: true, dblClick: false, edgeTap: false, pinchZoom: true },
-      watchTheme:         true,
+      hitNodeRadius:         (id) => Math.max(26, SIZE[nodeById[id]?.type ?? 'visite'] + 12),
+      edgeHit:               null,
+      features:              { pin: true, dblClick: false, edgeTap: false, pinchZoom: true },
+      watchTheme:            true,
 
       // Tap = inspecter (ouvrir/fermer le sheet). Aucune relance physique.
-      onTapNode(id) {
-        setSheetId((prev) => (prev === id ? null : id))
-        // selectedId sync via useEffect → redraw() automatique
-      },
-      onTapVoid() {
-        setSheetId(null)
-      },
+      onTapNode(id) { setSheetId((prev) => (prev === id ? null : id)) },
+      onTapVoid()   { setSheetId(null) },
     })
 
-    engineRef.current = api
+    engineRef.current    = api
     E.current.refreshVis = () => api.refreshVisibility()
     E.current.redraw     = () => api.redraw()
-    // Kick initial : long pour un bon settle. Ensuite, navigateTo utilise kick(280).
     api.kick(1200)
 
-    return () => { api.destroy(); engineRef.current = null }
+    // Auto-fit après le settle initial — padding réduit pour utiliser 75-85 % du canvas.
+    const fitTimer = setTimeout(() => {
+      fitToView(graph.nodes.map((n) => ({ id: n.id, radius: SIZE[n.type] + 6 })), 8)
+    }, 1400)
+
+    return () => { api.destroy(); engineRef.current = null; clearTimeout(fitTimer) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph, neigh, nodeById])
 
@@ -258,60 +299,20 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
 
   return (
     <>
-      {/* ── Canvas ──────────────────────────────────────────────────────────── */}
-      <div
-        ref={wrapRef}
-        className="relative overflow-hidden rounded-2xl border bg-card"
-        style={{ height, touchAction: 'none' }}
-      >
-        <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
-
-        {/* Breadcrumb + Étendre */}
-        <div className="absolute left-2 top-2 z-10 flex gap-1.5">
-          {center !== 'site' && (
-            <button
-              type="button"
-              onClick={() => navigateTo('site', 2)}
-              className="rounded-full border bg-card/90 px-2.5 py-1 text-[12px] text-muted-foreground shadow-sm backdrop-blur-sm"
-            >
-              ← Chantier
-            </button>
-          )}
-          {depth === 1 && (
-            <button
-              type="button"
-              onClick={() => navigateTo(center, 2)}
-              className="rounded-full border bg-card/90 px-2.5 py-1 text-[12px] text-muted-foreground shadow-sm backdrop-blur-sm"
-            >
-              Étendre
-            </button>
-          )}
-        </div>
-
-        {/* Zoom / Recentrer */}
-        <GraphToolbar
-          onZoomIn={() => zoomBy(1.3)}
-          onZoomOut={() => zoomBy(0.77)}
-          onFit={() => fitToView(graph.nodes.map((n) => ({ id: n.id, radius: SIZE[n.type] + 6 })), 28)}
-          className="absolute bottom-24 right-3"
-        />
-
-        {/* Timeline — ne relance pas la physique */}
-        {days.length > 1 && (
-          <GraphTimeline
-            days={days}
-            onChange={(d) => {
-              E.current.timeMax = d
-              E.current.refreshVis?.()
-              // Pas de kick : les nœuds existants gardent leur position.
-            }}
-          />
-        )}
-      </div>
-
-      {/* ── Légende interactive ──────────────────────────────────────────────── */}
+      {/* ── Légende / filtres — au-dessus du canvas ──────────────────────────── */}
       <div className="scrollbar-hide -mx-1 overflow-x-auto px-1">
-        <div className="flex w-max gap-1.5 py-1 text-[12px]">
+        <div className="flex w-max gap-1.5 pb-1.5 text-[12px]">
+          <button
+            type="button"
+            onClick={resetHidden}
+            className={cn(
+              'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-medium transition-opacity',
+              hidden.size === 0 ? 'opacity-100' : 'opacity-45',
+            )}
+          >
+            Tout {totalCount}
+          </button>
+
           {LEGEND_TYPES.map((t) => {
             const count = typeCounts[t] ?? 0
             if (count === 0) return null
@@ -328,12 +329,51 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
                 )}
               >
                 <i className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: COLOR[t] }} />
-                {TYPE_LABEL[t]}
-                <span className="tabular-nums text-muted-foreground">({count})</span>
+                {TYPE_LABEL[t]} {count}
               </button>
             )
           })}
         </div>
+      </div>
+
+      {/* ── Canvas ──────────────────────────────────────────────────────────── */}
+      <div
+        ref={wrapRef}
+        className="relative overflow-hidden rounded-2xl border bg-card"
+        style={{ height, touchAction: 'none' }}
+      >
+        <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+
+        {/* Breadcrumb ← Chantier */}
+        {center !== 'site' && (
+          <button
+            type="button"
+            onClick={() => navigateTo('site', 2)}
+            className="absolute left-2 top-2 z-10 rounded-full border bg-card/90 px-2.5 py-1 text-[12px] text-muted-foreground shadow-sm backdrop-blur-sm"
+          >
+            ← Chantier
+          </button>
+        )}
+
+        {/* Toolbar : +/−/Recentrer/Réorganiser */}
+        <GraphToolbar
+          onZoomIn={() => zoomBy(1.3)}
+          onZoomOut={() => zoomBy(0.77)}
+          onFit={() => fitToView(graph.nodes.map((n) => ({ id: n.id, radius: SIZE[n.type] + 6 })), 8)}
+          onReorganize={handleReorganize}
+          className="absolute bottom-24 right-3"
+        />
+
+        {/* Timeline — ne relance pas la physique */}
+        {days.length > 1 && (
+          <GraphTimeline
+            days={days}
+            onChange={(d) => {
+              E.current.timeMax = d
+              E.current.refreshVis?.()
+            }}
+          />
+        )}
       </div>
 
       {/* ── Bottom-sheet fiche ──────────────────────────────────────────────── */}
@@ -345,7 +385,6 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
           {selected && (
             <>
               <SheetHeader className="pb-2">
-                {/* Pastille couleur = lien visuel avec le nœud dans le graphe */}
                 <div className="flex items-center gap-2">
                   <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: COLOR[selected.type] }} />
                   <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: COLOR[selected.type] }}>
@@ -361,15 +400,26 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
               </SheetHeader>
 
               <div className="space-y-4 px-4 pb-6">
-                {/* Actions */}
+                {/* Actions principales */}
                 <div className="flex flex-wrap gap-2">
-                  {selected.type !== 'site' && (
+                  {/* Isoler : centrer sur ce nœud en depth=1 */}
+                  {selected.type !== 'site' && !(sheetId === center && depth === 1) && (
                     <button
                       type="button"
                       onClick={() => navigateTo(sheetId!, 1)}
                       className="rounded-full border bg-muted/50 px-3 py-1.5 text-[12.5px] font-semibold"
                     >
                       Isoler
+                    </button>
+                  )}
+                  {/* Étendre : centrer sur ce nœud en depth=2 */}
+                  {selected.type !== 'site' && !(sheetId === center && depth === 2) && (
+                    <button
+                      type="button"
+                      onClick={() => navigateTo(sheetId!, 2)}
+                      className="rounded-full border bg-muted/50 px-3 py-1.5 text-[12.5px] font-semibold"
+                    >
+                      Étendre
                     </button>
                   )}
                   {['site', 'visite', 'memo', 'acteur'].includes(selected.type) && (
