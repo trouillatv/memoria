@@ -20,45 +20,16 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import type { SiteGraph, GraphNode, GraphNodeType } from '@/lib/knowledge/site-graph'
+import type { SiteGraph, GraphNodeType } from '@/lib/knowledge/site-graph'
 import { cn } from '@/lib/utils'
-// V2.0 : la mécanique (physique, zoom/pan/drag/pin, hit, boucle « figé par défaut »)
-// vit dans le moteur PARTAGÉ — ce fichier garde tout le SENS Mémoire (visible(),
-// rendu, tooltips, sélection, panneau, générateurs). Iso-comportement.
 import { createForceGraphEngine } from '@/components/graph/force-graph-engine'
-
-const COLOR: Record<GraphNodeType, string> = {
-  site: '#1C1B22', visite: '#0369A1', photo: '#D97706', memo: '#0F766E',
-  action: '#059669', ech: '#C2410C', dec: '#4338CA', vigilance: '#BE123C',
-  acteur: '#7C3AED', know: '#A16207',
-}
-const COLOR_DARK: Record<GraphNodeType, string> = {
-  site: '#F0EDF6', visite: '#38BDF8', photo: '#FBBF24', memo: '#2DD4BF',
-  action: '#34D399', ech: '#FB923C', dec: '#818CF8', vigilance: '#FDA4AF',
-  acteur: '#A78BFA', know: '#FACC15',
-}
-const TYPE_LABEL: Record<GraphNodeType, string> = {
-  site: 'Chantier', visite: 'Visite', photo: 'Photos', memo: 'Observation',
-  action: 'Action', ech: 'Échéance', dec: 'Décision', vigilance: 'Vigilance',
-  acteur: 'Intervenant', know: 'À savoir',
-}
-const SIZE: Record<GraphNodeType, number> = {
-  site: 26, visite: 19, photo: 15, memo: 14, action: 12, ech: 12, dec: 12,
-  vigilance: 12, acteur: 15, know: 12,
-}
-// Les PREUVES : elles racontent un moment, pas la structure. À l'échelle du
-// chantier elles noieraient la carte (les 218 photos de Petro Atiti) — elles
-// n'apparaissent qu'à côté de l'objet exploré qui les contient, ou dépliées.
-const PROOF = new Set<GraphNodeType>(['photo', 'memo'])
-// La vue globale du chantier ne montre par défaut que la STRUCTURE (décision
-// Vincent 2026-07-18) : visites, actions, décisions, intervenants. Le reste
-// se déplie depuis la légende.
-const GLOBAL_DEFAULT = new Set<GraphNodeType>(['visite', 'action', 'dec', 'acteur'])
+import {
+  COLOR, COLOR_DARK, TYPE_LABEL, SIZE, PROOF, GLOBAL_DEFAULT, frDay,
+  computeVisible, enUnePhrase, recit, ifGone, computeGaps,
+  dependencySet, chainToSource,
+} from '@/lib/graph/site-graph-logic'
 
 type PanelMode = 'fiche' | 'recit' | 'gaps'
-
-const dayFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long' })
-const frDay = (iso: string | null | undefined) => (iso ? dayFmt.format(new Date(iso)) : null)
 
 export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -150,36 +121,10 @@ export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
       || (document.documentElement.dataset.theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
     const col = (t: GraphNodeType) => (dark() ? COLOR_DARK : COLOR)[t]
 
-    const visible = () => {
-      let s: Set<string>
-      if (E.enqueteSet) s = new Set(E.enqueteSet)
-      else {
-        s = new Set([E.center])
-        for (const n of neigh[E.center] ?? []) s.add(n)
-        if (E.depth === 2) for (const n of [...s]) for (const m of neigh[n] ?? []) s.add(m)
-      }
-      if (E.timeMax) for (const id of [...s]) {
-        const t = nodeById[id]?.t
-        if (t && t.slice(0, 10) > E.timeMax) s.delete(id)
-      }
-      // Niveau de détail adapté au point d'entrée : au niveau chantier, seule
-      // la structure (GLOBAL_DEFAULT) ; ailleurs, une preuve n'est visible que
-      // si elle entoure directement l'objet exploré. Déplié ou enquête = tout.
-      if (!E.enqueteSet) {
-        const near = neigh[E.center] ?? new Set()
-        for (const id of [...s]) {
-          const ty = nodeById[id]?.type
-          if (!ty || ty === 'site' || id === E.center || E.revealedTypes.has(ty)) continue
-          if (E.center === 'site') { if (!GLOBAL_DEFAULT.has(ty)) s.delete(id) }
-          else if (PROOF.has(ty) && !near.has(id)) s.delete(id)
-        }
-      }
-      if (E.hiddenTypes.size) for (const id of [...s]) {
-        const ty = nodeById[id]?.type
-        if (ty && ty !== 'site' && id !== E.center && E.hiddenTypes.has(ty)) s.delete(id)
-      }
-      return s
-    }
+    const visible = () => computeVisible({
+      center: E.center, depth: E.depth, enqueteSet: E.enqueteSet, timeMax: E.timeMax,
+      hiddenTypes: E.hiddenTypes, revealedTypes: E.revealedTypes, neigh, nodeById,
+    })
 
     const api = createForceGraphEngine(cv, wrap, {
       nodeIds: () => graph.nodes.map((n) => n.id),
@@ -733,151 +678,6 @@ function GapsPanel({ gaps, open, onOpen, onBack, onSelect }: {
   )
 }
 
-/* ── Générateurs — depuis les DONNÉES du graphe, jamais écrits à la main ────── */
-
-type Neigh = Record<string, Set<string>>
-type ById = Record<string, GraphNode>
-
-function linkedOf(id: string, types: GraphNodeType[], neigh: Neigh, byId: ById): GraphNode[] {
-  return [...(neigh[id] ?? [])].map((m) => byId[m]).filter((m) => m && types.includes(m.type))
-}
-
-/** LE vrai wow du cadrage : une phrase par objet, uniquement des faits. */
-function enUnePhrase(n: GraphNode, graph: SiteGraph, neigh: Neigh, byId: ById): string {
-  const d = frDay(n.t)
-  const memos = linkedOf(n.id, ['memo'], neigh, byId)
-  const src = memos.length > 0 ? ' depuis un mémo de visite' : ''
-  if (n.type === 'site') {
-    const c = (t: GraphNodeType) => graph.nodes.filter((x) => x.type === t).length
-    const conf = graph.nodes.filter((x) => x.sub?.includes('à confirmer')).reduce((s, x) => s + (x.count ?? 1), 0)
-    return `${c('visite')} visite${c('visite') > 1 ? 's' : ''}, ${c('action')} action${c('action') > 1 ? 's' : ''}, ${c('ech')} échéance${c('ech') > 1 ? 's' : ''}, ${c('dec')} décision${c('dec') > 1 ? 's' : ''}${conf > 0 ? ` — ${conf} élément${conf > 1 ? 's' : ''} encore à confirmer` : ''}.`
-  }
-  if (n.type === 'visite') {
-    const suites = [...(neigh[n.id] ?? [])].length - 1
-    return `Visite${d ? ` du ${d}` : ''}. ${suites} élément${suites > 1 ? 's' : ''} de la mémoire en descend${suites > 1 ? 'ent' : ''}.`
-  }
-  if (n.type === 'memo') {
-    const suites = linkedOf(n.id, ['action', 'ech', 'dec', 'vigilance', 'acteur', 'know'], neigh, byId)
-    return `Dicté pendant la visite${d ? ` du ${d}` : ''}. ${suites.length} fait${suites.length > 1 ? 's' : ''} en ${suites.length > 1 ? 'sont issus' : 'est issu'}.`
-  }
-  if (n.type === 'photo') return `${n.count ?? 0} photo${(n.count ?? 0) > 1 ? 's' : ''} prise${(n.count ?? 0) > 1 ? 's' : ''} pendant la visite${d ? ` du ${d}` : ''}.`
-  if (n.type === 'action') return `Créée${d ? ` le ${d}` : ''}${src}. ${n.sub ?? ''}.`
-  if (n.type === 'ech') return `Extraite${src} et confirmée${d ? ` le ${d}` : ''}. ${n.sub ?? ''}.`
-  if (n.type === 'dec') {
-    const acts = linkedOf(n.id, ['action'], neigh, byId)
-    return `Actée${d ? ` le ${d}` : ''}${src}, confirmée par un humain.${acts.length === 0 ? ' Aucune action n’en découle pour l’instant.' : ''}`
-  }
-  if (n.type === 'acteur') {
-    const a = linkedOf(n.id, ['action'], neigh, byId).length
-    const e = linkedOf(n.id, ['ech'], neigh, byId).length
-    return `Cité${d ? ` le ${d}` : ''} dans un mémo de visite — jamais encore confirmé comme intervenant.${a > 0 ? ` ${a} action${a > 1 ? 's' : ''} le concerne${a > 1 ? 'nt' : ''}.` : ''}${e > 0 ? ` ${e} échéance${e > 1 ? 's' : ''} liée${e > 1 ? 's' : ''}.` : ''}`
-  }
-  if (n.type === 'know') return `${n.count ?? 0} information${(n.count ?? 0) > 1 ? 's' : ''} extraite${(n.count ?? 0) > 1 ? 's' : ''} des mémos, en attente d’un choix humain.`
-  return n.sub ?? ''
-}
-
-/** Le récit court — 3 phrases max, le ton d'un collègue, uniquement des faits. */
-function recit(n: GraphNode, graph: SiteGraph, neigh: Neigh, byId: ById): string[] {
-  const d = frDay(n.t)
-  if (n.type === 'acteur') {
-    const acts = linkedOf(n.id, ['action'], neigh, byId)
-    const echs = linkedOf(n.id, ['ech'], neigh, byId)
-    const ps = [`${n.label} apparaît${d ? ` le ${d}` : ''}, cité dans un mémo vocal de visite.`]
-    const bits: string[] = []
-    if (acts.length) bits.push(`${acts.length} action${acts.length > 1 ? 's' : ''} ouverte${acts.length > 1 ? 's' : ''} le concerne${acts.length > 1 ? 'nt' : ''} (${acts.slice(0, 2).map((a) => `« ${a.label} »`).join(', ')})`)
-    if (echs.length) bits.push(`${echs.length} échéance${echs.length > 1 ? 's' : ''} l’attend${echs.length > 1 ? 'ent' : ''}`)
-    if (bits.length) ps.push(bits.join(' et ') + ', mais il n’a jamais été confirmé comme intervenant.')
-    else ps.push('Il n’a jamais été confirmé comme intervenant.')
-    return ps
-  }
-  if (n.type === 'memo') {
-    const suites = linkedOf(n.id, ['action', 'ech', 'dec', 'vigilance', 'acteur', 'know'], neigh, byId)
-    return [
-      `Mémo dicté sur place${d ? ` le ${d}` : ''}.`,
-      suites.length > 0
-        ? `${suites.length} fait${suites.length > 1 ? 's' : ''} en ${suites.length > 1 ? 'sont sortis' : 'est sorti'} : ${suites.slice(0, 3).map((s) => s.label.toLowerCase()).join(', ')}${suites.length > 3 ? '…' : ''}.`
-        : 'Aucun fait n’en a encore été extrait.',
-      'La voix d’origine reste attachée à chaque fait — c’est elle qui fait foi.',
-    ]
-  }
-  if (n.type === 'visite') {
-    const kids = [...(neigh[n.id] ?? [])].map((m) => byId[m]).filter(Boolean)
-    const photos = kids.find((k) => k.type === 'photo')?.count ?? 0
-    const memos = kids.filter((k) => k.type === 'memo').length
-    return [
-      `Visite${d ? ` du ${d}` : ''} — ${photos} photo${photos > 1 ? 's' : ''}, ${memos} mémo${memos > 1 ? 's' : ''}.`,
-      `${kids.length} élément${kids.length > 1 ? 's' : ''} de la mémoire en descend${kids.length > 1 ? 'ent' : ''}.`,
-    ]
-  }
-  // site
-  return [
-    enUnePhrase(n, graph, neigh, byId),
-    'Chaque élément de cette carte peut expliquer d’où il vient — cliquez, la fiche remonte la chaîne.',
-  ]
-}
-
-/** L'importance d'un acteur — jamais pour le supprimer. */
-function ifGone(n: GraphNode, neigh: Neigh, byId: ById): string[] {
-  const a = linkedOf(n.id, ['action'], neigh, byId).length
-  const e = linkedOf(n.id, ['ech'], neigh, byId).length
-  const out: string[] = []
-  if (a) out.push(`${a} action${a > 1 ? 's' : ''} restera${a > 1 ? 'ient' : 'it'} sans destinataire`)
-  if (e) out.push(`${e} échéance${e > 1 ? 's' : ''} serai${e > 1 ? 'ent' : 't'} bloquée${e > 1 ? 's' : ''}`)
-  out.push('sa trace resterait : le mémo d’origine fait foi')
-  return out
-}
-
-/** « Aujourd'hui » — des règles déterministes sur le graphe, 3 en évidence. */
-function computeGaps(graph: SiteGraph, neigh: Neigh): Array<{ id: string; txt: string }> {
-  const g: Array<{ id: string; txt: string }> = []
-  const byId = Object.fromEntries(graph.nodes.map((n) => [n.id, n]))
-  for (const n of graph.nodes.filter((x) => x.type === 'acteur' && x.sub?.includes('à confirmer'))) {
-    g.push({ id: n.id, txt: `${n.label} est cité mais n’a jamais été confirmé comme intervenant.` })
-  }
-  const know = graph.nodes.find((x) => x.type === 'know')
-  if (know?.count) g.push({ id: know.id, txt: `${know.count} information${know.count > 1 ? 's' : ''} « à savoir » attend${know.count > 1 ? 'ent' : ''} une décision humaine.` })
-  const toPlan = graph.nodes.filter((x) => x.type === 'ech' && x.sub?.startsWith('À planifier'))
-  if (toPlan.length) g.push({ id: toPlan[0].id, txt: `${toPlan.length} échéance${toPlan.length > 1 ? 's' : ''} confirmée${toPlan.length > 1 ? 's' : ''} sans date.` })
-  for (const d of graph.nodes.filter((x) => x.type === 'dec')) {
-    const acts = [...(neigh[d.id] ?? [])].filter((m) => byId[m]?.type === 'action')
-    if (acts.length === 0) g.push({ id: d.id, txt: `La décision « ${d.label} » n’a déclenché aucune action.` })
-  }
-  return g
-}
-
-/** « Voir les conséquences » : la dépendance se propage à travers les faits et
- *  s'arrête aux sources (mémos, visites, acteurs) — incluses comme preuves. */
-function dependencySet(root: string, neigh: Neigh, byId: ById): Set<string> {
-  const EXPAND = new Set<GraphNodeType>(['action', 'ech', 'dec', 'know', 'vigilance'])
-  const out = new Set([root])
-  const q = [root]
-  while (q.length) {
-    const cur = q.shift()!
-    for (const nx of neigh[cur] ?? []) {
-      if (nx === 'site' || out.has(nx)) continue
-      out.add(nx)
-      if (EXPAND.has(byId[nx]?.type)) q.push(nx)
-    }
-  }
-  return out
-}
-
-/** Le plus court chemin vers le chantier — la même chaîne que « Pourquoi ? ». */
-function chainToSource(id: string, neigh: Neigh): string[] | null {
-  if (id === 'site') return null
-  const prev: Record<string, string | null> = { [id]: null }
-  const q = [id]
-  while (q.length) {
-    const cur = q.shift()!
-    if (cur === 'site') break
-    for (const nx of neigh[cur] ?? []) if (!(nx in prev)) { prev[nx] = cur; q.push(nx) }
-  }
-  if (!('site' in prev)) return null
-  const path: string[] = []
-  let cur: string | null = 'site'
-  while (cur !== null) { path.push(cur); cur = prev[cur] }
-  return path
-}
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')

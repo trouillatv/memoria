@@ -1,11 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { CanonicalLink } from '@/lib/db/canonical-subject-life'
 import { createForceGraphEngine } from '@/components/graph/force-graph-engine'
-import type { ForceGraphEngine, EdgeRef, FrameInfo } from '@/components/graph/force-graph-engine'
+import type { EdgeRef, FrameInfo } from '@/components/graph/force-graph-engine'
+import { wrapLabel } from '@/lib/graph/graph-utils'
+import { useGraphCanvas } from '@/lib/graph/use-graph-canvas'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -24,9 +26,8 @@ const R_CURRENT  = 24
 const R_NEIGHBOR = 13
 const CANVAS_H   = 280
 const MAX_NEIGHBORS = 7
-const MAX_LABEL  = 14
 
-function trunc(s: string, n = MAX_LABEL): string {
+function trunc(s: string, n = 14): string {
   return s.length <= n ? s : s.slice(0, n - 1) + '…'
 }
 
@@ -48,12 +49,9 @@ interface CanvasProps {
 }
 
 function GraphCanvas({ nodes, edges, textLines, currentId, currentLabel, siteId }: CanvasProps) {
-  const canvasRef     = useRef<HTMLCanvasElement>(null)
-  const wrapRef       = useRef<HTMLDivElement>(null)
-  const engineRef     = useRef<ForceGraphEngine | null>(null)
-  const navigatingRef = useRef<string | null>(null)
-  const router        = useRouter()
+  const router = useRouter()
   const [showText, setShowText] = useState(false)
+  const { canvasRef, wrapRef, engineRef, navigatingRef, fitToView } = useGraphCanvas()
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -110,7 +108,6 @@ function GraphCanvas({ nodes, edges, textLines, currentId, currentLabel, siteId 
           const rA = edge.a === currentId ? R_CURRENT : R_NEIGHBOR
           const rB = edge.b === currentId ? R_CURRENT : R_NEIGHBOR
 
-          // Points de départ/arrivée au bord des nœuds
           const sx = pa.x + nx * rA
           const sy = pa.y + ny * rA
           const ex = pb.x - nx * rB
@@ -127,7 +124,6 @@ function GraphCanvas({ nodes, edges, textLines, currentId, currentLabel, siteId 
           ctx.stroke()
           ctx.setLineDash([])
 
-          // Flèche directionnelle
           if (isDir) {
             const ars = 7
             ctx.beginPath()
@@ -148,7 +144,6 @@ function GraphCanvas({ nodes, edges, textLines, currentId, currentLabel, siteId 
           const curr = node.isCurrent
           const r    = curr ? R_CURRENT : R_NEIGHBOR
 
-          // Halo si navigation en cours
           if (navigatingRef.current === id) {
             ctx.beginPath(); ctx.arc(p.x, p.y, r + 5, 0, 2 * Math.PI)
             ctx.fillStyle = dark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.5)'
@@ -166,12 +161,13 @@ function GraphCanvas({ nodes, edges, textLines, currentId, currentLabel, siteId 
             ctx.stroke()
           }
 
-          const short = trunc(node.label, curr ? 16 : MAX_LABEL)
+          const [l1, l2] = wrapLabel(trunc(node.label, curr ? 16 : 14))
           ctx.font         = curr ? 'bold 10px system-ui,sans-serif' : '10px system-ui,sans-serif'
           ctx.fillStyle    = curr ? lblCurr : lblNeigh
           ctx.textAlign    = 'center'
           ctx.textBaseline = 'top'
-          ctx.fillText(short, p.x, p.y + r + 3)
+          ctx.fillText(l1, p.x, p.y + r + 3)
+          if (l2) ctx.fillText(l2, p.x, p.y + r + 13)
         }
       },
 
@@ -203,24 +199,8 @@ function GraphCanvas({ nodes, edges, textLines, currentId, currentLabel, siteId 
     engineRef.current = engine
     engine.kick(800)
 
-    // Auto-fit après stabilisation : garantit que tous les nœuds sont visibles
     const fitTimer = setTimeout(() => {
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-      for (const id of nodeIds) {
-        const p = engine.P[id]; if (!p) continue
-        const r = (id === currentId ? R_CURRENT : R_NEIGHBOR) + 5
-        minX = Math.min(minX, p.x - r); maxX = Math.max(maxX, p.x + r)
-        minY = Math.min(minY, p.y - r); maxY = Math.max(maxY, p.y + r)
-      }
-      if (!isFinite(minX)) return
-      const { W, H } = engine.size()
-      const pad = 14
-      const gW = maxX - minX + pad * 2, gH = maxY - minY + pad * 2
-      const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
-      const k = Math.min(W / gW, H / gH, 1.5)
-      const ck = Math.max(0.75, Math.min(1.8, k))
-      engine.view.k = ck; engine.view.tx = W / 2 - cx * ck; engine.view.ty = H / 2 - cy * ck
-      engine.redraw()
+      fitToView(nodes.map((n) => ({ id: n.id, radius: n.isCurrent ? R_CURRENT : R_NEIGHBOR })), 14)
     }, 900)
 
     return () => { engine.destroy(); engineRef.current = null; clearTimeout(fitTimer) }
@@ -287,8 +267,7 @@ export default function SubjectContextGraph({
   const confirmed = links.filter((l) => l.status === 'confirmed')
   if (confirmed.length === 0) return null
 
-  // Dédupliquer les voisins (max 7), en gardant l'ordre d'arrivée
-  const neighborMap = new Map<string, string>() // neighborId → label
+  const neighborMap = new Map<string, string>()
   for (const l of confirmed) {
     const nId    = l.direction === 'outgoing' ? l.toCanonicalSubjectId   : l.fromCanonicalSubjectId
     const nLabel = l.direction === 'outgoing' ? l.toLabel                 : l.fromLabel

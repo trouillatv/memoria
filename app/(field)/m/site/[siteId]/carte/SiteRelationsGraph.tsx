@@ -1,41 +1,20 @@
 'use client'
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Minus, Plus, Maximize2 } from 'lucide-react'
 import type { KnowledgeNode, KnowledgeEdge } from '@/lib/documents/site-synthesis'
 import { createForceGraphEngine } from '@/components/graph/force-graph-engine'
-import type { ForceGraphEngine, EdgeRef, FrameInfo } from '@/components/graph/force-graph-engine'
+import type { EdgeRef, FrameInfo } from '@/components/graph/force-graph-engine'
+import { wrapLabel } from '@/lib/graph/graph-utils'
+import { useGraphCanvas } from '@/lib/graph/use-graph-canvas'
+import { GraphToolbar } from '@/components/graph/GraphToolbar'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DIRECTIONAL = new Set(['requires', 'enables', 'causes', 'validates', 'replaces'])
-const MAX_LINE = 14
 
 // Rayon logique pour le hit + arêtes. Company = square donc rayon = demi-côté.
 const R: Record<string, number> = { subject: 15, person: 13, company: 15 }
-
-// ── Label 2 lignes ────────────────────────────────────────────────────────────
-
-function wrapLabel(s: string): [string, string] {
-  if (s.length <= MAX_LINE) return [s, '']
-  // Coupure prioritaire au séparateur " — "
-  const dash = s.indexOf(' — ')
-  if (dash > 0 && dash <= MAX_LINE + 2) {
-    const l1 = s.slice(0, dash)
-    const rest = s.slice(dash + 3)
-    return [l1, rest.length > MAX_LINE ? rest.slice(0, MAX_LINE - 1) + '…' : rest]
-  }
-  // Dernier espace avant MAX_LINE
-  const sp = s.lastIndexOf(' ', MAX_LINE)
-  if (sp > 3) {
-    const l1 = s.slice(0, sp)
-    const rest = s.slice(sp + 1)
-    return [l1, rest.length > MAX_LINE ? rest.slice(0, MAX_LINE - 1) + '…' : rest]
-  }
-  // Coupure dure
-  return [s.slice(0, MAX_LINE), s.slice(MAX_LINE, MAX_LINE * 2 - 1) + (s.length > MAX_LINE * 2 ? '…' : '')]
-}
 
 // ── Formes ────────────────────────────────────────────────────────────────────
 
@@ -73,53 +52,12 @@ interface Props {
 }
 
 export default function SiteRelationsGraph({ nodes, edges, siteId, canvasHeight }: Props) {
-  const canvasRef     = useRef<HTMLCanvasElement>(null)
-  const wrapRef       = useRef<HTMLDivElement>(null)
-  const engineRef     = useRef<ForceGraphEngine | null>(null)
-  const navigatingRef = useRef<string | null>(null)
-  const router        = useRouter()
+  const router = useRouter()
+  const { canvasRef, wrapRef, engineRef, navigatingRef, fitToView, zoomBy } = useGraphCanvas()
 
   const nodeMap  = new Map(nodes.map((n) => [n.id, n]))
   const edgeRefs: EdgeRef[] = edges.map((e) => ({ a: e.from, b: e.to }))
   const nodeIds  = nodes.map((n) => n.id)
-
-  // ── Auto-fit ─────────────────────────────────────────────────────────────────
-
-  const fitToContent = useCallback(() => {
-    const engine = engineRef.current
-    if (!engine) return
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-    for (const n of nodes) {
-      const p = engine.P[n.id]
-      if (!p) continue
-      const r = (R[n.kind] ?? 15) + 6
-      minX = Math.min(minX, p.x - r); maxX = Math.max(maxX, p.x + r)
-      minY = Math.min(minY, p.y - r); maxY = Math.max(maxY, p.y + r)
-    }
-    if (!isFinite(minX)) return
-    const { W, H } = engine.size()
-    const pad = 28
-    const gW = maxX - minX + pad * 2, gH = maxY - minY + pad * 2
-    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
-    const k = Math.min(W / gW, H / gH, 2.5)
-    const ck = Math.max(0.5, Math.min(3, k))
-    engine.view.k = ck; engine.view.tx = W / 2 - cx * ck; engine.view.ty = H / 2 - cy * ck
-    engine.redraw()
-  }, [nodes])
-
-  const zoomBy = useCallback((factor: number) => {
-    const engine = engineRef.current
-    if (!engine) return
-    const { W, H } = engine.size()
-    const nextK = Math.max(0.5, Math.min(3, engine.view.k * factor))
-    const sx = W / 2, sy = H / 2
-    const wx = (sx - engine.view.tx) / engine.view.k, wy = (sy - engine.view.ty) / engine.view.k
-    engine.view.k = nextK
-    engine.view.tx = sx - wx * nextK; engine.view.ty = sy - wy * nextK
-    engine.redraw()
-  }, [])
-
-  // ── Canvas engine ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -196,13 +134,11 @@ export default function SiteRelationsGraph({ nodes, edges, siteId, canvasHeight 
                      : node.kind === 'person'  ? fillPerson
                      : fillSubject
 
-          // Halo si navigation en cours
           if (navigatingRef.current === id) {
             ctx.beginPath(); ctx.arc(p.x, p.y, r + 5, 0, 2 * Math.PI)
             ctx.fillStyle = haloClr; ctx.fill()
           }
 
-          // Forme selon le type
           if (node.kind === 'company') {
             drawRoundedSquare(ctx, p.x, p.y, r)
           } else if (node.kind === 'person') {
@@ -213,7 +149,6 @@ export default function SiteRelationsGraph({ nodes, edges, siteId, canvasHeight 
           ctx.fillStyle = fill; ctx.fill()
           ctx.strokeStyle = borderClr; ctx.lineWidth = 1.5; ctx.stroke()
 
-          // Label 2 lignes
           const isActor = node.kind !== 'subject'
           ctx.font = isActor ? 'bold 9px system-ui,sans-serif' : '9px system-ui,sans-serif'
           ctx.fillStyle = isActor ? lblActor : lblSubject
@@ -252,9 +187,8 @@ export default function SiteRelationsGraph({ nodes, edges, siteId, canvasHeight 
     engineRef.current = engine
     engine.kick(1200)
 
-    // Auto-fit après stabilisation physique
     const fitTimer = setTimeout(() => {
-      fitToContent()
+      fitToView(nodes.map((n) => ({ id: n.id, radius: R[n.kind] ?? 15 })), 28)
     }, 1400)
 
     return () => {
@@ -276,30 +210,12 @@ export default function SiteRelationsGraph({ nodes, edges, siteId, canvasHeight 
           <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
         </div>
 
-        {/* Boutons zoom / recentrer */}
-        <div className="absolute bottom-10 right-3 flex flex-col gap-1">
-          <button
-            aria-label="Zoomer"
-            onClick={() => zoomBy(1.3)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border bg-background/80 shadow-sm backdrop-blur-sm active:bg-muted"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
-          <button
-            aria-label="Dézoomer"
-            onClick={() => zoomBy(0.77)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border bg-background/80 shadow-sm backdrop-blur-sm active:bg-muted"
-          >
-            <Minus className="h-3.5 w-3.5" />
-          </button>
-          <button
-            aria-label="Recentrer"
-            onClick={fitToContent}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border bg-background/80 shadow-sm backdrop-blur-sm active:bg-muted"
-          >
-            <Maximize2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <GraphToolbar
+          onZoomIn={() => zoomBy(1.3)}
+          onZoomOut={() => zoomBy(0.77)}
+          onFit={() => fitToView(nodes.map((n) => ({ id: n.id, radius: R[n.kind] ?? 15 })), 28)}
+          className="absolute bottom-10 right-3"
+        />
 
         <p className="pointer-events-none absolute bottom-2 right-3 text-[10px] text-muted-foreground/50">
           {nodes.length} nœud{nodes.length !== 1 ? 's' : ''}
@@ -315,12 +231,10 @@ export default function SiteRelationsGraph({ nodes, edges, siteId, canvasHeight 
           Sujet
         </span>
         <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          {/* Carré arrondi violet pour Entreprise */}
           <span className="inline-block h-2.5 w-2.5 rounded-sm bg-violet-500/70" />
           Entreprise
         </span>
         <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          {/* Diamant ambre pour Personne — approx. avec rotate-45 */}
           <span className="inline-block h-2 w-2 rotate-45 bg-amber-500/70" />
           Personne
         </span>
