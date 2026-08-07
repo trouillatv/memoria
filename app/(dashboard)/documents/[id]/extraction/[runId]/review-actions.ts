@@ -995,6 +995,21 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
       } catch {
         // Non bloquant
       }
+
+      // ── Relations suggérées inter-sujets (best-effort) ──────────────────────
+      try {
+        const { produceRelationsForRun } = await import('@/lib/ai/produce-relations-for-run')
+        const relResult = await produceRelationsForRun({ runId, siteId, admin })
+        if (relResult.written > 0 || relResult.sameSubjectDetected > 0) {
+          console.log(
+            `[relations] run=${runId} eval=${relResult.candidatesEvaluated}` +
+            ` same=${relResult.sameSubjectDetected} written=${relResult.written}` +
+            ` relates_to=${relResult.relatesTo} directional=${relResult.directional}`
+          )
+        }
+      } catch {
+        // Non bloquant : les relations sont best-effort
+      }
     }
   } catch {
     // Non bloquant : la visite est créée, le pipeline knowledge est best-effort
