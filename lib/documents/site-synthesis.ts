@@ -879,3 +879,167 @@ export async function getSiteDependencyGraph(siteId: string): Promise<SiteDepend
 
   return { siteId, links }
 }
+
+// ── Knowledge Graph (V2) ──────────────────────────────────────────────────────
+// Agrège sujets opérationnels + acteurs + relations sémantiques confirmées
+// + responsabilités dérivées des actions (seule table ayant subject_thread_id).
+// site_reserve / site_deadlines n'ont pas encore de lien sujet → lot futur.
+
+export type KnowledgeNodeKind = 'subject' | 'person' | 'company'
+
+export interface KnowledgeNode {
+  id: string
+  label: string
+  kind: KnowledgeNodeKind
+}
+
+export interface SemanticEdge {
+  edgeType: 'semantic'
+  from: string
+  to: string
+  linkType: SubjectLinkType
+  justification: string | null
+}
+
+export interface ResponsibilityEdge {
+  edgeType: 'responsible_for'
+  from: string        // canonical_subject_id de l'acteur
+  to: string          // canonical_subject_id du sujet
+  actionCount: number
+}
+
+export type KnowledgeEdge = SemanticEdge | ResponsibilityEdge
+
+export interface SiteKnowledgeGraph {
+  siteId: string
+  nodes: KnowledgeNode[]
+  edges: KnowledgeEdge[]
+}
+
+export async function getSiteKnowledgeGraph(siteId: string): Promise<SiteKnowledgeGraph> {
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+
+  // ── 1. Tous les canonical_subjects du chantier ────────────────────────────
+  const { data: csRows, error: csErr } = await supabase
+    .from('canonical_subject')
+    .select('id, label, company_id, contact_id')
+    .eq('site_id', siteId)
+  if (csErr) throw new Error(csErr.message)
+
+  const csLabel     = new Map<string, string>()
+  const csKind      = new Map<string, KnowledgeNodeKind>()
+  const companyToCS = new Map<string, string>()  // company_id → canonical_subject_id
+  const contactToCS = new Map<string, string>()  // contact_id → canonical_subject_id
+
+  for (const cs of (csRows ?? []) as Array<{ id: string; label: string; company_id: string | null; contact_id: string | null }>) {
+    csLabel.set(cs.id, cs.label)
+    const kind: KnowledgeNodeKind = cs.company_id ? 'company' : cs.contact_id ? 'person' : 'subject'
+    csKind.set(cs.id, kind)
+    if (cs.company_id) companyToCS.set(cs.company_id, cs.id)
+    if (cs.contact_id) contactToCS.set(cs.contact_id, cs.id)
+  }
+
+  // ── 2. Relations sémantiques confirmées (logique identique à getSiteDependencyGraph) ──
+  const { listConfirmedLinksForSite } = await import('@/lib/db/subject-thread-links')
+  const rawLinks = await listConfirmedLinksForSite(siteId)
+
+  const semanticEdges: SemanticEdge[] = []
+
+  if (rawLinks.length > 0) {
+    const allThreadIds = [...new Set([
+      ...rawLinks.map((l) => l.fromThreadId),
+      ...rawLinks.map((l) => l.toThreadId),
+    ])]
+    const { data: stiSemantic } = await supabase
+      .from('subject_thread_identity')
+      .select('subject_thread_id, canonical_subject_id')
+      .in('subject_thread_id', allThreadIds)
+
+    const threadToCS = new Map<string, string>()
+    for (const r of (stiSemantic ?? []) as Array<{ subject_thread_id: string; canonical_subject_id: string }>) {
+      threadToCS.set(r.subject_thread_id, r.canonical_subject_id)
+    }
+
+    const seenSemantic = new Set<string>()
+    for (const link of rawLinks) {
+      const fromId = threadToCS.get(link.fromThreadId) ?? null
+      const toId   = threadToCS.get(link.toThreadId)   ?? null
+      if (!fromId || !toId || fromId === toId) continue
+      const key = `${fromId}:${toId}:${link.linkType}`
+      if (seenSemantic.has(key)) continue
+      seenSemantic.add(key)
+      semanticEdges.push({ edgeType: 'semantic', from: fromId, to: toId, linkType: link.linkType, justification: link.justification })
+    }
+  }
+
+  // ── 3. Responsabilités via site_actions ───────────────────────────────────
+  // site_actions.assigned_company_id / assigned_contact_id → acteur
+  // site_actions.subject_thread_id → sujet (résolu via STI)
+  // site_reserve et site_deadlines n'ont pas encore de subject_thread_id.
+  const responsibilityEdges: ResponsibilityEdge[] = []
+
+  const { data: actionsRaw } = await supabase
+    .from('site_actions')
+    .select('assigned_company_id, assigned_contact_id, subject_thread_id')
+    .eq('site_id', siteId)
+    .not('subject_thread_id', 'is', null)
+
+  const relevantActions = ((actionsRaw ?? []) as Array<{
+    assigned_company_id: string | null
+    assigned_contact_id: string | null
+    subject_thread_id: string | null
+  }>).filter((a) =>
+    (a.assigned_company_id && companyToCS.has(a.assigned_company_id)) ||
+    (a.assigned_contact_id && contactToCS.has(a.assigned_contact_id)),
+  )
+
+  if (relevantActions.length > 0) {
+    const subjectThreadIds = [...new Set(relevantActions.map((a) => a.subject_thread_id!))]
+    const { data: stiResp } = await supabase
+      .from('subject_thread_identity')
+      .select('subject_thread_id, canonical_subject_id')
+      .in('subject_thread_id', subjectThreadIds)
+
+    const respThreadToCS = new Map<string, string>()
+    for (const r of (stiResp ?? []) as Array<{ subject_thread_id: string; canonical_subject_id: string }>) {
+      respThreadToCS.set(r.subject_thread_id, r.canonical_subject_id)
+    }
+
+    // Agréger par paire (acteur, sujet) — 1 seule arête, pas N
+    const respMap = new Map<string, { actorId: string; subjectId: string; count: number }>()
+    for (const a of relevantActions) {
+      const actorId = a.assigned_company_id
+        ? companyToCS.get(a.assigned_company_id)
+        : a.assigned_contact_id
+          ? contactToCS.get(a.assigned_contact_id)
+          : null
+      if (!actorId) continue
+      const subjectId = respThreadToCS.get(a.subject_thread_id!)
+      if (!subjectId || subjectId === actorId) continue
+      const key = `${actorId}:${subjectId}`
+      const cur = respMap.get(key) ?? { actorId, subjectId, count: 0 }
+      cur.count++
+      respMap.set(key, cur)
+    }
+
+    for (const { actorId, subjectId, count } of respMap.values()) {
+      responsibilityEdges.push({ edgeType: 'responsible_for', from: actorId, to: subjectId, actionCount: count })
+    }
+  }
+
+  // ── 4. Nœuds : uniquement ceux qui apparaissent dans au moins une arête ──
+  const usedIds = new Set<string>()
+  for (const e of semanticEdges)     { usedIds.add(e.from); usedIds.add(e.to) }
+  for (const e of responsibilityEdges) { usedIds.add(e.from); usedIds.add(e.to) }
+
+  const nodes: KnowledgeNode[] = []
+  for (const id of usedIds) {
+    const label = csLabel.get(id)
+    const kind  = csKind.get(id)
+    if (!label || !kind) continue
+    nodes.push({ id, label, kind })
+  }
+
+  return { siteId, nodes, edges: [...semanticEdges, ...responsibilityEdges] }
+}

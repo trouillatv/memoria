@@ -9,6 +9,7 @@ import type { CanonicalSubjectLife, CanonicalLink, SubjectOccurrenceMerged, Mate
 import { getActorIdentity, getActorResponsibilities } from '@/lib/db/actor-subject-life'
 import type { ActorLinkedIdentity, ActorResponsibilities } from '@/lib/db/actor-subject-life'
 import { SubjectTrajectorySection, SubjectTrajectorySkeleton } from './SubjectTrajectorySection'
+import SubjectContextGraph from './SubjectContextGraph'
 import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
@@ -712,6 +713,14 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
           <Suspense fallback={<SubjectTrajectorySkeleton />}>
             <SubjectTrajectorySection life={life} />
           </Suspense>
+
+          {/* Autour de ce sujet — mini-graphe des relations confirmées */}
+          <SubjectContextGraph
+            links={life.links}
+            currentSubjectId={canonicalSubjectId}
+            currentSubjectLabel={life.label}
+            siteId={siteId}
+          />
 
           {/* 3 — À surveiller (multi-signal) */}
           {watchReasons.length > 0 && (

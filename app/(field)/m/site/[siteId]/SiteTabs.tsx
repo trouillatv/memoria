@@ -9,7 +9,7 @@ import { listDocumentsForTarget } from '@/lib/db/documents'
  * conducteur (admin/manager) ET s'il existe de vrais documents liés — jamais un
  * onglet vide. Barre défilante horizontalement (aucun retour arrière requis).
  */
-export type SiteTab = 'vue' | 'sujets' | 'visites' | 'reunions' | 'frise' | 'documents' | 'patrimoine'
+export type SiteTab = 'vue' | 'sujets' | 'carte' | 'visites' | 'reunions' | 'frise' | 'documents' | 'patrimoine'
 
 export async function SiteTabs({
   siteId,
@@ -28,6 +28,7 @@ export async function SiteTabs({
   const tabs: { key: SiteTab; label: string; href: string }[] = [
     { key: 'vue', label: 'Synthèse', href: base },
     { key: 'sujets', label: 'Sujets', href: `${base}/sujets` },
+    { key: 'carte',  label: 'Carte',  href: `${base}/carte` },
     { key: 'visites', label: 'Visites', href: `${base}/visites` },
     { key: 'reunions', label: 'Réunions', href: `${base}/reunions` },
     { key: 'frise', label: 'Frise', href: `${base}/frise` },
