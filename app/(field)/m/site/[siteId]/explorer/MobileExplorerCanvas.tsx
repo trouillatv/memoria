@@ -24,7 +24,11 @@ interface Props {
 }
 
 export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
-  const { canvasRef, wrapRef, engineRef, fitToView, zoomBy } = useGraphCanvas()
+  const { canvasRef, wrapRef, engineRef, fitVisibleAnimated, zoomBy } = useGraphCanvas()
+  const fitAllItems = useMemo(
+    () => graph.nodes.map((n) => ({ id: n.id, radius: SIZE[n.type] + 6 })),
+    [graph],
+  )
 
   const [center, setCenter] = useState('site')
   const [depth,  setDepth]  = useState<1 | 2>(2)
@@ -112,6 +116,7 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
   }
 
   // Réorganiser : seule action autorisée à relancer la physique complète.
+  // Après settle → fitVisibleAnimated automatique (invariant Réorganiser = layout + settle + Adapter).
   function handleReorganize() {
     const api = engineRef.current
     if (!api) return
@@ -129,6 +134,7 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
         api.P[n.id] = { x: W / 2 + (Math.random() - 0.5) * 440, y: H / 2 + (Math.random() - 0.5) * 440, vx: 0, vy: 0, alpha: 0 }
     }
     api.kick(1200)
+    setTimeout(() => { fitVisibleAnimated(fitAllItems, 8) }, 1400)
   }
 
   // ── Moteur canvas (créé une fois) ─────────────────────────────────────────────
@@ -280,7 +286,7 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
 
     // Auto-fit après le settle initial — padding réduit pour utiliser 75-85 % du canvas.
     const fitTimer = setTimeout(() => {
-      fitToView(graph.nodes.map((n) => ({ id: n.id, radius: SIZE[n.type] + 6 })), 8)
+      fitVisibleAnimated(fitAllItems, 8)
     }, 1400)
 
     return () => { api.destroy(); engineRef.current = null; clearTimeout(fitTimer) }
@@ -355,11 +361,11 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
           </button>
         )}
 
-        {/* Toolbar : +/−/Recentrer/Réorganiser */}
+        {/* Toolbar : +/−/Adapter à l'écran/Réorganiser */}
         <GraphToolbar
           onZoomIn={() => zoomBy(1.3)}
           onZoomOut={() => zoomBy(0.77)}
-          onFit={() => fitToView(graph.nodes.map((n) => ({ id: n.id, radius: SIZE[n.type] + 6 })), 8)}
+          onFit={() => fitVisibleAnimated(fitAllItems, 8)}
           onReorganize={handleReorganize}
           className="absolute bottom-24 right-3"
         />

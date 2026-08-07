@@ -8,6 +8,7 @@ import type { EdgeRef, FrameInfo } from '@/components/graph/force-graph-engine'
 import { wrapLabel } from '@/lib/graph/graph-utils'
 import { useGraphCanvas } from '@/lib/graph/use-graph-canvas'
 import { GraphToolbar } from '@/components/graph/GraphToolbar'
+import type { FitItem } from '@/lib/graph/graph-utils'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -53,7 +54,8 @@ interface Props {
 
 export default function SiteRelationsGraph({ nodes, edges, siteId, canvasHeight }: Props) {
   const router = useRouter()
-  const { canvasRef, wrapRef, engineRef, navigatingRef, fitToView, zoomBy } = useGraphCanvas()
+  const { canvasRef, wrapRef, engineRef, navigatingRef, fitVisibleAnimated, zoomBy } = useGraphCanvas()
+  const fitItems: FitItem[] = nodes.map((n) => ({ id: n.id, radius: R[n.kind] ?? 15 }))
 
   const nodeMap  = new Map(nodes.map((n) => [n.id, n]))
   const edgeRefs: EdgeRef[] = edges.map((e) => ({ a: e.from, b: e.to }))
@@ -160,10 +162,10 @@ export default function SiteRelationsGraph({ nodes, edges, siteId, canvasHeight 
       },
 
       physics: {
-        repulsion: 4200,
-        spring:    0.018,
+        repulsion: 3200,
+        spring:    0.012,
         rest:      () => 120,
-        friction:  0.82,
+        friction:  0.93,
         gravity:   0.004,
       },
 
@@ -174,7 +176,7 @@ export default function SiteRelationsGraph({ nodes, edges, siteId, canvasHeight 
 
       hitNodeRadius: (id) => R[nodeMap.get(id)?.kind ?? 'subject'] ?? 15,
       edgeHit:  null,
-      features: { pin: false, dblClick: false, edgeTap: false, pinchZoom: true },
+      features: { pin: true, dblClick: false, edgeTap: false, pinchZoom: true },
 
       onTapNode(id) {
         if (navigatingRef.current) return
@@ -185,11 +187,12 @@ export default function SiteRelationsGraph({ nodes, edges, siteId, canvasHeight 
     })
 
     engineRef.current = engine
-    engine.kick(1200)
+    // Pas de kick explicite : resize() dans le moteur lance kick(900) par défaut.
+    // Avec friction=0.93, l'énergie tombe sous 0.25 bien avant les 900 ms.
 
     const fitTimer = setTimeout(() => {
-      fitToView(nodes.map((n) => ({ id: n.id, radius: R[n.kind] ?? 15 })), 28)
-    }, 1400)
+      fitVisibleAnimated(fitItems, 20)
+    }, 1000)
 
     return () => {
       engine.destroy()
@@ -213,7 +216,7 @@ export default function SiteRelationsGraph({ nodes, edges, siteId, canvasHeight 
         <GraphToolbar
           onZoomIn={() => zoomBy(1.3)}
           onZoomOut={() => zoomBy(0.77)}
-          onFit={() => fitToView(nodes.map((n) => ({ id: n.id, radius: R[n.kind] ?? 15 })), 28)}
+          onFit={() => fitVisibleAnimated(fitItems, 20)}
           className="absolute bottom-10 right-3"
         />
 
