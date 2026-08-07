@@ -1,22 +1,23 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import type { SiteGraph, GraphNodeType } from '@/lib/knowledge/site-graph'
 import { createForceGraphEngine } from '@/components/graph/force-graph-engine'
 import { useGraphCanvas } from '@/lib/graph/use-graph-canvas'
 import { GraphToolbar } from '@/components/graph/GraphToolbar'
 import { GraphTimeline } from '@/app/(dashboard)/intervenants/graph/GraphTimeline'
 import {
-  COLOR, COLOR_DARK, SIZE, TYPE_LABEL, PROOF, GLOBAL_DEFAULT, frDay,
+  COLOR, COLOR_DARK, SIZE, TYPE_LABEL,
+  PROOF, GLOBAL_DEFAULT,
   computeVisible, enUnePhrase, recit, ifGone, chainToSource,
 } from '@/lib/graph/site-graph-logic'
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle,
-} from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import Link from 'next/link'
+import { cn } from '@/lib/utils'
 
-// ── Composant ──────────────────────────────────────────────────────────────────
+const LEGEND_TYPES: GraphNodeType[] = [
+  'visite', 'memo', 'action', 'ech', 'dec', 'vigilance', 'acteur', 'photo', 'know',
+]
 
 interface Props {
   graph: SiteGraph
@@ -24,13 +25,13 @@ interface Props {
 }
 
 export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
-  const router = useRouter()
   const { canvasRef, wrapRef, engineRef, fitToView, zoomBy } = useGraphCanvas()
 
   const [center, setCenter] = useState('site')
-  const [depth] = useState<1 | 2>(2)
-  const [timeIdx, setTimeIdx] = useState<number | null>(null)
+  const [depth,  setDepth]  = useState<1 | 2>(2)
+  const [hidden, setHidden] = useState<ReadonlySet<GraphNodeType>>(new Set())
   const [sheetId, setSheetId] = useState<string | null>(null)
+  const [showRecit, setShowRecit] = useState(false)
 
   const nodeById = useMemo(
     () => Object.fromEntries(graph.nodes.map((n) => [n.id, n])),
@@ -44,29 +45,61 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
     }
     return m
   }, [graph])
-
   const days = useMemo(() => {
     const s = new Set<string>()
     for (const n of graph.nodes) if (n.t) s.add(n.t.slice(0, 10))
     return [...s].sort()
   }, [graph])
-  const timeMax = timeIdx === null ? null : days[timeIdx] ?? null
+  const typeCounts = useMemo(() => {
+    const c = {} as Record<GraphNodeType, number>
+    for (const n of graph.nodes) if (n.type !== 'site') c[n.type] = (c[n.type] ?? 0) + (n.count ?? 1)
+    return c
+  }, [graph])
 
-  // Miroir hors-React pour le moteur (évite les closures périmées).
+  // ── Miroir hors-React pour le moteur ─────────────────────────────────────────
   const E = useRef({
-    center: 'site',
-    timeMax: null as string | null,
-    depth: 2 as 1 | 2,
-    hiddenTypes: new Set<GraphNodeType>(),
-    revealedTypes: new Set<GraphNodeType>(),
-    refreshVis: undefined as (() => void) | undefined,
-    redraw: undefined as (() => void) | undefined,
+    center:      'site',
+    depth:       2 as 1 | 2,
+    timeMax:     null as string | null,
+    hiddenTypes: new Set<GraphNodeType>() as ReadonlySet<GraphNodeType>,
+    revealedTypes: new Set<GraphNodeType>() as ReadonlySet<GraphNodeType>,
+    selectedId:  null as string | null,
+    refreshVis:  undefined as (() => void) | undefined,
+    redraw:      undefined as (() => void) | undefined,
   })
-  useEffect(() => { E.current.center = center }, [center])
-  useEffect(() => { E.current.timeMax = timeMax; E.current.refreshVis?.() }, [timeMax])
 
-  // ── Moteur canvas ──────────────────────────────────────────────────────────
+  // Sync selectedId → redraw (aucune physique)
+  useEffect(() => {
+    E.current.selectedId = sheetId
+    E.current.redraw?.()
+  }, [sheetId])
 
+  // ── Helpers d'action ─────────────────────────────────────────────────────────
+
+  // Naviguer vers un nœud (changer le centre) : kick court pour réajustement local.
+  function navigateTo(id: string, newDepth: 1 | 2 = 2) {
+    E.current.center      = id
+    E.current.depth       = newDepth
+    E.current.selectedId  = null
+    setCenter(id)
+    setDepth(newDepth)
+    setSheetId(null)
+    setShowRecit(false)
+    E.current.refreshVis?.()
+    engineRef.current?.kick(280)
+  }
+
+  function toggleHidden(t: GraphNodeType) {
+    setHidden((prev) => {
+      const next = new Set(prev)
+      if (next.has(t)) next.delete(t); else next.add(t)
+      E.current.hiddenTypes = next
+      E.current.refreshVis?.()
+      return next
+    })
+  }
+
+  // ── Moteur canvas (créé une fois) ─────────────────────────────────────────────
   useEffect(() => {
     const canvas = canvasRef.current
     const wrap   = wrapRef.current
@@ -78,21 +111,20 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
         matchMedia('(prefers-color-scheme: dark)').matches)
     const col = (t: GraphNodeType) => (dark() ? COLOR_DARK : COLOR)[t]
 
-    const visible = () =>
-      computeVisible({
-        center: E.current.center,
-        depth: E.current.depth,
-        enqueteSet: null,
-        timeMax: E.current.timeMax,
-        hiddenTypes: E.current.hiddenTypes,
-        revealedTypes: E.current.revealedTypes,
-        neigh,
-        nodeById,
-      })
+    const visible = () => computeVisible({
+      center:        E.current.center,
+      depth:         E.current.depth,
+      enqueteSet:    null,
+      timeMax:       E.current.timeMax,
+      hiddenTypes:   E.current.hiddenTypes,
+      revealedTypes: E.current.revealedTypes,
+      neigh,
+      nodeById,
+    })
 
     const api = createForceGraphEngine(canvas, wrap, {
       nodeIds: () => graph.nodes.map((n) => n.id),
-      edges: () => graph.edges,
+      edges:   () => graph.edges,
       visible,
 
       seed(P, { W, H }) {
@@ -103,38 +135,54 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
           P[id] ??= { x: W / 2 + 130 * Math.cos(a), y: H / 2 + 130 * Math.sin(a), vx: 0, vy: 0, alpha: 0 }
         })
         for (const n of graph.nodes)
-          P[n.id] ??= {
-            x: W / 2 + (Math.random() - 0.5) * 280,
-            y: H / 2 + (Math.random() - 0.5) * 280,
-            vx: 0, vy: 0, alpha: 0,
-          }
+          P[n.id] ??= { x: W / 2 + (Math.random() - 0.5) * 280, y: H / 2 + (Math.random() - 0.5) * 280, vx: 0, vy: 0, alpha: 0 }
       },
 
       draw(ctx, f) {
         const surface = dark() ? '#1E1A25' : '#FFFFFF'
         const inkC    = dark() ? '#F0EDF6' : '#1C1B22'
         const mutedC  = dark() ? '#A49DB3' : '#6B6577'
-        const labelVisible = (id: string) =>
-          id === E.current.center || (neigh[E.current.center] ?? new Set()).has(id)
 
+        const sel      = E.current.selectedId
+        const selNeigh = sel ? (neigh[sel] ?? new Set<string>()) : null
+        const labelVisible = (id: string) =>
+          id === E.current.center || (neigh[E.current.center] ?? new Set()).has(id) || id === sel
+
+        // ── Arêtes ──
         for (const e of graph.edges) {
           const A = f.P[e.a], B = f.P[e.b]; if (!A || !B) continue
           const al = Math.min(A.alpha, B.alpha); if (al < 0.02) continue
-          const active = e.a === E.current.center || e.b === E.current.center
+          const isSelEdge = sel ? (e.a === sel || e.b === sel) : false
+          const active    = e.a === E.current.center || e.b === E.current.center
+          const dim       = sel && !isSelEdge ? 0.10 : 1
           ctx.strokeStyle = col(e.type)
-          ctx.globalAlpha = al * (active ? 0.8 : 0.3)
-          ctx.lineWidth = active ? 1.4 : 1
+          ctx.globalAlpha = al * dim * (active ? 0.8 : isSelEdge ? 0.9 : 0.3)
+          ctx.lineWidth   = isSelEdge ? 2.2 : active ? 1.4 : 1
           ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke()
         }
 
+        // ── Nœuds ──
         for (const n of graph.nodes) {
           const p = f.P[n.id]; if (!p || p.alpha < 0.02) continue
-          const r = n.id === E.current.center ? SIZE[n.type] + 6 : SIZE[n.type]
-          ctx.globalAlpha = p.alpha
+          const isSel   = sel ? n.id === sel : false
+          const isNear  = selNeigh ? selNeigh.has(n.id) : false
+          const dim     = sel && !isSel && !isNear ? 0.25 : 1
+          const baseR   = n.id === E.current.center ? SIZE[n.type] + 6 : SIZE[n.type]
+          const r       = isSel ? Math.round(baseR * 1.3) : baseR
+
+          // Halo sélection
+          if (isSel) {
+            ctx.globalAlpha = p.alpha * 0.28
+            ctx.beginPath(); ctx.arc(p.x, p.y, r + 11, 0, 7)
+            ctx.fillStyle = col(n.type); ctx.fill()
+          }
+
+          ctx.globalAlpha = p.alpha * dim
           ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7)
           ctx.fillStyle = surface; ctx.fill()
-          ctx.lineWidth = n.id === E.current.center ? 3.5 : 2.2
+          ctx.lineWidth   = isSel ? 4 : n.id === E.current.center ? 3.5 : 2.2
           ctx.strokeStyle = col(n.type); ctx.stroke()
+
           if (n.count) {
             ctx.beginPath(); ctx.arc(p.x + r * 0.8, p.y - r * 0.8, 9, 0, 7)
             ctx.fillStyle = col(n.type); ctx.fill()
@@ -142,7 +190,9 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
             ctx.fillText(String(n.count), p.x + r * 0.8, p.y - r * 0.8)
           }
+
           if (labelVisible(n.id)) {
+            ctx.globalAlpha = p.alpha * dim
             ctx.fillStyle = n.id === E.current.center ? inkC : mutedC
             ctx.font = (n.id === E.current.center ? '600 13' : '500 11') + 'px system-ui'
             ctx.textAlign = 'center'; ctx.textBaseline = 'top'
@@ -153,10 +203,7 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
             }
             lines.push(cur.trim())
             lines.slice(0, 2).forEach((l, i) =>
-              ctx.fillText(
-                lines.length > 2 && i === 1 ? l + '…' : l,
-                p.x, p.y + r + 4 + i * 13,
-              ),
+              ctx.fillText(lines.length > 2 && i === 1 ? l + '…' : l, p.x, p.y + r + 4 + i * 13),
             )
           }
         }
@@ -165,59 +212,53 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
 
       physics: {
         repulsion: 4200,
-        spring: 0.022,
-        rest: (e) => (e.a === E.current.center || e.b === E.current.center ? 150 : 105),
-        friction: 0.8,
-        bounds: { padX: 30, padTop: 34, padBottom: 80 },
+        spring:    0.022,
+        rest:      (e) => (e.a === E.current.center || e.b === E.current.center ? 150 : 105),
+        friction:  0.85,
+        bounds:    { padX: 30, padTop: 34, padBottom: 80 },
       },
-      fade: { in: 0.12, out: 0.14 },
-      loop: 'settle',
-      zoom: { min: 0.35, max: 2.6, factorIn: 1.12, factorOut: 0.89 },
+      fade:               { in: 0.12, out: 0.14 },
+      loop:               'settle',
+      zoom:               { min: 0.35, max: 2.6, factorIn: 1.12, factorOut: 0.89 },
       placeNewNearNeighbors: true,
-      hitNodeRadius: (id) => Math.max(24, SIZE[nodeById[id]?.type ?? 'visite'] + 10),
-      edgeHit: null,
-      features: { pin: false, dblClick: false, edgeTap: false, pinchZoom: true },
-      watchTheme: true,
+      hitNodeRadius:      (id) => Math.max(26, SIZE[nodeById[id]?.type ?? 'visite'] + 12),
+      edgeHit:            null,
+      features:           { pin: true, dblClick: false, edgeTap: false, pinchZoom: true },
+      watchTheme:         true,
 
+      // Tap = inspecter (ouvrir/fermer le sheet). Aucune relance physique.
       onTapNode(id) {
-        if (id === E.current.center) { setSheetId(id); return }
-        E.current.center = id
-        setCenter(id)
-        setTimeout(() => api.refreshVisibility(), 0)
-        setSheetId(id)
+        setSheetId((prev) => (prev === id ? null : id))
+        // selectedId sync via useEffect → redraw() automatique
       },
       onTapVoid() {
-        if (E.current.center !== 'site') {
-          E.current.center = 'site'
-          setCenter('site')
-          setTimeout(() => api.refreshVisibility(), 0)
-        }
+        setSheetId(null)
       },
     })
 
     engineRef.current = api
     E.current.refreshVis = () => api.refreshVisibility()
-    E.current.redraw = () => api.redraw()
+    E.current.redraw     = () => api.redraw()
+    // Kick initial : long pour un bon settle. Ensuite, navigateTo utilise kick(280).
     api.kick(1200)
 
     return () => { api.destroy(); engineRef.current = null }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph, neigh, nodeById])
 
-  // ── Fiche du nœud sélectionné ──────────────────────────────────────────────
-
+  // ── Données fiche ─────────────────────────────────────────────────────────────
   const selected = sheetId ? nodeById[sheetId] : null
-  const phrase = selected ? enUnePhrase(selected, graph, neigh, nodeById) : null
-  const story = selected ? recit(selected, graph, neigh, nodeById) : null
-  const gone = selected?.type === 'acteur' ? ifGone(selected, neigh, nodeById) : null
-  const chain = sheetId ? chainToSource(sheetId, neigh) : null
-  const links = selected ? graph.edges.filter((e) => e.a === sheetId || e.b === sheetId) : []
-  const [showRecit, setShowRecit] = useState(false)
+  const phrase   = selected ? enUnePhrase(selected, graph, neigh, nodeById) : null
+  const story    = selected ? recit(selected, graph, neigh, nodeById) : null
+  const gone     = selected?.type === 'acteur' ? ifGone(selected, neigh, nodeById) : null
+  const chain    = sheetId ? chainToSource(sheetId, neigh) : null
+  const links    = selected ? graph.edges.filter((e) => e.a === sheetId || e.b === sheetId) : []
 
-  const height = canvasHeight ?? 580
+  const height = canvasHeight ?? 520
 
   return (
     <>
+      {/* ── Canvas ──────────────────────────────────────────────────────────── */}
       <div
         ref={wrapRef}
         className="relative overflow-hidden rounded-2xl border bg-card"
@@ -225,55 +266,92 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
       >
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
+        {/* Breadcrumb + Étendre */}
+        <div className="absolute left-2 top-2 z-10 flex gap-1.5">
+          {center !== 'site' && (
+            <button
+              type="button"
+              onClick={() => navigateTo('site', 2)}
+              className="rounded-full border bg-card/90 px-2.5 py-1 text-[12px] text-muted-foreground shadow-sm backdrop-blur-sm"
+            >
+              ← Chantier
+            </button>
+          )}
+          {depth === 1 && (
+            <button
+              type="button"
+              onClick={() => navigateTo(center, 2)}
+              className="rounded-full border bg-card/90 px-2.5 py-1 text-[12px] text-muted-foreground shadow-sm backdrop-blur-sm"
+            >
+              Étendre
+            </button>
+          )}
+        </div>
+
+        {/* Zoom / Recentrer */}
         <GraphToolbar
           onZoomIn={() => zoomBy(1.3)}
           onZoomOut={() => zoomBy(0.77)}
-          onFit={() =>
-            fitToView(
-              graph.nodes.map((n) => ({ id: n.id, radius: SIZE[n.type] + 6 })),
-              28,
-            )
-          }
+          onFit={() => fitToView(graph.nodes.map((n) => ({ id: n.id, radius: SIZE[n.type] + 6 })), 28)}
           className="absolute bottom-24 right-3"
         />
 
+        {/* Timeline — ne relance pas la physique */}
         {days.length > 1 && (
           <GraphTimeline
             days={days}
             onChange={(d) => {
-              const idx = d === null ? null : days.indexOf(d)
-              setTimeIdx(idx === -1 ? null : idx)
+              E.current.timeMax = d
+              E.current.refreshVis?.()
+              // Pas de kick : les nœuds existants gardent leur position.
             }}
           />
         )}
+      </div>
 
-        {/* Fil d'Ariane compact */}
-        <div className="absolute left-2 top-2 z-10">
-          {center !== 'site' && (
-            <button
-              type="button"
-              onClick={() => {
-                E.current.center = 'site'
-                setCenter('site')
-                setTimeout(() => E.current.refreshVis?.(), 0)
-              }}
-              className="rounded-full border bg-card/90 px-2.5 py-1 text-[12px] text-muted-foreground shadow-sm backdrop-blur-sm"
-            >
-              ← {nodeById['site']?.label ?? 'Chantier'}
-            </button>
-          )}
+      {/* ── Légende interactive ──────────────────────────────────────────────── */}
+      <div className="scrollbar-hide -mx-1 overflow-x-auto px-1">
+        <div className="flex w-max gap-1.5 py-1 text-[12px]">
+          {LEGEND_TYPES.map((t) => {
+            const count = typeCounts[t] ?? 0
+            if (count === 0) return null
+            const off = hidden.has(t)
+            return (
+              <button
+                key={t}
+                type="button"
+                aria-pressed={!off}
+                onClick={() => toggleHidden(t)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 transition-opacity',
+                  off ? 'opacity-40' : 'opacity-100',
+                )}
+              >
+                <i className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: COLOR[t] }} />
+                {TYPE_LABEL[t]}
+                <span className="tabular-nums text-muted-foreground">({count})</span>
+              </button>
+            )
+          })}
         </div>
       </div>
 
-      {/* Fiche en bottom-sheet */}
-      <Sheet open={!!sheetId} onOpenChange={(open) => { if (!open) { setSheetId(null); setShowRecit(false) } }}>
+      {/* ── Bottom-sheet fiche ──────────────────────────────────────────────── */}
+      <Sheet
+        open={!!sheetId}
+        onOpenChange={(open) => { if (!open) { setSheetId(null); setShowRecit(false) } }}
+      >
         <SheetContent side="bottom" className="max-h-[75dvh] overflow-y-auto rounded-t-2xl pb-safe">
           {selected && (
             <>
               <SheetHeader className="pb-2">
-                <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: COLOR[selected.type] }}>
-                  {TYPE_LABEL[selected.type]}
-                </p>
+                {/* Pastille couleur = lien visuel avec le nœud dans le graphe */}
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: COLOR[selected.type] }} />
+                  <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: COLOR[selected.type] }}>
+                    {TYPE_LABEL[selected.type]}
+                  </p>
+                </div>
                 <SheetTitle className="text-base leading-snug">
                   {selected.label}{selected.count ? ` (${selected.count})` : ''}
                 </SheetTitle>
@@ -283,16 +361,16 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
               </SheetHeader>
 
               <div className="space-y-4 px-4 pb-6">
-                {/* Boutons d'action */}
+                {/* Actions */}
                 <div className="flex flex-wrap gap-2">
-                  {selected.type === 'acteur' && sheetId?.startsWith('int_') && (
-                    <Link
-                      href={`/m/site/${graph.siteId}/intervenants/${sheetId.slice(4)}`}
-                      onClick={() => setSheetId(null)}
+                  {selected.type !== 'site' && (
+                    <button
+                      type="button"
+                      onClick={() => navigateTo(sheetId!, 1)}
                       className="rounded-full border bg-muted/50 px-3 py-1.5 text-[12.5px] font-semibold"
                     >
-                      👤 Ouvrir la fiche
-                    </Link>
+                      Isoler
+                    </button>
                   )}
                   {['site', 'visite', 'memo', 'acteur'].includes(selected.type) && (
                     <button
@@ -303,9 +381,18 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
                       🎙️ Résumé
                     </button>
                   )}
+                  {selected.type === 'acteur' && sheetId?.startsWith('int_') && (
+                    <Link
+                      href={`/m/site/${graph.siteId}/intervenants/${sheetId.slice(4)}`}
+                      onClick={() => setSheetId(null)}
+                      className="rounded-full border bg-muted/50 px-3 py-1.5 text-[12.5px] font-semibold"
+                    >
+                      👤 Fiche
+                    </Link>
+                  )}
                 </div>
 
-                {showRecit && story && story.length > 0 ? (
+                {showRecit && story ? (
                   <div className="space-y-2">
                     {story.map((t, i) => (
                       <p key={i} className="text-[14px] leading-relaxed">{t}</p>
@@ -313,15 +400,12 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
                   </div>
                 ) : (
                   <>
-                    {/* En une phrase */}
                     {phrase && (
                       <div>
                         <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">En une phrase</p>
                         <p className="text-[13.5px]">{phrase}</p>
                       </div>
                     )}
-
-                    {/* Extrait */}
                     {selected.excerpt && (
                       <div>
                         <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">La trace</p>
@@ -330,8 +414,6 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
                         </p>
                       </div>
                     )}
-
-                    {/* Si X disparaissait */}
                     {gone && gone.length > 0 && (
                       <div>
                         <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -347,8 +429,6 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
                         </ul>
                       </div>
                     )}
-
-                    {/* Chaîne de provenance */}
                     {chain && chain.length > 1 && (
                       <div>
                         <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Pourquoi c'est ici</p>
@@ -362,8 +442,6 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
                         </ol>
                       </div>
                     )}
-
-                    {/* Connexions directes */}
                     {links.length > 0 && (
                       <div>
                         <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Connexions directes</p>
@@ -376,14 +454,7 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
                               <li key={i}>
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    setSheetId(null)
-                                    setTimeout(() => {
-                                      E.current.center = otherId
-                                      setCenter(otherId)
-                                      E.current.refreshVis?.()
-                                    }, 200)
-                                  }}
+                                  onClick={() => navigateTo(otherId, 2)}
                                   className="flex w-full items-start gap-2.5 py-2 text-left"
                                 >
                                   <span className="mt-[5px] h-2 w-2 shrink-0 rounded-full" style={{ background: COLOR[m.type] }} />
