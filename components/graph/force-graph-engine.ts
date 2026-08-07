@@ -81,6 +81,8 @@ export interface ForceGraphConfig {
     /** Un clic (sans déplacement) tombant sur une arête déclenche onTapEdge au lieu
      *  d'onTapVoid. false = comportement Mémoire historique (arête ≡ vide). */
     edgeTap?: boolean
+    /** Active le pinch-to-zoom deux doigts (mobile). Requiert touchAction:'none' sur le wrapper. */
+    pinchZoom?: boolean
   }
 
   onTapNode?(id: string): void
@@ -257,18 +259,44 @@ export function createForceGraphEngine(
   // ── Gestes (seuil 5 px commun aux deux graphes d'origine) ──────────────────
   let downAt: { x: number; y: number } | null = null, moved = false
   let panning = false, panFrom = { tx: 0, ty: 0 }
+  // Pinch-to-zoom (actif uniquement si cfg.features.pinchZoom)
+  const activePointers = new Map<number, { x: number; y: number }>()
+  let pinching = false, pinchStartDist = 1, pinchStartK = 1
 
   const onDown = (ev: PointerEvent) => {
     const r = canvas.getBoundingClientRect(), sx = ev.clientX - r.left, sy = ev.clientY - r.top
+    canvas.setPointerCapture(ev.pointerId)
+    if (cfg.features.pinchZoom) {
+      activePointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY })
+      if (activePointers.size >= 2) {
+        dragId = null; panning = false; moved = true
+        const pts = [...activePointers.values()]
+        pinchStartDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y) || 1
+        pinchStartK = view.k; pinching = true
+        return
+      }
+    }
     const { x, y } = toWorld(sx, sy)
     const id = hitNode(x, y); downAt = { x: sx, y: sy }; moved = false
-    canvas.setPointerCapture(ev.pointerId)
     if (id) { dragId = id; canvas.style.cursor = 'grabbing' }
     else { panning = true; panFrom = { tx: view.tx, ty: view.ty }; canvas.style.cursor = 'grabbing' }
     kick()
   }
   const onMove = (ev: PointerEvent) => {
     const r = canvas.getBoundingClientRect(), sx = ev.clientX - r.left, sy = ev.clientY - r.top
+    if (cfg.features.pinchZoom) {
+      activePointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY })
+      if (pinching && activePointers.size >= 2) {
+        const pts = [...activePointers.values()]
+        const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y) || 1
+        const cx = (pts[0].x + pts[1].x) / 2 - r.left
+        const cy = (pts[0].y + pts[1].y) / 2 - r.top
+        const nextK = Math.max(cfg.zoom.min, Math.min(cfg.zoom.max, pinchStartK * dist / pinchStartDist))
+        const v = zoomAt(view, cx, cy, nextK)
+        view.k = v.k; view.tx = v.tx; view.ty = v.ty
+        draw(); return
+      }
+    }
     if (dragId) {
       if (downAt && Math.hypot(sx - downAt.x, sy - downAt.y) > 5) moved = true
       const w = toWorld(sx, sy); const p = P[dragId]
@@ -292,6 +320,14 @@ export function createForceGraphEngine(
     else cfg.onHover?.(null)
   }
   const onUp = (ev: PointerEvent) => {
+    if (cfg.features.pinchZoom) {
+      activePointers.delete(ev.pointerId)
+      if (pinching) {
+        if (activePointers.size < 2) pinching = false
+        try { canvas.releasePointerCapture(ev.pointerId) } catch { /* noop */ }
+        kick(); return
+      }
+    }
     const r = canvas.getBoundingClientRect()
     const { x, y } = toWorld(ev.clientX - r.left, ev.clientY - r.top)
     const id = dragId; dragId = null

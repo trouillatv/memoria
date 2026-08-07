@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { CanonicalLink } from '@/lib/db/canonical-subject-life'
 import { createForceGraphEngine } from '@/components/graph/force-graph-engine'
-import type { EdgeRef, FrameInfo } from '@/components/graph/force-graph-engine'
+import type { ForceGraphEngine, EdgeRef, FrameInfo } from '@/components/graph/force-graph-engine'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -48,9 +48,11 @@ interface CanvasProps {
 }
 
 function GraphCanvas({ nodes, edges, textLines, currentId, currentLabel, siteId }: CanvasProps) {
-  const canvasRef   = useRef<HTMLCanvasElement>(null)
-  const wrapRef     = useRef<HTMLDivElement>(null)
-  const router      = useRouter()
+  const canvasRef     = useRef<HTMLCanvasElement>(null)
+  const wrapRef       = useRef<HTMLDivElement>(null)
+  const engineRef     = useRef<ForceGraphEngine | null>(null)
+  const navigatingRef = useRef<string | null>(null)
+  const router        = useRouter()
   const [showText, setShowText] = useState(false)
 
   useEffect(() => {
@@ -146,6 +148,13 @@ function GraphCanvas({ nodes, edges, textLines, currentId, currentLabel, siteId 
           const curr = node.isCurrent
           const r    = curr ? R_CURRENT : R_NEIGHBOR
 
+          // Halo si navigation en cours
+          if (navigatingRef.current === id) {
+            ctx.beginPath(); ctx.arc(p.x, p.y, r + 5, 0, 2 * Math.PI)
+            ctx.fillStyle = dark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.5)'
+            ctx.fill()
+          }
+
           ctx.beginPath()
           ctx.arc(p.x, p.y, r, 0, 2 * Math.PI)
           ctx.fillStyle = curr ? fillCurr : fillNeigh
@@ -184,14 +193,37 @@ function GraphCanvas({ nodes, edges, textLines, currentId, currentLabel, siteId 
       features:  { pin: false, dblClick: false, edgeTap: false },
 
       onTapNode(id) {
-        if (id !== currentId) {
-          router.push(`/m/site/${siteId}/sujets/${id}`)
-        }
+        if (id === currentId || navigatingRef.current) return
+        navigatingRef.current = id
+        engine.redraw()
+        setTimeout(() => router.push(`/m/site/${siteId}/sujets/${id}`), 220)
       },
     })
 
+    engineRef.current = engine
     engine.kick(800)
-    return () => engine.destroy()
+
+    // Auto-fit après stabilisation : garantit que tous les nœuds sont visibles
+    const fitTimer = setTimeout(() => {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+      for (const id of nodeIds) {
+        const p = engine.P[id]; if (!p) continue
+        const r = (id === currentId ? R_CURRENT : R_NEIGHBOR) + 5
+        minX = Math.min(minX, p.x - r); maxX = Math.max(maxX, p.x + r)
+        minY = Math.min(minY, p.y - r); maxY = Math.max(maxY, p.y + r)
+      }
+      if (!isFinite(minX)) return
+      const { W, H } = engine.size()
+      const pad = 14
+      const gW = maxX - minX + pad * 2, gH = maxY - minY + pad * 2
+      const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
+      const k = Math.min(W / gW, H / gH, 1.5)
+      const ck = Math.max(0.75, Math.min(1.8, k))
+      engine.view.k = ck; engine.view.tx = W / 2 - cx * ck; engine.view.ty = H / 2 - cy * ck
+      engine.redraw()
+    }, 900)
+
+    return () => { engine.destroy(); engineRef.current = null; clearTimeout(fitTimer) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
