@@ -95,7 +95,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
 
   const { id } = await params
   const { tab: rawTab, person: personId, action: actionId, decision: decisionId, memtab: rawMemtab } = await searchParams
-  const memtab: MemoireSubTab = rawMemtab === 'confirmer' ? 'confirmer' : 'pourquoi'
+  const memtab: MemoireSubTab = rawMemtab === 'confirmer' ? 'confirmer' : rawMemtab === 'synthese' ? 'synthese' : 'pourquoi'
   const tab: ChantierViewKey = resolveSiteTab(rawTab)
 
   // ── ÉTAPE 1 « Réactivité perçue » ──────────────────────────────────────────

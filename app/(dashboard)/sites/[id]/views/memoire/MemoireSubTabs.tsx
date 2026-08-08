@@ -9,7 +9,7 @@ import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
-export type MemoireSubTab = 'pourquoi' | 'confirmer'
+export type MemoireSubTab = 'pourquoi' | 'confirmer' | 'synthese'
 
 export function MemoireSubTabs({ active, toConfirmCount }: { active: MemoireSubTab; toConfirmCount: number }) {
   const pathname = usePathname()
@@ -30,9 +30,9 @@ export function MemoireSubTabs({ active, toConfirmCount }: { active: MemoireSubT
       )}
     </Link>
   )
-  // Sélecteur segmenté (pas une 2e barre d'onglets complète) : deux choix lisibles.
   return (
     <div className="mb-4 inline-flex gap-1 rounded-xl border bg-card p-1">
+      {item('synthese', 'Récit')}
       {item('pourquoi', 'Pourquoi ?')}
       {item('confirmer', 'À confirmer', toConfirmCount)}
     </div>

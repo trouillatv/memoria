@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Suspense } from 'react'
 import { getMemoryReview } from '@/lib/knowledge/memory-review'
 import { getSiteCausalThreads } from '@/lib/knowledge/causal-threads'
 import { buildSiteMemorySignals, type MemorySignal } from '@/lib/db/site-memory-signals'
@@ -9,6 +10,7 @@ import { SiteMemoryQuery } from '../../SiteMemoryQuery'
 import { MemoireSubTabs, type MemoireSubTab } from './MemoireSubTabs'
 import { MemoireConfirmer } from './MemoireConfirmer'
 import { MemoireCausale } from './MemoireCausale'
+import { SiteSynthesisSection, SiteSynthesisSkeleton } from './SiteSynthesisSection'
 
 // Extrait de page.tsx pour être monté par DEUX routes : l'onglet historique
 // (`?tab=memoire`) et la route segmentée du prototype (`/sites/<id>/memoire`).
@@ -40,7 +42,16 @@ export async function MemoireView({
   )
 
   let content: ReactNode
-  if (memtab === 'confirmer') {
+  if (memtab === 'synthese') {
+    content = (
+      <div className="space-y-4">
+        {searchBlock}
+        <Suspense fallback={<SiteSynthesisSkeleton />}>
+          <SiteSynthesisSection siteId={siteId} />
+        </Suspense>
+      </div>
+    )
+  } else if (memtab === 'confirmer') {
     // Signaux et équipes ne servent QU'ICI : « Pourquoi ? » ne les paie plus.
     const [subjects, signals, teams] = await Promise.all([
       listSubjectsBySite(siteId).catch(() => []),
