@@ -113,6 +113,63 @@ const LINK_LABELS: Record<string, { out: string; in: string }> = {
   relates_to: { out: 'est associé à', in: 'est associé à' },
 }
 
+const LINK_PRIORITY: Record<string, number> = {
+  requires: 1, enables: 2, causes: 3, validates: 4, replaces: 5, relates_to: 6,
+}
+
+const WHY_VERB: Record<string, { out: string; in: string }> = {
+  requires:   { out: 'Dépend de',        in: 'Requis par' },
+  enables:    { out: 'Permet',           in: 'Rendu possible par' },
+  causes:     { out: 'Déclenche',        in: 'Déclenché par' },
+  validates:  { out: 'Valide',           in: 'Validé par' },
+  replaces:   { out: 'Remplace',         in: 'Remplacé par' },
+  relates_to: { out: 'Lié à',           in: 'Lié à' },
+}
+
+function WhyThisSubjectSection({ links, siteId }: { links: CanonicalLink[]; siteId: string }) {
+  const confirmed = links
+    .filter((l) => l.status === 'confirmed')
+    .sort((a, b) => {
+      const pa = LINK_PRIORITY[a.linkType] ?? 99
+      const pb = LINK_PRIORITY[b.linkType] ?? 99
+      if (pa !== pb) return pa - pb
+      return a.direction === 'outgoing' ? -1 : 1
+    })
+  if (confirmed.length === 0) return null
+  const visible = confirmed.slice(0, 4)
+  const rest = confirmed.length - 4
+
+  return (
+    <section className="rounded-[18px] border bg-card px-5 py-4">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+        Pourquoi ce sujet compte
+      </h2>
+      <ul className="space-y-1.5">
+        {visible.map((l) => {
+          const verb = WHY_VERB[l.linkType]?.[l.direction === 'outgoing' ? 'out' : 'in'] ?? l.linkType
+          const targetLabel = l.direction === 'outgoing' ? l.toLabel : l.fromLabel
+          const targetCsId  = l.direction === 'outgoing' ? l.toCanonicalSubjectId : l.fromCanonicalSubjectId
+          return (
+            <li key={l.id} className="flex items-baseline gap-2 text-sm">
+              <span className="shrink-0 w-36 text-xs text-muted-foreground">{verb}</span>
+              {targetCsId ? (
+                <Link href={`/sites/${siteId}/historique/sujets/${targetCsId}`} className="font-medium hover:underline leading-snug">
+                  {targetLabel}
+                </Link>
+              ) : (
+                <span className="font-medium leading-snug">{targetLabel}</span>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+      {rest > 0 && (
+        <p className="mt-2 text-xs text-muted-foreground">+{rest} autre{rest > 1 ? 's' : ''}</p>
+      )}
+    </section>
+  )
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function frDate(iso: string): string {
@@ -683,6 +740,9 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
             </p>
           )}
         </section>
+
+        {/* Pourquoi ce sujet compte */}
+        <WhyThisSubjectSection links={life.links} siteId={siteId} />
 
         {/* Ligne de vie horizontale */}
         {life.occurrences.length > 0 && (

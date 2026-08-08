@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import React, { Suspense } from 'react'
 import Link from 'next/link'
-import { AlertCircle, ArrowLeft, Building2, FileText, Link2, MapPin, User, Users } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Building2, FileText, MapPin, User, Users } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
@@ -16,6 +16,65 @@ export const dynamic = 'force-dynamic'
 
 interface PageProps {
   params: Promise<{ siteId: string; canonicalSubjectId: string }>
+}
+
+// ── Link priority for "Pourquoi ce sujet compte" ─────────────────────────────
+
+const LINK_PRIORITY: Record<string, number> = {
+  requires: 1, enables: 2, causes: 3, validates: 4, replaces: 5, relates_to: 6,
+}
+
+const WHY_VERB: Record<string, { out: string; in: string }> = {
+  requires:   { out: 'Dépend de',        in: 'Requis par' },
+  enables:    { out: 'Permet',           in: 'Rendu possible par' },
+  causes:     { out: 'Déclenche',        in: 'Déclenché par' },
+  validates:  { out: 'Valide',           in: 'Validé par' },
+  replaces:   { out: 'Remplace',         in: 'Remplacé par' },
+  relates_to: { out: 'Lié à',           in: 'Lié à' },
+}
+
+function WhyThisSubjectSection({ links, siteId }: { links: CanonicalLink[]; siteId: string }) {
+  const confirmed = links
+    .filter((l) => l.status === 'confirmed')
+    .sort((a, b) => {
+      const pa = LINK_PRIORITY[a.linkType] ?? 99
+      const pb = LINK_PRIORITY[b.linkType] ?? 99
+      if (pa !== pb) return pa - pb
+      return a.direction === 'outgoing' ? -1 : 1
+    })
+  if (confirmed.length === 0) return null
+  const visible = confirmed.slice(0, 4)
+  const rest = confirmed.length - 4
+
+  return (
+    <section className="rounded-2xl border bg-card px-4 py-3 shadow-sm">
+      <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Pourquoi ce sujet compte
+      </h2>
+      <ul className="space-y-1.5">
+        {visible.map((l) => {
+          const verb = WHY_VERB[l.linkType]?.[l.direction === 'outgoing' ? 'out' : 'in'] ?? l.linkType
+          const targetLabel = l.direction === 'outgoing' ? l.toLabel : l.fromLabel
+          const targetCsId  = l.direction === 'outgoing' ? l.toCanonicalSubjectId : l.fromCanonicalSubjectId
+          return (
+            <li key={l.id} className="flex items-baseline gap-1.5 text-[13px]">
+              <span className="shrink-0 text-[11px] text-muted-foreground w-28">{verb}</span>
+              {targetCsId ? (
+                <Link href={`/m/site/${siteId}/sujets/${targetCsId}`} className="font-medium hover:underline leading-snug">
+                  {targetLabel}
+                </Link>
+              ) : (
+                <span className="font-medium leading-snug">{targetLabel}</span>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+      {rest > 0 && (
+        <p className="mt-1.5 text-[11px] text-muted-foreground">+{rest} autre{rest > 1 ? 's' : ''}</p>
+      )}
+    </section>
+  )
 }
 
 // ── Display constants ─────────────────────────────────────────────────────────
@@ -92,57 +151,6 @@ function frDateShort(iso: string): string {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-
-function ConfirmedRelationsSection({
-  links,
-  siteId,
-  csLabel,
-}: {
-  links: CanonicalLink[]
-  siteId: string
-  csLabel: string
-}) {
-  const confirmed = links.filter((l) => l.status === 'confirmed')
-  if (confirmed.length === 0) return null
-
-  return (
-    <section>
-      <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-        <Link2 className="h-3 w-3" />
-        Relations ({confirmed.length})
-      </h2>
-      <ul className="space-y-1.5">
-        {confirmed.map((l) => {
-          const cfg = LINK_LABELS[l.linkType]
-          const verb = l.direction === 'outgoing' ? cfg?.out : cfg?.in
-          const targetLabel = l.direction === 'outgoing' ? l.toLabel : l.fromLabel
-          const targetCsId = l.direction === 'outgoing' ? l.toCanonicalSubjectId : l.fromCanonicalSubjectId
-          return (
-            <li key={l.id} className="rounded-xl border bg-card px-3 py-2.5">
-              <p className="text-[11px] text-muted-foreground">
-                <span className="font-medium text-foreground">{csLabel}</span>{' '}
-                <span>{verb}</span>
-              </p>
-              {targetCsId ? (
-                <Link
-                  href={`/m/site/${siteId}/sujets/${targetCsId}`}
-                  className="mt-0.5 block text-[13px] font-medium hover:underline"
-                >
-                  {targetLabel}
-                </Link>
-              ) : (
-                <p className="mt-0.5 text-[13px] font-medium">{targetLabel}</p>
-              )}
-              {l.justification && (
-                <p className="mt-0.5 text-[11px] text-muted-foreground italic">{l.justification}</p>
-              )}
-            </li>
-          )
-        })}
-      </ul>
-    </section>
-  )
-}
 
 function SourceBadge({ sourceKind }: { sourceKind: SubjectOccurrenceMerged['sourceKind'] }) {
   if (sourceKind === 'field_visit') {
@@ -714,15 +722,10 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
             <SubjectTrajectorySection life={life} />
           </Suspense>
 
-          {/* Autour de ce sujet — mini-graphe des relations confirmées */}
-          <SubjectContextGraph
-            links={life.links}
-            currentSubjectId={canonicalSubjectId}
-            currentSubjectLabel={life.label}
-            siteId={siteId}
-          />
+          {/* 3 — Pourquoi ce sujet compte */}
+          <WhyThisSubjectSection links={life.links} siteId={siteId} />
 
-          {/* 3 — À surveiller (multi-signal) */}
+          {/* 4 — À surveiller (multi-signal) */}
           {watchReasons.length > 0 && (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm">
               <div className="flex items-center gap-2 mb-1.5">
@@ -752,7 +755,7 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
             </section>
           )}
 
-          {/* 4 — Objets actifs */}
+          {/* 5 — Objets actifs */}
           {activeEvents.length > 0 && (
             <section>
               <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -762,8 +765,13 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
             </section>
           )}
 
-          {/* 5 — Relations confirmées */}
-          <ConfirmedRelationsSection links={life.links} siteId={siteId} csLabel={life.label} />
+          {/* Autour de ce sujet — mini-graphe des relations confirmées */}
+          <SubjectContextGraph
+            links={life.links}
+            currentSubjectId={canonicalSubjectId}
+            currentSubjectLabel={life.label}
+            siteId={siteId}
+          />
 
           {/* 6 — Ligne de vie */}
           {realOccs.length > 0 ? (
