@@ -17,6 +17,11 @@ export type SubjectSuggestionRow = {
   resolved_by: string | null
 }
 
+export type SiteSubjectSuggestionRow = SubjectSuggestionRow & {
+  origin_label: string | null  // filename du document source
+  origin_date: string | null   // effective_date du document ou date du run
+}
+
 type RawRow = {
   id: string
   subject_thread_id: string
@@ -108,4 +113,78 @@ export async function listSuggestionsForReview(
       ? (csLabelMap.get(row.candidate_canonical_subject_id) ?? null)
       : null,
   }))
+}
+
+/**
+ * Toutes les suggestions pending au niveau du chantier — vue globale "Sujets à rapprocher".
+ * Triées par confiance DESC puis ancienneté ASC.
+ * Enrichies avec l'origine (nom du document + date).
+ */
+export async function listPendingSuggestionsForSite(siteId: string): Promise<SiteSubjectSuggestionRow[]> {
+  const admin = createAdminClient()
+  const USEFUL_DECISIONS = ['would_suggest', 'would_auto_assign']
+
+  const BASE_SELECT = `
+    id, subject_thread_id, extraction_run_id, proposal_label, proposal_family,
+    candidate_canonical_subject_id, model_confidence, reasoning,
+    shadow_decision, resolution, resolver_version, resolved_at, resolved_by
+  `
+
+  const { data: rows } = await admin
+    .from('canonical_subject_suggestion')
+    .select(BASE_SELECT)
+    .eq('site_id', siteId)
+    .eq('resolution', 'pending')
+    .in('shadow_decision', USEFUL_DECISIONS)
+    .not('candidate_canonical_subject_id', 'is', null)
+    .order('model_confidence', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: true })
+
+  const allRows = (rows as RawRow[] | null) ?? []
+  if (allRows.length === 0) return []
+
+  // Origine : filename + date depuis document_extraction_run → documents
+  const runIds = [...new Set(
+    allRows.map(r => r.extraction_run_id).filter((id): id is string => id !== null)
+  )]
+  type RunMeta = {
+    id: string
+    created_at: string
+    documents: { filename: string; effective_date: string | null } | null
+  }
+  const runMetaMap = new Map<string, { origin_label: string | null; origin_date: string | null }>()
+  if (runIds.length > 0) {
+    const { data: runRows } = await admin
+      .from('document_extraction_run')
+      .select('id, created_at, documents!document_id(filename, effective_date)')
+      .in('id', runIds)
+    for (const r of (runRows as RunMeta[] | null) ?? []) {
+      runMetaMap.set(r.id, {
+        origin_label: r.documents?.filename ?? null,
+        origin_date: r.documents?.effective_date ?? r.created_at.slice(0, 10),
+      })
+    }
+  }
+
+  // Labels canonical_subject
+  const csIds = [...new Set(
+    allRows.map(r => r.candidate_canonical_subject_id).filter((id): id is string => id !== null)
+  )]
+  const csLabelMap = new Map<string, string>()
+  if (csIds.length > 0) {
+    const { data: csRows } = await admin.from('canonical_subject').select('id, label').in('id', csIds)
+    for (const cs of csRows ?? []) csLabelMap.set(cs.id, cs.label)
+  }
+
+  return allRows.map(row => {
+    const meta = row.extraction_run_id ? (runMetaMap.get(row.extraction_run_id) ?? null) : null
+    return {
+      ...row,
+      candidate_label: row.candidate_canonical_subject_id
+        ? (csLabelMap.get(row.candidate_canonical_subject_id) ?? null)
+        : null,
+      origin_label: meta?.origin_label ?? null,
+      origin_date: meta?.origin_date ?? null,
+    }
+  })
 }

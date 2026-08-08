@@ -4,10 +4,12 @@ import { Layers, ChevronRight, ListTodo, ClipboardCheck, FileCheck2, FileText, C
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listSubjectsBySite, searchSiteSubjects, getSubjectLinkageHealth, listSiteSubjectsToWatch, type SubjectSummary, type SubjectCriticality, type SubjectSearchResult, type SubjectLinkageHealth, type LinkageStat, type SubjectWatch } from '@/lib/db/subjects'
+import { listPendingSuggestionsForSite } from '@/lib/db/subject-suggestions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { SubjectCreateForm } from './SubjectCreateForm'
 import { SubjectSearch } from './SubjectSearch'
+import { SiteSubjectSuggestionsSection } from './SiteSubjectSuggestionsSection'
 
 export const dynamic = 'force-dynamic'
 
@@ -201,13 +203,14 @@ export default async function SiteSubjectsPage({ params, searchParams }: { param
   const { q } = await searchParams
   const query = (q ?? '').trim()
   const supabase = createAdminClient()
-  const [identity, subjects, { data: scopeRows }, results, linkage, watch] = await Promise.all([
+  const [identity, subjects, { data: scopeRows }, results, linkage, watch, suggestions] = await Promise.all([
     getSiteIdentity(id),
     listSubjectsBySite(id),
     supabase.from('memory_scopes').select('id, label').eq('site_id', id).is('deleted_at', null).eq('active', true),
     query ? searchSiteSubjects(id, query) : Promise.resolve([] as SubjectSearchResult[]),
     getSubjectLinkageHealth(id),
     listSiteSubjectsToWatch(id, 3),
+    listPendingSuggestionsForSite(id),
   ])
   if (!identity) notFound()
   const scopes = (scopeRows ?? []) as { id: string; label: string }[]
@@ -236,6 +239,8 @@ export default async function SiteSubjectsPage({ params, searchParams }: { param
       </header>
 
       {!query && <ExecutiveSummary siteId={id} watch={watch} />}
+
+      {!query && <SiteSubjectSuggestionsSection initialSuggestions={suggestions} siteId={id} />}
 
       <LinkageHealthPanel h={linkage} />
 
