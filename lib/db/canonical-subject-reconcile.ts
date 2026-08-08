@@ -130,6 +130,25 @@ export async function reconcileProposalToCanonical(params: {
       .update({ canonical_resolution_status: 'needs_resolution', payload: updatedPayload })
       .eq('id', proposalId)
 
+    // Pour les nouvelles propositions terrain avec peu de candidats : tenter
+    // une levée d'ambiguïté LLM → canonical_subject_suggestion pending.
+    // Fire-and-forget — n'attend jamais, ne bloque jamais la réconciliation principale.
+    if (validationStatus === 'observed' && resolution.candidates.length <= 3) {
+      void (async () => {
+        try {
+          const { createVisitAmbiguitySuggestion } = await import('@/lib/documents/visit-proposal-suggestion')
+          await createVisitAmbiguitySuggestion({
+            proposalId,
+            proposalKind,
+            siteId,
+            proposalTitle,
+            proposalBody,
+            candidates: resolution.candidates,
+          })
+        } catch { /* non bloquant */ }
+      })()
+    }
+
     return { status: 'needs_resolution' }
   }
 

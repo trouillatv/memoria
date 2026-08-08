@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { normalizeCanonicalLabel } from '@/lib/db/canonical-subject-resolve'
+import { resolveProposalCanonicalManually } from '@/lib/db/canonical-subject-reconcile'
 
 type ActionResult = { ok: boolean; error?: string }
 
@@ -100,14 +101,37 @@ export async function acceptSuggestionAction(suggestionId: string): Promise<Acti
 
   const admin = createAdminClient()
 
-  // Pré-lecture pour l'apprentissage d'alias — avant le RPC pour éviter un aller-retour
-  // si la suggestion disparaît entre-temps (cas marginal, non bloquant).
   const { data: sugMeta } = await admin
     .from('canonical_subject_suggestion')
-    .select('proposal_label, candidate_canonical_subject_id')
+    .select('proposal_label, candidate_canonical_subject_id, source_proposal_id, resolution')
     .eq('id', suggestionId)
     .maybeSingle()
 
+  if (!sugMeta) return { ok: false, error: 'Suggestion introuvable' }
+
+  const sug = sugMeta as {
+    proposal_label: string
+    candidate_canonical_subject_id: string | null
+    source_proposal_id: string | null
+    resolution: string
+  }
+
+  if (sug.resolution !== 'pending') return { ok: false, error: 'Cette suggestion a déjà été traitée' }
+  if (!sug.candidate_canonical_subject_id) return { ok: false, error: 'Aucun sujet candidat associé' }
+
+  // ── Route visite terrain ──────────────────────────────────────────────────────
+  if (sug.source_proposal_id) {
+    return acceptVisitProposalSuggestion({
+      admin,
+      suggestionId,
+      sourceProposalId: sug.source_proposal_id,
+      candidateCanonicalSubjectId: sug.candidate_canonical_subject_id,
+      proposalLabel: sug.proposal_label,
+      resolvedBy: auth.userId,
+    })
+  }
+
+  // ── Route PV/extraction — RPC transactionnel existant ─────────────────────────
   const { data, error } = await admin.rpc('accept_subject_suggestion', {
     p_suggestion_id: suggestionId,
     p_user_id: auth.userId,
@@ -120,21 +144,84 @@ export async function acceptSuggestionAction(suggestionId: string): Promise<Acti
 
   const result = data as string
   if (result === 'ok') {
-    if (sugMeta) {
-      const { proposal_label, candidate_canonical_subject_id } = sugMeta as {
-        proposal_label: string
-        candidate_canonical_subject_id: string
-      }
-      await learnAliasFromAcceptedSuggestion(admin, candidate_canonical_subject_id, proposal_label)
-        .catch((err) => console.error('[suggestion-actions] alias learning error', err))
-    }
+    await learnAliasFromAcceptedSuggestion(admin, sug.candidate_canonical_subject_id, sug.proposal_label)
+      .catch((err) => console.error('[suggestion-actions] alias learning error', err))
     return { ok: true }
   }
   if (result === 'not_pending') return { ok: false, error: 'Cette suggestion a déjà été traitée' }
-  if (result === 'invalid_candidate') return { ok: false, error: 'Le sujet canonique proposé n\'est plus disponible' }
+  if (result === 'invalid_candidate') return { ok: false, error: "Le sujet canonique proposé n'est plus disponible" }
   if (result === 'invalid_thread') return { ok: false, error: 'Thread introuvable pour ce site' }
   if (result === 'already_used') return { ok: false, error: 'Opération déjà en cours' }
   return { ok: false, error: `Erreur inattendue : ${result}` }
+}
+
+/**
+ * Accepte une suggestion issue d'une proposition terrain (source_proposal_id non null).
+ * - Crée/met à jour l'occurrence canonical (confirmed).
+ * - Marque la proposition comme résolue.
+ * - Marque la suggestion comme acceptée.
+ * - Apprend l'alias.
+ */
+async function acceptVisitProposalSuggestion(params: {
+  admin: ReturnType<typeof createAdminClient>
+  suggestionId: string
+  sourceProposalId: string
+  candidateCanonicalSubjectId: string
+  proposalLabel: string
+  resolvedBy: string
+}): Promise<ActionResult> {
+  const { admin, suggestionId, sourceProposalId, candidateCanonicalSubjectId, proposalLabel, resolvedBy } = params
+
+  const { data: prop } = await admin
+    .from('site_knowledge_proposals')
+    .select('id, title, body, site_id, report_id, created_at')
+    .eq('id', sourceProposalId)
+    .maybeSingle()
+
+  if (!prop) return { ok: false, error: 'Proposition terrain introuvable' }
+
+  const { title, body, site_id, report_id, created_at } = prop as {
+    title: string; body: string | null; site_id: string; report_id: string; created_at: string
+  }
+
+  // Récupère la date de visite depuis le rapport pour effective_date
+  const { data: report } = await admin
+    .from('site_reports')
+    .select('started_at, created_at')
+    .eq('id', report_id)
+    .maybeSingle()
+  const rr = report as { started_at: string | null; created_at: string } | null
+  const visitDate = rr?.started_at ?? rr?.created_at ?? created_at
+
+  await resolveProposalCanonicalManually({
+    proposalId: sourceProposalId,
+    siteId: site_id,
+    canonicalSubjectId: candidateCanonicalSubjectId,
+    reportId: report_id,
+    proposalTitle: title,
+    proposalBody: body ?? null,
+    visitDate,
+    resolvedBy,
+  })
+
+  const { error: updErr } = await admin
+    .from('canonical_subject_suggestion')
+    .update({
+      resolution: 'accepted',
+      resolved_at: new Date().toISOString(),
+      resolved_by: resolvedBy,
+    })
+    .eq('id', suggestionId)
+
+  if (updErr) {
+    console.error('[suggestion-actions] acceptVisitProposalSuggestion update error', updErr)
+    return { ok: false, error: 'Erreur serveur' }
+  }
+
+  await learnAliasFromAcceptedSuggestion(admin, candidateCanonicalSubjectId, proposalLabel)
+    .catch((err) => console.error('[suggestion-actions] alias learning error', err))
+
+  return { ok: true }
 }
 
 // ── Reject (simple UPDATE) ────────────────────────────────────────────────────
@@ -201,16 +288,44 @@ export async function undoSuggestionAction(suggestionId: string): Promise<Action
 
   const { data: sug } = await admin
     .from('canonical_subject_suggestion')
-    .select('resolution')
+    .select('resolution, source_proposal_id')
     .eq('id', suggestionId)
     .maybeSingle()
 
   if (!sug) return { ok: false, error: 'Suggestion introuvable' }
 
-  const resolution = (sug as { resolution: string }).resolution
+  const { resolution, source_proposal_id } = sug as { resolution: string; source_proposal_id: string | null }
 
   if (resolution === 'accepted') {
-    // Undo Accept — RPC transactionnel avec garde d'obsolescence
+    // ── Undo Accept visite terrain ──────────────────────────────────────────────
+    if (source_proposal_id) {
+      // Rétrograder l'occurrence confirmed → observed
+      await admin
+        .from('canonical_subject_occurrence')
+        .update({ validation_status: 'observed' })
+        .eq('source_proposal_id', source_proposal_id)
+        .eq('validation_status', 'confirmed')
+
+      // Remettre la proposition en needs_resolution
+      await admin
+        .from('site_knowledge_proposals')
+        .update({ canonical_subject_id: null, canonical_resolution_status: 'needs_resolution' })
+        .eq('id', source_proposal_id)
+
+      const { error: undoErr } = await admin
+        .from('canonical_subject_suggestion')
+        .update({ resolution: 'pending', resolved_at: null, resolved_by: null })
+        .eq('id', suggestionId)
+
+      if (undoErr) {
+        console.error('[suggestion-actions] undoVisitProposalSuggestion error', undoErr)
+        return { ok: false, error: 'Erreur serveur' }
+      }
+
+      return { ok: true }
+    }
+
+    // ── Undo Accept PV — RPC transactionnel avec garde d'obsolescence ───────────
     const { data, error } = await admin.rpc('undo_accept_subject_suggestion', {
       p_suggestion_id: suggestionId,
       p_user_id: auth.userId,
@@ -226,7 +341,7 @@ export async function undoSuggestionAction(suggestionId: string): Promise<Action
     if (result === 'stale_undo') {
       return { ok: false, error: 'Ce thread a déjà été réassigné par une décision plus récente — annulation refusée' }
     }
-    if (result === 'not_accepted') return { ok: false, error: 'Cette suggestion n\'est pas dans l\'état accepté' }
+    if (result === 'not_accepted') return { ok: false, error: "Cette suggestion n'est pas dans l'état accepté" }
     return { ok: false, error: `Erreur inattendue : ${result}` }
   }
 

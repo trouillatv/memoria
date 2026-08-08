@@ -2,8 +2,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 export type SubjectSuggestionRow = {
   id: string
-  subject_thread_id: string
+  subject_thread_id: string | null  // null pour les suggestions issues de propositions terrain
   extraction_run_id: string | null
+  source_proposal_id: string | null // null pour les suggestions issues de PV/extraction
   proposal_label: string
   proposal_family: string
   candidate_canonical_subject_id: string | null
@@ -24,8 +25,9 @@ export type SiteSubjectSuggestionRow = SubjectSuggestionRow & {
 
 type RawRow = {
   id: string
-  subject_thread_id: string
+  subject_thread_id: string | null
   extraction_run_id: string | null
+  source_proposal_id: string | null
   proposal_label: string
   proposal_family: string
   candidate_canonical_subject_id: string | null
@@ -55,7 +57,7 @@ export async function listSuggestionsForReview(
   const admin = createAdminClient()
 
   const BASE_SELECT = `
-    id, subject_thread_id, extraction_run_id, proposal_label, proposal_family,
+    id, subject_thread_id, extraction_run_id, source_proposal_id, proposal_label, proposal_family,
     candidate_canonical_subject_id, model_confidence, reasoning,
     shadow_decision, resolution, resolver_version, resolved_at, resolved_by
   `
@@ -124,15 +126,15 @@ export async function listPendingSuggestionsForSite(siteId: string): Promise<Sit
   const admin = createAdminClient()
   const USEFUL_DECISIONS = ['would_suggest', 'would_auto_assign']
 
-  const BASE_SELECT = `
-    id, subject_thread_id, extraction_run_id, proposal_label, proposal_family,
+  const VISIT_BASE_SELECT = `
+    id, subject_thread_id, extraction_run_id, source_proposal_id, proposal_label, proposal_family,
     candidate_canonical_subject_id, model_confidence, reasoning,
     shadow_decision, resolution, resolver_version, resolved_at, resolved_by
   `
 
   const { data: rows } = await admin
     .from('canonical_subject_suggestion')
-    .select(BASE_SELECT)
+    .select(VISIT_BASE_SELECT)
     .eq('site_id', siteId)
     .eq('resolution', 'pending')
     .in('shadow_decision', USEFUL_DECISIONS)
@@ -143,7 +145,7 @@ export async function listPendingSuggestionsForSite(siteId: string): Promise<Sit
   const allRows = (rows as RawRow[] | null) ?? []
   if (allRows.length === 0) return []
 
-  // Origine : filename + date depuis document_extraction_run → documents
+  // Origine PV : filename + date depuis document_extraction_run → documents
   const runIds = [...new Set(
     allRows.map(r => r.extraction_run_id).filter((id): id is string => id !== null)
   )]
@@ -166,6 +168,31 @@ export async function listPendingSuggestionsForSite(siteId: string): Promise<Sit
     }
   }
 
+  // Origine terrain : date de visite depuis site_knowledge_proposals → site_reports
+  const visitProposalIds = [...new Set(
+    allRows
+      .filter(r => r.extraction_run_id === null && r.source_proposal_id !== null)
+      .map(r => r.source_proposal_id as string)
+  )]
+  type ProposalReportRow = {
+    id: string
+    site_reports: { started_at: string | null; created_at: string } | null
+  }
+  const visitOriginMap = new Map<string, { origin_label: string | null; origin_date: string | null }>()
+  if (visitProposalIds.length > 0) {
+    const { data: propRows } = await admin
+      .from('site_knowledge_proposals')
+      .select('id, site_reports!report_id(started_at, created_at)')
+      .in('id', visitProposalIds)
+    for (const p of (propRows as ProposalReportRow[] | null) ?? []) {
+      const r = p.site_reports
+      visitOriginMap.set(p.id, {
+        origin_label: 'Visite terrain',
+        origin_date: (r?.started_at ?? r?.created_at ?? null)?.slice(0, 10) ?? null,
+      })
+    }
+  }
+
   // Labels canonical_subject
   const csIds = [...new Set(
     allRows.map(r => r.candidate_canonical_subject_id).filter((id): id is string => id !== null)
@@ -177,7 +204,12 @@ export async function listPendingSuggestionsForSite(siteId: string): Promise<Sit
   }
 
   return allRows.map(row => {
-    const meta = row.extraction_run_id ? (runMetaMap.get(row.extraction_run_id) ?? null) : null
+    let meta: { origin_label: string | null; origin_date: string | null } | null = null
+    if (row.extraction_run_id) {
+      meta = runMetaMap.get(row.extraction_run_id) ?? null
+    } else if (row.source_proposal_id) {
+      meta = visitOriginMap.get(row.source_proposal_id) ?? null
+    }
     return {
       ...row,
       candidate_label: row.candidate_canonical_subject_id
