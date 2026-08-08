@@ -34,6 +34,8 @@ export interface SubjectThreadLink {
   // Champs joints optionnels (pour l'affichage)
   fromLabel?: string | null
   toLabel?: string | null
+  fromCanonicalSubjectId?: string | null
+  toCanonicalSubjectId?: string | null
 }
 
 export const LINK_TYPE_LABELS: Record<SubjectLinkType, { label: string; description: string }> = {
@@ -304,6 +306,65 @@ export async function createCanonicalSubjectLink(input: {
     throw new Error(error.message)
   }
   return 'created'
+}
+
+/**
+ * Retourne tous les liens suggérés pour un chantier, enrichis des labels canonical.
+ * Triés par confidence décroissante.
+ */
+export async function listSuggestedLinksBySite(siteId: string): Promise<SubjectThreadLink[]> {
+  const supabase = createAdminClient()
+
+  const { data: links, error } = await supabase
+    .from('subject_thread_links')
+    .select('*')
+    .eq('site_id', siteId)
+    .eq('status', 'suggested')
+    .order('confidence', { ascending: false, nullsFirst: false })
+
+  if (error) throw new Error(error.message)
+  if (!links?.length) return []
+
+  const rawLinks = links as RawRow[]
+  const threadIds = new Set<string>()
+  for (const l of rawLinks) {
+    threadIds.add(l.from_thread_id)
+    threadIds.add(l.to_thread_id)
+  }
+
+  const { data: stiRows } = await supabase
+    .from('subject_thread_identity')
+    .select('subject_thread_id, canonical_subject_id')
+    .in('subject_thread_id', [...threadIds])
+    .eq('site_id', siteId)
+
+  type StiRow = { subject_thread_id: string; canonical_subject_id: string }
+  const threadToCs = new Map<string, string>(
+    ((stiRows ?? []) as StiRow[]).map((r) => [r.subject_thread_id, r.canonical_subject_id])
+  )
+
+  const csIds = [...new Set([...threadToCs.values()])]
+  const { data: csRows } = await supabase
+    .from('canonical_subject')
+    .select('id, label')
+    .in('id', csIds)
+
+  type CsRow = { id: string; label: string }
+  const csLabels = new Map<string, string>(
+    ((csRows ?? []) as CsRow[]).map((r) => [r.id, r.label])
+  )
+
+  return rawLinks.map((r) => {
+    const fromCsId = threadToCs.get(r.from_thread_id) ?? null
+    const toCsId   = threadToCs.get(r.to_thread_id) ?? null
+    return {
+      ...mapRow(r),
+      fromLabel: fromCsId ? (csLabels.get(fromCsId) ?? null) : null,
+      toLabel:   toCsId   ? (csLabels.get(toCsId)   ?? null) : null,
+      fromCanonicalSubjectId: fromCsId,
+      toCanonicalSubjectId:   toCsId,
+    }
+  })
 }
 
 /**
