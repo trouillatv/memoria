@@ -5,18 +5,67 @@
 // mais le SUJET. L'agent extrait les CONCEPTS centraux de sa réponse → boutons
 // d'exploration → TIMELINE du sujet (l'histoire), filtre par type secondaire.
 
-import { useState, useTransition } from 'react'
-import { Sparkles, Send, Loader2, Lightbulb, ArrowRight, ExternalLink, Compass, X, Clock } from 'lucide-react'
-import { askSiteMemoryAgentAction, getSubjectMemoryTimelineAction, type SiteMemoryAnswer, type SiteMemorySource, type SiteMemoryTimelineItem } from './actions'
+import { useState, useEffect, useTransition } from 'react'
+import { Sparkles, Send, Loader2, Lightbulb, ArrowRight, ExternalLink, Compass, X, Clock, ChevronDown, ChevronUp } from 'lucide-react'
+import { askSiteMemoryAgentAction, getSubjectMemoryTimelineAction, getSiteContextualSuggestionsAction, type SiteMemoryAnswer, type SiteMemorySource, type SiteMemoryTimelineItem } from './actions'
 
-const SUGGESTIONS = [
-  'Résume-moi ce chantier.',
-  'Qu’est-ce qui bloque sur ce chantier ?',
-  'Quelles actions sont encore ouvertes ?',
-  'Quelles décisions ont été prises récemment ?',
-  'Qu’est-ce qui a changé depuis la dernière réunion ?',
-  'Prépare un point chantier pour demain.',
+// ── Panneau étendu : 5 catégories × 4 questions ──────────────────────────────
+
+const QUESTION_CATEGORIES = [
+  {
+    label: 'Situation',
+    questions: [
+      "Qu'est-ce qui mérite mon attention ?",
+      "Où en est le chantier ?",
+      "Qu'est-ce qui bloque ce chantier ?",
+      "Quelles sont les priorités ?",
+    ],
+  },
+  {
+    label: 'Préparer ma visite',
+    questions: [
+      "Que dois-je vérifier lors de ma prochaine visite ?",
+      "Quelles actions sont en retard ?",
+      "Quelles réserves sont encore ouvertes ?",
+      "Quels sujets n'ont pas évolué depuis plusieurs semaines ?",
+    ],
+  },
+  {
+    label: 'Responsabilités',
+    questions: [
+      "Qui intervient sur ce chantier ?",
+      "Qui est l'interlocuteur principal ?",
+      "Quelle entreprise s'occupe de la charpente ?",
+      "Quelles actions sont sans responsable ?",
+    ],
+  },
+  {
+    label: 'Dépendances',
+    questions: [
+      "De quoi dépend la réception ?",
+      "Quels sujets sont liés entre eux ?",
+      "Y a-t-il des blocages entre sujets ?",
+      "Quelles relations sont confirmées ?",
+    ],
+  },
+  {
+    label: 'Historique & preuves',
+    questions: [
+      "Que disait le PV de la dernière réunion ?",
+      "Quelles dimensions sont prévues au CCTP ?",
+      "Montre-moi ce qui a été écrit sur la ventilation.",
+      "Donne-moi un extrait du compte-rendu.",
+    ],
+  },
 ]
+
+const DEFAULT_COMPACT_SUGGESTIONS = [
+  "Qu'est-ce qui mérite mon attention ?",
+  "Qu'est-ce qui bloque ce chantier ?",
+  "Où en est le chantier ?",
+]
+
+// ── Utilitaires ───────────────────────────────────────────────────────────────
 
 const SRC_LABEL: Record<string, string> = {
   anomaly: 'Anomalie', site_note: 'Note', intervention: 'Intervention', photo: 'Photo',
@@ -54,6 +103,8 @@ function SourceCard({ s }: { s: SiteMemorySource }) {
   return s.href ? <a href={s.href} className="block transition hover:border-foreground/30">{inner}</a> : inner
 }
 
+// ── Composant principal ───────────────────────────────────────────────────────
+
 export function SiteMemoryChat({ siteId }: { siteId: string }) {
   const [q, setQ] = useState('')
   const [askedQ, setAskedQ] = useState('')
@@ -63,15 +114,23 @@ export function SiteMemoryChat({ siteId }: { siteId: string }) {
   const [error, setError] = useState<string | null>(null)
   const [mock, setMock] = useState(false)
   const [pending, start] = useTransition()
+  // Panneau étendu de découverte
+  const [expanded, setExpanded] = useState(false)
+  // Suggestions contextuelles issues des données réelles du chantier
+  const [contextualSuggestions, setContextualSuggestions] = useState<string[]>([])
   // Timeline d'un sujet (navigation).
   const [tl, setTl] = useState<{ subject: string | null; concept: string; items: SiteMemoryTimelineItem[] } | null>(null)
   const [tlFilter, setTlFilter] = useState<string | null>(null)
   const [tlLoading, startTl] = useTransition()
 
+  useEffect(() => {
+    getSiteContextualSuggestionsAction(siteId).then(setContextualSuggestions).catch(() => {})
+  }, [siteId])
+
   function ask(question: string) {
     const qq = question.trim()
     if (qq.length < 3) return
-    setError(null); setAskedQ(qq); setQ(qq); setTl(null); setTlFilter(null)
+    setError(null); setAskedQ(qq); setQ(qq); setTl(null); setTlFilter(null); setExpanded(false)
     start(async () => {
       const r = await askSiteMemoryAgentAction(siteId, qq)
       if (r.ok) { setAnswer(r.answer); setSources(r.sources); setConfidence(r.confidence); setMock(r.mock) }
@@ -92,6 +151,8 @@ export function SiteMemoryChat({ siteId }: { siteId: string }) {
   const tlKinds = tl ? Array.from(new Set(tl.items.map((i) => i.kind))) : []
   const tlVisible = tl ? tl.items.filter((i) => !tlFilter || i.kind === tlFilter) : []
 
+  const compactSuggestions = contextualSuggestions.length > 0 ? contextualSuggestions : DEFAULT_COMPACT_SUGGESTIONS
+
   return (
     <section className="space-y-3 rounded-2xl border bg-card p-4">
       <div className="flex items-center gap-2">
@@ -99,14 +160,51 @@ export function SiteMemoryChat({ siteId }: { siteId: string }) {
         <h2 className="text-sm font-semibold">Interroger la mémoire de ce chantier</h2>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        {SUGGESTIONS.map((s) => (
-          <button key={s} type="button" disabled={pending} onClick={() => ask(s)}
-            className="rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40 disabled:opacity-50">
-            {s}
-          </button>
-        ))}
+      {/* Suggestions compactes + bouton découverte */}
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-1.5">
+          {compactSuggestions.map((s) => (
+            <button key={s} type="button" disabled={pending} onClick={() => ask(s)}
+              className="rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40 disabled:opacity-50">
+              {s}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="inline-flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800"
+        >
+          {expanded
+            ? <><ChevronUp className="h-3.5 w-3.5" /> Fermer</>
+            : <><ChevronDown className="h-3.5 w-3.5" /> Voir ce que je peux demander</>
+          }
+        </button>
       </div>
+
+      {/* Panneau étendu : 5 catégories */}
+      {expanded && (
+        <div className="rounded-xl border bg-muted/30 p-3 space-y-3">
+          {QUESTION_CATEGORIES.map((cat) => (
+            <div key={cat.label}>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{cat.label}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {cat.questions.map((qq) => (
+                  <button
+                    key={qq}
+                    type="button"
+                    disabled={pending}
+                    onClick={() => ask(qq)}
+                    className="rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40 disabled:opacity-50"
+                  >
+                    {qq}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <form onSubmit={(e) => { e.preventDefault(); ask(q) }} className="flex items-center gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Poser une question sur ce chantier…"

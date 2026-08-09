@@ -51,6 +51,8 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
   const [resolvedSubjectIds, setResolvedIds]  = useState<string[]>([])
   // UUID stable de session — regroupe les échanges d'une conversation côté télémétrie
   const [conversationId]                      = useState<string>(() => crypto.randomUUID())
+  // Question originale qui a déclenché la dernière clarification — préservée pour le replay
+  const pendingQuestionRef                    = useRef<string | null>(null)
   // Plan de prochaine visite — chargé au montage, rafraîchi après ajout
   const [planItems, setPlanItems]             = useState<PlanItemSummary[]>([])
   const bottomRef                             = useRef<HTMLDivElement>(null)
@@ -96,6 +98,12 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
         conversationId,
         ...(selectedCandidateId ? { selectedCandidateId } : {}),
       })
+
+      // Mémoriser la question originale si une clarification est demandée
+      // pour la rejouer intacte quand l'utilisateur sélectionne un candidat.
+      if (result.kind === 'clarification') {
+        pendingQuestionRef.current = question
+      }
 
       setMessages((prev) => {
         const withoutThinking = prev.filter((m) => m.kind !== 'thinking')
@@ -178,10 +186,13 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
     }
   }
 
-  // Sélection d'un candidat après clarification — bypasse la résolution lexicale
+  // Sélection d'un candidat après clarification — rejoue la question originale avec le sujet résolu.
+  // La question originale est préservée dans pendingQuestionRef pour éviter le fallback « Parle-moi de X ».
   function selectCandidate(candidate: CopilotFreeCandidate) {
+    const originalQuestion = pendingQuestionRef.current ?? `Parle-moi de ${candidate.label}`
+    pendingQuestionRef.current = null
     setResolvedIds((prev) => [...prev, candidate.id])
-    send(`Parle-moi de ${candidate.label}`, [candidate.id], candidate.id)
+    send(originalQuestion, [candidate.id], candidate.id)
   }
 
   async function removeItem(id: string) {

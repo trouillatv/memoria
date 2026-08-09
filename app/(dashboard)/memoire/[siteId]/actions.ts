@@ -50,6 +50,14 @@ const SYSTEM_STRUCTURED = [
   "• observed : signal non confirmé, formuler avec prudence (« semble », « indique »).",
   "• rejected : absent du contexte (jamais inclus).",
   "",
+  "DISTINCTIONS SÉMANTIQUES OBLIGATOIRES :",
+  "• stagnant ≠ bloquant : un sujet stagnant ralentit ; n'employer 'bloquant' que si [BLOCAGES ACTIFS] contient des entrées.",
+  "• Si [BLOCAGES ACTIFS : 0], répondre explicitement qu'il n'y a pas de blocage enregistré ; ne pas inférer de blocage depuis la stagnation ou les réserves.",
+  "• signalé ≠ urgent : urgency=medium ou low ne justifie pas le mot « urgent » ni « critique ».",
+  "• participant ≠ responsable : un intervenant n'est « responsable » que si cela est explicite dans [INTERVENANTS] ; ne pas déduire une responsabilité d'une simple présence.",
+  "• cooccurrence ≠ dépendance : deux sujets ne sont « dépendants » que si [RELATIONS CONFIRMÉES] l'indique ; ne pas inférer de lien depuis une simple proximité thématique.",
+  "• conclusion supplémentaire interdite : n'ajouter « nécessite une action rapide » ou équivalent que si une action en retard ou une urgence explicite figure dans le contexte.",
+  "",
   "INTERDITS :",
   "• inventer un fait absent du contexte.",
   "• transformer une responsabilité en 'blocage' sans preuve.",
@@ -157,6 +165,8 @@ function renderContextForLLM(ctx: SiteIntelligenceContext, route: IntentRoute): 
       for (const b of blocagesActifs) {
         lines.push(`  - ${b.title} (${b.blocageId}) depuis ${b.dateStart} — ${b.type}`)
       }
+    } else {
+      lines.push(`• Blocages actifs : 0`)
     }
   }
 
@@ -187,10 +197,14 @@ function renderContextForLLM(ctx: SiteIntelligenceContext, route: IntentRoute): 
     lines.push(`\n[DERNIER PASSAGE] ${lastVisit}`)
   }
 
-  if (ctx.blockages && ctx.blockages.active.length > 0) {
-    lines.push(`\n[BLOCAGES ACTIFS : ${ctx.blockages.activeCount}]`)
-    for (const b of ctx.blockages.active) {
-      lines.push(`• ${b.title} (${b.blocageId}) depuis ${b.dateStart} — ${b.type}`)
+  if (ctx.blockages) {
+    if (ctx.blockages.active.length > 0) {
+      lines.push(`\n[BLOCAGES ACTIFS : ${ctx.blockages.activeCount}]`)
+      for (const b of ctx.blockages.active) {
+        lines.push(`• ${b.title} (${b.blocageId}) depuis ${b.dateStart} — ${b.type}`)
+      }
+    } else {
+      lines.push(`\n[BLOCAGES ACTIFS : 0 — aucun blocage enregistré sur ce chantier]`)
     }
   }
 
@@ -269,6 +283,32 @@ export async function getSubjectMemoryTimelineAction(
     .filter((i) => i.date)
     .sort((a, b) => (a.date < b.date ? -1 : 1))
   return { ok: true, subjectName: null, items }
+}
+
+// ── Suggestions contextuelles ─────────────────────────────────────────────────
+// Génère 3 questions depuis les items d'attention réels du chantier.
+// Utilisé par SiteMemoryChat pour personnaliser les chips d'accueil.
+
+export async function getSiteContextualSuggestionsAction(siteId: string): Promise<string[]> {
+  const user = await getCurrentUserWithProfile()
+  if (!user || (user.role !== 'admin' && user.role !== 'manager')) return []
+  if (!z.string().uuid().safeParse(siteId).success) return []
+
+  try {
+    const ctx = await buildSiteIntelligenceContext(siteId, {
+      attention: true,
+      maxAttentionItems: 5,
+    })
+    const topItems = (ctx.attention?.items ?? []).slice(0, 3)
+    if (topItems.length === 0) return []
+
+    return topItems.map((item) => {
+      const label = item.title.length > 55 ? item.title.slice(0, 55) + '…' : item.title
+      return `Où en est "${label}" ?`
+    })
+  } catch {
+    return []
+  }
 }
 
 // ── Action principale ─────────────────────────────────────────────────────────
