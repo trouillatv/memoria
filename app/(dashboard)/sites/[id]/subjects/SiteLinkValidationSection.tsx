@@ -4,9 +4,17 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Network, Check, X } from 'lucide-react'
-import type { SubjectThreadLink } from '@/lib/db/subject-thread-links'
-import { LINK_TYPE_LABELS } from '@/lib/db/subject-thread-links'
+import type { SubjectThreadLink, SubjectLinkType } from '@/lib/db/subject-thread-links'
 import { confirmLinkAction, rejectLinkAction } from './link-validation-actions'
+
+const LINK_TYPE_LABELS: Record<SubjectLinkType, { label: string; description: string }> = {
+  requires:   { label: 'nécessite',     description: "Ce sujet requiert l'autre au préalable" },
+  enables:    { label: 'permet',        description: "Ce sujet rend l'autre possible" },
+  causes:     { label: 'entraîne',      description: "Ce sujet provoque ou déclenche l'autre" },
+  validates:  { label: 'valide',        description: "Ce sujet valide ou qualifie l'autre" },
+  replaces:   { label: 'remplace',      description: "Ce sujet rend l'autre obsolète" },
+  relates_to: { label: 'est associé à', description: 'Lien thématique sans causalité directe' },
+}
 
 type OptimisticStatus = 'confirmed' | 'rejected'
 
