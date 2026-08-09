@@ -85,7 +85,8 @@ const SYSTEM_PROMPT = `Tu es un expert en management de projet de construction e
 On te donne une liste de sujets canoniques extraits d'un chantier (id, libellé, famille métier).
 
 Ta mission : proposer des regroupements thématiques sous forme de canonical_topic.
-Un topic doit refléter une réalité physique ou métier commune du chantier (ex : "Enrobage des conduites d'assainissement", "Essais béton / Plateforme G3", "Signalisation de chantier").
+Un topic doit refléter une famille thématique ou problématique métier commune du chantier (ex : "Enrobage des conduites d'assainissement", "Essais béton / Plateforme G3", "Signalisation de chantier").
+Un topic n'implique PAS que ses sujets sont physiquement identiques — deux ascenseurs distincts peuvent partager le même topic "Ascenseurs" sans être confondus.
 
 Règles strictes :
 - 5 à 12 topics maximum selon le volume (vise la synthèse, pas l'exhaustivité)
