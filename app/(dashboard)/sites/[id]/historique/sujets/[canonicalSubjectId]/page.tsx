@@ -142,7 +142,7 @@ function SubjectIntelligenceCard({
     !!intel.lastMeaningfulChangeAt &&
     intel.lastMeaningfulChangeAt !== lastSeenAt
   const showActor = !!intel.actor
-  const showBlockers = intel.openBlockerCount > 0
+  const showBlockers = intel.openItemCount > 0
 
   if (!showStagnation && !showLastChange && !showActor && !showBlockers) return null
 
@@ -189,11 +189,11 @@ function SubjectIntelligenceCard({
 
       {showBlockers && (
         <div className="flex items-center gap-2 text-sm">
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-orange-500" />
-          <span className="font-medium text-orange-700 dark:text-orange-400">
-            {intel.openBlockerCount} blocage{intel.openBlockerCount > 1 ? 's' : ''} actif{intel.openBlockerCount > 1 ? 's' : ''}
+          <LayoutList className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="font-medium">
+            {intel.openItemCount} objet{intel.openItemCount > 1 ? 's' : ''} encore ouvert{intel.openItemCount > 1 ? 's' : ''}
           </span>
-          <span className="text-xs text-muted-foreground">(réserve{intel.openBlockerCount > 1 ? 's' : ''} / échéance{intel.openBlockerCount > 1 ? 's' : ''})</span>
+          <span className="text-xs text-muted-foreground">(réserve{intel.openItemCount > 1 ? 's' : ''} / échéance{intel.openItemCount > 1 ? 's' : ''})</span>
         </div>
       )}
     </section>

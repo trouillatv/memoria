@@ -17,7 +17,7 @@ export interface CanonicalSubjectIntelligence {
   stagnationDays: number | null
   consecutiveMentionsWithoutChange: number
   actor: SubjectActor | null
-  openBlockerCount: number
+  openItemCount: number
 }
 
 // ── Assembleur ────────────────────────────────────────────────────────────────
@@ -62,8 +62,9 @@ export async function buildCanonicalSubjectIntelligence(
     if (c?.name) actor = { name: c.name as string, role: 'company' }
   }
 
-  // Blocages actifs : réserves ouvertes + échéances non résolues
-  const openBlockerCount = life.materializedEvents.filter((e) => {
+  // Objets encore ouverts : réserves et échéances sans clôture
+  // (pas des "blocages" au sens strict — une réserve ouverte n'empêche pas forcément d'avancer)
+  const openItemCount = life.materializedEvents.filter((e) => {
     if (e.entityType === 'site_reserve')
       return !['lifted', 'done', 'cancelled'].includes(e.status ?? '')
     if (e.entityType === 'site_deadline')
@@ -78,6 +79,6 @@ export async function buildCanonicalSubjectIntelligence(
     stagnationDays: life.stagnationDays,
     consecutiveMentionsWithoutChange: life.consecutiveMentionsWithoutChange,
     actor,
-    openBlockerCount,
+    openItemCount,
   }
 }
