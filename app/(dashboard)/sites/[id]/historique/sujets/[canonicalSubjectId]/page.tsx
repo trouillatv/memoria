@@ -1,10 +1,12 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Calendar, Check, FileText, Link2, LayoutList, Trash2, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Building2, Calendar, Check, FileText, Link2, LayoutList, Trash2, User, X } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getCanonicalSubjectLife, listSubjectsForPicker } from '@/lib/db/canonical-subject-life'
 import type { SubjectOccurrenceMerged, CanonicalLink, MaterializedEvent, MaterializedEntityType, SubjectPickerItem } from '@/lib/db/canonical-subject-life'
+import { buildCanonicalSubjectIntelligence } from '@/lib/knowledge/build-canonical-subject-intelligence'
+import type { CanonicalSubjectIntelligence } from '@/lib/knowledge/build-canonical-subject-intelligence'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
 import { confirmSuggestedLink, rejectSuggestedLink, deleteCanonicalLinkAction } from './link-actions'
@@ -124,6 +126,78 @@ const WHY_VERB: Record<string, { out: string; in: string }> = {
   validates:  { out: 'Valide',           in: 'Validé par' },
   replaces:   { out: 'Remplace',         in: 'Remplacé par' },
   relates_to: { out: 'Lié à',           in: 'Lié à' },
+}
+
+// ── Intelligence proactive ────────────────────────────────────────────────────
+
+function SubjectIntelligenceCard({
+  intel,
+  lastSeenAt,
+}: {
+  intel: CanonicalSubjectIntelligence
+  lastSeenAt: string | null
+}) {
+  const showStagnation = intel.isStagnant
+  const showLastChange =
+    !!intel.lastMeaningfulChangeAt &&
+    intel.lastMeaningfulChangeAt !== lastSeenAt
+  const showActor = !!intel.actor
+  const showBlockers = intel.openBlockerCount > 0
+
+  if (!showStagnation && !showLastChange && !showActor && !showBlockers) return null
+
+  return (
+    <section className="rounded-[18px] border bg-card px-5 py-4 space-y-3">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Ce que MemorIA sait
+      </h2>
+
+      {showStagnation && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-800 dark:bg-amber-950/30">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="min-w-0 text-sm">
+            <p className="font-medium text-amber-900 dark:text-amber-200">
+              Aucune évolution réelle depuis {intel.stagnationDays} jours
+            </p>
+            <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-400">
+              Mentionné {intel.consecutiveMentionsWithoutChange + 1} fois consécutives sans changement
+              {intel.lastMeaningfulChangeAt && ` · dernière évolution réelle le ${frDate(intel.lastMeaningfulChangeAt)}`}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {showLastChange && !showStagnation && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Calendar className="h-3.5 w-3.5 shrink-0" />
+          <span>Dernière évolution réelle :</span>
+          <span className="font-medium text-foreground">{frDate(intel.lastMeaningfulChangeAt!)}</span>
+        </div>
+      )}
+
+      {showActor && (
+        <div className="flex items-center gap-2 text-sm">
+          {intel.actor!.role === 'person'
+            ? <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            : <Building2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+          <span className="font-medium">{intel.actor!.name}</span>
+          <span className="text-xs text-muted-foreground">
+            {intel.actor!.role === 'person' ? '— personne identifiée' : '— entreprise intervenante'}
+          </span>
+        </div>
+      )}
+
+      {showBlockers && (
+        <div className="flex items-center gap-2 text-sm">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-orange-500" />
+          <span className="font-medium text-orange-700 dark:text-orange-400">
+            {intel.openBlockerCount} blocage{intel.openBlockerCount > 1 ? 's' : ''} actif{intel.openBlockerCount > 1 ? 's' : ''}
+          </span>
+          <span className="text-xs text-muted-foreground">(réserve{intel.openBlockerCount > 1 ? 's' : ''} / échéance{intel.openBlockerCount > 1 ? 's' : ''})</span>
+        </div>
+      )}
+    </section>
+  )
 }
 
 function WhyThisSubjectSection({ links, siteId }: { links: CanonicalLink[]; siteId: string }) {
@@ -659,6 +733,8 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
   if (!site) notFound()
   if (!life || life.siteId !== siteId) notFound()
 
+  const intel = await buildCanonicalSubjectIntelligence(canonicalSubjectId, life)
+
   const realOccurrences = life.occurrences.filter((o) => !o.isGap)
   const confirmedLinks = life.links.filter((l) => l.status === 'confirmed')
 
@@ -740,6 +816,9 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
             </p>
           )}
         </section>
+
+        {/* Intelligence proactive */}
+        <SubjectIntelligenceCard intel={intel} lastSeenAt={life.lastSeenAt} />
 
         {/* Pourquoi ce sujet compte */}
         <WhyThisSubjectSection links={life.links} siteId={siteId} />
