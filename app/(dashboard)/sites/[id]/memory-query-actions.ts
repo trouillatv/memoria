@@ -276,23 +276,25 @@ function isGeneralSiteMemoryQuestion(q: string): boolean {
   ].some((token) => value.includes(token))
 }
 
+// Colonnes texte cherchées dans site_reports (titre + corps + transcriptions).
+const REPORT_COLS = ['title', 'text_input', 'transcript_corrected', 'transcript_raw']
+
 async function searchSiteReports(siteId: string, q: string): Promise<SiteMemoryHit[]> {
   const supabase = createAdminClient()
   const general = isGeneralSiteMemoryQuestion(q)
-  let query = supabase
+  // Cherche PAR TERMES INDIVIDUELS (queryTerms) au lieu de la phrase entière.
+  // "PV 008 essais" → ["pv","008","essais"] → ILIKE %pv%, %008%, %essais% (OR entre termes).
+  // Cela évite l'échec systématique quand le document est titré "PV N°008" ou similaire.
+  const terms = queryTerms(q)
+  const scope: 'all' | 'terms' | 'none' = general ? 'all' : terms.length > 0 ? 'terms' : 'none'
+  const base = supabase
     .from('site_reports')
     .select('id, title, text_input, transcript_corrected, transcript_raw, created_at, started_at, ended_at, origin')
     .eq('site_id', siteId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(general ? 8 : 12)
-
-  if (!general) {
-    const pattern = `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`
-    query = query.or(`title.ilike.${pattern},text_input.ilike.${pattern},transcript_corrected.ilike.${pattern},transcript_raw.ilike.${pattern}`)
-  }
-
-  const { data } = await query
+  const { data } = await onCols(base, scope, terms, REPORT_COLS)
   return ((data ?? []) as Array<{
     id: string
     title: string | null
@@ -313,7 +315,7 @@ async function searchSiteReports(siteId: string, q: string): Promise<SiteMemoryH
       snippet: text || (isVisit ? 'Visite enregistrée sur ce chantier.' : 'Réunion enregistrée sur ce chantier.'),
       occurredAt: r.ended_at ?? r.started_at ?? r.created_at,
       similarity: null,
-      keyword: general,
+      keyword: scope !== 'none',
       href: `/sites/${siteId}/reunion/${r.id}`,
     }
   })

@@ -124,10 +124,14 @@ export function SiteMemoryChat({ siteId }: { siteId: string }) {
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 dark:bg-violet-950/20 dark:border-violet-800 px-3 py-1 text-[12px] font-medium text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-950/40 transition-colors"
+          className={
+            expanded
+              ? "inline-flex items-center gap-1 rounded-full border border-violet-200/60 bg-transparent px-3 py-1 text-[12px] font-medium text-violet-500 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/20 transition-colors"
+              : "inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 dark:bg-violet-950/20 dark:border-violet-800 px-3 py-1 text-[12px] font-medium text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-950/40 transition-colors"
+          }
         >
           {expanded
-            ? <><ChevronUp className="h-3.5 w-3.5" /> Fermer</>
+            ? <><ChevronUp className="h-3.5 w-3.5" /> Réduire</>
             : <><ChevronDown className="h-3.5 w-3.5" /> Explorer ce que MemorIA sait faire</>
           }
         </button>

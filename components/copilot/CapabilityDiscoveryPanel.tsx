@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Activity, ClipboardCheck, Users, Share2, Search, type LucideIcon } from 'lucide-react'
+import { Activity, ClipboardCheck, Users, Share2, Search, ChevronDown, ChevronUp, type LucideIcon } from 'lucide-react'
 
 interface CapabilityCard {
   id: string
@@ -115,9 +115,21 @@ export function CapabilityDiscoveryPanel({
 
         return (
           <div key={card.id} className="rounded-xl border border-border bg-background p-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <Icon className="h-3.5 w-3.5 text-violet-500 shrink-0" />
-              <span className="text-[13px] font-semibold">{card.name}</span>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Icon className="h-3.5 w-3.5 text-violet-500 shrink-0" />
+                <span className="text-[13px] font-semibold">{card.name}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExpandedCard(isExpanded ? null : card.id)}
+                className="flex items-center gap-0.5 text-[11px] text-violet-500 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 transition-colors shrink-0"
+              >
+                {isExpanded
+                  ? <><ChevronUp className="h-3 w-3" /> Moins</>
+                  : <><ChevronDown className="h-3 w-3" /> Voir plus</>
+                }
+              </button>
             </div>
             <p className="text-[11px] text-muted-foreground leading-snug">{card.description}</p>
             <div className="flex flex-col gap-1">
@@ -132,15 +144,6 @@ export function CapabilityDiscoveryPanel({
                   {q}
                 </button>
               ))}
-            </div>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setExpandedCard(isExpanded ? null : card.id)}
-                className="text-[11px] text-violet-600 dark:text-violet-400 hover:underline"
-              >
-                {isExpanded ? "← Moins" : "Voir plus →"}
-              </button>
             </div>
           </div>
         )
