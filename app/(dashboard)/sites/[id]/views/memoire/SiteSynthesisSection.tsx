@@ -44,31 +44,22 @@ export async function SiteSynthesisSection({ siteId }: { siteId: string }) {
 
       {story.keyFindings.length > 0 && (
         <ul className="mt-3.5 space-y-2 border-t pt-3.5">
-          {story.keyFindings.map((f, i) => {
-            // Libellé du lien selon la nature de la traçabilité
-            const linkLabel = f.subjectId
-              ? 'Voir le sujet →'
-              : f.linkId
-                ? 'Voir la relation →'
-                : null
-
-            return (
-              <li key={i} className="flex items-start gap-2 text-sm">
-                <span className="mt-[5px] shrink-0 h-1.5 w-1.5 rounded-full bg-foreground/30" />
-                <span className="leading-snug text-foreground/80">
-                  {f.text}
-                  {f.resolvedSubjectId && linkLabel && (
-                    <Link
-                      href={`/sites/${siteId}/historique/sujets/${f.resolvedSubjectId}`}
-                      className="ml-2 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                    >
-                      {linkLabel}
-                    </Link>
-                  )}
-                </span>
-              </li>
-            )
-          })}
+          {story.keyFindings.map((f, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm">
+              <span className="mt-[5px] shrink-0 h-1.5 w-1.5 rounded-full bg-foreground/30" />
+              <span className="leading-snug text-foreground/80">
+                {f.text}
+                {f.resolvedHref && f.resolvedLabel && (
+                  <Link
+                    href={f.resolvedHref}
+                    className="ml-2 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                  >
+                    {f.resolvedLabel}
+                  </Link>
+                )}
+              </span>
+            </li>
+          ))}
         </ul>
       )}
 
