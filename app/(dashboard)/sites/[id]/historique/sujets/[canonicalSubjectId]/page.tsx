@@ -154,7 +154,9 @@ function SubjectIntelligenceCard({
     !!intel.lastMeaningfulChangeAt &&
     intel.lastMeaningfulChangeAt !== lastSeenAt
   const showActor = !!intel.actor
-  const showBlockers = intel.openItemCount > 0
+  const abo = intel.activeBusinessObjects
+  const totalOpen = abo ? abo.actions + abo.reserves + abo.deadlines : 0
+  const showBlockers = totalOpen > 0
 
   if (!showStagnation && !showLastChange && !showActor && !showBlockers) return null
 
@@ -230,20 +232,23 @@ function SubjectIntelligenceCard({
         </div>
       )}
 
-      {showBlockers && (
+      {showBlockers && abo && (
         <div className="flex items-start gap-2 text-sm">
           <LayoutList className="h-3.5 w-3.5 shrink-0 text-muted-foreground mt-0.5" />
           <div className="flex flex-col gap-0.5">
-            <a
-              href="#objets-metier"
-              className="font-medium hover:underline underline-offset-2"
-            >
-              {intel.openItemCount} objet{intel.openItemCount > 1 ? 's' : ''} encore ouvert{intel.openItemCount > 1 ? 's' : ''}
-              <span className="font-normal text-muted-foreground ml-1">(réserve{intel.openItemCount > 1 ? 's' : ''} / échéance{intel.openItemCount > 1 ? 's' : ''})</span>
+            <a href="#objets-metier" className="font-medium hover:underline underline-offset-2">
+              {totalOpen} objet{totalOpen > 1 ? 's' : ''} encore ouvert{totalOpen > 1 ? 's' : ''}
             </a>
-            {intel.openItemOccurrenceCount > intel.openItemCount && (
+            <span className="text-xs text-muted-foreground">
+              {[
+                abo.actions > 0   ? `${abo.actions} action${abo.actions > 1 ? 's' : ''}`     : null,
+                abo.reserves > 0  ? `${abo.reserves} réserve${abo.reserves > 1 ? 's' : ''}`   : null,
+                abo.deadlines > 0 ? `${abo.deadlines} échéance${abo.deadlines > 1 ? 's' : ''}` : null,
+              ].filter(Boolean).join(' · ')}
+            </span>
+            {abo.occurrenceCount > totalOpen && (
               <span className="text-xs text-muted-foreground">
-                {intel.openItemOccurrenceCount} occurrence{intel.openItemOccurrenceCount > 1 ? 's' : ''} dans les PV
+                {abo.occurrenceCount} occurrence{abo.occurrenceCount > 1 ? 's' : ''} dans les PV
               </span>
             )}
           </div>

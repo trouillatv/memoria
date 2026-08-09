@@ -21,10 +21,17 @@ export interface CanonicalSubjectIntelligence {
   /** Ancre HTML vers la première occurrence stagnante (juste après la dernière évolution réelle). */
   firstStagnantOccurrenceAnchor: string | null
   actor: SubjectActor | null
-  /** Nombre d'identités métier canoniques ouvertes (CBO distincts, ou entity_id si non encore mappé). */
+  /** Nombre d'identités métier canoniques ouvertes — réserves + échéances uniquement (périmètre historique). */
   openItemCount: number
-  /** Nombre total d'enregistrements ouverts (occurrences documentaires). Vaut openItemCount si aucun CBO. */
+  /** Nombre total d'enregistrements ouverts — réserves + échéances (occurrences documentaires). */
   openItemOccurrenceCount: number
+  /** Ventilation par type : actions / réserves / échéances, CBO-aware. Null si aucun objet ouvert. */
+  activeBusinessObjects: {
+    actions: number
+    reserves: number
+    deadlines: number
+    occurrenceCount: number
+  } | null
 }
 
 // ── Assembleur ────────────────────────────────────────────────────────────────
@@ -69,21 +76,30 @@ export async function buildCanonicalSubjectIntelligence(
     if (c?.name) actor = { name: c.name as string, role: 'company' }
   }
 
-  // Objets encore ouverts — compteur hybride CBO/entity
-  // openItemCount       = identités métier canoniques distinctes (ce qui est affiché comme "X réserves")
-  // openItemOccurrenceCount = total d'enregistrements (pour afficher "Y occurrences dans les PV")
-  const openEvents = life.materializedEvents.filter((e) => {
-    if (e.entityType === 'site_reserve')
-      return !['lifted', 'done', 'cancelled'].includes(e.status ?? '')
-    if (e.entityType === 'site_deadline')
-      return !['done', 'cancelled', 'superseded'].includes(e.status ?? '')
-    return false
-  })
-  const openItemOccurrenceCount = openEvents.length
+  // Open events par type — une seule requête CBO pour les trois
+  const openActions = life.materializedEvents.filter(
+    (e) => e.entityType === 'site_action' &&
+      !['done', 'cancelled', 'superseded', 'rejected'].includes(e.status ?? ''),
+  )
+  const openReserves = life.materializedEvents.filter(
+    (e) => e.entityType === 'site_reserve' &&
+      !['lifted', 'done', 'cancelled'].includes(e.status ?? ''),
+  )
+  const openDeadlines = life.materializedEvents.filter(
+    (e) => e.entityType === 'site_deadline' &&
+      !['done', 'cancelled', 'superseded'].includes(e.status ?? ''),
+  )
 
-  let openItemCount = openItemOccurrenceCount
-  if (openEvents.length > 0) {
-    const entityIds = openEvents.map((e) => e.entityId)
+  // Périmètre historique backward-compat (réserves + échéances uniquement)
+  const openItemOccurrenceCount = openReserves.length + openDeadlines.length
+
+  let actionsCount = openActions.length
+  let reservesCount = openReserves.length
+  let deadlinesCount = openDeadlines.length
+
+  const allOpenEvents = [...openActions, ...openReserves, ...openDeadlines]
+  if (allOpenEvents.length > 0) {
+    const entityIds = allOpenEvents.map((e) => e.entityId)
     const { data: cboMembers } = await sb
       .from('canonical_business_object_member')
       .select('member_entity_id, canonical_business_object_id')
@@ -92,15 +108,28 @@ export async function buildCanonicalSubjectIntelligence(
     const memberMap = new Map(
       (cboMembers ?? []).map((m) => [m.member_entity_id, m.canonical_business_object_id]),
     )
-    const cboIds = new Set<string>()
-    let unmapped = 0
-    for (const e of openEvents) {
-      const cboId = memberMap.get(e.entityId)
-      if (cboId) cboIds.add(cboId)
-      else unmapped++
+
+    const cboAwareCount = (events: Array<{ entityId: string }>): number => {
+      const cboIds = new Set<string>()
+      let unmapped = 0
+      for (const e of events) {
+        const cboId = memberMap.get(e.entityId)
+        if (cboId) cboIds.add(cboId)
+        else unmapped++
+      }
+      return cboIds.size + unmapped
     }
-    openItemCount = cboIds.size + unmapped
+
+    actionsCount = cboAwareCount(openActions)
+    reservesCount = cboAwareCount(openReserves)
+    deadlinesCount = cboAwareCount(openDeadlines)
   }
+
+  const openItemCount = reservesCount + deadlinesCount
+  const totalOpen = actionsCount + reservesCount + deadlinesCount
+  const activeBusinessObjects = totalOpen > 0
+    ? { actions: actionsCount, reserves: reservesCount, deadlines: deadlinesCount, occurrenceCount: allOpenEvents.length }
+    : null
 
   // Ancres vers le fil métier — indices dans life.occurrences (correspond aux id="occ-{i}" de la page)
   let lastMeaningfulOccurrenceAnchor: string | null = null
@@ -132,5 +161,6 @@ export async function buildCanonicalSubjectIntelligence(
     actor,
     openItemCount,
     openItemOccurrenceCount,
+    activeBusinessObjects,
   }
 }
