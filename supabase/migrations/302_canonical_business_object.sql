@@ -54,8 +54,8 @@ CREATE POLICY "org members can view canonical_business_object"
   USING (
     site_id IN (
       SELECT s.id FROM public.sites s
-      JOIN public.organization_members om ON om.organization_id = s.organization_id
-      WHERE om.user_id = auth.uid()
+      JOIN public.organization_memberships om ON om.organization_id = s.organization_id
+      WHERE om.user_id = auth.uid() AND om.status = 'active'
     )
   );
 
@@ -65,8 +65,8 @@ CREATE POLICY "org members can view canonical_business_object_member"
     canonical_business_object_id IN (
       SELECT cbo.id FROM public.canonical_business_object cbo
       JOIN public.sites s ON s.id = cbo.site_id
-      JOIN public.organization_members om ON om.organization_id = s.organization_id
-      WHERE om.user_id = auth.uid()
+      JOIN public.organization_memberships om ON om.organization_id = s.organization_id
+      WHERE om.user_id = auth.uid() AND om.status = 'active'
     )
   );
 

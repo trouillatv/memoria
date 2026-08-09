@@ -182,7 +182,7 @@ async function backfillEnrobage() {
     await createCBO({
       siteId: SITE_COMPOSTAGE,
       objectType: 'site_reserve',
-      label: 'Largeur de tranchée d'assainissement non conforme',
+      label: "Largeur de tranchee d'assainissement non conforme",
       canonicalSubjectId: CS_ENROB,
       members: cboA.map((e) => ({ entityId: e.entityId, entityType: 'site_reserve' })),
     })
@@ -191,7 +191,7 @@ async function backfillEnrobage() {
     await createCBO({
       siteId: SITE_COMPOSTAGE,
       objectType: 'site_reserve',
-      label: 'Épaisseurs d'enrobage sur les conduites d'assainissement non conforme',
+      label: "Epaisseurs d'enrobage sur les conduites d'assainissement non conforme",
       canonicalSubjectId: CS_ENROB,
       members: cboB.map((e) => ({ entityId: e.entityId, entityType: 'site_reserve' })),
     })
