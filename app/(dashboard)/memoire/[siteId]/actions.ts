@@ -215,6 +215,29 @@ function renderContextForLLM(ctx: SiteIntelligenceContext, route: IntentRoute): 
   return lines.join('\n')
 }
 
+// ── Helpers Route C ───────────────────────────────────────────────────────────
+// Pour les questions documentaires portant sur un PV numéroté, extraire une
+// requête focalisée ("PV 008 essais") plutôt que d'envoyer la question complète
+// ("Que disait exactement le PV 008 sur les essais ?") au moteur de retrieval.
+// Améliore le recall sans modifier la sémantique de la recherche.
+
+function extractDocumentSearchQuery(question: string): string {
+  const pvMatch = question.match(/\bpv\s*0*(\d+)\b/i)
+  if (pvMatch) {
+    const num = String(Number(pvMatch[1])).padStart(3, '0')
+    const keywords = question
+      .toLowerCase()
+      .replace(/\bque?\s+disait\b|\bqu['']a dit\b|\bmontre[-\s]?moi\b|\bque dit le?\b|\bdonne[-\s]?moi\b|\bextrait\b|\bexactement\b|\bce qui\b|\bd['']apres\b/g, '')
+      .replace(/\bpv\s*0*\d+\b/gi, '')
+      .replace(/[?!.,;:«»""]/g, '')
+      .replace(/\b(le|la|les|du|de|des|un|une|sur|dans|et|ou|en|au|aux|ce|cet|cette|ces|son|leur)\b/g, '')
+      .trim()
+      .replace(/\s+/g, ' ')
+    return keywords.length > 2 ? `PV ${num} ${keywords}` : `PV ${num}`
+  }
+  return question
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function hrefFor(h: SiteMemoryHit, siteId: string): string {
@@ -337,10 +360,13 @@ export async function askSiteMemoryAgentAction(
   // ── Récupération parallèle ──────────────────────────────────────────────────
   // Route C : retrieval + contexte minimal en parallèle
   // Route A/B : contexte structuré complet, retrieval lancé en parallèle uniquement pour C
+  // Pour Route C, on extrait une requête ciblée (ex: "PV 008 essais") pour améliorer le recall.
+  const searchQuery = route === 'C' ? extractDocumentSearchQuery(q) : q
+
   const [ctx, searchResult] = await Promise.all([
     buildSiteIntelligenceContext(siteId, ctxOptions).catch(() => null),
     useRetrieval
-      ? searchSiteMemory(siteId, q).catch(() => ({ ok: false as const, error: 'search' }))
+      ? searchSiteMemory(siteId, searchQuery).catch(() => ({ ok: false as const, error: 'search' }))
       : Promise.resolve({ ok: true as const, hits: [] as SiteMemoryHit[], summary: null }),
   ])
 
@@ -370,6 +396,10 @@ export async function askSiteMemoryAgentAction(
     sourceCount: hits.length,
     dataGaps: ctx.meta.dataGaps.length,
     question: q.slice(0, 60),
+    ...(route === 'C' ? {
+      searchQuery: searchQuery.slice(0, 80),
+      hitTypes: hits.map((h) => h.type),
+    } : {}),
   }))
 
   // ── Construction du message utilisateur ────────────────────────────────────
@@ -409,8 +439,17 @@ export async function askSiteMemoryAgentAction(
             hits.map((h, i) => `[${i + 1}] (${h.type}) ${h.title}${h.snippet ? ' — ' + h.snippet : ''}`.slice(0, 200)).join('\n')
           : ''
 
+        // Fait déterministe : si la question porte sur les blocages et que la dimension est chargée,
+        // injecter la vérité calculée avant la question pour que le LLM ne puisse pas l'ignorer.
+        const BLOCAGE_Q = /\b(bloqu|blocage|bloquant|frein|arrêt|stopp)\b/i
+        const blockageFact = (BLOCAGE_Q.test(q) && ctx.blockages !== undefined)
+          ? (ctx.blockages.activeCount === 0
+              ? 'FAIT DÉTERMINISTE (première phrase de la réponse, obligatoire, mot pour mot) : "Aucun blocage actif n\'est enregistré sur ce chantier."\n'
+              : `FAIT DÉTERMINISTE (première phrase de la réponse) : ${ctx.blockages.activeCount} blocage(s) actif(s) enregistré(s) sur ce chantier.\n`)
+          : ''
+
         userMessage = [
-          `Question : ${q}`,
+          blockageFact + `Question : ${q}`,
           '',
           contextText,
           sourceSection,
