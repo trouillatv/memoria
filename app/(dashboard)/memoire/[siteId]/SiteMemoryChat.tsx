@@ -173,10 +173,10 @@ export function SiteMemoryChat({ siteId }: { siteId: string }) {
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="inline-flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800"
+          className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 dark:bg-violet-950/20 dark:border-violet-800 px-3 py-1 text-[12px] font-medium text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-950/40 transition-colors"
         >
           {expanded
-            ? <><ChevronUp className="h-3.5 w-3.5" /> Fermer</>
+            ? <><ChevronUp className="h-3.5 w-3.5" /> Fermer le guide</>
             : <><ChevronDown className="h-3.5 w-3.5" /> Voir ce que je peux demander</>
           }
         </button>
@@ -184,18 +184,18 @@ export function SiteMemoryChat({ siteId }: { siteId: string }) {
 
       {/* Panneau étendu : 5 catégories */}
       {expanded && (
-        <div className="rounded-xl border bg-muted/30 p-3 space-y-3">
+        <div className="rounded-xl border border-violet-100 dark:border-violet-900 bg-violet-50/60 dark:bg-violet-950/10 p-3 space-y-3 max-h-[60vh] overflow-y-auto">
           {QUESTION_CATEGORIES.map((cat) => (
             <div key={cat.label}>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{cat.label}</p>
-              <div className="flex flex-wrap gap-1.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-500 dark:text-violet-400 mb-1.5">{cat.label}</p>
+              <div className="flex flex-col gap-1">
                 {cat.questions.map((qq) => (
                   <button
                     key={qq}
                     type="button"
                     disabled={pending}
                     onClick={() => ask(qq)}
-                    className="rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40 disabled:opacity-50"
+                    className="text-left rounded-lg border bg-background px-3 py-1.5 text-[13px] text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50 transition-colors"
                   >
                     {qq}
                   </button>
