@@ -155,6 +155,10 @@ export interface SubjectMatrixRow {
   canonicalSubjectId: string | null
   /** Une cellule par run (même longueur que SiteSubjectMatrix.runs). null = antérieur à la première occurrence. */
   cells: Array<MatrixCell | null>
+  /** canonical_topic_id si le sujet est classifié (null = sans topic). */
+  topicId: string | null
+  /** Libellé du canonical_topic (null si sans topic). */
+  topicLabel: string | null
 }
 
 export interface SiteSubjectMatrix {
@@ -486,6 +490,8 @@ export async function getSiteSubjectMatrix(siteId: string): Promise<SiteSubjectM
       currentStatus,
       canonicalSubjectId: threadToCanonical.get(threadId) ?? null,
       cells,
+      topicId: null,
+      topicLabel: null,
     })
   }
 
@@ -549,10 +555,40 @@ export async function getSiteSubjectMatrix(siteId: string): Promise<SiteSubjectM
       currentStatus,
       canonicalSubjectId: csId,
       cells: mergedCells,
+      topicId: null,
+      topicLabel: null,
     })
   }
 
   rows = [...mergedRows, ...ungrouped]
+
+  // Attacher les canonical_topic aux lignes canonical
+  const canonicalIdsForTopics = rows
+    .map((r) => r.canonicalSubjectId)
+    .filter((id): id is string => id !== null)
+  if (canonicalIdsForTopics.length > 0) {
+    type TopicLink = {
+      canonical_subject_id: string
+      canonical_topic_id: string
+      canonical_topic: Array<{ id: string; label: string }> | { id: string; label: string } | null
+    }
+    const { data: topicLinks } = await supabase
+      .from('canonical_topic_subject')
+      .select('canonical_subject_id, canonical_topic_id, canonical_topic!canonical_topic_id(id, label)')
+      .in('canonical_subject_id', canonicalIdsForTopics)
+    const topicMap = new Map<string, { id: string; label: string }>()
+    for (const link of ((topicLinks ?? []) as TopicLink[])) {
+      const t = Array.isArray(link.canonical_topic) ? link.canonical_topic[0] : link.canonical_topic
+      if (t) topicMap.set(link.canonical_subject_id, { id: t.id, label: t.label })
+    }
+    for (const row of rows) {
+      if (row.canonicalSubjectId && topicMap.has(row.canonicalSubjectId)) {
+        const t = topicMap.get(row.canonicalSubjectId)!
+        row.topicId = t.id
+        row.topicLabel = t.label
+      }
+    }
+  }
 
   // Sort by most recent active run (desc), then by canonicalLabel
   rows.sort((a, b) => {

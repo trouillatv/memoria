@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { GripVertical } from 'lucide-react'
+import { ChevronDown, ChevronRight, GripVertical } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import type { SiteSubjectMatrix, SubjectMatrixRow, MatrixCell } from '@/lib/documents/pv-history'
@@ -33,6 +33,34 @@ function cellStyle(cell: MatrixCell | null): CellStyle {
   if (t === 'progressé') return { icon: '●', bg: 'bg-blue-50/60 dark:bg-blue-950/20', text: 'text-blue-500 dark:text-blue-400', title: 'En progression' }
   if (t === 'maintenu') return { icon: '●', bg: 'bg-muted/20', text: 'text-muted-foreground', title: 'Inchangé' }
   return { icon: '~', bg: 'bg-muted/30', text: 'text-muted-foreground', title: 'Changement' }
+}
+
+// ── Types et helpers topic ────────────────────────────────────────────────────
+
+interface RowGroup {
+  topicId: string | null
+  topicLabel: string | null
+  rows: SubjectMatrixRow[]
+}
+
+type FlatItem =
+  | { kind: 'topic'; topicId: string; topicLabel: string; rowCount: number; aggregatePvCells: Array<MatrixCell | null>; topicNativeDates: Set<string> }
+  | { kind: 'ungrouped-sep'; count: number }
+  | { kind: 'subject'; row: SubjectMatrixRow }
+
+function aggregateTopicPvCells(rows: SubjectMatrixRow[], runCount: number): Array<MatrixCell | null> {
+  return Array.from({ length: runCount }, (_, i) => {
+    let hasReal = false, hasGap = false
+    for (const row of rows) {
+      const cell = row.cells[i]
+      if (!cell) continue
+      if (!cell.isGap) { hasReal = true; break }
+      hasGap = true
+    }
+    if (hasReal) return { status: null, transition: null, isGap: false, proposalId: null, label: null }
+    if (hasGap) return { status: null, transition: null, isGap: true, proposalId: null, label: null }
+    return null
+  })
 }
 
 // ── Filtres ───────────────────────────────────────────────────────────────────
@@ -97,6 +125,16 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
   const [themeFilter, setThemeFilter] = useState<string>(initialTheme ?? 'all')
   const [hideInfo, setHideInfo] = useState(true)
   const [selectedThread, setSelectedThread] = useState<string | null>(initialThread ?? null)
+  const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set())
+
+  function toggleTopic(topicId: string) {
+    setExpandedTopics((prev) => {
+      const next = new Set(prev)
+      if (next.has(topicId)) next.delete(topicId)
+      else next.add(topicId)
+      return next
+    })
+  }
 
   const headerRef = useRef<HTMLDivElement>(null)
   const labelColRef = useRef<HTMLDivElement>(null)
@@ -177,6 +215,57 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
       }))
       .sort((a, b) => a.label.localeCompare(b.label, 'fr'))
   }, [nativeOccurrences, nativeSubjectLabels, matrixCanonicalIds])
+
+  // Groupement par topic + flat list pour le rendu
+  const grouped = useMemo((): RowGroup[] => {
+    const topicMap = new Map<string, { label: string; rows: SubjectMatrixRow[] }>()
+    const ungrouped: SubjectMatrixRow[] = []
+    for (const row of filtered) {
+      if (row.topicId && row.topicLabel) {
+        const g = topicMap.get(row.topicId) ?? { label: row.topicLabel, rows: [] }
+        g.rows.push(row)
+        topicMap.set(row.topicId, g)
+      } else {
+        ungrouped.push(row)
+      }
+    }
+    const result: RowGroup[] = []
+    for (const [topicId, { label, rows }] of topicMap) {
+      result.push({ topicId, topicLabel: label, rows })
+    }
+    result.sort((a, b) => {
+      const latestA = Math.max(-1, ...a.rows.map(rowLastActiveIndex))
+      const latestB = Math.max(-1, ...b.rows.map(rowLastActiveIndex))
+      if (latestB !== latestA) return latestB - latestA
+      return (a.topicLabel ?? '').localeCompare(b.topicLabel ?? '', 'fr')
+    })
+    if (ungrouped.length > 0) result.push({ topicId: null, topicLabel: null, rows: ungrouped })
+    return result
+  }, [filtered])
+
+  const flatItems = useMemo((): FlatItem[] => {
+    const items: FlatItem[] = []
+    const hasTopics = grouped.some((g) => g.topicId !== null)
+    for (const group of grouped) {
+      if (group.topicId) {
+        const aggCells = aggregateTopicPvCells(group.rows, runs.length)
+        const topicNativeDates = new Set<string>()
+        for (const row of group.rows) {
+          if (row.canonicalSubjectId && nativeOccurrences?.[row.canonicalSubjectId]) {
+            for (const o of nativeOccurrences[row.canonicalSubjectId]) topicNativeDates.add(o.date)
+          }
+        }
+        items.push({ kind: 'topic', topicId: group.topicId, topicLabel: group.topicLabel!, rowCount: group.rows.length, aggregatePvCells: aggCells, topicNativeDates })
+        if (expandedTopics.has(group.topicId)) {
+          for (const row of group.rows) items.push({ kind: 'subject', row })
+        }
+      } else {
+        if (hasTopics) items.push({ kind: 'ungrouped-sep', count: group.rows.length })
+        for (const row of group.rows) items.push({ kind: 'subject', row })
+      }
+    }
+    return items
+  }, [grouped, expandedTopics, runs.length, nativeOccurrences])
 
   // Dates uniques des événements natifs (visites + réunions)
   const nativeDates = useMemo(() => {
@@ -272,7 +361,9 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
         </label>
 
         <span className="ml-auto text-xs text-muted-foreground">
-          {filtered.length} sujet{filtered.length > 1 ? 's' : ''} · {runs.length} PV
+          {filtered.length} sujet{filtered.length > 1 ? 's' : ''}
+          {grouped.some((g) => g.topicId !== null) && ` · ${grouped.filter((g) => g.topicId !== null).length} thème${grouped.filter((g) => g.topicId !== null).length > 1 ? 's' : ''}`}
+          {' · '}{runs.length} PV
           {nativeDates.length > 0 && ` · ${nativeDates.length} événement${nativeDates.length > 1 ? 's' : ''} terrain`}
         </span>
       </div>
@@ -349,56 +440,93 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
         <div className="flex" style={{ maxHeight: '70vh' }}>
           {/* Première colonne fixe */}
           <div ref={labelColRef} className="shrink-0 overflow-y-auto border-r" style={{ width: labelWidth }}>
-            {filtered.map((row) => (
-              <div
-                key={row.subjectThreadId}
-                className={`flex cursor-pointer items-center gap-1.5 border-b px-3 py-2 last:border-b-0 hover:bg-muted/30 ${selectedThread === row.subjectThreadId ? 'bg-muted/50' : ''}`}
-                style={{ height: 40 }}
-                onClick={() => setSelectedThread(row.subjectThreadId === selectedThread ? null : row.subjectThreadId)}
-              >
-                <span className="shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase text-muted-foreground">
-                  {FAMILY_LABELS[row.family] ?? row.family.slice(0, 4)}
-                </span>
-                <Link
-                  href={row.canonicalSubjectId
-                    ? `/sites/${siteId}/historique/sujets/${row.canonicalSubjectId}`
-                    : `/sites/${siteId}/historique/${row.subjectThreadId}`}
-                  className="min-w-0 flex-1 truncate text-xs font-medium hover:underline"
-                  onClick={(e) => e.stopPropagation()}
-                  title={row.canonicalLabel}
+            {flatItems.map((item, idx) => {
+              if (item.kind === 'topic') {
+                return (
+                  <button
+                    key={`topic-${item.topicId}`}
+                    type="button"
+                    className="flex w-full cursor-pointer items-center gap-1.5 border-b px-3 py-2 last:border-b-0 bg-muted/10 hover:bg-muted/20 dark:bg-muted/5"
+                    style={{ height: 40 }}
+                    onClick={() => toggleTopic(item.topicId)}
+                  >
+                    {expandedTopics.has(item.topicId)
+                      ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />}
+                    <span className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground/80" title={item.topicLabel}>
+                      {item.topicLabel}
+                    </span>
+                    <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+                      {item.rowCount}
+                    </span>
+                  </button>
+                )
+              }
+              if (item.kind === 'ungrouped-sep') {
+                return (
+                  <div
+                    key="ungrouped-sep"
+                    className="flex items-center gap-2 border-b border-t bg-muted/5 px-3 last:border-b-0"
+                    style={{ height: 40 }}
+                  >
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Autres sujets ({item.count})
+                    </span>
+                  </div>
+                )
+              }
+              const row = item.row
+              return (
+                <div
+                  key={row.subjectThreadId}
+                  className={`flex cursor-pointer items-center gap-1.5 border-b px-3 py-2 last:border-b-0 hover:bg-muted/30 ${selectedThread === row.subjectThreadId ? 'bg-muted/50' : ''}`}
+                  style={{ height: 40 }}
+                  onClick={() => setSelectedThread(row.subjectThreadId === selectedThread ? null : row.subjectThreadId)}
                 >
-                  {row.canonicalLabel}
-                </Link>
-                {row.canonicalSubjectId && (suggestedCounts?.[row.canonicalSubjectId] ?? 0) > 0 && (
-                  <Link
-                    href={`/sites/${siteId}/historique/sujets/${row.canonicalSubjectId}#relations`}
-                    onClick={(e) => e.stopPropagation()}
-                    title="Suggestions de dépendances à valider"
-                    className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 hover:bg-amber-200 dark:bg-amber-950 dark:text-amber-300"
-                  >
-                    {suggestedCounts![row.canonicalSubjectId]}
-                  </Link>
-                )}
-                {row.canonicalSubjectId && nativeOccurrences?.[row.canonicalSubjectId]?.length ? (
-                  <span
-                    title={`${nativeOccurrences[row.canonicalSubjectId].length} observation${nativeOccurrences[row.canonicalSubjectId].length > 1 ? 's' : ''} terrain`}
-                    className="shrink-0 flex items-center gap-0.5"
-                  >
-                    {nativeOccurrences[row.canonicalSubjectId].slice(0, 3).map((o, i) => (
-                      <span
-                        key={i}
-                        className={o.sourceKind === 'field_visit'
-                          ? 'h-1.5 w-1.5 rounded-full bg-teal-500'
-                          : 'h-1.5 w-1.5 rotate-45 bg-violet-500 inline-block'}
-                      />
-                    ))}
-                    {nativeOccurrences[row.canonicalSubjectId].length > 3 && (
-                      <span className="text-[8px] text-muted-foreground leading-none">+{nativeOccurrences[row.canonicalSubjectId].length - 3}</span>
-                    )}
+                  <span className="shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase text-muted-foreground">
+                    {FAMILY_LABELS[row.family] ?? row.family.slice(0, 4)}
                   </span>
-                ) : null}
-              </div>
-            ))}
+                  <Link
+                    href={row.canonicalSubjectId
+                      ? `/sites/${siteId}/historique/sujets/${row.canonicalSubjectId}`
+                      : `/sites/${siteId}/historique/${row.subjectThreadId}`}
+                    className="min-w-0 flex-1 truncate text-xs font-medium hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                    title={row.canonicalLabel}
+                  >
+                    {row.canonicalLabel}
+                  </Link>
+                  {row.canonicalSubjectId && (suggestedCounts?.[row.canonicalSubjectId] ?? 0) > 0 && (
+                    <Link
+                      href={`/sites/${siteId}/historique/sujets/${row.canonicalSubjectId}#relations`}
+                      onClick={(e) => e.stopPropagation()}
+                      title="Suggestions de dépendances à valider"
+                      className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 hover:bg-amber-200 dark:bg-amber-950 dark:text-amber-300"
+                    >
+                      {suggestedCounts![row.canonicalSubjectId]}
+                    </Link>
+                  )}
+                  {row.canonicalSubjectId && nativeOccurrences?.[row.canonicalSubjectId]?.length ? (
+                    <span
+                      title={`${nativeOccurrences[row.canonicalSubjectId].length} observation${nativeOccurrences[row.canonicalSubjectId].length > 1 ? 's' : ''} terrain`}
+                      className="shrink-0 flex items-center gap-0.5"
+                    >
+                      {nativeOccurrences[row.canonicalSubjectId].slice(0, 3).map((o, i) => (
+                        <span
+                          key={i}
+                          className={o.sourceKind === 'field_visit'
+                            ? 'h-1.5 w-1.5 rounded-full bg-teal-500'
+                            : 'h-1.5 w-1.5 rotate-45 bg-violet-500 inline-block'}
+                        />
+                      ))}
+                      {nativeOccurrences[row.canonicalSubjectId].length > 3 && (
+                        <span className="text-[8px] text-muted-foreground leading-none">+{nativeOccurrences[row.canonicalSubjectId].length - 3}</span>
+                      )}
+                    </span>
+                  ) : null}
+                </div>
+              )
+            })}
           </div>
 
           {/* Cellules — scroll horizontal + vertical */}
@@ -413,61 +541,113 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
             }}
           >
             <div style={{ minWidth: (runs.length + nativeDates.length) * CELL_W }}>
-              {filtered.map((row) => (
-                <div
-                  key={row.subjectThreadId}
-                  className={`flex border-b last:border-b-0 ${selectedThread === row.subjectThreadId ? 'ring-1 ring-inset ring-primary/30' : ''}`}
-                  style={{ height: 40 }}
-                >
-                  {row.cells.map((cell, i) => {
-                    const style = cellStyle(cell)
-                    if (cell === null) {
+              {flatItems.map((item) => {
+                if (item.kind === 'topic') {
+                  return (
+                    <div
+                      key={`topic-${item.topicId}`}
+                      className="flex border-b last:border-b-0 bg-muted/10 dark:bg-muted/5"
+                      style={{ height: 40 }}
+                    >
+                      {item.aggregatePvCells.map((cell, i) => {
+                        if (cell === null) {
+                          return <div key={i} className="shrink-0 border-r last:border-r-0" style={{ width: CELL_W }} />
+                        }
+                        if (cell.isGap) {
+                          return (
+                            <div key={i} className="shrink-0 border-r last:border-r-0 bg-muted/20 flex items-center justify-center" style={{ width: CELL_W }}>
+                              <span className="text-base font-bold text-muted-foreground/30">╌</span>
+                            </div>
+                          )
+                        }
+                        return (
+                          <div key={i} className="shrink-0 border-r last:border-r-0 bg-primary/5 flex items-center justify-center" style={{ width: CELL_W }}>
+                            <span className="text-base font-bold text-primary/40">●</span>
+                          </div>
+                        )
+                      })}
+                      {nativeDates.map((nd) => {
+                        const hasOcc = item.topicNativeDates.has(nd.date)
+                        if (!hasOcc) {
+                          return (
+                            <div key={nd.date} className="shrink-0 border-l-2 border-r border-teal-200/40 dark:border-teal-700/30 bg-teal-50/10 dark:bg-teal-950/10 last:border-r-0" style={{ width: CELL_W }} />
+                          )
+                        }
+                        return (
+                          <div key={nd.date} className="shrink-0 border-l-2 border-r last:border-r-0 border-teal-300/60 dark:border-teal-600/40 bg-teal-50/30 dark:bg-teal-950/20 flex items-center justify-center" style={{ width: CELL_W }}>
+                            <span className="text-sm font-bold text-teal-600/50 dark:text-teal-400/50">▪</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                }
+                if (item.kind === 'ungrouped-sep') {
+                  return (
+                    <div
+                      key="ungrouped-sep"
+                      className="flex border-b border-t bg-muted/5 last:border-b-0"
+                      style={{ height: 40, minWidth: (runs.length + nativeDates.length) * CELL_W }}
+                    />
+                  )
+                }
+                const row = item.row
+                return (
+                  <div
+                    key={row.subjectThreadId}
+                    className={`flex border-b last:border-b-0 ${selectedThread === row.subjectThreadId ? 'ring-1 ring-inset ring-primary/30' : ''}`}
+                    style={{ height: 40 }}
+                  >
+                    {row.cells.map((cell, i) => {
+                      const style = cellStyle(cell)
+                      if (cell === null) {
+                        return (
+                          <div key={i} className="shrink-0 border-r last:border-r-0" style={{ width: CELL_W }} />
+                        )
+                      }
                       return (
-                        <div key={i} className="shrink-0 border-r last:border-r-0" style={{ width: CELL_W }} />
+                        <div
+                          key={i}
+                          className={`shrink-0 border-r last:border-r-0 ${style.bg} flex items-center justify-center`}
+                          style={{ width: CELL_W }}
+                          title={[style.title, cell.label].filter(Boolean).join(' · ')}
+                        >
+                          <span className={`text-base font-bold leading-none ${style.text}`}>{style.icon}</span>
+                        </div>
                       )
-                    }
-                    return (
-                      <div
-                        key={i}
-                        className={`shrink-0 border-r last:border-r-0 ${style.bg} flex items-center justify-center`}
-                        style={{ width: CELL_W }}
-                        title={[style.title, cell.label].filter(Boolean).join(' · ')}
-                      >
-                        <span className={`text-base font-bold leading-none ${style.text}`}>{style.icon}</span>
-                      </div>
-                    )
-                  })}
-                  {nativeDates.map((nd) => {
-                    const rowOccs = row.canonicalSubjectId ? (nativeOccurrences?.[row.canonicalSubjectId] ?? []) : []
-                    const occ = rowOccs.find((o) => o.date === nd.date)
-                    if (!occ) {
+                    })}
+                    {nativeDates.map((nd) => {
+                      const rowOccs = row.canonicalSubjectId ? (nativeOccurrences?.[row.canonicalSubjectId] ?? []) : []
+                      const occ = rowOccs.find((o) => o.date === nd.date)
+                      if (!occ) {
+                        return (
+                          <div key={nd.date} className="shrink-0 border-l-2 border-r border-teal-200/40 dark:border-teal-700/30 bg-teal-50/10 dark:bg-teal-950/10 last:border-r-0" style={{ width: CELL_W }} />
+                        )
+                      }
                       return (
-                        <div key={nd.date} className="shrink-0 border-l-2 border-r border-teal-200/40 dark:border-teal-700/30 bg-teal-50/10 dark:bg-teal-950/10 last:border-r-0" style={{ width: CELL_W }} />
+                        <div
+                          key={nd.date}
+                          className={`shrink-0 border-l-2 border-r last:border-r-0 flex items-center justify-center ${
+                            occ.sourceKind === 'field_visit'
+                              ? 'border-teal-300/60 dark:border-teal-600/40 bg-teal-50 dark:bg-teal-950/40'
+                              : 'border-violet-300/60 dark:border-violet-600/40 bg-violet-50 dark:bg-violet-950/40'
+                          }`}
+                          style={{ width: CELL_W }}
+                          title={occ.sourceKind === 'field_visit' ? 'Visite terrain' : 'Réunion'}
+                        >
+                          <span className={`text-sm font-bold leading-none ${
+                            occ.sourceKind === 'field_visit'
+                              ? 'text-teal-600 dark:text-teal-400'
+                              : 'text-violet-600 dark:text-violet-400'
+                          }`}>
+                            {occ.sourceKind === 'field_visit' ? '✓' : '◇'}
+                          </span>
+                        </div>
                       )
-                    }
-                    return (
-                      <div
-                        key={nd.date}
-                        className={`shrink-0 border-l-2 border-r last:border-r-0 flex items-center justify-center ${
-                          occ.sourceKind === 'field_visit'
-                            ? 'border-teal-300/60 dark:border-teal-600/40 bg-teal-50 dark:bg-teal-950/40'
-                            : 'border-violet-300/60 dark:border-violet-600/40 bg-violet-50 dark:bg-violet-950/40'
-                        }`}
-                        style={{ width: CELL_W }}
-                        title={occ.sourceKind === 'field_visit' ? 'Visite terrain' : 'Réunion'}
-                      >
-                        <span className={`text-sm font-bold leading-none ${
-                          occ.sourceKind === 'field_visit'
-                            ? 'text-teal-600 dark:text-teal-400'
-                            : 'text-violet-600 dark:text-violet-400'
-                        }`}>
-                          {occ.sourceKind === 'field_visit' ? '✓' : '◇'}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              ))}
+                    })}
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>
