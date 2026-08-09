@@ -65,12 +65,12 @@ const STATUS_FR: Record<string, string> = {
 }
 
 const LINK_FR: Record<string, { out: string; in: string }> = {
-  requires:   { out: 'nécessite',       in: 'est requis par' },
-  enables:    { out: 'conditionne',     in: 'est conditionné par' },
-  causes:     { out: 'entraîne',        in: 'est causé par' },
-  validates:  { out: 'valide',          in: 'est validé par' },
-  replaces:   { out: 'remplace',        in: 'est remplacé par' },
-  relates_to: { out: 'est lié à',      in: 'est lié à' },
+  requires:   { out: 'nécessite',             in: 'est requis par' },
+  enables:    { out: 'permet',                in: 'est rendu possible par' },
+  causes:     { out: 'entraîne',              in: 'est causé par' },
+  validates:  { out: 'valide',                in: 'est validé par' },
+  replaces:   { out: 'remplace',              in: 'est remplacé par' },
+  relates_to: { out: 'est lié à',            in: 'est lié à' },
 }
 
 // ── Construction de l'input structuré ────────────────────────────────────────
@@ -78,12 +78,20 @@ const LINK_FR: Record<string, { out: string; in: string }> = {
 function buildInput(
   life: CanonicalSubjectLife,
   intel: CanonicalSubjectIntelligence,
-): { input: Record<string, unknown>; factCount: number } {
+): { input: Record<string, unknown>; factCount: number; validIds: Set<string> } {
   const input: Record<string, unknown> = { sujet: life.label }
+  const validIds = new Set<string>()
   let factCount = 0
 
   if (life.currentStatus) {
     input.statut = { id: 'status', label: STATUS_FR[life.currentStatus] ?? life.currentStatus }
+    validIds.add('status')
+    factCount++
+  }
+
+  if (life.firstSeenAt) {
+    input.premiere_mention = { id: 'first_seen', date: life.firstSeenAt.slice(0, 10) }
+    validIds.add('first_seen')
     factCount++
   }
 
@@ -93,9 +101,11 @@ function buildInput(
       jours: intel.stagnationDays,
       mentions_consecutives: intel.consecutiveMentionsWithoutChange + 1,
     }
+    validIds.add('stagnation')
     factCount++
   } else if (intel.lastMeaningfulChangeAt && intel.lastMeaningfulChangeAt !== life.lastSeenAt) {
     input.evolution_recente = { id: 'recent_change', date: intel.lastMeaningfulChangeAt.slice(0, 10) }
+    validIds.add('recent_change')
     factCount++
   }
 
@@ -104,9 +114,27 @@ function buildInput(
     input.relations = confirmedLinks.map((l) => {
       const verb = LINK_FR[l.linkType]?.[l.direction === 'outgoing' ? 'out' : 'in'] ?? l.linkType
       const target = l.direction === 'outgoing' ? l.toLabel : l.fromLabel
-      return { id: `link-${l.id}`, relation: verb, cible: target }
+      const id = `link-${l.id}`
+      validIds.add(id)
+      return { id, relation: verb, cible: target }
     })
     factCount++
+  }
+
+  if (intel.openItemCount > 0) {
+    const openEvents = life.materializedEvents.filter((e) => {
+      if (e.entityType === 'site_reserve')
+        return !['lifted', 'done', 'cancelled'].includes(e.status ?? '')
+      if (e.entityType === 'site_deadline')
+        return !['done', 'cancelled', 'superseded'].includes(e.status ?? '')
+      return false
+    })
+    if (openEvents.length > 0) {
+      const types = [...new Set(openEvents.map((e) => e.entityType.replace('site_', '')))]
+      input.objets_ouverts = { id: 'open_items', count: openEvents.length, types }
+      validIds.add('open_items')
+      factCount++
+    }
   }
 
   if (intel.actor) {
@@ -115,10 +143,11 @@ function buildInput(
       nom: intel.actor.name,
       role: intel.actor.role === 'company' ? 'entreprise' : 'personne',
     }
+    validIds.add('actor')
     factCount++
   }
 
-  return { input, factCount }
+  return { input, factCount, validIds }
 }
 
 // ── Parsing 3 niveaux (pattern commun aux services IA du projet) ──────────────
@@ -153,7 +182,7 @@ export async function buildSubjectNarrative(
   intel: CanonicalSubjectIntelligence,
   userId: string | null = null,
 ): Promise<SubjectNarrativeResult | null> {
-  const { input, factCount } = buildInput(life, intel)
+  const { input, factCount, validIds } = buildInput(life, intel)
 
   // Pas assez de faits pour justifier une synthèse — le LLM répéterait juste le titre
   if (factCount < 2) return null
@@ -198,7 +227,7 @@ export async function buildSubjectNarrative(
     if (!result?.narrative?.trim()) return null
     return {
       narrative: result.narrative.trim(),
-      usedFactIds: result.usedFactIds ?? [],
+      usedFactIds: (result.usedFactIds ?? []).filter((id) => validIds.has(id)),
       model: 'gemini',
     }
   } catch {
