@@ -78,16 +78,16 @@ async function fetchSubjects(siteId: string) {
   // 4. Sujets canoniques
   const { data: subjects } = await sb
     .from('canonical_subject')
-    .select('id, label, primary_family')
+    .select('id, label')
     .in('id', csIds)
 
-  return (subjects ?? []) as Array<{ id: string; label: string; primary_family: string | null }>
+  return (subjects ?? []) as Array<{ id: string; label: string }>
 }
 
 // ── Gemini classification ─────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `Tu es un expert en management de projet de construction et de suivi de chantier.
-On te donne une liste de sujets canoniques extraits d'un chantier (id, libellé, famille métier).
+On te donne une liste de sujets canoniques extraits d'un chantier (id, libellé).
 
 Ta mission : proposer des regroupements thématiques sous forme de canonical_topic.
 Un topic doit refléter une famille thématique ou problématique métier commune du chantier (ex : "Enrobage des conduites d'assainissement", "Essais béton / Plateforme G3", "Signalisation de chantier").
@@ -101,34 +101,22 @@ Règles strictes :
 - Libellés courts et précis : 4-8 mots maximum
 - Préfère des termes techniques du BTP plutôt que des catégories administratives
 
-Pour chaque group proposé, donne :
+Pour chaque groupe proposé, donne :
 - "label" : libellé synthétique du topic (4-8 mots)
-- "subjectIds" : liste des id membres
-- "confidence" : 0.0 à 1.0 (ta confiance dans ce regroupement)
-- "reasoning" : justification en ≤ 40 mots
+- "indices" : liste des indices (champ "i") des membres
+- "confidence" : 0.0 à 1.0
 
-Réponds UNIQUEMENT en JSON valide :
-{
-  "topics": [
-    {
-      "label": "...",
-      "subjectIds": ["uuid1", "uuid2"],
-      "confidence": 0.85,
-      "reasoning": "..."
-    }
-  ]
-}`
+Réponds UNIQUEMENT en JSON valide, sans aucun autre texte :
+{"topics":[{"label":"...","indices":[0,3,7],"confidence":0.85}]}`
 
 async function classifyWithGemini(
   ai: GoogleGenAI,
-  subjects: Array<{ id: string; label: string; primary_family: string | null }>,
+  subjects: Array<{ id: string; label: string }>,
 ) {
+  // Use short indices instead of UUIDs to minimize output token count
+  const indexToId = subjects.map((s) => s.id)
   const userMsg = JSON.stringify(
-    subjects.map((s) => ({
-      id: s.id,
-      label: s.label,
-      famille: s.primary_family ?? 'unknown',
-    })),
+    subjects.map((s, i) => ({ i, label: s.label })),
     null,
     2,
   )
@@ -140,26 +128,39 @@ async function classifyWithGemini(
     config: {
       systemInstruction: SYSTEM_PROMPT,
       temperature: 0.2,
-      maxOutputTokens: 2000,
+      maxOutputTokens: 65536,
+      responseMimeType: 'application/json',
     },
     contents: [{ role: 'user', parts: [{ text: userMsg }] }],
   })
 
   const text = response.text ?? ''
-  const start = text.indexOf('{')
-  const end = text.lastIndexOf('}')
-  if (start === -1 || end <= start) {
-    console.error('Réponse Gemini non parseable :\n', text.slice(0, 500))
+  if (!text.trim()) {
+    console.error('Réponse Gemini vide')
     return []
   }
 
-  const parsed = JSON.parse(text.slice(start, end + 1))
-  return (parsed.topics ?? []) as Array<{
+  let parsed: { topics?: unknown[] }
+  try {
+    parsed = JSON.parse(text)
+  } catch (e) {
+    console.error('Parse error:', (e as Error).message)
+    console.error('Texte brut (600 chars) :\n', text.slice(0, 600))
+    return []
+  }
+  const rawTopics = (parsed.topics ?? []) as Array<{
     label: string
-    subjectIds: string[]
+    indices: number[]
     confidence: number
-    reasoning: string
   }>
+
+  // Map indices back to UUIDs
+  return rawTopics.map((t) => ({
+    label: t.label,
+    subjectIds: (t.indices ?? []).map((i: number) => indexToId[i]).filter(Boolean),
+    confidence: t.confidence,
+    reasoning: '',
+  }))
 }
 
 // ── Persist ───────────────────────────────────────────────────────────────────
