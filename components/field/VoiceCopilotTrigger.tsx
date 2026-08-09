@@ -14,21 +14,8 @@ interface Props {
 }
 
 export function VoiceCopilotTrigger({ siteId, onTranscriptionReady, disabled, onOpenOrb }: Props) {
-  // Quand onOpenOrb est fourni : bouton simple, toute la logique d'enregistrement
-  // vit dans VoiceOrbOverlay. Le composant n'entre jamais en état recording/transcribing.
-  if (onOpenOrb) {
-    return (
-      <button
-        type="button"
-        onClick={onOpenOrb}
-        disabled={disabled}
-        aria-label="Commande vocale"
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-violet-300 dark:border-violet-700 text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-950/30 disabled:opacity-40 transition-colors"
-      >
-        <Mic className="h-4 w-4" />
-      </button>
-    )
-  }
+  // Hooks déclarés inconditionnellement (règle des hooks React) — le rendu
+  // simplifié pour onOpenOrb intervient après, pas avant.
   const [state, setState] = useState<VoiceState>('idle')
   const [elapsed, setElapsed] = useState(0)
   const [errorMsg, setErrorMsg] = useState('')
@@ -47,6 +34,48 @@ export function VoiceCopilotTrigger({ siteId, onTranscriptionReady, disabled, on
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [state])
+
+  // sendForTranscription déclaré avant startRecording qui l'appelle.
+  const sendForTranscription = useCallback(async (blob: Blob, mimeType: string, durationMs: number) => {
+    try {
+      const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
+      console.log('[Voice] upload_started size:', blob.size, 'type:', mimeType, 'ext:', ext, 'durationMs:', durationMs)
+      const form = new FormData()
+      form.append('audio', blob, `voice.${ext}`)
+      form.append('siteId', siteId)
+
+      const res = await fetch('/api/copilot/transcribe', { method: 'POST', body: form })
+      console.log('[Voice] upload_response status:', res.status)
+
+      if (!res.ok) {
+        const body = await res.text()
+        console.error('[Voice] upload_error body:', body)
+        let code = `HTTP_${res.status}`
+        try { const j = JSON.parse(body); code = j.code ?? code } catch { /* raw body */ }
+        setErrorMsg(`Erreur serveur (${code})`)
+        setState('error')
+        return
+      }
+
+      const data = (await res.json()) as { text?: string; error?: string; code?: string }
+      console.log('[Voice] transcription_text_len:', data.text?.length ?? 0, 'preview:', data.text?.slice(0, 60))
+
+      if (!data.text?.trim()) {
+        console.warn('[Voice] transcription_empty — server returned no text')
+        setErrorMsg("Je n'ai rien entendu — réessayez plus près du téléphone")
+        setState('error')
+        return
+      }
+
+      console.log('[Voice] transcription_ready — calling onTranscriptionReady')
+      setState('idle')
+      onTranscriptionReady(data.text.trim())
+    } catch (err) {
+      console.error('[Voice] send_error:', err)
+      setErrorMsg('Transcription impossible — réessayez')
+      setState('error')
+    }
+  }, [siteId, onTranscriptionReady])
 
   const startRecording = useCallback(async () => {
     if (disabled || state !== 'idle') return
@@ -118,7 +147,7 @@ export function VoiceCopilotTrigger({ siteId, onTranscriptionReady, disabled, on
       setErrorMsg('Microphone non accessible')
       setState('error')
     }
-  }, [disabled, state, siteId])
+  }, [disabled, state, sendForTranscription])
 
   const stopRecording = useCallback(() => {
     console.log('[Voice] stop_requested', { recorderState: recorderRef.current?.state })
@@ -128,51 +157,26 @@ export function VoiceCopilotTrigger({ siteId, onTranscriptionReady, disabled, on
     }
   }, [])
 
-  async function sendForTranscription(blob: Blob, mimeType: string, durationMs: number) {
-    try {
-      const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
-      console.log('[Voice] upload_started size:', blob.size, 'type:', mimeType, 'ext:', ext, 'durationMs:', durationMs)
-      const form = new FormData()
-      form.append('audio', blob, `voice.${ext}`)
-      form.append('siteId', siteId)
-
-      const res = await fetch('/api/copilot/transcribe', { method: 'POST', body: form })
-      console.log('[Voice] upload_response status:', res.status)
-
-      if (!res.ok) {
-        const body = await res.text()
-        console.error('[Voice] upload_error body:', body)
-        let code = `HTTP_${res.status}`
-        try { const j = JSON.parse(body); code = j.code ?? code } catch { /* raw body */ }
-        setErrorMsg(`Erreur serveur (${code})`)
-        setState('error')
-        return
-      }
-
-      const data = (await res.json()) as { text?: string; error?: string; code?: string }
-      console.log('[Voice] transcription_text_len:', data.text?.length ?? 0, 'preview:', data.text?.slice(0, 60))
-
-      if (!data.text?.trim()) {
-        console.warn('[Voice] transcription_empty — server returned no text')
-        setErrorMsg("Je n'ai rien entendu — réessayez plus près du téléphone")
-        setState('error')
-        return
-      }
-
-      console.log('[Voice] transcription_ready — calling onTranscriptionReady')
-      setState('idle')
-      onTranscriptionReady(data.text.trim())
-    } catch (err) {
-      console.error('[Voice] send_error:', err)
-      setErrorMsg('Transcription impossible — réessayez')
-      setState('error')
-    }
-  }
-
   function reset() {
     setState('idle')
     setErrorMsg('')
     setElapsed(0)
+  }
+
+  // Quand onOpenOrb est fourni : bouton simple, toute la logique d'enregistrement
+  // vit dans VoiceOrbOverlay. Le composant n'entre jamais en état recording/transcribing.
+  if (onOpenOrb) {
+    return (
+      <button
+        type="button"
+        onClick={onOpenOrb}
+        disabled={disabled}
+        aria-label="Commande vocale"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-violet-300 dark:border-violet-700 text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-950/30 disabled:opacity-40 transition-colors"
+      >
+        <Mic className="h-4 w-4" />
+      </button>
+    )
   }
 
   // ── recording : indicateur clair + bouton Stop carré ──────────────────────
