@@ -7,6 +7,7 @@ import { getCanonicalSubjectLife, listSubjectsForPicker } from '@/lib/db/canonic
 import type { SubjectOccurrenceMerged, CanonicalLink, MaterializedEvent, MaterializedEntityType, SubjectPickerItem } from '@/lib/db/canonical-subject-life'
 import { buildCanonicalSubjectIntelligence } from '@/lib/knowledge/build-canonical-subject-intelligence'
 import type { CanonicalSubjectIntelligence } from '@/lib/knowledge/build-canonical-subject-intelligence'
+import { buildSubjectNarrative } from '@/services/ai/subject-narrative'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
 import { confirmSuggestedLink, rejectSuggestedLink, deleteCanonicalLinkAction } from './link-actions'
@@ -126,6 +127,17 @@ const WHY_VERB: Record<string, { out: string; in: string }> = {
   validates:  { out: 'Valide',           in: 'Validé par' },
   replaces:   { out: 'Remplace',         in: 'Remplacé par' },
   relates_to: { out: 'Lié à',           in: 'Lié à' },
+}
+
+// ── Synthèse narrative ────────────────────────────────────────────────────────
+
+function SubjectNarrativeSection({ narrative }: { narrative: string | null }) {
+  if (!narrative) return null
+  return (
+    <section className="rounded-[18px] border bg-card px-5 py-4">
+      <p className="text-sm leading-relaxed">{narrative}</p>
+    </section>
+  )
 }
 
 // ── Intelligence proactive ────────────────────────────────────────────────────
@@ -768,6 +780,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
   if (!life || life.siteId !== siteId) notFound()
 
   const intel = await buildCanonicalSubjectIntelligence(canonicalSubjectId, life)
+  const narrativeResult = await buildSubjectNarrative(life, intel, user.id).catch(() => null)
 
   const realOccurrences = life.occurrences.filter((o) => !o.isGap)
   const confirmedLinks = life.links.filter((l) => l.status === 'confirmed')
@@ -850,6 +863,9 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
             </p>
           )}
         </section>
+
+        {/* Synthèse narrative */}
+        <SubjectNarrativeSection narrative={narrativeResult?.narrative ?? null} />
 
         {/* Intelligence proactive */}
         <SubjectIntelligenceCard intel={intel} lastSeenAt={life.lastSeenAt} />
