@@ -46,35 +46,40 @@ function sep(label: string) {
 // ── Fetch canonical subjects ──────────────────────────────────────────────────
 
 async function fetchSubjects(siteId: string) {
-  // Subjects liés au site via subject_thread → canonical_subject
-  const { data: threads } = await sb
-    .from('subject_thread_identity')
-    .select('canonical_subject_id')
-
-  const csIds = [...new Set((threads ?? []).map((t) => t.canonical_subject_id).filter(Boolean))]
-  if (!csIds.length) return []
-
-  // Filtrer par site : on passe par les proposals
-  const { data: proposals } = await sb
-    .from('document_extraction_proposal')
-    .select('subject_thread_id, target_site_id, proposal_family')
+  // 1. Runs canoniques du site (même logique que getSiteSubjectMatrix)
+  const { data: runs } = await sb
+    .from('document_extraction_run')
+    .select('id')
     .eq('target_site_id', siteId)
+    .eq('is_canonical', true)
+
+  const runIds = (runs ?? []).map((r: { id: string }) => r.id)
+  if (!runIds.length) return []
+
+  // 2. Threads présents dans ces runs
+  const { data: props } = await sb
+    .from('document_extraction_proposal')
+    .select('subject_thread_id')
+    .in('extraction_run_id', runIds)
     .not('subject_thread_id', 'is', null)
 
-  const threadIdsForSite = new Set((proposals ?? []).map((p) => p.subject_thread_id))
+  const threadIds = [...new Set((props ?? []).map((p: { subject_thread_id: string }) => p.subject_thread_id))]
+  if (!threadIds.length) return []
 
-  const { data: stiForSite } = await sb
+  // 3. canonical_subject_ids pour ces threads
+  const { data: sti } = await sb
     .from('subject_thread_identity')
     .select('canonical_subject_id')
-    .in('subject_thread_id', [...threadIdsForSite])
+    .in('subject_thread_id', threadIds)
 
-  const csIdsForSite = [...new Set((stiForSite ?? []).map((r) => r.canonical_subject_id).filter(Boolean))]
-  if (!csIdsForSite.length) return []
+  const csIds = [...new Set((sti ?? []).map((r: { canonical_subject_id: string }) => r.canonical_subject_id).filter(Boolean))]
+  if (!csIds.length) return []
 
+  // 4. Sujets canoniques
   const { data: subjects } = await sb
     .from('canonical_subject')
     .select('id, label, primary_family')
-    .in('id', csIdsForSite)
+    .in('id', csIds)
 
   return (subjects ?? []) as Array<{ id: string; label: string; primary_family: string | null }>
 }
