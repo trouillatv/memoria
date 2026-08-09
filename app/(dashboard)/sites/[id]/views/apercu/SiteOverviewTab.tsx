@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import type { ComponentType, ReactNode } from 'react'
+import { Suspense, type ComponentType, type ReactNode } from 'react'
 import {
   AlertTriangle,
   Calendar,
@@ -17,14 +17,13 @@ import {
   emptySiteOverview,
   type ActionUrgency,
   type SiteOverview,
-  type PvAttentionItem,
-  type PvVerifyItem,
   type PvLastDelta,
 } from '@/lib/knowledge/site-overview'
 import { sourceLabels, pendingLabel, visitDateLabel, durationLabel } from '@/lib/chantier/overview-labels'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { SiteBriefButton } from '../../SiteBriefButton'
 import { CopilotBlock } from './CopilotBlock'
+import { SiteAttentionSection, SiteAttentionSkeleton } from './SiteAttentionSection'
 
 // ── ONGLET APERÇU ────────────────────────────────────────────────────────────
 // DOCTRINE (test : tests/lib/site-overview-tab.doctrine.test.ts) : cet onglet ne
@@ -39,7 +38,7 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
   const overview = await getSiteOverview(siteId).catch(() => emptySiteOverview(siteId))
   const {
     actions, nextEvent, reserves, blockages, activity, synthesis,
-    pvAttention, pvLastDelta, pvToVerify,
+    pvLastDelta,
   } = overview
   // La synthèse de la dernière visite est l'endroit où l'on confirme les propositions.
   const synthesisHref = activity.lastVisit
@@ -81,7 +80,7 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
             icon={Clock}
             tone={actions.summary.overdue > 0 ? 'red' : 'green'}
             value={actions.summary.overdue}
-            title="En retard"
+            title="Actions en retard"
             detail={actions.summary.overdue > 0 ? `${actions.summary.overdue} action${actions.summary.overdue > 1 ? 's' : ''} à traiter en priorité` : 'Aucune action en retard'}
           />
         </div>
@@ -173,58 +172,16 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
         </section>
       )}
 
-      {/* ── SIGNAUX PV CANONIQUES ─────────────────────────────────────────────
-          Trois blocs qui répondent aux trois questions d'un conducteur qui arrive :
-          Qu'est-ce qui me pose problème ? / Qu'est-ce qui a changé ? / Où regarder ?
-          Source : moteurs Histoire (computeWatchlist, computeDeltaSummary, getImportantSubjects).
-          JAMAIS de nouveau scoring opaque — on compose les moteurs stabilisés. */}
-
       {/* Depuis le dernier PV — signal compact, pas une liste */}
       {pvLastDelta && (
         <PvDeltaBanner delta={pvLastDelta} siteId={siteId} />
       )}
 
-      <div className="grid items-start gap-4 xl:grid-cols-3">
-        {/* Ce qui demande votre attention — sujets canoniques classés par sévérité */}
-        <OverviewPanel title="Ce qui demande votre attention">
-          {pvAttention.length > 0 ? (
-            <ul className="space-y-3">
-              {pvAttention.map((item, i) => (
-                <li key={item.canonicalSubjectId ?? `watch-${i}`}>
-                  <OverviewRow
-                    href={item.href}
-                    icon={pvAttentionIcon(item.reason)}
-                    tone={pvAttentionTone(item.reason)}
-                    title={item.label}
-                    detail={pvAttentionDetail(item)}
-                  />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <EmptyLine>Aucun sujet canonique ne signale de problème.</EmptyLine>
-          )}
-        </OverviewPanel>
-
-        {/* À vérifier — sujets importants classés par score, avec signaux forts */}
-        <OverviewPanel title="À vérifier">
-          {pvToVerify.length > 0 ? (
-            <ul className="space-y-2.5">
-              {pvToVerify.map((item) => (
-                <li key={item.canonicalSubjectId}>
-                  <PvVerifyRow item={item} />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <EmptyLine>Aucun sujet canonique à vérifier pour l&apos;instant.</EmptyLine>
-          )}
-          <div className="pt-2">
-            <Link href={`/sites/${siteId}/historique?view=lifelines`} className="text-sm font-medium text-primary hover:underline">
-              Voir tous les sujets
-            </Link>
-          </div>
-        </OverviewPanel>
+      <div className="grid items-start gap-4 xl:grid-cols-2">
+        {/* Ce qui demande votre attention — moteur déterministe unifié */}
+        <Suspense fallback={<SiteAttentionSkeleton />}>
+          <SiteAttentionSection siteId={siteId} />
+        </Suspense>
 
         {/* Que reste-t-il à faire ? — actions métier (distinctes des sujets canoniques) */}
         <OverviewPanel title="Que reste-t-il à faire ?">
@@ -308,7 +265,7 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
   )
 }
 
-// ── Composants des 3 blocs PV ────────────────────────────────────────────────
+// ── Composants PV ────────────────────────────────────────────────────────────
 
 /** Banner compact delta PV — signal uniquement, lien vers Histoire. */
 function PvDeltaBanner({ delta, siteId }: { delta: PvLastDelta; siteId: string }) {
@@ -339,48 +296,6 @@ function PvDeltaBanner({ delta, siteId }: { delta: PvLastDelta; siteId: string }
       </Link>
     </div>
   )
-}
-
-/** Ligne du bloc "À vérifier" avec signaux et badge dépendances. */
-function PvVerifyRow({ item }: { item: PvVerifyItem }) {
-  return (
-    <Link
-      href={item.href}
-      className="flex items-start gap-3 rounded-xl p-1.5 hover:bg-muted/60"
-    >
-      <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-50 dark:bg-sky-950/30">
-        <ChevronRight className="h-4 w-4 text-sky-600 dark:text-sky-300" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium">{item.label}</span>
-        <span className="mt-0.5 block text-xs text-muted-foreground">{item.signals.join(' · ')}</span>
-        {item.pendingLinks > 0 && (
-          <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-            {item.pendingLinks} relation{item.pendingLinks > 1 ? 's' : ''} à valider
-          </span>
-        )}
-      </span>
-    </Link>
-  )
-}
-
-function pvAttentionIcon(reason: PvAttentionItem['reason']) {
-  if (reason === 'non_conforme') return ShieldAlert
-  if (reason === 'aggravé' || reason === 'réouvert') return AlertTriangle
-  return Clock
-}
-
-function pvAttentionTone(reason: PvAttentionItem['reason']): 'green' | 'orange' | 'red' | 'blue' {
-  if (reason === 'non_conforme') return 'red'
-  if (reason === 'aggravé' || reason === 'réouvert') return 'orange'
-  return 'blue'
-}
-
-function pvAttentionDetail(item: PvAttentionItem): string {
-  if (item.reason === 'non_conforme')  return 'Non-conformité signalée'
-  if (item.reason === 'aggravé')       return 'Aggravé au dernier PV'
-  if (item.reason === 'réouvert')      return 'Réouvert au dernier PV'
-  return `Sans évolution depuis ${item.pvCount} PV${item.pvCount > 1 ? 's' : ''}`
 }
 
 /** L'état de la synthèse, dit en clair — jamais un jargon de développeur. */

@@ -74,7 +74,6 @@ import { PlanningWorkspace } from './views/planning/PlanningWorkspace'
 import { getPlanningTimeline } from '@/lib/db/planning-timeline'
 import type { PlanningTimelineEvent } from '@/lib/planning/timeline-contract'
 import { SiteOverviewTab } from './views/apercu/SiteOverviewTab'
-import { SiteAttentionSection, SiteAttentionSkeleton } from './views/apercu/SiteAttentionSection'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -198,11 +197,6 @@ export default async function SitePage({ params, searchParams }: PageProps) {
             changement d'onglet, React garde le contenu précédent le temps de la
             transition — pas d'écran blanc. La clé force une frontière propre par
             onglet : le contenu d'un onglet n'attend jamais celui d'un autre. */}
-        {tab === 'apercu' && (
-          <Suspense fallback={<SiteAttentionSkeleton />}>
-            <SiteAttentionSection siteId={id} />
-          </Suspense>
-        )}
         <Suspense key={tab} fallback={null}>
           {tab === 'apercu' ? (
             <SiteOverviewTab siteId={id} />

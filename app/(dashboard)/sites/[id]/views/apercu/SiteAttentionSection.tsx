@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { AlertTriangle, ArrowRight, Clock, RefreshCw, ShieldAlert, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Clock, RefreshCw, ShieldAlert, TrendingDown, Zap } from 'lucide-react'
 import { deriveSiteAttentionItems, type AttentionSignal, type AttentionUrgency, type SiteAttentionItem } from '@/lib/knowledge/site-attention-items'
 import { cn } from '@/lib/utils'
 
@@ -18,6 +18,7 @@ const SIGNAL_ICON: Record<AttentionSignal, typeof AlertTriangle> = {
   subject_stagnant:  RefreshCw,
   action_overdue:    Clock,
   deadline_near:     Clock,
+  deadline_overdue:  Clock,
   reserve_open:      AlertTriangle,
   relation_blocking: Zap,
   blocage_active:    ShieldAlert,
@@ -25,6 +26,8 @@ const SIGNAL_ICON: Record<AttentionSignal, typeof AlertTriangle> = {
   subject_changed:   RefreshCw,
   proposal_pending:  ArrowRight,
   link_suggested:    ArrowRight,
+  pv_status:         TrendingDown,
+  pv_stagnant:       RefreshCw,
 }
 
 function AttentionItemRow({ item }: { item: SiteAttentionItem }) {
@@ -63,7 +66,7 @@ export async function SiteAttentionSection({ siteId }: { siteId: string }) {
   if (items.length === 0) return null
 
   const top = items.slice(0, 3)
-  const total = items.length
+  const rest = items.length - 3
 
   return (
     <section aria-labelledby="attention-heading">
@@ -72,11 +75,11 @@ export async function SiteAttentionSection({ siteId }: { siteId: string }) {
           id="attention-heading"
           className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
         >
-          À retenir maintenant
+          Ce qui demande votre attention
         </h2>
-        {total > 3 && (
+        {rest > 0 && (
           <span className="text-xs text-muted-foreground">
-            {total - 3} autre{total - 3 > 1 ? 's' : ''} signal{total - 3 > 1 ? 'x' : ''}
+            {rest} autre{rest > 1 ? 's' : ''} point{rest > 1 ? 's' : ''}
           </span>
         )}
       </div>

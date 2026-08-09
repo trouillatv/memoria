@@ -6,8 +6,8 @@
 // qu'un seul item, le plus urgent, même s'il cumule stagnation + action en
 // retard + réserve ouverte.
 //
+// V1.1 — PV signals (pv_status, pv_stagnant) + deadline_overdue ajoutés.
 // Ordre : critical → high → medium → low.
-// V1 cible : fiche chantier, bloc "À retenir maintenant" (3 items max).
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavigableSubjectsForSite } from '@/lib/db/canonical-subject-life'
@@ -15,11 +15,14 @@ import { listConfirmedLinksForSite, listSuggestedLinksBySite } from '@/lib/db/su
 import { listBlocagesBySite } from '@/lib/db/site-blocages'
 import { detectActorCongestion } from '@/lib/db/site-memory-signals'
 import { listPendingSuggestionsForSite } from '@/lib/db/subject-suggestions'
+import { getSiteSubjectMatrix } from '@/lib/documents/pv-history'
+import { computeWatchlist, type WatchReason } from '@/lib/documents/pv-watchlist'
 
 export type AttentionSignal =
   | 'subject_stagnant'
   | 'action_overdue'
   | 'deadline_near'
+  | 'deadline_overdue'
   | 'reserve_open'
   | 'relation_blocking'
   | 'blocage_active'
@@ -27,6 +30,8 @@ export type AttentionSignal =
   | 'subject_changed'
   | 'proposal_pending'
   | 'link_suggested'
+  | 'pv_status'
+  | 'pv_stagnant'
 
 export type AttentionUrgency = 'critical' | 'high' | 'medium' | 'low'
 
@@ -45,10 +50,6 @@ const URGENCY_RANK: Record<AttentionUrgency, number> = {
   critical: 0, high: 1, medium: 2, low: 3,
 }
 
-function maxUrgency(a: AttentionUrgency, b: AttentionUrgency): AttentionUrgency {
-  return URGENCY_RANK[a] <= URGENCY_RANK[b] ? a : b
-}
-
 // ─── Dates ───────────────────────────────────────────────────────────────────
 
 function todayIso(): string {
@@ -63,6 +64,23 @@ function addDays(iso: string, days: number): string {
 
 function daysBetween(isoA: string, isoB: string): number {
   return Math.round((new Date(isoB).getTime() - new Date(isoA).getTime()) / 86400000)
+}
+
+// ─── Labels PV ───────────────────────────────────────────────────────────────
+
+function pvStatusReason(reason: WatchReason, activeObjects?: { actionsOpen: number; reservesOpen: number }): string {
+  const base =
+    reason === 'non_conforme' ? 'Non-conformité signalée dans le dernier PV' :
+    reason === 'aggravé'      ? 'Aggravé au dernier PV' :
+                                'Réouvert au dernier PV'
+  const parts: string[] = [base]
+  if (activeObjects) {
+    if (activeObjects.actionsOpen > 0)
+      parts.push(`${activeObjects.actionsOpen} action${activeObjects.actionsOpen > 1 ? 's' : ''} ouverte${activeObjects.actionsOpen > 1 ? 's' : ''}`)
+    if (activeObjects.reservesOpen > 0)
+      parts.push(`${activeObjects.reservesOpen} réserve${activeObjects.reservesOpen > 1 ? 's' : ''} ouverte${activeObjects.reservesOpen > 1 ? 's' : ''}`)
+  }
+  return parts.join(' · ')
 }
 
 // ─── Moteur ──────────────────────────────────────────────────────────────────
@@ -87,6 +105,8 @@ export async function deriveSiteAttentionItems(
     pendingSuggestions,
     threadMappingsResult,
     lastVisitResult,
+    matrix,
+    overdueDeadlinesResult,
   ] = await Promise.all([
     getNavigableSubjectsForSite(siteId),
     admin
@@ -128,6 +148,15 @@ export async function deriveSiteAttentionItems(
       .not('ended_at', 'is', null)
       .order('ended_at', { ascending: false })
       .limit(1),
+    getSiteSubjectMatrix(siteId).catch(() => null),
+    admin
+      .from('site_deadlines')
+      .select('id, title, due_date')
+      .eq('site_id', siteId)
+      .in('status', ['to_plan', 'planned'])
+      .not('due_date', 'is', null)
+      .lt('due_date', today)
+      .order('due_date', { ascending: true }),
   ])
 
   const lastVisitAt: string | null =
@@ -153,16 +182,13 @@ export async function deriveSiteAttentionItems(
     if (!fromCs || !toCs) continue
 
     if (link.linkType === 'requires' && stagnantCsIds.has(toCs) && !blockingByCsId.has(toCs)) {
-      // A requires B : B stagnant bloque A
       blockingByCsId.set(toCs, { blockedLabel: link.fromLabel ?? '?', linkType: 'requires' })
     }
     if (link.linkType === 'enables' && stagnantCsIds.has(fromCs) && !blockingByCsId.has(fromCs)) {
-      // A enables B : A stagnant bloque B
       blockingByCsId.set(fromCs, { blockedLabel: link.toLabel ?? '?', linkType: 'enables' })
     }
   }
 
-  // Ensemble des csId déjà couverts → déduplique les signaux action/deadline
   const coveredCsIds = new Set<string>()
   const items: SiteAttentionItem[] = []
 
@@ -179,9 +205,48 @@ export async function deriveSiteAttentionItems(
     })
   }
 
-  // ── 2. Sujets stagnants ───────────────────────────────────────────────────
+  // ── 2. Signaux PV (pv_status + pv_stagnant) ────────────────────────────────
+  // pv_status (non_conforme/aggravé/réouvert) + objets actifs → critical
+  // pv_status seul → high
+  // pv_stagnant (sans_évolution) → medium
+  const pvWatchlist = matrix ? computeWatchlist(matrix) : []
+
+  for (const w of pvWatchlist) {
+    const csId = threadToCs.get(w.subjectThreadId)
+    if (!csId) continue
+    if (coveredCsIds.has(csId)) continue
+
+    const s = csIndex.get(csId)
+    const activeObjects = s?.activeObjects
+
+    const isStatusSignal = w.reason !== 'sans_évolution'
+
+    let urgency: AttentionUrgency
+    if (isStatusSignal && activeObjects && activeObjects.total > 0) {
+      urgency = 'critical'
+    } else if (isStatusSignal) {
+      urgency = 'high'
+    } else {
+      urgency = 'medium' // sans_évolution
+    }
+
+    items.push({
+      signal: isStatusSignal ? 'pv_status' : 'pv_stagnant',
+      title: w.label,
+      reason: isStatusSignal
+        ? pvStatusReason(w.reason, activeObjects)
+        : `Sans évolution depuis ${w.pvCount} PV`,
+      urgency,
+      href: csId ? subjectHref(csId) : `/sites/${siteId}/historique?view=lifelines`,
+      metadata: { canonicalSubjectId: csId, pvReason: w.reason, pvCount: w.pvCount },
+    })
+    coveredCsIds.add(csId)
+  }
+
+  // ── 3. Sujets stagnants (jours) ───────────────────────────────────────────
   for (const s of subjects) {
     if (!s.isStagnant) continue
+    if (coveredCsIds.has(s.canonicalSubjectId)) continue
 
     const blocking = blockingByCsId.get(s.canonicalSubjectId)
 
@@ -210,17 +275,17 @@ export async function deriveSiteAttentionItems(
     coveredCsIds.add(s.canonicalSubjectId)
   }
 
-  // ── 3. Actions en retard ──────────────────────────────────────────────────
+  // ── 4. Actions en retard ──────────────────────────────────────────────────
   const overdueActions = (overdueResult.data ?? []) as Array<{
     id: string; title: string; due_date: string; subject_thread_id: string | null; assigned_to: string | null
   }>
 
   for (const action of overdueActions) {
     const csId = action.subject_thread_id ? threadToCs.get(action.subject_thread_id) : undefined
-    if (csId && coveredCsIds.has(csId)) continue // déjà couvert par sujet stagnant
+    if (csId && coveredCsIds.has(csId)) continue
 
     const overdueDays = daysBetween(action.due_date, today)
-    const urgency: AttentionUrgency = overdueDays > 14 ? 'critical' : overdueDays > 7 ? 'high' : 'medium'
+    const urgency: AttentionUrgency = overdueDays > 14 ? 'high' : overdueDays > 7 ? 'high' : 'medium'
 
     if (csId) {
       const s = csIndex.get(csId)
@@ -245,7 +310,7 @@ export async function deriveSiteAttentionItems(
     }
   }
 
-  // ── 4. Échéances proches ──────────────────────────────────────────────────
+  // ── 5. Échéances proches (site_actions kind=deadline) ────────────────────
   const nearDeadlines = (deadlineResult.data ?? []) as Array<{
     id: string; title: string; due_date: string; subject_thread_id: string | null
   }>
@@ -280,14 +345,14 @@ export async function deriveSiteAttentionItems(
     }
   }
 
-  // ── 5. Réserves ouvertes ──────────────────────────────────────────────────
+  // ── 6. Réserves ouvertes ──────────────────────────────────────────────────
   const openReserves = (reserveResult.data ?? []) as Array<{
     id: string; label: string; issued_on: string | null
   }>
 
   for (const r of openReserves) {
     const openDays = r.issued_on ? daysBetween(r.issued_on, today) : null
-    const urgency: AttentionUrgency = openDays != null && openDays > 45 ? 'critical' :
+    const urgency: AttentionUrgency = openDays != null && openDays > 45 ? 'high' :
       openDays != null && openDays > 15 ? 'high' : 'medium'
     const reason = openDays != null
       ? `Ouverte depuis ${openDays} j`
@@ -303,7 +368,29 @@ export async function deriveSiteAttentionItems(
     })
   }
 
-  // ── 6. Congestion acteur ──────────────────────────────────────────────────
+  // ── 7. Échéances en retard (site_deadlines) ───────────────────────────────
+  const overdueDls = (overdueDeadlinesResult.data ?? []) as Array<{
+    id: string; title: string; due_date: string
+  }>
+  if (overdueDls.length > 0) {
+    const oldest = overdueDls[0]
+    const days = daysBetween(oldest.due_date, today)
+    const urgency: AttentionUrgency = days > 30 ? 'high' : 'medium'
+    items.push({
+      signal: 'deadline_overdue',
+      title: overdueDls.length === 1
+        ? oldest.title
+        : `${overdueDls.length} échéances en retard`,
+      reason: overdueDls.length === 1
+        ? `Échéance en retard de ${days} j`
+        : `La plus ancienne : en retard de ${days} j`,
+      urgency,
+      href: `/sites/${siteId}/historique`,
+      metadata: { count: overdueDls.length },
+    })
+  }
+
+  // ── 8. Congestion acteur ──────────────────────────────────────────────────
   if (congestionSignal) {
     const first = congestionSignal.items[0]
     if (first) {
@@ -318,12 +405,12 @@ export async function deriveSiteAttentionItems(
     }
   }
 
-  // ── 7. Sujets ayant changé depuis la dernière visite ─────────────────────
+  // ── 9. Sujets ayant changé depuis la dernière visite ─────────────────────
   if (lastVisitAt) {
     for (const s of subjects) {
       if (!s.lastMeaningfulChangeAt) continue
       if (s.lastMeaningfulChangeAt <= lastVisitAt) continue
-      if (coveredCsIds.has(s.canonicalSubjectId)) continue // déjà dans un item
+      if (coveredCsIds.has(s.canonicalSubjectId)) continue
 
       items.push({
         signal: 'subject_changed',
@@ -336,7 +423,7 @@ export async function deriveSiteAttentionItems(
     }
   }
 
-  // ── 8. Propositions de rapprochement en attente ───────────────────────────
+  // ── 10. Propositions de rapprochement en attente ───────────────────────────
   if (pendingSuggestions.length > 0) {
     const best = pendingSuggestions[0]
     const conf = best.model_confidence != null ? ` (${Math.round(best.model_confidence * 100)}% confiance)` : ''
@@ -352,7 +439,7 @@ export async function deriveSiteAttentionItems(
     })
   }
 
-  // ── 9. Relations suggérées en attente ────────────────────────────────────
+  // ── 11. Relations suggérées en attente ────────────────────────────────────
   const pendingLinks = suggestedLinks.filter(l => l.status === 'suggested')
   if (pendingLinks.length > 0) {
     const first = pendingLinks[0]

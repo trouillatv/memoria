@@ -56,11 +56,10 @@ import {
   runEffectiveDate,
   getSiteSubjectMatrix,
 } from '@/lib/documents/pv-history'
+import { computeWatchlist, type WatchlistEntry } from '@/lib/documents/pv-watchlist'
 import {
-  computeWatchlist,
   computeDeltaSummary,
   getImportantSubjects,
-  type WatchlistEntry,
   type ImportantSubject,
 } from '@/lib/documents/site-synthesis'
 import { getCanonicalDelta } from '@/lib/documents/canonical-transitions'
