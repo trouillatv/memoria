@@ -146,6 +146,8 @@ function SubjectIntelligenceCard({
 
   if (!showStagnation && !showLastChange && !showActor && !showBlockers) return null
 
+  const nMentions = intel.consecutiveMentionsWithoutChange + 1
+
   return (
     <section className="rounded-[18px] border bg-card px-5 py-4 space-y-3">
       <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -155,14 +157,34 @@ function SubjectIntelligenceCard({
       {showStagnation && (
         <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-800 dark:bg-amber-950/30">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-          <div className="min-w-0 text-sm">
+          <div className="min-w-0 text-sm space-y-1">
             <p className="font-medium text-amber-900 dark:text-amber-200">
               Aucune évolution réelle depuis {intel.stagnationDays} jours
             </p>
-            <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-400">
-              Mentionné {intel.consecutiveMentionsWithoutChange + 1} fois consécutives sans changement
-              {intel.lastMeaningfulChangeAt && ` · dernière évolution réelle le ${frDate(intel.lastMeaningfulChangeAt)}`}
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              {nMentions} mention{nMentions > 1 ? 's' : ''} consécutive{nMentions > 1 ? 's' : ''} sans changement
+              {intel.lastMeaningfulChangeAt && (
+                <>
+                  {' · évolution réelle le '}
+                  {intel.lastMeaningfulOccurrenceAnchor ? (
+                    <a
+                      href={`#${intel.lastMeaningfulOccurrenceAnchor}`}
+                      className="underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-200"
+                    >
+                      {frDate(intel.lastMeaningfulChangeAt)}
+                    </a>
+                  ) : frDate(intel.lastMeaningfulChangeAt)}
+                </>
+              )}
             </p>
+            {intel.firstStagnantOccurrenceAnchor && (
+              <a
+                href={`#${intel.firstStagnantOccurrenceAnchor}`}
+                className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200"
+              >
+                Voir les {nMentions} mentions dans le fil métier →
+              </a>
+            )}
           </div>
         </div>
       )}
@@ -171,7 +193,16 @@ function SubjectIntelligenceCard({
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Calendar className="h-3.5 w-3.5 shrink-0" />
           <span>Dernière évolution réelle :</span>
-          <span className="font-medium text-foreground">{frDate(intel.lastMeaningfulChangeAt!)}</span>
+          {intel.lastMeaningfulOccurrenceAnchor ? (
+            <a
+              href={`#${intel.lastMeaningfulOccurrenceAnchor}`}
+              className="font-medium text-foreground hover:underline underline-offset-2"
+            >
+              {frDate(intel.lastMeaningfulChangeAt!)}
+            </a>
+          ) : (
+            <span className="font-medium text-foreground">{frDate(intel.lastMeaningfulChangeAt!)}</span>
+          )}
         </div>
       )}
 
@@ -190,9 +221,12 @@ function SubjectIntelligenceCard({
       {showBlockers && (
         <div className="flex items-center gap-2 text-sm">
           <LayoutList className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <span className="font-medium">
+          <a
+            href="#objets-metier"
+            className="font-medium hover:underline underline-offset-2"
+          >
             {intel.openItemCount} objet{intel.openItemCount > 1 ? 's' : ''} encore ouvert{intel.openItemCount > 1 ? 's' : ''}
-          </span>
+          </a>
           <span className="text-xs text-muted-foreground">(réserve{intel.openItemCount > 1 ? 's' : ''} / échéance{intel.openItemCount > 1 ? 's' : ''})</span>
         </div>
       )}
@@ -838,7 +872,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
 
         {/* Objets métier matérialisés */}
         {life.materializedEvents.length > 0 && (
-          <section className="rounded-[18px] border bg-card px-5 py-4 space-y-3">
+          <section id="objets-metier" className="rounded-[18px] border bg-card px-5 py-4 space-y-3">
             <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <LayoutList className="h-3.5 w-3.5" />
               Objets métier ({life.materializedEvents.length})
@@ -863,7 +897,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
           </h2>
           <ol className="space-y-2">
             {life.occurrences.map((occ, i) => (
-              <li key={`${occ.runId}-${i}`}>
+              <li key={`${occ.runId}-${i}`} id={`occ-${i}`}>
                 <OccurrenceCard occ={occ} siteId={siteId} />
               </li>
             ))}

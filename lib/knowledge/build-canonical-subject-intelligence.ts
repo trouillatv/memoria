@@ -13,9 +13,13 @@ export interface SubjectActor {
 export interface CanonicalSubjectIntelligence {
   daysPresent: number | null
   lastMeaningfulChangeAt: string | null
+  /** Ancre HTML vers l'occurrence du fil métier où la dernière évolution réelle s'est produite. */
+  lastMeaningfulOccurrenceAnchor: string | null
   isStagnant: boolean
   stagnationDays: number | null
   consecutiveMentionsWithoutChange: number
+  /** Ancre HTML vers la première occurrence stagnante (juste après la dernière évolution réelle). */
+  firstStagnantOccurrenceAnchor: string | null
   actor: SubjectActor | null
   openItemCount: number
 }
@@ -72,12 +76,33 @@ export async function buildCanonicalSubjectIntelligence(
     return false
   }).length
 
+  // Ancres vers le fil métier — indices dans life.occurrences (correspond aux id="occ-{i}" de la page)
+  let lastMeaningfulOccurrenceAnchor: string | null = null
+  let firstStagnantOccurrenceAnchor: string | null = null
+
+  if (life.lastMeaningfulChangeAt) {
+    const lmcIdx = life.occurrences.findIndex(
+      (o) => !o.isGap && o.effectiveDate === life.lastMeaningfulChangeAt,
+    )
+    if (lmcIdx >= 0) lastMeaningfulOccurrenceAnchor = `occ-${lmcIdx}`
+
+    if (life.isStagnant) {
+      // Première occurrence RÉELLE après la dernière évolution significative
+      const firstStagnantIdx = life.occurrences.findIndex(
+        (o) => !o.isGap && o.effectiveDate > life.lastMeaningfulChangeAt!,
+      )
+      if (firstStagnantIdx >= 0) firstStagnantOccurrenceAnchor = `occ-${firstStagnantIdx}`
+    }
+  }
+
   return {
     daysPresent,
     lastMeaningfulChangeAt: life.lastMeaningfulChangeAt,
+    lastMeaningfulOccurrenceAnchor,
     isStagnant: life.isStagnant,
     stagnationDays: life.stagnationDays,
     consecutiveMentionsWithoutChange: life.consecutiveMentionsWithoutChange,
+    firstStagnantOccurrenceAnchor,
     actor,
     openItemCount,
   }
