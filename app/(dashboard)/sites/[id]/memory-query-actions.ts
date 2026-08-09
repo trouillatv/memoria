@@ -279,6 +279,51 @@ function isGeneralSiteMemoryQuestion(q: string): boolean {
 // Colonnes texte cherchées dans site_reports (titre + corps + transcriptions).
 const REPORT_COLS = ['title', 'text_input', 'transcript_corrected', 'transcript_raw']
 
+/**
+ * Recherche DÉTERMINISTE dans les documents liés au site (historical PVs, CCTP, CRs…).
+ * Cherche par filename ILIKE — couvre le cas « Que disait le PV 008 ? » quand les
+ * knowledge_chunks ne sont pas encore indexés. Complément de searchKnowledgeForSite.
+ */
+async function searchSiteDocuments(siteId: string, q: string): Promise<SiteMemoryHit[]> {
+  const terms = queryTerms(q)
+  if (terms.length === 0) return []
+
+  const supabase = createAdminClient()
+  const { data: links } = await supabase
+    .from('document_links')
+    .select('document_id')
+    .eq('target_type', 'site')
+    .eq('target_id', siteId)
+  const docIds = ((links ?? []) as Array<{ document_id: string }>).map((l) => l.document_id)
+  if (docIds.length === 0) return []
+
+  const base = supabase
+    .from('documents')
+    .select('id, filename, document_type, effective_date, created_at')
+    .in('id', docIds)
+    .is('deleted_at', null)
+    .neq('document_type', 'litige')
+    .limit(8)
+  const { data } = await onCols(base, 'terms', terms, ['filename'])
+
+  return ((data ?? []) as Array<{
+    id: string
+    filename: string | null
+    document_type: string | null
+    effective_date: string | null
+    created_at: string
+  }>).map((d) => ({
+    type: 'report_document' as const,
+    id: d.id,
+    title: d.filename ?? 'Document',
+    snippet: d.document_type ? `Type : ${d.document_type}` : 'Document chantier',
+    occurredAt: d.effective_date ?? d.created_at,
+    similarity: null,
+    keyword: true,
+    href: `/documents/${d.id}`,
+  }))
+}
+
 async function searchSiteReports(siteId: string, q: string): Promise<SiteMemoryHit[]> {
   const supabase = createAdminClient()
   const general = isGeneralSiteMemoryQuestion(q)
@@ -395,7 +440,7 @@ export async function askSiteMemoryAction(
   }
   const queryEmbedding = generalQuestion ? null : await getEmbedding(q).catch(() => null)
   const tenantId = await getSiteTenantId(siteId)
-  const [ftsHits, semHits, timeline, docHits, observationHits, reportHits, knowledgeHits] = await Promise.all([
+  const [ftsHits, semHits, timeline, docHits, observationHits, reportHits, knowledgeHits, siteDocHits] = await Promise.all([
     searchMemory({ q, siteId, periodDays: 3650, limit: 30 }).catch(() => []),
     queryEmbedding
       ? findSimilarTraces({ siteId, queryEmbedding, limit: 20 }).catch(() => [])
@@ -410,6 +455,9 @@ export async function askSiteMemoryAction(
     // Décisions, vigilances, savoirs, intervenants — le corpus que le moteur
     // ignorait. « Quels risques sont encore ouverts ? » passe par ici.
     searchSiteKnowledge(siteId, q).catch(() => [] as SiteMemoryHit[]),
+    // Documents liés au site par filename (PV historiques, CCTP, CRs…).
+    // Recall lexical immédiat même si knowledge_chunks pas encore indexés.
+    searchSiteDocuments(siteId, q).catch(() => [] as SiteMemoryHit[]),
   ])
 
   const byId = new Map(timeline.map((e) => [e.id, e]))
@@ -436,6 +484,13 @@ export async function askSiteMemoryAction(
   // trace brute — c'est la seule chose ici dont quelqu'un a répondu.
   for (const k of knowledgeHits) {
     merged.set(`${k.type}:${k.id}`, { ...k, fts: 0.05 })
+  }
+  // Documents liés au site (PV historiques, CCTP, CRs…) — recall par filename.
+  // Poids légèrement supérieur aux reports : un document nommé explicitement dans
+  // la question (« PV 008 ») mérite d'être remonté même sans contenu indexé.
+  for (const d of siteDocHits) {
+    const key = `report_document:${d.id}`
+    if (!merged.has(key)) merged.set(key, { ...d, fts: 0.03 })
   }
   for (const s of semHits) {
     const type = SRC_TO_TYPE[s.source_type]

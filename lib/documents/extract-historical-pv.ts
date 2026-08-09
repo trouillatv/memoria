@@ -14,6 +14,7 @@ import {
 import { mapDocumentStatus, reconcileSubjectThreads } from './subject-reconciliation'
 import { resolveOrphansSemantically } from './semantic-subject-resolution'
 import { buildExtractionSiteContext } from '@/lib/db/extraction-context'
+import { embedDocumentChunks } from '@/lib/ai/embed-knowledge-chunks'
 import type { DocumentProposalFamily, DocumentEvidenceType, DocumentEvidenceRelationType } from '@/types/db'
 
 const EXTRACTOR_KEY = 'historical_visit_report_v1'
@@ -124,6 +125,12 @@ export async function extractHistoricalPv(
       throw new Error('no_extractable_text')
     }
     log('text_extracted', documentId, { runId, chars: text.length, pages: extracted.pageCount })
+
+    // Persister le texte extrait pour le recall documentaire (Route C / knowledge_chunks).
+    // Sans cette écriture, embedDocumentChunks lit un extracted_text null et s'arrête.
+    const { error: textSaveErr } = await supabase.from('documents').update({ extracted_text: text }).eq('id', documentId)
+    if (textSaveErr) log('extracted_text_persist_failed', documentId, { error: textSaveErr.message })
+
     await updateExtractionStage(runId, 'rendering_pages')
 
     // 5. Rendu des snapshots de pages (mupdf, graceful fallback)
@@ -476,6 +483,12 @@ export async function extractHistoricalPv(
       proposals: llmResult.proposals.length,
       evidence: llmResult.evidence.length,
     })
+
+    // Index sémantique pour Route C — fire-and-forget, non bloquant.
+    // embedDocumentChunks lit documents.extracted_text (écrit ci-dessus) et génère les knowledge_chunks.
+    void embedDocumentChunks(documentId).catch((e) =>
+      log('embed_chunks_failed', documentId, { error: e instanceof Error ? e.message : String(e) }),
+    )
   } catch (e) {
     const raw = e instanceof Error ? e.message : (e != null && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : String(e))
     const msg = raw || 'erreur inconnue — voir logs Vercel'
