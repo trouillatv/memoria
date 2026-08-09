@@ -21,7 +21,10 @@ export interface CanonicalSubjectIntelligence {
   /** Ancre HTML vers la première occurrence stagnante (juste après la dernière évolution réelle). */
   firstStagnantOccurrenceAnchor: string | null
   actor: SubjectActor | null
+  /** Nombre d'identités métier canoniques ouvertes (CBO distincts, ou entity_id si non encore mappé). */
   openItemCount: number
+  /** Nombre total d'enregistrements ouverts (occurrences documentaires). Vaut openItemCount si aucun CBO. */
+  openItemOccurrenceCount: number
 }
 
 // ── Assembleur ────────────────────────────────────────────────────────────────
@@ -66,15 +69,38 @@ export async function buildCanonicalSubjectIntelligence(
     if (c?.name) actor = { name: c.name as string, role: 'company' }
   }
 
-  // Objets encore ouverts : réserves et échéances sans clôture
-  // (pas des "blocages" au sens strict — une réserve ouverte n'empêche pas forcément d'avancer)
-  const openItemCount = life.materializedEvents.filter((e) => {
+  // Objets encore ouverts — compteur hybride CBO/entity
+  // openItemCount       = identités métier canoniques distinctes (ce qui est affiché comme "X réserves")
+  // openItemOccurrenceCount = total d'enregistrements (pour afficher "Y occurrences dans les PV")
+  const openEvents = life.materializedEvents.filter((e) => {
     if (e.entityType === 'site_reserve')
       return !['lifted', 'done', 'cancelled'].includes(e.status ?? '')
     if (e.entityType === 'site_deadline')
       return !['done', 'cancelled', 'superseded'].includes(e.status ?? '')
     return false
-  }).length
+  })
+  const openItemOccurrenceCount = openEvents.length
+
+  let openItemCount = openItemOccurrenceCount
+  if (openEvents.length > 0) {
+    const entityIds = openEvents.map((e) => e.entityId)
+    const { data: cboMembers } = await sb
+      .from('canonical_business_object_member')
+      .select('member_entity_id, canonical_business_object_id')
+      .in('member_entity_id', entityIds)
+
+    const memberMap = new Map(
+      (cboMembers ?? []).map((m) => [m.member_entity_id, m.canonical_business_object_id]),
+    )
+    const cboIds = new Set<string>()
+    let unmapped = 0
+    for (const e of openEvents) {
+      const cboId = memberMap.get(e.entityId)
+      if (cboId) cboIds.add(cboId)
+      else unmapped++
+    }
+    openItemCount = cboIds.size + unmapped
+  }
 
   // Ancres vers le fil métier — indices dans life.occurrences (correspond aux id="occ-{i}" de la page)
   let lastMeaningfulOccurrenceAnchor: string | null = null
@@ -105,5 +131,6 @@ export async function buildCanonicalSubjectIntelligence(
     firstStagnantOccurrenceAnchor,
     actor,
     openItemCount,
+    openItemOccurrenceCount,
   }
 }

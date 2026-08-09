@@ -231,15 +231,22 @@ function SubjectIntelligenceCard({
       )}
 
       {showBlockers && (
-        <div className="flex items-center gap-2 text-sm">
-          <LayoutList className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <a
-            href="#objets-metier"
-            className="font-medium hover:underline underline-offset-2"
-          >
-            {intel.openItemCount} objet{intel.openItemCount > 1 ? 's' : ''} encore ouvert{intel.openItemCount > 1 ? 's' : ''}
-          </a>
-          <span className="text-xs text-muted-foreground">(réserve{intel.openItemCount > 1 ? 's' : ''} / échéance{intel.openItemCount > 1 ? 's' : ''})</span>
+        <div className="flex items-start gap-2 text-sm">
+          <LayoutList className="h-3.5 w-3.5 shrink-0 text-muted-foreground mt-0.5" />
+          <div className="flex flex-col gap-0.5">
+            <a
+              href="#objets-metier"
+              className="font-medium hover:underline underline-offset-2"
+            >
+              {intel.openItemCount} objet{intel.openItemCount > 1 ? 's' : ''} encore ouvert{intel.openItemCount > 1 ? 's' : ''}
+              <span className="font-normal text-muted-foreground ml-1">(réserve{intel.openItemCount > 1 ? 's' : ''} / échéance{intel.openItemCount > 1 ? 's' : ''})</span>
+            </a>
+            {intel.openItemOccurrenceCount > intel.openItemCount && (
+              <span className="text-xs text-muted-foreground">
+                {intel.openItemOccurrenceCount} occurrence{intel.openItemOccurrenceCount > 1 ? 's' : ''} dans les PV
+              </span>
+            )}
+          </div>
         </div>
       )}
     </section>
