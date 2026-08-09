@@ -8,56 +8,7 @@
 import { useState, useEffect, useTransition } from 'react'
 import { Sparkles, Send, Loader2, Lightbulb, ArrowRight, ExternalLink, Compass, X, Clock, ChevronDown, ChevronUp } from 'lucide-react'
 import { askSiteMemoryAgentAction, getSubjectMemoryTimelineAction, getSiteContextualSuggestionsAction, type SiteMemoryAnswer, type SiteMemorySource, type SiteMemoryTimelineItem } from './actions'
-
-// ── Panneau étendu : 5 catégories × 4 questions ──────────────────────────────
-
-const QUESTION_CATEGORIES = [
-  {
-    label: 'Situation',
-    questions: [
-      "Qu'est-ce qui mérite mon attention ?",
-      "Où en est le chantier ?",
-      "Qu'est-ce qui bloque ce chantier ?",
-      "Quelles sont les priorités ?",
-    ],
-  },
-  {
-    label: 'Préparer ma visite',
-    questions: [
-      "Que dois-je vérifier lors de ma prochaine visite ?",
-      "Quelles actions sont en retard ?",
-      "Quelles réserves sont encore ouvertes ?",
-      "Quels sujets n'ont pas évolué depuis plusieurs semaines ?",
-    ],
-  },
-  {
-    label: 'Responsabilités',
-    questions: [
-      "Qui intervient sur ce chantier ?",
-      "Qui est l'interlocuteur principal ?",
-      "Quelle entreprise s'occupe de la charpente ?",
-      "Quelles actions sont sans responsable ?",
-    ],
-  },
-  {
-    label: 'Dépendances',
-    questions: [
-      "De quoi dépend la réception ?",
-      "Quels sujets sont liés entre eux ?",
-      "Y a-t-il des blocages entre sujets ?",
-      "Quelles relations sont confirmées ?",
-    ],
-  },
-  {
-    label: 'Historique & preuves',
-    questions: [
-      "Que disait le PV de la dernière réunion ?",
-      "Quelles dimensions sont prévues au CCTP ?",
-      "Montre-moi ce qui a été écrit sur la ventilation.",
-      "Donne-moi un extrait du compte-rendu.",
-    ],
-  },
-]
+import { CapabilityDiscoveryPanel } from '@/components/copilot/CapabilityDiscoveryPanel'
 
 const DEFAULT_COMPACT_SUGGESTIONS = [
   "Qu'est-ce qui mérite mon attention ?",
@@ -176,34 +127,18 @@ export function SiteMemoryChat({ siteId }: { siteId: string }) {
           className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 dark:bg-violet-950/20 dark:border-violet-800 px-3 py-1 text-[12px] font-medium text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-950/40 transition-colors"
         >
           {expanded
-            ? <><ChevronUp className="h-3.5 w-3.5" /> Fermer le guide</>
-            : <><ChevronDown className="h-3.5 w-3.5" /> Voir ce que je peux demander</>
+            ? <><ChevronUp className="h-3.5 w-3.5" /> Fermer</>
+            : <><ChevronDown className="h-3.5 w-3.5" /> Explorer ce que MemorIA sait faire</>
           }
         </button>
       </div>
 
-      {/* Panneau étendu : 5 catégories */}
+      {/* Catalogue progressif L1/L2 */}
       {expanded && (
-        <div className="rounded-xl border border-violet-100 dark:border-violet-900 bg-violet-50/60 dark:bg-violet-950/10 p-3 space-y-3 max-h-[60vh] overflow-y-auto">
-          {QUESTION_CATEGORIES.map((cat) => (
-            <div key={cat.label}>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-violet-500 dark:text-violet-400 mb-1.5">{cat.label}</p>
-              <div className="flex flex-col gap-1">
-                {cat.questions.map((qq) => (
-                  <button
-                    key={qq}
-                    type="button"
-                    disabled={pending}
-                    onClick={() => ask(qq)}
-                    className="text-left rounded-lg border bg-background px-3 py-1.5 text-[13px] text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50 transition-colors"
-                  >
-                    {qq}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+        <CapabilityDiscoveryPanel
+          onSelectQuestion={(q) => ask(q)}
+          disabled={pending}
+        />
       )}
 
       <form onSubmit={(e) => { e.preventDefault(); ask(q) }} className="flex items-center gap-2">
