@@ -74,27 +74,29 @@ const LINK_FR: Record<string, { out: string; in: string }> = {
 }
 
 // ── Construction de l'input structuré ────────────────────────────────────────
+//
+// Deux catégories de faits :
+//   dynamiques  — déclenchent la narration : statut, stagnation, évolution réelle, relations, objets ouverts
+//   contextuels — enrichissent la phrase si des faits dynamiques existent : acteur, première mention
+//
+// La narration n'est générée que si dynamicFactCount >= 1.
 
 function buildInput(
   life: CanonicalSubjectLife,
   intel: CanonicalSubjectIntelligence,
-): { input: Record<string, unknown>; factCount: number; validIds: Set<string> } {
+): { input: Record<string, unknown>; dynamicFactCount: number; validIds: Set<string> } {
   const input: Record<string, unknown> = { sujet: life.label }
   const validIds = new Set<string>()
-  let factCount = 0
+  let dynamicFactCount = 0
 
+  // Statut — fait dynamique (état opérationnel actuel)
   if (life.currentStatus) {
     input.statut = { id: 'status', label: STATUS_FR[life.currentStatus] ?? life.currentStatus }
     validIds.add('status')
-    factCount++
+    dynamicFactCount++
   }
 
-  if (life.firstSeenAt) {
-    input.premiere_mention = { id: 'first_seen', date: life.firstSeenAt.slice(0, 10) }
-    validIds.add('first_seen')
-    factCount++
-  }
-
+  // Stagnation — fait dynamique fort ; inclut la première mention pour contextualiser la durée
   if (intel.isStagnant && intel.stagnationDays) {
     input.stagnation = {
       id: 'stagnation',
@@ -102,13 +104,23 @@ function buildInput(
       mentions_consecutives: intel.consecutiveMentionsWithoutChange + 1,
     }
     validIds.add('stagnation')
-    factCount++
-  } else if (intel.lastMeaningfulChangeAt && intel.lastMeaningfulChangeAt !== life.lastSeenAt) {
+    dynamicFactCount++
+    if (life.firstSeenAt) {
+      input.premiere_mention = { id: 'first_seen', date: life.firstSeenAt.slice(0, 10) }
+      validIds.add('first_seen')
+    }
+  } else if (
+    intel.lastMeaningfulChangeAt &&
+    intel.lastMeaningfulChangeAt !== life.lastSeenAt &&
+    intel.lastMeaningfulChangeAt !== life.firstSeenAt
+  ) {
+    // Évolution réelle : seulement si elle est distincte de la première apparition
     input.evolution_recente = { id: 'recent_change', date: intel.lastMeaningfulChangeAt.slice(0, 10) }
     validIds.add('recent_change')
-    factCount++
+    dynamicFactCount++
   }
 
+  // Relations confirmées — fait dynamique
   const confirmedLinks = life.links.filter((l) => l.status === 'confirmed').slice(0, 3)
   if (confirmedLinks.length > 0) {
     input.relations = confirmedLinks.map((l) => {
@@ -118,9 +130,10 @@ function buildInput(
       validIds.add(id)
       return { id, relation: verb, cible: target }
     })
-    factCount++
+    dynamicFactCount++
   }
 
+  // Objets ouverts — fait dynamique
   if (intel.openItemCount > 0) {
     const openEvents = life.materializedEvents.filter((e) => {
       if (e.entityType === 'site_reserve')
@@ -133,10 +146,11 @@ function buildInput(
       const types = [...new Set(openEvents.map((e) => e.entityType.replace('site_', '')))]
       input.objets_ouverts = { id: 'open_items', count: openEvents.length, types }
       validIds.add('open_items')
-      factCount++
+      dynamicFactCount++
     }
   }
 
+  // Acteur — contextuel uniquement : enrichit la phrase mais ne déclenche pas la narration seul
   if (intel.actor) {
     input.acteur = {
       id: 'actor',
@@ -144,10 +158,9 @@ function buildInput(
       role: intel.actor.role === 'company' ? 'entreprise' : 'personne',
     }
     validIds.add('actor')
-    factCount++
   }
 
-  return { input, factCount, validIds }
+  return { input, dynamicFactCount, validIds }
 }
 
 // ── Parsing 3 niveaux (pattern commun aux services IA du projet) ──────────────
@@ -182,10 +195,10 @@ export async function buildSubjectNarrative(
   intel: CanonicalSubjectIntelligence,
   userId: string | null = null,
 ): Promise<SubjectNarrativeResult | null> {
-  const { input, factCount, validIds } = buildInput(life, intel)
+  const { input, dynamicFactCount, validIds } = buildInput(life, intel)
 
-  // Pas assez de faits pour justifier une synthèse — le LLM répéterait juste le titre
-  if (factCount < 2) return null
+  // Aucun fait dynamique — l'acteur seul, ou la première mention seule, ne justifient pas une narration
+  if (dynamicFactCount < 1) return null
 
   const provider = getAIProvider()
 
