@@ -44,28 +44,38 @@ export async function SiteSynthesisSection({ siteId }: { siteId: string }) {
 
       {story.keyFindings.length > 0 && (
         <ul className="mt-3.5 space-y-2 border-t pt-3.5">
-          {story.keyFindings.map((f, i) => (
-            <li key={i} className="flex items-start gap-2 text-sm">
-              <span className="mt-0.5 shrink-0 h-1.5 w-1.5 rounded-full bg-foreground/30" />
-              <span className="leading-snug text-foreground/80">
-                {f.text}
-                {f.subjectId && (
-                  <> {' '}<Link
-                    href={`/sites/${siteId}/historique/sujets/${f.subjectId}`}
-                    className="ml-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                  >
-                    Voir le sujet →
-                  </Link></>
-                )}
-              </span>
-            </li>
-          ))}
+          {story.keyFindings.map((f, i) => {
+            // Libellé du lien selon la nature de la traçabilité
+            const linkLabel = f.subjectId
+              ? 'Voir le sujet →'
+              : f.linkId
+                ? 'Voir la relation →'
+                : null
+
+            return (
+              <li key={i} className="flex items-start gap-2 text-sm">
+                <span className="mt-[5px] shrink-0 h-1.5 w-1.5 rounded-full bg-foreground/30" />
+                <span className="leading-snug text-foreground/80">
+                  {f.text}
+                  {f.resolvedSubjectId && linkLabel && (
+                    <Link
+                      href={`/sites/${siteId}/historique/sujets/${f.resolvedSubjectId}`}
+                      className="ml-2 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                    >
+                      {linkLabel}
+                    </Link>
+                  )}
+                </span>
+              </li>
+            )
+          })}
         </ul>
       )}
 
       <p className="mt-3.5 text-[11px] text-muted-foreground">
-        Basé sur {story.subjectCount} sujet{story.subjectCount > 1 ? 's' : ''} actif{story.subjectCount > 1 ? 's' : ''}
-        {story.linkCount > 0 && ` et ${story.linkCount} relation${story.linkCount > 1 ? 's' : ''} confirmée${story.linkCount > 1 ? 's' : ''}`}.
+        Basé sur {story.subjectCount} sujet{story.subjectCount !== 1 ? 's' : ''} actif{story.subjectCount !== 1 ? 's' : ''}
+        {story.linkCount > 0 && `, ${story.linkCount} relation${story.linkCount !== 1 ? 's' : ''} confirmée${story.linkCount !== 1 ? 's' : ''}`}
+        {story.actorCount > 0 && `, ${story.actorCount} responsabilité${story.actorCount !== 1 ? 's' : ''} acteur`}.
         {' '}Généré par IA — peut contenir des imprécisions.
       </p>
     </section>
