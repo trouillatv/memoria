@@ -43,6 +43,13 @@ export interface Candidate {
    * la recommendation "merge" doit être ignorée par le batch.
    */
   fusionBlockReason: string | null
+  /**
+   * Si non null : avertissement structurel — la fusion n'est pas interdite
+   * mais demande une vigilance particulière (Gemini reçoit une instruction
+   * de prudence, l'UI affiche un indicateur, le compteur "très probable"
+   * n'inclut pas cette paire sans revue humaine).
+   */
+  fusionWarningReason: string | null
 }
 
 // ── Détection de type ──────────────────────────────────────────────────────────
@@ -88,6 +95,25 @@ export function fusionBlockReason(typeA: SubjectTypeHint, typeB: SubjectTypeHint
   // Prévision ↔ réalisé : à envoyer à Gemini avec flag, mais bloquer la fusion auto
   if (typeA === 'prevision' || typeB === 'prevision') {
     return 'Prévision détectée — fusion conditionnelle, revue humaine requise'
+  }
+  return null
+}
+
+/**
+ * Retourne un avertissement structurel (soft) qui ne bloque pas la fusion
+ * mais demande une vigilance particulière de Gemini et de l'UI.
+ *
+ * Cas traité : épisode daté ↔ sujet générique.
+ * Un sujet générique peut absorber un épisode daté si c'est le seul épisode,
+ * mais c'est impossible à vérifier de façon déterministe. Gemini est instruit
+ * de préférer "related/link" si plusieurs épisodes peuvent coexister.
+ */
+export function fusionWarningReason(typeA: SubjectTypeHint, typeB: SubjectTypeHint): string | null {
+  if (
+    (typeA === 'dated_event' && typeB === 'business') ||
+    (typeA === 'business' && typeB === 'dated_event')
+  ) {
+    return 'Épisode daté ↔ sujet générique — préférer un lien si plusieurs épisodes distincts peuvent coexister'
   }
   return null
 }
@@ -174,6 +200,7 @@ export function heuristicScore(
   const typeHintA = detectTypeHint(a.label)
   const typeHintB = detectTypeHint(b.label)
   const blockReason = fusionBlockReason(typeHintA, typeHintB)
+  const warningReason = blockReason ? null : fusionWarningReason(typeHintA, typeHintB)
 
   // Les personnes sont totalement exclues (même en tant que candidats de lien)
   if (typeHintA === 'person_name' || typeHintB === 'person_name') return null
@@ -185,6 +212,7 @@ export function heuristicScore(
     heuristicScore: score,
     heuristicReason: reason,
     fusionBlockReason: blockReason,
+    fusionWarningReason: warningReason,
   }
 }
 

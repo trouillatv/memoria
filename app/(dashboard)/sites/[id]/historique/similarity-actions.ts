@@ -11,7 +11,7 @@ import {
   type PersistedSuggestion,
   type SubjectInput,
 } from '@/lib/subjects/similarity-analyze'
-import { detectTypeHint, fusionBlockReason as computeFusionBlock } from '@/lib/subjects/similarity-candidates'
+import { detectTypeHint, fusionBlockReason as computeFusionBlock, fusionWarningReason as computeFusionWarning } from '@/lib/subjects/similarity-candidates'
 import { mergeCanonicalSubjectsAction, createLinkFromMatrixAction } from './merge-actions'
 
 // ── Chargement des suggestions pour l'UI ──────────────────────────────────────
@@ -93,6 +93,7 @@ export async function getOrAnalyzeSubjectPairAction(
     const typeHintA = detectTypeHint(inputA.label)
     const typeHintB = detectTypeHint(inputB.label)
     const fusionBlock = computeFusionBlock(typeHintA, typeHintB)
+    const fusionWarning = fusionBlock ? null : computeFusionWarning(typeHintA, typeHintB)
 
     // Persons are excluded upstream in the batch but can reach here via DnD
     if (typeHintA === 'person_name' || typeHintB === 'person_name') {
@@ -103,6 +104,7 @@ export async function getOrAnalyzeSubjectPairAction(
       typeHintA,
       typeHintB,
       fusionBlockReason: fusionBlock,
+      fusionWarningReason: fusionWarning,
     })
     const saved = await upsertSuggestion(supabase, siteId, subjectAId, subjectBId, result)
     if ('error' in saved) return { error: saved.error }

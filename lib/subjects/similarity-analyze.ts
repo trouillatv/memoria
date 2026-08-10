@@ -10,7 +10,7 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { getAIProvider } from '@/services/ai/factory'
 import { withAITracking } from '@/services/ai/tracking'
-import { normalizePairKey, normalizedPair, type SubjectTypeHint } from './similarity-candidates'
+import { normalizePairKey, normalizedPair, type SubjectTypeHint, fusionWarningReason as computeFusionWarning } from './similarity-candidates'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -29,6 +29,8 @@ export interface SimilarityResult {
   suggested_label: string | null
   reason: string
   model: string
+  /** Avertissement structurel soft (pas un blocage dur) — à afficher dans l'UI */
+  warning_reason: string | null
 }
 
 export interface SubjectInput {
@@ -103,18 +105,23 @@ Règles générales :
 - score 50-69 → verdict "related" ou "uncertain", recommendation "link" ou "none"
 - score < 50 → verdict "distinct" ou "uncertain", recommendation "none"
 - suggested_direction : A=sujet source, B=sujet cible dans la relation
-- suggested_label : null sauf si verdict "same_subject"`
+- suggested_label : null sauf si verdict "same_subject"
+
+Contre-exemples importants :
+- Un événement daté (ex: "Essais plateforme du 30/03") n'est jamais "same_subject" d'un document résultant (ex: "Avis G3 — essais") → verdict "related", recommendation "link" (validates)
+- Un sujet générique récurrent (ex: "Intempéries constatées") n'est pas "same_subject" d'un épisode daté précis (ex: "Intempéries du 16/02 au 06/03") si plusieurs épisodes distincts peuvent coexister → verdict "related", recommendation "link"
+- En revanche, une reformulation du même travail physique (ex: "Reprise du nivellement – zone hors tolérance" ↔ "Reprise du nivellement suivant VISA 01.004") peut être "same_subject" si les deux décrivent clairement la même opération sur le même chantier`
 
 function buildSystemPrompt(
   typeHintA: SubjectTypeHint | null,
   typeHintB: SubjectTypeHint | null,
   fusionBlock: string | null,
+  fusionWarning: string | null,
 ): string {
-  if (!fusionBlock && !typeHintA && !typeHintB) return BASE_SYSTEM_PROMPT
-
-  const lines: string[] = [BASE_SYSTEM_PROMPT, '']
+  const lines: string[] = [BASE_SYSTEM_PROMPT]
 
   if (typeHintA || typeHintB) {
+    lines.push('')
     lines.push('Types structurels détectés par analyse déterministe :')
     if (typeHintA) lines.push(`- Sujet A : ${typeHintA}`)
     if (typeHintB) lines.push(`- Sujet B : ${typeHintB}`)
@@ -126,6 +133,11 @@ function buildSystemPrompt(
     lines.push('La fusion ("merge") est interdite pour cette paire. Ta recommendation NE PEUT PAS être "merge".')
     lines.push('Si les sujets semblent liés, propose "link" avec le type de relation approprié.')
     lines.push('Si aucun lien probant, propose "none".')
+  } else if (fusionWarning) {
+    lines.push('')
+    lines.push(`AVERTISSEMENT STRUCTUREL : ${fusionWarning}`)
+    lines.push('Avant de recommander "merge", vérifie que les deux sujets décrivent vraiment le même objet unique.')
+    lines.push('Si la formulation générique peut s\'appliquer à plusieurs épisodes distincts, préfère "related/link".')
   }
 
   return lines.join('\n')
@@ -141,11 +153,16 @@ export async function analyzeSubjectPair(
     typeHintA?: SubjectTypeHint | null
     typeHintB?: SubjectTypeHint | null
     fusionBlockReason?: string | null
+    fusionWarningReason?: string | null
   },
 ): Promise<SimilarityResult> {
   const provider = getAIProvider()
   const fusionBlock = opts?.fusionBlockReason ?? null
-  const systemPrompt = buildSystemPrompt(opts?.typeHintA ?? null, opts?.typeHintB ?? null, fusionBlock)
+  // Si le warning n'est pas fourni explicitement, le dériver des types si disponibles
+  const fusionWarning = opts?.fusionWarningReason !== undefined
+    ? opts.fusionWarningReason
+    : (opts?.typeHintA && opts?.typeHintB ? computeFusionWarning(opts.typeHintA, opts.typeHintB) : null)
+  const systemPrompt = buildSystemPrompt(opts?.typeHintA ?? null, opts?.typeHintB ?? null, fusionBlock, fusionWarning)
 
   const userMsg = JSON.stringify({
     sujet_A: {
@@ -228,6 +245,7 @@ export async function analyzeSubjectPair(
     suggested_label: typeof parsed.suggested_label === 'string' ? parsed.suggested_label : null,
     reason: parsed.reason ?? '',
     model: output.model ?? provider.name,
+    warning_reason: fusionWarning ?? null,
   }
 }
 

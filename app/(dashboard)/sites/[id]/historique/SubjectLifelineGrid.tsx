@@ -14,6 +14,7 @@ import { mergeCanonicalSubjectsAction, moveSubjectToTopicAction, createLinkFromM
 import type { SubjectSimilarity } from './merge-actions'
 import { getSiteSimilaritySuggestionsAction, getOrAnalyzeSubjectPairAction, acceptSuggestionAsMergeAction, acceptSuggestionAsLinkAction, rejectSuggestionAction } from './similarity-actions'
 import type { PersistedSuggestion } from '@/lib/subjects/similarity-analyze'
+import { detectTypeHint, fusionWarningReason as computeFusionWarning } from '@/lib/subjects/similarity-candidates'
 
 // ── Icônes de cellule ─────────────────────────────────────────────────────────
 
@@ -1006,10 +1007,10 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
           {suggestions.length} rapprochement{suggestions.length > 1 ? 's' : ''} en attente
         </span>
         <span className="text-muted-foreground">—</span>
-        {suggestions.filter((s) => s.score >= 90).length > 0 && (
+        {suggestions.filter((s) => s.recommendation === 'merge' && s.score >= 90).length > 0 && (
           <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300">
             <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" />
-            {suggestions.filter((s) => s.score >= 90).length} fusion{suggestions.filter((s) => s.score >= 90).length > 1 ? 's' : ''} très probables
+            {suggestions.filter((s) => s.recommendation === 'merge' && s.score >= 90).length} fusion{suggestions.filter((s) => s.recommendation === 'merge' && s.score >= 90).length > 1 ? 's' : ''} très probables
           </span>
         )}
         {suggestions.filter((s) => s.score >= 75 && s.score < 90).length > 0 && (
@@ -1136,6 +1137,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
       const s = selectedSuggestion
       const labelA = allRows.find((r) => r.canonicalSubjectId === s.subject_a_id)?.canonicalLabel ?? s.subject_a_id.slice(0, 8)
       const labelB = allRows.find((r) => r.canonicalSubjectId === s.subject_b_id)?.canonicalLabel ?? s.subject_b_id.slice(0, 8)
+      const panelWarningReason = computeFusionWarning(detectTypeHint(labelA), detectTypeHint(labelB))
       const isMergeRec = s.recommendation === 'merge'
       const isLinkRec = s.recommendation === 'link'
       const scoreColor = s.score >= 90 ? 'text-emerald-600 dark:text-emerald-400' : s.score >= 75 ? 'text-amber-600 dark:text-amber-400' : 'text-blue-600 dark:text-blue-400'
@@ -1183,6 +1185,14 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Analyse</p>
                 <p className="text-sm text-foreground/80">{s.reason}</p>
               </div>
+
+              {/* Avertissement structurel */}
+              {panelWarningReason && isMergeRec && (
+                <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-1">Avertissement</p>
+                  <p className="text-xs text-amber-800 dark:text-amber-300">{panelWarningReason}</p>
+                </div>
+              )}
 
               {/* Libellé proposé */}
               {s.suggested_label && (
