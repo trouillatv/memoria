@@ -246,7 +246,8 @@ export async function analyzeSubjectSimilarityAction(
       return { result: r, tokens: r.tokens, model: r.model, provider: provider.name, durationMs: r.durationMs }
     })
 
-    const parsed = JSON.parse(output.text) as {
+    const rawText = output.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+    const parsed = JSON.parse(rawText) as {
       same_subject_score?: number
       recommendation?: string
       reason?: string
