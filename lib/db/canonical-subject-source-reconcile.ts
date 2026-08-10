@@ -38,6 +38,12 @@ const CLUSTER_JOIN_THRESHOLD = 0.28
 // Seuil de confiance minimum pour créer un nouveau CS automatiquement
 const CREATE_THRESHOLD = 0.85
 
+// Kinds pouvant créer un nouveau canonical_subject (deadline exclu)
+const CAN_CREATE_SUBJECT_KINDS = new Set(['action', 'vigilance', 'decision', 'knowledge'])
+
+// Seuil pour le matching existant (deadline → CS) — plus élevé que la création
+const MATCH_EXISTING_THRESHOLD = 0.85
+
 // ─── Schéma Gemini ───────────────────────────────────────────────────────────
 
 const clusterGroupSchema = z.object({
@@ -57,6 +63,21 @@ const clusterOutputSchema = z.object({
 })
 
 type ClusterOutput = z.infer<typeof clusterOutputSchema>
+
+// ─── Schéma Gemini — matching existant (deadline) ────────────────────────────
+
+const existingMatchSchema = z.object({
+  canonicalSubjectId: z.string().uuid().nullable(),
+  confidence: z
+    .number()
+    .min(0)
+    .max(1)
+    .transform((v) => (v > 1 ? v / 100 : v))
+    .catch(0),
+  reason: z.string().max(200).catch(''),
+})
+
+type ExistingMatchOutput = z.infer<typeof existingMatchSchema>
 
 const SYSTEM_PROMPT_CLUSTERING = `Tu es un assistant de catégorisation de sujets de chantier BTP.
 On t'envoie un ensemble de propositions issues d'une visite terrain qui n'ont pas trouvé de sujet canonique existant.
@@ -83,6 +104,32 @@ function buildClusterPrompt(proposals: Array<{ id: string; title: string; body: 
     '',
     'Retourne un JSON avec la clé "groups" contenant des objets {proposalIds, suggestedLabel, confidence, isDurableSubject}.',
     "Chaque proposalId doit être l'identifiant COMPLET (UUID).",
+  ].join('\n')
+}
+
+const SYSTEM_PROMPT_MATCH_EXISTING = `Tu es un assistant de catégorisation de sujets de chantier BTP.
+On t'envoie un événement ou une échéance terrain et la liste des sujets canoniques connus du chantier.
+Ta tâche : déterminer si cet événement constitue une manifestation, une évolution ou une échéance d'un sujet canonique existant.
+Règle absolue : ne crée jamais un nouveau sujet. Retourne uniquement l'identifiant d'un sujet existant, ou null.
+Si le lien n'est pas clairement établi, retourne null avec une confidence basse.
+Réponds UNIQUEMENT avec le JSON demandé.`
+
+function buildMatchExistingPrompt(
+  proposal: { title: string; body: string | null; kind: string },
+  existingCs: Array<{ id: string; label: string }>,
+): string {
+  const csLines = existingCs.map((cs) => `- id:${cs.id} : "${cs.label}"`).join('\n')
+  const bodyStr = proposal.body ? `\nDétail : ${proposal.body.slice(0, 300)}` : ''
+  return [
+    `Événement terrain (${proposal.kind}) :`,
+    `"${proposal.title}"${bodyStr}`,
+    '',
+    'Sujets canoniques existants du chantier :',
+    csLines,
+    '',
+    "Cet événement est-il une manifestation, une évolution ou une échéance d'un de ces sujets ?",
+    "Retourne l'UUID exact du sujet si le lien est établi avec confiance ≥ 0.85, sinon retourne null.",
+    'Format JSON : {"canonicalSubjectId": "uuid-ou-null", "confidence": 0.0-1.0, "reason": "explication courte"}',
   ].join('\n')
 }
 
@@ -230,142 +277,179 @@ export async function reconcileSourceToCanonicalSubjects(
     }
   }
 
-  // ── Phase 2 : clustering des orphelins (toujours, même sur site vide) ────
+  // ── Séparer les orphelins selon leur capacité ────────────────────────────
+  // deadline ∈ CAN_MATCH_EXISTING (ELIGIBLE_KINDS), deadline ∉ CAN_CREATE_SUBJECT_KINDS
   if (orphans.length === 0) return result
 
-  const jaccardClusters = clusterByJaccard(orphans.map((p) => p.title))
+  const orphansForClustering = orphans.filter((p) => CAN_CREATE_SUBJECT_KINDS.has(p.kind))
+  const orphansForMatchOnly = orphans.filter((p) => !CAN_CREATE_SUBJECT_KINDS.has(p.kind))
 
-  // Appel Gemini sur tous les orphelins pour valider et raffiner le clustering
-  let geminiGroups: ClusterOutput['groups'] | null = null
+  // ── Phase 2a : clustering + création des orphelins éligibles ─────────────
+  if (orphansForClustering.length > 0) {
+    // Appel Gemini sur les orphelins éligibles à la création
+    let geminiGroups: ClusterOutput['groups'] | null = null
 
-  try {
-    const { getAIProvider } = await import('@/services/ai/factory')
-    const provider = getAIProvider()
-    const output = await provider.complete({
-      systemPrompt: SYSTEM_PROMPT_CLUSTERING,
-      userMessage: buildClusterPrompt(orphans.map((p) => ({ id: p.id, title: p.title, body: p.body }))),
-      responseSchema: clusterOutputSchema,
-      modelTier: 'light',
-      maxOutputTokens: 1200,
-    })
-    if (output.parsed) {
-      const validated = clusterOutputSchema.safeParse(output.parsed)
-      if (validated.success) geminiGroups = validated.data.groups
+    try {
+      const { getAIProvider } = await import('@/services/ai/factory')
+      const provider = getAIProvider()
+      const output = await provider.complete({
+        systemPrompt: SYSTEM_PROMPT_CLUSTERING,
+        userMessage: buildClusterPrompt(orphansForClustering.map((p) => ({ id: p.id, title: p.title, body: p.body }))),
+        responseSchema: clusterOutputSchema,
+        modelTier: 'light',
+        maxOutputTokens: 1200,
+      })
+      if (output.parsed) {
+        const validated = clusterOutputSchema.safeParse(output.parsed)
+        if (validated.success) geminiGroups = validated.data.groups
+      }
+    } catch (err) {
+      console.error('[reconcile-source] erreur Gemini clustering:', String(err).slice(0, 200))
     }
-  } catch (err) {
-    console.error('[reconcile-source] erreur Gemini clustering:', String(err).slice(0, 200))
-    // Fallback sur Jaccard seul
+
+    // ── Phase 3 : créer les CS éligibles ───────────────────────────────────
+    if (geminiGroups) {
+      const orphanById = new Map(orphansForClustering.map((p) => [p.id, p]))
+
+      const coveredByGemini = new Set(geminiGroups.flatMap((g) => g.proposalIds))
+      for (const [id] of orphanById) {
+        if (!coveredByGemini.has(id)) result.orphaned++
+      }
+
+      for (const group of geminiGroups) {
+        if (!group.isDurableSubject) {
+          result.orphaned += group.proposalIds.length
+          continue
+        }
+        if (group.confidence < CREATE_THRESHOLD) {
+          result.orphaned += group.proposalIds.length
+          continue
+        }
+        if (!group.suggestedLabel) {
+          result.orphaned += group.proposalIds.length
+          continue
+        }
+
+        const groupProposals = group.proposalIds
+          .map((id) => orphanById.get(id))
+          .filter((p): p is NonNullable<typeof p> => p != null)
+
+        if (groupProposals.length === 0) continue
+
+        const { data: newCs, error: csErr } = await sb
+          .from('canonical_subject')
+          .insert({
+            site_id: source.siteId,
+            label: group.suggestedLabel,
+            status: 'active',
+            creation_source: source.type === 'field_visit' ? 'auto_visit'
+              : source.type === 'meeting' ? 'auto_meeting'
+              : source.type === 'historical_pv' ? 'historical_pv'
+              : 'manual',
+          })
+          .select('id')
+          .single()
+
+        if (csErr || !newCs) {
+          console.error('[reconcile-source] erreur création CS:', csErr?.message)
+          result.orphaned += groupProposals.length
+          continue
+        }
+
+        const canonicalSubjectId = newCs.id
+        result.created++
+        result.clustered += groupProposals.length
+
+        const sharedThreadId = crypto.randomUUID()
+        await sb
+          .from('subject_thread_identity')
+          .insert({
+            subject_thread_id: sharedThreadId,
+            site_id: source.siteId,
+            canonical_subject_id: canonicalSubjectId,
+            source: 'auto',
+          })
+
+        for (const proposal of groupProposals) {
+          await sb
+            .from('canonical_subject_occurrence')
+            .upsert(
+              {
+                canonical_subject_id: canonicalSubjectId,
+                site_id: source.siteId,
+                source_kind: source.type === 'field_visit' ? 'field_visit' : 'meeting',
+                source_ref_id: source.id,
+                source_proposal_id: proposal.id,
+                visit_status: source.type === 'field_visit' ? 'field_checked' : 'mentioned',
+                label: proposal.title,
+                note: proposal.body,
+                evidence_count: 0,
+                effective_date: new Date().toISOString().slice(0, 10),
+                created_by: source.authorId,
+                validation_status: validationStatus,
+              },
+              { onConflict: 'source_kind,source_proposal_id', ignoreDuplicates: true },
+            )
+
+          await sb
+            .from('site_knowledge_proposals')
+            .update({
+              canonical_subject_id: canonicalSubjectId,
+              canonical_resolution_status: 'resolved',
+            })
+            .eq('id', proposal.id)
+
+          if (proposal.kind === 'action') {
+            await ensureActionThread(sb, proposal.id, source.siteId, canonicalSubjectId, sharedThreadId)
+          }
+        }
+      }
+    } else {
+      // Pas de réponse Gemini : fallback Jaccard pur, pas de création (confiance inconnue)
+      result.orphaned += orphansForClustering.length
+    }
   }
 
-  // ── Phase 3 : créer les CS éligibles ─────────────────────────────────────
-  if (geminiGroups) {
-    const orphanById = new Map(orphans.map((p) => [p.id, p]))
+  // ── Phase 2b : matching existant pour les deadlines orphelines ────────────
+  // Le prompt Gemini ne demande jamais "quel sujet créer" — uniquement
+  // "ce fait appartient-il à un sujet connu du chantier ?"
+  if (orphansForMatchOnly.length > 0) {
+    const { data: rawCs } = await sb
+      .from('canonical_subject')
+      .select('id, label')
+      .eq('site_id', source.siteId)
+      .eq('status', 'active')
 
-    // Toutes les propositions citées par Gemini (pour détecter les oubliées)
-    const coveredByGemini = new Set(geminiGroups.flatMap((g) => g.proposalIds))
-    // Propositions absentes de la réponse Gemini → orphelines silencieuses
-    for (const [id] of orphanById) {
-      if (!coveredByGemini.has(id)) result.orphaned++
-    }
+    const existingCs = (rawCs ?? []) as Array<{ id: string; label: string }>
 
-    for (const group of geminiGroups) {
-      if (!group.isDurableSubject) {
-        result.orphaned += group.proposalIds.length
-        continue
-      }
-      if (group.confidence < CREATE_THRESHOLD) {
-        result.orphaned += group.proposalIds.length
-        continue
-      }
-      if (!group.suggestedLabel) {
-        result.orphaned += group.proposalIds.length
-        continue
-      }
-
-      // Vérifier que tous les proposalIds sont connus
-      const groupProposals = group.proposalIds
-        .map((id) => orphanById.get(id))
-        .filter((p): p is NonNullable<typeof p> => p != null)
-
-      if (groupProposals.length === 0) {
-        continue
-      }
-
-      // Créer le canonical_subject
-      const { data: newCs, error: csErr } = await sb
-        .from('canonical_subject')
-        .insert({
-          site_id: source.siteId,
-          label: group.suggestedLabel,
-          status: 'active',
-          creation_source: source.type === 'field_visit' ? 'auto_visit'
-            : source.type === 'meeting' ? 'auto_meeting'
-            : source.type === 'historical_pv' ? 'historical_pv'
-            : 'manual',
-        })
-        .select('id')
-        .single()
-
-      if (csErr || !newCs) {
-        console.error('[reconcile-source] erreur création CS:', csErr?.message)
-        result.orphaned += groupProposals.length
-        continue
-      }
-
-      const canonicalSubjectId = newCs.id
-      result.created++
-      result.clustered += groupProposals.length
-
-      // Créer un subject_thread_identity pour ce nouveau CS
-      const sharedThreadId = crypto.randomUUID()
-      await sb
-        .from('subject_thread_identity')
-        .insert({
-          subject_thread_id: sharedThreadId,
-          site_id: source.siteId,
-          canonical_subject_id: canonicalSubjectId,
-          source: 'auto',
-        })
-
-      // Lier chaque proposition du groupe au nouveau CS
-      for (const proposal of groupProposals) {
-        // Occurrence (resolutionSource = llm_cluster)
-        await sb
-          .from('canonical_subject_occurrence')
-          .upsert(
-            {
-              canonical_subject_id: canonicalSubjectId,
-              site_id: source.siteId,
-              source_kind: source.type === 'field_visit' ? 'field_visit' : 'meeting',
-              source_ref_id: source.id,
-              source_proposal_id: proposal.id,
-              visit_status: source.type === 'field_visit' ? 'field_checked' : 'mentioned',
-              label: proposal.title,
-              note: proposal.body,
-              evidence_count: 0,
-              effective_date: new Date().toISOString().slice(0, 10),
-              created_by: source.authorId,
-              validation_status: validationStatus,
-            },
-            { onConflict: 'source_kind,source_proposal_id', ignoreDuplicates: true },
-          )
-
-        await sb
-          .from('site_knowledge_proposals')
-          .update({
-            canonical_subject_id: canonicalSubjectId,
-            canonical_resolution_status: 'resolved',
+    if (existingCs.length === 0) {
+      result.orphaned += orphansForMatchOnly.length
+    } else {
+      for (const proposal of orphansForMatchOnly) {
+        const match = await matchExistingSubject(proposal, existingCs)
+        if (match && match.confidence >= MATCH_EXISTING_THRESHOLD && match.canonicalSubjectId) {
+          const csExists = existingCs.some((cs) => cs.id === match.canonicalSubjectId)
+          if (!csExists) {
+            result.orphaned++
+            continue
+          }
+          await reconcileProposalToCanonical({
+            proposalId: proposal.id,
+            siteId: source.siteId,
+            reportId: source.id,
+            proposalKind: proposal.kind,
+            proposalTitle: proposal.title,
+            proposalBody: proposal.body,
+            proposalCreatedAt: new Date().toISOString(),
+            createdBy: source.authorId,
+            validationStatus,
           })
-          .eq('id', proposal.id)
-
-        if (proposal.kind === 'action') {
-          await ensureActionThread(sb, proposal.id, source.siteId, canonicalSubjectId, sharedThreadId)
+          result.matched++
+        } else {
+          result.orphaned++
         }
       }
     }
-  } else {
-    // Pas de réponse Gemini : fallback Jaccard pur, pas de création (confiance inconnue)
-    result.orphaned += orphans.length
   }
 
   return result
@@ -374,6 +458,35 @@ export async function reconcileSourceToCanonicalSubjects(
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>
+
+/**
+ * Phase 2b — Gemini existing-only : une deadline peut rejoindre un CS existant,
+ * jamais en créer un. Retourne null si Gemini échoue ou si la confiance est trop basse.
+ */
+async function matchExistingSubject(
+  proposal: { id: string; title: string; body: string | null; kind: string },
+  existingCs: Array<{ id: string; label: string }>,
+): Promise<ExistingMatchOutput | null> {
+  try {
+    const { getAIProvider } = await import('@/services/ai/factory')
+    const provider = getAIProvider()
+    const output = await provider.complete({
+      systemPrompt: SYSTEM_PROMPT_MATCH_EXISTING,
+      userMessage: buildMatchExistingPrompt(proposal, existingCs),
+      responseSchema: existingMatchSchema,
+      modelTier: 'light',
+      maxOutputTokens: 300,
+    })
+    if (output.parsed) {
+      const validated = existingMatchSchema.safeParse(output.parsed)
+      if (validated.success) return validated.data
+    }
+    return null
+  } catch (err) {
+    console.error('[reconcile-source] erreur Gemini match-existing:', String(err).slice(0, 200))
+    return null
+  }
+}
 
 /**
  * Assure que l'action est liée à un subject_thread_id et que STI pointe vers le CS.

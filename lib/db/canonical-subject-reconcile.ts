@@ -19,7 +19,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
 
-export const ELIGIBLE_KINDS = new Set(['action', 'vigilance', 'decision', 'knowledge'])
+export const ELIGIBLE_KINDS = new Set(['action', 'vigilance', 'decision', 'knowledge', 'deadline'])
 
 export interface ReconcileResult {
   status: 'resolved' | 'needs_resolution' | 'not_found' | 'skipped'
