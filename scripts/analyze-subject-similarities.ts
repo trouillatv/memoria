@@ -242,15 +242,24 @@ async function main() {
       activeObjects: { actionsOpen: sB.active_actions, reservesOpen: sB.active_reserves, decisionsOpen: sB.active_decisions, deadlinesActive: sB.active_deadlines },
     }
 
+    const blockReason = candidate.fusionBlockReason
+    const typeTag = `[${candidate.typeHintA}/${candidate.typeHintB}]`
+
     try {
-      const result = await analyzeSubjectPair(inputA, inputB, null)
+      const result = await analyzeSubjectPair(inputA, inputB, null, {
+        typeHintA: candidate.typeHintA,
+        typeHintB: candidate.typeHintB,
+        fusionBlockReason: blockReason,
+      })
       geminiCount++
 
       const icon = scoreColor(result.score)
+      const blockTag = blockReason ? ' 🚫' : ''
       console.log(
-        `${icon} ${result.score}% [${result.verdict}/${result.recommendation}] ` +
+        `${icon} ${result.score}% [${result.verdict}/${result.recommendation}]${blockTag} ${typeTag} ` +
         `"${sA.label}" ↔ "${sB.label}" — ${result.reason}`,
       )
+      if (blockReason) console.log(`   ⚠ Fusion bloquée : ${blockReason}`)
       if (result.suggested_label) console.log(`   → Libellé proposé : "${result.suggested_label}"`)
       if (result.suggested_link_type) console.log(`   → Lien : ${result.suggested_link_type} (${result.suggested_direction ?? '?'})`)
 
@@ -270,8 +279,10 @@ async function main() {
     }
   }
 
+  const blockedCount = candidates.filter((c) => c.fusionBlockReason !== null).length
   sep('Résumé')
-  console.log(`Candidats analysés : ${geminiCount} / ${candidates.length}`)
+  console.log(`Candidats : ${candidates.length} total | ${blockedCount} fusion bloquée | ${candidates.length - blockedCount} sans restriction`)
+  console.log(`Analysés par Gemini : ${geminiCount} / ${candidates.length}`)
   if (!DRY_RUN) console.log(`Persistées : ${persistedCount} | Erreurs : ${errorCount}`)
   else console.log('[dry-run] Rien persisté. Relancer avec --apply.')
 }

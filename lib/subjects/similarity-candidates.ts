@@ -1,10 +1,14 @@
 /**
  * Générateur déterministe de paires candidates à la comparaison IA.
  *
- * Objectif : réduire le nombre de paires envoyées à Gemini en filtrant
- * les paires qui n'ont aucune ressemblance lexicale ou contextuelle.
- * Gemini ne doit voir que les paires plausibles.
+ * Doctrine :
+ * - Le LLM classifie la relation, il n'est pas l'autorité de fusion.
+ * - La détection de type bloque les paires incompatibles AVANT Gemini.
+ * - Une paire bloquée peut toujours être envoyée comme candidat "link only",
+ *   jamais comme candidat de fusion.
  */
+
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 export interface SubjectForCandidates {
   id: string
@@ -13,14 +17,82 @@ export interface SubjectForCandidates {
   topicId: string | null
 }
 
+/**
+ * Type structurel détecté sur le libellé d'un sujet.
+ *
+ * - person_name  : initiale + nom (M. DUPONT, Mme ROUSSEL, G. DEVALLEZ)
+ * - dated_event  : contient une date explicite (30/03, du 16/02 au 06/03)
+ * - document     : Rapport, Avis G3, CR, Plan, Fiche technique, VISA
+ * - prevision    : commence par "Prévision :"
+ * - business     : sujet métier standard, aucun marqueur particulier
+ */
+export type SubjectTypeHint = 'person_name' | 'dated_event' | 'document' | 'prevision' | 'business'
+
 export interface Candidate {
   a: SubjectForCandidates
   b: SubjectForCandidates
+  typeHintA: SubjectTypeHint
+  typeHintB: SubjectTypeHint
   /** Score heuristique 0-100 basé sur la similarité lexicale seule */
   heuristicScore: number
-  /** Raison principale du score */
+  /** Raison principale du score heuristique */
   heuristicReason: string
+  /**
+   * Si non null : la fusion est bloquée pour cette paire.
+   * Gemini peut toujours être appelé pour déterminer un lien, mais
+   * la recommendation "merge" doit être ignorée par le batch.
+   */
+  fusionBlockReason: string | null
 }
+
+// ── Détection de type ──────────────────────────────────────────────────────────
+
+/** Regex de date explicite : 30/03, 20.02, "du 16/02 au 06/03", "17,5 jours" */
+const DATE_PATTERN = /\b\d{1,2}[./]\d{2}|\bdu\s+\d{1,2}\/\d{2}|\bjours?\b/i
+
+/** Termes documentaires : rapport, avis, CR, plan, fiche, visa, note, livret */
+const DOC_PATTERN = /\b(avis\b|rapport\b|cr\b|visa\b|plan\b|fiche\b|ft\b|note\b|livret\b|attestation\b|procès[-\s]verbal\b|pv\b)/i
+
+/** Initiale + nom en majuscule (M. DUPONT, Mme ROUSSEL, G. DEVALLEZ) */
+const PERSON_PATTERN = /^(M\.?|Mme\.?|Mr\.?|Dr\.?|G\.?|J\.?|P\.?|L\.?|R\.?|A\.?|B\.?|C\.?|D\.?|E\.?|F\.?|H\.?|I\.?|K\.?|N\.?|O\.?|Q\.?|S\.?|T\.?|U\.?|V\.?|W\.?|X\.?|Y\.?|Z\.?)\s+[A-ZÉÈÀÙÂÊÎÔÛÄËÏÖÜ]{2}/
+
+export function detectTypeHint(label: string): SubjectTypeHint {
+  const trimmed = label.trim()
+  if (PERSON_PATTERN.test(trimmed)) return 'person_name'
+  if (/^[Pp]révision\s*:/i.test(trimmed)) return 'prevision'
+  if (DATE_PATTERN.test(trimmed)) return 'dated_event'
+  if (DOC_PATTERN.test(trimmed)) return 'document'
+  return 'business'
+}
+
+/**
+ * Vérifie si la fusion est incompatible entre deux types.
+ * Retourne la raison de blocage, ou null si la fusion est permise.
+ */
+export function fusionBlockReason(typeA: SubjectTypeHint, typeB: SubjectTypeHint): string | null {
+  // Personnes : jamais via ce moteur, même entre elles
+  if (typeA === 'person_name' || typeB === 'person_name') {
+    return 'Pattern acteur détecté — résolution d\'identité distincte requise'
+  }
+  // Événement daté ↔ document résultant : relation, pas fusion
+  if (typeA === 'dated_event' && typeB === 'document') {
+    return 'Événement daté ↔ document résultant — lien uniquement (validates/causes)'
+  }
+  if (typeA === 'document' && typeB === 'dated_event') {
+    return 'Document résultant ↔ événement daté — lien uniquement (validates/causes)'
+  }
+  // Deux événements datés distincts ne fusionnent pas (chacun garde sa temporalité)
+  if (typeA === 'dated_event' && typeB === 'dated_event') {
+    return 'Deux événements datés — vérifier que les dates se chevauchent avant de fusionner'
+  }
+  // Prévision ↔ réalisé : à envoyer à Gemini avec flag, mais bloquer la fusion auto
+  if (typeA === 'prevision' || typeB === 'prevision') {
+    return 'Prévision détectée — fusion conditionnelle, revue humaine requise'
+  }
+  return null
+}
+
+// ── Similarité lexicale ────────────────────────────────────────────────────────
 
 const FRENCH_STOPWORDS = new Set([
   'le', 'la', 'les', 'de', 'du', 'des', 'un', 'une', 'et', 'en', 'au', 'aux',
@@ -66,6 +138,8 @@ function containment(a: Set<string>, b: Set<string>): number {
   return hits / a.size
 }
 
+// ── Scoring heuristique ────────────────────────────────────────────────────────
+
 /**
  * Score heuristique entre deux sujets.
  * Retourne null si le score est trop faible pour justifier une analyse Gemini.
@@ -94,19 +168,34 @@ export function heuristicScore(
   else if (j >= 0.2) { score = 30; reason = 'Jaccard ≥ 0.2 — similarité faible' }
   else { return null }
 
-  // Pour les paires hors-topic, seuil plus élevé
   const threshold = crossTopic ? 60 : 25
   if (score < threshold) return null
 
-  return { a, b, heuristicScore: score, heuristicReason: reason }
+  const typeHintA = detectTypeHint(a.label)
+  const typeHintB = detectTypeHint(b.label)
+  const blockReason = fusionBlockReason(typeHintA, typeHintB)
+
+  // Les personnes sont totalement exclues (même en tant que candidats de lien)
+  if (typeHintA === 'person_name' || typeHintB === 'person_name') return null
+
+  return {
+    a, b,
+    typeHintA,
+    typeHintB,
+    heuristicScore: score,
+    heuristicReason: reason,
+    fusionBlockReason: blockReason,
+  }
 }
+
+// ── Génération de candidats ────────────────────────────────────────────────────
 
 /**
  * Génère les paires candidates à analyser par Gemini pour un ensemble de sujets.
  *
  * @param subjects Liste de sujets (tous actifs, déjà filtrés)
- * @param rejectedPairs Paires déjà rejetées humainement à ignorer (normalisées "idA:idB")
- * @param maxPairsPerTopic Limite de paires par topic envoyées à Gemini
+ * @param rejectedPairs Paires déjà rejetées humainement à ignorer
+ * @param maxPairsPerTopic Budget de paires par topic (V1 configurable, défaut 20)
  */
 export function generateCandidates(
   subjects: SubjectForCandidates[],
@@ -127,7 +216,6 @@ export function generateCandidates(
   for (const [topicId, group] of byTopic) {
     const topicCandidates: Candidate[] = []
 
-    // Paires intra-topic
     for (let i = 0; i < group.length; i++) {
       for (let j = i + 1; j < group.length; j++) {
         const a = group[i]
@@ -140,11 +228,9 @@ export function generateCandidates(
       }
     }
 
-    // Trier par score décroissant et limiter
     topicCandidates.sort((x, y) => y.heuristicScore - x.heuristicScore)
     candidates.push(...topicCandidates.slice(0, maxPairsPerTopic))
 
-    // Si le topic a peu de sujets, aussi tester avec les sujets sans thème
     if (topicId !== null && group.length <= 5) {
       const unthemed = byTopic.get(null) ?? []
       for (const a of group) {
@@ -174,7 +260,7 @@ export function generateCandidates(
   unthamedCandidates.sort((x, y) => y.heuristicScore - x.heuristicScore)
   candidates.push(...unthamedCandidates.slice(0, maxPairsPerTopic))
 
-  // Dédupliquer par paire normalisée (peut apparaître via plusieurs chemins)
+  // Dédupliquer
   const seen = new Set<string>()
   return candidates.filter((c) => {
     const key = normalizePairKey(c.a.id, c.b.id)
@@ -183,6 +269,8 @@ export function generateCandidates(
     return true
   })
 }
+
+// ── Utilitaires ────────────────────────────────────────────────────────────────
 
 /** Clé de paire normalisée : toujours idMin:idMax */
 export function normalizePairKey(idA: string, idB: string): string {

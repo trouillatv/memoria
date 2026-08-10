@@ -10,7 +10,7 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { getAIProvider } from '@/services/ai/factory'
 import { withAITracking } from '@/services/ai/tracking'
-import { normalizePairKey, normalizedPair } from './similarity-candidates'
+import { normalizePairKey, normalizedPair, type SubjectTypeHint } from './similarity-candidates'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -66,7 +66,7 @@ export interface PersistedSuggestion {
 
 // ── Prompt système ─────────────────────────────────────────────────────────────
 
-const SIMILARITY_SYSTEM_PROMPT = `Tu es un expert en management de chantier BTP.
+const BASE_SYSTEM_PROMPT = `Tu es un expert en management de chantier BTP.
 On te donne deux sujets canoniques extraits de procès-verbaux de chantier.
 Chaque sujet comporte un libellé principal, des alias (formulations alternatives), et des données contextuelles.
 
@@ -97,7 +97,7 @@ Réponds UNIQUEMENT en JSON valide, aucun autre texte :
   "reason": "phrase courte ≤ 15 mots"
 }
 
-Règles :
+Règles générales :
 - score ≥ 90 → verdict doit être "same_subject", recommendation "merge"
 - score 70-89 → verdict "same_subject" ou "related", recommendation "merge" ou "link"
 - score 50-69 → verdict "related" ou "uncertain", recommendation "link" ou "none"
@@ -105,14 +105,47 @@ Règles :
 - suggested_direction : A=sujet source, B=sujet cible dans la relation
 - suggested_label : null sauf si verdict "same_subject"`
 
+function buildSystemPrompt(
+  typeHintA: SubjectTypeHint | null,
+  typeHintB: SubjectTypeHint | null,
+  fusionBlock: string | null,
+): string {
+  if (!fusionBlock && !typeHintA && !typeHintB) return BASE_SYSTEM_PROMPT
+
+  const lines: string[] = [BASE_SYSTEM_PROMPT, '']
+
+  if (typeHintA || typeHintB) {
+    lines.push('Types structurels détectés par analyse déterministe :')
+    if (typeHintA) lines.push(`- Sujet A : ${typeHintA}`)
+    if (typeHintB) lines.push(`- Sujet B : ${typeHintB}`)
+  }
+
+  if (fusionBlock) {
+    lines.push('')
+    lines.push(`CONTRAINTE DE FUSION : ${fusionBlock}`)
+    lines.push('La fusion ("merge") est interdite pour cette paire. Ta recommendation NE PEUT PAS être "merge".')
+    lines.push('Si les sujets semblent liés, propose "link" avec le type de relation approprié.')
+    lines.push('Si aucun lien probant, propose "none".')
+  }
+
+  return lines.join('\n')
+}
+
 // ── Analyse Gemini d'une paire ─────────────────────────────────────────────────
 
 export async function analyzeSubjectPair(
   subjectA: SubjectInput,
   subjectB: SubjectInput,
   userId: string | null,
+  opts?: {
+    typeHintA?: SubjectTypeHint | null
+    typeHintB?: SubjectTypeHint | null
+    fusionBlockReason?: string | null
+  },
 ): Promise<SimilarityResult> {
   const provider = getAIProvider()
+  const fusionBlock = opts?.fusionBlockReason ?? null
+  const systemPrompt = buildSystemPrompt(opts?.typeHintA ?? null, opts?.typeHintB ?? null, fusionBlock)
 
   const userMsg = JSON.stringify({
     sujet_A: {
@@ -143,7 +176,7 @@ export async function analyzeSubjectPair(
 
   const output = await withAITracking('subject_similarity', userId, async () => {
     const r = await provider.complete({
-      systemPrompt: SIMILARITY_SYSTEM_PROMPT,
+      systemPrompt,
       userMessage: userMsg,
       modelTier: 'light',
       maxOutputTokens: 300,
@@ -170,9 +203,14 @@ export async function analyzeSubjectPair(
     : score >= 85 ? 'same_subject' : score >= 60 ? 'related' : 'distinct'
 
   const validRecs: SimilarityRecommendation[] = ['merge', 'link', 'none']
-  const recommendation: SimilarityRecommendation = validRecs.includes(parsed.recommendation as SimilarityRecommendation)
+  let recommendation: SimilarityRecommendation = validRecs.includes(parsed.recommendation as SimilarityRecommendation)
     ? (parsed.recommendation as SimilarityRecommendation)
     : verdict === 'same_subject' ? 'merge' : verdict === 'related' ? 'link' : 'none'
+
+  // Garde-fou : si la fusion est structurellement bloquée, cap à 'link' ou 'none'
+  if (fusionBlock && recommendation === 'merge') {
+    recommendation = 'link'
+  }
 
   const validLinkTypes: SimilarityLinkType[] = ['requires', 'enables', 'causes', 'validates', 'replaces', 'relates_to']
   const validDirections: SimilarityDirection[] = ['a_to_b', 'b_to_a']

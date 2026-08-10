@@ -11,6 +11,7 @@ import {
   type PersistedSuggestion,
   type SubjectInput,
 } from '@/lib/subjects/similarity-analyze'
+import { detectTypeHint, fusionBlockReason as computeFusionBlock } from '@/lib/subjects/similarity-candidates'
 import { mergeCanonicalSubjectsAction, createLinkFromMatrixAction } from './merge-actions'
 
 // ── Chargement des suggestions pour l'UI ──────────────────────────────────────
@@ -89,7 +90,20 @@ export async function getOrAnalyzeSubjectPairAction(
   }
 
   try {
-    const result = await analyzeSubjectPair(inputA, inputB, user?.id ?? null)
+    const typeHintA = detectTypeHint(inputA.label)
+    const typeHintB = detectTypeHint(inputB.label)
+    const fusionBlock = computeFusionBlock(typeHintA, typeHintB)
+
+    // Persons are excluded upstream in the batch but can reach here via DnD
+    if (typeHintA === 'person_name' || typeHintB === 'person_name') {
+      return { error: 'Acteur détecté — résolution d\'identité distincte requise' }
+    }
+
+    const result = await analyzeSubjectPair(inputA, inputB, user?.id ?? null, {
+      typeHintA,
+      typeHintB,
+      fusionBlockReason: fusionBlock,
+    })
     const saved = await upsertSuggestion(supabase, siteId, subjectAId, subjectBId, result)
     if ('error' in saved) return { error: saved.error }
 
