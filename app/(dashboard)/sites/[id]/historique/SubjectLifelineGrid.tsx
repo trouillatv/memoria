@@ -82,6 +82,7 @@ const FAMILY_LABELS: Record<string, string> = {
   decision: 'Déc.',
   knowledge_fact: 'Info',
   deadline: 'Éch.',
+  native: '',
 }
 
 const SEVERITY_ORDER = ['réouvert', 'aggravé', 'réapparu', 'réalisé', 'levé', 'annulé', 'progressé', 'maintenu', 'changé', null]
@@ -183,7 +184,7 @@ function DroppableTopicRow({
 
 function DraggableSubjectRow({
   row, siteId, isSelected, labelWidth, CELL_W, nativeDates,
-  nativeOccurrences, suggestedCounts, onSelect, onMergeDialog,
+  nativeOccurrences, suggestedCounts, nativeOnlyIds, onSelect, onMergeDialog,
 }: {
   row: SubjectMatrixRow
   siteId: string
@@ -193,6 +194,7 @@ function DraggableSubjectRow({
   nativeDates: NativeDate[]
   nativeOccurrences?: Record<string, NativeOcc[]>
   suggestedCounts?: Record<string, number>
+  nativeOnlyIds?: Set<string>
   onSelect: () => void
   onMergeDialog: (id: string, label: string) => void
 }) {
@@ -246,6 +248,14 @@ function DraggableSubjectRow({
         >
           {row.canonicalLabel}
         </Link>
+        {row.canonicalSubjectId && nativeOnlyIds?.has(row.canonicalSubjectId) && (
+          <span
+            title="Créé dans MemorIA (pas encore dans un PV)"
+            className="shrink-0 text-[10px] text-violet-500 dark:text-violet-400 leading-none"
+          >
+            ✦
+          </span>
+        )}
         {row.canonicalSubjectId && (suggestedCounts?.[row.canonicalSubjectId] ?? 0) > 0 && (
           <Link
             href={`/sites/${siteId}/historique/sujets/${row.canonicalSubjectId}#relations`}
@@ -334,7 +344,6 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
   const [hideInfo, setHideInfo] = useState(true)
   const [selectedThread, setSelectedThread] = useState<string | null>(initialThread ?? null)
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set())
-  const [nativeExpanded, setNativeExpanded] = useState(false)
 
   // Fusion manuelle
   const [mergeDialog, setMergeDialog] = useState<{ sourceId: string; sourceLabel: string } | null>(null)
@@ -451,6 +460,11 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }, [selectedThread]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const runs = matrix.runs
+  const CELL_W = 52
+  const [labelWidth, setLabelWidth] = useState(280)
+  const resizeDragRef = useRef<{ startX: number; startWidth: number } | null>(null)
+
   const topics = useMemo(() => {
     const map = new Map<string, string>()
     for (const row of matrix.rows) {
@@ -461,8 +475,48 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
       .sort((a, b) => a.label.localeCompare(b.label, 'fr'))
   }, [matrix.rows])
 
+  // Sujets 100% natifs — canonicalSubjectId présent dans nativeOccurrences mais absent de la matrice PV
+  const matrixCanonicalIds = useMemo(
+    () => new Set(matrix.rows.map((r) => r.canonicalSubjectId).filter(Boolean)),
+    [matrix.rows],
+  )
+
+  const nativeOnlySubjects = useMemo(() => {
+    if (!nativeOccurrences || !nativeSubjectLabels) return []
+    return Object.entries(nativeOccurrences)
+      .filter(([csId]) => !matrixCanonicalIds.has(csId))
+      .map(([csId, occs]) => ({
+        csId,
+        label: nativeSubjectLabels[csId] ?? csId,
+        occurrences: occs,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'fr'))
+  }, [nativeOccurrences, nativeSubjectLabels, matrixCanonicalIds])
+
+  // IDs des sujets 100% natifs (pour badge ✦)
+  const nativeOnlyIds = useMemo(
+    () => new Set(nativeOnlySubjects.map((s) => s.csId)),
+    [nativeOnlySubjects],
+  )
+
+  // Fusion : rows PV + rows synthétiques pour les sujets 100% natifs
+  const allRows = useMemo((): SubjectMatrixRow[] => {
+    const nativeRows: SubjectMatrixRow[] = nativeOnlySubjects.map(({ csId, label }) => ({
+      subjectThreadId: `native:${csId}`,
+      canonicalLabel: label,
+      family: 'native',
+      thematicCategory: null,
+      currentStatus: null,
+      canonicalSubjectId: csId,
+      cells: Array(runs.length).fill(null) as Array<MatrixCell | null>,
+      topicId: null,
+      topicLabel: null,
+    }))
+    return [...matrix.rows, ...nativeRows]
+  }, [matrix.rows, nativeOnlySubjects, runs.length])
+
   const filtered = useMemo(() => {
-    let rows = matrix.rows
+    let rows = allRows
 
     const HIDE_BY_DEFAULT = new Set(['knowledge_fact', 'person', 'company'])
     if (hideInfo) rows = rows.filter((r) => !HIDE_BY_DEFAULT.has(r.family))
@@ -496,30 +550,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
     else sorted.sort((a, b) => a.canonicalLabel.localeCompare(b.canonicalLabel, 'fr'))
 
     return sorted
-  }, [matrix.rows, sort, statusFilter, themeFilter, hideInfo, importanceScores])
-
-  const runs = matrix.runs
-  const CELL_W = 52
-  const [labelWidth, setLabelWidth] = useState(280)
-  const resizeDragRef = useRef<{ startX: number; startWidth: number } | null>(null)
-
-  // Sujets 100% natifs — canonicalSubjectId présent dans nativeOccurrences mais absent de la matrice PV
-  const matrixCanonicalIds = useMemo(
-    () => new Set(matrix.rows.map((r) => r.canonicalSubjectId).filter(Boolean)),
-    [matrix.rows],
-  )
-
-  const nativeOnlySubjects = useMemo(() => {
-    if (!nativeOccurrences || !nativeSubjectLabels) return []
-    return Object.entries(nativeOccurrences)
-      .filter(([csId]) => !matrixCanonicalIds.has(csId))
-      .map(([csId, occs]) => ({
-        csId,
-        label: nativeSubjectLabels[csId] ?? csId,
-        occurrences: occs,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'fr'))
-  }, [nativeOccurrences, nativeSubjectLabels, matrixCanonicalIds])
+  }, [allRows, sort, statusFilter, themeFilter, hideInfo, importanceScores])
 
   // Groupement par topic + flat list pour le rendu
   const grouped = useMemo((): RowGroup[] => {
@@ -795,6 +826,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                 nativeDates={nativeDates}
                 nativeOccurrences={nativeOccurrences}
                 suggestedCounts={suggestedCounts}
+                nativeOnlyIds={nativeOnlyIds}
                 onSelect={() => setSelectedThread(row.subjectThreadId === selectedThread ? null : row.subjectThreadId)}
                 onMergeDialog={openMergeDialog}
               />
@@ -811,56 +843,6 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
       </DragOverlay>
       </DndContext>
 
-      {/* Sujets nés dans MemorIA — canonical subjects sans aucun PV */}
-      {nativeOnlySubjects.length > 0 && (
-        <div className="rounded-xl border bg-card overflow-hidden">
-          <button
-            type="button"
-            className="flex w-full items-center gap-1.5 border-b px-3 py-2.5 text-left hover:bg-muted/30 transition-colors"
-            style={{ height: 40 }}
-            onClick={() => setNativeExpanded((v) => !v)}
-          >
-            {nativeExpanded
-              ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-              : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />}
-            <span className="flex-1 truncate text-xs font-semibold text-foreground/80">
-              Sujets nés dans MemorIA
-            </span>
-            <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
-              {nativeOnlySubjects.length}
-            </span>
-          </button>
-          {nativeExpanded && (
-            <div className="divide-y">
-              {nativeOnlySubjects.map(({ csId, label, occurrences }) => (
-                <div key={csId} className="flex items-center gap-4 px-4 py-2.5">
-                  <Link
-                    href={`/sites/${siteId}/historique/sujets/${csId}`}
-                    className="min-w-0 flex-1 truncate text-xs font-medium hover:underline"
-                  >
-                    {label}
-                  </Link>
-                  <div className="flex shrink-0 flex-wrap gap-1.5">
-                    {occurrences.map((o, i) => (
-                      <span
-                        key={i}
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                          o.sourceKind === 'field_visit'
-                            ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300'
-                            : 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300'
-                        }`}
-                      >
-                        <span>{o.sourceKind === 'field_visit' ? '✓' : '◇'}</span>
-                        <span>{new Date(o.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Panneau de détail du sujet sélectionné */}
       {selectedThread && (() => {
