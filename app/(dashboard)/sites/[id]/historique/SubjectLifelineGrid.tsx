@@ -401,6 +401,9 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
   const [suggestionPanelError, setSuggestionPanelError] = useState<string | null>(null)
   const [suggestionPanelLinkType, setSuggestionPanelLinkType] = useState('requires')
   const [suggestionPanelLinkDir, setSuggestionPanelLinkDir] = useState<'a_to_b' | 'b_to_a'>('a_to_b')
+  const [openGroups, setOpenGroups] = useState(() => new Set(['merge']))
+  const [batchConfirm, setBatchConfirm] = useState(false)
+  const [batchMerging, setBatchMerging] = useState(false)
 
   async function loadSuggestions() {
     setSuggestionsLoading(true)
@@ -421,6 +424,15 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
     setSuggestionPanelError(null)
     setSuggestionPanelLinkType(suggestion.suggested_link_type ?? 'requires')
     setSuggestionPanelLinkDir(suggestion.suggested_direction ?? 'a_to_b')
+  }
+
+  function toggleGroup(key: string) {
+    setOpenGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   }
 
   function openMergeDialog(sourceId: string, sourceLabel: string) {
@@ -596,6 +608,14 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
     }))
     return [...matrix.rows, ...nativeRows]
   }, [matrix.rows, nativeOnlySubjects, runs.length])
+
+  const subjectLabelMap = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const r of allRows) {
+      if (r.canonicalSubjectId) m.set(r.canonicalSubjectId, r.canonicalLabel)
+    }
+    return m
+  }, [allRows])
 
   const filtered = useMemo(() => {
     let rows = allRows
@@ -1022,56 +1042,126 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
       </div>
     )}
 
-    {suggestionMode && suggestions.length > 0 && !selectedSuggestion && (
-      <div className="fixed right-4 top-16 bottom-4 z-40 w-80 flex flex-col rounded-2xl border bg-card shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-violet-500" />
-            <span className="text-sm font-semibold">{suggestions.length} rapprochement{suggestions.length > 1 ? 's' : ''}</span>
-          </div>
-          <button type="button" onClick={() => setSuggestionMode(false)} className="rounded-lg p-1 text-muted-foreground hover:bg-muted">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+    {suggestionMode && suggestions.length > 0 && !selectedSuggestion && (() => {
+      const mergeGroup = suggestions.filter((s) => s.recommendation === 'merge' && s.score >= 90)
+      const linkGroup = suggestions.filter((s) => s.recommendation === 'link')
+      const otherGroup = suggestions.filter((s) => !(s.recommendation === 'merge' && s.score >= 90) && s.recommendation !== 'link')
+      const ultraSafe = mergeGroup.filter((s) => {
+        const lA = subjectLabelMap.get(s.subject_a_id) ?? ''
+        const lB = subjectLabelMap.get(s.subject_b_id) ?? ''
+        return s.score >= 95 && computeFusionWarning(detectTypeHint(lA), detectTypeHint(lB)) === null
+      })
 
-        {/* Liste */}
-        <div className="overflow-y-auto flex-1 divide-y">
-          {suggestions.map((s) => {
-            const lA = allRows.find((r) => r.canonicalSubjectId === s.subject_a_id)?.canonicalLabel ?? s.subject_a_id.slice(0, 8)
-            const lB = allRows.find((r) => r.canonicalSubjectId === s.subject_b_id)?.canonicalLabel ?? s.subject_b_id.slice(0, 8)
-            const scoreClass = s.score >= 90
-              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-              : s.score >= 75
-                ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
-                : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-            return (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => openSuggestionPanel(s)}
-                className="w-full text-left px-4 py-3 hover:bg-muted/60 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-medium text-foreground/90">{lA}</span>
-                    <span className="block truncate text-xs text-muted-foreground mt-0.5">{lB}</span>
-                  </div>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${scoreClass}`}>
-                    {s.score}%
-                  </span>
-                </div>
-                <div className="mt-1.5">
-                  {s.recommendation === 'merge' && <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400">→ Fusion proposée</span>}
-                  {s.recommendation === 'link' && <span className="text-[10px] font-medium text-blue-600 dark:text-blue-400">→ Lien proposé</span>}
-                  {s.recommendation === 'none' && <span className="text-[10px] font-medium text-muted-foreground">→ Distincts</span>}
-                </div>
-              </button>
-            )
-          })}
+      function SuggestionItem({ s }: { s: PersistedSuggestion }) {
+        const lA = subjectLabelMap.get(s.subject_a_id) ?? 'Sujet fusionné'
+        const lB = subjectLabelMap.get(s.subject_b_id) ?? 'Sujet fusionné'
+        const scoreClass = s.score >= 90
+          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+          : s.score >= 75
+            ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+            : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+        return (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => openSuggestionPanel(s)}
+            className="w-full text-left px-4 py-2.5 hover:bg-muted/60 transition-colors"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-medium text-foreground/90">{lA}</span>
+                <span className="block truncate text-xs text-muted-foreground mt-0.5">{lB}</span>
+              </div>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${scoreClass}`}>
+                {s.score}%
+              </span>
+            </div>
+          </button>
+        )
+      }
+
+      function GroupSection({
+        groupKey, label, items, colorClass, defaultOpen,
+        extra,
+      }: {
+        groupKey: string; label: string; items: PersistedSuggestion[]
+        colorClass: string; defaultOpen?: boolean
+        extra?: React.ReactNode
+      }) {
+        const isOpen = openGroups.has(groupKey)
+        return (
+          <div>
+            <button
+              type="button"
+              onClick={() => toggleGroup(groupKey)}
+              className="w-full flex items-center justify-between px-4 py-2 bg-muted/40 hover:bg-muted/70 transition-colors"
+            >
+              <div className="flex items-center gap-1.5">
+                {isOpen ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                <span className={`text-[11px] font-semibold ${colorClass}`}>{label}</span>
+                <span className="text-[11px] text-muted-foreground">· {items.length}</span>
+              </div>
+              {extra}
+            </button>
+            {isOpen && <div className="divide-y">{items.map((s) => <SuggestionItem key={s.id} s={s} />)}</div>}
+          </div>
+        )
+      }
+
+      return (
+        <div className="fixed right-4 top-16 bottom-4 z-40 w-80 flex flex-col rounded-2xl border bg-card shadow-2xl overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-violet-500" />
+              <span className="text-sm font-semibold">
+                {mergeGroup.length} fusion{mergeGroup.length !== 1 ? 's' : ''} · {linkGroup.length} lien{linkGroup.length !== 1 ? 's' : ''} · {otherGroup.length} à examiner
+              </span>
+            </div>
+            <button type="button" onClick={() => setSuggestionMode(false)} className="rounded-lg p-1 text-muted-foreground hover:bg-muted">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Groupes */}
+          <div className="overflow-y-auto flex-1">
+            {mergeGroup.length > 0 && (
+              <GroupSection
+                groupKey="merge"
+                label="Fusion très probable"
+                items={mergeGroup}
+                colorClass="text-emerald-700 dark:text-emerald-400"
+                extra={ultraSafe.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setBatchConfirm(true) }}
+                    className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900"
+                  >
+                    ✓ Valider {ultraSafe.length} sûre{ultraSafe.length !== 1 ? 's' : ''}
+                  </button>
+                )}
+              />
+            )}
+            {linkGroup.length > 0 && (
+              <GroupSection
+                groupKey="link"
+                label="Dépendances proposées"
+                items={linkGroup}
+                colorClass="text-blue-700 dark:text-blue-400"
+              />
+            )}
+            {otherGroup.length > 0 && (
+              <GroupSection
+                groupKey="other"
+                label="À examiner"
+                items={otherGroup}
+                colorClass="text-muted-foreground"
+              />
+            )}
+          </div>
         </div>
-      </div>
-    )}
+      )
+    })()}
 
     {/* Barre de résumé Rapprochements IA */}
     {suggestionMode && suggestions.length > 0 && (
@@ -1102,6 +1192,73 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
         <span className="text-xs text-muted-foreground ml-auto">Cliquez un rapprochement pour agir</span>
       </div>
     )}
+
+    {/* Dialog de validation groupée des fusions ultra-sûres */}
+    {batchConfirm && (() => {
+      const mergeGroup = suggestions.filter((s) => s.recommendation === 'merge' && s.score >= 90)
+      const ultraSafe = mergeGroup.filter((s) => {
+        const lA = subjectLabelMap.get(s.subject_a_id) ?? ''
+        const lB = subjectLabelMap.get(s.subject_b_id) ?? ''
+        return s.score >= 95 && computeFusionWarning(detectTypeHint(lA), detectTypeHint(lB)) === null
+      })
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => !batchMerging && setBatchConfirm(false)}>
+          <div className="relative w-full max-w-md rounded-2xl bg-card p-6 shadow-xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-1">
+              <Sparkles className="h-4 w-4 text-violet-500" />
+              <span className="text-sm font-semibold">Valider {ultraSafe.length} fusion{ultraSafe.length !== 1 ? 's' : ''} ultra-sûre{ultraSafe.length !== 1 ? 's' : ''}</span>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">Score ≥ 95 % · recommandation « fusion » · aucun avertissement structurel. Cette action est irréversible.</p>
+            <div className="overflow-y-auto flex-1 divide-y mb-4">
+              {ultraSafe.map((s) => {
+                const lA = subjectLabelMap.get(s.subject_a_id) ?? 'Sujet fusionné'
+                const lB = subjectLabelMap.get(s.subject_b_id) ?? 'Sujet fusionné'
+                return (
+                  <div key={s.id} className="py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">{s.score}%</span>
+                      <div className="min-w-0">
+                        <span className="block text-xs font-medium truncate">{lA}</span>
+                        <span className="block text-xs text-muted-foreground truncate">↳ {s.suggested_label ?? lB}</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={batchMerging}
+                onClick={() => setBatchConfirm(false)}
+                className="flex-1 rounded-xl border px-4 py-2 text-sm text-muted-foreground hover:bg-muted disabled:opacity-40"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={batchMerging}
+                onClick={async () => {
+                  setBatchMerging(true)
+                  for (const s of ultraSafe) {
+                    const result = await acceptSuggestionAsMergeAction(s.id, s.subject_a_id, s.subject_b_id, s.suggested_label ?? '', siteId)
+                    if (!result.error && result.winnerId) {
+                      const loserId = result.winnerId === s.subject_a_id ? s.subject_b_id : s.subject_a_id
+                      setSuggestions((prev) => prev.filter((x) => x.id !== s.id && x.subject_a_id !== loserId && x.subject_b_id !== loserId))
+                    }
+                  }
+                  setBatchMerging(false)
+                  setBatchConfirm(false)
+                }}
+                className="flex-1 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
+              >
+                {batchMerging ? 'Fusion en cours…' : `Confirmer ${ultraSafe.length} fusion${ultraSafe.length !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    })()}
 
     {/* Dialog de fusion */}
     {mergeDialog && (
@@ -1333,7 +1490,11 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                         s.suggested_label ?? '', siteId,
                       )
                       if (result.error) { setSuggestionPanelError(result.error); setSuggestionPanelAction('idle') }
-                      else { setSelectedSuggestion(null); setSuggestions((prev) => prev.filter((x) => x.id !== s.id)) }
+                      else {
+                        const loserId = result.winnerId === s.subject_a_id ? s.subject_b_id : s.subject_a_id
+                        setSelectedSuggestion(null)
+                        setSuggestions((prev) => prev.filter((x) => x.id !== s.id && x.subject_a_id !== loserId && x.subject_b_id !== loserId))
+                      }
                     }}
                     className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
                   >
@@ -1370,7 +1531,11 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                         s.suggested_label ?? '', siteId,
                       )
                       if (result.error) { setSuggestionPanelError(result.error); setSuggestionPanelAction('idle') }
-                      else { setSelectedSuggestion(null); setSuggestions((prev) => prev.filter((x) => x.id !== s.id)) }
+                      else {
+                        const loserId = result.winnerId === s.subject_a_id ? s.subject_b_id : s.subject_a_id
+                        setSelectedSuggestion(null)
+                        setSuggestions((prev) => prev.filter((x) => x.id !== s.id && x.subject_a_id !== loserId && x.subject_b_id !== loserId))
+                      }
                     }}
                     className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
                   >

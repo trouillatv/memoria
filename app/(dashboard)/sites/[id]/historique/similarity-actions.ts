@@ -140,6 +140,15 @@ export async function acceptSuggestionAsMergeAction(
     .update({ status: 'accepted_merge', reviewed_at: new Date().toISOString(), reviewed_by: user.id })
     .eq('id', suggestionId)
 
+  // Auto-obsolète : les autres suggestions pending du sujet perdant deviennent obsolètes
+  const loserId = mergeResult.winnerId === subjectAId ? subjectBId : subjectAId
+  await supabase
+    .from('canonical_subject_similarity_suggestion')
+    .update({ status: 'obsolete', reviewed_at: new Date().toISOString() })
+    .eq('site_id', siteId)
+    .eq('status', 'pending')
+    .or(`subject_a_id.eq.${loserId},subject_b_id.eq.${loserId}`)
+
   revalidatePath(`/sites/${siteId}/historique`)
   return { winnerId: mergeResult.winnerId }
 }
