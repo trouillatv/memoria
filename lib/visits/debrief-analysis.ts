@@ -354,6 +354,13 @@ async function projectAndTrace(params: {
       .catch((err: unknown) =>
         console.error('[reconcile-source] erreur silencieuse:', String(err).slice(0, 300)),
       )
+    void import('@/lib/db/visit-impact-reconcile')
+      .then(({ reconcileObsoleteProposals }) =>
+        reconcileObsoleteProposals({ reportId, siteId: params.siteId }),
+      )
+      .catch((err: unknown) =>
+        console.error('[reconcile-impact] erreur silencieuse:', String(err).slice(0, 300)),
+      )
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e)
     console.error(`[debrief] projection en échec pour la visite ${reportId} : ${reason}`)
