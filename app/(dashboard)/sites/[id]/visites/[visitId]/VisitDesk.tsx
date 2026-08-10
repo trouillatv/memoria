@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 // LA PAGE DE VISITE COMME BUREAU DE TRAITEMENT (maquette Vincent, 2026-07-22).
 //
@@ -22,7 +22,7 @@ import {
 } from 'lucide-react'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { promoteEvidenceToCrAction } from '@/app/(field)/m/visite/[reportId]/cr/promotion-actions'
-import type { VisitNarrative, NarrativeCapture, NarrativeProposal } from '@/lib/db/visit-narrative'
+import type { VisitNarrative, NarrativeCapture, NarrativeProposal, VisitChangeGroup } from '@/lib/db/visit-narrative'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
 
 export type CaptureMedia = Record<string, { url: string; mime: string | null }>
@@ -56,14 +56,16 @@ export function VisitDesk({
   media,
   canPromote,
   crHref,
+  changes,
 }: {
   narrative: VisitNarrative
   media: CaptureMedia
   canPromote: boolean
   crHref: string | null
+  changes: VisitChangeGroup[]
 }) {
   const [preuve, setPreuve] = useState<NarrativeCapture | null>(null)
-  const { captured, understood, produced, ignored } = narrative
+  const { captured, understood, ignored } = narrative
 
   const terrain = captured.filter((c) => !c.addedAfterVisit)
   const versees = captured.filter((c) => c.addedAfterVisit)
@@ -73,9 +75,8 @@ export function VisitDesk({
   return (
     <div className="space-y-4">
       <Chronologie captures={terrain} media={media} onOuvrir={setPreuve} />
-      <Compris propositions={understood} crHref={crHref} />
+      <VisitChanges changes={changes} />
       <EnAttente propositions={enAttente} crHref={crHref} />
-      <Produit produced={produced} />
       <PiecesVersees pieces={versees} media={media} onOuvrir={setPreuve} />
       <NonRetenu ignored={ignored} total={ecarteTotal} />
 
@@ -205,6 +206,99 @@ function Moment({
         )}
       </button>
     </div>
+  )
+}
+
+// ── CE QUE CETTE VISITE CHANGE — regroupement par sujet canonique ────────────
+
+const CHANGE_KIND_BADGE: Record<string, { label: string; cls: string }> = {
+  action:    { label: 'Action',    cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' },
+  reserve:   { label: 'Réserve',   cls: 'bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300' },
+  deadline:  { label: 'Échéance',  cls: 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300' },
+  decision:  { label: 'Décision',  cls: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300' },
+  watchpoint:{ label: 'Vigilance', cls: 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300' },
+  fact:      { label: 'À savoir',  cls: 'bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300' },
+}
+
+function ChangeBadge({ kind }: { kind: string }) {
+  const b = CHANGE_KIND_BADGE[kind] ?? { label: kind, cls: 'bg-muted text-muted-foreground' }
+  return (
+    <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${b.cls}`}>
+      {b.label}
+    </span>
+  )
+}
+
+function VisitChanges({ changes }: { changes: VisitChangeGroup[] }) {
+  if (changes.length === 0) {
+    return (
+      <section className="rounded-xl border bg-card px-4 py-3">
+        <p className="text-[13px] text-muted-foreground">
+          <span className="font-medium text-foreground">Cette visite n’a encore rien produit.</span>{' '}
+          Concrétisez une ligne du compte-rendu pour voir les objets regroupés par sujet.
+        </p>
+      </section>
+    )
+  }
+
+  const total = changes.reduce((s, g) => s + g.sourceCount, 0)
+
+  return (
+    <Carte
+      titre="Ce que cette visite change"
+      compte={`${total} objet${total > 1 ? 's' : ''}`}
+    >
+      <div className="space-y-5">
+        {changes.map((group, i) => (
+          <div key={group.canonicalSubjectId ?? `__u${i}`}>
+            <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {group.subjectLabel ?? 'Sans sujet identifié'}
+            </p>
+            <ul className="space-y-1.5">
+              {group.actions.map(a => (
+                <li key={`a-${a.id}`} className="flex items-start gap-2 text-[13.5px]">
+                  <ChangeBadge kind="action" />
+                  <span className="leading-snug">{a.title}</span>
+                </li>
+              ))}
+              {group.reserves.map(r => (
+                <li key={`r-${r.id}`} className="flex items-start gap-2 text-[13.5px]">
+                  <ChangeBadge kind="reserve" />
+                  <span className="leading-snug">{r.label}</span>
+                </li>
+              ))}
+              {group.deadlines.map(d => (
+                <li key={`d-${d.id}`} className="flex items-start gap-2 text-[13.5px]">
+                  <ChangeBadge kind="deadline" />
+                  <span className="leading-snug">
+                    {d.title}
+                    {d.dueDate && <span className="text-[12px] text-muted-foreground"> — {d.dueDate}</span>}
+                  </span>
+                </li>
+              ))}
+              {group.decisions.map(d => (
+                <li key={`dec-${d.id}`} className="flex items-start gap-2 text-[13.5px]">
+                  <ChangeBadge kind="decision" />
+                  <span className="leading-snug">{d.title}</span>
+                </li>
+              ))}
+              {group.watchpoints.map(w => (
+                <li key={`w-${w.id}`} className="flex items-start gap-2 text-[13.5px]">
+                  <ChangeBadge kind="watchpoint" />
+                  <span className="leading-snug">{w.title}</span>
+                </li>
+              ))}
+              {group.facts.map(f => (
+                <li key={`f-${f.id}`} className="flex items-start gap-2 text-[13.5px]">
+                  <ChangeBadge kind="fact" />
+                  <span className="leading-snug">{f.title}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </Carte>
   )
 }
 

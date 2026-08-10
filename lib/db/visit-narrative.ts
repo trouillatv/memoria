@@ -158,6 +158,182 @@ export interface VisitNarrative {
   historical: ReportLinkedObject[]
 }
 
+// ── CE QUE CETTE VISITE CHANGE — regroupement par sujet canonique ──────────
+
+export interface VisitChangeGroup {
+  canonicalSubjectId: string | null   // null = groupe 'sans sujet identifié'
+  subjectLabel: string | null
+  actions: Array<{ id: string; title: string; status: string | null; priority: string | null }>
+  deadlines: Array<{ id: string; title: string; dueDate: string | null }>
+  facts: Array<{ id: string; title: string; kind: string }>
+  watchpoints: Array<{ id: string; title: string }>
+  decisions: Array<{ id: string; title: string }>
+  reserves: Array<{ id: string; label: string }>
+  sourceCount: number
+}
+
+// Types internes pour groupVisitChanges — canonical_subject déjà résolu en amont
+type RAction = { id: string; title: string; status: string | null; priority: string | null; canonicalSubjectId: string | null; subjectLabel: string | null }
+type RDeadline = { id: string; title: string; dueDate: string | null; canonicalSubjectId: string | null; subjectLabel: string | null }
+type RFact = { id: string; title: string; kind: string; canonicalSubjectId: string | null; subjectLabel: string | null }
+type RWatchpoint = { id: string; title: string; canonicalSubjectId: string | null; subjectLabel: string | null }
+type RDecision = { id: string; title: string; canonicalSubjectId: string | null; subjectLabel: string | null }
+type RReserve = { id: string; label: string; canonicalSubjectId: string | null; subjectLabel: string | null }
+
+interface VisitChangesInput {
+  actions: RAction[]
+  deadlines: RDeadline[]
+  facts: RFact[]
+  watchpoints: RWatchpoint[]
+  decisions: RDecision[]
+  reserves: RReserve[]
+}
+
+/** Pur — testable sans base. */
+export function groupVisitChanges(input: VisitChangesInput): VisitChangeGroup[] {
+  const groups = new Map<string, VisitChangeGroup>()
+
+  function getOrCreate(csId: string | null, label: string | null): VisitChangeGroup {
+    const key = csId ?? '__unclassified__'
+    if (!groups.has(key)) {
+      groups.set(key, { canonicalSubjectId: csId, subjectLabel: label, actions: [], deadlines: [], facts: [], watchpoints: [], decisions: [], reserves: [], sourceCount: 0 })
+    }
+    return groups.get(key)!
+  }
+
+  for (const a of input.actions) {
+    const g = getOrCreate(a.canonicalSubjectId, a.subjectLabel)
+    g.actions.push({ id: a.id, title: a.title, status: a.status, priority: a.priority })
+    g.sourceCount++
+  }
+  for (const d of input.deadlines) {
+    const g = getOrCreate(d.canonicalSubjectId, d.subjectLabel)
+    g.deadlines.push({ id: d.id, title: d.title, dueDate: d.dueDate })
+    g.sourceCount++
+  }
+  for (const f of input.facts) {
+    const g = getOrCreate(f.canonicalSubjectId, f.subjectLabel)
+    g.facts.push({ id: f.id, title: f.title, kind: f.kind })
+    g.sourceCount++
+  }
+  for (const w of input.watchpoints) {
+    const g = getOrCreate(w.canonicalSubjectId, w.subjectLabel)
+    g.watchpoints.push({ id: w.id, title: w.title })
+    g.sourceCount++
+  }
+  for (const d of input.decisions) {
+    const g = getOrCreate(d.canonicalSubjectId, d.subjectLabel)
+    g.decisions.push({ id: d.id, title: d.title })
+    g.sourceCount++
+  }
+  for (const r of input.reserves) {
+    const g = getOrCreate(r.canonicalSubjectId, r.subjectLabel)
+    g.reserves.push({ id: r.id, label: r.label })
+    g.sourceCount++
+  }
+
+  return [...groups.values()]
+    .filter(g => g.sourceCount > 0)
+    .sort((a, b) => {
+      if (a.canonicalSubjectId === null && b.canonicalSubjectId !== null) return 1
+      if (a.canonicalSubjectId !== null && b.canonicalSubjectId === null) return -1
+      return (a.subjectLabel ?? '').localeCompare(b.subjectLabel ?? '', 'fr')
+    })
+}
+
+/**
+ * Ce que cette visite a changé, groupé par sujet canonique.
+ *
+ * Deux chemins de résolution :
+ *   1. site_actions : subject_thread_id → subject_thread_identity → canonical_subject
+ *   2. Autres objets : site_knowledge_proposals (promoted_object_id, !superseded) → canonical_subject_id
+ *
+ * Problème documenté (lot suivant) :
+ *   Une réanalyse supersede les propositions sans réconcilier les objets déjà
+ *   matérialisés. Un objet créé avant la réanalyse reste lié à la visite via
+ *   report_id même si son ancienne proposition est désormais superseded.
+ *   Ce filtre empêche les doublons dans le regroupement, mais ne supprime pas
+ *   l'objet du groupe "sans sujet identifié". Résolution complète prévue dans
+ *   "Synchronisation des impacts d'une visite éditable".
+ */
+export async function buildVisitChanges(reportId: string): Promise<VisitChangeGroup[]> {
+  const db = createAdminClient()
+
+  // ── FETCH ACTIONS + PROPOSALS EN PARALLÈLE ───────────────────────────────
+  const [actionsRes, proposalsRes] = await Promise.all([
+    db.from('site_actions')
+      .select('id, title, status, priority, subject_thread_id')
+      .eq('report_id', reportId)
+      .is('deleted_at', null),
+    // Propositions promues, non-superseded, hors kind='action' (chemin direct STI)
+    db.from('site_knowledge_proposals')
+      .select('id, kind, promoted_object_id, promoted_object_type, canonical_subject_id')
+      .eq('report_id', reportId)
+      .neq('status', 'superseded')
+      .not('promoted_object_id', 'is', null)
+      .neq('kind', 'action'),
+  ])
+
+  const actions = (actionsRes.data ?? []) as Array<{ id: string; title: string; status: string | null; priority: string | null; subject_thread_id: string | null }>
+  const proposals = (proposalsRes.data ?? []) as Array<{ id: string; kind: string; promoted_object_id: string; promoted_object_type: string | null; canonical_subject_id: string | null }>
+
+  // ── PATH 1 : STI pour les actions ────────────────────────────────────────
+  const threadIds = actions.map(a => a.subject_thread_id).filter((t): t is string => t != null)
+  const stiMap = new Map<string, string>()  // thread_id → canonical_subject_id
+  if (threadIds.length > 0) {
+    const { data } = await db
+      .from('subject_thread_identity')
+      .select('subject_thread_id, canonical_subject_id')
+      .in('subject_thread_id', threadIds)
+    for (const r of (data ?? []) as Array<{ subject_thread_id: string; canonical_subject_id: string }>) {
+      stiMap.set(r.subject_thread_id, r.canonical_subject_id)
+    }
+  }
+
+  // ── LABELS DES SUJETS CANONIQUES ─────────────────────────────────────────
+  const stiCsIds = [...stiMap.values()]
+  const proposalCsIds = proposals.map(p => p.canonical_subject_id).filter((c): c is string => c != null)
+  const allCsIds = [...new Set([...stiCsIds, ...proposalCsIds])]
+  const csLabels = new Map<string, string>()
+  if (allCsIds.length > 0) {
+    const { data } = await db.from('canonical_subject').select('id, label').in('id', allCsIds)
+    for (const r of (data ?? []) as Array<{ id: string; label: string }>) csLabels.set(r.id, r.label)
+  }
+
+  // ── PATH 2 : promoted_object_id → canonical_subject ──────────────────────
+  const objToSubject = new Map<string, { csId: string | null; label: string | null }>()
+  for (const p of proposals) {
+    const csId = p.canonical_subject_id ?? null
+    objToSubject.set(p.promoted_object_id, { csId, label: csId ? (csLabels.get(csId) ?? null) : null })
+  }
+
+  // ── FETCH DES OBJETS LIÉS À CETTE VISITE ─────────────────────────────────
+  const [reservesRes, deadlinesRes, decisionsRes, factsRes, watchpointsRes] = await Promise.all([
+    db.from('site_reserve').select('id, label').eq('report_id', reportId),
+    db.from('site_deadlines').select('id, title, due_date').eq('report_id', reportId).is('deleted_at', null),
+    db.from('site_decisions').select('id, titre').eq('report_id', reportId),
+    db.from('captured_knowledge').select('id, title, kind').eq('source_id', reportId),
+    db.from('site_watchpoints').select('id, title').eq('report_id', reportId).is('deleted_at', null),
+  ])
+
+  const resolve = (id: string) => {
+    const s = objToSubject.get(id)
+    return { canonicalSubjectId: s?.csId ?? null, subjectLabel: s?.label ?? null }
+  }
+
+  return groupVisitChanges({
+    actions: actions.map(a => {
+      const csId = a.subject_thread_id ? (stiMap.get(a.subject_thread_id) ?? null) : null
+      return { id: a.id, title: a.title, status: a.status, priority: a.priority, canonicalSubjectId: csId, subjectLabel: csId ? (csLabels.get(csId) ?? null) : null }
+    }),
+    deadlines: ((deadlinesRes.data ?? []) as Array<{ id: string; title: string; due_date: string | null }>).map(d => ({ id: d.id, title: d.title, dueDate: d.due_date ?? null, ...resolve(d.id) })),
+    facts: ((factsRes.data ?? []) as Array<{ id: string; title: string; kind: string }>).map(f => ({ id: f.id, title: f.title, kind: f.kind, ...resolve(f.id) })),
+    watchpoints: ((watchpointsRes.data ?? []) as Array<{ id: string; title: string }>).map(w => ({ id: w.id, title: w.title, ...resolve(w.id) })),
+    decisions: ((decisionsRes.data ?? []) as Array<{ id: string; titre: string }>).map(d => ({ id: d.id, title: d.titre, ...resolve(d.id) })),
+    reserves: ((reservesRes.data ?? []) as Array<{ id: string; label: string }>).map(r => ({ id: r.id, label: r.label, ...resolve(r.id) })),
+  })
+}
+
 export async function buildVisitNarrative(reportId: string): Promise<VisitNarrative | null> {
   const db = createAdminClient()
 

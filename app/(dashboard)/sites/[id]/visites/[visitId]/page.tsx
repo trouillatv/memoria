@@ -25,7 +25,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getVisit } from '@/lib/db/visits'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buildVisitNarrative } from '@/lib/db/visit-narrative'
+import { buildVisitNarrative, buildVisitChanges } from '@/lib/db/visit-narrative'
 import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { getVisitCapturePreviewUrls, type VisitCaptureRow } from '@/lib/db/visit-captures'
 import { getIllustratesLinksForRun } from '@/lib/db/document-extractions'
@@ -58,12 +58,13 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id, visitId } = await params
-  const [identity, visit, narrative, doc, sourceDoc] = await Promise.all([
+  const [identity, visit, narrative, doc, sourceDoc, changes] = await Promise.all([
     getSiteIdentity(id),
     getVisit(visitId),
     buildVisitNarrative(visitId),
     getVisitCrDocument(visitId).catch(() => null),
     getVisitSourceDocument(visitId).catch(() => null),
+    buildVisitChanges(visitId).catch(() => []),
   ])
   if (!identity || !visit || visit.site_id !== id || !narrative) notFound()
   // Isolation tenant : le service-role passe outre la RLS, le filtre est ICI.
@@ -545,7 +546,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
           )}
 
           {!isImport && (
-            <VisitDesk narrative={narrative} media={media} canPromote={doc?.status === 'draft'} crHref={crHref} />
+            <VisitDesk narrative={narrative} media={media} canPromote={doc?.status === 'draft'} crHref={crHref} changes={changes} />
           )}
         </div>
 
