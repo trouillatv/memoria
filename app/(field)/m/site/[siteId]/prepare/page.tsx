@@ -7,11 +7,13 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getActiveVisit, buildSiteStatusSummary } from '@/lib/db/visits'
 import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
 import { listActivePreparationItems } from '@/lib/db/visit-preparation'
+import { buildVisitBriefing } from '@/lib/knowledge/visit-briefing'
 import { SiteStatusCard } from '../SiteStatusCard'
 import { VisitLauncher } from '../VisitLauncher'
 import { DeltaBlock, VisitBriefClient } from './VisitBriefClient'
 import type { PrepItemSeed } from './VisitBriefClient'
 import { CopilotMobileSheet } from '../CopilotMobileSheet'
+import { VisitBriefingBlock } from './VisitBriefingBlock'
 
 /**
  * « Préparer ma visite » — le brief décisionnel avant d'aller sur le chantier.
@@ -40,11 +42,12 @@ export default async function PrepareVisitPage({
     .maybeSingle()
   if (!site) notFound()
 
-  const [status, activeVisit, overview, rawPrepItems] = await Promise.all([
+  const [status, activeVisit, overview, rawPrepItems, briefing] = await Promise.all([
     buildSiteStatusSummary(siteId).catch(() => []),
     getActiveVisit(siteId).catch(() => null),
     getSiteOverview(siteId).catch(() => emptySiteOverview(siteId)),
     listActivePreparationItems(siteId, user.id).catch(() => []),
+    buildVisitBriefing(siteId).catch(() => null),
   ])
 
   // Sérialisation JSON-safe pour le client component
@@ -80,6 +83,9 @@ export default async function PrepareVisitPage({
           Fiche complète <ChevronRight className="h-3.5 w-3.5" />
         </Link>
       </header>
+
+      {/* 0 — Briefing intelligent avant terrain */}
+      {briefing && <VisitBriefingBlock briefing={briefing} siteId={siteId} />}
 
       {/* 1 — État rapide du chantier */}
       <SiteStatusCard cells={status} />
