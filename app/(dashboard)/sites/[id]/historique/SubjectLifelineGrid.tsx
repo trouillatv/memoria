@@ -367,7 +367,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
   const [linkInverted, setLinkInverted] = useState(false)
   const [intentIsPending, startIntentTransition] = useTransition()
   const [intentError, setIntentError] = useState<string | null>(null)
-  const [similarity, setSimilarity] = useState<{ status: 'loading' } | ({ status: 'done' } & SubjectSimilarity) | { status: 'error' } | null>(null)
+  const [similarity, setSimilarity] = useState<{ status: 'loading' } | ({ status: 'done' } & SubjectSimilarity) | { status: 'error'; errorMsg?: string } | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   function openMergeDialog(sourceId: string, sourceLabel: string) {
@@ -424,7 +424,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
       setSimilarity({ status: 'loading' })
       analyzeSubjectSimilarityAction(src.id, dst.id).then((result) => {
         if (result.error || result.score === undefined) {
-          setSimilarity({ status: 'error' })
+          setSimilarity({ status: 'error', errorMsg: result.error })
         } else {
           setSimilarity({
             status: 'done',
@@ -1032,6 +1032,9 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                   return (
                     <div className="mb-4 rounded-xl border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
                       Analyse IA indisponible — choisissez manuellement.
+                      {process.env.NODE_ENV !== 'production' && similarity.errorMsg && (
+                        <p className="mt-1 font-mono text-[10px] text-destructive break-all">{similarity.errorMsg}</p>
+                      )}
                     </div>
                   )
                 }

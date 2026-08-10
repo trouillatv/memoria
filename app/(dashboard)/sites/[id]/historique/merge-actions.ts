@@ -231,7 +231,9 @@ export async function analyzeSubjectSimilarityAction(
   if (!apiKey) return { error: 'GOOGLE_GENAI_API_KEY manquante' }
 
   const ai = new GoogleGenAI({ apiKey })
-  const model = process.env.AI_MODEL_LIGHT ?? 'gemini-2.5-flash'
+  const model = 'gemini-2.5-flash'
+
+  console.log('[subject-similarity] start', { model, subjectAId, subjectBId })
 
   const userMsg = JSON.stringify({
     sujet_A: { label: (sA as { label: string; aliases: string[] }).label, aliases: (sA as { label: string; aliases: string[] }).aliases ?? [] },
@@ -262,6 +264,7 @@ export async function analyzeSubjectSimilarityAction(
       ? (parsed.recommendation as 'merge' | 'link' | 'none')
       : score >= 85 ? 'merge' : score >= 60 ? 'link' : 'none'
 
+    console.log('[subject-similarity] done', { score, recommendation: rec })
     return {
       score,
       recommendation: rec,
@@ -269,6 +272,8 @@ export async function analyzeSubjectSimilarityAction(
       suggested_label: parsed.suggested_label ?? null,
     }
   } catch (e) {
-    return { error: `Gemini: ${(e as Error).message}` }
+    const msg = `model=${model} — ${(e as Error).message}`
+    console.error('[subject-similarity] error', msg)
+    return { error: msg }
   }
 }
