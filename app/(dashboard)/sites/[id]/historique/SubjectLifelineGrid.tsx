@@ -228,7 +228,7 @@ function DraggableSubjectRow({
             ref={setDragRef}
             {...attributes}
             {...listeners}
-            className="hidden sm:flex shrink-0 cursor-grab active:cursor-grabbing rounded p-0.5 text-muted-foreground/20 hover:text-muted-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity touch-none"
+            className="hidden sm:flex shrink-0 cursor-grab active:cursor-grabbing rounded p-0.5 text-muted-foreground/30 hover:text-muted-foreground/80 opacity-30 group-hover:opacity-100 transition-opacity touch-none"
             onClick={(e) => e.stopPropagation()}
             title="Glisser pour fusionner ou relier"
           >
