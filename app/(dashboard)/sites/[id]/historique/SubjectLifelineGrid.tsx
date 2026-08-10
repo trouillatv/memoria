@@ -200,14 +200,15 @@ function DraggableSubjectRow({
   onMergeDialog: (id: string, label: string) => void
 }) {
   const dragId = `subject:${row.canonicalSubjectId ?? row.subjectThreadId}`
+  const isDraggable = !!row.canonicalSubjectId && row.family !== 'person' && row.family !== 'company'
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: dragId,
-    disabled: !row.canonicalSubjectId,
+    disabled: !isDraggable,
     data: { kind: 'subject', id: row.canonicalSubjectId, label: row.canonicalLabel, currentTopicId: row.topicId ?? null },
   })
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: dragId,
-    disabled: !row.canonicalSubjectId,
+    disabled: !isDraggable,
     data: { kind: 'subject', id: row.canonicalSubjectId, label: row.canonicalLabel, currentTopicId: row.topicId ?? null },
   })
 
@@ -223,12 +224,12 @@ function DraggableSubjectRow({
         ref={setDragRef}
         {...attributes}
         {...listeners}
-        className={`group sticky left-0 z-10 shrink-0 border-r flex items-center gap-1 px-2 py-2 transition-colors ${row.canonicalSubjectId ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer'} ${isSelected ? 'bg-muted/50' : 'bg-card hover:bg-muted/30'}`}
+        className={`group sticky left-0 z-10 shrink-0 border-r flex items-center gap-1 px-2 py-2 transition-colors ${isDraggable ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer'} ${isSelected ? 'bg-muted/50' : 'bg-card hover:bg-muted/30'}`}
         style={{ width: labelWidth }}
-        title={row.canonicalSubjectId ? 'Glisser pour fusionner, relier ou déplacer' : undefined}
+        title={isDraggable ? 'Glisser pour fusionner, relier ou déplacer' : undefined}
       >
         {/* Indice visuel de draggabilité */}
-        {row.canonicalSubjectId && (
+        {isDraggable && (
           <GripVertical className="hidden sm:block shrink-0 h-3 w-3 text-muted-foreground/25 group-hover:text-muted-foreground/60 transition-colors" />
         )}
         <span className="shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase text-muted-foreground">
@@ -341,7 +342,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
   const [sort, setSort] = useState<SortKey>('importance')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [themeFilter, setThemeFilter] = useState<string>(initialTheme ?? 'all')
-  const [hideInfo, setHideInfo] = useState(true)
+  const [natureFilter, setNatureFilter] = useState<'business' | 'person' | 'company' | 'knowledge_fact' | 'all'>('business')
   const [selectedThread, setSelectedThread] = useState<string | null>(initialThread ?? null)
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set())
 
@@ -533,8 +534,9 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
   const filtered = useMemo(() => {
     let rows = allRows
 
-    const HIDE_BY_DEFAULT = new Set(['knowledge_fact', 'person', 'company'])
-    if (hideInfo) rows = rows.filter((r) => !HIDE_BY_DEFAULT.has(r.family))
+    const ACTOR_FAMILIES = new Set(['knowledge_fact', 'person', 'company'])
+    if (natureFilter === 'business') rows = rows.filter((r) => !ACTOR_FAMILIES.has(r.family))
+    else if (natureFilter !== 'all') rows = rows.filter((r) => r.family === natureFilter)
 
     if (statusFilter === 'open') {
       rows = rows.filter((r) => {
@@ -565,7 +567,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
     else sorted.sort((a, b) => a.canonicalLabel.localeCompare(b.canonicalLabel, 'fr'))
 
     return sorted
-  }, [allRows, sort, statusFilter, themeFilter, hideInfo, importanceScores])
+  }, [allRows, sort, statusFilter, themeFilter, natureFilter, importanceScores])
 
   // Groupement par topic + flat list pour le rendu
   const grouped = useMemo((): RowGroup[] => {
@@ -697,15 +699,17 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
           </select>
         )}
 
-        <label className="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={hideInfo}
-            onChange={(e) => setHideInfo(e.target.checked)}
-            className="rounded"
-          />
-          Masquer acteurs et informationnels
-        </label>
+        <select
+          value={natureFilter}
+          onChange={(e) => setNatureFilter(e.target.value as typeof natureFilter)}
+          className="rounded-lg border bg-card px-2.5 py-1.5 text-sm"
+        >
+          <option value="business">Sujets métier</option>
+          <option value="person">Personnes</option>
+          <option value="company">Entreprises</option>
+          <option value="knowledge_fact">Informations</option>
+          <option value="all">Tous</option>
+        </select>
 
         <span className="ml-auto text-xs text-muted-foreground">
           {filtered.length} sujet{filtered.length > 1 ? 's' : ''}
@@ -820,7 +824,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                     style={{ width: labelWidth }}
                   >
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Autres sujets ({item.count})
+                      Sans thème ({item.count})
                     </span>
                   </div>
                   <div style={{ flex: 1 }} />
