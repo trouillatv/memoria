@@ -200,12 +200,12 @@ function DraggableSubjectRow({
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: dragId,
     disabled: !row.canonicalSubjectId,
-    data: { kind: 'subject', id: row.canonicalSubjectId, label: row.canonicalLabel },
+    data: { kind: 'subject', id: row.canonicalSubjectId, label: row.canonicalLabel, currentTopicId: row.topicId ?? null },
   })
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: dragId,
     disabled: !row.canonicalSubjectId,
-    data: { kind: 'subject', id: row.canonicalSubjectId, label: row.canonicalLabel },
+    data: { kind: 'subject', id: row.canonicalSubjectId, label: row.canonicalLabel, currentTopicId: row.topicId ?? null },
   })
 
   return (
@@ -411,6 +411,8 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
       setLinkInverted(false)
       setIntentError(null)
     } else if (src.kind === 'subject' && dst.kind === 'topic' && src.id && dst.id) {
+      const srcData = event.active.data.current as { currentTopicId?: string | null }
+      if (srcData.currentTopicId === dst.id) return
       setIntentDialog({
         kind: 'subject-on-topic',
         sourceId: src.id, sourceLabel: src.label,
