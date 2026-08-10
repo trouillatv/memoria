@@ -15,7 +15,6 @@ import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/render
 import type { VisitCrDoc } from '@/lib/db/visits'
 import type { VisitSummary, SummarySection, SummaryItem, HistoricalIntervenant } from '@/lib/knowledge/visit-summary'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
-import type { VisitSituation } from '@/lib/pdf/visit-cr-situation'
 
 const COLORS = {
   text: '#0f172a',
@@ -165,10 +164,6 @@ const styles = StyleSheet.create({
 function orgInitials(label: string | null): string {
   if (!label) return '?'
   return label.split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('')
-}
-
-function formatPdfDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 function SectionTitle({ text, color, important, sub }: { text: string; color: string; important?: boolean; sub?: string }) {
@@ -455,7 +450,7 @@ function ToConfirm({ items }: { items: SummaryItem[] }) {
  * sert plus » : il ne peut plus. Seul le read model connaît ce stockage, donc le
  * document ne peut plus diverger de l'écran par distraction.
  */
-export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, historicalIntervenants, situation }: {
+export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, historicalIntervenants }: {
   doc: VisitCrDoc
   summary: VisitSummary
   exportDate: string
@@ -470,8 +465,6 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
   /** Lot B — intervenants avec statut de présence pour les PV historiques.
    *  Null pour les visites terrain (getVisitSummary.stakeholders couvre ce cas). */
   historicalIntervenants?: HistoricalIntervenant[] | null
-  /** Actions ouvertes et échéances à venir du chantier, pour la section finale du CR. */
-  situation?: VisitSituation | null
 }) {
   const cr = crDocument ?? null
   const isDraft = cr?.status === 'draft'
@@ -490,15 +483,6 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
   // à l'ouverture « inline » — sans la DATE, toutes les visites d'un même chantier
   // portent le même titre et donnent l'impression d'ouvrir le même fichier.
   const title = `${kicker} — ${doc.siteName} · ${doc.dateLabel}`
-
-  // En-tête : logo de l'organisation (réalisateur) + logos des entreprises DU
-  // CHANTIER. On plafonne l'affichage pour ne jamais déséquilibrer/déborder un
-  // en-tête répété à chaque page ; au-delà, un « +N » discret. Les entreprises
-  // avec logo arrivent en premier (tri fait côté données).
-  const MAX_HEADER_COMPANIES = 4
-  const hasRealizer = !!(doc.orgLogoUrl || doc.orgColor)
-  const shownCompanies = doc.concernedCompanies.slice(0, MAX_HEADER_COMPANIES)
-  const moreCompanies = doc.concernedCompanies.length - shownCompanies.length
 
   // ── LE VERBATIM NE PART PAS CHEZ LE CLIENT (Vincent, 2026-07-21) ──────────
   //
@@ -555,31 +539,6 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
     { n: doc.starredCount, label: doc.starredCount > 1 ? 'éléments marqués' : 'élément marqué' },
   ]
 
-  // « À retenir » — la conclusion : ce que la visite a enrichi.
-  // Compte par TYPE d'objet créé (source : read model, pas actionLines).
-  const preuves = doc.photoCount + doc.videoCount + doc.vocalCount
-  const nActions = actionsSection.confirmed.length
-  const nEcheances = echeances.confirmed.length
-  const nWatchpoints = watchpoints.confirmed.length
-  const nDecisions = decisions.confirmed.length
-  const nReserves = reserveLines.length
-  const retenir: string[] = []
-  if (preuves > 0) retenir.push(`${preuves} nouvelle${preuves > 1 ? 's' : ''} preuve${preuves > 1 ? 's' : ''} ajoutée${preuves > 1 ? 's' : ''}`)
-  if (nReserves > 0) retenir.push(`${nReserves} réserve${nReserves > 1 ? 's' : ''} créée${nReserves > 1 ? 's' : ''}`)
-  if (nActions > 0) retenir.push(`${nActions} action${nActions > 1 ? 's' : ''} créée${nActions > 1 ? 's' : ''}`)
-  if (nEcheances > 0) retenir.push(`${nEcheances} échéance${nEcheances > 1 ? 's' : ''} créée${nEcheances > 1 ? 's' : ''}`)
-  if (nWatchpoints > 0) retenir.push(`${nWatchpoints} point${nWatchpoints > 1 ? 's' : ''} de vigilance créé${nWatchpoints > 1 ? 's' : ''}`)
-  if (nDecisions > 0) retenir.push(`${nDecisions} décision${nDecisions > 1 ? 's' : ''} actée${nDecisions > 1 ? 's' : ''}`)
-  retenir.push('Compte-rendu généré et disponible')
-
-  // Situation après la visite — uniquement sur le CR humain.
-  const depuisItems: Array<{ title: string; dotColor: string }> = !cr ? [] : [
-    ...decisions.confirmed.slice(0, 2).map((d) => ({ title: d.title, dotColor: COLORS.accent })),
-    ...actionsSection.confirmed.slice(0, 2).map((a) => ({ title: a.title, dotColor: '#7c3aed' })),
-    ...watchpoints.confirmed.slice(0, 2).map((w) => ({ title: w.title, dotColor: '#f59e0b' })),
-  ].slice(0, 5)
-  const hasSécuriser = !!cr && ((situation?.actionsOpen?.length ?? 0) + (situation?.deadlinesComing?.length ?? 0)) > 0
-
   return (
     <Document title={title}>
       <Page size="A4" style={styles.page}>
@@ -601,32 +560,14 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
               <Text style={styles.siteName}>{doc.siteName}</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
-              <View style={styles.brandRow}>
-                {/* Réalisateur de la visite (l'organisation, ex. AGP). */}
-                {doc.orgLogoUrl ? (
-                  // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image
-                  <Image src={doc.orgLogoUrl} style={styles.orgLogoImg} />
-                ) : doc.orgColor ? (
-                  <View style={[styles.orgDot, { backgroundColor: doc.orgColor }]}>
-                    <Text style={styles.orgInitials}>{orgInitials(doc.orgLabel)}</Text>
-                  </View>
-                ) : null}
-                {/* Filet séparateur : réalisateur | entreprises du chantier. */}
-                {hasRealizer && shownCompanies.length > 0 && <View style={styles.brandDivider} />}
-                {/* Entreprises concernées : logo, ou puce au nom si pas de logo. */}
-                {shownCompanies.map((c, i) => (
-                  c.logoUrl ? (
-                    // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image
-                    <Image key={i} src={c.logoUrl} style={styles.coLogoImg} />
-                  ) : (
-                    <View key={i} style={styles.coChip}>
-                      <Text style={styles.coChipText}>{c.name}</Text>
-                    </View>
-                  )
-                ))}
-                {moreCompanies > 0 && <Text style={styles.coMore}>+{moreCompanies}</Text>}
-              </View>
-              <Text style={styles.badge}>{doc.typeLabel}</Text>
+              {doc.orgLogoUrl ? (
+                // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image
+                <Image src={doc.orgLogoUrl} style={styles.orgLogoImg} />
+              ) : doc.orgColor ? (
+                <View style={[styles.orgDot, { backgroundColor: doc.orgColor }]}>
+                  <Text style={styles.orgInitials}>{orgInitials(doc.orgLabel)}</Text>
+                </View>
+              ) : null}
             </View>
           </View>
           <View style={styles.metaRow}>
@@ -646,51 +587,6 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
             imprimer à la fois le texte corrigé et l'analyse d'origine ferait
             dire deux choses au même document. */}
         {cr && <DocumentSections sections={cr.sections} />}
-
-        {/* Situation après la visite — décisions, actions ouvertes, échéances. */}
-        {cr && (depuisItems.length > 0 || hasSécuriser) && (
-          <View style={styles.section}>
-            <SectionTitle text="Situation après la visite" color={COLORS.accent} important />
-            {depuisItems.length > 0 && (
-              <>
-                <Text style={styles.subTitle}>Depuis cette visite</Text>
-                {depuisItems.map((item, i) => (
-                  <View key={i} style={styles.docBulletRow} wrap={false}>
-                    <View style={[styles.docBulletDot, { backgroundColor: item.dotColor }]} />
-                    <Text style={styles.bulletText}>{item.title}</Text>
-                  </View>
-                ))}
-              </>
-            )}
-            {hasSécuriser && (
-              <>
-                <Text style={styles.subTitle}>À sécuriser</Text>
-                {(situation?.actionsOpen ?? []).map((a, i) => (
-                  <View key={`a${i}`} style={styles.actionRow} wrap={false}>
-                    <View style={styles.checkbox} />
-                    <View style={styles.actionText}>
-                      <Text>{a.title}</Text>
-                      {a.dueDate ? (
-                        <Text style={styles.actionWhy}>{a.isOverdue ? 'En retard — ' : ''}{formatPdfDate(a.dueDate)}</Text>
-                      ) : null}
-                    </View>
-                  </View>
-                ))}
-                {(situation?.deadlinesComing ?? []).map((d, i) => (
-                  <View key={`d${i}`} style={styles.docBulletRow} wrap={false}>
-                    <View style={[styles.docBulletDot, { backgroundColor: '#e11d48' }]} />
-                    <View style={styles.actionText}>
-                      <Text>{d.title}</Text>
-                      {d.dueDate ? (
-                        <Text style={styles.actionWhy}>{d.isOverdue ? 'En retard — ' : ''}{formatPdfDate(d.dueDate)}</Text>
-                      ) : null}
-                    </View>
-                  </View>
-                ))}
-              </>
-            )}
-          </View>
-        )}
 
         {/* Ce que MemorIA a retenu — le RÉSULTAT de l'analyse, en premier. */}
         {!cr && (

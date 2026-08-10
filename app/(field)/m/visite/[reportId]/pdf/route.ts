@@ -14,7 +14,6 @@ import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { VisitCrPdf } from '@/lib/pdf/visit-cr'
 import { getVisitSummary, getHistoricalVisitIntervenants } from '@/lib/knowledge/visit-summary'
 import { loadCrMapSnapshotDataUri } from '@/lib/pdf/cr-map-snapshot'
-import { buildVisitSituation } from '@/lib/pdf/visit-cr-situation'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -84,12 +83,9 @@ export async function GET(req: Request, ctx: RouteCtx) {
 
   // Lot B — intervenants avec statut de présence pour les PV historiques.
   // Nul pour les visites terrain (getVisitSummary.stakeholders couvre ce cas).
-  const [historicalIntervenants, situation] = await Promise.all([
-    visit.origin === 'import' && visit.extraction_run_id
-      ? getHistoricalVisitIntervenants(visit.extraction_run_id).catch(() => null)
-      : Promise.resolve(null),
-    crDocument && visit.site_id ? buildVisitSituation(visit.site_id).catch(() => null) : Promise.resolve(null),
-  ])
+  const historicalIntervenants = visit.origin === 'import' && visit.extraction_run_id
+    ? await getHistoricalVisitIntervenants(visit.extraction_run_id).catch(() => null)
+    : null
 
   // Un CR exporté doit porter la date du chantier, pas celle du serveur.
   const exportDate = new Date().toLocaleDateString('fr-FR', {
@@ -115,7 +111,6 @@ export async function GET(req: Request, ctx: RouteCtx) {
         mapImage,
         crDocument: crDocument ? { sections: crDocument.sections, status: crDocument.status } : null,
         historicalIntervenants,
-        situation,
       }),
     )
   } catch (e) {
