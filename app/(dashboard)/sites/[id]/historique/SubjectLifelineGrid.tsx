@@ -213,27 +213,22 @@ function DraggableSubjectRow({
   return (
     <div
       ref={setDropRef}
-      className={`flex border-b last:border-b-0 cursor-pointer ${isSelected ? 'ring-1 ring-inset ring-primary/30' : ''} ${isOver ? 'outline outline-2 outline-blue-400/60 outline-offset-[-1px]' : ''} ${isDragging ? 'opacity-40' : ''}`}
+      className={`flex border-b last:border-b-0 ${isSelected ? 'ring-1 ring-inset ring-primary/30' : ''} ${isOver ? 'outline outline-2 outline-blue-400/60 outline-offset-[-1px]' : ''} ${isDragging ? 'opacity-40' : ''}`}
       style={{ height: 40 }}
       onClick={onSelect}
     >
-      {/* Label sticky left */}
+      {/* Label sticky left — toute la zone est draggable */}
       <div
-        className={`group sticky left-0 z-10 shrink-0 border-r flex items-center gap-1 px-2 py-2 transition-colors ${isSelected ? 'bg-muted/50' : 'bg-card hover:bg-muted/30'}`}
+        ref={setDragRef}
+        {...attributes}
+        {...listeners}
+        className={`group sticky left-0 z-10 shrink-0 border-r flex items-center gap-1 px-2 py-2 transition-colors ${row.canonicalSubjectId ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer'} ${isSelected ? 'bg-muted/50' : 'bg-card hover:bg-muted/30'}`}
         style={{ width: labelWidth }}
+        title={row.canonicalSubjectId ? 'Glisser pour fusionner, relier ou déplacer' : undefined}
       >
-        {/* Poignée de drag — desktop uniquement */}
+        {/* Indice visuel de draggabilité */}
         {row.canonicalSubjectId && (
-          <div
-            ref={setDragRef}
-            {...attributes}
-            {...listeners}
-            className="hidden sm:flex shrink-0 cursor-grab active:cursor-grabbing rounded p-0.5 text-muted-foreground/30 hover:text-muted-foreground/80 opacity-30 group-hover:opacity-100 transition-opacity touch-none"
-            onClick={(e) => e.stopPropagation()}
-            title="Glisser pour fusionner ou relier"
-          >
-            <GripVertical className="h-3 w-3" />
-          </div>
+          <GripVertical className="hidden sm:block shrink-0 h-3 w-3 text-muted-foreground/25 group-hover:text-muted-foreground/60 transition-colors" />
         )}
         <span className="shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase text-muted-foreground">
           {FAMILY_LABELS[row.family] ?? row.family.slice(0, 4)}
@@ -242,6 +237,7 @@ function DraggableSubjectRow({
           href={row.canonicalSubjectId
             ? `/sites/${siteId}/historique/sujets/${row.canonicalSubjectId}`
             : `/sites/${siteId}/historique/${row.subjectThreadId}`}
+          draggable={false}
           className="min-w-0 flex-1 truncate text-xs font-medium hover:underline"
           onClick={(e) => e.stopPropagation()}
           title={row.canonicalLabel}
@@ -259,6 +255,8 @@ function DraggableSubjectRow({
         {row.canonicalSubjectId && (suggestedCounts?.[row.canonicalSubjectId] ?? 0) > 0 && (
           <Link
             href={`/sites/${siteId}/historique/sujets/${row.canonicalSubjectId}#relations`}
+            draggable={false}
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
             title="Suggestions de dépendances à valider"
             className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 hover:bg-amber-200 dark:bg-amber-950 dark:text-amber-300"
@@ -283,6 +281,7 @@ function DraggableSubjectRow({
           <button
             type="button"
             title="Fusionner avec…"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); onMergeDialog(row.canonicalSubjectId!, row.canonicalLabel) }}
             className="shrink-0 rounded p-0.5 opacity-0 group-hover:opacity-100 text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted transition-opacity"
           >
