@@ -10,7 +10,8 @@ import {
 } from '@dnd-kit/core'
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import type { SiteSubjectMatrix, SubjectMatrixRow, MatrixCell } from '@/lib/documents/pv-history'
-import { mergeCanonicalSubjectsAction, moveSubjectToTopicAction, createLinkFromMatrixAction } from './merge-actions'
+import { mergeCanonicalSubjectsAction, moveSubjectToTopicAction, createLinkFromMatrixAction, analyzeSubjectSimilarityAction } from './merge-actions'
+import type { SubjectSimilarity } from './merge-actions'
 
 // ── Icônes de cellule ─────────────────────────────────────────────────────────
 
@@ -366,6 +367,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
   const [linkInverted, setLinkInverted] = useState(false)
   const [intentIsPending, startIntentTransition] = useTransition()
   const [intentError, setIntentError] = useState<string | null>(null)
+  const [similarity, setSimilarity] = useState<{ status: 'loading' } | ({ status: 'done' } & SubjectSimilarity) | { status: 'error' } | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   function openMergeDialog(sourceId: string, sourceLabel: string) {
@@ -419,6 +421,20 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
       setLinkType('requires')
       setLinkInverted(false)
       setIntentError(null)
+      setSimilarity({ status: 'loading' })
+      analyzeSubjectSimilarityAction(src.id, dst.id).then((result) => {
+        if (result.error || result.score === undefined) {
+          setSimilarity({ status: 'error' })
+        } else {
+          setSimilarity({
+            status: 'done',
+            score: result.score,
+            recommendation: result.recommendation!,
+            reason: result.reason!,
+            suggested_label: result.suggested_label ?? null,
+          })
+        }
+      })
     } else if (src.kind === 'subject' && dst.kind === 'topic' && src.id && dst.id) {
       const srcData = event.active.data.current as { currentTopicId?: string | null }
       if (srcData.currentTopicId === dst.id) return
@@ -991,42 +1007,107 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
 
     {/* Dialog d'intention DnD — sujet sur sujet */}
     {intentDialog?.kind === 'subject-on-subject' && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setIntentDialog(null)}>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => { setIntentDialog(null); setSimilarity(null) }}>
         <div className="relative w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
           {!linkStep ? (
             <>
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sujet déposé sur un autre sujet</p>
-              <p className="mb-4 font-semibold leading-snug">
-                <span className="text-primary">{intentDialog.sourceLabel}</span>
-                {' → '}
-                <span>{intentDialog.targetLabel}</span>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Rapprochement de sujets</p>
+              <p className="mb-4 leading-snug text-sm">
+                <span className="font-semibold text-primary">{intentDialog.sourceLabel}</span>
+                <span className="mx-2 text-muted-foreground">→</span>
+                <span className="font-medium">{intentDialog.targetLabel}</span>
               </p>
+
+              {/* Bloc analyse Gemini */}
+              {(() => {
+                if (!similarity || similarity.status === 'loading') {
+                  return (
+                    <div className="mb-4 flex items-center gap-2 rounded-xl border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      Analyse du rapprochement…
+                    </div>
+                  )
+                }
+                if (similarity.status === 'error') {
+                  return (
+                    <div className="mb-4 rounded-xl border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+                      Analyse IA indisponible — choisissez manuellement.
+                    </div>
+                  )
+                }
+                const { score, reason, suggested_label } = similarity
+                const band = score >= 85
+                  ? { icon: '🟢', label: 'Très forte correspondance', cls: 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800/40 dark:text-emerald-300' }
+                  : score >= 65
+                    ? { icon: '🟡', label: 'Similarité notable — vérifier', cls: 'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/40 dark:border-amber-800/40 dark:text-amber-300' }
+                    : { icon: '🔵', label: 'Sujets probablement distincts', cls: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950/40 dark:border-blue-800/40 dark:text-blue-300' }
+                return (
+                  <div className={`mb-4 rounded-xl border px-4 py-3 ${band.cls}`}>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-sm font-semibold">{band.icon} Similarité IA {score} %</span>
+                      <span className="text-xs opacity-70">{band.label}</span>
+                    </div>
+                    {reason && <p className="text-xs opacity-80 leading-snug">"{reason}"</p>}
+                    {suggested_label && (
+                      <p className="mt-1.5 text-xs opacity-70">
+                        Libellé suggéré : <span className="font-medium">{suggested_label}</span>
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
+
               <div className="flex flex-col gap-2">
                 <button
                   type="button"
-                  onClick={() => { openMergeDialog(intentDialog.sourceId, intentDialog.sourceLabel); setIntentDialog(null) }}
-                  className="flex items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm hover:bg-muted transition-colors"
+                  onClick={() => {
+                    openMergeDialog(intentDialog.sourceId, intentDialog.sourceLabel)
+                    if (similarity?.status === 'done' && similarity.suggested_label) {
+                      setMergeSuggestedLabel(similarity.suggested_label)
+                    }
+                    setIntentDialog(null)
+                    setSimilarity(null)
+                  }}
+                  className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition-colors ${
+                    similarity?.status === 'done' && similarity.recommendation === 'merge'
+                      ? 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40'
+                      : 'hover:bg-muted'
+                  }`}
                 >
-                  <GitMerge className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <GitMerge className={`h-4 w-4 shrink-0 ${similarity?.status === 'done' && similarity.recommendation === 'merge' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`} />
                   <div>
-                    <p className="font-medium">Fusionner ces deux sujets</p>
+                    <p className="font-medium">
+                      Fusionner ces deux sujets
+                      {similarity?.status === 'done' && similarity.recommendation === 'merge' && (
+                        <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">recommandé</span>
+                      )}
+                    </p>
                     <p className="text-xs text-muted-foreground">Regrouper sous un seul identifiant canonique</p>
                   </div>
                 </button>
                 <button
                   type="button"
                   onClick={() => setLinkStep(true)}
-                  className="flex items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm hover:bg-muted transition-colors"
+                  className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition-colors ${
+                    similarity?.status === 'done' && similarity.recommendation === 'link'
+                      ? 'border-blue-300 bg-blue-50 hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-950/40 dark:hover:bg-blue-900/40'
+                      : 'hover:bg-muted'
+                  }`}
                 >
-                  <span className="h-4 w-4 text-center text-lg leading-none text-muted-foreground shrink-0">→</span>
+                  <span className={`h-4 w-4 text-center text-lg leading-none shrink-0 ${similarity?.status === 'done' && similarity.recommendation === 'link' ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}`}>→</span>
                   <div>
-                    <p className="font-medium">Créer une dépendance</p>
+                    <p className="font-medium">
+                      Créer une dépendance
+                      {similarity?.status === 'done' && similarity.recommendation === 'link' && (
+                        <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">recommandé</span>
+                      )}
+                    </p>
                     <p className="text-xs text-muted-foreground">Relier les deux sujets par un lien typé</p>
                   </div>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIntentDialog(null)}
+                  onClick={() => { setIntentDialog(null); setSimilarity(null) }}
                   className="rounded-xl border px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted transition-colors"
                 >
                   Annuler
@@ -1082,7 +1163,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                     startIntentTransition(async () => {
                       const result = await createLinkFromMatrixAction(fromId, toId, linkType, siteId)
                       if (result.error) setIntentError(result.error)
-                      else setIntentDialog(null)
+                      else { setIntentDialog(null); setSimilarity(null) }
                     })
                   }}
                   className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"

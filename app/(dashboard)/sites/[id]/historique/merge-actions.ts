@@ -3,6 +3,16 @@
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { GoogleGenAI } from '@google/genai'
+
+// ── Types exportés ────────────────────────────────────────────────────────────
+
+export interface SubjectSimilarity {
+  score: number
+  recommendation: 'merge' | 'link' | 'none'
+  reason: string
+  suggested_label: string | null
+}
 
 /**
  * Fusionne deux canonical_subject. Détermine automatiquement le winner (celui avec
@@ -169,4 +179,96 @@ export async function createLinkFromMatrixAction(
   revalidatePath(`/sites/${siteId}/historique/sujets/${fromCanonicalSubjectId}`)
   revalidatePath(`/sites/${siteId}/historique/sujets/${toCanonicalSubjectId}`)
   return {}
+}
+
+// ── Analyse Gemini de similarité ──────────────────────────────────────────────
+
+const SIMILARITY_SYSTEM_PROMPT = `Tu es un expert en management de chantier BTP.
+On te donne deux sujets canoniques extraits de procès-verbaux de chantier.
+Chaque sujet comporte un libellé principal et des alias (formulations alternatives rencontrées dans les PV).
+
+Ta mission : évaluer si ces deux sujets décrivent le même objet réel sur le chantier.
+
+Critères de même sujet :
+- Même problème physique ou opération, formulé différemment
+- Même réserve ou observation, libellée avec des variations mineures
+- Les alias confirment une continuité sémantique évidente
+
+Ne pas considérer comme même sujet :
+- Deux actions dans le même domaine mais portant sur des objets distincts
+- Un sujet général et un sujet spécifique qui méritent d'exister séparément
+
+Réponds UNIQUEMENT en JSON valide, aucun autre texte :
+{
+  "same_subject_score": 85,
+  "recommendation": "merge",
+  "reason": "Même réserve d'enrobage, libellés quasi identiques",
+  "suggested_label": "Enrobage des conduites"
+}
+
+same_subject_score : entier 0-100
+recommendation : "merge" si score >= 85 | "link" si 60-84 | "none" si < 60
+reason : phrase courte ≤ 15 mots expliquant le verdict
+suggested_label : libellé canonique proposé si fusion (null sinon)`
+
+/**
+ * Appelle Gemini pour évaluer la similarité entre deux canonical_subject.
+ * Aucune écriture en base — lecture seule + appel LLM.
+ */
+export async function analyzeSubjectSimilarityAction(
+  subjectAId: string,
+  subjectBId: string,
+): Promise<{ error?: string } & Partial<SubjectSimilarity>> {
+  const supabase = createAdminClient()
+
+  const [{ data: sA }, { data: sB }] = await Promise.all([
+    supabase.from('canonical_subject').select('label, aliases').eq('id', subjectAId).maybeSingle(),
+    supabase.from('canonical_subject').select('label, aliases').eq('id', subjectBId).maybeSingle(),
+  ])
+  if (!sA || !sB) return { error: 'Sujet introuvable' }
+
+  const apiKey = process.env.GOOGLE_GENAI_API_KEY
+  if (!apiKey) return { error: 'GOOGLE_GENAI_API_KEY manquante' }
+
+  const ai = new GoogleGenAI({ apiKey })
+  const model = process.env.AI_MODEL_LIGHT ?? 'gemini-2.5-flash'
+
+  const userMsg = JSON.stringify({
+    sujet_A: { label: (sA as { label: string; aliases: string[] }).label, aliases: (sA as { label: string; aliases: string[] }).aliases ?? [] },
+    sujet_B: { label: (sB as { label: string; aliases: string[] }).label, aliases: (sB as { label: string; aliases: string[] }).aliases ?? [] },
+  }, null, 2)
+
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      config: {
+        systemInstruction: SIMILARITY_SYSTEM_PROMPT,
+        temperature: 0.1,
+        maxOutputTokens: 256,
+        responseMimeType: 'application/json',
+      },
+      contents: [{ role: 'user', parts: [{ text: userMsg }] }],
+    })
+
+    const parsed = JSON.parse(response.text ?? '{}') as {
+      same_subject_score?: number
+      recommendation?: string
+      reason?: string
+      suggested_label?: string | null
+    }
+
+    const score = Math.max(0, Math.min(100, Number(parsed.same_subject_score ?? 0)))
+    const rec = (['merge', 'link', 'none'] as const).includes(parsed.recommendation as 'merge' | 'link' | 'none')
+      ? (parsed.recommendation as 'merge' | 'link' | 'none')
+      : score >= 85 ? 'merge' : score >= 60 ? 'link' : 'none'
+
+    return {
+      score,
+      recommendation: rec,
+      reason: parsed.reason ?? '',
+      suggested_label: parsed.suggested_label ?? null,
+    }
+  } catch (e) {
+    return { error: `Gemini: ${(e as Error).message}` }
+  }
 }
