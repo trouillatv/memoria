@@ -446,7 +446,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                   <button
                     key={`topic-${item.topicId}`}
                     type="button"
-                    className="flex w-full cursor-pointer items-center gap-1.5 border-b px-3 py-2 last:border-b-0 bg-muted/10 hover:bg-muted/20 dark:bg-muted/5"
+                    className="flex w-full cursor-pointer items-center gap-1.5 border-b border-l-2 border-l-primary/20 px-3 py-2 last:border-b-0 bg-muted/40 hover:bg-muted/50 dark:bg-muted/20"
                     style={{ height: 40 }}
                     onClick={() => toggleTopic(item.topicId)}
                   >
@@ -546,7 +546,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                   return (
                     <div
                       key={`topic-${item.topicId}`}
-                      className="flex border-b last:border-b-0 bg-muted/10 dark:bg-muted/5"
+                      className="flex border-b last:border-b-0 bg-muted/40 dark:bg-muted/20"
                       style={{ height: 40 }}
                     >
                       {item.aggregatePvCells.map((cell, i) => {
