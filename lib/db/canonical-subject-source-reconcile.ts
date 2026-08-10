@@ -14,6 +14,12 @@ export interface SourceDescriptor {
   id: string        // report_id pour field_visit/meeting
   siteId: string
   authorId: string | null
+  /**
+   * Mode backfill (visites historiques déjà projetées).
+   * - élargit le filtre de statut pour inclure 'fulfilled' et 'superseded'
+   * - produit des occurrences 'confirmed' (visite close = vérité terrain)
+   */
+  backfill?: boolean
 }
 
 export interface ReconcileSourceResult {
@@ -154,15 +160,26 @@ export async function reconcileSourceToCanonicalSubjects(
   const result: ReconcileSourceResult = { matched: 0, created: 0, clustered: 0, ambiguous: 0, orphaned: 0 }
 
   const sb = createAdminClient()
+  const validationStatus = source.backfill ? 'confirmed' : 'observed'
 
   // ── Récupérer les propositions éligibles non encore liées ─────────────────
-  const { data: rawProposals, error } = await sb
+  // En mode live : uniquement 'proposed' (projection en cours).
+  // En mode backfill : aussi 'fulfilled' et 'superseded' (visites closes,
+  // proposals déjà matérialisées mais jamais rattachées à un canonical_subject).
+  let query = sb
     .from('site_knowledge_proposals')
     .select('id, kind, title, body, status, canonical_subject_id, canonical_resolution_status')
     .eq('report_id', source.id)
     .eq('site_id', source.siteId)
-    .eq('status', 'proposed')
     .is('canonical_subject_id', null)
+
+  if (!source.backfill) {
+    query = query.eq('status', 'proposed')
+  } else {
+    query = query.in('status', ['proposed', 'fulfilled', 'superseded'])
+  }
+
+  const { data: rawProposals, error } = await query
 
   if (error) {
     console.error('[reconcile-source] erreur récupération proposals:', error.message)
@@ -198,7 +215,7 @@ export async function reconcileSourceToCanonicalSubjects(
         proposalBody: proposal.body,
         proposalCreatedAt: new Date().toISOString(),
         createdBy: source.authorId,
-        validationStatus: 'observed',
+        validationStatus,
       })
       result.matched++
 
@@ -320,7 +337,7 @@ export async function reconcileSourceToCanonicalSubjects(
               evidence_count: 0,
               effective_date: new Date().toISOString().slice(0, 10),
               created_by: source.authorId,
-              validation_status: 'observed',
+              validation_status: validationStatus,
             },
             { onConflict: 'source_kind,source_proposal_id', ignoreDuplicates: true },
           )
