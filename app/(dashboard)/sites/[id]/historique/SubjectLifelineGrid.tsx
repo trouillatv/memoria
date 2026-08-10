@@ -4,8 +4,13 @@ import { useState, useMemo, useRef, useEffect, useTransition } from 'react'
 import { ChevronDown, ChevronRight, GitMerge, GripVertical, MoreHorizontal, X } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
+import {
+  DndContext, DragOverlay, useDroppable, useDraggable,
+  PointerSensor, useSensor, useSensors,
+} from '@dnd-kit/core'
+import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import type { SiteSubjectMatrix, SubjectMatrixRow, MatrixCell } from '@/lib/documents/pv-history'
-import { mergeCanonicalSubjectsAction } from './merge-actions'
+import { mergeCanonicalSubjectsAction, moveSubjectToTopicAction, createLinkFromMatrixAction } from './merge-actions'
 
 // ── Icônes de cellule ─────────────────────────────────────────────────────────
 
@@ -101,6 +106,208 @@ function rowDuration(row: SubjectMatrixRow): number {
   return last - first
 }
 
+// ── Composants DnD ───────────────────────────────────────────────────────────
+
+type NativeDate = { date: string; hasVisit: boolean; hasMeeting: boolean }
+type NativeOcc = { date: string; sourceKind: 'field_visit' | 'meeting' }
+type TopicFlatItem = Extract<FlatItem, { kind: 'topic' }>
+
+function DroppableTopicRow({
+  item, labelWidth, CELL_W, nativeDates, isExpanded, onToggle,
+}: {
+  item: TopicFlatItem
+  labelWidth: number
+  CELL_W: number
+  nativeDates: NativeDate[]
+  isExpanded: boolean
+  onToggle: () => void
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `topic:${item.topicId}`,
+    data: { kind: 'topic', id: item.topicId, label: item.topicLabel },
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex border-b transition-colors ${isOver ? 'bg-primary/10 dark:bg-primary/10 outline outline-2 outline-primary/30 outline-offset-[-1px]' : 'bg-muted/40 dark:bg-muted/20'}`}
+      style={{ height: 40 }}
+    >
+      <div
+        className="sticky left-0 z-10 shrink-0 border-l-2 border-l-primary/20 border-r bg-muted/40 dark:bg-muted/20"
+        style={{ width: labelWidth }}
+      >
+        <button
+          type="button"
+          className="flex h-full w-full cursor-pointer items-center gap-1.5 px-3 hover:bg-muted/50"
+          onClick={onToggle}
+        >
+          {isExpanded
+            ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+            : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />}
+          <span className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground/80" title={item.topicLabel}>
+            {item.topicLabel}
+          </span>
+          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+            {item.rowCount}
+          </span>
+        </button>
+      </div>
+      <div className="flex">
+        {item.aggregatePvCells.map((cell, i) => {
+          if (cell === null) return <div key={i} className="shrink-0 border-r last:border-r-0" style={{ width: CELL_W }} />
+          if (cell.isGap) return (
+            <div key={i} className="shrink-0 border-r last:border-r-0 bg-muted/20 flex items-center justify-center" style={{ width: CELL_W }}>
+              <span className="text-base font-bold text-muted-foreground/30">╌</span>
+            </div>
+          )
+          return (
+            <div key={i} className="shrink-0 border-r last:border-r-0 bg-primary/5 flex items-center justify-center" style={{ width: CELL_W }}>
+              <span className="text-base font-bold text-primary/40">●</span>
+            </div>
+          )
+        })}
+        {nativeDates.map((nd) => {
+          const hasOcc = item.topicNativeDates.has(nd.date)
+          if (!hasOcc) return <div key={nd.date} className="shrink-0 border-l-2 border-r border-teal-200/40 dark:border-teal-700/30 bg-teal-50/10 dark:bg-teal-950/10 last:border-r-0" style={{ width: CELL_W }} />
+          return (
+            <div key={nd.date} className="shrink-0 border-l-2 border-r last:border-r-0 border-teal-300/60 dark:border-teal-600/40 bg-teal-50/30 dark:bg-teal-950/20 flex items-center justify-center" style={{ width: CELL_W }}>
+              <span className="text-sm font-bold text-teal-600/50 dark:text-teal-400/50">▪</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function DraggableSubjectRow({
+  row, siteId, isSelected, labelWidth, CELL_W, nativeDates,
+  nativeOccurrences, suggestedCounts, onSelect, onMergeDialog,
+}: {
+  row: SubjectMatrixRow
+  siteId: string
+  isSelected: boolean
+  labelWidth: number
+  CELL_W: number
+  nativeDates: NativeDate[]
+  nativeOccurrences?: Record<string, NativeOcc[]>
+  suggestedCounts?: Record<string, number>
+  onSelect: () => void
+  onMergeDialog: (id: string, label: string) => void
+}) {
+  const dragId = `subject:${row.canonicalSubjectId ?? row.subjectThreadId}`
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+    id: dragId,
+    disabled: !row.canonicalSubjectId,
+    data: { kind: 'subject', id: row.canonicalSubjectId, label: row.canonicalLabel },
+  })
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: dragId,
+    disabled: !row.canonicalSubjectId,
+    data: { kind: 'subject', id: row.canonicalSubjectId, label: row.canonicalLabel },
+  })
+
+  return (
+    <div
+      ref={setDropRef}
+      className={`flex border-b last:border-b-0 cursor-pointer ${isSelected ? 'ring-1 ring-inset ring-primary/30' : ''} ${isOver ? 'outline outline-2 outline-blue-400/60 outline-offset-[-1px]' : ''} ${isDragging ? 'opacity-40' : ''}`}
+      style={{ height: 40 }}
+      onClick={onSelect}
+    >
+      {/* Label sticky left */}
+      <div
+        className={`group sticky left-0 z-10 shrink-0 border-r flex items-center gap-1 px-2 py-2 transition-colors ${isSelected ? 'bg-muted/50' : 'bg-card hover:bg-muted/30'}`}
+        style={{ width: labelWidth }}
+      >
+        {/* Poignée de drag — desktop uniquement */}
+        {row.canonicalSubjectId && (
+          <div
+            ref={setDragRef}
+            {...attributes}
+            {...listeners}
+            className="hidden sm:flex shrink-0 cursor-grab active:cursor-grabbing rounded p-0.5 text-muted-foreground/20 hover:text-muted-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity touch-none"
+            onClick={(e) => e.stopPropagation()}
+            title="Glisser pour fusionner ou relier"
+          >
+            <GripVertical className="h-3 w-3" />
+          </div>
+        )}
+        <span className="shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase text-muted-foreground">
+          {FAMILY_LABELS[row.family] ?? row.family.slice(0, 4)}
+        </span>
+        <Link
+          href={row.canonicalSubjectId
+            ? `/sites/${siteId}/historique/sujets/${row.canonicalSubjectId}`
+            : `/sites/${siteId}/historique/${row.subjectThreadId}`}
+          className="min-w-0 flex-1 truncate text-xs font-medium hover:underline"
+          onClick={(e) => e.stopPropagation()}
+          title={row.canonicalLabel}
+        >
+          {row.canonicalLabel}
+        </Link>
+        {row.canonicalSubjectId && (suggestedCounts?.[row.canonicalSubjectId] ?? 0) > 0 && (
+          <Link
+            href={`/sites/${siteId}/historique/sujets/${row.canonicalSubjectId}#relations`}
+            onClick={(e) => e.stopPropagation()}
+            title="Suggestions de dépendances à valider"
+            className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 hover:bg-amber-200 dark:bg-amber-950 dark:text-amber-300"
+          >
+            {suggestedCounts![row.canonicalSubjectId]}
+          </Link>
+        )}
+        {row.canonicalSubjectId && nativeOccurrences?.[row.canonicalSubjectId]?.length ? (
+          <span
+            title={`${nativeOccurrences[row.canonicalSubjectId].length} observation${nativeOccurrences[row.canonicalSubjectId].length > 1 ? 's' : ''} terrain`}
+            className="shrink-0 flex items-center gap-0.5"
+          >
+            {nativeOccurrences[row.canonicalSubjectId].slice(0, 3).map((o, i) => (
+              <span key={i} className={o.sourceKind === 'field_visit' ? 'h-1.5 w-1.5 rounded-full bg-teal-500' : 'h-1.5 w-1.5 rotate-45 bg-violet-500 inline-block'} />
+            ))}
+            {nativeOccurrences[row.canonicalSubjectId].length > 3 && (
+              <span className="text-[8px] text-muted-foreground leading-none">+{nativeOccurrences[row.canonicalSubjectId].length - 3}</span>
+            )}
+          </span>
+        ) : null}
+        {row.canonicalSubjectId && (
+          <button
+            type="button"
+            title="Fusionner avec…"
+            onClick={(e) => { e.stopPropagation(); onMergeDialog(row.canonicalSubjectId!, row.canonicalLabel) }}
+            className="shrink-0 rounded p-0.5 opacity-0 group-hover:opacity-100 text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted transition-opacity"
+          >
+            <MoreHorizontal className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+      {/* Cellules */}
+      <div className="flex">
+        {row.cells.map((cell, i) => {
+          const style = cellStyle(cell)
+          if (cell === null) return <div key={i} className="shrink-0 border-r last:border-r-0" style={{ width: CELL_W }} />
+          return (
+            <div key={i} className={`shrink-0 border-r last:border-r-0 ${style.bg} flex items-center justify-center`} style={{ width: CELL_W }} title={[style.title, cell.label].filter(Boolean).join(' · ')}>
+              <span className={`text-base font-bold leading-none ${style.text}`}>{style.icon}</span>
+            </div>
+          )
+        })}
+        {nativeDates.map((nd) => {
+          const rowOccs = row.canonicalSubjectId ? (nativeOccurrences?.[row.canonicalSubjectId] ?? []) : []
+          const occ = rowOccs.find((o) => o.date === nd.date)
+          if (!occ) return <div key={nd.date} className="shrink-0 border-l-2 border-r border-teal-200/40 dark:border-teal-700/30 bg-teal-50/10 dark:bg-teal-950/10 last:border-r-0" style={{ width: CELL_W }} />
+          return (
+            <div key={nd.date} className={`shrink-0 border-l-2 border-r last:border-r-0 flex items-center justify-center ${occ.sourceKind === 'field_visit' ? 'border-teal-300/60 dark:border-teal-600/40 bg-teal-50 dark:bg-teal-950/40' : 'border-violet-300/60 dark:border-violet-600/40 bg-violet-50 dark:bg-violet-950/40'}`} style={{ width: CELL_W }} title={occ.sourceKind === 'field_visit' ? 'Visite terrain' : 'Réunion'}>
+              <span className={`text-sm font-bold leading-none ${occ.sourceKind === 'field_visit' ? 'text-teal-600 dark:text-teal-400' : 'text-violet-600 dark:text-violet-400'}`}>
+                {occ.sourceKind === 'field_visit' ? '✓' : '◇'}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── Composant principal ───────────────────────────────────────────────────────
 
 interface Props {
@@ -136,6 +343,22 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
   const [mergeError, setMergeError] = useState<string | null>(null)
   const [isMerging, startMergeTransition] = useTransition()
 
+  // DnD
+  const [activeDragLabel, setActiveDragLabel] = useState<string | null>(null)
+  const [intentDialog, setIntentDialog] = useState<{
+    kind: 'subject-on-subject'
+    sourceId: string; sourceLabel: string; targetId: string; targetLabel: string
+  } | {
+    kind: 'subject-on-topic'
+    sourceId: string; sourceLabel: string; targetTopicId: string; targetTopicLabel: string
+  } | null>(null)
+  const [linkStep, setLinkStep] = useState(false)
+  const [linkType, setLinkType] = useState('requires')
+  const [linkInverted, setLinkInverted] = useState(false)
+  const [intentIsPending, startIntentTransition] = useTransition()
+  const [intentError, setIntentError] = useState<string | null>(null)
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+
   function openMergeDialog(sourceId: string, sourceLabel: string) {
     setMergeDialog({ sourceId, sourceLabel })
     setMergeSearch('')
@@ -163,6 +386,38 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
         closeMergeDialog()
       }
     })
+  }
+
+  function handleDragStart(event: DragStartEvent) {
+    const data = event.active.data.current as { kind: string; id: string; label: string } | undefined
+    setActiveDragLabel(data?.label ?? null)
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveDragLabel(null)
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const src = active.data.current as { kind: string; id: string; label: string } | undefined
+    const dst = over.data.current as { kind: string; id: string; label: string } | undefined
+    if (!src || !dst) return
+    if (src.kind === 'subject' && dst.kind === 'subject' && src.id && dst.id) {
+      setIntentDialog({
+        kind: 'subject-on-subject',
+        sourceId: src.id, sourceLabel: src.label,
+        targetId: dst.id, targetLabel: dst.label,
+      })
+      setLinkStep(false)
+      setLinkType('requires')
+      setLinkInverted(false)
+      setIntentError(null)
+    } else if (src.kind === 'subject' && dst.kind === 'topic' && src.id && dst.id) {
+      setIntentDialog({
+        kind: 'subject-on-topic',
+        sourceId: src.id, sourceLabel: src.label,
+        targetTopicId: dst.id, targetTopicLabel: dst.label,
+      })
+      setIntentError(null)
+    }
   }
 
   const mergeCandidates = useMemo(() => {
@@ -432,6 +687,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
       </div>
 
       {/* Grille — scroll unique (horizontal + vertical), header et colonne sticky */}
+      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div
         ref={scrollRef}
         className="overflow-auto rounded-xl border bg-card"
@@ -491,58 +747,15 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
           {flatItems.map((item) => {
             if (item.kind === 'topic') {
               return (
-                <div
+                <DroppableTopicRow
                   key={`topic-${item.topicId}`}
-                  className="flex border-b bg-muted/40 dark:bg-muted/20"
-                  style={{ height: 40 }}
-                >
-                  {/* Label sticky */}
-                  <div
-                    className="sticky left-0 z-10 shrink-0 border-l-2 border-l-primary/20 border-r bg-muted/40 dark:bg-muted/20"
-                    style={{ width: labelWidth }}
-                  >
-                    <button
-                      type="button"
-                      className="flex h-full w-full cursor-pointer items-center gap-1.5 px-3 hover:bg-muted/50"
-                      onClick={() => toggleTopic(item.topicId)}
-                    >
-                      {expandedTopics.has(item.topicId)
-                        ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-                        : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />}
-                      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground/80" title={item.topicLabel}>
-                        {item.topicLabel}
-                      </span>
-                      <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
-                        {item.rowCount}
-                      </span>
-                    </button>
-                  </div>
-                  {/* Cellules agrégées */}
-                  <div className="flex">
-                    {item.aggregatePvCells.map((cell, i) => {
-                      if (cell === null) return <div key={i} className="shrink-0 border-r last:border-r-0" style={{ width: CELL_W }} />
-                      if (cell.isGap) return (
-                        <div key={i} className="shrink-0 border-r last:border-r-0 bg-muted/20 flex items-center justify-center" style={{ width: CELL_W }}>
-                          <span className="text-base font-bold text-muted-foreground/30">╌</span>
-                        </div>
-                      )
-                      return (
-                        <div key={i} className="shrink-0 border-r last:border-r-0 bg-primary/5 flex items-center justify-center" style={{ width: CELL_W }}>
-                          <span className="text-base font-bold text-primary/40">●</span>
-                        </div>
-                      )
-                    })}
-                    {nativeDates.map((nd) => {
-                      const hasOcc = item.topicNativeDates.has(nd.date)
-                      if (!hasOcc) return <div key={nd.date} className="shrink-0 border-l-2 border-r border-teal-200/40 dark:border-teal-700/30 bg-teal-50/10 dark:bg-teal-950/10 last:border-r-0" style={{ width: CELL_W }} />
-                      return (
-                        <div key={nd.date} className="shrink-0 border-l-2 border-r last:border-r-0 border-teal-300/60 dark:border-teal-600/40 bg-teal-50/30 dark:bg-teal-950/20 flex items-center justify-center" style={{ width: CELL_W }}>
-                          <span className="text-sm font-bold text-teal-600/50 dark:text-teal-400/50">▪</span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
+                  item={item}
+                  labelWidth={labelWidth}
+                  CELL_W={CELL_W}
+                  nativeDates={nativeDates}
+                  isExpanded={expandedTopics.has(item.topicId)}
+                  onToggle={() => toggleTopic(item.topicId)}
+                />
               )
             }
 
@@ -569,112 +782,31 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
             const row = item.row
             const isSelected = selectedThread === row.subjectThreadId
             return (
-              <div
+              <DraggableSubjectRow
                 key={row.subjectThreadId}
-                className={`flex border-b last:border-b-0 cursor-pointer ${isSelected ? 'ring-1 ring-inset ring-primary/30' : ''}`}
-                style={{ height: 40 }}
-                onClick={() => setSelectedThread(row.subjectThreadId === selectedThread ? null : row.subjectThreadId)}
-              >
-                {/* Label sticky left */}
-                <div
-                  className={`group sticky left-0 z-10 shrink-0 border-r flex items-center gap-1.5 px-3 py-2 transition-colors ${isSelected ? 'bg-muted/50' : 'bg-card hover:bg-muted/30'}`}
-                  style={{ width: labelWidth }}
-                >
-                  <span className="shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase text-muted-foreground">
-                    {FAMILY_LABELS[row.family] ?? row.family.slice(0, 4)}
-                  </span>
-                  <Link
-                    href={row.canonicalSubjectId
-                      ? `/sites/${siteId}/historique/sujets/${row.canonicalSubjectId}`
-                      : `/sites/${siteId}/historique/${row.subjectThreadId}`}
-                    className="min-w-0 flex-1 truncate text-xs font-medium hover:underline"
-                    onClick={(e) => e.stopPropagation()}
-                    title={row.canonicalLabel}
-                  >
-                    {row.canonicalLabel}
-                  </Link>
-                  {row.canonicalSubjectId && (suggestedCounts?.[row.canonicalSubjectId] ?? 0) > 0 && (
-                    <Link
-                      href={`/sites/${siteId}/historique/sujets/${row.canonicalSubjectId}#relations`}
-                      onClick={(e) => e.stopPropagation()}
-                      title="Suggestions de dépendances à valider"
-                      className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 hover:bg-amber-200 dark:bg-amber-950 dark:text-amber-300"
-                    >
-                      {suggestedCounts![row.canonicalSubjectId]}
-                    </Link>
-                  )}
-                  {row.canonicalSubjectId && nativeOccurrences?.[row.canonicalSubjectId]?.length ? (
-                    <span
-                      title={`${nativeOccurrences[row.canonicalSubjectId].length} observation${nativeOccurrences[row.canonicalSubjectId].length > 1 ? 's' : ''} terrain`}
-                      className="shrink-0 flex items-center gap-0.5"
-                    >
-                      {nativeOccurrences[row.canonicalSubjectId].slice(0, 3).map((o, i) => (
-                        <span
-                          key={i}
-                          className={o.sourceKind === 'field_visit'
-                            ? 'h-1.5 w-1.5 rounded-full bg-teal-500'
-                            : 'h-1.5 w-1.5 rotate-45 bg-violet-500 inline-block'}
-                        />
-                      ))}
-                      {nativeOccurrences[row.canonicalSubjectId].length > 3 && (
-                        <span className="text-[8px] text-muted-foreground leading-none">+{nativeOccurrences[row.canonicalSubjectId].length - 3}</span>
-                      )}
-                    </span>
-                  ) : null}
-                  {row.canonicalSubjectId && (
-                    <button
-                      type="button"
-                      title="Fusionner avec…"
-                      onClick={(e) => { e.stopPropagation(); openMergeDialog(row.canonicalSubjectId!, row.canonicalLabel) }}
-                      className="shrink-0 rounded p-0.5 opacity-0 group-hover:opacity-100 text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted transition-opacity"
-                    >
-                      <MoreHorizontal className="h-3 w-3" />
-                    </button>
-                  )}
-                </div>
-                {/* Cellules */}
-                <div className="flex">
-                  {row.cells.map((cell, i) => {
-                    const style = cellStyle(cell)
-                    if (cell === null) return <div key={i} className="shrink-0 border-r last:border-r-0" style={{ width: CELL_W }} />
-                    return (
-                      <div
-                        key={i}
-                        className={`shrink-0 border-r last:border-r-0 ${style.bg} flex items-center justify-center`}
-                        style={{ width: CELL_W }}
-                        title={[style.title, cell.label].filter(Boolean).join(' · ')}
-                      >
-                        <span className={`text-base font-bold leading-none ${style.text}`}>{style.icon}</span>
-                      </div>
-                    )
-                  })}
-                  {nativeDates.map((nd) => {
-                    const rowOccs = row.canonicalSubjectId ? (nativeOccurrences?.[row.canonicalSubjectId] ?? []) : []
-                    const occ = rowOccs.find((o) => o.date === nd.date)
-                    if (!occ) return <div key={nd.date} className="shrink-0 border-l-2 border-r border-teal-200/40 dark:border-teal-700/30 bg-teal-50/10 dark:bg-teal-950/10 last:border-r-0" style={{ width: CELL_W }} />
-                    return (
-                      <div
-                        key={nd.date}
-                        className={`shrink-0 border-l-2 border-r last:border-r-0 flex items-center justify-center ${
-                          occ.sourceKind === 'field_visit'
-                            ? 'border-teal-300/60 dark:border-teal-600/40 bg-teal-50 dark:bg-teal-950/40'
-                            : 'border-violet-300/60 dark:border-violet-600/40 bg-violet-50 dark:bg-violet-950/40'
-                        }`}
-                        style={{ width: CELL_W }}
-                        title={occ.sourceKind === 'field_visit' ? 'Visite terrain' : 'Réunion'}
-                      >
-                        <span className={`text-sm font-bold leading-none ${occ.sourceKind === 'field_visit' ? 'text-teal-600 dark:text-teal-400' : 'text-violet-600 dark:text-violet-400'}`}>
-                          {occ.sourceKind === 'field_visit' ? '✓' : '◇'}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
+                row={row}
+                siteId={siteId}
+                isSelected={isSelected}
+                labelWidth={labelWidth}
+                CELL_W={CELL_W}
+                nativeDates={nativeDates}
+                nativeOccurrences={nativeOccurrences}
+                suggestedCounts={suggestedCounts}
+                onSelect={() => setSelectedThread(row.subjectThreadId === selectedThread ? null : row.subjectThreadId)}
+                onMergeDialog={openMergeDialog}
+              />
             )
           })}
         </div>
       </div>
+      <DragOverlay>
+        {activeDragLabel && (
+          <div className="rounded-lg border bg-card px-3 py-2 text-sm font-medium shadow-lg opacity-90 max-w-[220px] truncate">
+            {activeDragLabel}
+          </div>
+        )}
+      </DragOverlay>
+      </DndContext>
 
       {/* Sujets nés dans MemorIA — canonical subjects sans aucun PV */}
       {nativeOnlySubjects.length > 0 && (
@@ -853,6 +985,146 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
               className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
             >
               {isMerging ? 'Fusion…' : 'Fusionner'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Dialog d'intention DnD — sujet sur sujet */}
+    {intentDialog?.kind === 'subject-on-subject' && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setIntentDialog(null)}>
+        <div className="relative w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          {!linkStep ? (
+            <>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sujet déposé sur un autre sujet</p>
+              <p className="mb-4 font-semibold leading-snug">
+                <span className="text-primary">{intentDialog.sourceLabel}</span>
+                {' → '}
+                <span>{intentDialog.targetLabel}</span>
+              </p>
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => { openMergeDialog(intentDialog.sourceId, intentDialog.sourceLabel); setIntentDialog(null) }}
+                  className="flex items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm hover:bg-muted transition-colors"
+                >
+                  <GitMerge className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div>
+                    <p className="font-medium">Fusionner ces deux sujets</p>
+                    <p className="text-xs text-muted-foreground">Regrouper sous un seul identifiant canonique</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLinkStep(true)}
+                  className="flex items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm hover:bg-muted transition-colors"
+                >
+                  <span className="h-4 w-4 text-center text-lg leading-none text-muted-foreground shrink-0">→</span>
+                  <div>
+                    <p className="font-medium">Créer une dépendance</p>
+                    <p className="text-xs text-muted-foreground">Relier les deux sujets par un lien typé</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIntentDialog(null)}
+                  className="rounded-xl border px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted transition-colors"
+                >
+                  Annuler
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Type de dépendance</p>
+              <p className="mb-4 text-sm leading-snug">
+                {linkInverted
+                  ? <><span>{intentDialog.targetLabel}</span>{' '}<span className="font-semibold text-primary">[lien]</span>{' '}<span>{intentDialog.sourceLabel}</span></>
+                  : <><span className="text-primary">{intentDialog.sourceLabel}</span>{' '}<span className="font-semibold text-primary">[lien]</span>{' '}<span>{intentDialog.targetLabel}</span></>}
+              </p>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {[
+                  { value: 'requires', label: 'nécessite' },
+                  { value: 'enables', label: 'permet' },
+                  { value: 'causes', label: 'entraîne' },
+                  { value: 'validates', label: 'valide' },
+                  { value: 'replaces', label: 'remplace' },
+                  { value: 'related_to', label: 'est lié à' },
+                ].map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setLinkType(value)}
+                    className={`rounded-lg border px-3 py-2 text-sm transition-colors ${linkType === value ? 'bg-primary/10 border-primary/30 font-medium text-primary' : 'hover:bg-muted'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setLinkInverted((v) => !v)}
+                className="w-full rounded-lg border px-3 py-2 text-sm hover:bg-muted transition-colors mb-4"
+              >
+                ⇄ Inverser le sens
+              </button>
+              {intentError && <p className="text-sm text-destructive mb-3">{intentError}</p>}
+              <div className="flex gap-2 justify-end">
+                <button type="button" onClick={() => setLinkStep(false)} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted transition-colors">
+                  Retour
+                </button>
+                <button
+                  type="button"
+                  disabled={intentIsPending}
+                  onClick={() => {
+                    if (!intentDialog || intentDialog.kind !== 'subject-on-subject') return
+                    const fromId = linkInverted ? intentDialog.targetId : intentDialog.sourceId
+                    const toId = linkInverted ? intentDialog.sourceId : intentDialog.targetId
+                    startIntentTransition(async () => {
+                      const result = await createLinkFromMatrixAction(fromId, toId, linkType, siteId)
+                      if (result.error) setIntentError(result.error)
+                      else setIntentDialog(null)
+                    })
+                  }}
+                  className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+                >
+                  {intentIsPending ? 'Création…' : 'Créer le lien'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    )}
+
+    {/* Dialog d'intention DnD — sujet sur topic */}
+    {intentDialog?.kind === 'subject-on-topic' && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setIntentDialog(null)}>
+        <div className="relative w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Déplacer vers un thème</p>
+          <p className="mb-4 font-medium leading-snug">
+            Déplacer <span className="font-semibold text-primary">{intentDialog.sourceLabel}</span> vers <span className="font-semibold">{intentDialog.targetTopicLabel}</span>&nbsp;?
+          </p>
+          {intentError && <p className="text-sm text-destructive mb-3">{intentError}</p>}
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={() => setIntentDialog(null)} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted transition-colors">
+              Annuler
+            </button>
+            <button
+              type="button"
+              disabled={intentIsPending}
+              onClick={() => {
+                if (!intentDialog || intentDialog.kind !== 'subject-on-topic') return
+                startIntentTransition(async () => {
+                  const result = await moveSubjectToTopicAction(intentDialog.sourceId, intentDialog.targetTopicId, siteId)
+                  if (result.error) setIntentError(result.error)
+                  else setIntentDialog(null)
+                })
+              }}
+              className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+            >
+              {intentIsPending ? 'Déplacement…' : 'Déplacer'}
             </button>
           </div>
         </div>
