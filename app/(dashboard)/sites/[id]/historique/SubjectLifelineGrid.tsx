@@ -183,8 +183,6 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
     })
   }
 
-  const headerRef = useRef<HTMLDivElement>(null)
-  const labelColRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // Sync selectedThread into URL
@@ -331,11 +329,6 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
     return [...dateMap.values()].sort((a, b) => a.date.localeCompare(b.date))
   }, [nativeOccurrences])
 
-  // Sync horizontal scroll between header and body
-  function onBodyScroll(e: React.UIEvent<HTMLDivElement>) {
-    if (headerRef.current) headerRef.current.scrollLeft = (e.target as HTMLDivElement).scrollLeft
-  }
-
   function onResizeMouseDown(e: React.MouseEvent) {
     e.preventDefault()
     resizeDragRef.current = { startX: e.clientX, startWidth: labelWidth }
@@ -438,24 +431,33 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
         ))}
       </div>
 
-      {/* Grille avec en-tête et première colonne fixés */}
-      <div className="overflow-hidden rounded-xl border bg-card">
-        {/* En-tête PV — scroll synchronisé */}
-        <div className="flex border-b bg-muted/40">
-          {/* Coin fixe + poignée de resize */}
-          <div className="relative shrink-0 border-r px-3 py-2" style={{ width: labelWidth }}>
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sujet</span>
+      {/* Grille — scroll unique (horizontal + vertical), header et colonne sticky */}
+      <div
+        ref={scrollRef}
+        className="overflow-auto rounded-xl border bg-card"
+        style={{ maxHeight: '70vh' }}
+      >
+        {/* Feuille unifiée — la largeur minimale force le scroll horizontal */}
+        <div style={{ minWidth: labelWidth + (runs.length + nativeDates.length) * CELL_W }}>
+
+          {/* En-tête sticky top */}
+          <div className="sticky top-0 z-10 flex border-b bg-muted/40">
+            {/* Coin — sticky left ET top */}
             <div
-              onMouseDown={onResizeMouseDown}
-              className="absolute right-0 top-0 flex h-full w-4 cursor-col-resize items-center justify-center text-muted-foreground/40 hover:bg-primary/10 hover:text-muted-foreground"
-              title="Glisser pour redimensionner"
+              className="relative sticky left-0 z-20 shrink-0 border-r bg-muted/40 px-3 py-2"
+              style={{ width: labelWidth }}
             >
-              <GripVertical className="h-3.5 w-3.5" />
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sujet</span>
+              <div
+                onMouseDown={onResizeMouseDown}
+                className="absolute right-0 top-0 flex h-full w-4 cursor-col-resize items-center justify-center text-muted-foreground/40 hover:bg-primary/10 hover:text-muted-foreground"
+                title="Glisser pour redimensionner"
+              >
+                <GripVertical className="h-3.5 w-3.5" />
+              </div>
             </div>
-          </div>
-          {/* Dates PV + événements natifs — scroll */}
-          <div ref={headerRef} className="overflow-hidden" style={{ flex: 1 }}>
-            <div className="flex" style={{ minWidth: (runs.length + nativeDates.length) * CELL_W }}>
+            {/* Dates PV + événements natifs */}
+            <div className="flex">
               {runs.map((run, i) => (
                 <div
                   key={run.id}
@@ -484,54 +486,99 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
               ))}
             </div>
           </div>
-        </div>
 
-        {/* Corps — scroll horizontal partagé */}
-        <div className="flex" style={{ maxHeight: '70vh' }}>
-          {/* Première colonne fixe */}
-          <div ref={labelColRef} className="shrink-0 overflow-y-auto border-r" style={{ width: labelWidth }}>
-            {flatItems.map((item, idx) => {
-              if (item.kind === 'topic') {
-                return (
-                  <button
-                    key={`topic-${item.topicId}`}
-                    type="button"
-                    className="flex w-full cursor-pointer items-center gap-1.5 border-b border-l-2 border-l-primary/20 px-3 py-2 last:border-b-0 bg-muted/40 hover:bg-muted/50 dark:bg-muted/20"
-                    style={{ height: 40 }}
-                    onClick={() => toggleTopic(item.topicId)}
-                  >
-                    {expandedTopics.has(item.topicId)
-                      ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-                      : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />}
-                    <span className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground/80" title={item.topicLabel}>
-                      {item.topicLabel}
-                    </span>
-                    <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
-                      {item.rowCount}
-                    </span>
-                  </button>
-                )
-              }
-              if (item.kind === 'ungrouped-sep') {
-                return (
+          {/* Lignes du corps — label sticky left + cellules */}
+          {flatItems.map((item) => {
+            if (item.kind === 'topic') {
+              return (
+                <div
+                  key={`topic-${item.topicId}`}
+                  className="flex border-b bg-muted/40 dark:bg-muted/20"
+                  style={{ height: 40 }}
+                >
+                  {/* Label sticky */}
                   <div
-                    key="ungrouped-sep"
-                    className="flex items-center gap-2 border-b border-t bg-muted/5 px-3 last:border-b-0"
-                    style={{ height: 40 }}
+                    className="sticky left-0 z-10 shrink-0 border-l-2 border-l-primary/20 border-r bg-muted/40 dark:bg-muted/20"
+                    style={{ width: labelWidth }}
+                  >
+                    <button
+                      type="button"
+                      className="flex h-full w-full cursor-pointer items-center gap-1.5 px-3 hover:bg-muted/50"
+                      onClick={() => toggleTopic(item.topicId)}
+                    >
+                      {expandedTopics.has(item.topicId)
+                        ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />}
+                      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground/80" title={item.topicLabel}>
+                        {item.topicLabel}
+                      </span>
+                      <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+                        {item.rowCount}
+                      </span>
+                    </button>
+                  </div>
+                  {/* Cellules agrégées */}
+                  <div className="flex">
+                    {item.aggregatePvCells.map((cell, i) => {
+                      if (cell === null) return <div key={i} className="shrink-0 border-r last:border-r-0" style={{ width: CELL_W }} />
+                      if (cell.isGap) return (
+                        <div key={i} className="shrink-0 border-r last:border-r-0 bg-muted/20 flex items-center justify-center" style={{ width: CELL_W }}>
+                          <span className="text-base font-bold text-muted-foreground/30">╌</span>
+                        </div>
+                      )
+                      return (
+                        <div key={i} className="shrink-0 border-r last:border-r-0 bg-primary/5 flex items-center justify-center" style={{ width: CELL_W }}>
+                          <span className="text-base font-bold text-primary/40">●</span>
+                        </div>
+                      )
+                    })}
+                    {nativeDates.map((nd) => {
+                      const hasOcc = item.topicNativeDates.has(nd.date)
+                      if (!hasOcc) return <div key={nd.date} className="shrink-0 border-l-2 border-r border-teal-200/40 dark:border-teal-700/30 bg-teal-50/10 dark:bg-teal-950/10 last:border-r-0" style={{ width: CELL_W }} />
+                      return (
+                        <div key={nd.date} className="shrink-0 border-l-2 border-r last:border-r-0 border-teal-300/60 dark:border-teal-600/40 bg-teal-50/30 dark:bg-teal-950/20 flex items-center justify-center" style={{ width: CELL_W }}>
+                          <span className="text-sm font-bold text-teal-600/50 dark:text-teal-400/50">▪</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            }
+
+            if (item.kind === 'ungrouped-sep') {
+              return (
+                <div
+                  key="ungrouped-sep"
+                  className="flex border-b border-t bg-muted/5"
+                  style={{ height: 40 }}
+                >
+                  <div
+                    className="sticky left-0 z-10 shrink-0 border-r bg-muted/5 px-3 flex items-center"
+                    style={{ width: labelWidth }}
                   >
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Autres sujets ({item.count})
                     </span>
                   </div>
-                )
-              }
-              const row = item.row
-              return (
+                  <div style={{ flex: 1 }} />
+                </div>
+              )
+            }
+
+            const row = item.row
+            const isSelected = selectedThread === row.subjectThreadId
+            return (
+              <div
+                key={row.subjectThreadId}
+                className={`flex border-b last:border-b-0 cursor-pointer ${isSelected ? 'ring-1 ring-inset ring-primary/30' : ''}`}
+                style={{ height: 40 }}
+                onClick={() => setSelectedThread(row.subjectThreadId === selectedThread ? null : row.subjectThreadId)}
+              >
+                {/* Label sticky left */}
                 <div
-                  key={row.subjectThreadId}
-                  className={`group flex cursor-pointer items-center gap-1.5 border-b px-3 py-2 last:border-b-0 hover:bg-muted/30 ${selectedThread === row.subjectThreadId ? 'bg-muted/50' : ''}`}
-                  style={{ height: 40 }}
-                  onClick={() => setSelectedThread(row.subjectThreadId === selectedThread ? null : row.subjectThreadId)}
+                  className={`group sticky left-0 z-10 shrink-0 border-r flex items-center gap-1.5 px-3 py-2 transition-colors ${isSelected ? 'bg-muted/50' : 'bg-card hover:bg-muted/30'}`}
+                  style={{ width: labelWidth }}
                 >
                   <span className="shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase text-muted-foreground">
                     {FAMILY_LABELS[row.family] ?? row.family.slice(0, 4)}
@@ -585,131 +632,47 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                     </button>
                   )}
                 </div>
-              )
-            })}
-          </div>
-
-          {/* Cellules — scroll horizontal + vertical */}
-          <div
-            ref={scrollRef}
-            className="overflow-auto"
-            style={{ flex: 1 }}
-            onScroll={(e) => {
-              onBodyScroll(e)
-              // Sync vertical with label column
-              if (labelColRef.current) labelColRef.current.scrollTop = (e.target as HTMLDivElement).scrollTop
-            }}
-          >
-            <div style={{ minWidth: (runs.length + nativeDates.length) * CELL_W }}>
-              {flatItems.map((item) => {
-                if (item.kind === 'topic') {
-                  return (
-                    <div
-                      key={`topic-${item.topicId}`}
-                      className="flex border-b last:border-b-0 bg-muted/40 dark:bg-muted/20"
-                      style={{ height: 40 }}
-                    >
-                      {item.aggregatePvCells.map((cell, i) => {
-                        if (cell === null) {
-                          return <div key={i} className="shrink-0 border-r last:border-r-0" style={{ width: CELL_W }} />
-                        }
-                        if (cell.isGap) {
-                          return (
-                            <div key={i} className="shrink-0 border-r last:border-r-0 bg-muted/20 flex items-center justify-center" style={{ width: CELL_W }}>
-                              <span className="text-base font-bold text-muted-foreground/30">╌</span>
-                            </div>
-                          )
-                        }
-                        return (
-                          <div key={i} className="shrink-0 border-r last:border-r-0 bg-primary/5 flex items-center justify-center" style={{ width: CELL_W }}>
-                            <span className="text-base font-bold text-primary/40">●</span>
-                          </div>
-                        )
-                      })}
-                      {nativeDates.map((nd) => {
-                        const hasOcc = item.topicNativeDates.has(nd.date)
-                        if (!hasOcc) {
-                          return (
-                            <div key={nd.date} className="shrink-0 border-l-2 border-r border-teal-200/40 dark:border-teal-700/30 bg-teal-50/10 dark:bg-teal-950/10 last:border-r-0" style={{ width: CELL_W }} />
-                          )
-                        }
-                        return (
-                          <div key={nd.date} className="shrink-0 border-l-2 border-r last:border-r-0 border-teal-300/60 dark:border-teal-600/40 bg-teal-50/30 dark:bg-teal-950/20 flex items-center justify-center" style={{ width: CELL_W }}>
-                            <span className="text-sm font-bold text-teal-600/50 dark:text-teal-400/50">▪</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                }
-                if (item.kind === 'ungrouped-sep') {
-                  return (
-                    <div
-                      key="ungrouped-sep"
-                      className="flex border-b border-t bg-muted/5 last:border-b-0"
-                      style={{ height: 40, minWidth: (runs.length + nativeDates.length) * CELL_W }}
-                    />
-                  )
-                }
-                const row = item.row
-                return (
-                  <div
-                    key={row.subjectThreadId}
-                    className={`flex border-b last:border-b-0 ${selectedThread === row.subjectThreadId ? 'ring-1 ring-inset ring-primary/30' : ''}`}
-                    style={{ height: 40 }}
-                  >
-                    {row.cells.map((cell, i) => {
-                      const style = cellStyle(cell)
-                      if (cell === null) {
-                        return (
-                          <div key={i} className="shrink-0 border-r last:border-r-0" style={{ width: CELL_W }} />
-                        )
-                      }
-                      return (
-                        <div
-                          key={i}
-                          className={`shrink-0 border-r last:border-r-0 ${style.bg} flex items-center justify-center`}
-                          style={{ width: CELL_W }}
-                          title={[style.title, cell.label].filter(Boolean).join(' · ')}
-                        >
-                          <span className={`text-base font-bold leading-none ${style.text}`}>{style.icon}</span>
-                        </div>
-                      )
-                    })}
-                    {nativeDates.map((nd) => {
-                      const rowOccs = row.canonicalSubjectId ? (nativeOccurrences?.[row.canonicalSubjectId] ?? []) : []
-                      const occ = rowOccs.find((o) => o.date === nd.date)
-                      if (!occ) {
-                        return (
-                          <div key={nd.date} className="shrink-0 border-l-2 border-r border-teal-200/40 dark:border-teal-700/30 bg-teal-50/10 dark:bg-teal-950/10 last:border-r-0" style={{ width: CELL_W }} />
-                        )
-                      }
-                      return (
-                        <div
-                          key={nd.date}
-                          className={`shrink-0 border-l-2 border-r last:border-r-0 flex items-center justify-center ${
-                            occ.sourceKind === 'field_visit'
-                              ? 'border-teal-300/60 dark:border-teal-600/40 bg-teal-50 dark:bg-teal-950/40'
-                              : 'border-violet-300/60 dark:border-violet-600/40 bg-violet-50 dark:bg-violet-950/40'
-                          }`}
-                          style={{ width: CELL_W }}
-                          title={occ.sourceKind === 'field_visit' ? 'Visite terrain' : 'Réunion'}
-                        >
-                          <span className={`text-sm font-bold leading-none ${
-                            occ.sourceKind === 'field_visit'
-                              ? 'text-teal-600 dark:text-teal-400'
-                              : 'text-violet-600 dark:text-violet-400'
-                          }`}>
-                            {occ.sourceKind === 'field_visit' ? '✓' : '◇'}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
+                {/* Cellules */}
+                <div className="flex">
+                  {row.cells.map((cell, i) => {
+                    const style = cellStyle(cell)
+                    if (cell === null) return <div key={i} className="shrink-0 border-r last:border-r-0" style={{ width: CELL_W }} />
+                    return (
+                      <div
+                        key={i}
+                        className={`shrink-0 border-r last:border-r-0 ${style.bg} flex items-center justify-center`}
+                        style={{ width: CELL_W }}
+                        title={[style.title, cell.label].filter(Boolean).join(' · ')}
+                      >
+                        <span className={`text-base font-bold leading-none ${style.text}`}>{style.icon}</span>
+                      </div>
+                    )
+                  })}
+                  {nativeDates.map((nd) => {
+                    const rowOccs = row.canonicalSubjectId ? (nativeOccurrences?.[row.canonicalSubjectId] ?? []) : []
+                    const occ = rowOccs.find((o) => o.date === nd.date)
+                    if (!occ) return <div key={nd.date} className="shrink-0 border-l-2 border-r border-teal-200/40 dark:border-teal-700/30 bg-teal-50/10 dark:bg-teal-950/10 last:border-r-0" style={{ width: CELL_W }} />
+                    return (
+                      <div
+                        key={nd.date}
+                        className={`shrink-0 border-l-2 border-r last:border-r-0 flex items-center justify-center ${
+                          occ.sourceKind === 'field_visit'
+                            ? 'border-teal-300/60 dark:border-teal-600/40 bg-teal-50 dark:bg-teal-950/40'
+                            : 'border-violet-300/60 dark:border-violet-600/40 bg-violet-50 dark:bg-violet-950/40'
+                        }`}
+                        style={{ width: CELL_W }}
+                        title={occ.sourceKind === 'field_visit' ? 'Visite terrain' : 'Réunion'}
+                      >
+                        <span className={`text-sm font-bold leading-none ${occ.sourceKind === 'field_visit' ? 'text-teal-600 dark:text-teal-400' : 'text-violet-600 dark:text-violet-400'}`}>
+                          {occ.sourceKind === 'field_visit' ? '✓' : '◇'}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
