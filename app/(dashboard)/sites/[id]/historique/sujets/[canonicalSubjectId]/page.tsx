@@ -1,10 +1,10 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { AlertTriangle, ArrowLeft, Building2, Calendar, Check, FileText, Link2, LayoutList, Trash2, User, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, Building2, Calendar, Check, FileText, GitMerge, Link2, LayoutList, Trash2, User, X } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getCanonicalSubjectLife, listSubjectsForPicker } from '@/lib/db/canonical-subject-life'
-import type { SubjectOccurrenceMerged, CanonicalLink, MaterializedEvent, MaterializedEntityType, SubjectPickerItem } from '@/lib/db/canonical-subject-life'
+import type { SubjectOccurrenceMerged, CanonicalLink, MaterializedEvent, MaterializedEntityType, SubjectPickerItem, MergeRecord } from '@/lib/db/canonical-subject-life'
 import { buildCanonicalSubjectIntelligence } from '@/lib/knowledge/build-canonical-subject-intelligence'
 import type { CanonicalSubjectIntelligence } from '@/lib/knowledge/build-canonical-subject-intelligence'
 import { buildSubjectNarrative } from '@/services/ai/subject-narrative'
@@ -774,6 +774,27 @@ function RelationsSection({
   )
 }
 
+function MergesAsWinnerSection({ merges }: { merges: MergeRecord[] }) {
+  return (
+    <section className="rounded-[18px] border bg-card px-5 py-4">
+      <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <GitMerge className="h-3.5 w-3.5" />
+        {merges.length} formulation{merges.length > 1 ? 's' : ''} regroupée{merges.length > 1 ? 's' : ''}
+      </h2>
+      <ul className="space-y-1.5">
+        {merges.map((m, i) => (
+          <li key={i} className="flex items-center gap-3 rounded-lg border border-dashed px-3 py-2 text-sm">
+            <span className="flex-1 text-muted-foreground">{m.loserLabel}</span>
+            <span className="shrink-0 text-xs text-muted-foreground/60">
+              {frDate(m.mergedAt)} · {m.resolutionSource === 'llm' ? 'IA' : 'Manuel'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default async function CanonicalSubjectLifePage({ params }: PageProps) {
@@ -791,6 +812,62 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
   if (!site) notFound()
   if (!life || life.siteId !== siteId) notFound()
 
+  // Vue redirect pour un sujet fusionné (loser)
+  if (life.csStatus === 'merged') {
+    return (
+      <>
+        <BreadcrumbPrefix crumbs={[
+          { href: '/sites', label: 'Sites' },
+          { href: `/sites/${siteId}`, label: site.name },
+          { href: `/sites/${siteId}/historique`, label: 'Historique' },
+        ]} />
+        <DynamicCrumb segmentId="canonicalSubjectId" label={life.label} />
+
+        <main className="mx-auto max-w-2xl space-y-6 px-4 py-6">
+          <div>
+            <Link
+              href={`/sites/${siteId}/historique`}
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Retour à l'historique
+            </Link>
+          </div>
+
+          <section className="rounded-[22px] border bg-card p-5 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <GitMerge className="h-4 w-4 text-muted-foreground" />
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Formulation regroupée
+              </p>
+            </div>
+            <h1 className="text-xl font-semibold leading-snug text-muted-foreground">{life.label}</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Cette formulation a été regroupée avec une formulation principale.
+            </p>
+          </section>
+
+          {life.mergedInto && life.mergedIntoLabel && (
+            <section className="rounded-[18px] border-2 border-primary/20 bg-card px-5 py-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                Formulation principale
+              </p>
+              <Link
+                href={`/sites/${siteId}/historique/sujets/${life.mergedInto}`}
+                className="group flex items-center justify-between gap-3 rounded-lg bg-muted/30 px-4 py-3 hover:bg-muted/50 transition-colors"
+              >
+                <span className="font-semibold text-base leading-snug group-hover:underline underline-offset-2">
+                  {life.mergedIntoLabel}
+                </span>
+                <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </Link>
+            </section>
+          )}
+        </main>
+      </>
+    )
+  }
+
   const intel = await buildCanonicalSubjectIntelligence(canonicalSubjectId, life)
   const narrativeResult = await buildSubjectNarrative(life, intel, user.id).catch(() => null)
 
@@ -807,6 +884,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
   const meetingCount = life.occurrences.filter((o) => !o.isGap && o.sourceKind === 'meeting').length
 
   const summaryParts: string[] = []
+  if (life.mergesAsWinner.length > 0) summaryParts.push(`${life.mergesAsWinner.length} formulation${life.mergesAsWinner.length > 1 ? 's' : ''} regroupée${life.mergesAsWinner.length > 1 ? 's' : ''}`)
   if (life.pvCount > 0) summaryParts.push(`${life.pvCount} PV`)
   if (visitCount > 0) summaryParts.push(`${visitCount} visite${visitCount > 1 ? 's' : ''} terrain`)
   if (meetingCount > 0) summaryParts.push(`${meetingCount} réunion${meetingCount > 1 ? 's' : ''}`)
@@ -875,6 +953,11 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
             </p>
           )}
         </section>
+
+        {/* Formulations regroupées (winner) */}
+        {life.mergesAsWinner.length > 0 && (
+          <MergesAsWinnerSection merges={life.mergesAsWinner} />
+        )}
 
         {/* Synthèse narrative */}
         <SubjectNarrativeSection narrative={narrativeResult?.narrative ?? null} />

@@ -72,12 +72,22 @@ export interface MaterializedEvent {
   status: string | null
 }
 
+export interface MergeRecord {
+  loserLabel: string
+  mergedAt: string
+  resolutionSource: 'llm' | 'manual'
+  suggestedLabel: string | null
+}
+
 export interface CanonicalSubjectLife {
   canonicalSubjectId: string
   siteId: string
   label: string
   aliases: string[]
   csStatus: string
+  mergedInto: string | null          // non-null si status='merged'
+  mergedIntoLabel: string | null     // label du winner si status='merged'
+  mergesAsWinner: MergeRecord[]      // fusions dont ce sujet est le winner
   firstSeenAt: string | null
   lastSeenAt: string | null
   currentStatus: string | null
@@ -139,7 +149,7 @@ export async function getCanonicalSubjectLife(
   // 1. Canonical subject
   const { data: cs } = await supabase
     .from('canonical_subject')
-    .select('id, site_id, label, aliases, status')
+    .select('id, site_id, label, aliases, status, merged_into')
     .eq('id', canonicalSubjectId)
     .maybeSingle()
   if (!cs) return null
@@ -148,6 +158,7 @@ export async function getCanonicalSubjectLife(
   const csLabel: string = (cs as { label: string }).label
   const csAliases: string[] = (cs as { aliases: string[] }).aliases ?? []
   const csStatus: string = (cs as { status: string }).status
+  const csMergedInto: string | null = (cs as { merged_into: string | null }).merged_into ?? null
 
   // 2. Tous les threads rattachés à ce sujet
   const { data: stiRows } = await supabase
@@ -195,6 +206,7 @@ export async function getCanonicalSubjectLife(
       : 0
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
+      mergedInto: csMergedInto, mergedIntoLabel: null, mergesAsWinner: [],
       firstSeenAt: nativeReal[0]?.effectiveDate ?? null,
       lastSeenAt: nativeLastSeenAt,
       currentStatus: nativeReal[nativeReal.length - 1]?.visitStatus ?? null,
@@ -216,6 +228,7 @@ export async function getCanonicalSubjectLife(
   if (canonicalRunIds.length === 0) {
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
+      mergedInto: csMergedInto, mergedIntoLabel: null, mergesAsWinner: [],
       firstSeenAt: null, lastSeenAt: null, currentStatus: null, primaryFamily: null,
       threadIds, pvCount: 0, fieldVisitCount: 0, runs: [], occurrences: [], links: [], materializedEvents: [],
       lastMeaningfulChangeAt: null, stagnationDays: null, consecutiveMentionsWithoutChange: 0, isStagnant: false,
@@ -263,6 +276,7 @@ export async function getCanonicalSubjectLife(
   if (firstRunIndex < 0) {
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
+      mergedInto: csMergedInto, mergedIntoLabel: null, mergesAsWinner: [],
       firstSeenAt: null, lastSeenAt: null, currentStatus: null, primaryFamily: null,
       threadIds, pvCount: 0, fieldVisitCount: 0,
       runs: allRuns.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) })),
@@ -620,12 +634,44 @@ export async function getCanonicalSubjectLife(
     }
   })
 
+  // Merge metadata
+  let mergedIntoLabel: string | null = null
+  if (csStatus === 'merged' && csMergedInto) {
+    const { data: winnerRow } = await supabase
+      .from('canonical_subject')
+      .select('label')
+      .eq('id', csMergedInto)
+      .maybeSingle()
+    mergedIntoLabel = (winnerRow as { label: string } | null)?.label ?? null
+  }
+
+  const mergesAsWinner: MergeRecord[] = []
+  if (csStatus !== 'merged') {
+    const { data: mergeRows } = await supabase
+      .from('canonical_subject_merge')
+      .select('merged_at, resolution_source, suggested_label, snapshot')
+      .eq('winner_subject_id', canonicalSubjectId)
+      .order('merged_at', { ascending: false })
+    for (const row of (mergeRows ?? []) as Array<{ merged_at: string; resolution_source: string; suggested_label: string | null; snapshot: Record<string, unknown> | null }>) {
+      const snap = row.snapshot as { loser_label?: string } | null
+      mergesAsWinner.push({
+        loserLabel: snap?.loser_label ?? '(inconnu)',
+        mergedAt: row.merged_at,
+        resolutionSource: row.resolution_source as 'llm' | 'manual',
+        suggestedLabel: row.suggested_label,
+      })
+    }
+  }
+
   return {
     canonicalSubjectId,
     siteId,
     label: csLabel,
     aliases: csAliases,
     csStatus,
+    mergedInto: csMergedInto,
+    mergedIntoLabel,
+    mergesAsWinner,
     firstSeenAt,
     lastSeenAt,
     currentStatus,
