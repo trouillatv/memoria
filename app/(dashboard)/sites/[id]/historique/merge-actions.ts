@@ -121,3 +121,52 @@ export async function mergeCanonicalSubjectsAction(
 
   return { winnerId }
 }
+
+/** Déplace un sujet vers un topic (remplace l'appartenance courante). */
+export async function moveSubjectToTopicAction(
+  canonicalSubjectId: string,
+  topicId: string,
+  siteId: string,
+): Promise<{ error?: string }> {
+  const user = await getCurrentUserWithProfile().catch(() => null)
+  if (!user) return { error: 'Non authentifié' }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('canonical_topic_subject').upsert(
+    { canonical_topic_id: topicId, canonical_subject_id: canonicalSubjectId, resolution_source: 'manual' },
+    { onConflict: 'canonical_subject_id' },
+  )
+  if (error) return { error: error.message }
+
+  revalidatePath(`/sites/${siteId}/historique`)
+  return {}
+}
+
+/** Crée un lien de dépendance entre deux canonical_subject depuis la matrice. */
+export async function createLinkFromMatrixAction(
+  fromCanonicalSubjectId: string,
+  toCanonicalSubjectId: string,
+  linkType: string,
+  siteId: string,
+): Promise<{ error?: string }> {
+  const user = await getCurrentUserWithProfile().catch(() => null)
+  if (!user) return { error: 'Non authentifié' }
+
+  const { createCanonicalSubjectLink } = await import('@/lib/db/subject-thread-links')
+  const result = await createCanonicalSubjectLink({
+    siteId,
+    fromCanonicalSubjectId,
+    toCanonicalSubjectId,
+    linkType: linkType as import('@/lib/db/subject-thread-links').SubjectLinkType,
+    justification: null,
+    userId: user.id,
+  })
+
+  if (result === 'self_link') return { error: 'Un sujet ne peut pas être lié à lui-même.' }
+  if (result === 'no_thread') return { error: 'Thread manquant pour créer la liaison.' }
+
+  revalidatePath(`/sites/${siteId}/historique`)
+  revalidatePath(`/sites/${siteId}/historique/sujets/${fromCanonicalSubjectId}`)
+  revalidatePath(`/sites/${siteId}/historique/sujets/${toCanonicalSubjectId}`)
+  return {}
+}
