@@ -342,6 +342,18 @@ async function projectAndTrace(params: {
       .from('site_reports')
       .update({ debrief_projected_at: new Date().toISOString(), debrief_projection_error: null })
       .eq('id', reportId)
+    void import('@/lib/db/canonical-subject-source-reconcile')
+      .then(({ reconcileSourceToCanonicalSubjects }) =>
+        reconcileSourceToCanonicalSubjects({
+          type: 'field_visit',
+          id: reportId,
+          siteId: params.siteId,
+          authorId: null,
+        }),
+      )
+      .catch((err: unknown) =>
+        console.error('[reconcile-source] erreur silencieuse:', String(err).slice(0, 300)),
+      )
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e)
     console.error(`[debrief] projection en échec pour la visite ${reportId} : ${reason}`)
