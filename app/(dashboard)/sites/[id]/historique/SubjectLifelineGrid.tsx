@@ -796,6 +796,9 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
               {suggestions.length}
             </span>
           )}
+          {suggestionMode && !suggestionsLoading && suggestions.length === 0 && (
+            <span className="text-[10px] text-muted-foreground italic">aucune</span>
+          )}
           {suggestionsLoading && <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />}
         </button>
 
@@ -999,6 +1002,77 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
       })()}
     </div>
 
+    {/* Liste latérale Rapprochements IA — affichée automatiquement quand le mode est actif */}
+    {suggestionMode && !suggestionsLoading && suggestions.length === 0 && (
+      <div className="fixed right-4 top-16 z-40 w-80 rounded-2xl border bg-card shadow-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-violet-400" />
+            <span className="text-sm font-medium text-muted-foreground">Rapprochements IA</span>
+          </div>
+          <button type="button" onClick={() => setSuggestionMode(false)} className="rounded-lg p-1 text-muted-foreground hover:bg-muted">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="text-sm text-muted-foreground">Aucune suggestion persistée pour ce chantier.</p>
+        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">Lancez le batch d&apos;analyse pour alimenter les suggestions :</p>
+        <code className="mt-2 block text-[10px] bg-muted rounded px-2 py-1.5 text-muted-foreground break-all">
+          analyze-subject-similarities.ts --site=… --apply
+        </code>
+      </div>
+    )}
+
+    {suggestionMode && suggestions.length > 0 && !selectedSuggestion && (
+      <div className="fixed right-4 top-16 bottom-4 z-40 w-80 flex flex-col rounded-2xl border bg-card shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-violet-500" />
+            <span className="text-sm font-semibold">{suggestions.length} rapprochement{suggestions.length > 1 ? 's' : ''}</span>
+          </div>
+          <button type="button" onClick={() => setSuggestionMode(false)} className="rounded-lg p-1 text-muted-foreground hover:bg-muted">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Liste */}
+        <div className="overflow-y-auto flex-1 divide-y">
+          {suggestions.map((s) => {
+            const lA = allRows.find((r) => r.canonicalSubjectId === s.subject_a_id)?.canonicalLabel ?? s.subject_a_id.slice(0, 8)
+            const lB = allRows.find((r) => r.canonicalSubjectId === s.subject_b_id)?.canonicalLabel ?? s.subject_b_id.slice(0, 8)
+            const scoreClass = s.score >= 90
+              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+              : s.score >= 75
+                ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => openSuggestionPanel(s)}
+                className="w-full text-left px-4 py-3 hover:bg-muted/60 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-medium text-foreground/90">{lA}</span>
+                    <span className="block truncate text-xs text-muted-foreground mt-0.5">{lB}</span>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${scoreClass}`}>
+                    {s.score}%
+                  </span>
+                </div>
+                <div className="mt-1.5">
+                  {s.recommendation === 'merge' && <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400">→ Fusion proposée</span>}
+                  {s.recommendation === 'link' && <span className="text-[10px] font-medium text-blue-600 dark:text-blue-400">→ Lien proposé</span>}
+                  {s.recommendation === 'none' && <span className="text-[10px] font-medium text-muted-foreground">→ Distincts</span>}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )}
+
     {/* Barre de résumé Rapprochements IA */}
     {suggestionMode && suggestions.length > 0 && (
       <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-violet-50 dark:bg-violet-950/20 px-4 py-2.5 text-sm">
@@ -1025,7 +1099,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
             {suggestions.filter((s) => s.recommendation === 'link').length} à relier
           </span>
         )}
-        <span className="text-xs text-muted-foreground ml-auto">Cliquez sur un badge % pour voir le détail</span>
+        <span className="text-xs text-muted-foreground ml-auto">Cliquez un rapprochement pour agir</span>
       </div>
     )}
 
@@ -1153,6 +1227,14 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b">
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSuggestion(null)}
+                  className="rounded-lg p-1 text-muted-foreground hover:bg-muted mr-1"
+                  title="Retour à la liste"
+                >
+                  ←
+                </button>
                 <Sparkles className="h-4 w-4 text-violet-500" />
                 <span className="text-sm font-semibold">Rapprochement IA</span>
               </div>
