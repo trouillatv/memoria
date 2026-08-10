@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useMemo, useRef, useEffect } from 'react'
-import { ChevronDown, ChevronRight, GripVertical } from 'lucide-react'
+import { useState, useMemo, useRef, useEffect, useTransition } from 'react'
+import { ChevronDown, ChevronRight, GitMerge, GripVertical, MoreHorizontal, X } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import type { SiteSubjectMatrix, SubjectMatrixRow, MatrixCell } from '@/lib/documents/pv-history'
+import { mergeCanonicalSubjectsAction } from './merge-actions'
 
 // ── Icônes de cellule ─────────────────────────────────────────────────────────
 
@@ -127,6 +128,52 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
   const [selectedThread, setSelectedThread] = useState<string | null>(initialThread ?? null)
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set())
 
+  // Fusion manuelle
+  const [mergeDialog, setMergeDialog] = useState<{ sourceId: string; sourceLabel: string } | null>(null)
+  const [mergeSearch, setMergeSearch] = useState('')
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null)
+  const [mergeSuggestedLabel, setMergeSuggestedLabel] = useState('')
+  const [mergeError, setMergeError] = useState<string | null>(null)
+  const [isMerging, startMergeTransition] = useTransition()
+
+  function openMergeDialog(sourceId: string, sourceLabel: string) {
+    setMergeDialog({ sourceId, sourceLabel })
+    setMergeSearch('')
+    setMergeTargetId(null)
+    setMergeSuggestedLabel('')
+    setMergeError(null)
+  }
+
+  function closeMergeDialog() {
+    setMergeDialog(null)
+  }
+
+  function submitMerge() {
+    if (!mergeDialog || !mergeTargetId) return
+    startMergeTransition(async () => {
+      const result = await mergeCanonicalSubjectsAction(
+        mergeDialog.sourceId,
+        mergeTargetId,
+        mergeSuggestedLabel,
+        siteId,
+      )
+      if (result.error) {
+        setMergeError(result.error)
+      } else {
+        closeMergeDialog()
+      }
+    })
+  }
+
+  const mergeCandidates = useMemo(() => {
+    if (!mergeDialog) return []
+    const q = mergeSearch.toLowerCase()
+    return matrix.rows
+      .filter((r) => r.canonicalSubjectId && r.canonicalSubjectId !== mergeDialog.sourceId)
+      .filter((r) => !q || r.canonicalLabel.toLowerCase().includes(q))
+      .slice(0, 15)
+  }, [matrix.rows, mergeDialog, mergeSearch])
+
   function toggleTopic(topicId: string) {
     setExpandedTopics((prev) => {
       const next = new Set(prev)
@@ -148,12 +195,14 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
     router.replace(`${pathname}?${params.toString()}`, { scroll: false })
   }, [selectedThread]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const themes = useMemo(() => {
-    const set = new Set<string>()
+  const topics = useMemo(() => {
+    const map = new Map<string, string>()
     for (const row of matrix.rows) {
-      if (row.thematicCategory) set.add(row.thematicCategory)
+      if (row.topicId && row.topicLabel) map.set(row.topicId, row.topicLabel)
     }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'))
+    return Array.from(map.entries())
+      .map(([id, label]) => ({ id, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'fr'))
   }, [matrix.rows])
 
   const filtered = useMemo(() => {
@@ -174,7 +223,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
     }
 
     if (themeFilter !== 'all') {
-      rows = rows.filter((r) => r.thematicCategory === themeFilter)
+      rows = rows.filter((r) => r.topicId === themeFilter)
     }
 
     const sorted = [...rows]
@@ -313,6 +362,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
   }
 
   return (
+  <>
     <div className="space-y-3">
       {/* Barre de filtres */}
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -339,14 +389,14 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
           <option value="alert">Réapparus / aggravés</option>
         </select>
 
-        {themes.length > 0 && (
+        {topics.length > 0 && (
           <select
             value={themeFilter}
             onChange={(e) => setThemeFilter(e.target.value)}
             className="rounded-lg border bg-card px-2.5 py-1.5 text-sm"
           >
             <option value="all">Tous les thèmes</option>
-            {themes.map((t) => <option key={t} value={t}>{t}</option>)}
+            {topics.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
           </select>
         )}
 
@@ -479,7 +529,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
               return (
                 <div
                   key={row.subjectThreadId}
-                  className={`flex cursor-pointer items-center gap-1.5 border-b px-3 py-2 last:border-b-0 hover:bg-muted/30 ${selectedThread === row.subjectThreadId ? 'bg-muted/50' : ''}`}
+                  className={`group flex cursor-pointer items-center gap-1.5 border-b px-3 py-2 last:border-b-0 hover:bg-muted/30 ${selectedThread === row.subjectThreadId ? 'bg-muted/50' : ''}`}
                   style={{ height: 40 }}
                   onClick={() => setSelectedThread(row.subjectThreadId === selectedThread ? null : row.subjectThreadId)}
                 >
@@ -524,6 +574,16 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                       )}
                     </span>
                   ) : null}
+                  {row.canonicalSubjectId && (
+                    <button
+                      type="button"
+                      title="Fusionner avec…"
+                      onClick={(e) => { e.stopPropagation(); openMergeDialog(row.canonicalSubjectId!, row.canonicalLabel) }}
+                      className="shrink-0 rounded p-0.5 opacity-0 group-hover:opacity-100 text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted transition-opacity"
+                    >
+                      <MoreHorizontal className="h-3 w-3" />
+                    </button>
+                  )}
                 </div>
               )
             })}
@@ -732,5 +792,109 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
         )
       })()}
     </div>
+
+    {/* Dialog de fusion */}
+    {mergeDialog && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+        onClick={closeMergeDialog}
+      >
+        <div
+          className="relative w-full max-w-md rounded-2xl bg-card p-6 shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div>
+              <div className="flex items-center gap-1.5 mb-1">
+                <GitMerge className="h-4 w-4 text-muted-foreground" />
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fusionner avec…</p>
+              </div>
+              <p className="font-semibold leading-snug">{mergeDialog.sourceLabel}</p>
+            </div>
+            <button
+              type="button"
+              onClick={closeMergeDialog}
+              className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <p className="text-xs text-muted-foreground mb-2">
+            Choisir la formulation principale (winner déterminé automatiquement par le nombre de threads) :
+          </p>
+
+          <input
+            type="text"
+            placeholder="Rechercher un sujet…"
+            value={mergeSearch}
+            onChange={(e) => { setMergeSearch(e.target.value); setMergeTargetId(null) }}
+            className="w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20 mb-2"
+            autoFocus
+          />
+
+          {mergeCandidates.length > 0 ? (
+            <ul className="max-h-48 overflow-y-auto rounded-lg border divide-y mb-4">
+              {mergeCandidates.map((r) => (
+                <li key={r.canonicalSubjectId}>
+                  <button
+                    type="button"
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors ${mergeTargetId === r.canonicalSubjectId ? 'bg-primary/10 font-medium' : ''}`}
+                    onClick={() => { setMergeTargetId(r.canonicalSubjectId!); setMergeSuggestedLabel('') }}
+                  >
+                    <span className="block truncate">{r.canonicalLabel}</span>
+                    {r.topicLabel && (
+                      <span className="text-[10px] text-muted-foreground">{r.topicLabel}</span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-muted-foreground mb-4 py-2 text-center">
+              {mergeSearch ? 'Aucun résultat' : 'Tapez pour rechercher'}
+            </p>
+          )}
+
+          {mergeTargetId && (
+            <div className="mb-4">
+              <label className="block text-xs text-muted-foreground mb-1">
+                Libellé canonique final <span className="opacity-60">(facultatif — si vide, le libellé du winner est conservé)</span>
+              </label>
+              <input
+                type="text"
+                value={mergeSuggestedLabel}
+                onChange={(e) => setMergeSuggestedLabel(e.target.value)}
+                placeholder="Laisser vide pour conserver le libellé du winner"
+                className="w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+          )}
+
+          {mergeError && (
+            <p className="text-sm text-destructive mb-3">{mergeError}</p>
+          )}
+
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              onClick={closeMergeDialog}
+              className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted transition-colors"
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              disabled={!mergeTargetId || isMerging}
+              onClick={submitMerge}
+              className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+            >
+              {isMerging ? 'Fusion…' : 'Fusionner'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
   )
 }
