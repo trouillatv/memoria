@@ -15,6 +15,7 @@ import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/render
 import type { VisitCrDoc } from '@/lib/db/visits'
 import type { VisitSummary, SummarySection, SummaryItem, HistoricalIntervenant } from '@/lib/knowledge/visit-summary'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
+import type { VisitSituation } from '@/lib/pdf/visit-cr-situation'
 
 const COLORS = {
   text: '#0f172a',
@@ -164,6 +165,10 @@ const styles = StyleSheet.create({
 function orgInitials(label: string | null): string {
   if (!label) return '?'
   return label.split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('')
+}
+
+function formatPdfDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 function SectionTitle({ text, color, important, sub }: { text: string; color: string; important?: boolean; sub?: string }) {
@@ -450,7 +455,7 @@ function ToConfirm({ items }: { items: SummaryItem[] }) {
  * sert plus » : il ne peut plus. Seul le read model connaît ce stockage, donc le
  * document ne peut plus diverger de l'écran par distraction.
  */
-export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, historicalIntervenants }: {
+export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, historicalIntervenants, situation }: {
   doc: VisitCrDoc
   summary: VisitSummary
   exportDate: string
@@ -465,6 +470,8 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
   /** Lot B — intervenants avec statut de présence pour les PV historiques.
    *  Null pour les visites terrain (getVisitSummary.stakeholders couvre ce cas). */
   historicalIntervenants?: HistoricalIntervenant[] | null
+  /** Actions ouvertes et échéances à venir du chantier, pour la section finale du CR. */
+  situation?: VisitSituation | null
 }) {
   const cr = crDocument ?? null
   const isDraft = cr?.status === 'draft'
@@ -565,6 +572,14 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
   if (nDecisions > 0) retenir.push(`${nDecisions} décision${nDecisions > 1 ? 's' : ''} actée${nDecisions > 1 ? 's' : ''}`)
   retenir.push('Compte-rendu généré et disponible')
 
+  // Situation après la visite — uniquement sur le CR humain.
+  const depuisItems: Array<{ title: string; dotColor: string }> = !cr ? [] : [
+    ...decisions.confirmed.slice(0, 2).map((d) => ({ title: d.title, dotColor: COLORS.accent })),
+    ...actionsSection.confirmed.slice(0, 2).map((a) => ({ title: a.title, dotColor: '#7c3aed' })),
+    ...watchpoints.confirmed.slice(0, 2).map((w) => ({ title: w.title, dotColor: '#f59e0b' })),
+  ].slice(0, 5)
+  const hasSécuriser = !!cr && ((situation?.actionsOpen?.length ?? 0) + (situation?.deadlinesComing?.length ?? 0)) > 0
+
   return (
     <Document title={title}>
       <Page size="A4" style={styles.page}>
@@ -631,6 +646,51 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
             imprimer à la fois le texte corrigé et l'analyse d'origine ferait
             dire deux choses au même document. */}
         {cr && <DocumentSections sections={cr.sections} />}
+
+        {/* Situation après la visite — décisions, actions ouvertes, échéances. */}
+        {cr && (depuisItems.length > 0 || hasSécuriser) && (
+          <View style={styles.section}>
+            <SectionTitle text="Situation après la visite" color={COLORS.accent} important />
+            {depuisItems.length > 0 && (
+              <>
+                <Text style={styles.subTitle}>Depuis cette visite</Text>
+                {depuisItems.map((item, i) => (
+                  <View key={i} style={styles.docBulletRow} wrap={false}>
+                    <View style={[styles.docBulletDot, { backgroundColor: item.dotColor }]} />
+                    <Text style={styles.bulletText}>{item.title}</Text>
+                  </View>
+                ))}
+              </>
+            )}
+            {hasSécuriser && (
+              <>
+                <Text style={styles.subTitle}>À sécuriser</Text>
+                {(situation?.actionsOpen ?? []).map((a, i) => (
+                  <View key={`a${i}`} style={styles.actionRow} wrap={false}>
+                    <View style={styles.checkbox} />
+                    <View style={styles.actionText}>
+                      <Text>{a.title}</Text>
+                      {a.dueDate ? (
+                        <Text style={styles.actionWhy}>{a.isOverdue ? 'En retard — ' : ''}{formatPdfDate(a.dueDate)}</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+                {(situation?.deadlinesComing ?? []).map((d, i) => (
+                  <View key={`d${i}`} style={styles.docBulletRow} wrap={false}>
+                    <View style={[styles.docBulletDot, { backgroundColor: '#e11d48' }]} />
+                    <View style={styles.actionText}>
+                      <Text>{d.title}</Text>
+                      {d.dueDate ? (
+                        <Text style={styles.actionWhy}>{d.isOverdue ? 'En retard — ' : ''}{formatPdfDate(d.dueDate)}</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+              </>
+            )}
+          </View>
+        )}
 
         {/* Ce que MemorIA a retenu — le RÉSULTAT de l'analyse, en premier. */}
         {!cr && (
@@ -845,26 +905,14 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
           </View>
         )}
 
-        {/* À retenir — la conclusion naturelle du document. */}
-        <View style={styles.section} wrap={false}>
-          <SectionTitle text="À retenir" color={COLORS.accent} important />
-          <View style={styles.card}>
-            <Text style={styles.cardLead}>Cette visite a enrichi la mémoire du chantier.</Text>
-            {retenir.map((line, i) => (
-              <View key={i} style={styles.checkRow}>
-                <View style={styles.checkMark} />
-                <Text style={styles.bulletText}>{line}</Text>
-              </View>
-            ))}
+        {/* Bilan — résultat / suivi (uniquement quand renseignés). */}
+        {(doc.outcomeLabel || doc.resolutionLabel) && (
+          <View style={styles.section} wrap={false}>
+            <SectionTitle text="Bilan" color={COLORS.muted} />
+            {doc.outcomeLabel ? <Text style={styles.paragraph}><Text style={styles.metaStrong}>Résultat : </Text>{doc.outcomeLabel}</Text> : null}
+            {doc.resolutionLabel ? <Text style={styles.paragraph}><Text style={styles.metaStrong}>Suivi : </Text>{doc.resolutionLabel}</Text> : null}
           </View>
-        </View>
-
-        {/* Bilan — résultat / suivi (posés à la clôture, souvent « non précisé »). */}
-        <View style={styles.section} wrap={false}>
-          <SectionTitle text="Bilan" color={COLORS.muted} />
-          <Text style={styles.paragraph}><Text style={styles.metaStrong}>Résultat : </Text>{doc.outcomeLabel ?? 'non précisé'}</Text>
-          <Text style={styles.paragraph}><Text style={styles.metaStrong}>Suivi : </Text>{doc.resolutionLabel ?? 'non précisé'}</Text>
-        </View>
+        )}
 
         {/* Un document finalisé n'est plus une sortie de machine — cf.
             `pdfFooterLabel`, tenu par un test. */}
