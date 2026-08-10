@@ -260,6 +260,13 @@ export async function reconcileSourceToCanonicalSubjects(
   if (geminiGroups) {
     const orphanById = new Map(orphans.map((p) => [p.id, p]))
 
+    // Toutes les propositions citées par Gemini (pour détecter les oubliées)
+    const coveredByGemini = new Set(geminiGroups.flatMap((g) => g.proposalIds))
+    // Propositions absentes de la réponse Gemini → orphelines silencieuses
+    for (const [id] of orphanById) {
+      if (!coveredByGemini.has(id)) result.orphaned++
+    }
+
     for (const group of geminiGroups) {
       if (!group.isDurableSubject) {
         result.orphaned += group.proposalIds.length
@@ -357,15 +364,7 @@ export async function reconcileSourceToCanonicalSubjects(
     }
   } else {
     // Pas de réponse Gemini : fallback Jaccard pur, pas de création (confiance inconnue)
-    const orphanById = new Map(orphans.map((p) => [p.id, p]))
-    for (const cluster of jaccardClusters) {
-      for (const idx of cluster.memberIdxs) {
-        const proposal = orphans[idx]
-        if (orphanById.has(proposal.id)) {
-          result.orphaned++
-        }
-      }
-    }
+    result.orphaned += orphans.length
   }
 
   return result
