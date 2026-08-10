@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect, useTransition } from 'react'
-import { ChevronDown, ChevronRight, GitMerge, GripVertical, MoreHorizontal, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, GitMerge, GripVertical, MoreHorizontal, Sparkles, X } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import {
@@ -12,6 +12,8 @@ import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import type { SiteSubjectMatrix, SubjectMatrixRow, MatrixCell } from '@/lib/documents/pv-history'
 import { mergeCanonicalSubjectsAction, moveSubjectToTopicAction, createLinkFromMatrixAction, analyzeSubjectSimilarityAction } from './merge-actions'
 import type { SubjectSimilarity } from './merge-actions'
+import { getSiteSimilaritySuggestionsAction, getOrAnalyzeSubjectPairAction, acceptSuggestionAsMergeAction, acceptSuggestionAsLinkAction, rejectSuggestionAction } from './similarity-actions'
+import type { PersistedSuggestion } from '@/lib/subjects/similarity-analyze'
 
 // ── Icônes de cellule ─────────────────────────────────────────────────────────
 
@@ -186,6 +188,7 @@ function DroppableTopicRow({
 function DraggableSubjectRow({
   row, siteId, isSelected, labelWidth, CELL_W, nativeDates,
   nativeOccurrences, suggestedCounts, nativeOnlyIds, onSelect, onMergeDialog,
+  suggestionScore, onSuggestionClick,
 }: {
   row: SubjectMatrixRow
   siteId: string
@@ -198,6 +201,8 @@ function DraggableSubjectRow({
   nativeOnlyIds?: Set<string>
   onSelect: () => void
   onMergeDialog: (id: string, label: string) => void
+  suggestionScore?: number | null
+  onSuggestionClick?: () => void
 }) {
   const dragId = `subject:${row.canonicalSubjectId ?? row.subjectThreadId}`
   const isDraggable = !!row.canonicalSubjectId && row.family !== 'person' && row.family !== 'company'
@@ -279,6 +284,21 @@ function DraggableSubjectRow({
             )}
           </span>
         ) : null}
+        {suggestionScore != null && onSuggestionClick && (
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onSuggestionClick() }}
+            title={`Confiance de rapprochement IA : ${suggestionScore}%`}
+            className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums ${
+              suggestionScore >= 90 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' :
+              suggestionScore >= 75 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' :
+              'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+            }`}
+          >
+            {suggestionScore}%
+          </button>
+        )}
         {row.canonicalSubjectId && (
           <button
             type="button"
@@ -371,6 +391,37 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
   const [similarity, setSimilarity] = useState<{ status: 'loading' } | ({ status: 'done' } & SubjectSimilarity) | { status: 'error'; errorMsg?: string } | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
+  // Mode Rapprochements IA
+  const [suggestionMode, setSuggestionMode] = useState(false)
+  const [suggestions, setSuggestions] = useState<PersistedSuggestion[]>([])
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
+  const [selectedSuggestion, setSelectedSuggestion] = useState<PersistedSuggestion | null>(null)
+  const [suggestionPanelAction, setSuggestionPanelAction] = useState<'idle' | 'merging' | 'linking' | 'rejecting'>('idle')
+  const [suggestionPanelError, setSuggestionPanelError] = useState<string | null>(null)
+  const [suggestionPanelLinkType, setSuggestionPanelLinkType] = useState('requires')
+  const [suggestionPanelLinkDir, setSuggestionPanelLinkDir] = useState<'a_to_b' | 'b_to_a'>('a_to_b')
+
+  async function loadSuggestions() {
+    setSuggestionsLoading(true)
+    const result = await getSiteSimilaritySuggestionsAction(siteId)
+    setSuggestionsLoading(false)
+    if (result.suggestions) setSuggestions(result.suggestions)
+  }
+
+  async function toggleSuggestionMode() {
+    const next = !suggestionMode
+    setSuggestionMode(next)
+    if (next) await loadSuggestions()
+  }
+
+  function openSuggestionPanel(suggestion: PersistedSuggestion) {
+    setSelectedSuggestion(suggestion)
+    setSuggestionPanelAction('idle')
+    setSuggestionPanelError(null)
+    setSuggestionPanelLinkType(suggestion.suggested_link_type ?? 'requires')
+    setSuggestionPanelLinkDir(suggestion.suggested_direction ?? 'a_to_b')
+  }
+
   function openMergeDialog(sourceId: string, sourceLabel: string) {
     setMergeDialog({ sourceId, sourceLabel })
     setMergeSearch('')
@@ -423,17 +474,19 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
       setLinkInverted(false)
       setIntentError(null)
       setSimilarity({ status: 'loading' })
-      analyzeSubjectSimilarityAction(src.id, dst.id).then((result) => {
-        if (result.error || result.score === undefined) {
+      getOrAnalyzeSubjectPairAction(src.id, dst.id, siteId).then((result) => {
+        if (result.error || !result.suggestion) {
           setSimilarity({ status: 'error', errorMsg: result.error })
         } else {
+          const s = result.suggestion
           setSimilarity({
             status: 'done',
-            score: result.score,
-            recommendation: result.recommendation!,
-            reason: result.reason!,
-            suggested_label: result.suggested_label ?? null,
+            score: s.score,
+            recommendation: s.recommendation,
+            reason: s.reason,
+            suggested_label: s.suggested_label ?? null,
           })
+          if (result.fresh && suggestionMode) loadSuggestions()
         }
       })
     } else if (src.kind === 'subject' && dst.kind === 'topic' && src.id && dst.id) {
@@ -514,6 +567,18 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
     () => new Set(nativeOnlySubjects.map((s) => s.csId)),
     [nativeOnlySubjects],
   )
+
+  // Meilleure suggestion par sujet (pour les badges de score)
+  const suggestionsMap = useMemo(() => {
+    const map = new Map<string, PersistedSuggestion>()
+    for (const s of suggestions) {
+      for (const csId of [s.subject_a_id, s.subject_b_id]) {
+        const existing = map.get(csId)
+        if (!existing || s.score > existing.score) map.set(csId, s)
+      }
+    }
+    return map
+  }, [suggestions])
 
   // Fusion : rows PV + rows synthétiques pour les sujets 100% natifs
   const allRows = useMemo((): SubjectMatrixRow[] => {
@@ -711,6 +776,28 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
           <option value="all">Tous</option>
         </select>
 
+        <button
+          type="button"
+          onClick={toggleSuggestionMode}
+          className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition-colors ${
+            suggestionMode
+              ? 'border-violet-400 bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300'
+              : 'bg-card text-muted-foreground hover:text-foreground'
+          }`}
+          title="Afficher les rapprochements IA entre sujets"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          Rapprochements IA
+          {suggestions.length > 0 && (
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+              suggestionMode ? 'bg-violet-200 dark:bg-violet-800' : 'bg-muted'
+            }`}>
+              {suggestions.length}
+            </span>
+          )}
+          {suggestionsLoading && <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />}
+        </button>
+
         <span className="ml-auto text-xs text-muted-foreground">
           {filtered.length} sujet{filtered.length > 1 ? 's' : ''}
           {grouped.some((g) => g.topicId !== null) && ` · ${grouped.filter((g) => g.topicId !== null).length} thème${grouped.filter((g) => g.topicId !== null).length > 1 ? 's' : ''}`}
@@ -834,22 +921,27 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
 
             const row = item.row
             const isSelected = selectedThread === row.subjectThreadId
-            return (
-              <DraggableSubjectRow
-                key={row.subjectThreadId}
-                row={row}
-                siteId={siteId}
-                isSelected={isSelected}
-                labelWidth={labelWidth}
-                CELL_W={CELL_W}
-                nativeDates={nativeDates}
-                nativeOccurrences={nativeOccurrences}
-                suggestedCounts={suggestedCounts}
-                nativeOnlyIds={nativeOnlyIds}
-                onSelect={() => setSelectedThread(row.subjectThreadId === selectedThread ? null : row.subjectThreadId)}
-                onMergeDialog={openMergeDialog}
-              />
-            )
+            {
+              const suggestion = suggestionMode && row.canonicalSubjectId ? suggestionsMap.get(row.canonicalSubjectId) ?? null : null
+              return (
+                <DraggableSubjectRow
+                  key={row.subjectThreadId}
+                  row={row}
+                  siteId={siteId}
+                  isSelected={isSelected}
+                  labelWidth={labelWidth}
+                  CELL_W={CELL_W}
+                  nativeDates={nativeDates}
+                  nativeOccurrences={nativeOccurrences}
+                  suggestedCounts={suggestedCounts}
+                  nativeOnlyIds={nativeOnlyIds}
+                  onSelect={() => setSelectedThread(row.subjectThreadId === selectedThread ? null : row.subjectThreadId)}
+                  onMergeDialog={openMergeDialog}
+                  suggestionScore={suggestion?.score ?? null}
+                  onSuggestionClick={suggestion ? () => openSuggestionPanel(suggestion) : undefined}
+                />
+              )
+            }
           })}
         </div>
       </div>
@@ -905,6 +997,36 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
         )
       })()}
     </div>
+
+    {/* Barre de résumé Rapprochements IA */}
+    {suggestionMode && suggestions.length > 0 && (
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-violet-50 dark:bg-violet-950/20 px-4 py-2.5 text-sm">
+        <Sparkles className="h-4 w-4 text-violet-500 shrink-0" />
+        <span className="font-medium text-violet-700 dark:text-violet-300">
+          {suggestions.length} rapprochement{suggestions.length > 1 ? 's' : ''} en attente
+        </span>
+        <span className="text-muted-foreground">—</span>
+        {suggestions.filter((s) => s.score >= 90).length > 0 && (
+          <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" />
+            {suggestions.filter((s) => s.score >= 90).length} fusion{suggestions.filter((s) => s.score >= 90).length > 1 ? 's' : ''} très probables
+          </span>
+        )}
+        {suggestions.filter((s) => s.score >= 75 && s.score < 90).length > 0 && (
+          <span className="flex items-center gap-1 text-amber-700 dark:text-amber-300">
+            <span className="h-2 w-2 rounded-full bg-amber-400 inline-block" />
+            {suggestions.filter((s) => s.score >= 75 && s.score < 90).length} à examiner
+          </span>
+        )}
+        {suggestions.filter((s) => s.recommendation === 'link').length > 0 && (
+          <span className="flex items-center gap-1 text-blue-700 dark:text-blue-300">
+            <span className="h-2 w-2 rounded-full bg-blue-400 inline-block" />
+            {suggestions.filter((s) => s.recommendation === 'link').length} à relier
+          </span>
+        )}
+        <span className="text-xs text-muted-foreground ml-auto">Cliquez sur un badge % pour voir le détail</span>
+      </div>
+    )}
 
     {/* Dialog de fusion */}
     {mergeDialog && (
@@ -1008,6 +1130,180 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
         </div>
       </div>
     )}
+
+    {/* Panneau Rapprochement IA */}
+    {selectedSuggestion && (() => {
+      const s = selectedSuggestion
+      const labelA = allRows.find((r) => r.canonicalSubjectId === s.subject_a_id)?.canonicalLabel ?? s.subject_a_id.slice(0, 8)
+      const labelB = allRows.find((r) => r.canonicalSubjectId === s.subject_b_id)?.canonicalLabel ?? s.subject_b_id.slice(0, 8)
+      const isMergeRec = s.recommendation === 'merge'
+      const isLinkRec = s.recommendation === 'link'
+      const scoreColor = s.score >= 90 ? 'text-emerald-600 dark:text-emerald-400' : s.score >= 75 ? 'text-amber-600 dark:text-amber-400' : 'text-blue-600 dark:text-blue-400'
+      const scoreBg = s.score >= 90 ? 'bg-emerald-50 dark:bg-emerald-950/40' : s.score >= 75 ? 'bg-amber-50 dark:bg-amber-950/40' : 'bg-blue-50 dark:bg-blue-950/40'
+      const verdictLabel = s.verdict === 'same_subject' ? 'Très forte correspondance' : s.verdict === 'related' ? 'Sujets liés' : s.verdict === 'uncertain' ? 'Incertain' : 'Distincts'
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-start justify-end bg-black/20 pt-16 pr-4" onClick={() => setSelectedSuggestion(null)}>
+          <div
+            className="w-full max-w-sm rounded-2xl border bg-card shadow-2xl overflow-auto max-h-[85vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-violet-500" />
+                <span className="text-sm font-semibold">Rapprochement IA</span>
+              </div>
+              <button type="button" onClick={() => setSelectedSuggestion(null)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Comparaison */}
+            <div className="p-4 space-y-4">
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Comparaison</p>
+                <div className="rounded-xl border divide-y">
+                  <div className="p-3 text-sm font-medium">{labelA}</div>
+                  <div className="p-3 text-sm font-medium">{labelB}</div>
+                </div>
+              </div>
+
+              {/* Score */}
+              <div className={`rounded-xl ${scoreBg} p-4 flex items-center gap-4`}>
+                <div className={`text-3xl font-bold tabular-nums ${scoreColor}`}>{s.score}%</div>
+                <div>
+                  <p className={`text-sm font-semibold ${scoreColor}`}>{verdictLabel}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Compatibilité IA</p>
+                </div>
+              </div>
+
+              {/* Raison */}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Analyse</p>
+                <p className="text-sm text-foreground/80">{s.reason}</p>
+              </div>
+
+              {/* Libellé proposé */}
+              {s.suggested_label && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Libellé canonique proposé</p>
+                  <p className="text-sm font-medium rounded-lg bg-muted px-3 py-2">{s.suggested_label}</p>
+                </div>
+              )}
+
+              {/* Lien proposé */}
+              {isLinkRec && s.suggested_link_type && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Dépendance proposée</p>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className={suggestionPanelLinkDir === 'a_to_b' ? 'font-semibold' : 'text-muted-foreground truncate max-w-[100px]'}>{labelA}</span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className={suggestionPanelLinkDir === 'b_to_a' ? 'font-semibold' : 'text-muted-foreground truncate max-w-[100px]'}>{labelB}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      value={suggestionPanelLinkType}
+                      onChange={(e) => setSuggestionPanelLinkType(e.target.value)}
+                      className="flex-1 rounded-lg border bg-background px-2 py-1.5 text-xs"
+                    >
+                      {['requires', 'enables', 'causes', 'validates', 'replaces', 'relates_to'].map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setSuggestionPanelLinkDir((d) => d === 'a_to_b' ? 'b_to_a' : 'a_to_b')}
+                      className="rounded-lg border px-2 py-1.5 text-xs hover:bg-muted"
+                      title="Inverser la direction"
+                    >
+                      ⇄
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {suggestionPanelError && (
+                <p className="text-sm text-destructive">{suggestionPanelError}</p>
+              )}
+
+              {/* Actions */}
+              <div className="flex flex-col gap-2 pt-2">
+                {isMergeRec && (
+                  <button
+                    type="button"
+                    disabled={suggestionPanelAction !== 'idle'}
+                    onClick={async () => {
+                      setSuggestionPanelAction('merging')
+                      setSuggestionPanelError(null)
+                      const result = await acceptSuggestionAsMergeAction(
+                        s.id, s.subject_a_id, s.subject_b_id,
+                        s.suggested_label ?? '', siteId,
+                      )
+                      if (result.error) { setSuggestionPanelError(result.error); setSuggestionPanelAction('idle') }
+                      else { setSelectedSuggestion(null); setSuggestions((prev) => prev.filter((x) => x.id !== s.id)) }
+                    }}
+                    className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
+                  >
+                    {suggestionPanelAction === 'merging' ? 'Fusion en cours…' : 'Fusionner les sujets'}
+                  </button>
+                )}
+                {isLinkRec && (
+                  <button
+                    type="button"
+                    disabled={suggestionPanelAction !== 'idle'}
+                    onClick={async () => {
+                      setSuggestionPanelAction('linking')
+                      setSuggestionPanelError(null)
+                      const [from, to] = suggestionPanelLinkDir === 'a_to_b'
+                        ? [s.subject_a_id, s.subject_b_id]
+                        : [s.subject_b_id, s.subject_a_id]
+                      const result = await acceptSuggestionAsLinkAction(s.id, from, to, suggestionPanelLinkType, siteId)
+                      if (result.error) { setSuggestionPanelError(result.error); setSuggestionPanelAction('idle') }
+                      else { setSelectedSuggestion(null); setSuggestions((prev) => prev.filter((x) => x.id !== s.id)) }
+                    }}
+                    className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
+                  >
+                    {suggestionPanelAction === 'linking' ? 'Liaison en cours…' : 'Créer une dépendance'}
+                  </button>
+                )}
+                {!isMergeRec && !isLinkRec && (
+                  <button
+                    type="button"
+                    disabled={suggestionPanelAction !== 'idle'}
+                    onClick={async () => {
+                      setSuggestionPanelAction('merging')
+                      const result = await acceptSuggestionAsMergeAction(
+                        s.id, s.subject_a_id, s.subject_b_id,
+                        s.suggested_label ?? '', siteId,
+                      )
+                      if (result.error) { setSuggestionPanelError(result.error); setSuggestionPanelAction('idle') }
+                      else { setSelectedSuggestion(null); setSuggestions((prev) => prev.filter((x) => x.id !== s.id)) }
+                    }}
+                    className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                  >
+                    {suggestionPanelAction === 'merging' ? 'En cours…' : 'Fusionner les sujets'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={suggestionPanelAction !== 'idle'}
+                  onClick={async () => {
+                    setSuggestionPanelAction('rejecting')
+                    const result = await rejectSuggestionAction(s.id, siteId)
+                    if (result.error) { setSuggestionPanelError(result.error); setSuggestionPanelAction('idle') }
+                    else { setSelectedSuggestion(null); setSuggestions((prev) => prev.filter((x) => x.id !== s.id)) }
+                  }}
+                  className="w-full rounded-xl border px-4 py-2 text-sm text-muted-foreground hover:bg-muted disabled:opacity-40"
+                >
+                  {suggestionPanelAction === 'rejecting' ? 'Enregistrement…' : 'Ignorer'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    })()}
 
     {/* Dialog d'intention DnD — sujet sur sujet */}
     {intentDialog?.kind === 'subject-on-subject' && (
