@@ -23,9 +23,10 @@ import { GoogleGenAI } from '@google/genai'
 
 const SITE_ID = process.argv[2]
 const DRY_RUN = process.argv.includes('--dry-run')
+const ONLY_UNCLASSIFIED = process.argv.includes('--only-unclassified')
 
 if (!SITE_ID) {
-  console.error('Usage: npx tsx ... batch-classify-topics.ts <siteId> [--dry-run]')
+  console.error('Usage: npx tsx ... batch-classify-topics.ts <siteId> [--dry-run] [--only-unclassified]')
   process.exit(1)
 }
 
@@ -261,11 +262,34 @@ async function main() {
     .select('id, label')
     .eq('site_id', SITE_ID)
 
+  if (existingTopics?.length && !ONLY_UNCLASSIFIED) {
+    console.log(`\n⚠ ${existingTopics.length} topic(s) déjà existant(s) pour ce site.`)
+    console.log('Utilisez --only-unclassified pour ne traiter que les sujets sans topic.')
+    console.log('Ou supprimez les topics existants avant de relancer :')
+    console.log(`DELETE FROM canonical_topic WHERE site_id = '${SITE_ID}';`)
+    return
+  }
+
   if (existingTopics?.length) {
-    console.log(`\n⚠ ${existingTopics.length} topic(s) déjà existant(s) pour ce site :`)
-    existingTopics.forEach((t) => console.log(`  - "${t.label}" (${t.id.slice(0, 8)})`))
-    console.log('\nAbandon — supprimez les topics existants avant de relancer.')
-    console.log('DELETE FROM canonical_topic WHERE site_id = \'<site_id>\';')
+    console.log(`\n${existingTopics.length} topic(s) existant(s) — mode --only-unclassified actif.`)
+  }
+
+  // En mode --only-unclassified, filtrer les sujets déjà assignés
+  let subjectsToClassify = subjects
+  if (ONLY_UNCLASSIFIED) {
+    const { data: alreadyAssigned } = await sb
+      .from('canonical_topic_subject')
+      .select('canonical_subject_id')
+      .in('canonical_subject_id', subjects.map((s) => s.id))
+    const assignedIds = new Set(
+      (alreadyAssigned ?? []).map((r: { canonical_subject_id: string }) => r.canonical_subject_id),
+    )
+    subjectsToClassify = subjects.filter((s) => !assignedIds.has(s.id))
+    console.log(`${subjectsToClassify.length} sujets non classifiés (sur ${subjects.length} total)`)
+  }
+
+  if (subjectsToClassify.length < 2) {
+    console.log('Pas assez de sujets non classifiés pour proposer un nouveau topic. Abandon.')
     return
   }
 
@@ -276,14 +300,14 @@ async function main() {
   }
   const ai = new GoogleGenAI({ apiKey })
 
-  const topics = await classifyWithGemini(ai, subjects)
+  const topics = await classifyWithGemini(ai, subjectsToClassify)
   console.log(`\n${topics.length} topic(s) proposés par Gemini :`)
   for (const t of topics) {
     console.log(`  [${(t.confidence * 100).toFixed(0)}%] "${t.label}" — ${t.subjectIds.length} sujets`)
     console.log(`         ${t.reasoning}`)
   }
 
-  const validIds = new Set(subjects.map((s) => s.id))
+  const validIds = new Set(subjectsToClassify.map((s) => s.id))
   await persistTopics(SITE_ID, topics, validIds)
   console.log('\n')
 }

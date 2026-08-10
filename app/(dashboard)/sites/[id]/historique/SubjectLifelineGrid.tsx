@@ -334,6 +334,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
   const [hideInfo, setHideInfo] = useState(true)
   const [selectedThread, setSelectedThread] = useState<string | null>(initialThread ?? null)
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set())
+  const [nativeExpanded, setNativeExpanded] = useState(false)
 
   // Fusion manuelle
   const [mergeDialog, setMergeDialog] = useState<{ sourceId: string; sourceLabel: string } | null>(null)
@@ -812,39 +813,53 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
 
       {/* Sujets nés dans MemorIA — canonical subjects sans aucun PV */}
       {nativeOnlySubjects.length > 0 && (
-        <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Sujets nés dans MemorIA
-          </p>
-          <div className="divide-y">
-            {nativeOnlySubjects.map(({ csId, label, occurrences }) => (
-              <div key={csId} className="flex items-center gap-4 py-2.5 first:pt-0 last:pb-0">
-                <Link
-                  href={`/sites/${siteId}/historique/sujets/${csId}`}
-                  className="min-w-0 flex-1 truncate text-sm font-medium hover:underline"
-                >
-                  {label}
-                </Link>
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  {occurrences.map((o, i) => (
-                    <span
-                      key={i}
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                        o.sourceKind === 'field_visit'
-                          ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300'
-                          : 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300'
-                      }`}
-                    >
-                      <span>{o.sourceKind === 'field_visit' ? '✓' : '◇'}</span>
-                      <span>{new Date(o.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}</span>
-                      <span className="opacity-70">{o.sourceKind === 'field_visit' ? 'Visite' : 'Réunion'}</span>
-                    </span>
-                  ))}
+        <div className="rounded-xl border bg-card overflow-hidden">
+          <button
+            type="button"
+            className="flex w-full items-center gap-1.5 border-b px-3 py-2.5 text-left hover:bg-muted/30 transition-colors"
+            style={{ height: 40 }}
+            onClick={() => setNativeExpanded((v) => !v)}
+          >
+            {nativeExpanded
+              ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+              : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />}
+            <span className="flex-1 truncate text-xs font-semibold text-foreground/80">
+              Sujets nés dans MemorIA
+            </span>
+            <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+              {nativeOnlySubjects.length}
+            </span>
+          </button>
+          {nativeExpanded && (
+            <div className="divide-y">
+              {nativeOnlySubjects.map(({ csId, label, occurrences }) => (
+                <div key={csId} className="flex items-center gap-4 px-4 py-2.5">
+                  <Link
+                    href={`/sites/${siteId}/historique/sujets/${csId}`}
+                    className="min-w-0 flex-1 truncate text-xs font-medium hover:underline"
+                  >
+                    {label}
+                  </Link>
+                  <div className="flex shrink-0 flex-wrap gap-1.5">
+                    {occurrences.map((o, i) => (
+                      <span
+                        key={i}
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                          o.sourceKind === 'field_visit'
+                            ? 'bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300'
+                            : 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300'
+                        }`}
+                      >
+                        <span>{o.sourceKind === 'field_visit' ? '✓' : '◇'}</span>
+                        <span>{new Date(o.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}</span>
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </section>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Panneau de détail du sujet sélectionné */}
