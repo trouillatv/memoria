@@ -39,10 +39,10 @@ const CLUSTER_JOIN_THRESHOLD = 0.28
 const CREATE_THRESHOLD = 0.85
 
 // Kinds pouvant créer un nouveau canonical_subject (deadline exclu)
-const CAN_CREATE_SUBJECT_KINDS = new Set(['action', 'vigilance', 'decision', 'knowledge'])
+export const CAN_CREATE_SUBJECT_KINDS = new Set(['action', 'vigilance', 'decision', 'knowledge'])
 
 // Seuil pour le matching existant (deadline → CS) — plus élevé que la création
-const MATCH_EXISTING_THRESHOLD = 0.85
+export const MATCH_EXISTING_THRESHOLD = 0.85
 
 // ─── Schéma Gemini ───────────────────────────────────────────────────────────
 
@@ -131,6 +131,29 @@ function buildMatchExistingPrompt(
     "Retourne l'UUID exact du sujet si le lien est établi avec confiance ≥ 0.85, sinon retourne null.",
     'Format JSON : {"canonicalSubjectId": "uuid-ou-null", "confidence": 0.0-1.0, "reason": "explication courte"}',
   ].join('\n')
+}
+
+// ─── Décision Phase 2b (pure, testable) ─────────────────────────────────────
+
+/**
+ * Décide si un résultat Gemini existing-only doit déclencher un rattachement.
+ * Pure : aucun effet de bord, exportée pour les tests.
+ *
+ * Règles :
+ * - match null → orphan
+ * - canonicalSubjectId null → orphan
+ * - confidence < threshold → orphan
+ * - UUID non présent dans existingCs → orphan (intégrité locale)
+ * - sinon → attach
+ */
+export function resolveMatchExistingDecision(
+  match: { canonicalSubjectId: string | null; confidence: number } | null,
+  existingCs: ReadonlyArray<{ id: string }>,
+  threshold: number = MATCH_EXISTING_THRESHOLD,
+): 'attach' | 'orphan' {
+  if (!match || !match.canonicalSubjectId || match.confidence < threshold) return 'orphan'
+  if (!existingCs.some((cs) => cs.id === match.canonicalSubjectId)) return 'orphan'
+  return 'attach'
 }
 
 // ─── Jaccard Union-Find (pur, testable) ──────────────────────────────────────

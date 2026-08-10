@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { clusterByJaccard } from '@/lib/db/canonical-subject-source-reconcile'
+import {
+  clusterByJaccard,
+  CAN_CREATE_SUBJECT_KINDS,
+  MATCH_EXISTING_THRESHOLD,
+  resolveMatchExistingDecision,
+} from '@/lib/db/canonical-subject-source-reconcile'
+import { ELIGIBLE_KINDS } from '@/lib/db/canonical-subject-reconcile'
 
 describe('clusterByJaccard', () => {
   it('regroupe deux labels identiques', () => {
@@ -67,5 +73,71 @@ describe('clusterByJaccard', () => {
     const clusters = clusterByJaccard(labels, 0.01)
     const totalMembers = clusters.reduce((sum, c) => sum + c.memberIdxs.length, 0)
     expect(totalMembers).toBe(3)
+  })
+})
+
+// ─── Doctrine CAN_MATCH_EXISTING / CAN_CREATE_SUBJECT ────────────────────────
+
+describe('doctrine deadline — match_existing_only', () => {
+  it("ELIGIBLE_KINDS inclut 'deadline' (peut matcher un CS existant)", () => {
+    expect(ELIGIBLE_KINDS.has('deadline')).toBe(true)
+  })
+
+  it("CAN_CREATE_SUBJECT_KINDS exclut 'deadline' (ne peut jamais créer un CS)", () => {
+    expect(CAN_CREATE_SUBJECT_KINDS.has('deadline')).toBe(false)
+  })
+
+  it('les kinds standard restent dans CAN_CREATE_SUBJECT_KINDS', () => {
+    for (const k of ['action', 'vigilance', 'decision', 'knowledge']) {
+      expect(CAN_CREATE_SUBJECT_KINDS.has(k)).toBe(true)
+    }
+  })
+
+  it('MATCH_EXISTING_THRESHOLD est à 0.85', () => {
+    expect(MATCH_EXISTING_THRESHOLD).toBe(0.85)
+  })
+})
+
+// ─── resolveMatchExistingDecision — cas polaires Phase 2b ────────────────────
+
+const CS_LIST = [
+  { id: 'cs-elec-0001-0000-0000-000000000004', label: 'Vérification des lignes électriques et consignations' },
+  { id: 'cs-cadenas-0001-0000-000000000001', label: 'Installation et présentation cadenas à code' },
+]
+
+describe('resolveMatchExistingDecision', () => {
+  // ── Cas polaire 1 : électricien → doit rejoindre CS électrique ──────────────
+  // "Intervention de l'électricien pour vérifier les installations électriques"
+  // Jaccard vs CS4 = 0.091 (trop bas pour Phase 1) → Gemini Phase 2b doit réussir.
+  it('attache quand confiance >= 0.85 et UUID présent (électricien → CS électrique)', () => {
+    const geminiOutput = { canonicalSubjectId: CS_LIST[0].id, confidence: 0.91, reason: 'électricien → vérification lignes' }
+    expect(resolveMatchExistingDecision(geminiOutput, CS_LIST)).toBe('attach')
+  })
+
+  // ── Cas polaire 2 : planning → doit rester orphelin ──────────────────────────
+  // "Diffusion du premier planning" ne correspond à aucun CS PETRO connu.
+  it('orpheline si confiance < seuil (planning → aucun CS)', () => {
+    const geminiOutput = { canonicalSubjectId: null, confidence: 0.3, reason: 'planning générique non lié' }
+    expect(resolveMatchExistingDecision(geminiOutput, CS_LIST)).toBe('orphan')
+  })
+
+  it('orpheline si canonicalSubjectId est null (Gemini refuse de lier)', () => {
+    const geminiOutput = { canonicalSubjectId: null, confidence: 0.95, reason: 'aucun sujet suffisamment proche' }
+    expect(resolveMatchExistingDecision(geminiOutput, CS_LIST)).toBe('orphan')
+  })
+
+  it('orpheline si match est null (Gemini a échoué)', () => {
+    expect(resolveMatchExistingDecision(null, CS_LIST)).toBe('orphan')
+  })
+
+  it('orpheline si UUID non présent dans la liste locale (intégrité)', () => {
+    const geminiOutput = { canonicalSubjectId: 'cs-inexistant-0000-0000-000000000000', confidence: 0.92, reason: 'hallucination' }
+    expect(resolveMatchExistingDecision(geminiOutput, CS_LIST)).toBe('orphan')
+  })
+
+  it('seuil personnalisé respecté', () => {
+    const geminiOutput = { canonicalSubjectId: CS_LIST[0].id, confidence: 0.80 }
+    expect(resolveMatchExistingDecision(geminiOutput, CS_LIST, 0.75)).toBe('attach')
+    expect(resolveMatchExistingDecision(geminiOutput, CS_LIST, 0.85)).toBe('orphan')
   })
 })
