@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { GoogleGenAI } from '@google/genai'
+import { getAIProvider } from '@/services/ai/factory'
+import { withAITracking } from '@/services/ai/tracking'
 
 // ── Types exportés ────────────────────────────────────────────────────────────
 
@@ -219,6 +220,7 @@ export async function analyzeSubjectSimilarityAction(
   subjectAId: string,
   subjectBId: string,
 ): Promise<{ error?: string } & Partial<SubjectSimilarity>> {
+  const user = await getCurrentUserWithProfile().catch(() => null)
   const supabase = createAdminClient()
 
   const [{ data: sA }, { data: sB }] = await Promise.all([
@@ -227,32 +229,24 @@ export async function analyzeSubjectSimilarityAction(
   ])
   if (!sA || !sB) return { error: 'Sujet introuvable' }
 
-  const apiKey = process.env.GOOGLE_GENAI_API_KEY
-  if (!apiKey) return { error: 'GOOGLE_GENAI_API_KEY manquante' }
-
-  const ai = new GoogleGenAI({ apiKey })
-  const model = 'gemini-2.5-flash'
-
-  console.log('[subject-similarity] start', { model, subjectAId, subjectBId })
-
+  const provider = getAIProvider()
   const userMsg = JSON.stringify({
     sujet_A: { label: (sA as { label: string; aliases: string[] }).label, aliases: (sA as { label: string; aliases: string[] }).aliases ?? [] },
     sujet_B: { label: (sB as { label: string; aliases: string[] }).label, aliases: (sB as { label: string; aliases: string[] }).aliases ?? [] },
   }, null, 2)
 
   try {
-    const response = await ai.models.generateContent({
-      model,
-      config: {
-        systemInstruction: SIMILARITY_SYSTEM_PROMPT,
-        temperature: 0.1,
+    const output = await withAITracking('subject_similarity', user?.id ?? null, async () => {
+      const r = await provider.complete({
+        systemPrompt: SIMILARITY_SYSTEM_PROMPT,
+        userMessage: userMsg,
+        modelTier: 'light',
         maxOutputTokens: 256,
-        responseMimeType: 'application/json',
-      },
-      contents: [{ role: 'user', parts: [{ text: userMsg }] }],
+      })
+      return { result: r, tokens: r.tokens, model: r.model, provider: provider.name, durationMs: r.durationMs }
     })
 
-    const parsed = JSON.parse(response.text ?? '{}') as {
+    const parsed = JSON.parse(output.text) as {
       same_subject_score?: number
       recommendation?: string
       reason?: string
@@ -264,15 +258,9 @@ export async function analyzeSubjectSimilarityAction(
       ? (parsed.recommendation as 'merge' | 'link' | 'none')
       : score >= 85 ? 'merge' : score >= 60 ? 'link' : 'none'
 
-    console.log('[subject-similarity] done', { score, recommendation: rec })
-    return {
-      score,
-      recommendation: rec,
-      reason: parsed.reason ?? '',
-      suggested_label: parsed.suggested_label ?? null,
-    }
+    return { score, recommendation: rec, reason: parsed.reason ?? '', suggested_label: parsed.suggested_label ?? null }
   } catch (e) {
-    const msg = `model=${model} — ${(e as Error).message}`
+    const msg = `provider=${provider.name} — ${(e as Error).message}`
     console.error('[subject-similarity] error', msg)
     return { error: msg }
   }
