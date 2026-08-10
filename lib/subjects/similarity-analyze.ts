@@ -316,7 +316,38 @@ export async function upsertSuggestion(
 // ── Récupération ───────────────────────────────────────────────────────────────
 
 /**
+ * Sépare les suggestions actionnables (les deux sujets actifs) des obsolètes.
+ * Fonction pure : testable sans DB.
+ *
+ * Invariants garantis :
+ * - Une suggestion dont subject_a ou subject_b n'est plus actif → stale
+ * - Une suggestion dont les deux extrémités resolvent vers le même canonical → stale
+ */
+export function filterActiveSuggestions(
+  suggestions: PersistedSuggestion[],
+  activeSubjectIds: Set<string>,
+): { active: PersistedSuggestion[]; staleIds: string[] } {
+  const active: PersistedSuggestion[] = []
+  const staleIds: string[] = []
+
+  for (const s of suggestions) {
+    const aActive = activeSubjectIds.has(s.subject_a_id)
+    const bActive = activeSubjectIds.has(s.subject_b_id)
+    const distinct = s.subject_a_id !== s.subject_b_id
+
+    if (aActive && bActive && distinct) {
+      active.push(s)
+    } else {
+      staleIds.push(s.id)
+    }
+  }
+
+  return { active, staleIds }
+}
+
+/**
  * Charge toutes les suggestions pending pour un site (lecture UI).
+ * Filtre les suggestions dont un sujet n'est plus actif et les marque obsolètes.
  */
 export async function getSiteSuggestions(
   supabase: SupabaseClient,
@@ -332,7 +363,36 @@ export async function getSiteSuggestions(
     .order('score', { ascending: false })
 
   if (error) throw new Error(error.message)
-  return (data ?? []) as PersistedSuggestion[]
+  const rows = (data ?? []) as PersistedSuggestion[]
+  if (!rows.length) return []
+
+  // Collecter tous les IDs de sujets référencés et vérifier leur statut
+  const subjectIds = new Set<string>()
+  for (const r of rows) {
+    subjectIds.add(r.subject_a_id)
+    subjectIds.add(r.subject_b_id)
+  }
+
+  const { data: subjects } = await supabase
+    .from('canonical_subject')
+    .select('id, status')
+    .in('id', Array.from(subjectIds))
+
+  const activeSet = new Set(
+    (subjects ?? []).filter((s: { id: string; status: string }) => s.status === 'active').map((s: { id: string; status: string }) => s.id),
+  )
+
+  const { active, staleIds } = filterActiveSuggestions(rows, activeSet)
+
+  // Nettoyage paresseux : marquer obsolètes en base
+  if (staleIds.length) {
+    await supabase
+      .from('canonical_subject_similarity_suggestion')
+      .update({ status: 'obsolete', reviewed_at: new Date().toISOString() })
+      .in('id', staleIds)
+  }
+
+  return active
 }
 
 /**
