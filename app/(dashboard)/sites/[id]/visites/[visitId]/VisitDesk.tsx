@@ -211,6 +211,10 @@ function Moment({
 // ── CE QUE MEMORIA A COMPRIS — par famille, jamais 44 lignes à plat ─────────
 
 function Compris({ propositions, crHref }: { propositions: NarrativeProposal[]; crHref: string | null }) {
+  // Aucune proposition → le bloc disparaît. Ne pas fabriquer un compteur
+  // alternatif : propositions IA ≠ artefacts CR ≠ connaissances retenues.
+  if (propositions.length === 0) return null
+
   const presentes = FAMILLES.map((f) => ({ f, items: propositions.filter((p) => p.type === f.cle) })).filter(
     (x) => x.items.length > 0,
   )
@@ -347,11 +351,11 @@ function EnAttente({ propositions, crHref }: { propositions: NarrativeProposal[]
                 <p className="text-[13.5px] font-medium leading-snug">{p.label}</p>
                 {p.rationale && <p className="mt-0.5 text-[12.5px] text-muted-foreground">{p.rationale}</p>}
                 {/* La preuve derrière la lecture : appuyée, ou isolée. */}
-                <p className="mt-1 text-[11.5px] text-muted-foreground">
-                  {p.sourceCount > 0
-                    ? `Sources : ${p.sourceCount} élément${p.sourceCount > 1 ? 's' : ''}`
-                    : 'Née de l’analyse d’ensemble — aucune source unique'}
-                </p>
+                {p.sourceCount > 0 && (
+                  <p className="mt-1 text-[11.5px] text-muted-foreground">
+                    Sources : {p.sourceCount} élément{p.sourceCount > 1 ? 's' : ''}
+                  </p>
+                )}
               </div>
               {crHref && (
                 <Link
@@ -406,11 +410,11 @@ function Produit({ produced }: { produced: VisitNarrative['produced'] }) {
             <li key={`${p.kind}:${p.id}`} className="py-2.5 first:pt-0">
               <p className="text-[13.5px]">{p.label}</p>
               <p className="text-[11.5px] text-muted-foreground">{p.why.label}</p>
-              <p className="text-[11.5px] text-muted-foreground">
-                {p.evidence
-                  ? `Preuve d’origine : ${p.evidence.capture_kind} — « ${p.evidence.text} »`
-                  : 'Née de l’analyse de toute la visite : aucune preuve unique n’est démontrable.'}
-              </p>
+              {p.evidence && (
+                <p className="text-[11.5px] text-muted-foreground">
+                  Source : {p.evidence.capture_kind} — « {p.evidence.text} »
+                </p>
+              )}
             </li>
           ))}
         </ul>

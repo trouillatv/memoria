@@ -601,17 +601,19 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
             </section>
           )}
 
-          {/* ── COMPRENDRE LES STATUTS — chaque mot de cette page a un sens ─── */}
-          <section className="rounded-xl border bg-card p-3">
-            <h2 className="mb-2 text-[13px] font-semibold">Comprendre les statuts</h2>
-            <dl className="space-y-2.5">
+          {/* ── COMPRENDRE LES STATUTS — replié par défaut, pour les curieux ─── */}
+          <details className="rounded-xl border bg-card">
+            <summary className="cursor-pointer list-none px-3 py-2.5 text-[12.5px] font-medium text-muted-foreground hover:text-foreground">
+              Comprendre les statuts
+            </summary>
+            <dl className="space-y-2.5 px-3 pb-3">
               <Statut mot="En attente" teinte="bg-sky-500" sens="Proposition de MemorIA à arbitrer." />
               <Statut mot="Confirmée" teinte="bg-emerald-500" sens="Vous l’avez validée. Elle peut être concrétisée." />
               <Statut mot="Écartée" teinte="bg-rose-500" sens="Vous l’avez refusée. Elle n’apparaîtra plus." />
               <Statut mot="Obsolète" teinte="bg-amber-500" sens="Devenue dépassée après une nouvelle analyse — ce n’est pas un refus." />
               <Statut mot="Ajoutée après" teinte="bg-slate-400" sens="Pièce versée au dossier après la visite." />
             </dl>
-          </section>
+          </details>
         </aside>
       </div>
     </div>
