@@ -136,7 +136,7 @@ function DroppableTopicRow({
       style={{ height: 40 }}
     >
       <div
-        className="sticky left-0 z-10 shrink-0 border-l-2 border-l-primary/20 border-r bg-muted/40 dark:bg-muted/20"
+        className="sticky left-0 z-10 shrink-0 border-l-2 border-l-primary/20 border-r bg-muted"
         style={{ width: labelWidth }}
       >
         <button
@@ -746,10 +746,10 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
         <div style={{ minWidth: labelWidth + (runs.length + nativeDates.length) * CELL_W }}>
 
           {/* En-tête sticky top */}
-          <div className="sticky top-0 z-10 flex border-b bg-muted/40">
+          <div className="sticky top-0 z-10 flex border-b bg-muted">
             {/* Coin — sticky left ET top */}
             <div
-              className="relative sticky left-0 z-20 shrink-0 border-r bg-muted/40 px-3 py-2"
+              className="relative sticky left-0 z-20 shrink-0 border-r bg-muted px-3 py-2"
               style={{ width: labelWidth }}
             >
               <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sujet</span>
@@ -816,7 +816,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                   style={{ height: 40 }}
                 >
                   <div
-                    className="sticky left-0 z-10 shrink-0 border-r bg-muted/5 px-3 flex items-center"
+                    className="sticky left-0 z-10 shrink-0 border-r bg-card px-3 flex items-center"
                     style={{ width: labelWidth }}
                   >
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
