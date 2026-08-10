@@ -74,7 +74,8 @@ Réponds UNIQUEMENT avec le JSON demandé.`
 function buildClusterPrompt(proposals: Array<{ id: string; title: string; body: string | null }>): string {
   const lines = proposals.map((p) => {
     const bodyStr = p.body ? ` — ${p.body.slice(0, 150)}` : ''
-    return `- id:${p.id.slice(0, 8)} : "${p.title}"${bodyStr}`
+    // UUID complet obligatoire — orphanById est indexé par UUID complet
+    return `- id:${p.id} : "${p.title}"${bodyStr}`
   })
   return [
     'Propositions terrain à regrouper :',
