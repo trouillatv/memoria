@@ -12,6 +12,7 @@ import { canonicalRunsForSite, runEffectiveDate, computeHistoryTransition } from
 import type { HistoryTransition } from '@/lib/documents/pv-history'
 import type { SubjectLinkType, SubjectLinkStatus, SubjectLinkSource } from '@/lib/db/subject-thread-links'
 import { isOperationalSubject } from '@/lib/subjects/kind'
+import { computeNativeChangeMetrics } from '@/lib/knowledge/evolution-metrics'
 
 export type { HistoryTransition }
 
@@ -192,18 +193,7 @@ export async function getCanonicalSubjectLife(
     }))
     const nativeReal = nativeOccs.filter((o) => !o.isGap)
     const nativeLastSeenAt = nativeReal[nativeReal.length - 1]?.effectiveDate ?? null
-    let nativeLMCA: string | null = null
-    let nativeLKS: string | null = null
-    let nativeCMWC = 0
-    for (let i = 0; i < nativeReal.length; i++) {
-      const occ = nativeReal[i]
-      const st = occ.visitStatus ?? occ.documentStatus ?? null
-      if (i === 0 || st !== nativeLKS) { nativeLMCA = occ.effectiveDate; nativeLKS = st; nativeCMWC = 0 }
-      else { nativeCMWC++ }
-    }
-    const nativeStagDays = (nativeLMCA && nativeLastSeenAt && nativeLMCA !== nativeLastSeenAt)
-      ? Math.floor((new Date(nativeLastSeenAt).getTime() - new Date(nativeLMCA).getTime()) / 86_400_000)
-      : 0
+    const nativeMetrics = computeNativeChangeMetrics(nativeReal, nativeLastSeenAt)
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
       mergedInto: csMergedInto, mergedIntoLabel: null, mergesAsWinner: [],
@@ -214,10 +204,10 @@ export async function getCanonicalSubjectLife(
       pvCount: 0,
       fieldVisitCount: new Set(nativeReal.filter((o) => o.sourceKind === 'field_visit' || o.sourceKind === 'meeting').map((o) => `${o.sourceKind}-${o.effectiveDate}`)).size,
       runs: [], occurrences: nativeOccs, links: [], materializedEvents: [],
-      lastMeaningfulChangeAt: nativeLMCA,
-      stagnationDays: nativeStagDays,
-      consecutiveMentionsWithoutChange: nativeCMWC,
-      isStagnant: nativeStagDays >= 30 && nativeCMWC >= 2,
+      lastMeaningfulChangeAt: nativeMetrics.lastMeaningfulChangeAt,
+      stagnationDays: nativeMetrics.stagnationDays,
+      consecutiveMentionsWithoutChange: nativeMetrics.consecutiveMentionsWithoutChange,
+      isStagnant: nativeMetrics.isStagnant,
     }
   }
 
@@ -250,6 +240,7 @@ export async function getCanonicalSubjectLife(
     const fallbackReal = fallbackOccs.filter((o) => !o.isGap)
     const fallbackFirst = fallbackReal[0]?.effectiveDate ?? null
     const fallbackLast = fallbackReal[fallbackReal.length - 1]?.effectiveDate ?? null
+    const fallbackMetrics = computeNativeChangeMetrics(fallbackReal, fallbackLast)
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
       mergedInto: csMergedInto, mergedIntoLabel: null, mergesAsWinner: [],
@@ -258,7 +249,10 @@ export async function getCanonicalSubjectLife(
       primaryFamily: null, threadIds, pvCount: 0,
       fieldVisitCount: new Set(fallbackReal.map((o) => `${o.sourceKind}-${o.effectiveDate}`)).size,
       runs: [], occurrences: fallbackOccs, links: [], materializedEvents: [],
-      lastMeaningfulChangeAt: fallbackFirst, stagnationDays: 0, consecutiveMentionsWithoutChange: 0, isStagnant: false,
+      lastMeaningfulChangeAt: fallbackMetrics.lastMeaningfulChangeAt,
+      stagnationDays: fallbackMetrics.stagnationDays,
+      consecutiveMentionsWithoutChange: fallbackMetrics.consecutiveMentionsWithoutChange,
+      isStagnant: fallbackMetrics.isStagnant,
     }
   }
 
