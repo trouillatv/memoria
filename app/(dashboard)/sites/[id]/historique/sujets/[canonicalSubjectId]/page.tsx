@@ -570,9 +570,9 @@ function FilMetierGrouped({ occurrences, siteId }: { occurrences: SubjectOccurre
           )
         }
 
-        // Groupe à plusieurs occurrences : accordéon natif ouvert par défaut
+        // Groupe à plusieurs occurrences : accordéon natif fermé par défaut
         return (
-          <details key={group.key} open className="group/details">
+          <details key={group.key} className="group/details">
             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-1 py-1 hover:bg-muted/40 select-none">
               <span className="text-muted-foreground transition-transform group-open/details:rotate-90">▸</span>
               <span className="text-xs font-medium text-foreground">{frDate(group.date)}</span>
