@@ -414,12 +414,13 @@ function Compris({ propositions, crHref }: { propositions: NarrativeProposal[]; 
   )
 }
 
-// ── LE VRAI TRAVAIL — ce qui demande une décision ───────────────────────────
+// ── LE VRAI TRAVAIL — ce qui demande une décision ────────────────────────────────────────────
 
 function EnAttente({ propositions, crHref }: { propositions: NarrativeProposal[]; crHref: string | null }) {
   const APERCU = 3
-  const visibles = propositions.slice(0, APERCU)
-  const restant = propositions.length - visibles.length
+  const [etendu, setEtendu] = useState(false)
+  const visibles = etendu ? propositions : propositions.slice(0, APERCU)
+  const restant = propositions.length - APERCU
 
   if (propositions.length === 0) {
     return (
@@ -431,8 +432,17 @@ function EnAttente({ propositions, crHref }: { propositions: NarrativeProposal[]
     )
   }
 
+  const actionCR = crHref ? (
+    <Link
+      href={crHref}
+      className="text-[13px] font-medium text-primary hover:underline"
+    >
+      Arbitrer dans le CR →
+    </Link>
+  ) : undefined
+
   return (
-    <Carte titre="Décisions en attente d’arbitrage">
+    <Carte titre="Décisions en attente d’arbitrage" action={actionCR}>
       <ul className="divide-y">
         {visibles.map((p) => {
           const f = famille(p.type)
@@ -444,28 +454,36 @@ function EnAttente({ propositions, crHref }: { propositions: NarrativeProposal[]
               <div className="min-w-0 flex-1">
                 <p className="text-[13.5px] font-medium leading-snug">{p.label}</p>
                 {p.rationale && <p className="mt-0.5 text-[12.5px] text-muted-foreground">{p.rationale}</p>}
-                {/* La preuve derrière la lecture : appuyée, ou isolée. */}
                 {p.sourceCount > 0 && (
                   <p className="mt-1 text-[11.5px] text-muted-foreground">
-                    Sources : {p.sourceCount} élément{p.sourceCount > 1 ? 's' : ''}
+                    Sources : {p.sourceCount} élément{p.sourceCount > 1 ? 's' : ''}
                   </p>
                 )}
               </div>
-              {crHref && (
-                <Link
-                  href={crHref}
-                  className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground hover:opacity-90"
-                >
-                  Relire et arbitrer
-                </Link>
-              )}
             </li>
           )
         })}
       </ul>
-      {restant > 0 && crHref && (
+      {!etendu && restant > 0 && (
         <p className="pt-3 text-center">
-          <Lien href={crHref}>Relire et arbitrer les {restant} autres propositions →</Lien>
+          <button
+            type="button"
+            onClick={() => setEtendu(true)}
+            className="text-[13px] font-medium text-primary hover:underline"
+          >
+            Voir les {restant} autres propositions ↓
+          </button>
+        </p>
+      )}
+      {etendu && (
+        <p className="pt-3 text-center">
+          <button
+            type="button"
+            onClick={() => setEtendu(false)}
+            className="text-[13px] font-medium text-muted-foreground hover:underline"
+          >
+            Réduire ↑
+          </button>
         </p>
       )}
     </Carte>

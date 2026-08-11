@@ -32,12 +32,21 @@ interface Props {
 export function FactLedgerView({ active, archived, subjectLabels, siteId }: Props) {
   const [kindFilter, setKindFilter] = useState<string>('all')
 
+  // Index id→title sur les proposals actives — permet "Remplacé par →" pour les superseded
+  const activeTitleById = new Map(active.map((p) => [p.id, p.title]))
+
+  const superseded = archived.filter((p) => p.status === 'superseded')
+  const dismissed  = archived.filter((p) => p.status === 'dismissed' || p.status === 'masked')
+
   const allKinds = [...new Set([...active, ...archived].map((p) => p.kind))].sort((a, b) =>
     (KIND_META[a]?.label ?? a).localeCompare(KIND_META[b]?.label ?? b, 'fr'),
   )
 
-  const filteredActive = kindFilter === 'all' ? active : active.filter((p) => p.kind === kindFilter)
-  const filteredArchived = kindFilter === 'all' ? archived : archived.filter((p) => p.kind === kindFilter)
+  const filteredActive     = kindFilter === 'all' ? active     : active.filter((p) => p.kind === kindFilter)
+  const filteredSuperseded = kindFilter === 'all' ? superseded : superseded.filter((p) => p.kind === kindFilter)
+  const filteredDismissed  = kindFilter === 'all' ? dismissed  : dismissed.filter((p) => p.kind === kindFilter)
+
+  const hasArchived = filteredSuperseded.length > 0 || filteredDismissed.length > 0
 
   return (
     <div className="space-y-4">
@@ -74,7 +83,7 @@ export function FactLedgerView({ active, archived, subjectLabels, siteId }: Prop
           </h2>
           <div className="divide-y rounded-xl border bg-card">
             {filteredActive.map((p) => (
-              <ProposalRow key={p.id} proposal={p} subjectLabels={subjectLabels} siteId={siteId} />
+              <ProposalRow key={p.id} proposal={p} subjectLabels={subjectLabels} siteId={siteId} activeTitleById={activeTitleById} />
             ))}
           </div>
         </section>
@@ -82,24 +91,63 @@ export function FactLedgerView({ active, archived, subjectLabels, siteId }: Prop
         <p className="text-[13px] text-muted-foreground">Aucun élément actif pour ce filtre.</p>
       )}
 
-      {/* Historique de l'analyse */}
-      {filteredArchived.length > 0 && (
+      {/* Historique de l'analyse — deux sections distinctes */}
+      {hasArchived && (
         <details className="group rounded-xl border bg-card">
           <summary className="flex cursor-pointer select-none list-none items-center justify-between px-4 py-3 [&::-webkit-details-marker]:hidden">
             <span className="text-[13px] font-medium text-muted-foreground group-open:text-foreground">
-              Historique de l&apos;analyse — {filteredArchived.length} élément{filteredArchived.length > 1 ? 's' : ''}
+              Historique de l&apos;analyse
             </span>
             <span className="text-[11px] text-muted-foreground">
-              {filteredArchived.filter((p) => p.status === 'superseded').length} remplacé{filteredArchived.filter((p) => p.status === 'superseded').length > 1 ? 's' : ''}
-              {filteredArchived.filter((p) => p.status === 'dismissed').length > 0 && ` · ${filteredArchived.filter((p) => p.status === 'dismissed').length} écarté${filteredArchived.filter((p) => p.status === 'dismissed').length > 1 ? 's' : ''}`}
-              {filteredArchived.filter((p) => p.status === 'masked').length > 0 && ` · ${filteredArchived.filter((p) => p.status === 'masked').length} masqué${filteredArchived.filter((p) => p.status === 'masked').length > 1 ? 's' : ''}`}
+              {filteredSuperseded.length > 0 && `${filteredSuperseded.length} remplacé${filteredSuperseded.length > 1 ? 's' : ''}`}
+              {filteredSuperseded.length > 0 && filteredDismissed.length > 0 && ' · '}
+              {filteredDismissed.length > 0 && `${filteredDismissed.length} écarté${filteredDismissed.length > 1 ? 's' : ''}`}
               {' '}· Afficher
             </span>
           </summary>
-          <div className="divide-y border-t">
-            {filteredArchived.map((p) => (
-              <ProposalRow key={p.id} proposal={p} subjectLabels={subjectLabels} siteId={siteId} muted />
-            ))}
+
+          <div className="border-t">
+            {/* Remplacés — consolidés sous une autre formulation */}
+            {filteredSuperseded.length > 0 && (
+              <div>
+                <p className="px-4 py-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground border-b bg-muted/30">
+                  Remplacés lors de l&apos;analyse — {filteredSuperseded.length}
+                </p>
+                <div className="divide-y">
+                  {filteredSuperseded.map((p) => (
+                    <ProposalRow
+                      key={p.id}
+                      proposal={p}
+                      subjectLabels={subjectLabels}
+                      siteId={siteId}
+                      activeTitleById={activeTitleById}
+                      muted
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Écartés — décision humaine explicite */}
+            {filteredDismissed.length > 0 && (
+              <div className={filteredSuperseded.length > 0 ? 'border-t' : ''}>
+                <p className="px-4 py-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground border-b bg-muted/30">
+                  Écartés — {filteredDismissed.length}
+                </p>
+                <div className="divide-y">
+                  {filteredDismissed.map((p) => (
+                    <ProposalRow
+                      key={p.id}
+                      proposal={p}
+                      subjectLabels={subjectLabels}
+                      siteId={siteId}
+                      activeTitleById={activeTitleById}
+                      muted
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </details>
       )}
@@ -108,16 +156,18 @@ export function FactLedgerView({ active, archived, subjectLabels, siteId }: Prop
 }
 
 function ProposalRow({
-  proposal, subjectLabels, siteId, muted = false,
+  proposal, subjectLabels, siteId, activeTitleById, muted = false,
 }: {
   proposal: DbKnowledgeProposal
   subjectLabels: Record<string, string>
   siteId: string
+  activeTitleById: Map<string, string>
   muted?: boolean
 }) {
-  const kindMeta = KIND_META[proposal.kind]
+  const kindMeta   = KIND_META[proposal.kind]
   const statusMeta = STATUS_META[proposal.status]
-  const subjectLabel = proposal.canonical_subject_id ? subjectLabels[proposal.canonical_subject_id] : null
+  const subjectLabel    = proposal.canonical_subject_id ? subjectLabels[proposal.canonical_subject_id] : null
+  const replacedByTitle = proposal.superseded_by ? activeTitleById.get(proposal.superseded_by) : null
 
   return (
     <article className={`px-4 py-3 ${muted ? 'opacity-60' : ''}`}>
@@ -133,9 +183,9 @@ function ProposalRow({
       {proposal.body && (
         <p className="mt-1 text-[12.5px] leading-snug text-muted-foreground line-clamp-3">{proposal.body}</p>
       )}
-      <p className="mt-1.5 text-[11.5px] text-muted-foreground">
+      <div className="mt-1.5 space-y-0.5">
         {proposal.canonical_subject_id && subjectLabel ? (
-          <>
+          <p className="text-[11.5px] text-muted-foreground">
             Sujet :{' '}
             <Link
               href={`/sites/${siteId}/historique/sujets/${proposal.canonical_subject_id}`}
@@ -143,11 +193,23 @@ function ProposalRow({
             >
               {subjectLabel}
             </Link>
-          </>
+          </p>
         ) : (
-          <span className="italic">Aucun sujet de suivi associé</span>
+          <p className="text-[11.5px] italic text-muted-foreground">Aucun sujet de suivi associé</p>
         )}
-      </p>
+        {proposal.status === 'superseded' && (
+          <p className="text-[11.5px] text-amber-700 dark:text-amber-400">
+            {replacedByTitle
+              ? <>Remplacé par → <span className="font-medium">{replacedByTitle}</span></>
+              : 'Remplacé par une formulation plus récente'}
+          </p>
+        )}
+        {proposal.status === 'dismissed' && proposal.dismiss_reason && (
+          <p className="text-[11.5px] text-rose-700 dark:text-rose-400">
+            Motif : {proposal.dismiss_reason}
+          </p>
+        )}
+      </div>
     </article>
   )
 }

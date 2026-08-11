@@ -255,11 +255,15 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
     stakeholder: ['intervenant', 'intervenants'],
   }
   const ledgerTotal = allProposals.length
-  const ledgerKindCounts = new Map<string, number>()
-  for (const p of allProposals) ledgerKindCounts.set(p.kind, (ledgerKindCounts.get(p.kind) ?? 0) + 1)
-  const ledgerKindParts = [...ledgerKindCounts.entries()]
-    .sort(([a], [b]) => (LEDGER_KIND_LABELS[a]?.[0] ?? a).localeCompare(LEDGER_KIND_LABELS[b]?.[0] ?? b, 'fr'))
-    .map(([k, n]) => { const [un, pl] = LEDGER_KIND_LABELS[k] ?? [k, `${k}s`]; return `${n} ${n > 1 ? pl : un}` })
+  const ledgerPending   = allProposals.filter((p) => p.status === 'proposed').length
+  const ledgerRetained  = allProposals.filter((p) => p.status === 'confirmed' || p.status === 'fulfilled').length
+  const ledgerSuperseded = allProposals.filter((p) => p.status === 'superseded').length
+  const ledgerDismissed = allProposals.filter((p) => p.status === 'dismissed').length
+  const ledgerStatusParts: string[] = []
+  if (ledgerPending > 0)    ledgerStatusParts.push(`${ledgerPending} à arbitrer`)
+  if (ledgerRetained > 0)   ledgerStatusParts.push(`${ledgerRetained} ${ledgerRetained > 1 ? 'retenus' : 'retenu'}`)
+  if (ledgerSuperseded > 0) ledgerStatusParts.push(`${ledgerSuperseded} remplacé${ledgerSuperseded > 1 ? 's' : ''}`)
+  if (ledgerDismissed > 0)  ledgerStatusParts.push(`${ledgerDismissed} écarté${ledgerDismissed > 1 ? 's' : ''}`)
 
   // Résumé ventilé pour les visites historiques importées
   const importResumeText = (() => {
@@ -569,10 +573,14 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="text-[15px] font-semibold">Ce que MemorIA a retenu</h2>
-                  <p className="mt-1 text-[13px] text-muted-foreground">
-                    {ledgerTotal} élément{ledgerTotal > 1 ? 's' : ''}
-                    {ledgerKindParts.length > 0 && ` · ${ledgerKindParts.join(' · ')}`}
+                  <p className="mt-1 text-[13px] font-medium tabular-nums">
+                    {ledgerTotal} élément{ledgerTotal > 1 ? 's' : ''} détectés
                   </p>
+                  {ledgerStatusParts.length > 0 && (
+                    <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+                      {ledgerStatusParts.join(' · ')}
+                    </p>
+                  )}
                 </div>
                 <Link
                   href={`/sites/${id}/visites/${visitId}/memoire`}
