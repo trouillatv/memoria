@@ -18,7 +18,7 @@ const STATUS_META: Record<string, { label: string; teinte: string }> = {
   confirmed:  { label: 'Confirmée',   teinte: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300' },
   fulfilled:  { label: 'Réalisée',    teinte: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300' },
   dismissed:  { label: 'Écartée',     teinte: 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300' },
-  superseded: { label: 'Remplacée',   teinte: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300' },
+  superseded: { label: 'Ancienne',      teinte: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300' },
   masked:     { label: 'Masquée',     teinte: 'bg-slate-50 text-slate-600 dark:bg-slate-800/30 dark:text-slate-400' },
 }
 
@@ -99,7 +99,7 @@ export function FactLedgerView({ active, archived, subjectLabels, siteId }: Prop
               Historique de l&apos;analyse
             </span>
             <span className="text-[11px] text-muted-foreground">
-              {filteredSuperseded.length > 0 && `${filteredSuperseded.length} consolidé${filteredSuperseded.length > 1 ? 's' : ''}`}
+              {filteredSuperseded.length > 0 && `${filteredSuperseded.length} ancienne${filteredSuperseded.length > 1 ? 's' : ''}`}
               {filteredSuperseded.length > 0 && filteredDismissed.length > 0 && ' · '}
               {filteredDismissed.length > 0 && `${filteredDismissed.length} écarté${filteredDismissed.length > 1 ? 's' : ''}`}
               {' '}· Afficher
@@ -111,7 +111,7 @@ export function FactLedgerView({ active, archived, subjectLabels, siteId }: Prop
             {filteredSuperseded.length > 0 && (
               <div>
                 <p className="px-4 py-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground border-b bg-muted/30">
-                  Formulations consolidées — {filteredSuperseded.length}
+                  Anciennes propositions — {filteredSuperseded.length}
                 </p>
                 <div className="divide-y">
                   {filteredSuperseded.map((p) => (
@@ -201,7 +201,7 @@ function ProposalRow({
           <p className="text-[11.5px] text-amber-700 dark:text-amber-400">
             {replacedByTitle
               ? <>Regroupé avec → <span className="font-medium">{replacedByTitle}</span></>
-              : "Regroupé lors de l'analyse"}
+              : "N'est plus active dans l'analyse actuelle"}
           </p>
         )}
         {proposal.status === 'dismissed' && proposal.dismiss_reason && (

@@ -165,7 +165,7 @@ export function explainProposal(proposal: { status: string }): Reason {
     case 'superseded':
       // JAMAIS « ignorée » : personne n'a rien décidé. MemorIA a consolidé cette
       // formulation dans une proposition plus précise lors d'une analyse ultérieure.
-      return { code: 'proposal.superseded', label: 'Consolidée lors de l’analyse' }
+      return { code: 'proposal.superseded', label: 'N’est plus active dans l’analyse actuelle' }
     default:
       return { code: 'proposal.pending', label: 'Proposée par MemorIA, en attente d’arbitrage' }
   }

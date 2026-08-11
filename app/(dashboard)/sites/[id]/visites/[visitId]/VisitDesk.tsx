@@ -592,7 +592,7 @@ function NonRetenu({ ignored, total }: { ignored: VisitNarrative['ignored']; tot
   const nbCaptures   = ignored.captures.length
 
   const partieTitre: string[] = []
-  if (nbSuperseded > 0) partieTitre.push(`${nbSuperseded} consolidé${nbSuperseded > 1 ? 's' : ''}`)
+  if (nbSuperseded > 0) partieTitre.push(`${nbSuperseded} ancienne${nbSuperseded > 1 ? 's' : ''} proposition${nbSuperseded > 1 ? 's' : ''}`)
   if (nbByHuman > 0)    partieTitre.push(`${nbByHuman} écarté${nbByHuman > 1 ? 's' : ''}`)
   if (nbCaptures > 0)   partieTitre.push(`${nbCaptures} capture${nbCaptures > 1 ? 's' : ''}`)
 
@@ -624,7 +624,7 @@ function NonRetenu({ ignored, total }: { ignored: VisitNarrative['ignored']; tot
           {nbSuperseded > 0 && (
             <div className={nbByHuman > 0 || nbCaptures > 0 ? 'border-b pb-3' : ''}>
               <p className="py-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Formulations consolidées — {nbSuperseded}
+                Anciennes propositions — {nbSuperseded}
               </p>
               <div className="space-y-px">
                 {ignored.superseded.map((p) => (
