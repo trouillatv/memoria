@@ -247,9 +247,9 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
 
         {/* Lignes de vie */}
         {view === 'lifelines' && (
-          matrix && matrix.rows.length > 0 ? (
+          (matrix?.rows.length ?? 0) > 0 || Object.keys(nativeOccurrences).length > 0 ? (
             <SubjectLifelineGrid
-              matrix={matrix}
+              matrix={matrix ?? { siteId, runs: [], rows: [] }}
               siteId={siteId}
               initialThread={initialThread}
               initialTheme={initialTheme}
@@ -262,7 +262,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
             <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
               <p className="font-medium">Aucun fil thématique reconstruit.</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Les PV doivent être importés, analysés et avoir des threads sujets pour apparaître ici.
+                Les sujets apparaissent ici une fois que des propositions ont été rattachées à un sujet canonique.
               </p>
             </section>
           )

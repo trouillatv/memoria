@@ -738,10 +738,10 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
     window.addEventListener('mouseup', onUp)
   }
 
-  if (runs.length === 0) {
+  if (runs.length === 0 && nativeOnlySubjects.length === 0) {
     return (
       <div className="rounded-[18px] border border-dashed p-8 text-center text-sm text-muted-foreground">
-        Aucun PV analysé pour ce chantier.
+        Aucun fil thématique disponible pour ce chantier.
       </div>
     )
   }
