@@ -416,7 +416,7 @@ const leaseFresh = (iso: string | null): boolean => !!iso && Date.now() - Date.p
 export async function loadOrRunVisitDebrief(
   reportId: string,
   userId: string | null,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; dryRun?: boolean },
 ): Promise<DebriefLoadResult> {
   const ctx = await gatherVisitDebriefContext(reportId)
   if (!ctx) return { ok: false, error: 'Visite introuvable' }
@@ -489,19 +489,21 @@ export async function loadOrRunVisitDebrief(
         : null
 
     const analysis = fromAgent(res.narrative, res.parsed, res.provider, res.model, hash, version, snapshot, oldLedger, semanticMemory)
-    await writeAnalysis(reportId, analysis).catch(() => {})
-    // Couche d'extraction métier : la synthèse fraîche est projetée en propositions
-    // (actions, vigilances, décisions, savoirs, intervenants, échéances), visibles
-    // partout et distinctes des objets validés. Idempotent → pas de doublon aux
-    // mises à jour. Un échec est TRACÉ (mig 213), jamais avalé : sans projection,
-    // la connaissance de la visite n'apparaît nulle part.
-    if (ctx.visit.site_id && ctx.visit.organization_id) {
-      await projectAndTrace({
-        reportId,
-        siteId: ctx.visit.site_id,
-        organizationId: ctx.visit.organization_id,
-        analysis,
-      })
+    if (!opts?.dryRun) {
+      await writeAnalysis(reportId, analysis).catch(() => {})
+      // Couche d'extraction métier : la synthèse fraîche est projetée en propositions
+      // (actions, vigilances, décisions, savoirs, intervenants, échéances), visibles
+      // partout et distinctes des objets validés. Idempotent → pas de doublon aux
+      // mises à jour. Un échec est TRACÉ (mig 213), jamais avalé : sans projection,
+      // la connaissance de la visite n'apparaît nulle part.
+      if (ctx.visit.site_id && ctx.visit.organization_id) {
+        await projectAndTrace({
+          reportId,
+          siteId: ctx.visit.site_id,
+          organizationId: ctx.visit.organization_id,
+          analysis,
+        })
+      }
     }
     return { ok: true, status: 'ready', loaded: { analysis, openSubjects: ctx.openSubjects, fromCache: false } }
   } catch {

@@ -13,6 +13,7 @@ import { CrMapSnapshotTrigger } from './CrMapSnapshotTrigger'
 import { MemoriaRetained } from './MemoriaRetained'
 import { CrDocumentSections } from './CrDocumentSections'
 import { CrConcretisation } from './CrConcretisation'
+import { CrAnalyseOrigine } from './CrAnalyseOrigine'
 import { WatchlistBilan } from './WatchlistBilan'
 import { getOrCreateVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { listProposalsByReport } from '@/lib/db/knowledge-proposals'
@@ -195,6 +196,10 @@ export default async function VisitCrPreviewPage({
           {/* CONCRÉTISER — le récit corrigé prépare le travail réel. Il vient
               juste après le document : on corrige, puis on transforme. */}
           <CrConcretisation reportId={reportId} />
+
+          {/* Propositions IA originales — toutes, avec statut (remplacé, écarté,
+              créé). Dépliable sur demande : la plupart du temps inutile. */}
+          <CrAnalyseOrigine proposals={proposals} />
 
           {/* L'analyse initiale reste atteignable — elle explique la provenance.
               Mais elle passe APRÈS, et ne charge rien tant qu'on ne la demande

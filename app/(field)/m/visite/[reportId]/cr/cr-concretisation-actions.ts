@@ -40,6 +40,7 @@ import { createSiteDeadline, listSiteDeadlines } from '@/lib/db/site-deadlines'
 import { createSiteDecision, listDecisionsByReport } from '@/lib/db/site-decisions'
 import { addCapturedKnowledge, listCapturedKnowledgeBySource } from '@/lib/db/captured-knowledge'
 import { fulfillProposalsFromConcretisation } from '@/lib/db/knowledge-proposals'
+import { loadOrRunVisitDebrief, type StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 
 /** Provenance unique : tout ce qui naît d'un CR de visite le dit. */
 const CREATED_FROM = 'cr_visite'
@@ -399,4 +400,108 @@ export async function reintroduceRemovedItemAction(
   }
 
   return { ok: true, alreadyExisted: false }
+}
+
+// ── RÉANALYSER LA VISITE ─────────────────────────────────────────────────────
+//
+// Lance un passage LLM frais sur les sources de la visite (vocaux, notes,
+// captures) SANS écrire le résultat ni projeter les propositions. Renvoie
+// la liste d'éléments candidats : l'humain voit la diff et décide.
+
+export type CandidateAnalysisResult =
+  | { ok: true; candidateItems: OperationalItem[]; crItems: OperationalItem[] }
+  | { ok: false; error: string }
+
+function analysisToOperationalItems(analysis: StoredDebriefAnalysis): OperationalItem[] {
+  const items: OperationalItem[] = []
+  analysis.actions.forEach((a, i) => {
+    const label = a.title?.trim()
+    if (!label) return
+    items.push({
+      key: `cand:action:${i}`,
+      kind: "action",
+      label,
+      owner: a.owner?.trim() || null,
+      due: a.due?.trim() || null,
+      constraint: null,
+      sourceSection: "actions",
+    })
+  })
+  analysis.echeances.forEach((e, i) => {
+    const label = e.label?.trim()
+    if (!label) return
+    items.push({
+      key: `cand:echeance:${i}`,
+      kind: "echeance",
+      label,
+      owner: null,
+      due: e.date?.trim() || null,
+      constraint: e.constraint?.trim() || null,
+      sourceSection: "echeances",
+    })
+  })
+  analysis.decisions.forEach((d, i) => {
+    const label = d?.trim()
+    if (!label) return
+    items.push({
+      key: `cand:decision:${i}`,
+      kind: "decision",
+      label,
+      owner: null,
+      due: null,
+      constraint: null,
+      sourceSection: "decisions",
+    })
+  })
+  analysis.a_savoir.forEach((s, i) => {
+    const label = s?.trim()
+    if (!label) return
+    items.push({
+      key: `cand:memoire:${i}`,
+      kind: "memoire",
+      label,
+      owner: null,
+      due: null,
+      constraint: null,
+      sourceSection: "a_savoir",
+    })
+  })
+  analysis.intervenants.forEach((p, i) => {
+    const label = p?.trim()
+    if (!label) return
+    items.push({
+      key: `cand:intervenant:${i}`,
+      kind: "intervenant",
+      label,
+      owner: null,
+      due: null,
+      constraint: null,
+      sourceSection: "intervenants",
+    })
+  })
+  return items
+}
+
+export async function runCandidateAnalysisAction(reportId: string): Promise<CandidateAnalysisResult> {
+  const user = await getCurrentUserWithProfile()
+  if (!user) return { ok: false, error: "Non autorisé" }
+  const visit = await getVisit(reportId)
+  if (!visit) return { ok: false, error: "Visite introuvable" }
+  if (visit.organization_id) {
+    const access = await requireOrganizationMembership(visit.organization_id)
+    if (!access.ok) return { ok: false, error: "Accès refusé" }
+  }
+
+  const result = await loadOrRunVisitDebrief(reportId, user.id, { force: true, dryRun: true })
+  if (!result.ok) return { ok: false, error: result.error }
+  if (result.status === "generating") return { ok: false, error: "Une analyse est déjà en cours. Réessayez dans quelques secondes." }
+  if (!result.loaded) return { ok: false, error: "Aucune analyse disponible" }
+
+  const candidateItems = analysisToOperationalItems(result.loaded.analysis)
+
+  // Lire le CR actuel pour permettre la comparaison côté serveur.
+  const doc = await getVisitCrDocument(reportId)
+  const crItems = doc ? readOperationalItems(doc.sections) : []
+
+  return { ok: true, candidateItems, crItems }
 }

@@ -29,10 +29,11 @@ import {
   prepareCrConcretisationAction,
   createFromCrAction,
   reintroduceRemovedItemAction,
+  runCandidateAnalysisAction,
   type ReviewItem,
   type CreationSummary,
 } from './cr-concretisation-actions'
-import type { OperationalDiff, OperationalItem } from '@/lib/visits/cr-concretisation'
+import { diffOperationalItems, type OperationalDiff, type OperationalItem } from '@/lib/visits/cr-concretisation'
 import { cn } from '@/lib/utils'
 
 interface FamilleStyle {
@@ -150,6 +151,10 @@ export function CrConcretisation({
   const [prepareeALaRevision, setPrepareeALaRevision] = useState(0)
   // Éléments retirés du CR que l'humain a choisi de réintroduire dans le chantier.
   const [reintroduced, setReintroduced] = useState<Set<string>>(new Set())
+  // Résultat d'une analyse candidate (Réanalyser la visite).
+  const [candidateDiff, setCandidateDiff] = useState<OperationalDiff | null>(null)
+  const [reanalyzing, setReanalyzing] = useState(false)
+  const [reanalyseError, setReanalyseError] = useState<string | null>(null)
 
   const prepare = async () => {
     if (pending) return
@@ -187,6 +192,18 @@ export function CrConcretisation({
       next.add(item.key)
       return next
     })
+  }
+
+  const reanalyse = async () => {
+    if (reanalyzing || pending) return
+    setReanalyzing(true)
+    setReanalyseError(null)
+    setCandidateDiff(null)
+    const res = await runCandidateAnalysisAction(reportId)
+    setReanalyzing(false)
+    if (!res.ok) { setReanalyseError(res.error); return }
+    const diff = diffOperationalItems(res.crItems, res.candidateItems)
+    setCandidateDiff(diff)
   }
 
   const create = async () => {
@@ -603,6 +620,79 @@ export function CrConcretisation({
             : `Créer les ${chosen.size} élément${chosen.size > 1 ? 's' : ''} dans le chantier`}
         </button>
       )}
+
+      {/* RÉANALYSER LA VISITE — lance un nouveau passage LLM sur les sources
+          sans écrire le résultat. Montre ce qui changerait par rapport au CR actuel.
+          Séparé de « Mettre à jour la synthèse » : ici on compare AVANT de décider. */}
+      <div className="mt-4 border-t pt-3.5">
+        <button
+          type="button"
+          onClick={() => void reanalyse()}
+          disabled={reanalyzing || pending}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-[12px] font-medium text-muted-foreground hover:bg-muted/40 disabled:opacity-50"
+        >
+          {reanalyzing
+            ? <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Analyse en cours…</>
+            : <><Sparkles className="h-3.5 w-3.5" aria-hidden /> Réanalyser la visite</>}
+        </button>
+        <p className="mt-1 text-center text-[11px] text-muted-foreground">
+          Compare une nouvelle lecture IA avec votre CR actuel, sans rien modifier.
+        </p>
+
+        {reanalyseError && (
+          <p className="mt-2 text-[12px] text-rose-600 dark:text-rose-400">{reanalyseError}</p>
+        )}
+
+        {candidateDiff && (
+          <div className="mt-3 rounded-lg bg-muted/50 px-2.5 py-2 text-[12px]">
+            {candidateDiff.unchanged ? (
+              <p className="italic text-muted-foreground">
+                La nouvelle analyse correspond exactement à votre CR actuel.
+              </p>
+            ) : (
+              <>
+                <p className="mb-1.5 font-semibold text-foreground">
+                  Ce que MemorIA verrait maintenant
+                </p>
+                {candidateDiff.added.length > 0 && (
+                  <div className="mb-1.5">
+                    <p className="text-emerald-700 dark:text-emerald-400">
+                      + {candidateDiff.added.length} nouvel{candidateDiff.added.length > 1 ? 's' : ''}{" "}
+                      élément{candidateDiff.added.length > 1 ? 's' : ''} détecté{candidateDiff.added.length > 1 ? 's' : ''}
+                    </p>
+                    <ul className="mt-0.5 space-y-0.5">
+                      {candidateDiff.added.map((a) => (
+                        <li key={a.key} className="ml-2 truncate text-[11px] text-emerald-800 dark:text-emerald-300">
+                          + {a.label}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {candidateDiff.removed.length > 0 && (
+                  <div>
+                    <p className="text-muted-foreground">
+                      − {candidateDiff.removed.length} élément{candidateDiff.removed.length > 1 ? 's' : ''} de votre CR non retrouvé{candidateDiff.removed.length > 1 ? 's' : ''} par la nouvelle analyse
+                    </p>
+                    <ul className="mt-0.5 space-y-0.5">
+                      {candidateDiff.removed.map((r) => (
+                        <li key={r.key} className="ml-2 truncate text-[11px] line-through opacity-60">
+                          {r.label}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {candidateDiff.changed.length > 0 && (
+                  <p className="mt-1 text-sky-700 dark:text-sky-400">
+                    ~ {candidateDiff.changed.length} modifié{candidateDiff.changed.length > 1 ? 's' : ''} (responsable ou date)
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </section>
   )
 }
