@@ -360,7 +360,7 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
       .order('created_at', { ascending: true }),
     db
       .from('site_knowledge_proposals')
-      .select('id, kind, title, body, confidence, status, promoted_object_id, source_capture_ids, created_at')
+      .select('id, kind, title, body, confidence, status, promoted_object_id, canonical_subject_id, source_capture_ids, created_at')
       .eq('report_id', reportId)
       .order('created_at', { ascending: true }),
     getVisitCrDocument(reportId).catch(() => null),
