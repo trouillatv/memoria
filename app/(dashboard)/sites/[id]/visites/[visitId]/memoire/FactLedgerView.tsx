@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import type { DbKnowledgeProposal } from '@/lib/db/knowledge-proposals'
+import { resolveSupersededRelation, buildActiveByCanonicalSubject } from '@/lib/knowledge/superseded-relation'
 
 const KIND_META: Record<string, { label: string; labelPlural: string; teinte: string }> = {
   action:      { label: 'Action',       labelPlural: 'Actions',       teinte: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' },
@@ -18,7 +19,7 @@ const STATUS_META: Record<string, { label: string; teinte: string }> = {
   confirmed:  { label: 'Confirmée',   teinte: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300' },
   fulfilled:  { label: 'Réalisée',    teinte: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300' },
   dismissed:  { label: 'Écartée',     teinte: 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300' },
-  superseded: { label: 'Ancienne',      teinte: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300' },
+  superseded: { label: 'Ancienne',    teinte: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300' },
   masked:     { label: 'Masquée',     teinte: 'bg-slate-50 text-slate-600 dark:bg-slate-800/30 dark:text-slate-400' },
 }
 
@@ -32,8 +33,8 @@ interface Props {
 export function FactLedgerView({ active, archived, subjectLabels, siteId }: Props) {
   const [kindFilter, setKindFilter] = useState<string>('all')
 
-  // Index id→title sur les proposals actives — permet "Remplacé par →" pour les superseded
-  const activeTitleById = new Map(active.map((p) => [p.id, p.title]))
+  const activeTitleById          = new Map(active.map((p) => [p.id, p.title]))
+  const activeByCanonicalSubject = buildActiveByCanonicalSubject(active)
 
   const superseded = archived.filter((p) => p.status === 'superseded')
   const dismissed  = archived.filter((p) => p.status === 'dismissed' || p.status === 'masked')
@@ -83,7 +84,14 @@ export function FactLedgerView({ active, archived, subjectLabels, siteId }: Prop
           </h2>
           <div className="divide-y rounded-xl border bg-card">
             {filteredActive.map((p) => (
-              <ProposalRow key={p.id} proposal={p} subjectLabels={subjectLabels} siteId={siteId} activeTitleById={activeTitleById} />
+              <ProposalRow
+                key={p.id}
+                proposal={p}
+                subjectLabels={subjectLabels}
+                siteId={siteId}
+                activeTitleById={activeTitleById}
+                activeByCanonicalSubject={activeByCanonicalSubject}
+              />
             ))}
           </div>
         </section>
@@ -107,7 +115,6 @@ export function FactLedgerView({ active, archived, subjectLabels, siteId }: Prop
           </summary>
 
           <div className="border-t">
-            {/* Remplacés — consolidés sous une autre formulation */}
             {filteredSuperseded.length > 0 && (
               <div>
                 <p className="px-4 py-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground border-b bg-muted/30">
@@ -121,6 +128,7 @@ export function FactLedgerView({ active, archived, subjectLabels, siteId }: Prop
                       subjectLabels={subjectLabels}
                       siteId={siteId}
                       activeTitleById={activeTitleById}
+                      activeByCanonicalSubject={activeByCanonicalSubject}
                       muted
                     />
                   ))}
@@ -128,7 +136,6 @@ export function FactLedgerView({ active, archived, subjectLabels, siteId }: Prop
               </div>
             )}
 
-            {/* Écartés — décision humaine explicite */}
             {filteredDismissed.length > 0 && (
               <div className={filteredSuperseded.length > 0 ? 'border-t' : ''}>
                 <p className="px-4 py-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground border-b bg-muted/30">
@@ -142,6 +149,7 @@ export function FactLedgerView({ active, archived, subjectLabels, siteId }: Prop
                       subjectLabels={subjectLabels}
                       siteId={siteId}
                       activeTitleById={activeTitleById}
+                      activeByCanonicalSubject={activeByCanonicalSubject}
                       muted
                     />
                   ))}
@@ -155,19 +163,69 @@ export function FactLedgerView({ active, archived, subjectLabels, siteId }: Prop
   )
 }
 
+function SupersededHint({
+  proposal,
+  activeTitleById,
+  activeByCanonicalSubject,
+}: {
+  proposal: DbKnowledgeProposal
+  activeTitleById: Map<string, string>
+  activeByCanonicalSubject: Map<string, DbKnowledgeProposal[]>
+}) {
+  const [open, setOpen] = useState(false)
+  const rel = resolveSupersededRelation(proposal, activeTitleById, activeByCanonicalSubject)
+
+  if (rel.kind === 'replaced_by') {
+    return (
+      <p className="text-[11.5px] text-amber-700 dark:text-amber-400">
+        Remplacée par → <span className="font-medium">{rel.title}</span>
+      </p>
+    )
+  }
+  if (rel.kind === 'same_subject_one') {
+    return (
+      <p className="text-[11.5px] text-amber-700 dark:text-amber-400">
+        Même sujet → <span className="font-medium">{rel.title}</span>
+      </p>
+    )
+  }
+  if (rel.kind === 'same_subject_many') {
+    return (
+      <div className="text-[11.5px] text-amber-700 dark:text-amber-400">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="hover:underline"
+        >
+          Même sujet · {rel.count} formulations actives {open ? '↑' : '↓'}
+        </button>
+        {open && (
+          <ul className="mt-1 space-y-0.5 pl-3">
+            {rel.titles.map((t, i) => (
+              <li key={i} className="font-medium">{t}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    )
+  }
+  // previous_version — pas de libellé répété : la section s'intitule déjà "Anciennes propositions"
+  return null
+}
+
 function ProposalRow({
-  proposal, subjectLabels, siteId, activeTitleById, muted = false,
+  proposal, subjectLabels, siteId, activeTitleById, activeByCanonicalSubject, muted = false,
 }: {
   proposal: DbKnowledgeProposal
   subjectLabels: Record<string, string>
   siteId: string
   activeTitleById: Map<string, string>
+  activeByCanonicalSubject: Map<string, DbKnowledgeProposal[]>
   muted?: boolean
 }) {
   const kindMeta   = KIND_META[proposal.kind]
   const statusMeta = STATUS_META[proposal.status]
-  const subjectLabel    = proposal.canonical_subject_id ? subjectLabels[proposal.canonical_subject_id] : null
-  const replacedByTitle = proposal.superseded_by ? activeTitleById.get(proposal.superseded_by) : null
+  const subjectLabel = proposal.canonical_subject_id ? subjectLabels[proposal.canonical_subject_id] : null
 
   return (
     <article className={`px-4 py-3 ${muted ? 'opacity-60' : ''}`}>
@@ -198,11 +256,11 @@ function ProposalRow({
           <p className="text-[11.5px] italic text-muted-foreground">Aucun sujet de suivi associé</p>
         )}
         {proposal.status === 'superseded' && (
-          <p className="text-[11.5px] text-amber-700 dark:text-amber-400">
-            {replacedByTitle
-              ? <>Regroupé avec → <span className="font-medium">{replacedByTitle}</span></>
-              : "N'est plus active dans l'analyse actuelle"}
-          </p>
+          <SupersededHint
+            proposal={proposal}
+            activeTitleById={activeTitleById}
+            activeByCanonicalSubject={activeByCanonicalSubject}
+          />
         )}
         {proposal.status === 'dismissed' && proposal.dismiss_reason && (
           <p className="text-[11.5px] text-rose-700 dark:text-rose-400">
