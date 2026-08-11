@@ -1,16 +1,18 @@
 // Script de fusion des canonical_subject PETRO ATITI
-// Applique les 3 corrections identifiées lors de l'audit du 2026-08-11 :
+// Applique une fusion à la fois. --merge est OBLIGATOIRE : pas de mode "all" implicite.
 //
-//   1. Installation cadenas → Accès sécurisé au chantier
-//      (fragmentation : même histoire, deux canonical créés)
+// Usage :
+//   npx tsx scripts/merge-petro-canonical.ts --merge merge-1-cadenas-acces [--dry-run]
+//   npx tsx scripts/merge-petro-canonical.ts --merge merge-2-planning       [--dry-run]
+//   npx tsx scripts/merge-petro-canonical.ts --merge merge-3-retard-planning [--dry-run]
 //
-//   2. Mise à jour planning → Diffusion et complétude du planning
-//      (fragmentation + misattribution : contenu 20/07 mal labellisé)
+// Séquence recommandée :
+//   1. merge-1 → contrôle UI (fiche Accès sécurisé : 10 occs, FIL MÉTIER complet)
+//   2. merge-2 → contrôle UI (fiche Planning : 8 occs)
+//   3. merge-3 → contrôle final (8 sujets actifs)
 //
-//   3. Retard général → Diffusion et complétude du planning
-//      (dissolution : état transversal, pas un sujet autonome)
-//
-// Usage : npx tsx scripts/merge-petro-canonical.ts [--dry-run]
+// Rollback ciblé :
+//   npx tsx scripts/merge-petro-rollback.ts --merge merge-1-cadenas-acces
 
 import { createClient } from '@supabase/supabase-js'
 import { config } from 'dotenv'
@@ -21,192 +23,189 @@ const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPAB
 const SITE = '75bd3d23-d515-46bd-8de8-254495a5bade'
 const DRY_RUN = process.argv.includes('--dry-run')
 
-if (DRY_RUN) console.log('\n⚠️  MODE DRY-RUN — aucune modification en base\n')
+// IDs hardcodés depuis le dry-run du 2026-08-11 — immuables jusqu'à rollback
+const MERGE_CATALOG = {
+  'merge-1-cadenas-acces': {
+    sourceId:    'e00596a5-91f0-4f3a-ae97-a24db8db637d',
+    sourceLabel: 'Installation et présentation cadenas à code',
+    targetId:    '6801ce5c-17e9-4939-93c5-175754add1f5',
+    targetLabel: 'Accès sécurisé au chantier (code portail/cadenas)',
+    finalLabel:  'Accès sécurisé au chantier (portail et cadenas à code)',
+  },
+  'merge-2-planning': {
+    sourceId:    'e3d61d65-4f3f-424e-bf04-a8ee80484f26',
+    sourceLabel: 'Mise à jour du planning suite à l\'avancement de la dépose',
+    targetId:    '14cd6eaa-926b-4262-90fa-9a323b49f35b',
+    targetLabel: 'Diffusion et complétude du planning général',
+    finalLabel:  'Diffusion et mise à jour du planning général',
+  },
+  'merge-3-retard-planning': {
+    sourceId:    '56c705a4-168e-41dc-945e-3494bf748972',
+    sourceLabel: 'Retard dans l\'avancement général du chantier',
+    targetId:    '14cd6eaa-926b-4262-90fa-9a323b49f35b',
+    targetLabel: 'Diffusion et complétude du planning général',
+    // Note : au moment de merge-3, le target est déjà renommé par merge-2.
+    // L'ID est stable ; le label ici est indicatif.
+    finalLabel:  'Diffusion et mise à jour du planning général',
+  },
+} as const
 
-async function fetchSubjectId(label: string): Promise<string> {
-  const { data, error } = await sb
-    .from('canonical_subject')
-    .select('id, label, status')
-    .eq('site_id', SITE)
-    .ilike('label', `%${label}%`)
+type MergeKey = keyof typeof MERGE_CATALOG
 
-  if (error) throw new Error(`Erreur fetch: ${error.message}`)
-  if (!data || data.length === 0) throw new Error(`Sujet introuvable : "${label}"`)
+// ── Argument --merge ──────────────────────────────────────────────────────────
 
-  const active = (data as Array<{ id: string; label: string; status: string }>).filter((r) => r.status === 'active')
-  if (active.length === 0) throw new Error(`Aucun sujet actif trouvant : "${label}" — ${JSON.stringify(data.map(r => r.label))}`)
-  if (active.length > 1) {
-    console.warn(`  ⚠️  Plusieurs sujets actifs trouvés pour "${label}" :`)
-    for (const r of active) console.warn(`    - ${r.id} | ${r.label}`)
-    throw new Error('Ambiguïté — préciser la recherche')
-  }
+const mergeArg = (() => {
+  const idx = process.argv.indexOf('--merge')
+  return idx !== -1 ? process.argv[idx + 1] : null
+})()
 
-  return active[0].id
+if (!mergeArg) {
+  console.error('❌  --merge est obligatoire. Valeurs acceptées :')
+  for (const k of Object.keys(MERGE_CATALOG)) console.error(`     ${k}`)
+  process.exit(1)
 }
 
-async function mergeSubjectById(
-  sourceId: string,
-  sourceLabel: string,
-  targetId: string,
-  targetLabel: string,
-  finalLabel: string,
-) {
-  console.log(`\n──────────────────────────────────`)
-  console.log(`MERGE : "${sourceLabel}" → "${targetLabel}"`)
-  console.log(`Label final : "${finalLabel}"`)
-  console.log(`  source : ${sourceId}`)
-  console.log(`  target : ${targetId}`)
+if (!(mergeArg in MERGE_CATALOG)) {
+  console.error(`❌  Merge inconnu : "${mergeArg}". Valeurs acceptées :`)
+  for (const k of Object.keys(MERGE_CATALOG)) console.error(`     ${k}`)
+  process.exit(1)
+}
 
-  if (sourceId === targetId) throw new Error('source === target')
+const MERGE = MERGE_CATALOG[mergeArg as MergeKey]
+
+// ── Exécution ─────────────────────────────────────────────────────────────────
+
+async function main() {
+  if (DRY_RUN) console.log('\n⚠️  MODE DRY-RUN — aucune modification en base')
+
+  console.log(`\n=== MERGE : ${mergeArg} ===`)
+  console.log(`  "${MERGE.sourceLabel}"`)
+  console.log(`  → "${MERGE.targetLabel}"`)
+  console.log(`  Label final : "${MERGE.finalLabel}"`)
+  console.log(`  source : ${MERGE.sourceId}`)
+  console.log(`  target : ${MERGE.targetId}`)
+
+  // Vérifier l'état courant avant de toucher quoi que ce soit
+  const [{ data: srcCheck }, { data: tgtCheck }] = await Promise.all([
+    sb.from('canonical_subject').select('label, status, merged_into').eq('id', MERGE.sourceId).maybeSingle(),
+    sb.from('canonical_subject').select('label, status').eq('id', MERGE.targetId).maybeSingle(),
+  ])
+
+  if (!srcCheck) { console.error('❌  Source introuvable en base'); process.exit(1) }
+  if (!tgtCheck) { console.error('❌  Target introuvable en base'); process.exit(1) }
+
+  const src = srcCheck as { label: string; status: string; merged_into: string | null }
+  const tgt = tgtCheck as { label: string; status: string }
+
+  if (src.status === 'merged') {
+    console.error(`❌  Source déjà fusionnée (merged_into: ${src.merged_into}) — rollback nécessaire ou merge déjà appliqué`)
+    process.exit(1)
+  }
+  if (tgt.status === 'merged') {
+    console.error('❌  Target est elle-même fusionnée — état incohérent, vérifier manuellement')
+    process.exit(1)
+  }
 
   // Compter ce qu'on va déplacer
   const [{ count: occCount }, { count: stiCount }, { count: propsCount }] = await Promise.all([
-    sb.from('canonical_subject_occurrence').select('*', { count: 'exact', head: true }).eq('canonical_subject_id', sourceId),
-    sb.from('subject_thread_identity').select('*', { count: 'exact', head: true }).eq('canonical_subject_id', sourceId),
-    sb.from('site_knowledge_proposals').select('*', { count: 'exact', head: true }).eq('canonical_subject_id', sourceId),
+    sb.from('canonical_subject_occurrence').select('*', { count: 'exact', head: true }).eq('canonical_subject_id', MERGE.sourceId),
+    sb.from('subject_thread_identity').select('*', { count: 'exact', head: true }).eq('canonical_subject_id', MERGE.sourceId),
+    sb.from('site_knowledge_proposals').select('*', { count: 'exact', head: true }).eq('canonical_subject_id', MERGE.sourceId),
   ])
-  console.log(`  À déplacer : ${occCount ?? 0} occurrences, ${stiCount ?? 0} threads, ${propsCount ?? 0} proposals`)
+  console.log(`\n  À déplacer : ${occCount ?? 0} occurrences, ${stiCount ?? 0} threads, ${propsCount ?? 0} proposals`)
 
   if (DRY_RUN) {
-    console.log('  [DRY-RUN] Aucune modification.')
-    return
+    console.log('  [DRY-RUN] Arrêt ici — aucune modification.\n')
+    process.exit(0)
   }
 
   // 1. Occurrences
   const { error: occErr } = await sb
     .from('canonical_subject_occurrence')
-    .update({ canonical_subject_id: targetId })
-    .eq('canonical_subject_id', sourceId)
-  if (occErr) throw new Error(`Erreur occurrences: ${occErr.message}`)
+    .update({ canonical_subject_id: MERGE.targetId })
+    .eq('canonical_subject_id', MERGE.sourceId)
+  if (occErr) { console.error(`❌  Erreur occurrences : ${occErr.message}`); process.exit(1) }
 
   // 2. Threads
   const { error: stiErr } = await sb
     .from('subject_thread_identity')
-    .update({ canonical_subject_id: targetId })
-    .eq('canonical_subject_id', sourceId)
-  if (stiErr) throw new Error(`Erreur threads: ${stiErr.message}`)
+    .update({ canonical_subject_id: MERGE.targetId })
+    .eq('canonical_subject_id', MERGE.sourceId)
+  if (stiErr) { console.error(`❌  Erreur threads : ${stiErr.message}`); process.exit(1) }
 
   // 3. Proposals
   const { error: propsErr } = await sb
     .from('site_knowledge_proposals')
-    .update({ canonical_subject_id: targetId })
-    .eq('canonical_subject_id', sourceId)
-  if (propsErr) throw new Error(`Erreur proposals: ${propsErr.message}`)
+    .update({ canonical_subject_id: MERGE.targetId })
+    .eq('canonical_subject_id', MERGE.sourceId)
+  if (propsErr) { console.error(`❌  Erreur proposals : ${propsErr.message}`); process.exit(1) }
 
-  // 4. Journal de fusion (table canonical_subject_merge si elle existe)
+  // 4. Journal de fusion
   try {
-    const { data: loserData } = await sb.from('canonical_subject').select('label, aliases').eq('id', sourceId).maybeSingle()
-    const { data: winnerData } = await sb.from('canonical_subject').select('label, aliases').eq('id', targetId).maybeSingle()
-    if (loserData && winnerData) {
-      const winner = winnerData as { label: string; aliases: string[] }
-      const loser = loserData as { label: string; aliases: string[] }
+    const [{ data: wData }, { data: lData }] = await Promise.all([
+      sb.from('canonical_subject').select('label, aliases').eq('id', MERGE.targetId).maybeSingle(),
+      sb.from('canonical_subject').select('label, aliases').eq('id', MERGE.sourceId).maybeSingle(),
+    ])
+    if (wData && lData) {
+      const w = wData as { label: string; aliases: string[] }
+      const l = lData as { label: string; aliases: string[] }
       await sb.from('canonical_subject_merge').insert({
-        winner_subject_id: targetId,
-        loser_subject_id: sourceId,
-        suggested_label: finalLabel !== winner.label ? finalLabel : null,
+        winner_subject_id: MERGE.targetId,
+        loser_subject_id:  MERGE.sourceId,
+        suggested_label:   MERGE.finalLabel !== w.label ? MERGE.finalLabel : null,
         resolution_source: 'manual',
         snapshot: {
-          moved_thread_ids: [],
-          moved_occurrence_ids: [],
-          winner_label_before: winner.label,
-          winner_aliases_before: winner.aliases ?? [],
-          loser_label: loser.label,
-          loser_aliases: loser.aliases ?? [],
-          merge_context: 'petro-audit-2026-08-11',
+          winner_label_before: w.label,
+          winner_aliases_before: w.aliases ?? [],
+          loser_label: l.label,
+          loser_aliases: l.aliases ?? [],
+          merge_context: `petro-audit-2026-08-11-${mergeArg}`,
         },
       })
     }
   } catch {
-    // Journal optionnel — on continue même s'il échoue
     console.warn('  ⚠️  Journal canonical_subject_merge non écrit (table absente ou erreur)')
   }
 
-  // 5. Mettre à jour le label et les aliases du winner
-  const { data: winnerCurrent } = await sb
-    .from('canonical_subject')
-    .select('label, aliases')
-    .eq('id', targetId)
-    .maybeSingle()
-  const { data: loserCurrent } = await sb
-    .from('canonical_subject')
-    .select('label, aliases')
-    .eq('id', sourceId)
-    .maybeSingle()
-
-  if (winnerCurrent && loserCurrent) {
-    const w = winnerCurrent as { label: string; aliases: string[] }
-    const l = loserCurrent as { label: string; aliases: string[] }
+  // 5. Label et aliases fusionnés sur le target
+  const [{ data: wCurr }, { data: lCurr }] = await Promise.all([
+    sb.from('canonical_subject').select('label, aliases').eq('id', MERGE.targetId).maybeSingle(),
+    sb.from('canonical_subject').select('label, aliases').eq('id', MERGE.sourceId).maybeSingle(),
+  ])
+  if (wCurr && lCurr) {
+    const w = wCurr as { label: string; aliases: string[] }
+    const l = lCurr as { label: string; aliases: string[] }
     const combinedAliases = Array.from(new Set([
       ...(w.aliases ?? []),
       l.label,
       ...(l.aliases ?? []),
-      ...(finalLabel !== w.label ? [w.label] : []),
-    ])).filter((a) => a !== finalLabel)
-
-    await sb.from('canonical_subject').update({ label: finalLabel, aliases: combinedAliases }).eq('id', targetId)
+      ...(MERGE.finalLabel !== w.label ? [w.label] : []),
+    ])).filter((a) => a !== MERGE.finalLabel)
+    const { error: wErr } = await sb
+      .from('canonical_subject')
+      .update({ label: MERGE.finalLabel, aliases: combinedAliases })
+      .eq('id', MERGE.targetId)
+    if (wErr) { console.error(`❌  Erreur label target : ${wErr.message}`); process.exit(1) }
   }
 
   // 6. Marquer source comme fusionné
   const { error: mergedErr } = await sb
     .from('canonical_subject')
-    .update({ status: 'merged', merged_into: targetId })
-    .eq('id', sourceId)
-  if (mergedErr) throw new Error(`Erreur marquage merged: ${mergedErr.message}`)
+    .update({ status: 'merged', merged_into: MERGE.targetId })
+    .eq('id', MERGE.sourceId)
+  if (mergedErr) { console.error(`❌  Erreur marquage merged : ${mergedErr.message}`); process.exit(1) }
 
-  console.log(`  ✅ Fusion effectuée`)
-}
+  console.log('\n  ✅ Fusion effectuée')
 
-async function main() {
-  console.log('\n=== FUSION CANONICAL SUBJECTS — PETRO ATITI ===')
-
-  // Pré-résoudre tous les IDs avant la première modification
-  // (évite que le renommage du merge 2 casse la recherche du merge 3)
-  const [idAcces, idCadenas, idPlanningMaj, idPlanningDiff, idRetard] = await Promise.all([
-    fetchSubjectId('Accès sécurisé'),
-    fetchSubjectId('Installation et présentation cadenas'),
-    fetchSubjectId('Mise à jour du planning'),
-    fetchSubjectId('Diffusion et complétude'),
-    fetchSubjectId('Retard dans l\'avancement général'),
-  ])
-  console.log('\nIDs résolus :')
-  console.log(`  Accès sécurisé      : ${idAcces}`)
-  console.log(`  Installation cadenas: ${idCadenas}`)
-  console.log(`  Mise à jour planning: ${idPlanningMaj}`)
-  console.log(`  Diffusion planning  : ${idPlanningDiff}`)
-  console.log(`  Retard général      : ${idRetard}`)
-
-  // Merge 1 : Installation cadenas → Accès sécurisé
-  await mergeSubjectById(
-    idCadenas, 'Installation et présentation cadenas à code',
-    idAcces,   'Accès sécurisé au chantier (code portail/cadenas)',
-    'Accès sécurisé au chantier (portail et cadenas à code)',
-  )
-
-  // Merge 2 : Mise à jour planning → Diffusion/complétude planning
-  await mergeSubjectById(
-    idPlanningMaj, 'Mise à jour du planning suite à l\'avancement de la dépose',
-    idPlanningDiff, 'Diffusion et complétude du planning général',
-    'Diffusion et mise à jour du planning général',
-  )
-
-  // Merge 3 : Retard général → Planning (dissolution)
-  await mergeSubjectById(
-    idRetard, 'Retard dans l\'avancement général du chantier',
-    idPlanningDiff, 'Diffusion et mise à jour du planning général',
-    'Diffusion et mise à jour du planning général',
-  )
-
-  console.log('\n=== TERMINÉ ===\n')
-
-  // Vérification finale
+  // Résumé post-merge
   const { data: remaining } = await sb
     .from('canonical_subject')
-    .select('id, label, status')
+    .select('label, status')
     .eq('site_id', SITE)
     .order('label')
-  console.log('Sujets PETRO après fusion :')
+  console.log('\nSujets PETRO après cette fusion :')
   for (const r of remaining ?? []) {
-    const row = r as { id: string; label: string; status: string }
+    const row = r as { label: string; status: string }
     console.log(`  [${row.status}] ${row.label}`)
   }
 }
