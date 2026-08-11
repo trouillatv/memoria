@@ -37,6 +37,7 @@ import { VerserPiece } from './VerserPiece'
 import { RegenerateNarrativeButton } from './RegenerateNarrativeButton'
 import { getVisitSourceDocument } from '@/lib/db/visit-source-document'
 import { VisitSourceDocumentCard } from './VisitSourceDocument'
+import { listProposalsByReport } from '@/lib/db/knowledge-proposals'
 
 export const dynamic = 'force-dynamic'
 
@@ -58,13 +59,14 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id, visitId } = await params
-  const [identity, visit, narrative, doc, sourceDoc, changes] = await Promise.all([
+  const [identity, visit, narrative, doc, sourceDoc, changes, allProposals] = await Promise.all([
     getSiteIdentity(id),
     getVisit(visitId),
     buildVisitNarrative(visitId),
     getVisitCrDocument(visitId).catch(() => null),
     getVisitSourceDocument(visitId).catch(() => null),
     buildVisitChanges(visitId).catch(() => []),
+    listProposalsByReport(visitId).catch(() => []),
   ])
   if (!identity || !visit || visit.site_id !== id || !narrative) notFound()
   // Isolation tenant : le service-role passe outre la RLS, le filtre est ICI.
@@ -242,6 +244,22 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
   const enAttente = understood.filter((p) => p.status === 'proposed')
   const parFamille = FAMILLES.map((f) => ({ ...f, n: enAttente.filter((p) => p.type === f.cle).length })).filter((f) => f.n > 0)
   const produitsCount = isImport ? historical.length : produced.length
+
+  // Fact Ledger — compteurs pour le point d'entrée (tous statuts, tous kinds)
+  const LEDGER_KIND_LABELS: Record<string, [string, string]> = {
+    action:      ['action', 'actions'],
+    deadline:    ['échéance', 'échéances'],
+    knowledge:   ['connaissance', 'connaissances'],
+    decision:    ['décision', 'décisions'],
+    vigilance:   ['vigilance', 'vigilances'],
+    stakeholder: ['intervenant', 'intervenants'],
+  }
+  const ledgerTotal = allProposals.length
+  const ledgerKindCounts = new Map<string, number>()
+  for (const p of allProposals) ledgerKindCounts.set(p.kind, (ledgerKindCounts.get(p.kind) ?? 0) + 1)
+  const ledgerKindParts = [...ledgerKindCounts.entries()]
+    .sort(([a], [b]) => (LEDGER_KIND_LABELS[a]?.[0] ?? a).localeCompare(LEDGER_KIND_LABELS[b]?.[0] ?? b, 'fr'))
+    .map(([k, n]) => { const [un, pl] = LEDGER_KIND_LABELS[k] ?? [k, `${k}s`]; return `${n} ${n > 1 ? pl : un}` })
 
   // Résumé ventilé pour les visites historiques importées
   const importResumeText = (() => {
@@ -541,6 +559,27 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                     <AttendanceBadge status={p.status} />
                   </div>
                 ))}
+              </div>
+            </section>
+          )}
+
+          {/* ── FAIT LEDGER — point d'entrée (toutes sources, tous statuts) ── */}
+          {ledgerTotal > 0 && (
+            <section className="rounded-xl border bg-card p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-[15px] font-semibold">Ce que MemorIA a retenu</h2>
+                  <p className="mt-1 text-[13px] text-muted-foreground">
+                    {ledgerTotal} élément{ledgerTotal > 1 ? 's' : ''}
+                    {ledgerKindParts.length > 0 && ` · ${ledgerKindParts.join(' · ')}`}
+                  </p>
+                </div>
+                <Link
+                  href={`/sites/${id}/visites/${visitId}/memoire`}
+                  className="shrink-0 rounded-lg border bg-muted/30 px-3 py-1.5 text-[13px] font-medium hover:bg-muted"
+                >
+                  Tout voir →
+                </Link>
               </div>
             </section>
           )}

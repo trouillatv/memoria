@@ -69,6 +69,8 @@ export interface DbKnowledgeProposal {
   dismiss_reason: string | null
   reviewed_at: string | null
   reviewed_by: string | null
+  canonical_subject_id: string | null
+  canonical_resolution_status: string | null
   created_at: string
   updated_at: string
 }
@@ -440,6 +442,23 @@ export async function listProposalsByReport(reportId: string): Promise<DbKnowled
     .order('created_at', { ascending: true })
   if (error) throw error
   return (data ?? []) as DbKnowledgeProposal[]
+}
+
+/** Résout les labels de canonical_subjects pour un ensemble d'IDs.
+ *  Retourne une Map id → label. IDs inconnus sont absents de la Map. */
+export async function getCanonicalSubjectLabels(ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map()
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('canonical_subject')
+    .select('id, label')
+    .in('id', ids)
+  const map = new Map<string, string>()
+  for (const row of data ?? []) {
+    const r = row as { id: string; label: string }
+    map.set(r.id, r.label)
+  }
+  return map
 }
 
 /** Compte les propositions d'un statut donné, par type — pour les compteurs
