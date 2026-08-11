@@ -288,9 +288,9 @@
       "evidenceCount": 0
     },
     "eventB": null,
-    "verdictHumain": "",
+    "verdictHumain": "synonyme",
     "changeType": null,
-    "raisonMetier": "",
+    "raisonMetier": "Les deux formulations décrivent le même fait : diffusion/communication du premier planning attendue. État consolidé pour T₁ = « diffusion du premier planning à faire ».",
     "patternV2": null,
     "v1Signal": false,
     "v1SignalReason": "2 formulations dans le même événement"
@@ -314,9 +314,9 @@
       "evidenceCount": 0
     },
     "eventB": null,
-    "verdictHumain": "",
+    "verdictHumain": "synonyme",
     "changeType": null,
-    "raisonMetier": "",
+    "raisonMetier": "Six formulations décrivent cohéremment le retard et la nécessité de mise à jour du planning. La septième (« Diffuser le premier planning ») est une formulation antérieure recyclée par l'extraction — elle ne reflète pas un état nouveau mais du bruit d'extraction. État consolidé pour T₂ = « retard constaté + planning à mettre à jour selon l'avancement de la dépose ». Enseignement pour V2 : agréger par dominante sémantique, pas par union de toutes les occurrences.",
     "patternV2": null,
     "v1Signal": false,
     "v1SignalReason": "7 formulations dans le même événement"
@@ -335,9 +335,9 @@
       "evidenceCount": 0
     },
     "eventB": null,
-    "verdictHumain": "",
+    "verdictHumain": "synonyme",
     "changeType": null,
-    "raisonMetier": "",
+    "raisonMetier": "Les deux formulations désignent la même action : vérification des installations électriques par l'électricien. État consolidé pour T₁ = « intervention électricien planifiée pour vérification ».",
     "patternV2": null,
     "v1Signal": false,
     "v1SignalReason": "2 formulations dans le même événement"
@@ -356,9 +356,9 @@
       "evidenceCount": 0
     },
     "eventB": null,
-    "verdictHumain": "",
+    "verdictHumain": "synonyme",
     "changeType": null,
-    "raisonMetier": "",
+    "raisonMetier": "Les deux formulations confirment la même action future : vérification des lignes et consignations par les électriciens. État consolidé pour T₂ = « vérification électriciens à venir ».",
     "patternV2": null,
     "v1Signal": false,
     "v1SignalReason": "2 formulations dans le même événement"
@@ -380,9 +380,9 @@
       "evidenceCount": 0
     },
     "eventB": null,
-    "verdictHumain": "",
+    "verdictHumain": "synonyme",
     "changeType": null,
-    "raisonMetier": "",
+    "raisonMetier": "Cinq formulations décrivent le même besoin d'accès sécurisé par portail, code et cadenas. État consolidé pour T₁ = « besoin d'accès sécurisé identifié, communication du code attendue ».",
     "patternV2": null,
     "v1Signal": false,
     "v1SignalReason": "5 formulations dans le même événement"
@@ -401,9 +401,9 @@
       "evidenceCount": 0
     },
     "eventB": null,
-    "verdictHumain": "",
+    "verdictHumain": "synonyme",
     "changeType": null,
-    "raisonMetier": "",
+    "raisonMetier": "Les deux formulations décrivent deux aspects complémentaires du même dispositif : la présentation lors de l'accueil sécurité et l'installation physique. Appartiennent au même état métier. État consolidé = « cadenas à code en cours de mise en place ».",
     "patternV2": null,
     "v1Signal": false,
     "v1SignalReason": "2 formulations dans le même événement"
@@ -422,9 +422,9 @@
       "evidenceCount": 0
     },
     "eventB": null,
-    "verdictHumain": "",
+    "verdictHumain": "synonyme",
     "changeType": null,
-    "raisonMetier": "",
+    "raisonMetier": "Les deux formulations décrivent le même dispositif d'accès (portail + code + cadenas) à deux niveaux de détail. État consolidé = « accès sécurisé par portail et cadenas à code confirmé ».",
     "patternV2": null,
     "v1Signal": false,
     "v1SignalReason": "2 formulations dans le même événement"
@@ -444,9 +444,9 @@
       "evidenceCount": 0
     },
     "eventB": null,
-    "verdictHumain": "",
+    "verdictHumain": "synonyme",
     "changeType": null,
-    "raisonMetier": "",
+    "raisonMetier": "Les trois formulations décrivent la même intervention sous trois angles : l'acteur principal (Clim Expert), le co-intervenant (AGP) et le périmètre matériel (hottes, gaines, chambre froide, dalle). État consolidé pour T₁ = « intervention Clim Expert + AGP planifiée pour la dépose du matériel de cuisine ».",
     "patternV2": null,
     "v1Signal": false,
     "v1SignalReason": "3 formulations dans le même événement"
@@ -468,9 +468,9 @@
       "evidenceCount": 0
     },
     "eventB": null,
-    "verdictHumain": "",
+    "verdictHumain": "synonyme",
     "changeType": null,
-    "raisonMetier": "",
+    "raisonMetier": "Cinq formulations confirment toutes le même fait : le lancement de la dépose est acté. État consolidé pour T₂ = « dépose du matériel de cuisine lancée ».",
     "patternV2": null,
     "v1Signal": false,
     "v1SignalReason": "5 formulations dans le même événement"
@@ -489,9 +489,9 @@
       "evidenceCount": 0
     },
     "eventB": null,
-    "verdictHumain": "",
+    "verdictHumain": "synonyme",
     "changeType": null,
-    "raisonMetier": "",
+    "raisonMetier": "Les deux formulations décrivent le même risque : retard Clim Expert à surveiller. État consolidé = « risque de retard Clim Expert identifié ».",
     "patternV2": null,
     "v1Signal": false,
     "v1SignalReason": "2 formulations dans le même événement"
@@ -510,9 +510,9 @@
       "evidenceCount": 0
     },
     "eventB": null,
-    "verdictHumain": "",
+    "verdictHumain": "synonyme",
     "changeType": null,
-    "raisonMetier": "",
+    "raisonMetier": "Les deux formulations décrivent le même constat : dépôt de suie sur les panneaux/murs électriques. État consolidé = « dépôt de suie sur les panneaux électriques constaté ».",
     "patternV2": null,
     "v1Signal": false,
     "v1SignalReason": "2 formulations dans le même événement"
@@ -532,9 +532,9 @@
       "evidenceCount": 0
     },
     "eventB": null,
-    "verdictHumain": "",
+    "verdictHumain": "synonyme",
     "changeType": null,
-    "raisonMetier": "",
+    "raisonMetier": "Trois formulations du même constat à des niveaux de précision différents : absence de courant sortant du TD. État consolidé = « absence de courant au TD constatée ».",
     "patternV2": null,
     "v1Signal": false,
     "v1SignalReason": "3 formulations dans le même événement"
