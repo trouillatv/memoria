@@ -204,18 +204,33 @@ function SubjectIntelligenceCard({
       )}
 
       {showLastChange && !showStagnation && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Calendar className="h-3.5 w-3.5 shrink-0" />
-          <span>Dernière évolution réelle :</span>
-          {intel.lastMeaningfulOccurrenceAnchor ? (
-            <a
-              href={`#${intel.lastMeaningfulOccurrenceAnchor}`}
-              className="font-medium text-foreground hover:underline underline-offset-2"
-            >
-              {frDate(intel.lastMeaningfulChangeAt!)}
-            </a>
-          ) : (
-            <span className="font-medium text-foreground">{frDate(intel.lastMeaningfulChangeAt!)}</span>
+        <div className="space-y-1 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-3.5 w-3.5 shrink-0" />
+            <span>Dernière évolution réelle :</span>
+            {intel.lastMeaningfulOccurrenceAnchor ? (
+              <a
+                href={`#${intel.lastMeaningfulOccurrenceAnchor}`}
+                className="font-medium text-foreground hover:underline underline-offset-2"
+              >
+                {frDate(intel.lastMeaningfulChangeAt!)}
+              </a>
+            ) : (
+              <span className="font-medium text-foreground">{frDate(intel.lastMeaningfulChangeAt!)}</span>
+            )}
+          </div>
+          {lastSeenAt && lastSeenAt !== intel.lastMeaningfulChangeAt && (
+            <>
+              <div className="flex items-center gap-2 pl-5">
+                <span>Dernière observation :</span>
+                <span className="font-medium text-foreground">{frDate(lastSeenAt)}</span>
+              </div>
+              {intel.stagnationDays != null && intel.stagnationDays > 0 && (
+                <p className="pl-5 text-xs text-muted-foreground/80">
+                  Mentionné à nouveau {intel.stagnationDays} jour{intel.stagnationDays > 1 ? 's' : ''} plus tard — sans changement déterministe détecté.
+                </p>
+              )}
+            </>
           )}
         </div>
       )}
@@ -1015,7 +1030,13 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
   if (matCounts.site_action > 0) summaryParts.push(`${matCounts.site_action} action${matCounts.site_action > 1 ? 's' : ''}`)
   if (matCounts.site_decision > 0) summaryParts.push(`${matCounts.site_decision} décision${matCounts.site_decision > 1 ? 's' : ''}`)
   if (matCounts.site_deadline > 0) summaryParts.push(`${matCounts.site_deadline} échéance${matCounts.site_deadline > 1 ? 's' : ''}`)
-  if (life.lastSeenAt) summaryParts.push(`dernière évolution le ${frDate(life.lastSeenAt)}`)
+  if (life.lastMeaningfulChangeAt && life.lastMeaningfulChangeAt !== life.lastSeenAt) {
+    summaryParts.push(`évolution réelle le ${frDate(life.lastMeaningfulChangeAt)} · observation le ${frDate(life.lastSeenAt!)}`)
+  } else if (life.lastMeaningfulChangeAt) {
+    summaryParts.push(`évolution réelle le ${frDate(life.lastMeaningfulChangeAt)}`)
+  } else if (life.lastSeenAt) {
+    summaryParts.push(`dernière observation le ${frDate(life.lastSeenAt)}`)
+  }
 
   return (
     <>
