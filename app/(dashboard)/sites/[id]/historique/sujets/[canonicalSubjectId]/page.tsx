@@ -377,18 +377,20 @@ function LifelineBar({
 }) {
   if (occurrences.length === 0) return null
 
-  // Agréger les occurrences par événement source : une visite ou un PV = 1 tick.
-  // Plusieurs formulations d'une même source ne créent pas plusieurs points.
-  // Clé : reportId (field_visit/meeting) ou runId (PDF/document).
+  // Agréger les occurrences par événement métier : une visite/réunion/PV = 1 tick.
+  // Clé sémantique : sourceKind+date pour les visites terrain (plusieurs reportId
+  // techniques peuvent coexister pour une même visite), runId pour les PDF.
   const seenEventKeys = new Set<string>()
   const displayOccs = occurrences.filter((occ) => {
     const key = occ.isGap
       ? `gap-${occ.effectiveDate}`
-      : occ.reportId
-        ? `visit-${occ.reportId}`
+      : occ.sourceKind === 'field_visit' || occ.sourceKind === 'meeting'
+        ? `${occ.sourceKind}-${occ.effectiveDate}`
         : occ.runId
           ? `run-${occ.runId}`
-          : `date-${occ.effectiveDate}`
+          : occ.documentId
+            ? `document-${occ.documentId}`
+            : `date-${occ.effectiveDate}`
     if (seenEventKeys.has(key)) return false
     seenEventKeys.add(key)
     return true
