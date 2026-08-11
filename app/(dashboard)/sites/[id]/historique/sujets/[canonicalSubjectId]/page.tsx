@@ -998,13 +998,18 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
   }
   for (const e of life.materializedEvents) matCounts[e.entityType]++
 
-  const visitCount = life.occurrences.filter((o) => !o.isGap && o.sourceKind === 'field_visit').length
-  const meetingCount = life.occurrences.filter((o) => !o.isGap && o.sourceKind === 'meeting').length
+  const visitCount = new Set(life.occurrences.filter((o) => !o.isGap && o.sourceKind === 'field_visit').map((o) => o.effectiveDate)).size
+  const meetingCount = new Set(life.occurrences.filter((o) => !o.isGap && o.sourceKind === 'meeting').map((o) => o.effectiveDate)).size
+
+  const totalProofs = life.occurrences.filter((o) => !o.isGap).length
 
   const summaryParts: string[] = []
   if (life.mergesAsWinner.length > 0) summaryParts.push(`${life.mergesAsWinner.length} formulation${life.mergesAsWinner.length > 1 ? 's' : ''} regroupée${life.mergesAsWinner.length > 1 ? 's' : ''}`)
   if (life.pvCount > 0) summaryParts.push(`${life.pvCount} PV`)
-  if (visitCount > 0) summaryParts.push(`${visitCount} visite${visitCount > 1 ? 's' : ''} terrain`)
+  if (visitCount > 0) {
+    const proofSuffix = totalProofs > visitCount ? ` · ${totalProofs} preuve${totalProofs > 1 ? 's' : ''}` : ''
+    summaryParts.push(`${visitCount} visite${visitCount > 1 ? 's' : ''} terrain${proofSuffix}`)
+  }
   if (meetingCount > 0) summaryParts.push(`${meetingCount} réunion${meetingCount > 1 ? 's' : ''}`)
   if (matCounts.site_reserve > 0) summaryParts.push(`${matCounts.site_reserve} réserve${matCounts.site_reserve > 1 ? 's' : ''}`)
   if (matCounts.site_action > 0) summaryParts.push(`${matCounts.site_action} action${matCounts.site_action > 1 ? 's' : ''}`)
