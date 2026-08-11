@@ -43,6 +43,8 @@ export interface SubjectOccurrenceMerged {
   evidenceCount: number
   /** Labels supplémentaires si plusieurs threads actifs dans ce run (rare). */
   additionalLabels: string[]
+  /** Label avec alias substitué par canonical_label si entity_ids résolus ; null = afficher label brut. */
+  resolvedLabel: string | null
 }
 
 export interface CanonicalLink {
@@ -134,6 +136,66 @@ type RawLinkRow = {
   created_by: string | null
 }
 
+// ── Entity resolution ─────────────────────────────────────────────────────────
+
+type EntityResolutionMap = Map<string, { canonicalLabel: string; aliases: string[] }>
+
+async function buildEntityResolutionMap(
+  supabase: ReturnType<typeof createAdminClient>,
+  entityIds: string[],
+): Promise<EntityResolutionMap> {
+  if (entityIds.length === 0) return new Map()
+  const { data } = await supabase
+    .from('site_knowledge_entities')
+    .select('id, canonical_label, site_knowledge_entity_aliases(alias)')
+    .in('id', entityIds)
+  const map: EntityResolutionMap = new Map()
+  for (const row of (data ?? []) as Array<{
+    id: string
+    canonical_label: string
+    site_knowledge_entity_aliases: Array<{ alias: string }>
+  }>) {
+    map.set(row.id, {
+      canonicalLabel: row.canonical_label,
+      aliases: (row.site_knowledge_entity_aliases ?? []).map((a) => a.alias),
+    })
+  }
+  return map
+}
+
+// Substitue les alias d'entités connues par leur canonical_label dans le label d'occurrence.
+// Ne modifie rien si entity_ids est vide (pas de résolution heuristique).
+// Retourne null si aucune substitution n'a eu lieu (afficher le label brut).
+function applyEntitySubstitution(
+  label: string | null,
+  entityIds: string[] | null,
+  entityMap: EntityResolutionMap,
+): string | null {
+  if (!label || !entityIds?.length) return null
+  let result = label
+  let changed = false
+  for (const entityId of entityIds) {
+    const entity = entityMap.get(entityId)
+    if (!entity) continue
+    const sorted = [...entity.aliases].sort((a, b) => b.length - a.length)
+    for (const alias of sorted) {
+      if (!alias) continue
+      const lowerResult = result.toLowerCase()
+      const lowerAlias = alias.toLowerCase()
+      const idx = lowerResult.indexOf(lowerAlias)
+      if (idx === -1) continue
+      const before = idx > 0 ? result[idx - 1] : ' '
+      const after = idx + alias.length < result.length ? result[idx + alias.length] : ' '
+      if (!/[a-zA-ZÀ-ÿ0-9]/.test(before) && !/[a-zA-ZÀ-ÿ0-9]/.test(after)) {
+        result = result.slice(0, idx) + entity.canonicalLabel + result.slice(idx + alias.length)
+        changed = true
+        break
+      }
+    }
+  }
+  return changed ? result : null
+}
+
 // ── Read-model ────────────────────────────────────────────────────────────────
 
 /**
@@ -172,7 +234,7 @@ export async function getCanonicalSubjectLife(
     // "À corriger en V2" (note mig 291) : désormais géré ici.
     const { data: nativeCsoRows } = await supabase
       .from('canonical_subject_occurrence')
-      .select('id, source_ref_id, source_proposal_id, source_kind, visit_status, label, note, evidence_count, effective_date')
+      .select('id, source_ref_id, source_proposal_id, source_kind, visit_status, label, note, evidence_count, effective_date, entity_ids')
       .eq('canonical_subject_id', canonicalSubjectId)
       .in('source_kind', ['field_visit', 'meeting'])
       .not('validation_status', 'in', '("rejected","source_superseded")')
@@ -181,8 +243,12 @@ export async function getCanonicalSubjectLife(
       id: string; source_ref_id: string; source_proposal_id: string | null
       source_kind: 'field_visit' | 'meeting'; visit_status: string | null
       label: string; note: string | null; evidence_count: number; effective_date: string
+      entity_ids: string[] | null
     }
-    const nativeOccs: SubjectOccurrenceMerged[] = ((nativeCsoRows ?? []) as NativeCsoRow[]).map((row) => ({
+    const nativeRows = (nativeCsoRows ?? []) as NativeCsoRow[]
+    const nativeEntityIds = [...new Set(nativeRows.flatMap((r) => r.entity_ids ?? []))]
+    const nativeEntityMap = await buildEntityResolutionMap(supabase, nativeEntityIds)
+    const nativeOccs: SubjectOccurrenceMerged[] = nativeRows.map((row) => ({
       sourceKind: row.source_kind,
       runId: null, documentId: null, reportId: row.source_ref_id,
       effectiveDate: row.effective_date, proposalId: row.source_proposal_id,
@@ -190,6 +256,7 @@ export async function getCanonicalSubjectLife(
       documentStatus: null, visitStatus: row.visit_status,
       proposalFamily: null, thematicCategory: null, sourcePage: null,
       transition: null, isGap: false, evidenceCount: row.evidence_count, additionalLabels: [],
+      resolvedLabel: applyEntitySubstitution(row.label, row.entity_ids, nativeEntityMap),
     }))
     const nativeReal = nativeOccs.filter((o) => !o.isGap)
     const nativeLastSeenAt = nativeReal[nativeReal.length - 1]?.effectiveDate ?? null
@@ -222,20 +289,25 @@ export async function getCanonicalSubjectLife(
       id: string; source_ref_id: string; source_proposal_id: string | null
       source_kind: 'field_visit' | 'meeting'; visit_status: string | null
       label: string; note: string | null; evidence_count: number; effective_date: string
+      entity_ids: string[] | null
     }
     const { data: csoFallback } = await supabase
       .from('canonical_subject_occurrence')
-      .select('id, source_ref_id, source_proposal_id, source_kind, visit_status, label, note, evidence_count, effective_date')
+      .select('id, source_ref_id, source_proposal_id, source_kind, visit_status, label, note, evidence_count, effective_date, entity_ids')
       .eq('canonical_subject_id', canonicalSubjectId)
       .in('source_kind', ['field_visit', 'meeting'])
       .not('validation_status', 'in', '("rejected","source_superseded")')
       .order('effective_date', { ascending: true })
-    const fallbackOccs: SubjectOccurrenceMerged[] = ((csoFallback ?? []) as CsoRowShort[]).map((row) => ({
+    const fallbackRows = (csoFallback ?? []) as CsoRowShort[]
+    const fallbackEntityIds = [...new Set(fallbackRows.flatMap((r) => r.entity_ids ?? []))]
+    const fallbackEntityMap = await buildEntityResolutionMap(supabase, fallbackEntityIds)
+    const fallbackOccs: SubjectOccurrenceMerged[] = fallbackRows.map((row) => ({
       sourceKind: row.source_kind, runId: null, documentId: null, reportId: row.source_ref_id,
       effectiveDate: row.effective_date, proposalId: row.source_proposal_id, threadId: null,
       label: row.label, description: row.note, documentStatus: null, visitStatus: row.visit_status,
       proposalFamily: null, thematicCategory: null, sourcePage: null, transition: null,
       isGap: false, evidenceCount: row.evidence_count, additionalLabels: [],
+      resolvedLabel: applyEntitySubstitution(row.label, row.entity_ids, fallbackEntityMap),
     }))
     const fallbackReal = fallbackOccs.filter((o) => !o.isGap)
     const fallbackFirst = fallbackReal[0]?.effectiveDate ?? null
@@ -335,6 +407,7 @@ export async function getCanonicalSubjectLife(
         isGap: true,
         evidenceCount: 0,
         additionalLabels: [],
+        resolvedLabel: null,
       })
       gapSinceLastOccurrence = true
     } else {
@@ -376,6 +449,7 @@ export async function getCanonicalSubjectLife(
         isGap: false,
         evidenceCount: evidenceByProposal.get(primary.id) ?? 0,
         additionalLabels: secondaries.map((p) => p.label),
+        resolvedLabel: null,
       })
       prevProp = primary
       gapSinceLastOccurrence = false
@@ -488,7 +562,7 @@ export async function getCanonicalSubjectLife(
   // créées sur des sujets déjà connus via PV). À corriger en V2.
   const { data: csoRows } = await supabase
     .from('canonical_subject_occurrence')
-    .select('id, source_ref_id, source_proposal_id, source_kind, visit_status, label, note, evidence_count, effective_date')
+    .select('id, source_ref_id, source_proposal_id, source_kind, visit_status, label, note, evidence_count, effective_date, entity_ids')
     .eq('canonical_subject_id', canonicalSubjectId)
     .in('source_kind', ['field_visit', 'meeting'])
     .not('validation_status', 'in', '("rejected","source_superseded")')
@@ -504,8 +578,12 @@ export async function getCanonicalSubjectLife(
     note: string | null
     evidence_count: number
     effective_date: string
+    entity_ids: string[] | null
   }
-  for (const row of (csoRows ?? []) as CsoRow[]) {
+  const csoRowsTyped = (csoRows ?? []) as CsoRow[]
+  const csoEntityIds = [...new Set(csoRowsTyped.flatMap((r) => r.entity_ids ?? []))]
+  const csoEntityMap = await buildEntityResolutionMap(supabase, csoEntityIds)
+  for (const row of csoRowsTyped) {
     occurrences.push({
       sourceKind: row.source_kind,
       runId: null,
@@ -525,6 +603,7 @@ export async function getCanonicalSubjectLife(
       isGap: false,
       evidenceCount: row.evidence_count,
       additionalLabels: [],
+      resolvedLabel: applyEntitySubstitution(row.label, row.entity_ids, csoEntityMap),
     })
   }
 
