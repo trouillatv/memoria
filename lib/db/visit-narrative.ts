@@ -70,6 +70,8 @@ export interface NarrativeProposal {
   status: string
   /** L'objet né de cette proposition, s'il existe. */
   createdEntityId: string | null
+  /** Pour les superseded : permet la résolution "Même sujet →" sans modifier la DB. */
+  canonicalSubjectId: string | null
   /** Combien de captures ont nourri cette proposition (`source_capture_ids`).
    *  « Sources : 2 éléments » n'est pas décoratif : c'est ce qui distingue une
    *  lecture appuyée d'une lecture isolée. */
@@ -137,7 +139,7 @@ export interface VisitNarrative {
     /** Propositions explicitement écartées par un humain. */
     byHuman: Array<{ id: string; label: string; type: string; why: Reason }>
     /** Propositions périmées par une analyse plus récente — aucune décision. */
-    superseded: Array<{ id: string; label: string; type: string; why: Reason }>
+    superseded: Array<{ id: string; label: string; type: string; canonicalSubjectId: string | null; why: Reason }>
     /** Captures que le conducteur a sorties du compte-rendu. */
     captures: Array<{ id: string; kind: string; body: string | null; why: Reason }>
   }
@@ -395,6 +397,7 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
     confidence: (p.confidence as number | null) ?? null,
     status: p.status as string,
     createdEntityId: (p.promoted_object_id as string | null) ?? null,
+    canonicalSubjectId: (p.canonical_subject_id as string | null) ?? null,
     sourceCount: ((p.source_capture_ids as string[] | null) ?? []).length,
     why: explainProposal({ status: p.status as string }),
   }))
@@ -461,7 +464,7 @@ export async function buildVisitNarrative(reportId: string): Promise<VisitNarrat
         .map((p) => ({ id: p.id, label: p.label, type: p.type, why: p.why })),
       superseded: understood
         .filter((p) => p.status === 'superseded')
-        .map((p) => ({ id: p.id, label: p.label, type: p.type, why: p.why })),
+        .map((p) => ({ id: p.id, label: p.label, type: p.type, canonicalSubjectId: p.canonicalSubjectId, why: p.why })),
       captures: captured
         .filter((c) => !c.kept)
         .map((c) => ({ id: c.id, kind: c.kind, body: c.body, why: c.why })),

@@ -72,13 +72,22 @@ export function VisitDesk({
   const enAttente = understood.filter((p) => p.status === 'proposed')
   const ecarteTotal = ignored.byHuman.length + ignored.superseded.length + ignored.captures.length
 
+  const activeBySubject = new Map<string, string[]>()
+  for (const p of understood) {
+    if (p.status !== 'proposed' && p.status !== 'confirmed' && p.status !== 'fulfilled') continue
+    if (!p.canonicalSubjectId) continue
+    const existing = activeBySubject.get(p.canonicalSubjectId)
+    if (existing) existing.push(p.label)
+    else activeBySubject.set(p.canonicalSubjectId, [p.label])
+  }
+
   return (
     <div className="space-y-4">
       <Chronologie captures={terrain} media={media} onOuvrir={setPreuve} />
       <VisitChanges changes={changes} />
       <EnAttente propositions={enAttente} crHref={crHref} />
       <PiecesVersees pieces={versees} media={media} onOuvrir={setPreuve} />
-      <NonRetenu ignored={ignored} total={ecarteTotal} />
+      <NonRetenu ignored={ignored} total={ecarteTotal} activeBySubject={activeBySubject} />
 
       <p className="flex items-start gap-2 rounded-xl border bg-muted/40 px-4 py-3 text-[13px] text-muted-foreground">
         <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
@@ -584,7 +593,65 @@ function PiecesVersees({
 
 // ── AUDIT — précieux, mais pas au centre de l'écran ─────────────────────────
 
-function NonRetenu({ ignored, total }: { ignored: VisitNarrative['ignored']; total: number }) {
+function resolveSupersededHint(
+  canonicalSubjectId: string | null,
+  activeBySubject: Map<string, string[]>,
+): { kind: 'same_subject_one'; title: string } | { kind: 'same_subject_many'; count: number; titles: string[] } | { kind: 'previous_version' } {
+  if (!canonicalSubjectId) return { kind: 'previous_version' }
+  const titles = activeBySubject.get(canonicalSubjectId) ?? []
+  if (titles.length === 1) return { kind: 'same_subject_one', title: titles[0] }
+  if (titles.length > 1) return { kind: 'same_subject_many', count: titles.length, titles }
+  return { kind: 'previous_version' }
+}
+
+function SupersededItemRow({
+  item,
+  activeBySubject,
+}: {
+  item: VisitNarrative['ignored']['superseded'][number]
+  activeBySubject: Map<string, string[]>
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const rel = resolveSupersededHint(item.canonicalSubjectId, activeBySubject)
+  return (
+    <div className="py-1.5">
+      <p className="text-[13px] text-muted-foreground">{item.label}</p>
+      {rel.kind === 'same_subject_one' && (
+        <p className="text-[11.5px] text-muted-foreground">
+          {'Même sujet → '}<span className="italic">{rel.title}</span>
+        </p>
+      )}
+      {rel.kind === 'same_subject_many' && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="text-[11.5px] text-muted-foreground hover:underline"
+          >
+            {'Même sujet · '}{rel.count}{' formulations actives'} {expanded ? '▴' : '▾'}
+          </button>
+          {expanded && (
+            <ul className="ml-3 mt-0.5 space-y-px">
+              {rel.titles.map((t, i) => (
+                <li key={i} className="text-[11px] text-muted-foreground italic">{t}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NonRetenu({
+  ignored,
+  total,
+  activeBySubject,
+}: {
+  ignored: VisitNarrative['ignored']
+  total: number
+  activeBySubject: Map<string, string[]>
+}) {
   const [ouvert, setOuvert] = useState(false)
 
   const nbSuperseded = ignored.superseded.length
@@ -604,8 +671,8 @@ function NonRetenu({ ignored, total }: { ignored: VisitNarrative['ignored']; tot
         aria-expanded={ouvert}
         className="flex w-full flex-wrap items-center gap-x-3 gap-y-0.5 px-4 py-3 text-left"
       >
-        <h2 className="text-[15px] font-semibold">Historique de l'analyse</h2>
-        <span className="text-[13px] text-muted-foreground">{total} élément{total > 1 ? 's' : ''}</span>
+        <h2 className="text-[15px] font-semibold">{"Historique de l'analyse"}</h2>
+        <span className="text-[13px] text-muted-foreground">{total} {total > 1 ? 'éléments' : 'élément'}</span>
         {partieTitre.length > 0 && (
           <span className="w-full text-[12px] text-muted-foreground">{partieTitre.join(' · ')}</span>
         )}
@@ -618,7 +685,7 @@ function NonRetenu({ ignored, total }: { ignored: VisitNarrative['ignored']; tot
         <div className="border-t px-4 pb-4">
           {total === 0 && (
             <p className="pt-3 text-[13px] text-muted-foreground">
-              Rien n'a été mis de côté : tout ce qui a été capté ou proposé est encore en jeu.
+              {"Rien n'a été mis de côté : tout ce qui a été capté ou proposé est encore en jeu."}
             </p>
           )}
           {nbSuperseded > 0 && (
@@ -628,10 +695,7 @@ function NonRetenu({ ignored, total }: { ignored: VisitNarrative['ignored']; tot
               </p>
               <div className="space-y-px">
                 {ignored.superseded.map((p) => (
-                  <div key={p.id} className="py-1.5">
-                    <p className="text-[13px] text-muted-foreground">{p.label}</p>
-                    <p className="text-[11.5px] text-muted-foreground">{p.why.label}</p>
-                  </div>
+                  <SupersededItemRow key={p.id} item={p} activeBySubject={activeBySubject} />
                 ))}
               </div>
             </div>
@@ -639,7 +703,7 @@ function NonRetenu({ ignored, total }: { ignored: VisitNarrative['ignored']; tot
           {nbByHuman > 0 && (
             <div className={nbCaptures > 0 ? 'border-b pb-3' : ''}>
               <p className={`py-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground${nbSuperseded > 0 ? ' mt-1' : ''}`}>
-                Écartés par vous — {nbByHuman}
+                {'Écartés par vous — '}{nbByHuman}
               </p>
               <div className="space-y-px">
                 {ignored.byHuman.map((p) => (
@@ -654,7 +718,7 @@ function NonRetenu({ ignored, total }: { ignored: VisitNarrative['ignored']; tot
           {nbCaptures > 0 && (
             <div>
               <p className={`py-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground${nbSuperseded > 0 || nbByHuman > 0 ? ' mt-1' : ''}`}>
-                Captures non utilisées — {nbCaptures}
+                {'Captures non utilisées — '}{nbCaptures}
               </p>
               <div className="space-y-px">
                 {ignored.captures.map((c) => (

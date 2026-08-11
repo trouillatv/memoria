@@ -38,6 +38,7 @@ const prop = (over: Partial<NarrativeProposal>): NarrativeProposal => ({
   confidence: null,
   status: 'proposed',
   createdEntityId: null,
+  canonicalSubjectId: null,
   sourceCount: 2,
   why: { code: 'proposal.pending', label: 'Proposée par MemorIA, en attente d’arbitrage' },
   ...over,
@@ -95,7 +96,7 @@ describe('l’ordre est celui de la lecture, pas celui du pipeline', () => {
 
   it('met l’audit en bas, et replié', () => {
     render(<VisitDesk narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
-    expect(screen.getByRole('button', { name: /Ce qui n’a pas été retenu/ })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /Historique de l/ })).toHaveAttribute(
       'aria-expanded',
       'false',
     )
