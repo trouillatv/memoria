@@ -153,9 +153,12 @@ export async function reconcileProposalToCanonical(params: {
     }
 
     // upsert idempotent : ignoreDuplicates:true préserve rejected, ne réécrit pas confirmed
-    await supabase
+    const { error: occErr } = await supabase
       .from('canonical_subject_occurrence')
       .upsert(occurrenceData, { onConflict: 'source_kind,source_proposal_id', ignoreDuplicates: true })
+    if (occErr) {
+      console.error('[reconcile] occurrence upsert failed:', proposalId, occErr.code, occErr.message)
+    }
 
     if (validationStatus === 'confirmed') {
       // Upgrade explicite observed→confirmed (ne touche pas rejected — filtre validation_status)
