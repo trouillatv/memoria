@@ -501,6 +501,105 @@ function LifelineBar({
   )
 }
 
+// ── Fil métier groupé ─────────────────────────────────────────────────────────
+
+const SOURCE_KIND_LABEL: Record<string, string> = {
+  field_visit: 'Visite terrain',
+  meeting: 'Réunion',
+  historical_pdf: 'PV du chantier',
+}
+
+function FilMetierGrouped({ occurrences, siteId }: { occurrences: SubjectOccurrenceMerged[]; siteId: string }) {
+  if (occurrences.length === 0) return <p className="text-sm text-muted-foreground">Aucune entrée.</p>
+
+  // Construire les groupes dans l'ordre des occurrences (déjà triées chronologiquement).
+  type OccGroup = { key: string; date: string; sourceKind: string; occs: SubjectOccurrenceMerged[] }
+  const groups: OccGroup[] = []
+  const groupMap = new Map<string, OccGroup>()
+
+  for (const occ of occurrences) {
+    const key = occ.isGap
+      ? `gap-${occ.effectiveDate}`
+      : occ.sourceKind === 'field_visit' || occ.sourceKind === 'meeting'
+        ? `${occ.sourceKind}-${occ.effectiveDate}`
+        : occ.runId
+          ? `run-${occ.runId}`
+          : occ.documentId
+            ? `document-${occ.documentId}`
+            : `date-${occ.effectiveDate}`
+
+    if (!groupMap.has(key)) {
+      const g: OccGroup = { key, date: occ.effectiveDate, sourceKind: occ.sourceKind, occs: [] }
+      groupMap.set(key, g)
+      groups.push(g)
+    }
+    groupMap.get(key)!.occs.push(occ)
+  }
+
+  const hasGap = occurrences.some((o) => o.isGap)
+
+  return (
+    <div className="space-y-2">
+      {groups.map((group) => {
+        const realOccs = group.occs.filter((o) => !o.isGap)
+        const gapOccs  = group.occs.filter((o) =>  o.isGap)
+
+        // Groupes gap : rendu compact sans en-tête
+        if (gapOccs.length > 0 && realOccs.length === 0) {
+          return (
+            <div key={group.key}>
+              {gapOccs.map((occ, i) => <OccurrenceCard key={`${group.key}-gap-${i}`} occ={occ} siteId={siteId} />)}
+            </div>
+          )
+        }
+
+        const kindLabel = SOURCE_KIND_LABEL[group.sourceKind] ?? group.sourceKind
+        const preuveLabel = `${realOccs.length} preuve${realOccs.length > 1 ? 's' : ''}`
+
+        // Groupe à une seule occurrence : afficher sans accordéon
+        if (realOccs.length === 1) {
+          return (
+            <div key={group.key} className="space-y-1.5">
+              <div className="flex items-center gap-2 px-1">
+                <span className="text-xs font-medium text-foreground">{frDate(group.date)}</span>
+                <span className="text-xs text-muted-foreground">—</span>
+                <span className="text-xs text-muted-foreground">{kindLabel}</span>
+              </div>
+              <OccurrenceCard occ={realOccs[0]} siteId={siteId} />
+            </div>
+          )
+        }
+
+        // Groupe à plusieurs occurrences : accordéon natif ouvert par défaut
+        return (
+          <details key={group.key} open className="group/details">
+            <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-1 py-1 hover:bg-muted/40 select-none">
+              <span className="text-muted-foreground transition-transform group-open/details:rotate-90">▸</span>
+              <span className="text-xs font-medium text-foreground">{frDate(group.date)}</span>
+              <span className="text-xs text-muted-foreground">—</span>
+              <span className="text-xs text-muted-foreground">{kindLabel}</span>
+              <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{preuveLabel}</span>
+            </summary>
+            <ol className="mt-1.5 space-y-1.5 pl-4 border-l-2 border-muted ml-3">
+              {realOccs.map((occ, i) => (
+                <li key={`${group.key}-${i}`}>
+                  <OccurrenceCard occ={occ} siteId={siteId} />
+                </li>
+              ))}
+            </ol>
+          </details>
+        )
+      })}
+
+      {hasGap && (
+        <p className="text-xs text-muted-foreground pt-1">
+          Les entrées en pointillé représentent des PV où ce sujet n'est pas mentionné — absence ≠ résolution.
+        </p>
+      )}
+    </div>
+  )
+}
+
 function OccurrenceCard({ occ, siteId }: { occ: SubjectOccurrenceMerged; siteId: string }) {
   if (occ.isGap) {
     return (
@@ -1023,21 +1122,9 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
         {/* Fil métier */}
         <section className="space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Fil métier ({life.occurrences.length} entrée{life.occurrences.length > 1 ? 's' : ''})
+            Fil métier ({life.occurrences.filter((o) => !o.isGap).length} preuve{life.occurrences.filter((o) => !o.isGap).length > 1 ? 's' : ''})
           </h2>
-          <ol className="space-y-2">
-            {life.occurrences.map((occ, i) => (
-              <li key={`${occ.runId}-${i}`} id={`occ-${i}`}>
-                <OccurrenceCard occ={occ} siteId={siteId} />
-              </li>
-            ))}
-          </ol>
-
-          {life.occurrences.some((o) => o.isGap) && (
-            <p className="text-xs text-muted-foreground">
-              Les entrées en pointillé représentent des PV où ce sujet n'est pas mentionné — absence ≠ résolution.
-            </p>
-          )}
+          <FilMetierGrouped occurrences={life.occurrences} siteId={siteId} />
         </section>
       </main>
     </>
