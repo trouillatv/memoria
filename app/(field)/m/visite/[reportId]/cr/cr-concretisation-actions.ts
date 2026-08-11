@@ -82,6 +82,11 @@ export interface ReviewItem extends OperationalItem {
   alreadyCreated: boolean
   /** `false` pour l'intervenant : listé, expliqué, mais pas créé ici. */
   creatable: boolean
+  /** Cet élément était dans l'analyse initiale mais pas dans le CR corrigé ;
+   *  l'humain a cliqué « Réintroduire » → l'objet existe dans le chantier
+   *  mais la section du CR ne le mentionne plus. On l'affiche comme créé dans
+   *  sa famille, avec cette origine explicitement signalée. */
+  fromReintroduction?: boolean
 }
 
 export type PrepareResult =
@@ -123,26 +128,51 @@ export async function prepareCrConcretisationAction(reportId: string): Promise<P
   // CE QUE MES CORRECTIONS ONT CHANGÉ. On compare ce que produit le texte
   // corrigé à ce que produisait la proposition d'origine : le conducteur voit
   // l'effet de son travail, il ne relit pas une liste sans repère.
-  const diff = diffOperationalItems(readOperationalItems(asProposedSections(ctx.doc.sections)), items)
+  const rawDiff = diffOperationalItems(readOperationalItems(asProposedSections(ctx.doc.sections)), items)
+
+  // Les éléments "retirés" que l'humain a réintroduits via le bouton dédié :
+  // ils existent déjà dans le chantier → sortent de la liste "retirés"
+  // et rejoignent leur famille dans la liste active, marqués clairement.
+  const reintroducedFromRemoved = rawDiff.removed.filter(
+    (r) => r.kind !== 'intervenant' && dejaCrees.has(signatureOf(r)),
+  )
+  const stillRemoved = rawDiff.removed.filter(
+    (r) => r.kind === 'intervenant' || !dejaCrees.has(signatureOf(r)),
+  )
+  const diff = { ...rawDiff, removed: stillRemoved }
 
   // Le REGISTRE de la section fait foi ; le libellé n'est plus qu'un second
   // garde-fou, pour les objets créés avant l'existence du registre.
   const bySection = new Map(ctx.doc.sections.map((s) => [s.key, s.concretisations]))
 
+  const mainItems: ReviewItem[] = items.map((i) => {
+    const match = matchConcretisation(i, bySection.get(i.sourceSection))
+    return {
+      ...i,
+      creatable: i.kind !== 'intervenant',
+      alreadyCreated: match !== null || dejaCrees.has(signatureOf(i)),
+      entityId: match?.entry.entity_id,
+      textChanged: match?.textChanged ?? false,
+    }
+  })
+
+  // Items synthétiques pour les éléments réintroduits — ils n'apparaissent
+  // pas dans content mais existent dans le chantier. Clé préfixée pour éviter
+  // toute collision avec les items positionnels du texte corrigé.
+  const reintroducedItems: ReviewItem[] = reintroducedFromRemoved.map((r) => ({
+    ...r,
+    key: `reintr:${r.key}`,
+    creatable: true,
+    alreadyCreated: true,
+    textChanged: false,
+    fromReintroduction: true,
+  }))
+
   return {
     ok: true,
     status: ctx.doc.status,
     diff,
-    items: items.map((i) => {
-      const match = matchConcretisation(i, bySection.get(i.sourceSection))
-      return {
-        ...i,
-        creatable: i.kind !== 'intervenant',
-        alreadyCreated: match !== null || dejaCrees.has(signatureOf(i)),
-        entityId: match?.entry.entity_id,
-        textChanged: match?.textChanged ?? false,
-      }
-    }),
+    items: [...mainItems, ...reintroducedItems],
   }
 }
 

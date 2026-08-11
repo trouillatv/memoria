@@ -372,29 +372,33 @@ export function CrConcretisation({
         </p>
       )}
 
-      {/* CE QUE MES CORRECTIONS ONT CHANGÉ — sans ce repère, on relit une liste
-          sans savoir ce que son propre travail a produit. */}
+      {/* CE QUE MES CORRECTIONS ONT CHANGÉ — diff lisible, pas un compteur opaque. */}
       {diff && !diff.unchanged && (
         <ul data-slot="cr-diff" className="mt-2.5 space-y-0.5 rounded-lg bg-muted/50 px-2.5 py-2 text-[12px]">
           {diff.added.length > 0 && (
-            <li className="text-emerald-700 dark:text-emerald-400">
-              + {diff.added.length} nouvelle{diff.added.length > 1 ? 's' : ''} depuis vos corrections
-            </li>
-          )}
-          {diff.removed.length > 0 && (
             <>
-              <li className="text-muted-foreground">
-                − {diff.removed.length} que MemorIA proposait et que vous avez retirée
-                {diff.removed.length > 1 ? 's' : ''}
+              <li className="font-medium text-emerald-700 dark:text-emerald-400">
+                Ajouté{diff.added.length > 1 ? 's' : ''} ou reformulé{diff.added.length > 1 ? 's' : ''} dans votre CR ({diff.added.length})
               </li>
-              {diff.removed.map((r) => (
+              {diff.added.map((a) => (
+                <li key={a.key} className="ml-2 truncate text-[11px] text-emerald-800 dark:text-emerald-300">
+                  + {a.label}
+                </li>
+              ))}
+            </>
+          )}
+          {/* Filtre optimiste : les items fraîchement réintroduits (clic dans
+              cette session) disparaissent immédiatement de la liste, avant
+              même le prochain prepare() qui les exclura côté serveur. */}
+          {diff.removed.filter((r) => !reintroduced.has(r.key)).length > 0 && (
+            <>
+              <li className={cn("text-muted-foreground", diff.added.length > 0 && "mt-1.5")}>
+                Retirés de votre CR ({diff.removed.filter((r) => !reintroduced.has(r.key)).length})
+              </li>
+              {diff.removed.filter((r) => !reintroduced.has(r.key)).map((r) => (
                   <li key={r.key} className="ml-2 flex items-center justify-between gap-2">
                     <span className="flex-1 truncate text-[11px] line-through opacity-60">{r.label}</span>
-                    {r.kind === 'intervenant' ? null : reintroduced.has(r.key) ? (
-                      <span className="shrink-0 inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
-                        <Check className="h-3 w-3" aria-hidden /> Créé
-                      </span>
-                    ) : (
+                    {r.kind !== 'intervenant' && (
                       <button
                         type="button"
                         onClick={() => void reintroduce(r)}
@@ -546,9 +550,14 @@ export function CrConcretisation({
                           <span className="mt-0.5 block text-[11px] text-muted-foreground">{item.owner}</span>
                         )}
 
-                        {item.alreadyCreated && !item.textChanged && (
+                        {item.alreadyCreated && !item.textChanged && !item.fromReintroduction && (
                           <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
                             <Check className="h-3 w-3" aria-hidden /> Déjà créé
+                          </span>
+                        )}
+                        {item.fromReintroduction && (
+                          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                            <Check className="h-3 w-3" aria-hidden /> Réintroduit depuis l'analyse initiale
                           </span>
                         )}
                         {item.alreadyCreated && item.textChanged && (
@@ -621,9 +630,9 @@ export function CrConcretisation({
         </button>
       )}
 
-      {/* RÉANALYSER LA VISITE — lance un nouveau passage LLM sur les sources
-          sans écrire le résultat. Montre ce qui changerait par rapport au CR actuel.
-          Séparé de « Mettre à jour la synthèse » : ici on compare AVANT de décider. */}
+      {/* RELIRE LES SOURCES — nouveau passage LLM en mode dry-run sur les
+          vocaux, notes et captures. Compare au CR actuel sans jamais le modifier.
+          Ce n'est pas une nouvelle version du CR : c'est un contrôle candidat. */}
       <div className="mt-4 border-t pt-3.5">
         <button
           type="button"
@@ -632,11 +641,11 @@ export function CrConcretisation({
           className="inline-flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-[12px] font-medium text-muted-foreground hover:bg-muted/40 disabled:opacity-50"
         >
           {reanalyzing
-            ? <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Analyse en cours…</>
-            : <><Sparkles className="h-3.5 w-3.5" aria-hidden /> Réanalyser la visite</>}
+            ? <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Lecture en cours…</>
+            : <><Sparkles className="h-3.5 w-3.5" aria-hidden /> Relire les vocaux, notes et captures</>}
         </button>
         <p className="mt-1 text-center text-[11px] text-muted-foreground">
-          Compare une nouvelle lecture IA avec votre CR actuel, sans rien modifier.
+          Votre CR ne sera pas modifié. MemorIA compare une nouvelle lecture des sources à votre texte actuel.
         </p>
 
         {reanalyseError && (
@@ -647,23 +656,25 @@ export function CrConcretisation({
           <div className="mt-3 rounded-lg bg-muted/50 px-2.5 py-2 text-[12px]">
             {candidateDiff.unchanged ? (
               <p className="italic text-muted-foreground">
-                La nouvelle analyse correspond exactement à votre CR actuel.
+                La nouvelle lecture correspond exactement à votre CR actuel.
               </p>
             ) : (
               <>
                 <p className="mb-1.5 font-semibold text-foreground">
-                  Ce que MemorIA verrait maintenant
+                  Comparaison avec votre CR
+                </p>
+                <p className="mb-1 text-[11px] italic text-muted-foreground">
+                  Note : des formulations différentes peuvent désigner la même information. Examinez avant de conclure.
                 </p>
                 {candidateDiff.added.length > 0 && (
                   <div className="mb-1.5">
-                    <p className="text-emerald-700 dark:text-emerald-400">
-                      + {candidateDiff.added.length} nouvel{candidateDiff.added.length > 1 ? 's' : ''}{" "}
-                      élément{candidateDiff.added.length > 1 ? 's' : ''} détecté{candidateDiff.added.length > 1 ? 's' : ''}
+                    <p className="text-foreground">
+                      {candidateDiff.added.length} élément{candidateDiff.added.length > 1 ? 's' : ''} issu{candidateDiff.added.length > 1 ? 's' : ''} de la nouvelle lecture à comparer
                     </p>
                     <ul className="mt-0.5 space-y-0.5">
                       {candidateDiff.added.map((a) => (
-                        <li key={a.key} className="ml-2 truncate text-[11px] text-emerald-800 dark:text-emerald-300">
-                          + {a.label}
+                        <li key={a.key} className="ml-2 truncate text-[11px] text-muted-foreground">
+                          · {a.label}
                         </li>
                       ))}
                     </ul>
@@ -672,11 +683,11 @@ export function CrConcretisation({
                 {candidateDiff.removed.length > 0 && (
                   <div>
                     <p className="text-muted-foreground">
-                      − {candidateDiff.removed.length} élément{candidateDiff.removed.length > 1 ? 's' : ''} de votre CR non retrouvé{candidateDiff.removed.length > 1 ? 's' : ''} par la nouvelle analyse
+                      {candidateDiff.removed.length} élément{candidateDiff.removed.length > 1 ? 's' : ''} de votre CR non retrouvé{candidateDiff.removed.length > 1 ? 's' : ''} dans les sources
                     </p>
                     <ul className="mt-0.5 space-y-0.5">
                       {candidateDiff.removed.map((r) => (
-                        <li key={r.key} className="ml-2 truncate text-[11px] line-through opacity-60">
+                        <li key={r.key} className="ml-2 truncate text-[11px] line-through opacity-50">
                           {r.label}
                         </li>
                       ))}
@@ -685,9 +696,10 @@ export function CrConcretisation({
                 )}
                 {candidateDiff.changed.length > 0 && (
                   <p className="mt-1 text-sky-700 dark:text-sky-400">
-                    ~ {candidateDiff.changed.length} modifié{candidateDiff.changed.length > 1 ? 's' : ''} (responsable ou date)
+                    ~ {candidateDiff.changed.length} reformulé{candidateDiff.changed.length > 1 ? 's' : ''} (responsable ou date différent)
                   </p>
                 )}
+                <p className="mt-2 text-[11px] text-muted-foreground italic">Votre CR reste inchangé.</p>
               </>
             )}
           </div>
