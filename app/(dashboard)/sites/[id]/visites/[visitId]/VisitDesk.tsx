@@ -586,36 +586,86 @@ function PiecesVersees({
 
 function NonRetenu({ ignored, total }: { ignored: VisitNarrative['ignored']; total: number }) {
   const [ouvert, setOuvert] = useState(false)
+
+  const nbSuperseded = ignored.superseded.length
+  const nbByHuman    = ignored.byHuman.length
+  const nbCaptures   = ignored.captures.length
+
+  const partieTitre: string[] = []
+  if (nbSuperseded > 0) partieTitre.push(`${nbSuperseded} remplacé${nbSuperseded > 1 ? 's' : ''}`)
+  if (nbByHuman > 0)    partieTitre.push(`${nbByHuman} écarté${nbByHuman > 1 ? 's' : ''}`)
+  if (nbCaptures > 0)   partieTitre.push(`${nbCaptures} capture${nbCaptures > 1 ? 's' : ''}`)
+
   return (
     <section className="rounded-xl border bg-card">
       <button
         type="button"
         onClick={() => setOuvert((v) => !v)}
         aria-expanded={ouvert}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left"
+        className="flex w-full flex-wrap items-center gap-x-3 gap-y-0.5 px-4 py-3 text-left"
       >
-        <h2 className="text-[15px] font-semibold">Ce qui n’a pas été retenu</h2>
+        <h2 className="text-[15px] font-semibold">Historique de l'analyse</h2>
         <span className="text-[13px] text-muted-foreground">{total} élément{total > 1 ? 's' : ''}</span>
+        {partieTitre.length > 0 && (
+          <span className="w-full text-[12px] text-muted-foreground">{partieTitre.join(' · ')}</span>
+        )}
         <span className="ml-auto flex items-center gap-1 text-[13px] font-medium text-primary">
-          Voir les détails
+          {ouvert ? 'Réduire' : 'Voir les détails'}
           <ChevronDown className={`h-4 w-4 transition-transform ${ouvert ? '' : '-rotate-90'}`} aria-hidden />
         </span>
       </button>
       {ouvert && (
-        <div className="space-y-px px-4 pb-4">
+        <div className="border-t px-4 pb-4">
           {total === 0 && (
-            <p className="text-[13px] text-muted-foreground">
-              Rien n’a été mis de côté : tout ce qui a été capté ou proposé est encore en jeu.
+            <p className="pt-3 text-[13px] text-muted-foreground">
+              Rien n'a été mis de côté : tout ce qui a été capté ou proposé est encore en jeu.
             </p>
           )}
-          {[...ignored.captures.map((c) => ({ id: c.id, label: c.body?.trim() || 'Capture sans texte', why: c.why.label })),
-            ...ignored.byHuman.map((p) => ({ id: p.id, label: p.label, why: p.why.label })),
-            ...ignored.superseded.map((p) => ({ id: p.id, label: p.label, why: p.why.label }))].map((x) => (
-            <div key={x.id} className="border-b py-2 last:border-0">
-              <p className="text-[13px] text-muted-foreground">{x.label}</p>
-              <p className="text-[11.5px] text-muted-foreground">{x.why}</p>
+          {nbSuperseded > 0 && (
+            <div className={nbByHuman > 0 || nbCaptures > 0 ? 'border-b pb-3' : ''}>
+              <p className="py-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Remplacés lors des analyses — {nbSuperseded}
+              </p>
+              <div className="space-y-px">
+                {ignored.superseded.map((p) => (
+                  <div key={p.id} className="py-1.5">
+                    <p className="text-[13px] text-muted-foreground">{p.label}</p>
+                    <p className="text-[11.5px] text-muted-foreground">{p.why.label}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
+          )}
+          {nbByHuman > 0 && (
+            <div className={nbCaptures > 0 ? 'border-b pb-3' : ''}>
+              <p className={`py-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground${nbSuperseded > 0 ? ' mt-1' : ''}`}>
+                Écartés par vous — {nbByHuman}
+              </p>
+              <div className="space-y-px">
+                {ignored.byHuman.map((p) => (
+                  <div key={p.id} className="py-1.5">
+                    <p className="text-[13px] text-muted-foreground">{p.label}</p>
+                    <p className="text-[11.5px] text-muted-foreground">{p.why.label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {nbCaptures > 0 && (
+            <div>
+              <p className={`py-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground${nbSuperseded > 0 || nbByHuman > 0 ? ' mt-1' : ''}`}>
+                Captures non utilisées — {nbCaptures}
+              </p>
+              <div className="space-y-px">
+                {ignored.captures.map((c) => (
+                  <div key={c.id} className="py-1.5">
+                    <p className="text-[13px] text-muted-foreground">{c.body?.trim() || 'Capture sans texte'}</p>
+                    <p className="text-[11.5px] text-muted-foreground">{c.why.label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>
