@@ -234,13 +234,14 @@ export async function classifySubjectEvolutionV2(
     )
   )
 
-  const pairs: V2SubjectResult['pairs'] = []
-  for (let i = 0; i < consolidatedEvents.length - 1; i++) {
-    const t1 = consolidatedEvents[i]
-    const t2 = consolidatedEvents[i + 1]
-    const result = await classifyEvolution(t1, t2, subject.label)
-    pairs.push({ stateT1: t1, stateT2: t2, result })
-  }
+  const pairs: V2SubjectResult['pairs'] = await Promise.all(
+    Array.from({ length: consolidatedEvents.length - 1 }, async (_, i) => {
+      const t1 = consolidatedEvents[i]
+      const t2 = consolidatedEvents[i + 1]
+      const result = await classifyEvolution(t1, t2, subject.label)
+      return { stateT1: t1, stateT2: t2, result }
+    })
+  )
 
   return {
     canonicalSubjectId: subject.canonicalSubjectId,

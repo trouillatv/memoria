@@ -18,6 +18,8 @@ import {
   getSiteDependencyGraph,
 } from '@/lib/documents/site-synthesis'
 import { buildEvolutionReadModel, generateEvolutionNarrative } from '@/lib/documents/pv-evolution'
+import { isEvolutionV2Enabled, classifySubjectEvolutionV2 } from '@/lib/knowledge/evolution-v2'
+import type { V2SubjectResult } from '@/lib/knowledge/evolution-v2'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
 import { SubjectLifelineGrid } from './SubjectLifelineGrid'
@@ -37,6 +39,7 @@ interface PageProps {
     thread?: string
     theme?: string
     status?: string
+    v2?: string
   }>
 }
 
@@ -54,6 +57,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   const view: ViewKey = (VALID_VIEWS.includes(sp.view as ViewKey) ? sp.view as ViewKey : 'synthese')
   const initialThread = sp.thread ?? null
   const initialTheme = sp.theme ?? null
+  const debugV2 = sp.v2 === '1' && view === 'evolution'
 
   const [site, matrix, timeline, importantSubjects] = await Promise.all([
     getSiteIdentity(siteId).catch(() => null),
@@ -89,7 +93,15 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
             buildNativeEvolutionData(siteId).catch(() => []),
           ])
           const narrative = await generateEvolutionNarrative(readModel)
-          return { readModel, narrative, healthTimeline, nativeSubjectEvolutions }
+
+          let v2Results: V2SubjectResult[] | null = null
+          if (debugV2 && isEvolutionV2Enabled(siteId) && nativeSubjectEvolutions.length > 0) {
+            v2Results = await Promise.all(
+              nativeSubjectEvolutions.map((s) => classifySubjectEvolutionV2(s))
+            ).catch(() => null)
+          }
+
+          return { readModel, narrative, healthTimeline, nativeSubjectEvolutions, v2Results }
         } catch {
           return null
         }
@@ -296,6 +308,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
               healthTimeline={evolutionData.healthTimeline}
               nativeEvents={nativeEventsForEvolution}
               nativeSubjectEvolutions={evolutionData.nativeSubjectEvolutions}
+              v2Results={evolutionData.v2Results ?? undefined}
               subjectLabelMap={subjectLabelMap}
             />
           ) : (

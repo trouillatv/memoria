@@ -7,6 +7,7 @@ import type {
 } from '@/lib/documents/pv-evolution'
 import type { SiteHealthTimeline } from '@/lib/documents/site-synthesis'
 import type { NativeSubjectEvolution } from '@/lib/db/canonical-subject-life'
+import type { V2SubjectResult, EvolutionV2Verdict } from '@/lib/knowledge/evolution-v2'
 
 // ── Phase detection algorithm (déterministe, générique) ───────────────────────
 
@@ -382,7 +383,83 @@ const SOURCE_KIND_LABEL: Record<string, string> = {
   meeting: 'Réunion',
 }
 
-function NativeEvolutionSection({ subjects, siteId }: { subjects: NativeSubjectEvolution[]; siteId: string }) {
+function fmtShortDate(d: string): string {
+  return new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+const VERDICT_CONFIG: Record<EvolutionV2Verdict, { label: string; className: string }> = {
+  meaningful_change: { label: 'Évolution détectée', className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' },
+  remention:         { label: 'Pas d\'évolution significative', className: 'bg-muted text-muted-foreground' },
+  ambiguous:         { label: 'Ambigu', className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' },
+}
+
+const PATTERN_LABEL: Record<string, string> = {
+  status_transition:   'Changement de statut',
+  scope_change:        'Périmètre redéfini',
+  operationalization:  'Passage à la réalisation',
+  new_fact:            'Fait nouveau',
+}
+
+function V2PairCard({ pair }: { pair: V2SubjectResult['pairs'][number] }) {
+  const { stateT1, stateT2, result } = pair
+  if (!result) return null
+
+  const verdict = VERDICT_CONFIG[result.verdict]
+
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+      {/* T1 */}
+      <div>
+        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {fmtShortDate(stateT1.date)} · {SOURCE_KIND_LABEL[stateT1.sourceKind] ?? stateT1.sourceKind}
+          {stateT1.fallbackUsed && <span className="ml-1 text-amber-600">(fallback)</span>}
+        </p>
+        <p className="mt-0.5 text-xs leading-snug text-foreground/80">{stateT1.state}</p>
+      </div>
+
+      {/* Verdict */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium', verdict.className)}>
+          {verdict.label}
+        </span>
+        {result.pattern && (
+          <span className="text-[11px] text-muted-foreground">{PATTERN_LABEL[result.pattern] ?? result.pattern}</span>
+        )}
+        <span className="text-[10px] text-muted-foreground ml-auto">conf. {(result.confidence * 100).toFixed(0)}%</span>
+      </div>
+
+      {/* Justification */}
+      {result.justification && (
+        <p className="text-[11px] italic text-muted-foreground leading-snug border-l-2 border-border pl-2">
+          {result.justification}
+        </p>
+      )}
+
+      {/* T2 */}
+      <div>
+        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {fmtShortDate(stateT2.date)} · {SOURCE_KIND_LABEL[stateT2.sourceKind] ?? stateT2.sourceKind}
+          {stateT2.fallbackUsed && <span className="ml-1 text-amber-600">(fallback)</span>}
+        </p>
+        <p className="mt-0.5 text-xs leading-snug text-foreground/80">{stateT2.state}</p>
+      </div>
+    </div>
+  )
+}
+
+function NativeEvolutionSection({
+  subjects,
+  siteId,
+  v2Results,
+}: {
+  subjects: NativeSubjectEvolution[]
+  siteId: string
+  v2Results?: V2SubjectResult[]
+}) {
+  const v2BySubject = v2Results
+    ? new Map(v2Results.map((r) => [r.canonicalSubjectId, r]))
+    : null
+
   return (
     <section className="rounded-[22px] border bg-card p-5 shadow-sm">
       <div className="mb-4 flex items-baseline justify-between">
@@ -392,36 +469,55 @@ function NativeEvolutionSection({ subjects, siteId }: { subjects: NativeSubjectE
             {subjects.length} sujet{subjects.length > 1 ? 's' : ''} avec au moins deux événements distincts · visites terrain &amp; réunions
           </p>
         </div>
+        {v2BySubject && (
+          <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+            Mode debug V2 · shadow
+          </span>
+        )}
       </div>
       <div className="space-y-6">
-        {subjects.map((subject) => (
-          <div key={subject.canonicalSubjectId}>
-            <Link
-              href={`/sites/${siteId}/historique/sujets/${subject.canonicalSubjectId}`}
-              className="text-sm font-semibold hover:underline"
-            >
-              {subject.label}
-            </Link>
-            <ol className="mt-2 space-y-2 border-l border-border pl-4">
-              {subject.events.map((ev, i) => (
-                <li key={i} className="relative">
-                  <span className="absolute -left-[1.125rem] top-[0.4rem] h-2 w-2 rounded-full border border-border bg-card" />
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(ev.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    {' · '}
-                    {SOURCE_KIND_LABEL[ev.sourceKind] ?? ev.sourceKind}
-                  </p>
-                  <p className="mt-0.5 text-sm leading-snug text-foreground/80">
-                    {ev.labels.slice(0, 2).join(' · ')}
-                    {ev.labels.length > 2 && (
-                      <span className="text-muted-foreground"> +{ev.labels.length - 2}</span>
-                    )}
-                  </p>
-                </li>
-              ))}
-            </ol>
-          </div>
-        ))}
+        {subjects.map((subject) => {
+          const v2 = v2BySubject?.get(subject.canonicalSubjectId)
+          return (
+            <div key={subject.canonicalSubjectId}>
+              <Link
+                href={`/sites/${siteId}/historique/sujets/${subject.canonicalSubjectId}`}
+                className="text-sm font-semibold hover:underline"
+              >
+                {subject.label}
+              </Link>
+
+              {/* V2 mode : paires consolidées */}
+              {v2 && v2.pairs.length > 0 ? (
+                <div className="mt-2 space-y-2">
+                  {v2.pairs.map((pair, i) => (
+                    <V2PairCard key={i} pair={pair} />
+                  ))}
+                </div>
+              ) : (
+                /* Fallback : vue brute des événements */
+                <ol className="mt-2 space-y-2 border-l border-border pl-4">
+                  {subject.events.map((ev, i) => (
+                    <li key={i} className="relative">
+                      <span className="absolute -left-[1.125rem] top-[0.4rem] h-2 w-2 rounded-full border border-border bg-card" />
+                      <p className="text-xs text-muted-foreground">
+                        {fmtShortDate(ev.date)}
+                        {' · '}
+                        {SOURCE_KIND_LABEL[ev.sourceKind] ?? ev.sourceKind}
+                      </p>
+                      <p className="mt-0.5 text-sm leading-snug text-foreground/80">
+                        {ev.labels.slice(0, 2).join(' · ')}
+                        {ev.labels.length > 2 && (
+                          <span className="text-muted-foreground"> +{ev.labels.length - 2}</span>
+                        )}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          )
+        })}
       </div>
     </section>
   )
@@ -436,13 +532,14 @@ export interface EvolutionViewProps {
   healthTimeline: SiteHealthTimeline | null
   nativeEvents?: Array<{ date: string; sourceKind: 'field_visit' | 'meeting'; label: string; canonicalSubjectId: string }>
   nativeSubjectEvolutions?: NativeSubjectEvolution[]
+  v2Results?: V2SubjectResult[]
   subjectLabelMap?: Record<string, string>
 }
 
-export function EvolutionView({ siteId, readModel, narrative, healthTimeline, nativeEvents, nativeSubjectEvolutions, subjectLabelMap }: EvolutionViewProps) {
+export function EvolutionView({ siteId, readModel, narrative, healthTimeline, nativeEvents, nativeSubjectEvolutions, v2Results, subjectLabelMap }: EvolutionViewProps) {
   if (readModel.periods.length === 0) {
     if (nativeSubjectEvolutions && nativeSubjectEvolutions.length > 0) {
-      return <NativeEvolutionSection subjects={nativeSubjectEvolutions} siteId={siteId} />
+      return <NativeEvolutionSection subjects={nativeSubjectEvolutions} siteId={siteId} v2Results={v2Results} />
     }
     return (
       <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
