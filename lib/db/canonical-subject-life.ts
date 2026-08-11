@@ -738,6 +738,81 @@ export async function getSiteNativeOccurrencesBySubject(
   return result
 }
 
+export type NativeSubjectEvolution = {
+  canonicalSubjectId: string
+  label: string
+  events: Array<{
+    date: string
+    sourceKind: 'field_visit' | 'meeting'
+    labels: string[]
+  }>
+}
+
+/**
+ * Retourne les sujets canoniques actifs ayant ≥ 2 événements métier distincts
+ * (sourceKind+effectiveDate) provenant de visites terrain ou réunions.
+ * Utilisé par la vue Évolution comme source primaire lorsqu'aucun PV historique n'est présent.
+ */
+export async function buildNativeEvolutionData(siteId: string): Promise<NativeSubjectEvolution[]> {
+  const supabase = createAdminClient()
+
+  type OccRow = {
+    canonical_subject_id: string
+    effective_date: string
+    source_kind: 'field_visit' | 'meeting'
+    label: string
+  }
+
+  const [{ data: occs }, { data: subjects }] = await Promise.all([
+    supabase
+      .from('canonical_subject_occurrence')
+      .select('canonical_subject_id, effective_date, source_kind, label')
+      .eq('site_id', siteId)
+      .in('source_kind', ['field_visit', 'meeting'])
+      .neq('validation_status', 'rejected')
+      .order('effective_date', { ascending: true }),
+    supabase
+      .from('canonical_subject')
+      .select('id, label')
+      .eq('site_id', siteId)
+      .eq('status', 'active'),
+  ])
+
+  if (!occs?.length || !subjects?.length) return []
+
+  const activeLabels = new Map(
+    (subjects as Array<{ id: string; label: string }>).map((s) => [s.id, s.label])
+  )
+
+  const subjectMap = new Map<string, {
+    label: string
+    events: Map<string, { date: string; sourceKind: 'field_visit' | 'meeting'; labels: string[] }>
+  }>()
+
+  for (const row of occs as OccRow[]) {
+    const sid = row.canonical_subject_id
+    if (!activeLabels.has(sid)) continue
+    if (!subjectMap.has(sid)) {
+      subjectMap.set(sid, { label: activeLabels.get(sid)!, events: new Map() })
+    }
+    const subject = subjectMap.get(sid)!
+    const key = `${row.source_kind}\x00${row.effective_date}`
+    if (!subject.events.has(key)) {
+      subject.events.set(key, { date: row.effective_date, sourceKind: row.source_kind, labels: [] })
+    }
+    subject.events.get(key)!.labels.push(row.label)
+  }
+
+  return [...subjectMap.entries()]
+    .filter(([, s]) => s.events.size >= 2)
+    .map(([sid, s]) => ({
+      canonicalSubjectId: sid,
+      label: s.label,
+      events: [...s.events.values()],
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'fr'))
+}
+
 /** Labels de canonical_subjects par IDs — pour résoudre les sujets 100% natifs absents de la matrice PV. */
 export async function getCanonicalSubjectLabelsByIds(
   ids: string[],

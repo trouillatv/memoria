@@ -6,7 +6,7 @@ import { SiteTabsNav } from '../SiteTabsNav'
 import { getSiteHistoricalTimeline, getSiteSubjectMatrix } from '@/lib/documents/pv-history'
 import { getCanonicalDelta } from '@/lib/documents/canonical-transitions'
 import { getSuggestedLinkCountsBySite } from '@/lib/db/subject-thread-links'
-import { getSiteNativeOccurrencesBySubject, getCanonicalSubjectLabelsByIds } from '@/lib/db/canonical-subject-life'
+import { getSiteNativeOccurrencesBySubject, getCanonicalSubjectLabelsByIds, buildNativeEvolutionData } from '@/lib/db/canonical-subject-life'
 import {
   getRunsMeta,
   computeWatchlist,
@@ -83,12 +83,13 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   const evolutionData = view === 'evolution'
     ? await (async () => {
         try {
-          const [readModel, healthTimeline] = await Promise.all([
+          const [readModel, healthTimeline, nativeSubjectEvolutions] = await Promise.all([
             buildEvolutionReadModel(siteId),
             getSiteHealthTimeline(siteId).catch(() => null),
+            buildNativeEvolutionData(siteId).catch(() => []),
           ])
           const narrative = await generateEvolutionNarrative(readModel)
-          return { readModel, narrative, healthTimeline }
+          return { readModel, narrative, healthTimeline, nativeSubjectEvolutions }
         } catch {
           return null
         }
@@ -294,6 +295,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
               narrative={evolutionData.narrative}
               healthTimeline={evolutionData.healthTimeline}
               nativeEvents={nativeEventsForEvolution}
+              nativeSubjectEvolutions={evolutionData.nativeSubjectEvolutions}
               subjectLabelMap={subjectLabelMap}
             />
           ) : (

@@ -6,6 +6,7 @@ import type {
   EvolutionSubjectFact,
 } from '@/lib/documents/pv-evolution'
 import type { SiteHealthTimeline } from '@/lib/documents/site-synthesis'
+import type { NativeSubjectEvolution } from '@/lib/db/canonical-subject-life'
 
 // ── Phase detection algorithm (déterministe, générique) ───────────────────────
 
@@ -374,6 +375,58 @@ function PeriodCard({ period, phase, styles, narrativeText, siteId, subjectLabel
   )
 }
 
+// ── Évolution native (visites terrain + réunions) ─────────────────────────────
+
+const SOURCE_KIND_LABEL: Record<string, string> = {
+  field_visit: 'Visite terrain',
+  meeting: 'Réunion',
+}
+
+function NativeEvolutionSection({ subjects, siteId }: { subjects: NativeSubjectEvolution[]; siteId: string }) {
+  return (
+    <section className="rounded-[22px] border bg-card p-5 shadow-sm">
+      <div className="mb-4 flex items-baseline justify-between">
+        <div>
+          <h2 className="text-sm font-semibold">Évolution des sujets observés</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {subjects.length} sujet{subjects.length > 1 ? 's' : ''} avec au moins deux événements distincts · visites terrain &amp; réunions
+          </p>
+        </div>
+      </div>
+      <div className="space-y-6">
+        {subjects.map((subject) => (
+          <div key={subject.canonicalSubjectId}>
+            <Link
+              href={`/sites/${siteId}/historique/sujets/${subject.canonicalSubjectId}`}
+              className="text-sm font-semibold hover:underline"
+            >
+              {subject.label}
+            </Link>
+            <ol className="mt-2 space-y-2 border-l border-border pl-4">
+              {subject.events.map((ev, i) => (
+                <li key={i} className="relative">
+                  <span className="absolute -left-[1.125rem] top-[0.4rem] h-2 w-2 rounded-full border border-border bg-card" />
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(ev.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {' · '}
+                    {SOURCE_KIND_LABEL[ev.sourceKind] ?? ev.sourceKind}
+                  </p>
+                  <p className="mt-0.5 text-sm leading-snug text-foreground/80">
+                    {ev.labels.slice(0, 2).join(' · ')}
+                    {ev.labels.length > 2 && (
+                      <span className="text-muted-foreground"> +{ev.labels.length - 2}</span>
+                    )}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 // ── Composant principal ────────────────────────────────────────────────────────
 
 export interface EvolutionViewProps {
@@ -382,16 +435,20 @@ export interface EvolutionViewProps {
   narrative: EvolutionNarrative
   healthTimeline: SiteHealthTimeline | null
   nativeEvents?: Array<{ date: string; sourceKind: 'field_visit' | 'meeting'; label: string; canonicalSubjectId: string }>
+  nativeSubjectEvolutions?: NativeSubjectEvolution[]
   subjectLabelMap?: Record<string, string>
 }
 
-export function EvolutionView({ siteId, readModel, narrative, healthTimeline, nativeEvents, subjectLabelMap }: EvolutionViewProps) {
+export function EvolutionView({ siteId, readModel, narrative, healthTimeline, nativeEvents, nativeSubjectEvolutions, subjectLabelMap }: EvolutionViewProps) {
   if (readModel.periods.length === 0) {
+    if (nativeSubjectEvolutions && nativeSubjectEvolutions.length > 0) {
+      return <NativeEvolutionSection subjects={nativeSubjectEvolutions} siteId={siteId} />
+    }
     return (
       <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
         <p className="font-medium">Pas assez de données pour reconstituer l'évolution.</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Au moins deux PV analysés avec des sujets liés à un suivi canonique sont nécessaires.
+          Un sujet canonique doit avoir au moins deux événements distincts dans le temps.
         </p>
       </section>
     )
