@@ -355,6 +355,10 @@ async function projectAndTrace(params: {
         siteId: params.siteId,
         authorId: null,
       })
+      // Archivage automatique : les sujets sans occurrence active après réconciliation
+      // passent à 'auto_archived'. Ils peuvent être réactivés lors d'une prochaine visite.
+      const { autoArchiveOrphanedSubjects } = await import('@/lib/db/canonical-subject-archive')
+      await autoArchiveOrphanedSubjects(params.siteId)
       // Shadow V2 — après réconciliation, classifie les sujets touchés par ce rapport.
       // Aucun impact sur les métriques officielles.
       const { runEvolutionV2Shadow } = await import('@/lib/knowledge/evolution-v2-shadow')

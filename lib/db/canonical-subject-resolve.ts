@@ -52,9 +52,30 @@ function scoreSubject(
   return Math.max(...allLabels.map((l) => jaccardSimilarity(queryText, l)))
 }
 
+// Réactive un canonical_subject auto_archived → active.
+// Guard WHERE status='auto_archived' : idempotent, ne touche jamais merged/split.
+async function reactivateCanonicalSubject(
+  supabase: ReturnType<typeof createAdminClient>,
+  id: string,
+): Promise<void> {
+  await supabase
+    .from('canonical_subject')
+    .update({ status: 'active' })
+    .eq('id', id)
+    .eq('status', 'auto_archived')
+}
+
+// Seul statut réactivable automatiquement — jamais merged, split, ou autre terminal.
+export function canReactivate(status: string): boolean {
+  return status === 'auto_archived'
+}
+
 /**
  * Résout une référence textuelle libre (ex : "G3", "Regard R4") vers un
- * ou plusieurs canonical_subjects actifs du chantier.
+ * ou plusieurs canonical_subjects actifs ou auto-archivés du chantier.
+ *
+ * Si le candidat retenu est 'auto_archived', il est réactivé avant le retour.
+ * Les mêmes seuils de résolution s'appliquent quel que soit le statut de départ.
  *
  * La validation que l'utilisateur a accès au siteId est portée par la couche appelante.
  */
@@ -66,11 +87,21 @@ export async function resolveCanonicalSubjectReference(
 
   const { data: subjects } = await supabase
     .from('canonical_subject')
-    .select('id, label, aliases')
+    .select('id, label, aliases, status')
     .eq('site_id', siteId)
-    .eq('status', 'active')
+    .in('status', ['active', 'auto_archived'])
 
   if (!subjects || subjects.length === 0) return { kind: 'not_found' }
+
+  const statusById = new Map<string, string>(subjects.map((s) => [s.id, s.status as string]))
+
+  // Réactive si nécessaire et retourne le résultat résolu.
+  const resolved = async (candidate: { id: string; label: string }): Promise<SubjectResolutionResult> => {
+    if (canReactivate(statusById.get(candidate.id) ?? '')) {
+      await reactivateCanonicalSubject(supabase, candidate.id)
+    }
+    return { kind: 'resolved', candidate }
+  }
 
   const normalized = normalizeCanonicalLabel(queryText)
   const queryCodes = extractTechnicalCodes(queryText)
@@ -83,7 +114,7 @@ export async function resolveCanonicalSubjectReference(
   })
 
   if (exactMatches.length === 1) {
-    return { kind: 'resolved', candidate: { id: exactMatches[0].id, label: exactMatches[0].label } }
+    return resolved({ id: exactMatches[0].id, label: exactMatches[0].label })
   }
   if (exactMatches.length > 1) {
     return { kind: 'ambiguous', candidates: exactMatches.map((s) => ({ id: s.id, label: s.label })) }
@@ -108,13 +139,13 @@ export async function resolveCanonicalSubjectReference(
       .sort((a, b) => b.score - a.score)
 
     if (codeMatches.length === 1) {
-      return { kind: 'resolved', candidate: { id: codeMatches[0].id, label: codeMatches[0].label } }
+      return resolved({ id: codeMatches[0].id, label: codeMatches[0].label })
     }
 
     if (codeMatches.length > 1) {
       // Gagnant clair : premier ≥ 0.50 ET second < 0.20 (large écart)
       if (codeMatches[0].score >= 0.50 && codeMatches[1].score < 0.20) {
-        return { kind: 'resolved', candidate: { id: codeMatches[0].id, label: codeMatches[0].label } }
+        return resolved({ id: codeMatches[0].id, label: codeMatches[0].label })
       }
 
       // Ambiguïté : montrer les candidats pertinents (score ≥ 0.10, max 5)
@@ -141,12 +172,12 @@ export async function resolveCanonicalSubjectReference(
 
   if (jaccardMatches.length === 0) return { kind: 'not_found' }
   if (jaccardMatches.length === 1) {
-    return { kind: 'resolved', candidate: { id: jaccardMatches[0].id, label: jaccardMatches[0].label } }
+    return resolved({ id: jaccardMatches[0].id, label: jaccardMatches[0].label })
   }
 
   // Gagnant clair en Jaccard seul : premier ≥ 0.70 et second reste sous le seuil
   if (jaccardMatches[0].score >= 0.70 && jaccardMatches[1].score < JACCARD_THRESHOLD) {
-    return { kind: 'resolved', candidate: { id: jaccardMatches[0].id, label: jaccardMatches[0].label } }
+    return resolved({ id: jaccardMatches[0].id, label: jaccardMatches[0].label })
   }
 
   return {
