@@ -152,31 +152,28 @@ export async function reconcileProposalToCanonical(params: {
       entity_ids: entityIds,
     }
 
-    if (validationStatus === 'observed') {
-      // observed n'écrase jamais confirmed ni rejected — ignoreDuplicates préserve l'existant
+    // upsert idempotent : ignoreDuplicates:true préserve rejected, ne réécrit pas confirmed
+    await supabase
+      .from('canonical_subject_occurrence')
+      .upsert(occurrenceData, { onConflict: 'source_kind,source_proposal_id', ignoreDuplicates: true })
+
+    if (validationStatus === 'confirmed') {
+      // Upgrade explicite observed→confirmed (ne touche pas rejected — filtre validation_status)
       await supabase
         .from('canonical_subject_occurrence')
-        .upsert(occurrenceData, { onConflict: 'source_kind,source_proposal_id', ignoreDuplicates: true })
-    } else {
-      // confirmed : INSERT puis upgrade de observed→confirmed si conflit
-      // (ne touche pas rejected — rejected ne bouge que sur action humaine explicite)
-      const { error: insertErr } = await supabase
-        .from('canonical_subject_occurrence')
-        .insert(occurrenceData)
-      if (insertErr?.code === '23505') {
-        await supabase
-          .from('canonical_subject_occurrence')
-          .update({ validation_status: 'confirmed' })
-          .eq('source_kind', sourceKind)
-          .eq('source_proposal_id', proposalId)
-          .eq('validation_status', 'observed')
-      }
+        .update({ validation_status: 'confirmed' })
+        .eq('source_kind', sourceKind)
+        .eq('source_proposal_id', proposalId)
+        .eq('validation_status', 'observed')
     }
 
-    await supabase
+    const { error: propErr } = await supabase
       .from('site_knowledge_proposals')
       .update({ canonical_subject_id: canonicalSubjectId, canonical_resolution_status: 'resolved' })
       .eq('id', proposalId)
+    if (propErr) {
+      console.error('[reconcile] proposal update failed:', proposalId, propErr.code, propErr.message)
+    }
 
     return { status: 'resolved', canonicalSubjectId }
   }
