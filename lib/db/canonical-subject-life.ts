@@ -226,12 +226,39 @@ export async function getCanonicalSubjectLife(
   const canonicalRunIds = allRuns.map((r) => r.id)
 
   if (canonicalRunIds.length === 0) {
+    // Sujet avec thread(s) mais sans PV PDF (ex : visites terrain uniquement).
+    // La doc V1 notait "à corriger en V2" — on lit quand même les occurrences terrain.
+    type CsoRowShort = {
+      id: string; source_ref_id: string; source_proposal_id: string | null
+      source_kind: 'field_visit' | 'meeting'; visit_status: string | null
+      label: string; note: string | null; evidence_count: number; effective_date: string
+    }
+    const { data: csoFallback } = await supabase
+      .from('canonical_subject_occurrence')
+      .select('id, source_ref_id, source_proposal_id, source_kind, visit_status, label, note, evidence_count, effective_date')
+      .eq('canonical_subject_id', canonicalSubjectId)
+      .in('source_kind', ['field_visit', 'meeting'])
+      .neq('validation_status', 'rejected')
+      .order('effective_date', { ascending: true })
+    const fallbackOccs: SubjectOccurrenceMerged[] = ((csoFallback ?? []) as CsoRowShort[]).map((row) => ({
+      sourceKind: row.source_kind, runId: null, documentId: null, reportId: row.source_ref_id,
+      effectiveDate: row.effective_date, proposalId: row.source_proposal_id, threadId: null,
+      label: row.label, description: row.note, documentStatus: null, visitStatus: row.visit_status,
+      proposalFamily: null, thematicCategory: null, sourcePage: null, transition: null,
+      isGap: false, evidenceCount: row.evidence_count, additionalLabels: [],
+    }))
+    const fallbackReal = fallbackOccs.filter((o) => !o.isGap)
+    const fallbackFirst = fallbackReal[0]?.effectiveDate ?? null
+    const fallbackLast = fallbackReal[fallbackReal.length - 1]?.effectiveDate ?? null
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
       mergedInto: csMergedInto, mergedIntoLabel: null, mergesAsWinner: [],
-      firstSeenAt: null, lastSeenAt: null, currentStatus: null, primaryFamily: null,
-      threadIds, pvCount: 0, fieldVisitCount: 0, runs: [], occurrences: [], links: [], materializedEvents: [],
-      lastMeaningfulChangeAt: null, stagnationDays: null, consecutiveMentionsWithoutChange: 0, isStagnant: false,
+      firstSeenAt: fallbackFirst, lastSeenAt: fallbackLast,
+      currentStatus: fallbackReal[fallbackReal.length - 1]?.visitStatus ?? null,
+      primaryFamily: null, threadIds, pvCount: 0,
+      fieldVisitCount: fallbackReal.length,
+      runs: [], occurrences: fallbackOccs, links: [], materializedEvents: [],
+      lastMeaningfulChangeAt: fallbackFirst, stagnationDays: 0, consecutiveMentionsWithoutChange: 0, isStagnant: false,
     }
   }
 
