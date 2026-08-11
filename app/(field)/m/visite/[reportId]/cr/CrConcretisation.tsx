@@ -370,12 +370,10 @@ export function CrConcretisation({
                 − {diff.removed.length} que MemorIA proposait et que vous avez retirée
                 {diff.removed.length > 1 ? 's' : ''}
               </li>
-              {diff.removed
-                .filter((r) => r.kind !== 'intervenant')
-                .map((r) => (
+              {diff.removed.map((r) => (
                   <li key={r.key} className="ml-2 flex items-center justify-between gap-2">
                     <span className="flex-1 truncate text-[11px] line-through opacity-60">{r.label}</span>
-                    {reintroduced.has(r.key) ? (
+                    {r.kind === 'intervenant' ? null : reintroduced.has(r.key) ? (
                       <span className="shrink-0 inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
                         <Check className="h-3 w-3" aria-hidden /> Créé
                       </span>
