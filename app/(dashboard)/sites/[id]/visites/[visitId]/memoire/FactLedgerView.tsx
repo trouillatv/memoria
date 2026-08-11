@@ -99,7 +99,7 @@ export function FactLedgerView({ active, archived, subjectLabels, siteId }: Prop
               Historique de l&apos;analyse
             </span>
             <span className="text-[11px] text-muted-foreground">
-              {filteredSuperseded.length > 0 && `${filteredSuperseded.length} remplacé${filteredSuperseded.length > 1 ? 's' : ''}`}
+              {filteredSuperseded.length > 0 && `${filteredSuperseded.length} consolidé${filteredSuperseded.length > 1 ? 's' : ''}`}
               {filteredSuperseded.length > 0 && filteredDismissed.length > 0 && ' · '}
               {filteredDismissed.length > 0 && `${filteredDismissed.length} écarté${filteredDismissed.length > 1 ? 's' : ''}`}
               {' '}· Afficher
@@ -111,7 +111,7 @@ export function FactLedgerView({ active, archived, subjectLabels, siteId }: Prop
             {filteredSuperseded.length > 0 && (
               <div>
                 <p className="px-4 py-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground border-b bg-muted/30">
-                  Remplacés lors de l&apos;analyse — {filteredSuperseded.length}
+                  Formulations consolidées — {filteredSuperseded.length}
                 </p>
                 <div className="divide-y">
                   {filteredSuperseded.map((p) => (
@@ -200,8 +200,8 @@ function ProposalRow({
         {proposal.status === 'superseded' && (
           <p className="text-[11.5px] text-amber-700 dark:text-amber-400">
             {replacedByTitle
-              ? <>Remplacé par → <span className="font-medium">{replacedByTitle}</span></>
-              : 'Remplacé par une formulation plus récente'}
+              ? <>Regroupé avec → <span className="font-medium">{replacedByTitle}</span></>
+              : "Regroupé lors de l'analyse"}
           </p>
         )}
         {proposal.status === 'dismissed' && proposal.dismiss_reason && (

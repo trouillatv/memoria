@@ -125,7 +125,7 @@ describe('Chaque élément dit pourquoi il est là', () => {
 
   it('une obsolescence n’est JAMAIS présentée comme un rejet humain', () => {
     const r = explainProposal({ status: 'superseded' })
-    expect(r.label).toBe('Devenue obsolète après une nouvelle analyse')
+    expect(r.label).toBe('Consolidée lors de l’analyse')
     expect(r.label).not.toMatch(/ignor|écart|refus/i)
   })
 

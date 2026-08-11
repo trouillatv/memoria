@@ -262,7 +262,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
   const ledgerStatusParts: string[] = []
   if (ledgerPending > 0)    ledgerStatusParts.push(`${ledgerPending} à arbitrer`)
   if (ledgerRetained > 0)   ledgerStatusParts.push(`${ledgerRetained} ${ledgerRetained > 1 ? 'retenus' : 'retenu'}`)
-  if (ledgerSuperseded > 0) ledgerStatusParts.push(`${ledgerSuperseded} remplacé${ledgerSuperseded > 1 ? 's' : ''}`)
+  if (ledgerSuperseded > 0) ledgerStatusParts.push(`${ledgerSuperseded} consolidé${ledgerSuperseded > 1 ? 's' : ''}`)
   if (ledgerDismissed > 0)  ledgerStatusParts.push(`${ledgerDismissed} écarté${ledgerDismissed > 1 ? 's' : ''}`)
 
   // Résumé ventilé pour les visites historiques importées
