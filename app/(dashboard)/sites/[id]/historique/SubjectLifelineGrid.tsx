@@ -272,17 +272,12 @@ function DraggableSubjectRow({
             {suggestedCounts![row.canonicalSubjectId]}
           </Link>
         )}
-        {row.canonicalSubjectId && nativeOccurrences?.[row.canonicalSubjectId]?.length ? (
+        {row.canonicalSubjectId && (nativeOccurrences?.[row.canonicalSubjectId]?.length ?? 0) > 0 ? (
           <span
-            title={`${nativeOccurrences[row.canonicalSubjectId].length} observation${nativeOccurrences[row.canonicalSubjectId].length > 1 ? 's' : ''} terrain`}
-            className="shrink-0 flex items-center gap-0.5"
+            title={`${nativeOccurrences![row.canonicalSubjectId].length} preuve${nativeOccurrences![row.canonicalSubjectId].length > 1 ? 's' : ''} terrain`}
+            className="shrink-0 text-[9px] text-muted-foreground leading-none tabular-nums"
           >
-            {nativeOccurrences[row.canonicalSubjectId].slice(0, 3).map((o, i) => (
-              <span key={i} className={o.sourceKind === 'field_visit' ? 'h-1.5 w-1.5 rounded-full bg-teal-500' : 'h-1.5 w-1.5 rotate-45 bg-violet-500 inline-block'} />
-            ))}
-            {nativeOccurrences[row.canonicalSubjectId].length > 3 && (
-              <span className="text-[8px] text-muted-foreground leading-none">+{nativeOccurrences[row.canonicalSubjectId].length - 3}</span>
-            )}
+            {nativeOccurrences![row.canonicalSubjectId].length} preuve{nativeOccurrences![row.canonicalSubjectId].length > 1 ? 's' : ''}
           </span>
         ) : null}
         {suggestionScore != null && onSuggestionClick && (
