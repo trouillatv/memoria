@@ -2,7 +2,7 @@ import 'server-only'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
-import { reconcileProposalToCanonical, ELIGIBLE_KINDS } from '@/lib/db/canonical-subject-reconcile'
+import { ELIGIBLE_KINDS } from '@/lib/db/canonical-subject-reconcile'
 import { jaccardSimilarity } from '@/lib/documents/subject-reconciliation'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -271,29 +271,75 @@ export async function reconcileSourceToCanonicalSubjects(
   const eligible = proposals.filter((p) => ELIGIBLE_KINDS.has(p.kind))
   if (eligible.length === 0) return result
 
+  // Métadonnées du report : sourceKind + effectiveDate communs à Phase 1 et Phase 2b.
+  const VISIT_ORIGINS_SET = new Set(['planned', 'spontaneous', 'qr', 'gps', 'import'])
+  const { data: reportMeta } = await sb
+    .from('site_reports')
+    .select('origin, started_at, created_at')
+    .eq('id', source.id)
+    .maybeSingle()
+  type ReportMeta = { origin?: string | null; started_at?: string | null; created_at?: string } | null
+  const rm = reportMeta as ReportMeta
+  const occSourceKind: 'field_visit' | 'meeting' =
+    rm?.origin && VISIT_ORIGINS_SET.has(rm.origin) ? 'field_visit' : 'meeting'
+  const occEffectiveDate = (rm?.started_at ?? rm?.created_at ?? new Date().toISOString()).slice(0, 10)
+
   // ── Phase 1 : matching déterministe ──────────────────────────────────────
+  // Écriture directe avec sb (client admin racine de l'invocation) pour éviter :
+  //   - le double appel à resolveCanonicalSubjectReference (outer vs inner divergent)
+  //   - les échecs silencieux des createAdminClient() imbriqués dans reconcileProposalToCanonical
+  // matched++ conditionné au succès réel de la mise à jour DB.
   const orphans: typeof eligible = []
 
   for (const proposal of eligible) {
     const resolution = await resolveCanonicalSubjectReference(source.siteId, proposal.title)
 
     if (resolution.kind === 'resolved') {
-      await reconcileProposalToCanonical({
-        proposalId: proposal.id,
-        siteId: source.siteId,
-        reportId: source.id,
-        proposalKind: proposal.kind,
-        proposalTitle: proposal.title,
-        proposalBody: proposal.body,
-        proposalCreatedAt: new Date().toISOString(),
-        createdBy: source.authorId,
-        validationStatus,
-        entityIds: proposal.entity_ids ?? [],
-      })
-      result.matched++
+      const canonicalSubjectId = resolution.candidate.id
+
+      await sb
+        .from('canonical_subject_occurrence')
+        .upsert(
+          {
+            canonical_subject_id: canonicalSubjectId,
+            site_id: source.siteId,
+            source_kind: occSourceKind,
+            source_ref_id: source.id,
+            source_proposal_id: proposal.id,
+            visit_status: occSourceKind === 'field_visit' ? 'field_checked' : 'mentioned',
+            label: proposal.title,
+            note: proposal.body,
+            evidence_count: 0,
+            effective_date: occEffectiveDate,
+            created_by: source.authorId,
+            validation_status: validationStatus,
+            entity_ids: proposal.entity_ids ?? [],
+          },
+          { onConflict: 'source_kind,source_proposal_id', ignoreDuplicates: true },
+        )
+
+      if (validationStatus === 'confirmed') {
+        await sb
+          .from('canonical_subject_occurrence')
+          .update({ validation_status: 'confirmed' })
+          .eq('source_kind', occSourceKind)
+          .eq('source_proposal_id', proposal.id)
+          .eq('validation_status', 'observed')
+      }
+
+      const { error: propErr } = await sb
+        .from('site_knowledge_proposals')
+        .update({ canonical_subject_id: canonicalSubjectId, canonical_resolution_status: 'resolved' })
+        .eq('id', proposal.id)
+
+      if (propErr) {
+        console.error('[reconcile-source] Phase 1 proposal update failed:', proposal.id, propErr.code, propErr.message)
+      } else {
+        result.matched++
+      }
 
       if (proposal.kind === 'action') {
-        await ensureActionThread(sb, proposal.id, source.siteId, resolution.candidate.id)
+        await ensureActionThread(sb, proposal.id, source.siteId, canonicalSubjectId)
       }
     } else if (resolution.kind === 'ambiguous') {
       result.ambiguous++
@@ -459,19 +505,49 @@ export async function reconcileSourceToCanonicalSubjects(
             result.orphaned++
             continue
           }
-          await reconcileProposalToCanonical({
-            proposalId: proposal.id,
-            siteId: source.siteId,
-            reportId: source.id,
-            proposalKind: proposal.kind,
-            proposalTitle: proposal.title,
-            proposalBody: proposal.body,
-            proposalCreatedAt: new Date().toISOString(),
-            createdBy: source.authorId,
-            validationStatus,
-            entityIds: proposal.entity_ids ?? [],
-          })
-          result.matched++
+          const canonicalSubjectId = match.canonicalSubjectId
+
+          await sb
+            .from('canonical_subject_occurrence')
+            .upsert(
+              {
+                canonical_subject_id: canonicalSubjectId,
+                site_id: source.siteId,
+                source_kind: occSourceKind,
+                source_ref_id: source.id,
+                source_proposal_id: proposal.id,
+                visit_status: occSourceKind === 'field_visit' ? 'field_checked' : 'mentioned',
+                label: proposal.title,
+                note: proposal.body,
+                evidence_count: 0,
+                effective_date: occEffectiveDate,
+                created_by: source.authorId,
+                validation_status: validationStatus,
+                entity_ids: proposal.entity_ids ?? [],
+              },
+              { onConflict: 'source_kind,source_proposal_id', ignoreDuplicates: true },
+            )
+
+          if (validationStatus === 'confirmed') {
+            await sb
+              .from('canonical_subject_occurrence')
+              .update({ validation_status: 'confirmed' })
+              .eq('source_kind', occSourceKind)
+              .eq('source_proposal_id', proposal.id)
+              .eq('validation_status', 'observed')
+          }
+
+          const { error: propErr } = await sb
+            .from('site_knowledge_proposals')
+            .update({ canonical_subject_id: canonicalSubjectId, canonical_resolution_status: 'resolved' })
+            .eq('id', proposal.id)
+
+          if (propErr) {
+            console.error('[reconcile-source] Phase 2b proposal update failed:', proposal.id, propErr.code, propErr.message)
+            result.orphaned++
+          } else {
+            result.matched++
+          }
         } else {
           result.orphaned++
         }
