@@ -79,6 +79,7 @@ async function main() {
   console.log('  Cas piège : Planning 11/08 — formulation recyclée → noiseDetected attendu.\n')
 
   let consolidationPassed = 0
+  let consolidationFallbacks = 0
 
   for (const entry of angleC) {
     if (!entry.eventA) continue
@@ -90,12 +91,17 @@ async function main() {
     const date = frDate(ev.date)
     const n = ev.labels.length
 
-    const noiseFlag = result.noiseDetected ? ' ⚠ bruit détecté' : ''
-    console.log(`  ${label} ${date} (${n} formulations)${noiseFlag}`)
+    const flags = [
+      result.noiseDetected ? '⚠ bruit détecté' : '',
+      result.fallbackUsed  ? '⚠ FALLBACK IA (labels[0])' : '',
+    ].filter(Boolean).join(' · ')
+    console.log(`  ${label} ${date} (${n} formulations)${flags ? '  ' + flags : ''}`)
     console.log(`    → "${result.state}"`)
     console.log()
 
-    const isOK = result.state.trim().length > 0
+    if (result.fallbackUsed) consolidationFallbacks++
+    // Un fallback = état non consolidé par le LLM → ne compte pas comme pass
+    const isOK = result.state.trim().length > 0 && !result.fallbackUsed
     if (isOK) consolidationPassed++
   }
 
@@ -118,7 +124,10 @@ async function main() {
     console.log()
   }
 
-  console.log(`  Score consolidation : ${consolidationPassed}/${angleC.length}\n`)
+  const consolidationNote = consolidationFallbacks > 0
+    ? ` (${consolidationFallbacks} fallback IA — résultats non comptabilisés)`
+    : ''
+  console.log(`  Score consolidation : ${consolidationPassed}/${angleC.length}${consolidationNote}\n`)
 
   // ── Angle B : Pas d'évolution inventée ─────────────────────────────────────
 
@@ -182,10 +191,13 @@ async function main() {
   console.log(`\n${'═'.repeat(70)}`)
   console.log(`  RÉSULTATS`)
   console.log(`${'═'.repeat(70)}`)
-  console.log(`  Angle C consolidation : ${consolidationPassed}/${angleC.length}`)
+  console.log(`  Angle C consolidation : ${consolidationPassed}/${angleC.length}${consolidationFallbacks > 0 ? ` · ${consolidationFallbacks} fallback IA` : ''}`)
   console.log(`  Angle A classification : ${correct}/${total}`)
-  const allPass = consolidationPassed >= angleC.length && correct === total
+  const allPass = consolidationPassed >= angleC.length && correct === total && consolidationFallbacks === 0
   console.log(`\n  Verdict global : ${allPass ? '✓ PASS' : '✗ FAIL — voir détails ci-dessous'}`)
+  if (consolidationFallbacks > 0) {
+    console.log(`  ⚠  ${consolidationFallbacks} appel(s) Gemini en fallback — score de consolidation partiel, non généralisable.`)
+  }
 
   if (failedRows.length > 0) {
     console.log('\n── Cas en échec ──────────────────────────────────────────────────────')

@@ -14,12 +14,10 @@ import { getAIProvider } from '@/services/ai/factory'
 
 // ── Feature flag ───────────────────────────────────────────────────────────────
 
-const PETRO_SITE_ID = '75bd3d23-d515-46bd-8de8-254495a5bade'
-
 export function isEvolutionV2Enabled(siteId: string): boolean {
   const env = process.env.EVOLUTION_V2_ENABLED_SITES ?? ''
-  const sites = env ? env.split(',').map((s) => s.trim()) : [PETRO_SITE_ID]
-  return sites.includes(siteId)
+  if (!env) return false
+  return env.split(',').map((s) => s.trim()).includes(siteId)
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -32,6 +30,11 @@ export interface ConsolidatedState {
   state: string
   /** true si une formulation semble être du bruit d'extraction (recycled, décontextualisée). */
   noiseDetected: boolean
+  /**
+   * true si Gemini a échoué ou produit un schéma invalide — état = labels[0].
+   * Un fallback réussi ≠ consolidation correcte : à surveiller dans l'évaluation.
+   */
+  fallbackUsed: boolean
   rawLabels: string[]
   date: string
   sourceKind: string
@@ -114,7 +117,7 @@ export async function consolidateSubjectState(
   sourceKind: string,
 ): Promise<ConsolidatedState> {
   if (labels.length === 1) {
-    return { state: labels[0], noiseDetected: false, rawLabels: labels, date, sourceKind }
+    return { state: labels[0], noiseDetected: false, fallbackUsed: false, rawLabels: labels, date, sourceKind }
   }
 
   const provider = getAIProvider()
@@ -137,11 +140,11 @@ ${labels.map((l, i) => `${i + 1}. ${l}`).join('\n')}`
 
     const parsed = ConsolidatedStateOutputSchema.safeParse(out.parsed)
     if (!parsed.success) {
-      return { state: labels[0], noiseDetected: false, rawLabels: labels, date, sourceKind }
+      return { state: labels[0], noiseDetected: false, fallbackUsed: true, rawLabels: labels, date, sourceKind }
     }
-    return { ...parsed.data, rawLabels: labels, date, sourceKind }
+    return { ...parsed.data, fallbackUsed: false, rawLabels: labels, date, sourceKind }
   } catch {
-    return { state: labels[0], noiseDetected: false, rawLabels: labels, date, sourceKind }
+    return { state: labels[0], noiseDetected: false, fallbackUsed: true, rawLabels: labels, date, sourceKind }
   }
 }
 
