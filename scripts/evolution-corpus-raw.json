@@ -1,0 +1,199 @@
+[
+  {
+    "subjectId": "14cd6eaa-926b-4262-90fa-9a323b49f35b",
+    "subjectLabel": "Diffusion et mise à jour du planning général",
+    "eventA": {
+      "date": "2026-07-20",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Diffusion du premier planning",
+        "Communication du premier planning"
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": {
+      "date": "2026-08-11",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Retard dans l'avancement",
+        "Mettre à jour le planning en fonction de l'avancement de la dépose",
+        "Diffuser le premier planning",
+        "Manque d'éléments de Yann",
+        "Mettre à jour le planning en fonction de l'avancée de la dépose du matériel de cuisine",
+        "Le conducteur de travaux a pris du retard sur le planning initial.",
+        "Il y a eu un retard de quelques semaines dans l'avancement."
+      ],
+      "evidenceCount": 0
+    },
+    "verdictHumain": "evolution",
+    "raisonMetier": "Le 20/07, le planning est attendu et doit être diffusé. Le 11/08, la situation a changé : un retard est constaté et le planning doit être actualisé selon l'avancement réel. Passage d'une attente de diffusion à une nécessité de révision liée à un nouvel état du chantier.",
+    "patternV2": "attendu → à réviser",
+    "v1Signal": false,
+    "v1SignalReason": "aucun (statuts identiques)"
+  },
+  {
+    "subjectId": "72bc3ea9-d054-4951-8593-f7627be5a5c6",
+    "subjectLabel": "Vérification des lignes électriques et consignations",
+    "eventA": {
+      "date": "2026-07-20",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Verification installations electriques",
+        "Intervention de l'électricien pour vérification des installations"
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": {
+      "date": "2026-08-10",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Les électriciens vont vérifier les lignes électriques et les consignations.",
+        "Les électriciens vérifieront les lignes et les consignations."
+      ],
+      "evidenceCount": 0
+    },
+    "verdictHumain": "remention",
+    "raisonMetier": "Les deux observations décrivent la même vérification des installations électriques. Le 10/08 reformule/reconfirme l'action à réaliser par les électriciens sans preuve suffisante qu'elle a commencé, été réalisée ou changé de périmètre.",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "aucun (statuts identiques)"
+  },
+  {
+    "subjectId": "6801ce5c-17e9-4939-93c5-175754add1f5",
+    "subjectLabel": "Accès sécurisé au chantier (portail et cadenas à code)",
+    "eventA": {
+      "date": "2026-07-20",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Acces securise chantier portail cadenas code",
+        "Acces chantier portail cadenas code",
+        "Communication de l'accès sécurisé au chantier",
+        "Communication du code d'accès sécurisé",
+        "Communiquer le code dacces securise du chantier"
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": {
+      "date": "2026-07-27",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Présentation du cadenas à code"
+      ],
+      "evidenceCount": 0
+    },
+    "verdictHumain": "evolution",
+    "raisonMetier": "Le 20/07, l'accès sécurisé et la communication du code constituent le besoin. Le 27/07, le cadenas est effectivement présenté lors de l'accueil sécurité. Il y a progression observable du dispositif d'accès : du besoin/organisation vers sa mise en œuvre opérationnelle.",
+    "patternV2": "besoin → mise en œuvre opérationnelle",
+    "v1Signal": false,
+    "v1SignalReason": "aucun (statuts identiques)"
+  },
+  {
+    "subjectId": "6801ce5c-17e9-4939-93c5-175754add1f5",
+    "subjectLabel": "Accès sécurisé au chantier (portail et cadenas à code)",
+    "eventA": {
+      "date": "2026-07-27",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Présentation du cadenas à code"
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": {
+      "date": "2026-08-10",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Présenter le cadenas à code lors de l'accueil sécurité",
+        "Un cadenas à code sera installé dans le bâtiment."
+      ],
+      "evidenceCount": 0
+    },
+    "verdictHumain": "remention",
+    "raisonMetier": "Le 10/08 reprend la présentation/installation du cadenas déjà matérialisée le 27/07. Les formulations diffèrent, mais les éléments disponibles ne démontrent pas un nouvel état métier suffisamment distinct.",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "aucun (statuts identiques)"
+  },
+  {
+    "subjectId": "6801ce5c-17e9-4939-93c5-175754add1f5",
+    "subjectLabel": "Accès sécurisé au chantier (portail et cadenas à code)",
+    "eventA": {
+      "date": "2026-08-10",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Présenter le cadenas à code lors de l'accueil sécurité",
+        "Un cadenas à code sera installé dans le bâtiment."
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": {
+      "date": "2026-08-11",
+      "visitStatus": "field_checked",
+      "labels": [
+        "L'accès sécurisé du chantier se fera par un code pour un cadenas.",
+        "L'accès au chantier se fera par un portail d'entrée avec un code."
+      ],
+      "evidenceCount": 0
+    },
+    "verdictHumain": "remention",
+    "raisonMetier": "Le 11/08 reformule le même dispositif d'accès sécurisé par portail, code et cadenas. Aucun changement d'état, de périmètre ou de réalisation clairement établi par rapport au 10/08.",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "aucun (statuts identiques)"
+  },
+  {
+    "subjectId": "25913332-372a-4ef9-b383-2cfa647f359f",
+    "subjectLabel": "Lancement et avancement de la dépose du matériel de cuisine",
+    "eventA": {
+      "date": "2026-07-20",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Intervention de Clim Expert pour la dépose des hottes, gaines, chambre froide et dalle",
+        "Intervention d'AGP",
+        "Dépose des hottes, gaines, chambre froide et dalle par Clim Expert"
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": {
+      "date": "2026-08-11",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Le lancement de la dépose du matériel de cuisine a été acté.",
+        "La dépose du matériel de cuisine a été lancée.",
+        "Le lancement de la dépose est acté.",
+        "Réaliser la dépose des hottes, gaines, chambre froide et dalle",
+        "La dépose du matériel est lancée."
+      ],
+      "evidenceCount": 0
+    },
+    "verdictHumain": "evolution",
+    "raisonMetier": "Le 20/07, la dépose relève encore de l'intervention prévue/à organiser avec Clim Expert et AGP. Le 11/08, son lancement est acté. Passage d'un état prévu à un état engagé : changement métier significatif.",
+    "patternV2": "prévu → engagé/lancé",
+    "v1Signal": false,
+    "v1SignalReason": "aucun (statuts identiques)"
+  },
+  {
+    "subjectId": "a3a70db3-6821-4b1d-aa37-34957870e798",
+    "subjectLabel": "Nettoyage panneaux isothermes (chambres froides)",
+    "eventA": {
+      "date": "2026-07-27",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Démarrage du nettoyage des panneaux isothermes"
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": {
+      "date": "2026-08-10",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Le nettoyage du carrelage ne sera pas inclus dans la prestation et sera remplacé par un nettoyage complet des panneaux isothermes (intérieurs et extérieurs des chambres froides)."
+      ],
+      "evidenceCount": 0
+    },
+    "verdictHumain": "evolution",
+    "raisonMetier": "Entre le 27/07 et le 10/08, le périmètre de l'intervention est explicitement redéfini : le carrelage est exclu tandis que le nettoyage complet des panneaux isothermes est retenu. Un changement de périmètre constitue une évolution significative.",
+    "patternV2": "périmètre A → périmètre B",
+    "v1Signal": false,
+    "v1SignalReason": "aucun (statuts identiques)"
+  }
+]
