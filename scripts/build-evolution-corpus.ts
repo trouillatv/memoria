@@ -1,14 +1,18 @@
-// Corpus empirique Évolution V2
-// Extrait les paires d'événements consécutifs par canonical_subject pour annotation humaine.
+// Corpus empirique Évolution V2 — extraction multi-angles
 //
 // Usage : npx tsx scripts/build-evolution-corpus.ts [--site <siteId>]
 // Par défaut : site PETRO ATITI
 //
 // Output : scripts/evolution-corpus-raw.json
-// Format de chaque entrée :
-//   { subjectId, subjectLabel, eventA, eventB }
-//   eventA / eventB : { date, visitStatus, labels[], evidenceCount }
-//   → verdict humain à remplir manuellement : 'evolution' | 'remention' | 'ambigu' | ''
+//
+// Angles extraits :
+//   A. Paires d'événements consécutifs  (transitions entre visites)
+//   B. Sujets à occurrence unique        (contre-exemples : pas d'évolution possible)
+//   C. Intra-événement                  (formulations différentes d'une même visite)
+//
+// verdictHumain : 'evolution' | 'remention' | 'ambigu' | 'contre-exemple' | ''
+// changeType    : 'status' | 'scope' | 'operationalization' | 'consequence' | null | ''
+// patternV2     : hypothèse de pattern, pas encore règle
 
 import { createClient } from '@supabase/supabase-js'
 import { config } from 'dotenv'
@@ -41,22 +45,25 @@ type Event = {
 }
 
 type CorpusEntry = {
+  angle: 'consecutive' | 'single-occurrence' | 'intra-event'
   subjectId: string
   subjectLabel: string
-  eventA: Event
-  eventB: Event
-  /** À remplir manuellement : 'evolution' | 'remention' | 'ambigu' */
-  verdictHumain: ''
-  /** À remplir manuellement : raison métier en une phrase */
-  raisonMetier: ''
-  /** Rempli automatiquement : V1 aurait-il détecté un changement ? */
+  eventA: Event | null
+  eventB: Event | null
+  /** À remplir manuellement */
+  verdictHumain: 'evolution' | 'remention' | 'ambigu' | 'contre-exemple' | ''
+  /** À remplir manuellement */
+  changeType: 'status' | 'scope' | 'operationalization' | 'consequence' | '' | null
+  /** À remplir manuellement */
+  raisonMetier: string
+  /** Hypothèse de pattern identifié (nullable) */
+  patternV2: string | null
   v1Signal: boolean
-  /** Rempli automatiquement : nature du signal V1 */
   v1SignalReason: string
 }
 
 async function main() {
-  console.log(`\n=== CORPUS ÉVOLUTION — site ${SITE_ARG} ===\n`)
+  console.log(`\n=== CORPUS ÉVOLUTION MULTI-ANGLES — site ${SITE_ARG} ===\n`)
 
   // 1. Sujets actifs du site
   const { data: subjects } = await sb
@@ -67,10 +74,11 @@ async function main() {
     .order('label')
 
   if (!subjects?.length) { console.error('Aucun sujet actif'); process.exit(1) }
-  console.log(`Sujets actifs : ${subjects.length}`)
 
-  // 2. Occurrences terrain de tous ces sujets
   const subjectIds = subjects.map((s: { id: string }) => s.id)
+  const subjectMap = new Map(subjects.map((s: { id: string; label: string }) => [s.id, s.label]))
+
+  // 2. Occurrences terrain
   const { data: occs } = await sb
     .from('canonical_subject_occurrence')
     .select('canonical_subject_id, source_kind, effective_date, visit_status, label, evidence_count')
@@ -79,86 +87,96 @@ async function main() {
     .neq('validation_status', 'rejected')
     .order('effective_date', { ascending: true })
 
-  if (!occs?.length) { console.error('Aucune occurrence terrain'); process.exit(1) }
+  if (!occs?.length) { console.error('Aucune occurrence'); process.exit(1) }
 
-  // 3. Grouper par sujet puis par événement (sourceKind + date)
+  // 3. Grouper par sujet → par événement (sourceKind+date)
   const bySubject = new Map<string, Map<string, Event>>()
-
   for (const occ of (occs as RawOcc[])) {
     const sid = occ.canonical_subject_id
     if (!bySubject.has(sid)) bySubject.set(sid, new Map())
     const eventMap = bySubject.get(sid)!
     const key = `${occ.source_kind}\x00${occ.effective_date}`
-
     if (!eventMap.has(key)) {
-      eventMap.set(key, {
-        date: occ.effective_date,
-        visitStatus: occ.visit_status,
-        labels: [],
-        evidenceCount: 0,
-      })
+      eventMap.set(key, { date: occ.effective_date, visitStatus: occ.visit_status, labels: [], evidenceCount: 0 })
     }
     const ev = eventMap.get(key)!
     ev.labels.push(occ.label)
     ev.evidenceCount += occ.evidence_count ?? 1
-    // Enrichir le statut si null → non-null
     if (ev.visitStatus === null && occ.visit_status !== null) ev.visitStatus = occ.visit_status
   }
 
-  // 4. Construire les paires consécutives
   const corpus: CorpusEntry[] = []
-  const subjectMap = new Map(subjects.map((s: { id: string; label: string }) => [s.id, s.label]))
 
+  // ── Angle A : paires consécutives (transitions entre visites) ──────────────
+  console.log('\n── Angle A : paires consécutives ──')
   for (const [sid, eventMap] of bySubject.entries()) {
-    const events = [...eventMap.values()] // déjà trié (insertion-order = chrono)
-    if (events.length < 2) {
-      console.log(`  ${subjectMap.get(sid)} — 1 seul événement, pas de paire`)
-      continue
-    }
-
+    const events = [...eventMap.values()]
+    if (events.length < 2) continue
     for (let i = 0; i < events.length - 1; i++) {
-      const a = events[i]
-      const b = events[i + 1]
-
-      // Signal V1 : changement de visitStatus entre A et B
+      const a = events[i]; const b = events[i + 1]
       const v1Signal = b.visitStatus !== a.visitStatus
-      const v1SignalReason = v1Signal
-        ? `visitStatus : "${a.visitStatus ?? 'null'}" → "${b.visitStatus ?? 'null'}"`
-        : 'aucun (statuts identiques)'
-
       corpus.push({
-        subjectId: sid,
-        subjectLabel: subjectMap.get(sid) ?? sid,
-        eventA: a,
-        eventB: b,
-        verdictHumain: '',
-        raisonMetier: '',
+        angle: 'consecutive',
+        subjectId: sid, subjectLabel: subjectMap.get(sid) ?? sid,
+        eventA: a, eventB: b,
+        verdictHumain: '', changeType: '', raisonMetier: '', patternV2: null,
         v1Signal,
-        v1SignalReason,
+        v1SignalReason: v1Signal
+          ? `visitStatus : "${a.visitStatus ?? 'null'}" → "${b.visitStatus ?? 'null'}"`
+          : 'aucun (statuts identiques)',
       })
+      console.log(`  [${subjectMap.get(sid)}] ${a.date} → ${b.date}`)
     }
   }
 
-  // 5. Résumé console
-  console.log(`\nPaires extraites : ${corpus.length}`)
-  console.log('\nAperçu :')
-  for (const entry of corpus) {
-    const signal = entry.v1Signal ? '🔴 SIGNAL' : '⬜ pas de signal'
-    console.log(`\n  [${entry.subjectLabel}]`)
-    console.log(`  A (${entry.eventA.date}) : ${entry.eventA.labels.slice(0, 2).join(' / ')} [${entry.eventA.visitStatus ?? 'null'}]`)
-    console.log(`  B (${entry.eventB.date}) : ${entry.eventB.labels.slice(0, 2).join(' / ')} [${entry.eventB.visitStatus ?? 'null'}]`)
-    console.log(`  V1 : ${signal} — ${entry.v1SignalReason}`)
+  // ── Angle B : sujets à occurrence unique (contre-exemples) ─────────────────
+  console.log('\n── Angle B : sujets à occurrence unique ──')
+  for (const [sid, eventMap] of bySubject.entries()) {
+    const events = [...eventMap.values()]
+    if (events.length !== 1) continue
+    const ev = events[0]
+    corpus.push({
+      angle: 'single-occurrence',
+      subjectId: sid, subjectLabel: subjectMap.get(sid) ?? sid,
+      eventA: ev, eventB: null,
+      verdictHumain: 'contre-exemple', changeType: null,
+      raisonMetier: 'Sujet avec un seul événement — aucune transition possible.',
+      patternV2: null,
+      v1Signal: false, v1SignalReason: 'occurrence unique',
+    })
+    console.log(`  [${subjectMap.get(sid)}] ${ev.date} — ${ev.labels.length} preuve(s)`)
   }
 
-  // 6. Export JSON
+  // ── Angle C : intra-événement (formulations différentes même visite) ────────
+  console.log('\n── Angle C : intra-événement ──')
+  for (const [sid, eventMap] of bySubject.entries()) {
+    for (const ev of eventMap.values()) {
+      if (ev.labels.length < 2) continue
+      corpus.push({
+        angle: 'intra-event',
+        subjectId: sid, subjectLabel: subjectMap.get(sid) ?? sid,
+        eventA: ev, eventB: null,
+        verdictHumain: '', changeType: null,
+        raisonMetier: '',
+        patternV2: null,
+        v1Signal: false,
+        v1SignalReason: `${ev.labels.length} formulations dans le même événement`,
+      })
+      console.log(`  [${subjectMap.get(sid)}] ${ev.date} — ${ev.labels.length} formulations`)
+    }
+  }
+
+  // ── Résumé ──────────────────────────────────────────────────────────────────
+  const byAngle = (a: CorpusEntry['angle']) => corpus.filter((e) => e.angle === a).length
+  console.log(`\n  Angle A (consécutives)  : ${byAngle('consecutive')}`)
+  console.log(`  Angle B (unique)        : ${byAngle('single-occurrence')}`)
+  console.log(`  Angle C (intra-événement): ${byAngle('intra-event')}`)
+  console.log(`  Total                   : ${corpus.length}`)
+
+  // Export
   const outPath = join(process.cwd(), 'scripts', 'evolution-corpus-raw.json')
   writeFileSync(outPath, JSON.stringify(corpus, null, 2), 'utf-8')
   console.log(`\n✅ Corpus sauvegardé : ${outPath}`)
-  console.log('   Remplir "verdictHumain" et "raisonMetier" pour chaque entrée.')
-  console.log('   Valeurs verdictHumain : "evolution" | "remention" | "ambigu"')
 }
 
-main().catch((e) => {
-  console.error('❌', e.message)
-  process.exit(1)
-})
+main().catch((e) => { console.error('❌', e.message); process.exit(1) })

@@ -1,5 +1,6 @@
 [
   {
+    "angle": "consecutive",
     "subjectId": "14cd6eaa-926b-4262-90fa-9a323b49f35b",
     "subjectLabel": "Diffusion et mise à jour du planning général",
     "eventA": {
@@ -26,12 +27,14 @@
       "evidenceCount": 0
     },
     "verdictHumain": "evolution",
+    "changeType": "operationalization",
     "raisonMetier": "Le 20/07, le planning est attendu et doit être diffusé. Le 11/08, la situation a changé : un retard est constaté et le planning doit être actualisé selon l'avancement réel. Passage d'une attente de diffusion à une nécessité de révision liée à un nouvel état du chantier.",
     "patternV2": "attendu → à réviser",
     "v1Signal": false,
     "v1SignalReason": "aucun (statuts identiques)"
   },
   {
+    "angle": "consecutive",
     "subjectId": "72bc3ea9-d054-4951-8593-f7627be5a5c6",
     "subjectLabel": "Vérification des lignes électriques et consignations",
     "eventA": {
@@ -53,12 +56,14 @@
       "evidenceCount": 0
     },
     "verdictHumain": "remention",
+    "changeType": null,
     "raisonMetier": "Les deux observations décrivent la même vérification des installations électriques. Le 10/08 reformule/reconfirme l'action à réaliser par les électriciens sans preuve suffisante qu'elle a commencé, été réalisée ou changé de périmètre.",
     "patternV2": null,
     "v1Signal": false,
     "v1SignalReason": "aucun (statuts identiques)"
   },
   {
+    "angle": "consecutive",
     "subjectId": "6801ce5c-17e9-4939-93c5-175754add1f5",
     "subjectLabel": "Accès sécurisé au chantier (portail et cadenas à code)",
     "eventA": {
@@ -82,12 +87,14 @@
       "evidenceCount": 0
     },
     "verdictHumain": "evolution",
+    "changeType": "operationalization",
     "raisonMetier": "Le 20/07, l'accès sécurisé et la communication du code constituent le besoin. Le 27/07, le cadenas est effectivement présenté lors de l'accueil sécurité. Il y a progression observable du dispositif d'accès : du besoin/organisation vers sa mise en œuvre opérationnelle.",
     "patternV2": "besoin → mise en œuvre opérationnelle",
     "v1Signal": false,
     "v1SignalReason": "aucun (statuts identiques)"
   },
   {
+    "angle": "consecutive",
     "subjectId": "6801ce5c-17e9-4939-93c5-175754add1f5",
     "subjectLabel": "Accès sécurisé au chantier (portail et cadenas à code)",
     "eventA": {
@@ -108,12 +115,14 @@
       "evidenceCount": 0
     },
     "verdictHumain": "remention",
+    "changeType": null,
     "raisonMetier": "Le 10/08 reprend la présentation/installation du cadenas déjà matérialisée le 27/07. Les formulations diffèrent, mais les éléments disponibles ne démontrent pas un nouvel état métier suffisamment distinct.",
     "patternV2": null,
     "v1Signal": false,
     "v1SignalReason": "aucun (statuts identiques)"
   },
   {
+    "angle": "consecutive",
     "subjectId": "6801ce5c-17e9-4939-93c5-175754add1f5",
     "subjectLabel": "Accès sécurisé au chantier (portail et cadenas à code)",
     "eventA": {
@@ -135,12 +144,14 @@
       "evidenceCount": 0
     },
     "verdictHumain": "remention",
+    "changeType": null,
     "raisonMetier": "Le 11/08 reformule le même dispositif d'accès sécurisé par portail, code et cadenas. Aucun changement d'état, de périmètre ou de réalisation clairement établi par rapport au 10/08.",
     "patternV2": null,
     "v1Signal": false,
     "v1SignalReason": "aucun (statuts identiques)"
   },
   {
+    "angle": "consecutive",
     "subjectId": "25913332-372a-4ef9-b383-2cfa647f359f",
     "subjectLabel": "Lancement et avancement de la dépose du matériel de cuisine",
     "eventA": {
@@ -166,12 +177,14 @@
       "evidenceCount": 0
     },
     "verdictHumain": "evolution",
+    "changeType": "status",
     "raisonMetier": "Le 20/07, la dépose relève encore de l'intervention prévue/à organiser avec Clim Expert et AGP. Le 11/08, son lancement est acté. Passage d'un état prévu à un état engagé : changement métier significatif.",
     "patternV2": "prévu → engagé/lancé",
     "v1Signal": false,
     "v1SignalReason": "aucun (statuts identiques)"
   },
   {
+    "angle": "consecutive",
     "subjectId": "a3a70db3-6821-4b1d-aa37-34957870e798",
     "subjectLabel": "Nettoyage panneaux isothermes (chambres froides)",
     "eventA": {
@@ -191,9 +204,339 @@
       "evidenceCount": 0
     },
     "verdictHumain": "evolution",
+    "changeType": "scope",
     "raisonMetier": "Entre le 27/07 et le 10/08, le périmètre de l'intervention est explicitement redéfini : le carrelage est exclu tandis que le nettoyage complet des panneaux isothermes est retenu. Un changement de périmètre constitue une évolution significative.",
     "patternV2": "périmètre A → périmètre B",
     "v1Signal": false,
     "v1SignalReason": "aucun (statuts identiques)"
+  },
+  {
+    "angle": "single-occurrence",
+    "subjectId": "f02b515e-c91f-4518-9105-1db87b8ec97b",
+    "subjectLabel": "Risque de retard Clim Expert",
+    "eventA": {
+      "date": "2026-08-10",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Risque de retard",
+        "Surveiller le risque de retard de Clim Expert"
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": null,
+    "verdictHumain": "contre-exemple",
+    "changeType": null,
+    "raisonMetier": "Sujet avec un seul événement — aucune transition possible.",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "occurrence unique"
+  },
+  {
+    "angle": "single-occurrence",
+    "subjectId": "6b92ebff-86c6-43de-9b4f-8cca4e8c56e3",
+    "subjectLabel": "Dépôt de suie sur les panneaux électriques",
+    "eventA": {
+      "date": "2026-08-11",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Dépôt de suie sur les panneaux électriques",
+        "Il y a un dépôt de suie sur les murs des panneaux électriques."
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": null,
+    "verdictHumain": "contre-exemple",
+    "changeType": null,
+    "raisonMetier": "Sujet avec un seul événement — aucune transition possible.",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "occurrence unique"
+  },
+  {
+    "angle": "single-occurrence",
+    "subjectId": "34ad7d86-2a1b-4f2d-a807-15f3448e4be5",
+    "subjectLabel": "Absence de courant au tableau de distribution (TD)",
+    "eventA": {
+      "date": "2026-08-11",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Il n'y a pas de jus sortant du TD (tableau de distribution).",
+        "Il n'y a pas de jus qui sort du TD (Tableau de Distribution).",
+        "Absence de jus au TD"
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": null,
+    "verdictHumain": "contre-exemple",
+    "changeType": null,
+    "raisonMetier": "Sujet avec un seul événement — aucune transition possible.",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "occurrence unique"
+  },
+  {
+    "angle": "intra-event",
+    "subjectId": "14cd6eaa-926b-4262-90fa-9a323b49f35b",
+    "subjectLabel": "Diffusion et mise à jour du planning général",
+    "eventA": {
+      "date": "2026-07-20",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Diffusion du premier planning",
+        "Communication du premier planning"
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": null,
+    "verdictHumain": "",
+    "changeType": null,
+    "raisonMetier": "",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "2 formulations dans le même événement"
+  },
+  {
+    "angle": "intra-event",
+    "subjectId": "14cd6eaa-926b-4262-90fa-9a323b49f35b",
+    "subjectLabel": "Diffusion et mise à jour du planning général",
+    "eventA": {
+      "date": "2026-08-11",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Retard dans l'avancement",
+        "Mettre à jour le planning en fonction de l'avancement de la dépose",
+        "Diffuser le premier planning",
+        "Manque d'éléments de Yann",
+        "Mettre à jour le planning en fonction de l'avancée de la dépose du matériel de cuisine",
+        "Le conducteur de travaux a pris du retard sur le planning initial.",
+        "Il y a eu un retard de quelques semaines dans l'avancement."
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": null,
+    "verdictHumain": "",
+    "changeType": null,
+    "raisonMetier": "",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "7 formulations dans le même événement"
+  },
+  {
+    "angle": "intra-event",
+    "subjectId": "72bc3ea9-d054-4951-8593-f7627be5a5c6",
+    "subjectLabel": "Vérification des lignes électriques et consignations",
+    "eventA": {
+      "date": "2026-07-20",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Verification installations electriques",
+        "Intervention de l'électricien pour vérification des installations"
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": null,
+    "verdictHumain": "",
+    "changeType": null,
+    "raisonMetier": "",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "2 formulations dans le même événement"
+  },
+  {
+    "angle": "intra-event",
+    "subjectId": "72bc3ea9-d054-4951-8593-f7627be5a5c6",
+    "subjectLabel": "Vérification des lignes électriques et consignations",
+    "eventA": {
+      "date": "2026-08-10",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Les électriciens vont vérifier les lignes électriques et les consignations.",
+        "Les électriciens vérifieront les lignes et les consignations."
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": null,
+    "verdictHumain": "",
+    "changeType": null,
+    "raisonMetier": "",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "2 formulations dans le même événement"
+  },
+  {
+    "angle": "intra-event",
+    "subjectId": "6801ce5c-17e9-4939-93c5-175754add1f5",
+    "subjectLabel": "Accès sécurisé au chantier (portail et cadenas à code)",
+    "eventA": {
+      "date": "2026-07-20",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Acces securise chantier portail cadenas code",
+        "Acces chantier portail cadenas code",
+        "Communication de l'accès sécurisé au chantier",
+        "Communication du code d'accès sécurisé",
+        "Communiquer le code dacces securise du chantier"
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": null,
+    "verdictHumain": "",
+    "changeType": null,
+    "raisonMetier": "",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "5 formulations dans le même événement"
+  },
+  {
+    "angle": "intra-event",
+    "subjectId": "6801ce5c-17e9-4939-93c5-175754add1f5",
+    "subjectLabel": "Accès sécurisé au chantier (portail et cadenas à code)",
+    "eventA": {
+      "date": "2026-08-10",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Présenter le cadenas à code lors de l'accueil sécurité",
+        "Un cadenas à code sera installé dans le bâtiment."
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": null,
+    "verdictHumain": "",
+    "changeType": null,
+    "raisonMetier": "",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "2 formulations dans le même événement"
+  },
+  {
+    "angle": "intra-event",
+    "subjectId": "6801ce5c-17e9-4939-93c5-175754add1f5",
+    "subjectLabel": "Accès sécurisé au chantier (portail et cadenas à code)",
+    "eventA": {
+      "date": "2026-08-11",
+      "visitStatus": "field_checked",
+      "labels": [
+        "L'accès sécurisé du chantier se fera par un code pour un cadenas.",
+        "L'accès au chantier se fera par un portail d'entrée avec un code."
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": null,
+    "verdictHumain": "",
+    "changeType": null,
+    "raisonMetier": "",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "2 formulations dans le même événement"
+  },
+  {
+    "angle": "intra-event",
+    "subjectId": "25913332-372a-4ef9-b383-2cfa647f359f",
+    "subjectLabel": "Lancement et avancement de la dépose du matériel de cuisine",
+    "eventA": {
+      "date": "2026-07-20",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Intervention de Clim Expert pour la dépose des hottes, gaines, chambre froide et dalle",
+        "Intervention d'AGP",
+        "Dépose des hottes, gaines, chambre froide et dalle par Clim Expert"
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": null,
+    "verdictHumain": "",
+    "changeType": null,
+    "raisonMetier": "",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "3 formulations dans le même événement"
+  },
+  {
+    "angle": "intra-event",
+    "subjectId": "25913332-372a-4ef9-b383-2cfa647f359f",
+    "subjectLabel": "Lancement et avancement de la dépose du matériel de cuisine",
+    "eventA": {
+      "date": "2026-08-11",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Le lancement de la dépose du matériel de cuisine a été acté.",
+        "La dépose du matériel de cuisine a été lancée.",
+        "Le lancement de la dépose est acté.",
+        "Réaliser la dépose des hottes, gaines, chambre froide et dalle",
+        "La dépose du matériel est lancée."
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": null,
+    "verdictHumain": "",
+    "changeType": null,
+    "raisonMetier": "",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "5 formulations dans le même événement"
+  },
+  {
+    "angle": "intra-event",
+    "subjectId": "f02b515e-c91f-4518-9105-1db87b8ec97b",
+    "subjectLabel": "Risque de retard Clim Expert",
+    "eventA": {
+      "date": "2026-08-10",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Risque de retard",
+        "Surveiller le risque de retard de Clim Expert"
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": null,
+    "verdictHumain": "",
+    "changeType": null,
+    "raisonMetier": "",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "2 formulations dans le même événement"
+  },
+  {
+    "angle": "intra-event",
+    "subjectId": "6b92ebff-86c6-43de-9b4f-8cca4e8c56e3",
+    "subjectLabel": "Dépôt de suie sur les panneaux électriques",
+    "eventA": {
+      "date": "2026-08-11",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Dépôt de suie sur les panneaux électriques",
+        "Il y a un dépôt de suie sur les murs des panneaux électriques."
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": null,
+    "verdictHumain": "",
+    "changeType": null,
+    "raisonMetier": "",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "2 formulations dans le même événement"
+  },
+  {
+    "angle": "intra-event",
+    "subjectId": "34ad7d86-2a1b-4f2d-a807-15f3448e4be5",
+    "subjectLabel": "Absence de courant au tableau de distribution (TD)",
+    "eventA": {
+      "date": "2026-08-11",
+      "visitStatus": "field_checked",
+      "labels": [
+        "Il n'y a pas de jus sortant du TD (tableau de distribution).",
+        "Il n'y a pas de jus qui sort du TD (Tableau de Distribution).",
+        "Absence de jus au TD"
+      ],
+      "evidenceCount": 0
+    },
+    "eventB": null,
+    "verdictHumain": "",
+    "changeType": null,
+    "raisonMetier": "",
+    "patternV2": null,
+    "v1Signal": false,
+    "v1SignalReason": "3 formulations dans le même événement"
   }
 ]
