@@ -28,10 +28,11 @@ import Link from 'next/link'
 import {
   prepareCrConcretisationAction,
   createFromCrAction,
+  reintroduceRemovedItemAction,
   type ReviewItem,
   type CreationSummary,
 } from './cr-concretisation-actions'
-import type { OperationalDiff } from '@/lib/visits/cr-concretisation'
+import type { OperationalDiff, OperationalItem } from '@/lib/visits/cr-concretisation'
 import { cn } from '@/lib/utils'
 
 interface FamilleStyle {
@@ -147,6 +148,8 @@ export function CrConcretisation({
   const [done, setDone] = useState<CreationSummary | null>(null)
   // La révision du document au moment où cette liste a été calculée.
   const [prepareeALaRevision, setPrepareeALaRevision] = useState(0)
+  // Éléments retirés du CR que l'humain a choisi de réintroduire dans le chantier.
+  const [reintroduced, setReintroduced] = useState<Set<string>>(new Set())
 
   const prepare = async () => {
     if (pending) return
@@ -163,9 +166,27 @@ export function CrConcretisation({
     setPrepareeALaRevision(revisionLue)
     setItems(res.items)
     setDiff(res.diff)
+    setReintroduced(new Set())
     // Tout ce qui est créable et pas déjà créé part coché : le cas courant est
     // « je confirme », pas « je resélectionne tout ».
     setChosen(new Set(res.items.filter((i) => i.creatable && !i.alreadyCreated).map((i) => i.key)))
+  }
+
+  const reintroduce = async (item: OperationalItem) => {
+    if (pending) return
+    setPending(true)
+    setError(null)
+    const res = await reintroduceRemovedItemAction(reportId, item)
+    setPending(false)
+    if (!res.ok) {
+      setError(res.error)
+      return
+    }
+    setReintroduced((prev) => {
+      const next = new Set(prev)
+      next.add(item.key)
+      return next
+    })
   }
 
   const create = async () => {
@@ -344,10 +365,33 @@ export function CrConcretisation({
             </li>
           )}
           {diff.removed.length > 0 && (
-            <li className="text-muted-foreground">
-              − {diff.removed.length} que MemorIA proposait et que vous avez retirée
-              {diff.removed.length > 1 ? 's' : ''}
-            </li>
+            <>
+              <li className="text-muted-foreground">
+                − {diff.removed.length} que MemorIA proposait et que vous avez retirée
+                {diff.removed.length > 1 ? 's' : ''}
+              </li>
+              {diff.removed
+                .filter((r) => r.kind !== 'intervenant')
+                .map((r) => (
+                  <li key={r.key} className="ml-2 flex items-center justify-between gap-2">
+                    <span className="flex-1 truncate text-[11px] line-through opacity-60">{r.label}</span>
+                    {reintroduced.has(r.key) ? (
+                      <span className="shrink-0 inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+                        <Check className="h-3 w-3" aria-hidden /> Créé
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void reintroduce(r)}
+                        disabled={pending}
+                        className="shrink-0 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+                      >
+                        Réintroduire
+                      </button>
+                    )}
+                  </li>
+                ))}
+            </>
           )}
           {diff.changed.length > 0 && (
             <li className="text-sky-700 dark:text-sky-400">

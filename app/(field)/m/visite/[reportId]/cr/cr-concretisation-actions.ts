@@ -2,11 +2,13 @@
 
 // CONCRÉTISER — créer le travail réel depuis le récit APPROUVÉ.
 //
-// Deux gestes serveur, et deux seulement :
+// Trois gestes serveur :
 //   · `prepareCrConcretisationAction` — relit le document CORRIGÉ et rend la
 //     liste de ce qui peut être créé. Elle ne crée RIEN.
 //   · `createFromCrAction` — crée les éléments que l'humain a cochés, et eux
 //     seuls. Aucun objet n'apparaît dans le chantier sans ce clic.
+//   · `reintroduceRemovedItemAction` — crée l'objet correspondant à un élément
+//     que Guillaume avait retiré du CR. L'ancienne proposition reste 'superseded'.
 //
 // La source est TOUJOURS `content` — le texte corrigé. Jamais `ai_content`,
 // jamais l'ancien débrief : concrétiser depuis la proposition d'origine
@@ -295,7 +297,106 @@ export async function createFromCrAction(reportId: string, keys: string[]): Prom
 
   const total = Object.values(byKind).reduce((n, v) => n + v, 0)
   if (total === 0 && skipped === 0) {
-    return { ok: false, error: 'Aucun élément n’a pu être créé' }
+    return { ok: false, error: "Aucun élément n’a pu être créé" }
   }
   return { ok: true, summary: { byKind, total, skipped, failed, siteId } }
+}
+
+export type ReintroduceResult =
+  | { ok: true; alreadyExisted: boolean }
+  | { ok: false; error: string }
+
+export async function reintroduceRemovedItemAction(
+  reportId: string,
+  item: Pick<OperationalItem, "kind" | "label" | "owner" | "due" | "constraint" | "sourceSection">,
+): Promise<ReintroduceResult> {
+  const ctx = await open(reportId)
+  if (!ctx.ok) return ctx
+
+  if (item.kind === "intervenant") {
+    return { ok: false, error: "Les intervenants ne peuvent pas être réintroduits ici" }
+  }
+
+  const siteId = ctx.visit.site_id!
+  const userId = ctx.user.id
+
+  const deja = await existingTitles(reportId, siteId)
+  if (deja.has(signatureOf(item))) {
+    return { ok: true, alreadyExisted: true }
+  }
+
+  const stamp = new Date().toISOString()
+  let entityId: string | null = null
+
+  try {
+    if (item.kind === "action") {
+      entityId = await createSiteAction({
+        site_id: siteId,
+        report_id: reportId,
+        title: item.label,
+        due_date: item.due,
+        due_date_status: item.due ? "explicit" : null,
+        created_by: userId,
+        created_from: CREATED_FROM,
+      })
+    } else if (item.kind === "echeance") {
+      entityId = await createSiteDeadline({
+        site_id: siteId,
+        report_id: reportId,
+        organization_id: ctx.visit.organization_id ?? null,
+        title: item.label,
+        constraint_text: item.constraint,
+        due_date: item.due,
+        created_by: userId,
+        created_from: CREATED_FROM,
+      })
+    } else if (item.kind === "decision") {
+      entityId = await createSiteDecision({
+        siteId,
+        reportId,
+        titre: item.label,
+        echeance: item.due,
+        confiance: "à confirmer",
+      })
+    } else {
+      entityId = await addCapturedKnowledge({
+        siteId,
+        sourceType: "visit",
+        sourceId: reportId,
+        kind: "a_savoir",
+        title: item.label,
+        createdBy: userId,
+      })
+    }
+  } catch {
+    return { ok: false, error: "La création a échoué" }
+  }
+
+  if (entityId) {
+    try {
+      const entry: SectionConcretisation = {
+        item_key: `reintr:${item.kind}:${item.label}`,
+        entity_type: item.kind as SectionConcretisation["entity_type"],
+        entity_id: entityId,
+        created_at: stamp,
+        source_text: item.label,
+      }
+      const sections = withConcretisation(ctx.doc.sections, item.sourceSection, entry)
+      await writeConcretisationRegistry(ctx.doc.id, sections)
+    } catch {
+      // silencieux
+    }
+
+    try {
+      await fulfillProposalsFromConcretisation({
+        reportId,
+        created: [{ kind: item.kind, label: item.label, entityId }],
+        userId,
+      })
+    } catch {
+      // silencieux
+    }
+  }
+
+  return { ok: true, alreadyExisted: false }
 }
