@@ -239,7 +239,7 @@ export async function reconcileSourceToCanonicalSubjects(
   // proposals déjà matérialisées mais jamais rattachées à un canonical_subject).
   let query = sb
     .from('site_knowledge_proposals')
-    .select('id, kind, title, body, status, canonical_subject_id, canonical_resolution_status')
+    .select('id, kind, title, body, status, canonical_subject_id, canonical_resolution_status, entity_ids')
     .eq('report_id', source.id)
     .eq('site_id', source.siteId)
     .is('canonical_subject_id', null)
@@ -265,6 +265,7 @@ export async function reconcileSourceToCanonicalSubjects(
     status: string
     canonical_subject_id: string | null
     canonical_resolution_status: string | null
+    entity_ids: string[]
   }>
 
   const eligible = proposals.filter((p) => ELIGIBLE_KINDS.has(p.kind))
@@ -287,6 +288,7 @@ export async function reconcileSourceToCanonicalSubjects(
         proposalCreatedAt: new Date().toISOString(),
         createdBy: source.authorId,
         validationStatus,
+        entityIds: proposal.entity_ids ?? [],
       })
       result.matched++
 
@@ -410,6 +412,7 @@ export async function reconcileSourceToCanonicalSubjects(
                 effective_date: new Date().toISOString().slice(0, 10),
                 created_by: source.authorId,
                 validation_status: validationStatus,
+                entity_ids: proposal.entity_ids ?? [],
               },
               { onConflict: 'source_kind,source_proposal_id', ignoreDuplicates: true },
             )
@@ -466,6 +469,7 @@ export async function reconcileSourceToCanonicalSubjects(
             proposalCreatedAt: new Date().toISOString(),
             createdBy: source.authorId,
             validationStatus,
+            entityIds: proposal.entity_ids ?? [],
           })
           result.matched++
         } else {

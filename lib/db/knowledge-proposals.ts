@@ -31,6 +31,7 @@ import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 import { toDebriefEcheance } from '@/lib/visits/echeance-labels'
 import { listExtractionSuppressions, matchSuppression, DEFAULT_SUPPRESSION_THRESHOLD, deleteExtractionSuppression } from '@/lib/db/extraction-suppressions'
 import { reconcileProposalToCanonical, ELIGIBLE_KINDS as RECONCILE_ELIGIBLE_KINDS } from '@/lib/db/canonical-subject-reconcile'
+import type { EntityResolution } from '@/lib/knowledge/semantic-resolution'
 
 export type ProposalKind = 'action' | 'vigilance' | 'decision' | 'knowledge' | 'stakeholder' | 'deadline'
 /**
@@ -79,6 +80,28 @@ interface DesiredProposal {
   body: string | null
   payload: ProposalPayload
   dedupe_key: string
+  /** Identifiants des entités reconnues (personnes/sociétés) référencées par cette proposition.
+   *  Lookup direct depuis semantic_memory.resolutions — jamais de grep textuel.
+   *  Invariant : label et note ne sont jamais réécrits par un renommage d'entité.
+   *  Le nom courant est toujours résolu via entity_ids → site_knowledge_entities. */
+  entity_ids: string[]
+}
+
+// ── Entity provenance (mig 310) ─────────────────────────────────
+// Lookup direct dans semantic_memory.resolutions : aucun fuzzy matching.
+// Seuls les textes qui correspondent EXACTEMENT à un rawText résolu contribuent.
+// Plusieurs textes peuvent pointer vers la même entité (dédupliqué par Set).
+export function extractEntityIds(
+  texts: (string | null | undefined)[],
+  resolutions: Record<string, EntityResolution>,
+): string[] {
+  const ids = new Set<string>()
+  for (const text of texts) {
+    if (!text) continue
+    const r = resolutions[text.trim()]
+    if (r?.status === 'resolved' && r.entityId) ids.add(r.entityId)
+  }
+  return [...ids]
 }
 
 // ── Normalisation & déduplication ───────────────────────────────
@@ -104,10 +127,21 @@ function dedupeKey(kind: ProposalKind, siteId: string, parts: string[]): string 
 
 function buildDesiredProposals(analysis: StoredDebriefAnalysis, siteId: string): DesiredProposal[] {
   const out: DesiredProposal[] = []
-  const push = (kind: ProposalKind, title: string, body: string | null, payload: ProposalPayload, keyParts: string[]) => {
+  const resolutions = analysis.semantic_memory?.resolutions ?? {}
+
+  // entityTexts : textes à résoudre dans semantic_memory.resolutions.
+  // Lookup direct uniquement — pas de fuzzy matching.
+  const push = (kind: ProposalKind, title: string, body: string | null, payload: ProposalPayload, keyParts: string[], entityTexts?: string[]) => {
     const t = (title ?? '').trim()
     if (!t) return
-    out.push({ kind, title: t, body: body?.trim() || null, payload, dedupe_key: dedupeKey(kind, siteId, keyParts) })
+    out.push({
+      kind,
+      title: t,
+      body: body?.trim() || null,
+      payload,
+      dedupe_key: dedupeKey(kind, siteId, keyParts),
+      entity_ids: extractEntityIds(entityTexts ?? [], resolutions),
+    })
   }
 
   // Actions — grand livre (non écartées) ; repli sur analysis.actions pour les
@@ -115,32 +149,32 @@ function buildDesiredProposals(analysis: StoredDebriefAnalysis, siteId: string):
   const ledger = (analysis.action_ledger ?? []).filter((a) => a.state !== 'dismissed')
   if (ledger.length > 0) {
     for (const a of ledger) {
-      push('action', a.title, a.rationale, { priority: a.priority, owner: a.owner, due: a.due }, [a.title, a.owner, a.due])
+      push('action', a.title, a.rationale, { priority: a.priority, owner: a.owner, due: a.due }, [a.title, a.owner, a.due], [a.owner])
     }
   } else {
     for (const a of analysis.actions ?? []) {
-      push('action', a.title, a.rationale, { priority: a.priority, owner: a.owner, due: a.due }, [a.title, a.owner, a.due])
+      push('action', a.title, a.rationale, { priority: a.priority, owner: a.owner, due: a.due }, [a.title, a.owner, a.due], [a.owner])
     }
   }
 
   // Vigilances — fiches. Discriminant : le libellé du risque.
   for (const w of analysis.watchpoints ?? []) {
-    push('vigilance', w.label, w.impact, { impact: w.impact, owner: w.owner, due: w.due }, [w.label])
+    push('vigilance', w.label, w.impact, { impact: w.impact, owner: w.owner, due: w.due }, [w.label], [w.owner])
   }
 
   // Décisions — chaînes. Discriminant : le fait décidé.
   for (const d of analysis.decisions ?? []) {
-    push('decision', d, null, {}, [d])
+    push('decision', d, null, {}, [d], [d])
   }
 
   // Connaissances durables (« à savoir »). Discriminant : le fait normalisé.
   for (const k of analysis.a_savoir ?? []) {
-    push('knowledge', k, null, {}, [k])
+    push('knowledge', k, null, {}, [k], [k])
   }
 
-  // Intervenants détectés. Discriminant : le nom/entité normalisé.
+  // Intervenants détectés. Le titre EST le texte brut de l'entité.
   for (const p of analysis.intervenants ?? []) {
-    push('stakeholder', p, null, {}, [p])
+    push('stakeholder', p, null, {}, [p], [p])
   }
 
   // Échéances détectées. Le TITRE est ce qui doit arriver (« Poser le coffret ») ;
@@ -150,7 +184,7 @@ function buildDesiredProposals(analysis: StoredDebriefAnalysis, siteId: string):
   for (const raw of analysis.echeances ?? []) {
     const e = toDebriefEcheance(raw)
     if (!e) continue
-    push('deadline', e.label, e.constraint || null, { date: e.date, constraint: e.constraint }, [e.label, e.date, e.constraint])
+    push('deadline', e.label, e.constraint || null, { date: e.date, constraint: e.constraint }, [e.label, e.date, e.constraint], [e.label])
   }
 
   return out
@@ -234,6 +268,7 @@ export async function projectDebriefToProposals(params: {
         body: d.body,
         payload: d.payload,
         dedupe_key: d.dedupe_key,
+        entity_ids: d.entity_ids,
         masked_by_suppression_id: maskedBySuppressionId,
       })
       continue
@@ -241,7 +276,7 @@ export async function projectDebriefToProposals(params: {
     if (ex.status === 'proposed') {
       const { error: updErr } = await supabase
         .from('site_knowledge_proposals')
-        .update({ title: d.title, body: d.body, payload: d.payload, analysis_version: version, updated_at: now })
+        .update({ title: d.title, body: d.body, payload: d.payload, entity_ids: d.entity_ids, analysis_version: version, updated_at: now })
         .eq('id', ex.id)
       if (updErr) throw updErr
       refreshed++
@@ -254,13 +289,13 @@ export async function projectDebriefToProposals(params: {
     const { data: insertedRows, error: insErr } = await supabase
       .from('site_knowledge_proposals')
       .insert(toInsert)
-      .select('id, kind, title, body, created_at, status')
+      .select('id, kind, title, body, created_at, status, entity_ids')
     if (insErr) throw insErr
 
     // Résolution canonical fire-and-forget pour les nouvelles propositions éligibles.
     // validationStatus='observed' : l'IA a détecté, pas encore confirmé par l'humain.
     // Aucune matérialisation d'objet métier à ce stade.
-    for (const p of (insertedRows ?? []) as Array<{ id: string; kind: string; title: string; body: string | null; created_at: string; status: string }>) {
+    for (const p of (insertedRows ?? []) as Array<{ id: string; kind: string; title: string; body: string | null; created_at: string; status: string; entity_ids: string[] }>) {
       if (p.status !== 'proposed') continue
       if (!RECONCILE_ELIGIBLE_KINDS.has(p.kind)) continue
       reconcileProposalToCanonical({
@@ -273,6 +308,7 @@ export async function projectDebriefToProposals(params: {
         proposalCreatedAt: p.created_at,
         createdBy: null,
         validationStatus: 'observed',
+        entityIds: p.entity_ids ?? [],
       }).catch(() => {})
     }
   }

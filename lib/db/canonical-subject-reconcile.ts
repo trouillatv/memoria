@@ -36,9 +36,13 @@ export async function reconcileProposalToCanonical(params: {
   proposalCreatedAt: string // fallback si le report n'a pas de date
   createdBy: string | null
   validationStatus?: 'observed' | 'confirmed'  // défaut : 'confirmed' (compat V1)
+  /** Identifiants des entités reconnues portées par cette proposition (mig 310).
+   *  Snapshots : renseignés à la date de la source, jamais réécrits par un renommage. */
+  entityIds?: string[]
 }): Promise<ReconcileResult> {
   const { proposalId, siteId, reportId, proposalKind, proposalTitle, proposalBody, proposalCreatedAt, createdBy } = params
   const validationStatus = params.validationStatus ?? 'confirmed'
+  const entityIds = params.entityIds ?? []
 
   if (!ELIGIBLE_KINDS.has(proposalKind)) return { status: 'skipped' }
 
@@ -82,6 +86,7 @@ export async function reconcileProposalToCanonical(params: {
       effective_date: visitDate,
       created_by: createdBy,
       validation_status: validationStatus,
+      entity_ids: entityIds,
     }
 
     if (validationStatus === 'observed') {
