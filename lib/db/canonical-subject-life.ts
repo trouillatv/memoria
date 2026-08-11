@@ -175,7 +175,7 @@ export async function getCanonicalSubjectLife(
       .select('id, source_ref_id, source_proposal_id, source_kind, visit_status, label, note, evidence_count, effective_date')
       .eq('canonical_subject_id', canonicalSubjectId)
       .in('source_kind', ['field_visit', 'meeting'])
-      .neq('validation_status', 'rejected')
+      .not('validation_status', 'in', '("rejected","source_superseded")')
       .order('effective_date', { ascending: true })
     type NativeCsoRow = {
       id: string; source_ref_id: string; source_proposal_id: string | null
@@ -228,7 +228,7 @@ export async function getCanonicalSubjectLife(
       .select('id, source_ref_id, source_proposal_id, source_kind, visit_status, label, note, evidence_count, effective_date')
       .eq('canonical_subject_id', canonicalSubjectId)
       .in('source_kind', ['field_visit', 'meeting'])
-      .neq('validation_status', 'rejected')
+      .not('validation_status', 'in', '("rejected","source_superseded")')
       .order('effective_date', { ascending: true })
     const fallbackOccs: SubjectOccurrenceMerged[] = ((csoFallback ?? []) as CsoRowShort[]).map((row) => ({
       sourceKind: row.source_kind, runId: null, documentId: null, reportId: row.source_ref_id,
@@ -491,7 +491,7 @@ export async function getCanonicalSubjectLife(
     .select('id, source_ref_id, source_proposal_id, source_kind, visit_status, label, note, evidence_count, effective_date')
     .eq('canonical_subject_id', canonicalSubjectId)
     .in('source_kind', ['field_visit', 'meeting'])
-    .neq('validation_status', 'rejected')
+    .not('validation_status', 'in', '("rejected","source_superseded")')
     .order('effective_date', { ascending: true })
 
   type CsoRow = {
@@ -725,7 +725,7 @@ export async function getSiteNativeOccurrencesBySubject(
     .select('canonical_subject_id, effective_date, source_kind')
     .eq('site_id', siteId)
     .in('source_kind', ['field_visit', 'meeting'])
-    .neq('validation_status', 'rejected')
+    .not('validation_status', 'in', '("rejected","source_superseded")')
     .order('effective_date', { ascending: true })
 
   type Row = { canonical_subject_id: string; effective_date: string; source_kind: 'field_visit' | 'meeting' }
@@ -769,7 +769,7 @@ export async function buildNativeEvolutionData(siteId: string): Promise<NativeSu
       .select('canonical_subject_id, effective_date, source_kind, label')
       .eq('site_id', siteId)
       .in('source_kind', ['field_visit', 'meeting'])
-      .neq('validation_status', 'rejected')
+      .not('validation_status', 'in', '("rejected","source_superseded")')
       .order('effective_date', { ascending: true }),
     supabase
       .from('canonical_subject')
@@ -1054,7 +1054,7 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     .select('canonical_subject_id, effective_date, visit_status, source_kind')
     .eq('site_id', siteId)
     .in('source_kind', ['field_visit', 'meeting'])
-    .neq('validation_status', 'rejected')
+    .not('validation_status', 'in', '("rejected","source_superseded")')
     .order('effective_date', { ascending: true })
   const nativeOccs = (nativeRaw ?? []) as NativeRow[]
 

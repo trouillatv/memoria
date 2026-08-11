@@ -29,11 +29,13 @@ const SUPPORTED_TYPES = new Set(['site_action', 'site_reserve'])
 // ─── Point d'entrée ──────────────────────────────────────────────────────────
 
 export interface ReconcileImpactResult {
-  processed: number   // propositions supersédées avec objet matérialisé traitées
-  reattached: number  // objets re-rattachés à une nouvelle proposition
-  orphaned: number    // objets marqués orphelins
-  autonomous: number  // objets autonomes (non touchés)
-  skipped: number     // types non gérés en V1
+  processed: number        // propositions supersédées avec objet matérialisé traitées
+  reattached: number       // objets re-rattachés à une nouvelle proposition
+  orphaned: number         // objets marqués orphelins
+  autonomous: number       // objets autonomes (non touchés)
+  skipped: number          // types non gérés en V1
+  csoUpdated: number       // occurrences confirmed mises à jour depuis source corrigée
+  csoSourceSuperseded: number  // occurrences confirmed dont la source ne les mentionne plus
 }
 
 /**
@@ -48,6 +50,7 @@ export async function reconcileObsoleteProposals(params: {
 }): Promise<ReconcileImpactResult> {
   const result: ReconcileImpactResult = {
     processed: 0, reattached: 0, orphaned: 0, autonomous: 0, skipped: 0,
+    csoUpdated: 0, csoSourceSuperseded: 0,
   }
   const { reportId, siteId } = params
   const sb = createAdminClient()
@@ -136,6 +139,11 @@ export async function reconcileObsoleteProposals(params: {
       result.orphaned++
     }
   }
+
+  // Réconciliation des occurrences confirmed — indépendante des objets matérialisés ci-dessus
+  const csoResult = await reconcileConfirmedOccurrences({ reportId, siteId })
+  result.csoUpdated = csoResult.updated
+  result.csoSourceSuperseded = csoResult.sourceSuperseded
 
   return result
 }
@@ -270,11 +278,127 @@ async function removeObservedOccurrence(
   sb: SupabaseAdmin,
   supersededProposalId: string,
 ): Promise<void> {
-  // Supprimer les occurrences 'observed' liées à la proposition supersédée
-  // (les 'confirmed' sont immunisées — action humaine explicite)
   await sb
     .from('canonical_subject_occurrence')
     .delete()
     .eq('source_proposal_id', supersededProposalId)
     .eq('validation_status', 'observed')
+}
+
+/**
+ * Réconcilie les occurrences `confirmed` dont la proposition source a été supersédée.
+ *
+ * Appelée depuis reconcileObsoleteProposals() APRÈS que les nouvelles occurrences
+ * observed ont été créées par reconcileProposalToCanonical().
+ *
+ * Deux cas par occurrence confirmée :
+ *
+ *   1. Remplacement trouvé (même canonical_subject_id + source_kind + source_ref_id) :
+ *      → Mise à jour du contenu (label/note/visit_status) + rerattachement à la nouvelle
+ *        proposition + suppression du doublon observed.
+ *      → effective_date inchangée. validation_status inchangée (reste 'confirmed').
+ *
+ *   2. Aucun remplacement (la source ne mentionne plus ce sujet) :
+ *      → validation_status → 'source_superseded'. Exclue de toutes les vues d'évolution.
+ *      → L'occurrence n'est pas supprimée : trace audit de ce que l'humain avait validé.
+ *
+ * Idempotente : une occurrence déjà 'source_superseded' ou déjà rerattachée est ignorée.
+ */
+export async function reconcileConfirmedOccurrences(params: {
+  reportId: string
+  siteId: string
+}): Promise<{ updated: number; sourceSuperseded: number }> {
+  const { reportId, siteId } = params
+  const sb = createAdminClient()
+  const now = new Date().toISOString()
+
+  // 1. Toutes les propositions supersédées de ce rapport
+  const { data: supersededRaw } = await sb
+    .from('site_knowledge_proposals')
+    .select('id')
+    .eq('report_id', reportId)
+    .eq('site_id', siteId)
+    .eq('status', 'superseded')
+
+  const supersededIds = (supersededRaw ?? []).map((p: { id: string }) => p.id)
+  if (supersededIds.length === 0) return { updated: 0, sourceSuperseded: 0 }
+
+  // 2. Occurrences confirmed liées à ces propositions
+  const { data: confirmedRaw } = await sb
+    .from('canonical_subject_occurrence')
+    .select('id, canonical_subject_id, source_kind, source_proposal_id')
+    .in('source_proposal_id', supersededIds)
+    .eq('validation_status', 'confirmed')
+
+  const confirmed = (confirmedRaw ?? []) as Array<{
+    id: string
+    canonical_subject_id: string
+    source_kind: string
+    source_proposal_id: string
+  }>
+  if (confirmed.length === 0) return { updated: 0, sourceSuperseded: 0 }
+
+  // 3. Nouvelles occurrences observed créées par la ré-analyse du même rapport
+  //    Filtre : même source_ref_id (rapport), mêmes canonical_subject_ids
+  const canonicalIds = confirmed.map((o) => o.canonical_subject_id)
+  const { data: replacementsRaw } = await sb
+    .from('canonical_subject_occurrence')
+    .select('id, canonical_subject_id, source_kind, source_proposal_id, label, note, visit_status')
+    .eq('source_ref_id', reportId)
+    .in('canonical_subject_id', canonicalIds)
+    .eq('validation_status', 'observed')
+
+  type ReplacementRow = {
+    id: string; canonical_subject_id: string; source_kind: string
+    source_proposal_id: string; label: string; note: string | null; visit_status: string | null
+  }
+
+  // Index : (canonical_subject_id + ':' + source_kind) → première occurrence observed
+  const replacementMap = new Map<string, ReplacementRow>()
+  for (const r of (replacementsRaw ?? []) as ReplacementRow[]) {
+    const key = `${r.canonical_subject_id}:${r.source_kind}`
+    if (!replacementMap.has(key)) replacementMap.set(key, r)
+  }
+
+  let updated = 0
+  let sourceSuperseded = 0
+
+  for (const occ of confirmed) {
+    const key = `${occ.canonical_subject_id}:${occ.source_kind}`
+    const replacement = replacementMap.get(key)
+
+    if (replacement) {
+      // Mise à jour du contenu confirmed + rerattachement à la nouvelle proposition
+      await sb
+        .from('canonical_subject_occurrence')
+        .update({
+          label: replacement.label,
+          note: replacement.note,
+          visit_status: replacement.visit_status,
+          source_proposal_id: replacement.source_proposal_id,
+          updated_at: now,
+        })
+        .eq('id', occ.id)
+
+      // Suppression du doublon observed (fusionné dans le confirmed)
+      await sb
+        .from('canonical_subject_occurrence')
+        .delete()
+        .eq('id', replacement.id)
+        .eq('validation_status', 'observed')
+
+      updated++
+    } else {
+      // La source ne mentionne plus ce sujet — marquer source_superseded
+      await sb
+        .from('canonical_subject_occurrence')
+        .update({ validation_status: 'source_superseded', updated_at: now })
+        .eq('id', occ.id)
+        .eq('validation_status', 'confirmed')   // garde-fou idempotence
+
+      sourceSuperseded++
+    }
+  }
+
+  return { updated, sourceSuperseded }
 }
