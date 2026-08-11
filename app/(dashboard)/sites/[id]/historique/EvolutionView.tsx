@@ -414,7 +414,7 @@ function V2PairCard({ pair }: { pair: V2SubjectResult['pairs'][number] }) {
           {fmtShortDate(stateT1.date)} · {SOURCE_KIND_LABEL[stateT1.sourceKind] ?? stateT1.sourceKind}
           {stateT1.fallbackUsed && <span className="ml-1 text-amber-600">(fallback)</span>}
         </p>
-        <p className="mt-0.5 text-xs leading-snug text-foreground/80">{stateT1.state}</p>
+        <p className="mt-0.5 text-xs leading-snug text-foreground/80">{stateT1.summary}</p>
       </div>
 
       {/* Verdict */}
@@ -441,7 +441,7 @@ function V2PairCard({ pair }: { pair: V2SubjectResult['pairs'][number] }) {
           {fmtShortDate(stateT2.date)} · {SOURCE_KIND_LABEL[stateT2.sourceKind] ?? stateT2.sourceKind}
           {stateT2.fallbackUsed && <span className="ml-1 text-amber-600">(fallback)</span>}
         </p>
-        <p className="mt-0.5 text-xs leading-snug text-foreground/80">{stateT2.state}</p>
+        <p className="mt-0.5 text-xs leading-snug text-foreground/80">{stateT2.summary}</p>
       </div>
     </div>
   )

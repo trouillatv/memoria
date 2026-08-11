@@ -53,7 +53,7 @@ function frDate(d: string): string {
 function matchVerdict(human: string, v2: string): boolean {
   if (human === 'evolution' && v2 === 'meaningful_change') return true
   if (human === 'remention' && v2 === 'remention') return true
-  if (human === 'ambigu' && v2 === 'ambiguous') return true
+  if ((human === 'ambigu' || human === 'ambiguous') && v2 === 'ambiguous') return true
   return false
 }
 
@@ -96,12 +96,14 @@ async function main() {
       result.fallbackUsed  ? '⚠ FALLBACK IA (labels[0])' : '',
     ].filter(Boolean).join(' · ')
     console.log(`  ${label} ${date} (${n} formulations)${flags ? '  ' + flags : ''}`)
-    console.log(`    → "${result.state}"`)
+    console.log(`    → "${result.summary}"`)
+    console.log(`       stade: ${result.operationalState}${result.operationalStateEvidence ? ` [« ${result.operationalStateEvidence.slice(0, 60)} »]` : ' [non prouvé]'} conf:${result.stateConfidence.toFixed(1)}`)
+    if (result.newFacts.length > 0) console.log(`       faits: ${result.newFacts.join(' / ')}`)
     console.log()
 
     if (result.fallbackUsed) consolidationFallbacks++
     // Un fallback = état non consolidé par le LLM → ne compte pas comme pass
-    const isOK = result.state.trim().length > 0 && !result.fallbackUsed
+    const isOK = result.summary.trim().length > 0 && !result.fallbackUsed
     if (isOK) consolidationPassed++
   }
 
@@ -174,12 +176,15 @@ async function main() {
     )
 
     console.log(`  [${mark}] ${entry.subjectLabel}`)
+    console.log(`      T1 [${stateT1.operationalState}] → T2 [${stateT2.operationalState}]`)
     console.log(`      Humain : ${entry.verdictHumain.padEnd(20)} V2 : ${v2Verdict} (conf: ${result?.confidence?.toFixed(2) ?? 'N/A'})`)
 
     if (!isMatch) {
       failedRows.push(`\n  ✗ ${entry.subjectLabel} (${d1} → ${d2})`)
-      failedRows.push(`      État T1 : "${stateT1.state}"`)
-      failedRows.push(`      État T2 : "${stateT2.state}"`)
+      failedRows.push(`      T1 [${stateT1.operationalState} conf:${stateT1.stateConfidence.toFixed(1)}] : "${stateT1.summary}"`)
+      if (stateT1.newFacts.length > 0) failedRows.push(`         faits T1 : ${stateT1.newFacts.join(' | ')}`)
+      failedRows.push(`      T2 [${stateT2.operationalState} conf:${stateT2.stateConfidence.toFixed(1)}] : "${stateT2.summary}"`)
+      if (stateT2.newFacts.length > 0) failedRows.push(`         faits T2 : ${stateT2.newFacts.join(' | ')}`)
       failedRows.push(`      V2 : ${v2Verdict} — "${result?.justification ?? 'N/A'}"`)
       failedRows.push(`      Humain attendu : ${entry.verdictHumain} — "${entry.raisonMetier}"`)
     }

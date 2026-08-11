@@ -55,9 +55,9 @@
       ],
       "evidenceCount": 0
     },
-    "verdictHumain": "remention",
+    "verdictHumain": "ambiguous",
     "changeType": null,
-    "raisonMetier": "Les deux observations décrivent la même vérification des installations électriques. Le 10/08 reformule/reconfirme l'action à réaliser par les électriciens sans preuve suffisante qu'elle a commencé, été réalisée ou changé de périmètre.",
+    "raisonMetier": "Contradiction temporelle entre T1 et T2 : T1 (20/07) contient 'Intervention de l'électricien pour vérification' qui peut désigner une intervention déjà réalisée ou planifiée, tandis que T2 (10/08) formule au futur 'Les électriciens vont vérifier'. On ne sait pas si l'électricien est déjà intervenu en T1 (ce qui rendrait T2 une régression) ou si T1 était aussi une anticipation (ce qui rendrait T2 une reconfirmation). Les preuves disponibles ne permettent pas de conclure.",
     "patternV2": null,
     "v1Signal": false,
     "v1SignalReason": "aucun (statuts identiques)"
