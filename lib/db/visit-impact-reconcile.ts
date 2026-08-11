@@ -4,11 +4,12 @@ import 'server-only'
 //
 // Déclencheur : fire-and-forget depuis projectAndTrace(), après projectDebriefToProposals().
 //
-// Périmètre V1 :
+// Périmètre :
 //   - site_action  : autonomie = au moins un événement humain (site_action_events, kind ≠ 'created')
 //   - site_reserve : autonomie = status='lifted' OU lift_note IS NOT NULL
+//   - site_decision: autonomie = source='human' OU statut IN ('appliquee','caduque','contredite')
 //   - canonical_subject_occurrence : validation_status='observed' → supprimée si orpheline
-//   - Autres types (site_decision, site_watchpoint, etc.) : skip silencieux
+//   - Autres types (site_watchpoint, etc.) : skip silencieux
 //
 // Re-rattachement (sans Gemini) :
 //   1. Match exact sur dedupe_key
@@ -24,7 +25,7 @@ import { jaccardSimilarity } from '@/lib/documents/subject-reconciliation'
 
 const JACCARD_REATTACH_THRESHOLD = 0.5
 
-const SUPPORTED_TYPES = new Set(['site_action', 'site_reserve'])
+const SUPPORTED_TYPES = new Set(['site_action', 'site_reserve', 'site_decision'])
 
 // ─── Point d'entrée ──────────────────────────────────────────────────────────
 
@@ -94,9 +95,9 @@ export async function reconcileObsoleteProposals(params: {
   }>
 
   // Index par dedupe_key pour le match exact
-  const activeByDedupeKey = new Map<string, typeof active[0]>()
+  const activeByDedupeKey = new Map<string, { id: string; promoted_object_id: string | null; title: string }>()
   for (const p of active) {
-    if (p.dedupe_key) activeByDedupeKey.set(p.dedupe_key, p)
+    if (p.dedupe_key) activeByDedupeKey.set(p.dedupe_key, { id: p.id, promoted_object_id: p.promoted_object_id, title: p.title })
   }
 
   const now = new Date().toISOString()
@@ -127,7 +128,7 @@ export async function reconcileObsoleteProposals(params: {
 
     if (replacement) {
       // Re-rattacher : la nouvelle proposition pointe vers le même objet
-      await reattachObject(sb, replacement.id, stale.promoted_object_type, stale.promoted_object_id)
+      await reattachObject(sb, replacement, stale.promoted_object_type, stale.promoted_object_id)
       // Nettoyer l'occurrence observed liée à l'ancienne proposition
       await removeObservedOccurrence(sb, stale.id)
       result.reattached++
@@ -181,6 +182,24 @@ async function isAutonomous(
     return r.status === 'lifted' || (r.lift_note != null && r.lift_note.length > 0)
   }
 
+  if (objectType === 'site_decision') {
+    // Autonome = créée manuellement par un humain OU passée à un statut final actif
+    const { data } = await sb
+      .from('site_decisions')
+      .select('source, statut')
+      .eq('id', objectId)
+      .maybeSingle()
+    type Row = { source?: string | null; statut?: string | null } | null
+    const r = data as Row
+    if (!r) return false
+    return (
+      r.source === 'human' ||
+      r.statut === 'appliquee' ||
+      r.statut === 'caduque' ||
+      r.statut === 'contredite'
+    )
+  }
+
   return false
 }
 
@@ -207,25 +226,35 @@ async function isAlreadyOrphaned(
     type Row = { orphaned_from_visit_at?: string | null } | null
     return (data as Row)?.orphaned_from_visit_at != null
   }
+  if (objectType === 'site_decision') {
+    const { data } = await sb
+      .from('site_decisions')
+      .select('orphaned_from_visit_at')
+      .eq('id', objectId)
+      .maybeSingle()
+    type Row = { orphaned_from_visit_at?: string | null } | null
+    return (data as Row)?.orphaned_from_visit_at != null
+  }
   return false
 }
 
 // ─── Re-rattachement ─────────────────────────────────────────────────────────
 
-function findReplacement(
+/** Exportée pour les tests — pure, sans effet de bord. */
+export function findReplacement(
   stale: { dedupe_key: string | null; promoted_object_type: string; title: string },
   active: Array<{ id: string; dedupe_key: string | null; promoted_object_id: string | null; promoted_object_type: string | null; title: string }>,
-  activeByDedupeKey: Map<string, { id: string; promoted_object_id: string | null }>,
-): { id: string } | null {
+  activeByDedupeKey: Map<string, { id: string; promoted_object_id: string | null; title: string }>,
+): { id: string; title: string } | null {
   // Phase 1 : match exact par dedupe_key
   if (stale.dedupe_key) {
     const exact = activeByDedupeKey.get(stale.dedupe_key)
-    if (exact && !exact.promoted_object_id) return exact
+    if (exact && !exact.promoted_object_id) return { id: exact.id, title: exact.title }
   }
 
   // Phase 2 : Jaccard sur title, même type, sans objet déjà rattaché
   let bestScore = JACCARD_REATTACH_THRESHOLD
-  let bestCandidate: { id: string } | null = null
+  let bestCandidate: { id: string; title: string } | null = null
 
   for (const candidate of active) {
     if (candidate.promoted_object_type !== stale.promoted_object_type) continue
@@ -233,27 +262,41 @@ function findReplacement(
     const score = jaccardSimilarity(stale.title, candidate.title)
     if (score > bestScore) {
       bestScore = score
-      bestCandidate = candidate
+      bestCandidate = { id: candidate.id, title: candidate.title }
     }
   }
 
   return bestCandidate
 }
 
+// Mapping objectType → table et champ titre pour la synchronisation (Lot 3)
+const OBJECT_TABLE_MAP: Record<string, { table: string; titleField: string }> = {
+  site_action:   { table: 'site_actions',  titleField: 'title' },
+  site_reserve:  { table: 'site_reserve',  titleField: 'label' },
+  site_decision: { table: 'site_decisions', titleField: 'titre' },
+}
+
 async function reattachObject(
   sb: SupabaseAdmin,
-  newProposalId: string,
+  newProposal: { id: string; title: string },
   objectType: string,
   objectId: string,
 ): Promise<void> {
-  const table = objectType === 'site_action' ? 'site_actions' : 'site_reserve'
   // Poser le lien sur la nouvelle proposition
   await sb
     .from('site_knowledge_proposals')
     .update({ promoted_object_id: objectId, promoted_object_type: objectType })
-    .eq('id', newProposalId)
-  // L'objet lui-même n'est pas modifié — il garde son état actuel
-  void table  // éviter l'avertissement "unused variable"
+    .eq('id', newProposal.id)
+
+  // Synchroniser le titre de l'objet si non autonome (Lot 3)
+  // Seul `isAutonomous` garantit l'invariant — ici on est déjà après la vérification.
+  const mapping = OBJECT_TABLE_MAP[objectType]
+  if (mapping && newProposal.title) {
+    await sb
+      .from(mapping.table)
+      .update({ [mapping.titleField]: newProposal.title })
+      .eq('id', objectId)
+  }
 }
 
 async function markOrphaned(
@@ -262,7 +305,10 @@ async function markOrphaned(
   objectId: string,
   now: string,
 ): Promise<void> {
-  const table = objectType === 'site_action' ? 'site_actions' : 'site_reserve'
+  const table =
+    objectType === 'site_action' ? 'site_actions' :
+    objectType === 'site_reserve' ? 'site_reserve' :
+    'site_decisions'
   await sb
     .from(table)
     .update({
