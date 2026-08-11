@@ -377,8 +377,25 @@ function LifelineBar({
 }) {
   if (occurrences.length === 0) return null
 
-  const minMs = dateToMs(occurrences[0].effectiveDate)
-  const maxMs = dateToMs(occurrences[occurrences.length - 1].effectiveDate)
+  // Agréger les occurrences par événement source : une visite ou un PV = 1 tick.
+  // Plusieurs formulations d'une même source ne créent pas plusieurs points.
+  // Clé : reportId (field_visit/meeting) ou runId (PDF/document).
+  const seenEventKeys = new Set<string>()
+  const displayOccs = occurrences.filter((occ) => {
+    const key = occ.isGap
+      ? `gap-${occ.effectiveDate}`
+      : occ.reportId
+        ? `visit-${occ.reportId}`
+        : occ.runId
+          ? `run-${occ.runId}`
+          : `date-${occ.effectiveDate}`
+    if (seenEventKeys.has(key)) return false
+    seenEventKeys.add(key)
+    return true
+  })
+
+  const minMs = dateToMs(displayOccs[0].effectiveDate)
+  const maxMs = dateToMs(displayOccs[displayOccs.length - 1].effectiveDate)
   const isSingle = minMs === maxMs
 
   // Index des événements par runId pour éviter une itération dans le render
@@ -392,7 +409,7 @@ function LifelineBar({
 
   // Positions (%) et décalages verticaux anti-collision
   const MIN_PCT_GAP = 4
-  const positions = occurrences.map((occ) =>
+  const positions = displayOccs.map((occ) =>
     isSingle ? 50 : toPct(dateToMs(occ.effectiveDate), minMs, maxMs)
   )
   const yOffsets: number[] = []
@@ -410,7 +427,7 @@ function LifelineBar({
       {/* Ligne de fond */}
       <div className="absolute left-0 right-0 top-8 h-px bg-border" />
 
-      {occurrences.map((occ, i) => {
+      {displayOccs.map((occ, i) => {
         const pct = positions[i]
         const yOff = yOffsets[i]
         const { symbol, colorClass } = lifelineDot(occ)
