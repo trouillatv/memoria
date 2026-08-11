@@ -355,6 +355,10 @@ async function projectAndTrace(params: {
         siteId: params.siteId,
         authorId: null,
       })
+      // Shadow V2 — après réconciliation, classifie les sujets touchés par ce rapport.
+      // Aucun impact sur les métriques officielles.
+      const { runEvolutionV2Shadow } = await import('@/lib/knowledge/evolution-v2-shadow')
+      await runEvolutionV2Shadow({ reportId, siteId: params.siteId })
     })().catch((err: unknown) =>
       console.error('[reconcile] erreur silencieuse:', String(err).slice(0, 300)),
     )
