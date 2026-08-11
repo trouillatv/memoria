@@ -21,6 +21,69 @@ import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-res
 
 export const ELIGIBLE_KINDS = new Set(['action', 'vigilance', 'decision', 'knowledge', 'deadline'])
 
+// ─── Invariant occurrence — Fact Ledger ──────────────────────────────────────
+
+/**
+ * Mappe le statut d'une proposition vers le validation_status de l'occurrence canonique.
+ * Pure, exportée pour les tests.
+ *
+ * Règle :
+ *   confirmed / fulfilled → confirmed (vérité terrain validée par l'humain)
+ *   dismissed             → rejected  (le fait existait, l'humain l'a refusé)
+ *   proposed / superseded → observed  (extrait et connu, pas encore validé)
+ */
+export function mapProposalStatusToValidation(
+  status: string,
+): 'observed' | 'confirmed' | 'rejected' {
+  if (status === 'confirmed' || status === 'fulfilled') return 'confirmed'
+  if (status === 'dismissed') return 'rejected'
+  return 'observed' // proposed, superseded
+}
+
+/**
+ * Garantit qu'une occurrence canonique existe pour une proposition déjà rattachée à un CS.
+ *
+ * Idempotent : ignoreDuplicates préserve une occurrence confirmed déjà présente.
+ * Ne dégrade jamais confirmed → observed ni rejected → observed.
+ *
+ * À appeler après tout chemin qui attribue canonical_subject_id à une proposition.
+ */
+export async function ensureCanonicalSubjectOccurrence(params: {
+  proposalId: string
+  canonicalSubjectId: string
+  siteId: string
+  sourceKind: 'field_visit' | 'meeting'
+  sourceRefId: string    // report_id de la proposition
+  effectiveDate: string  // YYYY-MM-DD
+  label: string
+  note: string | null
+  entityIds: string[]
+  proposalStatus: string
+  createdBy: string | null
+}): Promise<void> {
+  const supabase = createAdminClient()
+  const validationStatus = mapProposalStatusToValidation(params.proposalStatus)
+
+  await supabase.from('canonical_subject_occurrence').upsert(
+    {
+      canonical_subject_id: params.canonicalSubjectId,
+      site_id: params.siteId,
+      source_kind: params.sourceKind,
+      source_ref_id: params.sourceRefId,
+      source_proposal_id: params.proposalId,
+      visit_status: params.sourceKind === 'field_visit' ? 'field_checked' : 'mentioned',
+      label: params.label,
+      note: params.note,
+      evidence_count: 0,
+      effective_date: params.effectiveDate,
+      created_by: params.createdBy,
+      validation_status: validationStatus,
+      entity_ids: params.entityIds,
+    },
+    { onConflict: 'source_kind,source_proposal_id', ignoreDuplicates: true },
+  )
+}
+
 export interface ReconcileResult {
   status: 'resolved' | 'needs_resolution' | 'not_found' | 'skipped'
   canonicalSubjectId?: string
@@ -180,9 +243,13 @@ export async function resolveProposalCanonicalManually(params: {
   visitDate: string   // ISO date string (slice à 10 chars si nécessaire)
   resolvedBy: string | null
   sourceKind?: 'field_visit' | 'meeting'  // déduit automatiquement si omis
+  entityIds?: string[]
 }): Promise<void> {
   const { proposalId, siteId, canonicalSubjectId, reportId, proposalTitle, proposalBody, visitDate, resolvedBy } = params
+  const entityIds = params.entityIds ?? []
   const supabase = createAdminClient()
+
+  const VISIT_ORIGINS = new Set(['planned', 'spontaneous', 'qr', 'gps', 'import'])
 
   // Déduire sourceKind depuis origin si non fourni
   let sourceKind = params.sourceKind
@@ -192,38 +259,34 @@ export async function resolveProposalCanonicalManually(params: {
       .select('origin')
       .eq('id', reportId)
       .maybeSingle()
-    const VISIT_ORIGINS = new Set(['planned', 'spontaneous', 'qr', 'gps', 'import'])
     const origin = (rr as { origin?: string | null } | null)?.origin ?? null
     sourceKind = (origin && VISIT_ORIGINS.has(origin)) ? 'field_visit' : 'meeting'
   }
 
-  // Résolution manuelle = action humaine → confirmed.
-  // Même logique que reconcileProposalToCanonical avec validationStatus='confirmed' :
-  // upgrade de observed→confirmed, mais ne touche pas rejected.
-  const { error: insertErr } = await supabase
+  // ensureCanonicalSubjectOccurrence garantit l'invariant Fact Ledger :
+  // proposal.canonical_subject_id != null ⇒ occurrence existe.
+  // ignoreDuplicates préserve une occurrence confirmed déjà présente.
+  await ensureCanonicalSubjectOccurrence({
+    proposalId,
+    canonicalSubjectId,
+    siteId,
+    sourceKind,
+    sourceRefId: reportId,
+    effectiveDate: visitDate.slice(0, 10),
+    label: proposalTitle,
+    note: proposalBody,
+    entityIds,
+    proposalStatus: 'confirmed', // résolution manuelle = action humaine
+    createdBy: resolvedBy,
+  })
+
+  // Si l'occurrence existait déjà en observed, upgrade vers confirmed.
+  await supabase
     .from('canonical_subject_occurrence')
-    .insert({
-      canonical_subject_id: canonicalSubjectId,
-      site_id: siteId,
-      source_kind: sourceKind,
-      source_ref_id: reportId,
-      source_proposal_id: proposalId,
-      visit_status: sourceKind === 'field_visit' ? 'field_checked' : 'mentioned',
-      label: proposalTitle,
-      note: proposalBody,
-      evidence_count: 0,
-      effective_date: visitDate.slice(0, 10),
-      created_by: resolvedBy,
-      validation_status: 'confirmed',
-    })
-  if (insertErr?.code === '23505') {
-    await supabase
-      .from('canonical_subject_occurrence')
-      .update({ validation_status: 'confirmed', canonical_subject_id: canonicalSubjectId })
-      .eq('source_kind', sourceKind)
-      .eq('source_proposal_id', proposalId)
-      .eq('validation_status', 'observed')
-  }
+    .update({ validation_status: 'confirmed', canonical_subject_id: canonicalSubjectId })
+    .eq('source_kind', sourceKind)
+    .eq('source_proposal_id', proposalId)
+    .eq('validation_status', 'observed')
 
   await supabase
     .from('site_knowledge_proposals')
