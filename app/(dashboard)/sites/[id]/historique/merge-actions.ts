@@ -82,17 +82,26 @@ export async function mergeCanonicalSubjectsAction(
     if (occErr) return { error: `Erreur reroutage occurrences : ${occErr.message}` }
   }
 
-  // 6. Marquer le loser
+  // 6. Reroutage proposals
+  {
+    const { error: propsErr } = await supabase
+      .from('site_knowledge_proposals')
+      .update({ canonical_subject_id: winnerId })
+      .eq('canonical_subject_id', loserId)
+    if (propsErr) return { error: `Erreur reroutage proposals : ${propsErr.message}` }
+  }
+
+  // 7. Marquer le loser
   const { error: loserErr } = await supabase
     .from('canonical_subject')
     .update({ status: 'merged', merged_into: winnerId })
     .eq('id', loserId)
   if (loserErr) return { error: `Erreur marquage loser : ${loserErr.message}` }
 
-  // 7. Retirer le loser du topic
+  // 8. Retirer le loser du topic
   await supabase.from('canonical_topic_subject').delete().eq('canonical_subject_id', loserId)
 
-  // 8. Journal de fusion
+  // 9. Journal de fusion
   const finalLabel = suggestedLabel.trim() || winner.label
   const snapshot = {
     moved_thread_ids: movedThreadIds,
@@ -112,7 +121,7 @@ export async function mergeCanonicalSubjectsAction(
   })
   if (journalErr) return { error: `Erreur journal : ${journalErr.message}` }
 
-  // 9. Mettre à jour le winner (label + aliases fusionnés)
+  // 10. Mettre à jour le winner (label + aliases fusionnés)
   const combinedAliases = Array.from(new Set([
     ...(winner.aliases ?? []),
     loser.label,
