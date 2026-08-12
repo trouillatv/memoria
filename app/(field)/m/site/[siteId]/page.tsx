@@ -34,7 +34,7 @@ import { ChefSiteView } from './ChefSiteView'
 import { CopilotMobileSheet } from './CopilotMobileSheet'
 import { ChevronRight } from 'lucide-react'
 import { Suspense } from 'react'
-import { SiteAttentionSection, SiteAttentionSkeleton } from '@/app/(dashboard)/sites/[id]/views/apercu/SiteAttentionSection'
+import { SiteToTreatSection, SiteToTreatSkeleton } from './SiteToTreatSection'
 
 const INTV_STATUS_META: Record<string, { label: string; cls: string }> = {
   planned: { label: 'Prévue', cls: 'bg-slate-100 text-slate-700' },
@@ -296,9 +296,9 @@ export default async function FieldSitePage({
           {/* 1 — État du chantier */}
           <SiteStatusCard cells={siteStatus} />
 
-          {/* 2 — Ce qui demande votre attention — déterministe, silence positif si vide. */}
-          <Suspense fallback={<SiteAttentionSkeleton />}>
-            <SiteAttentionSection siteId={siteId} />
+          {/* 2 — À traiter : signaux d'intervention uniquement (propositions + actions en retard + sujet urgent). */}
+          <Suspense fallback={<SiteToTreatSkeleton />}>
+            <SiteToTreatSection siteId={siteId} />
           </Suspense>
 
           {/* 3 — Sur place : opportunités contextuelles + agenda du jour.

@@ -291,7 +291,7 @@ export function SujetsList({ subjects, siteId }: {
         <div className="space-y-4">
           <EmptyTab
             message="Aucun signal de stagnation pour l'instant."
-            detail={isYoungSite ? "Ce chantier ne dispose encore que d'un PV." : undefined}
+            detail={isYoungSite ? "Pas encore assez de comptes rendus comparables pour détecter une stagnation." : undefined}
           />
           {isYoungSite && radarSorted.length > 0 && (
             <>

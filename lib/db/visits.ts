@@ -732,7 +732,7 @@ export async function buildSitePatrimoine(siteId: string): Promise<SitePatrimoin
     supabase.from('visit_capture').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('kind', 'photo').neq('status', 'discarded'),
     supabase.from('site_actions').select('id', { count: 'exact', head: true }).eq('site_id', siteId),
     supabase.from('site_reserve').select('id', { count: 'exact', head: true }).eq('site_id', siteId),
-    supabase.from('subjects').select('id', { count: 'exact', head: true }).eq('site_id', siteId).neq('status', 'closed'),
+    supabase.from('canonical_subject').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('status', 'active'),
     supabase.from('site_reports').select('started_at, created_at').eq('site_id', siteId).not('origin', 'is', null).order('started_at', { ascending: true, nullsFirst: false }).limit(1).maybeSingle(),
   ])
   const first = firstRes.data as { started_at: string | null; created_at: string } | null
