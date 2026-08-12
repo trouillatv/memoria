@@ -49,25 +49,25 @@ interface FamilleStyle {
 
 const FAMILLE: Record<string, FamilleStyle> = {
   action: {
-    label: 'Actions à créer', court: 'action', pluriel: 'actions', Icon: ListTodo,
+    label: 'Actions du CR', court: 'action', pluriel: 'actions', Icon: ListTodo,
     spine: 'border-l-violet-400 dark:border-l-violet-500',
     chip: 'bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300',
     dot: 'bg-violet-500', accent: 'accent-violet-600',
   },
   echeance: {
-    label: 'Échéances à ajouter', court: 'échéance', pluriel: 'échéances', Icon: CalendarClock,
+    label: 'Échéances du CR', court: 'échéance', pluriel: 'échéances', Icon: CalendarClock,
     spine: 'border-l-rose-400 dark:border-l-rose-500',
     chip: 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
     dot: 'bg-rose-500', accent: 'accent-rose-600',
   },
   decision: {
-    label: 'Décisions à enregistrer', court: 'décision', pluriel: 'décisions', Icon: Gavel,
+    label: 'Décisions du CR', court: 'décision', pluriel: 'décisions', Icon: Gavel,
     spine: 'border-l-emerald-400 dark:border-l-emerald-500',
     chip: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
     dot: 'bg-emerald-500', accent: 'accent-emerald-600',
   },
   memoire: {
-    label: 'À retenir en mémoire', court: 'à mémoriser', pluriel: 'à mémoriser', Icon: BookOpen,
+    label: 'Éléments à mémoriser', court: 'mémo', pluriel: 'mémos', Icon: BookOpen,
     spine: 'border-l-sky-400 dark:border-l-sky-500',
     chip: 'bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300',
     dot: 'bg-sky-500', accent: 'accent-sky-600',
