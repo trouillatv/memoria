@@ -510,7 +510,10 @@ async function fetchPvSignalData(siteId: string): Promise<{
     .slice(0, PV_VERIFY_MAX)
     .map((s) => {
       const signals: string[] = []
-      if (s.overdueDeadlines > 0)  signals.push(`${s.overdueDeadlines} échéance${s.overdueDeadlines > 1 ? 's' : ''} en retard`)
+      // overdueDeadlines booste le score (×6) mais n'a pas de signal cockpit dédié :
+      // on expose activeDeadlines avec un libellé neutre pour ne pas qualifier "en retard"
+      // sans confirmation cockpit (voir dette deadline_overdue).
+      if (s.activeDeadlines > 0)   signals.push(`${s.activeDeadlines} échéance${s.activeDeadlines > 1 ? 's' : ''} associée${s.activeDeadlines > 1 ? 's' : ''}`)
       if (s.openReserves > 0)      signals.push(`${s.openReserves} réserve${s.openReserves > 1 ? 's' : ''} ouverte${s.openReserves > 1 ? 's' : ''}`)
       if (s.reappearance)          signals.push('réapparu après absence')
       if (signals.length === 0)    signals.push(`${s.pvCount} PV · score ${s.score}`)
