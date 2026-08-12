@@ -288,14 +288,22 @@ export async function readDebriefSemanticMemory(reportId: string): Promise<Debri
 
 async function readState(
   reportId: string,
-): Promise<{ analysis: StoredDebriefAnalysis | null; generatingAt: string | null }> {
+): Promise<{ analysis: StoredDebriefAnalysis | null; generatingAt: string | null; projectedAt: string | null }> {
   const { data } = await createAdminClient()
     .from('site_reports')
-    .select('debrief_analysis, debrief_generating_at')
+    .select('debrief_analysis, debrief_generating_at, debrief_projected_at')
     .eq('id', reportId)
     .maybeSingle()
-  const row = data as { debrief_analysis: StoredDebriefAnalysis | null; debrief_generating_at: string | null } | null
-  return { analysis: row?.debrief_analysis ?? null, generatingAt: row?.debrief_generating_at ?? null }
+  const row = data as {
+    debrief_analysis: StoredDebriefAnalysis | null
+    debrief_generating_at: string | null
+    debrief_projected_at: string | null
+  } | null
+  return {
+    analysis: row?.debrief_analysis ?? null,
+    generatingAt: row?.debrief_generating_at ?? null,
+    projectedAt: row?.debrief_projected_at ?? null,
+  }
 }
 
 async function setLease(reportId: string): Promise<void> {
@@ -316,18 +324,27 @@ async function clearLease(reportId: string): Promise<void> {
   await createAdminClient().from('site_reports').update({ debrief_generating_at: null }).eq('id', reportId)
 }
 
+/** Sérialise n'importe quelle valeur throwée en JSON lisible.
+ *  Évite le piège `String({ code, message }) = "[object Object]"` sur les erreurs Supabase. */
+function serializeError(e: unknown): string {
+  if (e instanceof Error) {
+    return JSON.stringify({ name: e.name, message: e.message, stack: e.stack?.slice(0, 500) ?? undefined })
+  }
+  try { return JSON.stringify(e) } catch { return String(e) }
+}
+
 /**
- * Projette la synthèse en propositions métier, et LAISSE UNE TRACE (mig 213).
+ * Projette la synthèse en propositions métier (étape 1), puis réconcilie les
+ * occurrences canoniques (étape 2). Les deux étapes sont tracées indépendamment
+ * en base (debrief_projected_at / canonical_reconciled_at — mig 213 et 318).
  *
- * La projection n'est PAS un « best effort » : c'est un élément métier. Si elle
- * échoue, la connaissance de la visite (actions, échéances, intervenants, savoirs)
- * n'apparaît nulle part et le chantier paraît VIDE — l'utilisateur conclut que
- * MemorIA n'a rien compris, alors qu'il avait compris. Un échec silencieux est
- * donc le pire scénario possible.
+ * Projection : BLOQUANTE. Sans elle, la connaissance de la visite n'apparaît
+ * nulle part — c'est le pire scénario. Les erreurs sont persistées pour permettre
+ * le diagnostic et la reprise sans relancer le LLM.
  *
- * Cette fonction ne relance pas d'exception : un échec de projection ne doit pas
- * détruire une synthèse coûteuse déjà produite. Mais il est LOGGUÉ et PERSISTÉ —
- * les écrans peuvent le dire, et le diagnostic ne dépend plus d'une intuition.
+ * Réconciliation : non bloquante côté utilisateur (fire-and-forget tracé).
+ * Elle ne doit pas faire échouer une projection réussie, mais son état doit
+ * rester observable et rejouable via canonical_reconcile_error.
  */
 async function projectAndTrace(params: {
   reportId: string
@@ -336,16 +353,31 @@ async function projectAndTrace(params: {
   analysis: StoredDebriefAnalysis
 }): Promise<void> {
   const { reportId } = params
+
+  // ── Étape 1 : Projection ────────────────────────────────────────────────────
   try {
     await projectDebriefToProposals(params)
     await createAdminClient()
       .from('site_reports')
       .update({ debrief_projected_at: new Date().toISOString(), debrief_projection_error: null })
       .eq('id', reportId)
-    // Ordre déterministe : nettoyer les objets obsolètes avant de canonicaliser les nouveaux.
-    // Les deux opérations partagent les mêmes occurrences — les lancer en parallèle provoquerait
-    // une race condition sur une visite réanalysée.
-    void (async () => {
+  } catch (e) {
+    const reason = serializeError(e)
+    console.error(`[debrief] projection en échec pour la visite ${reportId} : ${reason}`)
+    await createAdminClient()
+      .from('site_reports')
+      .update({ debrief_projection_error: reason })
+      .eq('id', reportId)
+      .then(undefined, () => {})
+    return // Réconciliation impossible sans projection réussie
+  }
+
+  // ── Étape 2 : Réconciliation canonique ─────────────────────────────────────
+  // Ordre déterministe : nettoyer les objets obsolètes avant de canonicaliser les
+  // nouveaux (race condition sur visite réanalysée si parallèle).
+  // Non bloquante côté utilisateur mais tracée en DB pour diagnostic et retry.
+  void (async () => {
+    try {
       const { reconcileObsoleteProposals } = await import('@/lib/db/visit-impact-reconcile')
       await reconcileObsoleteProposals({ reportId, siteId: params.siteId })
       const { reconcileSourceToCanonicalSubjects } = await import('@/lib/db/canonical-subject-source-reconcile')
@@ -355,27 +387,24 @@ async function projectAndTrace(params: {
         siteId: params.siteId,
         authorId: null,
       })
-      // Archivage automatique : les sujets sans occurrence active après réconciliation
-      // passent à 'auto_archived'. Ils peuvent être réactivés lors d'une prochaine visite.
       const { autoArchiveOrphanedSubjects } = await import('@/lib/db/canonical-subject-archive')
       await autoArchiveOrphanedSubjects(params.siteId)
-      // Shadow V2 — après réconciliation, classifie les sujets touchés par ce rapport.
-      // Aucun impact sur les métriques officielles.
       const { runEvolutionV2Shadow } = await import('@/lib/knowledge/evolution-v2-shadow')
       await runEvolutionV2Shadow({ reportId, siteId: params.siteId })
-    })().catch((err: unknown) =>
-      console.error('[reconcile] erreur silencieuse:', String(err).slice(0, 300)),
-    )
-  } catch (e) {
-    const reason = e instanceof Error ? e.message : String(e)
-    console.error(`[debrief] projection en échec pour la visite ${reportId} : ${reason}`)
-    await createAdminClient()
-      .from('site_reports')
-      .update({ debrief_projection_error: reason })
-      .eq('id', reportId)
-      // Si même la trace ne peut pas s'écrire, le log ci-dessus reste la preuve.
-      .then(undefined, () => {})
-  }
+      await createAdminClient()
+        .from('site_reports')
+        .update({ canonical_reconciled_at: new Date().toISOString(), canonical_reconcile_error: null })
+        .eq('id', reportId)
+    } catch (err) {
+      const reason = serializeError(err)
+      console.error('[reconcile] erreur pour la visite', reportId, ':', reason)
+      await createAdminClient()
+        .from('site_reports')
+        .update({ canonical_reconcile_error: reason })
+        .eq('id', reportId)
+        .then(undefined, () => {})
+    }
+  })()
 }
 
 export interface LoadedDebrief {
@@ -440,8 +469,18 @@ export async function loadOrRunVisitDebrief(
 
   if (usable && !opts?.force) {
     const loaded = { analysis: cache, openSubjects: ctx.openSubjects, fromCache: true }
-    // Corpus inchangé → à jour.
-    if (cache.corpus_hash === hash) return { ok: true, status: 'ready', loaded }
+    if (cache.corpus_hash === hash) {
+      // Projection jamais complétée (ex. erreur de schéma résolue par migration) → rejouer
+      // sans LLM. Idempotent : projectDebriefToProposals déduplication via dedupe_key.
+      if (!state.projectedAt && ctx.visit.site_id && ctx.visit.organization_id && !opts?.dryRun) {
+        void projectAndTrace({ reportId, siteId: ctx.visit.site_id, organizationId: ctx.visit.organization_id, analysis: cache })
+      }
+      // Lease stale laissé par un crash antérieur : nettoyer silencieusement.
+      if (state.generatingAt && !leaseFresh(state.generatingAt)) {
+        void clearLease(reportId).catch(() => {})
+      }
+      return { ok: true, status: 'ready', loaded }
+    }
     // La visite a été enrichie depuis : on GARDE la synthèse, on signale le delta.
     return { ok: true, status: 'stale', loaded, delta: computeSnapshotDelta(cache.source_snapshot, snapshot) }
   }
@@ -490,7 +529,7 @@ export async function loadOrRunVisitDebrief(
 
     const analysis = fromAgent(res.narrative, res.parsed, res.provider, res.model, hash, version, snapshot, oldLedger, semanticMemory)
     if (!opts?.dryRun) {
-      await writeAnalysis(reportId, analysis).catch(() => {})
+      await writeAnalysis(reportId, analysis)
       // Couche d'extraction métier : la synthèse fraîche est projetée en propositions
       // (actions, vigilances, décisions, savoirs, intervenants, échéances), visibles
       // partout et distinctes des objets validés. Idempotent → pas de doublon aux
