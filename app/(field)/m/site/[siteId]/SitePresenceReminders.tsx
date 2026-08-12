@@ -26,7 +26,7 @@ export function SitePresenceReminders({ reminders }: { reminders: PresenceRemind
       <div className="flex items-center gap-2.5 rounded-xl bg-emerald-50/60 px-3 py-2.5 dark:bg-emerald-950/20">
         <Check className="h-4 w-4 shrink-0 text-emerald-600" />
         <p className="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">
-          Rien ne réclame votre attention ici — vous êtes à jour.
+          Rien ne demande d&apos;action aujourd&apos;hui.
         </p>
       </div>
     )
