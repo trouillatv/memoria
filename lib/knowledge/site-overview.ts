@@ -227,6 +227,9 @@ export interface SiteOverview {
   blockages: { open: number }
   watchpoints: KnowledgeSection
   deadlines: KnowledgeSection
+  /** Répartition des échéances CONFIRMÉES — pour afficher « 1 planifiée · 9 à planifier »
+   *  sans mélanger avec les propositions encore en attente de validation. */
+  deadlineCounts: { planned: number; toPlan: number }
   stakeholders: KnowledgeSection
   /** Les entreprises du casting actif — pour la carte de synthèse de l'Aperçu
    *  (« PAVE · BatiSud · Ginger — Voir tous → »). La liste complète vit dans
@@ -431,6 +434,7 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
     blockages: { open: 0 },
     watchpoints: { ...emptySection },
     deadlines: { ...emptySection },
+    deadlineCounts: { planned: 0, toPlan: 0 },
     stakeholders: { ...emptySection },
     stakeholderCompanies: [],
     knowledge: { ...emptySection },
@@ -738,6 +742,10 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     // s'évaporer parce qu'il l'avait validée. C'était vrai tant qu'aucun objet
     // Échéance n'existait ; la table existe désormais (mig 215).
     deadlines: proposedAndConfirmed(proj.deadlines, deadlineConfirmed, deadlineConfirmed.length),
+    deadlineCounts: {
+      planned: deadlineRows.filter((d) => d.status === 'planned').length,
+      toPlan:  deadlineRows.filter((d) => d.status === 'to_plan').length,
+    },
     stakeholders: proposedAndConfirmed(proj.stakeholders, stakeholderConfirmed, stakeholderConfirmed.length),
     stakeholderCompanies: [...new Set(intervenants.map((it) => it.companyShort || it.companyName).filter(Boolean))],
     knowledge: proposedAndConfirmed(proj.knowledge, knowledgeConfirmed, knowledgeConfirmed.length),

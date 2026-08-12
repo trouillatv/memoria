@@ -80,7 +80,7 @@ export function VisitKnowledgeCard({
             </h2>
           </div>
           <div className="mt-2 space-y-3">
-            <KnowledgeGroup title="Échéances" icon={CalendarClock} section={deadlines} moreHref={synthesisHref} />
+            <DeadlineKnowledgeGroup section={deadlines} deadlineCounts={overview.deadlineCounts} moreHref={synthesisHref} />
             <KnowledgeGroup title="À savoir" icon={Info} section={knowledge} moreHref={synthesisHref} />
             <KnowledgeGroup title="Points de vigilance" icon={ShieldAlert} section={watchpoints} moreHref={synthesisHref} />
           </div>
@@ -96,6 +96,67 @@ export function VisitKnowledgeCard({
         </Link>
       )}
     </section>
+  )
+}
+
+/** Échéances : 3 états métier distincts — planifiée / à planifier / à confirmer.
+ *  Le compteur principal = confirmées uniquement (≠ propositions non encore validées). */
+function DeadlineKnowledgeGroup({
+  section,
+  deadlineCounts,
+  moreHref,
+}: {
+  section: SiteOverview['deadlines']
+  deadlineCounts: SiteOverview['deadlineCounts']
+  moreHref?: string
+}) {
+  const confirmedTotal = section.summary.confirmed
+  const proposedCount = section.summary.proposed
+  if (confirmedTotal === 0 && proposedCount === 0) return null
+
+  const { planned, toPlan } = deadlineCounts
+  const subParts: string[] = []
+  if (planned > 0) subParts.push(`${planned} planifiée${planned > 1 ? 's' : ''}`)
+  if (toPlan > 0) subParts.push(`${toPlan} à planifier`)
+
+  const hiddenConfirmed = confirmedTotal - section.confirmed.length
+
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <CalendarClock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <h3 className="text-[13px] font-medium text-muted-foreground">Échéances</h3>
+        {confirmedTotal > 0 && (
+          <span className="text-[13px] font-semibold tabular-nums">{confirmedTotal}</span>
+        )}
+      </div>
+      {subParts.length > 0 && (
+        <p className="mt-0.5 pl-5 text-[12px] text-muted-foreground">{subParts.join(' · ')}</p>
+      )}
+      {proposedCount > 0 && (
+        <p className="mt-0.5 pl-5">
+          <span className="rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
+            {proposedCount} à confirmer
+          </span>
+        </p>
+      )}
+      <ul className="mt-1 space-y-0.5">
+        {section.confirmed.map((item) => (
+          <li key={item.id} className="line-clamp-2 text-[13px] text-foreground/90">{item.title}</li>
+        ))}
+        {section.proposed.map((item) => (
+          <li key={item.id} className="line-clamp-2 text-[13px] text-muted-foreground">{item.title}</li>
+        ))}
+      </ul>
+      {hiddenConfirmed > 0 && moreHref && (
+        <Link
+          href={moreHref}
+          className="mt-1 inline-flex items-center gap-0.5 text-[12px] font-medium text-primary active:opacity-70"
+        >
+          Voir les {hiddenConfirmed} autres <ChevronRight className="h-3 w-3" />
+        </Link>
+      )}
+    </div>
   )
 }
 

@@ -56,6 +56,7 @@ function makeOverview(overrides: Partial<SiteOverview> = {}): SiteOverview {
     blockages: { open: 0 },
     watchpoints: { proposed: [], confirmed: [], summary: { proposed: 0, confirmed: 0 } },
     deadlines: { proposed: [], confirmed: [], summary: { proposed: 0, confirmed: 0 } },
+    deadlineCounts: { planned: 0, toPlan: 0 },
     stakeholders: { proposed: [], confirmed: [], summary: { proposed: 0, confirmed: 0 } },
     stakeholderCompanies: [],
     knowledge: { proposed: [], confirmed: [], summary: { proposed: 0, confirmed: 0 } },
