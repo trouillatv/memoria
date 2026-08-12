@@ -195,7 +195,7 @@ export default async function VisitCrPreviewPage({
           />
           {/* CONCRÉTISER — le récit corrigé prépare le travail réel. Il vient
               juste après le document : on corrige, puis on transforme. */}
-          <CrConcretisation reportId={reportId} />
+          <CrConcretisation reportId={reportId} siteId={visit.site_id ?? undefined} proposals={proposals} />
 
           {/* Propositions IA originales — toutes, avec statut (remplacé, écarté,
               créé). Dépliable sur demande : la plupart du temps inutile. */}

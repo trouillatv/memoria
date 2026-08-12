@@ -22,7 +22,7 @@
 
 import { useState } from 'react'
 import {
-  Loader2, Check, ListTodo, CalendarClock, Gavel, Users, BookOpen, ArrowRight, Sparkles,
+  Loader2, Check, ListTodo, CalendarClock, Gavel, Users, BookOpen, ArrowRight, Sparkles, ChevronRight,
 } from 'lucide-react'
 import Link from 'next/link'
 import {
@@ -34,6 +34,8 @@ import {
   type CreationSummary,
 } from './cr-concretisation-actions'
 import { diffOperationalItems, type OperationalDiff, type OperationalItem } from '@/lib/visits/cr-concretisation'
+import { ActionProposalDrawer } from './ActionProposalDrawer'
+import type { DbKnowledgeProposal } from '@/lib/db/knowledge-proposals'
 import { cn } from '@/lib/utils'
 
 interface FamilleStyle {
@@ -88,11 +90,15 @@ const ORDRE = ['action', 'echeance', 'decision', 'memoire']
 
 export function CrConcretisation({
   reportId,
+  siteId,
+  proposals = [],
   asStep = false,
   documentRevision = 0,
   onCreated,
 }: {
   reportId: string
+  siteId?: string
+  proposals?: DbKnowledgeProposal[]
   /**
    * DES OBJETS VIENNENT DE NAÎTRE DANS LE CHANTIER.
    *
@@ -155,6 +161,8 @@ export function CrConcretisation({
   const [candidateDiff, setCandidateDiff] = useState<OperationalDiff | null>(null)
   const [reanalyzing, setReanalyzing] = useState(false)
   const [reanalyseError, setReanalyseError] = useState<string | null>(null)
+  // Drawer de revue pour une proposition non encore matérialisée.
+  const [drawerItem, setDrawerItem] = useState<ReviewItem | null>(null)
 
   const prepare = async () => {
     if (pending) return
@@ -502,17 +510,11 @@ export function CrConcretisation({
                     className={cn(
                       'rounded-lg border border-l-[3px] bg-card px-2.5 py-2 transition-opacity',
                       f.spine,
-                      // Décoché = mis en retrait, jamais masqué : on doit voir
-                      // ce qu'on a écarté. Un intervenant, lui, n'est jamais
-                      // atténué : il n'est pas écarté, il relève d'ailleurs.
                       item.creatable && !item.alreadyCreated && !chosen.has(item.key) && 'opacity-55',
                     )}
                   >
-                    <label className="flex items-start gap-2.5">
-                      {/* Toute ligne de cette liste EST créable — les personnes
-                          vivent dans leur propre encart. Une case décochée ne
-                          peut donc jamais vouloir dire « impossible », seulement
-                          « écarté ». C'est ce qui faisait lire un bug. */}
+                    <div className="flex items-start gap-2">
+                    <label className="flex flex-1 items-start gap-2.5">
                       <input
                         type="checkbox"
                         className={cn('mt-0.5 h-4 w-4 shrink-0 disabled:opacity-40', f.accent)}
@@ -561,10 +563,6 @@ export function CrConcretisation({
                           </span>
                         )}
                         {item.alreadyCreated && item.textChanged && (
-                          // L'ÉCART SE DIT, IL NE SE RÉSOUT PAS TOUT SEUL.
-                          // Réécrire l'objet du chantier parce qu'un mot a bougé
-                          // dans le compte-rendu serait décider à la place de
-                          // l'humain. On l'informe ; le geste lui appartient.
                           <span className="mt-1 flex flex-col gap-0.5">
                             <span className="inline-flex w-fit items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
                               <Check className="h-3 w-3" aria-hidden /> Déjà créé — texte modifié depuis
@@ -577,6 +575,26 @@ export function CrConcretisation({
                         )}
                       </span>
                     </label>
+                    {/* Chevron de navigation : fiche objet pour les créés, drawer pour les propositions. */}
+                    {item.alreadyCreated && item.entityId && siteId ? (
+                      <Link
+                        href={`/m/site/${siteId}/action/${item.entityId}`}
+                        className="shrink-0 self-start pt-0.5 text-muted-foreground hover:text-foreground"
+                        aria-label="Voir la fiche action"
+                      >
+                        <ChevronRight className="h-4 w-4" aria-hidden />
+                      </Link>
+                    ) : item.creatable && !item.alreadyCreated ? (
+                      <button
+                        type="button"
+                        onClick={() => setDrawerItem(item)}
+                        className="shrink-0 self-start pt-0.5 text-muted-foreground hover:text-foreground"
+                        aria-label="Voir le détail de la proposition"
+                      >
+                        <ChevronRight className="h-4 w-4" aria-hidden />
+                      </button>
+                    ) : null}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -705,6 +723,15 @@ export function CrConcretisation({
           </div>
         )}
       </div>
+
+      {/* Drawer de revue pour propositions non matérialisées */}
+      <ActionProposalDrawer
+        item={drawerItem}
+        proposals={proposals}
+        reportId={reportId}
+        onClose={() => setDrawerItem(null)}
+        onCreated={() => { onCreated?.(); void prepare() }}
+      />
     </section>
   )
 }
