@@ -162,9 +162,14 @@ export function CopilotMobileSheet({
         className="flex w-full items-center gap-2.5 rounded-2xl border border-dashed border-violet-300 bg-violet-50/50 px-4 py-3 text-left dark:border-violet-800/50 dark:bg-violet-950/10 active:opacity-70"
       >
         <Sparkles className="h-4 w-4 shrink-0 text-violet-500" />
-        <span className="text-[13px] font-medium text-violet-700 dark:text-violet-300">
-          Demander à MemorIA
-        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-medium text-violet-700 dark:text-violet-300">
+            Demander à MemorIA
+          </p>
+          <p className="text-[11px] text-violet-400 dark:text-violet-500">
+            Posez une question sur ce chantier…
+          </p>
+        </div>
       </button>
 
       <Sheet open={open} onOpenChange={closeSheet}>

@@ -51,6 +51,8 @@ import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
 import { ChefSiteView } from './ChefSiteView'
 import { CopilotMobileSheet } from './CopilotMobileSheet'
 import { ListTodo, Hammer, AlertTriangle, ChevronRight, Camera } from 'lucide-react'
+import { Suspense } from 'react'
+import { SiteAttentionSection, SiteAttentionSkeleton } from '@/app/(dashboard)/sites/[id]/views/apercu/SiteAttentionSection'
 
 const INTV_STATUS_META: Record<string, { label: string; cls: string }> = {
   planned: { label: 'Prévue', cls: 'bg-slate-100 text-slate-700' },
@@ -383,6 +385,17 @@ export default async function FieldSitePage({
           {/* 1 — État du chantier : la santé en un coup d'œil (chiffres cliquables). */}
           <SiteStatusCard cells={siteStatus} />
 
+          {/* 2 — Ce qui demande votre attention — déterministe, silence positif si vide. */}
+          <Suspense fallback={<SiteAttentionSkeleton />}>
+            <SiteAttentionSection siteId={siteId} />
+          </Suspense>
+
+          {/* 3 — Plan de prochaine visite : ce que je dois contrôler prochainement. */}
+          {visitBrief && <VisitBriefCard brief={visitBrief} siteId={siteId} />}
+
+          {/* 4 — Depuis votre dernière visite : ce qui vient de se passer. */}
+          {sinceLastVisit && <SinceLastVisitCard delta={sinceLastVisit} siteId={siteId} />}
+
           {/* « Ma visite a servi » — le moment du terrain. Date, matière rapportée,
               état de la synthèse, et ce que MemorIA en a retenu. Mêmes données et
               mêmes mots que l'onglet Aperçu du bureau. */}
@@ -446,15 +459,7 @@ export default async function FieldSitePage({
             </section>
           )}
 
-          {/* 2 — Depuis votre dernière visite : ce qui a bougé (déterministe). */}
-          {sinceLastVisit && <SinceLastVisitCard delta={sinceLastVisit} siteId={siteId} />}
-
-          {/* 2bis — Si vous revenez aujourd'hui : les éléments ouverts qui
-              justifient une attention immédiate. Actions en retard → réserves
-              vieillissantes → échéances imminentes. 4 max + overflow. */}
-          {visitBrief && <VisitBriefCard brief={visitBrief} siteId={siteId} />}
-
-          {/* 3 — Que reste-t-il à faire : les actions ouvertes / en retard. */}
+          {/* 5 — Que reste-t-il à faire : les actions ouvertes / en retard. */}
           <SiteTodoCard actions={openActions} reserves={openReserves} todayIso={todayIso} totalActions={openActions.length} siteId={siteId} />
 
           {/* 4 — Dernière activité : ce qui s'est passé récemment, regroupé. */}
@@ -487,7 +492,6 @@ export default async function FieldSitePage({
           <section className="space-y-2.5">
             <SiteBriefButton siteId={siteId} variant="mobile" mode="visit" />
             <SiteBriefButton siteId={siteId} variant="mobile" mode="meeting" />
-            <CopilotMobileSheet siteId={siteId} siteName={site.name} />
           </section>
 
           {/* Contexte du lieu — référence & secondaire (sous la narration). */}
@@ -578,6 +582,9 @@ export default async function FieldSitePage({
             </section>
           )}
 
+
+          {/* 6 — Demander à MemorIA — compact et secondaire. */}
+          <CopilotMobileSheet siteId={siteId} siteName={site.name} />
 
           {/* Ajouter… — outils de CRÉATION du lieu (grille d'outils, pas des CTA).
               On comprend d'un coup que ce sont des créations rapides. */}
