@@ -79,29 +79,21 @@ const INTV_STATUS_META: Record<string, { label: string; cls: string }> = {
 
 // V5.1 — Helper local pour Nᵉ passage. Pas un KPI, pas exposé en agrégat
 // global, juste affichage du compteur personnel sur ce site.
+// Source : site_reports créés par cet utilisateur (même source que buildSinceLastVisitDelta)
+// pour éviter la contradiction « 1e passage » / « dernier passage il y a 7j ».
 async function countDistinctVisitDays(userId: string, siteId: string): Promise<number> {
   const supabase = createAdminClient()
-  const { data: missions } = await supabase
-    .from('missions')
-    .select('id')
+  const { data } = await supabase
+    .from('site_reports')
+    .select('ended_at')
     .eq('site_id', siteId)
+    .eq('created_by', userId)
+    .not('origin', 'is', null)
+    .not('ended_at', 'is', null)
     .is('deleted_at', null)
-  const missionIds = (missions ?? []).map((m) => m.id)
-  if (missionIds.length === 0) return 0
-
-  const { data: interventionsOfSite } = await supabase
-    .from('interventions')
-    .select('id')
-    .in('mission_id', missionIds)
-  const interventionIds = (interventionsOfSite ?? []).map((i) => i.id)
-  if (interventionIds.length === 0) return 0
-
-  const { data: photos } = await supabase
-    .from('intervention_photos')
-    .select('taken_at')
-    .eq('taken_by', userId)
-    .in('intervention_id', interventionIds)
-  const distinctDays = new Set((photos ?? []).map((p) => p.taken_at.slice(0, 10)))
+  const distinctDays = new Set(
+    (data ?? []).map((r) => (r as { ended_at: string }).ended_at.slice(0, 10))
+  )
   return distinctDays.size
 }
 

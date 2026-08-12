@@ -291,7 +291,7 @@ export async function deriveCanonicalAttentionItems(
     // Ligne 1 : récence + stagnation
     const total = s.pvCount + s.nativeOccurrenceCount
     const mentionPart = total > 0 ? `Mentionné dans ${total} rapport${total > 1 ? 's' : ''}` : null
-    const stagnPart = s.isStagnant ? `aucune évolution depuis ${s.stagnationDays} j` : null
+    const stagnPart = s.isStagnant ? `aucune évolution depuis ${s.stagnationDays} j` : null
     if (mentionPart || stagnPart) {
       reasons.push([mentionPart, stagnPart].filter(Boolean).join(' · '))
     }
