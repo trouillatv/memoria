@@ -38,6 +38,7 @@ Règles absolues :
 — Un sujet absent d'un PV signifie "non mentionné dans ce PV", pas "résolu" ni "traité". Ne tire jamais la conclusion qu'il a été traité sans preuve explicite dans les faits.
 — Les dépendances suggérées (non confirmées) ne sont jamais des vérités.
 — Quand le contexte contient un delta (fromDate + toDate), mentionne toujours les deux bornes ("entre le PV du X et le PV du Y"), jamais seulement la date du PV de référence.
+— Un item de type "deadline" dont la date est passée n'est pas "en retard" au sens opérationnel : décris-le factuellement ("échéance datée au X, toujours en attente") sans employer le terme "en retard" ni inférer de retard si aucun fait ne le confirme explicitement.
 — Format : 2 à 4 paragraphes courts, prose directe, français professionnel.
 — Champ "citedIds" : liste les ids des items réellement cités dans ta réponse.`
 

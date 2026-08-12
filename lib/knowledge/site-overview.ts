@@ -567,7 +567,9 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
   const completed = actionRows.filter((a) => a.status === 'done').length
   const planned = activeDedup.filter((a) => a.status === 'planned').length
   const todayIso = new Date().toISOString().slice(0, 10)
-  const overdue = activeDedup.filter((a) => a.due_date && a.due_date.slice(0, 10) < todayIso).length
+  // Invariant : overdue = open uniquement. Une action planned a une prise en charge
+  // explicite (intervention planifiée) ; l'inclure dans "en retard" contredit le moteur canonical.
+  const overdue = activeDedup.filter((a) => a.status === 'open' && a.due_date && a.due_date.slice(0, 10) < todayIso).length
   const week = activeDedup.filter((a) => {
     if (!a.due_date) return false
     const due = a.due_date.slice(0, 10)
@@ -612,7 +614,7 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
   const reasons: AttentionReason[] = buildOverviewAttention([
     ...toBlocageReasons(openBlocages(blocages), siteId),
     ...toMemoryReasons(memorySignals, siteId),
-    ...toOverdueActionReasons(activeDedup, todayIso, siteId),
+    ...toOverdueActionReasons(activeDedup.filter((a) => a.status === 'open'), todayIso, siteId),
   ]).map((r) => ({ id: r.id, kind: r.kind as AttentionKind, title: r.title, detail: r.detail ?? null, href: r.href ?? null }))
 
   // ── Prochaine étape / changements depuis la dernière venue ──
