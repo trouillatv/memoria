@@ -881,7 +881,7 @@ export default async function FieldHomePage({
             {dueTodayActions.map((a) => (
               <Link
                 key={`due-${a.id}`}
-                href={`/m/site/${a.siteId}`}
+                href={`/m/site/${a.siteId}/action/${a.id}`}
                 className="flex items-center gap-4 rounded-xl py-4 -mx-1 px-1 active:bg-muted/40 transition-colors"
               >
                 <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300">

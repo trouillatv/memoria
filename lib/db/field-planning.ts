@@ -395,7 +395,7 @@ export async function buildFieldPlanning(
         siteName: a.site_name ?? siteNameById.get(a.site_id) ?? null,
         teamName: null,
         state: date < today ? 'overdue' : 'upcoming',
-        href: `/m/actions?site=${a.site_id}`,
+        href: `/m/site/${a.site_id}/action/${a.id}`,
       })
     }
   }

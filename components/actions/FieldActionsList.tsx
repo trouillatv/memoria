@@ -12,6 +12,7 @@
 
 import { useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Check, User, Clock, ChevronRight, ChevronDown, Camera, Loader2, Target, MapPin, CheckCircle2, PauseCircle, ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { closeActionAction, markActionProgressAction, snoozeActionAction, planActionAction } from '@/app/(dashboard)/actions/actions'
@@ -234,27 +235,33 @@ export function FieldActionsList({ actions }: { actions: SiteActionRow[] }) {
                       <Check className="h-4 w-4" strokeWidth={3} />
                     </button>
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${meta.badge}`}>{meta.label}</span>
-                        {snz && (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                            <PauseCircle className="h-3 w-3" />{SNOOZE_LABELS[snz]}
-                          </span>
-                        )}
+                    <Link
+                      href={`/m/site/${a.site_id}/action/${a.id}`}
+                      className="flex min-w-0 flex-1 items-start gap-2"
+                      aria-label={`Voir la fiche : ${a.title}`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${meta.badge}`}>{meta.label}</span>
+                          {snz && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                              <PauseCircle className="h-3 w-3" />{SNOOZE_LABELS[snz]}
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="mt-1.5 text-[15px] font-medium leading-snug line-clamp-3">{a.title}</p>
+
+                        <div className="mt-1.5 flex items-center gap-2 text-[12px] text-muted-foreground">
+                          {a.assigned_to && (
+                            <><span className="inline-flex items-center gap-1"><User className="h-3.5 w-3.5" />{a.assigned_to}</span><span className="text-muted-foreground/40">•</span></>
+                          )}
+                          <span className="inline-flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{timeText}</span>
+                        </div>
                       </div>
 
-                      <p className="mt-1.5 text-[15px] font-medium leading-snug line-clamp-3">{a.title}</p>
-
-                      <div className="mt-1.5 flex items-center gap-2 text-[12px] text-muted-foreground">
-                        {a.assigned_to && (
-                          <><span className="inline-flex items-center gap-1"><User className="h-3.5 w-3.5" />{a.assigned_to}</span><span className="text-muted-foreground/40">•</span></>
-                        )}
-                        <span className="inline-flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{timeText}</span>
-                      </div>
-                    </div>
-
-                    {!isOpen && <ChevronRight className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground/60" />}
+                      <ChevronRight className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground/60" />
+                    </Link>
                   </div>
 
                   {/* Choix métier — « est-ce que je reviens ? » */}
