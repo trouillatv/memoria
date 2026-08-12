@@ -31,6 +31,8 @@ import { buildTodayView, todayUtcIso, type TodayIntervention, type OverdueInterv
 import { getPlanningTimeline } from '@/lib/db/planning-timeline'
 import type { PlanningTimelineEvent } from '@/lib/planning/timeline-contract'
 import { DayTimeline } from './DayTimeline'
+import { MultiSiteAttentionSection, MultiSiteAttentionSkeleton } from './MultiSiteAttentionSection'
+import { Suspense } from 'react'
 import { getTenantDayReading } from '@/lib/ai/site-readings'
 import { ReadingCard } from '@/components/ui/reading-card'
 import { resolveDocNamesFromFragments } from '@/lib/documents/resolve-doc-names'
@@ -160,6 +162,12 @@ export default async function TodayPage({
           <ReadingCard fragment={todayReading.fragment} context={todayReading.context} docNames={todayDocNames} />
         </div>
       )}
+
+      {/* P0-D — Chantiers à surveiller (canonical attention multi-site).
+          Suspense : évite de bloquer le reste de la page sur les N×6 requêtes. */}
+      <Suspense fallback={<MultiSiteAttentionSkeleton />}>
+        <MultiSiteAttentionSection />
+      </Suspense>
 
       {/* V6.2 (Vincent 2026-05-20) — Dette opérationnelle EN HAUT, plus en bas.
           Rouge bordeaux sobre qui saute aux yeux. Silence positif respecté :
