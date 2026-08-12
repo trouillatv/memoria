@@ -6,6 +6,7 @@ import { getUserRoleById } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { reviewProposal, linkProposalEvidence } from '@/lib/db/document-extractions'
 import { materializeHistoricalVisit } from '@/lib/db/historical-visit-materialization'
+import { ensureHistoricalPdfOccurrences } from '@/lib/db/canonical-subject-historical-occurrence'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType } from '@/types/db'
 
 type ActionResult = { ok: boolean; error?: string }
@@ -485,6 +486,18 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Erreur lors de la matérialisation' }
   }
+
+  // ── P0-B2 : occurrences canoniques historiques (fire-and-forget) ──────────
+  // Alimente canonical_subject_occurrence avec source_kind='historical_pdf' pour
+  // que le moteur de relations puisse exploiter l'historique des PV importés.
+  void ensureHistoricalPdfOccurrences({
+    runId,
+    siteId,
+    siteReportId,
+    visitDate,
+  }).catch((err) =>
+    console.error('[review-actions] historical occurrences failed:', err instanceof Error ? err.message : String(err))
+  )
 
   // ── Pipeline post-RPC : knowledge_fact → site_knowledge_entries ──────────
   // Le RPC SQL exclut délibérément ces familles (trop riches pour du PL/pgSQL pur).
