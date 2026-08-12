@@ -20,7 +20,7 @@ import { useVoiceOrb } from '@/app/(field)/m/VoiceOrbContext'
 
 type Msg =
   | { kind: 'user';          id: string; text: string }
-  | { kind: 'answer';        id: string; text: string; source: 'llm' | 'fallback'; refs: { id: string; label: string; href: string | null }[] }
+  | { kind: 'answer';        id: string; text: string; source: 'llm' | 'fallback' | 'deterministic'; refs: { id: string; label: string; href: string | null }[] }
   | { kind: 'clarification'; id: string; text: string; candidates: CopilotFreeCandidate[] }
   | { kind: 'proposal';      id: string; text: string; proposal: CopilotProposal; interactionId: string | null }
   | { kind: 'thinking';      id: string }

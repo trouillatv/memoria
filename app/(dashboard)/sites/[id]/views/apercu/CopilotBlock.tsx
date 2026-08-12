@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils'
 
 type Msg =
   | { kind: 'user';          id: string; text: string }
-  | { kind: 'answer';        id: string; text: string; source: 'llm' | 'fallback'; refs: { id: string; label: string; href: string | null }[]; interactionId: string | null }
+  | { kind: 'answer';        id: string; text: string; source: 'llm' | 'fallback' | 'deterministic'; refs: { id: string; label: string; href: string | null }[]; interactionId: string | null }
   | { kind: 'clarification'; id: string; text: string; candidates: CopilotFreeCandidate[]; interactionId: string | null }
   | { kind: 'proposal';      id: string; text: string; proposal: CopilotProposal; interactionId: string | null }
   | { kind: 'thinking';      id: string }

@@ -69,7 +69,7 @@ export type CopilotFreeResult =
       kind: 'answer'
       text: string
       references: CopilotRef[]
-      source: 'llm' | 'fallback'
+      source: 'llm' | 'fallback' | 'deterministic'
       interactionId: string | null
     }
   | {

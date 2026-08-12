@@ -175,13 +175,20 @@ export function buildFallbackText(
   if (intent === 'next_visit') {
     const lines: string[] = []
     if (prepItems.length > 0) {
-      lines.push(`Plan de visite actif : ${prepItems.map((p) => p.label).join(', ')}.`)
+      lines.push(`Plan de visite actif :\n${prepItems.map((p) => `• ${p.label}`).join('\n')}`)
     }
-    const subjects = items.filter((i) => i.type === 'subject').slice(0, 5)
+    const subjects = items.filter((i) => i.type === 'subject')
     if (subjects.length > 0) {
-      lines.push(`À vérifier : ${subjects.map((i) => i.label).join(', ')}.`)
+      const header = prepItems.length > 0
+        ? `\nPoints à vérifier (${subjects.length}) :`
+        : `Points à vérifier (${subjects.length}) :`
+      lines.push(header)
+      for (const s of subjects) {
+        const detail = s.facts.filter(Boolean).join(' · ')
+        lines.push(`• ${s.label}${detail ? ` — ${detail}` : ''}`)
+      }
     }
-    return lines.join(' ') || 'Aucun point prioritaire identifié pour la prochaine visite.'
+    return lines.join('\n') || 'Aucun point prioritaire identifié pour la prochaine visite.'
   }
 
   const subjects = items.filter((i) => i.type === 'subject').slice(0, 5)

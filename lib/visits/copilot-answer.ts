@@ -48,14 +48,23 @@ const INTENT_PROMPTS: Record<CopilotIntent, string> = {
     "Qu'est-ce qui a changé récemment sur ce chantier ? Appuie-toi sur le delta inter-PV et les changements récents présents dans le contexte.",
   stale:
     "Quels sujets traînent sans évolution sur ce chantier ? Identifie ce qui bloque ou stagne, uniquement à partir des données du contexte.",
+  // Règle d'invariance : la sélection des sujets est déterministe (moteur).
+  // Le LLM formule uniquement — il NE choisit PAS quels sujets mentionner.
+  // Tout item du contexte DOIT apparaître dans la réponse, dans l'ordre fourni.
   next_visit:
-    "Que doit vérifier le conducteur à sa prochaine visite ? Prends en compte le plan de visite actif s'il existe, puis les sujets prioritaires à vérifier.",
+    "Présente les vérifications à effectuer lors de la prochaine visite.\n\nRègle absolue : cite CHACUN des items présents dans le champ « items » du contexte, dans leur ordre exact. Aucun item ne peut être omis. Pour chaque item : une courte phrase indiquant le label et le motif principal issu de ses « facts ». Si un planDeVisite est présent, commence par lui.",
 }
 
 export interface CopilotAnswer {
   text: string
   citedIds: string[]  // ids validés contre la liste fermée du contexte
-  source: 'llm' | 'fallback'
+  /**
+   * llm         — réponse LLM, sélection et texte fournis par le modèle
+   * fallback     — LLM indisponible (erreur provider / schema invalide)
+   * deterministic — LLM disponible mais réponse incomplète : le moteur
+   *                prend le relais pour garantir la couverture des items
+   */
+  source: 'llm' | 'fallback' | 'deterministic'
 }
 
 export async function answerCopilotQuestion(
@@ -99,6 +108,19 @@ export async function answerCopilotQuestion(
         // Validation des ids contre la liste fermée — le LLM ne peut pas inventer d'id
         const validIds = new Set(items.map((i) => i.id))
         const citedIds = maybeValid.data.citedIds.filter((id) => validIds.has(id))
+
+        // Invariant next_visit : TOUS les items doivent être cités.
+        // Si le LLM n'en a mentionné qu'une partie, le moteur prend le relais.
+        // Le texte peut varier légèrement d'un run à l'autre ; la SÉLECTION ne le peut pas.
+        if (intent === 'next_visit' && citedIds.length < items.length) {
+          console.warn('[copilot] next_visit incomplete citation — cited:', citedIds.length, '/ expected:', items.length, '— using deterministic')
+          return {
+            text: buildFallbackText(items, intent, null, prepItems),
+            citedIds: items.map((i) => i.id),
+            source: 'deterministic',
+          }
+        }
+
         return { text: maybeValid.data.text, citedIds, source: 'llm' }
       }
       // Le JSON est là mais ne correspond pas au schéma attendu
