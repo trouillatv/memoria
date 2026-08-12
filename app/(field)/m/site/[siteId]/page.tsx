@@ -2,33 +2,18 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireSiteAccess as requireFieldSiteAccess } from '@/lib/field/site-access'
 import { requireSiteAccess } from '@/lib/auth/resource-access'
-import { getSiteResumeContext } from '@/lib/db/interventions'
 import { createAdminClient } from '@/lib/supabase/admin'
-import {
-  getSiteReadings,
-  getSiteHumanContinuity,
-  getSiteTransmissionReadings,
-  getSiteAnomalies,
-  getSiteRecentPhotos,
-} from '@/lib/db/site-cockpit'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
-import { MobileSiteReadings } from '@/components/field/MobileSiteReadings'
 import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
 import { VisitLauncher } from './VisitLauncher'
 import { VisitBasket, type SubjectMemoryLite } from './VisitBasket'
 import { VisitObjectivePrompt } from './VisitObjectivePrompt'
-import { getActiveVisit, getStartedVisitById, buildSiteStatusSummary, getSiteRecentActivity, buildSinceLastVisitDelta, getSiteMemorySnapshot } from '@/lib/db/visits'
-import { getSiteIdentity } from '@/lib/db/sites'
+import { getActiveVisit, getStartedVisitById, buildSiteStatusSummary, buildSinceLastVisitDelta } from '@/lib/db/visits'
 import { getSiteCoverPhoto } from '@/lib/db/site-cover'
-import { getSiteReserves } from '@/lib/db/site-reserve'
 import { SiteStatusCard } from './SiteStatusCard'
-import { IdentityCard } from './IdentityCard'
-import { SiteTodoCard } from './SiteTodoCard'
-import { SiteActivityCard } from './SiteActivityCard'
 import { SinceLastVisitCard } from './SinceLastVisitCard'
-import { SiteMemoryCard } from './SiteMemoryCard'
 import { JustVisitedBanner } from './JustVisitedBanner'
 import { SitePresenceReminders } from './SitePresenceReminders'
 import { buildSitePresenceReminders } from '@/lib/db/site-presence'
@@ -39,18 +24,15 @@ import { getSiteNextSteps } from '@/lib/db/site-next-steps'
 import { NextStepCard } from './NextStepCard'
 import { buildVisitBrief } from '@/lib/db/site-visit-brief'
 import { VisitBriefCard } from './VisitBriefCard'
-import { VisitKnowledgeCard } from './VisitKnowledgeCard'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
 import { DeliverFieldPanel } from './DeliverFieldPanel'
 import { AddDocumentPanel } from './AddDocumentPanel'
-import { listOpenSiteActions } from '@/lib/db/site-actions'
-import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
 import { ChefSiteView } from './ChefSiteView'
 import { CopilotMobileSheet } from './CopilotMobileSheet'
-import { ListTodo, Hammer, AlertTriangle, ChevronRight, Camera } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { Suspense } from 'react'
 import { SiteAttentionSection, SiteAttentionSkeleton } from '@/app/(dashboard)/sites/[id]/views/apercu/SiteAttentionSection'
 
@@ -108,11 +90,6 @@ function firstNameOf(fullName: string | null, email: string): string {
   return local[0].toUpperCase() + local.slice(1)
 }
 
-function formatTraceDate(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
-}
-
 export default async function FieldSitePage({
   params,
   searchParams,
@@ -160,19 +137,11 @@ export default async function FieldSitePage({
     return <ChefSiteView siteId={siteId} userId={user.id} userRole={user.role} />
   }
 
-  const [pastVisitDays, resume, siteReadings, siteContinuity] = await Promise.all([
-    countDistinctVisitDays(user.id, siteId),
-    getSiteResumeContext(siteId, user.id),
-    getSiteReadings(siteId),
-    getSiteHumanContinuity(siteId),
-  ])
+  const pastVisitDays = await countDistinctVisitDays(user.id, siteId)
   const nthPassage = pastVisitDays + 1
 
-  // Actions ouvertes + visite en cours — indépendants, en parallèle.
-  const [openActions, activeVisitFromQuery] = await Promise.all([
-    listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
-    getActiveVisit(siteId).catch(() => null),
-  ])
+  // Visite en cours — chargée en priorité.
+  const activeVisitFromQuery = await getActiveVisit(siteId).catch(() => null)
   // Repli déterministe : si la relecture n'a pas (encore) retrouvé la visite mais
   // que l'URL porte l'id d'une visite qu'on vient de démarrer, on l'ouvre par id.
   const activeVisit =
@@ -183,39 +152,21 @@ export default async function FieldSitePage({
   // indépendantes : un seul aller-retour parallèle au lieu d'une chaîne
   // séquentielle (la fiche est la page la plus ouverte : elle doit être rapide).
   let siteStatus: Awaited<ReturnType<typeof buildSiteStatusSummary>> = []
-  let identity: Awaited<ReturnType<typeof getSiteIdentity>> = null
-  let openReserves: { id: string; label: string; location: string | null }[] = []
-  let recentActivity: Awaited<ReturnType<typeof getSiteRecentActivity>> = []
   let sinceLastVisit: Awaited<ReturnType<typeof buildSinceLastVisitDelta>> = null
-  let memorySnapshot: Awaited<ReturnType<typeof getSiteMemorySnapshot>> | null = null
   let nextSteps: Awaited<ReturnType<typeof getSiteNextSteps>> = []
   let visitBrief: Awaited<ReturnType<typeof buildVisitBrief>> = null
   if (!activeVisit) {
-    const [status, id, reservesRaw, activity, since, snapshot, steps, brief] = await Promise.all([
+    const [status, since, steps, brief] = await Promise.all([
       buildSiteStatusSummary(siteId).catch(() => []),
-      getSiteIdentity(siteId).catch(() => null),
-      getSiteReserves(siteId).catch(() => []),
-      getSiteRecentActivity(siteId).catch(() => []),
       buildSinceLastVisitDelta(siteId, user.id).catch(() => null),
-      getSiteMemorySnapshot(siteId).catch(() => null),
       getSiteNextSteps(siteId).catch(() => []),
       buildVisitBrief(siteId).catch(() => null),
     ])
     siteStatus = status
-    identity = id
-    openReserves = reservesRaw
-      .filter((r) => r.status === 'open')
-      .map((r) => ({ id: r.id, label: r.label, location: r.location }))
-    recentActivity = activity
     sinceLastVisit = since
-    memorySnapshot = snapshot
     nextSteps = steps
     visitBrief = brief
   }
-  // Connaissance du chantier : le MÊME read model que la fiche desktop (`SiteOverview`).
-  // Une action proposée doit apparaître à l'identique sur les deux surfaces — c'est le
-  // contrat, pas une coïncidence. Hors visite en cours seulement.
-  const overview = activeVisit ? null : await getSiteOverview(siteId).catch(() => emptySiteOverview(siteId))
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
   // suivis (pour le geste « Vérifier un point »).
   let visitSubjects: Awaited<ReturnType<typeof listOpenSiteSubjectsLite>> = []
@@ -265,8 +216,8 @@ export default async function FieldSitePage({
   }
 
   // « Aujourd'hui ici » — page d'arrivée terrain. On s'assure des récurrences du
-  // jour, puis on agrège interventions du jour + anomalies ouvertes + dernières
-  // preuves. Réponse immédiate à « qu'est-ce qui me concerne ici, maintenant ? ».
+  // jour, puis on agrège interventions du jour. Réponse immédiate à « qu'est-ce
+  // qui me concerne ici, maintenant ? ».
   const todayIso = todayLocalIso()
   await ensureTodayInterventionsForSites([siteId], 0).catch(() => {})
   const { data: siteMissionRows } = await supabase
@@ -283,40 +234,8 @@ export default async function FieldSitePage({
         .eq('scheduled_for', todayIso)
         .neq('status', 'skipped')
         .order('planned_start', { ascending: true })).data) ?? []) as TodayIntv[]
-  // Le « À savoir » n'est plus lu ici : il vient de SiteOverview, comme au bureau.
-  const [siteAnomalies, recentPhotos, presenceReminders] = await Promise.all([
-    getSiteAnomalies(siteId).catch(() => []),
-    getSiteRecentPhotos(siteId, 6).catch(() => []),
-    // « Puisque vous êtes ici » — l'assistant de présence (niveau 3) : 1 à 3
-    // opportunités à saisir sur place, déterministes, zéro donnée nouvelle.
-    buildSitePresenceReminders(siteId, { limit: 3 }).catch(() => []),
-  ])
-  const openAnomalies = siteAnomalies.filter((a) => a.status === 'open')
-  const openAnomaliesCount = openAnomalies.length
 
-  // V5.1.4 — Mémoire IA périphérique (Vincent 2026-05-15)
-  const siteTransmissions = await getSiteTransmissionReadings(siteId, siteContinuity)
-  const enrichedSiteReadings = {
-    readings: [...siteTransmissions, ...siteReadings.readings],
-  }
-
-  // Dernière trace notable : on prend la plus récente entre la première
-  // anomalie et la première site_note (qui sont déjà triées DESC par
-  // getSiteResumeContext).
-  const lastAnomaly = resume.recentAnomalies[0]
-  const lastNote = resume.recentSiteNotes[0]
-  let lastNotable: { date: string; text: string } | null = null
-  if (lastAnomaly && lastNote) {
-    if (new Date(lastAnomaly.created_at) >= new Date(lastNote.created_at)) {
-      lastNotable = { date: lastAnomaly.created_at, text: lastAnomaly.description }
-    } else {
-      lastNotable = { date: lastNote.created_at, text: lastNote.body }
-    }
-  } else if (lastAnomaly) {
-    lastNotable = { date: lastAnomaly.created_at, text: lastAnomaly.description }
-  } else if (lastNote) {
-    lastNotable = { date: lastNote.created_at, text: lastNote.body }
-  }
+  const presenceReminders = await buildSitePresenceReminders(siteId, { limit: 3 }).catch(() => [])
 
   // Photo principale du chantier (mig 243) — la vignette qui le représente.
   // Pas pendant une visite en cours : l'écran de collecte reste épuré.
@@ -374,7 +293,7 @@ export default async function FieldSitePage({
         </div>
       ) : (
         <div className="space-y-6">
-          {/* 1 — État du chantier : la santé en un coup d'œil (chiffres cliquables). */}
+          {/* 1 — État du chantier */}
           <SiteStatusCard cells={siteStatus} />
 
           {/* 2 — Ce qui demande votre attention — déterministe, silence positif si vide. */}
@@ -382,204 +301,66 @@ export default async function FieldSitePage({
             <SiteAttentionSection siteId={siteId} />
           </Suspense>
 
-          {/* 3 — Plan de prochaine visite : ce que je dois contrôler prochainement. */}
-          {visitBrief && <VisitBriefCard brief={visitBrief} siteId={siteId} />}
+          {/* 3 — Sur place : opportunités contextuelles + agenda du jour.
+              VisitBriefCard répond à « qu'est-ce qui vaut le coup de traiter si je suis là ? »
+              Les interventions répondent à « qu'est-ce qui est planifié ici aujourd'hui ? »
+              Silence si aucun des deux n'a de contenu. */}
+          {(visitBrief || todayInterventions.length > 0 || presenceReminders.length > 0) && (
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Sur place</h2>
+              {visitBrief && <VisitBriefCard brief={visitBrief} siteId={siteId} />}
+              {presenceReminders.length > 0 && <SitePresenceReminders reminders={presenceReminders} />}
+              {todayInterventions.length > 0 && (
+                <ul className="space-y-1.5">
+                  {todayInterventions.map((i) => {
+                    const meta = INTV_STATUS_META[i.status] ?? INTV_STATUS_META.planned
+                    const time = formatInterventionTimeLabel({ planned_start: i.planned_start, planned_end: i.planned_end, slot: i.slot })
+                    return (
+                      <li key={i.id}>
+                        <Link
+                          href={`/m/intervention/${i.id}`}
+                          className="flex items-center gap-2 rounded-xl border bg-muted/30 shadow-sm px-3 py-2.5 active:brightness-95 transition"
+                        >
+                          <span className="text-[11px] font-mono tabular-nums text-muted-foreground shrink-0 w-12">{time}</span>
+                          <span className="text-sm font-medium min-w-0 flex-1 truncate">{i.label ?? missionNameById.get(i.mission_id) ?? 'Intervention'}</span>
+                          <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${meta.cls}`}>{meta.label}</span>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground/50 shrink-0" />
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </section>
+          )}
 
-          {/* 4 — Depuis votre dernière visite : ce qui vient de se passer. */}
+          {/* 4 — Depuis votre dernier passage : ce qui vient de se passer. */}
           {sinceLastVisit && <SinceLastVisitCard delta={sinceLastVisit} siteId={siteId} />}
 
-          {/* « Ma visite a servi » — le moment du terrain. Date, matière rapportée,
-              état de la synthèse, et ce que MemorIA en a retenu. Mêmes données et
-              mêmes mots que l'onglet Aperçu du bureau. */}
-          {overview && (
-            <VisitKnowledgeCard
-              overview={overview}
-              synthesisHref={overview.activity.lastVisit ? `/m/visite/${overview.activity.lastVisit.reportId}/cr` : undefined}
-            />
-          )}
-
-          {/* Connaissance de la dernière visite : actions proposées avec leurs
-              PREMIERS titres (pas seulement un compte). Distinctes des actions
-              ouvertes ; « confirmer » se fait sur la synthèse. Silence tant qu'il
-              n'y en a pas. Même read model que la fiche desktop. */}
-          {overview && overview.actions.summary.proposed > 0 && (
-            <section className="rounded-2xl border border-sky-200 bg-sky-50/60 p-4 dark:border-sky-900/40 dark:bg-sky-950/20">
-              <div className="flex items-center gap-2">
-                <ListTodo className="h-4 w-4 shrink-0 text-sky-600" />
-                <h2 className="text-sm font-semibold text-sky-900 dark:text-sky-200">
-                  {overview.actions.summary.proposed} action{overview.actions.summary.proposed > 1 ? 's' : ''} proposée{overview.actions.summary.proposed > 1 ? 's' : ''}
-                </h2>
-                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">à confirmer</span>
-              </div>
-              <ul className="mt-2 space-y-1">
-                {overview.actions.proposed.map((p) => (
-                  <li key={p.id} className="flex items-start gap-2 text-[13px] text-foreground/90">
-                    <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-sky-500" />
-                    <span className="min-w-0">{p.title}</span>
-                  </li>
-                ))}
-              </ul>
-              <Link href={`/m/site/${siteId}/visites`} className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-sky-700 active:opacity-70 dark:text-sky-300">
-                Voir la synthèse et confirmer <ChevronRight className="h-3.5 w-3.5" />
-              </Link>
-            </section>
-          )}
-
-          {/* 1bis — AGENDA DU CHANTIER : « comment va vivre ce chantier ces
-              prochains jours ? » Réunions / interventions / échéances — la plus
-              proche en grand, puis les jours nommés (Aujourd'hui / Demain / …).
-              Silence positif si rien à venir. */}
+          {/* 5 — Prochaine étape : agenda à venir (réunions, interventions, échéances). */}
           <NextStepCard steps={nextSteps} />
 
-          {/* Attention — les anomalies OUVERTES : des faits déclarés sur le lieu.
-              Le « À savoir » a quitté ce bloc : c'est de la connaissance du chantier,
-              pas une alerte. Il vit dans « Ce que MemorIA a retenu », au même endroit
-              qu'au bureau — un même objet ne peut pas dire deux choses selon l'écran. */}
-          {openAnomalies.length > 0 && (
-            <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-800 inline-flex items-center gap-1.5">
-                <AlertTriangle className="h-4 w-4" /> Attention
-              </h2>
-              <ul className="space-y-1.5">
-                {openAnomalies.slice(0, 3).map((a) => (
-                  <li key={a.id} className="text-sm text-amber-900 flex gap-1.5">
-                    <span aria-hidden>⚠</span>
-                    <span className="min-w-0">{a.description}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+          {/* ─── Zone d'action ─── */}
+          <section className="space-y-2.5">
+            <SiteBriefButton siteId={siteId} variant="mobile" mode="visit" />
+            <SiteBriefButton siteId={siteId} variant="mobile" mode="meeting" />
+          </section>
 
-          {/* 5 — Que reste-t-il à faire : les actions ouvertes / en retard. */}
-          <SiteTodoCard actions={openActions} reserves={openReserves} todayIso={todayIso} totalActions={openActions.length} siteId={siteId} />
-
-          {/* 4 — Dernière activité : ce qui s'est passé récemment, regroupé. */}
-          <SiteActivityCard items={recentActivity} />
-
-          {/* Mémoire — le cumul depuis la création : le chantier « parle ». */}
-          {memorySnapshot && <SiteMemoryCard snapshot={memorySnapshot} />}
-
-
-          {/* Hub chantier — accès compact à l'histoire et au patrimoine. Une seule
-              porte, cinq destinations (onglets internes). Sans cette ligne,
-              quitter la synthèse pour voir les visites ou la frise nécessitait
-              de remonter en haut ou de naviguer en aveugle. */}
           <Link
             href={`/m/site/${siteId}/visites`}
             className="flex items-center justify-between rounded-xl border bg-card px-4 py-3 shadow-sm active:brightness-95"
           >
             <div>
               <p className="text-[14px] font-medium">Explorer le chantier</p>
-              <p className="text-[12px] text-muted-foreground">Visites · Réunions · Frise · Patrimoine</p>
+              <p className="text-[12px] text-muted-foreground">Visites · Réunions · Actions · Réserves · Mémoire · Documents</p>
             </div>
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           </Link>
 
-          {/* 6 — Préparer : LE rituel « avant de partir ». Deux CTA proéminents,
-              pas des cartes passives — c'est un MOMENT du parcours (« j'appuie
-              avant d'aller sur le chantier »). Présence (plus bas, « Aujourd'hui
-              ici ») prend le relais UNE FOIS sur place : les deux sont
-              complémentaires, jamais concurrents. */}
-          <section className="space-y-2.5">
-            <SiteBriefButton siteId={siteId} variant="mobile" mode="visit" />
-            <SiteBriefButton siteId={siteId} variant="mobile" mode="meeting" />
-          </section>
-
-          {/* Contexte du lieu — référence & secondaire (sous la narration). */}
-          {identity && <IdentityCard identity={identity} />}
-
-          {/* « Aujourd'hui ici » — ce qui me concerne maintenant. En tête,
-              l'assistant de présence : puisque je suis là, que puis-je saisir ? */}
-          <section className="rounded-2xl border bg-card p-4 space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Aujourd&apos;hui ici
-        </h2>
-
-        <SitePresenceReminders reminders={presenceReminders} />
-
-        <div className="flex items-center gap-1.5 flex-wrap text-xs">
-          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 font-medium">
-            <Hammer className="h-3.5 w-3.5" />{todayInterventions.length} interv.
-          </span>
-          {openActions.length > 0 && (
-            <Link href={`/m/actions?site=${siteId}`} className="inline-flex items-center gap-1 rounded-full bg-sky-50 text-sky-700 px-2.5 py-1 font-medium active:bg-sky-100">
-              <ListTodo className="h-3.5 w-3.5" />{openActions.length} action{openActions.length > 1 ? 's' : ''}
-            </Link>
-          )}
-          {openAnomaliesCount > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-800 px-2.5 py-1 font-medium">
-              <AlertTriangle className="h-3.5 w-3.5" />{openAnomaliesCount} anomalie{openAnomaliesCount > 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
-
-        {todayInterventions.length > 0 ? (
-          <ul className="space-y-1.5">
-            {todayInterventions.map((i) => {
-              const meta = INTV_STATUS_META[i.status] ?? INTV_STATUS_META.planned
-              const time = formatInterventionTimeLabel({ planned_start: i.planned_start, planned_end: i.planned_end, slot: i.slot })
-              return (
-                <li key={i.id}>
-                  <Link
-                    href={`/m/intervention/${i.id}`}
-                    className="flex items-center gap-2 rounded-xl border bg-muted/30 shadow-sm px-3 py-2.5 active:brightness-95 transition"
-                  >
-                    <span className="text-[11px] font-mono tabular-nums text-muted-foreground shrink-0 w-12">{time}</span>
-                    <span className="text-sm font-medium min-w-0 flex-1 truncate">{i.label ?? missionNameById.get(i.mission_id) ?? 'Intervention'}</span>
-                    <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${meta.cls}`}>{meta.label}</span>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground/50 shrink-0" />
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        ) : (
-          <p className="text-sm text-muted-foreground italic">Aucune intervention prévue ici aujourd&apos;hui.</p>
-        )}
-      </section>
-
-          {lastNotable && (
-            <p className="text-[13px] italic text-muted-foreground leading-relaxed">
-              Dernière trace ici : {formatTraceDate(lastNotable.date)},{' '}
-              {lastNotable.text}.
-            </p>
-          )}
-
-          {/* Mémoire IA périphérique — présence ambiante discrète (ignorable). */}
-          {enrichedSiteReadings.readings.length > 0 && (
-            <MobileSiteReadings readings={enrichedSiteReadings} siteId={siteId} />
-          )}
-
-          {/* Dernières preuves — photos récentes du site (lecture rapide). */}
-          {recentPhotos.length > 0 && (
-            <section className="space-y-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1.5">
-                <Camera className="h-4 w-4" /> Dernières preuves
-              </h2>
-              <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1 snap-x">
-                {recentPhotos.map((p) => (
-                  <a
-                    key={p.id}
-                    href={p.signedUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="shrink-0 snap-start block w-20 h-20 rounded-lg overflow-hidden border bg-muted active:opacity-80 transition-opacity"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.signedUrl} alt={p.caption ?? ''} className="w-full h-full object-cover" />
-                  </a>
-                ))}
-              </div>
-            </section>
-          )}
-
-
-          {/* 6 — Demander à MemorIA — compact et secondaire. */}
+          {/* Demander à MemorIA — compact et secondaire. */}
           <CopilotMobileSheet siteId={siteId} siteName={site.name} />
 
-          {/* Ajouter… — outils de CRÉATION du lieu (grille d'outils, pas des CTA).
-              On comprend d'un coup que ce sont des créations rapides. */}
+          {/* Ajouter… — outils de création du lieu. */}
           <section className="space-y-2 pt-3 border-t border-border/40">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Ajouter…
@@ -589,19 +370,11 @@ export default async function FieldSitePage({
               <SpontaneousCapturePanel siteId={siteId} siteName={site.name} />
               <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" label="Compte-rendu" resumeReportId={resumeReportId} />
               <DeliverFieldPanel siteId={siteId} />
-              {/* Le plan reçu par mail, le devis signé, l'attestation remise sur
-                  place : ils arrivent SUR le chantier. Il fallait rentrer au bureau
-                  pour les déposer — la capacité existait, la porte manquait ici. */}
               <AddDocumentPanel siteId={siteId} />
             </div>
           </section>
 
-          {/* 8 — Agir : « Démarrer une visite ». STICKY (F5) : le conducteur
-              arrive gants sales pour capturer — l'action principale reste sous
-              le pouce quelle que soit la longueur de la fiche. Le sticky est
-              prouvé dans ce conteneur (le header top-0 du layout l'utilise) ;
-              bottom-20 dégage la MobileTabBar (fixed bottom-0, ~4 rem + safe
-              area). Toujours discrète (vert clair), jamais un slab noir. */}
+          {/* Démarrer la visite — sticky. */}
           <div className="sticky bottom-20 z-30 drop-shadow-lg">
             <VisitLauncher siteId={siteId} activeVisit={null} />
           </div>
