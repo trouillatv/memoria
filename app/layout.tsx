@@ -27,12 +27,23 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  viewportFit: 'cover',
   themeColor: "#0f172a",
 }
+
+// Script synchrone exécuté dans <head> avant tout rendu : corrige le viewport
+// que Chrome Android force à 980 px en mode "Demander le site pour ordinateur".
+// Même logique que FieldViewportFix, mais sans flash car aucun rendu n'a encore eu lieu.
+const VIEWPORT_FIX = `(function(){try{if(screen.width<640&&window.innerWidth>640){var m=document.querySelector('meta[name="viewport"]');if(m)m.content='width='+screen.width+',initial-scale=1,viewport-fit=cover';}}catch(e){}})();`
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" suppressHydrationWarning>
+      <head>
+        {/* Correction viewport synchrone — avant tout rendu React. */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script dangerouslySetInnerHTML={{ __html: VIEWPORT_FIX }} />
+      </head>
       {/* suppressHydrationWarning sur <body> : neutralise les attributs injectés
           par les extensions navigateur (ColorZilla `cz-shortcut-listen`,
           Grammarly `data-gr-*`, LastPass `data-lastpass-*`, etc.) qui modifient
