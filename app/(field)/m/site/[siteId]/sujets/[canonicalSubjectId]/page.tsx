@@ -593,6 +593,27 @@ function ActorFicheView({ life, identity, resp, realOccs, pills }: ActorFichePro
   )
 }
 
+// ── Groupement occurrences — 1 tick par visite/réunion/PV ───────────────────
+
+type OccGroup = { key: string; occs: SubjectOccurrenceMerged[] }
+
+function groupOccurrences(occs: SubjectOccurrenceMerged[]): OccGroup[] {
+  const groups: OccGroup[] = []
+  const idx = new Map<string, OccGroup>()
+  for (const occ of occs) {
+    const key = occ.sourceKind === 'field_visit' || occ.sourceKind === 'meeting'
+      ? `${occ.sourceKind}-${occ.effectiveDate}`
+      : occ.runId
+        ? `run-${occ.runId}`
+        : occ.documentId
+          ? `doc-${occ.documentId}`
+          : `date-${occ.effectiveDate}`
+    const g = idx.get(key)
+    if (g) { g.occs.push(occ) } else { const ng = { key, occs: [occ] }; idx.set(key, ng); groups.push(ng) }
+  }
+  return groups
+}
+
 // Statuts considérés comme "actifs" (objet encore en cours / à traiter)
 const ACTIVE_STATUSES = new Set([
   'open', 'in_progress', 'to_plan', 'planned', 'non_compliant',
@@ -773,18 +794,39 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
             siteId={siteId}
           />
 
-          {/* 6 — Ligne de vie */}
+          {/* 6 — Ligne de vie — 1 tick par visite, N preuves derrière */}
           {realOccs.length > 0 ? (
             <section>
               <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 Ligne de vie
               </h2>
               <ol className="space-y-4">
-                {realOccs.map((occ, i) => (
-                  <li key={`${occ.runId ?? occ.reportId}-${i}`}>
-                    <OccurrenceRow occ={occ} index={i} total={realOccs.length} />
-                  </li>
-                ))}
+                {groupOccurrences(realOccs).map((group, gi, arr) => {
+                  const [primary, ...extras] = group.occs
+                  return (
+                    <li key={group.key}>
+                      <OccurrenceRow occ={primary} index={gi} total={arr.length} />
+                      {extras.length > 0 && (
+                        <details className="mt-2 ml-8">
+                          <summary className="cursor-pointer select-none text-[11px] text-muted-foreground hover:text-foreground list-none flex items-center gap-1">
+                            <span className="transition-[transform] [details[open]>&]:rotate-90">▸</span>
+                            {extras.length} preuve{extras.length > 1 ? 's' : ''} supplémentaire{extras.length > 1 ? 's' : ''}
+                          </summary>
+                          <ol className="mt-2 space-y-2">
+                            {extras.map((occ, i) => (
+                              <li key={i} className="rounded-xl border bg-card/60 px-3.5 py-2.5">
+                                {occ.label && <p className="text-[13px] leading-snug">{occ.label}</p>}
+                                {occ.description && (
+                                  <p className="mt-1 text-[12px] text-muted-foreground line-clamp-2">{occ.description}</p>
+                                )}
+                              </li>
+                            ))}
+                          </ol>
+                        </details>
+                      )}
+                    </li>
+                  )
+                })}
               </ol>
             </section>
           ) : (

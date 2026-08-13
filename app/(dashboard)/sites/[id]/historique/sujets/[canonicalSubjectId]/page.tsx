@@ -586,6 +586,7 @@ function FilMetierGrouped({ occurrences, siteId }: { occurrences: SubjectOccurre
         }
 
         // Groupe à plusieurs occurrences : accordéon natif fermé par défaut
+        const repLabel = realOccs[0]?.label ?? null
         return (
           <details key={group.key} className="group/details">
             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-1 py-1 hover:bg-muted/40 select-none">
@@ -593,7 +594,12 @@ function FilMetierGrouped({ occurrences, siteId }: { occurrences: SubjectOccurre
               <span className="text-xs font-medium text-foreground">{frDate(group.date)}</span>
               <span className="text-xs text-muted-foreground">—</span>
               <span className="text-xs text-muted-foreground">{kindLabel}</span>
-              <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{preuveLabel}</span>
+              {repLabel && (
+                <span className="truncate max-w-[200px] text-xs text-muted-foreground/70 hidden sm:inline">
+                  · {repLabel}
+                </span>
+              )}
+              <span className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{preuveLabel}</span>
             </summary>
             <ol className="mt-1.5 space-y-1.5 pl-4 border-l-2 border-muted ml-3">
               {realOccs.map((occ, i) => (
