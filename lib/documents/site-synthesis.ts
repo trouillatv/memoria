@@ -874,6 +874,7 @@ export async function getSiteKnowledgeGraph(siteId: string): Promise<SiteKnowled
   const rawLinks = await listConfirmedLinksForSite(siteId)
 
   const semanticEdges: SemanticEdge[] = []
+  const seenSemantic = new Set<string>()
 
   if (rawLinks.length > 0) {
     const allThreadIds = [...new Set([
@@ -890,7 +891,6 @@ export async function getSiteKnowledgeGraph(siteId: string): Promise<SiteKnowled
       threadToCS.set(r.subject_thread_id, r.canonical_subject_id)
     }
 
-    const seenSemantic = new Set<string>()
     for (const link of rawLinks) {
       const fromId = threadToCS.get(link.fromThreadId) ?? null
       const toId   = threadToCS.get(link.toThreadId)   ?? null
@@ -899,6 +899,39 @@ export async function getSiteKnowledgeGraph(siteId: string): Promise<SiteKnowled
       if (seenSemantic.has(key)) continue
       seenSemantic.add(key)
       semanticEdges.push({ edgeType: 'semantic', from: fromId, to: toId, linkType: link.linkType, justification: link.justification })
+    }
+  }
+
+  // ── 2b. Relations canoniques confirmées (canonical_subject_links, mig 316) ─
+  // Convergence lecture : on merge les deux modèles sans supprimer le legacy.
+  // canonical_subject_links est la source terrain-first ; subject_thread_links
+  // reste utilisé pour les corpus PDF/OCEF existants.
+  {
+    const { data: canonicalLinks } = await supabase
+      .from('canonical_subject_links')
+      .select('source_subject_id, target_subject_id, relation_type, justification')
+      .eq('site_id', siteId)
+      .eq('status', 'confirmed')
+
+    for (const cl of (canonicalLinks ?? []) as Array<{
+      source_subject_id: string
+      target_subject_id: string
+      relation_type: string
+      justification: string | null
+    }>) {
+      const fromId = cl.source_subject_id
+      const toId   = cl.target_subject_id
+      if (!csLabel.has(fromId) || !csLabel.has(toId) || fromId === toId) continue
+      const key = `${fromId}:${toId}:${cl.relation_type}`
+      if (seenSemantic.has(key)) continue
+      seenSemantic.add(key)
+      semanticEdges.push({
+        edgeType: 'semantic',
+        from: fromId,
+        to: toId,
+        linkType: cl.relation_type as SubjectLinkType,
+        justification: cl.justification,
+      })
     }
   }
 
