@@ -86,6 +86,11 @@ export interface ForceGraphConfig {
   }
 
   onTapNode?(id: string): void
+  /** Appui long (~500 ms) sur un nœud sans déplacement — mobile. Le tap n'est
+   *  PAS émis ensuite : le geste long consomme l'interaction. */
+  onLongPressNode?(id: string): void
+  /** Délai de l'appui long en ms (défaut 500). */
+  longPressMs?: number
   onTapEdge?(index: number): void
   /** Clic dans le vide sans déplacement. wasPan = un pan était engagé. */
   onTapVoid?(wasPan: boolean): void
@@ -106,6 +111,10 @@ export interface ForceGraphEngine {
   redraw(): void
   /** Replace les nouveaux visibles + relance (après changement de contexte client). */
   refreshVisibility(): void
+  /** Pose SYNCHRONE du layout : itère la physique sans dessiner (alphas des
+   *  visibles forcés à 1), puis un seul draw. Le graphe apparaît déjà posé —
+   *  aucun drift visible, aucun recentrage ultérieur nécessaire. */
+  settleSync(iterations?: number): void
   toWorld(sx: number, sy: number): { x: number; y: number }
   destroy(): void
 }
@@ -167,16 +176,10 @@ export function createForceGraphEngine(
     if (!running) { running = true; requestAnimationFrame(step) }
   }
 
-  function step() {
-    if (destroyed) return
-    const vis = visibleSet()
-    const ids = [...vis]
-    const allIds = cfg.nodeIds()
+  // Un pas de physique pur (répulsion + ressorts + intégration), sans fade ni
+  // draw — partagé entre la boucle animée (step) et la pose synchrone (settleSync).
+  function integrate(vis: Set<string>, ids: string[]): number {
     let energy = 0
-    if (cfg.fade) {
-      for (const id of ids) { const p = P[id]; if (p) p.alpha += (1 - p.alpha) * cfg.fade.in }
-      for (const id of allIds) if (!vis.has(id)) { const p = P[id]; if (p) p.alpha += (0 - p.alpha) * cfg.fade.out }
-    }
     // Répulsion N-body entre visibles.
     for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
       const A = P[ids[i]], B = P[ids[j]]; if (!A || !B) continue
@@ -207,11 +210,34 @@ export function createForceGraphEngine(
       if (b) { p.x = Math.max(b.padX, Math.min(W - b.padX, p.x)); p.y = Math.max(b.padTop, Math.min(H - b.padBottom, p.y)) }
       energy += Math.abs(p.vx) + Math.abs(p.vy)
     }
+    return energy
+  }
+
+  function step() {
+    if (destroyed) return
+    const vis = visibleSet()
+    const ids = [...vis]
+    const allIds = cfg.nodeIds()
+    if (cfg.fade) {
+      for (const id of ids) { const p = P[id]; if (p) p.alpha += (1 - p.alpha) * cfg.fade.in }
+      for (const id of allIds) if (!vis.has(id)) { const p = P[id]; if (p) p.alpha += (0 - p.alpha) * cfg.fade.out }
+    }
+    const energy = integrate(vis, ids)
     draw()
     if (cfg.loop === 'continuous') { requestAnimationFrame(step); return }
     const fading = !!cfg.fade && allIds.some((id) => { const a = P[id]?.alpha ?? 0; return a > 0.02 && a < 0.98 })
     const alive = dragId || fading || (performance.now() < simUntil && energy > 0.25)
     if (alive) requestAnimationFrame(step); else running = false
+  }
+
+  function settleSync(iterations = 240) {
+    const vis = visibleSet()
+    for (const id of cfg.nodeIds()) { const p = P[id]; if (p) p.alpha = vis.has(id) ? 1 : 0 }
+    const ids = [...vis]
+    for (let i = 0; i < iterations; i++) {
+      if (integrate(vis, ids) < 0.25) break
+    }
+    draw()
   }
 
   function draw() {
@@ -259,6 +285,12 @@ export function createForceGraphEngine(
   // ── Gestes (seuil 5 px commun aux deux graphes d'origine) ──────────────────
   let downAt: { x: number; y: number } | null = null, moved = false
   let panning = false, panFrom = { tx: 0, ty: 0 }
+  // Appui long : armé au pointerdown sur un nœud, annulé au moindre déplacement,
+  // au relâchement ou à l'entrée en pinch. S'il aboutit, le tap n'est pas émis.
+  let longPressTimer: ReturnType<typeof setTimeout> | null = null
+  const cancelLongPress = () => {
+    if (longPressTimer !== null) { clearTimeout(longPressTimer); longPressTimer = null }
+  }
   // Pinch-to-zoom (actif uniquement si cfg.features.pinchZoom)
   const activePointers = new Map<number, { x: number; y: number }>()
   let pinching = false, pinchStartDist = 1, pinchStartK = 1
@@ -269,6 +301,7 @@ export function createForceGraphEngine(
     if (cfg.features.pinchZoom) {
       activePointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY })
       if (activePointers.size >= 2) {
+        cancelLongPress()
         dragId = null; panning = false; moved = true
         const pts = [...activePointers.values()]
         pinchStartDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y) || 1
@@ -280,6 +313,19 @@ export function createForceGraphEngine(
     const id = hitNode(x, y); downAt = { x: sx, y: sy }; moved = false
     if (id) { dragId = id; canvas.style.cursor = 'grabbing' }
     else { panning = true; panFrom = { tx: view.tx, ty: view.ty }; canvas.style.cursor = 'grabbing' }
+    if (id && cfg.onLongPressNode) {
+      cancelLongPress()
+      const pressedId = id
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null
+        if (dragId === pressedId && !moved && !pinching) {
+          dragId = null
+          canvas.style.cursor = 'grab'
+          cfg.onLongPressNode!(pressedId)
+          kick()
+        }
+      }, cfg.longPressMs ?? 500)
+    }
     kick()
   }
   const onMove = (ev: PointerEvent) => {
@@ -298,7 +344,7 @@ export function createForceGraphEngine(
       }
     }
     if (dragId) {
-      if (downAt && Math.hypot(sx - downAt.x, sy - downAt.y) > 5) moved = true
+      if (downAt && Math.hypot(sx - downAt.x, sy - downAt.y) > 5) { moved = true; cancelLongPress() }
       const w = toWorld(sx, sy); const p = P[dragId]
       if (p) { p.x = w.x; p.y = w.y; p.vx = 0; p.vy = 0 }
       kick(); return
@@ -320,6 +366,7 @@ export function createForceGraphEngine(
     else cfg.onHover?.(null)
   }
   const onUp = (ev: PointerEvent) => {
+    cancelLongPress()
     if (cfg.features.pinchZoom) {
       activePointers.delete(ev.pointerId)
       if (pinching) {
@@ -383,9 +430,11 @@ export function createForceGraphEngine(
     kick,
     redraw: draw,
     refreshVisibility: () => { placeNew(); kick(700) },
+    settleSync,
     toWorld,
     destroy() {
       destroyed = true
+      cancelLongPress()
       ro.disconnect(); mo?.disconnect()
       canvas.removeEventListener('pointerdown', onDown)
       canvas.removeEventListener('pointermove', onMove)

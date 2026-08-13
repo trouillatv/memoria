@@ -54,7 +54,7 @@ interface Props {
 
 export default function SiteRelationsGraph({ nodes, edges, siteId, canvasHeight }: Props) {
   const router = useRouter()
-  const { canvasRef, wrapRef, engineRef, navigatingRef, fitVisibleAnimated, zoomBy } = useGraphCanvas()
+  const { canvasRef, wrapRef, engineRef, navigatingRef, fitToView, fitVisibleAnimated, zoomBy } = useGraphCanvas()
   const fitItems: FitItem[] = nodes.map((n) => ({ id: n.id, radius: R[n.kind] ?? 15 }))
 
   const nodeMap  = new Map(nodes.map((n) => [n.id, n]))
@@ -187,17 +187,15 @@ export default function SiteRelationsGraph({ nodes, edges, siteId, canvasHeight 
     })
 
     engineRef.current = engine
-    // Pas de kick explicite : resize() dans le moteur lance kick(900) par défaut.
-    // Avec friction=0.93, l'énergie tombe sous 0.25 bien avant les 900 ms.
-
-    const fitTimer = setTimeout(() => {
-      fitVisibleAnimated(fitItems, 20)
-    }, 1000)
+    // Stabilité du viewport : le layout est POSÉ synchroniquement avant le
+    // premier rendu visible, puis cadré UNE fois. Plus aucun saut automatique
+    // ensuite — seuls les gestes explicites (zoom, Adapter) bougent la caméra.
+    engine.settleSync()
+    fitToView(fitItems, 20)
 
     return () => {
       engine.destroy()
       engineRef.current = null
-      clearTimeout(fitTimer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

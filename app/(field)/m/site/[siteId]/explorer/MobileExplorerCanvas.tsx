@@ -24,7 +24,7 @@ interface Props {
 }
 
 export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
-  const { canvasRef, wrapRef, engineRef, fitVisibleAnimated, zoomBy } = useGraphCanvas()
+  const { canvasRef, wrapRef, engineRef, fitToView, fitVisibleAnimated, zoomBy } = useGraphCanvas()
   const fitAllItems = useMemo(
     () => graph.nodes.map((n) => ({ id: n.id, radius: SIZE[n.type] + 6 })),
     [graph],
@@ -37,6 +37,9 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
   // La RELATION comme objet de première classe : taper une arête la sélectionne
   // (au lieu de zoomer) et ouvre sa fiche — type, provenance, date, statut.
   const [edgeIdx, setEdgeIdx] = useState<number | null>(null)
+  // Mode FOCUS (appui long) : le nœud + ses voisins directs seulement. `prev`
+  // mémorise le contexte d'avant pour le restaurer à la sortie explicite.
+  const [focus, setFocus] = useState<{ id: string; prev: { center: string; depth: 1 | 2 } } | null>(null)
   const [showRecit, setShowRecit] = useState(false)
 
   const nodeById = useMemo(
@@ -97,9 +100,39 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
     setDepth(newDepth)
     setSheetId(null)
     setEdgeIdx(null)
+    setFocus(null)
     setShowRecit(false)
     E.current.refreshVis?.()
     engineRef.current?.kick(280)
+  }
+
+  // Entrer en focus (appui long) : centre le graphe sur le nœud en profondeur 1,
+  // conserve le contexte précédent, recentre DOUCEMENT une seule fois après le
+  // fondu de visibilité. Ne remplace pas le tap (qui garde la fiche).
+  function enterFocus(id: string) {
+    if ('vibrate' in navigator) navigator.vibrate?.(15)
+    setFocus((f) => ({ id, prev: f?.prev ?? { center: E.current.center, depth: E.current.depth } }))
+    E.current.center       = id
+    E.current.depth        = 1
+    E.current.selectedId   = null
+    E.current.selectedEdge = null
+    setCenter(id)
+    setDepth(1)
+    setSheetId(null)
+    setEdgeIdx(null)
+    setShowRecit(false)
+    E.current.refreshVis?.()
+    engineRef.current?.kick(280)
+    setTimeout(() => fitVisibleAnimated(fitAllItems, 16), 380)
+  }
+
+  // Sortie EXPLICITE du focus : restaure le contexte d'avant (jamais automatique).
+  function exitFocus() {
+    if (!focus) return
+    const prev = focus.prev
+    setFocus(null)
+    navigateTo(prev.center, prev.depth)
+    setTimeout(() => fitVisibleAnimated(fitAllItems, 8), 380)
   }
 
   function toggleHidden(t: GraphNodeType) {
@@ -292,7 +325,9 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
 
       // Tap = inspecter (ouvrir/fermer le sheet). Aucune relance physique.
       // Un tap d'arête SÉLECTIONNE la relation (fiche dédiée) — jamais un zoom.
+      // Un appui long = mode focus (nœud + voisins directs seulement).
       onTapNode(id) { setEdgeIdx(null); setSheetId((prev) => (prev === id ? null : id)) },
+      onLongPressNode(id) { enterFocus(id) },
       onTapEdge(i)  { setSheetId(null); setEdgeIdx((prev) => (prev === i ? null : i)) },
       onTapVoid()   { setSheetId(null); setEdgeIdx(null) },
     })
@@ -300,14 +335,13 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
     engineRef.current    = api
     E.current.refreshVis = () => api.refreshVisibility()
     E.current.redraw     = () => api.redraw()
-    api.kick(1200)
+    // Stabilité du viewport : layout POSÉ synchroniquement avant le premier
+    // rendu, cadré UNE fois. Plus aucun saut automatique ensuite — seuls les
+    // gestes explicites (focus, Réorganiser, zoom) bougent la caméra.
+    api.settleSync()
+    fitToView(fitAllItems, 8)
 
-    // Auto-fit après le settle initial — padding réduit pour utiliser 75-85 % du canvas.
-    const fitTimer = setTimeout(() => {
-      fitVisibleAnimated(fitAllItems, 8)
-    }, 1400)
-
-    return () => { api.destroy(); engineRef.current = null; clearTimeout(fitTimer) }
+    return () => { api.destroy(); engineRef.current = null }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph, neigh, nodeById])
 
@@ -330,7 +364,7 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
       ;(groups.get(other.type) ?? groups.set(other.type, []).get(other.type)!).push({ edge: e, otherId })
     }
     return [...groups.entries()]
-  }, [links, sheetId, nodeById])
+  }, [links, sheetId, nodeById, graph])
 
   // La relation sélectionnée (fiche d'arête).
   const pickedEdge = edgeIdx !== null ? graph.edges[edgeIdx] ?? null : null
@@ -386,8 +420,17 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
       >
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
-        {/* Breadcrumb ← Chantier */}
-        {center !== 'site' && (
+        {/* Focus actif : sortie explicite (restaure le contexte précédent).
+            Sinon breadcrumb ← Chantier. Jamais de retour automatique. */}
+        {focus ? (
+          <button
+            type="button"
+            onClick={exitFocus}
+            className="absolute left-2 top-2 z-10 rounded-full border border-teal-600/40 bg-card/90 px-2.5 py-1 text-[12px] font-medium text-teal-700 shadow-sm backdrop-blur-sm dark:text-teal-300"
+          >
+            ✕ Afficher tout le graphe
+          </button>
+        ) : center !== 'site' && (
           <button
             type="button"
             onClick={() => navigateTo('site', 2)}
