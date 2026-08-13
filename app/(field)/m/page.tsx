@@ -42,7 +42,6 @@ import { detectMissedVisitSignals } from '@/lib/memory/signals/missed-visit-dete
 import { composeAttentionCardsFromSignals } from '@/lib/situations/attention/compose'
 import { composeNowCardsFromSignals } from '@/lib/situations/now/compose'
 import { MobileHomeCockpit } from '@/app/(dashboard)/dashboard/MobileHomeCockpit'
-import { DiagPanel } from './DiagPanel'
 
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s
@@ -215,7 +214,7 @@ function AttentionRow({ item }: { item: AttentionItem }) {
 export default async function FieldHomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; diag?: string }>
+  searchParams: Promise<{ date?: string }>
 }) {
   const user = await getCurrentUserWithProfile()
   if (!user) return null
@@ -224,9 +223,6 @@ export default async function FieldHomePage({
 
   // Admin / manager en PWA ou préférence terrain : afficher le cockpit premium
   // (même pipeline que /dashboard) plutôt que la vue terrain chef d'équipe.
-  const { diag } = await searchParams
-  if (diag === '1') return <DiagPanel />
-
   if (user.role === 'admin' || user.role === 'manager') {
     const orgIds = await getOrgIdsOfUser()
     const organizationMap = orgIds.length > 1 ? await getOrganizationIdentityMap(orgIds) : null
@@ -266,28 +262,23 @@ export default async function FieldHomePage({
     const nowCards = composeNowCardsFromSignals(promiseSignals)
     const nowSignals = now.items.map((item) => nowItemToMemorySignal(item))
     return (
-      <>
-        <MobileHomeCockpit
-          firstName={user.full_name?.split(' ')[0] ?? ''}
-          orgNames={orgNames}
-          attentionCards={attentionCards}
-          nowCards={nowCards}
-          visit={visit}
-          upcoming={upcoming}
-          sites={sites}
-          aSavoir={aSavoir}
-          orgLabels={orgLabels}
-          organizationMap={organizationMap ?? {}}
-          now={now}
-          nowSignals={nowSignals}
-          visitReviews={visitReviews}
-          deadlinesToPlan={deadlinesToPlan}
-          embedded
-        />
-        <div className="py-4 text-center">
-          <Link href="/m/diag" className="text-[10px] text-muted-foreground/30 hover:text-muted-foreground">diag</Link>
-        </div>
-      </>
+      <MobileHomeCockpit
+        firstName={user.full_name?.split(' ')[0] ?? ''}
+        orgNames={orgNames}
+        attentionCards={attentionCards}
+        nowCards={nowCards}
+        visit={visit}
+        upcoming={upcoming}
+        sites={sites}
+        aSavoir={aSavoir}
+        orgLabels={orgLabels}
+        organizationMap={organizationMap ?? {}}
+        now={now}
+        nowSignals={nowSignals}
+        visitReviews={visitReviews}
+        deadlinesToPlan={deadlinesToPlan}
+        embedded
+      />
     )
   }
 
