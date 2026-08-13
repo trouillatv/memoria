@@ -266,23 +266,28 @@ export default async function FieldHomePage({
     const nowCards = composeNowCardsFromSignals(promiseSignals)
     const nowSignals = now.items.map((item) => nowItemToMemorySignal(item))
     return (
-      <MobileHomeCockpit
-        firstName={user.full_name?.split(' ')[0] ?? ''}
-        orgNames={orgNames}
-        attentionCards={attentionCards}
-        nowCards={nowCards}
-        visit={visit}
-        upcoming={upcoming}
-        sites={sites}
-        aSavoir={aSavoir}
-        orgLabels={orgLabels}
-        organizationMap={organizationMap ?? {}}
-        now={now}
-        nowSignals={nowSignals}
-        visitReviews={visitReviews}
-        deadlinesToPlan={deadlinesToPlan}
-        embedded
-      />
+      <>
+        <MobileHomeCockpit
+          firstName={user.full_name?.split(' ')[0] ?? ''}
+          orgNames={orgNames}
+          attentionCards={attentionCards}
+          nowCards={nowCards}
+          visit={visit}
+          upcoming={upcoming}
+          sites={sites}
+          aSavoir={aSavoir}
+          orgLabels={orgLabels}
+          organizationMap={organizationMap ?? {}}
+          now={now}
+          nowSignals={nowSignals}
+          visitReviews={visitReviews}
+          deadlinesToPlan={deadlinesToPlan}
+          embedded
+        />
+        <div className="py-4 text-center">
+          <Link href="/m/diag" className="text-[10px] text-muted-foreground/30 hover:text-muted-foreground">diag</Link>
+        </div>
+      </>
     )
   }
 
