@@ -37,7 +37,7 @@ export default async function FieldLayout({ children }: { children: React.ReactN
 
   return (
     <VoiceOrbProvider>
-    <div className="min-h-dvh overflow-x-hidden bg-background text-foreground">
+    <div className="min-h-dvh overflow-x-hidden bg-[#f4f6fb] text-foreground">
       <header className="sticky top-0 z-10 backdrop-blur-sm border-b border-foreground/[0.08] bg-background/95">
         <div className="max-w-md mx-auto flex items-center justify-between px-3 py-3.5">
           {/* Retour accueil + identité produit (remplace le « Bonjour <prénom> »
