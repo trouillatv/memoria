@@ -34,6 +34,9 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
   const [depth,  setDepth]  = useState<1 | 2>(2)
   const [hidden, setHidden] = useState<ReadonlySet<GraphNodeType>>(new Set())
   const [sheetId, setSheetId] = useState<string | null>(null)
+  // La RELATION comme objet de première classe : taper une arête la sélectionne
+  // (au lieu de zoomer) et ouvre sa fiche — type, provenance, date, statut.
+  const [edgeIdx, setEdgeIdx] = useState<number | null>(null)
   const [showRecit, setShowRecit] = useState(false)
 
   const nodeById = useMemo(
@@ -71,25 +74,29 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
     hiddenTypes:   new Set<GraphNodeType>() as ReadonlySet<GraphNodeType>,
     revealedTypes: new Set<GraphNodeType>() as ReadonlySet<GraphNodeType>,
     selectedId:    null as string | null,
+    selectedEdge:  null as number | null,
     refreshVis:    undefined as (() => void) | undefined,
     redraw:        undefined as (() => void) | undefined,
   })
 
-  // Sync selectedId → redraw (aucune physique)
+  // Sync sélection (nœud ou arête) → redraw (aucune physique)
   useEffect(() => {
-    E.current.selectedId = sheetId
+    E.current.selectedId   = sheetId
+    E.current.selectedEdge = edgeIdx
     E.current.redraw?.()
-  }, [sheetId])
+  }, [sheetId, edgeIdx])
 
   // ── Helpers d'action ─────────────────────────────────────────────────────────
 
   function navigateTo(id: string, newDepth: 1 | 2 = 2) {
-    E.current.center     = id
-    E.current.depth      = newDepth
-    E.current.selectedId = null
+    E.current.center       = id
+    E.current.depth        = newDepth
+    E.current.selectedId   = null
+    E.current.selectedEdge = null
     setCenter(id)
     setDepth(newDepth)
     setSheetId(null)
+    setEdgeIdx(null)
     setShowRecit(false)
     E.current.refreshVis?.()
     engineRef.current?.kick(280)
@@ -182,21 +189,29 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
         const mutedC  = dark() ? '#A49DB3' : '#6B6577'
 
         const sel      = E.current.selectedId
+        const selEdge  = E.current.selectedEdge
+        const selEdgeObj = selEdge !== null ? graph.edges[selEdge] : null
         const selNeigh = sel ? (neigh[sel] ?? new Set<string>()) : null
         const labelVisible = (id: string) =>
           id === E.current.center ||
           (neigh[E.current.center] ?? new Set()).has(id) ||
           id === sel ||
-          (selNeigh?.has(id) ?? false)
+          (selNeigh?.has(id) ?? false) ||
+          (selEdgeObj !== null && (id === selEdgeObj.a || id === selEdgeObj.b))
 
         // ── Arêtes ──
-        for (const e of graph.edges) {
-          const A = f.P[e.a], B = f.P[e.b]; if (!A || !B) continue
-          const al = Math.min(A.alpha, B.alpha); if (al < 0.02) continue
+        graph.edges.forEach((e, ei) => {
+          const A = f.P[e.a], B = f.P[e.b]; if (!A || !B) return
+          const al = Math.min(A.alpha, B.alpha); if (al < 0.02) return
+          const isPicked  = selEdge !== null && ei === selEdge
           const isSelEdge = sel !== null && (e.a === sel || e.b === sel)
           const active    = e.a === E.current.center || e.b === E.current.center
           let edgeAlpha: number
-          if (sel === null) {
+          if (isPicked) {
+            edgeAlpha = 1
+          } else if (selEdge !== null) {
+            edgeAlpha = 0.08
+          } else if (sel === null) {
             edgeAlpha = active ? 0.8 : 0.3
           } else if (isSelEdge) {
             edgeAlpha = 0.9
@@ -205,16 +220,17 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
           }
           ctx.strokeStyle = col(e.type)
           ctx.globalAlpha = al * edgeAlpha
-          ctx.lineWidth   = isSelEdge ? 2.5 : (!sel && active) ? 1.4 : 1
+          ctx.lineWidth   = isPicked ? 3.5 : isSelEdge ? 2.5 : (!sel && active) ? 1.4 : 1
           ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke()
-        }
+        })
 
         // ── Nœuds ──
         for (const n of graph.nodes) {
           const p = f.P[n.id]; if (!p || p.alpha < 0.02) continue
-          const isSel  = sel !== null && n.id === sel
+          const onPicked = selEdgeObj !== null && (n.id === selEdgeObj.a || n.id === selEdgeObj.b)
+          const isSel  = (sel !== null && n.id === sel) || onPicked
           const isNear = selNeigh !== null && selNeigh.has(n.id)
-          const dim    = (sel !== null && !isSel && !isNear) ? 0.18 : 1
+          const dim    = ((sel !== null || selEdgeObj !== null) && !isSel && !isNear) ? 0.18 : 1
           const baseR  = n.id === E.current.center ? SIZE[n.type] + 6 : SIZE[n.type]
           const r      = isSel ? Math.round(baseR * 1.3) : baseR
 
@@ -270,13 +286,15 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
       zoom:                  { min: 0.35, max: 2.6, factorIn: 1.12, factorOut: 0.89 },
       placeNewNearNeighbors: true,
       hitNodeRadius:         (id) => Math.max(26, SIZE[nodeById[id]?.type ?? 'visite'] + 12),
-      edgeHit:               null,
-      features:              { pin: true, dblClick: false, edgeTap: false, pinchZoom: true },
+      edgeHit:               { tolerance: (k) => 12 / k, clampA: 0.08, clampB: 0.92 },
+      features:              { pin: true, dblClick: false, edgeTap: true, pinchZoom: true },
       watchTheme:            true,
 
       // Tap = inspecter (ouvrir/fermer le sheet). Aucune relance physique.
-      onTapNode(id) { setSheetId((prev) => (prev === id ? null : id)) },
-      onTapVoid()   { setSheetId(null) },
+      // Un tap d'arête SÉLECTIONNE la relation (fiche dédiée) — jamais un zoom.
+      onTapNode(id) { setEdgeIdx(null); setSheetId((prev) => (prev === id ? null : id)) },
+      onTapEdge(i)  { setSheetId(null); setEdgeIdx((prev) => (prev === i ? null : i)) },
+      onTapVoid()   { setSheetId(null); setEdgeIdx(null) },
     })
 
     engineRef.current    = api
@@ -300,6 +318,24 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
   const gone     = selected?.type === 'acteur' ? ifGone(selected, neigh, nodeById) : null
   const chain    = sheetId ? chainToSource(sheetId, neigh) : null
   const links    = selected ? graph.edges.filter((e) => e.a === sheetId || e.b === sheetId) : []
+
+  // Connexions GROUPÉES par type du nœud d'en face — « qui/quoi/pourquoi »,
+  // pas une liste plate.
+  const groupedLinks = useMemo(() => {
+    const groups = new Map<GraphNodeType, Array<{ edge: (typeof graph.edges)[number]; otherId: string }>>()
+    for (const e of links) {
+      const otherId = e.a === sheetId ? e.b : e.a
+      const other = nodeById[otherId]
+      if (!other) continue
+      ;(groups.get(other.type) ?? groups.set(other.type, []).get(other.type)!).push({ edge: e, otherId })
+    }
+    return [...groups.entries()]
+  }, [links, sheetId, nodeById])
+
+  // La relation sélectionnée (fiche d'arête).
+  const pickedEdge = edgeIdx !== null ? graph.edges[edgeIdx] ?? null : null
+  const pickedA    = pickedEdge ? nodeById[pickedEdge.a] : null
+  const pickedB    = pickedEdge ? nodeById[pickedEdge.b] : null
 
   const height = canvasHeight ?? 520
 
@@ -384,11 +420,65 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
 
       {/* ── Bottom-sheet fiche ──────────────────────────────────────────────── */}
       <Sheet
-        open={!!sheetId}
-        onOpenChange={(open) => { if (!open) { setSheetId(null); setShowRecit(false) } }}
+        open={!!sheetId || pickedEdge !== null}
+        onOpenChange={(open) => { if (!open) { setSheetId(null); setEdgeIdx(null); setShowRecit(false) } }}
       >
         <SheetContent side="bottom" className="max-h-[75dvh] overflow-y-auto rounded-t-2xl pb-safe">
-          {selected && (
+          {/* ── Fiche RELATION : l'arête est l'objet sélectionné ─────────────── */}
+          {pickedEdge && pickedA && pickedB && (
+            <>
+              <SheetHeader className="pb-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Relation</p>
+                <SheetTitle className="text-base leading-snug">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: COLOR[pickedA.type] }} />
+                    {pickedA.label}
+                  </span>
+                  <span className="mx-1.5 text-muted-foreground">→</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: COLOR[pickedB.type] }} />
+                    {pickedB.label}
+                  </span>
+                </SheetTitle>
+              </SheetHeader>
+
+              <div className="space-y-4 px-4 pb-6">
+                <div>
+                  <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Pourquoi ce lien existe</p>
+                  <p className="text-[13.5px]">{pickedEdge.why}</p>
+                </div>
+                <div className="flex flex-wrap gap-2 text-[12px]">
+                  {pickedEdge.date && (
+                    <span className="rounded-full border px-2.5 py-1 text-muted-foreground">{pickedEdge.date}</span>
+                  )}
+                  {pickedEdge.status === 'confirmed' && (
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">Confirmé</span>
+                  )}
+                  {pickedEdge.status === 'proposed' && (
+                    <span className="rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">À confirmer</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setEdgeIdx(null); setSheetId(pickedEdge.a) }}
+                    className="rounded-full border bg-muted/50 px-3 py-1.5 text-[12.5px] font-semibold"
+                  >
+                    Voir {pickedA.label.length > 22 ? pickedA.label.slice(0, 20) + '…' : pickedA.label}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setEdgeIdx(null); setSheetId(pickedEdge.b) }}
+                    className="rounded-full border bg-muted/50 px-3 py-1.5 text-[12.5px] font-semibold"
+                  >
+                    Voir {pickedB.label.length > 22 ? pickedB.label.slice(0, 20) + '…' : pickedB.label}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {selected && !pickedEdge && (
             <>
               <SheetHeader className="pb-2">
                 <div className="flex items-center gap-2">
@@ -462,6 +552,49 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
                         <p className="text-[13.5px]">{phrase}</p>
                       </div>
                     )}
+                    {/* VISITE — ce qu'elle a produit, en une ligne de comptes. */}
+                    {selected.produced && (
+                      <div>
+                        <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Cette visite a produit</p>
+                        <p className="text-[13.5px]">
+                          {[
+                            selected.produced.actions > 0 ? `${selected.produced.actions} action${selected.produced.actions > 1 ? 's' : ''}` : null,
+                            selected.produced.decisions > 0 ? `${selected.produced.decisions} décision${selected.produced.decisions > 1 ? 's' : ''}` : null,
+                            selected.produced.echeances > 0 ? `${selected.produced.echeances} échéance${selected.produced.echeances > 1 ? 's' : ''}` : null,
+                            selected.produced.memos > 0 ? `${selected.produced.memos} mémo${selected.produced.memos > 1 ? 's' : ''}` : null,
+                            selected.produced.photos > 0 ? `${selected.produced.photos} photo${selected.produced.photos > 1 ? 's' : ''}` : null,
+                          ].filter(Boolean).join(' · ')}
+                        </p>
+                      </div>
+                    )}
+                    {/* VISITE — les sujets canoniques qui ont bougé pendant elle. */}
+                    {selected.evolved && selected.evolved.length > 0 && (
+                      <div>
+                        <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Elle a fait évoluer</p>
+                        <ul className="space-y-1">
+                          {selected.evolved.map((s) => (
+                            <li key={s} className="flex items-start gap-2 text-[13px]">
+                              <span className="mt-[5px] h-2 w-2 shrink-0 rounded-full bg-sky-500" />
+                              {s}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {/* ACTEUR — les sujets canoniques atteints via ses actions assignées. */}
+                    {selected.subjects && selected.subjects.length > 0 && (
+                      <div>
+                        <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Sujets concernés</p>
+                        <ul className="space-y-1">
+                          {selected.subjects.map((s) => (
+                            <li key={s} className="flex items-start gap-2 text-[13px]">
+                              <span className="mt-[5px] h-2 w-2 shrink-0 rounded-full bg-sky-500" />
+                              {s}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     {selected.excerpt && (
                       <div>
                         <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">La trace</p>
@@ -498,31 +631,43 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
                         </ol>
                       </div>
                     )}
-                    {links.length > 0 && (
+                    {groupedLinks.length > 0 && (
                       <div>
                         <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Connexions directes</p>
-                        <ul className="divide-y">
-                          {links.map((e, i) => {
-                            const otherId = e.a === sheetId ? e.b : e.a
-                            const m = nodeById[otherId]
-                            if (!m) return null
-                            return (
-                              <li key={i}>
-                                <button
-                                  type="button"
-                                  onClick={() => navigateTo(otherId, 2)}
-                                  className="flex w-full items-start gap-2.5 py-2 text-left"
-                                >
-                                  <span className="mt-[5px] h-2 w-2 shrink-0 rounded-full" style={{ background: COLOR[m.type] }} />
-                                  <span className="min-w-0">
-                                    <span className="block text-[13px] hover:underline">{m.label}{m.count ? ` (${m.count})` : ''}</span>
-                                    <span className="block text-[11.5px] text-muted-foreground">{e.why}{e.date ? ` · ${e.date}` : ''}</span>
-                                  </span>
-                                </button>
-                              </li>
-                            )
-                          })}
-                        </ul>
+                        <div className="space-y-3">
+                          {groupedLinks.map(([type, items]) => (
+                            <div key={type}>
+                              <p className="mb-0.5 flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
+                                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: COLOR[type] }} />
+                                {TYPE_LABEL[type]} · {items.length}
+                              </p>
+                              <ul className="divide-y">
+                                {items.map(({ edge: e, otherId }, i) => {
+                                  const m = nodeById[otherId]
+                                  if (!m) return null
+                                  return (
+                                    <li key={i}>
+                                      <button
+                                        type="button"
+                                        onClick={() => navigateTo(otherId, 2)}
+                                        className="flex w-full items-start gap-2.5 py-2 text-left"
+                                      >
+                                        <span className="mt-[5px] h-2 w-2 shrink-0 rounded-full" style={{ background: COLOR[m.type] }} />
+                                        <span className="min-w-0">
+                                          <span className="block text-[13px] hover:underline">{m.label}{m.count ? ` (${m.count})` : ''}</span>
+                                          <span className="block text-[11.5px] text-muted-foreground">
+                                            {e.why}{e.date ? ` · ${e.date}` : ''}
+                                            {e.status === 'proposed' ? ' · à confirmer' : ''}
+                                          </span>
+                                        </span>
+                                      </button>
+                                    </li>
+                                  )
+                                })}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </>

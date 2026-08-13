@@ -38,6 +38,12 @@ export interface GraphNode {
   t?: string | null
   /** Les vraies miniatures (URLs signées) — l'objet réel, pas un nœud abstrait. */
   photos?: Array<{ id: string; url: string }>
+  /** VISITE : ce qu'elle a produit (comptes sur les objets chargés dans CE graphe). */
+  produced?: { actions: number; echeances: number; decisions: number; memos: number; photos: number }
+  /** VISITE : sujets canoniques qui ont évolué pendant cette visite (occurrences tracées). */
+  evolved?: string[]
+  /** ACTEUR : sujets canoniques atteints via ses actions assignées (STI → canonical). */
+  subjects?: string[]
 }
 
 export interface GraphEdge {
@@ -47,6 +53,10 @@ export interface GraphEdge {
   /** Pourquoi ce lien existe — affiché au survol, jamais deviné. */
   why: string
   date?: string | null
+  /** Arbitrage humain tracé en base : 'confirmed' (validé) ou 'proposed' (en
+   *  attente). Absent = lien factuel/structurel (visite réalisée, photo prise…)
+   *  qui ne relève d'aucun arbitrage — on n'invente pas de confiance. */
+  status?: 'confirmed' | 'proposed'
 }
 
 export interface SiteGraph {
@@ -85,7 +95,9 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
       .order('started_at', { ascending: true }).limit(CAP.reports),
     db.from('visit_capture').select('id, kind, body, report_id, attachment_id').eq('site_id', siteId)
       .is('hidden_at', null),
-    db.from('site_actions').select('id, title, status, report_id, created_at').eq('site_id', siteId)
+    db.from('site_actions')
+      .select('id, title, status, report_id, created_at, assigned_company_id, assigned_contact_id, subject_thread_id')
+      .eq('site_id', siteId)
       .order('created_at', { ascending: false }).limit(CAP.actions),
     db.from('site_deadlines').select('id, title, status, due_date, constraint_text, report_id, created_at')
       .eq('site_id', siteId).order('created_at', { ascending: false }).limit(CAP.deadlines),
@@ -185,7 +197,7 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
         ? 'Extrait de cette transcription, confirmé par un humain'
         : 'Extrait de cette transcription, créé depuis le compte-rendu corrigé'
       for (const capId of p.source_capture_ids ?? []) {
-        link({ a: `m_${capId}`, b: objId, type: (p.kind === 'deadline' ? 'ech' : p.kind === 'decision' ? 'dec' : p.kind) as GraphNodeType, why })
+        link({ a: `m_${capId}`, b: objId, type: (p.kind === 'deadline' ? 'ech' : p.kind === 'decision' ? 'dec' : p.kind) as GraphNodeType, why, status: 'confirmed' })
       }
     }
   }
@@ -203,9 +215,68 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
       sub: it.contactName ? `${it.companyShort || it.companyName} · ${it.role}` : `Intervenant · ${it.role}`,
       t: it.effectiveFrom,
     })
-    link({ a: 'site', b: aid, type: 'acteur', why: `Intervenant confirmé du chantier — rôle ${it.role}` })
+    link({ a: 'site', b: aid, type: 'acteur', why: `Intervenant confirmé du chantier — rôle ${it.role}`, status: 'confirmed' })
     if (it.sourceReportId) {
-      link({ a: `v_${it.sourceReportId}`, b: aid, type: 'acteur', why: 'Ajouté au casting depuis cette visite' })
+      link({ a: `v_${it.sourceReportId}`, b: aid, type: 'acteur', why: 'Ajouté au casting depuis cette visite', status: 'confirmed' })
+    }
+  }
+
+  // ── Assignations : l'action porte son responsable EN BASE (assigned_company_id /
+  // assigned_contact_id, casting mig 137+). Le lien acteur→action n'est pas déduit :
+  // c'est l'assignation elle-même. C'est ce qui fait dire au nœud « Électriciens »
+  // ce qu'il porte réellement.
+  type ActionRow = {
+    id: string; title: string; status: string; report_id: string | null; created_at: string
+    assigned_company_id: string | null; assigned_contact_id: string | null; subject_thread_id: string | null
+  }
+  const actionRows = (actions.data ?? []) as ActionRow[]
+  const intByCompany = new Map<string, string>()
+  const intByContact = new Map<string, string>()
+  for (const it of intervenants) {
+    if (!intByCompany.has(it.companyId)) intByCompany.set(it.companyId, `int_${it.id}`)
+    if (it.mainContactId && !intByContact.has(it.mainContactId)) intByContact.set(it.mainContactId, `int_${it.id}`)
+  }
+  const actorActionThreads = new Map<string, Set<string>>()  // acteur node id → thread ids de ses actions
+  for (const a of actionRows) {
+    const actorNode =
+      (a.assigned_contact_id && intByContact.get(a.assigned_contact_id)) ||
+      (a.assigned_company_id && intByCompany.get(a.assigned_company_id)) || null
+    if (!actorNode) continue
+    link({ a: actorNode, b: `a_${a.id}`, type: 'action', why: 'Action assignée à cet intervenant', date: fr(a.created_at), status: 'confirmed' })
+    if (a.subject_thread_id) {
+      ;(actorActionThreads.get(actorNode) ?? actorActionThreads.set(actorNode, new Set()).get(actorNode)!).add(a.subject_thread_id)
+    }
+  }
+
+  // Sujets concernés par acteur : les threads de ses actions, résolus vers le
+  // sujet canonique (STI). Lecture pure — aucun lien inventé.
+  const allActorThreads = [...new Set([...actorActionThreads.values()].flatMap((s) => [...s]))]
+  if (allActorThreads.length > 0) {
+    const { data: stiRows } = await db
+      .from('subject_thread_identity')
+      .select('subject_thread_id, canonical_subject_id')
+      .in('subject_thread_id', allActorThreads)
+    const threadToCS = new Map(
+      ((stiRows ?? []) as Array<{ subject_thread_id: string; canonical_subject_id: string }>)
+        .map((r) => [r.subject_thread_id, r.canonical_subject_id]),
+    )
+    const csIds = [...new Set([...threadToCS.values()])]
+    if (csIds.length > 0) {
+      const { data: csRows } = await db
+        .from('canonical_subject').select('id, label').in('id', csIds)
+      const csLabelById = new Map(
+        ((csRows ?? []) as Array<{ id: string; label: string }>).map((r) => [r.id, r.label]),
+      )
+      for (const [actorNode, threads] of actorActionThreads) {
+        const labels = [...new Set(
+          [...threads].map((t) => threadToCS.get(t)).filter((x): x is string => !!x)
+            .map((id) => csLabelById.get(id)).filter((x): x is string => !!x),
+        )]
+        if (labels.length > 0) {
+          const n = nodes.find((x) => x.id === actorNode)
+          if (n) n.subjects = labels
+        }
+      }
     }
   }
 
@@ -221,10 +292,10 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
     const target = intNodeByObjectId.get(p.promoted_object_id!)
     if (!target) continue
     for (const capId of p.source_capture_ids ?? []) {
-      link({ a: `m_${capId}`, b: target, type: 'acteur', why: 'Mentionné dans cette transcription — confirmé par un humain' })
+      link({ a: `m_${capId}`, b: target, type: 'acteur', why: 'Mentionné dans cette transcription — confirmé par un humain', status: 'confirmed' })
     }
     if ((p.source_capture_ids ?? []).length === 0 && p.report_id) {
-      link({ a: `v_${p.report_id}`, b: target, type: 'acteur', why: 'Cité pendant cette visite — confirmé' })
+      link({ a: `v_${p.report_id}`, b: target, type: 'acteur', why: 'Cité pendant cette visite — confirmé', status: 'confirmed' })
     }
   }
 
@@ -232,12 +303,12 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
   for (const p of props.filter((x) => x.kind === 'stakeholder' && x.status === 'proposed')) {
     const aid = `act_${p.id}`
     add({ id: aid, type: 'acteur', label: p.title, sub: 'Intervenant · à confirmer', t: tOf(p.report_id) })
-    link({ a: 'site', b: aid, type: 'acteur', why: 'Cité sur ce chantier — jamais confirmé' })
+    link({ a: 'site', b: aid, type: 'acteur', why: 'Cité sur ce chantier — jamais confirmé', status: 'proposed' })
     for (const capId of p.source_capture_ids ?? []) {
-      link({ a: `m_${capId}`, b: aid, type: 'acteur', why: 'Mentionné dans cette transcription' })
+      link({ a: `m_${capId}`, b: aid, type: 'acteur', why: 'Mentionné dans cette transcription', status: 'proposed' })
     }
     if ((p.source_capture_ids ?? []).length === 0 && p.report_id) {
-      link({ a: `v_${p.report_id}`, b: aid, type: 'acteur', why: 'Détecté pendant cette visite' })
+      link({ a: `v_${p.report_id}`, b: aid, type: 'acteur', why: 'Détecté pendant cette visite', status: 'proposed' })
     }
   }
 
@@ -265,6 +336,55 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
   for (const d of (deadlines.data ?? []) as Array<{ id: string; report_id: string | null }>) attach(`e_${d.id}`, d.report_id, 'ech')
   for (const d of (decisions.data ?? []) as Array<{ id: string; report_id: string | null }>) attach(`d_${d.id}`, d.report_id, 'dec')
   for (const w of (watchpoints.data ?? []) as Array<{ id: string; report_id: string | null }>) attach(`w_${w.id}`, w.report_id, 'vigilance')
+
+  // ── Synthèse par visite : ce qu'elle a produit (comptes sur les objets DE CE
+  // graphe — cohérent avec ce que l'écran montre) + les sujets canoniques qui
+  // ont évolué (occurrences tracées sur ce report, mig 268+).
+  const producedByReport = new Map<string, NonNullable<GraphNode['produced']>>()
+  const bump = (rid: string | null, key: keyof NonNullable<GraphNode['produced']>) => {
+    if (!rid || !reportDate.has(rid)) return
+    const p = producedByReport.get(rid) ?? { actions: 0, echeances: 0, decisions: 0, memos: 0, photos: 0 }
+    p[key] += 1
+    producedByReport.set(rid, p)
+  }
+  for (const a of actionRows) bump(a.report_id, 'actions')
+  for (const d of (deadlines.data ?? []) as Array<{ report_id: string | null }>) bump(d.report_id, 'echeances')
+  for (const d of (decisions.data ?? []) as Array<{ report_id: string | null }>) bump(d.report_id, 'decisions')
+  for (const c of caps) {
+    if (c.kind === 'photo') bump(c.report_id, 'photos')
+    else if (c.body && ['vocal', 'note'].includes(c.kind)) bump(c.report_id, 'memos')
+  }
+
+  const evolvedByReport = new Map<string, string[]>()
+  {
+    const { data: siteCS } = await db
+      .from('canonical_subject').select('id, label').eq('site_id', siteId).eq('status', 'active')
+    const csLabel = new Map(
+      ((siteCS ?? []) as Array<{ id: string; label: string }>).map((r) => [r.id, r.label]),
+    )
+    if (csLabel.size > 0 && reportRows.length > 0) {
+      const { data: occRows } = await db
+        .from('canonical_subject_occurrence')
+        .select('canonical_subject_id, source_ref_id')
+        .in('canonical_subject_id', [...csLabel.keys()])
+        .in('source_ref_id', reportRows.map((r) => r.id))
+      for (const o of (occRows ?? []) as Array<{ canonical_subject_id: string; source_ref_id: string }>) {
+        const label = csLabel.get(o.canonical_subject_id)
+        if (!label) continue
+        const list = evolvedByReport.get(o.source_ref_id) ?? []
+        if (!list.includes(label)) { list.push(label); evolvedByReport.set(o.source_ref_id, list) }
+      }
+    }
+  }
+
+  for (const n of nodes) {
+    if (n.type !== 'visite') continue
+    const rid = n.id.slice(2)
+    const p = producedByReport.get(rid)
+    if (p && (p.actions || p.echeances || p.decisions || p.memos || p.photos)) n.produced = p
+    const ev = evolvedByReport.get(rid)
+    if (ev && ev.length > 0) n.evolved = ev
+  }
 
   return { siteId, siteName, nodes, edges }
 }
