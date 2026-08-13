@@ -482,6 +482,15 @@ export async function loadOrRunVisitDebrief(
       return { ok: true, status: 'ready', loaded }
     }
     // La visite a été enrichie depuis : on GARDE la synthèse, on signale le delta.
+    // Si la projection n'a jamais abouti et qu'aucune génération n'est en cours,
+    // on rejoue quand même depuis l'analyse stockée — sans LLM. Les nouvelles
+    // captures n'apparaîtront qu'à la prochaine mise à jour explicite.
+    if (state.generatingAt && !leaseFresh(state.generatingAt)) {
+      void clearLease(reportId).catch(() => {})
+    }
+    if (!state.projectedAt && ctx.visit.site_id && ctx.visit.organization_id && !opts?.dryRun && !leaseFresh(state.generatingAt)) {
+      void projectAndTrace({ reportId, siteId: ctx.visit.site_id, organizationId: ctx.visit.organization_id, analysis: cache })
+    }
     return { ok: true, status: 'stale', loaded, delta: computeSnapshotDelta(cache.source_snapshot, snapshot) }
   }
 
