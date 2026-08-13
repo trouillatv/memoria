@@ -318,6 +318,24 @@ export async function listSiteViewpointRows(siteId: string): Promise<VisitCaptur
   return (data ?? []) as VisitCaptureRow[]
 }
 
+/** Toutes les photos (kind='photo') non écartées d'un chantier, plus récentes
+ *  en premier. Exclut les originaux archivés (hidden_at non nul). */
+export async function listSitePhotoCaptures(siteId: string, limit = 500): Promise<VisitCaptureRow[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('visit_capture')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, created_at')
+    .eq('site_id', siteId)
+    .eq('kind', 'photo')
+    .neq('status', 'discarded')
+    .is('hidden_at', null)
+    .order('captured_at', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return (data ?? []) as VisitCaptureRow[]
+}
+
 export async function getVisitCapturePreviewUrls(
   captures: VisitCaptureRow[],
 ): Promise<Record<string, { url: string; mime: string | null }>> {
