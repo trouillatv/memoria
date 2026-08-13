@@ -11,7 +11,7 @@ import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import type { DbReportDocument, ReportDocumentSection } from '@/types/db'
 
 const COLS =
-  'id, organization_id, report_id, site_id, template_key, sections, status, document_id, pdf_path, final_document_id, final_path, finalized_at, finalized_by, provider, model, prompt_version, created_by, created_at, updated_at'
+  'id, organization_id, report_id, site_id, template_key, sections, status, document_id, pdf_path, final_document_id, final_path, finalized_at, finalized_by, validated_at, provider, model, prompt_version, created_by, created_at, updated_at'
 
 export async function createReportDocument(input: {
   report_id: string

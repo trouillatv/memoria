@@ -258,7 +258,7 @@ function Lifecycle({
           onClick={() => setConfirming(true)}
           className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
         >
-          <RotateCcw className="h-3.5 w-3.5" aria-hidden /> Rouvrir le brouillon
+          <RotateCcw className="h-3.5 w-3.5" aria-hidden /> Corriger le compte-rendu
         </button>
       )}
       {error && <p className="mt-2 text-[12px] text-rose-600 dark:text-rose-400">{error}</p>}

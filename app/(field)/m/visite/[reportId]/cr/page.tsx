@@ -1,8 +1,9 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { NOUMEA_TZ } from '@/lib/time/local-date'
 import {
   ArrowLeft, Eye, ClipboardList, ListTodo, Gavel, Camera, FileText,
-  ChevronRight, Star, Monitor, Check, MapPin, Download, CheckCircle2, ArrowRight, Home, Pencil,
+  ChevronRight, Star, Monitor, Check, MapPin, Download, CheckCircle2, ArrowRight, Home, Pencil, Sparkles,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -116,6 +117,18 @@ export default async function VisitCrPreviewPage({
     ? 'Première visite enregistrée'
     : 'Visite enregistrée'
 
+  // P0-H — clôture documentaire : un CR finalisé (validated/exported) s'affiche
+  // comme un DOCUMENT, pas comme l'atelier qui a servi à le fabriquer. La
+  // fabrication (concrétisation, analyse d'origine, verbatims, bilan du plan)
+  // reste accessible via « Comment MemorIA a compris ». Corriger reste possible,
+  // mais par le geste explicite et tracé de réouverture — jamais un « Modifier ».
+  const isFinal = !!crDocument && crDocument.status !== 'draft'
+  const closedLabel = isFinal
+    ? new Date(crDocument!.validated_at ?? crDocument!.updated_at).toLocaleDateString('fr-FR', {
+        timeZone: NOUMEA_TZ, day: 'numeric', month: 'long', year: 'numeric',
+      })
+    : null
+
   const hasReserves = doc.reserves.length > 0
   const hasActions = doc.actions.length > 0
   const twoCol = hasReserves && hasActions
@@ -154,18 +167,27 @@ export default async function VisitCrPreviewPage({
         </Link>
       )}
 
-      <header className="space-y-0.5">
-        <h1 className="text-xl font-semibold">Compte-rendu de visite</h1>
+      <header className="space-y-1">
+        <h1 className="text-xl font-semibold">
+          {isFinal ? 'Compte-rendu final' : 'Compte-rendu de visite'}
+        </h1>
         <p className="text-sm text-muted-foreground first-letter:uppercase">{doc.siteName} · {doc.dateLabel}</p>
+        {isFinal && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[12px] font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Clôturé le {closedLabel}
+          </span>
+        )}
       </header>
 
-      {/* Contexte : d'où vient ce document. */}
-      <div className="flex items-start gap-2.5 rounded-xl border bg-sky-50/50 p-3 dark:bg-sky-950/20">
-        <FileText className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
-        <p className="text-[13px] leading-snug text-muted-foreground">
-          Ce compte-rendu a été assemblé à partir des éléments capturés sur le terrain.
-        </p>
-      </div>
+      {/* Contexte de fabrication — n'a plus sa place sur un document clôturé. */}
+      {!isFinal && (
+        <div className="flex items-start gap-2.5 rounded-xl border bg-sky-50/50 p-3 dark:bg-sky-950/20">
+          <FileText className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+          <p className="text-[13px] leading-snug text-muted-foreground">
+            Ce compte-rendu a été assemblé à partir des éléments capturés sur le terrain.
+          </p>
+        </div>
+      )}
 
       {/* « Ce que MemorIA a retenu » — le RÉSULTAT en premier (résumé, actions
           proposées, points de vigilance), analysé automatiquement à l'ouverture
@@ -193,23 +215,42 @@ export default async function VisitCrPreviewPage({
             status={crDocument.status}
             concretisation={concretisation}
           />
-          {/* CONCRÉTISER — le récit corrigé prépare le travail réel. Il vient
-              juste après le document : on corrige, puis on transforme. */}
-          <CrConcretisation reportId={reportId} siteId={visit.site_id ?? undefined} proposals={proposals} />
+          {isFinal ? (
+            /* Document clôturé : la fabrication ne s'affiche plus ici. La
+               traçabilité (interprétations, verbatims, propositions) reste à un
+               clic — c'est SA surface. */
+            <Link
+              href={`/m/visite/${reportId}/comprehension`}
+              className="flex items-center gap-2.5 rounded-xl border bg-background px-3 py-2.5 active:bg-accent"
+            >
+              <Sparkles className="h-4 w-4 shrink-0 text-violet-600" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium">Comment MemorIA a compris cette visite</span>
+                <span className="block text-[12px] text-muted-foreground">Interprétations et éléments produits à partir des captures.</span>
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </Link>
+          ) : (
+            <>
+              {/* CONCRÉTISER — le récit corrigé prépare le travail réel. Il vient
+                  juste après le document : on corrige, puis on transforme. */}
+              <CrConcretisation reportId={reportId} siteId={visit.site_id ?? undefined} proposals={proposals} />
 
-          {/* Propositions IA originales — toutes, avec statut (remplacé, écarté,
-              créé). Dépliable sur demande : la plupart du temps inutile. */}
-          <CrAnalyseOrigine proposals={proposals} />
+              {/* Propositions IA originales — toutes, avec statut (remplacé, écarté,
+                  créé). Dépliable sur demande : la plupart du temps inutile. */}
+              <CrAnalyseOrigine proposals={proposals} />
 
-          {/* L'analyse initiale reste atteignable — elle explique la provenance.
-              Mais elle passe APRÈS, et ne charge rien tant qu'on ne la demande
-              pas. */}
-          <MemoriaRetained
-            reportId={reportId}
-            siteId={visit.site_id}
-            transcriptions={doc.transcriptions}
-            autoLoad={false}
-          />
+              {/* L'analyse initiale reste atteignable — elle explique la provenance.
+                  Mais elle passe APRÈS, et ne charge rien tant qu'on ne la demande
+                  pas. */}
+              <MemoriaRetained
+                reportId={reportId}
+                siteId={visit.site_id}
+                transcriptions={doc.transcriptions}
+                autoLoad={false}
+              />
+            </>
+          )}
         </>
       ) : (
         <MemoriaRetained reportId={reportId} siteId={visit.site_id} transcriptions={doc.transcriptions} />
@@ -219,9 +260,9 @@ export default async function VisitCrPreviewPage({
           affichées ici : « Ce que MemorIA a retenu » ci-dessus EST la lecture. Le
           verbatim reste accessible replié dans la synthèse et dans le CR complet. */}
 
-      {/* Bilan factuel du plan de visite — constat de l'exécution, distinct des
-          watchpoints IA qui sont des conclusions d'analyse. */}
-      <WatchlistBilan reportId={reportId} />
+      {/* Bilan factuel du plan de visite — un artefact de fabrication : il ne
+          s'affiche plus sur le document clôturé. */}
+      {!isFinal && <WatchlistBilan reportId={reportId} />}
 
       {/* Réserves + Actions — côte à côte quand les deux existent. */}
       {(hasReserves || hasActions) && (
@@ -358,7 +399,9 @@ export default async function VisitCrPreviewPage({
         </p>
       </Section>
 
-      {/* Le sens : ce que devient ce CR — le lien terrain → patrimoine numérique. */}
+      {/* Le sens : ce que devient ce CR — le lien terrain → patrimoine numérique.
+          Sur un document clôturé, la bannière de clôture dit déjà l'essentiel. */}
+      {!isFinal && (
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
         <p className="flex items-center gap-2 text-sm font-semibold text-emerald-900 dark:text-emerald-200">
           <Star className="h-[18px] w-[18px] shrink-0 fill-amber-400 text-amber-400" />
@@ -377,6 +420,7 @@ export default async function VisitCrPreviewPage({
           </div>
         )}
       </div>
+      )}
 
       {/* Actions de sortie — la suite du parcours, réunie sous la récompense.
           Le PDF a sa place canonique (section « Documents générés ») ; ici on
@@ -397,15 +441,23 @@ export default async function VisitCrPreviewPage({
             <Home className="h-4 w-4" /> Retour au chantier
           </Link>
         )}
-        <div className="grid grid-cols-2 gap-2">
-          <Link
-            href={`/m/visite/${reportId}`}
-            className="flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-medium active:bg-accent"
-          >
-            <Pencil className="h-4 w-4" /> Modifier les captures
-          </Link>
-          <VisitShareButton reportId={reportId} siteName={doc.siteName} />
-        </div>
+        {isFinal ? (
+          /* Document clôturé : on partage, on ne « modifie » plus. La correction
+             passe par le geste explicite de réouverture, dans le document. */
+          <div className="grid grid-cols-1">
+            <VisitShareButton reportId={reportId} siteName={doc.siteName} />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            <Link
+              href={`/m/visite/${reportId}`}
+              className="flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-medium active:bg-accent"
+            >
+              <Pencil className="h-4 w-4" /> Modifier les captures
+            </Link>
+            <VisitShareButton reportId={reportId} siteName={doc.siteName} />
+          </div>
+        )}
       </div>
     </div>
   )

@@ -2,8 +2,9 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, Star, Clock, FileText, ChevronRight, Sparkles,
+  Camera, Video, Mic, Pencil, Target, MapPin, Star, Clock, FileText, ChevronRight, Sparkles, CheckCircle2,
 } from 'lucide-react'
+import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { visitIntentLabel } from '@/lib/field/visit-intents'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -118,6 +119,15 @@ export default async function VisitRecapPage({
   // « reprend » plus (un oubli = une NOUVELLE visite, fidèle au terrain).
   const isEnded = !!visit.ended_at
 
+  // P0-H — clôture documentaire : le libellé de l'entrée « Compte-rendu » dit
+  // l'état RÉEL du document (final figé / brouillon / pas encore de matière),
+  // jamais un état espéré. Lecture seule — aucune création ici.
+  const crDoc = isEnded ? await getVisitCrDocument(reportId).catch(() => null) : null
+  const crFinal = !!crDoc && crDoc.status !== 'draft'
+  const endLabel = visit.ended_at
+    ? new Date(visit.ended_at).toLocaleTimeString('fr-FR', { timeZone: NOUMEA_TZ, hour: '2-digit', minute: '2-digit' })
+    : null
+
   return (
     <VisitMemoryTabs
       siteId={visit.site_id}
@@ -132,10 +142,35 @@ export default async function VisitRecapPage({
       {/* Onglet 1 — « Captures » : la TRACE complète de la session (l'en-tête
           chantier et la conclusion viennent de la grammaire commune des onglets). */}
       <div className="space-y-4">
-      {/* Deux lectures d'une même visite — on lève la confusion CR ↔ trace :
-          le compte-rendu est une PROJECTION éditoriale (relue, synthétisée,
-          destinée à être transmise) ; ici, c'est la TRACE exhaustive (tout ce
-          qui a été capturé, y compris ce qui n'est pas repris dans le CR). */}
+      {/* P0-H — l'irréversibilité se DIT dès l'entrée : une visite clôturée
+          appartient à l'historique, elle ne se fabrique plus. */}
+      {isEnded ? (
+        <div className="flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3.5 py-2.5 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Visite clôturée</p>
+            <p className="text-[12px] text-emerald-800/80 first-letter:uppercase dark:text-emerald-300/80">
+              {dateLabel}
+              {endLabel && ` → ${endLabel}`}
+              {durLabel && ` · ${durLabel}`}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <p className="text-[13px] text-muted-foreground first-letter:uppercase">
+          {dateLabel}
+          {durLabel && (
+            <span className="ml-1 inline-flex items-center gap-1">
+              · <Clock className="h-3.5 w-3.5" /> {durLabel}
+            </span>
+          )}
+        </p>
+      )}
+
+      {/* Trois lectures, hiérarchisées : le DOCUMENT final d'abord, la
+          COMPRÉHENSION (comment MemorIA est passée du terrain à l'information)
+          ensuite, la TRACE brute exhaustive enfin. Le libellé du compte-rendu
+          dit l'état réel du document — final figé ou brouillon. */}
       <div className="rounded-2xl border bg-muted/20 p-3">
         <p className="text-[13px] font-medium">Trois lectures de cette visite</p>
         <div className="mt-2 space-y-1.5">
@@ -145,8 +180,16 @@ export default async function VisitRecapPage({
           >
             <FileText className="h-4 w-4 shrink-0 text-emerald-600" />
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium">Compte-rendu</span>
-              <span className="block text-[12px] text-muted-foreground">Le document relu, structuré et partageable.</span>
+              <span className="block text-sm font-medium">
+                {crFinal ? 'Compte-rendu final' : isEnded && crDoc ? 'Compte-rendu (brouillon)' : 'Compte-rendu'}
+              </span>
+              <span className="block text-[12px] text-muted-foreground">
+                {crFinal
+                  ? 'Le document clôturé de la visite.'
+                  : isEnded && crDoc
+                  ? 'En cours de finalisation — relire, corriger, finaliser.'
+                  : 'Le document relu, structuré et partageable.'}
+              </span>
             </span>
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           </Link>
@@ -157,27 +200,19 @@ export default async function VisitRecapPage({
             <Sparkles className="h-4 w-4 shrink-0 text-violet-600" />
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-medium">Comment MemorIA a compris</span>
-              <span className="block text-[12px] text-muted-foreground">Du relevé à l&apos;action : pourquoi chaque élément existe.</span>
+              <span className="block text-[12px] text-muted-foreground">Interprétations et éléments produits à partir des captures.</span>
             </span>
             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           </Link>
           <div className="flex items-center gap-2.5 rounded-xl border border-emerald-300 bg-emerald-50/50 px-3 py-2.5 dark:border-emerald-900/40 dark:bg-emerald-950/20">
             <Camera className="h-4 w-4 shrink-0 text-emerald-700" />
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium">Toutes les captures <span className="font-normal text-muted-foreground">· vous y êtes</span></span>
-              <span className="block text-[12px] text-muted-foreground">Photos, vidéos, vocaux, notes et décisions — la trace complète.</span>
+              <span className="block text-sm font-medium">Captures originales <span className="font-normal text-muted-foreground">· vous y êtes</span></span>
+              <span className="block text-[12px] text-muted-foreground">Photos, vidéos, vocaux, notes — la trace brute exhaustive.</span>
             </span>
           </div>
         </div>
       </div>
-      <p className="text-[13px] text-muted-foreground first-letter:uppercase">
-        {dateLabel}
-        {durLabel && (
-          <span className="ml-1 inline-flex items-center gap-1">
-            · <Clock className="h-3.5 w-3.5" /> {durLabel}
-          </span>
-        )}
-      </p>
 
       {summaryChips.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border bg-muted/30 px-3 py-2.5 text-sm">

@@ -751,6 +751,8 @@ export interface DbReportDocument {
   final_path: string | null
   finalized_at: string | null
   finalized_by: string | null
+  /** Date du « Finaliser » (mig 228) — la clôture documentaire du CR. */
+  validated_at: string | null
   provider: string | null
   model: string | null
   prompt_version: string | null
