@@ -262,7 +262,6 @@ export default async function FieldHomePage({
     const nowCards = composeNowCardsFromSignals(promiseSignals)
     const nowSignals = now.items.map((item) => nowItemToMemorySignal(item))
     return (
-      <>
       <MobileHomeCockpit
         firstName={user.full_name?.split(' ')[0] ?? ''}
         orgNames={orgNames}
@@ -280,10 +279,6 @@ export default async function FieldHomePage({
         deadlinesToPlan={deadlinesToPlan}
         embedded
       />
-      <div className="py-4 text-center">
-        <Link href="/m/diag" className="text-[10px] text-muted-foreground/30">diag</Link>
-      </div>
-      </>
     )
   }
 
