@@ -37,6 +37,7 @@ import { getWatchlistForDebrief } from '@/lib/db/visit-watchlist'
 import { buildSemanticContextBlock } from '@/lib/knowledge/semantic-entities'
 import { buildWatchlistDebriefBlock } from '@/lib/visits/watchlist-debrief-block'
 import { buildExtractionSiteContext } from '@/lib/db/extraction-context'
+import { decideReconcileLock } from '@/lib/db/canonical-subject-source-reconcile'
 import {
   buildDebriefSemanticMemory,
   type DebriefSemanticMemory,
@@ -380,21 +381,18 @@ async function projectAndTrace(params: {
   void (async () => {
     const sb = createAdminClient()
     try {
-      const LOCK_TTL_MS = 5 * 60 * 1000
       const now = new Date().toISOString()
 
-      // Idempotence : déjà réconcilié ?
       const { data: reportStatus } = await sb
         .from('site_reports')
         .select('canonical_reconciled_at, canonical_reconcile_started_at')
         .eq('id', reportId)
         .maybeSingle()
 
-      if (reportStatus?.canonical_reconciled_at) return // déjà terminé
-      if (
-        reportStatus?.canonical_reconcile_started_at &&
-        Date.now() - Date.parse(reportStatus.canonical_reconcile_started_at) < LOCK_TTL_MS
-      ) {
+      // Règle unique et testée : decideReconcileLock (canonical-subject-source-reconcile).
+      const decision = decideReconcileLock(reportStatus, Date.now())
+      if (decision === 'done') return
+      if (decision === 'concurrent') {
         console.log('[reconcile] run concurrent détecté pour', reportId, '— abandon')
         return
       }

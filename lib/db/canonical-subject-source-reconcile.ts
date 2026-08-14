@@ -1,9 +1,10 @@
 import 'server-only'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
+import { resolveCanonicalSubjectReference, normalizeCanonicalLabel } from '@/lib/db/canonical-subject-resolve'
 import { ELIGIBLE_KINDS } from '@/lib/db/canonical-subject-reconcile'
 import { jaccardSimilarity } from '@/lib/documents/subject-reconciliation'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -156,6 +157,106 @@ export function resolveMatchExistingDecision(
   return 'attach'
 }
 
+// ─── Verrou de réconciliation (P0-2) ─────────────────────────────────────────
+
+/** TTL du verrou soft : au-delà, un run réputé bloqué libère sa place. */
+export const RECONCILE_LOCK_TTL_MS = 5 * 60 * 1000
+
+/**
+ * Décide si un run de réconciliation peut démarrer, à partir de l'état du
+ * rapport. Pure et exportée : c'est la règle qui empêche deux runs concurrents
+ * de matérialiser deux fois les mêmes sujets (cause de l'incident du 14/08).
+ *
+ * - déjà réconcilié            → 'done'      (idempotence)
+ * - verrou récent (< TTL)      → 'concurrent'(un autre run travaille)
+ * - verrou expiré ou absent    → 'acquire'   (on tente le CAS SQL)
+ *
+ * 'acquire' n'est qu'une autorisation de TENTER : le CAS SQL
+ * (WHERE canonical_reconcile_started_at IS NULL) reste l'arbitre final.
+ */
+export function decideReconcileLock(
+  state: { canonical_reconciled_at?: string | null; canonical_reconcile_started_at?: string | null } | null,
+  nowMs: number,
+  ttlMs: number = RECONCILE_LOCK_TTL_MS,
+): 'done' | 'concurrent' | 'acquire' {
+  if (state?.canonical_reconciled_at) return 'done'
+  const startedAt = state?.canonical_reconcile_started_at
+  if (startedAt && nowMs - Date.parse(startedAt) < ttlMs) return 'concurrent'
+  return 'acquire'
+}
+
+// ─── Reprise sur conflit d'unicité (P0-3, mig 323) ───────────────────────────
+
+/** Seuil d'héritage Phase 0 : une reformulation d'un même rapport rejoué.
+ *  Volontairement plus strict que JACCARD_THRESHOLD (0.35) : hériter un ID est
+ *  une décision d'identité, pas une suggestion de proximité. */
+export const INHERIT_THRESHOLD = 0.50
+
+/** 23505 = unique_violation PostgreSQL. Seule erreur pour laquelle une création
+ *  perdante peut se rattacher au gagnant plutôt qu'orpheliner ses faits. */
+export function isUniqueLabelViolation(err: { code?: string | null } | null): boolean {
+  return err?.code === '23505'
+}
+
+/**
+ * Retrouve le sujet ACTIF portant le même label normalisé sur ce site.
+ * Utilisé pour se rattacher au gagnant d'une course de création.
+ * Compare avec normalizeCanonicalLabel() — strictement la même normalisation
+ * que canonical_normalize_label() en SQL (mig 323).
+ */
+export async function findActiveSubjectByNormalizedLabel(
+  sb: SupabaseClient,
+  siteId: string,
+  label: string,
+): Promise<string | null> {
+  const { data } = await sb
+    .from('canonical_subject')
+    .select('id, label')
+    .eq('site_id', siteId)
+    .eq('status', 'active')
+
+  const target = normalizeCanonicalLabel(label)
+  const hit = ((data ?? []) as Array<{ id: string; label: string }>)
+    .find((cs) => normalizeCanonicalLabel(cs.label) === target)
+  return hit?.id ?? null
+}
+
+/**
+ * Apparie les propositions supersédées porteuses d'un canonical_subject_id avec
+ * les propositions éligibles du rejeu (Phase 0, P0-5). Pure et exportée pour les
+ * tests : c'est la règle qui empêche un rejeu de créer un monde parallèle.
+ *
+ * Une proposition éligible ne peut hériter que d'une seule supersédée (premier
+ * arrivé au meilleur score), et seulement au-dessus de INHERIT_THRESHOLD.
+ */
+export function matchInheritedProposals(
+  superseded: ReadonlyArray<{ id: string; title: string; canonical_subject_id: string }>,
+  eligible: ReadonlyArray<{ id: string; title: string }>,
+  threshold: number = INHERIT_THRESHOLD,
+): Array<{ staleId: string; eligibleId: string; canonicalSubjectId: string; score: number }> {
+  const taken = new Set<string>()
+  const pairs: Array<{ staleId: string; eligibleId: string; canonicalSubjectId: string; score: number }> = []
+
+  for (const stale of superseded) {
+    let bestScore = threshold
+    let best: { id: string; title: string } | null = null
+    for (const p of eligible) {
+      if (taken.has(p.id)) continue
+      const score = jaccardSimilarity(stale.title, p.title)
+      if (score > bestScore) { bestScore = score; best = p }
+    }
+    if (!best) continue
+    taken.add(best.id)
+    pairs.push({
+      staleId: stale.id,
+      eligibleId: best.id,
+      canonicalSubjectId: stale.canonical_subject_id,
+      score: bestScore,
+    })
+  }
+  return pairs
+}
+
 // ─── Jaccard Union-Find (pur, testable) ──────────────────────────────────────
 
 interface JaccardCluster {
@@ -302,17 +403,17 @@ export async function reconcileSourceToCanonicalSubjects(
     .not('canonical_subject_id', 'is', null)
 
   if ((supersededWithCs ?? []).length > 0) {
-    const INHERIT_THRESHOLD = 0.50
-    for (const stale of supersededWithCs!) {
-      let bestScore = INHERIT_THRESHOLD
-      let bestEligible: typeof eligible[0] | null = null
-      for (const p of eligible) {
-        if (inheritedIds.has(p.id)) continue
-        const score = jaccardSimilarity(stale.title as string, p.title)
-        if (score > bestScore) { bestScore = score; bestEligible = p }
-      }
+    const eligibleById = new Map(eligible.map((p) => [p.id, p]))
+    const pairs = matchInheritedProposals(
+      (supersededWithCs as Array<{ id: string; title: string; canonical_subject_id: string }>),
+      eligible.map((p) => ({ id: p.id, title: p.title })),
+    )
+
+    for (const pair of pairs) {
+      const bestEligible = eligibleById.get(pair.eligibleId)
       if (!bestEligible) continue
-      const csId = stale.canonical_subject_id as string
+      const csId = pair.canonicalSubjectId
+      const stale = { id: pair.staleId }
 
       await sb.from('canonical_subject_occurrence').upsert({
         canonical_subject_id: csId,
@@ -553,25 +654,46 @@ export async function reconcileSourceToCanonicalSubjects(
           .select('id')
           .single()
 
+        // P0-3 : l'index unique (mig 323) fait échouer la création perdante d'une
+        // course. On ne doit PAS orpheliner ses propositions — le gagnant porte
+        // déjà le bon sujet : on s'y rattache. Sans cette reprise, l'index
+        // remplacerait le bug « deux jumeaux actifs » par « faits détachés du
+        // graphe », ce qui est plus silencieux donc pire.
+        let canonicalSubjectId: string
+        let createdNow = false
+
         if (csErr || !newCs) {
-          console.error('[reconcile-source] erreur création CS:', csErr?.message)
-          result.orphaned += groupProposals.length
-          continue
+          const recovered = isUniqueLabelViolation(csErr)
+            ? await findActiveSubjectByNormalizedLabel(sb, source.siteId, group.suggestedLabel)
+            : null
+
+          if (!recovered) {
+            console.error('[reconcile-source] erreur création CS:', csErr?.code, csErr?.message)
+            result.orphaned += groupProposals.length
+            continue
+          }
+          canonicalSubjectId = recovered
+          result.matched += groupProposals.length
+        } else {
+          canonicalSubjectId = newCs.id
+          createdNow = true
+          result.created++
+          result.clustered += groupProposals.length
         }
 
-        const canonicalSubjectId = newCs.id
-        result.created++
-        result.clustered += groupProposals.length
-
+        // Identité de thread créée uniquement pour un sujet réellement neuf :
+        // un sujet récupéré après conflit porte déjà la sienne.
         const sharedThreadId = crypto.randomUUID()
-        await sb
-          .from('subject_thread_identity')
-          .insert({
-            subject_thread_id: sharedThreadId,
-            site_id: source.siteId,
-            canonical_subject_id: canonicalSubjectId,
-            source: 'auto',
-          })
+        if (createdNow) {
+          await sb
+            .from('subject_thread_identity')
+            .insert({
+              subject_thread_id: sharedThreadId,
+              site_id: source.siteId,
+              canonical_subject_id: canonicalSubjectId,
+              source: 'auto',
+            })
+        }
 
         for (const proposal of groupProposals) {
           await sb
@@ -604,7 +726,12 @@ export async function reconcileSourceToCanonicalSubjects(
             .eq('id', proposal.id)
 
           if (proposal.kind === 'action') {
-            await ensureActionThread(sb, proposal.id, source.siteId, canonicalSubjectId, sharedThreadId)
+            // Ne jamais propager sharedThreadId si l'identité n'a pas été insérée :
+            // cela recréerait les STI orphelines nettoyées en P0-8.
+            await ensureActionThread(
+              sb, proposal.id, source.siteId, canonicalSubjectId,
+              createdNow ? sharedThreadId : undefined,
+            )
           }
         }
       }
