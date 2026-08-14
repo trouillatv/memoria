@@ -142,6 +142,7 @@ export function SiteMemoryChat({ siteId }: { siteId: string }) {
         <CapabilityDiscoveryPanel
           onSelectQuestion={(q) => ask(q)}
           disabled={pending}
+          contextualSuggestions={contextualSuggestions}
         />
       )}
 

@@ -411,6 +411,26 @@ export async function askCopilotFreeAction(
   const safeIntent = INTENT_FILTER_MAP[classification.primary] ?? 'attention'
   const { items, delta, prepItems: filteredPrep } = filterContextForIntent(context, safeIntent)
 
+  // Réponse déterministe directe pour une question quantitative sans aucun résultat
+  // ("Quelles actions sont en retard ?" avec 0 action en retard) : le moteur d'attention
+  // a déjà la réponse (overview.attention.reasons vide), inutile d'interroger le LLM —
+  // qui, face à un contexte vide, dit à tort "je n'ai pas d'informations" au lieu d'un
+  // "zéro" confirmé (défaut Copilote V2, retour Guillaume).
+  if (classification.primary === 'action_status' && items.length === 0) {
+    const text = 'Aucune action n\'est actuellement en retard sur ce chantier.'
+    const iid = await logCopilotInteraction({
+      siteId, userId, conversationId: conversationId ?? null,
+      question, conversationMode: 'free',
+      primaryIntent: classification.primary, secondaryIntents: classification.secondary,
+      scope: baseScope, resolvedSubjectIds: [],
+      answerText: text, answerMode: 'deterministic_fallback', answerStatus: 'answered',
+      citedReferenceCount: 0, sourcesUsed: ['site_overview'],
+      model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+      estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+    })
+    return { kind: 'answer', text, references: [], source: 'deterministic', interactionId: iid }
+  }
+
   // Enrichissement sujets détaillés
   const subjectDetails = subjectLives
     .filter((l): l is NonNullable<typeof l> => l !== null)
@@ -422,7 +442,10 @@ export async function askCopilotFreeAction(
   // Timeline : filtrer les changements récents à l'intervalle du delta
   // Ne remonter que les événements dont occurredAt est dans [fromDate, toDate].
   // Évite de présenter des signaux anciens comme des événements de l'intervalle.
+  // "global" (résumé général type "où en est le chantier ?") en a aussi besoin :
+  // une synthèse de situation sans les changements récents serait tronquée.
   const needsTimeline = classification.primary === 'timeline' || classification.secondary.includes('timeline')
+    || classification.primary === 'global'
   if (needsTimeline) {
     const fromIso = delta?.fromDate ?? null
     const toIso   = delta?.toDate   ?? null

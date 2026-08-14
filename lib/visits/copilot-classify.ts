@@ -119,19 +119,22 @@ function extractSubjectLabels(question: string): string[] {
   return [...labels]
 }
 
-// Préfixes interrogatifs à supprimer pour isoler le syntagme sujet
+// Préfixes interrogatifs à supprimer pour isoler le syntagme sujet.
+// L'article ("le"/"la"/"les"/"l'") est retiré séparément ci-dessous, pas ici —
+// un ancien `[\s'l]+` en fin de préfixe matchait espace/apostrophe/"l" caractère
+// par caractère et tronquait "le chantier" en "e chantier" (bug Copilote V2).
 const QUESTION_PREFIXES = [
-  /^où en est[\s'l]+/i,
-  /^où en sont[\s'l]+/i,
-  /^qu.en est.il de[\s'l]+/i,
-  /^qu.en est[\s'l]+/i,
-  /^quel est l.état de[\s'l]+/i,
-  /^quelle est la situation de[\s'l]+/i,
-  /^comment va[\s'l]+/i,
-  /^parle.moi de[\s'l]+/i,
-  /^point sur[\s'l]+/i,
-  /^infos? sur[\s'l]+/i,
-  /^dis.moi[\s'l]+/i,
+  /^où en est\s+/i,
+  /^où en sont\s+/i,
+  /^qu.en est.il de\s+/i,
+  /^qu.en est\s+/i,
+  /^quel est l.état de\s+/i,
+  /^quelle est la situation de\s+/i,
+  /^comment va\s+/i,
+  /^parle.moi de\s+/i,
+  /^point sur\s+/i,
+  /^infos? sur\s+/i,
+  /^dis.moi\s+/i,
 ]
 
 /**
@@ -197,6 +200,12 @@ export function classifyIntent(question: string): IntentClassification {
       isWriteRequest: true,
     }
   }
+
+  // subject_detail sans code technique ni guillemets : aucune entité concrète à résoudre.
+  // Un signal textuel seul ("où en est", "pourquoi"…) ne suffit pas à cibler un sujet réel —
+  // le laisser gagner enverrait la résolution sur une phrase générique ("le chantier", "ce
+  // projet"…) qui ne correspond jamais à un sujet en base (défaut Copilote V2, retour Guillaume).
+  if (subjectLabels.length === 0) scores.subject_detail = 0
 
   // Trier par score décroissant
   const sorted = (Object.entries(scores) as [Exclude<IntentFamily, 'proposal_request'>, number][])

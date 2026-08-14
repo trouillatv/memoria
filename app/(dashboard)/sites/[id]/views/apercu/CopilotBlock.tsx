@@ -15,7 +15,7 @@ import {
 } from '../../copilot-free-action'
 import { askCopilotAction, type CopilotActionResult } from '../../copilot-action'
 import { trackCopilotReferenceClick } from '../../copilot-event-action'
-import { fetchPlanItems, removePlanItem, type PlanItemSummary } from '../../copilot-plan-actions'
+import { fetchPlanItems, removePlanItem, getCopilotContextualSuggestions, type PlanItemSummary } from '../../copilot-plan-actions'
 import type { CopilotIntent } from '@/lib/visits/copilot-context'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { ProposalCard, ScheduleProposalCard } from '@/components/copilot/CopilotProposalCards'
@@ -59,10 +59,16 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
   const [planItems, setPlanItems]             = useState<PlanItemSummary[]>([])
   // Panneau de découverte étendu
   const [expanded, setExpanded]               = useState(false)
+  // Suggestions dérivées des données réelles du chantier (jamais d'exemple statique)
+  const [contextualSuggestions, setContextualSuggestions] = useState<string[]>([])
   const bottomRef                             = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetchPlanItems(siteId).then(setPlanItems).catch(() => {})
+  }, [siteId])
+
+  useEffect(() => {
+    getCopilotContextualSuggestions(siteId).then(setContextualSuggestions).catch(() => {})
   }, [siteId])
 
   useEffect(() => {
@@ -274,6 +280,7 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
             <CapabilityDiscoveryPanel
               onSelectQuestion={(q) => { setExpanded(false); send(q) }}
               disabled={loading}
+              contextualSuggestions={contextualSuggestions}
             />
           )}
         </div>

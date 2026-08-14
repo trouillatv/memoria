@@ -55,7 +55,7 @@ export function normalizeQuery(text: string): string {
 // ── Signaux de lecture ────────────────────────────────────────────────────────
 
 // Questions ou demandes d'information explicites
-const READ_RE = /\b(?:ou\s+en\s+(?:est|sont)|qu\s*en\s+est[-\s]?il|comment\s+(?:va|s|ca)|parle[rz]?[-\s]?(?:moi|nous)|raconte[rz]?[-\s]?(?:moi|nous)|dis[-\s]?(?:moi|nous)|infos?\s+sur|etat\s+(?:de|du|des)|situation|resume|synthese|quand\s+est|qui\s+s\s*occupe|combien|pourquoi|qu\s*est[-\s]ce|montre[rz]?[-\s]?(?:moi|nous)|presente[rz]?[-\s]?(?:moi|nous)|explique[rz]?)\b/
+const READ_RE = /\b(?:ou\s+en\s+(?:est|sont)|qu\s*en\s+est[-\s]?il|comment\s+(?:va|s|ca)|parle[rz]?[-\s]?(?:moi|nous)|raconte[rz]?[-\s]?(?:moi|nous)|dis[-\s]?(?:moi|nous)|infos?\s+sur|etat\s+(?:de|du|des)|situation|resume|synthese|quand\s+est|qui\s+s\s*occupe|combien|pourquoi|qu\s*est[-\s]ce|montre[rz]?[-\s]?(?:moi|nous)|presente[rz]?[-\s]?(?:moi|nous)|explique[rz]?|dois[-\s]?je|je\s+dois)\b/
 
 // ── Signaux métier ────────────────────────────────────────────────────────────
 
@@ -81,7 +81,11 @@ const CREATE_VISIT_RE = /\bcree\w*\b|\bnouve(?:aux?|ll?e[sx]?)\b/
 // Verbes d'écriture forts — intention de commande claire
 // "faut" seul (il faut) est un signal fort ; "faudrait" (conditionnel) est faible.
 // note\w* : impératif "note" et infinitif "noter" (noter\w* ne capturait pas l'impératif).
-const STRONG_WRITE_RE = /\b(?:(?:ajout|rajoute|cree|note|notons|mets|mettr|fai[st]|ouvr|declenche|genere|rappell?)\w*|faut)\b/
+// Exclusion "qu il/on/elle faut" : "qu'est-ce qu'il faut que je regarde ?" est une
+// question sur un besoin, pas une commande — le "faut" y est introduit par une
+// relative interrogative, jamais une consigne à l'impératif (bug Copilote V2,
+// retour Guillaume, phrase orale dégradée "euh... qu'est-ce qu'il faut que...").
+const STRONG_WRITE_RE = /\b(?:(?:ajout|rajoute|cree|note|notons|mets|mettr|fai[st]|ouvr|declenche|genere|rappell?)\w*|(?<!qu\s(?:il|on|elle)\s)faut)\b/
 
 // Verbes d'écriture implicites — besoin exprimé sans commande directe
 const WEAK_WRITE_RE = /\b(?:faudr|il\s+faut\s|pens[eo][rz]?\s+a|gard[ea]\b|conserv|checker|controler|verifi)\w*/

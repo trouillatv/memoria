@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Activity, ClipboardCheck, Users, Share2, Search, ChevronDown, ChevronUp, type LucideIcon } from 'lucide-react'
+import { Activity, ClipboardCheck, Users, Share2, Search, Sparkles, ChevronDown, ChevronUp, type LucideIcon } from 'lucide-react'
 
 interface CapabilityCard {
   id: string
@@ -67,7 +67,7 @@ const CARDS: CapabilityCard[] = [
     name: 'Dépendances',
     description: 'Relations confirmées, blocages, enchaînement des travaux',
     examples: [
-      "De quoi dépend l'avis G3 ?",
+      "Quels sujets sont liés entre eux ?",
       "Quels sujets bloquent la réception ?",
     ],
     moreExamples: [
@@ -98,14 +98,38 @@ const CARDS: CapabilityCard[] = [
 export function CapabilityDiscoveryPanel({
   onSelectQuestion,
   disabled,
+  contextualSuggestions,
 }: {
   onSelectQuestion: (q: string) => void
   disabled?: boolean
+  /** Questions dérivées des données réelles de ce chantier — jamais un exemple générique. */
+  contextualSuggestions?: string[]
 }) {
   const [expandedCard, setExpandedCard] = useState<string | null>(null)
 
   return (
     <div className="rounded-xl border border-violet-100 dark:border-violet-900 bg-violet-50/50 dark:bg-violet-950/10 p-3 space-y-2 max-h-[70vh] overflow-y-auto">
+      {contextualSuggestions && contextualSuggestions.length > 0 && (
+        <div className="rounded-xl border border-violet-200 dark:border-violet-800 bg-background p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-3.5 w-3.5 text-violet-500 shrink-0" />
+            <span className="text-[13px] font-semibold">Suggestions pour ce chantier</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            {contextualSuggestions.map((q) => (
+              <button
+                key={q}
+                type="button"
+                disabled={disabled}
+                onClick={() => onSelectQuestion(q)}
+                className="text-left rounded-lg border border-border bg-muted/20 px-3 py-1.5 text-[13px] text-foreground/70 hover:text-foreground hover:bg-muted/40 hover:border-foreground/20 disabled:opacity-50 transition-colors"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {CARDS.map((card) => {
         const Icon = card.icon
         const isExpanded = expandedCard === card.id
