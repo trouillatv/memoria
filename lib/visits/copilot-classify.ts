@@ -13,6 +13,7 @@ export type IntentFamily =
   | 'action_status'   // question sur les actions, travaux, engagements
   | 'actor'           // question sur une personne ou entreprise
   | 'plan_visite'     // question sur la prochaine visite ou le plan actif
+  | 'stagnation'      // sujets qui n'avancent plus (≠ action en retard, ≠ blocage)
   | 'global'          // résumé général, état du chantier
   | 'proposal_request' // intention d'écriture (crée, ajoute, planifie…)
 
@@ -70,6 +71,31 @@ const ACTION_SIGNALS = [
   /\bengagem[eé]nt\b/i,
   /\bsuivi\b/i,
   /\bbloq[uü][eé]\b/i,
+]
+
+// STAGNATION ≠ RETARD D'ACTION ≠ BLOCAGE.
+//   — stagnation : un sujet est mentionné à nouveau sans qu'il ait bougé sur le fond
+//     (moteur canonique : stagnationDays >= 30 ET 2 mentions sans changement) ;
+//   — retard : une action a dépassé une date confirmée (ACTION_SIGNALS) ;
+//   — blocage : un empêchement métier déclaré, également porté par ACTION_SIGNALS
+//     (/\bbloq[uü][eé]\b/) et donc par le filtre `attention`, qui transporte déjà
+//     les items `blocage_active`.
+// « Qu'est-ce qui n'avance pas ? » demande la première, pas les deux autres — c'est
+// ce glissement qui a produit « aucune action en retard » sur PETRO ATTITI.
+// Ne pas fusionner : un sujet bloqué a une cause déclarée, un sujet stagnant n'en a
+// pas nécessairement.
+const STAGNATION_SIGNALS = [
+  /\bn['’ ]?avance[nt]?\s+(pas|plus)\b/i,
+  // Pas de `\b` final : `é` n'est pas un caractère de mot pour \b, donc
+  // /boug[eé]\b/ ne matcherait jamais « bougé » suivi d'un espace.
+  /\bn['’ ]?a\s+pas\s+boug[eé]/i,
+  /\bn['’ ]?ont\s+pas\s+boug[eé]/i,
+  /\bstagn[ea]/i,
+  /\bpi[eé]tine/i,
+  /\btra[îi]ne/i,
+  /\bsans\s+[eé]volution\b/i,
+  /\bau\s+point\s+mort\b/i,
+  /\bpatine/i,
 ]
 
 const ACTOR_SIGNALS = [
@@ -212,6 +238,11 @@ export function classifyReadIntent(question: string): IntentClassification {
     action_status:  countSignals(question, ACTION_SIGNALS),
     actor:          countSignals(question, ACTOR_SIGNALS),
     plan_visite:    countSignals(question, PLAN_SIGNALS),
+    // Poids 2 : une formulation de stagnation est explicite et rare, alors qu'un
+    // ACTION_SIGNALS peut se déclencher par cooccurrence (« les actions traînent »
+    // matcherait `action` ET `traîne`). Sans ce poids, « qu'est-ce qui n'avance
+    // pas ? » retomberait sur les actions en retard — le défaut PETRO ATTITI.
+    stagnation:     countSignals(question, STAGNATION_SIGNALS) * 2,
     global:         0,
   }
 

@@ -15,10 +15,33 @@ export interface VisitBriefingDelta {
   reservesLifted: number
 }
 
+/**
+ * État de stagnation du chantier, calculé depuis les sujets déjà chargés.
+ *
+ * `closest` répond à la question « rien ne stagne, mais qu'est-ce qui s'en
+ * rapproche ? » : sans lui, un chantier sous le seuil renvoie « rien », ce qui
+ * se lit comme « MemorIA n'a pas regardé » alors qu'il a regardé.
+ */
+export interface BriefingStagnation {
+  stagnantCount: number
+  closest: { canonicalSubjectId: string; title: string; days: number } | null
+}
+
 export interface VisitBriefing {
+  /** Projection rankée pour l'UI de préparation de visite (les `low` sont écartés). */
   attention: SiteAttentionItem[]
+  /**
+   * Signaux bruts AVANT `rankBriefingAttention`.
+   *
+   * Le Copilote consomme ceci, pas `attention` : le ranking est un arbitrage de
+   * préparation de visite (écarte les `low`), et sur un chantier dont tous les
+   * signaux sont `low` — cas PETRO ATTITI, 7 `subject_changed` — il viderait
+   * précisément le contexte dont « où en est le chantier ? » a besoin.
+   */
+  allAttention: SiteAttentionItem[]
   delta: VisitBriefingDelta | null
   watchlistOpenCount: number
+  stagnation: BriefingStagnation
 }
 
 // ─── Ranking ─────────────────────────────────────────────────────────────────
@@ -145,9 +168,28 @@ export async function buildVisitBriefing(siteId: string): Promise<VisitBriefing>
     delta = hasActivity ? d : null
   }
 
+  // Stagnation — depuis `subjects`, déjà chargé pour `subjectsChanged` : aucune
+  // requête supplémentaire. `isStagnant` = seuil du moteur canonique
+  // (stagnationDays >= 30 ET consecutiveMentionsWithoutChange >= 2).
+  const stagnants = subjects.filter(s => s.isStagnant)
+  const closestSubject = subjects
+    .filter(s => !s.isStagnant && (s.stagnationDays ?? 0) > 0)
+    .sort((a, b) => (b.stagnationDays ?? 0) - (a.stagnationDays ?? 0))[0]
+
   return {
     attention: rankBriefingAttention(allItems),
+    allAttention: allItems,
     delta,
     watchlistOpenCount,
+    stagnation: {
+      stagnantCount: stagnants.length,
+      closest: closestSubject
+        ? {
+            canonicalSubjectId: closestSubject.canonicalSubjectId,
+            title: closestSubject.title,
+            days: closestSubject.stagnationDays ?? 0,
+          }
+        : null,
+    },
   }
 }

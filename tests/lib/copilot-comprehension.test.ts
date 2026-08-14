@@ -21,7 +21,7 @@ import {
   type Comprehension,
   type ComprehensionLabel,
 } from '@/lib/visits/copilot-comprehension'
-import { classifyIntent } from '@/lib/visits/copilot-classify'
+import { classifyIntent, classifyReadIntent } from '@/lib/visits/copilot-classify'
 import { detectIntent } from '@/lib/visits/copilot-intent-router'
 import { resolveQuantitativeVerdict } from '@/lib/visits/copilot-context'
 import type { AIProvider, CompletionOutput } from '@/services/ai'
@@ -201,26 +201,116 @@ describe('mergeComprehension — barrière de mutation', () => {
 // ── 4. Erreur de chargement ≠ zéro résultat ───────────────────────────────────
 
 describe('resolveQuantitativeVerdict — ne jamais affirmer "aucune" à tort', () => {
-  it('périmètre chargé et vide → zéro confirmé, réponse ferme', () => {
-    const v = resolveQuantitativeVerdict({ primaryIntent: 'action_status', itemCount: 0, overviewLoadFailed: false })
+  const RETARD = 'quelles actions sont en retard ?'
+
+  it('compteur métier chargé à zéro → zéro confirmé, réponse ferme', () => {
+    const v = resolveQuantitativeVerdict({
+      question: RETARD, primaryIntent: 'action_status',
+      measures: { actionsOverdue: 0 }, overviewLoadFailed: false,
+    })
     expect(v?.kind).toBe('confirmed_zero')
     expect(v?.text).toContain('Aucune action')
   })
 
   it('chargement en échec → jamais "aucune", réponse honnête', () => {
-    const v = resolveQuantitativeVerdict({ primaryIntent: 'action_status', itemCount: 0, overviewLoadFailed: true })
+    const v = resolveQuantitativeVerdict({
+      question: RETARD, primaryIntent: 'action_status',
+      measures: { actionsOverdue: 0 }, overviewLoadFailed: true,
+    })
     expect(v?.kind).toBe('unknown')
     expect(v?.text).not.toMatch(/^Aucune action n'est actuellement/)
-    expect(v?.text).toContain("pas pu charger")
+    expect(v?.text).toContain('pas pu charger')
+  })
+
+  // LE défaut PETRO ATTITI : le contexte filtré était vide, et cette absence
+  // était lue comme un zéro métier. Une mesure absente ne vaut plus zéro.
+  it('compteur NON chargé → "je ne sais pas", jamais un zéro', () => {
+    const v = resolveQuantitativeVerdict({
+      question: RETARD, primaryIntent: 'action_status',
+      measures: {}, overviewLoadFailed: false,
+    })
+    expect(v?.kind).toBe('unknown')
+    expect(v?.text).not.toMatch(/Aucune action/)
   })
 
   it('des résultats existent → pas de court-circuit, le LLM répond', () => {
-    expect(resolveQuantitativeVerdict({ primaryIntent: 'action_status', itemCount: 3, overviewLoadFailed: false })).toBeNull()
+    expect(resolveQuantitativeVerdict({
+      question: RETARD, primaryIntent: 'action_status',
+      measures: { actionsOverdue: 3 }, overviewLoadFailed: false,
+    })).toBeNull()
   })
 
-  it('ne court-circuite que les questions quantitatives sur les actions', () => {
-    expect(resolveQuantitativeVerdict({ primaryIntent: 'global', itemCount: 0, overviewLoadFailed: false })).toBeNull()
-    expect(resolveQuantitativeVerdict({ primaryIntent: 'timeline', itemCount: 0, overviewLoadFailed: true })).toBeNull()
+  it('ne court-circuite jamais une question de synthèse', () => {
+    expect(resolveQuantitativeVerdict({
+      question: 'où en est le chantier ?', primaryIntent: 'global',
+      measures: { actionsOverdue: 0 }, overviewLoadFailed: false,
+    })).toBeNull()
+    expect(resolveQuantitativeVerdict({
+      question: "qu'est-ce qui a changé ?", primaryIntent: 'timeline',
+      measures: { actionsOverdue: 0 }, overviewLoadFailed: true,
+    })).toBeNull()
+  })
+
+  // « Qu'est-ce qui bloque ? » ne doit JAMAIS recevoir le compteur d'actions en
+  // retard : blocage déclaré et date dépassée sont deux faits différents.
+  it('une question sur les blocages ne reçoit pas le zéro des actions', () => {
+    const v = resolveQuantitativeVerdict({
+      question: "qu'est-ce qui bloque sur le chantier ?", primaryIntent: 'action_status',
+      measures: { actionsOverdue: 0, blocagesActive: 2 }, overviewLoadFailed: false,
+    })
+    expect(v).toBeNull()
+  })
+
+  it('stagnation à zéro → le sujet le plus proche du seuil est nommé', () => {
+    const v = resolveQuantitativeVerdict({
+      question: "qu'est-ce qui n'avance pas ?", primaryIntent: 'stagnation',
+      measures: { subjectsStagnant: 0 }, overviewLoadFailed: false,
+      stagnationClosest: { title: 'Couche de forme', days: 24 },
+    })
+    expect(v?.kind).toBe('confirmed_zero')
+    expect(v?.text).toContain('seuil de stagnation')
+    expect(v?.text).toContain('Couche de forme')
+    expect(v?.text).toContain('24 jours')
+  })
+
+  it('stagnation avérée → pas de court-circuit, le LLM détaille', () => {
+    expect(resolveQuantitativeVerdict({
+      question: "qu'est-ce qui stagne ?", primaryIntent: 'stagnation',
+      measures: { subjectsStagnant: 2 }, overviewLoadFailed: false,
+    })).toBeNull()
+  })
+})
+
+// ── 4bis. Stagnation ≠ retard d'action ────────────────────────────────────────
+
+describe('famille stagnation', () => {
+  it('« qu\'est-ce qui n\'avance pas ? » est une stagnation, pas un retard', () => {
+    expect(classifyReadIntent("qu'est-ce qui n'avance pas ?").primary).toBe('stagnation')
+    expect(classifyReadIntent('quels sujets stagnent ?').primary).toBe('stagnation')
+    expect(classifyReadIntent("qu'est-ce qui traîne depuis un moment ?").primary).toBe('stagnation')
+    expect(classifyReadIntent("qu'est-ce qui n'a pas bougé ?").primary).toBe('stagnation')
+  })
+
+  it('« quelles actions sont en retard ? » reste une question d\'actions', () => {
+    expect(classifyReadIntent('quelles actions sont en retard ?').primary).toBe('action_status')
+  })
+
+  it('« qu\'est-ce qui bloque ? » reste sur la famille actions/blocages', () => {
+    expect(classifyReadIntent("qu'est-ce qui bloque ?").primary).toBe('action_status')
+  })
+
+  it('l\'intention LLM stale_subjects redirige vers stagnation', () => {
+    const merged = route('où ça coince en ce moment ?', comprehension('READ_ACTION_STATUS', {
+      intent: 'stale_subjects', confidence: 'high',
+    }))
+    expect(merged.classification.primary).toBe('stagnation')
+  })
+
+  it('le LLM ne rétrograde pas une stagnation détectée déterministiquement', () => {
+    const merged = route("qu'est-ce qui n'avance pas ?", comprehension('READ_ACTION_STATUS', {
+      intent: 'action_status', confidence: 'high',
+    }))
+    expect(merged.classification.primary).toBe('stagnation')
   })
 })
 
@@ -242,7 +332,13 @@ const READ_CORPUS: Case[] = [
   // — Les 7 cas de recette mandatés —
   { q: 'Où en est le chantier ?', llm: comprehension('READ_SITE_STATUS', { intent: 'site_status' }), family: 'global' },
   { q: "Qu'est-ce qui a changé depuis la dernière visite ?", llm: comprehension('READ_RECENT_CHANGES', { intent: 'recent_changes', timeScope: 'since_last_visit' }), family: 'timeline' },
-  { q: "Qu'est-ce qui traîne ?", llm: comprehension('READ_ACTION_STATUS', { intent: 'stale_subjects' }), family: 'action_status' },
+  // Les trois formulations ci-dessous portent `intent: 'stale_subjects'` : elles
+  // attendaient `action_status` tant que la stagnation n'était pas une famille à
+  // part entière. Elles attendent désormais `stagnation` — c'est le correctif du
+  // défaut PETRO ATTITI (« qu'est-ce qui n'avance pas ? » → « aucune action en
+  // retard »), pas une régression. Le routeur d'ÉCRITURE, lui, est inchangé :
+  // `intentResult.intent` reste 'READ' sur les 26 formulations.
+  { q: "Qu'est-ce qui traîne ?", llm: comprehension('READ_ACTION_STATUS', { intent: 'stale_subjects' }), family: 'stagnation' },
   { q: 'Quelles actions sont en retard ?', llm: comprehension('READ_ACTION_STATUS', { intent: 'action_status' }), family: 'action_status' },
   { q: 'Que dois-je vérifier lors de ma prochaine visite ?', llm: comprehension('READ_NEXT_VISIT', { intent: 'prepare_next_visit', timeScope: 'next_visit' }), family: 'plan_visite' },
   { q: "euh demain quand j'y retourne qu'est-ce qu'il faut que je regarde déjà ?", llm: comprehension('READ_NEXT_VISIT', { intent: 'prepare_next_visit', timeScope: 'next_visit' }), family: 'plan_visite' },
@@ -254,8 +350,8 @@ const READ_CORPUS: Case[] = [
   { q: 'le cadenas ça a changé depuis la dernière fois ?', llm: comprehension('READ_SUBJECT', { intent: 'subject_evolution', entities: ['cadenas'], timeScope: 'since_last_visit' }), family: 'subject_detail' },
   { q: "y avait pas un truc prévu lundi ?", llm: comprehension('READ_NEXT_VISIT', { intent: 'prepare_next_visit', confidence: 'medium' }) },
   { q: 'je dois contrôler quoi demain ?', llm: comprehension('READ_NEXT_VISIT', { intent: 'prepare_next_visit', timeScope: 'next_visit' }), family: 'plan_visite' },
-  { q: "qu'est-ce qui n'a pas bougé ?", llm: comprehension('READ_ACTION_STATUS', { intent: 'stale_subjects' }), family: 'action_status' },
-  { q: "qu'est-ce qui traîne encore ?", llm: comprehension('READ_ACTION_STATUS', { intent: 'stale_subjects' }), family: 'action_status' },
+  { q: "qu'est-ce qui n'a pas bougé ?", llm: comprehension('READ_ACTION_STATUS', { intent: 'stale_subjects' }), family: 'stagnation' },
+  { q: "qu'est-ce qui traîne encore ?", llm: comprehension('READ_ACTION_STATUS', { intent: 'stale_subjects' }), family: 'stagnation' },
   { q: "est-ce qu'on a des actions vraiment en retard ?", llm: comprehension('READ_ACTION_STATUS', { intent: 'action_status' }), family: 'action_status' },
   { q: "est-ce qu'il faut vérifier les toilettes ?", llm: comprehension('READ_SUBJECT', { intent: 'subject_status', entities: ['toilettes'] }), family: 'subject_detail', deterministicWrite: true },
 

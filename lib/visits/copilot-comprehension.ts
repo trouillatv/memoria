@@ -381,15 +381,28 @@ export function mergeComprehension(
   }
 
   // ── 4. Orientation de la famille de lecture ────────────────────────────────
-  const family = comprehension.label === 'POSSIBLE_WRITE' || comprehension.label === 'UNKNOWN'
+  const labelFamily = comprehension.label === 'POSSIBLE_WRITE' || comprehension.label === 'UNKNOWN'
     ? null
     : LABEL_TO_FAMILY[comprehension.label]
+
+  // Affinage par l'INTENTION quand l'étiquette est trop grossière. Les étiquettes
+  // ne distinguent pas « qu'est-ce qui n'avance pas ? » (stagnation d'un sujet)
+  // de « quelles actions sont en retard ? » (date dépassée) : les deux tombent
+  // sur READ_ACTION_STATUS. L'intention `stale_subjects`, elle, les sépare — et
+  // c'est cette confusion qui a produit « aucune action en retard » sur PETRO.
+  const family: IntentFamily | null =
+    comprehension.intent === 'stale_subjects' && labelFamily !== null
+      ? 'stagnation'
+      : labelFamily
 
   if (family && family !== nextClassification.primary) {
     // Le déterministe n'a rien trouvé ("global" = aucun signal) → le LLM tranche.
     // Sinon on n'écrase que sur une compréhension franche.
     const deterministicIsBlind = nextClassification.primary === 'global'
-    if (deterministicIsBlind || comprehension.confidence === 'high') {
+    // Une stagnation détectée déterministiquement ("n'avance pas", "stagne") est
+    // une formulation explicite : le LLM ne la rétrograde pas vers les actions.
+    const wouldDowngradeStagnation = nextClassification.primary === 'stagnation'
+    if (!wouldDowngradeStagnation && (deterministicIsBlind || comprehension.confidence === 'high')) {
       const previous = nextClassification.primary
       nextClassification = {
         ...nextClassification,

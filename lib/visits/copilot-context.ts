@@ -4,6 +4,7 @@
 // de fallback déterministe. Aucun appel DB ici — pure fonction.
 
 import type { SiteOverview, AttentionReason } from '@/lib/knowledge/site-overview'
+import type { SiteAttentionItem, AttentionSignal } from '@/lib/knowledge/site-attention-items'
 
 export type CopilotIntent = 'attention' | 'changes' | 'stale' | 'next_visit'
 
@@ -46,8 +47,39 @@ export function buildSiteCopilotContext(
   siteName: string,
   overview: SiteOverview,
   prepItems: { label: string; stableKey: string }[],
+  attentionItems: SiteAttentionItem[] = [],
 ): SiteCopilotContext {
   const subjectMap = new Map<string, CopilotItem>()
+  /** Signaux du moteur sans sujet canonique (réserves, blocages, congestion…). */
+  const engineSignals: CopilotItem[] = []
+
+  // ── Moteur canonique d'attention (deriveSiteAttentionItems, via le briefing) ──
+  //
+  // Première source injectée, volontairement : `upsertSubject` conserve le
+  // premier `href` rencontré, et on veut que ce soit celui du moteur d'origine
+  // (`/sites/:id/historique/sujets/:csId` → historique et preuves), pas un lien
+  // de repli. Le LLM ne fabrique jamais de lien : il ne voit que ceux-là.
+  //
+  // Sans ce branchement, un chantier terrain sans PV analysé (PETRO ATTITI)
+  // arrivait au générateur avec ZÉRO item : tout le contexte venait de
+  // `overview.pv*`, alimenté par le seul moteur PV.
+  for (const item of attentionItems) {
+    const csId = typeof item.metadata?.canonicalSubjectId === 'string'
+      ? item.metadata.canonicalSubjectId
+      : null
+    const entry: CopilotItem = {
+      type: attentionItemType(item.signal),
+      id: csId ?? `${item.signal}:${item.title}`,
+      label: item.title,
+      facts: item.reason ? [item.reason] : [],
+      href: item.href,
+      intents: attentionSignalIntents(item.signal),
+    }
+    // Dédup par sujet canonique : deux signaux sur le même sujet = un item dont
+    // les faits et les intentions fusionnent, jamais deux lignes concurrentes.
+    if (csId) upsertSubject(subjectMap, csId, entry)
+    else engineSignals.push(entry)
+  }
 
   // ── pvAttention : sujets demandant attention (+ stale si sans_évolution) ──
   for (const item of overview.pvAttention) {
@@ -81,7 +113,7 @@ export function buildSiteCopilotContext(
       label: r.title,
       facts: r.detail ? [r.detail] : [],
       href: r.href,
-      intents: reasonIntents(r.kind),
+      intents: reasonIntents(),
     }))
 
   // ── recentChanges : items pour l'intention "changes" ──────────────────────
@@ -111,7 +143,7 @@ export function buildSiteCopilotContext(
   return {
     site: { id: siteId, name: siteName },
     asOf: new Date().toISOString(),
-    items: [...subjectMap.values(), ...signalItems, ...changeItems],
+    items: [...subjectMap.values(), ...engineSignals, ...signalItems, ...changeItems],
     delta,
     prepItems,
   }
@@ -224,37 +256,125 @@ export function availableQuickIntents(context: SiteCopilotContext): CopilotInten
 /**
  * Décide si une question quantitative peut recevoir une réponse « zéro » ferme.
  *
- * Distinction capitale (retour Vincent, 2026-08) : un périmètre chargé et vide
- * autorise « aucune action en retard » ; un CHARGEMENT EN ÉCHEC ne l'autorise
- * jamais — on ne remplace pas « je ne sais pas » par une affirmation erronée.
+ * DOCTRINE (Vincent, 2026-08) : **un verdict quantitatif exige une mesure
+ * quantitative, pas l'absence d'un signal.**
+ *
+ * La version précédente concluait « aucune action en retard » depuis
+ * `itemCount === 0`, c'est-à-dire depuis le fait que le FILTRE n'avait rien
+ * retenu. Sur PETRO ATTITI, où le contexte était vide pour une raison de
+ * retrieval (aucun PV analysé), cela produisait une affirmation métier fausse,
+ * énoncée avec aplomb. Trois états sont désormais distincts :
+ *   — compteur chargé et > 0      → pas de verdict, le générateur répond ;
+ *   — compteur chargé et = 0      → `confirmed_zero`, affirmation légitime ;
+ *   — compteur absent / en échec  → `unknown`, jamais un zéro.
  */
 export type QuantitativeVerdict =
   | { kind: 'confirmed_zero'; text: string }
   | { kind: 'unknown'; text: string }
   | null
 
+/**
+ * Compteurs métier réellement chargés. `null`/absent = « non mesuré », ce qui
+ * n'est jamais interprété comme zéro.
+ */
+export interface QuantitativeMeasures {
+  actionsOverdue?: number | null
+  deadlinesOverdue?: number | null
+  reservesOpen?: number | null
+  blocagesActive?: number | null
+  subjectsStagnant?: number | null
+}
+
+type QuantitativeTopic = {
+  key: keyof QuantitativeMeasures
+  /** Le sujet mesuré doit être nommé dans la question — pas seulement supposé. */
+  match: RegExp
+  subject: string
+}
+
+// Ordre = priorité. Le plus spécifique d'abord : « échéances en retard » ne doit
+// pas être servi par le compteur d'actions, et « qu'est-ce qui bloque ? » ne doit
+// jamais recevoir un zéro d'actions en retard (c'est la confusion exacte que ce
+// lot supprime).
+const QUANTITATIVE_TOPICS: QuantitativeTopic[] = [
+  {
+    key: 'deadlinesOverdue',
+    match: /\b(?:[ée]ch[ée]ances?|d[ée]lais?)\b[\s\S]{0,40}\bre?tard\b|\bre?tard\b[\s\S]{0,40}\b(?:[ée]ch[ée]ances?|d[ée]lais?)\b/i,
+    subject: 'échéance',
+  },
+  {
+    key: 'blocagesActive',
+    match: /\bblocages?\b|\bbloqu[ée]e?s?\b|\bqu[' ’]?est.ce qui bloque\b/i,
+    subject: 'blocage',
+  },
+  {
+    key: 'reservesOpen',
+    match: /\br[ée]serves?\b/i,
+    subject: 'réserve',
+  },
+  {
+    key: 'actionsOverdue',
+    match: /\bre?tards?\b/i,
+    subject: 'action en retard',
+  },
+]
+
+const ZERO_TEXT: Record<keyof QuantitativeMeasures, string> = {
+  actionsOverdue:   "Aucune action n'est actuellement en retard sur ce chantier.",
+  deadlinesOverdue: "Aucune échéance n'est actuellement en retard sur ce chantier.",
+  reservesOpen:     "Aucune réserve n'est actuellement ouverte sur ce chantier.",
+  blocagesActive:   "Aucun blocage n'est actuellement déclaré sur ce chantier.",
+  subjectsStagnant: "Aucun sujet ne franchit actuellement le seuil de stagnation.",
+}
+
 export function resolveQuantitativeVerdict(input: {
+  question: string
   primaryIntent: string
-  itemCount: number
+  measures: QuantitativeMeasures
   overviewLoadFailed: boolean
+  /** Sujet le plus proche du seuil, pour ne pas répondre « rien » sans rien montrer. */
+  stagnationClosest?: { title: string; days: number } | null
 }): QuantitativeVerdict {
-  if (input.primaryIntent !== 'action_status') return null
+  // Seules les familles qui POSENT une question de comptage. `global` en est
+  // exclu : « où en est le chantier ? » attend une synthèse, jamais un zéro.
+  const isCountingFamily =
+    input.primaryIntent === 'action_status' || input.primaryIntent === 'stagnation'
+  if (!isCountingFamily) return null
+
+  const key: keyof QuantitativeMeasures | null =
+    input.primaryIntent === 'stagnation'
+      ? 'subjectsStagnant'
+      : QUANTITATIVE_TOPICS.find((t) => t.match.test(input.question))?.key ?? null
+  if (!key) return null
 
   if (input.overviewLoadFailed) {
     return {
       kind: 'unknown',
-      text: "Je n'ai pas pu charger les données de suivi de ce chantier. Je préfère ne rien affirmer plutôt que de vous dire à tort qu'il n'y a aucune action en retard — réessayez dans quelques instants.",
+      text: "Je n'ai pas pu charger les données de suivi de ce chantier. Je préfère ne rien affirmer plutôt que de vous dire à tort qu'il n'y a rien à signaler — réessayez dans quelques instants.",
     }
   }
 
-  if (input.itemCount === 0) {
+  const count = input.measures[key]
+  // Compteur non chargé : le silence de la mesure n'est pas un zéro métier.
+  if (count === null || count === undefined) {
+    return {
+      kind: 'unknown',
+      text: "Je n'ai pas cette mesure sous la main pour ce chantier. Je préfère vous le dire plutôt que d'affirmer qu'il n'y a rien.",
+    }
+  }
+
+  // Il y a de la matière : le générateur répond normalement, pas de raccourci.
+  if (count > 0) return null
+
+  if (key === 'subjectsStagnant' && input.stagnationClosest) {
+    const { title, days } = input.stagnationClosest
     return {
       kind: 'confirmed_zero',
-      text: "Aucune action n'est actuellement en retard sur ce chantier.",
+      text: `${ZERO_TEXT.subjectsStagnant} Le sujet le plus ancien sans évolution significative est « ${title} », à ${days} jour${days > 1 ? 's' : ''}.`,
     }
   }
 
-  return null
+  return { kind: 'confirmed_zero', text: ZERO_TEXT[key] }
 }
 
 // ── Helpers internes ──────────────────────────────────────────────────────────
@@ -290,7 +410,54 @@ function reasonItemType(kind: AttentionReason['kind']): CopilotItem['type'] {
   return 'signal'
 }
 
-function reasonIntents(kind: AttentionReason['kind']): CopilotIntent[] {
-  if (kind === 'action_overdue' || kind === 'reserve_old') return ['attention', 'stale']
+// `stale` a été retiré de action_overdue / reserve_old : une action en retard ou
+// une réserve ancienne relèvent du RETARD (une date confirmée est dépassée), pas
+// de la STAGNATION (un sujet rementionné qui n'a pas bougé sur le fond). Les
+// confondre faisait répondre « aucune action en retard » à « qu'est-ce qui
+// n'avance pas ? ». La stagnation réelle vient désormais du moteur canonique
+// (`subject_stagnant` / `pv_stagnant` / `relation_blocking`).
+// Plus aucune discrimination par `kind` : toutes ces raisons ne portent que `attention`.
+function reasonIntents(): CopilotIntent[] {
   return ['attention']
+}
+
+// ── Moteur canonique → contexte copilote ──────────────────────────────────────
+
+function attentionItemType(signal: AttentionSignal): CopilotItem['type'] {
+  switch (signal) {
+    case 'action_overdue':
+    case 'action_to_verify':
+      return 'action'
+    case 'deadline_near':
+    case 'deadline_overdue':
+      return 'deadline'
+    case 'subject_stagnant':
+    case 'subject_changed':
+    case 'relation_blocking':
+    case 'pv_status':
+    case 'pv_stagnant':
+      return 'subject'
+    default:
+      return 'signal'
+  }
+}
+
+/**
+ * Traduit un signal du moteur en intentions copilote.
+ *
+ * `stale` est réservé aux signaux qui décrivent une ABSENCE D'ÉVOLUTION mesurée
+ * par le moteur canonique. `attention` reste porté par tous : un sujet stagnant
+ * mérite aussi d'apparaître dans « où en est le chantier ? ».
+ */
+function attentionSignalIntents(signal: AttentionSignal): CopilotIntent[] {
+  switch (signal) {
+    case 'subject_stagnant':
+    case 'pv_stagnant':
+    case 'relation_blocking':
+      return ['attention', 'stale']
+    case 'subject_changed':
+      return ['attention', 'changes']
+    default:
+      return ['attention']
+  }
 }

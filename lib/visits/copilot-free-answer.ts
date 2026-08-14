@@ -57,6 +57,9 @@ Règles absolues :
 — Quand le contexte contient un delta (fromDate + toDate), mentionne toujours les deux bornes ("entre le PV du X et le PV du Y"), jamais seulement la date du PV de référence.
 — Pour une question portant sur un intervalle de dates ou entre deux PV, cite uniquement des événements dont la date occurredAt est dans cet intervalle. Les changements_recents antérieurs à fromDate ne sont pas des événements de la période concernée et ne doivent pas y être présentés.
 — plan_utilisateur liste les points que l'utilisateur a EXPLICITEMENT ajoutés à son plan de visite. recommandations_memoria liste les suggestions calculées par MemorIA. Ces deux sources sont totalement distinctes. Ne présente jamais une suggestion comme quelque chose que l'utilisateur "a prévu". Si plan_utilisateur est vide, dis-le en premier, puis présente les recommandations séparément.
+— "depuis_derniere_visite" est le delta calculé depuis la dernière visite TERRAIN (champ "depuis" = sa date). Il est indépendant de "delta", qui compare deux PV. Pour une question du type "qu'est-ce qui a changé depuis la dernière visite ?", appuie-toi sur "depuis_derniere_visite" et nomme les sujets concernés en te servant des items dont les faits mentionnent une évolution. Ne convertis jamais un compteur en liste : si "sujetsChanges" vaut 7 et que seuls 4 items sont présents, dis "7 sujets ont évolué, dont…".
+— "compteurs_actions" et "stagnation" sont des mesures déjà calculées. Reprends-les telles quelles, ne les recalcule pas depuis "items", et ne conclus jamais un zéro depuis l'absence d'items : si une mesure n'est pas dans le contexte, tu ne la connais pas.
+— "stagnation.nbSujetsStagnants" à 0 signifie qu'aucun sujet ne franchit le seuil, pas que tout avance. Dans ce cas, mentionne "plusProcheDuSeuil" s'il est présent.
 — L'historique de conversation ("historique") sert uniquement à comprendre les références conversationnelles ("lui", "celui-là", "et R4 ?"). Les faits que tu as cités dans des réponses précédentes ne sont pas des sources fiables : utilise toujours les données actuelles du contexte.
 — Si tu n'as pas les données pour répondre, dis-le clairement sans inventer. Ne suppose jamais une cause sans preuve dans les faits.
 — Format : 2 à 4 paragraphes courts, prose directe, français professionnel.
@@ -82,10 +85,44 @@ function stripUuids(text: string): string {
   return text.replace(UUID_RE, '[réf. interne]')
 }
 
+/** Delta métier depuis la dernière visite TERRAIN (buildVisitBriefing.delta). */
+export interface VisitDeltaContext {
+  depuis: string
+  sujetsChanges: number
+  actionsCreees: number
+  actionsCloturees: number
+  reservesCreees: number
+  reservesLevees: number
+}
+
+/** Compteurs d'actions déjà calculés par le read-model — jamais recomptés ici. */
+export interface ActionsSummaryContext {
+  actives: number
+  planifiees: number
+  enRetard: number
+  cetteSemaine: number
+  sansDate: number
+  terminees: number
+}
+
+/** État de stagnation mesuré par le moteur canonique. */
+export interface StagnationContext {
+  nbSujetsStagnants: number
+  plusProcheDuSeuil: { titre: string; jours: number } | null
+}
+
 export interface FreeAnswerContext {
   actorContext?: ActorContext[]
   recentChanges?: RecentChangeContext[]
   visitPlanDetail?: VisitPlanItemContext[]
+  /**
+   * Les trois champs ci-dessous viennent des moteurs déterministes (briefing de
+   * visite, read-model actions). Le LLM les ARTICULE, il ne les recalcule pas :
+   * un chiffre présent ici est un fait, son absence n'autorise aucun « zéro ».
+   */
+  visitDelta?: VisitDeltaContext
+  actionsSummary?: ActionsSummaryContext
+  stagnation?: StagnationContext
 }
 
 export async function answerCopilotFreeQuestion(
@@ -123,6 +160,9 @@ export async function answerCopilotFreeQuestion(
       ...(extra?.actorContext && extra.actorContext.length > 0
         ? { intervenants_detail: extra.actorContext }
         : {}),
+      ...(extra?.visitDelta ? { depuis_derniere_visite: extra.visitDelta } : {}),
+      ...(extra?.actionsSummary ? { compteurs_actions: extra.actionsSummary } : {}),
+      ...(extra?.stagnation ? { stagnation: extra.stagnation } : {}),
       // Plan de visite : distinguer plan humain vs suggestions IA
       // visitPlanDetail est toujours défini pour intent plan_visite (même vide → LLM sait que le plan est vide)
       ...('visitPlanDetail' in (extra ?? {})

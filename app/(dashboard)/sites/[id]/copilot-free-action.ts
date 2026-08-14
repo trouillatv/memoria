@@ -32,6 +32,7 @@ import { getCanonicalSubjectLifeForSite } from '@/lib/db/canonical-subject-life'
 import { buildSubjectDetailForCopilot } from '@/lib/visits/copilot-subject-context'
 import { answerCopilotFreeQuestion } from '@/lib/visits/copilot-free-answer'
 import type { FreeAnswerContext, RecentChangeContext, VisitPlanItemContext } from '@/lib/visits/copilot-free-answer'
+import { buildVisitBriefing } from '@/lib/knowledge/visit-briefing'
 import { getSiteActorContext } from '@/lib/db/site-actor-responsibilities'
 import type { CopilotRef } from './copilot-action'
 
@@ -143,6 +144,10 @@ export async function askCopilotFreeAction(
     action_status:    'action',
     actor:            'actor',
     plan_visite:      'visit_plan',
+    // La stagnation se mesure sur les sujets canoniques (moteur canonical-subject-life),
+    // pas sur les actions : sans cette entrée le scope télémétrique retomberait sur
+    // 'unknown' et la famille serait invisible dans l'Observatoire.
+    stagnation:       'canonical_subject',
     global:           'site',
     proposal_request: 'site',
   }
@@ -400,9 +405,19 @@ export async function askCopilotFreeAction(
   // réellement sans signal. On trace donc l'échec : il interdit toute affirmation
   // quantitative ("aucune action en retard") — cf. resolveQuantitativeVerdict.
   let overviewLoadFailed = false
+  // Même règle pour le briefing : il porte les compteurs de stagnation et le
+  // delta terrain. En échec, ses mesures valent `null` — jamais zéro.
+  let briefingLoadFailed = false
 
-  const [overview, prepItemsRaw, actorContext, ...subjectLives] = await Promise.all([
+  const [overview, briefing, prepItemsRaw, actorContext, ...subjectLives] = await Promise.all([
     getSiteOverview(siteId).catch(() => { overviewLoadFailed = true; return emptySiteOverview(siteId) }),
+    // buildVisitBriefing est l'agrégateur déjà utilisé par « Préparer ma visite ».
+    // Le Copilote consomme LA MÊME intelligence plutôt que de reconstruire un
+    // agrégat parallèle : une seule source, une seule vérité (arbitrage Vincent).
+    buildVisitBriefing(siteId).catch(() => {
+      briefingLoadFailed = true
+      return null
+    }),
     userId
       ? listActivePreparationItems(siteId, userId).catch(() => [])
       : Promise.resolve([]),
@@ -417,8 +432,18 @@ export async function askCopilotFreeAction(
 
   const prepItems = prepItemsRaw.map((p) => ({ label: p.label, stableKey: p.stableKey }))
 
-  // Contexte de base Phase 2 (items + delta)
-  const context = buildSiteCopilotContext(siteId, overview.identity.name, overview, prepItems)
+  // Contexte de base Phase 2 (items + delta) + signaux du moteur canonique.
+  // `allAttention` et NON `attention` : le ranking du briefing écarte les `low`,
+  // arbitrage légitime pour l'UI de préparation de visite mais destructeur ici —
+  // sur un chantier terrain dont tous les signaux sont `low` (PETRO ATTITI, 7
+  // `subject_changed`), il supprimerait exactement le contexte attendu.
+  const context = buildSiteCopilotContext(
+    siteId,
+    overview.identity.name,
+    overview,
+    prepItems,
+    briefing?.allAttention ?? [],
+  )
 
   // Mapping intent primaire → filtre Phase 2
   const INTENT_FILTER_MAP: Record<string, 'attention' | 'changes' | 'stale' | 'next_visit'> = {
@@ -427,6 +452,7 @@ export async function askCopilotFreeAction(
     action_status: 'attention',
     subject_detail:'attention',
     actor:         'attention',
+    stagnation:    'stale',
     global:        'attention',
   }
   const safeIntent = INTENT_FILTER_MAP[classification.primary] ?? 'attention'
@@ -436,11 +462,29 @@ export async function askCopilotFreeAction(
   // en retard ?") : le moteur d'attention a déjà la réponse, inutile d'interroger le LLM
   // qui, face à un contexte vide, dit à tort "je n'ai pas d'informations" au lieu d'un
   // "zéro" confirmé (défaut Copilote V2, retour Guillaume).
-  // Un échec de chargement ne donne JAMAIS "aucune" : il donne "je ne sais pas".
+  //
+  // Les compteurs passés ici sont des MESURES, pas des comptages d'items filtrés :
+  // un verdict quantitatif exige une mesure quantitative. Un moteur en échec
+  // transmet `null`, ce qui produit "je ne sais pas" et jamais "aucun".
+  const engineCount = (signals: string[]): number | null =>
+    briefingLoadFailed || !briefing
+      ? null
+      : briefing.allAttention.filter((i) => signals.includes(i.signal)).length
+
   const quantitative = resolveQuantitativeVerdict({
+    question,
     primaryIntent: classification.primary,
-    itemCount: items.length,
     overviewLoadFailed,
+    measures: {
+      actionsOverdue:   overviewLoadFailed ? null : overview.actions.summary.overdue,
+      deadlinesOverdue: engineCount(['deadline_overdue']),
+      reservesOpen:     engineCount(['reserve_open']),
+      blocagesActive:   engineCount(['blocage_active']),
+      subjectsStagnant: briefingLoadFailed || !briefing ? null : briefing.stagnation.stagnantCount,
+    },
+    stagnationClosest: briefing?.stagnation.closest
+      ? { title: briefing.stagnation.closest.title, days: briefing.stagnation.closest.days }
+      : null,
   })
   if (quantitative) {
     const iid = await logCopilotInteraction({
@@ -485,6 +529,48 @@ export async function askCopilotFreeAction(
         occurredAt: c.occurredAt,
         detail: c.detail,
       }))
+    }
+  }
+
+  // ── Moteurs déterministes injectés selon la famille ──────────────────────────
+  //
+  // "Où en est le chantier ?" (global) est une question de SYNTHÈSE : elle a
+  // besoin du delta terrain, des compteurs d'actions ET de l'état de stagnation,
+  // pas seulement d'une liste de signaux. C'est ce manque qui rendait la réponse
+  // creuse sur PETRO ATTITI alors que les faits existaient en base.
+  const isGlobal     = classification.primary === 'global'
+  const isTimeline   = classification.primary === 'timeline' || classification.secondary.includes('timeline')
+  const isStagnation = classification.primary === 'stagnation'
+
+  if (briefing?.delta && (isGlobal || isTimeline)) {
+    extra.visitDelta = {
+      depuis:           briefing.delta.since,
+      sujetsChanges:    briefing.delta.subjectsChanged,
+      actionsCreees:    briefing.delta.actionsCreated,
+      actionsCloturees: briefing.delta.actionsClosed,
+      reservesCreees:   briefing.delta.reservesCreated,
+      reservesLevees:   briefing.delta.reservesLifted,
+    }
+  }
+
+  if (isGlobal && !overviewLoadFailed) {
+    const s = overview.actions.summary
+    extra.actionsSummary = {
+      actives:      s.active,
+      planifiees:   s.planned,
+      enRetard:     s.overdue,
+      cetteSemaine: s.week,
+      sansDate:     s.undated,
+      terminees:    s.completed,
+    }
+  }
+
+  if (briefing && !briefingLoadFailed && (isGlobal || isStagnation)) {
+    extra.stagnation = {
+      nbSujetsStagnants: briefing.stagnation.stagnantCount,
+      plusProcheDuSeuil: briefing.stagnation.closest
+        ? { titre: briefing.stagnation.closest.title, jours: briefing.stagnation.closest.days }
+        : null,
     }
   }
 
