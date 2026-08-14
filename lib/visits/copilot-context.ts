@@ -202,6 +202,61 @@ export function buildFallbackText(
   return `Les sujets suivants ${verb} : ${parts.join(' ; ')}.`
 }
 
+/**
+ * Intentions rapides réellement pertinentes pour ce chantier.
+ *
+ * Un raccourci n'est proposé que si le moteur a matière à répondre — c'est le
+ * MÊME filtre que celui utilisé pour construire la réponse, donc l'affichage ne
+ * peut pas diverger du contenu (doctrine : les suggestions du Copilote doivent
+ * être conditionnées par ce que MemorIA sait réellement du chantier).
+ */
+export function availableQuickIntents(context: SiteCopilotContext): CopilotIntent[] {
+  const all: CopilotIntent[] = ['attention', 'changes', 'stale', 'next_visit']
+  return all.filter((intent) => {
+    const { items, delta, prepItems } = filterContextForIntent(context, intent)
+    if (items.length > 0) return true
+    if (intent === 'changes') return delta !== null
+    if (intent === 'next_visit') return prepItems.length > 0
+    return false
+  })
+}
+
+/**
+ * Décide si une question quantitative peut recevoir une réponse « zéro » ferme.
+ *
+ * Distinction capitale (retour Vincent, 2026-08) : un périmètre chargé et vide
+ * autorise « aucune action en retard » ; un CHARGEMENT EN ÉCHEC ne l'autorise
+ * jamais — on ne remplace pas « je ne sais pas » par une affirmation erronée.
+ */
+export type QuantitativeVerdict =
+  | { kind: 'confirmed_zero'; text: string }
+  | { kind: 'unknown'; text: string }
+  | null
+
+export function resolveQuantitativeVerdict(input: {
+  primaryIntent: string
+  itemCount: number
+  overviewLoadFailed: boolean
+}): QuantitativeVerdict {
+  if (input.primaryIntent !== 'action_status') return null
+
+  if (input.overviewLoadFailed) {
+    return {
+      kind: 'unknown',
+      text: "Je n'ai pas pu charger les données de suivi de ce chantier. Je préfère ne rien affirmer plutôt que de vous dire à tort qu'il n'y a aucune action en retard — réessayez dans quelques instants.",
+    }
+  }
+
+  if (input.itemCount === 0) {
+    return {
+      kind: 'confirmed_zero',
+      text: "Aucune action n'est actuellement en retard sur ce chantier.",
+    }
+  }
+
+  return null
+}
+
 // ── Helpers internes ──────────────────────────────────────────────────────────
 
 function upsertSubject(map: Map<string, CopilotItem>, csId: string, item: CopilotItem) {

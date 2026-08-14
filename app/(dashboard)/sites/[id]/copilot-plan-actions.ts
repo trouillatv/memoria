@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { requireSiteAccess } from '@/lib/auth/resource-access'
 import { listActivePreparationItems, removePreparationItem } from '@/lib/db/visit-preparation'
 import { buildSiteIntelligenceContext } from '@/lib/knowledge/build-site-intelligence-context'
+import { getSiteOverview } from '@/lib/knowledge/site-overview'
+import { buildSiteCopilotContext, availableQuickIntents, type CopilotIntent } from '@/lib/visits/copilot-context'
 
 export type PlanItemSummary = {
   id: string
@@ -33,17 +35,69 @@ export async function fetchPlanItems(siteId: string): Promise<PlanItemSummary[]>
   }))
 }
 
-// Suggestions de questions dérivées du moteur d'attention du chantier réel —
-// jamais d'exemple statique (ex. "De quoi dépend l'avis G3 ?" sur un chantier
-// sans G3, défaut Copilote V2, retour Guillaume). Même gabarit que
-// getSiteContextualSuggestionsAction (app/(dashboard)/memoire/[siteId]/actions.ts).
-export async function getCopilotContextualSuggestions(siteId: string): Promise<string[]> {
+export type CopilotSuggestions = {
+  /**
+   * Raccourcis réellement pertinents pour ce chantier. Vide n'arrive jamais :
+   * un repli générique minimal est retourné pour un chantier presque vide.
+   */
+  quickIntents: CopilotIntent[]
+  /** Questions dérivées des sujets réels — jamais un exemple statique. */
+  contextual: string[]
+}
+
+// Repli générique minimal : "attention" répond honnêtement "aucun point
+// d'attention identifié" sur un chantier vide — jamais un exemple inventé.
+const FALLBACK_QUICK_INTENTS: CopilotIntent[] = ['attention']
+
+// Suggestions du Copilote dérivées de ce que MemorIA sait RÉELLEMENT du chantier —
+// jamais d'exemple statique (ex. "De quoi dépend l'avis G3 ?" affiché sur un
+// chantier sans G3, défaut Copilote V2, retour Guillaume).
+//
+// Les raccourcis passent par le MÊME moteur que les réponses
+// (buildSiteCopilotContext + filtre par intention) : un raccourci affiché ne peut
+// donc pas mener à un "je n'ai pas d'informations".
+export async function getCopilotSuggestions(siteId: string): Promise<CopilotSuggestions> {
   try {
     await requireSiteAccess(siteId)
   } catch {
-    return []
+    return { quickIntents: FALLBACK_QUICK_INTENTS, contextual: [] }
   }
 
+  const [quickIntents, contextual] = await Promise.all([
+    computeQuickIntents(siteId),
+    computeContextualQuestions(siteId),
+  ])
+
+  return { quickIntents, contextual }
+}
+
+async function computeQuickIntents(siteId: string): Promise<CopilotIntent[]> {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    const [overview, prepItems] = await Promise.all([
+      getSiteOverview(siteId),
+      user
+        ? listActivePreparationItems(siteId, user.id).catch(() => [])
+        : Promise.resolve([]),
+    ])
+
+    const context = buildSiteCopilotContext(
+      siteId,
+      overview.identity.name,
+      overview,
+      prepItems.map((p) => ({ label: p.label, stableKey: p.stableKey })),
+    )
+    const available = availableQuickIntents(context)
+    return available.length > 0 ? available : FALLBACK_QUICK_INTENTS
+  } catch {
+    // Chargement en échec ≠ chantier vide : on n'en déduit rien, on affiche le repli.
+    return FALLBACK_QUICK_INTENTS
+  }
+}
+
+async function computeContextualQuestions(siteId: string): Promise<string[]> {
   try {
     const ctx = await buildSiteIntelligenceContext(siteId, {
       attention: true,

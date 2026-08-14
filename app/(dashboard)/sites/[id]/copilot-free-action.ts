@@ -17,8 +17,9 @@ import { createClient } from '@/lib/supabase/server'
 import { requireSiteAccess } from '@/lib/auth/resource-access'
 import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
 import { listActivePreparationItems } from '@/lib/db/visit-preparation'
-import { buildSiteCopilotContext, filterContextForIntent } from '@/lib/visits/copilot-context'
+import { buildSiteCopilotContext, filterContextForIntent, resolveQuantitativeVerdict } from '@/lib/visits/copilot-context'
 import { classifyIntent } from '@/lib/visits/copilot-classify'
+import { understandQuestion, mergeComprehension } from '@/lib/visits/copilot-comprehension'
 import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
 import { buildCopilotProposal, buildScheduleProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { parseScheduleFromQuestion, toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
@@ -118,7 +119,22 @@ export async function askCopilotFreeAction(
   } catch { /* non bloquant */ }
 
   // ── Classification déterministe ───────────────────────────────────────────────
-  const classification = classifyIntent(question)
+  const deterministicClassification = classifyIntent(question)
+  const deterministicIntent = detectIntent(question)
+
+  // ── Couche de compréhension (LLM léger, jamais de réponse ni d'écriture) ─────
+  // Traduit une formulation orale imparfaite en structure. En cas de timeout,
+  // d'erreur ou de JSON invalide → null, et le déterministe reprend la main
+  // silencieusement (le Copilote doit rester fonctionnel sans LLM).
+  const comprehension = await understandQuestion(question)
+  const merged = mergeComprehension(
+    question,
+    deterministicClassification,
+    deterministicIntent,
+    comprehension,
+  )
+  const classification = merged.classification
+  const intentResult = merged.intentResult
 
   // Scope dérivé de l'intention primaire (pour la télémétrie)
   const INTENT_SCOPE_MAP: Record<string, CopilotScope> = {
@@ -131,9 +147,6 @@ export async function askCopilotFreeAction(
     proposal_request: 'site',
   }
   const baseScope: CopilotScope = INTENT_SCOPE_MAP[classification.primary] ?? 'unknown'
-
-  // Routeur d'intention V2 — source unique de vérité pour toutes les intentions d'écriture.
-  const intentResult = detectIntent(question)
 
   // Écriture détectée — Copilote 3C : résoudre le sujet puis construire un brouillon.
   if (intentResult.intent !== 'READ') {
@@ -332,7 +345,10 @@ export async function askCopilotFreeAction(
     && subjectIdsToLoad.size === 0
     && clarificationCandidates.length === 0
     && !selectedCandidateId
-  if (classification.primary === 'subject_detail' && allLabelsUnresolved) {
+  // Un indice de sujet issu de la compréhension LLM ("les toilettes" dans une phrase
+  // orale) n'autorise PAS un "je ne trouve rien" péremptoire : l'utilisateur n'a pas
+  // tapé un code technique, il a parlé. On poursuit vers la réponse générale.
+  if (classification.primary === 'subject_detail' && allLabelsUnresolved && !merged.subjectHintsFromLlm) {
     const labels = hasExtractedLabels
       ? classification.entities.subjectLabels.join(', ')
       : (extractedPhrase ?? question.slice(0, 60))
@@ -380,8 +396,13 @@ export async function askCopilotFreeAction(
   // ── Chargement des données ────────────────────────────────────────────────────
   const needsActor = classification.primary === 'actor' || classification.secondary.includes('actor')
 
+  // Un échec de chargement produit un overview VIDE, indiscernable d'un chantier
+  // réellement sans signal. On trace donc l'échec : il interdit toute affirmation
+  // quantitative ("aucune action en retard") — cf. resolveQuantitativeVerdict.
+  let overviewLoadFailed = false
+
   const [overview, prepItemsRaw, actorContext, ...subjectLives] = await Promise.all([
-    getSiteOverview(siteId).catch(() => emptySiteOverview(siteId)),
+    getSiteOverview(siteId).catch(() => { overviewLoadFailed = true; return emptySiteOverview(siteId) }),
     userId
       ? listActivePreparationItems(siteId, userId).catch(() => [])
       : Promise.resolve([]),
@@ -411,24 +432,29 @@ export async function askCopilotFreeAction(
   const safeIntent = INTENT_FILTER_MAP[classification.primary] ?? 'attention'
   const { items, delta, prepItems: filteredPrep } = filterContextForIntent(context, safeIntent)
 
-  // Réponse déterministe directe pour une question quantitative sans aucun résultat
-  // ("Quelles actions sont en retard ?" avec 0 action en retard) : le moteur d'attention
-  // a déjà la réponse (overview.attention.reasons vide), inutile d'interroger le LLM —
+  // Réponse déterministe directe pour une question quantitative ("Quelles actions sont
+  // en retard ?") : le moteur d'attention a déjà la réponse, inutile d'interroger le LLM
   // qui, face à un contexte vide, dit à tort "je n'ai pas d'informations" au lieu d'un
   // "zéro" confirmé (défaut Copilote V2, retour Guillaume).
-  if (classification.primary === 'action_status' && items.length === 0) {
-    const text = 'Aucune action n\'est actuellement en retard sur ce chantier.'
+  // Un échec de chargement ne donne JAMAIS "aucune" : il donne "je ne sais pas".
+  const quantitative = resolveQuantitativeVerdict({
+    primaryIntent: classification.primary,
+    itemCount: items.length,
+    overviewLoadFailed,
+  })
+  if (quantitative) {
     const iid = await logCopilotInteraction({
       siteId, userId, conversationId: conversationId ?? null,
       question, conversationMode: 'free',
       primaryIntent: classification.primary, secondaryIntents: classification.secondary,
       scope: baseScope, resolvedSubjectIds: [],
-      answerText: text, answerMode: 'deterministic_fallback', answerStatus: 'answered',
-      citedReferenceCount: 0, sourcesUsed: ['site_overview'],
+      answerText: quantitative.text, answerMode: 'deterministic_fallback',
+      answerStatus: quantitative.kind === 'confirmed_zero' ? 'answered' : 'insufficient_data',
+      citedReferenceCount: 0, sourcesUsed: quantitative.kind === 'confirmed_zero' ? ['site_overview'] : [],
       model: null, promptVersion: null, inputTokens: null, outputTokens: null,
       estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
     })
-    return { kind: 'answer', text, references: [], source: 'deterministic', interactionId: iid }
+    return { kind: 'answer', text: quantitative.text, references: [], source: 'deterministic', interactionId: iid }
   }
 
   // Enrichissement sujets détaillés

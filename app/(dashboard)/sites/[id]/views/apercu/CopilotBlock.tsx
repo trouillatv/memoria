@@ -15,7 +15,7 @@ import {
 } from '../../copilot-free-action'
 import { askCopilotAction, type CopilotActionResult } from '../../copilot-action'
 import { trackCopilotReferenceClick } from '../../copilot-event-action'
-import { fetchPlanItems, removePlanItem, getCopilotContextualSuggestions, type PlanItemSummary } from '../../copilot-plan-actions'
+import { fetchPlanItems, removePlanItem, getCopilotSuggestions, type PlanItemSummary } from '../../copilot-plan-actions'
 import type { CopilotIntent } from '@/lib/visits/copilot-context'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { ProposalCard, ScheduleProposalCard } from '@/components/copilot/CopilotProposalCards'
@@ -31,12 +31,15 @@ type Msg =
   | { kind: 'proposal';      id: string; text: string; proposal: CopilotProposal; interactionId: string | null }
   | { kind: 'thinking';      id: string }
 
-const QUICK_QUESTIONS: { intent: CopilotIntent; label: string }[] = [
-  { intent: 'attention',  label: "Qu'est-ce qui mérite mon attention ?" },
-  { intent: 'changes',    label: "Qu'est-ce qui a changé récemment ?" },
-  { intent: 'stale',      label: "Qu'est-ce qui traîne ?" },
-  { intent: 'next_visit', label: "Que dois-je vérifier à ma prochaine visite ?" },
-]
+// Libellés des raccourcis. Quels raccourcis sont AFFICHÉS est décidé côté serveur,
+// à partir de ce que MemorIA sait réellement du chantier (getCopilotSuggestions) —
+// on n'affiche jamais un raccourci qui mènerait à "je n'ai pas d'informations".
+const QUICK_LABELS: Record<CopilotIntent, string> = {
+  attention:  "Qu'est-ce qui mérite mon attention ?",
+  changes:    "Qu'est-ce qui a changé récemment ?",
+  stale:      "Qu'est-ce qui traîne ?",
+  next_visit: "Que dois-je vérifier à ma prochaine visite ?",
+}
 
 
 function uid() {
@@ -61,6 +64,8 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
   const [expanded, setExpanded]               = useState(false)
   // Suggestions dérivées des données réelles du chantier (jamais d'exemple statique)
   const [contextualSuggestions, setContextualSuggestions] = useState<string[]>([])
+  // Raccourcis conditionnés par ce que MemorIA sait du chantier ; 'attention' par défaut
+  const [quickIntents, setQuickIntents] = useState<CopilotIntent[]>(['attention'])
   const bottomRef                             = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -68,7 +73,12 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
   }, [siteId])
 
   useEffect(() => {
-    getCopilotContextualSuggestions(siteId).then(setContextualSuggestions).catch(() => {})
+    getCopilotSuggestions(siteId)
+      .then((s) => {
+        setContextualSuggestions(s.contextual)
+        if (s.quickIntents.length > 0) setQuickIntents(s.quickIntents)
+      })
+      .catch(() => {})
   }, [siteId])
 
   useEffect(() => {
@@ -246,15 +256,15 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
         <div className="mb-3 space-y-2">
           {/* Suggestions compactes */}
           <div className="flex flex-wrap gap-2">
-            {QUICK_QUESTIONS.map(({ intent, label }) => (
+            {quickIntents.map((intent) => (
               <button
                 key={intent}
                 type="button"
-                onClick={() => { setExpanded(false); sendQuick(intent, label) }}
+                onClick={() => { setExpanded(false); sendQuick(intent, QUICK_LABELS[intent]) }}
                 disabled={loading}
                 className="rounded-full border border-border bg-background px-3 py-1.5 text-[13px] font-medium text-foreground/70 hover:bg-muted disabled:opacity-50 transition-colors"
               >
-                {label}
+                {QUICK_LABELS[intent]}
               </button>
             ))}
           </div>

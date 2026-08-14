@@ -182,6 +182,29 @@ export function classifyIntent(question: string): IntentClassification {
   // Vérification écriture via le routeur centralisé
   const isWriteRequest = detectIntent(question).intent !== 'READ'
 
+  if (isWriteRequest) {
+    return {
+      primary: 'proposal_request',
+      secondary: [],
+      entities: { subjectLabels, actorLabels },
+      isWriteRequest: true,
+    }
+  }
+
+  return classifyReadIntent(question)
+}
+
+/**
+ * Classification des familles de LECTURE, sans consulter le routeur d'écriture.
+ *
+ * Utilisée par `classifyIntent` une fois l'écriture écartée, et par la couche de
+ * compréhension quand elle rétrograde une écriture faiblement détectée vers une
+ * lecture (le routeur, lui, dirait encore « écriture »).
+ */
+export function classifyReadIntent(question: string): IntentClassification {
+  const subjectLabels = extractSubjectLabels(question)
+  const actorLabels = extractActorLabels(question)
+
   // Score par famille (hors proposal)
   const scores: Record<Exclude<IntentFamily, 'proposal_request'>, number> = {
     subject_detail: (subjectLabels.length > 0 ? 2 : 0) + countSignals(question, SUBJECT_SIGNALS),
@@ -190,15 +213,6 @@ export function classifyIntent(question: string): IntentClassification {
     actor:          countSignals(question, ACTOR_SIGNALS),
     plan_visite:    countSignals(question, PLAN_SIGNALS),
     global:         0,
-  }
-
-  if (isWriteRequest) {
-    return {
-      primary: 'proposal_request',
-      secondary: [],
-      entities: { subjectLabels, actorLabels },
-      isWriteRequest: true,
-    }
   }
 
   // subject_detail sans code technique ni guillemets : aucune entité concrète à résoudre.
