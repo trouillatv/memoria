@@ -33,7 +33,7 @@ COMMENT ON COLUMN public.site_reports.canonical_reconcile_started_at IS
 -- Doit rester strictement identique à la fonction TypeScript :
 --   lib/db/canonical-subject-resolve.ts :: normalizeCanonicalLabel()
 --
--- PostgreSQL 13+ : normalize(text, 'NFD') est disponible nativement.
+-- PostgreSQL 13+ : normalize(text, NFD) est disponible nativement (NFD = mot-clé, pas chaîne).
 -- [\x{0300}-\x{036F}]+ : plage Unicode des combining diacritical marks.
 -- [^a-z0-9[:space:]] : tout ce qui n'est pas alphanum ASCII ou espace.
 
@@ -43,7 +43,7 @@ RETURNS text LANGUAGE sql IMMUTABLE STRICT AS $$
     regexp_replace(
       regexp_replace(
         regexp_replace(
-          lower(normalize(label, 'NFD')),
+          lower(normalize(label, NFD)),
           '[\x{0300}-\x{036F}]+', '', 'g'
         ),
         '[^a-z0-9[:space:]]', ' ', 'g'
