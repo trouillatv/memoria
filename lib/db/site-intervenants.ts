@@ -69,54 +69,117 @@ export async function listSiteIntervenants(siteId: string): Promise<SiteInterven
   })
 }
 
-/** Ouvre un lien rôle→entreprise (ACTIF) et retourne son id. Si un lien actif
- *  identique existe, met à jour son contact ; sinon en crée un (effective_from =
- *  date du CR, source = le CR). Ne clôture PAS les autres entreprises du même
- *  rôle (co-traitance possible). L'id retourné permet à la promotion de tracer
- *  le lien exact dans `promoted_object_id` (mig 212). */
+/** Ouvre une PARTICIPATION (mig 320) et retourne son id.
+ *
+ *  Depuis P0-3A, l'intervenant est une participation contextualisée : les
+ *  quatre états contact×company sont légaux, y compris le rôle SEUL
+ *  (« l'électricien » — companyId null, mainContactId null). On n'invente
+ *  jamais d'identité pour combler un NOT NULL disparu.
+ *
+ *  Résolution d'un lien actif « identique » (index partiel actif) :
+ *   1. correspondance exacte (site, role, company, contact) → réutilisée ;
+ *   2. sinon un lien actif (site, role, company) SANS contact peut être
+ *      ENRICHI par le contact fourni (niveau 3 → niveau 4) — jamais l'inverse :
+ *      rouvrir sans contact ne fait pas oublier Jean Dupont ;
+ *   3. sinon création. Ne clôture PAS les autres liens du même rôle
+ *      (co-traitance et successions possibles). */
 export async function openSiteIntervenant(input: {
   siteId: string
   role: string
-  companyId: string
+  /** null = entreprise inconnue (niveaux 1-2 de connaissance). */
+  companyId: string | null
   mainContactId?: string | null
   effectiveFrom?: string | null
   sourceReportId?: string | null
 }): Promise<string> {
   const sb = createAdminClient()
   const role = input.role.trim().toUpperCase()
-  const { data: existing } = await sb
+  const contactId = input.mainContactId ?? null
+
+  let actifs = sb
     .from('site_intervenants')
     .select('id, main_contact_id')
     .eq('site_id', input.siteId)
     .eq('role', role)
-    .eq('company_id', input.companyId)
     .is('effective_to', null)
-    .maybeSingle()
-  if (existing?.id) {
-    // Ne jamais ÉCRASER un contact connu par null : rouvrir le même lien sans
-    // contact (« Ginger » cité une 2ᵉ fois) ne doit pas faire oublier Jean Dupont.
-    if (input.mainContactId) {
-      const { error } = await sb.from('site_intervenants').update({ main_contact_id: input.mainContactId }).eq('id', existing.id)
-      if (error) throw new Error(error.message)
-    }
-    // Cette branche SORT tôt : sans invalidation ici, rattacher un contact à un
-    // intervenant existant ne se verrait nulle part. C'est la mutation qui invalide.
+  actifs = input.companyId ? actifs.eq('company_id', input.companyId) : actifs.is('company_id', null)
+  const { data: rows } = await actifs
+  const candidates = (rows ?? []) as Array<{ id: string; main_contact_id: string | null }>
+
+  const exact = candidates.find((c) => (c.main_contact_id ?? null) === contactId)
+  if (exact) {
     invalidateSiteProjection(input.siteId)
-    return existing.id as string
+    return exact.id
   }
+  // Enrichissement : un lien actif sans contact absorbe le contact fourni.
+  const enrichable = contactId ? candidates.find((c) => c.main_contact_id === null) : undefined
+  if (enrichable) {
+    const { error } = await sb.from('site_intervenants').update({ main_contact_id: contactId }).eq('id', enrichable.id)
+    if (error) throw new Error(error.message)
+    invalidateSiteProjection(input.siteId)
+    return enrichable.id
+  }
+
   const row: Record<string, unknown> = {
-    site_id: input.siteId, role, company_id: input.companyId, main_contact_id: input.mainContactId ?? null,
+    site_id: input.siteId, role, company_id: input.companyId, main_contact_id: contactId,
     source_report_id: input.sourceReportId ?? null,
   }
   if (input.effectiveFrom) row.effective_from = input.effectiveFrom
   const { data: ins, error } = await sb.from('site_intervenants').insert(row).select('id').single()
   if (error) throw new Error(error.message)
-  // Hook liaison acteur : crée ou retrouve un canonical_subject pour cet acteur
-  // sur ce chantier. Silencieux et non-bloquant. Couvre toutes les sources
-  // (visites, casting, CR) car openSiteIntervenant est le point d'entrée commun.
-  ensureActorCanonicalSubject(input.siteId, input.companyId, input.mainContactId ?? null).catch(() => undefined)
+  // Hook liaison acteur : uniquement quand une IDENTITÉ existe (entreprise ou
+  // personne). Un rôle seul n'est pas un acteur — on ne crée pas de canonical
+  // subject pour « l'électricien » non résolu.
+  if (input.companyId) {
+    ensureActorCanonicalSubject(input.siteId, input.companyId, contactId).catch(() => undefined)
+  }
   invalidateSiteProjection(input.siteId)
   return ins.id as string
+}
+
+/** REMPLACE une participation par une nouvelle dans le MÊME rôle (Jean → Paul).
+ *  Clôture l'ancienne (effective_to), ouvre la nouvelle, et CHAÎNE les deux
+ *  (replaced_by_intervenant_id, mig 320). « La participation de Jean a été
+ *  remplacée » — Jean, lui, n'est jamais obsolète : son passage reste vrai. */
+export async function replaceSiteIntervenant(input: {
+  siteId: string
+  /** La participation à clore. */
+  currentId: string
+  /** La relève — même rôle, identité éventuellement différente. */
+  next: { companyId: string | null; mainContactId?: string | null }
+  effectiveDate: string
+  sourceReportId?: string | null
+}): Promise<string> {
+  const sb = createAdminClient()
+  const { data: current } = await sb
+    .from('site_intervenants')
+    .select('id, role')
+    .eq('id', input.currentId)
+    .eq('site_id', input.siteId)
+    .is('effective_to', null)
+    .maybeSingle()
+  if (!current) throw new Error('Participation active introuvable')
+
+  const nextId = await openSiteIntervenant({
+    siteId: input.siteId,
+    role: (current as { role: string }).role,
+    companyId: input.next.companyId,
+    mainContactId: input.next.mainContactId ?? null,
+    effectiveFrom: input.effectiveDate,
+    sourceReportId: input.sourceReportId ?? null,
+  })
+  const { error } = await sb
+    .from('site_intervenants')
+    .update({
+      effective_to: input.effectiveDate,
+      replaced_by_intervenant_id: nextId,
+      replaced_at: new Date().toISOString(),
+    })
+    .eq('id', input.currentId)
+    .is('effective_to', null)
+  if (error) throw new Error(error.message)
+  invalidateSiteProjection(input.siteId)
+  return nextId
 }
 
 /** CLÔTURE un lien (effective_to = date) au lieu de le supprimer → l'historique du
