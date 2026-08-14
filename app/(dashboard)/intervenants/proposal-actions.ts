@@ -161,9 +161,16 @@ export async function confirmActorProposalAction(input: ConfirmActorProposalInpu
   return { ok: true, actorKind }
 }
 
-const dismissSchema = z.object({ proposalId: z.string().uuid(), reason: z.string().trim().max(200).optional() })
+// Taxonomie fermée de l'écart (mig 322) — exposée ici pour que « Jérôme était une
+// erreur » (extraction fausse) se distingue de « vrai mais sans intérêt » et de
+// « déjà connu ». Sans ce choix, dismiss_kind restait NULL pour tout écart d'acteur.
+const dismissSchema = z.object({
+  proposalId: z.string().uuid(),
+  reason: z.string().trim().max(200).optional(),
+  kind: z.enum(['false_extraction', 'not_relevant', 'duplicate']).optional(),
+})
 
-export async function dismissActorProposalAction(input: { proposalId: string; reason?: string }): Promise<{ ok: boolean; error?: string }> {
+export async function dismissActorProposalAction(input: { proposalId: string; reason?: string; kind?: 'false_extraction' | 'not_relevant' | 'duplicate' }): Promise<{ ok: boolean; error?: string }> {
   const g = await guard()
   if (!g.ok) return { ok: false, error: g.error }
   const parsed = dismissSchema.safeParse(input)
@@ -171,7 +178,7 @@ export async function dismissActorProposalAction(input: { proposalId: string; re
   // Résout l'org de la proposition (garde fail-closed) avant d'écarter.
   const proposal = await getActorProposalForConfirm(parsed.data.proposalId, g.orgIds)
   if (!proposal) return { ok: false, error: 'Proposition introuvable ou déjà traitée' }
-  await dismissProposal(parsed.data.proposalId, g.userId, parsed.data.reason, proposal.orgId)
+  await dismissProposal(parsed.data.proposalId, g.userId, parsed.data.reason, proposal.orgId, parsed.data.kind)
   await logAuditEvent({
     userId: g.userId,
     entityType: 'site',

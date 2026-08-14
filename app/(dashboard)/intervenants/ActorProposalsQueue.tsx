@@ -64,7 +64,7 @@ export function ActorProposalsQueue({ proposals, teams }: {
   )
 }
 
-type Panel = 'none' | 'associate' | 'create'
+type Panel = 'none' | 'associate' | 'create' | 'dismiss'
 
 function ProposalCard({ proposal, teams, onResolved }: {
   proposal: ActorProposal
@@ -153,7 +153,7 @@ function ProposalCard({ proposal, teams, onResolved }: {
           <button type="button" onClick={() => setPanel('create')} disabled={pending} className="inline-flex items-center gap-1 rounded-md border border-border/70 px-2 py-1 text-[12px] hover:bg-muted disabled:opacity-50">
             <UserPlus className="h-3 w-3" aria-hidden /> Créer
           </button>
-          <button type="button" onClick={() => run(() => dismissActorProposalAction({ proposalId: proposal.id }))} disabled={pending} className="inline-flex items-center gap-1 rounded-md border border-border/70 px-2 py-1 text-[12px] text-muted-foreground hover:bg-muted disabled:opacity-50">
+          <button type="button" onClick={() => setPanel('dismiss')} disabled={pending} className="inline-flex items-center gap-1 rounded-md border border-border/70 px-2 py-1 text-[12px] text-muted-foreground hover:bg-muted disabled:opacity-50">
             <X className="h-3 w-3" aria-hidden /> Ignorer
           </button>
           {source.reportId && (
@@ -169,6 +169,13 @@ function ProposalCard({ proposal, teams, onResolved }: {
       )}
       {panel === 'create' && (
         <CreatePanel proposal={proposal} teams={teams} siteName={source.siteName} pending={pending} onCancel={() => setPanel('none')} onSubmit={run} />
+      )}
+      {panel === 'dismiss' && (
+        <DismissPanel
+          pending={pending}
+          onCancel={() => setPanel('none')}
+          onPick={(kind) => run(() => dismissActorProposalAction({ proposalId: proposal.id, kind }))}
+        />
       )}
     </li>
   )
@@ -349,6 +356,33 @@ function CastOption({ siteName, cast, setCast, role, setRole }: {
       {cast && (
         <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Rôle sur le chantier (ex. MOE)" className={`${INPUT} mt-1.5`} />
       )}
+    </div>
+  )
+}
+
+/** Pourquoi écarter ? (taxonomie fermée, mig 322) — sans ce choix, dismiss_kind
+ *  restait NULL et « MemorIA s'est trompé » se confondait avec « vrai mais sans
+ *  intérêt » : deux signaux qui n'apprennent pas la même chose au système. */
+function DismissPanel({ pending, onCancel, onPick }: {
+  pending: boolean
+  onCancel: () => void
+  onPick: (kind: 'false_extraction' | 'not_relevant' | 'duplicate') => void
+}) {
+  return (
+    <div className="mt-2.5 space-y-1.5 rounded-lg border border-border/60 bg-muted/30 p-2.5">
+      <p className="text-[11.5px] text-muted-foreground">Pourquoi écarter cette proposition ?</p>
+      <div className="flex flex-col gap-1">
+        <button type="button" disabled={pending} onClick={() => onPick('false_extraction')} className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-left text-[12px] hover:border-brand-300 disabled:opacity-50">
+          MemorIA s’est trompé <span className="text-muted-foreground">— ce n’est pas une vraie personne/entreprise</span>
+        </button>
+        <button type="button" disabled={pending} onClick={() => onPick('not_relevant')} className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-left text-[12px] hover:border-brand-300 disabled:opacity-50">
+          Vrai mais sans intérêt <span className="text-muted-foreground">— pas utile pour ce chantier</span>
+        </button>
+        <button type="button" disabled={pending} onClick={() => onPick('duplicate')} className="rounded-md border border-border/60 bg-background px-2 py-1.5 text-left text-[12px] hover:border-brand-300 disabled:opacity-50">
+          Déjà connu <span className="text-muted-foreground">— doublon d’un acteur existant</span>
+        </button>
+      </div>
+      <button type="button" onClick={onCancel} className="text-[11.5px] text-muted-foreground hover:underline">Annuler</button>
     </div>
   )
 }

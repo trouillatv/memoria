@@ -14,10 +14,10 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Loader2, UserPlus, Building2, ArrowRightLeft } from 'lucide-react'
+import { Check, Loader2, UserPlus, Building2, ArrowRightLeft, LogOut } from 'lucide-react'
 import { toast } from 'sonner'
 import { todayLocalIso } from '@/lib/time/local-date'
-import { preciserIntervenantAction, remplacerIntervenantAction } from './intervenants-actions'
+import { preciserIntervenantAction, remplacerIntervenantAction, retirerIntervenantAction } from './intervenants-actions'
 
 export function IntervenantIdentityActions({
   siteId,
@@ -34,11 +34,12 @@ export function IntervenantIdentityActions({
 }) {
   const router = useRouter()
   const [pending, setPending] = useState(false)
-  const [mode, setMode] = useState<'personne' | 'entreprise' | 'remplacer' | null>(null)
+  const [mode, setMode] = useState<'personne' | 'entreprise' | 'remplacer' | 'retirer' | null>(null)
   const [valeur, setValeur] = useState('')
   const [remplPersonne, setRemplPersonne] = useState('')
   const [remplEntreprise, setRemplEntreprise] = useState('')
   const [remplDate, setRemplDate] = useState(todayLocalIso())
+  const [retirerDate, setRetirerDate] = useState(todayLocalIso())
 
   const fermer = () => { setMode(null); setValeur(''); setRemplPersonne(''); setRemplEntreprise('') }
 
@@ -82,6 +83,22 @@ export function IntervenantIdentityActions({
     } else toast.error(res.error)
   }
 
+  const retirer = async () => {
+    if (pending) return
+    setPending(true)
+    const res = await retirerIntervenantAction({
+      site_id: siteId,
+      intervenant_id: intervenantId,
+      effective_date: retirerDate,
+    })
+    setPending(false)
+    if (res.ok) {
+      toast.success('Intervenant retiré — son passage reste dans l’historique.')
+      fermer()
+      router.refresh()
+    } else toast.error(res.error)
+  }
+
   return (
     <section className="mt-3 space-y-2 rounded-xl border bg-muted/20 p-3">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -114,6 +131,15 @@ export function IntervenantIdentityActions({
             className="inline-flex items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1.5 text-[12.5px] text-muted-foreground hover:bg-muted"
           >
             <ArrowRightLeft className="h-3.5 w-3.5" /> Remplacer par…
+          </button>
+          {/* Retirer = FIN DE MISSION, pas une erreur : « il n'intervient plus »
+              se distingue de « il n'a jamais été intervenant » (doctrine F). */}
+          <button
+            type="button"
+            onClick={() => setMode('retirer')}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1.5 text-[12.5px] text-muted-foreground hover:bg-muted"
+          >
+            <LogOut className="h-3.5 w-3.5" /> Retirer
           </button>
         </div>
       )}
@@ -180,6 +206,35 @@ export function IntervenantIdentityActions({
             >
               {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowRightLeft className="h-3.5 w-3.5" />}
               Remplacer
+            </button>
+            <button type="button" disabled={pending} onClick={fermer} className="rounded-lg px-2.5 py-1.5 text-[12.5px] text-muted-foreground hover:bg-muted">
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mode === 'retirer' && (
+        <div className="space-y-1.5">
+          <p className="text-[12px] text-muted-foreground">
+            « {role} » n’intervient plus sur ce chantier à partir de quelle date ? La participation
+            est clôturée — son passage reste dans l’historique, rien n’est supprimé.
+          </p>
+          <input
+            type="date"
+            value={retirerDate}
+            onChange={(e) => setRetirerDate(e.target.value)}
+            className="w-full rounded-lg border bg-background px-2.5 py-1.5 text-[13px]"
+          />
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={retirer}
+              className="inline-flex items-center gap-1 rounded-lg bg-foreground px-2.5 py-1.5 text-[12.5px] font-semibold text-background disabled:opacity-50"
+            >
+              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
+              Retirer
             </button>
             <button type="button" disabled={pending} onClick={fermer} className="rounded-lg px-2.5 py-1.5 text-[12.5px] text-muted-foreground hover:bg-muted">
               Annuler

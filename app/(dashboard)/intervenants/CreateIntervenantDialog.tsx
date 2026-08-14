@@ -178,7 +178,10 @@ export function CreateIntervenantDialog({ orgs }: { orgs?: OrgOption[] }) {
           </Field>
 
           {orgs && orgs.length > 1 && (
-            <Field label="Organisation *" htmlFor="cri-org">
+            // « Dans quelle société ? » (retour Guillaume 2026-08-14) : même
+            // wording que CreateTeamButton.tsx — "organisation" est un concept
+            // technique qui l'a fait douter (AGP / SERVINORD).
+            <Field label="Dans quelle société ? *" htmlFor="cri-org">
               <select
                 id="cri-org"
                 value={orgId}
@@ -187,7 +190,7 @@ export function CreateIntervenantDialog({ orgs }: { orgs?: OrgOption[] }) {
                 disabled={pending}
                 className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               >
-                <option value="">Sélectionner une organisation</option>
+                <option value="">Sélectionner la société</option>
                 {orgs.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
               </select>
             </Field>

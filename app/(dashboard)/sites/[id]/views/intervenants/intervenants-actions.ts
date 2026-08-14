@@ -8,7 +8,7 @@
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
-import { openSiteIntervenant, replaceSiteIntervenant } from '@/lib/db/site-intervenants'
+import { openSiteIntervenant, replaceSiteIntervenant, closeSiteIntervenant } from '@/lib/db/site-intervenants'
 import { findOrCreateCompanyByName, findOrCreateCompanyContact, findOrCreateOrgContact, ensureActiveAffiliation } from '@/lib/db/companies'
 import { ensureActorCanonicalSubject } from '@/lib/db/actor-auto-link'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
@@ -368,5 +368,38 @@ export async function remplacerIntervenantAction(
     return { ok: true }
   } catch {
     return { ok: false, error: 'Remplacement impossible' }
+  }
+}
+
+// ── RETIRER — « Il n'intervient plus » (doctrine cycle de vie, retour Guillaume
+// 2026-08-14, point F) ────────────────────────────────────────────────────────
+//
+// Ne clôture QUE la relation temporelle (effective_to) : jamais le contact, jamais
+// l'entreprise, jamais la proposition source. Un intervenant retiré reste une
+// identité réutilisable et son passage reste vrai historiquement — ce n'est ni un
+// écart (dismiss_kind) ni une extraction fausse. Si la participation n'aurait
+// jamais dû exister, ce n'est pas ce geste qu'il faut utiliser.
+
+const retirerSchema = z.object({
+  site_id: z.string().uuid(),
+  intervenant_id: z.string().uuid(),
+  /** Date effective de fin (jour civil). */
+  effective_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+})
+
+export async function retirerIntervenantAction(
+  input: z.input<typeof retirerSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = retirerSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const access = await requireSiteWriteAccess(parsed.data.site_id, 'managerOrAdmin')
+  if (!access.ok) return { ok: false, error: 'Chantier introuvable' }
+
+  try {
+    await closeSiteIntervenant(parsed.data.site_id, parsed.data.intervenant_id, parsed.data.effective_date)
+    invalidateSiteProjection(parsed.data.site_id)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Retrait impossible' }
   }
 }
