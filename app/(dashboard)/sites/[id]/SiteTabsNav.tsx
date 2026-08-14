@@ -3,6 +3,14 @@ import { cn } from '@/lib/utils'
 
 export const SITE_TABS = [
   { key: 'apercu',           label: 'Aperçu' },
+  // « Visites » (retour Guillaume, 2026-08-14) : « Chronologie pour moi c'est de
+  // la planification, l'évolution du chantier — alors que là c'est des comptes
+  // rendus. » Son modèle mental est le bon :
+  //   Visites = ce que j'ai capturé sur le terrain et les CR associés ;
+  //   Chronologie = ce qui s'est passé sur le chantier dans le temps.
+  // On ne demande plus à l'utilisateur de deviner que ses visites vivent
+  // dans la Chronologie.
+  { key: 'visites',          label: 'Visites' },
   { key: 'chronologie',      label: 'Chronologie' },
   // Histoire = onglet de premier niveau depuis 2026-08-04. Doctrine :
   //   Chronologie = qu'est-ce qui s'est passé, événement après événement ?

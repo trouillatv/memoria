@@ -18,6 +18,9 @@ import {
   getLastEndedVisitForSite,
   listSiteVisitsWithCounts,
 } from '@/lib/db/visits'
+import { visitIntentLabel } from '@/lib/field/visit-intents'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { CR_VISITE_TEMPLATE_KEY } from '@/lib/visits/cr-visite-sections'
 import {
   getSiteCurrentState,
   getSiteIdentity,
@@ -200,6 +203,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         <Suspense key={tab} fallback={null}>
           {tab === 'apercu' ? (
             <SiteOverviewTab siteId={id} />
+          ) : tab === 'visites' ? (
+            <VisitesView siteId={id} />
           ) : tab === 'chronologie' ? (
             <ChronologieView siteId={id} />
           ) : tab === 'planning' ? (
@@ -301,6 +306,105 @@ async function TravailView({ siteId }: { siteId: string }) {
       completedRecent={overview.actions.completedRecent}
       synthesisHref={overview.activity.lastVisit ? `/sites/${siteId}/visites/${overview.activity.lastVisit.reportId}` : undefined}
     />
+  )
+}
+
+// ── VISITES — « ce que j'ai capturé sur le terrain et les CR associés » ──────
+// (retour Guillaume, 2026-08-14). Aucune nouvelle donnée : les objets de visite
+// existants (site_reports terrain + compteurs + statut du CR), présentés comme
+// une liste retrouvable — dates, statut, CR, photos, accès au poste de travail
+// de la visite (édition selon les droits, gérée par la page de destination).
+async function VisitesView({ siteId }: { siteId: string }) {
+  const rows = await listSiteVisitsWithCounts(siteId, 60).catch(() => [])
+
+  // Statut du CR par visite — UNE requête, pas une par ligne.
+  const crStatus = new Map<string, string>()
+  if (rows.length > 0) {
+    const { data } = await createAdminClient()
+      .from('report_documents')
+      .select('report_id, status')
+      .eq('template_key', CR_VISITE_TEMPLATE_KEY)
+      .in('report_id', rows.map((r) => r.visit.id))
+    for (const d of (data ?? []) as Array<{ report_id: string; status: string }>) {
+      crStatus.set(d.report_id, d.status)
+    }
+  }
+
+  const dateFmt = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Pacific/Noumea', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  })
+  const timeFmt = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Pacific/Noumea', hour: '2-digit', minute: '2-digit',
+  })
+
+  return (
+    <div className="max-w-3xl space-y-4">
+      <header className="space-y-1">
+        <h1 className="text-xl font-semibold tracking-tight">Visites</h1>
+        <p className="text-sm text-muted-foreground">
+          Ce que le terrain a capturé, visite par visite — avec le compte-rendu associé.
+        </p>
+      </header>
+
+      {rows.length === 0 ? (
+        <p className="rounded-xl border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
+          Aucune visite terrain sur ce chantier pour l&apos;instant.
+        </p>
+      ) : (
+        <ul className="overflow-hidden rounded-2xl border bg-card divide-y">
+          {rows.map(({ visit, photos, notes, reserves, actions }) => {
+            const startIso = visit.started_at ?? visit.created_at
+            const inProgress = !visit.ended_at
+            const cr = crStatus.get(visit.id) ?? null
+            const typeLabel = visitIntentLabel(visit.visit_motive) ?? 'Visite'
+            const meta = [
+              photos > 0 ? `${photos} photo${photos > 1 ? 's' : ''}` : null,
+              notes > 0 ? `${notes} note${notes > 1 ? 's' : ''}` : null,
+              reserves > 0 ? `${reserves} réserve${reserves > 1 ? 's' : ''}` : null,
+              actions > 0 ? `${actions} action${actions > 1 ? 's' : ''}` : null,
+            ].filter(Boolean)
+            return (
+              <li key={visit.id}>
+                <Link
+                  href={`/sites/${siteId}/visites/${visit.id}`}
+                  className="flex items-center gap-4 px-4 py-3.5 transition-colors hover:bg-muted/40"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium first-letter:uppercase">
+                        {dateFmt.format(new Date(startIso))}
+                        <span className="ml-1.5 font-normal text-muted-foreground">{timeFmt.format(new Date(startIso))}</span>
+                      </span>
+                      {inProgress && (
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
+                          En cours
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-0.5 block text-[13px] text-muted-foreground">
+                      {typeLabel}
+                      {meta.length > 0 && ` · ${meta.join(' · ')}`}
+                    </span>
+                  </span>
+                  {/* L'état RÉEL du document — final figé, brouillon, ou pas encore de CR. */}
+                  {cr === 'validated' || cr === 'exported' ? (
+                    <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
+                      CR final
+                    </span>
+                  ) : cr === 'draft' ? (
+                    <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                      CR brouillon
+                    </span>
+                  ) : (
+                    <span className="shrink-0 text-[11px] text-muted-foreground/60">sans CR</span>
+                  )}
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
   )
 }
 
