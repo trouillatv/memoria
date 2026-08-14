@@ -27,11 +27,12 @@ import { getVisit } from '@/lib/db/visits'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildVisitNarrative, buildVisitChanges } from '@/lib/db/visit-narrative'
 import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
-import { getVisitCapturePreviewUrls, type VisitCaptureRow } from '@/lib/db/visit-captures'
+import { getVisitCapturePreviewUrls, listVisitCaptures, type VisitCaptureRow } from '@/lib/db/visit-captures'
 import { getIllustratesLinksForRun } from '@/lib/db/document-extractions'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { VisitShareButton } from '@/app/(field)/m/visite/[reportId]/VisitShareButton'
 import { VisitDesk, type CaptureMedia } from './VisitDesk'
+import { VisitPhotosSection, type VisitPhotoItem } from './VisitPhotosSection'
 import { ReanalyseButton } from './ReanalyseButton'
 import { VerserPiece } from './VerserPiece'
 import { RegenerateNarrativeButton } from './RegenerateNarrativeButton'
@@ -98,6 +99,28 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
 
   const { captured, understood, produced, historical, enrichment } = narrative
   const isImport = visit.origin === 'import'
+
+  // ── Photos de LA visite — la continuité mobile → desktop ───────────────────
+  // Même source que le mobile (listVisitCaptures : hidden_at masqué, ordre du
+  // terrain) ; les URLs signées sont DÉJÀ dans `media` (mêmes captures) — pas de
+  // 2ᵉ tournée de signatures. Une pièce sans URL s'affiche « introuvable » : on
+  // ne masque jamais une preuve en silence. Les visites importées ont leurs
+  // propres sections photo (PV) — pas de doublon.
+  let photosVisite: VisitPhotoItem[] = []
+  if (!isImport) {
+    const galleryCaptures = (await listVisitCaptures(visitId).catch(() => [] as VisitCaptureRow[]))
+      .filter((c) => (c.kind === 'photo' || c.kind === 'video') && c.status !== 'discarded')
+    photosVisite = galleryCaptures.map((c) => ({
+      id: c.id,
+      kind: c.kind as 'photo' | 'video',
+      url: media[c.id]?.url ?? null,
+      mime: media[c.id]?.mime ?? null,
+      caption: c.body,
+      starred: c.starred,
+      annotatedOriginalId: c.annotated_original_id,
+      capturedAt: c.captured_at,
+    }))
+  }
 
   // Photos depuis le PV — calculées avant photos pour alimenter le compteur
   type PinnedSnapshot = { id: string; page: number | null; caption: string | null; url: string }
@@ -590,6 +613,12 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                 </Link>
               </div>
             </section>
+          )}
+
+          {/* Les preuves terrain, reprises au bureau : galerie + grand format +
+              annotation + légende — même modèle et mêmes gestes que le mobile. */}
+          {!isImport && (
+            <VisitPhotosSection siteId={id} reportId={visitId} photos={photosVisite} />
           )}
 
           {!isImport && (

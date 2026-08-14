@@ -34,7 +34,7 @@
 
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Camera, ChevronRight } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
@@ -90,13 +90,25 @@ export default async function VisitCrDesktopPage({
         <p className="mt-1 text-[13px] text-muted-foreground">
           {identity.name} — {frDate(debut)}. Corrigez le texte à gauche, tranchez ce qui attend à droite.
         </p>
-        <Link
-          href={`/sites/${id}/visites/${visitId}`}
-          className="mt-3 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden />
-          Retour à la visite
-        </Link>
+        <div className="mt-3 flex flex-wrap items-center gap-4">
+          <Link
+            href={`/sites/${id}/visites/${visitId}`}
+            className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            Retour à la visite
+          </Link>
+          {/* Finaliser le CR = travailler avec les PREUVES : on rejoint la
+              galerie de la visite (grand format, annotation, légende) en un
+              geste — pas une seconde galerie ici. */}
+          <Link
+            href={`/sites/${id}/visites/${visitId}#photos`}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[13px] font-medium hover:bg-muted"
+          >
+            <Camera className="h-4 w-4 text-sky-600" aria-hidden />
+            Voir / annoter les photos de la visite
+          </Link>
+        </div>
       </header>
 
       {/* Bilan factuel du plan de visite — constat de l'exécution, même source

@@ -56,6 +56,9 @@ export interface VisitCaptureRow {
   is_viewpoint: boolean
   /** Reprise d'un point de repère (mig 195) : pointe la capture ancre. */
   viewpoint_of: string | null
+  /** Version ANNOTÉE d'une photo (mig 185) : pointe la photo d'origine — c'est
+   *  ce qui permet « Version annotée » + « Voir l'original » dans les galeries. */
+  annotated_original_id: string | null
   created_at: string
 }
 
@@ -181,7 +184,7 @@ export async function listVisitCaptures(reportId: string): Promise<VisitCaptureR
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, created_at')
     .eq('report_id', reportId)
     .is('hidden_at', null) // masque un original ARCHIVÉ (remplacé par sa version annotée, mig 185)
     .order('captured_at', { ascending: true, nullsFirst: true })
@@ -195,7 +198,7 @@ export async function listVisitCapturesBySubject(subjectId: string): Promise<Vis
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, created_at')
     .eq('subject_id', subjectId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -211,7 +214,7 @@ export async function listVisitCapturesBySite(siteId: string, limit = 300): Prom
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, created_at')
     .eq('site_id', siteId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -229,7 +232,7 @@ export async function listVisitCapturesByDossier(dossierId: string, limit = 300)
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, created_at')
     .eq('dossier_id', dossierId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -306,7 +309,7 @@ export async function listSiteViewpointRows(siteId: string): Promise<VisitCaptur
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, created_at')
     .eq('site_id', siteId)
     .eq('kind', 'photo')
     .neq('status', 'discarded')
@@ -324,7 +327,7 @@ export async function listSitePhotoCaptures(siteId: string, limit = 500): Promis
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, created_at')
     .eq('site_id', siteId)
     .eq('kind', 'photo')
     .neq('status', 'discarded')
