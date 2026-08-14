@@ -44,7 +44,8 @@ export interface IntervenantPerson {
   name: string
   fonction: string | null
   role: string
-  companyId: string
+  /** NULL = participation sans entreprise (rôle seul ou personne seule, mig 320). */
+  companyId: string | null
   companyName: string
   phone: string | null
   mobile: string | null
@@ -75,7 +76,8 @@ export interface IntervenantPerson {
 }
 
 export interface IntervenantGroup {
-  companyId: string
+  /** NULL = le groupe des participations sans entreprise identifiée. */
+  companyId: string | null
   companyName: string
   roles: string[]
   people: IntervenantPerson[]
@@ -155,7 +157,7 @@ async function buildIntervenantPeople(
   const intByObjectId = new Map<string, string>()
   for (const it of intervenants) {
     intByObjectId.set(it.id, it.id)
-    if (!intByObjectId.has(it.companyId)) intByObjectId.set(it.companyId, it.id)
+    if (it.companyId && !intByObjectId.has(it.companyId)) intByObjectId.set(it.companyId, it.id)
   }
   const mentionsByIntervenant = new Map<string, StakeholderProp[]>()
   for (const p of confirmed) {
@@ -170,13 +172,15 @@ async function buildIntervenantPeople(
   // Où les connaît-on AILLEURS ? Contact d'abord (la personne), sinon
   // l'entreprise. Une seule lecture pour tout le casting, org-scopée fail-closed.
   const contactIds = [...new Set(intervenants.map((i) => i.mainContactId).filter((x): x is string => !!x))]
-  const companyIds = [...new Set(intervenants.map((i) => i.companyId))]
+  // companyId NULLABLE (mig 320) : un null dans le .in() rendait le filtre
+  // PostgREST malformé — bug latent que le retypage a fait remonter.
+  const companyIds = [...new Set(intervenants.map((i) => i.companyId).filter((x): x is string => !!x))]
   const elsewhereByContact = new Map<string, IntervenantElsewhere[]>()
   const elsewhereByCompany = new Map<string, IntervenantElsewhere[]>()
-  {
+  if (contactIds.length > 0 || companyIds.length > 0) {
     const orFilters = [
       contactIds.length > 0 ? `main_contact_id.in.(${contactIds.join(',')})` : null,
-      `company_id.in.(${companyIds.join(',')})`,
+      companyIds.length > 0 ? `company_id.in.(${companyIds.join(',')})` : null,
     ].filter(Boolean).join(',')
     const { data: rows } = await db
       .from('site_intervenants')
@@ -190,7 +194,7 @@ async function buildIntervenantPeople(
       const { data: siteRows } = await db
         .from('sites').select('id, name').in('id', otherSiteIds).in('organization_id', orgIds).is('deleted_at', null)
       const siteName = new Map((siteRows ?? []).map((s) => [s.id as string, s.name as string]))
-      for (const r of (rows ?? []) as Array<{ site_id: string; role: string; company_id: string; main_contact_id: string | null }>) {
+      for (const r of (rows ?? []) as Array<{ site_id: string; role: string; company_id: string | null; main_contact_id: string | null }>) {
         const name = siteName.get(r.site_id)
         if (!name) continue
         const entry: IntervenantElsewhere = { siteId: r.site_id, siteName: name, role: r.role }
@@ -198,8 +202,10 @@ async function buildIntervenantPeople(
           const l = elsewhereByContact.get(r.main_contact_id) ?? []
           l.push(entry); elsewhereByContact.set(r.main_contact_id, l)
         }
-        const l = elsewhereByCompany.get(r.company_id) ?? []
-        l.push(entry); elsewhereByCompany.set(r.company_id, l)
+        if (r.company_id) {
+          const l = elsewhereByCompany.get(r.company_id) ?? []
+          l.push(entry); elsewhereByCompany.set(r.company_id, l)
+        }
       }
     }
   }
@@ -320,7 +326,7 @@ async function buildIntervenantPeople(
     const lastStructured = it.mainContactId ? lastStructuredByContact.get(it.mainContactId) : null
     const dates = [it.effectiveFrom, ...citedVisits.map((v) => v.date), lastStructured].filter((x): x is string => !!x)
     const elsewhere = (it.mainContactId ? elsewhereByContact.get(it.mainContactId) : null)
-      ?? elsewhereByCompany.get(it.companyId) ?? []
+      ?? (it.companyId ? elsewhereByCompany.get(it.companyId) : null) ?? []
     // La frise : début de participation + relève + affiliations — chaque entrée
     // porte une vraie date, sinon elle n'existe pas.
     const lifeline: Array<{ date: string; label: string }> = []
@@ -387,7 +393,7 @@ export async function getSiteIntervenantsView(siteId: string): Promise<SiteInter
   const people = await buildIntervenantPeople(db, orgIds, siteId, intervenants)
 
   // ── Groupé par entreprise (« qui est chez PAVE ? ») ──
-  const groupByCompany = new Map<string, IntervenantGroup>()
+  const groupByCompany = new Map<string | null, IntervenantGroup>()
   for (const p of people) {
     // D1 (P0-3D) : les participations SANS entreprise (rôle seul, personne seule)
     // se regroupent sous un intitulé d'état — jamais un en-tête vide.

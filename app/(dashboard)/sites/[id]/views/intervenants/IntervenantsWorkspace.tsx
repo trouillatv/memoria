@@ -30,7 +30,8 @@ const ROLES = ['MOA', 'MOE', 'BET', 'ETV', 'OPC', 'CSPS', 'PAVE', 'PLANIF']
 export function IntervenantsWorkspace({ view }: { view: SiteIntervenantsView }) {
   const router = useRouter()
   const [query, setQuery] = useState('')
-  const [closed, setClosed] = useState<ReadonlySet<string>>(new Set())
+  // Clé null = le groupe « Sans entreprise identifiée » (companyId nullable, mig 320).
+  const [closed, setClosed] = useState<ReadonlySet<string | null>>(new Set())
   const [selected, setSelected] = useState<IntervenantPerson | null>(null)
   const [associating, setAssociating] = useState(false)
   // Les propositions traitées pendant la session — retrait optimiste, le serveur
@@ -107,7 +108,7 @@ export function IntervenantsWorkspace({ view }: { view: SiteIntervenantsView }) 
             {groups.map((g) => {
               const isClosed = closed.has(g.companyId)
               return (
-                <div key={g.companyId} className="overflow-hidden rounded-xl border">
+                <div key={g.companyId ?? '__sans_entreprise__'} className="overflow-hidden rounded-xl border">
                   <button
                     type="button"
                     onClick={() => setClosed((s) => {

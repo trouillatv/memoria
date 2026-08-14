@@ -10,7 +10,10 @@ export interface SiteIntervenant {
   id: string
   siteId: string
   role: string
-  companyId: string
+  /** NULL depuis la mig 320 : rôle seul et personne-sans-entreprise sont des
+   *  états métier LÉGITIMES — le type dit la vérité du modèle, plus de
+   *  filter(Boolean) silencieux pour masquer un null. */
+  companyId: string | null
   companyName: string
   companyShort: string | null
   mainContactId: string | null
@@ -50,13 +53,13 @@ export async function listSiteIntervenants(siteId: string): Promise<SiteInterven
   }
 
   return list.map((r) => {
-    const c = companyById.get(r.company_id as string)
+    const c = r.company_id ? companyById.get(r.company_id as string) : undefined
     const ct = r.main_contact_id ? contactById.get(r.main_contact_id as string) : undefined
     return {
       id: r.id as string,
       siteId: r.site_id as string,
       role: r.role as string,
-      companyId: r.company_id as string,
+      companyId: (r.company_id as string | null) ?? null,
       companyName: (c?.name as string) ?? '',
       companyShort: (c?.short_name as string | null) ?? null,
       mainContactId: (r.main_contact_id as string | null) ?? null,

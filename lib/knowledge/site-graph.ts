@@ -240,7 +240,9 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
   const intByCompany = new Map<string, string>()
   const intByContact = new Map<string, string>()
   for (const it of intervenants) {
-    if (!intByCompany.has(it.companyId)) intByCompany.set(it.companyId, `int_${it.id}`)
+    // companyId null (rôle seul / personne seule, mig 320) : pas d'entrée — une
+    // action assignée à une entreprise ne peut pas viser une participation sans.
+    if (it.companyId && !intByCompany.has(it.companyId)) intByCompany.set(it.companyId, `int_${it.id}`)
     if (it.mainContactId && !intByContact.has(it.mainContactId)) intByContact.set(it.mainContactId, `int_${it.id}`)
   }
   const actorActionThreads = new Map<string, Set<string>>()  // acteur node id → thread ids de ses actions
@@ -293,7 +295,7 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
   const intNodeByObjectId = new Map<string, string>()
   for (const it of intervenants) {
     intNodeByObjectId.set(it.id, `int_${it.id}`)
-    if (!intNodeByObjectId.has(it.companyId)) intNodeByObjectId.set(it.companyId, `int_${it.id}`)
+    if (it.companyId && !intNodeByObjectId.has(it.companyId)) intNodeByObjectId.set(it.companyId, `int_${it.id}`)
   }
   for (const p of props.filter((x) => x.kind === 'stakeholder' && x.status === 'confirmed' && x.promoted_object_id)) {
     const target = intNodeByObjectId.get(p.promoted_object_id!)
