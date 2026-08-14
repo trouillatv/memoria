@@ -111,4 +111,29 @@ describe('rankBriefingAttention', () => {
     expect(result).toHaveLength(2)
     expect(result.every(i => i.urgency === 'critical')).toBe(true)
   })
+
+  // LOT4/5 (retour Guillaume 2026-08-14) : une action à échéance non confirmée
+  // (due_date_status != 'explicit') sort en urgency 'medium', jamais 'low' —
+  // sinon elle serait invisible ici (low exclu systématiquement), alors que
+  // LOT5 attend justement qu'elle apparaisse dans la préparation de visite.
+  it('un item « à vérifier » (action_to_verify, medium) reste inclus dans le briefing', () => {
+    const items = [
+      item('action_to_verify', 'medium', 'a-verifier'),
+    ]
+    const result = rankBriefingAttention(items)
+    expect(result).toHaveLength(1)
+    expect(result[0].signal).toBe('action_to_verify')
+    expect(result[0].urgency).toBe('medium')
+  })
+
+  it('une action réellement en retard (confirmée, high) reste prioritaire sur une action à vérifier (medium)', () => {
+    const items = [
+      item('action_to_verify', 'medium', 'a-verifier'),
+      item('action_overdue', 'high', 'a-confirmee-en-retard'),
+    ]
+    const result = rankBriefingAttention(items)
+    expect(result[0].title).toBe('a-confirmee-en-retard')
+    expect(result[0].urgency).toBe('high')
+    expect(result[1].title).toBe('a-verifier')
+  })
 })

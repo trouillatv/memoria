@@ -17,6 +17,7 @@ import { detectActorCongestion } from '@/lib/db/site-memory-signals'
 import { listPendingSuggestionsForSite } from '@/lib/db/subject-suggestions'
 import { getSiteSubjectMatrix } from '@/lib/documents/pv-history'
 import { computeWatchlist, type WatchReason } from '@/lib/documents/pv-watchlist'
+import { describeOverdueAction } from '@/lib/knowledge/overdue-action'
 
 export type AttentionSignal =
   | 'subject_stagnant'
@@ -291,20 +292,17 @@ export async function deriveSiteAttentionItems(
     const csId = action.subject_thread_id ? threadToCs.get(action.subject_thread_id) : undefined
     if (csId && coveredCsIds.has(csId)) continue
 
-    const overdueDays = daysBetween(action.due_date, today)
-    const isConfirmedDate = action.due_date_status === 'explicit'
-    const signal = isConfirmedDate ? 'action_overdue' : 'action_to_verify'
+    const overdue = describeOverdueAction(action.title, action.due_date, action.due_date_status, today)
+    const signal = overdue.confirmed ? 'action_overdue' : 'action_to_verify'
     // 'medium', pas 'low' : rankBriefingAttention (visit-briefing.ts) écarte tout
     // ce qui est 'low' avant la visite. Un item « à vérifier » doit justement
     // apparaître dans la préparation de visite (LOT5) — sinon la question posée
     // au terrain (Q9) reste invisible plutôt que « à vérifier ».
-    const urgency: AttentionUrgency = isConfirmedDate
-      ? (overdueDays > 14 ? 'high' : overdueDays > 7 ? 'high' : 'medium')
+    const urgency: AttentionUrgency = overdue.confirmed
+      ? (overdue.overdueDays > 14 ? 'high' : overdue.overdueDays > 7 ? 'high' : 'medium')
       : 'medium'
     const title = csId ? (csIndex.get(csId)?.title ?? action.title) : action.title
-    const reason = isConfirmedDate
-      ? `Action « ${action.title} » en retard de ${overdueDays} j`
-      : `Prévu le ${action.due_date} · réalisation non confirmée`
+    const reason = overdue.reason
 
     if (csId) {
       items.push({

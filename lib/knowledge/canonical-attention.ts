@@ -14,6 +14,7 @@ import { getNavigableSubjectsForSite, type NavigableSubjectSummary } from '@/lib
 import { listConfirmedLinksForSite } from '@/lib/db/subject-thread-links'
 import { getSiteSubjectMatrix } from '@/lib/documents/pv-history'
 import { computeWatchlist } from '@/lib/documents/pv-watchlist'
+import { describeOverdueAction } from '@/lib/knowledge/overdue-action'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -200,20 +201,13 @@ export async function deriveCanonicalAttentionItems(
     due_date_status: 'explicit' | 'estimated' | null; subject_thread_id: string | null
   }
   const overdueActions = (overdueActionsResult.data ?? []) as ActionRow[]
-  // due_date_status distingue une date CONFIRMÉE par un humain d'une date DÉDUITE
-  // par l'IA — même règle que assigned-actions.ts. Une date estimée non confirmée
-  // n'est jamais « en retard » (retour Guillaume 2026-08-14, LOT4).
-  const overdueByCsId = new Map<string, { title: string; overdueDays: number; dueDate: string; confirmed: boolean }>()
+  const overdueByCsId = new Map<string, { title: string; overdueDays: number; dueDate: string; confirmed: boolean; reason: string }>()
   for (const a of overdueActions) {
     if (!a.subject_thread_id) continue
     const csId = threadToCs.get(a.subject_thread_id)
     if (!csId || overdueByCsId.has(csId)) continue
-    overdueByCsId.set(csId, {
-      title: a.title,
-      overdueDays: daysBetween(a.due_date, today),
-      dueDate: a.due_date,
-      confirmed: a.due_date_status === 'explicit',
-    })
+    const info = describeOverdueAction(a.title, a.due_date, a.due_date_status, today)
+    overdueByCsId.set(csId, { title: a.title, dueDate: a.due_date, ...info })
   }
 
   // ── 6. Échéances proches par canonical ────────────────────────────────────
@@ -330,10 +324,8 @@ export async function deriveCanonicalAttentionItems(
     }
 
     // Ligne 3 : action en retard, à vérifier, ou objets actifs
-    if (overdue && overdue.confirmed) {
-      reasons.push(`Action « ${overdue.title} » en retard de ${overdue.overdueDays} j`)
-    } else if (overdue) {
-      reasons.push(`Prévu le ${overdue.dueDate} · réalisation non confirmée`)
+    if (overdue) {
+      reasons.push(overdue.reason)
     } else if (s.activeObjects.total > 0) {
       const objParts: string[] = []
       if (s.activeObjects.actionsOpen > 0)
