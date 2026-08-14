@@ -17,7 +17,13 @@ import { createClient } from '@/lib/supabase/server'
 import { requireSiteAccess } from '@/lib/auth/resource-access'
 import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
 import { listActivePreparationItems } from '@/lib/db/visit-preparation'
-import { buildSiteCopilotContext, filterContextForIntent, resolveQuantitativeVerdict } from '@/lib/visits/copilot-context'
+import {
+  buildSiteCopilotContext,
+  filterContextForIntent,
+  resolveQuantitativeVerdict,
+  isVisitPlanSignal,
+  COPILOT_MAX_VISIT_PLAN,
+} from '@/lib/visits/copilot-context'
 import { classifyIntent } from '@/lib/visits/copilot-classify'
 import { understandQuestion, mergeComprehension } from '@/lib/visits/copilot-comprehension'
 import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
@@ -585,14 +591,50 @@ export async function askCopilotFreeAction(
   // Plan de visite : toujours définir visitPlanDetail pour intent plan_visite
   // (même vide → le LLM sait que le plan humain est vide et peut distinguer
   //  plan_utilisateur de recommandations_memoria)
+  //
+  // Deux sources, dans cet ordre : le moteur canonique d'attention d'abord, puis
+  // `pvToVerify`. Avant ce lot, seule la seconde alimentait le plan — un chantier
+  // suivi en visites terrain sans PV analysé (PETRO ATTITI) recevait donc une
+  // liste vide, et MemorIA demandait à l'utilisateur ce qu'il fallait vérifier
+  // au lieu de le lui dire. On lit `allAttention` et non `attention` pour la même
+  // raison qu'au-dessus (construction du contexte) : `rankBriefingAttention`
+  // écarte les `low` et rendrait le plan vide sur ce chantier précis.
   const needsPlan = safeIntent === 'next_visit'
   if (needsPlan) {
-    extra.visitPlanDetail = overview.pvToVerify.map((v): VisitPlanItemContext => ({
-      label: v.label,
-      priority: 'normal',
-      reason: null,
-      signals: v.signals,
-    }))
+    const plan: VisitPlanItemContext[] = []
+    const seen = new Set<string>()
+    const push = (key: string | null, item: VisitPlanItemContext) => {
+      // Dédup par sujet canonique : le même sujet vu par le moteur ET par le
+      // moteur PV reste UN point de visite, jamais deux lignes concurrentes.
+      if (key) {
+        if (seen.has(key)) return
+        seen.add(key)
+      }
+      plan.push(item)
+    }
+
+    for (const item of (briefing?.allAttention ?? []).filter((i) => isVisitPlanSignal(i.signal))) {
+      const csId = typeof item.metadata?.canonicalSubjectId === 'string'
+        ? item.metadata.canonicalSubjectId
+        : null
+      push(csId, {
+        label: item.title,
+        priority: item.urgency,
+        reason: item.reason || null,
+        signals: [item.signal],
+      })
+    }
+
+    for (const v of overview.pvToVerify) {
+      push(v.canonicalSubjectId, {
+        label: v.label,
+        priority: 'normal',
+        reason: null,
+        signals: v.signals,
+      })
+    }
+
+    extra.visitPlanDetail = plan.slice(0, COPILOT_MAX_VISIT_PLAN)
   }
 
   // ── Appel LLM ────────────────────────────────────────────────────────────────

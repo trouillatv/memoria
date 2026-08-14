@@ -6,6 +6,7 @@ import {
   type CopilotItem,
 } from '@/lib/visits/copilot-context'
 import type { SiteOverview, PvAttentionItem, PvVerifyItem, PvLastDelta, AttentionReason } from '@/lib/knowledge/site-overview'
+import type { SiteAttentionItem, AttentionSignal } from '@/lib/knowledge/site-attention-items'
 
 // ── Factories ─────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,22 @@ function makeAttentionReason(overrides: Partial<AttentionReason> & { id: string;
     detail: null,
     href: null,
     ...overrides,
+  }
+}
+
+function makeEngineItem(o: {
+  signal: AttentionSignal
+  title: string
+  csId: string | null
+  urgency?: SiteAttentionItem['urgency']
+}): SiteAttentionItem {
+  return {
+    signal: o.signal,
+    title: o.title,
+    reason: `Signal ${o.signal}`,
+    urgency: o.urgency ?? 'low',
+    href: `/sites/site-1/historique/sujets/${o.csId ?? 'x'}`,
+    ...(o.csId ? { metadata: { canonicalSubjectId: o.csId } } : {}),
   }
 }
 
@@ -229,6 +246,33 @@ describe('filterContextForIntent', () => {
     const ctx = buildSiteCopilotContext('site-1', 'Test', makeOverview({ pvAttention: many }), [])
     const { items } = filterContextForIntent(ctx, 'attention')
     expect(items.length).toBeLessThanOrEqual(8)
+  })
+
+  // Régression PETRO ATTITI (recette du 2026-08-15) : un chantier suivi en
+  // visites terrain, sans aucun PV analysé, produisait un plan de visite VIDE —
+  // MemorIA demandait à l'utilisateur ce qu'il fallait vérifier au lieu de le
+  // lui dire. Cause : aucun signal du moteur canonique ne portait `next_visit`,
+  // donc seul `overview.pvToVerify` (moteur PV) pouvait alimenter l'intention.
+  it('next_visit est alimenté par le moteur canonique seul, sans aucun PV', () => {
+    const ctx = buildSiteCopilotContext('site-1', 'Test', makeOverview(), [], [
+      makeEngineItem({ signal: 'subject_changed', title: 'Terrassement zone B', csId: 'cs-terr' }),
+      makeEngineItem({ signal: 'subject_stagnant', title: 'Regard R4', csId: 'cs-r4' }),
+      makeEngineItem({ signal: 'reserve_open', title: 'Réserve façade', csId: 'cs-fac' }),
+    ])
+    const { items } = filterContextForIntent(ctx, 'next_visit')
+    expect(items.length).toBe(3)
+    expect(items.map((i) => i.label)).toContain('Terrassement zone B')
+  })
+
+  it('les signaux de back-office ne rentrent pas dans un plan de visite', () => {
+    const ctx = buildSiteCopilotContext('site-1', 'Test', makeOverview(), [], [
+      makeEngineItem({ signal: 'proposal_pending', title: '3 propositions à valider', csId: null }),
+      makeEngineItem({ signal: 'link_suggested', title: '2 liens suggérés', csId: null }),
+      makeEngineItem({ signal: 'actor_congestion', title: 'Entreprise X surchargée', csId: null }),
+    ])
+    expect(filterContextForIntent(ctx, 'next_visit').items).toHaveLength(0)
+    // …mais ils restent des points d'attention : le lot ne retire rien.
+    expect(filterContextForIntent(ctx, 'attention').items).toHaveLength(3)
   })
 
   it('changes ne retourne prepItems que pour next_visit', () => {

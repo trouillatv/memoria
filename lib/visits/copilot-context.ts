@@ -35,6 +35,18 @@ export interface SiteCopilotContext {
 
 export const COPILOT_MAX_INTENT = 8
 
+/** Nombre max de points transmis au LLM pour un plan de visite. */
+export const COPILOT_MAX_VISIT_PLAN = 10
+
+/**
+ * Un signal du moteur d'attention décrit-il un point qu'un conducteur irait
+ * CONSTATER SUR PLACE ? Dérivé de `attentionSignalIntents` pour qu'il n'existe
+ * qu'une seule définition de « ce qui appartient à un plan de visite ».
+ */
+export function isVisitPlanSignal(signal: AttentionSignal): boolean {
+  return attentionSignalIntents(signal).includes('next_visit')
+}
+
 /**
  * Construit le contexte copilote à partir des données déjà calculées.
  * Invariants :
@@ -209,13 +221,16 @@ export function buildFallbackText(
     if (prepItems.length > 0) {
       lines.push(`Plan de visite actif :\n${prepItems.map((p) => `• ${p.label}`).join('\n')}`)
     }
-    const subjects = items.filter((i) => i.type === 'subject')
-    if (subjects.length > 0) {
+    // Tous les items, pas seulement les `subject` : depuis que le moteur
+    // d'attention alimente `next_visit`, une action en retard, une réserve
+    // ouverte ou une échéance dépassée sont des points de visite légitimes —
+    // les filtrer ici priverait le fallback de la moitié du plan.
+    if (items.length > 0) {
       const header = prepItems.length > 0
-        ? `\nPoints à vérifier (${subjects.length}) :`
-        : `Points à vérifier (${subjects.length}) :`
+        ? `\nPoints à vérifier (${items.length}) :`
+        : `Points à vérifier (${items.length}) :`
       lines.push(header)
-      for (const s of subjects) {
+      for (const s of items) {
         const detail = s.facts.filter(Boolean).join(' · ')
         lines.push(`• ${s.label}${detail ? ` — ${detail}` : ''}`)
       }
@@ -448,15 +463,34 @@ function attentionItemType(signal: AttentionSignal): CopilotItem['type'] {
  * `stale` est réservé aux signaux qui décrivent une ABSENCE D'ÉVOLUTION mesurée
  * par le moteur canonique. `attention` reste porté par tous : un sujet stagnant
  * mérite aussi d'apparaître dans « où en est le chantier ? ».
+ *
+ * `next_visit` (2026-08-15) : avant ce lot, AUCUN signal du moteur ne portait
+ * cette intention — la préparation de visite ne pouvait donc être alimentée que
+ * par `overview.pvToVerify`, c'est-à-dire par le seul moteur PV. Sur un chantier
+ * terrain sans PV analysé (PETRO ATTITI), « prépare ma prochaine visite »
+ * arrivait au générateur avec zéro item, et MemorIA demandait à l'utilisateur ce
+ * qu'il fallait vérifier — l'inverse exact de la promesse produit.
+ * Tout signal décrivant quelque chose qu'un conducteur irait CONSTATER SUR PLACE
+ * appartient à un plan de visite. En sont exclus les signaux de back-office
+ * (`proposal_pending`, `link_suggested` : validations dans l'app, pas sur site)
+ * et `actor_congestion` (charge d'un acteur, pas un point à vérifier au sol).
  */
 function attentionSignalIntents(signal: AttentionSignal): CopilotIntent[] {
   switch (signal) {
     case 'subject_stagnant':
     case 'pv_stagnant':
     case 'relation_blocking':
-      return ['attention', 'stale']
+      return ['attention', 'stale', 'next_visit']
     case 'subject_changed':
-      return ['attention', 'changes']
+      return ['attention', 'changes', 'next_visit']
+    case 'action_overdue':
+    case 'action_to_verify':
+    case 'deadline_near':
+    case 'deadline_overdue':
+    case 'reserve_open':
+    case 'blocage_active':
+    case 'pv_status':
+      return ['attention', 'next_visit']
     default:
       return ['attention']
   }
