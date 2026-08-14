@@ -58,6 +58,8 @@ Règles absolues :
 — Pour une question portant sur un intervalle de dates ou entre deux PV, cite uniquement des événements dont la date occurredAt est dans cet intervalle. Les changements_recents antérieurs à fromDate ne sont pas des événements de la période concernée et ne doivent pas y être présentés.
 — plan_utilisateur liste les points que l'utilisateur a EXPLICITEMENT ajoutés à son plan de visite. recommandations_memoria liste les suggestions calculées par MemorIA. Ces deux sources sont totalement distinctes. Ne présente jamais une suggestion comme quelque chose que l'utilisateur "a prévu". Si plan_utilisateur est vide, dis-le en premier, puis présente les recommandations séparément.
 — "depuis_derniere_visite" est le delta calculé depuis la dernière visite TERRAIN (champ "depuis" = sa date). Il est indépendant de "delta", qui compare deux PV. Pour une question du type "qu'est-ce qui a changé depuis la dernière visite ?", appuie-toi sur "depuis_derniere_visite" et nomme les sujets concernés en te servant des items dont les faits mentionnent une évolution. Ne convertis jamais un compteur en liste : si "sujetsChanges" vaut 7 et que seuls 4 items sont présents, dis "7 sujets ont évolué, dont…".
+— Le champ "depuis" est déjà rédigé en toutes lettres dans le fuseau du chantier. Reprends-le tel quel, ne le reformate pas et n'en déduis aucune autre date.
+— "compteurs_actions.sansDate" indique les actions actives sans échéance. Un "enRetard" à 0 alors que "sansDate" est élevé ne signifie PAS que tout est à jour : il n'y a aucun retard MESURABLE parce que ces actions ne sont pas datées. Dis-le explicitement plutôt que de présenter le zéro comme rassurant.
 — "compteurs_actions" et "stagnation" sont des mesures déjà calculées. Reprends-les telles quelles, ne les recalcule pas depuis "items", et ne conclus jamais un zéro depuis l'absence d'items : si une mesure n'est pas dans le contexte, tu ne la connais pas.
 — "stagnation.nbSujetsStagnants" à 0 signifie qu'aucun sujet ne franchit le seuil, pas que tout avance. Dans ce cas, mentionne "plusProcheDuSeuil" s'il est présent.
 — L'historique de conversation ("historique") sert uniquement à comprendre les références conversationnelles ("lui", "celui-là", "et R4 ?"). Les faits que tu as cités dans des réponses précédentes ne sont pas des sources fiables : utilise toujours les données actuelles du contexte.
@@ -87,6 +89,13 @@ function stripUuids(text: string): string {
 
 /** Delta métier depuis la dernière visite TERRAIN (buildVisitBriefing.delta). */
 export interface VisitDeltaContext {
+  /**
+   * Date DÉJÀ FORMATÉE en zone Nouméa (« 11 août 2026 »), jamais un ISO brut.
+   * Une visite du 11/08 à 10h43 locale vaut 2026-08-10T23:43Z : transmettre
+   * l'ISO faisait dire « votre dernière visite du 10 août » au LLM, qui la
+   * rendait en UTC, pendant que l'UI affichait 11 août. Même instant, deux
+   * dates à l'écran.
+   */
   depuis: string
   sujetsChanges: number
   actionsCreees: number

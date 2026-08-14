@@ -101,6 +101,25 @@ export function frDayMonthPaddedLocal(iso: string | Date): string {
   }
 }
 
+const dayMonthYearFormatter = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: NOUMEA_TIMEZONE,
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+})
+
+/** Date « 11 août 2026 » en zone Nouméa. Pour les textes où l'année compte
+ *  (contexte transmis au LLM, exports) : sans elle, un modèle qui reçoit un ISO
+ *  brut le rend en UTC et annonce la veille. */
+export function frDayMonthYearLocal(iso: string | Date): string {
+  try {
+    const d = typeof iso === 'string' ? new Date(iso) : iso
+    return dayMonthYearFormatter.format(d)
+  } catch {
+    return typeof iso === 'string' ? iso.slice(0, 10) : ''
+  }
+}
+
 /** Date + heure « 13 juillet à 11:57 » en zone Nouméa (le « à » vient d'ICU). */
 export function frDayMonthTimeLocal(iso: string | Date): string {
   try {

@@ -34,6 +34,7 @@ import { answerCopilotFreeQuestion } from '@/lib/visits/copilot-free-answer'
 import type { FreeAnswerContext, RecentChangeContext, VisitPlanItemContext } from '@/lib/visits/copilot-free-answer'
 import { buildVisitBriefing } from '@/lib/knowledge/visit-briefing'
 import { getSiteActorContext } from '@/lib/db/site-actor-responsibilities'
+import { frDayMonthYearLocal } from '@/lib/time/local-date'
 import type { CopilotRef } from './copilot-action'
 
 // ── Schémas ───────────────────────────────────────────────────────────────────
@@ -544,7 +545,9 @@ export async function askCopilotFreeAction(
 
   if (briefing?.delta && (isGlobal || isTimeline)) {
     extra.visitDelta = {
-      depuis:           briefing.delta.since,
+      // Formaté ICI, en zone Nouméa : l'ISO brut faisait dire « 10 août » au LLM
+      // pour une visite du 11 août 10h43 locale (2026-08-10T23:43Z).
+      depuis:           frDayMonthYearLocal(briefing.delta.since),
       sujetsChanges:    briefing.delta.subjectsChanged,
       actionsCreees:    briefing.delta.actionsCreated,
       actionsCloturees: briefing.delta.actionsClosed,

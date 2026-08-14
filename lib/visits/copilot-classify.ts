@@ -101,9 +101,15 @@ const STAGNATION_SIGNALS = [
 const ACTOR_SIGNALS = [
   /\bresponsable\b/i,
   /\bqui s'occupe\b/i,
-  /\bentreprise\b/i,
+  /\bentreprise[s]?\b/i,
   /\bcontact\b/i,
-  /\bintervenant\b/i,
+  /\bintervenant[s]?\b/i,
+  // `intervenant` ne matche pas « intervient » : « Qui intervient sur ce
+  // chantier ? » retombait donc sur `global` et ne chargeait aucun acteur,
+  // alors que le casting existait en base (recette Guillaume, PETRO ATITI).
+  /\bintervien(?:t|nent)\b/i,
+  /\bqui\s+(?:travaille|bosse)\b/i,
+  /\bsous.?traitant[s]?\b/i,
   /\bcharg[eé]\b/i,
 ]
 
@@ -188,7 +194,10 @@ function extractActorLabels(question: string): string[] {
   const candidates: string[] = []
   for (const w of words) {
     const clean = w.replace(/[^a-zA-ZÀ-ÿ-]/g, '')
-    if (clean.length >= 3 && /^[A-ZÀ-Ÿ]/.test(clean) && !/^(Qu|Que|Quoi|Pourquoi|Comment|Combien|Depuis|Lequel|La|Le|Les|De|Du|Des|Un|Une)$/i.test(clean)) {
+    // `Qui`, `Quel`… manquaient : « Qui intervient ? » produisait actorLabels
+    // = ["Qui"], donc une recherche d'acteur nommé « Qui » qui ne matche
+    // personne — et le mode roster ne se déclenchait jamais.
+    if (clean.length >= 3 && /^[A-ZÀ-Ÿ]/.test(clean) && !/^(Qu|Que|Qui|Quoi|Quel|Quels|Quelle|Quelles|Pourquoi|Comment|Combien|Depuis|Lequel|Laquelle|La|Le|Les|De|Du|Des|Un|Une|Sur|Pour|Avec|Dans|Est|Sont|Ce|Cette|Ces|Mon|Ma|Mes|Son|Sa|Ses)$/i.test(clean)) {
       candidates.push(clean)
     }
   }

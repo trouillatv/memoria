@@ -25,46 +25,61 @@ export interface ActorContext {
   assignedActions: ActorActionContext[]
 }
 
+/** Nombre d'acteurs transmis au LLM en mode roster (question sans nom cité). */
+const ROSTER_MAX = 8
+
 /**
- * Charge les acteurs du chantier qui correspondent aux labels extraits
- * de la question, et leurs actions en cours.
+ * Charge les acteurs du chantier et leurs actions en cours.
  *
- * La correspondance est un containment normalisé (BECIB ⊂ "BECIB SARL" ou inverse).
- * Si plusieurs acteurs matchent un label, tous sont retournés.
+ * Deux modes :
+ *   — CIBLÉ (`actorLabels` non vide) : containment normalisé
+ *     (BECIB ⊂ "BECIB SARL" ou inverse). Si plusieurs acteurs matchent, tous
+ *     sont retournés, plafonnés à 3.
+ *   — ROSTER (`actorLabels` vide) : le casting complet du chantier, plafonné à
+ *     ROSTER_MAX.
+ *
+ * Le mode roster existe parce que « Qui intervient sur ce chantier ? » ne cite
+ * personne : sans lui, l'absence de label produisait `[]`, donc un « je n'ai pas
+ * d'informations sur les entreprises » alors que le casting était en base
+ * (4 intervenants sur PETRO ATITI — recette Guillaume). Une question sur les
+ * acteurs sans nom cité est une demande de LISTE, pas une requête vide.
  */
 export async function getSiteActorContext(
   siteId: string,
   actorLabels: string[],
 ): Promise<ActorContext[]> {
-  if (actorLabels.length === 0) return []
-
   const intervenants = await listSiteIntervenants(siteId)
   if (intervenants.length === 0) return []
 
   const normalizedLabels = actorLabels.map(normalizeCanonicalLabel).filter(Boolean)
-  if (normalizedLabels.length === 0) return []
 
-  // Match containment : label dans nom ou nom dans label (bidirectionnel)
-  const matched = intervenants.filter((iv) => {
-    const targets = [
-      iv.companyName,
-      iv.companyShort,
-      iv.contactName,
-    ]
-      .filter((t): t is string => !!t)
-      .map(normalizeCanonicalLabel)
+  // Aucun nom exploitable dans la question → roster complet.
+  const matched = normalizedLabels.length === 0
+    ? intervenants.slice(0, ROSTER_MAX)
+    : intervenants.filter((iv) => {
+        // Match containment : label dans nom ou nom dans label (bidirectionnel)
+        const targets = [
+          iv.companyName,
+          iv.companyShort,
+          iv.contactName,
+        ]
+          .filter((t): t is string => !!t)
+          .map(normalizeCanonicalLabel)
 
-    return normalizedLabels.some((label) =>
-      targets.some((target) => target.includes(label) || label.includes(target)),
-    )
-  })
+        return normalizedLabels.some((label) =>
+          targets.some((target) => target.includes(label) || label.includes(target)),
+        )
+      })
 
+  // Un nom était cité mais ne correspond à personne : ne pas rabattre sur le
+  // roster, ce serait répondre à côté de la question posée.
   if (matched.length === 0) return []
 
   const supabase = createAdminClient()
 
+  const limit = normalizedLabels.length === 0 ? ROSTER_MAX : 3
   const results: ActorContext[] = []
-  for (const iv of matched.slice(0, 3)) {
+  for (const iv of matched.slice(0, limit)) {
     const orParts: string[] = []
     if (iv.mainContactId) orParts.push(`assigned_contact_id.eq.${iv.mainContactId}`)
     // Note : companyId est toujours présent (non null dans SiteIntervenant)
