@@ -486,6 +486,13 @@ export async function countProposalsBySite(
 // vers son objet métier réel (et la marquer 'confirmed', sans la détruire). Écarter
 // = 'dismissed' (elle ne réapparaîtra jamais à une re-synthèse — la dédup la reconnaît).
 
+/** Sémantique FERMÉE de l'écart (mig 322, taxonomie Vincent 2026-08-14) :
+ *  false_extraction (l'IA s'est trompée, c'est faux) · not_relevant (vrai mais
+ *  sans objet métier) · duplicate (déjà connu). L'obsolescence n'est PAS un
+ *  écart — c'est une évolution du monde, portée par superseded. Sans cette
+ *  distinction, les arbitrages humains apprennent de travers. */
+export type DismissKind = 'false_extraction' | 'not_relevant' | 'duplicate'
+
 /** Écarte une proposition : décision humaine, jamais ressuscitée. `organizationId`
  *  = garde fail-closed (le service-role bypasse la RLS) : on n'écarte que dans son org. */
 export async function dismissProposal(
@@ -493,12 +500,13 @@ export async function dismissProposal(
   reviewedBy: string | null,
   reason?: string,
   organizationId?: string | null,
+  kind?: DismissKind,
 ): Promise<boolean> {
   const supabase = createAdminClient()
   const now = new Date().toISOString()
   let q = supabase
     .from('site_knowledge_proposals')
-    .update({ status: 'dismissed', reviewed_at: now, reviewed_by: reviewedBy, dismiss_reason: reason ?? null, updated_at: now })
+    .update({ status: 'dismissed', reviewed_at: now, reviewed_by: reviewedBy, dismiss_reason: reason ?? null, dismiss_kind: kind ?? null, updated_at: now })
     .eq('id', id)
     .eq('status', 'proposed') // on n'écarte que ce qui est encore proposé
   if (organizationId) q = q.eq('organization_id', organizationId)
