@@ -351,7 +351,9 @@ export function SujetsList({ subjects, siteId }: {
         <SubjectSection subjects={operational} siteId={siteId} label="Opérationnel"             bucketFor={bOf} />
         <SubjectSection subjects={knowledge}   siteId={siteId} label="Technique · connaissances" bucketFor={bOf} />
         <SubjectSection subjects={deadlines}   siteId={siteId} label="Échéances"                 bucketFor={bOf} />
-        <SubjectSection subjects={actors}      siteId={siteId} label="Acteurs"                   bucketFor={bOf} />
+        {/* « Intervenants », pas « Acteurs » (retour Guillaume 2026-08-14) :
+            le vocabulaire technique du modèle ne s'expose pas à l'utilisateur. */}
+        <SubjectSection subjects={actors}      siteId={siteId} label="Intervenants"              bucketFor={bOf} />
         <SubjectSection subjects={buckets.closed} siteId={siteId} label="Clôturés"              bucketFor={() => 'closed'} />
       </div>
     )

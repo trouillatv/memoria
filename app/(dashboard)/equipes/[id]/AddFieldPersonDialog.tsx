@@ -88,8 +88,12 @@ export function AddFieldPersonDialog({ teamId, teamName }: { teamId: string; tea
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset() }}>
       <DialogTrigger
         render={
-          <Button size="sm" variant="outline" data-testid={`add-field-person-trigger-${teamId}`}>
-            <UserPlus /> Personne terrain
+          /* LE GESTE PRINCIPAL (arbitrage Vincent 2026-08-14) : « ajouter
+             Vanessa à mon équipe » = elle fait partie de l'équipe — pas
+             « créer un utilisateur avec des permissions ». Exister dans
+             l'organisation ≠ avoir un compte logiciel. */
+          <Button size="sm" data-testid={`add-field-person-trigger-${teamId}`}>
+            <UserPlus /> Ajouter un membre
           </Button>
         }
       />

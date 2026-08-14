@@ -148,7 +148,10 @@ export function CreateTeamButton({ orgs }: { orgs?: OrgOption[] }) {
 
           {orgs && orgs.length > 1 && (
             <div className="space-y-1.5">
-              <Label htmlFor="team-org">Organisation</Label>
+              {/* « Dans quelle société ? » (retour Guillaume 2026-08-14) : il a
+                  plusieurs sociétés (AGP, SERVINORD) — « organisation » est un
+                  concept technique qui l'a fait douter pendant la réunion. */}
+              <Label htmlFor="team-org">Dans quelle société ?</Label>
               <select
                 id="team-org"
                 value={orgId}
@@ -157,7 +160,7 @@ export function CreateTeamButton({ orgs }: { orgs?: OrgOption[] }) {
                 disabled={pending}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               >
-                <option value="">Sélectionner une organisation</option>
+                <option value="">Sélectionner la société</option>
                 {orgs.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
               </select>
             </div>

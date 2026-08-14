@@ -516,13 +516,13 @@ export default async function TeamProfilePage({
           </p>
           {members.length === 0 && fieldMembers.length === 0 ? (
             <p className="text-sm text-muted-foreground italic">
-              Aucun membre — ajoute des chefs d&apos;équipe via la page Équipes.
+              Aucun membre — utilisez « Ajouter un membre » ci-dessous.
             </p>
           ) : (
             <>
               {members.length > 0 && (
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground mb-1">Membres connectés</p>
+                  <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground mb-1">Avec accès à l&apos;application</p>
                   <ul className="space-y-1 text-sm">
                     {members.map((m) => {
                       const name = displayName(m.user.full_name, m.user.email)
@@ -546,7 +546,7 @@ export default async function TeamProfilePage({
                   un membre connecté. */}
               {fieldMembers.length > 0 && (
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground mb-1">Personnes terrain</p>
+                  <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground mb-1">Membres terrain (sans compte)</p>
                   <ul className="space-y-1 text-sm">
                     {fieldMembers.map((p) => (
                       <li key={p.membershipId} className="flex items-center gap-2">

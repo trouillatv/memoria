@@ -81,7 +81,8 @@ const FAMILLE: Record<Cle, { titre: string; Icon: typeof ListTodo; teinte: strin
     teinte: 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300',
   },
   intervenant: {
-    titre: 'Acteurs', Icon: Users,
+    // « Intervenants », pas « Acteurs » (retour Guillaume 2026-08-14).
+    titre: 'Intervenants', Icon: Users,
     teinte: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
   },
 }

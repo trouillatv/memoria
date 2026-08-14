@@ -170,6 +170,15 @@ function StakeholderCard({
               ))}
             </datalist>
           </label>
+
+          {/* CE QUE « CONFIRMER » VA FAIRE — dit AVANT le clic (arbitrage
+              Vincent 2026-08-14) : la cascade créait entreprise et contact en
+              silence. On annonce, on ne surprend plus. */}
+          <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
+            {company.trim()
+              ? `Confirmera « ${company.trim()} » comme intervenant du chantier — l’entreprise sera créée dans votre référentiel si elle n’y est pas encore${person.trim() ? `, ainsi que la fiche de ${person.trim()}` : ''}.`
+              : `Sans entreprise indiquée, l’intervenant sera rattaché à une fiche d’attente${person.trim() ? ` et la fiche de ${person.trim()} sera créée` : ''}.`}
+          </p>
         </div>
       </div>
 

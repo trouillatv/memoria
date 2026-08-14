@@ -246,7 +246,9 @@ describe('EditTeamMembersDialog', () => {
       />
     )
     fireEvent.click(screen.getByTestId('edit-members-trigger-t-1'))
-    expect(screen.getByText(/composition — alpha/i)).toBeInTheDocument()
+    // « Accès à l'application » (arbitrage Vincent 2026-08-14) : ce dialog gère
+    // les comptes, pas l'existence des membres (ça, c'est AddFieldPersonDialog).
+    expect(screen.getByText(/accès à l’application — alpha/i)).toBeInTheDocument()
   })
 
   it('appelle removeMemberFromTeamAction avec le bon userId', async () => {

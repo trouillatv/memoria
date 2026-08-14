@@ -103,23 +103,29 @@ export function EditTeamMembersDialog({ teamId, teamName, members, availableUser
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
+          /* GESTE SECONDAIRE (arbitrage Vincent 2026-08-14) : ce dialog gère
+             les COMPTES UTILISATEURS de l'équipe — pas son existence. Ajouter
+             quelqu'un à l'équipe, c'est « Ajouter un membre » (personne
+             terrain, sans compte) sur la fiche équipe. */
           <Button
             size="sm"
             variant="outline"
             data-testid={`edit-members-trigger-${teamId}`}
           >
             <Users />
-            Éditer
+            Donner un accès à l’application
           </Button>
         }
       />
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Composition — {teamName}</DialogTitle>
+          <DialogTitle>Accès à l’application — {teamName}</DialogTitle>
           <DialogDescription>
-            Ajouter ou retirer des personnes de l’équipe. L’appartenance à une
-            équipe est indépendante du rôle. Les missions planifiées associées
-            resteront affectées tant que l’équipe existe.
+            Ajouter ou retirer les membres qui se connectent à MemorIA.
+            L’appartenance à une équipe est indépendante du rôle, et les
+            missions planifiées restent affectées tant que l’équipe existe.
+            Pour ajouter une personne qui n’a pas besoin de compte, utilisez
+            « Ajouter un membre » sur la fiche de l’équipe.
           </DialogDescription>
         </DialogHeader>
 
