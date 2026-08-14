@@ -4,7 +4,6 @@
 // (« ETV ») aux vrais acteurs (« ETV · BatiSud · Jean Dupont »).
 import { createAdminClient } from '@/lib/supabase/admin'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
-import { ensureActorCanonicalSubject } from '@/lib/db/actor-auto-link'
 
 export interface SiteIntervenant {
   id: string
@@ -132,15 +131,10 @@ export async function openSiteIntervenant(input: {
   if (input.effectiveFrom) row.effective_from = input.effectiveFrom
   const { data: ins, error } = await sb.from('site_intervenants').insert(row).select('id').single()
   if (error) throw new Error(error.message)
-  // Hook liaison acteur : uniquement quand une IDENTITÉ existe (entreprise OU
-  // personne — D1 : une personne sans entreprise est un acteur valide). Un rôle
-  // seul n'est pas un acteur : la participation reste visible, mais aucune
-  // identité canonique n'est inventée pour « l'électricien » non résolu
-  // (doctrine graphe Vincent 2026-08-14 : intervenant = pont contextuel,
-  // jamais une 3e catégorie d'identité).
-  if (input.companyId || contactId) {
-    ensureActorCanonicalSubject(input.siteId, input.companyId, contactId).catch(() => undefined)
-  }
+  // Arbitrage 2026-08-15 (option B) : un acteur est une identité/intervenant,
+  // pas un canonical_subject. La vie du sujet de l'acteur est reconstruite
+  // à partir de site_intervenants → entreprise/contact → actions/décisions.
+  // ensureActorCanonicalSubject() est retiré de ce chemin.
   invalidateSiteProjection(input.siteId)
   return ins.id as string
 }

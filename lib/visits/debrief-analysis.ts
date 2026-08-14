@@ -373,11 +373,47 @@ async function projectAndTrace(params: {
   }
 
   // ── Étape 2 : Réconciliation canonique ─────────────────────────────────────
-  // Ordre déterministe : nettoyer les objets obsolètes avant de canonicaliser les
-  // nouveaux (race condition sur visite réanalysée si parallèle).
-  // Non bloquante côté utilisateur mais tracée en DB pour diagnostic et retry.
+  // Verrou soft (P0-2) : empêche deux runs concurrents sur le même rapport.
+  // Mécanisme : UPDATE ... WHERE canonical_reconcile_started_at IS NULL.
+  // Si la colonne est déjà définie et < 5 min → un autre run est en cours, on abandonne.
+  // Si canonical_reconciled_at est déjà défini → idempotence, on abandonne.
   void (async () => {
+    const sb = createAdminClient()
     try {
+      const LOCK_TTL_MS = 5 * 60 * 1000
+      const now = new Date().toISOString()
+
+      // Idempotence : déjà réconcilié ?
+      const { data: reportStatus } = await sb
+        .from('site_reports')
+        .select('canonical_reconciled_at, canonical_reconcile_started_at')
+        .eq('id', reportId)
+        .maybeSingle()
+
+      if (reportStatus?.canonical_reconciled_at) return // déjà terminé
+      if (
+        reportStatus?.canonical_reconcile_started_at &&
+        Date.now() - Date.parse(reportStatus.canonical_reconcile_started_at) < LOCK_TTL_MS
+      ) {
+        console.log('[reconcile] run concurrent détecté pour', reportId, '— abandon')
+        return
+      }
+
+      // Acquérir le soft lock (CAS atomique côté SQL)
+      const { data: locked } = await sb
+        .from('site_reports')
+        .update({ canonical_reconcile_started_at: now })
+        .eq('id', reportId)
+        .is('canonical_reconcile_started_at', null)
+        .select('id')
+        .maybeSingle()
+
+      if (!locked) {
+        // Une autre requête a pris le verrou entre le SELECT et l'UPDATE
+        console.log('[reconcile] lock perdu (race) pour', reportId, '— abandon')
+        return
+      }
+
       const { reconcileObsoleteProposals } = await import('@/lib/db/visit-impact-reconcile')
       await reconcileObsoleteProposals({ reportId, siteId: params.siteId })
       const { reconcileSourceToCanonicalSubjects } = await import('@/lib/db/canonical-subject-source-reconcile')
@@ -391,16 +427,20 @@ async function projectAndTrace(params: {
       await autoArchiveOrphanedSubjects(params.siteId)
       const { runEvolutionV2Shadow } = await import('@/lib/knowledge/evolution-v2-shadow')
       await runEvolutionV2Shadow({ reportId, siteId: params.siteId })
-      await createAdminClient()
+      await sb
         .from('site_reports')
-        .update({ canonical_reconciled_at: new Date().toISOString(), canonical_reconcile_error: null })
+        .update({
+          canonical_reconciled_at: new Date().toISOString(),
+          canonical_reconcile_error: null,
+          canonical_reconcile_started_at: null,
+        })
         .eq('id', reportId)
     } catch (err) {
       const reason = serializeError(err)
       console.error('[reconcile] erreur pour la visite', reportId, ':', reason)
-      await createAdminClient()
+      await sb
         .from('site_reports')
-        .update({ canonical_reconcile_error: reason })
+        .update({ canonical_reconcile_error: reason, canonical_reconcile_started_at: null })
         .eq('id', reportId)
         .then(undefined, () => {})
     }

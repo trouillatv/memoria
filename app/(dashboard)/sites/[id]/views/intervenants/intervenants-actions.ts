@@ -10,7 +10,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
 import { openSiteIntervenant, replaceSiteIntervenant, closeSiteIntervenant } from '@/lib/db/site-intervenants'
 import { findOrCreateCompanyByName, findOrCreateCompanyContact, findOrCreateOrgContact, ensureActiveAffiliation } from '@/lib/db/companies'
-import { ensureActorCanonicalSubject } from '@/lib/db/actor-auto-link'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import { logUsageEvent } from '@/lib/db/usage-events'
 
@@ -317,11 +316,6 @@ export async function preciserIntervenantAction(
       .eq('id', parsed.data.intervenant_id)
       .is('effective_to', null)
     if (error) throw new Error(error.message)
-    // L'identité vient d'exister (ou de se préciser) : l'acteur canonique suit.
-    // Un rôle seul reste une participation — jamais un pseudo-acteur.
-    if (companyId || contactId) {
-      await ensureActorCanonicalSubject(parsed.data.site_id, companyId, contactId).catch(() => undefined)
-    }
     invalidateSiteProjection(parsed.data.site_id)
     return { ok: true }
   } catch {

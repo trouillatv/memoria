@@ -284,6 +284,71 @@ export async function reconcileSourceToCanonicalSubjects(
     rm?.origin && VISIT_ORIGINS_SET.has(rm.origin) ? 'field_visit' : 'meeting'
   const occEffectiveDate = (rm?.started_at ?? rm?.created_at ?? new Date().toISOString()).slice(0, 10)
 
+  // ── Phase 0 : héritage depuis les propositions supersédées du même rapport ──
+  // P0-5 : lors d'un rejeu (v3→v4), les propositions de v4 ne repartent pas de
+  // zéro. Si une proposition v3 a été supersédée (dedupe_key disparu de v4) mais
+  // portait déjà un canonical_subject_id, et qu'une proposition v4 lui ressemble
+  // (Jaccard ≥ 0.50 sur le titre), on hérite directement l'ID sans passer par le
+  // LLM. Cela évite de créer un CS jumeau pour le même concept reformulé.
+  // superseded_by est également chaîné sur l'ancienne proposition.
+  const inheritedIds = new Set<string>()
+
+  const { data: supersededWithCs } = await sb
+    .from('site_knowledge_proposals')
+    .select('id, title, canonical_subject_id')
+    .eq('report_id', source.id)
+    .eq('site_id', source.siteId)
+    .eq('status', 'superseded')
+    .not('canonical_subject_id', 'is', null)
+
+  if ((supersededWithCs ?? []).length > 0) {
+    const INHERIT_THRESHOLD = 0.50
+    for (const stale of supersededWithCs!) {
+      let bestScore = INHERIT_THRESHOLD
+      let bestEligible: typeof eligible[0] | null = null
+      for (const p of eligible) {
+        if (inheritedIds.has(p.id)) continue
+        const score = jaccardSimilarity(stale.title as string, p.title)
+        if (score > bestScore) { bestScore = score; bestEligible = p }
+      }
+      if (!bestEligible) continue
+      const csId = stale.canonical_subject_id as string
+
+      await sb.from('canonical_subject_occurrence').upsert({
+        canonical_subject_id: csId,
+        site_id: source.siteId,
+        source_kind: occSourceKind,
+        source_ref_id: source.id,
+        source_proposal_id: bestEligible.id,
+        visit_status: occSourceKind === 'field_visit' ? 'field_checked' : 'mentioned',
+        label: bestEligible.title,
+        note: bestEligible.body,
+        evidence_count: 0,
+        effective_date: occEffectiveDate,
+        created_by: source.authorId,
+        validation_status: validationStatus,
+        entity_ids: bestEligible.entity_ids ?? [],
+      }, { onConflict: 'source_kind,source_proposal_id', ignoreDuplicates: true })
+
+      const { error: iErr } = await sb.from('site_knowledge_proposals')
+        .update({ canonical_subject_id: csId, canonical_resolution_status: 'resolved' })
+        .eq('id', bestEligible.id)
+
+      if (!iErr) {
+        // Chaîner la supersession : l'ancienne proposition pointe vers la nouvelle
+        await sb.from('site_knowledge_proposals')
+          .update({ superseded_by: bestEligible.id })
+          .eq('id', stale.id as string)
+          .is('superseded_by', null)
+
+        inheritedIds.add(bestEligible.id)
+        result.matched++
+      }
+    }
+  }
+
+  const eligibleAfterInherit = eligible.filter((p) => !inheritedIds.has(p.id))
+
   // ── Phase 1 : matching déterministe ──────────────────────────────────────
   // Écriture directe avec sb (client admin racine de l'invocation) pour éviter :
   //   - le double appel à resolveCanonicalSubjectReference (outer vs inner divergent)
@@ -291,7 +356,7 @@ export async function reconcileSourceToCanonicalSubjects(
   // matched++ conditionné au succès réel de la mise à jour DB.
   const orphans: typeof eligible = []
 
-  for (const proposal of eligible) {
+  for (const proposal of eligibleAfterInherit) {
     const resolution = await resolveCanonicalSubjectReference(source.siteId, proposal.title)
 
     if (resolution.kind === 'resolved') {
@@ -352,8 +417,75 @@ export async function reconcileSourceToCanonicalSubjects(
   // deadline ∈ CAN_MATCH_EXISTING (ELIGIBLE_KINDS), deadline ∉ CAN_CREATE_SUBJECT_KINDS
   if (orphans.length === 0) return result
 
-  const orphansForClustering = orphans.filter((p) => CAN_CREATE_SUBJECT_KINDS.has(p.kind))
-  const orphansForMatchOnly = orphans.filter((p) => !CAN_CREATE_SUBJECT_KINDS.has(p.kind))
+  // ── Phase 1.5 : matching LLM liste fermée — TOUS les orphelins (P0-4) ────
+  // Avant clustering et création, le LLM vérifie si un orphelin correspond à
+  // un CS existant. Liste fermée : retourne un UUID existant ou null, jamais
+  // un nouveau sujet. Empêche la création de doublons sémantiques que les passes
+  // déterministes ont manqués (reformulations, scores Jaccard < seuil).
+  // Ne baisse PAS le seuil Jaccard : cette passe est complémentaire, pas un
+  // remplacement du réglage du seuil.
+  const { data: rawCsAll } = await sb
+    .from('canonical_subject')
+    .select('id, label')
+    .eq('site_id', source.siteId)
+    .eq('status', 'active')
+
+  const existingCsForMatch = (rawCsAll ?? []) as Array<{ id: string; label: string }>
+  const afterLlmMatch: typeof orphans = []
+
+  if (existingCsForMatch.length > 0) {
+    for (const proposal of orphans) {
+      const match = await matchExistingSubject(proposal, existingCsForMatch)
+      const decision = resolveMatchExistingDecision(match, existingCsForMatch)
+      if (decision === 'attach') {
+        const csId = match!.canonicalSubjectId!
+
+        await sb.from('canonical_subject_occurrence').upsert({
+          canonical_subject_id: csId,
+          site_id: source.siteId,
+          source_kind: occSourceKind,
+          source_ref_id: source.id,
+          source_proposal_id: proposal.id,
+          visit_status: occSourceKind === 'field_visit' ? 'field_checked' : 'mentioned',
+          label: proposal.title,
+          note: proposal.body,
+          evidence_count: 0,
+          effective_date: occEffectiveDate,
+          created_by: source.authorId,
+          validation_status: validationStatus,
+          entity_ids: proposal.entity_ids ?? [],
+        }, { onConflict: 'source_kind,source_proposal_id', ignoreDuplicates: true })
+
+        if (validationStatus === 'confirmed') {
+          await sb.from('canonical_subject_occurrence')
+            .update({ validation_status: 'confirmed' })
+            .eq('source_kind', occSourceKind)
+            .eq('source_proposal_id', proposal.id)
+            .eq('validation_status', 'observed')
+        }
+
+        const { error: mErr } = await sb.from('site_knowledge_proposals')
+          .update({ canonical_subject_id: csId, canonical_resolution_status: 'resolved' })
+          .eq('id', proposal.id)
+
+        if (!mErr) {
+          result.matched++
+          if (proposal.kind === 'action') {
+            await ensureActionThread(sb, proposal.id, source.siteId, csId)
+          }
+          continue
+        }
+      }
+      afterLlmMatch.push(proposal)
+    }
+  } else {
+    afterLlmMatch.push(...orphans)
+  }
+
+  if (afterLlmMatch.length === 0) return result
+
+  const orphansForClustering = afterLlmMatch.filter((p) => CAN_CREATE_SUBJECT_KINDS.has(p.kind))
+  const orphansForMatchOnly = afterLlmMatch.filter((p) => !CAN_CREATE_SUBJECT_KINDS.has(p.kind))
 
   // ── Phase 2a : clustering + création des orphelins éligibles ─────────────
   if (orphansForClustering.length > 0) {
