@@ -68,6 +68,10 @@ export interface IntervenantPerson {
   openObligationsCount: number
   /** Où on le connaît ailleurs (contact d'abord, sinon entreprise) — org-scopé. */
   elsewhere: IntervenantElsewhere[]
+  /** D4 (P0-3D) — frise FACTUELLE : uniquement des événements DATÉS et prouvables
+   *  (début de participation, relève chaînée replaced_by, affiliations datées).
+   *  Jamais d'événement inventé — pas de « précisé le… » sans timestamp réel. */
+  lifeline: Array<{ date: string; label: string }>
 }
 
 export interface IntervenantGroup {
@@ -243,6 +247,65 @@ async function buildIntervenantPeople(
     }
   }
 
+  // ── D4 (P0-3D) : la frise n'admet QUE des faits datés ─────────────────────
+  // Deux sources au-delà du début de participation (effective_from) :
+  //  · la CHAÎNE de remplacement (mig 320) — la ligne clôturée qui pointe vers
+  //    nous dit qui a précédé, et quand (son effective_to) ;
+  //  · les AFFILIATIONS datées du contact (mig 321) — début et fin réelles.
+  // Une ligne sans date n'entre pas dans la frise : pas de faux événement.
+  const predecessorByIntervenant = new Map<string, { date: string; label: string }>()
+  {
+    const { data: predRows } = await db
+      .from('site_intervenants')
+      .select('replaced_by_intervenant_id, effective_to, company_id, main_contact_id')
+      .in('replaced_by_intervenant_id', intervenants.map((i) => i.id))
+    const preds = (predRows ?? []) as Array<{
+      replaced_by_intervenant_id: string; effective_to: string | null
+      company_id: string | null; main_contact_id: string | null
+    }>
+    const predCompanyIds = [...new Set(preds.map((p) => p.company_id).filter((x): x is string => !!x))]
+    const predContactIds = [...new Set(preds.map((p) => p.main_contact_id).filter((x): x is string => !!x))]
+    const predCompanyName = new Map<string, string>()
+    const predContactName = new Map<string, string>()
+    if (predCompanyIds.length > 0) {
+      const { data } = await db.from('companies').select('id, name, short_name').in('id', predCompanyIds)
+      for (const c of (data ?? []) as Array<{ id: string; name: string; short_name: string | null }>) {
+        predCompanyName.set(c.id, c.short_name || c.name)
+      }
+    }
+    if (predContactIds.length > 0) {
+      const { data } = await db.from('company_contacts').select('id, full_name').in('id', predContactIds)
+      for (const c of (data ?? []) as Array<{ id: string; full_name: string }>) {
+        predContactName.set(c.id, c.full_name)
+      }
+    }
+    for (const p of preds) {
+      if (!p.effective_to) continue
+      const who = (p.main_contact_id ? predContactName.get(p.main_contact_id) : null)
+        ?? (p.company_id ? predCompanyName.get(p.company_id) : null)
+        ?? 'la participation précédente'
+      predecessorByIntervenant.set(p.replaced_by_intervenant_id, {
+        date: p.effective_to, label: `A pris la relève de ${who}`,
+      })
+    }
+  }
+  const affiliationEventsByContact = new Map<string, Array<{ date: string; label: string }>>()
+  if (activeContactIds.length > 0) {
+    const { data: affRows } = await db
+      .from('contact_company_affiliations')
+      .select('contact_id, effective_from, effective_to, companies(name, short_name)')
+      .in('contact_id', activeContactIds)
+    for (const a of (affRows ?? []) as Array<{ contact_id: string; effective_from: string | null; effective_to: string | null; companies: unknown }>) {
+      const c = (Array.isArray(a.companies) ? a.companies[0] : a.companies) as { name?: string | null; short_name?: string | null } | null
+      const cname = c?.short_name?.trim() || c?.name?.trim()
+      if (!cname) continue
+      const list = affiliationEventsByContact.get(a.contact_id) ?? []
+      if (a.effective_from) list.push({ date: a.effective_from, label: `Affiliation à ${cname}` })
+      if (a.effective_to) list.push({ date: a.effective_to, label: `Fin d'affiliation à ${cname}` })
+      affiliationEventsByContact.set(a.contact_id, list)
+    }
+  }
+
   return intervenants.map((it) => {
     const mentions = mentionsByIntervenant.get(it.id) ?? []
     const visits = new Map<string, string | null>()
@@ -258,11 +321,22 @@ async function buildIntervenantPeople(
     const dates = [it.effectiveFrom, ...citedVisits.map((v) => v.date), lastStructured].filter((x): x is string => !!x)
     const elsewhere = (it.mainContactId ? elsewhereByContact.get(it.mainContactId) : null)
       ?? elsewhereByCompany.get(it.companyId) ?? []
+    // La frise : début de participation + relève + affiliations — chaque entrée
+    // porte une vraie date, sinon elle n'existe pas.
+    const lifeline: Array<{ date: string; label: string }> = []
+    if (it.effectiveFrom) lifeline.push({ date: it.effectiveFrom, label: 'Début de la participation' })
+    const pred = predecessorByIntervenant.get(it.id)
+    if (pred) lifeline.push(pred)
+    if (it.mainContactId) lifeline.push(...(affiliationEventsByContact.get(it.mainContactId) ?? []))
+    lifeline.sort((a, b) => b.date.localeCompare(a.date))
     return {
       intervenantId: it.id,
       contactId: it.mainContactId,
       isPerson: !!it.contactName,
-      name: it.contactName ?? (it.companyShort || it.companyName),
+      // D1 (P0-3D) : rôle seul → le RÔLE est l'identité affichable. Un nom vide
+      // se lirait comme un bug ; « Électricien — non identifié » dit l'état réel
+      // (participation non résolue, jamais un acteur inventé).
+      name: it.contactName ?? (it.companyShort || it.companyName || `${it.role} — non identifié`),
       fonction: it.contactFunction,
       role: it.role,
       companyId: it.companyId,
@@ -280,6 +354,7 @@ async function buildIntervenantPeople(
       openObligationsCount: it.mainContactId ? openObligationsByContact.get(it.mainContactId) ?? 0 : 0,
       // Dédoublonné par chantier — deux rôles sur le même chantier = une ligne.
       elsewhere: [...new Map(elsewhere.map((e) => [e.siteId, e])).values()],
+      lifeline,
     }
   })
 }
@@ -314,8 +389,10 @@ export async function getSiteIntervenantsView(siteId: string): Promise<SiteInter
   // ── Groupé par entreprise (« qui est chez PAVE ? ») ──
   const groupByCompany = new Map<string, IntervenantGroup>()
   for (const p of people) {
+    // D1 (P0-3D) : les participations SANS entreprise (rôle seul, personne seule)
+    // se regroupent sous un intitulé d'état — jamais un en-tête vide.
     const g = groupByCompany.get(p.companyId) ?? {
-      companyId: p.companyId, companyName: p.companyName, roles: [], people: [],
+      companyId: p.companyId, companyName: p.companyName || 'Sans entreprise identifiée', roles: [], people: [],
     }
     if (!g.roles.includes(p.role)) g.roles.push(p.role)
     g.people.push(p)

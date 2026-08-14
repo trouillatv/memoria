@@ -211,8 +211,15 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
     const aid = `int_${it.id}`
     add({
       id: aid, type: 'acteur',
-      label: it.contactName ?? (it.companyShort || it.companyName),
-      sub: it.contactName ? `${it.companyShort || it.companyName} · ${it.role}` : `Intervenant · ${it.role}`,
+      // Le nœud est une PARTICIPATION (doctrine graphe 2026-08-14 : pont
+      // contextuel chantier×rôle×personne?×entreprise?, jamais une 3e catégorie
+      // d'identité). Rôle seul → le rôle EST le label, honnêtement non identifié.
+      label: it.contactName ?? (it.companyShort || it.companyName || it.role),
+      sub: it.contactName
+        ? `${it.companyShort || it.companyName || 'entreprise inconnue'} · ${it.role}`
+        : (it.companyShort || it.companyName)
+          ? `Intervenant · ${it.role}`
+          : 'Intervenant non identifié',
       t: it.effectiveFrom,
     })
     link({ a: 'site', b: aid, type: 'acteur', why: `Intervenant confirmé du chantier — rôle ${it.role}`, status: 'confirmed' })

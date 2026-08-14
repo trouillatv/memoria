@@ -18,7 +18,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOrganizationMembership } from '@/lib/auth/memberships'
-import { findOrCreateCompanyByName } from '@/lib/db/companies'
+import { findOrCreateCompanyByName, ensureActiveAffiliation } from '@/lib/db/companies'
 
 export interface FieldMember {
   /** L'id de l'APPARTENANCE (pour la quitter plus tard sans toucher la personne). */
@@ -92,6 +92,11 @@ export async function createFieldPersonInTeam(input: {
     .single()
   if (contactErr || !contact) {
     return { ok: false, error: contactErr?.message ?? 'Création de la personne impossible' }
+  }
+  // D3 (P0-3D, mig 321 étape 2) : l'appartenance naît DATÉE — l'affiliation
+  // est la vérité, company_id le legacy de compatibilité. Non-bloquant.
+  if (companyId) {
+    await ensureActiveAffiliation(orgId, contact.id as string, companyId).catch(() => undefined)
   }
 
   const { error: edgeErr } = await db.from('team_field_members').insert({

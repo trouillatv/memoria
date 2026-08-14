@@ -36,7 +36,9 @@ export async function listSiteIntervenants(siteId: string): Promise<SiteInterven
   const list = rows ?? []
   if (list.length === 0) return []
 
-  const companyIds = [...new Set(list.map((r) => r.company_id as string))]
+  // company_id est NULLABLE depuis la mig 320 (rôle seul, personne seule) : on
+  // ne passe jamais null à un .in() — la ligne reste servie, sans entreprise.
+  const companyIds = [...new Set(list.map((r) => r.company_id as string | null).filter((x): x is string => !!x))]
   const contactIds = list.map((r) => r.main_contact_id as string | null).filter((x): x is string => !!x)
 
   const { data: companies } = await sb.from('companies').select('id, name, short_name').in('id', companyIds)
@@ -127,10 +129,13 @@ export async function openSiteIntervenant(input: {
   if (input.effectiveFrom) row.effective_from = input.effectiveFrom
   const { data: ins, error } = await sb.from('site_intervenants').insert(row).select('id').single()
   if (error) throw new Error(error.message)
-  // Hook liaison acteur : uniquement quand une IDENTITÉ existe (entreprise ou
-  // personne). Un rôle seul n'est pas un acteur — on ne crée pas de canonical
-  // subject pour « l'électricien » non résolu.
-  if (input.companyId) {
+  // Hook liaison acteur : uniquement quand une IDENTITÉ existe (entreprise OU
+  // personne — D1 : une personne sans entreprise est un acteur valide). Un rôle
+  // seul n'est pas un acteur : la participation reste visible, mais aucune
+  // identité canonique n'est inventée pour « l'électricien » non résolu
+  // (doctrine graphe Vincent 2026-08-14 : intervenant = pont contextuel,
+  // jamais une 3e catégorie d'identité).
+  if (input.companyId || contactId) {
     ensureActorCanonicalSubject(input.siteId, input.companyId, contactId).catch(() => undefined)
   }
   invalidateSiteProjection(input.siteId)
@@ -209,7 +214,7 @@ export interface SiteContactOption {
 export async function listSiteContacts(siteId: string): Promise<SiteContactOption[]> {
   const sb = createAdminClient()
   const intervenants = await listSiteIntervenants(siteId)
-  const companyIds = [...new Set(intervenants.map((i) => i.companyId))]
+  const companyIds = [...new Set(intervenants.map((i) => i.companyId).filter(Boolean))]
   if (companyIds.length === 0) return []
   const { data: companies } = await sb.from('companies').select('id, name, short_name').in('id', companyIds)
   const nameById = new Map((companies ?? []).map((c) => [c.id as string, (c.short_name as string | null) || (c.name as string)]))
@@ -242,7 +247,7 @@ export interface SiteCompanyLogo { id: string; name: string; logoUrl: string | n
  */
 export async function listSiteConcernedCompanies(siteId: string): Promise<SiteCompanyLogo[]> {
   const intervenants = await listSiteIntervenants(siteId)
-  const ids = [...new Set(intervenants.map((i) => i.companyId))]
+  const ids = [...new Set(intervenants.map((i) => i.companyId).filter(Boolean))]
   if (ids.length === 0) return []
   const sb = createAdminClient()
   const { data } = await sb
@@ -264,7 +269,7 @@ export async function listSiteConcernedCompanies(siteId: string): Promise<SiteCo
  */
 export async function listSiteCandidateCompanies(siteId: string): Promise<SiteCandidateCompany[]> {
   const intervenants = await listSiteIntervenants(siteId)
-  const ids = [...new Set(intervenants.map((i) => i.companyId))]
+  const ids = [...new Set(intervenants.map((i) => i.companyId).filter(Boolean))]
   if (ids.length === 0) return []
   const sb = createAdminClient()
   const { data } = await sb
@@ -286,7 +291,9 @@ export async function getRoleActorMap(siteId: string): Promise<Map<string, RoleA
   const list = await listSiteIntervenants(siteId)
   const map = new Map<string, RoleActor>()
   for (const i of list) {
-    const label = i.companyShort || i.companyName
+    // D1 (P0-3D) : une participation à rôle seul n'affiche jamais du vide —
+    // « non identifié » est un état de connaissance, pas une anomalie.
+    const label = i.companyShort || i.companyName || i.contactName || 'non identifié'
     const existing = map.get(i.role)
     if (existing) existing.company = `${existing.company}, ${label}`
     else map.set(i.role, { company: label, contact: i.contactName })

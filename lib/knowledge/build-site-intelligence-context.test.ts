@@ -126,6 +126,7 @@ function makePerson(overrides: Partial<IntervenantPerson> = {}): IntervenantPers
     decisions: [{ id: 'dec-001', titre: 'Reprise VRD' }],
     openObligationsCount: 0,
     elsewhere: [],
+    lifeline: [],
     ...overrides,
   }
 }

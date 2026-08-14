@@ -188,15 +188,19 @@ async function tryLinkPerson(
 
 export async function ensureActorCanonicalSubject(
   siteId: string,
-  companyId: string,
+  // D1 (P0-3D) : une PERSONNE SANS ENTREPRISE est un acteur valide (niveau 3
+  // de la doctrine). companyId devient nullable — au moins l'un des deux doit
+  // exister, sinon il n'y a pas d'identité à canoniser (rôle seul).
+  companyId: string | null,
   contactId: string | null,
 ): Promise<void> {
+  if (!companyId && !contactId) return
   const sb = createAdminClient()
 
   // Clé de recherche : contact prime sur entreprise (person vs company actor)
   const existsQuery = contactId
     ? sb.from('canonical_subject').select('id').eq('site_id', siteId).eq('contact_id', contactId).eq('status', 'active').maybeSingle()
-    : sb.from('canonical_subject').select('id').eq('site_id', siteId).eq('company_id', companyId).eq('status', 'active').maybeSingle()
+    : sb.from('canonical_subject').select('id').eq('site_id', siteId).eq('company_id', companyId!).eq('status', 'active').maybeSingle()
 
   const { data: existing } = await existsQuery
   if (existing) return
@@ -208,7 +212,7 @@ export async function ensureActorCanonicalSubject(
     if (!contact) return
     label = contact.full_name as string
   } else {
-    const { data: company } = await sb.from('companies').select('name').eq('id', companyId).maybeSingle()
+    const { data: company } = await sb.from('companies').select('name').eq('id', companyId!).maybeSingle()
     if (!company) return
     label = company.name as string
   }

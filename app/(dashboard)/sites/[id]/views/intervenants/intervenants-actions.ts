@@ -8,7 +8,10 @@
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
-import { openSiteIntervenant } from '@/lib/db/site-intervenants'
+import { openSiteIntervenant, replaceSiteIntervenant } from '@/lib/db/site-intervenants'
+import { findOrCreateCompanyByName, findOrCreateCompanyContact, findOrCreateOrgContact, ensureActiveAffiliation } from '@/lib/db/companies'
+import { ensureActorCanonicalSubject } from '@/lib/db/actor-auto-link'
+import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import { logUsageEvent } from '@/lib/db/usage-events'
 
 // FRONTIÈRE M2C. Avant : `requireManagerOrAdmin` (rôle du profil) + `requireSiteInOrg`
@@ -250,4 +253,120 @@ export async function searchIntervenantTargetsAction(
   // Ce qui est déjà sur ce chantier remonte : c'est la réponse la plus probable.
   hits.sort((a, b) => Number(b.onThisSite) - Number(a.onThisSite))
   return { ok: true, hits }
+}
+
+// ── D2 (P0-3D) — LES GESTES DIRECTS SUR UNE PARTICIPATION CONFIRMÉE ─────────
+//
+// « Jean seul → ajouter EEC plus tard » ne doit pas dépendre d'une nouvelle
+// mention : la connaissance progresse sans attendre que l'IA redétecte.
+// Deux gestes ENRICHISSENT la même participation (préciser personne /
+// entreprise) ; le troisième la REMPLACE (le monde a changé : clôture +
+// nouvelle participation + chaîne replaced_by_intervenant_id). Ne jamais
+// confondre les deux — enrichir corrige la connaissance, remplacer raconte
+// une évolution temporelle.
+
+const preciserSchema = z.object({
+  site_id: z.string().uuid(),
+  intervenant_id: z.string().uuid(),
+  person_name: z.string().trim().max(160).optional(),
+  company_name: z.string().trim().max(160).optional(),
+})
+
+export async function preciserIntervenantAction(
+  input: z.input<typeof preciserSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = preciserSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  if (!parsed.data.person_name && !parsed.data.company_name) {
+    return { ok: false, error: 'Indiquez une personne ou une entreprise' }
+  }
+  const access = await requireSiteWriteAccess(parsed.data.site_id, 'managerOrAdmin')
+  if (!access.ok) return { ok: false, error: 'Chantier introuvable' }
+  const orgId = access.organizationId
+
+  const db = createAdminClient()
+  const { data: it } = await db
+    .from('site_intervenants')
+    .select('id, role, company_id, main_contact_id')
+    .eq('id', parsed.data.intervenant_id)
+    .eq('site_id', parsed.data.site_id)
+    .is('effective_to', null)
+    .maybeSingle()
+  if (!it) return { ok: false, error: 'Participation active introuvable' }
+
+  try {
+    const row = it as { company_id: string | null; main_contact_id: string | null }
+    let companyId = row.company_id
+    let contactId = row.main_contact_id
+
+    if (parsed.data.company_name) {
+      companyId = await findOrCreateCompanyByName(orgId, parsed.data.company_name)
+    }
+    if (parsed.data.person_name) {
+      contactId = companyId
+        ? await findOrCreateCompanyContact(orgId, companyId, parsed.data.person_name)
+        : await findOrCreateOrgContact(orgId, parsed.data.person_name)
+    }
+    // L'appartenance est une relation DATÉE (mig 321) — jamais le legacy.
+    if (contactId && companyId) {
+      await ensureActiveAffiliation(orgId, contactId, companyId).catch(() => undefined)
+    }
+    const { error } = await db
+      .from('site_intervenants')
+      .update({ company_id: companyId, main_contact_id: contactId })
+      .eq('id', parsed.data.intervenant_id)
+      .is('effective_to', null)
+    if (error) throw new Error(error.message)
+    // L'identité vient d'exister (ou de se préciser) : l'acteur canonique suit.
+    // Un rôle seul reste une participation — jamais un pseudo-acteur.
+    if (companyId || contactId) {
+      await ensureActorCanonicalSubject(parsed.data.site_id, companyId, contactId).catch(() => undefined)
+    }
+    invalidateSiteProjection(parsed.data.site_id)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Précision impossible' }
+  }
+}
+
+const remplacerSchema = z.object({
+  site_id: z.string().uuid(),
+  intervenant_id: z.string().uuid(),
+  person_name: z.string().trim().max(160).optional(),
+  company_name: z.string().trim().max(160).optional(),
+  /** Date effective du remplacement (jour civil). */
+  effective_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+})
+
+export async function remplacerIntervenantAction(
+  input: z.input<typeof remplacerSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = remplacerSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const access = await requireSiteWriteAccess(parsed.data.site_id, 'managerOrAdmin')
+  if (!access.ok) return { ok: false, error: 'Chantier introuvable' }
+  const orgId = access.organizationId
+
+  try {
+    let companyId: string | null = null
+    let contactId: string | null = null
+    if (parsed.data.company_name) companyId = await findOrCreateCompanyByName(orgId, parsed.data.company_name)
+    if (parsed.data.person_name) {
+      contactId = companyId
+        ? await findOrCreateCompanyContact(orgId, companyId, parsed.data.person_name)
+        : await findOrCreateOrgContact(orgId, parsed.data.person_name)
+    }
+    if (contactId && companyId) {
+      await ensureActiveAffiliation(orgId, contactId, companyId).catch(() => undefined)
+    }
+    await replaceSiteIntervenant({
+      siteId: parsed.data.site_id,
+      currentId: parsed.data.intervenant_id,
+      next: { companyId, mainContactId: contactId },
+      effectiveDate: parsed.data.effective_date,
+    })
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Remplacement impossible' }
+  }
 }

@@ -196,7 +196,7 @@ export function IntervenantsLeaderboard({ siteId, dashboard, toIdentify }: { sit
                 <td className="px-4 py-3">
                   <Link href={ficheHref(r.href) ?? r.href} scroll={false} className="flex items-center gap-3">
                     <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">{initials(r.name)}</span>
-                    <span className="min-w-0"><b className="text-[13.5px] font-semibold">{r.name}</b><span className="block text-[11px] text-muted-foreground">{r.role} · {r.companyName}</span></span>
+                    <span className="min-w-0"><b className="text-[13.5px] font-semibold">{r.name}</b><span className="block text-[11px] text-muted-foreground">{[r.role, r.companyName].filter(Boolean).join(' · ')}</span></span>
                   </Link>
                 </td>
                 <td className="px-3 py-3">

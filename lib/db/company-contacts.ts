@@ -1,6 +1,7 @@
 // CONTACTS d'une entreprise (mig 137) — les personnes (Jean Dupont @ BatiSud).
 // is_main = contact principal de l'entreprise (un seul par entreprise, idéalement).
 import { createAdminClient } from '@/lib/supabase/admin'
+import { ensureActiveAffiliation } from '@/lib/db/companies'
 
 export interface CompanyContact {
   id: string
@@ -71,5 +72,9 @@ export async function createContact(orgId: string, companyId: string, input: Con
     .select('id')
     .single()
   if (error) throw new Error(error.message)
+  // D3 (P0-3D, mig 321 étape 2) : l'appartenance naît DATÉE. company_id posé à
+  // l'insert reste le legacy de compatibilité ; la vérité vit dans l'affiliation.
+  // Non-bloquant : une affiliation manquée ne doit pas empêcher la création.
+  await ensureActiveAffiliation(orgId, data.id as string, companyId).catch(() => undefined)
   return data.id as string
 }

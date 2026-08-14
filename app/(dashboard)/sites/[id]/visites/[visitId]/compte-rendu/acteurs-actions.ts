@@ -69,27 +69,42 @@ export async function listActeursConnusAction(): Promise<ActeurConnu[]> {
   const user = await getCurrentUserWithProfile()
   if (!user?.organization_id) return []
   try {
-    const { data, error } = await createAdminClient()
-      .from('company_contacts')
-      .select('id, full_name, companies(name, is_placeholder)')
-      .eq('organization_id', user.organization_id)
-      .is('deleted_at', null)
-      .order('full_name', { ascending: true })
-      .limit(500)
+    const db = createAdminClient()
+    const [{ data, error }, { data: affRows }] = await Promise.all([
+      db
+        .from('company_contacts')
+        .select('id, full_name, companies(name, is_placeholder)')
+        .eq('organization_id', user.organization_id)
+        .is('deleted_at', null)
+        .order('full_name', { ascending: true })
+        .limit(500),
+      // D1 (P0-3D) : l'AFFILIATION ACTIVE (mig 321) prime sur le legacy
+      // company_contacts.company_id — sinon la suggestion « Jean (EEC) »
+      // continuerait d'afficher un employeur périmé après un changement.
+      db
+        .from('contact_company_affiliations')
+        .select('contact_id, companies(name)')
+        .eq('organization_id', user.organization_id)
+        .is('effective_to', null),
+    ])
     if (error || !data) return []
+    const affName = new Map<string, string>()
+    for (const a of (affRows ?? []) as Array<{ contact_id: string; companies: unknown }>) {
+      const c = (Array.isArray(a.companies) ? a.companies[0] : a.companies) as { name?: string | null } | null
+      const n = c?.name?.trim()
+      if (n && !affName.has(a.contact_id)) affName.set(a.contact_id, n)
+    }
     type Jointure = { id: string; full_name: string | null; companies: unknown }
     // La jointure to-one revient tantôt en objet, tantôt en tableau selon la
     // version des types générés. On accepte les deux plutôt que de parier :
     // se tromper ici ferait perdre l'entreprise EN SILENCE, et le rapprochement
     // ne pencherait plus jamais du bon côté.
-    const nomEntreprise = (v: unknown): string | null => {
+    const nomEntrepriseLegacy = (v: unknown): string | null => {
       const cible = Array.isArray(v) ? v[0] : v
       const c = cible as { name?: string | null; is_placeholder?: boolean } | null | undefined
-      // L'ENTREPRISE D'ATTENTE N'EN EST PAS UNE (mig 232). Rendre son nom ferait
-      // de tous ses contacts des collègues aux yeux du moteur de rapprochement,
-      // qui majore le score sur « même entreprise » : dix personnes « À
-      // identifier » deviendraient dix doublons présumés. Le moteur doit donc
-      // recevoir `null` — l'absence d'employeur, pas un employeur commun.
+      // L'ENTREPRISE D'ATTENTE N'EN EST PAS UNE (mig 232, historique en base).
+      // Rendre son nom ferait de tous ses contacts des collègues aux yeux du
+      // moteur de rapprochement — le moteur doit recevoir `null`.
       if (c?.is_placeholder) return null
       return c?.name?.trim() || null
     }
@@ -98,7 +113,7 @@ export async function listActeursConnusAction(): Promise<ActeurConnu[]> {
       .map((r) => ({
         id: r.id,
         nom: r.full_name!.trim(),
-        entreprise: nomEntreprise(r.companies),
+        entreprise: affName.get(r.id) ?? nomEntrepriseLegacy(r.companies),
       }))
   } catch {
     // Une liste indisponible ne doit jamais empêcher d'arbitrer.

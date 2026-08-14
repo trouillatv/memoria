@@ -114,7 +114,11 @@ export async function getMemoryReview(siteId: string, options?: { includeWork?: 
       .filter((e) => e.kind !== 'durable_knowledge')
       .map((e) => ({ id: e.id, group: 'Ce que le chantier sait', title: e.title, nature: natureOf(e.kind), href: null })),
     ...intervenants.map((i) => ({
-      id: i.id, group: 'Intervenants', title: `${i.companyName} — ${i.role}`, nature: null,
+      // D1 (P0-3D) : personne ou entreprise si connues, sinon le rôle porte
+      // seul l'affichage — jamais un « — ELECTRICIEN » amputé.
+      id: i.id, group: 'Intervenants',
+      title: [i.contactName || i.companyShort || i.companyName || null, i.role].filter(Boolean).join(' — ') || i.role,
+      nature: null,
       href: `/sites/${siteId}/intervenant/${i.id}`,
     })),
     ...decisions.map((d) => ({

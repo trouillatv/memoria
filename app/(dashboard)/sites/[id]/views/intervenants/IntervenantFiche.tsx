@@ -23,6 +23,7 @@ import { frDayMonthLocal, todayLocalIso } from '@/lib/time/local-date'
 import type { IntervenantPerson } from '@/lib/knowledge/site-intervenants-view'
 import { assignedActionCountLabel, describeAssignedActionDate } from '@/lib/knowledge/assigned-actions'
 import { logIntervenantActionOpenedAction } from './intervenants-actions'
+import { IntervenantIdentityActions } from './IntervenantIdentityActions'
 
 // La COQUILLE de la fiche Intervenant, conservée pour l'onglet Intervenants
 // (sélection locale). Le parcours cross-surface (?person=) passe désormais par
@@ -118,10 +119,15 @@ export function IntervenantFicheBody({ siteId, person, animateContent = false, v
     return ad < bd ? -1 : ad > bd ? 1 : 0
   })
 
+  // D4 (P0-3D) : la frise mêle citations et ÉVÉNEMENTS D'IDENTITÉ (lifeline du
+  // read model — début de participation, relève chaînée, affiliations datées).
+  // Chaque entrée porte une vraie date ou n'existe pas : aucun « précisé le… »
+  // inventé. Tri anté-chronologique, la première apparition ferme la frise.
   const timeline: Array<{ date: string | null; label: string }> = [
     ...p.citedVisits.slice(0, 2).map((v) => ({ date: v.date, label: 'Cité pendant cette visite' })),
-    { date: p.firstSeen, label: 'Première apparition dans la mémoire' },
-  ]
+    ...p.lifeline,
+  ].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+  timeline.push({ date: p.firstSeen, label: 'Première apparition dans la mémoire' })
 
   const infos: Array<[string, string]> = []
   if (p.phone) infos.push(['Téléphone', p.phone])
@@ -270,6 +276,17 @@ export function IntervenantFicheBody({ siteId, person, animateContent = false, v
               </ul>
             </details>
           )}
+
+          {/* D2 (P0-3D) : les gestes d'identité vivent EN BAS — la fiche reste
+              narrative d'abord, gestionnaire ensuite. Le serveur garde l'accès
+              (managerOrAdmin) ; ici on ne fait qu'offrir la porte. */}
+          <IntervenantIdentityActions
+            siteId={siteId}
+            intervenantId={p.intervenantId}
+            personKnown={p.isPerson}
+            companyKnown={Boolean(p.companyName)}
+            role={p.role}
+          />
 
           <Link
             href={`/sites/${siteId}?tab=explorer`}
