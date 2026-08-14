@@ -121,12 +121,13 @@ export async function confirmActorProposalAction(input: ConfirmActorProposalInpu
     if (!role) return { ok: false, error: 'Indiquez le rôle pour l’ajout au casting' }
     // Vérifier le rattachement au chantier source (isolation stricte).
     if (!(await siteInOrg(proposal.siteId, g.orgIds))) return { ok: false, error: 'Chantier source hors de votre organisation' }
-    // Le casting exige une entreprise : personne sans entreprise → entreprise d'attente.
-    let castCompanyId = companyId
-    if (!castCompanyId) {
-      castCompanyId = p.companyName?.trim()
-        ? await findOrCreateCompanyByName(proposal.orgId, p.companyName.trim())
-        : await findOrCreatePlaceholderCompany(proposal.orgId)
+    // Le casting n'exige PLUS d'entreprise (mig 320, P0-3C) : une personne sans
+    // entreprise est une participation au niveau 3 — company_id reste NULL,
+    // aucune entreprise d'attente n'est inventée. C'était le DERNIER créateur
+    // implicite de placeholder ; « À identifier » ne naît plus nulle part.
+    let castCompanyId: string | null = companyId
+    if (!castCompanyId && p.companyName?.trim()) {
+      castCompanyId = await findOrCreateCompanyByName(proposal.orgId, p.companyName.trim())
     }
     const intervenantId = await openSiteIntervenant({
       siteId: proposal.siteId,

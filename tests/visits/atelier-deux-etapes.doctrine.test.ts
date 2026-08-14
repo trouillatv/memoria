@@ -234,22 +234,25 @@ describe('un acteur se QUALIFIE avant de se confirmer', () => {
     expect(rendu).toMatch(/setEntreprise\(''\)/)
   })
 
-  it('mais son entreprise est OPTIONNELLE — « À identifier » plus tard, jamais bloquante', () => {
-    // Doctrine mise à jour (mig 232) : on ne bloque plus sur l'entreprise. Sur un
-    // chantier, on croise quelqu'un avant de savoir pour qui il travaille ; sans
-    // entreprise, la personne rejoint « À identifier », et la rattacher pour de
-    // bon devient le travail restant.
+  it('son entreprise est OPTIONNELLE — et plus aucune entreprise d’attente n’est inventée', () => {
+    // Doctrine P0-3C (migs 320+321, 2026-08-14) — remplace la doctrine mig 232 :
+    // une personne sans entreprise est une IDENTITÉ DE L'ORGANISATION
+    // (company_id NULL), plus une pensionnaire de « À identifier ». Et les deux
+    // champs vides = RÔLE SEUL, un état légitime dit avant le clic.
     // 1. L'UI annonce que le champ est facultatif.
     expect(rendu).toContain('si vous la connaissez')
-    // 2. `estPersonne && !entreprise.trim()` n'est plus une GARDE de blocage mais
-    //    un REPÈRE : il informe que la personne ira dans « À identifier ».
-    expect(rendu).toMatch(/estPersonne && !entreprise\.trim\(\)[\s\S]{0,160}À identifier/)
-    // 3. L'envoi transmet l'entreprise seulement si elle est renseignée (jamais exigée).
-    expect(rendu).toMatch(/company_name: entreprise\.trim\(\) \|\| undefined/)
+    // 2. Le repère dit la NOUVELLE vérité : personne de l'organisation, pas placeholder.
+    expect(rendu).toMatch(/personne de l’organisation/)
+    expect(rendu).not.toMatch(/À identifier/)
+    // 3. Le rôle seul est annoncé, et transmis comme tel.
+    expect(rendu).toMatch(/sans inventer d’identité/)
+    expect(rendu).toMatch(/role_only: !personName && !companyName \? true : undefined/)
+    // 4. L'envoi transmet l'entreprise seulement si elle est renseignée (jamais exigée).
+    expect(rendu).toMatch(/const companyName = entreprise\.trim\(\) \|\| undefined/)
   })
 
   it('`person_name` n’est transmis que si c’en est une', () => {
-    expect(rendu).toMatch(/person_name: estPersonne \? personne\.trim\(\) \|\| undefined : undefined/)
+    expect(rendu).toMatch(/const personName = estPersonne \? personne\.trim\(\) \|\| undefined : undefined/)
   })
 
   it('les entreprises proposées aident sans enfermer', () => {

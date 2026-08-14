@@ -473,19 +473,22 @@ function LigneIntervenant({
       setErreur('Indiquez son rôle sur le chantier — il ne se devine pas.')
       return
     }
-    // ON NE BLOQUE PLUS SUR L'ENTREPRISE (mig 232). Sur un chantier, on croise
-    // quelqu'un avant de savoir pour qui il travaille : exiger l'employeur ici
-    // revenait à demander au terrain une information qu'il n'a pas encore.
-    // Sans entreprise, la personne rejoint « À identifier », et la rattacher
-    // pour de bon devient le travail restant.
+    // LES QUATRE ÉTATS SONT LÉGAUX (P0-3C, migs 320+321). Personne et
+    // entreprise sont indépendantes et facultatives : vider les deux confirme
+    // le RÔLE SEUL — MemorIA retient « l'électricien » sans inventer qui. Une
+    // personne sans entreprise est une identité de l'organisation (plus
+    // d'entreprise d'attente) ; personne + entreprise écrit l'affiliation datée.
     setErreur(null)
+    const personName = estPersonne ? personne.trim() || undefined : undefined
+    const companyName = entreprise.trim() || undefined
     void agir(pid, () =>
       promoteStakeholderProposalAction({
         report_id: reportId,
         proposal_id: pid,
         role: role.trim(),
-        company_name: entreprise.trim() || undefined,
-        person_name: estPersonne ? personne.trim() || undefined : undefined,
+        company_name: companyName,
+        person_name: personName,
+        role_only: !personName && !companyName ? true : undefined,
       }),
     )
   }
@@ -534,13 +537,23 @@ function LigneIntervenant({
           train d'établir, il mérite sa ligne — et il n'apparaît que là où on en
           a besoin, jamais pour les sociétés d'à côté. */}
       {estPersonne && (
-        <input
-          value={personne}
-          onChange={(e) => { setPersonne(e.target.value); if (erreur) setErreur(null) }}
-          placeholder="Prénom Nom"
-          aria-label="Personne"
-          className="mb-1 w-full rounded-md border bg-background px-1.5 py-1 text-[13px] font-medium focus:outline-none focus:ring-1 focus:ring-ring"
-        />
+        <>
+          <input
+            value={personne}
+            onChange={(e) => { setPersonne(e.target.value); if (erreur) setErreur(null) }}
+            placeholder="Rechercher ou ajouter — Prénom Nom"
+            aria-label="Personne"
+            // L'identité VISIBLE avant validation : les personnes déjà connues
+            // se proposent, la création reste possible si aucune ne convient.
+            list={`connus-${pid}`}
+            className="mb-1 w-full rounded-md border bg-background px-1.5 py-1 text-[13px] font-medium focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <datalist id={`connus-${pid}`}>
+            {connus.map((c) => (
+              <option key={c.id} value={c.nom}>{c.entreprise ? `${c.nom} — ${c.entreprise}` : c.nom}</option>
+            ))}
+          </datalist>
+        </>
       )}
       <div className="flex items-center gap-1.5">
         {/* Le nom lu par MemorIA est un texte, pas une vérité : il s'édite sur
@@ -600,11 +613,16 @@ function LigneIntervenant({
         </button>
       </div>
       {/* DIRE CE QU'ON S'APPRÊTE À FAIRE, PAS LE FAIRE DÉCOUVRIR. Confirmer
-          sans entreprise n'est ni une erreur ni un échec — c'est un état du
-          chantier. Mais il doit être choisi en connaissance de cause. */}
-      {estPersonne && !entreprise.trim() && (
-        <p className="mt-1 pl-1.5 text-[11.5px] text-amber-700 dark:text-amber-400">
-          Sans entreprise, cette personne sera rangée dans « À identifier » — à rattacher plus tard.
+          sans identité complète n'est ni une erreur ni un échec — c'est un état
+          de connaissance du chantier. Mais il se choisit en connaissance de cause. */}
+      {estPersonne && personne.trim() && !entreprise.trim() && (
+        <p className="mt-1 pl-1.5 text-[11.5px] text-muted-foreground">
+          {personne.trim()} sera enregistré·e comme personne de l’organisation — entreprise à préciser plus tard.
+        </p>
+      )}
+      {!personne.trim() && !entreprise.trim() && role.trim() && (
+        <p className="mt-1 pl-1.5 text-[11.5px] text-muted-foreground">
+          Sans personne ni entreprise : le rôle « {role.trim()} » sera retenu sur le chantier, sans inventer d’identité.
         </p>
       )}
       {erreur && <p className="mt-1 pl-1.5 text-[11.5px] text-rose-600 dark:text-rose-400">{erreur}</p>}

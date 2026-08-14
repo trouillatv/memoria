@@ -68,8 +68,10 @@ const promoteSchema = baseSchema.extend({
    *  serveur répond needs_input:['company'] sinon, jamais une entreprise à son nom). */
   person_name: z.string().trim().max(200).optional(),
   contact_id: z.string().uuid().nullish(),
-  /** Rattacher à une entreprise connue : son id, jamais son libellé affiché. */
+  /** Préciser une entreprise connue : son id, jamais son libellé affiché. */
   company_id: z.string().uuid().nullish(),
+  /** RÔLE SEUL (P0-3C) : participation non résolue, aucune identité inventée. */
+  role_only: z.boolean().optional(),
   /** Date choisie par l'utilisateur pour une échéance détectée. */
   due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   /** REQUIS pour une information : périssable ou durable ? L'humain tranche. */
@@ -104,6 +106,7 @@ export async function promoteFromMemoryAction(
         personName: parsed.data.person_name,
         contactId: parsed.data.contact_id ?? null,
         companyId: parsed.data.company_id ?? null,
+        roleOnly: parsed.data.role_only || undefined,
         dueDate: parsed.data.due_date,
         knowledgeKind: parsed.data.knowledge_kind,
       },

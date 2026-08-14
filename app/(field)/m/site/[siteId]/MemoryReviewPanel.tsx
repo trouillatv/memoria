@@ -11,7 +11,7 @@
 //     déduits du type d'objet — jamais une appréciation opaque ;
 //   · les propositions ne sont JAMAIS mélangées aux connaissances validées.
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { CalendarDays, Check, ChevronRight, Loader2, MapPin, X } from 'lucide-react'
 import Link from 'next/link'
 import { promoteFromMemoryAction, dismissFromMemoryAction } from './memory-actions'
@@ -21,6 +21,7 @@ import type { MemoryReview, ReviewItem } from '@/lib/knowledge/memory-review'
 import { frDayMonthLocal } from '@/lib/time/local-date'
 import { splitPersonCompany, looksLikePerson } from '@/lib/knowledge/person-name'
 import { searchIntervenantTargetsAction, type IntervenantTarget } from '@/app/(dashboard)/sites/[id]/views/intervenants/intervenants-actions'
+import { listActeursConnusAction, listOrgCompanyNamesAction } from '@/app/(dashboard)/sites/[id]/visites/[visitId]/compte-rendu/acteurs-actions'
 
 /** Les rôles courants du chantier. Libre : le métier varie (mig 137). */
 const ROLES = ['MOA', 'MOE', 'BET', 'ETV', 'OPC', 'CSPS', 'PAVE', 'PLANIF']
@@ -217,12 +218,29 @@ function ReviewCard({
   // Ce que l'écran doit DEMANDER — il ne le devine pas, la capability le dit.
   const [asking, setAsking] = useState<'role' | 'who' | 'nature' | 'date' | null>(null)
   const [stakeholderMode, setStakeholderMode] = useState<'new' | 'attach' | null>(null)
-  const [entityType, setEntityType] = useState<'person' | 'company' | null>(null)
+  // 'role_only' (P0-3C) : « je ne sais pas encore qui » est une réponse légitime.
+  const [entityType, setEntityType] = useState<'person' | 'company' | 'role_only' | null>(null)
   const [role, setRole] = useState<string | null>(null)
   const [dueDate, setDueDate] = useState('')
   const guess = splitPersonCompany(item.title)
   const [personName, setPersonName] = useState(guess.person ?? (looksLikePerson(item.title) ? item.title : ''))
   const [companyName, setCompanyName] = useState(guess.company ?? '')
+  // L'IDENTITÉ DOIT ÊTRE VISIBLE AVANT VALIDATION (Vincent, P0-3C tranche 2) :
+  // les Jean déjà connus et les entreprises existantes se proposent dans la
+  // saisie — sinon le serveur dédoublonne après coup sans que l'utilisateur
+  // sache ce qu'il sélectionne ou crée. Chargé UNE fois, à l'ouverture du dialog.
+  const [connusNoms, setConnusNoms] = useState<string[]>([])
+  const [entreprisesNoms, setEntreprisesNoms] = useState<string[]>([])
+  useEffect(() => {
+    if (asking !== 'who' || connusNoms.length > 0 || entreprisesNoms.length > 0) return
+    let vivant = true
+    void listActeursConnusAction().then((gens) => {
+      if (vivant) setConnusNoms(gens.map((g) => (g.entreprise ? `${g.nom} — ${g.entreprise}` : g.nom)))
+    }).catch(() => {})
+    void listOrgCompanyNamesAction().then((noms) => { if (vivant) setEntreprisesNoms(noms) }).catch(() => {})
+    return () => { vivant = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asking])
 
   function promote(extra: {
     role?: string
@@ -230,6 +248,7 @@ function ReviewCard({
     company_name?: string
     contact_id?: string | null
     company_id?: string | null
+    role_only?: boolean
     knowledge_kind?: 'current_information' | 'durable_knowledge'
     due_date?: string
   } = {}) {
@@ -311,12 +330,12 @@ function ReviewCard({
           {/* LA question qui manquait : sans elle, confirmer « Vincent Milon »
               créait une ENTREPRISE « Vincent Milon ». L'humain déclare, le
               titre ne fait que préremplir. */}
-          <p className="text-[12px] text-muted-foreground">Qui ajoutez-vous{role ? ` comme ${role}` : ''} ?</p>
+          <p className="text-[12px] text-muted-foreground">Qui est cet intervenant{role ? ` (${role})` : ''} ?</p>
           <div className="grid grid-cols-2 gap-1.5">
             <button
               type="button"
               disabled={pending}
-              aria-label="Individu"
+              aria-label="Une personne"
               onClick={() => {
                 setEntityType('person')
                 setPersonName(guess.person ?? item.title)
@@ -324,13 +343,13 @@ function ReviewCard({
               }}
               className={cn('rounded-lg border px-2.5 py-2 text-left text-[12px]', entityType === 'person' ? 'border-primary bg-primary/10 font-semibold text-primary' : 'bg-background')}
             >
-              Individu
-              <span className="block text-[11px] font-normal text-muted-foreground">Personne + entreprise</span>
+              Une personne
+              <span className="block text-[11px] font-normal text-muted-foreground">Entreprise facultative</span>
             </button>
             <button
               type="button"
               disabled={pending}
-              aria-label="Entreprise"
+              aria-label="Une entreprise"
               onClick={() => {
                 setEntityType('company')
                 setPersonName('')
@@ -338,8 +357,24 @@ function ReviewCard({
               }}
               className={cn('rounded-lg border px-2.5 py-2 text-left text-[12px]', entityType === 'company' ? 'border-primary bg-primary/10 font-semibold text-primary' : 'bg-background')}
             >
-              Entreprise
+              Une entreprise
               <span className="block text-[11px] font-normal text-muted-foreground">Société intervenante</span>
+            </button>
+            {/* « Je ne sais pas encore » est une RÉPONSE (niveau 2 de la
+                doctrine) : le rôle est retenu, aucune identité n'est inventée. */}
+            <button
+              type="button"
+              disabled={pending}
+              aria-label="Seulement un rôle pour l'instant"
+              onClick={() => {
+                setEntityType('role_only')
+                setPersonName('')
+                setCompanyName('')
+              }}
+              className={cn('col-span-2 rounded-lg border px-2.5 py-2 text-left text-[12px]', entityType === 'role_only' ? 'border-primary bg-primary/10 font-semibold text-primary' : 'bg-background')}
+            >
+              Seulement un rôle pour l’instant
+              <span className="block text-[11px] font-normal text-muted-foreground">MemorIA retient le rôle sans inventer d’identité — précisable plus tard.</span>
             </button>
           </div>
           <div>
@@ -357,40 +392,47 @@ function ReviewCard({
               type="text"
               value={personName}
               onChange={(e) => setPersonName(e.target.value)}
-              placeholder="Nom de la personne"
+              placeholder="Rechercher ou ajouter — Prénom Nom"
+              list={`connus-${item.id}`}
               className="block w-full rounded-lg border bg-background px-2.5 py-1.5 text-[13px]"
             />}
             {entityType === 'person' && <input
               type="text"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
-              placeholder="Entreprise de rattachement"
+              placeholder="Entreprise (facultatif)"
+              list={`entreprises-${item.id}`}
               className="block w-full rounded-lg border bg-background px-2.5 py-1.5 text-[13px]"
             />}
             {entityType === 'company' && <input
               type="text"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
-              placeholder="Nom de l'entreprise"
+              placeholder="Rechercher ou ajouter une entreprise"
+              list={`entreprises-${item.id}`}
               className="block w-full rounded-lg border bg-background px-2.5 py-1.5 text-[13px]"
             />}
-            {entityType === 'person' && personName.trim() && !companyName.trim() && (
-              <p className="text-[12px] text-muted-foreground">Une personne doit être rattachée à une entreprise.</p>
-            )}
+            <datalist id={`connus-${item.id}`}>
+              {connusNoms.map((n) => <option key={n} value={n.split(' — ')[0]}>{n}</option>)}
+            </datalist>
+            <datalist id={`entreprises-${item.id}`}>
+              {entreprisesNoms.map((n) => <option key={n} value={n} />)}
+            </datalist>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={pending || !role || !entityType || (entityType === 'company' ? !companyName.trim() : !personName.trim())}
+              disabled={pending || !role || !entityType || (entityType === 'company' ? !companyName.trim() : entityType === 'person' ? !personName.trim() : false)}
               onClick={() => promote({
                 role: role ?? undefined,
                 person_name: entityType === 'person' ? personName.trim() : undefined,
-                company_name: companyName.trim() || undefined,
+                company_name: entityType === 'role_only' ? undefined : companyName.trim() || undefined,
+                role_only: entityType === 'role_only' || undefined,
               })}
               className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground active:opacity-80 disabled:opacity-50"
             >
               {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              {personName.trim() ? 'Ajouter la personne' : "Ajouter l'entreprise"}
+              {entityType === 'role_only' ? 'Retenir le rôle' : personName.trim() ? 'Ajouter la personne' : "Ajouter l'entreprise"}
             </button>
             <button
               type="button"
@@ -485,7 +527,7 @@ function ReviewCard({
                 Nouvel intervenant
               </button>
               <button type="button" disabled={pending} onClick={() => setStakeholderMode('attach')} className="rounded-lg border px-3 py-1.5 text-[13px] font-medium hover:bg-muted disabled:opacity-50">
-                Rattacher
+                Préciser l’intervenant
               </button>
               <button type="button" disabled={pending} onClick={dismiss} className="rounded-lg px-2.5 py-1.5 text-[13px] text-muted-foreground hover:text-foreground disabled:opacity-50">
                 Écarter
@@ -599,7 +641,7 @@ function StakeholderAttachPanel({
         <div className="space-y-1.5">
           <label className="text-[12px] text-muted-foreground" htmlFor={`attach-role-${selected.companyId}`}>Rôle sur le chantier</label>
           <input id={`attach-role-${selected.companyId}`} value={role} onChange={(event) => setRole(event.target.value)} placeholder="MOA, BET, PAVE…" className="w-full rounded-lg border bg-background px-2.5 py-1.5 text-[13px]" />
-          <button type="button" disabled={pending || !role.trim()} onClick={() => onPromote(selected, role.trim())} className="rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground disabled:opacity-50">Rattacher</button>
+          <button type="button" disabled={pending || !role.trim()} onClick={() => onPromote(selected, role.trim())} className="rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground disabled:opacity-50">Confirmer l’intervenant</button>
         </div>
       )}
       <button type="button" disabled={pending} onClick={onCancel} className="rounded-lg border px-3 py-1.5 text-[12.5px] text-muted-foreground">Annuler</button>

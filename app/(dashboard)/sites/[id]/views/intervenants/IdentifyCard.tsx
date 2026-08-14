@@ -32,7 +32,7 @@ export function IdentifyCard({ siteId, item, onDone }: { siteId: string; item: T
   )
   const [companyName, setCompanyName] = useState(item.suggestion?.companyName ?? guess.company ?? '')
 
-  function promote(extra: { person_name?: string; company_name?: string; contact_id?: string | null }) {
+  function promote(extra: { person_name?: string; company_name?: string; contact_id?: string | null; role_only?: boolean }) {
     if (!role) return
     setError(null)
     start(async () => {
@@ -84,7 +84,7 @@ export function IdentifyCard({ siteId, item, onDone }: { siteId: string; item: T
               onClick={() => setMode('rattacher')}
               className="rounded-lg border bg-background px-3 py-1.5 text-[12.5px] font-semibold hover:bg-muted disabled:opacity-50"
             >
-              Rattacher
+              Préciser l’intervenant
             </button>
             <button
               type="button"
@@ -136,40 +136,44 @@ export function IdentifyCard({ siteId, item, onDone }: { siteId: string; item: T
           )}
 
           <div className="space-y-1.5">
+            {/* Personne et entreprise INDÉPENDANTES et facultatives (P0-3C,
+                migs 320+321). Les deux vides = rôle seul, état légitime :
+                MemorIA retient le rôle sans inventer d'identité. */}
             <input
               type="text"
               value={personName}
               onChange={(e) => setPersonName(e.target.value)}
-              placeholder="Personne (laisser vide si entreprise seule)"
+              placeholder="Personne (facultatif)"
               className="block w-full rounded-lg border bg-background px-2.5 py-1.5 text-[13px]"
             />
             <input
               type="text"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
-              placeholder="Entreprise"
+              placeholder="Entreprise (facultatif)"
               className="block w-full rounded-lg border bg-background px-2.5 py-1.5 text-[13px]"
             />
-            {personName.trim() && !companyName.trim() && (
-              <p className="text-[12px] text-muted-foreground">Une personne s’ajoute avec son entreprise.</p>
-            )}
+            <p className="text-[12px] text-muted-foreground">
+              {personName.trim() && !companyName.trim()
+                ? `${personName.trim()} sera enregistré·e comme personne de l’organisation — entreprise à préciser plus tard.`
+                : !personName.trim() && !companyName.trim()
+                  ? 'Sans personne ni entreprise : le rôle sera retenu sur le chantier, sans inventer d’identité.'
+                  : null}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={
-                pending || !role
-                || (!personName.trim() && !companyName.trim())
-                || (!!personName.trim() && !companyName.trim())
-              }
+              disabled={pending || !role}
               onClick={() => promote({
                 person_name: personName.trim() || undefined,
                 company_name: companyName.trim() || undefined,
+                role_only: !personName.trim() && !companyName.trim() ? true : undefined,
               })}
               className="inline-flex items-center gap-1.5 rounded-lg border bg-background px-3 py-1.5 text-[13px] font-medium hover:bg-muted disabled:opacity-50"
             >
               {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              {personName.trim() ? 'Ajouter la personne' : 'Ajouter l’entreprise'}
+              {personName.trim() ? 'Ajouter la personne' : companyName.trim() ? 'Ajouter l’entreprise' : 'Retenir le rôle'}
             </button>
             <button
               type="button"
