@@ -39,6 +39,8 @@ import { parseUpload } from '@/services/ingestion/adapters/upload'
 import { ingestBatch } from '@/services/ingestion/ingest-batch'
 import { createSiteReport, addReportSites, addReportAttachment } from '@/lib/db/site-reports'
 import { transcribeVisitAudios, transcribeMeetingAudios } from '@/lib/share/transcribe-shared'
+import { createSite } from '@/lib/db/sites'
+import { getCurrentUserWithProfile } from '@/lib/db/users'
 
 const BUCKET = 'site-reports'
 
@@ -68,6 +70,53 @@ export type ShareResult =
       transcribed: number
     }
   | { error: string }
+
+// ── Création RAPIDE d'un chantier depuis le partage (lot 2026-08-14) ────────
+//
+// Le cas réel : Guillaume reçoit une photo d'un chantier qui n'existe pas
+// encore dans MemorIA. Sa mémoire doit pouvoir commencer À CET INSTANT — sans
+// retourner dans WhatsApp, sans fiche administrative. On ne demande que le nom
+// (+ lieu facultatif) ; le reste se complète plus tard depuis la fiche.
+//
+// DÉCISION MÉTIER (Vincent, 2026-08-14) : l'autonomie terrain prime — un
+// chef_equipe PEUT créer un chantier depuis ce flux (même garde que le reste
+// du partage : requireFieldAgent). Le chantier naît dans SON organisation,
+// en phase 'actif', sans client ni contrat (mig 210 : assumé).
+// Le payload n'est jamais touché : le lot reste dans le sas, l'appelant
+// enchaîne sur le même parcours avec le nouveau siteId.
+
+const createSiteSchema = z.object({
+  name: z.string().trim().min(2, 'Nom trop court').max(120),
+  address: z.string().trim().max(300).optional(),
+})
+
+export async function createSiteFromShareAction(
+  input: unknown,
+): Promise<{ id: string; name: string } | { error: string }> {
+  const auth = await requireFieldAgent()
+  if (!auth.ok || !auth.userId) return { error: 'Session expirée' }
+
+  const parsed = createSiteSchema.safeParse(input)
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Nom du chantier requis' }
+
+  const user = await getCurrentUserWithProfile()
+  if (!user?.organization_id) return { error: 'Organisation introuvable' }
+
+  try {
+    const id = await createSite({
+      client_id: null,
+      contract_id: null,
+      name: parsed.data.name,
+      address: parsed.data.address?.trim() || null,
+      organization_id: user.organization_id,
+    })
+    revalidatePath('/m')
+    revalidatePath('/sites')
+    return { id, name: parsed.data.name }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Création impossible' }
+  }
+}
 
 export async function attachSharedBatchAction(input: unknown): Promise<ShareResult> {
   const auth = await requireFieldAgent()

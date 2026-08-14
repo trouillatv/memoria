@@ -25,6 +25,7 @@ import {
 import { toast } from 'sonner'
 import {
   attachSharedBatchAction,
+  createSiteFromShareAction,
   discardShareAction,
   listRecentVisitsAction,
   listRecentMeetingsAction,
@@ -78,6 +79,30 @@ export function SharePicker({
   const [targets, setTargets] = useState<ShareTargetOption[] | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [title, setTitle] = useState('')
+  // Création rapide : le chantier n'existe pas encore — sa mémoire commence ICI.
+  // Le lot reste dans le sas pendant toute la création : rien n'est jamais reperdu.
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newAddress, setNewAddress] = useState('')
+
+  function createAndContinue() {
+    const name = newName.trim()
+    if (!name || pending) return
+    setBusyId('__create__')
+    start(async () => {
+      const r = await createSiteFromShareAction({ name, address: newAddress.trim() || undefined })
+      setBusyId(null)
+      if ('error' in r) {
+        toast.error(r.error)
+        return
+      }
+      toast.success(`Chantier « ${r.name} » créé.`)
+      // Reprise AUTOMATIQUE du flux : le nouveau chantier est sélectionné, le
+      // parcours continue exactement comme après un choix dans la liste.
+      setCreating(false)
+      setSite({ id: r.id, name: r.name })
+    })
+  }
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
@@ -386,10 +411,11 @@ export function SharePicker({
 
       {sites.length === 0 ? (
         <p className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground">
-          Aucun chantier accessible.{' '}
+          Aucun chantier accessible — créez-en un ci-dessous, ou{' '}
           <Link href="/m" className="font-medium text-brand-700 hover:underline">
-            Retour
+            retournez à l&apos;accueil
           </Link>
+          .
         </p>
       ) : (
         <>
@@ -425,6 +451,69 @@ export function SharePicker({
             )}
           </ul>
         </>
+      )}
+
+      {/* Le chantier n'existe pas encore ? Sa mémoire commence maintenant.
+          Création MINIMALE (nom + lieu facultatif) — le but de l'utilisateur est
+          d'enregistrer ce qu'il vient de partager, pas de remplir une fiche.
+          Le lot reste dans le sas pendant toute la création. Visuellement
+          distinct des chantiers (pointillés) pour ne pas se confondre avec eux. */}
+      {creating ? (
+        <div className="space-y-2 rounded-xl border border-dashed border-brand-300 bg-brand-50/50 p-3">
+          <p className="text-sm font-medium">Nouveau chantier</p>
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            maxLength={120}
+            placeholder="Nom du chantier *"
+            autoFocus
+            disabled={pending}
+            className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <input
+            value={newAddress}
+            onChange={(e) => setNewAddress(e.target.value)}
+            maxLength={300}
+            placeholder="Adresse / lieu (facultatif)"
+            disabled={pending}
+            className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={createAndContinue}
+              disabled={pending || newName.trim().length < 2}
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-60"
+            >
+              {pending && busyId === '__create__' ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              Créer et continuer
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreating(false)}
+              disabled={pending}
+              className="rounded-lg px-3 py-2.5 text-sm text-muted-foreground hover:bg-muted disabled:opacity-60"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          disabled={pending}
+          className="flex w-full items-center justify-between gap-2 rounded-xl border border-dashed px-4 py-3.5 text-left text-muted-foreground transition-colors hover:bg-muted/40 disabled:opacity-60"
+        >
+          <span className="inline-flex items-center gap-2 font-medium">
+            <Plus className="h-4 w-4" /> Créer un nouveau chantier
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0" />
+        </button>
       )}
 
       <button
