@@ -81,6 +81,20 @@ describe('chantier overview projections', () => {
     expect(getActionDueLabel(action({ dueDate: '2026-07-15' }), today)).toBe('Cette semaine')
     expect(getActionDueTone(action({ dueDate: '2026-07-15' }), today)).toBe('orange')
   })
+
+  // LOT4/5 (retour Guillaume 2026-08-14) : une échéance dépassée mais non confirmée
+  // par un humain (due_date_status != 'explicit') n'est jamais qualifiée « en retard ».
+  it('n\'affiche jamais "en retard" pour une échéance dépassée non confirmée', () => {
+    expect(getActionDueLabel(action({ dueDate: '2026-07-10', dueDateStatus: 'estimated' }), today))
+      .toBe('Prévu le 10 juil. · non confirmée')
+    expect(getActionDueTone(action({ dueDate: '2026-07-10', dueDateStatus: 'estimated' }), today))
+      .toBe('orange')
+
+    expect(getActionDueLabel(action({ dueDate: '2026-07-10', dueDateStatus: null }), today))
+      .toBe('Prévu le 10 juil. · non confirmée')
+    expect(getActionDueTone(action({ dueDate: '2026-07-10', dueDateStatus: null }), today))
+      .toBe('orange')
+  })
 })
 
 function action(overrides: Partial<OverviewActionInput>): OverviewActionInput {
@@ -89,6 +103,7 @@ function action(overrides: Partial<OverviewActionInput>): OverviewActionInput {
     title: overrides.title ?? 'Action',
     status: overrides.status ?? 'open',
     dueDate: overrides.dueDate ?? null,
+    dueDateStatus: 'dueDateStatus' in overrides ? overrides.dueDateStatus ?? null : 'explicit',
     createdAt: overrides.createdAt ?? '2026-07-01T00:00:00.000Z',
     href: overrides.href ?? '/sites/site/actions/a',
   }

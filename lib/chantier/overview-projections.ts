@@ -19,6 +19,10 @@ export interface OverviewActionInput {
   title: string
   status: string
   dueDate: string | null
+  /** 'explicit' = échéance confirmée par un humain ; 'estimated' / null = déduite
+   *  par l'IA, jamais qualifiable de « en retard » (retour Guillaume 2026-08-14,
+   *  LOT4 — même règle que lib/knowledge/overdue-action.ts). */
+  dueDateStatus: 'explicit' | 'estimated' | null
   createdAt: string
   href: string | null
 }
@@ -123,21 +127,25 @@ export function selectNextEvent(events: OverviewEventInput[], nowIso: string): O
 }
 
 export function getActionDueTone(
-  action: Pick<OverviewActionInput, 'dueDate'>,
+  action: Pick<OverviewActionInput, 'dueDate' | 'dueDateStatus'>,
   todayIso: string,
 ): 'green' | 'orange' | 'red' | 'blue' {
   if (!action.dueDate) return 'blue'
-  if (action.dueDate < todayIso) return 'red'
+  if (action.dueDate < todayIso) return action.dueDateStatus === 'explicit' ? 'red' : 'orange'
   if (action.dueDate === todayIso || daysBetween(todayIso, action.dueDate) <= 7) return 'orange'
   return 'blue'
 }
 
 export function getActionDueLabel(
-  action: Pick<OverviewActionInput, 'dueDate' | 'status'>,
+  action: Pick<OverviewActionInput, 'dueDate' | 'status' | 'dueDateStatus'>,
   todayIso: string,
 ): string {
   if (!action.dueDate) return action.status === 'planned' ? 'Planifiée' : 'Sans échéance'
-  if (action.dueDate < todayIso) return `En retard depuis le ${formatDayMonth(action.dueDate)}`
+  if (action.dueDate < todayIso) {
+    return action.dueDateStatus === 'explicit'
+      ? `En retard depuis le ${formatDayMonth(action.dueDate)}`
+      : `Prévu le ${formatDayMonth(action.dueDate)} · non confirmée`
+  }
   if (action.dueDate === todayIso) return "Aujourd'hui"
   if (daysBetween(todayIso, action.dueDate) <= 7) return 'Cette semaine'
   return formatDayMonth(action.dueDate)

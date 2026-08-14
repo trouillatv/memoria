@@ -123,8 +123,11 @@ export interface AttentionReason {
   href: string | null
 }
 
-/** Urgence d'une action — sens métier ; la couleur est l'affaire de l'écran. */
-export type ActionUrgency = 'late' | 'today' | 'week' | 'later' | 'undated'
+/** Urgence d'une action — sens métier ; la couleur est l'affaire de l'écran.
+ *  'late_unconfirmed' : échéance dépassée mais non confirmée (due_date_status
+ *  != 'explicit') — jamais qualifiable de « en retard » (retour Guillaume
+ *  2026-08-14, LOT4 — même règle que overdue-action.ts). */
+export type ActionUrgency = 'late' | 'late_unconfirmed' | 'today' | 'week' | 'later' | 'undated'
 export interface PriorityAction {
   id: string
   title: string
@@ -266,10 +269,10 @@ function proposedAndConfirmed(p: ProposalProjection, confirmed: KnowledgeItem[],
 }
 
 /** Urgence métier d'une action — même règle que le libellé d'échéance. */
-function urgencyOf(dueDate: string | null, todayIso: string): ActionUrgency {
+function urgencyOf(dueDate: string | null, dueDateStatus: 'explicit' | 'estimated' | null, todayIso: string): ActionUrgency {
   if (!dueDate) return 'undated'
   const due = dueDate.slice(0, 10)
-  if (due < todayIso) return 'late'
+  if (due < todayIso) return dueDateStatus === 'explicit' ? 'late' : 'late_unconfirmed'
   if (due === todayIso) return 'today'
   const days = Math.floor((Date.parse(`${due}T00:00:00.000Z`) - Date.parse(`${todayIso}T00:00:00.000Z`)) / 86_400_000)
   return days <= 7 ? 'week' : 'later'
@@ -324,15 +327,18 @@ function toMemoryReasons(signals: MemorySignal[], siteId: string): OverviewSigna
   })
 }
 
+// Une échéance non confirmée (due_date_status != 'explicit') n'est jamais qualifiée
+// « en retard » (retour Guillaume 2026-08-14, LOT4 — même règle que canonical-attention.ts
+// et site-attention-items.ts, via lib/knowledge/overdue-action.ts).
 function toOverdueActionReasons(rows: ActionSummaryRow[], todayIso: string, siteId: string): OverviewSignalInput[] {
   return rows
-    .filter((a) => a.due_date && a.due_date.slice(0, 10) < todayIso)
+    .filter((a) => a.due_date && a.due_date.slice(0, 10) < todayIso && a.due_date_status === 'explicit')
     .slice(0, 2)
     .map((a) => ({
       id: `late-${a.id}`,
       kind: 'action_overdue' as const,
       title: a.title,
-      detail: getActionDueLabel({ dueDate: a.due_date, status: a.status }, todayIso),
+      detail: getActionDueLabel({ dueDate: a.due_date, status: a.status, dueDateStatus: a.due_date_status }, todayIso),
       href: `/sites/${siteId}/actions`,
     }))
 }
@@ -572,7 +578,9 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
   const todayIso = new Date().toISOString().slice(0, 10)
   // Invariant : overdue = open uniquement. Une action planned a une prise en charge
   // explicite (intervention planifiée) ; l'inclure dans "en retard" contredit le moteur canonical.
-  const overdue = activeDedup.filter((a) => a.status === 'open' && a.due_date && a.due_date.slice(0, 10) < todayIso).length
+  // Une échéance non confirmée (due_date_status != 'explicit') n'est jamais « en retard »
+  // (retour Guillaume 2026-08-14, LOT4 — même règle que canonical-attention.ts).
+  const overdue = activeDedup.filter((a) => a.status === 'open' && a.due_date && a.due_date.slice(0, 10) < todayIso && a.due_date_status === 'explicit').length
   const week = activeDedup.filter((a) => {
     if (!a.due_date) return false
     const due = a.due_date.slice(0, 10)
@@ -586,6 +594,7 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
       title: a.title,
       status: a.status,
       dueDate: a.due_date,
+      dueDateStatus: a.due_date_status,
       createdAt: a.created_at,
       href: `/sites/${siteId}/actions`,
     })),
@@ -594,8 +603,8 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     id: a.id,
     title: a.title,
     href: a.href,
-    dueLabel: getActionDueLabel({ dueDate: a.dueDate, status: a.status }, todayIso),
-    urgency: urgencyOf(a.dueDate, todayIso),
+    dueLabel: getActionDueLabel({ dueDate: a.dueDate, status: a.status, dueDateStatus: a.dueDateStatus }, todayIso),
+    urgency: urgencyOf(a.dueDate, a.dueDateStatus, todayIso),
   }))
   // Terminées récemment : triées par date de RÉALISATION. Une action faite hier
   // passe devant une action créée hier et faite il y a un mois.

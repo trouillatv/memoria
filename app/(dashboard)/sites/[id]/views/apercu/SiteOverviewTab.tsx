@@ -452,7 +452,7 @@ const toneClass = {
 /** La couleur est l'affaire de l'écran ; le sens vient du read model. */
 function urgencyTone(urgency: ActionUrgency): 'green' | 'orange' | 'red' | 'blue' {
   if (urgency === 'late') return 'red'
-  if (urgency === 'today' || urgency === 'week') return 'orange'
+  if (urgency === 'today' || urgency === 'week' || urgency === 'late_unconfirmed') return 'orange'
   return 'blue'
 }
 

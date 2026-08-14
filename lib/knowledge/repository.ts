@@ -80,6 +80,10 @@ export interface ActionSummaryRow {
   title: string
   status: string
   due_date: string | null
+  /** 'explicit' = échéance confirmée par un humain ; 'estimated' / null = déduite
+   *  par l'IA, jamais qualifiable de « en retard » (retour Guillaume 2026-08-14,
+   *  LOT4 — même règle que lib/knowledge/overdue-action.ts). */
+  due_date_status: 'explicit' | 'estimated' | null
   created_at: string
   /** Quand l'action a été TERMINÉE — `null` tant qu'elle ne l'est pas. Sans cette
    *  date, « terminées récemment » ne peut pas exister : `created_at` dit quand on
@@ -95,7 +99,7 @@ export interface ActionSummaryRow {
 export async function readSiteActionSummaries(siteId: string): Promise<ActionSummaryRow[]> {
   const { data, error } = await createAdminClient()
     .from('site_actions')
-    .select('id, title, status, due_date, created_at, done_at, assigned_to, report_id, corps_etat, subject_thread_id')
+    .select('id, title, status, due_date, due_date_status, created_at, done_at, assigned_to, report_id, corps_etat, subject_thread_id')
     .eq('site_id', siteId)
   if (error) return []
   return (data ?? []) as ActionSummaryRow[]
