@@ -48,15 +48,19 @@ function daysSince(iso: string | null, asOf: string): number | null {
   return d >= 0 ? d : null
 }
 
-/** ACTIONS EN RETARD : ouvertes dont l'échéance est dépassée. */
+/** ACTIONS EN RETARD : ouvertes dont l'échéance CONFIRMÉE (due_date_status = 'explicit')
+ *  est dépassée. Une date déduite par l'IA et non confirmée n'est jamais qualifiée
+ *  « en retard » — l'absence de confirmation n'est pas une preuve de retard (retour
+ *  Guillaume 2026-08-14, LOT4 ; même règle que lib/knowledge/canonical-attention.ts). */
 export async function detectOverdueActions(siteId: string, asOf = todayIso()): Promise<MemorySignal | null> {
   const { data } = await createAdminClient()
     .from('site_actions')
-    .select('id, title, assigned_to, due_date, status, created_at')
+    .select('id, title, assigned_to, due_date, due_date_status, status, created_at')
     .eq('site_id', siteId)
     .eq('status', 'open')
     .not('due_date', 'is', null)
     .lte('due_date', asOf)
+    .eq('due_date_status', 'explicit')
     .order('due_date', { ascending: true })
   const rows = data ?? []
   if (rows.length === 0) return null
@@ -157,7 +161,7 @@ export async function detectOpenReserves(siteId: string, asOf = todayIso()): Pro
 export async function detectActorCongestion(siteId: string, minActions = 4, shareThreshold = 0.4, asOf = todayIso()): Promise<MemorySignal | null> {
   const { data } = await createAdminClient()
     .from('site_actions')
-    .select('id, assigned_to, due_date, status')
+    .select('id, assigned_to, due_date, due_date_status, status')
     .eq('site_id', siteId)
     .eq('status', 'open')
     .not('assigned_to', 'is', null)
@@ -169,7 +173,9 @@ export async function detectActorCongestion(siteId: string, minActions = 4, shar
     if (!actor) continue
     const g = byActor.get(actor.toLowerCase()) ?? { actor, total: 0, overdue: 0 }
     g.total++
-    if (a.due_date && (a.due_date as string) <= asOf) g.overdue++
+    // Seule une échéance CONFIRMÉE (due_date_status = 'explicit') compte comme
+    // « en retard » — une date déduite par l'IA non confirmée ne l'est jamais (LOT4).
+    if (a.due_date && (a.due_date as string) <= asOf && a.due_date_status === 'explicit') g.overdue++
     byActor.set(actor.toLowerCase(), g)
   }
   const total = rows.length

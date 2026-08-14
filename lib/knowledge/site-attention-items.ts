@@ -21,6 +21,7 @@ import { computeWatchlist, type WatchReason } from '@/lib/documents/pv-watchlist
 export type AttentionSignal =
   | 'subject_stagnant'
   | 'action_overdue'
+  | 'action_to_verify'
   | 'deadline_near'
   | 'deadline_overdue'
   | 'reserve_open'
@@ -111,7 +112,7 @@ export async function deriveSiteAttentionItems(
     getNavigableSubjectsForSite(siteId),
     admin
       .from('site_actions')
-      .select('id, title, due_date, subject_thread_id, assigned_to')
+      .select('id, title, due_date, due_date_status, subject_thread_id, assigned_to')
       .eq('site_id', siteId)
       .eq('status', 'open')
       .not('due_date', 'is', null)
@@ -276,8 +277,14 @@ export async function deriveSiteAttentionItems(
   }
 
   // ── 4. Actions en retard ──────────────────────────────────────────────────
+  // due_date_status distingue une date CONFIRMÉE par un humain (explicit) d'une
+  // date DÉDUITE par l'IA (estimated) — même règle que assigned-actions.ts et
+  // action-fiche.ts. L'absence de confirmation n'est pas une preuve de retard
+  // (retour Guillaume 2026-08-14, LOT4) : une date estimée non dépassée-prouvée
+  // reste « à vérifier », jamais « en retard ».
   const overdueActions = (overdueResult.data ?? []) as Array<{
-    id: string; title: string; due_date: string; subject_thread_id: string | null; assigned_to: string | null
+    id: string; title: string; due_date: string; due_date_status: 'explicit' | 'estimated' | null
+    subject_thread_id: string | null; assigned_to: string | null
   }>
 
   for (const action of overdueActions) {
@@ -285,14 +292,25 @@ export async function deriveSiteAttentionItems(
     if (csId && coveredCsIds.has(csId)) continue
 
     const overdueDays = daysBetween(action.due_date, today)
-    const urgency: AttentionUrgency = overdueDays > 14 ? 'high' : overdueDays > 7 ? 'high' : 'medium'
+    const isConfirmedDate = action.due_date_status === 'explicit'
+    const signal = isConfirmedDate ? 'action_overdue' : 'action_to_verify'
+    // 'medium', pas 'low' : rankBriefingAttention (visit-briefing.ts) écarte tout
+    // ce qui est 'low' avant la visite. Un item « à vérifier » doit justement
+    // apparaître dans la préparation de visite (LOT5) — sinon la question posée
+    // au terrain (Q9) reste invisible plutôt que « à vérifier ».
+    const urgency: AttentionUrgency = isConfirmedDate
+      ? (overdueDays > 14 ? 'high' : overdueDays > 7 ? 'high' : 'medium')
+      : 'medium'
+    const title = csId ? (csIndex.get(csId)?.title ?? action.title) : action.title
+    const reason = isConfirmedDate
+      ? `Action « ${action.title} » en retard de ${overdueDays} j`
+      : `Prévu le ${action.due_date} · réalisation non confirmée`
 
     if (csId) {
-      const s = csIndex.get(csId)
       items.push({
-        signal: 'action_overdue',
-        title: s?.title ?? action.title,
-        reason: `Action « ${action.title} » en retard de ${overdueDays} j`,
+        signal,
+        title,
+        reason,
         urgency,
         href: subjectHref(csId),
         metadata: { actionId: action.id, canonicalSubjectId: csId },
@@ -300,9 +318,9 @@ export async function deriveSiteAttentionItems(
       coveredCsIds.add(csId)
     } else {
       items.push({
-        signal: 'action_overdue',
-        title: action.title,
-        reason: `En retard de ${overdueDays} j (échéance ${action.due_date})`,
+        signal,
+        title,
+        reason,
         urgency,
         href: `/sites/${siteId}/actions`,
         metadata: { actionId: action.id },

@@ -23,6 +23,7 @@ export type CanonicalSignal =
   | 'pv_aggrave'
   | 'pv_reopened'
   | 'action_overdue'
+  | 'action_to_verify'
   | 'stagnant'
   | 'open_with_objects'
   | 'pv_no_evolution'
@@ -38,6 +39,9 @@ const SIGNAL_BASE_SCORE: Record<CanonicalSignal, number> = {
   open_with_objects:  40,
   pv_no_evolution:    35,
   deadline_near:      25,
+  // Date IA non confirmée par un humain : jamais « en retard », un simple rappel
+  // à vérifier (retour Guillaume 2026-08-14, LOT4).
+  action_to_verify:   20,
 }
 
 export interface CanonicalAttentionItem {
@@ -109,7 +113,7 @@ export async function deriveCanonicalAttentionItems(
       .eq('site_id', siteId),
     admin
       .from('site_actions')
-      .select('id, title, due_date, subject_thread_id')
+      .select('id, title, due_date, due_date_status, subject_thread_id')
       .eq('site_id', siteId)
       .eq('status', 'open')
       .not('due_date', 'is', null)
@@ -191,14 +195,25 @@ export async function deriveCanonicalAttentionItems(
 
   // ── 5. Actions en retard par canonical ────────────────────────────────────
 
-  type ActionRow = { id: string; title: string; due_date: string; subject_thread_id: string | null }
+  type ActionRow = {
+    id: string; title: string; due_date: string
+    due_date_status: 'explicit' | 'estimated' | null; subject_thread_id: string | null
+  }
   const overdueActions = (overdueActionsResult.data ?? []) as ActionRow[]
-  const overdueByCsId = new Map<string, { title: string; overdueDays: number }>()
+  // due_date_status distingue une date CONFIRMÉE par un humain d'une date DÉDUITE
+  // par l'IA — même règle que assigned-actions.ts. Une date estimée non confirmée
+  // n'est jamais « en retard » (retour Guillaume 2026-08-14, LOT4).
+  const overdueByCsId = new Map<string, { title: string; overdueDays: number; dueDate: string; confirmed: boolean }>()
   for (const a of overdueActions) {
     if (!a.subject_thread_id) continue
     const csId = threadToCs.get(a.subject_thread_id)
     if (!csId || overdueByCsId.has(csId)) continue
-    overdueByCsId.set(csId, { title: a.title, overdueDays: daysBetween(a.due_date, today) })
+    overdueByCsId.set(csId, {
+      title: a.title,
+      overdueDays: daysBetween(a.due_date, today),
+      dueDate: a.due_date,
+      confirmed: a.due_date_status === 'explicit',
+    })
   }
 
   // ── 6. Échéances proches par canonical ────────────────────────────────────
@@ -244,13 +259,17 @@ export async function deriveCanonicalAttentionItems(
       score = Math.max(score, SIGNAL_BASE_SCORE[sig])
     }
 
-    // Signal : action en retard (score ajusté selon l'ancienneté)
-    if (overdue) {
+    // Signal : action en retard (score ajusté selon l'ancienneté) — seulement si
+    // la date est confirmée. Sinon : simple rappel « à vérifier ».
+    if (overdue && overdue.confirmed) {
       signals.push('action_overdue')
       const overdueScore = overdue.overdueDays > 14
         ? SIGNAL_BASE_SCORE.action_overdue
         : SIGNAL_BASE_SCORE.action_overdue - 10
       score = Math.max(score, overdueScore)
+    } else if (overdue) {
+      signals.push('action_to_verify')
+      score = Math.max(score, SIGNAL_BASE_SCORE.action_to_verify)
     }
 
     // Signal : stagnation (sans blocage — déjà compté ci-dessus sinon)
@@ -310,9 +329,11 @@ export async function deriveCanonicalAttentionItems(
       reasons.push('Toujours ouvert lors de la dernière visite')
     }
 
-    // Ligne 3 : action en retard ou objets actifs
-    if (overdue) {
+    // Ligne 3 : action en retard, à vérifier, ou objets actifs
+    if (overdue && overdue.confirmed) {
       reasons.push(`Action « ${overdue.title} » en retard de ${overdue.overdueDays} j`)
+    } else if (overdue) {
+      reasons.push(`Prévu le ${overdue.dueDate} · réalisation non confirmée`)
     } else if (s.activeObjects.total > 0) {
       const objParts: string[] = []
       if (s.activeObjects.actionsOpen > 0)
