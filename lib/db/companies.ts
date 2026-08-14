@@ -168,6 +168,67 @@ export async function findOrCreateCompanyContact(orgId: string, companyId: strin
   return ins.id as string
 }
 
+/** Trouve (dans TOUTE l'organisation) ou crée un contact SANS entreprise.
+ *
+ *  P0-3C (doctrine des 4 niveaux, 2026-08-14) : « on croise quelqu'un avant de
+ *  savoir pour qui il travaille ». Depuis les migs 219+321, une personne est
+ *  une identité de l'organisation — son appartenance à une entreprise est une
+ *  RELATION datée (contact_company_affiliations), pas une case obligatoire.
+ *  Ce helper remplace le recours à l'entreprise d'attente (mig 232) dans les
+ *  nouveaux parcours : plus de « À identifier » fantôme.
+ *
+ *  La recherche est org-wide : « Jean Dupont » déjà connu chez EEC est LA même
+ *  personne — on la retrouve, on ne la duplique pas. */
+export async function findOrCreateOrgContact(orgId: string, fullName: string): Promise<string> {
+  const clean = fullName.trim()
+  if (!clean) throw new Error('Nom de personne vide.')
+  const db = createAdminClient()
+  const { data } = await db
+    .from('company_contacts')
+    .select('id')
+    .eq('organization_id', orgId)
+    .is('deleted_at', null)
+    .ilike('full_name', clean)
+    .limit(1)
+    .maybeSingle()
+  if (data?.id) return data.id as string
+  const { data: ins, error } = await db
+    .from('company_contacts')
+    .insert({ organization_id: orgId, full_name: clean })
+    .select('id')
+    .single()
+  if (error) throw new Error(error.message)
+  return ins.id as string
+}
+
+/** Garantit une affiliation ACTIVE personne↔entreprise (mig 321). C'est LA
+ *  vérité de l'appartenance ; `company_contacts.company_id` n'est plus qu'un
+ *  legacy synchronisé quand il est vide (étape 2 de la migration progressive —
+ *  on ne réécrit JAMAIS un company_id existant différent : ce serait réécrire
+ *  l'histoire, exactement ce que la mig 321 interdit). */
+export async function ensureActiveAffiliation(orgId: string, contactId: string, companyId: string): Promise<void> {
+  const db = createAdminClient()
+  const { data: existing } = await db
+    .from('contact_company_affiliations')
+    .select('id')
+    .eq('contact_id', contactId)
+    .eq('company_id', companyId)
+    .is('effective_to', null)
+    .maybeSingle()
+  if (!existing?.id) {
+    const { error } = await db
+      .from('contact_company_affiliations')
+      .insert({ organization_id: orgId, contact_id: contactId, company_id: companyId })
+    if (error) throw new Error(error.message)
+  }
+  // Sync legacy : uniquement si la colonne est VIDE.
+  await db
+    .from('company_contacts')
+    .update({ company_id: companyId })
+    .eq('id', contactId)
+    .is('company_id', null)
+}
+
 export async function updateCompany(orgId: string, id: string, patch: Partial<CompanyInput>): Promise<void> {
   const row: Record<string, unknown> = {}
   const m: Record<keyof CompanyInput, string> = {

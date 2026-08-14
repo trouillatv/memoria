@@ -641,11 +641,15 @@ const stakeholderSchema = z.object({
   proposal_id: z.string().uuid(),
   /** Le rôle sur le chantier. REQUIS : il ne se lit pas dans « Ginger ». */
   role: z.string().trim().min(1).max(80),
-  /** L'entreprise, corrigée si MemorIA l'a mal lue. */
+  /** L'entreprise, corrigée si MemorIA l'a mal lue. Facultative (migs 320+321). */
   company_name: z.string().trim().max(160).optional(),
-  /** La PERSONNE, si le nom lu désigne quelqu'un et non une société. Exige une
-   *  entreprise : tout contact vit sous une entreprise (mig 137). */
+  /** La PERSONNE, si le nom lu désigne quelqu'un et non une société. Depuis
+   *  P0-3C elle n'exige PLUS d'entreprise : une personne est une identité de
+   *  l'organisation, son appartenance est une relation datée (mig 321). */
   person_name: z.string().trim().max(160).optional(),
+  /** RÔLE SEUL : « l'électricien » — participation non résolue, aucune identité
+   *  inventée (doctrine des 4 niveaux, niveau 2). */
+  role_only: z.boolean().optional(),
 })
 
 export async function promoteStakeholderProposalAction(
@@ -675,6 +679,7 @@ export async function promoteStakeholderProposalAction(
         role: parsed.data.role,
         companyName: parsed.data.company_name || undefined,
         personName: parsed.data.person_name || undefined,
+        roleOnly: parsed.data.role_only || undefined,
       },
     })
     if (res.status !== 'promoted') {

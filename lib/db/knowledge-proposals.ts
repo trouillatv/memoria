@@ -20,7 +20,7 @@ import { createSiteDeadline } from '@/lib/db/site-deadlines'
 import { createSiteDecision } from '@/lib/db/site-decisions'
 import { createKnowledgeEntry, createWatchpoint, isChoosableKnowledgeKind } from '@/lib/db/site-memory-entries'
 import { openSiteIntervenant } from '@/lib/db/site-intervenants'
-import { findOrCreateCompanyByName, findOrCreateCompanyContact, findOrCreatePlaceholderCompany } from '@/lib/db/companies'
+import { findOrCreateCompanyByName, findOrCreateCompanyContact, findOrCreateOrgContact, ensureActiveAffiliation } from '@/lib/db/companies'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import { findInLedger, recordPromotionInLedger } from '@/lib/db/concretisation-ledger'
 // Le pont de vocabulaire entre les deux portes : « deadline » (proposition) et
@@ -683,6 +683,10 @@ export interface PromotionInput {
   personName?: string
   /** Rattacher à un contact existant plutôt qu'au seul nom d'entreprise. */
   contactId?: string | null
+  /** RÔLE SEUL (P0-3C) : « l'électricien » — la participation existe sans
+   *  personne ni entreprise. AUCUNE identité n'est inventée (ni entreprise
+   *  d'attente, ni société au nom lu). Niveau 2 de la doctrine des 4 niveaux. */
+  roleOnly?: boolean
   /** RATTACHER À UNE ENTREPRISE DÉJÀ CONNUE, par son id (2026-07-22).
    *
    *  Le nom ne suffit pas : la recherche affiche `short_name || name`, et
@@ -813,34 +817,42 @@ export async function promoteProposal(params: {
     if (!orgId) return { status: 'not_found' }
     const personName = params.input?.personName?.trim() || null
     const companyName = params.input?.companyName?.trim() || null
-    // ── UNE PERSONNE SANS ENTREPRISE CONNUE (mig 232) ────────────────────
+    // ── LES QUATRE ÉTATS DE CONNAISSANCE (P0-3C, migs 320+321) ────────────
     //
-    // Le schéma rattache tout contact à une entreprise (mig 137), et créer une
-    // société au nom d'une personne reste le bug que cette branche corrige.
-    // Mais REFUSER n'était pas la bonne réponse : sur un chantier on croise
-    // quelqu'un avant de savoir pour qui il travaille, et l'écran exigeait donc
-    // une information que le terrain n'a pas encore.
+    //   personne? × entreprise? — les deux indépendants, les deux facultatifs.
     //
-    // La personne se rattache à l'entreprise d'ATTENTE de l'organisation. Elle
-    // existe, elle est visible, elle porte le nom « À identifier » — et le
-    // travail restant, c'est de la rattacher pour de bon.
+    //   · rôle seul (roleOnly)      → participation non résolue, AUCUNE identité
+    //     inventée : plus d'entreprise d'attente, plus de société au nom lu.
+    //   · personne sans entreprise  → contact org-wide (company_id NULL, mig 219)
+    //   · entreprise sans personne  → société trouvée/créée par nom
+    //   · personne + entreprise     → les deux, PLUS l'affiliation DATÉE
+    //     (mig 321 — la vérité de l'appartenance ; le legacy company_id n'est
+    //     synchronisé que s'il était vide).
     //
-    // On ne fabrique toujours PAS d'entreprise à son nom : c'est la différence,
-    // et c'est celle qui compte.
-    // findOrCreateCompanyByName dédoublonne par nom normalisé : « Ginger » lu deux
-    // fois sur deux visites ne crée pas deux entreprises.
-    // L'identité désignée l'emporte sur tout nom lu : rattacher, ce n'est pas
+    // Compatibilité : sans indication explicite (ni roleOnly, ni personName,
+    // ni companyName/companyId), le nom lu est traité comme l'entreprise —
+    // c'est le cas majoritaire (« Ginger ») et le comportement historique.
+    // L'identité désignée l'emporte sur tout nom lu : préciser, ce n'est pas
     // renommer. La mention d'origine reste dans `title`, intacte.
-    const companyId = params.input?.companyId
-      ?? (companyName
-        ? await findOrCreateCompanyByName(orgId, companyName)
-        : personName
-          // Une personne sans société nommée → l'entreprise d'attente. Jamais
-          // `p.title`, qui EST son nom : ce serait recréer le bug.
-          ? await findOrCreatePlaceholderCompany(orgId)
-          : await findOrCreateCompanyByName(orgId, p.title))
-    let contactId = params.input?.contactId ?? null
-    if (!contactId && personName) contactId = await findOrCreateCompanyContact(orgId, companyId, personName)
+    const roleOnly = params.input?.roleOnly === true
+    const companyId = roleOnly
+      ? null
+      : params.input?.companyId
+        ?? (companyName
+          ? await findOrCreateCompanyByName(orgId, companyName)
+          : personName
+            ? null // une personne sans société nommée reste une personne — rien d'autre
+            : await findOrCreateCompanyByName(orgId, p.title))
+    let contactId = roleOnly ? null : params.input?.contactId ?? null
+    if (!contactId && personName && !roleOnly) {
+      contactId = companyId
+        ? await findOrCreateCompanyContact(orgId, companyId, personName)
+        : await findOrCreateOrgContact(orgId, personName)
+    }
+    // L'appartenance est une RELATION datée, pas une case du contact.
+    if (contactId && companyId) {
+      await ensureActiveAffiliation(orgId, contactId, companyId).catch(() => undefined)
+    }
     const intervenantId = await openSiteIntervenant({
       siteId: p.site_id,
       role,
