@@ -73,6 +73,19 @@ export function describeLotFr(s: LotSummary): string {
   return `${parts.slice(0, -1).join(', ')} et ${parts[parts.length - 1]}`
 }
 
+/**
+ * OÙ ATTERRIT L'UTILISATEUR APRÈS LE RATTACHEMENT — toujours dans l'univers /m.
+ *
+ * Règle (Vincent, 2026-08-14) : un parcours commencé dans /m ne téléporte
+ * jamais vers l'univers desktop quand une surface mobile équivalente existe.
+ * La fuite `/meetings/<id>` était la cause réelle du « PWA ouvre /dashboard »
+ * de Guillaume : Android restaure la dernière URL du WebAPK, et une réunion
+ * rattachée depuis le partage l'avait déposé côté desktop sans retour visible.
+ */
+export function shareDestinationHref(destination: 'visit' | 'meeting', reportId: string): string {
+  return destination === 'meeting' ? `/m/reunion/${reportId}` : `/m/visite/${reportId}`
+}
+
 export interface ShareCandidate {
   size: number
   type: string

@@ -23,6 +23,7 @@ import {
   Loader2, FileText, Mic, Video, Search, ChevronRight, ArrowLeft, Plus, MapPin, Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { shareDestinationHref } from '@/lib/share/share-rules'
 import {
   attachSharedBatchAction,
   createSiteFromShareAction,
@@ -144,7 +145,7 @@ export function SharePicker({
           ? `Ajouté à « ${last.title} » — ${r.transcribed} ${r.transcribed > 1 ? 'enregistrements écrits' : 'enregistrement écrit'}.`
           : `${lotLabel} — ajouté${r.added > 1 ? 's' : ''} à « ${last.title} ».`,
       )
-      router.replace(r.destination === 'meeting' ? `/meetings/${r.reportId}` : `/m/visite/${r.reportId}`)
+      router.replace(shareDestinationHref(r.destination, r.reportId))
     })
   }
 
@@ -169,7 +170,7 @@ export function SharePicker({
             ? `${lotLabel} — ${r.transcribed > 1 ? 'les enregistrements sont écrits' : 'l’enregistrement est écrit'}.`
             : `${lotLabel} — c’est à l’abri.`,
       )
-      router.replace(r.destination === 'meeting' ? `/meetings/${r.reportId}` : `/m/visite/${r.reportId}`)
+      router.replace(shareDestinationHref(r.destination, r.reportId))
     })
   }
 

@@ -14,9 +14,25 @@ import {
   isShareable,
   describeLot,
   describeLotFr,
+  shareDestinationHref,
   MAX_FILES,
   MAX_TOTAL_BYTES,
 } from '@/lib/share/share-rules'
+
+// ── LA DESTINATION RESTE DANS /m (P0-1 Guillaume, 2026-08-14) ────────────────
+// Un partage commencé dans le PWA rangé dans une réunion ATTERRISSAIT sur
+// /meetings/<id> — l'univers desktop. Android restaure la dernière URL du
+// WebAPK : le « PWA qui ouvre /dashboard » de Guillaume venait de là. Un
+// parcours /m ne téléporte jamais vers le desktop quand une surface mobile
+// équivalente existe.
+describe('shareDestinationHref — jamais de téléportation vers le desktop', () => {
+  it('une réunion atterrit sur /m/reunion, pas /meetings', () => {
+    expect(shareDestinationHref('meeting', 'abc')).toBe('/m/reunion/abc')
+  })
+  it('une visite atterrit sur /m/visite', () => {
+    expect(shareDestinationHref('visit', 'abc')).toBe('/m/visite/abc')
+  })
+})
 
 interface ShareTargetShape {
   action: string
@@ -53,11 +69,13 @@ describe("Le manifeste — sans lui, MemorIA n'apparaît pas dans « Partager »
     expect(m.share_target?.action).toBe('/api/partage')
   })
 
-  it('start_url = /m — la PWA est une surface terrain, pas un dashboard', () => {
-    // Doctrine 2026-08-04 : ouverture PWA → /m, sans dépendance au cookie
-    // pwa_standalone (qui est posé après le premier rendu, trop tard).
-    // Changer cette valeur recrée la race condition qu'on a résolue.
-    expect(m.start_url).toBe('/m')
+  it('start_url = /pwa — point d\'entrée STABLE qui redirige vers la surface terrain', () => {
+    // Doctrine (manifest) : le WebAPK fige start_url à l'installation. /pwa est
+    // le point d'entrée permanent ; c'est app/pwa/page.tsx qui redirige vers /m.
+    // Si /m devient /terrain un jour, on modifie la redirection — pas le
+    // manifest, pas les WebAPK installés. Audit P0-1 (2026-08-14) : ce chemin
+    // n'est PAS la cause du « PWA ouvre /dashboard » de Guillaume.
+    expect(m.start_url).toBe('/pwa')
   })
 })
 

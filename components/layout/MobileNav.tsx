@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Menu } from 'lucide-react'
+import { Menu, Smartphone } from 'lucide-react'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import type { UserRole } from '@/types/db'
@@ -45,6 +45,17 @@ export function MobileNav({ role, fullName }: { role: UserRole; fullName: string
           </Link>
         </div>
         <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
+          {/* « Accueil terrain » EN TÊTE (P0-1 Guillaume) : si le dashboard
+              s'affiche sur un téléphone, la sortie vers le parcours mobile est
+              la première chose visible — sans avoir à connaître /m. */}
+          <Link
+            href="/m"
+            className="flex items-center gap-3 rounded-md border border-dashed px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            onClick={() => setOpen(false)}
+          >
+            <Smartphone className="h-4 w-4 shrink-0 text-brand-600" />
+            Accueil terrain
+          </Link>
           {visible.map(({ href, label, icon: Icon, groupStart }) => {
             const active = isActive(pathname, href)
             const link = (

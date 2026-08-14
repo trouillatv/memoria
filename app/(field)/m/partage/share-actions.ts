@@ -184,6 +184,7 @@ export async function attachSharedBatchAction(input: unknown): Promise<ShareResu
   revalidatePath('/meetings')
   revalidatePath(`/meetings/${result.reportId}`)
   revalidatePath(`/m/visite/${result.reportId}`)
+  revalidatePath(`/m/reunion/${result.reportId}`)
 
   return { ...result, transcribed }
 }

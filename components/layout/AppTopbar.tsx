@@ -4,6 +4,7 @@ import { LogoutButton } from './LogoutButton'
 import { Breadcrumb } from './Breadcrumb'
 import { SearchOverlay } from './SearchOverlay'
 import { MobileNav } from './MobileNav'
+import { FieldHomeEscape } from './FieldHomeEscape'
 
 export function AppTopbar({ fullName, role }: { fullName: string; role: UserRole }) {
   return (
@@ -11,6 +12,9 @@ export function AppTopbar({ fullName, role }: { fullName: string; role: UserRole
       <MobileNav role={role} fullName={fullName} />
       <Breadcrumb />
       <div className="flex items-center gap-2 shrink-0 ml-auto">
+        {/* Porte de sortie vers /m — visible sur téléphone OU en PWA standalone
+            (le cas « Version ordinateur » où la largeur d'écran ment). */}
+        <FieldHomeEscape />
         <SearchOverlay />
         <span
           className="hidden lg:inline text-xs text-muted-foreground max-w-[18ch] truncate"
