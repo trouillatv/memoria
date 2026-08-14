@@ -36,10 +36,13 @@
 // La nuance qui compte : n'avoir JAMAIS rien eu à trancher n'est pas « avoir
 // fini ». Une famille sans aucune proposition n'a pas de ligne du tout.
 //
-// CE PANNEAU NE MONTRE QUE CE QUI A UN GESTE. Actions, échéances, intervenants :
-// trois familles, trois verbes. Les décisions, vigilances et savoirs n'ont pas
-// de bouton ici — ils vivent dans le document et se concrétisent plus bas. Un
-// bloc qui n'aide pas à finir la visite n'a pas sa place dans cette colonne.
+// CE PANNEAU MONTRE TOUT CE QUI A UN GESTE. Actions, échéances, intervenants,
+// décisions, vigilances : cinq familles. Les décisions et vigilances en étaient
+// exclues (2026-07-22) — l'audit P0-2bis a montré que cette exclusion créait
+// des propositions qu'aucune surface d'arbitrage n'affichait (incohérences 3-4),
+// et Vincent l'a levée (2026-08-14). Seuls les savoirs restent hors panneau :
+// leur validation pose une question de nature (« vraie en ce moment / vraie
+// durablement ») qui vit dans la Mémoire, pas dans une colonne d'atelier.
 //
 // ── LE TRAVAIL DIMINUE AUSSI PAR L'AUTRE PORTE (mig 231) ────────────────────
 //
@@ -53,7 +56,7 @@
 // compteur. Cf. [[ia-ne-promeut-jamais-meme-sur-demande]].
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, Check, CheckCircle2, X, ListTodo, CalendarClock, Users, ChevronDown } from 'lucide-react'
+import { Loader2, Check, CheckCircle2, X, ListTodo, CalendarClock, Users, ChevronDown, Gavel, Eye } from 'lucide-react'
 import {
   getVisitSummaryAction,
   promoteActionProposalAction,
@@ -64,7 +67,7 @@ import type { VisitSummary, SummaryItem } from '@/lib/knowledge/visit-summary'
 import { listOrgCompanyNamesAction, listActeursConnusAction } from './acteurs-actions'
 import { rapprocher, type ActeurConnu } from '@/lib/acteurs/resolution-identite'
 
-type Cle = 'action' | 'echeance' | 'intervenant'
+type Cle = 'action' | 'echeance' | 'intervenant' | 'decision' | 'vigilance'
 
 // Le titre est au pluriel en permanence : « Actions (1) » se lit aussi bien que
 // « Actions (7) », alors qu'accorder ferait changer le mot sous l'œil à chaque
@@ -84,6 +87,14 @@ const FAMILLE: Record<Cle, { titre: string; Icon: typeof ListTodo; teinte: strin
     // « Intervenants », pas « Acteurs » (retour Guillaume 2026-08-14).
     titre: 'Intervenants', Icon: Users,
     teinte: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
+  },
+  decision: {
+    titre: 'Décisions', Icon: Gavel,
+    teinte: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300',
+  },
+  vigilance: {
+    titre: 'Vigilances', Icon: Eye,
+    teinte: 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
   },
 }
 
@@ -169,6 +180,10 @@ export function PanneauArbitrage({
     { cle: 'action', restants: summary.actions.proposed, arbitrés: summary.actions.confirmed.length },
     { cle: 'echeance', restants: summary.deadlines.proposed, arbitrés: summary.deadlines.confirmed.length },
     { cle: 'intervenant', restants: summary.stakeholders.proposed, arbitrés: summary.stakeholders.confirmed.length },
+    // Décisions et vigilances : absentes jusqu'à l'audit P0-2bis (2026-08-14) —
+    // leurs propositions n'apparaissaient sur AUCUNE surface d'arbitrage.
+    { cle: 'decision', restants: summary.decisions.proposed, arbitrés: summary.decisions.confirmed.length },
+    { cle: 'vigilance', restants: summary.watchpoints.proposed, arbitrés: summary.watchpoints.confirmed.length },
   ]
 
   const restant = groupes.reduce((n, g) => n + g.restants.length, 0)

@@ -212,8 +212,14 @@ describe('une proposition satisfaite cesse d’être du travail', () => {
 describe('un acteur se QUALIFIE avant de se confirmer', () => {
   const rendu = sansCommentaires(panneau)
 
-  it('la famille ne s’appelle plus « Intervenants » — le mot mêlait deux natures', () => {
-    expect(rendu).toContain("titre: 'Acteurs'")
+  it('la famille s’appelle « Intervenants » — le vocabulaire technique ne s’expose pas', () => {
+    // RENVERSEMENT ASSUMÉ (Vincent, 2026-08-14, retour Guillaume) : « Acteurs »
+    // avait été choisi le 2026-07-22 parce qu'« Intervenants » mêlait personne
+    // et entreprise. La recette terrain a tranché l'inverse : Guillaume ne
+    // comprend pas « Acteurs » — c'est un mot du modèle, pas du chantier. La
+    // distinction personne/entreprise vit dans le GESTE de qualification
+    // (ci-dessous), pas dans le titre de la famille.
+    expect(rendu).toContain("titre: 'Intervenants'")
   })
 
   it('le type est un choix explicite, jamais une déduction', () => {
