@@ -19,7 +19,16 @@
 // ma visite ? » avec une raison qui lui est propre.
 
 import type { SiteAttentionItem, AttentionSignal, AttentionUrgency } from '@/lib/knowledge/site-attention-items'
-import { frDayMonthYearLocal } from '@/lib/time/local-date'
+import { frDayMonthYearLocal, localDateOf } from '@/lib/time/local-date'
+
+/** Même journée civile en zone chantier — pas le même instant. */
+function sameLocalDay(a: string, b: string): boolean {
+  try {
+    return localDateOf(new Date(a)) === localDateOf(new Date(b))
+  } catch {
+    return false
+  }
+}
 
 /**
  * Hiérarchie de visite, dans l'ordre de parcours d'un conducteur de travaux.
@@ -92,8 +101,8 @@ function tierOf(signal: AttentionSignal): VisitControlTier {
   }
 }
 
-/** Quoi constater sur place. Dépend du signal, jamais du label. */
-function checkOf(signal: AttentionSignal): string {
+/** Base du « quoi constater », dérivée de la nature du signal. */
+function baseCheckOf(signal: AttentionSignal): string {
   switch (signal) {
     case 'blocage_active':
       return 'Constater sur place si le blocage est levé ; sinon relever ce qui l’entretient.'
@@ -118,6 +127,36 @@ function checkOf(signal: AttentionSignal): string {
     default:
       return 'Faire un point d’état sur place.'
   }
+}
+
+/**
+ * Quoi constater sur place, complété par ce que MemorIA sait de CE sujet.
+ *
+ * Le signal seul ne suffit pas : sur un chantier suivi en visites terrain, tous
+ * les points peuvent porter le même signal (`subject_changed` sur PETRO), et la
+ * check-list redevient cinq fois la même phrase. Les objets encore ouverts et la
+ * répétition sans changement sont les seuls discriminants disponibles sans
+ * nouvelle requête — ce sont aussi ceux qui disent réellement quoi regarder.
+ */
+function checkOf(item: SiteAttentionItem): string {
+  const parts = [baseCheckOf(item.signal)]
+  const active = readActiveObjects(item.metadata)
+
+  if (active && active.actionsOpen > 0) {
+    parts.push(`Point de contrôle : ${plural(active.actionsOpen, 'action encore ouverte', 'actions encore ouvertes')} sur ce sujet — dire lesquelles sont réellement faites.`)
+  }
+  if (active && active.reservesOpen > 0) {
+    parts.push(`${plural(active.reservesOpen, 'réserve non levée', 'réserves non levées')} : constater l’état et photographier.`)
+  }
+  if (active && active.deadlinesActive > 0) {
+    parts.push(`${plural(active.deadlinesActive, 'échéance active', 'échéances actives')} : confirmer la tenue au vu de l’avancement.`)
+  }
+
+  const mentions = item.metadata?.consecutiveMentionsWithoutChange
+  if (typeof mentions === 'number' && mentions >= 2 && item.signal !== 'subject_stagnant') {
+    parts.push('Le sujet revient sans que son état change : chercher ce qui l’empêche d’avancer.')
+  }
+  return parts.join(' ')
 }
 
 // ── Dernier état connu ────────────────────────────────────────────────────────
@@ -201,7 +240,12 @@ function changeSinceOf(item: SiteAttentionItem): string | null {
   if (!lastVisitAt) return null
   const changedAt = str(item.metadata, 'lastMeaningfulChangeAt')
   if (item.metadata?.changedSinceLastVisit === true && changedAt) {
-    return `Évolution enregistrée le ${frDayMonthYearLocal(changedAt)}, après votre visite du ${frDayMonthYearLocal(lastVisitAt)}.`
+    // Le moteur compare des instants ; l'utilisateur lit des jours. Une évolution
+    // saisie deux heures après la visite est « postérieure » pour la machine et
+    // donne « le 11 août, après votre visite du 11 août » à l'écran — absurde.
+    return sameLocalDay(changedAt, lastVisitAt)
+      ? `Évolution enregistrée le jour même de votre visite du ${frDayMonthYearLocal(lastVisitAt)}, probablement issue de ce passage.`
+      : `Évolution enregistrée le ${frDayMonthYearLocal(changedAt)}, après votre visite du ${frDayMonthYearLocal(lastVisitAt)}.`
   }
   return `Aucune évolution enregistrée depuis votre visite du ${frDayMonthYearLocal(lastVisitAt)}.`
 }
@@ -220,9 +264,14 @@ function whyOf(item: SiteAttentionItem): string {
 
   const parts: string[] = []
   const changedAt = str(item.metadata, 'lastMeaningfulChangeAt')
-  parts.push(changedAt
-    ? `Modifié le ${frDayMonthYearLocal(changedAt)}, après votre dernier passage`
-    : base)
+  const lastVisitAt = str(item.metadata, 'lastVisitAt')
+  if (!changedAt) {
+    parts.push(base)
+  } else if (lastVisitAt && sameLocalDay(changedAt, lastVisitAt)) {
+    parts.push(`Modifié le jour de votre dernier passage (${frDayMonthYearLocal(changedAt)})`)
+  } else {
+    parts.push(`Modifié le ${frDayMonthYearLocal(changedAt)}, après votre dernier passage`)
+  }
 
   const active = readActiveObjects(item.metadata)
   if (active && active.total > 0) {
@@ -282,7 +331,7 @@ export function buildVisitPlan(
     const tier = tierOf(item.signal)
     push(csId, {
       label: item.title,
-      check: checkOf(item.signal),
+      check: checkOf(item),
       why: whyOf(item),
       lastKnown: lastKnownOf(item),
       changeSinceLastVisit: changeSinceOf(item),
@@ -298,7 +347,7 @@ export function buildVisitPlan(
   for (const v of pvToVerify) {
     push(v.canonicalSubjectId, {
       label: v.label,
-      check: checkOf('pv_status'),
+      check: baseCheckOf('pv_status'),
       why: v.signals.length > 0 ? v.signals.join(' · ') : TIER_LABEL.other,
       lastKnown: null,
       changeSinceLastVisit: null,
