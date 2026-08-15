@@ -31,6 +31,11 @@ import {
 } from '../lib/visits/copilot-context'
 import { answerCopilotFreeQuestion, type FreeAnswerContext } from '../lib/visits/copilot-free-answer'
 import { buildVisitPlan } from '../lib/visits/visit-plan-builder'
+// Le contrat oral (annoncer l'étendue, citer les premiers du moteur dans
+// l'ordre) vit dans `lib/voice/spoken-order` et est couvert par des tests
+// unitaires. Le harnais mesure donc EXACTEMENT ce que le contrat exige, au lieu
+// d'en réimplémenter une variante qui pourrait diverger sans qu'on le voie.
+import { discriminantsOf, checkSpokenFollowsEngine } from '../lib/voice/spoken-order'
 
 const args = process.argv.slice(2)
 const argOf = (n: string) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : null }
@@ -43,42 +48,6 @@ const QUESTION = 'Que dois-je préparer pour ma réunion de demain ?'
 const INTENT_FILTER_MAP: Record<string, 'attention' | 'changes' | 'stale' | 'next_visit'> = {
   timeline: 'changes', plan_visite: 'next_visit', action_status: 'attention',
   subject_detail: 'attention', actor: 'attention', stagnation: 'stale', global: 'attention',
-}
-
-/** Comparaison insensible aux accents, à la casse et à la ponctuation. */
-function norm(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-}
-
-/**
- * Un contrôle est « retenu » si la voix en nomme l'essentiel.
- *
- * Une proportion de mots communs ne marche pas ici : le LLM abrège (« la dépose
- * du SSI » pour un label de neuf mots), ce qui produit des faux négatifs, et
- * plusieurs labels partagent « gestion » ou « matériel », ce qui produit des faux
- * positifs. On identifie donc pour chaque label ses mots DISCRIMINANTS — ceux
- * qu'aucun autre contrôle ne porte — et on considère le contrôle nommé dès qu'un
- * de ces mots est prononcé.
- */
-function discriminantsOf(labels: string[]): string[][] {
-  const wordsPer = labels.map((l) => new Set(norm(l).split(' ').filter((w) => w.length > 3)))
-  const count = new Map<string, number>()
-  for (const set of wordsPer) for (const w of set) count.set(w, (count.get(w) ?? 0) + 1)
-  return wordsPer.map((set) => [...set].filter((w) => count.get(w) === 1))
-}
-
-function mentions(spoken: string, discriminants: string[]): boolean {
-  const s = norm(spoken)
-  return discriminants.some((w) => s.includes(w))
-}
-
-const NUM_WORDS = ['zero', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix']
-
-/** La voix dit-elle COMBIEN de points existent, avant d'en détailler deux ? */
-function announcesTotal(spoken: string, total: number): boolean {
-  const s = norm(spoken)
-  const word = NUM_WORDS[total]
-  return s.includes(String(total)) || (!!word && new RegExp(`\\b${word}\\b`).test(s))
 }
 
 async function main() {
@@ -140,7 +109,9 @@ async function main() {
 
   const retained: number[][] = []   // indices (0-based) des contrôles cités, par run
   const latencies: number[] = []
-  const discriminants = discriminantsOf(visitPlanDetail.map((p) => p.label))
+  let contractOk = 0
+  const labels = visitPlanDetail.map((p) => p.label)
+  const discriminants = discriminantsOf(labels)
   console.log(`  (mots discriminants retenus pour la détection : `
     + `${discriminants.map((d, n) => `#${n + 1}=${d.slice(0, 3).join('/')}`).join(' · ')})`)
 
@@ -153,14 +124,18 @@ async function main() {
     const ms = Date.now() - t0
     latencies.push(ms)
 
-    const spoken = answer.spokenText
-    const idx = spoken ? discriminants.map((d, n) => (mentions(spoken, d) ? n : -1)).filter((n) => n >= 0) : []
-    retained.push(idx)
+    const spoken = answer.spokenText ?? null
+    const check = checkSpokenFollowsEngine(spoken, labels)
+    retained.push([...check.mentioned].sort((a, b) => a - b))
+    if (check.ok) contractOk++
 
     console.log(`\n── run ${r}  (source=${answer.source} · ${ms} ms · ${spoken?.length ?? 0} car.)`)
     console.log(`   voix    : ${spoken ?? '(silencieuse)'}`)
-    console.log(`   retenus : ${idx.length > 0 ? idx.map((n) => `#${n + 1}`).join(', ') : '(aucun label reconnu)'}`)
-    console.log(`   annonce l'étendue (${visitPlanDetail.length}) : ${spoken && announcesTotal(spoken, visitPlanDetail.length) ? 'OUI' : 'non'}`)
+    console.log(`   retenus : ${check.mentioned.length > 0 ? check.mentioned.map((n) => `#${n + 1}`).join(' → ') : '(aucun label reconnu)'}`)
+    console.log(`   contrat : étendue=${check.announcesTotal ? 'OUI' : 'non'}`
+      + ` · ordre moteur=${check.followsEngineOrder ? 'OUI' : 'NON'}`
+      + ` · premiers du moteur=${check.isEnginePrefix ? 'OUI' : 'NON'}`
+      + ` → ${check.ok ? '✅' : '❌'}`)
   }
 
   // ── D. Verdict ──────────────────────────────────────────────────────────────
@@ -180,6 +155,7 @@ async function main() {
   // Le moteur classe #1 en tête : une voix fidèle devrait commencer par lui.
   const topKept = retained.filter((idx) => idx.includes(0)).length
   console.log(`  Le contrôle #1 du moteur est cité dans ${topKept}/${RUNS} appels.`)
+  console.log(`  Contrat oral complet (étendue + premiers du moteur, dans l'ordre) : ${contractOk}/${RUNS}.`)
 
   // ── E. Décomposition de la latence serveur ─────────────────────────────────
   // Le badge `?voicedebug=1` mesure « texte → réponse » d'un seul bloc. Ici on

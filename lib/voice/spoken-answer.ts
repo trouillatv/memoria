@@ -14,7 +14,7 @@
 // champ est donc lu à côté, sur l'objet brut, et validé ici.
 
 /**
- * Au-delà, on jette : une synthèse orale plus longue n'en est plus une.
+ * Budget oral : ce que MemorIA s'autorise à prononcer d'un trait.
  *
  * 450 caractères ≈ 30 secondes de parole à débit normal — exactement le plafond
  * fixé par Vincent. Relevé de 400 le 2026-08-15 avec la doctrine « verdict puis
@@ -26,27 +26,35 @@
 export const SPOKEN_MAX_CHARS = 450
 
 /**
- * En deçà, une coupe ne conserverait plus l'essentiel : mieux vaut se taire que
- * prononcer un début de réponse qui laisse croire que MemorIA n'a trouvé que ça.
+ * En deçà, respecter le budget ne conserverait plus l'essentiel : mieux vaut se
+ * taire que prononcer un début de réponse qui laisse croire que MemorIA n'a
+ * trouvé que ça.
  */
 export const SPOKEN_MIN_KEPT_CHARS = 200
 
 /**
- * Coupe à la dernière phrase COMPLÈTE tenant sous le plafond.
+ * Applique le budget oral **à frontière sémantique** : on conserve le plus long
+ * préfixe constitué de phrases COMPLÈTES qui tient sous le plafond.
  *
- * La doctrine initiale — « trop long : jeté, jamais tronqué » — supposait le
- * dépassement rare. Le diagnostic PETRO du 2026-08-15 montre l'inverse : sur
- * 17 appels identiques, le modèle produit régulièrement 430 à 500 caractères et
- * cinq réponses ont été jetées EN ENTIER (467, 476, 500…). Une voix muette une
- * fois sur trois, sans trace, se vit comme une panne aléatoire — c'est
- * exactement ce que « ils sont aléatoires suivant la demande » décrivait.
+ * Ce n'est pas une troncature, et le vocabulaire compte ici — doctrine figée par
+ * Vincent le 2026-08-15 : « Une réponse vocale ne doit jamais être coupée au
+ * milieu d'une phrase. Si elle dépasse le budget oral, conserver le plus long
+ * préfixe constitué de phrases complètes respectant le plafond. Ne jamais
+ * inventer une conclusion pour compenser la coupe. » Une troncature ampute ; ici
+ * on déplace un point final déjà écrit par le modèle, et on n'ajoute rien.
  *
- * Couper à une frontière de phrase n'est pas l'amputation que la règle voulait
- * éviter : c'est un point final déplacé. Le plafond de 30 secondes est conservé,
- * le silence disparaît. Si aucune phrase complète n'entre sous le plafond (bloc
- * d'un seul tenant), on se tait comme avant.
+ * La règle initiale — « trop long : jeté » — supposait le dépassement rare. Le
+ * diagnostic PETRO du 2026-08-15 montre l'inverse : sur 17 appels identiques, le
+ * modèle produit régulièrement 430 à 500 caractères et cinq réponses ont été
+ * jetées EN ENTIER (467, 476, 500…). Une voix muette une fois sur trois, sans
+ * trace, se vit comme une panne aléatoire — c'est exactement ce que « ils sont
+ * aléatoires suivant la demande » décrivait.
+ *
+ * Le plafond de 30 secondes est conservé, le silence disparaît. Si aucune phrase
+ * complète n'entre sous le plafond (bloc d'un seul tenant), on se tait comme
+ * avant : le budget ne s'achète jamais au prix d'une phrase amputée.
  */
-function truncateAtSentence(clean: string): string | null {
+function enforceSpokenBudget(clean: string): string | null {
   const head = clean.slice(0, SPOKEN_MAX_CHARS)
   // `[\s\S]*` est gourmand : la capture s'arrête au DERNIER terminateur possible.
   const m = head.match(/^[\s\S]*[.!?…](?=\s|$)/)
@@ -89,18 +97,17 @@ function normalizeForSpeech(input: string): string {
 
 /**
  * Valide le `spokenText` renvoyé par le LLM. Volontairement séparé de la
- * validation de la réponse : mauvais type, vide ou trop long → `null`, jamais
- * une erreur, jamais un repli métier.
+ * validation de la réponse : mauvais type ou vide → `null`, jamais une erreur,
+ * jamais un repli métier.
  *
- * Trop long : on coupe à la dernière phrase complète (cf. `truncateAtSentence`),
- * jamais en plein milieu d'une phrase — une phrase amputée s'entend beaucoup
- * plus qu'un silence, mais un silence complet s'entend encore plus.
+ * Au-delà du budget oral, on applique `enforceSpokenBudget` : dernier préfixe de
+ * phrases complètes, jamais une coupe en plein milieu d'une phrase.
  */
 export function sanitizeSpokenText(raw: unknown): string | null {
   if (typeof raw !== 'string') return null
   const clean = normalizeForSpeech(raw)
   if (!clean) return null
-  if (clean.length > SPOKEN_MAX_CHARS) return truncateAtSentence(clean)
+  if (clean.length > SPOKEN_MAX_CHARS) return enforceSpokenBudget(clean)
   return clean
 }
 

@@ -137,11 +137,59 @@ export async function askCopilotFreeAction(
   const deterministicClassification = classifyIntent(question)
   const deterministicIntent = detectIntent(question)
 
+  // ── Instrumentation de latence ────────────────────────────────────────────
+  // Mandat Vincent (15/08) : « ne fais pas d'autre optimisation de latence à
+  // l'aveugle ». Le badge `?voicedebug=1` mesure « texte → réponse » d'un seul
+  // bloc ; ces marques disent ce qu'il y a DEDANS. Aucune décision produit n'en
+  // dépend — c'est une trace, pas un moteur.
+  const marks: Record<string, number> = {}
+  function timed<T>(key: string, run: () => Promise<T>): Promise<T> {
+    const t = Date.now()
+    return run().then((v) => { marks[key] = Date.now() - t; return v })
+  }
+
+  // ── Chargement anticipé du contexte chantier ──────────────────────────────
+  // La compréhension (appel LLM) et les read-models du chantier (DB) ne
+  // dépendent pas l'un de l'autre : les enchaîner coûtait leur somme pour rien.
+  // On lance donc ici les trois chargements INDÉPENDANTS de la classification ;
+  // les deux qui en dépendent réellement (contexte acteur, vies de sujets)
+  // restent après, inchangés. Mêmes fonctions, mêmes arguments, mêmes gardes
+  // d'échec : seul l'instant du `await` change.
+  //
+  // Garde-fou : on n'anticipe que si le routeur déterministe lit déjà un READ.
+  // Une intention d'écriture sort avant tout chargement (branche ci-dessous) ;
+  // anticiper y ferait payer des requêtes jamais lues. Le cas inverse — une
+  // écriture ambiguë requalifiée en lecture par la compréhension — charge
+  // séquentiellement comme avant : pas de gain, aucune régression.
+  //
+  // Un échec de chargement produit un overview VIDE, indiscernable d'un chantier
+  // réellement sans signal. On trace donc l'échec : il interdit toute affirmation
+  // quantitative ("aucune action en retard") — cf. resolveQuantitativeVerdict.
+  let overviewLoadFailed = false
+  // Même règle pour le briefing : il porte les compteurs de stagnation et le
+  // delta terrain. En échec, ses mesures valent `null` — jamais zéro.
+  let briefingLoadFailed = false
+
+  const loadOverview = () => timed('overviewMs', () =>
+    getSiteOverview(siteId).catch(() => { overviewLoadFailed = true; return emptySiteOverview(siteId) }))
+  // buildVisitBriefing est l'agrégateur déjà utilisé par « Préparer ma visite ».
+  // Le Copilote consomme LA MÊME intelligence plutôt que de reconstruire un
+  // agrégat parallèle : une seule source, une seule vérité (arbitrage Vincent).
+  const loadBriefing = () => timed('briefingMs', () =>
+    buildVisitBriefing(siteId).catch(() => { briefingLoadFailed = true; return null }))
+  const loadPrepItems = () => userId
+    ? listActivePreparationItems(siteId, userId).catch(() => [])
+    : Promise.resolve([])
+
+  const prefetched = deterministicIntent.intent === 'READ'
+    ? { overview: loadOverview(), briefing: loadBriefing(), prepItems: loadPrepItems() }
+    : null
+
   // ── Couche de compréhension (LLM léger, jamais de réponse ni d'écriture) ─────
   // Traduit une formulation orale imparfaite en structure. En cas de timeout,
   // d'erreur ou de JSON invalide → null, et le déterministe reprend la main
   // silencieusement (le Copilote doit rester fonctionnel sans LLM).
-  const comprehension = await understandQuestion(question)
+  const comprehension = await timed('comprehensionMs', () => understandQuestion(question))
   const merged = mergeComprehension(
     question,
     deterministicClassification,
@@ -443,26 +491,14 @@ export async function askCopilotFreeAction(
   // ── Chargement des données ────────────────────────────────────────────────────
   const needsActor = classification.primary === 'actor' || classification.secondary.includes('actor')
 
-  // Un échec de chargement produit un overview VIDE, indiscernable d'un chantier
-  // réellement sans signal. On trace donc l'échec : il interdit toute affirmation
-  // quantitative ("aucune action en retard") — cf. resolveQuantitativeVerdict.
-  let overviewLoadFailed = false
-  // Même règle pour le briefing : il porte les compteurs de stagnation et le
-  // delta terrain. En échec, ses mesures valent `null` — jamais zéro.
-  let briefingLoadFailed = false
-
-  const [overview, briefing, prepItemsRaw, actorContext, ...subjectLives] = await Promise.all([
-    getSiteOverview(siteId).catch(() => { overviewLoadFailed = true; return emptySiteOverview(siteId) }),
-    // buildVisitBriefing est l'agrégateur déjà utilisé par « Préparer ma visite ».
-    // Le Copilote consomme LA MÊME intelligence plutôt que de reconstruire un
-    // agrégat parallèle : une seule source, une seule vérité (arbitrage Vincent).
-    buildVisitBriefing(siteId).catch(() => {
-      briefingLoadFailed = true
-      return null
-    }),
-    userId
-      ? listActivePreparationItems(siteId, userId).catch(() => [])
-      : Promise.resolve([]),
+  // Les trois premiers sont déjà en vol depuis avant la compréhension quand
+  // l'intention déterministe était une lecture ; sinon ils démarrent ici. Les
+  // deux suivants ne peuvent pas être anticipés : ils dépendent des entités
+  // extraites par la classification.
+  const [overview, briefing, prepItemsRaw, actorContext, ...subjectLives] = await timed('contextWaitMs', () => Promise.all([
+    prefetched?.overview ?? loadOverview(),
+    prefetched?.briefing ?? loadBriefing(),
+    prefetched?.prepItems ?? loadPrepItems(),
     // Outil actor — chargement paresseux
     needsActor
       ? getSiteActorContext(siteId, classification.entities.actorLabels).catch(() => [])
@@ -470,7 +506,7 @@ export async function askCopilotFreeAction(
     ...[...subjectIdsToLoad].map((id) =>
       getCanonicalSubjectLifeForSite(siteId, id).catch(() => null),
     ),
-  ])
+  ]))
 
   const prepItems = prepItemsRaw.map((p) => ({ label: p.label, stableKey: p.stableKey }))
 
@@ -650,7 +686,7 @@ export async function askCopilotFreeAction(
   }
 
   // ── Appel LLM ────────────────────────────────────────────────────────────────
-  const answer = await answerCopilotFreeQuestion(
+  const answer = await timed('answerMs', () => answerCopilotFreeQuestion(
     question,
     history,
     items,
@@ -659,7 +695,7 @@ export async function askCopilotFreeAction(
     filteredPrep,
     overview.identity.name,
     extra,
-  )
+  ))
 
   // Résolution des références depuis la liste FERMÉE (items + sujets détaillés)
   const allItems = [
@@ -711,6 +747,12 @@ export async function askCopilotFreeAction(
     source: answer.source,
     refs: references.length,
     latencyMs,
+    // Décomposition serveur : `prefetch` dit si la compréhension et la DB ont
+    // réellement tourné en parallèle, `contextWaitMs` ce qu'il restait à
+    // attendre après elle. Sans ces deux nombres côte à côte, on ne peut pas
+    // distinguer « la DB est lente » de « la DB a été attendue trop tard ».
+    prefetch: prefetched !== null,
+    ...marks,
   }))
 
   return { kind: 'answer', text: answer.text, references, source: answer.source, interactionId: iid, spokenText: answer.spokenText }

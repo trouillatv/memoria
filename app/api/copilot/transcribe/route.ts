@@ -6,8 +6,19 @@ import { mimeToExt, transcribeAudioForCopilot } from '@/lib/ai/transcribe'
 export async function POST(req: NextRequest) {
   console.log('[Voice] request_received')
 
+  // Chronométrage des quatre étapes serveur (mandat Vincent, 15/08 : instrumenter
+  // AVANT d'optimiser). `formMs` n'est pas du calcul : c'est le temps pendant
+  // lequel le serveur reçoit l'audio, donc la part réseau de l'upload vue du
+  // serveur — la seule mesurable ici. `lexiconMs` est le prix de la
+  // transcription contextualisée PETRO/SSI : Vincent refuse de la sacrifier,
+  // mais on veut savoir ce qu'elle coûte réellement.
+  const t0 = Date.now()
+  const marks: Record<string, number> = {}
+  const mark = (key: string, from: number) => { marks[key] = Date.now() - from }
+
   // ── 1. Auth ────────────────────────────────────────────────────────────────
   let userId: string
+  const tAuth = Date.now()
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -18,14 +29,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Auth error', code: 'AUTH_ERROR' }, { status: 401 })
   }
 
+  mark('authMs', tAuth)
+
   // ── 2. FormData ────────────────────────────────────────────────────────────
   let form: FormData
+  const tForm = Date.now()
   try {
     form = await req.formData()
   } catch (err) {
     console.error('[Voice] formdata_error:', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'FormData parse failed', code: 'FORMDATA_ERROR' }, { status: 400 })
   }
+
+  mark('formMs', tForm)
 
   // ── 3. Extraction du fichier ───────────────────────────────────────────────
   const audioFile = form.get('audio') as File | null
@@ -55,13 +71,16 @@ export async function POST(req: NextRequest) {
   console.log('[Voice] audio_received', { size: rawBuffer.byteLength, type: mimeType, name: audioFile.name, ext, userId })
 
   // ── 5. Prompt lexical ──────────────────────────────────────────────────────
+  const tLex = Date.now()
   const lexicalPrompt = siteId ? await buildLexicalPrompt(siteId) : undefined
-  console.log('[Voice] lexical_prompt_ready', { length: lexicalPrompt?.length ?? 0 })
+  mark('lexiconMs', tLex)
+  console.log('[Voice] lexical_prompt_ready', { length: lexicalPrompt?.length ?? 0, ms: marks.lexiconMs })
 
   // ── 6. Transcription ───────────────────────────────────────────────────────
   console.log('[Voice] provider_call_start', { model: 'gpt-4o-mini-transcribe', mimeType, ext })
 
   let result: Awaited<ReturnType<typeof transcribeAudioForCopilot>>
+  const tStt = Date.now()
   try {
     result = await transcribeAudioForCopilot(rawBuffer, mimeType, ext, lexicalPrompt || undefined)
   } catch (err) {
@@ -89,7 +108,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  mark('sttMs', tStt)
   console.log('[Voice] provider_call_ok', { chars: result.text.length, model: result.model })
+  console.log('[Voice] timing', JSON.stringify({
+    bytes: rawBuffer.byteLength, ...marks, totalMs: Date.now() - t0,
+  }))
 
   return NextResponse.json({
     text:         result.text,

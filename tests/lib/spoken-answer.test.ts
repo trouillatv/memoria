@@ -39,12 +39,12 @@ describe('sanitizeSpokenText — la voix ne peut jamais casser la réponse', () 
     expect(sanitizeSpokenText(input)).toBeNull()
   })
 
-  it('un bloc sans fin de phrase reste jeté (on ne coupe pas au milieu d’un mot)', () => {
+  it('un bloc sans frontière de phrase reste jeté (jamais d’amputation au milieu d’un mot)', () => {
     expect(sanitizeSpokenText('a'.repeat(SPOKEN_MAX_CHARS + 1))).toBeNull()
     expect(sanitizeSpokenText('a'.repeat(SPOKEN_MAX_CHARS))).toHaveLength(SPOKEN_MAX_CHARS)
   })
 
-  it('trop long mais phrasé → coupé à la dernière phrase complète, jamais silencieux', () => {
+  it('budget dépassé → plus long préfixe de phrases COMPLÈTES, jamais silencieux', () => {
     // Cas réellement observé sur PETRO : le modèle produit 467, 476, 500
     // caractères. Jeter l'ensemble rendait MemorIA muette une fois sur trois.
     const phrase = "La gestion du matériel sur site non sécurisé a évolué le 13 août. "
@@ -59,14 +59,14 @@ describe('sanitizeSpokenText — la voix ne peut jamais casser la réponse', () 
   })
 
   it('une seule phrase interminable : silence plutôt qu’amorce trompeuse', () => {
-    // Rien ne peut être conservé sans amputer : la coupe n'a pas de frontière et
-    // une amorce laisserait croire que la réponse s'arrête là.
+    // Aucune frontière sémantique sous le plafond : rien ne peut être conservé
+    // sans amputer, et une amorce laisserait croire que la réponse s'arrête là.
     const monobloc = 'mot '.repeat(140) + 'fin.'
     expect(monobloc.length).toBeGreaterThan(SPOKEN_MAX_CHARS)
     expect(sanitizeSpokenText(monobloc)).toBeNull()
   })
 
-  it('la coupe ne conserve pas une amorce trop courte', () => {
+  it('le budget ne s’achète pas au prix d’une amorce trop courte', () => {
     const out = sanitizeSpokenText('Oui. ' + 'x'.repeat(SPOKEN_MAX_CHARS))
     expect(out).toBeNull()
   })
