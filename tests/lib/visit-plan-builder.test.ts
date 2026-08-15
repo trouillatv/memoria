@@ -6,7 +6,7 @@
 // « pourquoi celui-là est dans ma visite ? » avec une raison propre à chacun.
 
 import { describe, it, expect } from 'vitest'
-import { buildVisitPlan } from '@/lib/visits/visit-plan-builder'
+import { buildVisitPlan, buildSpokenPlanContract } from '@/lib/visits/visit-plan-builder'
 import type { SiteAttentionItem } from '@/lib/knowledge/site-attention-items'
 
 const LAST_VISIT = '2026-08-01T00:00:00.000Z'
@@ -161,5 +161,62 @@ describe('buildVisitPlan — contrôles terrain', () => {
       [], 10,
     )
     expect(plan[0].changeSinceLastVisit).toBeNull()
+  })
+})
+
+// D0 (2026-08-16) : le contrat oral doit exister AVANT l'appel au LLM, pas être
+// vérifié après. `id` doit être stable et citable ; `buildSpokenPlanContract`
+// doit être pur et ne dépendre d'aucun appel réseau.
+describe('buildVisitPlan — id citable', () => {
+  it('reprend le sujet canonique comme id quand il existe', () => {
+    const plan = buildVisitPlan(
+      [item({ signal: 'reserve_open', title: 'A', metadata: { canonicalSubjectId: 'cs-1' } })],
+      [], 10,
+    )
+    expect(plan[0].id).toBe('cs-1')
+  })
+
+  it('retombe sur une position stable quand aucun sujet canonique n’est connu', () => {
+    const plan = buildVisitPlan(
+      [{ signal: 'reserve_open', title: 'A', reason: 'r', urgency: 'medium', href: '/x' }],
+      [], 10,
+    )
+    expect(plan[0].id).toBe('vp-0')
+  })
+
+  it('ne produit jamais deux ids identiques dans le même plan', () => {
+    const plan = buildVisitPlan(
+      [
+        item({ signal: 'reserve_open', title: 'A', metadata: { canonicalSubjectId: 'cs-1' } }),
+        { signal: 'reserve_open', title: 'B', reason: 'r', urgency: 'medium', href: '/x' },
+        { signal: 'action_overdue', title: 'C', reason: 'r', urgency: 'medium', href: '/x' },
+      ],
+      [], 10,
+    )
+    expect(new Set(plan.map((c) => c.id)).size).toBe(plan.length)
+  })
+})
+
+describe('buildSpokenPlanContract', () => {
+  it('donne le total exact et les 3 premiers contrôles dans l’ordre déjà trié', () => {
+    const plan = buildVisitPlan(
+      [
+        item({ signal: 'blocage_active', title: 'A', metadata: { canonicalSubjectId: '1' } }),
+        item({ signal: 'subject_changed', title: 'B', metadata: { canonicalSubjectId: '2' } }),
+        item({ signal: 'subject_stagnant', title: 'C', metadata: { canonicalSubjectId: '3' } }),
+        item({ signal: 'action_overdue', title: 'D', metadata: { canonicalSubjectId: '4' } }),
+        item({ signal: 'reserve_open', title: 'E', metadata: { canonicalSubjectId: '5' } }),
+      ],
+      [], 10,
+    )
+    const contract = buildSpokenPlanContract(plan)
+    expect(contract.total).toBe(5)
+    expect(contract.resume.map((r) => r.label)).toEqual(plan.slice(0, 3).map((c) => c.label))
+    expect(contract.resume.map((r) => r.id)).toEqual(plan.slice(0, 3).map((c) => c.id))
+  })
+
+  it('reste vide sans dépasser le nombre réel de contrôles', () => {
+    const plan = buildVisitPlan([item({ signal: 'reserve_open', metadata: { canonicalSubjectId: '1' } })], [], 10)
+    expect(buildSpokenPlanContract(plan).resume).toHaveLength(1)
   })
 })

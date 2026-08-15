@@ -19,6 +19,7 @@ import { SPOKEN_PROMPT_RULES } from './copilot-answer'
 import { sanitizeSpokenText, spokenFromShortAnswer, buildSpokenFallback, SPOKEN_MAX_CHARS } from '@/lib/voice/spoken-answer'
 import type { ActorContext } from '@/lib/db/site-actor-responsibilities'
 import type { VisitControl } from './visit-plan-builder'
+import { buildSpokenPlanContract } from './visit-plan-builder'
 import { frDayMonthYearLocal } from '@/lib/time/local-date'
 
 export interface RecentChangeContext {
@@ -70,6 +71,7 @@ Règles absolues :
 — Quand recommandations_memoria est présent, COMMENCE par les contrôles, jamais par l'état du plan personnel. Une phrase d'ouverture du type "Pour votre visite de demain, je vous conseille N contrôles." puis la liste. Si plan_utilisateur est vide, mentionne-le APRÈS, en une demi-phrase ("Vous n'avez encore ajouté aucun point personnel."), jamais en ouverture : l'utilisateur demande ce qu'il doit vérifier, pas l'état d'une table.
 — Chaque entrée de recommandations_memoria est un CONTRÔLE TERRAIN, pas un sujet à consulter. Rédige-la en un point numéroté : le "label" en titre, puis "check" (ce qu'il faut constater sur place), puis "why" (pourquoi ce point est dans cette visite), puis "lastKnown" (dernier état connu) et "changeSinceLastVisit" quand ils sont présents. N'écris jamais deux points avec la même justification si leurs "why" diffèrent : reprends la raison propre à chacun.
 — "tierLabel" donne la famille du contrôle (sécurité/anomalie ouverte, modifié depuis la dernière visite, problème récurrent, engagement à vérifier, autre point). L'ordre de recommandations_memoria est déjà la priorité de visite : ne le réordonne pas et n'invente aucune urgence absente des données.
+— Quand "plan_voix" est présent, il borne STRICTEMENT ce que "spokenText" peut nommer pour recommandations_memoria : annonce le nombre exact donné par "plan_voix.total", puis ne cite que les contrôles listés dans "plan_voix.resume", dans leur ordre, par leur "label" exact. Ne nomme JAMAIS un contrôle de recommandations_memoria absent de "plan_voix.resume", même s'il figure dans "recommandations_memoria" — le texte écrit ("text") reste, lui, libre de couvrir la liste complète.
 — "lastKnown" et "changeSinceLastVisit" sont des faits calculés. Absents ou null, tu ne les connais pas : ne comble jamais par une supposition.
 — "depuis_derniere_visite" est le delta calculé depuis la dernière visite TERRAIN (champ "depuis" = sa date). Il est indépendant de "delta", qui compare deux PV. Pour une question du type "qu'est-ce qui a changé depuis la dernière visite ?", appuie-toi sur "depuis_derniere_visite" et nomme les sujets concernés en te servant des items dont les faits mentionnent une évolution. Ne convertis jamais un compteur en liste : quand "sujetsChanges" dépasse le nombre d'items présents, reprends la valeur du compteur puis n'énumère que les items que tu as ("N sujets ont évolué, dont…", où N est exactement la valeur reçue).
 — Le champ "depuis" est déjà rédigé en toutes lettres dans le fuseau du chantier. Reprends-le tel quel, ne le reformate pas et n'en déduis aucune autre date.
@@ -193,6 +195,7 @@ export async function answerCopilotFreeQuestion(
   const validIds = new Set([
     ...items.map((i) => i.id),
     ...subjectDetails.map((s) => s.id),
+    ...(extra?.visitPlanDetail ?? []).map((c) => c.id),
   ])
 
   const contextJson = JSON.stringify(
@@ -227,7 +230,15 @@ export async function answerCopilotFreeQuestion(
       ...('visitPlanDetail' in (extra ?? {})
         ? {
             plan_utilisateur: prepItems.map((p) => p.label),
-            ...(extra!.visitPlanDetail!.length > 0 ? { recommandations_memoria: extra!.visitPlanDetail } : {}),
+            ...(extra!.visitPlanDetail!.length > 0
+              ? {
+                  recommandations_memoria: extra!.visitPlanDetail,
+                  // Calculé avant l'appel, pas déduit par le LLM : ce que la voix a
+                  // le droit de résumer. spokenText ne doit nommer aucun contrôle
+                  // absent de "resume" — c'est le contrat D0.
+                  plan_voix: buildSpokenPlanContract(extra!.visitPlanDetail!),
+                }
+              : {}),
           }
         : prepItems.length > 0
           ? { plan_utilisateur: prepItems.map((p) => p.label) }

@@ -56,6 +56,8 @@ const TIER_LABEL: Record<VisitControlTier, string> = {
 
 /** Un contrôle terrain : quoi vérifier, pourquoi, dernier état connu, changement. */
 export interface VisitControl {
+  /** Stable pour une réponse donnée — sujet canonique s'il existe, sinon position post-tri. */
+  id: string
   /** Le sujet ou l'objet concerné. Jamais une phrase. */
   label: string
   /** Ce qu'il faut CONSTATER sur place. Impératif, une phrase. */
@@ -313,15 +315,18 @@ export function buildVisitPlan(
   pvToVerify: PvToVerifyInput[],
   max: number,
 ): VisitControl[] {
-  const controls: VisitControl[] = []
+  // `id` est assigné après tri (position stable pour la réponse), sauf quand le
+  // sujet canonique existe déjà : cet id-là reste identique d'une visite à
+  // l'autre et permet de retrouver le même contrôle dans une future réponse.
+  const controls: Array<Omit<VisitControl, 'id'> & { canonicalId: string | null }> = []
   const seen = new Set<string>()
 
-  const push = (key: string | null, control: VisitControl) => {
+  const push = (key: string | null, control: Omit<VisitControl, 'id'>) => {
     if (key) {
       if (seen.has(key)) return
       seen.add(key)
     }
-    controls.push(control)
+    controls.push({ ...control, canonicalId: key })
   }
 
   for (const item of attentionItems) {
@@ -368,5 +373,25 @@ export function buildVisitPlan(
     return (URGENCY_RANK[a.priority] ?? 9) - (URGENCY_RANK[b.priority] ?? 9)
   })
 
-  return controls.slice(0, max)
+  return controls.slice(0, max).map(({ canonicalId, ...control }, i) => ({
+    ...control,
+    id: canonicalId ?? `vp-${i}`,
+  }))
+}
+
+/**
+ * Ce que la voix a le droit de résumer, calculé AVANT l'appel au LLM : le
+ * nombre total de contrôles et les tout premiers dans l'ordre métier déjà
+ * trié par `buildVisitPlan`. Le LLM ne choisit pas cette liste, il la reçoit.
+ */
+export interface SpokenPlanContract {
+  total: number
+  resume: Array<{ id: string; label: string; tierLabel: string }>
+}
+
+export function buildSpokenPlanContract(controls: VisitControl[], maxSummarized = 3): SpokenPlanContract {
+  return {
+    total: controls.length,
+    resume: controls.slice(0, maxSummarized).map((c) => ({ id: c.id, label: c.label, tierLabel: c.tierLabel })),
+  }
 }
