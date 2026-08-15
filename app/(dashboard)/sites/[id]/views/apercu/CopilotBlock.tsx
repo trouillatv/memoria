@@ -19,6 +19,7 @@ import { fetchPlanItems, removePlanItem, getCopilotSuggestions, type PlanItemSum
 import type { CopilotIntent } from '@/lib/visits/copilot-context'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { ProposalCard, ScheduleProposalCard } from '@/components/copilot/CopilotProposalCards'
+import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { CapabilityDiscoveryPanel } from '@/components/copilot/CapabilityDiscoveryPanel'
 import { cn } from '@/lib/utils'
 
@@ -296,9 +297,12 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
         </div>
       )}
 
-      {/* Historique de conversation */}
+      {/* Historique de conversation — pas de hauteur maximale ici : la
+          conversation faisait défiler un pavé à l'intérieur d'une carte
+          elle-même située dans une page défilable. La réponse agrandit
+          désormais la page, qui n'a plus qu'un seul défilement. */}
       {hasMessages && (
-        <div className="mb-3 space-y-3 max-h-[480px] overflow-y-auto">
+        <div className="mb-3 space-y-3">
           {messages.map((msg) => {
             if (msg.kind === 'thinking') {
               return (
@@ -384,10 +388,8 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
             if (msg.kind === 'answer') {
               return (
                 <div key={msg.id} className="space-y-2">
-                  <div className="rounded-2xl rounded-bl-sm border border-foreground/[0.06] bg-muted/40 px-3 py-2">
-                    <p className="whitespace-pre-line text-[14px] leading-relaxed text-foreground">
-                      {msg.text}
-                    </p>
+                  <div className="rounded-2xl rounded-bl-sm border border-foreground/[0.06] bg-muted/40 px-3 py-2.5">
+                    <CopilotAnswer text={msg.text} />
                   </div>
                   {msg.refs.filter((r) => r.href !== null).length > 0 && (
                     <div className="flex flex-wrap gap-2">

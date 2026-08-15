@@ -11,6 +11,7 @@ import {
 } from '@/app/(dashboard)/sites/[id]/copilot-free-action'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { ProposalCard, ScheduleProposalCard } from '@/components/copilot/CopilotProposalCards'
+import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
 import { useVoiceOrb } from './VoiceOrbContext'
 import { listMeetingSitesAction } from './meeting-actions'
@@ -264,8 +265,8 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
             if (msg.kind === 'answer') {
               return (
                 <div key={msg.id} className="space-y-2">
-                  <div className="rounded-2xl rounded-bl-sm border border-foreground/[0.06] bg-muted/40 px-3 py-2">
-                    <p className="whitespace-pre-line text-[14px] leading-relaxed text-foreground">{msg.text}</p>
+                  <div className="rounded-2xl rounded-bl-sm border border-foreground/[0.06] bg-muted/40 px-3 py-2.5">
+                    <CopilotAnswer text={msg.text} />
                   </div>
                   {msg.refs.filter((r) => r.href !== null).length > 0 && (
                     <div className="flex flex-col gap-2">

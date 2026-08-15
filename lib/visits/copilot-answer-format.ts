@@ -1,0 +1,127 @@
+﻿// Mise en forme des réponses du Copilote — RENDU UNIQUEMENT.
+//
+// Le moteur (sélection des contrôles, hiérarchie de visite, rédaction) est
+// validé en production le 15/08 : rien ici ne le modifie. Ce module ne fait que
+// lire le texte déjà produit et le découper en blocs affichables, parce que
+// l'UI l'imprimait littéralement — l'utilisateur voyait « **Pourquoi ce
+// contrôle :** » au lieu d'une typographie.
+//
+// Forme réelle produite par le LLM sur un plan de visite (relevé sur PETRO
+// ATTITI, 5 formulations, 15/08) :
+//
+//   Pour votre visite de demain, je vous conseille 5 contrôles :
+//   1. **Gestion du matériel sur site non sécurisé**
+//      * **À vérifier sur place :** Constater l'état réel…
+//      * **Pourquoi ce contrôle :** Modifié le 13 août 2026…
+//      * **Dernier état connu :** vérifié sur le terrain…
+//      * **Changement depuis votre dernière visite :** Évolution enregistrée…
+//
+//   Vous n'avez encore ajouté aucun point personnel à votre plan de visite.
+//
+// Deux libellés varient d'une formulation à l'autre (« Pourquoi » / « Pourquoi
+// ce contrôle », « Changement » / « Évolution depuis… »). On les normalise à
+// l'affichage : mêmes données, moins de texte répétitif. Aucune reformulation
+// de contenu — seuls les libellés d'étiquette sont raccourcis.
+//
+// Contrat de sûreté : tout ce qui n'est pas reconnu retombe en paragraphe. Une
+// réponse courte, une réponse de fallback ou un futur format inconnu s'affichent
+// comme avant, jamais dégradés.
+
+export type CopilotField = { label: string; value: string }
+
+export type CopilotAnswerBlock =
+  | { kind: 'paragraph'; text: string }
+  | { kind: 'bullet'; text: string }
+  | { kind: 'control'; index: string; title: string; fields: CopilotField[] }
+
+const NUMBERED_RE = /^\s{0,3}(\d{1,2})[.)]\s+(.+)$/
+const BULLET_RE = /^\s*[*\-–•]\s+(.+)$/
+const FIELD_RE = /^\*\*\s*(.+?)\s*:?\s*\*\*\s*:?\s*(.*)$/
+
+/** Retire le gras Markdown d'une chaîne (les titres n'ont pas besoin du marqueur). */
+export function stripBold(text: string): string {
+  return text.replace(/\*\*(.+?)\*\*/g, '$1').trim()
+}
+
+function normalizeLabel(label: string): string {
+  return label
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// Libellés longs → libellé court affiché. La clé est normalisée (sans accent,
+// minuscules) pour absorber les variantes de rédaction du LLM.
+const FIELD_LABELS: Array<{ match: string[]; short: string }> = [
+  { match: ['a verifier sur place', 'a verifier', 'a controler sur place'], short: 'À vérifier' },
+  { match: ['pourquoi ce controle', 'pourquoi', 'pourquoi ce point'], short: 'Pourquoi' },
+  { match: ['dernier etat connu', 'dernier etat'], short: 'Dernier état' },
+  {
+    match: [
+      'changement depuis votre derniere visite',
+      'changement depuis la derniere visite',
+      'evolution depuis votre derniere visite',
+      'evolution depuis la derniere visite',
+      'changement depuis',
+      'evolution',
+    ],
+    short: 'Évolution',
+  },
+]
+
+/** Raccourcit un libellé connu ; renvoie le libellé d'origine sinon. */
+export function shortFieldLabel(label: string): string {
+  const n = normalizeLabel(label)
+  for (const entry of FIELD_LABELS) {
+    if (entry.match.includes(n)) return entry.short
+  }
+  return label.trim()
+}
+
+/**
+ * Découpe une réponse Copilote en blocs affichables.
+ * Fonction pure, sans dépendance React : testable et réutilisable par toutes
+ * les surfaces (bloc Aperçu, feuille mobile chantier, feuille vocale globale).
+ */
+export function parseCopilotAnswer(text: string): CopilotAnswerBlock[] {
+  const blocks: CopilotAnswerBlock[] = []
+  let current: Extract<CopilotAnswerBlock, { kind: 'control' }> | null = null
+
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trimEnd()
+    if (line.trim() === '') continue
+
+    // « 1. **Titre du contrôle** » → ouvre un contrôle.
+    const numbered = NUMBERED_RE.exec(line)
+    if (numbered) {
+      current = { kind: 'control', index: numbered[1], title: stripBold(numbered[2]), fields: [] }
+      blocks.push(current)
+      continue
+    }
+
+    // « * **À vérifier sur place :** … » → champ du contrôle courant.
+    const bullet = BULLET_RE.exec(line)
+    if (bullet) {
+      const inner = bullet[1].trim()
+      const field = FIELD_RE.exec(inner)
+      if (field && current) {
+        current.fields.push({ label: shortFieldLabel(field[1]), value: stripBold(field[2]) })
+      } else if (current) {
+        // Puce sans étiquette dans un contrôle : on garde la valeur telle quelle.
+        current.fields.push({ label: '', value: stripBold(inner) })
+      } else {
+        blocks.push({ kind: 'bullet', text: stripBold(inner) })
+      }
+      continue
+    }
+
+    // Tout le reste : phrase d'ouverture, mention du plan personnel, réponse
+    // libre hors plan de visite. Ferme le contrôle courant.
+    current = null
+    blocks.push({ kind: 'paragraph', text: line.trim() })
+  }
+
+  return blocks
+}
