@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { requireOwned } from '@/lib/auth/ownership'
 import { mimeToExt, transcribeAudioForCopilot } from '@/lib/ai/transcribe'
 
-/** Garde-fou du lancement anticipé du lexique : rien ne part sans un UUID valide. */
+/** Rien ne part vers la base sans un UUID valide — avant même le contrôle d'accès. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function POST(req: NextRequest) {
@@ -12,24 +13,23 @@ export async function POST(req: NextRequest) {
   // Chronométrage des étapes serveur (mandat Vincent, 15/08 : instrumenter AVANT
   // d'optimiser ; 16/08 : décomposer les ~4 s résiduelles du STT).
   //   formMs        — réception du corps de requête vue du serveur
-  //   authMs        — session Supabase
+  //   authMs        — session Supabase + profil
+  //   authzMs       — appartenance de l'appelant à l'organisation DU CHANTIER
   //   bufferMs      — matérialisation de l'audio
-  //   lexiconMs     — durée PROPRE du lexique PETRO/SSI, désormais recouverte
-  //   lexiconWaitMs — ce qu'il en reste réellement à payer. C'est le seul des deux
-  //                   qui pèse sur l'utilisateur ; l'écart mesure la parallélisation.
+  //   lexiconMs     — durée PROPRE du lexique PETRO/SSI
+  //   lexiconWaitMs — ce qu'il en reste réellement à payer une fois le buffer lu
   //   sttMs         — transcription, décomposée par le fournisseur (openaiMs,
   //                   encodeMs, providerWaitMs, providerBodyMs, payloadBytes)
   // Le lexique n'est ni supprimé ni réduit : Vincent refuse de sacrifier la
-  // transcription contextualisée. On ne change que l'instant où on l'attend.
+  // transcription contextualisée.
   const t0 = Date.now()
   const marks: Record<string, number> = {}
   const mark = (key: string, from: number) => { marks[key] = Date.now() - from }
 
   // ── 1. FormData ────────────────────────────────────────────────────────────
-  // Lue AVANT l'authentification, pour une seule raison : elle porte le
-  // `siteId`, et le prompt lexical qui en dépend ne dépend pas de l'audio.
-  // L'audit du 16/08 l'a mesuré à 395 ms médians payés en série juste avant le
-  // STT ; les lancer pendant l'authentification (343 ms médians) les recouvre.
+  // Elle porte le `siteId` et l'audio. Sa lecture ne touche aucune donnée
+  // métier : c'est le corps de la requête de l'appelant, il n'y a rien à
+  // autoriser pour le lire.
   let form: FormData
   const tForm = Date.now()
   try {
@@ -44,33 +44,24 @@ export async function POST(req: NextRequest) {
   const audioFile = form.get('audio') as File | null
   const siteId    = form.get('siteId') as string | null
 
-  // ── 2. Prompt lexical — lancé, pas attendu ─────────────────────────────────
-  // Le garde-fou UUID borne ce qu'un appel non authentifié peut déclencher : au
-  // pire deux lectures indexées, jamais de contenu renvoyé (la réponse reste
-  // fermée par le 401 ci-dessous). Contenu et taille du lexique inchangés.
-  const tLex = Date.now()
-  const lexicalPromise: Promise<string> = UUID_RE.test(siteId ?? '')
-    // `lexiconMs` = durée propre de la requête ; `lexiconWaitMs` plus bas = ce
-    // qu'il en reste réellement à payer. L'écart entre les deux EST le gain.
-    ? buildLexicalPrompt(siteId as string)
-        .then((v) => { marks.lexiconMs = Date.now() - tLex; return v })
-        // Aucune sortie anticipée (401, audio manquant) ne doit laisser derrière
-        // elle une promesse rejetée non gérée.
-        .catch(() => '')
-    : Promise.resolve('')
-
-  // ── 3. Auth ────────────────────────────────────────────────────────────────
-  let userId: string
+  // ── 2. Auth ────────────────────────────────────────────────────────────────
+  // `getCurrentUserWithProfile` plutôt qu'un `auth.getUser()` nu : il rend le
+  // rôle exigé par la signature de `requireOwned`. Il est enveloppé dans React
+  // `cache()`, donc la garde le relira sans seconde lecture SI la mémoïsation
+  // par requête s'applique dans un route handler. Si elle ne s'applique pas, le
+  // surcoût est d'exactement une lecture `users` — visible dans `authzMs`, qui
+  // vaudra alors trois allers-retours au lieu de deux.
+  let user: NonNullable<Awaited<ReturnType<typeof getCurrentUserWithProfile>>>
   const tAuth = Date.now()
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: 'Unauthorized', code: 'AUTH_MISSING' }, { status: 401 })
-    userId = user.id
+    const current = await getCurrentUserWithProfile()
+    if (!current) return NextResponse.json({ error: 'Unauthorized', code: 'AUTH_MISSING' }, { status: 401 })
+    user = current
   } catch (err) {
     console.error('[Voice] auth_error:', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'Auth error', code: 'AUTH_ERROR' }, { status: 401 })
   }
+  const userId = user.id
 
   mark('authMs', tAuth)
 
@@ -79,7 +70,49 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Audio manquant', code: 'AUDIO_MISSING' }, { status: 400 })
   }
 
-  // ── 4. Lecture du buffer ───────────────────────────────────────────────────
+  // ── 3. Autorisation du chantier ────────────────────────────────────────────
+  // `buildLexicalPrompt` lit `sites.name` et 20 `canonical_subject.label` via le
+  // client admin, qui BYPASSE la RLS. Sans cette garde, n'importe quel appelant
+  // connaissant un UUID obtenait le nom d'un chantier étranger et 15 de ses
+  // sujets, injectés dans SON propre prompt de transcription. C'est exactement
+  // l'incident d'isolation documenté dans `lib/field/site-access.ts`, sur un
+  // chemin qui y avait échappé parce qu'il n'est pas une page.
+  //
+  // La garde est donc SÉRIELLE et non recouverte : aucune lecture métier avant
+  // autorisation, même jetée ensuite. Le coût est mesuré (`authzMs`).
+  const tAuthz = Date.now()
+  let lexiconSiteId: string | null = null
+  if (UUID_RE.test(siteId ?? '')) {
+    const owned = await requireOwned(user.role, 'sites', siteId as string)
+    if (owned.allowed) {
+      lexiconSiteId = siteId as string
+    } else {
+      // Pas de 404 : on dégrade au lieu de refuser. Un chantier étranger, un
+      // chantier inexistant et un chantier orphelin donnent tous exactement le
+      // même comportement observable — une transcription sans lexique, celle
+      // qu'obtient déjà tout appel sans `siteId`. Aucun oracle d'existence, et
+      // aucune régression possible sur un chantier mal rattaché.
+      console.warn('[Voice] lexicon_denied — chantier hors périmètre de l’appelant', { userId })
+    }
+  }
+  mark('authzMs', tAuthz)
+
+  // ── 4. Prompt lexical — lancé, pas attendu ─────────────────────────────────
+  // Lancé APRÈS l'autorisation, donc plus rien à recouvrir en amont : il ne
+  // reste que la lecture du buffer (0–3 ms mesurés). `lexiconMs` = durée propre,
+  // `lexiconWaitMs` = résidu réellement payé ; l'écart entre les deux dit
+  // combien il reste de parallélisme — aujourd'hui presque zéro, et c'est le
+  // prix assumé de la garde.
+  const tLex = Date.now()
+  const lexicalPromise: Promise<string> = lexiconSiteId
+    ? buildLexicalPrompt(lexiconSiteId)
+        .then((v) => { marks.lexiconMs = Date.now() - tLex; return v })
+        // Aucune sortie anticipée ne doit laisser derrière elle une promesse
+        // rejetée non gérée.
+        .catch(() => '')
+    : Promise.resolve('')
+
+  // ── 5. Lecture du buffer ───────────────────────────────────────────────────
   const tBuffer = Date.now()
   let rawBuffer: ArrayBuffer
   try {
@@ -100,7 +133,7 @@ export async function POST(req: NextRequest) {
   const ext      = mimeToExt(mimeType)
   console.log('[Voice] audio_received', { size: rawBuffer.byteLength, type: mimeType, name: audioFile.name, ext, userId })
 
-  // ── 5. Prompt lexical — attente résiduelle ─────────────────────────────────
+  // ── 6. Prompt lexical — attente résiduelle ─────────────────────────────────
   const tLexWait = Date.now()
   const lexicalPrompt = await lexicalPromise
   mark('lexiconWaitMs', tLexWait)
@@ -108,7 +141,7 @@ export async function POST(req: NextRequest) {
     length: lexicalPrompt.length, ownMs: marks.lexiconMs ?? 0, waitMs: marks.lexiconWaitMs,
   })
 
-  // ── 6. Transcription ───────────────────────────────────────────────────────
+  // ── 7. Transcription ───────────────────────────────────────────────────────
   console.log('[Voice] provider_call_start', { model: 'gpt-4o-mini-transcribe', mimeType, ext })
 
   let result: Awaited<ReturnType<typeof transcribeAudioForCopilot>>
