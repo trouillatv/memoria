@@ -200,24 +200,44 @@ export async function answerCopilotFreeQuestion(
     2,
   )
 
+  // Budget de sortie : une réponse narrative tient dans 800 tokens, pas une
+  // check-list. Chaque contrôle rend quatre lignes (à vérifier / pourquoi /
+  // dernier état / évolution). Recette PETRO du 15 août : à 800, les 5 réponses
+  // étaient tronquées EN PLEIN JSON — `result.parsed` restait null et
+  // l'utilisateur recevait le repli déterministe, c'est-à-dire précisément la
+  // liste plate que ce lot corrige. Le plafond borne le coût sur un chantier
+  // dense (COPILOT_MAX_VISIT_PLAN = 10).
+  const nbControles = extra?.visitPlanDetail?.length ?? 0
+  const maxOutputTokens = nbControles > 0 ? Math.min(800 + nbControles * 260, 2600) : 800
+  // Même raison pour le garde de longueur : il protège d'une réponse partie en
+  // roue libre, mais une check-list de N contrôles est légitimement plus longue
+  // qu'un récit. À 2000 caractères, les réponses PETRO — pourtant correctes —
+  // étaient rejetées par le schéma et tombaient elles aussi en repli.
+  const answerSchema = nbControles > 0
+    ? FreeAnswerSchema.extend({ text: z.string().max(Math.min(1400 + nbControles * 420, 5600)) })
+    : FreeAnswerSchema
+
   try {
     const provider = getAIProvider()
     const result = await provider.complete({
       systemPrompt: SYSTEM_PROMPT,
       userMessage: `${question}\n\nContexte :\n${contextJson}`,
-      responseSchema: FreeAnswerSchema,
+      responseSchema: answerSchema,
       geminiSchema: FREE_ANSWER_GEMINI_SCHEMA,
       modelTier: 'light',
-      maxOutputTokens: 800,
+      maxOutputTokens,
     })
 
     if (result.parsed) {
-      const maybeValid = FreeAnswerSchema.safeParse(result.parsed)
+      const maybeValid = answerSchema.safeParse(result.parsed)
       if (maybeValid.success) {
         const citedIds = maybeValid.data.citedIds.filter((id) => validIds.has(id))
         return { text: stripUuids(maybeValid.data.text), citedIds, source: 'llm' }
       }
-      console.warn('[copilot-free] schema mismatch — parsed:', JSON.stringify(result.parsed).slice(0, 200))
+      // Le motif, pas seulement le contenu : sans lui, un repli silencieux se lit
+      // comme un défaut du moteur alors qu'il vient d'un garde de longueur.
+      const motif = maybeValid.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join(' ; ')
+      console.warn(`[copilot-free] schema mismatch (${motif}) — parsed:`, JSON.stringify(result.parsed).slice(0, 200))
     } else {
       console.warn('[copilot-free] result.parsed is null — raw:', result.text.slice(0, 200))
     }
