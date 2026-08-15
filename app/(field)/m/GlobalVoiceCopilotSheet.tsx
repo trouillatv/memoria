@@ -17,6 +17,7 @@ import { useVoiceOrb } from './VoiceOrbContext'
 import { listMeetingSitesAction } from './meeting-actions'
 import { speak } from '@/lib/voice/speech-output'
 import { markVoice } from '@/lib/voice/voice-latency'
+import { traceVoice } from '@/lib/voice/voice-trace'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -126,6 +127,8 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
    * `CopilotMobileSheet`.
    */
   async function send(question: string, extraResolvedIds?: string[], opts?: { spoken?: boolean }) {
+    // Tracé avant le garde — voir le même commentaire dans `CopilotMobileSheet`.
+    if (opts?.spoken) traceVoice('sheet-send', { surface: 'global', loading, questionLength: question.trim().length })
     if (loading || !question.trim()) return
     setLoading(true)
 
@@ -148,9 +151,22 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
       // serveur que le temps du serveur.
       if (opts?.spoken) markVoice('answer')
 
+      if (opts?.spoken) {
+        const spoken = result.kind === 'answer' ? result.spokenText : null
+        traceVoice('answer', {
+          kind: result.kind,
+          source: result.kind === 'answer' ? result.source : null,
+          spokenText: result.kind === 'answer' ? (spoken == null ? 'null' : 'present') : 'n/a',
+          spokenLength: spoken?.length ?? 0,
+        })
+      }
+
       // La lecture part AVANT le rendu et ne le conditionne jamais : le texte
       // s'affiche identiquement que la voix démarre, échoue ou soit en sourdine.
-      if (opts?.spoken && result.kind === 'answer') speak(result.spokenText)
+      if (opts?.spoken && result.kind === 'answer') {
+        const accepted = speak(result.spokenText)
+        traceVoice('speak-returned', { accepted })
+      }
 
       setMessages((prev) => {
         const without = prev.filter((m) => m.kind !== 'thinking')

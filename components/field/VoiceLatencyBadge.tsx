@@ -16,29 +16,9 @@ import {
   getServerVoiceLatencySnapshot,
   formatVoiceLatency,
 } from '@/lib/voice/voice-latency'
-
-const FLAG_KEY = 'memoria:voice-debug'
-
-/**
- * Résolu une seule fois par chargement de page, puis mémorisé : le drapeau ne
- * change pas en cours de session, et `getSnapshot` doit rester stable.
- *
- * Le paramètre d'URL est recopié dans le stockage : en recette on ouvre l'app
- * une fois avec `?voicedebug=1`, puis on navigue normalement sans le traîner
- * dans chaque URL. `?voicedebug=0` referme.
- */
-let flag: boolean | null = null
-function voiceDebugEnabled(): boolean {
-  if (flag !== null) return flag
-  flag = false
-  try {
-    const param = new URLSearchParams(window.location.search).get('voicedebug')
-    if (param === '1') window.localStorage.setItem(FLAG_KEY, '1')
-    if (param === '0') window.localStorage.removeItem(FLAG_KEY)
-    flag = window.localStorage.getItem(FLAG_KEY) === '1'
-  } catch { /* stockage indisponible */ }
-  return flag
-}
+// Drapeau partagé avec la trace multi-tours : une seule recette ouvre les deux
+// instruments à la fois (cf. `lib/voice/voice-debug.ts`).
+import { voiceDebugEnabled } from '@/lib/voice/voice-debug'
 
 const NEVER_CHANGES = () => () => {}
 

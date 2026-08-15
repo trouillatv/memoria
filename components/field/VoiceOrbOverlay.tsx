@@ -19,6 +19,12 @@ import {
   primeSpeechOutput,
 } from '@/lib/voice/speech-output'
 import { markVoice } from '@/lib/voice/voice-latency'
+import { beginVoiceTurn, traceVoice } from '@/lib/voice/voice-trace'
+import {
+  browserWakeLockEnv,
+  createWakeLockController,
+  phaseNeedsWakeLock,
+} from '@/lib/voice/wake-lock'
 
 interface Props {
   open: boolean
@@ -75,10 +81,17 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
 
   /** Renvoie `true` si la transition a été acceptée. C'est l'anti-double-envoi. */
   const dispatch = useCallback((event: VoiceEvent): boolean => {
-    const next = voiceReducer(stateRef.current, event)
-    if (next === stateRef.current) return false
+    const prev = stateRef.current
+    const next = voiceReducer(prev, event)
+    if (next === prev) {
+      // Un refus n'est pas une anomalie en soi (c'est le rôle de la machine),
+      // mais un refus INATTENDU au deuxième tour serait le défaut cherché.
+      traceVoice('phase-refused', { event: event.type, phase: prev.phase })
+      return false
+    }
     stateRef.current = next
     setState(next)
+    traceVoice('phase', { event: event.type, from: prev.phase, to: next.phase })
     return true
   }, [])
 
@@ -135,6 +148,22 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
     cleanupRef.current()
     if (exitTimerRef.current) clearTimeout(exitTimerRef.current)
   }, [])
+
+  // ── Écran maintenu allumé pendant l'échange vocal, et seulement là ──────────
+  //
+  // Constat terrain : avec une veille écran courte, l'écran s'éteint pendant
+  // `thinking` ou `speaking` — l'utilisateur a parlé, il attend, il ne touche
+  // plus rien, donc l'OS le croit inactif au moment précis où il est au cœur de
+  // l'échange. Un seul branchement déclaratif : le contrôleur reçoit un état,
+  // pas une suite d'ordres, et ne peut donc pas « oublier » de relâcher.
+  const wakeLockRef = useRef<ReturnType<typeof createWakeLockController> | null>(null)
+  if (wakeLockRef.current === null && typeof window !== 'undefined') {
+    wakeLockRef.current = createWakeLockController(browserWakeLockEnv())
+  }
+  useEffect(() => {
+    wakeLockRef.current?.sync(phaseNeedsWakeLock(phase))
+  }, [phase])
+  useEffect(() => () => { wakeLockRef.current?.dispose() }, [])
 
   // Fin de la lecture vocale. Fin naturelle, interruption au tap, moteur muet ou
   // en échec : une seule et même sortie. La voix ne peut donc jamais retenir
@@ -208,6 +237,8 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
         // Origine des temps du parcours vocal : c'est l'instant où l'utilisateur
         // considère avoir fini de parler, donc celui à partir duquel il attend.
         markVoice('endOfSpeech')
+        // Même origine pour la trace : un tour de conversation commence ici.
+        beginVoiceTurn()
         vibrateEndOfSpeech()
         if (recorder.state === 'recording') recorder.stop()
       }
@@ -338,10 +369,12 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
 
     // Envoi direct au copilote, exactement comme une question saisie au clavier.
     // L'orbe reste à l'écran pendant toute la réflexion.
+    traceVoice('orb-before-send', { phase: stateRef.current.phase })
     try {
       await onResult(text)
     } catch { /* la feuille affiche elle-même l'échec de la réponse */ }
     markVoice('answer')
+    traceVoice('orb-after-send', { phase: stateRef.current.phase, isSpeaking: isSpeaking() })
 
     // L'orbe ne décide pas de parler : la feuille a déjà déclenché la lecture si
     // elle avait une synthèse orale à prononcer. Ici on ne fait qu'observer le

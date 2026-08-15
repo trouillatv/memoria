@@ -18,6 +18,7 @@ import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
 import { useVoiceOrb } from '@/app/(field)/m/VoiceOrbContext'
 import { speak } from '@/lib/voice/speech-output'
 import { markVoice } from '@/lib/voice/voice-latency'
+import { traceVoice } from '@/lib/voice/voice-trace'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -88,6 +89,9 @@ export function CopilotMobileSheet({
    * dans les deux cas.
    */
   async function send(question: string, extraResolvedIds?: string[], opts?: { spoken?: boolean }) {
+    // Tracé AVANT le garde : un `loading` resté vrai avalerait le tour suivant
+    // en silence, et c'est exactement ce qu'on cherche à écarter ou à prouver.
+    if (opts?.spoken) traceVoice('sheet-send', { surface: 'site', loading, questionLength: question.trim().length })
     if (loading || !question.trim()) return
     setLoading(true)
 
@@ -112,10 +116,25 @@ export function CopilotMobileSheet({
       // rendu React.
       if (opts?.spoken) markVoice('answer')
 
+      // Ce que le serveur a réellement renvoyé — la frontière exacte entre le
+      // cas A (rien à prononcer) et tout le reste de la chaîne.
+      if (opts?.spoken) {
+        const spoken = result.kind === 'answer' ? result.spokenText : null
+        traceVoice('answer', {
+          kind: result.kind,
+          source: result.kind === 'answer' ? result.source : null,
+          spokenText: result.kind === 'answer' ? (spoken == null ? 'null' : 'present') : 'n/a',
+          spokenLength: spoken?.length ?? 0,
+        })
+      }
+
       // La lecture part AVANT le rendu et ne le conditionne jamais : le texte
       // s'affiche identiquement que la voix démarre, échoue ou soit en sourdine.
       // `speak` ignore de lui-même une synthèse absente.
-      if (opts?.spoken && result.kind === 'answer') speak(result.spokenText)
+      if (opts?.spoken && result.kind === 'answer') {
+        const accepted = speak(result.spokenText)
+        traceVoice('speak-returned', { accepted })
+      }
 
       setMessages((prev) => {
         const without = prev.filter((m) => m.kind !== 'thinking')

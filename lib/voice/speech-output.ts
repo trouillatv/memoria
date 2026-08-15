@@ -23,6 +23,7 @@
 
 import { useSyncExternalStore } from 'react'
 import { markVoice } from './voice-latency'
+import { traceVoice, synthState } from './voice-trace'
 
 const MUTE_KEY = 'memoria:voice-output-muted'
 
@@ -116,13 +117,15 @@ function clearStartTimer() {
 }
 
 /** Coupe toute lecture en cours et invalide ses callbacks. Synchrone. */
-function cancelCurrent() {
+function cancelCurrent(origin: string) {
+  const from = generation
   generation++
   clearStartTimer()
   if (snapshot.supported) {
     try { window.speechSynthesis.cancel() } catch { /* ignoré */ }
   }
   emit({ speaking: false })
+  traceVoice('cancel', { origin, generationBefore: from, generationAfter: generation, synth: synthState() })
 }
 
 // ── API publique ──────────────────────────────────────────────────────────────
@@ -148,6 +151,10 @@ export function isVoiceMuted(): boolean {
  */
 export function primeSpeechOutput() {
   ensureInit()
+  // Tracé même quand il ne fait rien : un déverrouillage qui n'a lieu qu'au
+  // premier chargement de page est exactement le genre de « une seule fois »
+  // qui expliquerait une voix muette au deuxième tour.
+  traceVoice('prime', { supported: snapshot.supported, alreadyPrimed: primed })
   if (!snapshot.supported || primed) return
   primed = true
   try {
@@ -168,10 +175,23 @@ export function primeSpeechOutput() {
  */
 export function speak(text: string | null | undefined): boolean {
   ensureInit()
-  cancelCurrent()
-  if (!snapshot.supported || snapshot.muted) return false
+  cancelCurrent('speak')
   const clean = (text ?? '').trim()
-  if (!clean) return false
+
+  // Les trois refus sont tracés séparément : « refusé parce qu'en sourdine » et
+  // « refusé parce que le serveur n'a rien envoyé » se corrigent à des endroits
+  // opposés de la chaîne, et se ressemblent parfaitement à l'oreille.
+  if (!snapshot.supported || snapshot.muted) {
+    traceVoice('speak-refused', {
+      reason: !snapshot.supported ? 'unsupported' : 'muted',
+      supported: snapshot.supported, muted: snapshot.muted, textLength: clean.length,
+    })
+    return false
+  }
+  if (!clean) {
+    traceVoice('speak-refused', { reason: 'empty-text', supported: true, muted: false, textLength: 0 })
+    return false
+  }
 
   const gen = generation
   let started = false
@@ -188,6 +208,9 @@ export function speak(text: string | null | undefined): boolean {
       emit({ speaking: false })
     }
     utterance.onstart = () => {
+      // Tracé AVANT le contrôle de génération : un `start` périmé est une
+      // information, et le taire donnerait à lire un silence du moteur.
+      traceVoice('speak-start', { gen, current: generation, stale: gen !== generation, synth: synthState() })
       if (gen !== generation) return
       started = true
       clearStartTimer()
@@ -195,19 +218,36 @@ export function speak(text: string | null | undefined): boolean {
       // sont posés par l'orbe. Mesure uniquement, aucun effet sur la lecture.
       markVoice('firstSound')
     }
-    utterance.onend = settle
-    utterance.onerror = settle
+    utterance.onend = () => {
+      traceVoice('speak-end', { gen, current: generation, stale: gen !== generation, started, synth: synthState() })
+      settle()
+    }
+    utterance.onerror = (event) => {
+      const kind = (event as SpeechSynthesisErrorEvent)?.error ?? null
+      traceVoice('speak-error', { gen, current: generation, error: kind, synth: synthState() })
+      settle()
+    }
 
     emit({ speaking: true })
     startTimer = setTimeout(() => {
-      if (gen === generation && !started) settle()
+      if (gen === generation && !started) {
+        // Signature exacte du cas C : l'énoncé a été accepté par le moteur et
+        // aucun `start` n'est venu.
+        traceVoice('speak-start-timeout', { gen, synth: synthState() })
+        settle()
+      }
     }, START_TIMEOUT_MS)
 
+    traceVoice('speak-call', {
+      textLength: clean.length, gen, voice: voice?.name ?? null, synthBefore: synthState(),
+    })
     window.speechSynthesis.speak(utterance)
+    traceVoice('speak-queued', { gen, synthAfter: synthState() })
     return true
   } catch {
     // Échec TTS totalement non bloquant : le texte reste à l'écran, l'orbe se
     // referme normalement.
+    traceVoice('speak-threw', { gen })
     emit({ speaking: false })
     return false
   }
@@ -216,13 +256,13 @@ export function speak(text: string | null | undefined): boolean {
 /** Arrêt immédiat. Idempotent. */
 export function stopSpeaking() {
   ensureInit()
-  cancelCurrent()
+  cancelCurrent('stopSpeaking')
 }
 
 /** Préférence d'APPAREIL, persistante, indépendante de l'entrée micro. */
 export function setVoiceMuted(muted: boolean) {
   ensureInit()
-  if (muted) cancelCurrent()
+  if (muted) cancelCurrent('mute')
   try { window.localStorage.setItem(MUTE_KEY, muted ? '1' : '0') } catch { /* stockage indisponible */ }
   emit({ muted })
 }
