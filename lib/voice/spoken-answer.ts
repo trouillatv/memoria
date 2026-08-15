@@ -64,10 +64,19 @@ function enforceSpokenBudget(clean: string): string | null {
 }
 
 /**
- * Seuil sous lequel une réponse SANS `spokenText` (repli déterministe, verdict
- * quantitatif) est directement lisible telle quelle. Au-dessus, silence : on ne
- * lit pas une check-list à voix haute, et on ne paie pas un second appel LLM
- * pour la résumer.
+ * Ancien seuil de rejet binaire des réponses sans LLM. **Supprimé le
+ * 2026-08-16**, sur preuve : le diagnostic PETRO a mesuré un verdict quantitatif
+ * de 189 caractères — muet pour NEUF caractères de trop. Arbitrage de Vincent :
+ * « la réponse la plus fiable de MemorIA devient silencieuse pour 9 caractères…
+ * je ne garderais pas un cutoff binaire aussi proche de la distribution
+ * réelle. »
+ *
+ * Le défaut n'était pas la valeur mais la FORME de la règle : un rejet total
+ * là où la réponse LLM bénéficiait déjà d'un budget à frontière sémantique.
+ * Les deux chemins partagent désormais `SPOKEN_MAX_CHARS`. Constante conservée
+ * pour mémoire du diagnostic ; plus aucun code ne la lit.
+ *
+ * @deprecated remplacé par `SPOKEN_MAX_CHARS` + `enforceSpokenBudget`.
  */
 export const SHORT_ANSWER_MAX_CHARS = 180
 
@@ -113,18 +122,30 @@ export function sanitizeSpokenText(raw: unknown): string | null {
 
 /**
  * Équivalent oral d'une réponse produite SANS LLM (repli, verdict quantitatif,
- * garde d'accès). Règle unique et volontairement pauvre : une réponse courte et
- * d'un seul tenant se prononce telle quelle ; tout le reste reste silencieux.
+ * garde d'accès).
+ *
+ * Deux règles, et la distinction entre elles est tout le sujet :
+ *
+ * 1. **La FORME décide du silence.** Une liste ou un double paragraphe signale
+ *    une réponse structurée : on ne lit pas une check-list à voix haute, quelle
+ *    que soit sa longueur. Ce refus-là est conservé tel quel.
+ * 2. **La LONGUEUR décide de la coupe, pas du silence.** Même budget et même
+ *    frontière sémantique que la synthèse orale du LLM : le plus long préfixe de
+ *    phrases complètes sous `SPOKEN_MAX_CHARS`.
+ *
+ * Avant le 2026-08-16, la longueur décidait aussi du silence, avec un rejet
+ * binaire à 180 caractères. Un verdict quantitatif de 189 caractères mesuré sur
+ * PETRO restait donc muet — sur le chemin le plus exact du Copilote, celui où
+ * MemorIA ne fait que compter ce qu'elle sait déjà. Aucune raison de tenir la
+ * réponse la plus fiable à un régime plus sévère que la moins fiable.
  */
 export function spokenFromShortAnswer(text: string): string | null {
   if (typeof text !== 'string') return null
-  // Un paragraphe double ou une liste signale une réponse structurée : on ne la
-  // lit pas, même si elle tient sous le seuil de longueur.
   if (/\n\s*\n/.test(text)) return null
   if (/^[ \t]{0,3}(?:[-*+]|\d+[.)])[ \t]+/m.test(text)) return null
   const clean = normalizeForSpeech(text)
   if (!clean) return null
-  if (clean.length > SHORT_ANSWER_MAX_CHARS) return null
+  if (clean.length > SPOKEN_MAX_CHARS) return enforceSpokenBudget(clean)
   return clean
 }
 

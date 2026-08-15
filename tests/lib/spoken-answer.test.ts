@@ -96,9 +96,27 @@ describe('spokenFromShortAnswer — réponses sans LLM', () => {
     expect(spokenFromShortAnswer('Contexte.\n\nConclusion.')).toBeNull()
   })
 
-  it('au-delà du seuil : silence, pas de résumé improvisé', () => {
-    expect(spokenFromShortAnswer('a'.repeat(SHORT_ANSWER_MAX_CHARS + 1))).toBeNull()
-    expect(spokenFromShortAnswer('a'.repeat(SHORT_ANSWER_MAX_CHARS))).not.toBeNull()
+  // Non-régression du défaut mesuré sur PETRO le 2026-08-16 : un verdict
+  // quantitatif de 189 caractères était muet, pour neuf caractères de trop.
+  it('un verdict quantitatif de ~190 caractères se prononce', () => {
+    const t = 'Aucune action en retard sur ce chantier, aucune réserve ouverte et aucun blocage actif à ce jour. '
+      + 'Deux sujets approchent du seuil de stagnation, dont le plus proche à quarante-deux jours.'
+    expect(t.length).toBeGreaterThan(SHORT_ANSWER_MAX_CHARS)
+    expect(spokenFromShortAnswer(t)).toBe(t)
+  })
+
+  it('au-delà du budget oral : coupe à la dernière phrase complète, pas silence', () => {
+    const phrase = 'Aucune action en retard sur ce chantier à ce jour. '
+    const long = phrase.repeat(12) // ~600 caractères, phrases complètes
+    const spoken = spokenFromShortAnswer(long)
+    expect(spoken).not.toBeNull()
+    expect(spoken!.length).toBeLessThanOrEqual(SPOKEN_MAX_CHARS)
+    expect(spoken!.endsWith('.')).toBe(true)
+  })
+
+  it('un bloc long sans frontière de phrase reste silencieux', () => {
+    // Le budget ne s'achète jamais au prix d'une phrase amputée.
+    expect(spokenFromShortAnswer('a'.repeat(SPOKEN_MAX_CHARS + 1))).toBeNull()
   })
 
   it('vide → null', () => {
