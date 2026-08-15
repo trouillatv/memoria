@@ -170,9 +170,12 @@ describe('P0 — la voix doit fonctionner sur N tours, pas seulement au premier'
 
   it('SPEECH_ENDED ne détruit pas la capacité à parler au tour suivant', () => {
     // Le cycle complet de la machine à états, tel que l'orbe l'exécute.
+    // Session continue : un seul OPEN, puis N tours enchaînés. C'est exactement
+    // le parcours du terrain depuis ce lot — l'orbe ne se referme plus entre
+    // deux questions, donc le déverrouillage iOS n'est plus rejoué.
     let s: VoiceState = INITIAL_VOICE_STATE
+    s = voiceReducer(s, { type: 'OPEN' })
     const run = (turn: number) => {
-      s = voiceReducer(s, { type: 'OPEN' })
       s = voiceReducer(s, { type: 'MIC_READY' })
       s = voiceReducer(s, { type: 'END_OF_SPEECH', reason: 'silence' })
       s = voiceReducer(s, { type: 'AUDIO_READY' })
@@ -189,9 +192,8 @@ describe('P0 — la voix doit fonctionner sur N tours, pas seulement au premier'
 
       engine.finishCurrent()
       s = voiceReducer(s, { type: 'SPEECH_ENDED' })
-      expect(s.phase).toBe('exiting')
-      s = voiceReducer(s, { type: 'EXITED' })
-      expect(s.phase).toBe('idle')
+      // Réarmement, pas fermeture : le tour suivant repart de `entering`.
+      expect(s.phase).toBe('entering')
     }
     run(1); run(2); run(3)
     expect(engine.starts()).toBe(3)

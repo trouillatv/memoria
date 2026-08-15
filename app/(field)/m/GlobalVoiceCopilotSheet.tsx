@@ -13,7 +13,7 @@ import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { ProposalCard, ScheduleProposalCard } from '@/components/copilot/CopilotProposalCards'
 import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
-import { useVoiceOrb } from './VoiceOrbContext'
+import { useVoiceOrb, type VoiceTurnResult } from './VoiceOrbContext'
 import { listMeetingSitesAction } from './meeting-actions'
 import { speak } from '@/lib/voice/speech-output'
 import { markVoice } from '@/lib/voice/voice-latency'
@@ -126,10 +126,14 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
    * l'oral. Une question TAPÉE reste silencieuse — voir le même commentaire dans
    * `CopilotMobileSheet`.
    */
-  async function send(question: string, extraResolvedIds?: string[], opts?: { spoken?: boolean }) {
+  async function send(
+    question: string,
+    extraResolvedIds?: string[],
+    opts?: { spoken?: boolean },
+  ): Promise<VoiceTurnResult> {
     // Tracé avant le garde — voir le même commentaire dans `CopilotMobileSheet`.
     if (opts?.spoken) traceVoice('sheet-send', { surface: 'global', loading, questionLength: question.trim().length })
-    if (loading || !question.trim()) return
+    if (loading || !question.trim()) return {}
     setLoading(true)
 
     const userMsg: Msg    = { kind: 'user', id: uid(), text: question }
@@ -181,11 +185,16 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
         }
         return [...without, { kind: 'answer', id: uid(), text: result.text, source: 'fallback', refs: [] }]
       })
+
+      // Ce que l'orbe affichera dans son fil. Une proposition en est exclue :
+      // elle se valide dans la feuille, pas dans la conversation vocale.
+      return result.kind === 'proposal' ? {} : { answer: result.text }
     } catch {
       setMessages((prev) => {
         const without = prev.filter((m) => m.kind !== 'thinking')
         return [...without, { kind: 'answer', id: uid(), text: 'Réessayez dans quelques instants.', source: 'fallback', refs: [] }]
       })
+      return {}
     } finally {
       setLoading(false)
     }

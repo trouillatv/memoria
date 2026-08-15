@@ -46,13 +46,53 @@ export function traceVoice(event: string, fields: Record<string, unknown> = {}):
   emit(event, fields)
 }
 
+// ── Journal lisible SUR l'appareil ───────────────────────────────────────────
+//
+// La console suffit sur un poste de développement ; sur le téléphone de terrain
+// elle n'existe pas. Sans écran de lecture, la trace ne prouve rien et l'on
+// retomberait sur une correction spéculative — exactement ce que ce lot refuse.
+// D'où ce tampon circulaire : mêmes lignes, exposées à un panneau de recette.
+//
+// Borné à 200 entrées : au-delà, ce n'est plus un diagnostic, c'est une fuite.
+
+export type VoiceTraceEntry = { turn: number; event: string; at: number; fields: Record<string, unknown> }
+
+const MAX_ENTRIES = 200
+let entries: VoiceTraceEntry[] = []
+let listeners: Array<() => void> = []
+
+export function subscribeVoiceTrace(listener: () => void): () => void {
+  listeners.push(listener)
+  return () => { listeners = listeners.filter((l) => l !== listener) }
+}
+
+/** Référence stable tant que rien n'est ajouté — contrat `useSyncExternalStore`. */
+export function voiceTraceSnapshot(): VoiceTraceEntry[] {
+  return entries
+}
+
+/** Le journal complet, en texte, pour être recopié depuis le téléphone. */
+export function voiceTraceText(): string {
+  return entries
+    .map((e) => `[${e.turn}] +${e.at}ms ${e.event} ${JSON.stringify(e.fields)}`)
+    .join('\n')
+}
+
+export function clearVoiceTrace(): void {
+  entries = []
+  listeners.forEach((l) => l())
+}
+
 function emit(event: string, fields: Record<string, unknown>) {
-  console.info('[voice-turn]', JSON.stringify({
+  const entry: VoiceTraceEntry = {
     turn,
     event,
     at: turnStartedAt ? Math.round(now() - turnStartedAt) : 0,
-    ...fields,
-  }))
+    fields,
+  }
+  console.info('[voice-turn]', JSON.stringify({ turn: entry.turn, event, at: entry.at, ...fields }))
+  entries = [...entries, entry].slice(-MAX_ENTRIES)
+  listeners.forEach((l) => l())
 }
 
 /**

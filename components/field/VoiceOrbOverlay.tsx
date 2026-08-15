@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { X, Volume2, VolumeX } from 'lucide-react'
-import { createVad, type Vad } from '@/lib/voice/vad'
+import { createVad, DEFAULT_VAD_CONFIG, type Vad } from '@/lib/voice/vad'
+import type { VoiceTurnResult } from '@/app/(field)/m/VoiceOrbContext'
 import {
   voiceReducer,
   voiceErrorMessage,
   INITIAL_VOICE_STATE,
   type EndReason,
   type VoiceEvent,
+  type VoicePhase,
   type VoiceState,
 } from '@/lib/voice/voice-session'
 import {
@@ -20,6 +22,7 @@ import {
 } from '@/lib/voice/speech-output'
 import { markVoice } from '@/lib/voice/voice-latency'
 import { beginVoiceTurn, traceVoice } from '@/lib/voice/voice-trace'
+import { VoiceTracePanel } from '@/components/field/VoiceTracePanel'
 import {
   browserWakeLockEnv,
   createWakeLockController,
@@ -35,10 +38,32 @@ interface Props {
    * alors à l'écran, en état « réflexion », jusqu'à ce que la réponse arrive.
    * C'est l'appelant qui déclenche la lecture vocale ; l'orbe se contente
    * d'observer le contrôleur audio et d'en refléter l'état.
+   *
+   * Le `answer` renvoyé alimente le fil affiché DANS l'orbe : en session
+   * continue on ne ferme plus pour lire.
    */
-  onResult: (text: string) => void | Promise<void>
+  onResult: (text: string) => void | Promise<void | VoiceTurnResult>
   onClose: () => void
 }
+
+/**
+ * Délai avant de rouvrir le micro après un tour. Sans lui, MemorIA réentendrait
+ * la queue de sa propre voix : `speechSynthesis` signale la fin de l'énoncé
+ * quelques dizaines de millisecondes avant que le haut-parleur soit réellement
+ * silencieux, et la VAD calibre son bruit de fond dans ses toutes premières
+ * frames. 400 ms est le milieu de la fenêtre arbitrée (300–500).
+ */
+const REARM_DELAY_MS = 400
+
+/**
+ * Silence au bout duquel on relâche le micro sans fermer l'orbe. Garder un micro
+ * ouvert indéfiniment est un coût batterie et une promesse d'écoute que personne
+ * n'a demandée ; fermer serait plus brutal encore. Entre les deux : `ready`.
+ */
+const IDLE_TIMEOUT_MS = 18_000
+
+/** Un échange affiché dans le fil. `answer === null` = réponse en cours. */
+type Turn = { id: number; question: string; answer: string | null }
 
 // Ton de bienvenue généré par Web Audio API — aucun fichier externe.
 function playActivationCue() {
@@ -98,11 +123,19 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
   const [reducedMotion, setReduced] = useState(false)
   const speech = useSpeechOutput()
 
+  // Fil de la conversation. Chaque question garde SA place : on n'écrase jamais
+  // la transcription précédente par la suivante — c'est ce qui distingue une
+  // conversation d'un champ de saisie qu'on recycle.
+  const [turns, setTurns] = useState<Turn[]>([])
+  const turnSeqRef  = useRef(0)
+  const threadEndRef = useRef<HTMLDivElement>(null)
+
   const orbAudioRef  = useRef<HTMLDivElement>(null)
   const haloOuterRef = useRef<HTMLDivElement>(null)
   const rafRef       = useRef<number | null>(null)
   const cleanupRef   = useRef<() => void>(() => {})
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rearmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const vadRef       = useRef<Vad | null>(null)
   // Conclusion de la phrase en cours — publiée par la session d'écoute pour que
   // le tap manuel emprunte exactement le même chemin que la VAD.
@@ -126,6 +159,8 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
   useEffect(() => {
     if (open) {
       if (!dispatch({ type: 'OPEN' })) return
+      setTurns([])
+      turnSeqRef.current = 0
       // Second filet pour le déverrouillage iOS : le trigger l'a normalement
       // déjà fait dans le geste, et l'appel est idempotent.
       primeSpeechOutput()
@@ -133,11 +168,12 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
       return () => clearTimeout(t)
     }
     if (stateRef.current.phase !== 'idle') {
+      clearRearmTimer()
       cleanupRef.current()
       stopSpeaking()
-      // Depuis `thinking`, CANCEL est refusé (la question est déjà partie) :
-      // on referme alors par la voie normale.
-      if (!dispatch({ type: 'CANCEL' })) dispatch({ type: 'ANSWER_SETTLED' })
+      // CANCEL est désormais accepté depuis toutes les phases actives, `thinking`
+      // compris : la sortie du mode vocal est une seule affirmation.
+      dispatch({ type: 'CANCEL' })
       const t = setTimeout(() => dispatch({ type: 'EXITED' }), 250)
       return () => clearTimeout(t)
     }
@@ -147,7 +183,14 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
   useEffect(() => () => {
     cleanupRef.current()
     if (exitTimerRef.current) clearTimeout(exitTimerRef.current)
+    if (rearmTimerRef.current) clearTimeout(rearmTimerRef.current)
   }, [])
+
+  // Le fil grandit vers le bas : la dernière réponse doit rester visible sans
+  // geste, y compris quand elle arrive pendant que MemorIA parle.
+  useEffect(() => {
+    threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [turns])
 
   // ── Écran maintenu allumé pendant l'échange vocal, et seulement là ──────────
   //
@@ -166,8 +209,8 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
   useEffect(() => () => { wakeLockRef.current?.dispose() }, [])
 
   // Fin de la lecture vocale. Fin naturelle, interruption au tap, moteur muet ou
-  // en échec : une seule et même sortie. La voix ne peut donc jamais retenir
-  // l'orbe à l'écran.
+  // en échec : une seule et même suite — on retourne écouter. La voix ne peut
+  // donc jamais bloquer la conversation, ni dans un sens ni dans l'autre.
   //
   // `phase` fait partie des dépendances par sécurité : `useSyncExternalStore`
   // ne restitue pas les valeurs intermédiaires. Si une lecture démarrait et
@@ -175,7 +218,7 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
   // observé à `true` et l'orbe resterait figée en `speaking`.
   useEffect(() => {
     if (phase !== 'speaking' || speech.speaking) return
-    if (dispatch({ type: 'SPEECH_ENDED' })) scheduleClose()
+    if (dispatch({ type: 'SPEECH_ENDED' })) scheduleRearm()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, speech.speaking])
 
@@ -271,7 +314,13 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
       const loop = (ts: number) => {
         // L'horodatage RAF sert d'horloge unique à la VAD — même base de temps
         // que le signal qu'elle observe.
-        if (firstFrameMs == null) { firstFrameMs = ts; vadRef.current = createVad(ts) }
+        if (firstFrameMs == null) {
+          firstFrameMs = ts
+          // Le délai « personne ne parle » n'est plus celui d'un outil qu'on
+          // vient d'ouvrir volontairement (6 s), mais celui d'une session qui
+          // reste ouverte entre deux questions.
+          vadRef.current = createVad(ts, { ...DEFAULT_VAD_CONFIG, noSpeechTimeoutMs: IDLE_TIMEOUT_MS })
+        }
         lastFrameMs = ts
 
         analyser.getByteTimeDomainData(buf)
@@ -298,9 +347,11 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
 
         const signal = vadRef.current?.push(smoothedRef.current, ts) ?? null
         if (signal === 'no-speech') {
-          // Rien n'a été dit : on coupe sans rien transmettre. `onstop` suivra,
-          // mais AUDIO_READY sera refusé depuis l'état d'erreur.
-          dispatch({ type: 'NO_SPEECH' })
+          // Rien n'a été dit pendant tout le délai. Ce n'est pas une erreur en
+          // session continue : c'est la fin naturelle d'une conversation. On
+          // relâche le micro, l'orbe reste. `onstop` suivra, mais AUDIO_READY
+          // sera refusé depuis `ready`.
+          dispatch({ type: 'IDLE_TIMEOUT' })
           doCleanup(recorder)
           return
         }
@@ -365,23 +416,63 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
     // c'est la machine qui l'impose, pas ce fichier.
     if (!dispatch({ type: 'TRANSCRIPT', text })) return
     markVoice('transcript')
-    if (stateRef.current.phase !== 'thinking') return
+    // Lu dans une variable locale, sinon le typage garderait la phase du ref
+    // « narrowée » à `thinking` de l'autre côté du `await` — alors qu'elle a
+    // précisément le droit de changer pendant ce temps.
+    const phaseBeforeSend: VoicePhase = stateRef.current.phase
+    if (phaseBeforeSend !== 'thinking') return
+
+    // La question entre dans le fil AVANT la réponse : elle doit être lisible
+    // pendant toute la réflexion, et le rester quand la suivante arrivera.
+    const turnId = ++turnSeqRef.current
+    setTurns((prev) => [...prev, { id: turnId, question: text, answer: null }])
 
     // Envoi direct au copilote, exactement comme une question saisie au clavier.
     // L'orbe reste à l'écran pendant toute la réflexion.
-    traceVoice('orb-before-send', { phase: stateRef.current.phase })
+    traceVoice('orb-before-send', { phase: stateRef.current.phase, turnId })
+    let result: void | VoiceTurnResult = undefined
     try {
-      await onResult(text)
+      result = await onResult(text)
     } catch { /* la feuille affiche elle-même l'échec de la réponse */ }
     markVoice('answer')
     traceVoice('orb-after-send', { phase: stateRef.current.phase, isSpeaking: isSpeaking() })
 
+    // La croix a pu être touchée pendant l'attente. La feuille, elle, a déjà
+    // lancé la lecture : sans cette coupure, MemorIA parlerait après la sortie
+    // du mode vocal. C'est l'invalidation de la génération audio en vol.
+    // Annotation explicite : la phase a pu changer PENDANT le `await`, ce que le
+    // typage ne peut pas savoir depuis le garde `thinking` posé plus haut.
+    const p: VoicePhase = stateRef.current.phase
+    if (p === 'exiting' || p === 'idle') { stopSpeaking(); return }
+
+    const answer = result?.answer?.trim()
+    if (answer) setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, answer } : t)))
+
     // L'orbe ne décide pas de parler : la feuille a déjà déclenché la lecture si
     // elle avait une synthèse orale à prononcer. Ici on ne fait qu'observer le
-    // contrôleur audio pour savoir s'il faut rester à l'écran. Pas de voix, ou
-    // sourdine, ou moteur absent : on referme exactement comme avant ce lot.
+    // contrôleur audio. Pas de voix — sourdine, moteur absent, synthèse vide —
+    // on ne fabrique pas une phase `speaking` fictive : on réécoute tout de
+    // suite.
     if (isSpeaking() && dispatch({ type: 'SPEECH_STARTED' })) return
-    if (dispatch({ type: 'ANSWER_SETTLED' })) scheduleClose()
+    if (dispatch({ type: 'ANSWER_SETTLED' })) scheduleRearm()
+  }
+
+  function clearRearmTimer() {
+    if (rearmTimerRef.current) { clearTimeout(rearmTimerRef.current); rearmTimerRef.current = null }
+  }
+
+  /**
+   * Retour en écoute après un tour. Le réducteur est déjà revenu en `entering` ;
+   * ce délai n'existe que pour l'audio. Le garde relit la phase au moment du
+   * déclenchement : entre-temps l'utilisateur a pu fermer.
+   */
+  function scheduleRearm(delay = REARM_DELAY_MS) {
+    clearRearmTimer()
+    rearmTimerRef.current = setTimeout(() => {
+      rearmTimerRef.current = null
+      if (stateRef.current.phase !== 'entering') return
+      void startListening()
+    }, delay)
   }
 
   function scheduleClose() {
@@ -397,18 +488,22 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
     const p = stateRef.current.phase
     // Le tap manuel reste possible : il court-circuite l'attente du silence.
     if (p === 'listening') { concludeRef.current?.('manual'); return }
-    // Pendant la parole, le tap coupe la lecture — et rien d'autre : la réponse
-    // écrite est déjà affichée dans la feuille, couper ne perd aucune
-    // information. La fermeture suit par l'effet de fin de lecture.
-    if (p === 'speaking') stopSpeaking()
+    // Pendant la parole, le tap interrompt MemorIA pour enchaîner : la lecture
+    // s'arrête, l'effet de fin de lecture réarme l'écoute. Rien n'est perdu, la
+    // réponse écrite reste dans le fil.
+    if (p === 'speaking') { stopSpeaking(); return }
+    // Micro relâché après un long silence : on le remet, sans délai d'anti-écho
+    // puisque rien ne parle.
+    if (p === 'ready' && dispatch({ type: 'WAKE' })) scheduleRearm(120)
   }
 
   function handleClose() {
+    // Sortie unique et explicite : tout est démonté ici. Le Wake Lock se relâche
+    // seul par l'effet de phase, `exiting` n'en faisant pas partie.
+    clearRearmTimer()
     cleanupRef.current()
     stopSpeaking()
-    // Pendant la réflexion, la question est déjà partie : le X referme l'orbe,
-    // la réponse arrivera dans la feuille.
-    if (!dispatch({ type: 'CANCEL' })) dispatch({ type: 'ANSWER_SETTLED' })
+    dispatch({ type: 'CANCEL' })
     scheduleClose()
   }
 
@@ -452,14 +547,20 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
 
   const statusLabel =
     isError                                        ? voiceErrorMessage(state.error) :
+    phase === 'ready'                              ? 'Touchez pour reprendre' :
     speaking                                       ? 'Je vous réponds…' :
     phase === 'thinking'                           ? 'Je prépare ça…' :
     heard                                          ? 'Je vous ai entendu…' :
     /* entering | listening */                       'MemorIA écoute…'
 
+  // Dès le premier échange l'orbe cède la place au fil : elle remonte et se
+  // réduit au lieu de disparaître, parce qu'elle reste l'indicateur d'état de la
+  // session — c'est elle qui dit si MemorIA écoute, réfléchit ou parle.
+  const hasThread = turns.length > 0
+
   return (
     <div
-      className="fixed inset-0 z-[60] flex flex-col items-center justify-center select-none"
+      className="fixed inset-0 z-[60] flex flex-col items-center select-none"
       style={{
         backgroundColor: visible ? 'rgba(5,5,15,0.58)' : 'rgba(5,5,15,0)',
         backdropFilter: `blur(${visible ? 10 : 0}px)`,
@@ -492,9 +593,22 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
         <X className="h-5 w-5" />
       </button>
 
-      {/* Groupe orbe + label — légèrement au-dessus du centre (le siteName
-          n'est plus au-dessus : il descend sous le label, libérant l'espace). */}
-      <div style={{ marginTop: '-6vh' }} className="flex flex-col items-center">
+      {/* Groupe orbe + label. Sans fil : centré, légèrement au-dessus du milieu.
+          Dès le premier échange : ancré en haut et réduit, pour laisser au fil
+          la plus grande part de l'écran. */}
+      <div
+        className={hasThread
+          ? 'flex-none flex w-full flex-col items-center pt-[76px]'
+          : 'flex-1 flex w-full flex-col items-center justify-center'}
+        style={hasThread ? undefined : { marginTop: '-6vh' }}
+      >
+        {/* Hauteur réservée constante par état : c'est la MISE À L'ÉCHELLE qui
+            anime, pas le flux. Sans cela, le fil sauterait à chaque transition. */}
+        <div
+          className="flex items-center justify-center"
+          style={{ height: hasThread ? 132 : 248, transition: 'height 0.45s ease' }}
+        >
+        <div style={{ transform: hasThread ? 'scale(0.52)' : 'scale(1)', transition: 'transform 0.45s ease' }}>
 
         {/* ── Orbe ──
             Couche 1 (button) : animation CSS breathing.
@@ -506,8 +620,12 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
         <button
           type="button"
           onClick={handleOrbTap}
-          disabled={phase !== 'listening' && !speaking}
-          aria-label={speaking ? 'Toucher pour arrêter la lecture' : 'Toucher pour terminer'}
+          disabled={phase !== 'listening' && !speaking && phase !== 'ready'}
+          aria-label={
+            speaking          ? 'Toucher pour arrêter la lecture' :
+            phase === 'ready' ? 'Toucher pour reprendre la conversation' :
+                                'Toucher pour terminer'
+          }
           className={[
             'relative flex items-center justify-center cursor-default disabled:cursor-default',
             orbClasses,
@@ -542,13 +660,17 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
             />
           </div>
         </button>
+        </div>
+        </div>
 
         {/* Label d'état + contexte en dessous */}
-        <div className="mt-10 text-center">
+        <div className={`${hasThread ? 'mt-4' : 'mt-10'} text-center`}>
           <p className="text-[16px] font-medium text-white/88 tracking-tight">{statusLabel}</p>
 
-          {/* Chantier sous le statut — hiérarchie : présence → état → contexte. */}
-          {siteName && !isError && phase !== 'thinking' && !speaking && (
+          {/* Chantier sous le statut — hiérarchie : présence → état → contexte.
+              Une fois la conversation engagée, le contexte est établi : le
+              rappeler à chaque tour prendrait la place du fil. */}
+          {siteName && !hasThread && !isError && phase !== 'thinking' && !speaking && (
             <p
               className="mt-1 text-[13px] text-white/38 transition-all duration-400"
               style={{ opacity: phase === 'entering' ? 0 : 0.38 }}
@@ -557,21 +679,12 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
             </p>
           )}
 
-          {phase === 'listening' && (
+          {phase === 'listening' && !hasThread && (
             <p className="mt-2 text-[12px] text-white/35">Touchez pour terminer plus tôt</p>
           )}
 
           {speaking && (
-            <p className="mt-2 text-[12px] text-white/35">Touchez pour arrêter</p>
-          )}
-
-          {/* Pendant la réflexion PUIS la parole : ce qui a été compris, en clair.
-              Ce n'est pas une étape de confirmation — rien à valider, la question
-              est partie. La question reste visible tant que MemorIA répond. */}
-          {(phase === 'thinking' || speaking) && state.transcript && (
-            <p className="mt-1 text-[14px] leading-snug text-white/55 max-w-[280px] mx-auto">
-              {state.transcript}
-            </p>
+            <p className="mt-2 text-[12px] text-white/35">Touchez pour enchaîner</p>
           )}
 
           {isError && (
@@ -585,6 +698,36 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
           )}
         </div>
       </div>
+
+      {/* ── Fil de la conversation ──
+          Chaque question conserve SA ligne. Il ne s'agit pas d'une zone de
+          transcription réutilisée : sur trois tours, les trois questions et les
+          trois réponses restent lisibles sans rien rouvrir. La réponse affichée
+          ici est la réponse écrite complète — la voix, elle, n'en dit que
+          l'essentiel. */}
+      {hasThread && (
+        <div className="flex-1 min-h-0 w-full overflow-y-auto px-6 pb-10">
+          <div className="mx-auto flex max-w-[520px] flex-col gap-5">
+            {turns.map((turn) => (
+              <div key={turn.id} className="flex flex-col gap-2">
+                <p className="self-end max-w-[85%] rounded-2xl rounded-br-md bg-violet-500/22 px-4 py-2.5 text-[15px] leading-snug text-white/90">
+                  {turn.question}
+                </p>
+                {turn.answer && (
+                  <p className="max-w-[92%] whitespace-pre-line text-[15px] leading-relaxed text-white/72">
+                    {turn.answer}
+                  </p>
+                )}
+              </div>
+            ))}
+            <div ref={threadEndRef} />
+          </div>
+        </div>
+      )}
+
+      {/* Recette uniquement (`?voicedebug=1`) : sans écran de lecture sur le
+          téléphone, la trace du P0 multi-tours ne prouve rien. */}
+      <VoiceTracePanel />
     </div>
   )
 }

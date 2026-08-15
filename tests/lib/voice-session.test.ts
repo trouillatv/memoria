@@ -37,7 +37,7 @@ function ecoute() {
 }
 
 describe('voiceReducer — parcours nominal', () => {
-  it('tap → écoute → silence → envoi automatique → réflexion → fermeture', () => {
+  it('tap → écoute → silence → envoi automatique → réflexion → retour en écoute', () => {
     const s = ecoute()
     expect(s.state.phase).toBe('listening')
 
@@ -49,18 +49,21 @@ describe('voiceReducer — parcours nominal', () => {
     expect(s.state.phase).toBe('thinking')
     expect(s.envois).toEqual(['Quels contrôles sur PETRO ATITI ?'])
 
+    // Session continue : la fin d'un tour ne ferme rien. On repart écouter, et
+    // la transcription du tour écoulé ne traîne pas sous l'orbe — elle appartient
+    // désormais au fil de la conversation.
     s.dispatch({ type: 'ANSWER_SETTLED' })
-    expect(s.state.phase).toBe('exiting')
-    s.dispatch({ type: 'EXITED' })
-    expect(s.state).toEqual(INITIAL_VOICE_STATE)
+    expect(s.state).toMatchObject({ phase: 'entering', transcript: null })
   })
 })
 
 describe('voiceReducer — un seul envoi, quoi qu’il arrive', () => {
-  it('aucune parole : rien n’est envoyé et la suite du pipeline est refusée', () => {
+  it('aucune parole : le micro se relâche, rien n’est envoyé, la suite est refusée', () => {
     const s = ecoute()
-    expect(s.dispatch({ type: 'NO_SPEECH' })).toBe(true)
-    expect(s.state).toMatchObject({ phase: 'error', error: 'no-speech' })
+    expect(s.dispatch({ type: 'IDLE_TIMEOUT' })).toBe(true)
+    // `ready`, pas `error` : ne rien dire pendant vingt secondes n'est pas une
+    // panne. Aucun message d'erreur, aucun bouton « Réessayer ».
+    expect(s.state).toMatchObject({ phase: 'ready', error: null })
 
     expect(s.dispatch({ type: 'AUDIO_READY' })).toBe(false)
     expect(s.dispatch({ type: 'TRANSCRIPT', text: 'du bruit de chantier' })).toBe(false)
@@ -120,16 +123,15 @@ describe('voiceReducer — sortie vocale', () => {
     expect(s.state).toMatchObject({ phase: 'speaking', transcript: 'que dois-je vérifier ?' })
 
     expect(s.dispatch({ type: 'SPEECH_ENDED' })).toBe(true)
-    expect(s.state.phase).toBe('exiting')
-    s.dispatch({ type: 'EXITED' })
-    expect(s.state).toEqual(INITIAL_VOICE_STATE)
+    expect(s.state.phase).toBe('entering')
   })
 
-  it('pas de voix (sourdine, moteur absent, synthèse vide) : parcours d’avant ce lot', () => {
+  it('pas de voix (sourdine, moteur absent, synthèse vide) : on réécoute sans attendre', () => {
     const s = reflexion()
+    // Aucune phase `speaking` n'est fabriquée pour faire semblant.
     expect(s.dispatch({ type: 'ANSWER_SETTLED' })).toBe(true)
-    expect(s.state.phase).toBe('exiting')
-    // Une lecture tardive ne peut plus rouvrir l'orbe.
+    expect(s.state.phase).toBe('entering')
+    // Une lecture tardive ne peut plus rattraper le tour écoulé.
     expect(s.dispatch({ type: 'SPEECH_STARTED' })).toBe(false)
   })
 
@@ -168,10 +170,109 @@ describe('voiceReducer — sortie vocale', () => {
   it('une fin de lecture tardive n’a plus aucun effet après fermeture', () => {
     const s = reflexion()
     s.dispatch({ type: 'SPEECH_STARTED' })
-    s.dispatch({ type: 'SPEECH_ENDED' })
+    s.dispatch({ type: 'CANCEL' })
     s.dispatch({ type: 'EXITED' })
     expect(s.dispatch({ type: 'SPEECH_ENDED' })).toBe(false)
     expect(s.state).toEqual(INITIAL_VOICE_STATE)
+  })
+
+  it('un second SPEECH_ENDED après réarmement ne rejoue pas le tour', () => {
+    const s = reflexion()
+    s.dispatch({ type: 'SPEECH_STARTED' })
+    expect(s.dispatch({ type: 'SPEECH_ENDED' })).toBe(true)
+    // `onend` délivré deux fois par le moteur : le second tombe sur `entering`.
+    expect(s.dispatch({ type: 'SPEECH_ENDED' })).toBe(false)
+    expect(s.state.phase).toBe('entering')
+  })
+})
+
+// ── Session continue ─────────────────────────────────────────────────────────
+//
+// C'est le lot lui-même : « ouvrir → écouter → répondre → écouter → répondre… »
+// sans action intermédiaire. Ces tests ne vérifient pas un détail d'implémentation
+// mais l'affirmation produit.
+
+describe('voiceReducer — session conversationnelle continue', () => {
+  /** Un tour complet, voix comprise, à partir d'une phase `entering`. */
+  function tour(s: ReturnType<typeof session>, question: string, avecVoix: boolean) {
+    expect(s.dispatch({ type: 'MIC_READY' })).toBe(true)
+    s.dispatch({ type: 'END_OF_SPEECH', reason: 'silence' })
+    s.dispatch({ type: 'AUDIO_READY' })
+    expect(s.dispatch({ type: 'TRANSCRIPT', text: question })).toBe(true)
+    if (avecVoix) {
+      s.dispatch({ type: 'SPEECH_STARTED' })
+      expect(s.state.phase).toBe('speaking')
+      s.dispatch({ type: 'SPEECH_ENDED' })
+    } else {
+      s.dispatch({ type: 'ANSWER_SETTLED' })
+    }
+    // Après chaque tour, la machine est prête à réécouter — aucun geste requis.
+    expect(s.state.phase).toBe('entering')
+  }
+
+  it('cinq questions successives dans la même session, sans réouverture', () => {
+    const s = session()
+    s.dispatch({ type: 'OPEN' })
+    for (let i = 1; i <= 5; i++) tour(s, `question ${i}`, true)
+    expect(s.envois).toEqual(['question 1', 'question 2', 'question 3', 'question 4', 'question 5'])
+  })
+
+  it('sourdine : cinq tours passent aussi, sans phase de parole', () => {
+    const s = session()
+    s.dispatch({ type: 'OPEN' })
+    for (let i = 1; i <= 5; i++) tour(s, `question ${i}`, false)
+    expect(s.envois).toHaveLength(5)
+  })
+
+  it('alterner voix et silence n’interrompt pas la conversation', () => {
+    const s = session()
+    s.dispatch({ type: 'OPEN' })
+    tour(s, 'avec voix', true)
+    tour(s, 'sans voix', false)
+    tour(s, 'avec voix à nouveau', true)
+    expect(s.envois).toEqual(['avec voix', 'sans voix', 'avec voix à nouveau'])
+  })
+
+  it('long silence → micro relâché → un tap reprend la conversation', () => {
+    const s = session()
+    s.dispatch({ type: 'OPEN' })
+    tour(s, 'première question', true)
+
+    s.dispatch({ type: 'MIC_READY' })
+    expect(s.dispatch({ type: 'IDLE_TIMEOUT' })).toBe(true)
+    expect(s.state.phase).toBe('ready')
+
+    expect(s.dispatch({ type: 'WAKE' })).toBe(true)
+    expect(s.state.phase).toBe('entering')
+    tour(s, 'question suivante', true)
+    expect(s.envois).toEqual(['première question', 'question suivante'])
+  })
+
+  it('le réveil n’est possible que depuis `ready`', () => {
+    const s = ecoute()
+    expect(s.dispatch({ type: 'WAKE' })).toBe(false)
+    expect(s.state.phase).toBe('listening')
+  })
+
+  it('la croix ferme depuis TOUTES les phases actives, `thinking` et `ready` compris', () => {
+    for (const cible of ['entering', 'listening', 'finalizing', 'sending', 'thinking', 'speaking', 'ready'] as const) {
+      const s = session()
+      s.dispatch({ type: 'OPEN' })
+      if (cible !== 'entering') s.dispatch({ type: 'MIC_READY' })
+      if (cible === 'ready') s.dispatch({ type: 'IDLE_TIMEOUT' })
+      if (['finalizing', 'sending', 'thinking', 'speaking'].includes(cible)) s.dispatch({ type: 'END_OF_SPEECH', reason: 'silence' })
+      if (['sending', 'thinking', 'speaking'].includes(cible)) s.dispatch({ type: 'AUDIO_READY' })
+      if (['thinking', 'speaking'].includes(cible)) s.dispatch({ type: 'TRANSCRIPT', text: 'question' })
+      if (cible === 'speaking') s.dispatch({ type: 'SPEECH_STARTED' })
+      expect(s.state.phase, `mise en place de ${cible}`).toBe(cible)
+
+      expect(s.dispatch({ type: 'CANCEL' }), `croix refusée depuis ${cible}`).toBe(true)
+      expect(s.state.phase).toBe('exiting')
+      // Après la croix, plus rien du tour en vol ne peut relancer la session.
+      expect(s.dispatch({ type: 'ANSWER_SETTLED' })).toBe(false)
+      expect(s.dispatch({ type: 'SPEECH_STARTED' })).toBe(false)
+      expect(s.dispatch({ type: 'IDLE_TIMEOUT' })).toBe(false)
+    }
   })
 })
 
@@ -192,17 +293,20 @@ describe('voiceReducer — annulation', () => {
     },
   )
 
-  it('pendant la réflexion, la question est déjà partie : le X ne la rappelle pas', () => {
+  it('pendant la réflexion, la croix quitte le mode vocal sans « dés-envoyer »', () => {
     const s = ecoute()
     s.dispatch({ type: 'END_OF_SPEECH', reason: 'silence' })
     s.dispatch({ type: 'AUDIO_READY' })
     s.dispatch({ type: 'TRANSCRIPT', text: 'question posée' })
     expect(s.envois).toHaveLength(1)
 
-    // Refusé explicitement : c'est ANSWER_SETTLED qui referme l'orbe côté
-    // appelant. Annuler ici serait mentir sur l'état du serveur.
-    expect(s.dispatch({ type: 'CANCEL' })).toBe(false)
-    expect(s.state.phase).toBe('thinking')
+    // Accepté depuis ce lot : `ANSWER_SETTLED` signifie désormais « réarme »,
+    // exactement l'inverse d'une fermeture. La croix ne rappelle pas la question
+    // — elle est partie, la réponse arrivera dans la feuille — elle quitte le
+    // mode vocal, ce qui est une autre affirmation.
+    expect(s.dispatch({ type: 'CANCEL' })).toBe(true)
+    expect(s.state.phase).toBe('exiting')
+    expect(s.envois).toHaveLength(1)
   })
 
   it('annuler pendant l’ouverture du micro est possible', () => {

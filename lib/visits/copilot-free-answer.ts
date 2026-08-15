@@ -92,12 +92,39 @@ export interface HistoryMessage {
   content: string
 }
 
+/**
+ * Mesures de l'appel LLM, pour le diagnostic de latence. Toujours renseignées —
+ * les produire coûte deux `Date.now()` — mais jamais consommées par le produit :
+ * seule la ligne `[copilot-diag]`, fermée par défaut, les lit. Les publier
+ * n'engage donc rien sur le contrat de réponse.
+ *
+ * Le découpage répond à une question précise : sur une réponse à ~10 s, la part
+ * du modèle, la part du contexte et la part du parsing n'appellent pas les mêmes
+ * corrections. Les mesurer séparément est le préalable à toute optimisation.
+ */
+export interface FreeAnswerDiagnostics {
+  /** Aller-retour Gemini complet, transport inclus. */
+  llmMs: number
+  /** Validation Zod + assainissement de la synthèse orale, côté MemorIA. */
+  parseMs: number
+  model: string | null
+  tokensIn: number | null
+  tokensOut: number | null
+  finishReason: string | null
+  maxOutputTokens: number
+  /** Taille du contexte métier réellement envoyé, en caractères. */
+  contextChars: number
+  textLength: number
+  spokenLength: number
+}
+
 export interface FreeAnswer {
   text: string
   citedIds: string[]
   source: 'llm' | 'fallback'
   /** Synthèse orale, ou `null` quand aucune lecture n'est souhaitable. */
   spokenText: string | null
+  diagnostics?: FreeAnswerDiagnostics
 }
 
 const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi
@@ -232,6 +259,19 @@ export async function answerCopilotFreeQuestion(
     ? FreeAnswerSchema.extend({ text: z.string().max(Math.min(1400 + nbControles * 420, 5600)) })
     : FreeAnswerSchema
 
+  // Base commune aux deux sorties : renseignée même si l'appel échoue, sinon un
+  // repli ressemblerait à une absence de mesure.
+  const diagBase = {
+    llmMs: 0,
+    parseMs: 0,
+    model: null as string | null,
+    tokensIn: null as number | null,
+    tokensOut: null as number | null,
+    finishReason: null as string | null,
+    maxOutputTokens,
+    contextChars: contextJson.length,
+  }
+
   try {
     const provider = getAIProvider()
     const result = await provider.complete({
@@ -242,6 +282,12 @@ export async function answerCopilotFreeQuestion(
       modelTier: 'light',
       maxOutputTokens,
     })
+    diagBase.llmMs = result.durationMs ?? 0
+    diagBase.model = result.model ?? null
+    diagBase.tokensIn = result.tokens?.input ?? null
+    diagBase.tokensOut = result.tokens?.output ?? null
+    diagBase.finishReason = result.finishReason ?? null
+    const parseStart = Date.now()
 
     if (result.parsed) {
       // Lu sur l'objet BRUT : Zod retire les clés inconnues, et surtout un
@@ -264,7 +310,19 @@ export async function answerCopilotFreeQuestion(
       const maybeValid = answerSchema.safeParse(result.parsed)
       if (maybeValid.success) {
         const citedIds = maybeValid.data.citedIds.filter((id) => validIds.has(id))
-        return { text: stripUuids(maybeValid.data.text), citedIds, source: 'llm', spokenText: spokenFromLlm }
+        const text = stripUuids(maybeValid.data.text)
+        return {
+          text,
+          citedIds,
+          source: 'llm',
+          spokenText: spokenFromLlm,
+          diagnostics: {
+            ...diagBase,
+            parseMs: Date.now() - parseStart,
+            textLength: text.length,
+            spokenLength: spokenFromLlm?.length ?? 0,
+          },
+        }
       }
       // Le motif, pas seulement le contenu : sans lui, un repli silencieux se lit
       // comme un défaut du moteur alors qu'il vient d'un garde de longueur.
@@ -280,15 +338,21 @@ export async function answerCopilotFreeQuestion(
   // Fallback déterministe — retourne un texte utile sans LLM
   const intent = subjectDetails.length > 0 ? 'attention' : 'global'
   const fallbackText = buildFallbackText(items, intent as Parameters<typeof buildFallbackText>[1], delta, prepItems)
+  // Un plan de visite se résume par son compteur ; une réponse courte se lit
+  // telle quelle ; une réponse longue reste silencieuse. Aucun appel LLM
+  // supplémentaire n'est fait pour faire parler un repli.
+  const fallbackSpoken = nbControles > 0
+    ? buildSpokenFallback(nbControles)
+    : spokenFromShortAnswer(fallbackText)
   return {
     text: fallbackText,
     citedIds: [],
     source: 'fallback',
-    // Un plan de visite se résume par son compteur ; une réponse courte se lit
-    // telle quelle ; une réponse longue reste silencieuse. Aucun appel LLM
-    // supplémentaire n'est fait pour faire parler un repli.
-    spokenText: nbControles > 0
-      ? buildSpokenFallback(nbControles)
-      : spokenFromShortAnswer(fallbackText),
+    spokenText: fallbackSpoken,
+    diagnostics: {
+      ...diagBase,
+      textLength: fallbackText.length,
+      spokenLength: fallbackSpoken?.length ?? 0,
+    },
   }
 }

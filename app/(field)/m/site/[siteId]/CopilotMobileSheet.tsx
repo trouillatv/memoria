@@ -15,7 +15,7 @@ import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { ProposalCard, ScheduleProposalCard } from '@/components/copilot/CopilotProposalCards'
 import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
-import { useVoiceOrb } from '@/app/(field)/m/VoiceOrbContext'
+import { useVoiceOrb, type VoiceTurnResult } from '@/app/(field)/m/VoiceOrbContext'
 import { speak } from '@/lib/voice/speech-output'
 import { markVoice } from '@/lib/voice/voice-latency'
 import { traceVoice } from '@/lib/voice/voice-trace'
@@ -88,11 +88,15 @@ export function CopilotMobileSheet({
    * une surprise, pas un service. La restitution écrite, elle, est identique
    * dans les deux cas.
    */
-  async function send(question: string, extraResolvedIds?: string[], opts?: { spoken?: boolean }) {
+  async function send(
+    question: string,
+    extraResolvedIds?: string[],
+    opts?: { spoken?: boolean },
+  ): Promise<VoiceTurnResult> {
     // Tracé AVANT le garde : un `loading` resté vrai avalerait le tour suivant
     // en silence, et c'est exactement ce qu'on cherche à écarter ou à prouver.
     if (opts?.spoken) traceVoice('sheet-send', { surface: 'site', loading, questionLength: question.trim().length })
-    if (loading || !question.trim()) return
+    if (loading || !question.trim()) return {}
     setLoading(true)
 
     const userMsg: Msg    = { kind: 'user', id: uid(), text: question }
@@ -149,11 +153,16 @@ export function CopilotMobileSheet({
         }
         return [...without, { kind: 'answer', id: uid(), text: result.text, source: 'fallback', refs: [] }]
       })
+
+      // Ce que l'orbe affichera dans son fil. Une proposition en est exclue :
+      // elle se valide dans la feuille, pas dans la conversation vocale.
+      return result.kind === 'proposal' ? {} : { answer: result.text }
     } catch {
       setMessages((prev) => {
         const without = prev.filter((m) => m.kind !== 'thinking')
         return [...without, { kind: 'answer', id: uid(), text: 'Réessayez dans quelques instants.', source: 'fallback', refs: [] }]
       })
+      return {}
     } finally {
       setLoading(false)
     }

@@ -12,6 +12,36 @@
 // Le réducteur renvoie **l'objet d'origine à l'identique** quand l'événement
 // n'est pas recevable. L'appelant en déduit un booléen « accepté » par simple
 // comparaison de référence, sans avoir à réimplémenter les règles.
+//
+// ── Session CONTINUE (2026-08-16) ────────────────────────────────────────────
+//
+// Bascule décidée par Vincent : l'orbe n'est plus un outil « une question puis
+// fermeture », c'est une conversation courte et continue.
+//
+//   entering → listening → finalizing → sending → thinking → speaking
+//                  ↑                                            │
+//                  └────────────── réarmement ──────────────────┘
+//
+// Deux conséquences structurelles, et c'est tout le sens du changement :
+//
+//   1. **La fin d'une réponse ne ferme plus rien.** `SPEECH_ENDED` (la voix a
+//      fini) et `ANSWER_SETTLED` (il n'y avait pas de voix — sourdine, moteur
+//      absent, synthèse vide) ramènent tous deux en `entering`, donc en écoute.
+//      L'appelant intercale un court délai avant de rouvrir le micro : sans lui,
+//      MemorIA réentendrait la queue de sa propre voix.
+//
+//   2. **`CANCEL` devient la sortie UNIQUE et explicite** — la croix. Il est
+//      donc accepté depuis TOUTES les phases actives, `thinking` compris. Avant,
+//      `thinking` en était exclu au motif que la question était déjà partie ;
+//      c'était vrai, mais cela obligeait l'appelant à refermer par un
+//      `ANSWER_SETTLED` détourné. Or `ANSWER_SETTLED` signifie désormais
+//      « réarme », exactement l'inverse. Annuler pendant la réflexion ne
+//      « dés-envoie » toujours rien : la réponse arrivera dans la feuille. Cela
+//      quitte le mode vocal, ce qui est une autre affirmation.
+//
+// `ready` est le troisième ajout : au bout d'un long silence, on relâche le
+// micro sans fermer l'orbe. Garder un micro ouvert indéfiniment serait à la
+// fois un coût batterie et une promesse d'écoute que personne n'a demandée.
 
 export type VoicePhase =
   | 'idle'
@@ -22,6 +52,11 @@ export type VoicePhase =
   | 'thinking'
   /** MemorIA prononce la synthèse orale. Le texte, lui, est déjà affiché. */
   | 'speaking'
+  /**
+   * Session ouverte, micro relâché. Aucune parole n'est venue pendant le délai
+   * d'inactivité. Un tap relance l'écoute ; la croix ferme.
+   */
+  | 'ready'
   | 'error'
   | 'exiting'
 
@@ -42,8 +77,14 @@ export type VoiceEvent =
   | { type: 'MIC_FAILED'; kind: 'mic-denied' | 'mic-unavailable' }
   /** VAD conclue, tap manuel, ou durée maximale atteinte. */
   | { type: 'END_OF_SPEECH'; reason: EndReason }
-  /** Délai écoulé sans qu'aucune parole ne soit détectée. */
-  | { type: 'NO_SPEECH' }
+  /**
+   * Long silence : personne ne parle. En session continue ce n'est PAS une
+   * erreur — c'est le cas normal d'une conversation qui s'arrête. On relâche le
+   * micro et l'orbe attend.
+   */
+  | { type: 'IDLE_TIMEOUT' }
+  /** Tap sur l'orbe en `ready` : on remet le micro. */
+  | { type: 'WAKE' }
   /** `onstop` : blob exploitable assemblé. */
   | { type: 'AUDIO_READY' }
   /** `onstop` : blob vide ou trop court. */
@@ -51,12 +92,16 @@ export type VoiceEvent =
   /** Réponse du backend STT. Un texte vide est refusé ici, pas plus loin. */
   | { type: 'TRANSCRIPT'; text: string }
   | { type: 'TRANSCRIBE_FAILED' }
-  /** Le copilote a répondu (ou a échoué) — dans les deux cas l'orbe se retire. */
+  /**
+   * Le copilote a répondu (ou a échoué) et il n'y a AUCUNE voix à attendre.
+   * La conversation continue : on retourne écouter.
+   */
   | { type: 'ANSWER_SETTLED' }
   /** Une lecture vocale a réellement démarré : l'orbe reste, en état `speaking`. */
   | { type: 'SPEECH_STARTED' }
-  /** Fin naturelle, interruption ou échec du TTS — même sortie dans les trois cas. */
+  /** Fin naturelle, interruption ou échec du TTS — réarme l'écoute dans les trois cas. */
   | { type: 'SPEECH_ENDED' }
+  /** La croix. Sortie unique et explicite du mode vocal. */
   | { type: 'CANCEL' }
   | { type: 'RETRY' }
   | { type: 'EXITED' }
@@ -77,11 +122,24 @@ export const INITIAL_VOICE_STATE: VoiceState = {
 }
 
 /**
- * États depuis lesquels une annulation est encore garantie sans envoi.
- * `speaking` en fait partie : la réponse texte est déjà affichée dans la
- * feuille, couper la voix ne perd rien.
+ * La croix ferme depuis TOUTE phase active. `thinking` inclus : la question est
+ * partie, la réponse arrivera dans la feuille, mais l'utilisateur a le droit de
+ * quitter le mode vocal sans attendre. Seuls `idle` (déjà fermé) et `exiting`
+ * (fermeture en cours) refusent — fermer deux fois n'a pas de sens.
  */
-const CANCELLABLE: VoicePhase[] = ['entering', 'listening', 'finalizing', 'sending', 'speaking', 'error']
+const CANCELLABLE: VoicePhase[] = [
+  'entering', 'listening', 'finalizing', 'sending', 'thinking', 'speaking', 'ready', 'error',
+]
+
+/**
+ * Retour en écoute après un tour. On repart d'un état de tour VIERGE : la
+ * transcription précédente appartient au fil de la conversation, plus à la
+ * session en cours. La laisser traîner ferait réafficher l'ancienne question
+ * sous l'orbe pendant qu'on écoute la suivante.
+ */
+function rearm(state: VoiceState): VoiceState {
+  return { ...state, phase: 'entering', error: null, endReason: null, transcript: null }
+}
 
 export function voiceReducer(state: VoiceState, event: VoiceEvent): VoiceState {
   switch (event.type) {
@@ -104,9 +162,16 @@ export function voiceReducer(state: VoiceState, event: VoiceEvent): VoiceState {
       if (state.phase !== 'listening') return state
       return { ...state, phase: 'finalizing', endReason: event.reason }
 
-    case 'NO_SPEECH':
+    case 'IDLE_TIMEOUT':
+      // Ne rien dire pendant vingt secondes n'est pas une panne : c'est la fin
+      // naturelle d'une conversation. Aucun message d'erreur, aucun bouton
+      // « Réessayer » — l'orbe attend, simplement.
       if (state.phase !== 'listening') return state
-      return { ...state, phase: 'error', error: 'no-speech' }
+      return { ...state, phase: 'ready', error: null, endReason: null, transcript: null }
+
+    case 'WAKE':
+      if (state.phase !== 'ready') return state
+      return { ...state, phase: 'entering' }
 
     case 'AUDIO_READY':
       // Un second `onstop` arrive ici alors qu'on est déjà en `sending` : refusé.
@@ -131,8 +196,11 @@ export function voiceReducer(state: VoiceState, event: VoiceEvent): VoiceState {
       return { ...state, phase: 'error', error: 'transcribe-failed' }
 
     case 'ANSWER_SETTLED':
+      // Réponse obtenue, rien à prononcer (sourdine, moteur absent, synthèse
+      // vide). On n'attend pas une phase `speaking` qui n'existera jamais : on
+      // retourne directement écouter.
       if (state.phase !== 'thinking') return state
-      return { ...state, phase: 'exiting' }
+      return rearm(state)
 
     case 'SPEECH_STARTED':
       // Seule la réponse qu'on vient d'obtenir peut faire parler l'orbe. Une
@@ -141,13 +209,12 @@ export function voiceReducer(state: VoiceState, event: VoiceEvent): VoiceState {
       return { ...state, phase: 'speaking' }
 
     case 'SPEECH_ENDED':
+      // Fin naturelle, tap d'interruption ou échec du moteur : trois causes,
+      // une seule suite — on réécoute.
       if (state.phase !== 'speaking') return state
-      return { ...state, phase: 'exiting' }
+      return rearm(state)
 
     case 'CANCEL':
-      // `thinking` est volontairement absent : la question est déjà partie au
-      // serveur, l'annulation ne peut plus la rappeler. Le X y referme l'orbe
-      // (ANSWER_SETTLED côté appelant), il ne « dés-envoie » pas.
       if (!CANCELLABLE.includes(state.phase)) return state
       return { ...state, phase: 'exiting', error: null }
 

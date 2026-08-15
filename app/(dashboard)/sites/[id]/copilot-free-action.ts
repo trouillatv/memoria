@@ -66,6 +66,15 @@ const inputSchema = z.object({
    * Quand présent, court-circuite entièrement la résolution lexicale.
    */
   selectedCandidateId: z.string().uuid().optional(),
+  /**
+   * Décomposition serveur de la latence, sur demande explicite. Fermé par
+   * défaut : la ligne `[copilot-diag]` porte la taille du contexte, le modèle
+   * et les tokens — utile en recette, inutile et verbeux en production. Elle
+   * n'influence RIEN : ni le modèle, ni le contexte, ni le prompt. Ouvrable
+   * aussi par `COPILOT_DIAG=1` côté serveur, pour instrumenter un
+   * environnement entier sans toucher au client.
+   */
+  diag: z.boolean().default(false),
 })
 
 // ── Types de résultat ─────────────────────────────────────────────────────────
@@ -115,8 +124,9 @@ export async function askCopilotFreeAction(
   if (!parsed.success) {
     return { kind: 'answer', text: 'Paramètres invalides.', references: [], source: 'fallback', interactionId: null }
   }
-  const { siteId, question, history, resolvedSubjectIds, conversationId, selectedCandidateId } = parsed.data
+  const { siteId, question, history, resolvedSubjectIds, conversationId, selectedCandidateId, diag } = parsed.data
   const t0 = Date.now()
+  const diagEnabled = diag || process.env.COPILOT_DIAG === '1'
 
   // Vérification d'accès — l'utilisateur doit avoir accès au chantier
   try {
@@ -181,6 +191,12 @@ export async function askCopilotFreeAction(
     ? listActivePreparationItems(siteId, userId).catch(() => [])
     : Promise.resolve([])
 
+  // Origine des temps du chargement métier : l'instant où la PREMIÈRE requête
+  // part réellement, et non celui où on l'attend. La distinction est tout
+  // l'objet de la mesure : en lecture les requêtes partent avant la
+  // compréhension, et `contextWaitMs` seul ferait croire à une DB rapide alors
+  // qu'elle a simplement eu le temps de finir pendant l'appel LLM léger.
+  let contextStartAt = Date.now()
   const prefetched = deterministicIntent.intent === 'READ'
     ? { overview: loadOverview(), briefing: loadBriefing(), prepItems: loadPrepItems() }
     : null
@@ -495,6 +511,7 @@ export async function askCopilotFreeAction(
   // l'intention déterministe était une lecture ; sinon ils démarrent ici. Les
   // deux suivants ne peuvent pas être anticipés : ils dépendent des entités
   // extraites par la classification.
+  if (!prefetched) contextStartAt = Date.now()
   const [overview, briefing, prepItemsRaw, actorContext, ...subjectLives] = await timed('contextWaitMs', () => Promise.all([
     prefetched?.overview ?? loadOverview(),
     prefetched?.briefing ?? loadBriefing(),
@@ -507,6 +524,7 @@ export async function askCopilotFreeAction(
       getCanonicalSubjectLifeForSite(siteId, id).catch(() => null),
     ),
   ]))
+  const contextReadyAt = Date.now()
 
   const prepItems = prepItemsRaw.map((p) => ({ label: p.label, stableKey: p.stableKey }))
 
@@ -577,7 +595,28 @@ export async function askCopilotFreeAction(
       estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
     })
     // Verdict quantitatif : une phrase, déjà exacte — le meilleur cas oral qui soit.
-    return { kind: 'answer', text: quantitative.text, references: [], source: 'deterministic', interactionId: iid, spokenText: spokenFromShortAnswer(quantitative.text) }
+    const qSpoken = spokenFromShortAnswer(quantitative.text)
+    if (diagEnabled) {
+      // Chemin sans LLM : le rapporter est indispensable, sinon la moyenne de
+      // latence mélangerait deux régimes très différents et masquerait le fait
+      // qu'une partie des questions ne coûte déjà plus rien en génération.
+      console.log('[copilot-diag]', JSON.stringify({
+        q: question.slice(0, 60), path: 'deterministic',
+        request_received: 0,
+        context_start: contextStartAt - t0,
+        context_ready: contextReadyAt - t0,
+        llm_start: null, llm_end: null, parse_end: null,
+        response_returned: Date.now() - t0,
+        contextMs: contextReadyAt - contextStartAt,
+        llmMs: null, parseMs: null, model: null, tokensIn: null, tokensOut: null,
+        contextChars: 0,
+        textLength: quantitative.text.length,
+        spokenLength: qSpoken?.length ?? 0,
+        prefetch: prefetched !== null,
+        ...marks,
+      }))
+    }
+    return { kind: 'answer', text: quantitative.text, references: [], source: 'deterministic', interactionId: iid, spokenText: qSpoken }
   }
 
   // Enrichissement sujets détaillés
@@ -686,6 +725,7 @@ export async function askCopilotFreeAction(
   }
 
   // ── Appel LLM ────────────────────────────────────────────────────────────────
+  const answerStartAt = Date.now()
   const answer = await timed('answerMs', () => answerCopilotFreeQuestion(
     question,
     history,
@@ -754,6 +794,43 @@ export async function askCopilotFreeAction(
     prefetch: prefetched !== null,
     ...marks,
   }))
+
+  // ── Décomposition serveur, fermée par défaut ──────────────────────────────
+  // Sept jalons exprimés en ms DEPUIS la réception de la requête, pas en durées
+  // isolées : c'est la seule forme qui montre les recouvrements. Les trois
+  // derniers sont reconstruits depuis les mesures du fournisseur — le temps de
+  // construction du prompt est ce qui reste entre l'entrée dans la fonction de
+  // réponse et le départ réel vers Gemini.
+  if (diagEnabled) {
+    const d = answer.diagnostics
+    const answerEntry = answerStartAt - t0
+    const promptMs = d ? Math.max(0, (marks.answerMs ?? 0) - d.llmMs - d.parseMs) : 0
+    const llmStart = answerEntry + promptMs
+    const llmEnd = llmStart + (d?.llmMs ?? 0)
+    console.log('[copilot-diag]', JSON.stringify({
+      q: question.slice(0, 60), path: answer.source,
+      request_received: 0,
+      context_start: contextStartAt - t0,
+      context_ready: contextReadyAt - t0,
+      llm_start: llmStart,
+      llm_end: llmEnd,
+      parse_end: llmEnd + (d?.parseMs ?? 0),
+      response_returned: latencyMs,
+      contextMs: contextReadyAt - contextStartAt,
+      promptMs,
+      llmMs: d?.llmMs ?? null,
+      parseMs: d?.parseMs ?? null,
+      model: d?.model ?? null,
+      tokensIn: d?.tokensIn ?? null,
+      tokensOut: d?.tokensOut ?? null,
+      finishReason: d?.finishReason ?? null,
+      contextChars: d?.contextChars ?? null,
+      textLength: answer.text.length,
+      spokenLength: answer.spokenText?.length ?? 0,
+      prefetch: prefetched !== null,
+      ...marks,
+    }))
+  }
 
   return { kind: 'answer', text: answer.text, references, source: answer.source, interactionId: iid, spokenText: answer.spokenText }
 }
