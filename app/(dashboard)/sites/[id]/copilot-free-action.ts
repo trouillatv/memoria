@@ -145,6 +145,26 @@ export async function askCopilotFreeAction(
   const classification = merged.classification
   const intentResult = merged.intentResult
 
+  // ── Trace de production (mandat Vincent, 15/08) ───────────────────────────
+  // Aucune fonctionnalité : une ligne structurée pour répondre en un passage à
+  // « où cette requête bifurque-t-elle ? ». La recette du 15/08 a montré qu'on
+  // ne pouvait pas le dire : `copilot_interactions` ne porte ni l'intent
+  // déterministe, ni l'intent après compréhension, ni le nombre de contrôles,
+  // ni le build qui a servi — et une session navigateur reste épinglée au
+  // déploiement sur lequel elle a été chargée, donc « c'est en production »
+  // ne dit pas « c'est ce commit qui a répondu ».
+  const traceBase = {
+    dpl: process.env.VERCEL_DEPLOYMENT_ID ?? null,
+    q: question.slice(0, 80),
+    det: `${deterministicIntent.intent}/${deterministicIntent.confidence}`,
+    detSignals: deterministicIntent.signals.join('+') || '—',
+    comp: comprehension ? `${comprehension.label}/${comprehension.confidence}` : 'null',
+    merged: intentResult.intent,
+    applied: merged.applied.join('+') || '—',
+    primary: classification.primary,
+  }
+  console.log('[copilot-trace] routing', JSON.stringify(traceBase))
+
   // Scope dérivé de l'intention primaire (pour la télémétrie)
   const INTENT_SCOPE_MAP: Record<string, CopilotScope> = {
     subject_detail:   'canonical_subject',
@@ -163,6 +183,10 @@ export async function askCopilotFreeAction(
 
   // Écriture détectée — Copilote 3C : résoudre le sujet puis construire un brouillon.
   if (intentResult.intent !== 'READ') {
+    // Sortie anticipée : aucune donnée du chantier n'est chargée au-delà de ce
+    // point. C'est ici, et nulle part ailleurs, qu'une question de préparation
+    // de visite peut devenir un formulaire.
+    console.log('[copilot-trace] write', JSON.stringify({ ...traceBase, branch: intentResult.intent }))
     // ── Intention non supportée (réserve, échéance…) ou ambiguë → clarification ──
     if (intentResult.intent === 'UNKNOWN_WRITE') {
       const hasUnsupported = intentResult.signals.includes('unsupported_object')
@@ -301,6 +325,9 @@ export async function askCopilotFreeAction(
     })
 
     const kindLabel = proposal.kind === 'visit_item' ? 'point de visite' : 'action'
+    console.log('[copilot-trace] answer', JSON.stringify({
+      ...traceBase, ui: 'proposal', proposalKind: proposal.kind, controls: 0, source: 'fallback',
+    }))
     return {
       kind: 'proposal',
       text: `Voici le brouillon de ${kindLabel} que je propose. Vérifiez et ajustez avant de valider.`,
@@ -667,6 +694,16 @@ export async function askCopilotFreeAction(
     estimatedCostEur: null, latencyMs,
     usedFallback: answer.source === 'fallback',
   })
+
+  console.log('[copilot-trace] answer', JSON.stringify({
+    ...traceBase,
+    ui: 'answer',
+    safeIntent,
+    controls: extra.visitPlanDetail?.length ?? 0,
+    source: answer.source,
+    refs: references.length,
+    latencyMs,
+  }))
 
   return { kind: 'answer', text: answer.text, references, source: answer.source, interactionId: iid }
 }
