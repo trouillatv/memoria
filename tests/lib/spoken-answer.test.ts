@@ -10,8 +10,22 @@ import { pickFrenchVoice, type VoiceLike } from '@/lib/voice/speech-output'
 
 describe('sanitizeSpokenText — la voix ne peut jamais casser la réponse', () => {
   it('accepte une synthèse orale normale', () => {
-    expect(sanitizeSpokenText("J'ai identifié cinq points à vérifier. Le détail est affiché."))
-      .toBe("J'ai identifié cinq points à vérifier. Le détail est affiché.")
+    expect(sanitizeSpokenText("Rien ne semble urgent aujourd'hui."))
+      .toBe("Rien ne semble urgent aujourd'hui.")
+  })
+
+  it('laisse passer une réponse hiérarchisée à une question large', () => {
+    // Cas de référence de la doctrine « verdict puis 1 à 3 faits » : quatre
+    // phrases, ~380 caractères. L'ancien plafond de 400 la jetait par moments —
+    // MemorIA devenait muette exactement là où elle avait le plus à dire.
+    const riche =
+      "Rien ne ressort comme réellement urgent sur ce chantier aujourd'hui. En revanche deux sujets méritent " +
+      "d'être relancés dès demain : la sécurisation du matériel et le nouveau toilette, tous les deux sans " +
+      "changement depuis quatre passages. Je vérifierais aussi l'absence de courant, qui revient depuis deux " +
+      "visites. Le SSI, lui, a bien évolué depuis votre dernier passage et ne demande rien de particulier."
+    expect(riche.length).toBeGreaterThan(400)
+    expect(riche.length).toBeLessThanOrEqual(SPOKEN_MAX_CHARS)
+    expect(sanitizeSpokenText(riche)).toBe(riche)
   })
 
   it.each([
@@ -68,19 +82,25 @@ describe('spokenFromShortAnswer — réponses sans LLM', () => {
 
 describe('buildSpokenFallback — un compteur en français, rien de plus', () => {
   it('verbalise le nombre de contrôles sans rien interpréter', () => {
-    expect(buildSpokenFallback(5)).toBe("J'ai identifié cinq points à vérifier. Le détail est affiché.")
+    expect(buildSpokenFallback(5)).toBe("J'ai identifié cinq points à vérifier.")
   })
 
   it('accorde le singulier', () => {
-    expect(buildSpokenFallback(1)).toBe("J'ai identifié un point à vérifier. Le détail est affiché.")
+    expect(buildSpokenFallback(1)).toBe("J'ai identifié un point à vérifier.")
   })
 
   it('au-delà du vocabulaire court, le chiffre se prononce bien', () => {
-    expect(buildSpokenFallback(23)).toBe("J'ai identifié 23 points à vérifier. Le détail est affiché.")
+    expect(buildSpokenFallback(23)).toBe("J'ai identifié 23 points à vérifier.")
   })
 
   it.each([0, -3, Number.NaN, Number.POSITIVE_INFINITY])('compteur %s : phrase de vide, jamais de non-sens', (n) => {
-    expect(buildSpokenFallback(n)).toBe("Je n'ai identifié aucun point à vérifier. Le détail est affiché.")
+    expect(buildSpokenFallback(n)).toBe("Je n'ai identifié aucun point à vérifier.")
+  })
+
+  it.each([0, 1, 5, 23])('ne renvoie jamais l’utilisateur vers l’écran (%s)', (n) => {
+    // La voix et l'écran ne sont pas deux systèmes concurrents : MemorIA
+    // s'arrête sur sa réponse, elle ne décrit pas son interface.
+    expect(buildSpokenFallback(n)).not.toMatch(/affich|écran|ci-dessous|consultez/i)
   })
 })
 

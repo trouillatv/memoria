@@ -217,11 +217,13 @@ export async function answerCopilotFreeQuestion(
   // l'utilisateur recevait le repli déterministe, c'est-à-dire précisément la
   // liste plate que ce lot corrige. Le plafond borne le coût sur un chantier
   // dense (COPILOT_MAX_VISIT_PLAN = 10).
-  // Le +150 est le prix technique de `spokenText` (60 à 80 tokens de sortie,
-  // marge comprise) : sans lui on réintroduit la troncature mid-JSON décrite
-  // ci-dessus, mais causée cette fois par l'ajout de la voix.
+  // Le +200 (800 → 1000) est le prix technique de `spokenText` : sans lui on
+  // réintroduit la troncature mid-JSON décrite ci-dessus, mais causée cette fois
+  // par l'ajout de la voix. Relevé de +150 à +200 le 2026-08-15 avec la doctrine
+  // « verdict puis 1 à 3 faits » : la synthèse orale peut atteindre 450
+  // caractères (~135 tokens) au lieu de ~80.
   const nbControles = extra?.visitPlanDetail?.length ?? 0
-  const maxOutputTokens = nbControles > 0 ? Math.min(950 + nbControles * 260, 2750) : 950
+  const maxOutputTokens = nbControles > 0 ? Math.min(1000 + nbControles * 260, 2800) : 1000
   // Même raison pour le garde de longueur : il protège d'une réponse partie en
   // roue libre, mais une check-list de N contrôles est légitimement plus longue
   // qu'un récit. À 2000 caractères, les réponses PETRO — pourtant correctes —

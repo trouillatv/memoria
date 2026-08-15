@@ -22,6 +22,7 @@
 //      micro ne s'ouvre jamais sur une voix en cours.
 
 import { useSyncExternalStore } from 'react'
+import { markVoice } from './voice-latency'
 
 const MUTE_KEY = 'memoria:voice-output-muted'
 
@@ -186,7 +187,14 @@ export function speak(text: string | null | undefined): boolean {
       clearStartTimer()
       emit({ speaking: false })
     }
-    utterance.onstart = () => { if (gen === generation) { started = true; clearStartTimer() } }
+    utterance.onstart = () => {
+      if (gen !== generation) return
+      started = true
+      clearStartTimer()
+      // Seul instant où un son sort réellement — les autres jalons de la chaîne
+      // sont posés par l'orbe. Mesure uniquement, aucun effet sur la lecture.
+      markVoice('firstSound')
+    }
     utterance.onend = settle
     utterance.onerror = settle
 

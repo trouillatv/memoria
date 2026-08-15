@@ -38,16 +38,28 @@ const ANSWER_GEMINI_SCHEMA = {
 /**
  * Contrat oral, commun aux deux moteurs. Le LLM produit la synthèse dans le
  * MÊME appel que la réponse : pas de second appel, pas de second raisonnement.
+ *
+ * Révision du 2026-08-15 (retour terrain Vincent) : la V1 demandait « le nombre,
+ * l'essentiel, et renvoie au détail affiché ». Résultat entendu au chantier :
+ * « Rien n'est urgent, certains sujets stagnent, consultez le détail à
+ * l'écran » — une notification vocale de l'interface, pas l'analyse de MemorIA,
+ * alors même que le moteur savait QUELS sujets stagnaient et depuis combien de
+ * passages. La mission du champ est donc redéfinie : répondre à la question en
+ * hiérarchisant, et non décrire la réponse écrite. L'écran et la voix ne sont
+ * pas deux systèmes concurrents — la voix donne l'essentiel, l'écran conserve
+ * les preuves — donc la voix n'a pas à renvoyer à l'écran.
  */
 export const SPOKEN_PROMPT_RULES = `
-Champ "spokenText" : une synthèse ORALE de ta réponse, destinée à être prononcée à voix haute pendant que le texte complet s'affiche à l'écran.
-— 1 à 3 phrases, moins de 20 secondes de parole. Jamais plus.
-— Français parlé, naturel, direct. Orienté décision et action.
-— Uniquement des faits déjà présents dans ta réponse et dans le contexte. Aucune information supplémentaire : ce champ n'est jamais une source de vérité.
-— Aucun markdown, aucune énumération détaillée, aucune référence technique, aucun identifiant.
-— Aucune formule d'accueil ("Bien sûr", "Je serais ravi de", "Voici").
-— Quand la réponse est longue ou structurée, ne l'énumère pas : donne le nombre, l'essentiel, et renvoie au détail affiché. Exemple : "J'ai identifié cinq points à vérifier. Priorité au matériel non sécurisé et à l'installation électrique. Le détail est affiché."
-— Quand la réponse est déjà courte, "spokenText" peut être très proche du texte.`
+Champ "spokenText" : ta RÉPONSE ORALE à la question, prononcée pendant que le texte complet s'affiche. Ce n'est ni un résumé de ta réponse écrite, ni sa description : c'est ce que tu dirais à voix haute si le conducteur de travaux te posait la question en marchant sur le chantier.
+— Quand tu as de la matière, structure ainsi : le verdict, puis les 1 à 3 éléments les plus importants, puis ce qui les rend importants. Hiérarchiser est précisément le travail attendu de toi.
+— Nomme les sujets et donne le fait qui les distingue ("sans changement depuis quatre passages", "revient depuis deux visites"). Un compteur seul ne renseigne personne.
+— La longueur est commandée par la question, jamais par un gabarit. Une question fermée appelle une ou deux phrases ; une question large ("où en est le chantier ?") en tolère trois ou quatre. Plafond absolu : 30 secondes de parole.
+— N'énumère pas tout. Ce qui n'entre pas dans la hiérarchie reste à l'écran, sans que tu aies à le signaler.
+— NE DIS JAMAIS "le détail est affiché", "consultez l'écran", "vous trouverez ci-dessous", ni aucune formule équivalente. L'utilisateur a l'écran sous les yeux. Termine sur ta réponse.
+— Aucune formule d'accueil ("Bien sûr", "Voici", "Je serais ravi de").
+— Français parlé, naturel, direct. Aucun markdown, aucune énumération numérotée, aucune référence technique, aucun identifiant.
+— Uniquement des faits déjà présents dans ta réponse et dans le contexte. Ce champ n'est jamais une source de vérité supplémentaire.
+— Si, et seulement si, rien ne peut être raisonnablement hiérarchisé (contexte vide, mesure indisponible), une phrase générique et honnête suffit.`
 
 const SYSTEM_PROMPT = `Tu es MemorIA Copilote, assistant de suivi de chantier.
 Tu reçois un contexte JSON structuré, calculé de façon déterministe depuis les données du projet.
@@ -128,11 +140,15 @@ export async function answerCopilotQuestion(
       responseSchema: AnswerSchema,
       geminiSchema: ANSWER_GEMINI_SCHEMA,
       modelTier: 'light',
-      // 600 → 750 : `spokenText` ajoute 60 à 80 tokens de sortie. Sans cette
-      // marge, une réponse dense serait tronquée EN PLEIN JSON, `result.parsed`
-      // resterait null et l'utilisateur recevrait le repli déterministe — une
-      // régression du TEXTE causée par l'ajout de la voix.
-      maxOutputTokens: 750,
+      // 600 → 750 → 800. `spokenText` coûte des tokens de SORTIE : sans marge,
+      // une réponse dense est tronquée EN PLEIN JSON, `result.parsed` reste null
+      // et l'utilisateur reçoit le repli déterministe — une régression du TEXTE
+      // causée par l'ajout de la voix.
+      // Le passage à 800 accompagne la doctrine « verdict puis 1 à 3 faits » :
+      // la synthèse peut désormais atteindre 450 caractères (~135 tokens) contre
+      // ~80 auparavant. Garder 750 aurait saturé la marge et réintroduit la
+      // troncature — la voix aurait à nouveau dégradé le texte.
+      maxOutputTokens: 800,
     })
 
     if (result.parsed) {

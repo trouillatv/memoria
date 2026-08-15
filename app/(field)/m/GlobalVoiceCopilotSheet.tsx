@@ -16,6 +16,7 @@ import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
 import { useVoiceOrb } from './VoiceOrbContext'
 import { listMeetingSitesAction } from './meeting-actions'
 import { speak } from '@/lib/voice/speech-output'
+import { markVoice } from '@/lib/voice/voice-latency'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -142,6 +143,10 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
         history: buildHistory(),
         resolvedSubjectIds: allResolvedIds,
       })
+
+      // Jalon « réponse disponible » : posé avant le rendu, pour n'imputer au
+      // serveur que le temps du serveur.
+      if (opts?.spoken) markVoice('answer')
 
       // La lecture part AVANT le rendu et ne le conditionne jamais : le texte
       // s'affiche identiquement que la voix démarre, échoue ou soit en sourdine.

@@ -13,8 +13,17 @@
 // dégraderait le texte — exactement la régression qu'on cherche à éviter. Le
 // champ est donc lu à côté, sur l'objet brut, et validé ici.
 
-/** Au-delà, on jette : une synthèse orale plus longue n'en est plus une. */
-export const SPOKEN_MAX_CHARS = 400
+/**
+ * Au-delà, on jette : une synthèse orale plus longue n'en est plus une.
+ *
+ * 450 caractères ≈ 30 secondes de parole à débit normal — exactement le plafond
+ * fixé par Vincent. Relevé de 400 le 2026-08-15 avec la doctrine « verdict puis
+ * 1 à 3 faits » : une réponse à une question large ("où en est le chantier ?")
+ * tient légitimement en trois ou quatre phrases, et l'ancien seuil l'aurait
+ * jetée EN ENTIER — donc rendu MemorIA muette précisément sur les questions où
+ * elle a le plus à dire.
+ */
+export const SPOKEN_MAX_CHARS = 450
 
 /**
  * Seuil sous lequel une réponse SANS `spokenText` (repli déterministe, verdict
@@ -97,15 +106,20 @@ function frenchCount(n: number): string {
  * la main pour garantir la couverture des contrôles.
  *
  * Gabarit strictement déterministe : il ne trie rien, n'interprète rien, ne
- * crée aucun fait. Il verbalise un compteur déjà certain, et renvoie au détail
- * affiché. Ce n'est pas un second moteur de réponse — c'est `items.length` mis
- * en français.
+ * crée aucun fait. Ce n'est pas un second moteur de réponse — c'est
+ * `items.length` mis en français. C'est le seul cas où MemorIA n'a rien à
+ * hiérarchiser, donc le seul où une phrase générique est légitime.
+ *
+ * La phrase s'arrête sur le compteur : pas de « le détail est affiché ». La voix
+ * et l'écran ne sont pas deux systèmes concurrents, l'utilisateur a l'écran sous
+ * les yeux, et cette formule méta était la marque d'une voix qui décrit
+ * l'interface au lieu de répondre.
  */
 export function buildSpokenFallback(count: number): string {
   if (!Number.isFinite(count) || count <= 0) {
-    return "Je n'ai identifié aucun point à vérifier. Le détail est affiché."
+    return "Je n'ai identifié aucun point à vérifier."
   }
   const n = Math.floor(count)
   const noun = n === 1 ? 'point à vérifier' : 'points à vérifier'
-  return `J'ai identifié ${frenchCount(n)} ${noun}. Le détail est affiché.`
+  return `J'ai identifié ${frenchCount(n)} ${noun}.`
 }

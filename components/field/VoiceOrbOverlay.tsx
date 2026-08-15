@@ -18,6 +18,7 @@ import {
   toggleVoiceMuted,
   primeSpeechOutput,
 } from '@/lib/voice/speech-output'
+import { markVoice } from '@/lib/voice/voice-latency'
 
 interface Props {
   open: boolean
@@ -204,6 +205,9 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
       /** Conclut la phrase. Une seule des sources concurrentes sera acceptée. */
       const conclude = (reason: EndReason) => {
         if (!dispatch({ type: 'END_OF_SPEECH', reason })) return
+        // Origine des temps du parcours vocal : c'est l'instant où l'utilisateur
+        // considère avoir fini de parler, donc celui à partir duquel il attend.
+        markVoice('endOfSpeech')
         vibrateEndOfSpeech()
         if (recorder.state === 'recording') recorder.stop()
       }
@@ -329,6 +333,7 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
     // Une transcription vide bascule en erreur au lieu d'ouvrir la réflexion :
     // c'est la machine qui l'impose, pas ce fichier.
     if (!dispatch({ type: 'TRANSCRIPT', text })) return
+    markVoice('transcript')
     if (stateRef.current.phase !== 'thinking') return
 
     // Envoi direct au copilote, exactement comme une question saisie au clavier.
@@ -336,6 +341,7 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
     try {
       await onResult(text)
     } catch { /* la feuille affiche elle-même l'échec de la réponse */ }
+    markVoice('answer')
 
     // L'orbe ne décide pas de parler : la feuille a déjà déclenché la lecture si
     // elle avait une synthèse orale à prononcer. Ici on ne fait qu'observer le

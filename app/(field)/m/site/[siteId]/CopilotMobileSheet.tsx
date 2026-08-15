@@ -17,6 +17,7 @@ import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
 import { useVoiceOrb } from '@/app/(field)/m/VoiceOrbContext'
 import { speak } from '@/lib/voice/speech-output'
+import { markVoice } from '@/lib/voice/voice-latency'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -104,6 +105,12 @@ export function CopilotMobileSheet({
         history: buildHistory(),
         resolvedSubjectIds: allResolvedIds,
       })
+
+      // Jalon posé ICI et pas après le rendu : « réponse disponible » est
+      // l'instant où le serveur a répondu, avant que la voix ou l'affichage
+      // n'entrent en jeu. Le placer plus loin imputerait à Gemini du temps de
+      // rendu React.
+      if (opts?.spoken) markVoice('answer')
 
       // La lecture part AVANT le rendu et ne le conditionne jamais : le texte
       // s'affiche identiquement que la voix démarre, échoue ou soit en sourdine.

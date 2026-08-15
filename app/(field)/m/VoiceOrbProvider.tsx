@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import { VoiceOrbContext, type OpenOrbOptions } from './VoiceOrbContext'
 import { VoiceOrbOverlay } from '@/components/field/VoiceOrbOverlay'
+import { VoiceLatencyBadge } from '@/components/field/VoiceLatencyBadge'
 
 type OrbSession = OpenOrbOptions & { open: boolean }
 
@@ -29,6 +30,9 @@ export function VoiceOrbProvider({ children }: { children: React.ReactNode }) {
         onResult={session.onResult}
         onClose={closeOrb}
       />
+      {/* Un seul point de montage pour les deux feuilles : la mesure est
+          globale au parcours vocal, pas propre à une surface. */}
+      <VoiceLatencyBadge />
     </VoiceOrbContext.Provider>
   )
 }
