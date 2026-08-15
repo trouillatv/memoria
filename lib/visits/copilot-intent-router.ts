@@ -93,6 +93,69 @@ const WEAK_WRITE_RE = /\b(?:faudr|il\s+faut\s|pens[eo][rz]?\s+a|gard[ea]\b|conse
 // Objets non encore supportés — déclenchent UNKNOWN_WRITE plutôt que CREATE_ACTION
 const UNSUPPORTED_RE = /\b(?:reserve|echeance|point\s+de\s+vigilance|alerte|signalement|litige|non[-\s]?conformite)\b/
 
+// ── Demande de PRÉPARATION de visite ──────────────────────────────────────────
+//
+// « Fais-moi les points de contrôle pour ma prochaine visite » demande à MemorIA
+// de PRODUIRE le plan. Le routeur y voyait un ordre d'écriture — "fais" est un
+// verbe fort, "prochaine visite" domine — et retournait ADD_VISIT_ITEM *strong*,
+// c'est-à-dire une proposition de créer un point de visite intitulé... la phrase
+// de l'utilisateur (recette PETRO, 2026-08-15). La couche de compréhension ne
+// pouvait pas rattraper : `mergeComprehension` ne rétrograde jamais un `strong`.
+//
+// D'où une garde DÉTERMINISTE, avant toute autre règle : la fonction essentielle
+// « prépare ma visite » ne doit pas dépendre d'un appel LLM.
+//
+// Frontière avec ADD_VISIT_ITEM : une demande de préparation ne nomme AUCUN objet
+// à inscrire, elle nomme le plan lui-même. « Ajoute l'accès sécurisé aux points à
+// vérifier » apporte un contenu → reste une écriture.
+
+/** Verbes de PRODUCTION d'une liste. Ni "planifie" ni "ajoute" : ceux-là écrivent. */
+const PLAN_GEN_VERB = String.raw`(?:prepar|fai[st]|donn|list|gener|etabli|sors|montr)\w*`
+
+/** Déterminants tolérés entre le verbe et l'objet — liste fermée, jamais "de"/"du". */
+const PLAN_FILLER = String.raw`(?:(?:moi|nous|me|le|la|les|un|une|mon|ma|mes|ton|tous|toutes)\s+){0,3}`
+
+/** L'objet « le plan lui-même » — jamais un sujet de chantier. */
+const PLAN_OBJECT = String.raw`(?:points?\s+de\s+controle|check\s?list|plan\s+de\s+(?:la\s+)?visite|(?:prochaine\s+)?visite|prochain\s+passage)`
+
+/** Verbes de constat terrain, utilisés en tournure interrogative. */
+const CHECK_VERB = String.raw`(?:verifi|surveill|control|regard|inspect|check)\w*`
+
+const VISIT_PREP_REQUEST_RE = new RegExp([
+  // « prépare-moi ma visite », « fais-moi les points de contrôle »
+  String.raw`\b${PLAN_GEN_VERB}\s+${PLAN_FILLER}${PLAN_OBJECT}\b`,
+  // « qu'est-ce que je dois vérifier », « que dois-je regarder en priorité »
+  String.raw`\b(?:je\s+dois|dois\s+je)\s+(?:\w+\s+){0,2}?${CHECK_VERB}`,
+  // « je vérifie quoi ? »
+  String.raw`\bje\s+${CHECK_VERB}\s+quoi\b`,
+  // « que vérifier sur place ? »
+  String.raw`\b(?:quoi|que)\s+${CHECK_VERB}`,
+  // « à quoi faire attention ? », « sur quoi me concentrer ? »
+  String.raw`\b(?:a|sur)\s+quoi\s+(?:\w+\s+){0,3}?(?:attention|concentrer|focaliser)`,
+].join('|'))
+
+/**
+ * Verbes d'INSERTION d'un objet. Leur présence rend la phrase écrivante quoi
+ * qu'elle contienne par ailleurs : « Ajoute une action pour préparer la prochaine
+ * visite » nomme un objet à créer, le « préparer » n'y est qu'une finalité.
+ * Ils ne recouvrent jamais PLAN_GEN_VERB — un verbe ne peut pas être les deux.
+ */
+const PLAN_WRITE_BLOCKER_RE = /\b(?:ajout|rajout|met[st]|mettre|not[ei]|inscri|cree?|creer|planifi|programm|enregistr)\w*/
+
+/**
+ * La question demande-t-elle à MemorIA de PRODUIRE un plan de visite ?
+ *
+ * Exportée pour que le routeur et la classification métier partagent une seule
+ * définition : une formulation reconnue ici doit toujours produire le couple
+ * `intent=READ` + `primary=plan_visite`, sans quoi le plan serait bien routé mais
+ * jamais construit (`safeIntent` ≠ `next_visit`).
+ */
+export function isVisitPrepRequest(question: string): boolean {
+  const q = normalizeQuery(question)
+  if (PLAN_WRITE_BLOCKER_RE.test(q)) return false
+  return VISIT_PREP_REQUEST_RE.test(q)
+}
+
 // ── Détection ─────────────────────────────────────────────────────────────────
 
 export function detectIntent(question: string): IntentResult {
@@ -123,6 +186,16 @@ export function detectIntent(question: string): IntentResult {
   if (hasStrongWrite && !hasSchedVerb)   signals.push('write_verb')
   if (hasWeakWrite)                      signals.push('implicit_write')
   if (hasUnsupported)                    signals.push('unsupported_object')
+
+  // ── Garde PRÉPARATION DE VISITE ───────────────────────────────────────────
+  // Prime sur tout : « fais-moi les points de contrôle pour ma prochaine visite »
+  // demande de PRODUIRE le plan, pas d'y inscrire une ligne. Sans cette garde,
+  // Priorité 1 rendait ADD_VISIT_ITEM *strong* — que la compréhension LLM ne peut
+  // pas rétrograder — et MemorIA créait un point de visite intitulé avec la
+  // question elle-même (recette PETRO, 2026-08-15).
+  if (isVisitPrepRequest(question)) {
+    return { intent: 'READ', confidence: 'strong', signals: [...signals, 'visit_prep_request'] }
+  }
 
   // ── Garde READ ────────────────────────────────────────────────────────────
   // Lecture explicite sans verbe d'écriture → READ

@@ -50,6 +50,54 @@ describe('READ — prochaine visite comme sujet de question (pas commande)', () 
   })
 })
 
+// ── Préparation de visite (P1-A.1) ────────────────────────────────────────────
+// Recette PETRO 2026-08-15 : « Fais-moi les points de contrôle pour ma prochaine
+// visite » créait un point de visite intitulé avec la question elle-même. La
+// fonction essentielle « prépare ma visite » ne doit dépendre d'aucun appel LLM :
+// ces cas sont donc tous DÉTERMINISTES et `strong`.
+
+describe('READ — demande de préparation de visite (déterministe)', () => {
+  const cases = [
+    'Fais-moi les points de contrôle pour ma prochaine visite',
+    'Prépare-moi ma visite de demain.',
+    'Prépare ma prochaine visite',
+    'Donne-moi les points de contrôle',
+    'Liste-moi les points de contrôle de la visite',
+    'Génère la check-list de ma prochaine visite',
+    "Qu'est-ce que je dois surveiller si j'y vais demain ?",
+    'Que dois-je vérifier sur place ?',
+    'Je vais sur le chantier demain, je vérifie quoi ?',
+    'Que vérifier sur place ?',
+    'Que surveiller demain ?',
+    'À quoi faire attention lors de ma prochaine visite ?',
+    'Sur quoi me concentrer demain ?',
+  ]
+  for (const q of cases) {
+    it(`"${q.slice(0, 60)}" → READ strong`, () => {
+      expect(intent(q)).toBe('READ')
+      expect(confidence(q)).toBe('strong')
+    })
+  }
+})
+
+describe('Frontière préparation / écriture', () => {
+  // Un verbe d'insertion nomme un objet à créer : la finalité « préparer la
+  // visite » n'en fait pas une demande de génération de plan.
+  const writes: [string, string][] = [
+    ['Ajoute une action pour préparer la prochaine visite', 'CREATE_ACTION'],
+    ["Ajoute l'accès sécurisé aux points à vérifier à la prochaine visite.", 'ADD_VISIT_ITEM'],
+    ['Ajoute R4 au plan de visite', 'ADD_VISIT_ITEM'],
+    ['Mets les points de contrôle dans mon plan de visite', 'ADD_VISIT_ITEM'],
+    ['Planifie une visite pour vérifier R4', 'SCHEDULE_VISIT'],
+    ['Note une action de suivi pour la prochaine visite', 'CREATE_ACTION'],
+  ]
+  for (const [q, expected] of writes) {
+    it(`"${q.slice(0, 60)}" → ${expected}`, () => {
+      expect(intent(q)).toBe(expected)
+    })
+  }
+})
+
 // ── CREATE_ACTION ─────────────────────────────────────────────────────────────
 
 describe('CREATE_ACTION — formulations explicites', () => {

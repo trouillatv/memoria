@@ -34,6 +34,26 @@ describe('classifyIntent — intent primaire', () => {
     expect(r.primary).toBe('plan_visite')
   })
 
+  // P1-A.1 : les deux axes de routage (intent + primary) sont lus séparément par
+  // l'action serveur. S'ils divergent, la question est bien routée en lecture
+  // mais `safeIntent` ≠ `next_visit` et aucun plan n'est construit. Toute
+  // formulation reconnue comme préparation doit donc donner `plan_visite`.
+  describe('demandes de préparation → plan_visite', () => {
+    const cases = [
+      'Fais-moi les points de contrôle pour ma prochaine visite',
+      'Prépare-moi ma visite de demain.',
+      "Qu'est-ce que je dois surveiller si j'y vais demain ?",
+      'Je vais sur le chantier demain, je vérifie quoi ?',
+      'Que surveiller demain ?',
+      'Sur quoi me concentrer demain ?',
+    ]
+    for (const q of cases) {
+      it(`"${q.slice(0, 60)}" → plan_visite`, () => {
+        expect(classifyIntent(q).primary).toBe('plan_visite')
+      })
+    }
+  })
+
   it('question générale sans signal → global', () => {
     const r = classifyIntent('Bonjour.')
     expect(r.primary).toBe('global')

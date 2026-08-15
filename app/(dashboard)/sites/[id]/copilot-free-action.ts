@@ -37,7 +37,8 @@ import { extractQuestionSubjectPhrase } from '@/lib/visits/copilot-classify'
 import { getCanonicalSubjectLifeForSite } from '@/lib/db/canonical-subject-life'
 import { buildSubjectDetailForCopilot } from '@/lib/visits/copilot-subject-context'
 import { answerCopilotFreeQuestion } from '@/lib/visits/copilot-free-answer'
-import type { FreeAnswerContext, RecentChangeContext, VisitPlanItemContext } from '@/lib/visits/copilot-free-answer'
+import type { FreeAnswerContext, RecentChangeContext } from '@/lib/visits/copilot-free-answer'
+import { buildVisitPlan } from '@/lib/visits/visit-plan-builder'
 import { buildVisitBriefing } from '@/lib/knowledge/visit-briefing'
 import { getSiteActorContext } from '@/lib/db/site-actor-responsibilities'
 import { frDayMonthYearLocal } from '@/lib/time/local-date'
@@ -599,42 +600,18 @@ export async function askCopilotFreeAction(
   // au lieu de le lui dire. On lit `allAttention` et non `attention` pour la même
   // raison qu'au-dessus (construction du contexte) : `rankBriefingAttention`
   // écarte les `low` et rendrait le plan vide sur ce chantier précis.
+  //
+  // La projection elle-même (hiérarchie de visite, quoi vérifier, dernier état
+  // connu, changement depuis la dernière visite) vit dans `buildVisitPlan` :
+  // un item d'attention n'est pas un contrôle terrain, et le LLM ne peut pas
+  // inventer une hiérarchie métier qu'on ne lui fournit pas.
   const needsPlan = safeIntent === 'next_visit'
   if (needsPlan) {
-    const plan: VisitPlanItemContext[] = []
-    const seen = new Set<string>()
-    const push = (key: string | null, item: VisitPlanItemContext) => {
-      // Dédup par sujet canonique : le même sujet vu par le moteur ET par le
-      // moteur PV reste UN point de visite, jamais deux lignes concurrentes.
-      if (key) {
-        if (seen.has(key)) return
-        seen.add(key)
-      }
-      plan.push(item)
-    }
-
-    for (const item of (briefing?.allAttention ?? []).filter((i) => isVisitPlanSignal(i.signal))) {
-      const csId = typeof item.metadata?.canonicalSubjectId === 'string'
-        ? item.metadata.canonicalSubjectId
-        : null
-      push(csId, {
-        label: item.title,
-        priority: item.urgency,
-        reason: item.reason || null,
-        signals: [item.signal],
-      })
-    }
-
-    for (const v of overview.pvToVerify) {
-      push(v.canonicalSubjectId, {
-        label: v.label,
-        priority: 'normal',
-        reason: null,
-        signals: v.signals,
-      })
-    }
-
-    extra.visitPlanDetail = plan.slice(0, COPILOT_MAX_VISIT_PLAN)
+    extra.visitPlanDetail = buildVisitPlan(
+      (briefing?.allAttention ?? []).filter((i) => isVisitPlanSignal(i.signal)),
+      overview.pvToVerify,
+      COPILOT_MAX_VISIT_PLAN,
+    )
   }
 
   // ── Appel LLM ────────────────────────────────────────────────────────────────

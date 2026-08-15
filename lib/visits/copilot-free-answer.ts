@@ -16,6 +16,8 @@ import type { SubjectDetailContext } from './copilot-subject-context'
 import type { SiteCopilotDelta } from './copilot-context'
 import { buildFallbackText } from './copilot-context'
 import type { ActorContext } from '@/lib/db/site-actor-responsibilities'
+import type { VisitControl } from './visit-plan-builder'
+import { frDayMonthYearLocal } from '@/lib/time/local-date'
 
 export interface RecentChangeContext {
   title: string
@@ -23,12 +25,13 @@ export interface RecentChangeContext {
   detail: string | null
 }
 
-export interface VisitPlanItemContext {
-  label: string
-  priority: string
-  reason: string | null
-  signals: string[]
-}
+/**
+ * Un point de `recommandations_memoria` n'est plus un sujet à regarder mais un
+ * CONTRÔLE TERRAIN (quoi vérifier, pourquoi, dernier état connu, changement
+ * depuis la dernière visite), construit par `buildVisitPlan`. Alias conservé :
+ * c'est le nom sous lequel le contexte LLM le connaît.
+ */
+export type VisitPlanItemContext = VisitControl
 
 const FreeAnswerSchema = z.object({
   text: z.string().max(2000),
@@ -56,15 +59,20 @@ Règles absolues :
 — Les dépendances suggérées (non confirmées) ne sont jamais des vérités.
 — Quand le contexte contient un delta (fromDate + toDate), mentionne toujours les deux bornes ("entre le PV du X et le PV du Y"), jamais seulement la date du PV de référence.
 — Pour une question portant sur un intervalle de dates ou entre deux PV, cite uniquement des événements dont la date occurredAt est dans cet intervalle. Les changements_recents antérieurs à fromDate ne sont pas des événements de la période concernée et ne doivent pas y être présentés.
-— plan_utilisateur liste les points que l'utilisateur a EXPLICITEMENT ajoutés à son plan de visite. recommandations_memoria liste les suggestions calculées par MemorIA. Ces deux sources sont totalement distinctes. Ne présente jamais une suggestion comme quelque chose que l'utilisateur "a prévu". Si plan_utilisateur est vide, dis-le en premier, puis présente les recommandations séparément.
+— plan_utilisateur liste les points que l'utilisateur a EXPLICITEMENT ajoutés à son plan de visite. recommandations_memoria liste les contrôles calculés par MemorIA. Ces deux sources sont totalement distinctes. Ne présente jamais un contrôle calculé comme quelque chose que l'utilisateur "a prévu".
+— Quand recommandations_memoria est présent, COMMENCE par les contrôles, jamais par l'état du plan personnel. Une phrase d'ouverture du type "Pour votre visite de demain, je vous conseille N contrôles." puis la liste. Si plan_utilisateur est vide, mentionne-le APRÈS, en une demi-phrase ("Vous n'avez encore ajouté aucun point personnel."), jamais en ouverture : l'utilisateur demande ce qu'il doit vérifier, pas l'état d'une table.
+— Chaque entrée de recommandations_memoria est un CONTRÔLE TERRAIN, pas un sujet à consulter. Rédige-la en un point numéroté : le "label" en titre, puis "check" (ce qu'il faut constater sur place), puis "why" (pourquoi ce point est dans cette visite), puis "lastKnown" (dernier état connu) et "changeSinceLastVisit" quand ils sont présents. N'écris jamais deux points avec la même justification si leurs "why" diffèrent : reprends la raison propre à chacun.
+— "tierLabel" donne la famille du contrôle (sécurité/anomalie ouverte, modifié depuis la dernière visite, problème récurrent, engagement à vérifier, autre point). L'ordre de recommandations_memoria est déjà la priorité de visite : ne le réordonne pas et n'invente aucune urgence absente des données.
+— "lastKnown" et "changeSinceLastVisit" sont des faits calculés. Absents ou null, tu ne les connais pas : ne comble jamais par une supposition.
 — "depuis_derniere_visite" est le delta calculé depuis la dernière visite TERRAIN (champ "depuis" = sa date). Il est indépendant de "delta", qui compare deux PV. Pour une question du type "qu'est-ce qui a changé depuis la dernière visite ?", appuie-toi sur "depuis_derniere_visite" et nomme les sujets concernés en te servant des items dont les faits mentionnent une évolution. Ne convertis jamais un compteur en liste : si "sujetsChanges" vaut 7 et que seuls 4 items sont présents, dis "7 sujets ont évolué, dont…".
 — Le champ "depuis" est déjà rédigé en toutes lettres dans le fuseau du chantier. Reprends-le tel quel, ne le reformate pas et n'en déduis aucune autre date.
+— "date_du_jour" est la date d'aujourd'hui sur le chantier. C'est ta seule référence pour interpréter "demain", "cette semaine", "hier". Ne demande jamais à l'utilisateur de préciser une date que tu peux en déduire.
 — "compteurs_actions.sansDate" indique les actions actives sans échéance. Un "enRetard" à 0 alors que "sansDate" est élevé ne signifie PAS que tout est à jour : il n'y a aucun retard MESURABLE parce que ces actions ne sont pas datées. Dis-le explicitement plutôt que de présenter le zéro comme rassurant.
 — "compteurs_actions" et "stagnation" sont des mesures déjà calculées. Reprends-les telles quelles, ne les recalcule pas depuis "items", et ne conclus jamais un zéro depuis l'absence d'items : si une mesure n'est pas dans le contexte, tu ne la connais pas.
 — "stagnation.nbSujetsStagnants" à 0 signifie qu'aucun sujet ne franchit le seuil, pas que tout avance. Dans ce cas, mentionne "plusProcheDuSeuil" s'il est présent.
 — L'historique de conversation ("historique") sert uniquement à comprendre les références conversationnelles ("lui", "celui-là", "et R4 ?"). Les faits que tu as cités dans des réponses précédentes ne sont pas des sources fiables : utilise toujours les données actuelles du contexte.
 — Si tu n'as pas les données pour répondre, dis-le clairement sans inventer. Ne suppose jamais une cause sans preuve dans les faits.
-— Format : 2 à 4 paragraphes courts, prose directe, français professionnel.
+— Format : 2 à 4 paragraphes courts, prose directe, français professionnel. Exception : quand recommandations_memoria est présent, la réponse est une check-list numérotée (une phrase d'ouverture, puis un point par contrôle) — c'est un document de terrain, pas un récit.
 — N'inclus JAMAIS d'identifiant UUID (format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) dans ta réponse. Cite les sujets par leur label, jamais par leur identifiant interne.
 — Champ "citedIds" : ids des items réellement cités dans ta réponse.
 — MemorIA peut proposer et confirmer la planification de visites et de réunions de chantier. Si la question porte sur la planification d'une visite ou d'une réunion, indique que l'utilisateur peut formuler sa demande naturellement (ex. : "Planifie une visite le 12 août à 9h") pour déclencher une proposition confirmable. Ne dis jamais que tu ne peux pas planifier de visites ou de réunions.
@@ -153,6 +161,11 @@ export async function answerCopilotFreeQuestion(
   const contextJson = JSON.stringify(
     {
       chantier: siteName,
+      // Aucun champ du contexte ne portait la date du jour : « prépare ma visite
+      // de demain » arrivait au LLM sans référentiel temporel, qui ne pouvait donc
+      // ni situer « demain » ni le reprendre dans sa réponse. Formatée en zone
+      // Nouméa, comme `depuis` — un ISO brut ferait annoncer la veille.
+      date_du_jour: frDayMonthYearLocal(new Date()),
       question,
       ...(history.length > 0 ? { historique: history } : {}),
       items: items.map((i) => ({

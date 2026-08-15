@@ -5,7 +5,7 @@
 // nécessaires à l'intent primaire (+ secondaires) sont chargés.
 
 import { extractTechnicalCodes } from '@/lib/documents/semantic-subject-resolution'
-import { detectIntent } from '@/lib/visits/copilot-intent-router'
+import { detectIntent, isVisitPrepRequest } from '@/lib/visits/copilot-intent-router'
 
 export type IntentFamily =
   | 'subject_detail'  // question sur un sujet nommé (G3, R4…)
@@ -246,7 +246,13 @@ export function classifyReadIntent(question: string): IntentClassification {
     timeline:       countSignals(question, TIMELINE_SIGNALS),
     action_status:  countSignals(question, ACTION_SIGNALS),
     actor:          countSignals(question, ACTOR_SIGNALS),
-    plan_visite:    countSignals(question, PLAN_SIGNALS),
+    // +3 : une demande de préparation reconnue par le routeur doit produire le
+    // couple `intent=READ` + `primary=plan_visite`. Les deux axes sont lus
+    // séparément par l'action serveur ; s'ils divergent, la question est bien
+    // routée en lecture mais `safeIntent` ≠ `next_visit` et aucun plan n'est
+    // construit. Le boost garantit la victoire sans relâcher PLAN_SIGNALS,
+    // dont l'élargissement déplacerait des questions d'autres familles.
+    plan_visite:    countSignals(question, PLAN_SIGNALS) + (isVisitPrepRequest(question) ? 3 : 0),
     // Poids 2 : une formulation de stagnation est explicite et rare, alors qu'un
     // ACTION_SIGNALS peut se déclencher par cooccurrence (« les actions traînent »
     // matcherait `action` ET `traîne`). Sans ce poids, « qu'est-ce qui n'avance

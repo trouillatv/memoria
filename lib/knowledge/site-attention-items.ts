@@ -473,6 +473,41 @@ export async function deriveSiteAttentionItems(
     })
   }
 
+  // ── Enrichissement du contexte sujet ─────────────────────────────────────
+  // Le moteur d'attention répond « qu'est-ce qui mérite mon attention ? ». Le
+  // plan de visite doit répondre « qu'est-ce qu'il est utile de constater sur
+  // place ? » — ce qui exige le dernier état connu et le changement depuis la
+  // dernière visite, pas seulement un titre et une urgence (recette PETRO :
+  // cinq items portant tous la même raison « Évolution depuis votre dernière
+  // visite »). Ces champs sont déjà chargés par `getNavigableSubjectsForSite` :
+  // l'enrichissement ne coûte aucune requête supplémentaire.
+  //
+  // Additif et centralisé : chaque règle continue d'écrire sa propre métadonnée,
+  // on ne fait que compléter celles qui portent un canonical_subject_id.
+  for (const item of items) {
+    const csId = item.metadata?.canonicalSubjectId
+    if (typeof csId !== 'string') continue
+    const s = csIndex.get(csId)
+    if (!s) continue
+    // La métadonnée de la règle prime : elle porte le sens local du signal
+    // (`pvCount` de la watchlist, `stagnationDays` du sujet stagnant — ce dernier
+    // sert de départage au tri ci-dessous et ne doit surtout pas apparaître sur
+    // des items qui n'en avaient pas, sous peine de réordonner l'Aperçu).
+    item.metadata = {
+      currentStatus: s.currentStatus,
+      kind: s.kind,
+      activeObjects: s.activeObjects,
+      consecutiveMentionsWithoutChange: s.consecutiveMentionsWithoutChange,
+      lastMeaningfulChangeAt: s.lastMeaningfulChangeAt,
+      lastSeenAt: s.lastSeenAt,
+      changedSinceLastVisit: Boolean(
+        lastVisitAt && s.lastMeaningfulChangeAt && s.lastMeaningfulChangeAt > lastVisitAt,
+      ),
+      lastVisitAt,
+      ...item.metadata,
+    }
+  }
+
   // ── Tri déterministe ─────────────────────────────────────────────────────
   // critical → high → medium → low
   // À même urgence : stagnationDays DESC pour sujets stagnants
