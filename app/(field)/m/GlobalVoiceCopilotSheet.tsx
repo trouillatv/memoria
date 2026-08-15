@@ -15,6 +15,7 @@ import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
 import { useVoiceOrb } from './VoiceOrbContext'
 import { listMeetingSitesAction } from './meeting-actions'
+import { speak } from '@/lib/voice/speech-output'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -118,7 +119,12 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
     return result
   }
 
-  async function send(question: string, extraResolvedIds?: string[]) {
+  /**
+   * `spoken` : la question est arrivée par la voix. MemorIA répond alors aussi à
+   * l'oral. Une question TAPÉE reste silencieuse — voir le même commentaire dans
+   * `CopilotMobileSheet`.
+   */
+  async function send(question: string, extraResolvedIds?: string[], opts?: { spoken?: boolean }) {
     if (loading || !question.trim()) return
     setLoading(true)
 
@@ -136,6 +142,10 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
         history: buildHistory(),
         resolvedSubjectIds: allResolvedIds,
       })
+
+      // La lecture part AVANT le rendu et ne le conditionne jamais : le texte
+      // s'affiche identiquement que la voix démarre, échoue ou soit en sourdine.
+      if (opts?.spoken && result.kind === 'answer') speak(result.spokenText)
 
       setMessages((prev) => {
         const without = prev.filter((m) => m.kind !== 'thinking')
@@ -312,7 +322,7 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
             champ texte, sans écran de confirmation intermédiaire. */}
         <VoiceCopilotTrigger
           disabled={loading}
-          onOpenOrb={() => openOrb({ siteId, siteName, onResult: (text) => send(text) })}
+          onOpenOrb={() => openOrb({ siteId, siteName, onResult: (text) => send(text, undefined, { spoken: true }) })}
         />
         <button
           type="submit"

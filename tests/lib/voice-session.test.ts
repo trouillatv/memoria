@@ -104,6 +104,77 @@ describe('voiceReducer — un seul envoi, quoi qu’il arrive', () => {
   })
 })
 
+describe('voiceReducer — sortie vocale', () => {
+  /** Amène jusqu'à la réflexion, question déjà partie. */
+  function reflexion() {
+    const s = ecoute()
+    s.dispatch({ type: 'END_OF_SPEECH', reason: 'silence' })
+    s.dispatch({ type: 'AUDIO_READY' })
+    s.dispatch({ type: 'TRANSCRIPT', text: 'que dois-je vérifier ?' })
+    return s
+  }
+
+  it('une lecture démarre : l’orbe reste, la transcription aussi', () => {
+    const s = reflexion()
+    expect(s.dispatch({ type: 'SPEECH_STARTED' })).toBe(true)
+    expect(s.state).toMatchObject({ phase: 'speaking', transcript: 'que dois-je vérifier ?' })
+
+    expect(s.dispatch({ type: 'SPEECH_ENDED' })).toBe(true)
+    expect(s.state.phase).toBe('exiting')
+    s.dispatch({ type: 'EXITED' })
+    expect(s.state).toEqual(INITIAL_VOICE_STATE)
+  })
+
+  it('pas de voix (sourdine, moteur absent, synthèse vide) : parcours d’avant ce lot', () => {
+    const s = reflexion()
+    expect(s.dispatch({ type: 'ANSWER_SETTLED' })).toBe(true)
+    expect(s.state.phase).toBe('exiting')
+    // Une lecture tardive ne peut plus rouvrir l'orbe.
+    expect(s.dispatch({ type: 'SPEECH_STARTED' })).toBe(false)
+  })
+
+  it('aucun double passage en parole : le second SPEECH_STARTED est refusé', () => {
+    const s = reflexion()
+    expect(s.dispatch({ type: 'SPEECH_STARTED' })).toBe(true)
+    expect(s.dispatch({ type: 'SPEECH_STARTED' })).toBe(false)
+    expect(s.state.phase).toBe('speaking')
+  })
+
+  it('une fin de lecture sans lecture en cours ne ferme rien', () => {
+    const s = reflexion()
+    expect(s.dispatch({ type: 'SPEECH_ENDED' })).toBe(false)
+    expect(s.state.phase).toBe('thinking')
+  })
+
+  it.each(['listening', 'finalizing', 'sending'] as const)(
+    'une lecture ne peut pas démarrer pendant %s',
+    (cible) => {
+      const s = ecoute()
+      if (cible !== 'listening') s.dispatch({ type: 'END_OF_SPEECH', reason: 'silence' })
+      if (cible === 'sending') s.dispatch({ type: 'AUDIO_READY' })
+      expect(s.dispatch({ type: 'SPEECH_STARTED' })).toBe(false)
+      expect(s.state.phase).toBe(cible)
+    },
+  )
+
+  it('interrompre la parole (tap ou X) ferme l’orbe sans rien renvoyer', () => {
+    const s = reflexion()
+    s.dispatch({ type: 'SPEECH_STARTED' })
+    expect(s.dispatch({ type: 'CANCEL' })).toBe(true)
+    expect(s.state.phase).toBe('exiting')
+    expect(s.envois).toEqual(['que dois-je vérifier ?'])
+  })
+
+  it('une fin de lecture tardive n’a plus aucun effet après fermeture', () => {
+    const s = reflexion()
+    s.dispatch({ type: 'SPEECH_STARTED' })
+    s.dispatch({ type: 'SPEECH_ENDED' })
+    s.dispatch({ type: 'EXITED' })
+    expect(s.dispatch({ type: 'SPEECH_ENDED' })).toBe(false)
+    expect(s.state).toEqual(INITIAL_VOICE_STATE)
+  })
+})
+
 describe('voiceReducer — annulation', () => {
   it.each(['listening', 'finalizing', 'sending'] as const)(
     'annuler pendant %s ferme sans rien envoyer',

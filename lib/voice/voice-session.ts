@@ -20,6 +20,8 @@ export type VoicePhase =
   | 'finalizing'
   | 'sending'
   | 'thinking'
+  /** MemorIA prononce la synthèse orale. Le texte, lui, est déjà affiché. */
+  | 'speaking'
   | 'error'
   | 'exiting'
 
@@ -51,6 +53,10 @@ export type VoiceEvent =
   | { type: 'TRANSCRIBE_FAILED' }
   /** Le copilote a répondu (ou a échoué) — dans les deux cas l'orbe se retire. */
   | { type: 'ANSWER_SETTLED' }
+  /** Une lecture vocale a réellement démarré : l'orbe reste, en état `speaking`. */
+  | { type: 'SPEECH_STARTED' }
+  /** Fin naturelle, interruption ou échec du TTS — même sortie dans les trois cas. */
+  | { type: 'SPEECH_ENDED' }
   | { type: 'CANCEL' }
   | { type: 'RETRY' }
   | { type: 'EXITED' }
@@ -70,8 +76,12 @@ export const INITIAL_VOICE_STATE: VoiceState = {
   transcript: null,
 }
 
-/** États depuis lesquels une annulation est encore garantie sans envoi. */
-const CANCELLABLE: VoicePhase[] = ['entering', 'listening', 'finalizing', 'sending', 'error']
+/**
+ * États depuis lesquels une annulation est encore garantie sans envoi.
+ * `speaking` en fait partie : la réponse texte est déjà affichée dans la
+ * feuille, couper la voix ne perd rien.
+ */
+const CANCELLABLE: VoicePhase[] = ['entering', 'listening', 'finalizing', 'sending', 'speaking', 'error']
 
 export function voiceReducer(state: VoiceState, event: VoiceEvent): VoiceState {
   switch (event.type) {
@@ -122,6 +132,16 @@ export function voiceReducer(state: VoiceState, event: VoiceEvent): VoiceState {
 
     case 'ANSWER_SETTLED':
       if (state.phase !== 'thinking') return state
+      return { ...state, phase: 'exiting' }
+
+    case 'SPEECH_STARTED':
+      // Seule la réponse qu'on vient d'obtenir peut faire parler l'orbe. Une
+      // lecture qui démarrerait à un autre moment du parcours est refusée ici.
+      if (state.phase !== 'thinking') return state
+      return { ...state, phase: 'speaking' }
+
+    case 'SPEECH_ENDED':
+      if (state.phase !== 'speaking') return state
       return { ...state, phase: 'exiting' }
 
     case 'CANCEL':

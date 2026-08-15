@@ -42,6 +42,7 @@ import { buildVisitPlan } from '@/lib/visits/visit-plan-builder'
 import { buildVisitBriefing } from '@/lib/knowledge/visit-briefing'
 import { getSiteActorContext } from '@/lib/db/site-actor-responsibilities'
 import { frDayMonthYearLocal } from '@/lib/time/local-date'
+import { spokenFromShortAnswer } from '@/lib/voice/spoken-answer'
 import type { CopilotRef } from './copilot-action'
 
 // ── Schémas ───────────────────────────────────────────────────────────────────
@@ -81,6 +82,11 @@ export type CopilotFreeResult =
       references: CopilotRef[]
       source: 'llm' | 'fallback' | 'deterministic'
       interactionId: string | null
+      /**
+       * Synthèse orale facultative. Absente = pas de lecture, jamais une
+       * erreur. Le texte reste la restitution complète et canonique.
+       */
+      spokenText?: string | null
     }
   | {
       kind: 'clarification'
@@ -193,7 +199,7 @@ export async function askCopilotFreeAction(
       const clarText = hasUnsupported
         ? "Cette commande n'est pas encore disponible via le Copilote. Vous pouvez créer une action ou ajouter un point au plan de votre prochaine visite."
         : "Je n'ai pas bien compris votre intention. Souhaitez-vous créer une action, ajouter un point au plan de visite, ou planifier une visite / réunion ?"
-      return { kind: 'answer', text: clarText, references: [], source: 'fallback', interactionId: null }
+      return { kind: 'answer', text: clarText, references: [], source: 'fallback', interactionId: null, spokenText: spokenFromShortAnswer(clarText) }
     }
 
     // ── Planification (SCHEDULE_VISIT / SCHEDULE_MEETING) ──────────────────
@@ -409,6 +415,7 @@ export async function askCopilotFreeAction(
       references: [],
       source: 'fallback',
       interactionId: iid,
+      spokenText: spokenFromShortAnswer(notFoundText),
     }
   }
 
@@ -533,7 +540,8 @@ export async function askCopilotFreeAction(
       model: null, promptVersion: null, inputTokens: null, outputTokens: null,
       estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
     })
-    return { kind: 'answer', text: quantitative.text, references: [], source: 'deterministic', interactionId: iid }
+    // Verdict quantitatif : une phrase, déjà exacte — le meilleur cas oral qui soit.
+    return { kind: 'answer', text: quantitative.text, references: [], source: 'deterministic', interactionId: iid, spokenText: spokenFromShortAnswer(quantitative.text) }
   }
 
   // Enrichissement sujets détaillés
@@ -705,5 +713,5 @@ export async function askCopilotFreeAction(
     latencyMs,
   }))
 
-  return { kind: 'answer', text: answer.text, references, source: answer.source, interactionId: iid }
+  return { kind: 'answer', text: answer.text, references, source: answer.source, interactionId: iid, spokenText: answer.spokenText }
 }

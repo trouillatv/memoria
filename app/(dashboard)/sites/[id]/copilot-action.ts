@@ -42,6 +42,11 @@ export interface CopilotActionResult {
   references: CopilotRef[]
   source: 'llm' | 'fallback' | 'deterministic'
   interactionId: string | null
+  /**
+   * Synthèse orale facultative. Absente = pas de lecture, jamais une erreur.
+   * Le texte reste la restitution complète et canonique.
+   */
+  spokenText?: string | null
 }
 
 export async function askCopilotAction(
@@ -129,5 +134,5 @@ export async function askCopilotAction(
     usedFallback: answer.source === 'fallback',
   })
 
-  return { text: answer.text, references, source: answer.source, interactionId }
+  return { text: answer.text, references, source: answer.source, interactionId, spokenText: answer.spokenText }
 }

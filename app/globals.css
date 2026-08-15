@@ -126,8 +126,38 @@
   animation: orb-halo-processing 3.2s ease-in-out infinite;
 }
 
+/* ── État PAROLE ──
+   Rythme procédural, volontairement distinct de la réflexion : l'amplitude est
+   plus large et le cycle deux fois plus court, avec une reprise sur deux temps
+   (comme un débit de phrase). Ce n'est PAS un affichage du signal audio réel :
+   `speechSynthesis` n'expose aucun niveau de sortie, et faire semblant de le
+   mesurer serait mentir sur ce que MemorIA sait. Ici l'orbe indique seulement
+   « je parle », pas « voilà ce que j'émets ».
+   Taille de base 0.90 : entre la réflexion (0.82) et l'écoute (1) — MemorIA
+   reprend de la présence sans redevenir attentive. */
+@keyframes orb-speak-pulse {
+  0%    { transform: scale(0.90); }
+  22%   { transform: scale(1.00); }
+  44%   { transform: scale(0.93); }
+  66%   { transform: scale(0.99); }
+  100%  { transform: scale(0.90); }
+}
+.orb-breathing.orb-speaking {
+  animation: orb-speak-pulse 1.25s ease-in-out infinite;
+}
+
+@keyframes orb-halo-speaking {
+  0%    { opacity: 0.08; transform: scale(0.98); }
+  30%   { opacity: 0.24; transform: scale(1.12); }
+  100%  { opacity: 0.08; transform: scale(0.98); }
+}
+.orb-halo-speaking {
+  animation: orb-halo-speaking 1.25s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .orb-breathing, .orb-halo-a, .orb-halo-b, .orb-halo-processing { animation: none; }
+  .orb-breathing, .orb-halo-a, .orb-halo-b, .orb-halo-processing,
+  .orb-speaking, .orb-halo-speaking { animation: none; }
   .orb-audio-reactive, .orb-halo-outer-reactive { transition: none; transform: none; }
 }
 

@@ -16,6 +16,7 @@ import { ProposalCard, ScheduleProposalCard } from '@/components/copilot/Copilot
 import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
 import { useVoiceOrb } from '@/app/(field)/m/VoiceOrbContext'
+import { speak } from '@/lib/voice/speech-output'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -78,7 +79,14 @@ export function CopilotMobileSheet({
     return result
   }
 
-  async function send(question: string, extraResolvedIds?: string[]) {
+  /**
+   * `spoken` : la question est arrivée par la voix. MemorIA répond alors aussi à
+   * l'oral. Une question TAPÉE reste silencieuse — se faire parler par son
+   * téléphone après avoir écrit au clavier, en réunion ou dans un bureau, serait
+   * une surprise, pas un service. La restitution écrite, elle, est identique
+   * dans les deux cas.
+   */
+  async function send(question: string, extraResolvedIds?: string[], opts?: { spoken?: boolean }) {
     if (loading || !question.trim()) return
     setLoading(true)
 
@@ -96,6 +104,11 @@ export function CopilotMobileSheet({
         history: buildHistory(),
         resolvedSubjectIds: allResolvedIds,
       })
+
+      // La lecture part AVANT le rendu et ne le conditionne jamais : le texte
+      // s'affiche identiquement que la voix démarre, échoue ou soit en sourdine.
+      // `speak` ignore de lui-même une synthèse absente.
+      if (opts?.spoken && result.kind === 'answer') speak(result.spokenText)
 
       setMessages((prev) => {
         const without = prev.filter((m) => m.kind !== 'thinking')
@@ -334,7 +347,7 @@ export function CopilotMobileSheet({
                 champ texte, sans écran de confirmation intermédiaire. */}
             <VoiceCopilotTrigger
               disabled={loading}
-              onOpenOrb={() => openOrb({ siteId, siteName, onResult: (text) => send(text) })}
+              onOpenOrb={() => openOrb({ siteId, siteName, onResult: (text) => send(text, undefined, { spoken: true }) })}
             />
             <button
               type="submit"

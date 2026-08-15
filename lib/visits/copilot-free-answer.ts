@@ -15,6 +15,8 @@ import type { CopilotItem } from './copilot-context'
 import type { SubjectDetailContext } from './copilot-subject-context'
 import type { SiteCopilotDelta } from './copilot-context'
 import { buildFallbackText } from './copilot-context'
+import { SPOKEN_PROMPT_RULES } from './copilot-answer'
+import { sanitizeSpokenText, spokenFromShortAnswer, buildSpokenFallback } from '@/lib/voice/spoken-answer'
 import type { ActorContext } from '@/lib/db/site-actor-responsibilities'
 import type { VisitControl } from './visit-plan-builder'
 import { frDayMonthYearLocal } from '@/lib/time/local-date'
@@ -33,6 +35,9 @@ export interface RecentChangeContext {
  */
 export type VisitPlanItemContext = VisitControl
 
+// `spokenText` est volontairement absent de ce schéma bloquant : produit par le
+// même appel LLM, il est validé à part sur l'objet brut. Un champ vocal trop
+// long ne peut donc jamais invalider `text` ni provoquer un repli métier.
 const FreeAnswerSchema = z.object({
   text: z.string().max(2000),
   citedIds: z.array(z.string()),
@@ -43,7 +48,9 @@ const FREE_ANSWER_GEMINI_SCHEMA = {
   properties: {
     text: { type: 'string' },
     citedIds: { type: 'array', items: { type: 'string' } },
+    spokenText: { type: 'string' },
   },
+  // `spokenText` hors de `required` : son absence est un cas normal.
   required: ['text', 'citedIds'],
 }
 
@@ -77,7 +84,8 @@ Règles absolues :
 — Champ "citedIds" : ids des items réellement cités dans ta réponse.
 — MemorIA peut proposer et confirmer la planification de visites et de réunions de chantier. Si la question porte sur la planification d'une visite ou d'une réunion, indique que l'utilisateur peut formuler sa demande naturellement (ex. : "Planifie une visite le 12 août à 9h") pour déclencher une proposition confirmable. Ne dis jamais que tu ne peux pas planifier de visites ou de réunions.
 — Quand "sujets_detail" contient un sujet dont le label diffère du terme mentionné dans la question (ex. : question sur "Avis G3" mais sujet chargé = "Rapport G3 – purge complémentaire") : réponds directement sur le sujet présent dans sujets_detail en utilisant son label exact. Ne jamais affirmer ni expliquer que les deux noms désignent le même objet ou que l'un "est en réalité" l'autre.
-— Dans "confirmedLinks" de sujets_detail : le champ "linkType" est le seul vocabulaire autorisé pour qualifier la relation. Lexique de traduction obligatoire : depends_on→"dépend de", blocks→"bloque", is_blocked_by→"est bloqué par", precedes→"précède", is_preceded_by→"est précédé par", relates_to→"est associé à". Pour tout linkType non listé : utilise "est associé à". Ne jamais substituer des verbes non couverts par ce lexique ("requiert", "est causé par", "conditionne", "est lié à") sauf si "relates_to" s'y prête.`
+— Dans "confirmedLinks" de sujets_detail : le champ "linkType" est le seul vocabulaire autorisé pour qualifier la relation. Lexique de traduction obligatoire : depends_on→"dépend de", blocks→"bloque", is_blocked_by→"est bloqué par", precedes→"précède", is_preceded_by→"est précédé par", relates_to→"est associé à". Pour tout linkType non listé : utilise "est associé à". Ne jamais substituer des verbes non couverts par ce lexique ("requiert", "est causé par", "conditionne", "est lié à") sauf si "relates_to" s'y prête.
+${SPOKEN_PROMPT_RULES}`
 
 export interface HistoryMessage {
   role: 'user' | 'assistant'
@@ -88,6 +96,8 @@ export interface FreeAnswer {
   text: string
   citedIds: string[]
   source: 'llm' | 'fallback'
+  /** Synthèse orale, ou `null` quand aucune lecture n'est souhaitable. */
+  spokenText: string | null
 }
 
 const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi
@@ -207,8 +217,11 @@ export async function answerCopilotFreeQuestion(
   // l'utilisateur recevait le repli déterministe, c'est-à-dire précisément la
   // liste plate que ce lot corrige. Le plafond borne le coût sur un chantier
   // dense (COPILOT_MAX_VISIT_PLAN = 10).
+  // Le +150 est le prix technique de `spokenText` (60 à 80 tokens de sortie,
+  // marge comprise) : sans lui on réintroduit la troncature mid-JSON décrite
+  // ci-dessus, mais causée cette fois par l'ajout de la voix.
   const nbControles = extra?.visitPlanDetail?.length ?? 0
-  const maxOutputTokens = nbControles > 0 ? Math.min(800 + nbControles * 260, 2600) : 800
+  const maxOutputTokens = nbControles > 0 ? Math.min(950 + nbControles * 260, 2750) : 950
   // Même raison pour le garde de longueur : il protège d'une réponse partie en
   // roue libre, mais une check-list de N contrôles est légitimement plus longue
   // qu'un récit. À 2000 caractères, les réponses PETRO — pourtant correctes —
@@ -229,10 +242,14 @@ export async function answerCopilotFreeQuestion(
     })
 
     if (result.parsed) {
+      // Lu sur l'objet BRUT : Zod retire les clés inconnues, et surtout un
+      // `spokenText` invalide ne doit pas faire échouer le parse de la réponse.
+      const spokenFromLlm = sanitizeSpokenText((result.parsed as { spokenText?: unknown }).spokenText)
+
       const maybeValid = answerSchema.safeParse(result.parsed)
       if (maybeValid.success) {
         const citedIds = maybeValid.data.citedIds.filter((id) => validIds.has(id))
-        return { text: stripUuids(maybeValid.data.text), citedIds, source: 'llm' }
+        return { text: stripUuids(maybeValid.data.text), citedIds, source: 'llm', spokenText: spokenFromLlm }
       }
       // Le motif, pas seulement le contenu : sans lui, un repli silencieux se lit
       // comme un défaut du moteur alors qu'il vient d'un garde de longueur.
@@ -247,9 +264,16 @@ export async function answerCopilotFreeQuestion(
 
   // Fallback déterministe — retourne un texte utile sans LLM
   const intent = subjectDetails.length > 0 ? 'attention' : 'global'
+  const fallbackText = buildFallbackText(items, intent as Parameters<typeof buildFallbackText>[1], delta, prepItems)
   return {
-    text: buildFallbackText(items, intent as Parameters<typeof buildFallbackText>[1], delta, prepItems),
+    text: fallbackText,
     citedIds: [],
     source: 'fallback',
+    // Un plan de visite se résume par son compteur ; une réponse courte se lit
+    // telle quelle ; une réponse longue reste silencieuse. Aucun appel LLM
+    // supplémentaire n'est fait pour faire parler un repli.
+    spokenText: nbControles > 0
+      ? buildSpokenFallback(nbControles)
+      : spokenFromShortAnswer(fallbackText),
   }
 }
