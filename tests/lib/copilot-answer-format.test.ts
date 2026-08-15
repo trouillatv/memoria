@@ -3,6 +3,8 @@ import {
   parseCopilotAnswer,
   shortFieldLabel,
   stripBold,
+  toControlView,
+  type CopilotAnswerBlock,
 } from '@/lib/visits/copilot-answer-format'
 
 // Texte réellement produit par le Copilote en production le 15/08 sur PETRO
@@ -85,6 +87,78 @@ describe('parseCopilotAnswer — sûreté du repli', () => {
     const blocks = parseCopilotAnswer('1. **Titre**\n   * **Responsable :** Guillaume')
     if (blocks[0]?.kind !== 'control') throw new Error('contrôle attendu')
     expect(blocks[0].fields[0]).toEqual({ label: 'Responsable', value: 'Guillaume' })
+  })
+})
+
+describe('toControlView — deux niveaux de lecture', () => {
+  const controls = parseCopilotAnswer(REPONSE_PLAN_VISITE).filter(
+    (b): b is Extract<CopilotAnswerBlock, { kind: 'control' }> => b.kind === 'control',
+  )
+  const sansRecurrence = toControlView(controls[0])
+  const avecRecurrence = toControlView(controls[1])
+
+  it('met « À vérifier » en information principale', () => {
+    expect(sansRecurrence.check).toBe(
+      "Constater l'état réel après l'évolution enregistrée, et confirmer qu'elle est conforme.",
+    )
+  })
+
+  it('résume un sujet récurrent en un signal d’alerte chiffré', () => {
+    expect(avecRecurrence.signal).toEqual({
+      text: 'Revient depuis 4 passages sans changement',
+      tone: 'warning',
+    })
+  })
+
+  it('utilise le « Pourquoi » comme signal neutre quand il n’y a pas de récurrence', () => {
+    expect(sansRecurrence.signal).toEqual({
+      text: 'Modifié le 13 août 2026, après votre dernier passage.',
+      tone: 'neutral',
+    })
+  })
+
+  it('sort la consigne de récurrence du « À vérifier » sans la jeter', () => {
+    expect(avecRecurrence.check).toBe("Constater l'état réel.")
+    expect(avecRecurrence.details).toContainEqual({
+      label: 'À creuser',
+      value: 'Le sujet revient sans que son état change.',
+    })
+  })
+
+  it('replie dernier état et évolution dans le détail', () => {
+    expect(sansRecurrence.details.map((f) => f.label)).toEqual(['Dernier état', 'Évolution'])
+    expect(sansRecurrence.details[1].value).toBe(
+      'Évolution enregistrée le 13 août 2026, après votre visite du 11 août 2026.',
+    )
+  })
+
+  it('ne perd aucune information : tout champ d’origine reste atteignable', () => {
+    for (const [control, view] of [
+      [controls[0], sansRecurrence],
+      [controls[1], avecRecurrence],
+    ] as const) {
+      const rendu = [
+        view.check ?? '',
+        view.signal?.text ?? '',
+        ...view.details.map((f) => f.value),
+      ].join('\n')
+
+      for (const field of control.fields) {
+        // Les fragments de la valeur d'origine — dates, chiffres, phrases — sont
+        // tous accessibles, soit en première lecture, soit en dépliant.
+        for (const fragment of field.value.split(/\s*[·.]\s*/).filter((f) => f.length > 8)) {
+          expect(rendu).toContain(fragment)
+        }
+      }
+    }
+  })
+
+  it('ne casse pas un contrôle sans champ reconnu', () => {
+    const blocks = parseCopilotAnswer('1. **Titre**\n   * **Responsable :** Guillaume')
+    if (blocks[0]?.kind !== 'control') throw new Error('contrôle attendu')
+    const view = toControlView(blocks[0])
+    expect(view).toMatchObject({ index: '1', title: 'Titre', check: null, signal: null })
+    expect(view.details).toEqual([{ label: 'Responsable', value: 'Guillaume' }])
   })
 })
 

@@ -125,3 +125,104 @@ export function parseCopilotAnswer(text: string): CopilotAnswerBlock[] {
 
   return blocks
 }
+
+// ── Niveaux de lecture d'un contrôle ─────────────────────────────────────────
+//
+// Retour terrain du 15/08 : « une check-list opérationnelle scannable en
+// quelques secondes, pas cinq mini-comptes rendus ». Les quatre rubriques ne
+// sont pas supprimées — elles changent de NIVEAU DE LECTURE :
+//
+//   lecture principale  → Qu'est-ce que je contrôle ? Pourquoi maintenant ?
+//   lecture dépliée     → dernier état, dates, récurrence, sélection
+//
+// Aucune donnée n'est perdue : `details` reçoit tout ce qui quitte la première
+// lecture, y compris le « Pourquoi » intégral quand un signal l'a résumé.
+
+export type CopilotSignal = { text: string; tone: 'warning' | 'neutral' }
+
+export type CopilotControlView = {
+  index: string
+  title: string
+  /** Information principale : ce qu'il faut constater sur place. */
+  check: string | null
+  /** Une seule ligne, la raison d'être ici et maintenant. */
+  signal: CopilotSignal | null
+  /** Tout le reste, accessible en dépliant. */
+  details: CopilotField[]
+}
+
+// « et est mentionné 4 fois de suite sans changement d'état »,
+// « · mentionné 4 fois de suite sans changement d'état »,
+// « a été mentionné 4 fois de suite sans changement d'état ».
+const RECURRENCE_RE =
+  /\s*(?:·|,|;|\bet\b)?\s*(?:est\s+|a\s+été\s+)?mentionné\s+(\d+)\s+fois\s+de\s+suite\s+sans\s+changement(?:\s+d['’]\s*état)?\s*\.?/i
+
+// Consigne de récurrence répétée dans « À vérifier » — redondante avec le
+// signal, elle alourdit la première lecture et part dans le détail. Le builder
+// produit « Le sujet revient sans que son état change : chercher ce qui
+// l'empêche d'avancer. » ; le LLM la restitue parfois tronquée à sa première
+// moitié, d'où la seconde partie facultative.
+const RECURRENCE_HINT_RE =
+  /\s*Le sujet revient sans que son état change\s*(?::\s*chercher ce qui l['’]empêche d['’]avancer)?\s*\.?/i
+
+function tidy(text: string): string {
+  return text
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s·,;]+/, '')
+    .replace(/[\s·,;]+$/, '')
+    .replace(/\s+et$/i, '')
+    .trim()
+}
+
+function endWithPeriod(text: string): string {
+  if (!text) return text
+  return /[.!?…]$/.test(text) ? text : `${text}.`
+}
+
+/**
+ * Projette un contrôle analysé en deux niveaux de lecture.
+ * Pure et testable : c'est ici, et pas dans le composant, que se décide ce qui
+ * est visible d'emblée et ce qui est replié.
+ */
+export function toControlView(
+  control: Extract<CopilotAnswerBlock, { kind: 'control' }>,
+): CopilotControlView {
+  let check: string | null = null
+  let why: string | null = null
+  let recurrence: number | null = null
+  let hint: string | null = null
+  const details: CopilotField[] = []
+
+  for (const field of control.fields) {
+    if (field.label === 'À vérifier' && check === null) {
+      const hintMatch = RECURRENCE_HINT_RE.exec(field.value)
+      if (hintMatch) hint = tidy(hintMatch[0])
+      check = endWithPeriod(tidy(field.value.replace(RECURRENCE_HINT_RE, '')))
+      continue
+    }
+    if (field.label === 'Pourquoi' && why === null) {
+      const match = RECURRENCE_RE.exec(field.value)
+      if (match) recurrence = Number(match[1])
+      why = field.value.trim()
+      continue
+    }
+    details.push(field)
+  }
+
+  // Un signal, un seul : la récurrence prime, sinon la raison de sélection.
+  let signal: CopilotSignal | null = null
+  if (recurrence !== null) {
+    signal = { text: `Revient depuis ${recurrence} passages sans changement`, tone: 'warning' }
+  } else if (why) {
+    signal = { text: endWithPeriod(tidy(why)), tone: 'neutral' }
+  }
+
+  // Rien ne disparaît : le « Pourquoi » intégral rejoint le détail dès qu'un
+  // signal l'a résumé, et la consigne de récurrence y est reversée.
+  if (why && recurrence !== null) {
+    details.unshift({ label: 'Pourquoi sélectionné', value: why })
+  }
+  if (hint) details.push({ label: 'À creuser', value: hint })
+
+  return { index: control.index, title: control.title, check, signal, details }
+}
