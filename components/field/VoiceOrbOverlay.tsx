@@ -574,29 +574,59 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
         pointerEvents: visible ? 'auto' : 'none',
       }}
     >
-      {/* Sourdine — préférence d'appareil, persistante, indépendante du micro.
-          Coupe la lecture en cours immédiatement. Miroir du bouton fermer. */}
-      {speech.supported && (
+      {/* ── Contrôles système : quitter et couper le son ──────────────────────
+          Le blob est de la signature visuelle ; ces deux boutons sont du
+          CONTRÔLE. Ils doivent rester visibles et touchables dans les cinq
+          états — écoute, fin de parole, réflexion, parole, attente.
+
+          Défaut corrigé : ils étaient frères du groupe d'état, qui porte
+          `z-10`, occupe toute la largeur et démarre en haut de l'écran. Ils
+          passaient donc DESSOUS — peints sous son dégradé dès qu'un fil
+          existait, et surtout inatteignables au doigt puisque le groupe
+          recouvrait leurs deux coins. D'où la barre dédiée : un seul plan,
+          au-dessus du fond, du fil et de l'orbe, transparent aux gestes
+          partout sauf sur les boutons eux-mêmes.
+
+          Aucune de leurs propriétés visuelles ne dépend de la phase : un
+          contrôle qui pâlit pendant l'écoute se lit comme désactivé. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between p-5">
+        {/* Sourdine — préférence d'appareil, persistante, indépendante du micro.
+            Elle ne pilote QUE la sortie vocale : pendant l'écoute le réglage est
+            accepté sans rien interrompre, pendant la parole il coupe
+            immédiatement la lecture en cours (`setVoiceMuted` annule la
+            génération). Le déverrouillage iOS n'est déclenché qu'en RÉACTIVANT
+            le son : rien ne doit être envoyé au moteur de parole au moment où
+            l'utilisateur demande le silence. */}
+        {speech.supported ? (
+          <button
+            type="button"
+            onClick={() => { if (speech.muted) primeSpeechOutput(); toggleVoiceMuted() }}
+            aria-label={speech.muted ? 'Activer la réponse vocale' : 'Couper la réponse vocale'}
+            aria-pressed={speech.muted}
+            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/25 active:bg-white/30"
+          >
+            {speech.muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+          </button>
+        ) : (
+          // Réserve la place : sans moteur de parole, la croix reste à droite.
+          <span className="h-11 w-11" aria-hidden />
+        )}
+
+        {/* Sortie ABSOLUE : micro, VAD et boucle audio démontés, lecture en cours
+            coupée et génération invalidée, Wake Lock relâché par l'effet de
+            phase (`exiting` n'en fait pas partie), overlay fermé. Recevable
+            depuis les huit phases actives — y compris `thinking`, où la question
+            est déjà partie : quitter le mode vocal est une autre affirmation que
+            annuler la réponse. */}
         <button
           type="button"
-          onClick={() => { primeSpeechOutput(); toggleVoiceMuted() }}
-          aria-label={speech.muted ? 'Activer la réponse vocale' : 'Couper la réponse vocale'}
-          aria-pressed={speech.muted}
-          className="absolute left-5 top-5 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white/60 active:bg-white/20"
+          onClick={handleClose}
+          aria-label="Fermer"
+          className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/25 active:bg-white/30"
         >
-          {speech.muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+          <X className="h-5 w-5" />
         </button>
-      )}
-
-      {/* Bouton fermer */}
-      <button
-        type="button"
-        onClick={handleClose}
-        aria-label="Fermer"
-        className="absolute right-5 top-5 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white/60 active:bg-white/20"
-      >
-        <X className="h-5 w-5" />
-      </button>
+      </div>
 
       {/* Groupe orbe + label = ÉTAT COURANT. Sans fil : centré, légèrement
           au-dessus du milieu. Dès le premier échange : ancré en haut et réduit,
