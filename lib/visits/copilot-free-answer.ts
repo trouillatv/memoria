@@ -16,7 +16,7 @@ import type { SubjectDetailContext } from './copilot-subject-context'
 import type { SiteCopilotDelta } from './copilot-context'
 import { buildFallbackText } from './copilot-context'
 import { SPOKEN_PROMPT_RULES } from './copilot-answer'
-import { sanitizeSpokenText, spokenFromShortAnswer, buildSpokenFallback } from '@/lib/voice/spoken-answer'
+import { sanitizeSpokenText, spokenFromShortAnswer, buildSpokenFallback, SPOKEN_MAX_CHARS } from '@/lib/voice/spoken-answer'
 import type { ActorContext } from '@/lib/db/site-actor-responsibilities'
 import type { VisitControl } from './visit-plan-builder'
 import { frDayMonthYearLocal } from '@/lib/time/local-date'
@@ -246,7 +246,20 @@ export async function answerCopilotFreeQuestion(
     if (result.parsed) {
       // Lu sur l'objet BRUT : Zod retire les clés inconnues, et surtout un
       // `spokenText` invalide ne doit pas faire échouer le parse de la réponse.
-      const spokenFromLlm = sanitizeSpokenText((result.parsed as { spokenText?: unknown }).spokenText)
+      const rawSpoken = (result.parsed as { spokenText?: unknown }).spokenText
+      const spokenFromLlm = sanitizeSpokenText(rawSpoken)
+      // Une voix qui disparaît ne laisse aucune trace : le texte reste juste,
+      // l'utilisateur n'entend rien, et rien ne distingue « le modèle n'a rien
+      // produit » de « la synthèse a été jetée parce qu'elle dépassait le
+      // plafond ». Ce warn est la seule façon de mesurer la fréquence réelle du
+      // silence — sans lui, on optimiserait à l'aveugle.
+      if (spokenFromLlm === null) {
+        console.warn('[copilot-free] spokenText écarté', JSON.stringify({
+          present: typeof rawSpoken === 'string',
+          length: typeof rawSpoken === 'string' ? rawSpoken.length : 0,
+          max: SPOKEN_MAX_CHARS,
+        }))
+      }
 
       const maybeValid = answerSchema.safeParse(result.parsed)
       if (maybeValid.success) {

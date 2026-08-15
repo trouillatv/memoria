@@ -26,6 +26,36 @@
 export const SPOKEN_MAX_CHARS = 450
 
 /**
+ * En deçà, une coupe ne conserverait plus l'essentiel : mieux vaut se taire que
+ * prononcer un début de réponse qui laisse croire que MemorIA n'a trouvé que ça.
+ */
+export const SPOKEN_MIN_KEPT_CHARS = 200
+
+/**
+ * Coupe à la dernière phrase COMPLÈTE tenant sous le plafond.
+ *
+ * La doctrine initiale — « trop long : jeté, jamais tronqué » — supposait le
+ * dépassement rare. Le diagnostic PETRO du 2026-08-15 montre l'inverse : sur
+ * 17 appels identiques, le modèle produit régulièrement 430 à 500 caractères et
+ * cinq réponses ont été jetées EN ENTIER (467, 476, 500…). Une voix muette une
+ * fois sur trois, sans trace, se vit comme une panne aléatoire — c'est
+ * exactement ce que « ils sont aléatoires suivant la demande » décrivait.
+ *
+ * Couper à une frontière de phrase n'est pas l'amputation que la règle voulait
+ * éviter : c'est un point final déplacé. Le plafond de 30 secondes est conservé,
+ * le silence disparaît. Si aucune phrase complète n'entre sous le plafond (bloc
+ * d'un seul tenant), on se tait comme avant.
+ */
+function truncateAtSentence(clean: string): string | null {
+  const head = clean.slice(0, SPOKEN_MAX_CHARS)
+  // `[\s\S]*` est gourmand : la capture s'arrête au DERNIER terminateur possible.
+  const m = head.match(/^[\s\S]*[.!?…](?=\s|$)/)
+  if (!m) return null
+  const kept = m[0].trim()
+  return kept.length >= SPOKEN_MIN_KEPT_CHARS ? kept : null
+}
+
+/**
  * Seuil sous lequel une réponse SANS `spokenText` (repli déterministe, verdict
  * quantitatif) est directement lisible telle quelle. Au-dessus, silence : on ne
  * lit pas une check-list à voix haute, et on ne paie pas un second appel LLM
@@ -62,14 +92,15 @@ function normalizeForSpeech(input: string): string {
  * validation de la réponse : mauvais type, vide ou trop long → `null`, jamais
  * une erreur, jamais un repli métier.
  *
- * Trop long = jeté, pas tronqué : couper à 400 caractères produirait une phrase
- * amputée en plein milieu, ce qui s'entend beaucoup plus qu'un silence.
+ * Trop long : on coupe à la dernière phrase complète (cf. `truncateAtSentence`),
+ * jamais en plein milieu d'une phrase — une phrase amputée s'entend beaucoup
+ * plus qu'un silence, mais un silence complet s'entend encore plus.
  */
 export function sanitizeSpokenText(raw: unknown): string | null {
   if (typeof raw !== 'string') return null
   const clean = normalizeForSpeech(raw)
   if (!clean) return null
-  if (clean.length > SPOKEN_MAX_CHARS) return null
+  if (clean.length > SPOKEN_MAX_CHARS) return truncateAtSentence(clean)
   return clean
 }
 

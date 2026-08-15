@@ -4,6 +4,7 @@ import {
   spokenFromShortAnswer,
   buildSpokenFallback,
   SPOKEN_MAX_CHARS,
+  SPOKEN_MIN_KEPT_CHARS,
   SHORT_ANSWER_MAX_CHARS,
 } from '@/lib/voice/spoken-answer'
 import { pickFrenchVoice, type VoiceLike } from '@/lib/voice/speech-output'
@@ -38,10 +39,36 @@ describe('sanitizeSpokenText — la voix ne peut jamais casser la réponse', () 
     expect(sanitizeSpokenText(input)).toBeNull()
   })
 
-  it('trop long → jeté, jamais tronqué (une phrase amputée s’entend)', () => {
-    const trop = 'a'.repeat(SPOKEN_MAX_CHARS + 1)
-    expect(sanitizeSpokenText(trop)).toBeNull()
+  it('un bloc sans fin de phrase reste jeté (on ne coupe pas au milieu d’un mot)', () => {
+    expect(sanitizeSpokenText('a'.repeat(SPOKEN_MAX_CHARS + 1))).toBeNull()
     expect(sanitizeSpokenText('a'.repeat(SPOKEN_MAX_CHARS))).toHaveLength(SPOKEN_MAX_CHARS)
+  })
+
+  it('trop long mais phrasé → coupé à la dernière phrase complète, jamais silencieux', () => {
+    // Cas réellement observé sur PETRO : le modèle produit 467, 476, 500
+    // caractères. Jeter l'ensemble rendait MemorIA muette une fois sur trois.
+    const phrase = "La gestion du matériel sur site non sécurisé a évolué le 13 août. "
+    const trop = phrase.repeat(8)   // ~528 caractères, ponctué
+    expect(trop.length).toBeGreaterThan(SPOKEN_MAX_CHARS)
+
+    const out = sanitizeSpokenText(trop)
+    expect(out).not.toBeNull()
+    expect(out!.length).toBeLessThanOrEqual(SPOKEN_MAX_CHARS)
+    expect(out!.length).toBeGreaterThanOrEqual(SPOKEN_MIN_KEPT_CHARS)
+    expect(out!.endsWith('.')).toBe(true)
+  })
+
+  it('une seule phrase interminable : silence plutôt qu’amorce trompeuse', () => {
+    // Rien ne peut être conservé sans amputer : la coupe n'a pas de frontière et
+    // une amorce laisserait croire que la réponse s'arrête là.
+    const monobloc = 'mot '.repeat(140) + 'fin.'
+    expect(monobloc.length).toBeGreaterThan(SPOKEN_MAX_CHARS)
+    expect(sanitizeSpokenText(monobloc)).toBeNull()
+  })
+
+  it('la coupe ne conserve pas une amorce trop courte', () => {
+    const out = sanitizeSpokenText('Oui. ' + 'x'.repeat(SPOKEN_MAX_CHARS))
+    expect(out).toBeNull()
   })
 
   it('retire le markdown : la voix ne prononce pas des astérisques', () => {

@@ -48,11 +48,21 @@ const ANSWER_GEMINI_SCHEMA = {
  * hiérarchisant, et non décrire la réponse écrite. L'écran et la voix ne sont
  * pas deux systèmes concurrents — la voix donne l'essentiel, l'écran conserve
  * les preuves — donc la voix n'a pas à renvoyer à l'écran.
+ *
+ * Correctif du diagnostic PETRO (même jour) : la version précédente illustrait
+ * la consigne par des exemples littéraux ("sans changement depuis quatre
+ * passages", "revient depuis deux visites"). Le modèle les recopiait comme des
+ * FAITS, y compris sur des sujets que le contexte donnait explicitement pour
+ * modifiés l'avant-veille. Un exemple de style dans un prompt de restitution
+ * devient une source de vérité : il n'y en a plus. La hiérarchie, elle, est
+ * désormais celle du moteur — le LLM annonce l'étendue et suit l'ordre reçu.
  */
 export const SPOKEN_PROMPT_RULES = `
 Champ "spokenText" : ta RÉPONSE ORALE à la question, prononcée pendant que le texte complet s'affiche. Ce n'est ni un résumé de ta réponse écrite, ni sa description : c'est ce que tu dirais à voix haute si le conducteur de travaux te posait la question en marchant sur le chantier.
 — Quand tu as de la matière, structure ainsi : le verdict, puis les 1 à 3 éléments les plus importants, puis ce qui les rend importants. Hiérarchiser est précisément le travail attendu de toi.
-— Nomme les sujets et donne le fait qui les distingue ("sans changement depuis quatre passages", "revient depuis deux visites"). Un compteur seul ne renseigne personne.
+— Nomme les sujets et donne, pour chacun, le fait qui le distingue, repris des champs du contexte ("why", "changeSinceLastVisit", "lastKnown"). Un compteur seul ne renseigne personne.
+— N'emploie AUCUNE formule de récurrence ou d'immobilité ("depuis N passages", "revient sans changement", "toujours pas traité") si aucun champ du contexte ne l'établit. Un sujet dont le contexte indique une évolution récente n'est jamais présenté comme stagnant.
+— Quand le contexte contient une liste déjà hiérarchisée par MemorIA (par exemple "recommandations_memoria"), annonce d'abord COMBIEN elle compte d'éléments, puis détaille les tout PREMIERS dans l'ordre donné. Cet ordre est la priorité calculée : tu ne choisis pas librement lesquels tu retiens, et tu ne laisses jamais croire que la liste se limite à ceux que tu cites.
 — La longueur est commandée par la question, jamais par un gabarit. Une question fermée appelle une ou deux phrases ; une question large ("où en est le chantier ?") en tolère trois ou quatre. Plafond absolu : 30 secondes de parole.
 — N'énumère pas tout. Ce qui n'entre pas dans la hiérarchie reste à l'écran, sans que tu aies à le signaler.
 — NE DIS JAMAIS "le détail est affiché", "consultez l'écran", "vous trouverez ci-dessous", ni aucune formule équivalente. L'utilisateur a l'écran sous les yeux. Termine sur ta réponse.
