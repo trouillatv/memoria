@@ -23,6 +23,7 @@ import {
 import { markVoice } from '@/lib/voice/voice-latency'
 import { beginVoiceTurn, traceVoice } from '@/lib/voice/voice-trace'
 import { VoiceTracePanel } from '@/components/field/VoiceTracePanel'
+import { VoiceThreadAnswer } from '@/components/field/VoiceThreadAnswer'
 import {
   browserWakeLockEnv,
   createWakeLockController,
@@ -545,9 +546,13 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
       : '0 0 40px 6px rgba(139,92,246,0.38), 0 0 80px 16px rgba(139,92,246,0.10)',
   }
 
+  // Le libellé est l'état courant, formulé du point de vue de l'utilisateur : ce
+  // que MemorIA fait, ou ce qu'il peut faire. En `ready` on dit l'action
+  // disponible (« parler »), pas la mécanique interne (« reprendre ») : le micro
+  // s'est relâché, mais rien n'est interrompu de son point de vue.
   const statusLabel =
     isError                                        ? voiceErrorMessage(state.error) :
-    phase === 'ready'                              ? 'Touchez pour reprendre' :
+    phase === 'ready'                              ? 'Touchez pour parler' :
     speaking                                       ? 'Je vous réponds…' :
     phase === 'thinking'                           ? 'Je prépare ça…' :
     heard                                          ? 'Je vous ai entendu…' :
@@ -593,14 +598,20 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
         <X className="h-5 w-5" />
       </button>
 
-      {/* Groupe orbe + label. Sans fil : centré, légèrement au-dessus du milieu.
-          Dès le premier échange : ancré en haut et réduit, pour laisser au fil
-          la plus grande part de l'écran. */}
+      {/* Groupe orbe + label = ÉTAT COURANT. Sans fil : centré, légèrement
+          au-dessus du milieu. Dès le premier échange : ancré en haut et réduit,
+          pour laisser au fil la plus grande part de l'écran.
+          Il est au-dessus du fil dans l'empilement, avec un dégradé sous lui :
+          la conversation passée glisse DERRIÈRE l'état live au lieu de le
+          concurrencer. Sans cela, « MemorIA écoute… » flottait au-dessus d'un
+          bloc de texte plus dense que lui, et l'œil partait sur le texte. */}
       <div
         className={hasThread
-          ? 'flex-none flex w-full flex-col items-center pt-[76px]'
-          : 'flex-1 flex w-full flex-col items-center justify-center'}
-        style={hasThread ? undefined : { marginTop: '-6vh' }}
+          ? 'relative z-10 flex-none flex w-full flex-col items-center pt-[70px] pb-4'
+          : 'relative z-10 flex-1 flex w-full flex-col items-center justify-center'}
+        style={hasThread
+          ? { background: 'linear-gradient(to bottom, rgba(5,5,15,0.62) 62%, rgba(5,5,15,0))' }
+          : { marginTop: '-6vh' }}
       >
         {/* Hauteur réservée constante par état : c'est la MISE À L'ÉCHELLE qui
             anime, pas le flux. Sans cela, le fil sauterait à chaque transition. */}
@@ -623,7 +634,7 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
           disabled={phase !== 'listening' && !speaking && phase !== 'ready'}
           aria-label={
             speaking          ? 'Toucher pour arrêter la lecture' :
-            phase === 'ready' ? 'Toucher pour reprendre la conversation' :
+            phase === 'ready' ? 'Toucher pour parler' :
                                 'Toucher pour terminer'
           }
           className={[
@@ -663,9 +674,16 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
         </div>
         </div>
 
-        {/* Label d'état + contexte en dessous */}
-        <div className={`${hasThread ? 'mt-4' : 'mt-10'} text-center`}>
-          <p className="text-[16px] font-medium text-white/88 tracking-tight">{statusLabel}</p>
+        {/* Label d'état + contexte en dessous. En session engagée il monte d'un
+            cran en contraste et en graisse : c'est la seule ligne de l'écran qui
+            dit ce qui se passe MAINTENANT. */}
+        <div className={`${hasThread ? 'mt-3' : 'mt-10'} text-center`}>
+          <p
+            className={`tracking-tight ${hasThread ? 'text-[17px] font-semibold text-white' : 'text-[16px] font-medium text-white/88'}`}
+            style={hasThread ? { textShadow: '0 1px 12px rgba(5,5,15,0.65)' } : undefined}
+          >
+            {statusLabel}
+          </p>
 
           {/* Chantier sous le statut — hiérarchie : présence → état → contexte.
               Une fois la conversation engagée, le contexte est établi : le
@@ -706,20 +724,38 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
           ici est la réponse écrite complète — la voix, elle, n'en dit que
           l'essentiel. */}
       {hasThread && (
-        <div className="flex-1 min-h-0 w-full overflow-y-auto px-6 pb-10">
-          <div className="mx-auto flex max-w-[520px] flex-col gap-5">
-            {turns.map((turn) => (
-              <div key={turn.id} className="flex flex-col gap-2">
-                <p className="self-end max-w-[85%] rounded-2xl rounded-br-md bg-violet-500/22 px-4 py-2.5 text-[15px] leading-snug text-white/90">
-                  {turn.question}
-                </p>
-                {turn.answer && (
-                  <p className="max-w-[92%] whitespace-pre-line text-[15px] leading-relaxed text-white/72">
-                    {turn.answer}
+        <div
+          className="flex-1 min-h-0 w-full overflow-y-auto px-6 pb-10 -mt-2"
+          // Le haut du fil s'efface sous le groupe d'état : rien ne « touche »
+          // le libellé courant, et le défilement ne produit pas de bord franc.
+          style={{
+            maskImage: 'linear-gradient(to bottom, transparent 0, black 40px)',
+            WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, black 40px)',
+          }}
+        >
+          <div className="mx-auto flex max-w-[520px] flex-col gap-5 pt-2">
+            {turns.map((turn, i) => {
+              // Seul le tour courant est pleinement lisible. Les précédents ne
+              // sont ni masqués ni repliés — ils reculent. L'historique reste
+              // consultable d'un regard sans disputer l'attention à l'état live.
+              const isCurrent = i === turns.length - 1
+              return (
+                <div
+                  key={turn.id}
+                  className="flex flex-col gap-2 transition-opacity duration-500"
+                  style={{ opacity: isCurrent ? 1 : 0.4 }}
+                >
+                  <p className="self-end max-w-[85%] rounded-2xl rounded-br-md bg-violet-500/22 px-4 py-2.5 text-[15px] leading-snug text-white/90">
+                    {turn.question}
                   </p>
-                )}
-              </div>
-            ))}
+                  {turn.answer && (
+                    <div className="max-w-[92%]">
+                      <VoiceThreadAnswer text={turn.answer} />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
             <div ref={threadEndRef} />
           </div>
         </div>
