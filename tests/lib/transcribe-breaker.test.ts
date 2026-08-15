@@ -50,6 +50,10 @@ describe('transcribeAudioForCopilot — disjoncteur OpenAI', () => {
     __resetOpenAiBreaker()
     vi.stubEnv('OPENAI_API_KEY', 'sk-test')
     vi.stubEnv('GOOGLE_GENAI_API_KEY', 'gk-test')
+    // Le disjoncteur ne se constate que si OpenAI est appelé : ces cinq tests
+    // décrivent le mode `auto`, qui n'est plus le défaut depuis que la
+    // production a montré qu'une instance neuve par tour le rend inopérant.
+    vi.stubEnv('VOICE_STT_PROVIDER', 'auto')
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-16T08:00:00Z'))
   })
@@ -127,6 +131,20 @@ describe('transcribeAudioForCopilot — disjoncteur OpenAI', () => {
     expect(calls.gemini).toBe(0)
   })
 
+  it('en mode `auto`, cinq tours sur cinq INSTANCES neuves paient cinq fois — le cas réel', async () => {
+    const calls = installFetchSpy()
+
+    for (let i = 0; i < 5; i++) {
+      // Une instance Fluid Compute neuve = un disjoncteur vierge. C'est ce que
+      // la production a fait deux fois sur deux, et ce que l'interrupteur
+      // supprime : le test du haut décrit l'instance chaude, celui-ci la froide.
+      __resetOpenAiBreaker()
+      await transcribeAudioForCopilot(AUDIO, 'audio/webm', 'webm')
+    }
+
+    expect(calls.openai).toBe(5)
+  })
+
   it('une panne franche (500) reste une erreur, elle n’est pas masquée par le disjoncteur', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: unknown) =>
       String(url).startsWith(OPENAI_URL)
@@ -135,5 +153,87 @@ describe('transcribeAudioForCopilot — disjoncteur OpenAI', () => {
     ))
 
     await expect(transcribeAudioForCopilot(AUDIO, 'audio/webm', 'webm')).rejects.toThrow(/500/)
+  })
+})
+
+/**
+ * L'interrupteur opérationnel — la réponse courte au fait que le disjoncteur ne
+ * franchit pas la frontière d'instance. Ces tests ne mesurent pas de latence :
+ * ils comptent les appels réseau, quelle que soit la fraîcheur de l'instance.
+ */
+describe('transcribeAudioForCopilot — interrupteur VOICE_STT_PROVIDER', () => {
+  beforeEach(() => {
+    __resetOpenAiBreaker()
+    vi.stubEnv('OPENAI_API_KEY', 'sk-test')
+    vi.stubEnv('GOOGLE_GENAI_API_KEY', 'gk-test')
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+    __resetOpenAiBreaker()
+  })
+
+  it('par défaut, OpenAI n’est JAMAIS appelé — même sur une instance neuve à chaque tour', async () => {
+    vi.stubEnv('VOICE_STT_PROVIDER', '')
+    const calls = installFetchSpy()
+
+    for (let i = 0; i < 5; i++) {
+      __resetOpenAiBreaker() // instance neuve : le pire cas de la production
+      const r = await transcribeAudioForCopilot(AUDIO, 'audio/webm', 'webm')
+      expect(r.text).toBe('transcription gemini')
+      expect(r.model).toBe('gemini-2.5-flash')
+    }
+
+    expect(calls.openai).toBe(0) // avant l’interrupteur : 5
+    expect(calls.gemini).toBe(5)
+  })
+
+  it('aucun `openaiMs` n’est journalisé : il n’y a plus de péage à mesurer', async () => {
+    vi.stubEnv('VOICE_STT_PROVIDER', 'gemini')
+    installFetchSpy()
+
+    const r = await transcribeAudioForCopilot(AUDIO, 'audio/webm', 'webm')
+
+    expect(r.timings?.openaiMs).toBeUndefined()
+    expect(r.timings?.providerWaitMs).toBeTypeOf('number')
+  })
+
+  it('le prompt lexical suit Gemini : l’interrupteur ne dégrade pas la contextualisation', async () => {
+    vi.stubEnv('VOICE_STT_PROVIDER', 'gemini')
+    const bodies: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: unknown, init?: RequestInit) => {
+      if (String(url).startsWith(OPENAI_URL)) throw new Error('OpenAI ne doit pas être appelé')
+      bodies.push(String(init?.body))
+      return new Response(
+        JSON.stringify({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] }),
+        { status: 200 },
+      )
+    }))
+
+    await transcribeAudioForCopilot(AUDIO, 'audio/webm', 'webm', 'PETRO ATITI, SSI')
+
+    expect(bodies[0]).toContain('PETRO ATITI, SSI')
+  })
+
+  it('`auto` réactive OpenAI sans redéploiement', async () => {
+    vi.stubEnv('VOICE_STT_PROVIDER', 'auto')
+    const calls = installFetchSpy({ openaiOk: true })
+
+    const r = await transcribeAudioForCopilot(AUDIO, 'audio/webm', 'webm')
+
+    expect(r.model).toBe('gpt-4o-mini-transcribe')
+    expect(calls.openai).toBe(1)
+  })
+
+  it('sans clé Gemini, l’interrupteur s’efface : OpenAI reprend la main plutôt que rien', async () => {
+    vi.stubEnv('VOICE_STT_PROVIDER', 'gemini')
+    vi.stubEnv('GOOGLE_GENAI_API_KEY', '')
+    const calls = installFetchSpy({ openaiOk: true })
+
+    const r = await transcribeAudioForCopilot(AUDIO, 'audio/webm', 'webm')
+
+    expect(r.model).toBe('gpt-4o-mini-transcribe')
+    expect(calls.openai).toBe(1)
   })
 })

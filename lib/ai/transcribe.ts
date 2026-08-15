@@ -239,6 +239,36 @@ const OPENAI_BREAKER_COOLDOWN_MS = 15 * 60_000
 
 let openaiBreaker: BreakerState = closedBreaker()
 
+/**
+ * Interrupteur opérationnel du fournisseur STT.
+ *
+ * Le disjoncteur ci-dessus est un état de MODULE : il vit dans une instance de
+ * fonction. La production du 16/08 a montré que deux tours vocaux consécutifs
+ * atterrissent sur deux instances Fluid Compute différentes — chacune est donc
+ * partie sur un disjoncteur vierge, a payé son 429, et le péage de 595–753 ms
+ * a été acquitté à chaque question malgré le Lot 1. La preuve du Lot 1 est
+ * vraie dans une instance et fausse en production à ce rythme de trafic.
+ *
+ * Un disjoncteur partagé règlerait ça mais ajouterait une lecture à chaque
+ * tour, sur un chemin dont on essaie précisément de retirer des allers-retours.
+ * Tant que le quota OpenAI est épuisé — un fait constaté, pas une hypothèse —
+ * la bonne réponse est un interrupteur, pas un automate.
+ *
+ *   VOICE_STT_PROVIDER absent | 'gemini'  → Gemini seul, OpenAI jamais appelé
+ *   VOICE_STT_PROVIDER = 'auto'           → OpenAI d'abord + disjoncteur (historique)
+ *
+ * Le défaut est volontairement `gemini` : en production c'est DÉJÀ Gemini qui
+ * transcrit à 100 %, la seule différence est qu'on cesse de payer le péage pour
+ * l'apprendre. Réactiver OpenAI quand le quota revient est une variable
+ * d'environnement, pas un déploiement. Une reprise automatique propre suppose
+ * un disjoncteur partagé — un lot en soi, non ouvert ici.
+ */
+export type SttMode = 'auto' | 'gemini'
+
+export function sttMode(): SttMode {
+  return process.env.VOICE_STT_PROVIDER?.trim().toLowerCase() === 'auto' ? 'auto' : 'gemini'
+}
+
 /** Réservé aux tests — l'état du disjoncteur est un singleton de module. */
 export function __resetOpenAiBreaker(): void {
   openaiBreaker = closedBreaker()
@@ -265,8 +295,18 @@ export async function transcribeAudioForCopilot(
   const timings: ProviderTimings = {}
 
   const openaiConfigured = Boolean(process.env.OPENAI_API_KEY)
-  const openaiAllowed = openaiConfigured && shouldAttempt(openaiBreaker, Date.now())
-  if (openaiConfigured && !openaiAllowed) {
+  const geminiConfigured = Boolean(process.env.GOOGLE_GENAI_API_KEY)
+
+  // L'interrupteur ne doit jamais rendre la transcription impossible : sans clé
+  // Gemini, « Gemini seul » n'a aucun sens et OpenAI reprend la main quoi qu'il
+  // arrive. C'est la seule condition qui prime sur la configuration.
+  const openaiOffByMode = sttMode() === 'gemini' && geminiConfigured
+  if (openaiOffByMode && openaiConfigured) {
+    console.log('[Voice] stt_gemini_first — OpenAI desactive par configuration')
+  }
+
+  const openaiAllowed = openaiConfigured && !openaiOffByMode && shouldAttempt(openaiBreaker, Date.now())
+  if (openaiConfigured && !openaiOffByMode && !openaiAllowed) {
     console.log('[Voice] openai_breaker_skip', {
       phase: breakerPhase(openaiBreaker, Date.now()),
       openedAt: openaiBreaker.openedAt,
@@ -347,7 +387,7 @@ export async function transcribeAudioForCopilot(
   }
 
   // ── Fallback Gemini ───────────────────────────────────────────────────────
-  if (process.env.GOOGLE_GENAI_API_KEY) {
+  if (geminiConfigured) {
     console.log('[Voice] gemini_call', { mimeType, fileSize, promptLen: lexicalPrompt?.length ?? 0 })
     const { text, timings: gemini } = await transcribeWithGeminiTimed(rawBuffer, mimeType, lexicalPrompt)
     return { text, model: GEMINI_MODEL, timings: { ...timings, ...gemini } }
