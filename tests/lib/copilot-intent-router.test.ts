@@ -5,7 +5,7 @@
 // Les tests READ sont donc les plus critiques.
 
 import { describe, it, expect } from 'vitest'
-import { detectIntent } from '@/lib/visits/copilot-intent-router'
+import { detectIntent, readRemainsPlausible } from '@/lib/visits/copilot-intent-router'
 
 const intent = (q: string) => detectIntent(q).intent
 const confidence = (q: string) => detectIntent(q).confidence
@@ -376,5 +376,45 @@ describe('Tolérance de formulation', () => {
   })
   it('ponctuation : "Ajoute, R4 au plan de visite." → ADD_VISIT_ITEM', () => {
     expect(intent('Ajoute, R4 au plan de visite.')).toBe('ADD_VISIT_ITEM')
+  })
+})
+
+// ── Spéculation de contexte ───────────────────────────────────────────────────
+// `readRemainsPlausible` ne décide d'AUCUNE branche métier : il autorise
+// seulement le chargement anticipé du contexte chantier. Une réponse fausse ne
+// peut donc coûter que des lectures inutiles.
+
+describe('readRemainsPlausible — anticipation du contexte', () => {
+  const plausible = (q: string) => readRemainsPlausible(detectIntent(q))
+
+  it('anticipe sur la formulation qui perdait 1,7 s en production (audit 16/08)', () => {
+    const q = 'Quels sont les points de la réunion de demain à évoquer ?'
+    // Le routeur déterministe se trompe encore de branche…
+    expect(intent(q)).toBe('SCHEDULE_MEETING')
+    expect(confidence(q)).toBe('ambiguous')
+    // …mais il n'est pas sûr, donc le contexte part quand même.
+    expect(plausible(q)).toBe(true)
+  })
+
+  it('anticipe sur toute lecture', () => {
+    expect(plausible('Où en est le chantier ?')).toBe(true)
+    expect(plausible('Quels sujets stagnent ?')).toBe(true)
+    expect(plausible('Que dois-je préparer pour ma prochaine visite ?')).toBe(true)
+  })
+
+  it('n’anticipe pas sur une écriture franche', () => {
+    expect(plausible('Planifie une visite mercredi à 9h')).toBe(false)
+    expect(plausible('Crée une action pour reprendre le SSI')).toBe(false)
+    expect(plausible('Ajoute R4 au plan de visite')).toBe(false)
+  })
+
+  it('anticipe sur une écriture non résolue, jamais sur une écriture certaine', () => {
+    // Une intention d'écriture ambiguë reste requalifiable en lecture par la
+    // couche de compréhension : c'est exactement le cas à couvrir.
+    const ambiguousWrites = ['Réunion vendredi', 'Une visite mercredi']
+    for (const q of ambiguousWrites) {
+      if (intent(q) !== 'READ') expect(confidence(q)).toBe('ambiguous')
+      expect(plausible(q)).toBe(true)
+    }
   })
 })

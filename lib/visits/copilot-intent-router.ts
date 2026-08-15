@@ -30,6 +30,25 @@ export type IntentResult = {
   signals: string[]
 }
 
+/**
+ * Une lecture reste-t-elle plausible après le passage du routeur déterministe ?
+ *
+ * Sert uniquement à décider si le contexte chantier peut être chargé de façon
+ * SPÉCULATIVE, avant la couche de compréhension. Ne décide d'aucune branche
+ * métier : une mauvaise spéculation coûte des lectures inutiles, jamais un
+ * résultat différent.
+ *
+ * Règle : une écriture `ambiguous` est précisément le cas où la compréhension
+ * peut requalifier en lecture. L'audit du 16/08 l'a mesuré en production sur
+ * « Quels sont les points de la réunion de demain à évoquer ? » →
+ * SCHEDULE_MEETING/ambiguous, puis `read_downgrade` par la compréhension, et
+ * 1729 ms d'attente de contexte au lieu de ~150. Une écriture `strong`, elle,
+ * ne redescend jamais : on n'anticipe pas.
+ */
+export function readRemainsPlausible(result: IntentResult): boolean {
+  return result.intent === 'READ' || result.confidence === 'ambiguous'
+}
+
 // ── Normalisation ─────────────────────────────────────────────────────────────
 
 /**

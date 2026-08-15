@@ -8,6 +8,15 @@
 //
 // Extrait verbatim de app/(field)/m/intervention/[id]/voice-note-actions.ts.
 
+import {
+  closedBreaker,
+  shouldAttempt,
+  breakerPhase,
+  recordUnavailable,
+  recordAvailable,
+  type BreakerState,
+} from './provider-breaker'
+
 export function mimeToExt(mime: string): string {
   if (mime.includes('mp4') || mime.includes('m4a')) return 'm4a'
   if (mime.includes('ogg')) return 'ogg'
@@ -58,11 +67,42 @@ function buildGeminiSystemInstruction(lexicalPrompt?: string): string {
   )
 }
 
-async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string, lexicalPrompt?: string): Promise<string> {
+/**
+ * Décomposition du temps passé chez le fournisseur (mandat d'audit, 16/08 :
+ * « instrumenter séparément upload audio / attente fournisseur / transcription
+ * afin que le prochain benchmark explique les ~4 s résiduelles »).
+ *
+ * Limite assumée : `providerWaitMs` agrège le téléversement de la charge ET la
+ * génération, parce qu'un `generateContent` non streamé ne rend la main qu'aux
+ * en-têtes de réponse. Les séparer exigerait de passer la transcription en
+ * streaming — un changement de comportement, hors mandat. La voie ouverte ici
+ * est la régression sur `payloadBytes`, qui varie déjà d'un facteur 3 entre un
+ * tour court et un tour long : la pente donne le coût réseau, l'ordonnée à
+ * l'origine le coût de génération.
+ */
+export type ProviderTimings = {
+  /** Aller-retour OpenAI réellement payé. Absent quand le disjoncteur l'a évité. */
+  openaiMs?: number
+  /** Préparation locale de la charge (encodage base64). CPU pur. */
+  encodeMs?: number
+  /** Envoi de la charge + attente du fournisseur, jusqu'aux en-têtes de réponse. */
+  providerWaitMs?: number
+  /** Lecture du corps de la réponse. */
+  providerBodyMs?: number
+  /** Octets réellement envoyés au fournisseur (base64 inclus). */
+  payloadBytes?: number
+}
+
+async function transcribeWithGeminiTimed(
+  rawBuffer: ArrayBuffer,
+  mimeType: string,
+  lexicalPrompt?: string,
+): Promise<{ text: string; timings: ProviderTimings }> {
   const apiKey = process.env.GOOGLE_GENAI_API_KEY!
   // Gemini n'accepte pas le suffixe codec (ex: "audio/webm;codecs=opus" → "audio/webm")
   const safeMime = mimeType.split(';')[0].trim()
 
+  const tEncode = Date.now()
   // Audio long (réunion) → Files API ; audio court → inline base64.
   const audioPart =
     rawBuffer.byteLength > GEMINI_INLINE_MAX_BYTES
@@ -71,24 +111,39 @@ async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string, le
 
   // Le contenu utilisateur ne contient QUE l'audio.
   // Le vocabulaire et les instructions sont isolés dans systemInstruction.
+  const payload = JSON.stringify({
+    systemInstruction: { parts: [{ text: buildGeminiSystemInstruction(lexicalPrompt) }] },
+    contents: [{ role: 'user', parts: [audioPart] }],
+    // maxOutputTokens au plafond du modèle : une réunion d'1 h dépasse
+    // largement 8192 tokens — sinon la transcription est tronquée.
+    generationConfig: { temperature: 0, maxOutputTokens: 65536, thinkingConfig: { thinkingBudget: 0 } },
+  })
+  const encodeMs = Date.now() - tEncode
+
+  const tWait = Date.now()
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: buildGeminiSystemInstruction(lexicalPrompt) }] },
-        contents: [{ role: 'user', parts: [audioPart] }],
-        // maxOutputTokens au plafond du modèle : une réunion d'1 h dépasse
-        // largement 8192 tokens — sinon la transcription est tronquée.
-        generationConfig: { temperature: 0, maxOutputTokens: 65536, thinkingConfig: { thinkingBudget: 0 } },
-      }),
+      body: payload,
     },
   )
+  const providerWaitMs = Date.now() - tWait
 
   if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`)
+  const tBody = Date.now()
   const data = (await res.json()) as { candidates: Array<{ content: { parts: Array<{ text: string }> } }> }
-  return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
+  const providerBodyMs = Date.now() - tBody
+
+  return {
+    text: data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '',
+    timings: { encodeMs, providerWaitMs, providerBodyMs, payloadBytes: payload.length },
+  }
+}
+
+async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string, lexicalPrompt?: string): Promise<string> {
+  return (await transcribeWithGeminiTimed(rawBuffer, mimeType, lexicalPrompt)).text
 }
 
 /**
@@ -171,12 +226,33 @@ export type CopilotTranscriptionResult = {
   model: string
   tokensAudio?: number
   tokensOutput?: number
+  timings?: ProviderTimings
+}
+
+/**
+ * Fenêtre de réessai du disjoncteur OpenAI.
+ * 15 min : un quota rechargé redevient utilisable dans le quart d'heure, sans
+ * redéploiement, et le coût du réessai (~1 s une fois par instance chaude et
+ * par fenêtre) est sans commune mesure avec le ~1 s PAR TOUR d'aujourd'hui.
+ */
+const OPENAI_BREAKER_COOLDOWN_MS = 15 * 60_000
+
+let openaiBreaker: BreakerState = closedBreaker()
+
+/** Réservé aux tests — l'état du disjoncteur est un singleton de module. */
+export function __resetOpenAiBreaker(): void {
+  openaiBreaker = closedBreaker()
 }
 
 /**
  * Transcription dédiée au Copilote vocal.
  * Priorité : gpt-4o-mini-transcribe (prompt lexical natif) → Gemini (prompt lexical en texte) → erreur.
  * Bascule sur Gemini si OpenAI retourne 429 quota exhausted ou si la clé est absente.
+ *
+ * Depuis l'audit du 16/08, un refus pour quota n'est plus réappris à chaque
+ * question : il ouvre un disjoncteur, et les tours suivants partent directement
+ * sur Gemini. Le comportement fonctionnel est inchangé — c'est déjà Gemini qui
+ * transcrit en production — seul le péage disparaît.
  */
 export async function transcribeAudioForCopilot(
   rawBuffer: ArrayBuffer,
@@ -186,16 +262,32 @@ export async function transcribeAudioForCopilot(
 ): Promise<CopilotTranscriptionResult> {
   const filename = `voice.${ext}`
   const fileSize = rawBuffer.byteLength
+  const timings: ProviderTimings = {}
+
+  const openaiConfigured = Boolean(process.env.OPENAI_API_KEY)
+  const openaiAllowed = openaiConfigured && shouldAttempt(openaiBreaker, Date.now())
+  if (openaiConfigured && !openaiAllowed) {
+    console.log('[Voice] openai_breaker_skip', {
+      phase: breakerPhase(openaiBreaker, Date.now()),
+      openedAt: openaiBreaker.openedAt,
+      nextProbeInMs: Math.max(0, openaiBreaker.nextProbeAt - Date.now()),
+    })
+  }
 
   // ── Tentative OpenAI ──────────────────────────────────────────────────────
-  if (process.env.OPENAI_API_KEY) {
+  if (openaiAllowed) {
+    const tOpenai = Date.now()
     const form = new FormData()
     form.append('file', new Blob([rawBuffer], { type: mimeType }), filename)
     form.append('model', 'gpt-4o-mini-transcribe')
     form.append('language', 'fr')
     if (lexicalPrompt) form.append('prompt', lexicalPrompt)
 
-    console.log('[Voice] openai_call', { model: 'gpt-4o-mini-transcribe', filename, mimeType, fileSize, promptLen: lexicalPrompt?.length ?? 0 })
+    console.log('[Voice] openai_call', {
+      model: 'gpt-4o-mini-transcribe', filename, mimeType, fileSize,
+      promptLen: lexicalPrompt?.length ?? 0,
+      breaker: breakerPhase(openaiBreaker, Date.now()),
+    })
 
     const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
@@ -212,11 +304,14 @@ export async function transcribeAudioForCopilot(
           output_tokens?: number
         }
       }
+      openaiBreaker = recordAvailable()
+      timings.openaiMs = Date.now() - tOpenai
       return {
         text:        data.text?.trim() ?? '',
         model:       'gpt-4o-mini-transcribe',
         tokensAudio: data.usage?.input_token_details?.audio_tokens,
         tokensOutput: data.usage?.output_tokens,
+        timings,
       }
     }
 
@@ -239,16 +334,23 @@ export async function transcribeAudioForCopilot(
 
     const isQuotaError = res.status === 429 || String(errObj?.code).includes('credit') || String(errObj?.code).includes('quota')
     if (!isQuotaError) {
+      // Une panne franche n'est pas une indisponibilité de quota : on la remonte
+      // telle quelle plutôt que de la masquer derrière un disjoncteur.
       throw new Error(`gpt-4o-mini-transcribe ${res.status}: ${JSON.stringify(body)}`)
     }
-    console.warn('[Voice] openai_quota_exhausted — fallback Gemini')
+    timings.openaiMs = Date.now() - tOpenai
+    openaiBreaker = recordUnavailable(openaiBreaker, Date.now(), OPENAI_BREAKER_COOLDOWN_MS)
+    console.warn('[Voice] openai_quota_exhausted — disjoncteur ouvert, fallback Gemini', {
+      wastedMs: timings.openaiMs,
+      nextProbeInMs: OPENAI_BREAKER_COOLDOWN_MS,
+    })
   }
 
   // ── Fallback Gemini ───────────────────────────────────────────────────────
   if (process.env.GOOGLE_GENAI_API_KEY) {
     console.log('[Voice] gemini_call', { mimeType, fileSize, promptLen: lexicalPrompt?.length ?? 0 })
-    const text = await transcribeWithGemini(rawBuffer, mimeType, lexicalPrompt)
-    return { text, model: GEMINI_MODEL }
+    const { text, timings: gemini } = await transcribeWithGeminiTimed(rawBuffer, mimeType, lexicalPrompt)
+    return { text, model: GEMINI_MODEL, timings: { ...timings, ...gemini } }
   }
 
   throw new Error('Aucun provider de transcription disponible (OpenAI quota exhausted, GOOGLE_GENAI_API_KEY absent)')

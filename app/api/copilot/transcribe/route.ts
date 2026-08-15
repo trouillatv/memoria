@@ -3,20 +3,63 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { mimeToExt, transcribeAudioForCopilot } from '@/lib/ai/transcribe'
 
+/** Garde-fou du lancement anticipé du lexique : rien ne part sans un UUID valide. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function POST(req: NextRequest) {
   console.log('[Voice] request_received')
 
-  // Chronométrage des quatre étapes serveur (mandat Vincent, 15/08 : instrumenter
-  // AVANT d'optimiser). `formMs` n'est pas du calcul : c'est le temps pendant
-  // lequel le serveur reçoit l'audio, donc la part réseau de l'upload vue du
-  // serveur — la seule mesurable ici. `lexiconMs` est le prix de la
-  // transcription contextualisée PETRO/SSI : Vincent refuse de la sacrifier,
-  // mais on veut savoir ce qu'elle coûte réellement.
+  // Chronométrage des étapes serveur (mandat Vincent, 15/08 : instrumenter AVANT
+  // d'optimiser ; 16/08 : décomposer les ~4 s résiduelles du STT).
+  //   formMs        — réception du corps de requête vue du serveur
+  //   authMs        — session Supabase
+  //   bufferMs      — matérialisation de l'audio
+  //   lexiconMs     — durée PROPRE du lexique PETRO/SSI, désormais recouverte
+  //   lexiconWaitMs — ce qu'il en reste réellement à payer. C'est le seul des deux
+  //                   qui pèse sur l'utilisateur ; l'écart mesure la parallélisation.
+  //   sttMs         — transcription, décomposée par le fournisseur (openaiMs,
+  //                   encodeMs, providerWaitMs, providerBodyMs, payloadBytes)
+  // Le lexique n'est ni supprimé ni réduit : Vincent refuse de sacrifier la
+  // transcription contextualisée. On ne change que l'instant où on l'attend.
   const t0 = Date.now()
   const marks: Record<string, number> = {}
   const mark = (key: string, from: number) => { marks[key] = Date.now() - from }
 
-  // ── 1. Auth ────────────────────────────────────────────────────────────────
+  // ── 1. FormData ────────────────────────────────────────────────────────────
+  // Lue AVANT l'authentification, pour une seule raison : elle porte le
+  // `siteId`, et le prompt lexical qui en dépend ne dépend pas de l'audio.
+  // L'audit du 16/08 l'a mesuré à 395 ms médians payés en série juste avant le
+  // STT ; les lancer pendant l'authentification (343 ms médians) les recouvre.
+  let form: FormData
+  const tForm = Date.now()
+  try {
+    form = await req.formData()
+  } catch (err) {
+    console.error('[Voice] formdata_error:', err instanceof Error ? err.message : err)
+    return NextResponse.json({ error: 'FormData parse failed', code: 'FORMDATA_ERROR' }, { status: 400 })
+  }
+
+  mark('formMs', tForm)
+
+  const audioFile = form.get('audio') as File | null
+  const siteId    = form.get('siteId') as string | null
+
+  // ── 2. Prompt lexical — lancé, pas attendu ─────────────────────────────────
+  // Le garde-fou UUID borne ce qu'un appel non authentifié peut déclencher : au
+  // pire deux lectures indexées, jamais de contenu renvoyé (la réponse reste
+  // fermée par le 401 ci-dessous). Contenu et taille du lexique inchangés.
+  const tLex = Date.now()
+  const lexicalPromise: Promise<string> = UUID_RE.test(siteId ?? '')
+    // `lexiconMs` = durée propre de la requête ; `lexiconWaitMs` plus bas = ce
+    // qu'il en reste réellement à payer. L'écart entre les deux EST le gain.
+    ? buildLexicalPrompt(siteId as string)
+        .then((v) => { marks.lexiconMs = Date.now() - tLex; return v })
+        // Aucune sortie anticipée (401, audio manquant) ne doit laisser derrière
+        // elle une promesse rejetée non gérée.
+        .catch(() => '')
+    : Promise.resolve('')
+
+  // ── 3. Auth ────────────────────────────────────────────────────────────────
   let userId: string
   const tAuth = Date.now()
   try {
@@ -31,28 +74,13 @@ export async function POST(req: NextRequest) {
 
   mark('authMs', tAuth)
 
-  // ── 2. FormData ────────────────────────────────────────────────────────────
-  let form: FormData
-  const tForm = Date.now()
-  try {
-    form = await req.formData()
-  } catch (err) {
-    console.error('[Voice] formdata_error:', err instanceof Error ? err.message : err)
-    return NextResponse.json({ error: 'FormData parse failed', code: 'FORMDATA_ERROR' }, { status: 400 })
-  }
-
-  mark('formMs', tForm)
-
-  // ── 3. Extraction du fichier ───────────────────────────────────────────────
-  const audioFile = form.get('audio') as File | null
-  const siteId    = form.get('siteId') as string | null
-
   if (!audioFile) {
     console.error('[Voice] audio_missing — champ "audio" absent du FormData')
     return NextResponse.json({ error: 'Audio manquant', code: 'AUDIO_MISSING' }, { status: 400 })
   }
 
   // ── 4. Lecture du buffer ───────────────────────────────────────────────────
+  const tBuffer = Date.now()
   let rawBuffer: ArrayBuffer
   try {
     rawBuffer = await audioFile.arrayBuffer()
@@ -66,15 +94,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Audio vide', code: 'AUDIO_EMPTY' }, { status: 400 })
   }
 
+  mark('bufferMs', tBuffer)
+
   const mimeType = audioFile.type || 'audio/webm'
   const ext      = mimeToExt(mimeType)
   console.log('[Voice] audio_received', { size: rawBuffer.byteLength, type: mimeType, name: audioFile.name, ext, userId })
 
-  // ── 5. Prompt lexical ──────────────────────────────────────────────────────
-  const tLex = Date.now()
-  const lexicalPrompt = siteId ? await buildLexicalPrompt(siteId) : undefined
-  mark('lexiconMs', tLex)
-  console.log('[Voice] lexical_prompt_ready', { length: lexicalPrompt?.length ?? 0, ms: marks.lexiconMs })
+  // ── 5. Prompt lexical — attente résiduelle ─────────────────────────────────
+  const tLexWait = Date.now()
+  const lexicalPrompt = await lexicalPromise
+  mark('lexiconWaitMs', tLexWait)
+  console.log('[Voice] lexical_prompt_ready', {
+    length: lexicalPrompt.length, ownMs: marks.lexiconMs ?? 0, waitMs: marks.lexiconWaitMs,
+  })
 
   // ── 6. Transcription ───────────────────────────────────────────────────────
   console.log('[Voice] provider_call_start', { model: 'gpt-4o-mini-transcribe', mimeType, ext })
@@ -110,8 +142,11 @@ export async function POST(req: NextRequest) {
 
   mark('sttMs', tStt)
   console.log('[Voice] provider_call_ok', { chars: result.text.length, model: result.model })
+  // `sttMs` agrégeait quatre choses distinctes ; il porte désormais sa
+  // décomposition, seul moyen d'expliquer les ~4 s résiduelles au prochain
+  // benchmark. `openaiMs` absent = le disjoncteur a évité l'aller-retour.
   console.log('[Voice] timing', JSON.stringify({
-    bytes: rawBuffer.byteLength, ...marks, totalMs: Date.now() - t0,
+    bytes: rawBuffer.byteLength, ...marks, ...(result.timings ?? {}), totalMs: Date.now() - t0,
   }))
 
   return NextResponse.json({

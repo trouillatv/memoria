@@ -29,7 +29,7 @@ import { understandQuestion, mergeComprehension } from '@/lib/visits/copilot-com
 import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
 import { buildCopilotProposal, buildScheduleProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { parseScheduleFromQuestion, toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
-import { detectIntent } from '@/lib/visits/copilot-intent-router'
+import { detectIntent, readRemainsPlausible } from '@/lib/visits/copilot-intent-router'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logCopilotInteraction } from '@/lib/db/copilot-telemetry'
 import type { CopilotScope } from '@/lib/db/copilot-telemetry'
@@ -166,11 +166,19 @@ export async function askCopilotFreeAction(
   // restent après, inchangés. Mêmes fonctions, mêmes arguments, mêmes gardes
   // d'échec : seul l'instant du `await` change.
   //
-  // Garde-fou : on n'anticipe que si le routeur déterministe lit déjà un READ.
-  // Une intention d'écriture sort avant tout chargement (branche ci-dessous) ;
-  // anticiper y ferait payer des requêtes jamais lues. Le cas inverse — une
-  // écriture ambiguë requalifiée en lecture par la compréhension — charge
-  // séquentiellement comme avant : pas de gain, aucune régression.
+  // Garde-fou : on anticipe dès qu'une LECTURE reste plausible — pas seulement
+  // quand elle est certaine (`readRemainsPlausible`). Le cas mesuré en
+  // production le 16/08 était exactement le contraire : « Quels sont les points
+  // de la réunion de demain à évoquer ? » sortait du routeur en
+  // SCHEDULE_MEETING/ambiguous, donc sans anticipation ; la compréhension la
+  // requalifiait ensuite en lecture (`read_downgrade`), et le contexte ne
+  // démarrait qu'après elle — 1729 ms d'attente au lieu de ~150.
+  //
+  // Une écriture `strong` (verbe de planification explicite, objet « action »)
+  // ne redescend jamais en lecture : elle ne déclenche aucun chargement.
+  // Une spéculation fausse coûte trois lectures jamais consommées — la branche
+  // d'écriture sort avant de les lire — et RIEN d'autre : pas de cache, pas
+  // d'état partagé, pas de contexte réutilisé d'un tour à l'autre.
   //
   // Un échec de chargement produit un overview VIDE, indiscernable d'un chantier
   // réellement sans signal. On trace donc l'échec : il interdit toute affirmation
@@ -197,7 +205,8 @@ export async function askCopilotFreeAction(
   // compréhension, et `contextWaitMs` seul ferait croire à une DB rapide alors
   // qu'elle a simplement eu le temps de finir pendant l'appel LLM léger.
   let contextStartAt = Date.now()
-  const prefetched = deterministicIntent.intent === 'READ'
+  const speculative = readRemainsPlausible(deterministicIntent)
+  const prefetched = speculative
     ? { overview: loadOverview(), briefing: loadBriefing(), prepItems: loadPrepItems() }
     : null
 
@@ -256,7 +265,12 @@ export async function askCopilotFreeAction(
     // Sortie anticipée : aucune donnée du chantier n'est chargée au-delà de ce
     // point. C'est ici, et nulle part ailleurs, qu'une question de préparation
     // de visite peut devenir un formulaire.
-    console.log('[copilot-trace] write', JSON.stringify({ ...traceBase, branch: intentResult.intent }))
+    // `speculationDiscarded` rend le coût de la spéculation comptable en
+    // production : c'est le seul chemin où des lectures sont lancées puis
+    // jamais consommées.
+    console.log('[copilot-trace] write', JSON.stringify({
+      ...traceBase, branch: intentResult.intent, speculationDiscarded: prefetched !== null,
+    }))
     // ── Intention non supportée (réserve, échéance…) ou ambiguë → clarification ──
     if (intentResult.intent === 'UNKNOWN_WRITE') {
       const hasUnsupported = intentResult.signals.includes('unsupported_object')
