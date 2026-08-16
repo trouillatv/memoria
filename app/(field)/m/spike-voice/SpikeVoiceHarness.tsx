@@ -135,6 +135,8 @@ const VAD_CALIBRATION_CHUNKS = 12   // ≈ 480 ms de plancher de bruit
 const VAD_HANGOVER_MS        = 700  // silence continu avant de déclarer la fin
 const VAD_MIN_LOUD_CHUNKS    = 3    // il faut avoir parlé pour pouvoir se taire
 const LIVE_FINALIZE_TIMEOUT_MS = 8000
+/** Attente maximale de `setupComplete` avant d'ouvrir le micro malgré tout. */
+const LIVE_SETUP_TIMEOUT_MS = 8000
 
 // P2-C item 2 (mandat Vincent, 16/08) : corpus obligatoire, entités métier
 // réelles + phrases naturelles chantier — sert à comparer Web Speech (résultat
@@ -648,7 +650,6 @@ export function SpikeVoiceHarness() {
     say('POST /api/spike/live-token…')
     let token: string
     let model: string
-    let instruction: string
     try {
       const res = await fetch('/api/spike/live-token', {
         method: 'POST',
@@ -656,7 +657,7 @@ export function SpikeVoiceHarness() {
         body: JSON.stringify({ siteId: PETRO_SITE_ID }),
       })
       const data = (await res.json()) as {
-        token?: string; model?: string; instruction?: string; lexiconTerms?: number
+        token?: string; model?: string; lexiconTerms?: number
         error?: string; detail?: string
       }
       if (!res.ok || !data.token) {
@@ -665,7 +666,6 @@ export function SpikeVoiceHarness() {
       }
       token = data.token
       model = data.model ?? ''
-      instruction = data.instruction ?? ''
       say(`jeton obtenu · modèle ${model} · lexique ${data.lexiconTerms ?? 0} terme(s)`, (data.lexiconTerms ?? 0) === 0)
     } catch (err) {
       say(`jeton indisponible : ${(err as Error).message}`, true)
@@ -676,21 +676,35 @@ export function SpikeVoiceHarness() {
     //    pas de serveur WebSocket, et le mandat l'interdit explicitement.
     try {
       const { GoogleGenAI, Modality } = await import('@google/genai')
-      const ai = new GoogleGenAI({ apiKey: token })
+      // `apiVersion: 'v1alpha'` est OBLIGATOIRE avec un jeton éphémère : le SDK
+      // bascule alors sur la méthode `BidiGenerateContentConstrained` et passe
+      // le jeton en `access_token`. Sans lui, il construit une URL v1beta que
+      // le jeton ne peut pas ouvrir (vérifié dans dist/node/index.mjs, où le
+      // SDK se contente d'un `console.warn` — invisible sur un téléphone).
+      const ai = new GoogleGenAI({ apiKey: token, httpOptions: { apiVersion: 'v1alpha' } })
       const connectedAt = Date.now()
+      // `setupComplete` arrive 1 à 1,8 s APRÈS la résolution de `connect()`
+      // (mesuré). Envoyer du PCM avant, c'est perdre la première seconde de
+      // parole sans que rien ne l'indique à l'écran.
+      let setupDone: (() => void) | null = null
+      const setupReady = new Promise<void>((resolve) => { setupDone = resolve })
       const session = await ai.live.connect({
         model,
         config: {
-          // La réponse du modèle ne nous intéresse pas : on mesure le canal
-          // `inputTranscription`. TEXT + une instruction « réponds ok » gardent
-          // le tour bon marché sans perturber la transcription de l'entrée.
-          responseModalities: [Modality.TEXT],
+          // Cette config est IGNORÉE : le setup gelé dans le jeton la remplace
+          // intégralement (voir la route). On la garde alignée pour qu'une
+          // lecture du fichier ne laisse pas croire à une divergence.
+          // AUDIO et non TEXT : les 6 modèles Live de cette clé refusent TEXT.
+          responseModalities: [Modality.AUDIO],
           inputAudioTranscription: {},
-          systemInstruction: instruction,
         },
         callbacks: {
           onopen: () => say(`Live ouvert en ${Date.now() - connectedAt} ms`),
           onmessage: (msg: LiveServerMessage) => {
+            if (msg.setupComplete) {
+              say(`Live prêt en ${Date.now() - connectedAt} ms`)
+              setupDone?.()
+            }
             const t = msg.serverContent?.inputTranscription?.text
             if (t) {
               const now = Date.now()
@@ -706,11 +720,24 @@ export function SpikeVoiceHarness() {
               finalizeLive(runId, 'tour terminé')
             }
           },
-          onerror: (e: ErrorEvent) => say(`Live onerror : ${e.message || 'erreur'}`, true),
-          onclose: (e: CloseEvent) => say(`Live fermé (${e.code}${e.reason ? ` — ${e.reason}` : ''})`),
+          onerror: (e: ErrorEvent) => { say(`Live onerror : ${e.message || 'erreur'}`, true); setupDone?.() },
+          onclose: (e: CloseEvent) => {
+            say(`Live fermé (${e.code}${e.reason ? ` — ${e.reason}` : ''})`)
+            setupDone?.()
+          },
         },
       })
       liveSessionRef.current = session as unknown as LiveSession
+
+      // On rend la main seulement quand le serveur est prêt à recevoir de
+      // l'audio. Garde-fou : si `setupComplete` n'arrive jamais, mieux vaut un
+      // essai dégradé qu'un bouton figé sans explication.
+      const guard = setTimeout(() => {
+        say('Live : setupComplete non reçu en 8 s — on démarre quand même', true)
+        setupDone?.()
+      }, LIVE_SETUP_TIMEOUT_MS)
+      await setupReady
+      clearTimeout(guard)
       return true
     } catch (err) {
       say(`connexion Live impossible : ${(err as Error).message}`, true)
