@@ -15,7 +15,8 @@ import { normalizeTranscript, maxDistanceFor, type VocabularyTerm } from '@/lib/
 const PETRO: VocabularyTerm[] = [
   { canonical: 'PETRO ATTITI', kind: 'site', forms: ['PETRO ATTITI'] },
   { canonical: 'Vincent Milon', kind: 'person', forms: ['Vincent Milon'] },
-  { canonical: 'Clim Expair', kind: 'company', forms: ['Clim Expair'] },
+  // Forme fausse documentée, telle que `buildSiteVocabulary` la produit désormais.
+  { canonical: 'Clim Expair', kind: 'company', forms: ['Clim Expair', 'Clim Expert'] },
   { canonical: 'CEGELEC', kind: 'company', forms: ['CEGELEC'] },
   { canonical: 'APAVE', kind: 'company', forms: ['APAVE'] },
   { canonical: 'Ginger', kind: 'company', forms: ['Ginger'] },
@@ -76,11 +77,11 @@ describe('normalizeTranscript — refus de corriger', () => {
   })
 
   it('renonce quand le mot entendu est trop loin du terme réel', () => {
-    // « Climexpert » ↔ « Clim Expair » : 3 substitutions. Le corpus dit
-    // « Clim Expert », l'entreprise s'appelle « Clim Expair » — c'est une
-    // question de donnée, pas de transcription.
-    const r = normalizeTranscript('Climexpert est intervenu hier', PETRO)
-    expect(r.text).toBe('Climexpert est intervenu hier')
+    // Même entreprise, autre faute — mais celle-ci n'est pas documentée : le
+    // moteur n'a pas le droit de deviner. C'est ce test qui prouve que l'alias
+    // du 17/08 n'a pas élargi la tolérance générale.
+    const r = normalizeTranscript('Clim Expresse est intervenu hier', PETRO)
+    expect(r.text).toBe('Clim Expresse est intervenu hier')
     expect(r.corrections).toEqual([])
   })
 
@@ -107,6 +108,34 @@ describe('normalizeTranscript — refus de corriger', () => {
   it('rend le transcript inchangé quand le vocabulaire est vide', () => {
     const phrase = 'Ajoute une réserve sur le chantier pétro à Titi'
     expect(normalizeTranscript(phrase, []).text).toBe(phrase)
+  })
+})
+
+describe('normalizeTranscript — Clim Expair (arbitrage métier du 17/08)', () => {
+  // La vérité métier est « Clim Expair ». « Clim Expert » n'existe pas : c'est
+  // une mauvaise transcription, pas une variante à préserver. Le cas est réel —
+  // il vient du corpus téléphone du 16/08.
+  it('corrige « Clim Expert » vers « Clim Expair », sans hésitation', () => {
+    const r = normalizeTranscript('Clim Expert doit repasser sur le lot climatisation', PETRO)
+    expect(r.text).toBe('Clim Expair doit repasser sur le lot climatisation')
+    expect(r.corrections).toEqual([
+      { from: 'Clim Expert', to: 'Clim Expair', kind: 'company', distance: 0 },
+    ])
+    expect(r.abstentions).toEqual([])
+  })
+
+  it('corrige aussi la forme collée en un mot', () => {
+    const r = normalizeTranscript('Climexpert est intervenu hier', PETRO)
+    expect(r.text).toBe('Clim Expair est intervenu hier')
+  })
+
+  it('laisse « Clim Expert » intact si l’entreprise n’est pas au vocabulaire', () => {
+    // L'alias est une faute attendue SUR UN TERME RÉEL : sans le terme, rien.
+    const r = normalizeTranscript('Clim Expert doit repasser', [
+      { canonical: 'CEGELEC', kind: 'company', forms: ['CEGELEC'] },
+    ])
+    expect(r.text).toBe('Clim Expert doit repasser')
+    expect(r.corrections).toEqual([])
   })
 })
 

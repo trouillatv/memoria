@@ -32,6 +32,32 @@ function strip(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
 }
 
+/**
+ * Fautes de transcription CONNUES, indexées par terme réel.
+ *
+ * Pourquoi ici plutôt qu'en élargissant la tolérance du normaliseur : « Clim
+ * Expert » est à 3 substitutions de « Clim Expair ». Autoriser 3 substitutions
+ * ferait entrer en collision la moitié des noms d'un chantier. Nommer la faute,
+ * elle, ne rend le moteur permissif pour rien d'autre — c'est exactement à ça
+ * que sert un alias.
+ *
+ * Une entrée ne produit RIEN si le terme canonique n'est pas déjà dans le
+ * vocabulaire du chantier : ce n'est pas une liste d'entreprises, c'est une
+ * liste de fautes attendues sur des termes qui, eux, viennent de la base.
+ *
+ * `climexpair` : vérité métier tranchée le 17/08. L'entreprise s'appelle
+ * « Clim Expair » ; « Clim Expert » n'existe pas — c'est le mot courant que le
+ * modèle écrit à la place du nom propre.
+ */
+const KNOWN_MISTRANSCRIPTIONS: Record<string, string[]> = {
+  climexpair: ['Clim Expert'],
+}
+
+/** Formes fausses documentées pour un terme canonique. Vide si aucune ne l'est. */
+export function knownFormsFor(canonical: string): string[] {
+  return KNOWN_MISTRANSCRIPTIONS[strip(canonical).replace(/[^a-z0-9]/g, '')] ?? []
+}
+
 /** Retire un mot de type générique en tête, si ce qui reste est encore distinctif. */
 function distinctiveCore(label: string): string {
   const words = label.trim().split(/\s+/)
@@ -85,7 +111,11 @@ export async function buildSiteVocabulary(siteId: string): Promise<VocabularyTer
     const push = (canonical: string, kind: VocabularyTerm['kind'], forms: string[] = []) => {
       const label = canonical.trim()
       if (!label) return
-      terms.push({ canonical: label, kind, forms: [label, ...forms.map((f) => f.trim()).filter(Boolean)] })
+      terms.push({
+        canonical: label,
+        kind,
+        forms: [label, ...forms.map((f) => f.trim()).filter(Boolean), ...knownFormsFor(label)],
+      })
     }
 
     push(distinctiveCore(siteRes.data.name as string), 'site')
