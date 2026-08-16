@@ -38,6 +38,18 @@ export const PCM_SAMPLE_RATE = 16000
 
 export type PcmTap = { stop: () => void }
 
+/**
+ * Nombre de contextes 16 kHz encore ouverts.
+ *
+ * P0-3 (17/08) : un `AudioContext` non fermé tient le graphe branché sur le
+ * `MediaStream` du micro, même après `track.stop()`. C'est exactement la
+ * question posée par le mandat — « quelle ressource audio reste détenue ? » —
+ * et une réponse par déduction ne vaut rien : ce compteur la rend observable
+ * dans la trace, tour après tour. Une orbe saine le laisse à 0 entre deux tours.
+ */
+let openTaps = 0
+export function openPcmTapCount(): number { return openTaps }
+
 /** Int16 → base64, par tranches pour ne pas exploser la pile d'arguments. */
 export function pcmToBase64(pcm: Int16Array): string {
   const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength)
@@ -83,8 +95,16 @@ export async function attachPcmTap(
     source.connect(node)
 
     const closing = ctx
+    openTaps++
+    // `stop()` est appelé depuis plusieurs endroits du cycle de vie d'un tour
+    // (fin de parole, nettoyage, arrivée tardive du tap). Il doit donc être
+    // idempotent — sans quoi le compteur, qui sert de preuve, mentirait.
+    let stopped = false
     return {
       stop: () => {
+        if (stopped) return
+        stopped = true
+        openTaps--
         node.port.onmessage = null
         try { source.disconnect() } catch { /* graphe déjà démonté */ }
         void closing.close().catch(() => {})

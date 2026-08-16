@@ -48,9 +48,23 @@ function strip(s: string): string {
  * `climexpair` : vérité métier tranchée le 17/08. L'entreprise s'appelle
  * « Clim Expair » ; « Clim Expert » n'existe pas — c'est le mot courant que le
  * modèle écrit à la place du nom propre.
+ *
+ * `petroattiti` : recette terrain du 17/08. Gemini Live a écrit « P3 à Titi ».
+ * Le rapprochement flou ne pouvait pas le rattraper — « p3atiti » est à
+ * 5 substitutions de « petroattiti » pour une tolérance de 1 — et il ne DOIT
+ * pas : autoriser 5 substitutions sur 11 caractères ferait de n'importe quelle
+ * expression française un nom de chantier. La faute est donc nommée. « Pétro à
+ * Titi » y figure aussi bien qu'il passe déjà en flou : nommé, il devient exact
+ * (distance 0) au lieu de consommer l'unique substitution tolérée, qui reste
+ * ainsi disponible pour la variation suivante.
+ *
+ * Volontairement ABSENT : « Pétro Haïti ». Haïti est un mot réel du français ;
+ * en faire un alias, c'est exactement le risque que ces entrées existent pour
+ * éviter.
  */
 const KNOWN_MISTRANSCRIPTIONS: Record<string, string[]> = {
   climexpair: ['Clim Expert'],
+  petroattiti: ['P3 à Titi', 'Pétro à Titi'],
 }
 
 /** Formes fausses documentées pour un terme canonique. Vide si aucune ne l'est. */

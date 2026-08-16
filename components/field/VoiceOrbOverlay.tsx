@@ -6,7 +6,7 @@ import { createVad, DEFAULT_VAD_CONFIG, type Vad } from '@/lib/voice/vad'
 import type { VoiceTurnHandlers, VoiceTurnResult } from '@/app/(field)/m/VoiceOrbContext'
 import type { VoiceTurnPayload } from '@/lib/voice/copilot-stream-client'
 import { openLiveStt, type LiveSttOutcome, type LiveSttSession } from '@/lib/voice/live-stt'
-import { attachPcmTap, type PcmTap } from '@/lib/voice/pcm-tap'
+import { attachPcmTap, openPcmTapCount, type PcmTap } from '@/lib/voice/pcm-tap'
 import {
   voiceReducer,
   voiceErrorMessage,
@@ -247,11 +247,27 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
     /** Transcript Live en vol, armé à la fin de parole. `null` = pas de voie Live. */
     let livePending: Promise<LiveSttOutcome | null> | null = null
 
+    /**
+     * P0-3 (17/08) — propriété du tap PCM.
+     *
+     * `attachPcmTap` est asynchrone (chargement du worklet). Un tour court se
+     * terminait donc AVANT que `pcm` soit affecté : `pcm?.stop()` ne trouvait
+     * rien, puis le `.then` affectait un tap que plus personne ne pouvait
+     * arrêter — un `AudioContext` 16 kHz branché sur le micro, fuité par tour.
+     * Ce drapeau exprime le fait manquant : « ce tour ne veut plus de tap »,
+     * indépendamment du fait qu'il en ait déjà un.
+     */
+    let pcmWanted = true
+    const stopPcm = () => {
+      pcmWanted = false
+      pcm?.stop()
+      pcm = null
+    }
+
     const doCleanup = (recorder?: MediaRecorder) => {
       stopAudioLoop()
       if (recorder?.state === 'recording') recorder.stop()
-      pcm?.stop()
-      pcm = null
+      stopPcm()
       live?.abort()
       live = null
       stream?.getTracks().forEach((t) => t.stop())
@@ -259,6 +275,22 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
     }
     cleanupRef.current = () => doCleanup()
 
+    /** État réel des ressources audio, pour la trace P0-3. Aucune décision n'en dépend. */
+    const audioSnapshot = (recorder?: MediaRecorder) => ({
+      tracks: (stream?.getAudioTracks() ?? []).map(
+        (t) => `${t.readyState}/${t.enabled ? 'on' : 'off'}/${t.muted ? 'muted' : 'live'}`,
+      ),
+      tapsOpen: openPcmTapCount(),
+      tapHeld: pcm !== null,
+      ctx: audioCtx?.state ?? 'none',
+      recorder: recorder?.state ?? 'none',
+      liveHeld: live !== null,
+    })
+
+    // Quelle opération a levé. Le `catch` couvre tout le démarrage : sans ce
+    // repère, un refus du micro et un `AudioContext` impossible à créer
+    // arrivaient dans la même branche et produisaient le même écran rouge.
+    let stage = 'start'
     try {
       // Anti-écho, avant toute chose : le micro ne doit jamais s'ouvrir sur une
       // voix en cours. `stopSpeaking()` est synchrone, donc la coupure est
@@ -267,7 +299,17 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
       // haut-parleur de MemorIA elle-même.
       stopSpeaking()
 
+      // P0-3 : ce que le tour PRÉCÉDENT a laissé derrière lui, relevé juste
+      // avant la demande. Si `tapsOpen` n'est pas 0 ici, la cause du refus micro
+      // est dans le tour d'avant, pas dans celui-ci.
+      traceVoice('mic-open-before', { tapsOpen: openPcmTapCount() })
+      stage = 'getUserMedia'
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      traceVoice('mic-open-after', {
+        tracks: stream.getAudioTracks().map(
+          (t) => `${t.readyState}/${t.enabled ? 'on' : 'off'}/${t.muted ? 'muted' : 'live'}`,
+        ),
+      })
 
       // L'utilisateur a pu fermer pendant l'attente d'autorisation.
       if (stateRef.current.phase !== 'entering') {
@@ -294,10 +336,14 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
           if (live === liveSession) live = null
           return
         }
-        if (live !== liveSession) { tap.stop(); return }  // tour déjà nettoyé
+        // Le tour a pu se conclure PENDANT le chargement du worklet. C'est le
+        // cas qui fuitait : `live` reste non nul après `conclude`, donc le test
+        // sur la session ne suffisait pas à détecter un tour déjà fini.
+        if (!pcmWanted || live !== liveSession) { tap.stop(); return }
         pcm = tap
       })
 
+      stage = 'audioContext'
       audioCtx = new AudioContext()
       const source = audioCtx.createMediaStreamSource(stream)
       const analyser = audioCtx.createAnalyser()
@@ -305,6 +351,7 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
       analyser.smoothingTimeConstant = 0.85
       source.connect(analyser)
 
+      stage = 'mediaRecorder'
       const MIME = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', '']
       const mime = MIME.find((m) => !m || MediaRecorder.isTypeSupported(m)) ?? ''
       const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
@@ -324,10 +371,10 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
         // `audioStreamEnd` part ICI, à l'instant exact de la fin de parole :
         // c'est de lui que se compte la latence Live mesurée le 16/08. On coupe
         // le tap d'abord pour qu'aucun bloc ne parte après la fin du flux.
-        pcm?.stop()
-        pcm = null
+        stopPcm()
         livePending = live?.finish() ?? null
         if (recorder.state === 'recording') recorder.stop()
+        traceVoice('turn-teardown', { at: 'conclude', reason, ...audioSnapshot(recorder) })
       }
       concludeRef.current = conclude
 
@@ -412,8 +459,15 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
 
       recorder.onstop = async () => {
         stopAudioLoop()
+        // Le tap est normalement déjà arrêté par `conclude`. Pas sur tous les
+        // chemins : un `stop()` venu d'ailleurs (nettoyage, arrêt du recorder
+        // par le navigateur) passait ici SANS relâcher le contexte 16 kHz.
+        // `stopPcm` est idempotent — le rappeler ne coûte rien, l'omettre
+        // laissait le micro détenu.
+        stopPcm()
         stream!.getTracks().forEach((t) => t.stop())
         audioCtx!.close().catch(() => {})
+        traceVoice('turn-teardown', { at: 'onstop', ...audioSnapshot(recorder) })
         cleanupRef.current = () => {}
         concludeRef.current = null
 
@@ -436,6 +490,18 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
 
     } catch (err) {
       const e = err as Error
+      // Mandat P0-3 : le nom ET le message exacts de la DOMException, plus
+      // l'état des ressources au moment du refus. Sans eux, « le micro n'est
+      // pas accessible » ne dit rien de ce qu'il faut réparer.
+      traceVoice('mic-error', {
+        stage,
+        name: e.name,
+        message: (e.message || '').slice(0, 120),
+        ...audioSnapshot(),
+      })
+      // Le tour avorté ne doit rien laisser derrière lui — c'est précisément la
+      // faute que ce lot corrige : un échec silencieux empilait les ressources.
+      doCleanup()
       const isDenied = e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError'
       dispatch({ type: 'MIC_FAILED', kind: isDenied ? 'mic-denied' : 'mic-unavailable' })
     }

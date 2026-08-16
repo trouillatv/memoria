@@ -13,7 +13,8 @@ import { normalizeTranscript, maxDistanceFor, type VocabularyTerm } from '@/lib/
 
 /** Vocabulaire fermé réel de PETRO (audit du 16/08 : 7 termes, 0 paire ambiguë). */
 const PETRO: VocabularyTerm[] = [
-  { canonical: 'PETRO ATTITI', kind: 'site', forms: ['PETRO ATTITI'] },
+  // Formes fausses documentées, telles que `buildSiteVocabulary` les produit.
+  { canonical: 'PETRO ATTITI', kind: 'site', forms: ['PETRO ATTITI', 'P3 à Titi', 'Pétro à Titi'] },
   { canonical: 'Vincent Milon', kind: 'person', forms: ['Vincent Milon'] },
   // Forme fausse documentée, telle que `buildSiteVocabulary` la produit désormais.
   { canonical: 'Clim Expair', kind: 'company', forms: ['Clim Expair', 'Clim Expert'] },
@@ -44,7 +45,7 @@ describe('normalizeTranscript — corrections certaines', () => {
     const r = normalizeTranscript('Ajoute une réserve sur le chantier pétro à Titi', PETRO)
     expect(r.text).toBe('Ajoute une réserve sur le chantier PETRO ATTITI')
     expect(r.corrections).toEqual([
-      { from: 'pétro à Titi', to: 'PETRO ATTITI', kind: 'site', distance: 1 },
+      { from: 'pétro à Titi', to: 'PETRO ATTITI', kind: 'site', distance: 0 },
     ])
     expect(r.abstentions).toEqual([])
   })
@@ -135,6 +136,40 @@ describe('normalizeTranscript — Clim Expair (arbitrage métier du 17/08)', () 
       { canonical: 'CEGELEC', kind: 'company', forms: ['CEGELEC'] },
     ])
     expect(r.text).toBe('Clim Expert doit repasser')
+    expect(r.corrections).toEqual([])
+  })
+})
+
+describe('normalizeTranscript — PETRO ATTITI (recette terrain du 17/08)', () => {
+  // Les deux formulations RÉELLEMENT sorties de Gemini Live sur téléphone.
+  // « P3 à Titi » est celle qui a traversé le Copilote sans correction : le
+  // rapprochement flou ne pouvait pas la voir (distance 5 pour une tolérance
+  // de 1) et ne DOIT pas pouvoir la voir.
+  it('corrige « P3 à Titi » vers PETRO ATTITI', () => {
+    const r = normalizeTranscript('où en est le chantier P3 à Titi ?', PETRO)
+    expect(r.text).toBe('où en est le chantier PETRO ATTITI ?')
+    expect(r.corrections).toEqual([
+      { from: 'P3 à Titi', to: 'PETRO ATTITI', kind: 'site', distance: 0 },
+    ])
+    expect(r.abstentions).toEqual([])
+  })
+
+  it('corrige « Pétro à Titi » vers PETRO ATTITI', () => {
+    const r = normalizeTranscript('où en est le chantier Pétro à Titi ?', PETRO)
+    expect(r.text).toBe('où en est le chantier PETRO ATTITI ?')
+    expect(r.corrections[0]).toMatchObject({ to: 'PETRO ATTITI', distance: 0 })
+  })
+
+  it('ne touche toujours pas « Pétro Haïti » — Haïti est un mot réel', () => {
+    // La garde du lot : nommer deux fautes n'a pas rendu le moteur permissif.
+    const phrase = 'où en est le chantier Pétro Haïti ?'
+    expect(normalizeTranscript(phrase, PETRO).text).toBe(phrase)
+  })
+
+  it('ne fabrique pas un nom de chantier depuis du français courant', () => {
+    const phrase = 'le petit atelier a été rangé ce matin'
+    const r = normalizeTranscript(phrase, PETRO)
+    expect(r.text).toBe(phrase)
     expect(r.corrections).toEqual([])
   })
 })

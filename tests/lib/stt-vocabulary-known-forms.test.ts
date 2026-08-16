@@ -20,6 +20,12 @@ describe('knownFormsFor', () => {
     expect(knownFormsFor('clim-expair')).toContain('Clim Expert')
   })
 
+  it('« P3 à Titi » et « Pétro à Titi » sont des formes fausses connues du chantier', () => {
+    // Recette terrain du 17/08 : les deux formulations réellement produites par
+    // Gemini Live pour PETRO ATTITI.
+    expect(knownFormsFor('PETRO ATTITI')).toEqual(['P3 à Titi', 'Pétro à Titi'])
+  })
+
   it('ne rend rien pour un terme sans faute documentée', () => {
     expect(knownFormsFor('CEGELEC')).toEqual([])
     expect(knownFormsFor('Vincent Milon')).toEqual([])
