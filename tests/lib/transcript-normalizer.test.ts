@@ -14,7 +14,7 @@ import { normalizeTranscript, maxDistanceFor, type VocabularyTerm } from '@/lib/
 /** Vocabulaire fermé réel de PETRO (audit du 16/08 : 7 termes, 0 paire ambiguë). */
 const PETRO: VocabularyTerm[] = [
   // Formes fausses documentées, telles que `buildSiteVocabulary` les produit.
-  { canonical: 'PETRO ATTITI', kind: 'site', forms: ['PETRO ATTITI', 'P3 à Titi', 'Pétro à Titi'] },
+  { canonical: 'PETRO ATTITI', kind: 'site', forms: ['PETRO ATTITI', 'P3 à Titi', 'Pétro à Titi', 'Petrofac Titi'] },
   { canonical: 'Vincent Milon', kind: 'person', forms: ['Vincent Milon'] },
   // Forme fausse documentée, telle que `buildSiteVocabulary` la produit désormais.
   { canonical: 'Clim Expair', kind: 'company', forms: ['Clim Expair', 'Clim Expert'] },
@@ -158,6 +158,20 @@ describe('normalizeTranscript — PETRO ATTITI (recette terrain du 17/08)', () =
     const r = normalizeTranscript('où en est le chantier Pétro à Titi ?', PETRO)
     expect(r.text).toBe('où en est le chantier PETRO ATTITI ?')
     expect(r.corrections[0]).toMatchObject({ to: 'PETRO ATTITI', distance: 0 })
+  })
+
+  // Troisième formulation observée en recette terrain le 17/08 (tours 4-5) :
+  // Gemini Live entend le nom d'une entreprise pétrolière réelle (Petrofac) au
+  // lieu du sigle du chantier. Restée non corrigée jusqu'ici, elle passait au
+  // Copilote telle quelle — la classification/réponse restaient correctes
+  // (le contexte du chantier courant compense), mais le nom affiché était faux.
+  it('corrige « Petrofac Titi » vers PETRO ATTITI', () => {
+    const r = normalizeTranscript('où en est le chantier Petrofac Titi ?', PETRO)
+    expect(r.text).toBe('où en est le chantier PETRO ATTITI ?')
+    expect(r.corrections).toEqual([
+      { from: 'Petrofac Titi', to: 'PETRO ATTITI', kind: 'site', distance: 0 },
+    ])
+    expect(r.abstentions).toEqual([])
   })
 
   it('ne touche toujours pas « Pétro Haïti » — Haïti est un mot réel', () => {

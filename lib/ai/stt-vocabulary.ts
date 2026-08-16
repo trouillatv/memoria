@@ -56,7 +56,9 @@ function strip(s: string): string {
  * expression française un nom de chantier. La faute est donc nommée. « Pétro à
  * Titi » y figure aussi bien qu'il passe déjà en flou : nommé, il devient exact
  * (distance 0) au lieu de consommer l'unique substitution tolérée, qui reste
- * ainsi disponible pour la variation suivante.
+ * ainsi disponible pour la variation suivante. « Petrofac Titi » : seconde
+ * forme observée en recette terrain le 17/08 (tours 4-5) — le modèle entend un
+ * nom d'entreprise pétrolière réel (Petrofac) au lieu du sigle du chantier.
  *
  * Volontairement ABSENT : « Pétro Haïti ». Haïti est un mot réel du français ;
  * en faire un alias, c'est exactement le risque que ces entrées existent pour
@@ -64,7 +66,7 @@ function strip(s: string): string {
  */
 const KNOWN_MISTRANSCRIPTIONS: Record<string, string[]> = {
   climexpair: ['Clim Expert'],
-  petroattiti: ['P3 à Titi', 'Pétro à Titi'],
+  petroattiti: ['P3 à Titi', 'Pétro à Titi', 'Petrofac Titi'],
 }
 
 /** Formes fausses documentées pour un terme canonique. Vide si aucune ne l'est. */
