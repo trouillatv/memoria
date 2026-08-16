@@ -43,6 +43,8 @@ type LiveSession = { sendRealtimeInput: (p: unknown) => void; close: () => void 
 export type LiveSttOutcome = {
   /** Transcript normalisé contre le vocabulaire du chantier. */
   text: string
+  /** Texte brut AVANT normalisation — diagnostic P3-B uniquement. */
+  rawText: string
   /** Termes réécrits — vides la plupart du temps, c'est attendu. */
   corrections: { from: string; to: string }[]
   /** Empans où plusieurs termes réels étaient plausibles : rien n'a été touché. */
@@ -271,6 +273,7 @@ export function openLiveStt(siteId: string): LiveSttSession {
       })
       return {
         text: normalized.text,
+        rawText: raw,
         corrections: normalized.corrections.map((c) => ({ from: c.from, to: c.to })),
         abstentions: normalized.abstentions.length,
       }

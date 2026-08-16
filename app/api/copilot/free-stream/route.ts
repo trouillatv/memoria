@@ -73,9 +73,18 @@ async function streamPreparedAnswer(
   encoder: TextEncoder,
 ): Promise<void> {
   if (prep.kind === 'result') {
+    // Chemin déterministe : pas de classification LLM, mais on signale quand même
+    // que la réponse n'est pas passée par le LLM.
+    controller.enqueue(encoder.encode(sseEvent('diag', {
+      det: 'deterministic', merged: 'deterministic', family: 'deterministic', applied: '', q: '',
+    })))
     controller.enqueue(encoder.encode(sseEvent('result', prep.result)))
     return
   }
+
+  // Émet le routage AVANT la génération : le client peut l'afficher même si le
+  // LLM met plusieurs secondes. C'est exactement l'étage que la recette cherche.
+  controller.enqueue(encoder.encode(sseEvent('diag', prep._diag)))
 
   const answerStartAt = Date.now()
   const answer = await answerCopilotFreeQuestionStream(

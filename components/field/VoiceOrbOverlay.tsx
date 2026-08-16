@@ -520,7 +520,7 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
     // rien à recommencer.
     const liveOutcome = livePending ? await livePending.catch(() => null) : null
     const turn: VoiceTurnPayload = liveOutcome
-      ? { kind: 'transcript', text: liveOutcome.text }
+      ? { kind: 'transcript', text: liveOutcome.text, rawText: liveOutcome.rawText }
       : { kind: 'audio', audio: blob, mimeType }
     traceVoice('orb-stt-route', {
       route: liveOutcome ? 'live' : 'server',

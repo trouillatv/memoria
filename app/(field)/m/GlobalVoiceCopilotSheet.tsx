@@ -18,7 +18,7 @@ import { listMeetingSitesAction } from './meeting-actions'
 import { speak } from '@/lib/voice/speech-output'
 import { markVoice } from '@/lib/voice/voice-latency'
 import { traceVoice } from '@/lib/voice/voice-trace'
-import { askCopilotVoiceTurnStreamed } from '@/lib/voice/copilot-stream-client'
+import { askCopilotVoiceTurnStreamed, type CopilotTurnDiag } from '@/lib/voice/copilot-stream-client'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -191,6 +191,10 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
 
     let transcriptText: string | null = null
     let spokenAnnounced = false
+    let spokenCaptured: string | null = null
+    let diagCaptured: CopilotTurnDiag | null = null
+    // Raw STT disponible uniquement sur le chemin Live — nul sur le chemin audio.
+    const rawStt = turn.kind === 'transcript' ? (turn.rawText ?? null) : null
     try {
       const outcome = await askCopilotVoiceTurnStreamed(
         { siteId, turn, history: buildHistory(), resolvedSubjectIds },
@@ -205,8 +209,12 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
             }
             return keepGoing
           },
+          onDiag: (diag) => {
+            diagCaptured = diag
+          },
           onSpokenReady: (spokenText) => {
             spokenAnnounced = true
+            spokenCaptured = spokenText
             markVoice('spokenReady')
             const accepted = speak(spokenText)
             traceVoice('speak-returned', { accepted, transport: 'voice-stream' })
@@ -242,6 +250,30 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
         source: result.kind === 'answer' ? result.source : null,
         spokenText: result.kind === 'answer' ? (spoken == null ? 'null' : 'present') : 'n/a',
         spokenLength: spoken?.length ?? 0,
+      })
+
+      // Trace sémantique bout-en-bout — lisible dans le panneau ?voicedebug=1.
+      // C'est la chaîne complète qui manquait pour diagnostiquer P3-B.
+      // TS 5.9 narrowe les let mutés en closure vers null — `as` bloque le narrowing.
+      const _diag = diagCaptured as CopilotTurnDiag | null
+      const _spoken = spokenCaptured as string | null
+      traceVoice('turn-semantic', {
+        // Étage STT
+        rawStt: rawStt ?? transcriptText ?? '?',
+        normalized: transcriptText ?? '?',
+        sttRoute: turn.kind === 'transcript' ? 'live' : 'server',
+        // Étage routage (vient du serveur via SSE diag)
+        det: _diag != null ? _diag.det : '?',
+        merged: _diag != null ? _diag.merged : '?',
+        family: _diag != null ? _diag.family : '?',
+        applied: _diag != null ? _diag.applied : '—',
+        // Étage réponse
+        answerKind: result.kind,
+        answerSource: result.kind === 'answer' ? result.source : null,
+        spokenLength: _spoken != null ? _spoken.length : 0,
+        spoken: _spoken != null ? _spoken.slice(0, 120) : null,
+        answerLength: result.kind === 'answer' ? result.text.length : null,
+        answer: result.kind === 'answer' ? result.text.slice(0, 150) : null,
       })
 
       pushResultMessage(result)

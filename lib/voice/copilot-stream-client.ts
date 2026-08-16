@@ -36,7 +36,7 @@ export interface StreamedFreeAnswerInput {
 // fois avant la réponse : au-dessus, personne ne sait qui a transcrit.
 
 export type VoiceTurnPayload =
-  | { kind: 'transcript'; text: string }
+  | { kind: 'transcript'; text: string; rawText?: string }
   | { kind: 'audio'; audio: Blob; mimeType: string }
 
 export interface VoiceTurnStreamInput {
@@ -55,10 +55,19 @@ export interface VoiceTurnStreamOutcome {
   aborted: boolean
 }
 
+export type CopilotTurnDiag = {
+  det: string
+  merged: string
+  family: string
+  applied: string
+  q: string
+}
+
 type StreamHandlers = {
   /** Renvoyer `false` = abandonner le tour (orbe fermée) : lecture annulée. */
   onTranscript: (text: string) => boolean
   onSpokenReady: (spokenText: string) => void
+  onDiag?: (diag: CopilotTurnDiag) => void
 }
 
 /**
@@ -102,6 +111,8 @@ async function readVoiceTurnStream(
           await reader.cancel().catch(() => {})
           return { transcript, result: null, aborted: true }
         }
+      } else if (event === 'diag') {
+        handlers.onDiag?.(data as CopilotTurnDiag)
       } else if (event === 'spoken') {
         handlers.onSpokenReady(data.spokenText)
       } else if (event === 'result') {

@@ -30,8 +30,8 @@ import {
 
 /** Les événements qui tranchent A / C / D — mis en évidence dans le flot. */
 const PIVOTAL = new Set([
-  'answer', 'speak-returned', 'speak-refused', 'speak-call', 'speak-queued',
-  'speak-start', 'speak-start-timeout', 'speak-error', 'prime',
+  'answer', 'turn-semantic', 'speak-returned', 'speak-refused', 'speak-call',
+  'speak-queued', 'speak-start', 'speak-start-timeout', 'speak-error', 'prime',
 ])
 
 const EMPTY: ReturnType<typeof voiceTraceSnapshot> = []
@@ -84,15 +84,34 @@ export function VoiceTracePanel() {
 
       <div className="max-h-[32vh] overflow-y-auto px-3 py-2 font-mono text-[10px] leading-[1.45]">
         {entries.length === 0 && <p className="text-white/35">aucun événement</p>}
-        {entries.map((e, i) => (
-          <p key={i} className={PIVOTAL.has(e.event) ? 'text-amber-300' : 'text-white/55'}>
-            <span className="text-white/30">[{e.turn}] +{e.at}ms </span>
-            {e.event}
-            {Object.keys(e.fields).length > 0 && (
-              <span className="text-white/40"> {JSON.stringify(e.fields)}</span>
-            )}
-          </p>
-        ))}
+        {entries.map((e, i) => {
+          if (e.event === 'turn-semantic') {
+            const f = e.fields as Record<string, unknown>
+            const raw = f.rawStt as string
+            const norm = f.normalized as string
+            const changed = raw !== norm
+            return (
+              <div key={i} className="my-1 rounded border border-amber-400/30 bg-amber-400/8 px-2 py-1 text-[9.5px]">
+                <p className="font-semibold text-amber-300">[{e.turn}] tour sémantique ({String(f.sttRoute)})</p>
+                <p><span className="text-white/40">RAW      </span><span className="text-red-300">{raw}</span></p>
+                {changed && <p><span className="text-white/40">NORMALISÉ</span><span className="text-green-300">{norm}</span></p>}
+                <p><span className="text-white/40">ROUTAGE  </span><span className="text-sky-300">det={String(f.det)} → merged={String(f.merged)} | family={String(f.family)}</span>{f.applied !== '—' && <span className="text-white/40"> [{String(f.applied)}]</span>}</p>
+                <p><span className="text-white/40">RÉPONSE  </span><span className="text-amber-200">{String(f.answerKind)}/{String(f.answerSource ?? '—')}</span>{f.spokenLength ? <span className="text-white/40"> spoken={String(f.spokenLength)}c</span> : null}</p>
+                {!!f.spoken && <p><span className="text-white/40">ORAL     </span><span className="text-white/70">{String(f.spoken)}{(f.spokenLength as number) > 120 ? '…' : ''}</span></p>}
+                {!!f.answer && <p><span className="text-white/40">ÉCRIT    </span><span className="text-white/60">{String(f.answer)}{(f.answerLength as number) > 150 ? '…' : ''}</span></p>}
+              </div>
+            )
+          }
+          return (
+            <p key={i} className={PIVOTAL.has(e.event) ? 'text-amber-300' : 'text-white/55'}>
+              <span className="text-white/30">[{e.turn}] +{e.at}ms </span>
+              {e.event}
+              {Object.keys(e.fields).length > 0 && (
+                <span className="text-white/40"> {JSON.stringify(e.fields)}</span>
+              )}
+            </p>
+          )
+        })}
       </div>
     </div>
   )

@@ -193,6 +193,15 @@ export interface CopilotPrecomputedTurn {
 // identique quel que soit le transport — c'est ce qui interdit toute divergence
 // de comportement entre les deux.
 
+/** Données de routage propagées au client via SSE `diag` — diagnostic P3-B. */
+export interface PreparedCopilotAnswerDiag {
+  det: string
+  merged: string
+  family: string
+  applied: string
+  q: string
+}
+
 export interface PreparedCopilotAnswerReady {
   kind: 'ready'
   question: string
@@ -203,6 +212,8 @@ export interface PreparedCopilotAnswerReady {
   filteredPrep: { label: string; stableKey: string }[]
   siteName: string
   extra: FreeAnswerContext
+  /** Routage retenu — propagé en SSE `diag` pour traçabilité terrain. */
+  _diag: PreparedCopilotAnswerDiag
   /** Referme le pipeline (références, télémétrie, trace, diag) — commun aux deux transports. */
   finish: (answer: FreeAnswer, answerStartAt: number) => Promise<CopilotFreeResult>
 }
@@ -999,5 +1010,23 @@ export async function prepareCopilotAnswer(
     return { kind: 'answer', text: answer.text, references, source: answer.source, interactionId: iid, spokenText: answer.spokenText }
   }
 
-  return { kind: 'ready', question, history, items, subjectDetails, delta, filteredPrep, siteName, extra, finish }
+  return {
+    kind: 'ready',
+    question,
+    history,
+    items,
+    subjectDetails,
+    delta,
+    filteredPrep,
+    siteName,
+    extra,
+    _diag: {
+      det: traceBase.det,
+      merged: intentResult.intent,
+      family: classification.primary,
+      applied: traceBase.applied,
+      q: question.slice(0, 120),
+    },
+    finish,
+  }
 }
