@@ -4,7 +4,15 @@
 // Les questions et réponses complètes ne sont exposées que dans le drawer.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { CopilotScope, CopilotAnswerMode, CopilotAnswerStatus } from './copilot-telemetry'
+import type {
+  CopilotScope,
+  CopilotAnswerMode,
+  CopilotAnswerStatus,
+  CopilotAnswerQuality,
+  CopilotCauseDiagnostic,
+  CopilotSttRoute,
+  CopilotRoutingDiag,
+} from './copilot-telemetry'
 
 // ── Types publics ─────────────────────────────────────────────────────────────
 
@@ -30,6 +38,8 @@ export type CopilotInteractionRow = {
   proposalKind: 'action' | 'visit_item' | null
   proposalStatus: 'none' | 'shown' | 'confirmed' | 'cancelled'
   referenceClicks: number
+  answerQuality: CopilotAnswerQuality | null
+  causeDiagnostic: CopilotCauseDiagnostic | null
 }
 
 export type CopilotInteractionDetail = CopilotInteractionRow & {
@@ -43,6 +53,12 @@ export type CopilotInteractionDetail = CopilotInteractionRow & {
   outputTokens: number | null
   estimatedCostEur: number | null
   proposalId: string | null
+  transcriptionRaw: string | null
+  transcriptionCorrections: { from: string; to: string }[]
+  transcriptionAbstentions: number | null
+  sttRoute: CopilotSttRoute | null
+  routingDiag: CopilotRoutingDiag | null
+  feedbackComment: string | null
 }
 
 export type CopilotStats = {
@@ -203,7 +219,7 @@ export async function listCopilotInteractions(
       'id, organization_id, site_id, user_id, conversation_id, created_at, ' +
       'question, conversation_mode, guided_intent, primary_intent, scope, ' +
       'answer_mode, answer_status, cited_reference_count, latency_ms, used_fallback, ' +
-      'proposal_kind, proposal_status, reference_clicks',
+      'proposal_kind, proposal_status, reference_clicks, answer_quality, cause_diagnostic',
       { count: 'exact' },
     )
     .gte('created_at', since)
@@ -269,6 +285,8 @@ export async function listCopilotInteractions(
     proposalKind:         r.proposal_kind as 'action' | 'visit_item' | null,
     proposalStatus:       (r.proposal_status as 'none' | 'shown' | 'confirmed' | 'cancelled') ?? 'none',
     referenceClicks:      (r.reference_clicks as number) ?? 0,
+    answerQuality:        r.answer_quality as CopilotAnswerQuality | null,
+    causeDiagnostic:      r.cause_diagnostic as CopilotCauseDiagnostic | null,
   }))
 
   return { rows, total: count ?? 0 }
@@ -336,6 +354,14 @@ export async function getCopilotInteractionDetail(
     proposalId:           r.proposal_id as string | null,
     proposalStatus:       (r.proposal_status as 'none' | 'shown' | 'confirmed' | 'cancelled') ?? 'none',
     referenceClicks:      (r.reference_clicks as number) ?? 0,
+    answerQuality:        r.answer_quality as CopilotAnswerQuality | null,
+    causeDiagnostic:      r.cause_diagnostic as CopilotCauseDiagnostic | null,
+    transcriptionRaw:     r.transcription_raw as string | null,
+    transcriptionCorrections: (r.transcription_corrections as { from: string; to: string }[]) ?? [],
+    transcriptionAbstentions: r.transcription_abstentions as number | null,
+    sttRoute:             r.stt_route as CopilotSttRoute | null,
+    routingDiag:          r.routing_diag as CopilotRoutingDiag | null,
+    feedbackComment:      r.feedback_comment as string | null,
   }
 }
 

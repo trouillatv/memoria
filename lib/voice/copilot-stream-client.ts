@@ -36,7 +36,7 @@ export interface StreamedFreeAnswerInput {
 // fois avant la réponse : au-dessus, personne ne sait qui a transcrit.
 
 export type VoiceTurnPayload =
-  | { kind: 'transcript'; text: string; rawText?: string }
+  | { kind: 'transcript'; text: string; rawText?: string; corrections?: { from: string; to: string }[]; abstentions?: number }
   | { kind: 'audio'; audio: Blob; mimeType: string }
 
 export interface VoiceTurnStreamInput {
@@ -152,6 +152,11 @@ export async function askCopilotVoiceTurnStreamed(
         question: text,
         history: input.history,
         resolvedSubjectIds: input.resolvedSubjectIds,
+        // Audit Copilote (brique 2) : jamais utilisé comme source de fait,
+        // seulement persisté pour diagnostiquer le STT.
+        rawTranscript: input.turn.rawText ?? null,
+        transcriptionCorrections: input.turn.corrections ?? [],
+        transcriptionAbstentions: input.turn.abstentions ?? null,
       }),
     })
     return readVoiceTurnStream(res, handlers, text)

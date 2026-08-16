@@ -42,7 +42,7 @@ import { parseScheduleFromQuestion, toNomeaTimestamp } from '@/lib/visits/copilo
 import { detectIntent, readRemainsPlausible } from '@/lib/visits/copilot-intent-router'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logCopilotInteraction } from '@/lib/db/copilot-telemetry'
-import type { CopilotScope } from '@/lib/db/copilot-telemetry'
+import type { CopilotScope, CopilotSttRoute } from '@/lib/db/copilot-telemetry'
 import { extractQuestionSubjectPhrase } from '@/lib/visits/copilot-classify'
 import { getCanonicalSubjectLifeForSite } from '@/lib/db/canonical-subject-life'
 import { buildSubjectDetailForCopilot } from '@/lib/visits/copilot-subject-context'
@@ -77,6 +77,14 @@ const inputSchema = z.object({
    * Quand présent, court-circuite entièrement la résolution lexicale.
    */
   selectedCandidateId: z.string().uuid().optional(),
+  /**
+   * Texte brut du STT avant normalizeTranscript(), transmis uniquement pour
+   * l'audit Copilote (brique 2, mandat Vincent 2026-08-17) — jamais utilisé
+   * comme source de fait, jamais transmis au LLM.
+   */
+  rawTranscript: z.string().max(1000).nullable().optional(),
+  transcriptionCorrections: z.array(z.object({ from: z.string(), to: z.string() })).max(20).optional(),
+  transcriptionAbstentions: z.number().int().min(0).max(1000).nullable().optional(),
   /**
    * Décomposition serveur de la latence, sur demande explicite. Fermé par
    * défaut : la ligne `[copilot-diag]` porte la taille du contexte, le modèle
@@ -230,9 +238,14 @@ export async function prepareCopilotAnswer(
   if (!parsed.success) {
     return { kind: 'result', result: { kind: 'answer', text: 'Paramètres invalides.', references: [], source: 'fallback', interactionId: null } }
   }
-  const { siteId, question, history, resolvedSubjectIds, conversationId, selectedCandidateId, diag } = parsed.data
+  const { siteId, question, history, resolvedSubjectIds, conversationId, selectedCandidateId, diag, rawTranscript, transcriptionCorrections, transcriptionAbstentions } = parsed.data
   const t0 = Date.now()
   const diagEnabled = diag || process.env.COPILOT_DIAG === '1'
+  // Audit Copilote (brique 2) : route STT réellement empruntée pour ce tour.
+  // `precomputed` n'est jamais fourni ailleurs que par la route vocale
+  // audio→serveur (P2-C) ; sinon, `rawTranscript` distingue un tour vocal
+  // Live (P3-B) d'une question tapée.
+  const sttRoute: CopilotSttRoute = precomputed ? 'server_stt' : (rawTranscript ? 'client_live' : 'typed')
 
   // Le précalcul n'est accepté QUE s'il porte exactement ce chantier — un
   // décalage (bug d'appelant) le fait ignorer entièrement, et les gardes
@@ -936,6 +949,7 @@ export async function prepareCopilotAnswer(
       ? 'answered'
       : (references.length === 0 ? 'insufficient_data' : 'answered')
 
+    const d = answer.diagnostics
     const iid = await logCopilotInteraction({
       siteId, userId, conversationId: conversationId ?? null,
       question, conversationMode: 'free',
@@ -946,9 +960,22 @@ export async function prepareCopilotAnswer(
       answerStatus,
       citedReferenceCount: references.length,
       sourcesUsed,
-      model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+      model: d?.model ?? null, promptVersion: null,
+      inputTokens: d?.tokensIn ?? null, outputTokens: d?.tokensOut ?? null,
       estimatedCostEur: null, latencyMs,
       usedFallback: answer.source === 'fallback',
+      transcriptionRaw: rawTranscript ?? null,
+      transcriptionCorrections: transcriptionCorrections ?? null,
+      transcriptionAbstentions: transcriptionAbstentions ?? null,
+      sttRoute,
+      routingDiag: {
+        det: traceBase.det,
+        merged: intentResult.intent,
+        family: classification.primary,
+        applied: traceBase.applied,
+        contextChars: d?.contextChars ?? null,
+        finishReason: d?.finishReason ?? null,
+      },
     })
 
     console.log('[copilot-trace] answer', JSON.stringify({
@@ -977,7 +1004,6 @@ export async function prepareCopilotAnswer(
     // construction du prompt est ce qui reste entre l'entrée dans la fonction de
     // réponse et le départ réel vers Gemini.
     if (diagEnabled) {
-      const d = answer.diagnostics
       const answerEntry = answerStartAt - t0
       const promptMs = d ? Math.max(0, (marks.answerMs ?? 0) - d.llmMs - d.parseMs) : 0
       const llmStart = answerEntry + promptMs

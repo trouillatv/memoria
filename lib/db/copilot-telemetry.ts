@@ -77,7 +77,44 @@ export interface CopilotInteractionInput {
   transcriptionTokensAudio?: number | null
   transcriptionTokensOutput?: number | null
   transcriptionError?: string | null
+
+  // Audit Copilote — brique 2 (mig 324+325)
+  /** Texte brut du STT avant normalizeTranscript() — diagnostic uniquement. */
+  transcriptionRaw?: string | null
+  transcriptionCorrections?: { from: string; to: string }[] | null
+  /** Nombre de termes que le normaliseur a refusé de corriger faute de confiance. */
+  transcriptionAbstentions?: number | null
+  /** client_live (P3-B) / server_stt (P2-C) / typed (question tapée). */
+  sttRoute?: CopilotSttRoute | null
+  /** Routage/retrieval retenu — déjà calculé en pipeline, seulement persisté depuis ce lot. */
+  routingDiag?: CopilotRoutingDiag | null
 }
+
+export type CopilotSttRoute = 'client_live' | 'server_stt' | 'typed'
+
+export interface CopilotRoutingDiag {
+  det: string
+  merged: string
+  family: string
+  applied: string
+  contextChars: number | null
+  finishReason: string | null
+}
+
+/** Marque humaine à 3 états — remplace le pouce haut/bas jamais câblé côté UI (mig 325). */
+export type CopilotAnswerQuality = 'correct' | 'incomplete' | 'incorrect'
+
+export type CopilotCauseDiagnostic =
+  | 'stt_error'
+  | 'normalization_error'
+  | 'routing_error'
+  | 'retrieval_gap'
+  | 'missing_relation'
+  | 'missing_entity'
+  | 'missing_data'
+  | 'conflicting_data'
+  | 'answer_generation_error'
+  | 'other'
 
 /**
  * Insère une ligne dans copilot_interactions. Best-effort : ne lève jamais.
@@ -127,6 +164,11 @@ export async function logCopilotInteraction(
         transcription_tokens_audio:   input.transcriptionTokensAudio ?? null,
         transcription_tokens_output:  input.transcriptionTokensOutput ?? null,
         transcription_error:          input.transcriptionError ?? null,
+        transcription_raw:            input.transcriptionRaw ?? null,
+        transcription_corrections:    input.transcriptionCorrections ?? null,
+        transcription_abstentions:    input.transcriptionAbstentions ?? null,
+        stt_route:                    input.sttRoute ?? null,
+        routing_diag:                 input.routingDiag ?? null,
       })
       .select('id')
       .single()
@@ -167,5 +209,47 @@ export async function incrementCopilotReferenceClick(interactionId: string): Pro
     await supabase.rpc('copilot_increment_reference_click', { p_id: interactionId })
   } catch {
     // best-effort — la fonction RPC peut ne pas exister sur les vieux envs
+  }
+}
+
+/**
+ * Enregistre le retour humain sur une réponse (correcte / incomplète /
+ * incorrecte + correction ou note libre optionnelle). Brique 2 de l'audit
+ * Copilote (mandat Vincent 2026-08-17). Best-effort : ne lève jamais.
+ */
+export async function updateCopilotAnswerQuality(
+  interactionId: string,
+  quality: CopilotAnswerQuality,
+  comment?: string | null,
+): Promise<void> {
+  try {
+    const supabase = createAdminClient()
+    await supabase
+      .from('copilot_interactions')
+      .update({ answer_quality: quality, feedback_comment: comment ?? null })
+      .eq('id', interactionId)
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Classifie la cause racine d'une réponse jugée insatisfaisante. Posé par un
+ * humain en recette pour l'instant — une future proposition LLM (brique 3)
+ * devra passer par la même validation humaine, jamais une écriture directe.
+ * Best-effort : ne lève jamais.
+ */
+export async function updateCopilotCauseDiagnostic(
+  interactionId: string,
+  cause: CopilotCauseDiagnostic,
+): Promise<void> {
+  try {
+    const supabase = createAdminClient()
+    await supabase
+      .from('copilot_interactions')
+      .update({ cause_diagnostic: cause })
+      .eq('id', interactionId)
+  } catch {
+    // best-effort
   }
 }

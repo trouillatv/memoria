@@ -2,8 +2,28 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { fetchInteractionDetail } from './actions'
+import { fetchInteractionDetail, setInteractionCauseDiagnostic, setInteractionAnswerQuality } from './actions'
 import type { CopilotInteractionDetail } from '@/lib/db/copilot-interactions-read'
+import type { CopilotCauseDiagnostic, CopilotAnswerQuality } from '@/lib/db/copilot-telemetry'
+
+const CAUSE_OPTIONS: { value: CopilotCauseDiagnostic; label: string }[] = [
+  { value: 'stt_error', label: 'Erreur STT' },
+  { value: 'normalization_error', label: 'Erreur de normalisation' },
+  { value: 'routing_error', label: 'Mauvais routage' },
+  { value: 'retrieval_gap', label: 'Donnée non récupérée (retrieval)' },
+  { value: 'missing_relation', label: 'Relation manquante' },
+  { value: 'missing_entity', label: 'Entité absente' },
+  { value: 'missing_data', label: 'Donnée absente' },
+  { value: 'conflicting_data', label: 'Donnée contradictoire' },
+  { value: 'answer_generation_error', label: 'Erreur de génération' },
+  { value: 'other', label: 'Autre' },
+]
+
+const ANSWER_QUALITY_OPTIONS: { value: CopilotAnswerQuality; label: string; color: string }[] = [
+  { value: 'correct', label: 'Correcte', color: 'bg-green-100 text-green-800' },
+  { value: 'incomplete', label: 'Incomplète', color: 'bg-amber-100 text-amber-800' },
+  { value: 'incorrect', label: 'Incorrecte', color: 'bg-red-100 text-red-800' },
+]
 
 interface Props {
   interactionId: string | null
@@ -44,14 +64,42 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 export function InteractionDrawer({ interactionId, onClose }: Props) {
   const [detail, setDetail] = useState<CopilotInteractionDetail | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [isSavingCause, startCauseTransition] = useTransition()
+  const [isSavingQuality, startQualityTransition] = useTransition()
+  const [commentDraft, setCommentDraft] = useState('')
 
   useEffect(() => {
     if (!interactionId) { setDetail(null); return }
     startTransition(async () => {
       const d = await fetchInteractionDetail(interactionId)
       setDetail(d)
+      setCommentDraft(d?.feedbackComment ?? '')
     })
   }, [interactionId])
+
+  function saveCause(cause: CopilotCauseDiagnostic) {
+    if (!interactionId) return
+    startCauseTransition(async () => {
+      await setInteractionCauseDiagnostic(interactionId, cause)
+      setDetail((prev) => (prev ? { ...prev, causeDiagnostic: cause } : prev))
+    })
+  }
+
+  function saveQuality(quality: CopilotAnswerQuality) {
+    if (!interactionId) return
+    startQualityTransition(async () => {
+      await setInteractionAnswerQuality(interactionId, quality, commentDraft || null)
+      setDetail((prev) => (prev ? { ...prev, answerQuality: quality, feedbackComment: commentDraft || null } : prev))
+    })
+  }
+
+  function saveCommentOnly() {
+    if (!interactionId || !d?.answerQuality) return
+    startQualityTransition(async () => {
+      await setInteractionAnswerQuality(interactionId, d.answerQuality as CopilotAnswerQuality, commentDraft || null)
+      setDetail((prev) => (prev ? { ...prev, feedbackComment: commentDraft || null } : prev))
+    })
+  }
 
   const d = detail
 
@@ -85,6 +133,78 @@ export function InteractionDrawer({ interactionId, onClose }: Props) {
                 <p className="rounded bg-muted/40 p-3 text-sm leading-relaxed whitespace-pre-wrap">{d.answerText}</p>
               </section>
             )}
+
+            {/* Transcription vocale (audit STT) */}
+            {(d.transcriptionRaw || d.sttRoute) && (
+              <section>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Transcription brute (STT)</p>
+                {d.sttRoute && (
+                  <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                    <Badge label={d.sttRoute} color="bg-slate-100 text-slate-700" />
+                    {d.transcriptionAbstentions != null && d.transcriptionAbstentions > 0 && (
+                      <Badge label={`${d.transcriptionAbstentions} abstention(s)`} color="bg-amber-100 text-amber-800" />
+                    )}
+                  </div>
+                )}
+                {d.transcriptionRaw && (
+                  <p className="rounded bg-muted/40 p-3 text-sm leading-relaxed whitespace-pre-wrap italic text-muted-foreground">{d.transcriptionRaw}</p>
+                )}
+                {d.transcriptionCorrections.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {d.transcriptionCorrections.map((c, i) => (
+                      <span key={i} className="rounded bg-amber-50 px-2 py-0.5 text-xs text-amber-800">
+                        {c.from} → {c.to}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* Retour humain — marque qualité + correction/note (brique 2) */}
+            <section>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Retour humain</p>
+              <div className="flex gap-1.5 mb-2">
+                {ANSWER_QUALITY_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    disabled={isSavingQuality}
+                    onClick={() => saveQuality(o.value)}
+                    className={`rounded px-2 py-1 text-xs font-medium disabled:opacity-60 ${
+                      d.answerQuality === o.value ? o.color : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                className="w-full rounded border bg-background px-2 py-1.5 text-sm disabled:opacity-60"
+                rows={2}
+                placeholder="Correction ou note libre…"
+                value={commentDraft}
+                disabled={isSavingQuality}
+                onChange={(e) => setCommentDraft(e.target.value)}
+                onBlur={saveCommentOnly}
+              />
+            </section>
+
+            {/* Cause — classification manuelle (brique 2) */}
+            <section>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Cause diagnostiquée</p>
+              <select
+                className="w-full rounded border bg-background px-2 py-1.5 text-sm disabled:opacity-60"
+                value={d.causeDiagnostic ?? ''}
+                disabled={isSavingCause}
+                onChange={(e) => saveCause(e.target.value as CopilotCauseDiagnostic)}
+              >
+                <option value="" disabled>— non classée —</option>
+                {CAUSE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </section>
 
             {/* Métadonnées */}
             <section>
@@ -167,6 +287,16 @@ export function InteractionDrawer({ interactionId, onClose }: Props) {
                     ? `${(d.estimatedCostEur * 119.33).toFixed(4)} XPF`
                     : null
                 } />
+                {d.routingDiag && (
+                  <>
+                    <Row label="Détection (det)" value={d.routingDiag.det} />
+                    <Row label="Intent fusionné" value={d.routingDiag.merged} />
+                    <Row label="Famille" value={d.routingDiag.family} />
+                    <Row label="Appliqué" value={d.routingDiag.applied} />
+                    <Row label="Contexte (car.)" value={d.routingDiag.contextChars} />
+                    <Row label="Finish reason" value={d.routingDiag.finishReason} />
+                  </>
+                )}
               </div>
             </section>
           </div>
