@@ -31,7 +31,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import type { UserRole } from '@/types/db'
+import type { DbUser, UserRole } from '@/types/db'
 import { OrganisationAmbigueError } from '@/lib/auth/organisation-ambigue'
 
 export { OrganisationAmbigueError }
@@ -47,9 +47,16 @@ export interface OrganizationMembership {
  * Une appartenance suspendue n'est pas rendue : elle garde l'historique, elle
  * ne donne aucun accès. Ne jamais filtrer le statut ailleurs qu'ici — un seul
  * endroit décide de ce que « membre » veut dire.
+ *
+ * `currentUser` — P2-B item D (16/08) : si l'appelant a DÉJÀ résolu le user de
+ * la requête (ex. la garde d'auth d'une route), on lui évite un second aller-
+ * retour vers `getCurrentUserWithProfile()`. Omis (`undefined`) → comportement
+ * inchangé, résolution ici. Passer explicitement `null` = pas de session.
  */
-export async function getOrganizationMembershipsOfUser(): Promise<OrganizationMembership[]> {
-  const user = await getCurrentUserWithProfile()
+export async function getOrganizationMembershipsOfUser(
+  currentUser?: Pick<DbUser, 'id'> | null,
+): Promise<OrganizationMembership[]> {
+  const user = currentUser !== undefined ? currentUser : await getCurrentUserWithProfile()
   if (!user) return []
   const { data, error } = await createAdminClient()
     .from('organization_memberships')
@@ -101,11 +108,15 @@ export type MembershipResult =
  *
  * Rend son rôle DANS cette organisation — jamais le rôle global du profil, qui
  * ne veut plus rien dire dès qu'on appartient à deux entreprises.
+ *
+ * `currentUser` — même optimisation que `getOrganizationMembershipsOfUser` :
+ * réutilise un user déjà résolu par l'appelant au lieu d'en relire un.
  */
 export async function requireOrganizationMembership(
   organizationId: string,
+  currentUser?: Pick<DbUser, 'id'> | null,
 ): Promise<MembershipResult> {
-  const user = await getCurrentUserWithProfile()
+  const user = currentUser !== undefined ? currentUser : await getCurrentUserWithProfile()
   if (!user) return { ok: false, error: ACCES_REFUSE }
   // On ne fait PAS confiance au client sur l'organisation : on relit
   // l'appartenance en base, pour ce couple précis.

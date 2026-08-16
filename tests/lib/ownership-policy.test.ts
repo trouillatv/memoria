@@ -54,7 +54,13 @@ describe('requireOwned — plus de getOrgId, plus d’exemption admin (source)',
   })
 
   it('la garde vient de l’appartenance à l’org de la ressource', () => {
-    expect(code).toMatch(/requireOrganizationMembership\(objectOrgId\)/)
+    // P2-B item D (16/08) : l'org de l'objet et les appartenances actives de
+    // l'appelant sont désormais lues EN PARALLÈLE (`Promise.all`), puis
+    // comparées en mémoire — mais la source de vérité reste la même primitive
+    // M1 (`getOrganizationMembershipsOfUser`, jamais `getOrgId()`), et la
+    // comparaison se fait toujours contre `objectOrgId`, jamais l'org du caller.
+    expect(code).toMatch(/getOrganizationMembershipsOfUser\(currentUser\)/)
+    expect(code).toMatch(/memberships\.some\(\(m\) => m\.organizationId === objectOrgId\)/)
   })
 
   it('AUCUNE exemption `role === "admin"` ne subsiste (ni ownership, ni policy)', () => {

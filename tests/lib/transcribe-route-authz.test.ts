@@ -97,7 +97,7 @@ describe('POST /api/copilot/transcribe — aucune lecture métier avant autorisa
 
     const res = await POST(makeRequest(SITE_ID))
 
-    expect(requireOwned).toHaveBeenCalledWith('manager', 'sites', SITE_ID)
+    expect(requireOwned).toHaveBeenCalledWith('manager', 'sites', SITE_ID, { id: 'u1', role: 'manager' })
     expect(tablesRead).toEqual([])
     // Comportement observable identique à un appel sans `siteId` : la
     // transcription a lieu, simplement sans lexique.

@@ -46,11 +46,11 @@ export async function POST(req: NextRequest) {
 
   // ── 2. Auth ────────────────────────────────────────────────────────────────
   // `getCurrentUserWithProfile` plutôt qu'un `auth.getUser()` nu : il rend le
-  // rôle exigé par la signature de `requireOwned`. Il est enveloppé dans React
-  // `cache()`, donc la garde le relira sans seconde lecture SI la mémoïsation
-  // par requête s'applique dans un route handler. Si elle ne s'applique pas, le
-  // surcoût est d'exactement une lecture `users` — visible dans `authzMs`, qui
-  // vaudra alors trois allers-retours au lieu de deux.
+  // rôle exigé par la signature de `requireOwned`. P2-B item D (16/08) : ce
+  // `user` est maintenant transmis explicitement à `requireOwned` plutôt que
+  // laissé à la mémoïsation `cache()` — dont l'application réelle dans un
+  // route handler restait incertaine (cf. audit P2-B). Coût garanti : une
+  // seule lecture de session, jamais deux, indépendamment de ce doute.
   let user: NonNullable<Awaited<ReturnType<typeof getCurrentUserWithProfile>>>
   const tAuth = Date.now()
   try {
@@ -78,12 +78,15 @@ export async function POST(req: NextRequest) {
   // l'incident d'isolation documenté dans `lib/field/site-access.ts`, sur un
   // chemin qui y avait échappé parce qu'il n'est pas une page.
   //
-  // La garde est donc SÉRIELLE et non recouverte : aucune lecture métier avant
-  // autorisation, même jetée ensuite. Le coût est mesuré (`authzMs`).
+  // La garde reste SÉRIELLE vis-à-vis du reste de la route (aucune lecture
+  // métier avant autorisation, même jetée ensuite) mais `requireOwned` lit
+  // désormais l'org du chantier et les appartenances de l'appelant EN
+  // PARALLÈLE en interne (P2-B item D) au lieu de les enchaîner. Le coût est
+  // mesuré (`authzMs`).
   const tAuthz = Date.now()
   let lexiconSiteId: string | null = null
   if (UUID_RE.test(siteId ?? '')) {
-    const owned = await requireOwned(user.role, 'sites', siteId as string)
+    const owned = await requireOwned(user.role, 'sites', siteId as string, user)
     if (owned.allowed) {
       lexiconSiteId = siteId as string
     } else {

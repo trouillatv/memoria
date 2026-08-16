@@ -15,9 +15,9 @@ import 'server-only'
 // l'organisation de l'objet.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { requireOrganizationMembership } from '@/lib/auth/memberships'
+import { getOrganizationMembershipsOfUser } from '@/lib/auth/memberships'
 import { decideOwnership, type OwnershipDecision } from './ownership-policy'
-import type { UserRole } from '@/types/db'
+import type { DbUser, UserRole } from '@/types/db'
 
 /** Tables portant `organization_id` et mutées par id depuis une server action. */
 export type OwnedTable =
@@ -37,20 +37,32 @@ export async function requireOwned(
   _role: UserRole,
   table: OwnedTable,
   id: string,
+  // P2-B item D (16/08, mandat Vincent) : si l'appelant a DÉJÀ résolu le user
+  // de la requête, on lui évite un aller-retour supplémentaire de session.
+  // Optionnel — omis, comportement inchangé (résolution dans `memberships.ts`).
+  currentUser?: Pick<DbUser, 'id'> | null,
 ): Promise<OwnershipDecision> {
   // 1. L'organisation DE LA RESSOURCE (toutes les OwnedTable portent
   //    `organization_id` en direct) — jamais l'org de l'appelant.
-  const { data } = await createAdminClient()
-    .from(table)
-    .select('organization_id')
-    .eq('id', id)
-    .maybeSingle()
+  // 2. Les appartenances ACTIVES de l'appelant (primitive M1 — jamais
+  //    `getOrgId()`, aucune exemption admin).
+  // Les deux lectures sont INDÉPENDANTES : l'org de l'objet ne dépend pas de
+  // qui appelle, et les appartenances de l'appelant ne dépendent pas de
+  // l'objet visé. Auparavant sérielles (1 puis 2, la seconde filtrée par le
+  // résultat de la première) ; l'audit P2-B a confirmé qu'il suffit de lire
+  // TOUTES les appartenances actives de l'appelant en parallèle, puis d'y
+  // chercher l'org de l'objet une fois les deux lectures revenues — même
+  // décision finale, un seul aller-retour au lieu de deux.
+  const [objectOrgResult, memberships] = await Promise.all([
+    createAdminClient().from(table).select('organization_id').eq('id', id).maybeSingle(),
+    getOrganizationMembershipsOfUser(currentUser),
+  ])
   // `undefined` = objet inexistant ; `null` = objet orphelin (sans org).
-  const objectOrgId = data ? ((data as { organization_id: string | null }).organization_id ?? null) : undefined
+  const objectOrgId = objectOrgResult.data
+    ? ((objectOrgResult.data as { organization_id: string | null }).organization_id ?? null)
+    : undefined
 
-  // 2. L'appelant est-il MEMBRE ACTIF de cette organisation ? (primitive M1 —
-  //    lit la session, jamais `getOrgId()`, aucune exemption admin.)
-  const isMemberOfObjectOrg = objectOrgId ? (await requireOrganizationMembership(objectOrgId)).ok : false
+  const isMemberOfObjectOrg = objectOrgId ? memberships.some((m) => m.organizationId === objectOrgId) : false
 
   return decideOwnership({ objectOrgId, isMemberOfObjectOrg })
 }
