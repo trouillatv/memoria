@@ -61,8 +61,46 @@ const SCENARIOS: Array<{ id: Scenario; label: string; hint: string }> = [
   { id: 'mic-then-speech', label: '4 · Micro → reconnaissance',  hint: 'ordre de notre code actuel' },
 ]
 
-const PHRASE_TEST =
-  'Quels sont les prochains points de contrôle sur le chantier PETRO ATITI ?'
+// P2-C item 2 (mandat Vincent, 16/08) : corpus obligatoire, entités métier
+// réelles + phrases naturelles chantier — sert à comparer Web Speech (résultat
+// final) au backend Gemini (`/api/copilot/transcribe`), latence ET texte.
+const PHRASES = [
+  'Quels sont les prochains points de contrôle sur le chantier PETRO ATITI ?',
+  'Est-ce que le SSI a été vérifié cette semaine sur AGP ?',
+  'Rappelle-moi le dernier compte rendu de TD.',
+  'Il faut relancer Clim Expert pour la mise en service.',
+  'Jérôme doit passer demain matin sur le chantier.',
+  'Envoie un message à Vincent Milon pour la réunion de dix-huit heures.',
+  'Quelles sont les réserves encore ouvertes sur ce chantier ?',
+  "On a coulé la dalle ce matin, il faudra vérifier le séchage vendredi.",
+  "Le désenfumage n'est toujours pas raccordé, à qui je dois en parler ?",
+  "Prépare-moi un résumé de la visite d'hier avec les points bloquants.",
+]
+
+type RunRecord = {
+  id: number
+  phrase: string
+  scenario: Scenario
+  srLatencyMs: number | null
+  srText: string | null
+  backendLatencyMs: number | null
+  backendText: string | null
+}
+
+function resultsToText(results: RunRecord[]): string {
+  return results
+    .map((r, i) => {
+      const delta =
+        r.srLatencyMs != null && r.backendLatencyMs != null ? r.backendLatencyMs - r.srLatencyMs : null
+      return (
+        `#${i + 1} [${r.scenario}] "${r.phrase}"\n` +
+        `  SR   : ${r.srLatencyMs != null ? `${r.srLatencyMs} ms` : '—'} · "${r.srText ?? '—'}"\n` +
+        `  back : ${r.backendLatencyMs != null ? `${r.backendLatencyMs} ms` : '—'} · "${r.backendText ?? '—'}"` +
+        (delta != null ? `\n  delta (back - SR) : ${delta} ms` : '')
+      )
+    })
+    .join('\n\n')
+}
 
 export function SpikeVoiceHarness() {
   const [running, setRunning]   = useState<Scenario | null>(null)
@@ -76,6 +114,9 @@ export function SpikeVoiceHarness() {
   const [backend, setBackend]   = useState<string | null>(null)
   const [sendToApi, setSendApi] = useState(true)
   const [env, setEnv]           = useState<string[]>([])
+  const [phraseIndex, setPhraseIndex] = useState(0)
+  const [results, setResults]   = useState<RunRecord[]>([])
+  const [copied, setCopied]     = useState(false)
 
   const t0Ref       = useRef(0)
   const srRef       = useRef<SRInstance | null>(null)
@@ -85,6 +126,17 @@ export function SpikeVoiceHarness() {
   const rafRef      = useRef<number | null>(null)
   const peakRef     = useRef(0)
   const samplesRef  = useRef<number[]>([])
+  // "Fin de parole" partagée par les deux pipelines (SR ∥ backend) — posée par
+  // `onspeechend`, seul signal de fin de parole disponible ici (le backend n'a
+  // pas de VAD propre dans ce spike).
+  const speechEndAtRef      = useRef<number | null>(null)
+  const srLatencyLoggedRef  = useRef(false)
+  const currentRunIdRef     = useRef<number | null>(null)
+  const runIdSeqRef         = useRef(0)
+  // Sur Android, `isFinal` n'arrive pas toujours (observé le 16/08) — on garde
+  // la dernière hypothèse pour pouvoir la figer au `onend` si aucun résultat
+  // final ne s'est jamais présenté.
+  const latestTranscriptRef = useRef('')
 
   const say = useCallback((msg: string, bad?: boolean) => {
     setLog((prev) => [...prev, { t: Date.now() - t0Ref.current, msg, bad }])
@@ -133,21 +185,72 @@ export function SpikeVoiceHarness() {
     rec.onstart      = () => say('SR onstart')
     rec.onaudiostart = () => say('SR onaudiostart — le micro est pris par la reconnaissance')
     rec.onspeechstart = () => say('SR onspeechstart — parole détectée')
-    rec.onspeechend  = () => say('SR onspeechend — silence détecté par le moteur')
-    rec.onend        = () => say('SR onend')
+    rec.onspeechend  = () => {
+      say('SR onspeechend — silence détecté par le moteur')
+      speechEndAtRef.current = Date.now()
+      // Aligne l'arrêt de l'enregistreur sur le même instant : les deux
+      // pipelines (SR ∥ backend) sont ainsi mesurés depuis la même « fin de
+      // parole », condition nécessaire pour comparer honnêtement leurs latences.
+      if (recRef.current?.state === 'recording') {
+        try { recRef.current.stop() } catch { /* déjà arrêté */ }
+      }
+    }
+    rec.onend        = () => {
+      say('SR onend')
+      // Repli : sur ce téléphone `isFinal` n'arrive pas toujours (observé
+      // 16/08 — texte dupliqué en boucle, jamais de résultat final). Si
+      // `onresult` n'a jamais rien figé, on fige ici la dernière hypothèse
+      // connue plutôt que de perdre la mesure.
+      if (!srLatencyLoggedRef.current) {
+        srLatencyLoggedRef.current = true
+        const text = latestTranscriptRef.current
+        const id = currentRunIdRef.current
+        if (speechEndAtRef.current != null) {
+          const latency = Date.now() - speechEndAtRef.current
+          say(`SR (sans isFinal) au onend : ${latency} ms depuis fin de parole · "${text || '—'}"`, !text)
+          if (id != null) {
+            setResults((prev) =>
+              prev.map((r) => (r.id === id ? { ...r, srLatencyMs: latency, srText: text || '(aucun résultat)' } : r)),
+            )
+          }
+        } else {
+          say(`SR onend sans repère de fin de parole (onspeechend jamais déclenché) · "${text || '—'}"`, true)
+          if (id != null) {
+            setResults((prev) =>
+              prev.map((r) => (r.id === id ? { ...r, srText: text || '(aucun résultat — onspeechstart jamais déclenché)' } : r)),
+            )
+          }
+        }
+      }
+    }
     rec.onerror      = (e) => say(`SR onerror : ${e.error}${e.message ? ` — ${e.message}` : ''}`, true)
 
     rec.onresult = (e) => {
-      let fin = ''
-      let inter = ''
-      for (let i = 0; i < e.results.length; i++) {
-        const r = e.results[i]
-        if (r.isFinal) fin += r[0].transcript
-        else inter += r[0].transcript
+      // Sur ce téléphone, chaque nouveau `results[i]` réénonce le texte cumulé
+      // depuis le début plutôt qu'un segment incrémental — additionner tous
+      // les index produit un texte dupliqué en boucle. Le DERNIER index
+      // contient déjà tout ce qui a été reconnu jusqu'ici.
+      const lastIdx = e.results.length - 1
+      const last = lastIdx >= 0 ? e.results[lastIdx] : null
+      const text = last ? last[0].transcript : ''
+      const isFinal = last ? last.isFinal : false
+      latestTranscriptRef.current = text
+
+      if (isFinal) {
+        setSrFinal(text)
+        setInterim('')
+        if (!srLatencyLoggedRef.current && speechEndAtRef.current != null) {
+          srLatencyLoggedRef.current = true
+          const latency = Date.now() - speechEndAtRef.current
+          say(`SR résultat final : ${latency} ms depuis fin de parole`)
+          const id = currentRunIdRef.current
+          if (id != null) {
+            setResults((prev) => prev.map((r) => (r.id === id ? { ...r, srLatencyMs: latency, srText: text } : r)))
+          }
+        }
+      } else {
+        setInterim(text)
       }
-      if (fin) setSrFinal(fin)
-      setInterim(inter)
-      if (inter && !fin) say(`SR interim (${inter.length} car.)`)
     }
 
     try {
@@ -222,7 +325,7 @@ export function SpikeVoiceHarness() {
         const ms = Date.now() - startMs
         setBlobInfo(`${(blob.size / 1024).toFixed(1)} ko · ${(ms / 1000).toFixed(1)} s · ${blob.type}`)
         say(`MediaRecorder onstop — ${blob.size} octets en ${ms} ms`, blob.size === 0)
-        if (sendToApi && blob.size > 0) void sendBackend(blob, rec.mimeType)
+        if (sendToApi && blob.size > 0) void sendBackend(blob, rec.mimeType, currentRunIdRef.current, speechEndAtRef.current)
       }
       rec.start()
       recRef.current = rec
@@ -235,7 +338,7 @@ export function SpikeVoiceHarness() {
     }
   }
 
-  async function sendBackend(blob: Blob, mimeType: string) {
+  async function sendBackend(blob: Blob, mimeType: string, runId: number | null, speechEndAt: number | null) {
     const started = Date.now()
     say('POST /api/copilot/transcribe…')
     try {
@@ -245,8 +348,19 @@ export function SpikeVoiceHarness() {
       const res = await fetch('/api/copilot/transcribe', { method: 'POST', body: form })
       const data = await res.json() as { text?: string; model?: string; error?: string }
       if (!res.ok) { say(`backend ${res.status} : ${data.error ?? '—'}`, true); return }
-      setBackend(data.text?.trim() || '(vide)')
-      say(`backend OK en ${Date.now() - started} ms · ${data.model ?? 'modèle inconnu'}`)
+      const text = data.text?.trim() || '(vide)'
+      setBackend(text)
+      const latencyFromSpeechEnd = speechEndAt != null ? Date.now() - speechEndAt : null
+      say(
+        `backend OK en ${Date.now() - started} ms depuis l'envoi` +
+          (latencyFromSpeechEnd != null ? ` · ${latencyFromSpeechEnd} ms depuis fin de parole` : '') +
+          ` · ${data.model ?? 'modèle inconnu'}`,
+      )
+      if (runId != null) {
+        setResults((prev) =>
+          prev.map((r) => (r.id === runId ? { ...r, backendLatencyMs: latencyFromSpeechEnd, backendText: text } : r)),
+        )
+      }
     } catch (err) {
       say(`backend a échoué : ${(err as Error).message}`, true)
     }
@@ -265,6 +379,16 @@ export function SpikeVoiceHarness() {
     setNoise(null)
     setPeak(0)
     setRunning(scenario)
+    speechEndAtRef.current = null
+    srLatencyLoggedRef.current = false
+    latestTranscriptRef.current = ''
+    const runId = ++runIdSeqRef.current
+    currentRunIdRef.current = runId
+    const phrase = PHRASES[phraseIndex]
+    setResults((prev) => [
+      ...prev,
+      { id: runId, phrase, scenario, srLatencyMs: null, srText: null, backendLatencyMs: null, backendText: null },
+    ])
     say(`▶ ${SCENARIOS.find((s) => s.id === scenario)?.label}`)
 
     // L'ordre est le sujet du test : SR d'abord reste dans le geste utilisateur,
@@ -301,11 +425,33 @@ export function SpikeVoiceHarness() {
       </div>
 
       <div className="rounded-xl border border-border bg-background p-3">
-        <p className="text-[12px] font-medium text-muted-foreground">Phrase à dire, identique à chaque test</p>
-        <p className="mt-1 text-[14px] leading-snug">« {PHRASE_TEST} »</p>
+        <div className="flex items-center justify-between">
+          <p className="text-[12px] font-medium text-muted-foreground">
+            Phrase {phraseIndex + 1}/{PHRASES.length} — corpus P2-C
+          </p>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setPhraseIndex((i) => (i - 1 + PHRASES.length) % PHRASES.length)}
+              disabled={running !== null}
+              className="rounded-md border border-border px-2 py-1 text-[12px] disabled:opacity-40"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              onClick={() => setPhraseIndex((i) => (i + 1) % PHRASES.length)}
+              disabled={running !== null}
+              className="rounded-md border border-border px-2 py-1 text-[12px] disabled:opacity-40"
+            >
+              →
+            </button>
+          </div>
+        </div>
+        <p className="mt-1 text-[14px] leading-snug">« {PHRASES[phraseIndex]} »</p>
         <p className="mt-2 text-[12px] text-muted-foreground">
-          Marquez une pause d&apos;environ une seconde après « contrôle » — c&apos;est la
-          micro-pause qui ne doit pas couper l&apos;enregistrement.
+          Répétez la même phrase plusieurs fois pour tester la stabilité — chaque
+          essai s&apos;ajoute au journal de résultats ci-dessous.
         </p>
       </div>
 
@@ -386,6 +532,54 @@ export function SpikeVoiceHarness() {
               <span className="tabular-nums">{String(l.t).padStart(5, ' ')} ms</span> · {l.msg}
             </p>
           ))}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-background p-3">
+        <div className="flex items-center justify-between">
+          <p className="text-[12px] font-medium text-muted-foreground">
+            Résultats P2-C — {results.length} essai{results.length > 1 ? 's' : ''}
+          </p>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(resultsToText(results))
+                setCopied(true)
+                setTimeout(() => setCopied(false), 1500)
+              }}
+              disabled={results.length === 0}
+              className="rounded-md border border-border px-2 py-1 text-[12px] disabled:opacity-40"
+            >
+              {copied ? 'Copié' : 'Copier'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setResults([])}
+              disabled={results.length === 0 || running !== null}
+              className="rounded-md border border-border px-2 py-1 text-[12px] disabled:opacity-40"
+            >
+              Vider
+            </button>
+          </div>
+        </div>
+        <div className="mt-1 space-y-2">
+          {results.length === 0 && <p className="text-[12px] text-muted-foreground">—</p>}
+          {results.map((r, i) => {
+            const delta = r.srLatencyMs != null && r.backendLatencyMs != null ? r.backendLatencyMs - r.srLatencyMs : null
+            return (
+              <div key={r.id} className="border-t border-border pt-1.5 first:border-t-0 first:pt-0">
+                <p className="text-[11.5px] font-medium">#{i + 1} · {r.scenario} · « {r.phrase} »</p>
+                <p className="text-[11.5px] text-muted-foreground">
+                  SR {r.srLatencyMs != null ? `${r.srLatencyMs} ms` : '—'} · back{' '}
+                  {r.backendLatencyMs != null ? `${r.backendLatencyMs} ms` : '—'}
+                  {delta != null && ` · delta ${delta > 0 ? '+' : ''}${delta} ms`}
+                </p>
+                <p className="text-[11.5px] text-muted-foreground">SR : {r.srText ?? '—'}</p>
+                <p className="text-[11.5px] text-muted-foreground">back : {r.backendText ?? '—'}</p>
+              </div>
+            )
+          })}
         </div>
       </div>
 
