@@ -4,6 +4,9 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { X, Volume2, VolumeX } from 'lucide-react'
 import { createVad, DEFAULT_VAD_CONFIG, type Vad } from '@/lib/voice/vad'
 import type { VoiceTurnHandlers, VoiceTurnResult } from '@/app/(field)/m/VoiceOrbContext'
+import type { VoiceTurnPayload } from '@/lib/voice/copilot-stream-client'
+import { openLiveStt, type LiveSttOutcome, type LiveSttSession } from '@/lib/voice/live-stt'
+import { attachPcmTap, type PcmTap } from '@/lib/voice/pcm-tap'
 import {
   voiceReducer,
   voiceErrorMessage,
@@ -35,17 +38,17 @@ interface Props {
   siteId: string
   siteName?: string
   /**
-   * Un tour vocal complet (P2-C) : l'orbe fournit l'audio capturé, l'appelant
-   * fusionne transcription et réponse en une seule requête — c'est ce qui
-   * permet au serveur de charger le contexte chantier PENDANT le STT. L'orbe
-   * apprend le transcript par `handlers.onTranscript`, au moment où le serveur
-   * le rend. C'est l'appelant qui déclenche la lecture vocale ; l'orbe se
+   * Un tour vocal complet. L'orbe fournit un transcript déjà normalisé quand
+   * Gemini Live a transcrit sur le téléphone (P3-B), l'audio capturé sinon —
+   * repli de panne, où le serveur transcrit et répond en une seule requête
+   * (P2-C). L'orbe apprend le transcript par `handlers.onTranscript` dans les
+   * deux cas. C'est l'appelant qui déclenche la lecture vocale ; l'orbe se
    * contente d'observer le contrôleur audio et d'en refléter l'état.
    *
    * Le `answer` renvoyé alimente le fil affiché DANS l'orbe : en session
    * continue on ne ferme plus pour lire.
    */
-  onVoiceTurn: (audio: Blob, mimeType: string, handlers: VoiceTurnHandlers) => Promise<void | VoiceTurnResult>
+  onVoiceTurn: (turn: VoiceTurnPayload, handlers: VoiceTurnHandlers) => Promise<void | VoiceTurnResult>
   onClose: () => void
 }
 
@@ -99,9 +102,7 @@ function vibrateEndOfSpeech() {
   } catch { /* vibrate non disponible (iOS) */ }
 }
 
-// `siteId` reste dans les Props (contrat de session de l'orbe) mais n'est plus
-// lu ici : depuis P2-C c'est la feuille qui construit la requête du tour.
-export function VoiceOrbOverlay({ open, siteName, onVoiceTurn, onClose }: Props) {
+export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }: Props) {
   // La machine à états est la seule autorité sur le parcours. `stateRef` en est
   // le miroir synchrone : les callbacks audio (RAF, `onstop`) se déclenchent
   // hors du cycle de rendu React et doivent lire l'état réel, pas celui de la
@@ -238,10 +239,21 @@ export function VoiceOrbOverlay({ open, siteName, onVoiceTurn, onClose }: Props)
   async function startListening() {
     let stream: MediaStream | null = null
     let audioCtx: AudioContext | null = null
+    // Voie Live : ouverte à l'ouverture du micro, close à la fin de parole.
+    // `null` partout = Live indisponible sur cet appareil ou ce tour, et l'orbe
+    // repart sur l'audio sans que rien d'autre ne change.
+    let live: LiveSttSession | null = null
+    let pcm: PcmTap | null = null
+    /** Transcript Live en vol, armé à la fin de parole. `null` = pas de voie Live. */
+    let livePending: Promise<LiveSttOutcome | null> | null = null
 
     const doCleanup = (recorder?: MediaRecorder) => {
       stopAudioLoop()
       if (recorder?.state === 'recording') recorder.stop()
+      pcm?.stop()
+      pcm = null
+      live?.abort()
+      live = null
       stream?.getTracks().forEach((t) => t.stop())
       audioCtx?.close().catch(() => {})
     }
@@ -264,6 +276,27 @@ export function VoiceOrbOverlay({ open, siteName, onVoiceTurn, onClose }: Props)
       }
 
       playActivationCue()
+
+      // ── Voie Live (P3-B) ────────────────────────────────────────────────────
+      // Rien de tout cela n'est attendu : `openLiveStt` rend la main
+      // immédiatement et `attachPcmTap` est lancé sans `await`. Le micro s'ouvre
+      // donc exactement au même instant qu'avant. Le PCM capté avant que la
+      // session Gemini soit prête est tamponné puis renvoyé d'un bloc — sinon la
+      // latence gagnée en fin de tour serait repayée à son début.
+      live = openLiveStt(siteId)
+      const liveSession = live
+      void attachPcmTap(stream, (chunk) => liveSession.push(chunk)).then((tap) => {
+        if (!tap) {
+          // Pas de 16 kHz sur cet appareil : inutile de tenir une session Gemini
+          // qui ne recevra jamais d'audio.
+          traceVoice('live-stt-unavailable', { reason: 'pcm-tap' })
+          liveSession.abort()
+          if (live === liveSession) live = null
+          return
+        }
+        if (live !== liveSession) { tap.stop(); return }  // tour déjà nettoyé
+        pcm = tap
+      })
 
       audioCtx = new AudioContext()
       const source = audioCtx.createMediaStreamSource(stream)
@@ -288,6 +321,12 @@ export function VoiceOrbOverlay({ open, siteName, onVoiceTurn, onClose }: Props)
         // Même origine pour la trace : un tour de conversation commence ici.
         beginVoiceTurn()
         vibrateEndOfSpeech()
+        // `audioStreamEnd` part ICI, à l'instant exact de la fin de parole :
+        // c'est de lui que se compte la latence Live mesurée le 16/08. On coupe
+        // le tap d'abord pour qu'aucun bloc ne parte après la fin du flux.
+        pcm?.stop()
+        pcm = null
+        livePending = live?.finish() ?? null
         if (recorder.state === 'recording') recorder.stop()
       }
       concludeRef.current = conclude
@@ -381,12 +420,14 @@ export function VoiceOrbOverlay({ open, siteName, onVoiceTurn, onClose }: Props)
         const durationMs = firstFrameMs == null ? 0 : lastFrameMs - firstFrameMs
         const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
         if (blob.size === 0 || durationMs < 200) {
+          live?.abort()
+          live = null
           dispatch({ type: 'AUDIO_EMPTY' })
           return
         }
         // Refusé si `onstop` est délivré deux fois, ou après une annulation.
-        if (!dispatch({ type: 'AUDIO_READY' })) return
-        await transcribeAndSend(blob, recorder.mimeType)
+        if (!dispatch({ type: 'AUDIO_READY' })) { live?.abort(); live = null; return }
+        await transcribeAndSend(blob, recorder.mimeType, livePending)
       }
 
       recorder.start()
@@ -400,11 +441,27 @@ export function VoiceOrbOverlay({ open, siteName, onVoiceTurn, onClose }: Props)
     }
   }
 
-  async function transcribeAndSend(blob: Blob, mimeType: string) {
-    // P2-C : le tour part ENTIER (audio) vers la feuille, qui fusionne
-    // transcription et réponse en une seule requête serveur — c'est ce qui
-    // permet au serveur de charger le contexte chantier pendant le STT. L'orbe
-    // apprend le transcript par le callback, au moment où le serveur le rend.
+  async function transcribeAndSend(
+    blob: Blob,
+    mimeType: string,
+    livePending: Promise<LiveSttOutcome | null> | null,
+  ) {
+    // Une seule frontière STT (P3-B) : on attend d'abord le transcript Live,
+    // déjà normalisé contre le vocabulaire du chantier. S'il arrive, l'audio
+    // n'est JAMAIS envoyé — pas de seconde transcription pour le même tour. S'il
+    // n'arrive pas (session non prête, socket coupée, silence), l'orbe repart
+    // sur le chemin P2-C exactement comme avant : le blob est déjà enregistré,
+    // rien à recommencer.
+    const liveOutcome = livePending ? await livePending.catch(() => null) : null
+    const turn: VoiceTurnPayload = liveOutcome
+      ? { kind: 'transcript', text: liveOutcome.text }
+      : { kind: 'audio', audio: blob, mimeType }
+    traceVoice('orb-stt-route', {
+      route: liveOutcome ? 'live' : 'server',
+      corrections: liveOutcome?.corrections.length ?? 0,
+      abstentions: liveOutcome?.abstentions ?? 0,
+    })
+
     let transcriptSeen = false
     let turnId: number | null = null
 
@@ -429,7 +486,7 @@ export function VoiceOrbOverlay({ open, siteName, onVoiceTurn, onClose }: Props)
 
     let result: void | VoiceTurnResult = undefined
     try {
-      result = await onVoiceTurn(blob, mimeType, { onTranscript })
+      result = await onVoiceTurn(turn, { onTranscript })
     } catch {
       // Échec AVANT transcript (réseau, provider) → même erreur qu'avant la
       // fusion des requêtes. Après transcript, la feuille affiche elle-même

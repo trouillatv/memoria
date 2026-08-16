@@ -19,17 +19,29 @@ export interface StreamedFreeAnswerInput {
   resolvedSubjectIds: string[]
 }
 
-// ── Tour vocal complet (P2-C overlap) ────────────────────────────────────────
+// ── Tour vocal ───────────────────────────────────────────────────────────────
 //
-// L'audio part TEL QUEL vers `/api/copilot/free-stream` : le serveur transcrit
-// et répond dans la même requête, ce qui lui permet de lancer les lectures du
-// chantier pendant le STT. Événement supplémentaire : `transcript`, émis dès
-// que le texte est connu.
+// Deux formes d'entrée, et l'appelant ne choisit pas laquelle : l'orbe rend un
+// transcript quand Gemini Live a transcrit sur le téléphone (P3-B, ~4,6 s plus
+// tôt), et l'audio brut quand Live n'a rien rendu. La seconde forme est un repli
+// de PANNE : sur un tour Live réussi, aucune requête de transcription n'est
+// émise — jamais deux STT pour un même tour.
+//
+//   - `transcript` → requête JSON, exactement le même chemin qu'une question
+//     tapée dans la feuille. Il n'y a plus rien à recouvrir côté serveur.
+//   - `audio`      → multipart, chemin P2-C inchangé : le serveur transcrit et
+//     répond dans la même requête, en lançant les lectures pendant le STT.
+//
+// Dans les deux cas la même sortie, et `onTranscript` est toujours appelé une
+// fois avant la réponse : au-dessus, personne ne sait qui a transcrit.
+
+export type VoiceTurnPayload =
+  | { kind: 'transcript'; text: string }
+  | { kind: 'audio'; audio: Blob; mimeType: string }
 
 export interface VoiceTurnStreamInput {
   siteId: string
-  audio: Blob
-  mimeType: string
+  turn: VoiceTurnPayload
   history: { role: 'user' | 'assistant'; content: string }[]
   resolvedSubjectIds: string[]
 }
@@ -43,36 +55,28 @@ export interface VoiceTurnStreamOutcome {
   aborted: boolean
 }
 
-/**
- * Ne lève QUE sur un échec réseau/HTTP avant tout événement. Une erreur émise
- * PAR le flux (événement `error`) rend `result: null` sans lever : l'appelant
- * dispose alors du transcript pour se replier sur le transport non streamé
- * (contrainte Vincent #8 — jamais de réponse partielle).
- */
-export async function askCopilotVoiceTurnStreamed(
-  input: VoiceTurnStreamInput,
-  handlers: {
-    /** Renvoyer `false` = abandonner le tour (orbe fermée) : lecture annulée. */
-    onTranscript: (text: string) => boolean
-    onSpokenReady: (spokenText: string) => void
-  },
-): Promise<VoiceTurnStreamOutcome> {
-  const ext = input.mimeType.includes('mp4') ? 'mp4' : input.mimeType.includes('ogg') ? 'ogg' : 'webm'
-  const form = new FormData()
-  form.append('audio', input.audio, `voice.${ext}`)
-  form.append('siteId', input.siteId)
-  form.append('payload', JSON.stringify({
-    history: input.history,
-    resolvedSubjectIds: input.resolvedSubjectIds,
-  }))
+type StreamHandlers = {
+  /** Renvoyer `false` = abandonner le tour (orbe fermée) : lecture annulée. */
+  onTranscript: (text: string) => boolean
+  onSpokenReady: (spokenText: string) => void
+}
 
-  const res = await fetch('/api/copilot/free-stream', { method: 'POST', body: form })
+/**
+ * Lecture SSE commune aux deux formes. `transcript` initial non nul = le texte
+ * est déjà connu du client (voie Live) ; le flux n'émettra alors pas
+ * d'événement `transcript`.
+ */
+async function readVoiceTurnStream(
+  res: Response,
+  handlers: StreamHandlers,
+  known: string | null,
+): Promise<VoiceTurnStreamOutcome> {
   if (!res.ok || !res.body) throw new Error(`free-stream HTTP ${res.status}`)
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
-  let transcript: string | null = null
+  let transcript: string | null = known
   let result: CopilotFreeResult | null = null
 
   while (true) {
@@ -110,6 +114,50 @@ export async function askCopilotVoiceTurnStreamed(
   }
 
   return { transcript, result, aborted: false }
+}
+
+/**
+ * Ne lève QUE sur un échec réseau/HTTP avant tout événement. Une erreur émise
+ * PAR le flux (événement `error`) rend `result: null` sans lever : l'appelant
+ * dispose alors du transcript pour se replier sur le transport non streamé
+ * (contrainte Vincent #8 — jamais de réponse partielle).
+ */
+export async function askCopilotVoiceTurnStreamed(
+  input: VoiceTurnStreamInput,
+  handlers: StreamHandlers,
+): Promise<VoiceTurnStreamOutcome> {
+  if (input.turn.kind === 'transcript') {
+    const text = input.turn.text
+    // Le transcript est déjà là : on le remonte AVANT d'ouvrir la requête, donc
+    // sans payer un aller-retour réseau pour l'afficher.
+    if (!handlers.onTranscript(text)) {
+      return { transcript: text, result: null, aborted: true }
+    }
+    const res = await fetch('/api/copilot/free-stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        siteId: input.siteId,
+        question: text,
+        history: input.history,
+        resolvedSubjectIds: input.resolvedSubjectIds,
+      }),
+    })
+    return readVoiceTurnStream(res, handlers, text)
+  }
+
+  const { audio, mimeType } = input.turn
+  const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
+  const form = new FormData()
+  form.append('audio', audio, `voice.${ext}`)
+  form.append('siteId', input.siteId)
+  form.append('payload', JSON.stringify({
+    history: input.history,
+    resolvedSubjectIds: input.resolvedSubjectIds,
+  }))
+
+  const res = await fetch('/api/copilot/free-stream', { method: 'POST', body: form })
+  return readVoiceTurnStream(res, handlers, null)
 }
 
 export async function askCopilotFreeActionStreamed(

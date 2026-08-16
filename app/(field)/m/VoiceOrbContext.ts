@@ -1,6 +1,9 @@
 'use client'
 
 import { createContext, useContext } from 'react'
+import type { VoiceTurnPayload } from '@/lib/voice/copilot-stream-client'
+
+export type { VoiceTurnPayload }
 
 /**
  * Ce que la feuille renvoie à l'orbe après avoir répondu. En session continue
@@ -14,8 +17,9 @@ import { createContext, useContext } from 'react'
 export type VoiceTurnResult = { answer?: string }
 
 /**
- * Callbacks que l'orbe fournit au tour vocal (P2-C : l'audio part entier vers
- * la feuille, transcription et réponse reviennent par la même requête).
+ * Callbacks que l'orbe fournit au tour vocal. `onTranscript` est appelé une
+ * fois par tour, que le texte vienne de Gemini Live (téléphone) ou du STT
+ * serveur : la feuille ne sait pas qui a transcrit.
  */
 export type VoiceTurnHandlers = {
   /**
@@ -30,13 +34,15 @@ export type OpenOrbOptions = {
   siteId: string
   siteName?: string
   /**
-   * Un tour vocal complet : l'orbe fournit l'audio capturé, la feuille fusionne
-   * transcription et réponse en une seule requête serveur. La promesse fait
-   * rester l'orbe à l'écran, en état « réflexion », jusqu'à la réponse.
-   * Doit LEVER si le tour échoue avant le transcript (l'orbe affiche alors
-   * l'erreur de transcription).
+   * Un tour vocal complet. L'orbe fournit soit un transcript déjà normalisé
+   * (Gemini Live a transcrit sur le téléphone), soit l'audio capturé (repli de
+   * panne : le serveur transcrit et répond dans la même requête). La feuille
+   * traite les deux formes identiquement — c'est la frontière STT unique.
+   * La promesse fait rester l'orbe à l'écran, en état « réflexion », jusqu'à la
+   * réponse. Doit LEVER si le tour échoue avant le transcript (l'orbe affiche
+   * alors l'erreur de transcription).
    */
-  onVoiceTurn: (audio: Blob, mimeType: string, handlers: VoiceTurnHandlers) => Promise<void | VoiceTurnResult>
+  onVoiceTurn: (turn: VoiceTurnPayload, handlers: VoiceTurnHandlers) => Promise<void | VoiceTurnResult>
 }
 
 export type VoiceOrbContextValue = {

@@ -15,7 +15,7 @@ import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { ProposalCard, ScheduleProposalCard } from '@/components/copilot/CopilotProposalCards'
 import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
-import { useVoiceOrb, type VoiceTurnHandlers, type VoiceTurnResult } from '@/app/(field)/m/VoiceOrbContext'
+import { useVoiceOrb, type VoiceTurnHandlers, type VoiceTurnPayload, type VoiceTurnResult } from '@/app/(field)/m/VoiceOrbContext'
 import { speak } from '@/lib/voice/speech-output'
 import { markVoice } from '@/lib/voice/voice-latency'
 import { traceVoice } from '@/lib/voice/voice-trace'
@@ -134,18 +134,22 @@ export function CopilotMobileSheet({
   }
 
   /**
-   * Tour VOCAL complet (P2-C) : l'audio de l'orbe part tel quel vers le serveur,
-   * qui transcrit ET répond dans la même requête — le contexte chantier se
-   * charge pendant le STT. Une question parlée est aussi lue à l'oral.
+   * Tour VOCAL complet. L'orbe rend soit un transcript déjà normalisé (Gemini
+   * Live a transcrit sur le téléphone), soit l'audio brut (repli de panne : le
+   * serveur transcrit ET répond dans la même requête, contexte chantier chargé
+   * pendant le STT). La feuille ne distingue pas les deux. Une question parlée
+   * est aussi lue à l'oral.
    */
   async function sendVoiceTurn(
-    audio: Blob,
-    mimeType: string,
+    turn: VoiceTurnPayload,
     handlers: VoiceTurnHandlers,
   ): Promise<VoiceTurnResult> {
     // Tracé AVANT le garde : un `loading` resté vrai avalerait le tour suivant
     // en silence, et c'est exactement ce qu'on cherche à écarter ou à prouver.
-    traceVoice('sheet-send', { surface: 'site', loading, mode: 'voice', audioBytes: audio.size })
+    traceVoice('sheet-send', {
+      surface: 'site', loading, mode: 'voice', stt: turn.kind === 'transcript' ? 'live' : 'server',
+      audioBytes: turn.kind === 'audio' ? turn.audio.size : 0,
+    })
     if (loading) throw new Error('sheet busy')
     setLoading(true)
 
@@ -153,7 +157,7 @@ export function CopilotMobileSheet({
     let spokenAnnounced = false
     try {
       const outcome = await askCopilotVoiceTurnStreamed(
-        { siteId, audio, mimeType, history: buildHistory(), resolvedSubjectIds },
+        { siteId, turn, history: buildHistory(), resolvedSubjectIds },
         {
           onTranscript: (text) => {
             transcriptText = text

@@ -250,12 +250,79 @@ describe('askCopilotVoiceTurnStreamed — abandon', () => {
 
     const { askCopilotVoiceTurnStreamed } = await import('@/lib/voice/copilot-stream-client')
     const outcome = await askCopilotVoiceTurnStreamed(
-      { siteId: SITE_A, audio: new Blob([new Uint8Array([1])]), mimeType: 'audio/webm', history: [], resolvedSubjectIds: [] },
+      {
+        siteId: SITE_A,
+        turn: { kind: 'audio', audio: new Blob([new Uint8Array([1])]), mimeType: 'audio/webm' },
+        history: [],
+        resolvedSubjectIds: [],
+      },
       { onTranscript: () => false, onSpokenReady: () => {} },
     )
 
     expect(outcome).toEqual({ transcript: 'bonjour', result: null, aborted: true })
     expect(cancelled).toBe(true)
+    vi.unstubAllGlobals()
+  })
+})
+
+// ── 6. Voie Live : le transcript vient du téléphone, pas du serveur ──────────
+//
+// P3-B — c'est l'invariant « jamais deux STT pour un même tour » : sur la voie
+// Live, aucun audio ne part, la requête est du JSON, et le serveur ne transcrit
+// rien. Le reste du parcours (SSE, `spoken`, `result`) est identique.
+
+describe('askCopilotVoiceTurnStreamed — voie Live (transcript déjà connu)', () => {
+  it('envoie du JSON sans audio et remonte le transcript avant toute requête', async () => {
+    const order: string[] = []
+    const sse = 'event: result\ndata: {"kind":"answer","text":"ok","references":[],"source":"llm","interactionId":null}\n\n'
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      order.push('fetch')
+      // Aucun multipart : le serveur n'a pas d'audio à transcrire.
+      expect(init.body).toBeTypeOf('string')
+      expect(String(init.body)).toContain('"question":"pose une réserve"')
+      return new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(sse))
+          controller.close()
+        },
+      }), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { askCopilotVoiceTurnStreamed } = await import('@/lib/voice/copilot-stream-client')
+    const outcome = await askCopilotVoiceTurnStreamed(
+      {
+        siteId: SITE_A,
+        turn: { kind: 'transcript', text: 'pose une réserve' },
+        history: [],
+        resolvedSubjectIds: [],
+      },
+      {
+        onTranscript: (t) => { order.push(`transcript:${t}`); return true },
+        onSpokenReady: () => {},
+      },
+    )
+
+    // Le texte est affiché AVANT l'aller-retour réseau — c'est là qu'est le gain.
+    expect(order).toEqual(['transcript:pose une réserve', 'fetch'])
+    expect(outcome.transcript).toBe('pose une réserve')
+    expect(outcome.result?.kind).toBe('answer')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    vi.unstubAllGlobals()
+  })
+
+  it('abandon avant la requête : orbe fermée → aucune requête émise', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { askCopilotVoiceTurnStreamed } = await import('@/lib/voice/copilot-stream-client')
+    const outcome = await askCopilotVoiceTurnStreamed(
+      { siteId: SITE_A, turn: { kind: 'transcript', text: 'bonjour' }, history: [], resolvedSubjectIds: [] },
+      { onTranscript: () => false, onSpokenReady: () => {} },
+    )
+
+    expect(outcome).toEqual({ transcript: 'bonjour', result: null, aborted: true })
+    expect(fetchMock).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
   })
 })
