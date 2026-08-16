@@ -395,3 +395,18 @@ export function buildSpokenPlanContract(controls: VisitControl[], maxSummarized 
     resume: controls.slice(0, maxSummarized).map((c) => ({ id: c.id, label: c.label, tierLabel: c.tierLabel })),
   }
 }
+
+/**
+ * Un `spokenText` (partiel ou complet) respecte-t-il le contrat D0 ? Il ne
+ * doit nommer aucun contrôle de `controls` absent de `plan_voix.resume`.
+ * Sans plan de visite en jeu (`controls` vide), il n'y a rien à borner.
+ *
+ * Utilisé par D1 pour décider, PENDANT le streaming, si un `spokenText`
+ * détecté peut partir en TTS ou doit attendre la réponse complète.
+ */
+export function isSpokenTextWithinPlanVoix(spokenText: string, controls: VisitControl[]): boolean {
+  if (controls.length === 0) return true
+  const contract = buildSpokenPlanContract(controls)
+  const allowedLabels = new Set(contract.resume.map((r) => r.label))
+  return !controls.some((c) => !allowedLabels.has(c.label) && spokenText.includes(c.label))
+}

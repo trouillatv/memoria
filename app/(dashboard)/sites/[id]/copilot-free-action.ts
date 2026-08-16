@@ -37,12 +37,14 @@ import { extractQuestionSubjectPhrase } from '@/lib/visits/copilot-classify'
 import { getCanonicalSubjectLifeForSite } from '@/lib/db/canonical-subject-life'
 import { buildSubjectDetailForCopilot } from '@/lib/visits/copilot-subject-context'
 import { answerCopilotFreeQuestion } from '@/lib/visits/copilot-free-answer'
-import type { FreeAnswerContext, RecentChangeContext } from '@/lib/visits/copilot-free-answer'
+import type { FreeAnswer, FreeAnswerContext, HistoryMessage, RecentChangeContext } from '@/lib/visits/copilot-free-answer'
 import { buildVisitPlan } from '@/lib/visits/visit-plan-builder'
 import { buildVisitBriefing } from '@/lib/knowledge/visit-briefing'
 import { getSiteActorContext } from '@/lib/db/site-actor-responsibilities'
 import { frDayMonthYearLocal } from '@/lib/time/local-date'
 import { spokenFromShortAnswer } from '@/lib/voice/spoken-answer'
+import type { CopilotItem, SiteCopilotDelta } from '@/lib/visits/copilot-context'
+import type { SubjectDetailContext } from '@/lib/visits/copilot-subject-context'
 import type { CopilotRef } from './copilot-action'
 
 // ── Schémas ───────────────────────────────────────────────────────────────────
@@ -115,14 +117,44 @@ export type CopilotFreeResult =
       text: string
     }
 
-// ── Action ────────────────────────────────────────────────────────────────────
+// ── Préparation partagée ─────────────────────────────────────────────────────
+//
+// D1 (2026-08-16) : `askCopilotFreeAction` (Server Action) et le futur handler
+// de route streamé appellent tous deux `prepareCopilotAnswer`. Elle porte tout
+// ce qui ne dépend pas du transport — classification, résolution de sujet,
+// chargement du contexte, moteurs déterministes — et s'arrête juste avant
+// l'appel LLM. Les branches à réponse déterministe (clarification, proposition,
+// verdict quantitatif…) sont déjà un `CopilotFreeResult` complet (`kind:
+// 'result'`) : aucun transport n'a de LLM à appeler pour elles. Sinon
+// (`kind: 'ready'`), l'appelant choisit son transport (`answerCopilotFreeQuestion`
+// ou `answerCopilotFreeQuestionStream`) puis referme le pipeline via `finish`,
+// identique quel que soit le transport — c'est ce qui interdit toute divergence
+// de comportement entre les deux.
 
-export async function askCopilotFreeAction(
+export interface PreparedCopilotAnswerReady {
+  kind: 'ready'
+  question: string
+  history: HistoryMessage[]
+  items: CopilotItem[]
+  subjectDetails: SubjectDetailContext[]
+  delta: SiteCopilotDelta | null
+  filteredPrep: { label: string; stableKey: string }[]
+  siteName: string
+  extra: FreeAnswerContext
+  /** Referme le pipeline (références, télémétrie, trace, diag) — commun aux deux transports. */
+  finish: (answer: FreeAnswer, answerStartAt: number) => Promise<CopilotFreeResult>
+}
+
+export type PreparedCopilotAnswer =
+  | { kind: 'result'; result: CopilotFreeResult }
+  | PreparedCopilotAnswerReady
+
+export async function prepareCopilotAnswer(
   rawInput: unknown,
-): Promise<CopilotFreeResult> {
+): Promise<PreparedCopilotAnswer> {
   const parsed = inputSchema.safeParse(rawInput)
   if (!parsed.success) {
-    return { kind: 'answer', text: 'Paramètres invalides.', references: [], source: 'fallback', interactionId: null }
+    return { kind: 'result', result: { kind: 'answer', text: 'Paramètres invalides.', references: [], source: 'fallback', interactionId: null } }
   }
   const { siteId, question, history, resolvedSubjectIds, conversationId, selectedCandidateId, diag } = parsed.data
   const t0 = Date.now()
@@ -132,7 +164,7 @@ export async function askCopilotFreeAction(
   try {
     await requireSiteAccess(siteId)
   } catch {
-    return { kind: 'answer', text: 'Accès non autorisé.', references: [], source: 'fallback', interactionId: null }
+    return { kind: 'result', result: { kind: 'answer', text: 'Accès non autorisé.', references: [], source: 'fallback', interactionId: null } }
   }
 
   // Utilisateur courant (pour les prep items)
@@ -277,7 +309,7 @@ export async function askCopilotFreeAction(
       const clarText = hasUnsupported
         ? "Cette commande n'est pas encore disponible via le Copilote. Vous pouvez créer une action ou ajouter un point au plan de votre prochaine visite."
         : "Je n'ai pas bien compris votre intention. Souhaitez-vous créer une action, ajouter un point au plan de visite, ou planifier une visite / réunion ?"
-      return { kind: 'answer', text: clarText, references: [], source: 'fallback', interactionId: null, spokenText: spokenFromShortAnswer(clarText) }
+      return { kind: 'result', result: { kind: 'answer', text: clarText, references: [], source: 'fallback', interactionId: null, spokenText: spokenFromShortAnswer(clarText) } }
     }
 
     // ── Planification (SCHEDULE_VISIT / SCHEDULE_MEETING) ──────────────────
@@ -289,11 +321,14 @@ export async function askCopilotFreeAction(
       if (!parsed) {
         // Pas de date trouvée → demander une précision (pas de brouillon).
         return {
-          kind: 'answer',
-          text: `Pour planifier une ${eventLabel}, précisez la date et l'heure.\nEx. : « Planifie une ${eventLabel} le 12 août à 9h »`,
-          references: [],
-          source: 'fallback',
-          interactionId: null,
+          kind: 'result',
+          result: {
+            kind: 'answer',
+            text: `Pour planifier une ${eventLabel}, précisez la date et l'heure.\nEx. : « Planifie une ${eventLabel} le 12 août à 9h »`,
+            references: [],
+            source: 'fallback',
+            interactionId: null,
+          },
         }
       }
 
@@ -346,10 +381,13 @@ export async function askCopilotFreeAction(
       })
 
       return {
-        kind: 'proposal',
-        text: `Voici le brouillon pour planifier cette ${eventLabel}. Vérifiez et ajustez avant de valider.`,
-        proposal,
-        interactionId: iid,
+        kind: 'result',
+        result: {
+          kind: 'proposal',
+          text: `Voici le brouillon pour planifier cette ${eventLabel}. Vérifiez et ajustez avant de valider.`,
+          proposal,
+          interactionId: iid,
+        },
       }
     }
 
@@ -377,10 +415,13 @@ export async function askCopilotFreeAction(
           estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
         })
         return {
-          kind: 'clarification',
-          text: `Plusieurs sujets correspondent. Lequel souhaitez-vous associer à cette proposition ?\n\n${labels}`,
-          candidates: resolution.candidates,
-          interactionId: iid,
+          kind: 'result',
+          result: {
+            kind: 'clarification',
+            text: `Plusieurs sujets correspondent. Lequel souhaitez-vous associer à cette proposition ?\n\n${labels}`,
+            candidates: resolution.candidates,
+            interactionId: iid,
+          },
         }
       }
     }
@@ -413,10 +454,13 @@ export async function askCopilotFreeAction(
       ...traceBase, ui: 'proposal', proposalKind: proposal.kind, controls: 0, source: 'fallback',
     }))
     return {
-      kind: 'proposal',
-      text: `Voici le brouillon de ${kindLabel} que je propose. Vérifiez et ajustez avant de valider.`,
-      proposal,
-      interactionId: iid,
+      kind: 'result',
+      result: {
+        kind: 'proposal',
+        text: `Voici le brouillon de ${kindLabel} que je propose. Vérifiez et ajustez avant de valider.`,
+        proposal,
+        interactionId: iid,
+      },
     }
   }
 
@@ -488,12 +532,15 @@ export async function askCopilotFreeAction(
       estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
     })
     return {
-      kind: 'answer',
-      text: notFoundText,
-      references: [],
-      source: 'fallback',
-      interactionId: iid,
-      spokenText: spokenFromShortAnswer(notFoundText),
+      kind: 'result',
+      result: {
+        kind: 'answer',
+        text: notFoundText,
+        references: [],
+        source: 'fallback',
+        interactionId: iid,
+        spokenText: spokenFromShortAnswer(notFoundText),
+      },
     }
   }
 
@@ -511,10 +558,13 @@ export async function askCopilotFreeAction(
       estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
     })
     return {
-      kind: 'clarification',
-      text: clarText,
-      candidates: clarificationCandidates,
-      interactionId: iid,
+      kind: 'result',
+      result: {
+        kind: 'clarification',
+        text: clarText,
+        candidates: clarificationCandidates,
+        interactionId: iid,
+      },
     }
   }
 
@@ -630,7 +680,7 @@ export async function askCopilotFreeAction(
         ...marks,
       }))
     }
-    return { kind: 'answer', text: quantitative.text, references: [], source: 'deterministic', interactionId: iid, spokenText: qSpoken }
+    return { kind: 'result', result: { kind: 'answer', text: quantitative.text, references: [], source: 'deterministic', interactionId: iid, spokenText: qSpoken } }
   }
 
   // Enrichissement sujets détaillés
@@ -738,113 +788,132 @@ export async function askCopilotFreeAction(
     )
   }
 
-  // ── Appel LLM ────────────────────────────────────────────────────────────────
-  const answerStartAt = Date.now()
-  const answer = await timed('answerMs', () => answerCopilotFreeQuestion(
-    question,
-    history,
-    items,
-    subjectDetails,
-    delta,
-    filteredPrep,
-    overview.identity.name,
-    extra,
-  ))
+  // ── Prêt pour l'appel LLM ──────────────────────────────────────────────────
+  // Le transport (streamé ou non) et l'instant `answerStartAt` restent au choix
+  // de l'appelant ; `finish` referme le pipeline à l'identique pour les deux.
+  const siteName = overview.identity.name
+  const finish = async (answer: FreeAnswer, answerStartAt: number): Promise<CopilotFreeResult> => {
+    marks.answerMs = Date.now() - answerStartAt
 
-  // Résolution des références depuis la liste FERMÉE (items + sujets détaillés)
-  const allItems = [
-    ...items,
-    ...subjectDetails.map((s) => ({ id: s.id, label: s.label, href: null as string | null })),
-  ]
-  const itemById = new Map(allItems.map((i) => [i.id, i]))
-  const references: CopilotRef[] = answer.citedIds
-    .map((id) => {
-      const item = itemById.get(id)
-      return item ? { id: item.id, label: item.label, href: (item as { href?: string | null }).href ?? null } : null
+    // Résolution des références depuis la liste FERMÉE (items + sujets détaillés)
+    const allItems = [
+      ...items,
+      ...subjectDetails.map((s) => ({ id: s.id, label: s.label, href: null as string | null })),
+    ]
+    const itemById = new Map(allItems.map((i) => [i.id, i]))
+    const references: CopilotRef[] = answer.citedIds
+      .map((id) => {
+        const item = itemById.get(id)
+        return item ? { id: item.id, label: item.label, href: (item as { href?: string | null }).href ?? null } : null
+      })
+      .filter((r): r is CopilotRef => r !== null)
+
+    // Calcul des sources réellement chargées
+    const sourcesUsed: string[] = ['site_overview']
+    if (userId) sourcesUsed.push('visit_preparation')
+    if (subjectDetails.length > 0) sourcesUsed.push('canonical_subject_life')
+    if (needsActor && actorContext.length > 0) sourcesUsed.push('actors')
+    if (needsTimeline) sourcesUsed.push('historical_pv')
+    if (needsPlan) sourcesUsed.push('visit_plan')
+
+    const latencyMs = Date.now() - t0
+    const resolvedIds = [...subjectIdsToLoad]
+    const answerStatus = answer.source === 'llm'
+      ? 'answered'
+      : (references.length === 0 ? 'insufficient_data' : 'answered')
+
+    const iid = await logCopilotInteraction({
+      siteId, userId, conversationId: conversationId ?? null,
+      question, conversationMode: 'free',
+      primaryIntent: classification.primary, secondaryIntents: classification.secondary,
+      scope: baseScope, resolvedSubjectIds: resolvedIds,
+      answerText: answer.text,
+      answerMode: answer.source === 'llm' ? 'llm' : 'deterministic_fallback',
+      answerStatus,
+      citedReferenceCount: references.length,
+      sourcesUsed,
+      model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+      estimatedCostEur: null, latencyMs,
+      usedFallback: answer.source === 'fallback',
     })
-    .filter((r): r is CopilotRef => r !== null)
 
-  // Calcul des sources réellement chargées
-  const sourcesUsed: string[] = ['site_overview']
-  if (userId) sourcesUsed.push('visit_preparation')
-  if (subjectDetails.length > 0) sourcesUsed.push('canonical_subject_life')
-  if (needsActor && actorContext.length > 0) sourcesUsed.push('actors')
-  if (needsTimeline) sourcesUsed.push('historical_pv')
-  if (needsPlan) sourcesUsed.push('visit_plan')
-
-  const latencyMs = Date.now() - t0
-  const resolvedIds = [...subjectIdsToLoad]
-  const answerStatus = answer.source === 'llm'
-    ? 'answered'
-    : (references.length === 0 ? 'insufficient_data' : 'answered')
-
-  const iid = await logCopilotInteraction({
-    siteId, userId, conversationId: conversationId ?? null,
-    question, conversationMode: 'free',
-    primaryIntent: classification.primary, secondaryIntents: classification.secondary,
-    scope: baseScope, resolvedSubjectIds: resolvedIds,
-    answerText: answer.text,
-    answerMode: answer.source === 'llm' ? 'llm' : 'deterministic_fallback',
-    answerStatus,
-    citedReferenceCount: references.length,
-    sourcesUsed,
-    model: null, promptVersion: null, inputTokens: null, outputTokens: null,
-    estimatedCostEur: null, latencyMs,
-    usedFallback: answer.source === 'fallback',
-  })
-
-  console.log('[copilot-trace] answer', JSON.stringify({
-    ...traceBase,
-    ui: 'answer',
-    safeIntent,
-    controls: extra.visitPlanDetail?.length ?? 0,
-    source: answer.source,
-    refs: references.length,
-    latencyMs,
-    // Décomposition serveur : `prefetch` dit si la compréhension et la DB ont
-    // réellement tourné en parallèle, `contextWaitMs` ce qu'il restait à
-    // attendre après elle. Sans ces deux nombres côte à côte, on ne peut pas
-    // distinguer « la DB est lente » de « la DB a été attendue trop tard ».
-    prefetch: prefetched !== null,
-    ...marks,
-  }))
-
-  // ── Décomposition serveur, fermée par défaut ──────────────────────────────
-  // Sept jalons exprimés en ms DEPUIS la réception de la requête, pas en durées
-  // isolées : c'est la seule forme qui montre les recouvrements. Les trois
-  // derniers sont reconstruits depuis les mesures du fournisseur — le temps de
-  // construction du prompt est ce qui reste entre l'entrée dans la fonction de
-  // réponse et le départ réel vers Gemini.
-  if (diagEnabled) {
-    const d = answer.diagnostics
-    const answerEntry = answerStartAt - t0
-    const promptMs = d ? Math.max(0, (marks.answerMs ?? 0) - d.llmMs - d.parseMs) : 0
-    const llmStart = answerEntry + promptMs
-    const llmEnd = llmStart + (d?.llmMs ?? 0)
-    console.log('[copilot-diag]', JSON.stringify({
-      q: question.slice(0, 60), path: answer.source,
-      request_received: 0,
-      context_start: contextStartAt - t0,
-      context_ready: contextReadyAt - t0,
-      llm_start: llmStart,
-      llm_end: llmEnd,
-      parse_end: llmEnd + (d?.parseMs ?? 0),
-      response_returned: latencyMs,
-      contextMs: contextReadyAt - contextStartAt,
-      promptMs,
-      llmMs: d?.llmMs ?? null,
-      parseMs: d?.parseMs ?? null,
-      model: d?.model ?? null,
-      tokensIn: d?.tokensIn ?? null,
-      tokensOut: d?.tokensOut ?? null,
-      finishReason: d?.finishReason ?? null,
-      contextChars: d?.contextChars ?? null,
-      textLength: answer.text.length,
-      spokenLength: answer.spokenText?.length ?? 0,
+    console.log('[copilot-trace] answer', JSON.stringify({
+      ...traceBase,
+      ui: 'answer',
+      safeIntent,
+      controls: extra.visitPlanDetail?.length ?? 0,
+      source: answer.source,
+      refs: references.length,
+      latencyMs,
+      // Décomposition serveur : `prefetch` dit si la compréhension et la DB ont
+      // réellement tourné en parallèle, `contextWaitMs` ce qu'il restait à
+      // attendre après elle. Sans ces deux nombres côte à côte, on ne peut pas
+      // distinguer « la DB est lente » de « la DB a été attendue trop tard ».
       prefetch: prefetched !== null,
       ...marks,
     }))
+
+    // ── Décomposition serveur, fermée par défaut ──────────────────────────────
+    // Sept jalons exprimés en ms DEPUIS la réception de la requête, pas en durées
+    // isolées : c'est la seule forme qui montre les recouvrements. Les trois
+    // derniers sont reconstruits depuis les mesures du fournisseur — le temps de
+    // construction du prompt est ce qui reste entre l'entrée dans la fonction de
+    // réponse et le départ réel vers Gemini.
+    if (diagEnabled) {
+      const d = answer.diagnostics
+      const answerEntry = answerStartAt - t0
+      const promptMs = d ? Math.max(0, (marks.answerMs ?? 0) - d.llmMs - d.parseMs) : 0
+      const llmStart = answerEntry + promptMs
+      const llmEnd = llmStart + (d?.llmMs ?? 0)
+      console.log('[copilot-diag]', JSON.stringify({
+        q: question.slice(0, 60), path: answer.source,
+        request_received: 0,
+        context_start: contextStartAt - t0,
+        context_ready: contextReadyAt - t0,
+        llm_start: llmStart,
+        llm_end: llmEnd,
+        parse_end: llmEnd + (d?.parseMs ?? 0),
+        response_returned: latencyMs,
+        contextMs: contextReadyAt - contextStartAt,
+        promptMs,
+        llmMs: d?.llmMs ?? null,
+        parseMs: d?.parseMs ?? null,
+        model: d?.model ?? null,
+        tokensIn: d?.tokensIn ?? null,
+        tokensOut: d?.tokensOut ?? null,
+        finishReason: d?.finishReason ?? null,
+        contextChars: d?.contextChars ?? null,
+        textLength: answer.text.length,
+        spokenLength: answer.spokenText?.length ?? 0,
+        prefetch: prefetched !== null,
+        ...marks,
+      }))
+    }
+
+    return { kind: 'answer', text: answer.text, references, source: answer.source, interactionId: iid, spokenText: answer.spokenText }
   }
 
-  return { kind: 'answer', text: answer.text, references, source: answer.source, interactionId: iid, spokenText: answer.spokenText }
+  return { kind: 'ready', question, history, items, subjectDetails, delta, filteredPrep, siteName, extra, finish }
+}
+
+// ── Action (transport non streamé) ──────────────────────────────────────────
+
+export async function askCopilotFreeAction(
+  rawInput: unknown,
+): Promise<CopilotFreeResult> {
+  const prep = await prepareCopilotAnswer(rawInput)
+  if (prep.kind === 'result') return prep.result
+
+  const answerStartAt = Date.now()
+  const answer = await answerCopilotFreeQuestion(
+    prep.question,
+    prep.history,
+    prep.items,
+    prep.subjectDetails,
+    prep.delta,
+    prep.filteredPrep,
+    prep.siteName,
+    prep.extra,
+  )
+  return prep.finish(answer, answerStartAt)
 }

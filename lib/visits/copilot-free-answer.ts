@@ -11,6 +11,7 @@ import 'server-only'
 
 import { z } from 'zod'
 import { getAIProvider } from '@/services/ai/factory'
+import type { CompletionOutput } from '@/services/ai'
 import type { CopilotItem } from './copilot-context'
 import type { SubjectDetailContext } from './copilot-subject-context'
 import type { SiteCopilotDelta } from './copilot-context'
@@ -19,7 +20,7 @@ import { SPOKEN_PROMPT_RULES } from './copilot-answer'
 import { sanitizeSpokenText, spokenFromShortAnswer, buildSpokenFallback, SPOKEN_MAX_CHARS } from '@/lib/voice/spoken-answer'
 import type { ActorContext } from '@/lib/db/site-actor-responsibilities'
 import type { VisitControl } from './visit-plan-builder'
-import { buildSpokenPlanContract } from './visit-plan-builder'
+import { buildSpokenPlanContract, isSpokenTextWithinPlanVoix } from './visit-plan-builder'
 import { frDayMonthYearLocal } from '@/lib/time/local-date'
 
 export interface RecentChangeContext {
@@ -47,12 +48,19 @@ const FreeAnswerSchema = z.object({
 const FREE_ANSWER_GEMINI_SCHEMA = {
   type: 'object',
   properties: {
+    spokenText: { type: 'string' },
     text: { type: 'string' },
     citedIds: { type: 'array', items: { type: 'string' } },
-    spokenText: { type: 'string' },
   },
   // `spokenText` hors de `required` : son absence est un cas normal.
   required: ['text', 'citedIds'],
+  // D1 (2026-08-16) : `spokenText` en tête de `propertyOrdering` force Gemini
+  // à l'émettre en premier dans le flux JSON — mesuré sur PETRO à ~1,9 s au
+  // lieu de ~6,7 s (script `_audit-ordre-spoken.ts`, 16/08) : c'est ce qui
+  // rend le streaming spokenText-first (D1) exploitable. Rester hors de
+  // `required` (au-dessus) : son absence reste un cas normal, l'ordre
+  // d'émission n'implique aucune obligation de présence.
+  propertyOrdering: ['spokenText', 'text', 'citedIds'],
 }
 
 const SYSTEM_PROMPT = `Tu es MemorIA Copilote, assistant de suivi de chantier.
@@ -181,7 +189,29 @@ export interface FreeAnswerContext {
   stagnation?: StagnationContext
 }
 
-export async function answerCopilotFreeQuestion(
+// Requête préparée une seule fois, consommée par les deux transports (non
+// streamé et streamé, D1 2026-08-16) : même contexte, même schéma, même
+// budget — le streaming n'est qu'une seconde SORTIE du même appel, jamais un
+// second calcul.
+interface PreparedFreeAnswerRequest {
+  validIds: Set<string>
+  contextJson: string
+  maxOutputTokens: number
+  answerSchema: typeof FreeAnswerSchema
+  nbControles: number
+  diagBase: {
+    llmMs: number
+    parseMs: number
+    model: string | null
+    tokensIn: number | null
+    tokensOut: number | null
+    finishReason: string | null
+    maxOutputTokens: number
+    contextChars: number
+  }
+}
+
+function prepareFreeAnswerRequest(
   question: string,
   history: HistoryMessage[],
   items: CopilotItem[],
@@ -190,7 +220,7 @@ export async function answerCopilotFreeQuestion(
   prepItems: { label: string; stableKey: string }[],
   siteName: string,
   extra?: FreeAnswerContext,
-): Promise<FreeAnswer> {
+): PreparedFreeAnswerRequest {
   // Construire la liste fermée d'ids valides pour le garde anti-hallucination
   const validIds = new Set([
     ...items.map((i) => i.id),
@@ -283,77 +313,88 @@ export async function answerCopilotFreeQuestion(
     contextChars: contextJson.length,
   }
 
-  try {
-    const provider = getAIProvider()
-    const result = await provider.complete({
-      systemPrompt: SYSTEM_PROMPT,
-      userMessage: `${question}\n\nContexte :\n${contextJson}`,
-      responseSchema: answerSchema,
-      geminiSchema: FREE_ANSWER_GEMINI_SCHEMA,
-      modelTier: 'light',
-      maxOutputTokens,
-    })
-    diagBase.llmMs = result.durationMs ?? 0
-    diagBase.model = result.model ?? null
-    diagBase.tokensIn = result.tokens?.input ?? null
-    diagBase.tokensOut = result.tokens?.output ?? null
-    diagBase.finishReason = result.finishReason ?? null
-    const parseStart = Date.now()
+  return { validIds, contextJson, maxOutputTokens, answerSchema, nbControles, diagBase }
+}
 
-    if (result.parsed) {
-      // Lu sur l'objet BRUT : Zod retire les clés inconnues, et surtout un
-      // `spokenText` invalide ne doit pas faire échouer le parse de la réponse.
-      const rawSpoken = (result.parsed as { spokenText?: unknown }).spokenText
-      const spokenFromLlm = sanitizeSpokenText(rawSpoken)
-      // Une voix qui disparaît ne laisse aucune trace : le texte reste juste,
-      // l'utilisateur n'entend rien, et rien ne distingue « le modèle n'a rien
-      // produit » de « la synthèse a été jetée parce qu'elle dépassait le
-      // plafond ». Ce warn est la seule façon de mesurer la fréquence réelle du
-      // silence — sans lui, on optimiserait à l'aveugle.
-      if (spokenFromLlm === null) {
-        console.warn('[copilot-free] spokenText écarté', JSON.stringify({
-          present: typeof rawSpoken === 'string',
-          length: typeof rawSpoken === 'string' ? rawSpoken.length : 0,
-          max: SPOKEN_MAX_CHARS,
-        }))
-      }
+/**
+ * Traite le `CompletionOutput` d'un appel LLM (streamé ou non — même forme,
+ * cf. `services/ai/index.ts`) en `FreeAnswer`, ou `null` si la sortie n'est
+ * pas exploitable (schéma invalide, parse manquant). `null` signale à
+ * l'appelant de basculer sur `buildDeterministicFallback` : cette fonction ne
+ * fabrique jamais elle-même le repli.
+ */
+function finalizeParsedResult(result: CompletionOutput, req: PreparedFreeAnswerRequest): FreeAnswer | null {
+  req.diagBase.llmMs = result.durationMs ?? 0
+  req.diagBase.model = result.model ?? null
+  req.diagBase.tokensIn = result.tokens?.input ?? null
+  req.diagBase.tokensOut = result.tokens?.output ?? null
+  req.diagBase.finishReason = result.finishReason ?? null
+  const parseStart = Date.now()
 
-      const maybeValid = answerSchema.safeParse(result.parsed)
-      if (maybeValid.success) {
-        const citedIds = maybeValid.data.citedIds.filter((id) => validIds.has(id))
-        const text = stripUuids(maybeValid.data.text)
-        return {
-          text,
-          citedIds,
-          source: 'llm',
-          spokenText: spokenFromLlm,
-          diagnostics: {
-            ...diagBase,
-            parseMs: Date.now() - parseStart,
-            textLength: text.length,
-            spokenLength: spokenFromLlm?.length ?? 0,
-          },
-        }
-      }
-      // Le motif, pas seulement le contenu : sans lui, un repli silencieux se lit
-      // comme un défaut du moteur alors qu'il vient d'un garde de longueur.
-      const motif = maybeValid.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join(' ; ')
-      console.warn(`[copilot-free] schema mismatch (${motif}) — parsed:`, JSON.stringify(result.parsed).slice(0, 200))
-    } else {
-      console.warn('[copilot-free] result.parsed is null — raw:', result.text.slice(0, 200))
-    }
-  } catch (err) {
-    console.error('[copilot-free] provider error:', err instanceof Error ? err.message : String(err))
+  if (!result.parsed) {
+    console.warn('[copilot-free] result.parsed is null — raw:', result.text.slice(0, 200))
+    return null
   }
 
-  // Fallback déterministe — retourne un texte utile sans LLM
+  // Lu sur l'objet BRUT : Zod retire les clés inconnues, et surtout un
+  // `spokenText` invalide ne doit pas faire échouer le parse de la réponse.
+  const rawSpoken = (result.parsed as { spokenText?: unknown }).spokenText
+  const spokenFromLlm = sanitizeSpokenText(rawSpoken)
+  // Une voix qui disparaît ne laisse aucune trace : le texte reste juste,
+  // l'utilisateur n'entend rien, et rien ne distingue « le modèle n'a rien
+  // produit » de « la synthèse a été jetée parce qu'elle dépassait le
+  // plafond ». Ce warn est la seule façon de mesurer la fréquence réelle du
+  // silence — sans lui, on optimiserait à l'aveugle.
+  if (spokenFromLlm === null) {
+    console.warn('[copilot-free] spokenText écarté', JSON.stringify({
+      present: typeof rawSpoken === 'string',
+      length: typeof rawSpoken === 'string' ? rawSpoken.length : 0,
+      max: SPOKEN_MAX_CHARS,
+    }))
+  }
+
+  const maybeValid = req.answerSchema.safeParse(result.parsed)
+  if (!maybeValid.success) {
+    // Le motif, pas seulement le contenu : sans lui, un repli silencieux se lit
+    // comme un défaut du moteur alors qu'il vient d'un garde de longueur.
+    const motif = maybeValid.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join(' ; ')
+    console.warn(`[copilot-free] schema mismatch (${motif}) — parsed:`, JSON.stringify(result.parsed).slice(0, 200))
+    return null
+  }
+
+  const citedIds = maybeValid.data.citedIds.filter((id) => req.validIds.has(id))
+  const text = stripUuids(maybeValid.data.text)
+  return {
+    text,
+    citedIds,
+    source: 'llm',
+    spokenText: spokenFromLlm,
+    diagnostics: {
+      ...req.diagBase,
+      parseMs: Date.now() - parseStart,
+      textLength: text.length,
+      spokenLength: spokenFromLlm?.length ?? 0,
+    },
+  }
+}
+
+// Repli déterministe — retourne un texte utile sans LLM. Partagé par les deux
+// transports : ni l'échec ni l'absence de streaming ne doivent produire un
+// repli différent.
+function buildDeterministicFallback(
+  items: CopilotItem[],
+  subjectDetails: SubjectDetailContext[],
+  delta: SiteCopilotDelta | null,
+  prepItems: { label: string; stableKey: string }[],
+  req: PreparedFreeAnswerRequest,
+): FreeAnswer {
   const intent = subjectDetails.length > 0 ? 'attention' : 'global'
   const fallbackText = buildFallbackText(items, intent as Parameters<typeof buildFallbackText>[1], delta, prepItems)
   // Un plan de visite se résume par son compteur ; une réponse courte se lit
   // telle quelle ; une réponse longue reste silencieuse. Aucun appel LLM
   // supplémentaire n'est fait pour faire parler un repli.
-  const fallbackSpoken = nbControles > 0
-    ? buildSpokenFallback(nbControles)
+  const fallbackSpoken = req.nbControles > 0
+    ? buildSpokenFallback(req.nbControles)
     : spokenFromShortAnswer(fallbackText)
   return {
     text: fallbackText,
@@ -361,9 +402,122 @@ export async function answerCopilotFreeQuestion(
     source: 'fallback',
     spokenText: fallbackSpoken,
     diagnostics: {
-      ...diagBase,
+      ...req.diagBase,
       textLength: fallbackText.length,
       spokenLength: fallbackSpoken?.length ?? 0,
     },
   }
+}
+
+export async function answerCopilotFreeQuestion(
+  question: string,
+  history: HistoryMessage[],
+  items: CopilotItem[],
+  subjectDetails: SubjectDetailContext[],
+  delta: SiteCopilotDelta | null,
+  prepItems: { label: string; stableKey: string }[],
+  siteName: string,
+  extra?: FreeAnswerContext,
+): Promise<FreeAnswer> {
+  const req = prepareFreeAnswerRequest(question, history, items, subjectDetails, delta, prepItems, siteName, extra)
+
+  try {
+    const provider = getAIProvider()
+    const result = await provider.complete({
+      systemPrompt: SYSTEM_PROMPT,
+      userMessage: `${question}\n\nContexte :\n${req.contextJson}`,
+      responseSchema: req.answerSchema,
+      geminiSchema: FREE_ANSWER_GEMINI_SCHEMA,
+      modelTier: 'light',
+      maxOutputTokens: req.maxOutputTokens,
+    })
+    const finalized = finalizeParsedResult(result, req)
+    if (finalized) return finalized
+  } catch (err) {
+    console.error('[copilot-free] provider error:', err instanceof Error ? err.message : String(err))
+  }
+
+  return buildDeterministicFallback(items, subjectDetails, delta, prepItems, req)
+}
+
+// Détecte la fin du champ "spokenText" dans le JSON en cours de streaming.
+// Sûr par construction : la génération JSON de Gemini est strictement
+// séquentielle (jamais de réécriture d'un token déjà émis), donc un guillemet
+// fermant suivi de `,` ou `}` marque bien la fin du champ, pas un guillemet
+// interne (les guillemets internes sont échappés, capturés par l'alternative
+// `\\.` du groupe). Motif prouvé par `_audit-ordre-spoken.ts`.
+const SPOKEN_FIELD_RE = /"spokenText"\s*:\s*"((?:[^"\\]|\\.)*)"\s*[,}]/
+
+/**
+ * D1 (2026-08-16) — même pipeline que `answerCopilotFreeQuestion`, transport
+ * streamé : appelle `handlers.onSpokenReady` dès que `spokenText` est complet
+ * ET conforme au contrat D0 (`isSpokenTextWithinPlanVoix`), pour lancer la
+ * synthèse vocale avant la fin de la réponse écrite. Ne raccourcit ni ne
+ * modifie le texte final : `finalizeParsedResult`/`buildDeterministicFallback`
+ * sont partagés à l'identique avec le chemin non streamé.
+ *
+ * Se replie silencieusement sur `answerCopilotFreeQuestion` si le provider
+ * actif n'implémente pas `completeStream` (mock, anthropic) — aucune panne,
+ * juste pas de gain de latence orale.
+ */
+export async function answerCopilotFreeQuestionStream(
+  question: string,
+  history: HistoryMessage[],
+  items: CopilotItem[],
+  subjectDetails: SubjectDetailContext[],
+  delta: SiteCopilotDelta | null,
+  prepItems: { label: string; stableKey: string }[],
+  siteName: string,
+  extra?: FreeAnswerContext,
+  handlers?: { onSpokenReady?: (spokenText: string) => void },
+): Promise<FreeAnswer> {
+  const provider = getAIProvider()
+  if (!provider.completeStream) {
+    return answerCopilotFreeQuestion(question, history, items, subjectDetails, delta, prepItems, siteName, extra)
+  }
+
+  const req = prepareFreeAnswerRequest(question, history, items, subjectDetails, delta, prepItems, siteName, extra)
+  const controls = extra?.visitPlanDetail ?? []
+
+  try {
+    const gen = provider.completeStream({
+      systemPrompt: SYSTEM_PROMPT,
+      userMessage: `${question}\n\nContexte :\n${req.contextJson}`,
+      responseSchema: req.answerSchema,
+      geminiSchema: FREE_ANSWER_GEMINI_SCHEMA,
+      modelTier: 'light',
+      maxOutputTokens: req.maxOutputTokens,
+    })
+
+    let acc = ''
+    let spokenAnnounced = false
+    let step = await gen.next()
+    while (!step.done) {
+      acc += step.value
+      if (!spokenAnnounced) {
+        const m = SPOKEN_FIELD_RE.exec(acc)
+        if (m) {
+          spokenAnnounced = true
+          try {
+            const candidateRaw = JSON.parse(`"${m[1]}"`) as string
+            const candidate = sanitizeSpokenText(candidateRaw)
+            if (candidate && isSpokenTextWithinPlanVoix(candidate, controls)) {
+              handlers?.onSpokenReady?.(candidate)
+            }
+          } catch {
+            // JSON invalide en cours de flux (échappement partiel) : on
+            // n'annonce rien, la réponse écrite complète reste le contrat.
+          }
+        }
+      }
+      step = await gen.next()
+    }
+
+    const finalized = finalizeParsedResult(step.value, req)
+    if (finalized) return finalized
+  } catch (err) {
+    console.error('[copilot-free] provider stream error:', err instanceof Error ? err.message : String(err))
+  }
+
+  return buildDeterministicFallback(items, subjectDetails, delta, prepItems, req)
 }

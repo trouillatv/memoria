@@ -18,6 +18,7 @@ import { listMeetingSitesAction } from './meeting-actions'
 import { speak } from '@/lib/voice/speech-output'
 import { markVoice } from '@/lib/voice/voice-latency'
 import { traceVoice } from '@/lib/voice/voice-trace'
+import { askCopilotFreeActionStreamed } from '@/lib/voice/copilot-stream-client'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -144,12 +145,52 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
     const allResolvedIds = [...resolvedSubjectIds, ...(extraResolvedIds ?? [])]
 
     try {
-      const result: CopilotFreeResult = await askCopilotFreeAction({
-        siteId,
-        question,
-        history: buildHistory(),
-        resolvedSubjectIds: allResolvedIds,
-      })
+      let result: CopilotFreeResult
+      // D1 (2026-08-16) : une question parlée emprunte le transport streamé —
+      // `onSpokenReady` déclenche la lecture dès que la synthèse orale est
+      // prête, avant la réponse écrite complète. Une question tapée n'a rien à
+      // prononcer : elle garde le transport non streamé, plus simple.
+      if (opts?.spoken) {
+        // Le repli déterministe DANS le flux (provider en échec pendant le
+        // streaming) ne passe jamais par `onSpokenReady` — sa synthèse orale
+        // n'est jamais un fragment JSON streamé. `spokenAnnounced` distingue
+        // ce cas : si la voix n'a encore rien dit à la fin du flux, on la
+        // déclenche sur la synthèse du résultat final, exactement comme le
+        // transport non streamé l'a toujours fait.
+        let spokenAnnounced = false
+        try {
+          result = await askCopilotFreeActionStreamed(
+            { siteId, question, history: buildHistory(), resolvedSubjectIds: allResolvedIds },
+            {
+              onSpokenReady: (spokenText) => {
+                spokenAnnounced = true
+                markVoice('spokenReady')
+                const accepted = speak(spokenText)
+                traceVoice('speak-returned', { accepted, transport: 'stream' })
+              },
+            },
+          )
+          if (!spokenAnnounced && result.kind === 'answer') {
+            const accepted = speak(result.spokenText)
+            traceVoice('speak-returned', { accepted, transport: 'stream-final' })
+          }
+        } catch (err) {
+          // Repli propre sur le transport non streamé (contrainte Vincent #8) :
+          // aucune réponse partielle, juste pas de gain de latence orale.
+          traceVoice('stream-fallback', { reason: err instanceof Error ? err.message : String(err) })
+          result = await askCopilotFreeAction({
+            siteId, question, history: buildHistory(), resolvedSubjectIds: allResolvedIds,
+          })
+          if (result.kind === 'answer') {
+            const accepted = speak(result.spokenText)
+            traceVoice('speak-returned', { accepted, transport: 'fallback' })
+          }
+        }
+      } else {
+        result = await askCopilotFreeAction({
+          siteId, question, history: buildHistory(), resolvedSubjectIds: allResolvedIds,
+        })
+      }
 
       // Jalon « réponse disponible » : posé avant le rendu, pour n'imputer au
       // serveur que le temps du serveur.
@@ -163,13 +204,6 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
           spokenText: result.kind === 'answer' ? (spoken == null ? 'null' : 'present') : 'n/a',
           spokenLength: spoken?.length ?? 0,
         })
-      }
-
-      // La lecture part AVANT le rendu et ne le conditionne jamais : le texte
-      // s'affiche identiquement que la voix démarre, échoue ou soit en sourdine.
-      if (opts?.spoken && result.kind === 'answer') {
-        const accepted = speak(result.spokenText)
-        traceVoice('speak-returned', { accepted })
       }
 
       setMessages((prev) => {

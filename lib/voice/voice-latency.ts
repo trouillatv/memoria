@@ -22,14 +22,23 @@
 // Le seul point de mesure hors de ce fichier est `onstart` de l'utterance, dans
 // le contrôleur audio : c'est le premier instant où un son sort réellement.
 
-export type VoiceLatencyStep = 'endOfSpeech' | 'transcript' | 'answer' | 'firstSound'
+export type VoiceLatencyStep = 'endOfSpeech' | 'transcript' | 'spokenReady' | 'answer' | 'firstSound'
 
 export type VoiceLatencyReport = {
   /** Fin de parole → transcription finale reçue. */
   transcriptionMs: number | null
-  /** Transcription → réponse du copilote disponible. */
+  /**
+   * Transcription → synthèse orale prête et conforme au contrat D0 (D1,
+   * transport streamé uniquement). `null` hors streaming — ne pas y lire un
+   * silence, juste l'absence de ce transport pour ce tour.
+   */
+  spokenReadyMs: number | null
+  /** Transcription → réponse du copilote disponible (texte complet). */
   answerMs: number | null
-  /** Réponse disponible → premier son réellement émis. `null` si silence. */
+  /**
+   * Dernier jalon écrit connu (spokenReady si D1, sinon réponse complète) →
+   * premier son réellement émis. `null` si silence.
+   */
   speechStartMs: number | null
   /** Fin de parole → dernier jalon connu. */
   totalMs: number | null
@@ -37,6 +46,7 @@ export type VoiceLatencyReport = {
 
 const EMPTY: VoiceLatencyReport = {
   transcriptionMs: null,
+  spokenReadyMs: null,
   answerMs: null,
   speechStartMs: null,
   totalMs: null,
@@ -66,11 +76,16 @@ function delta(from: VoiceLatencyStep, to: VoiceLatencyStep): number | null {
 }
 
 function recompute() {
-  const last = marks.firstSound ?? marks.answer ?? marks.transcript ?? null
+  const last = marks.firstSound ?? marks.answer ?? marks.spokenReady ?? marks.transcript ?? null
+  // D1 (streamé) : le son peut démarrer sur `spokenReady`, avant la réponse
+  // écrite complète — c'est le gain qu'il mesure. Hors streaming, `spokenReady`
+  // n'est jamais posé et on retombe sur `answer`.
+  const speechStartFrom: VoiceLatencyStep = marks.spokenReady != null ? 'spokenReady' : 'answer'
   report = {
     transcriptionMs: delta('endOfSpeech', 'transcript'),
+    spokenReadyMs: delta('transcript', 'spokenReady'),
     answerMs: delta('transcript', 'answer'),
-    speechStartMs: delta('answer', 'firstSound'),
+    speechStartMs: delta(speechStartFrom, 'firstSound'),
     totalMs: last == null || marks.endOfSpeech == null ? null : Math.round(last - marks.endOfSpeech),
   }
   listeners.forEach((l) => l())
@@ -108,12 +123,17 @@ export function markVoice(step: VoiceLatencyStep) {
   marks[step] = now()
   recompute()
 
-  if (step === 'firstSound') {
-    publish()
-    return
-  }
-  if (step === 'answer') {
-    settleTimer = setTimeout(publish, SETTLE_MS)
+  // D1 (streamé) peut inverser l'ordre : `firstSound` (son démarré sur
+  // `spokenReady`) peut désormais précéder `answer` (réponse écrite complète).
+  // On publie dès que les deux jalons de fin de tour sont connus, quel que
+  // soit l'ordre d'arrivée ; sinon le settle timer publie après un délai —
+  // silence, synthèse absente, ou l'autre jalon qui tarde.
+  if (step === 'firstSound' || step === 'answer') {
+    if (marks.firstSound != null && marks.answer != null) {
+      publish()
+    } else if (!settleTimer) {
+      settleTimer = setTimeout(publish, SETTLE_MS)
+    }
   }
 }
 
@@ -136,8 +156,9 @@ export function formatVoiceLatency(r: VoiceLatencyReport): string | null {
   const seg = (label: string, ms: number | null) => `${label} ${ms == null ? '—' : `${ms}`}`
   return [
     seg('parole→texte', r.transcriptionMs),
+    r.spokenReadyMs != null ? seg('texte→oral', r.spokenReadyMs) : null,
     seg('texte→réponse', r.answerMs),
     seg('réponse→son', r.speechStartMs),
     seg('total', r.totalMs),
-  ].join(' · ')
+  ].filter((s): s is string => s != null).join(' · ')
 }
