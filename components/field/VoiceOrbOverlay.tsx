@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { X, Volume2, VolumeX } from 'lucide-react'
 import { createVad, DEFAULT_VAD_CONFIG, type Vad } from '@/lib/voice/vad'
-import type { VoiceTurnResult } from '@/app/(field)/m/VoiceOrbContext'
+import type { VoiceTurnHandlers, VoiceTurnResult } from '@/app/(field)/m/VoiceOrbContext'
 import {
   voiceReducer,
   voiceErrorMessage,
@@ -35,15 +35,17 @@ interface Props {
   siteId: string
   siteName?: string
   /**
-   * Envoi de la question au copilote. Peut renvoyer une promesse : l'orbe reste
-   * alors à l'écran, en état « réflexion », jusqu'à ce que la réponse arrive.
-   * C'est l'appelant qui déclenche la lecture vocale ; l'orbe se contente
-   * d'observer le contrôleur audio et d'en refléter l'état.
+   * Un tour vocal complet (P2-C) : l'orbe fournit l'audio capturé, l'appelant
+   * fusionne transcription et réponse en une seule requête — c'est ce qui
+   * permet au serveur de charger le contexte chantier PENDANT le STT. L'orbe
+   * apprend le transcript par `handlers.onTranscript`, au moment où le serveur
+   * le rend. C'est l'appelant qui déclenche la lecture vocale ; l'orbe se
+   * contente d'observer le contrôleur audio et d'en refléter l'état.
    *
    * Le `answer` renvoyé alimente le fil affiché DANS l'orbe : en session
    * continue on ne ferme plus pour lire.
    */
-  onResult: (text: string) => void | Promise<void | VoiceTurnResult>
+  onVoiceTurn: (audio: Blob, mimeType: string, handlers: VoiceTurnHandlers) => Promise<void | VoiceTurnResult>
   onClose: () => void
 }
 
@@ -97,7 +99,9 @@ function vibrateEndOfSpeech() {
   } catch { /* vibrate non disponible (iOS) */ }
 }
 
-export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: Props) {
+// `siteId` reste dans les Props (contrat de session de l'orbe) mais n'est plus
+// lu ici : depuis P2-C c'est la feuille qui construit la requête du tour.
+export function VoiceOrbOverlay({ open, siteName, onVoiceTurn, onClose }: Props) {
   // La machine à états est la seule autorité sur le parcours. `stateRef` en est
   // le miroir synchrone : les callbacks audio (RAF, `onstop`) se déclenchent
   // hors du cycle de rendu React et doivent lire l'état réel, pas celui de la
@@ -397,44 +401,47 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
   }
 
   async function transcribeAndSend(blob: Blob, mimeType: string) {
-    let text: string
-    try {
-      const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
-      const form = new FormData()
-      form.append('audio', blob, `voice.${ext}`)
-      form.append('siteId', siteId)
+    // P2-C : le tour part ENTIER (audio) vers la feuille, qui fusionne
+    // transcription et réponse en une seule requête serveur — c'est ce qui
+    // permet au serveur de charger le contexte chantier pendant le STT. L'orbe
+    // apprend le transcript par le callback, au moment où le serveur le rend.
+    let transcriptSeen = false
+    let turnId: number | null = null
 
-      const res = await fetch('/api/copilot/transcribe', { method: 'POST', body: form })
-      if (!res.ok) { dispatch({ type: 'TRANSCRIBE_FAILED' }); return }
-      const data = await res.json() as { text?: string }
-      text = (data.text ?? '').trim()
-    } catch {
-      dispatch({ type: 'TRANSCRIBE_FAILED' })
-      return
+    const onTranscript = (text: string): boolean => {
+      transcriptSeen = true
+      // Une transcription vide bascule en erreur au lieu d'ouvrir la réflexion :
+      // c'est la machine qui l'impose, pas ce fichier.
+      if (!dispatch({ type: 'TRANSCRIPT', text })) return false
+      markVoice('transcript')
+      // La croix a pu être touchée pendant le STT : si la machine n'est plus en
+      // réflexion, le tour est abandonné — la feuille jette la réponse.
+      if (stateRef.current.phase !== 'thinking') return false
+
+      // La question entre dans le fil AVANT la réponse : elle doit être lisible
+      // pendant toute la réflexion, et le rester quand la suivante arrivera.
+      turnId = ++turnSeqRef.current
+      const id = turnId
+      setTurns((prev) => [...prev, { id, question: text, answer: null }])
+      traceVoice('orb-before-send', { phase: stateRef.current.phase, turnId: id })
+      return true
     }
 
-    // Une transcription vide bascule en erreur au lieu d'ouvrir la réflexion :
-    // c'est la machine qui l'impose, pas ce fichier.
-    if (!dispatch({ type: 'TRANSCRIPT', text })) return
-    markVoice('transcript')
-    // Lu dans une variable locale, sinon le typage garderait la phase du ref
-    // « narrowée » à `thinking` de l'autre côté du `await` — alors qu'elle a
-    // précisément le droit de changer pendant ce temps.
-    const phaseBeforeSend: VoicePhase = stateRef.current.phase
-    if (phaseBeforeSend !== 'thinking') return
-
-    // La question entre dans le fil AVANT la réponse : elle doit être lisible
-    // pendant toute la réflexion, et le rester quand la suivante arrivera.
-    const turnId = ++turnSeqRef.current
-    setTurns((prev) => [...prev, { id: turnId, question: text, answer: null }])
-
-    // Envoi direct au copilote, exactement comme une question saisie au clavier.
-    // L'orbe reste à l'écran pendant toute la réflexion.
-    traceVoice('orb-before-send', { phase: stateRef.current.phase, turnId })
     let result: void | VoiceTurnResult = undefined
     try {
-      result = await onResult(text)
-    } catch { /* la feuille affiche elle-même l'échec de la réponse */ }
+      result = await onVoiceTurn(blob, mimeType, { onTranscript })
+    } catch {
+      // Échec AVANT transcript (réseau, provider) → même erreur qu'avant la
+      // fusion des requêtes. Après transcript, la feuille affiche elle-même
+      // l'échec de la réponse.
+      if (!transcriptSeen) { dispatch({ type: 'TRANSCRIBE_FAILED' }); return }
+    }
+    if (!transcriptSeen) { dispatch({ type: 'TRANSCRIBE_FAILED' }); return }
+    // Tour refusé par la machine (orbe fermée, transcription vide) : tout est
+    // déjà géré, la réponse a été jetée par la feuille.
+    if (turnId === null) return
+    const settledTurnId = turnId
+
     markVoice('answer')
     traceVoice('orb-after-send', { phase: stateRef.current.phase, isSpeaking: isSpeaking() })
 
@@ -442,12 +449,12 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onResult, onClose }: P
     // lancé la lecture : sans cette coupure, MemorIA parlerait après la sortie
     // du mode vocal. C'est l'invalidation de la génération audio en vol.
     // Annotation explicite : la phase a pu changer PENDANT le `await`, ce que le
-    // typage ne peut pas savoir depuis le garde `thinking` posé plus haut.
+    // typage ne peut pas savoir depuis le garde `thinking` du callback.
     const p: VoicePhase = stateRef.current.phase
     if (p === 'exiting' || p === 'idle') { stopSpeaking(); return }
 
     const answer = result?.answer?.trim()
-    if (answer) setTurns((prev) => prev.map((t) => (t.id === turnId ? { ...t, answer } : t)))
+    if (answer) setTurns((prev) => prev.map((t) => (t.id === settledTurnId ? { ...t, answer } : t)))
 
     // L'orbe ne décide pas de parler : la feuille a déjà déclenché la lecture si
     // elle avait une synthèse orale à prononcer. Ici on ne fait qu'observer le

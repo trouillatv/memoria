@@ -37,7 +37,7 @@ import 'server-only'
 import { redirect, notFound } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import type { UserRole } from '@/types/db'
+import type { DbUser, UserRole } from '@/types/db'
 
 /** Le rôle DANS l'organisation de la ressource — jamais le rôle plateforme. */
 export type OrganizationMembershipRole = UserRole
@@ -158,14 +158,44 @@ const resourceResolvers = {
 /**
  * Résout l'accès SANS jamais lever. L'ordre est la doctrine :
  * authentification → organisation DE LA RESSOURCE → appartenance active.
+ *
+ * P2-C (16/08, mandat Vincent) : les deux lectures qui suivent la session sont
+ * INDÉPENDANTES — l'org de la ressource ne dépend pas de qui appelle, et les
+ * appartenances de l'appelant ne dépendent pas de la ressource visée. Elles
+ * partent donc EN PARALLÈLE (même raisonnement que `requireOwned`, P2-B item D),
+ * puis la décision se prend en mémoire une fois les deux revenues. La décision
+ * finale est STRICTEMENT identique à la version sérielle, y compris la
+ * discrimination `membership_missing` / `membership_inactive` (le statut est
+ * relu tel quel, filtré ici et nulle part ailleurs).
+ *
+ * `currentUser` — même optimisation que `requireOwned` : un appelant qui a DÉJÀ
+ * résolu le user de la requête évite un aller-retour de session. Omis →
+ * comportement inchangé. Passer explicitement `null` = pas de session.
  */
-export async function resolveResourceAccess(req: ResourceAccessRequest): Promise<ResourceAccessResolution> {
+export async function resolveResourceAccess(
+  req: ResourceAccessRequest,
+  currentUser?: Pick<DbUser, 'id'> | null,
+): Promise<ResourceAccessResolution> {
   if (!req.id) return { ok: false, reason: 'not_found' }
 
-  const user = await getCurrentUserWithProfile().catch(() => null)
+  const user = currentUser !== undefined
+    ? currentUser
+    : await getCurrentUserWithProfile().catch(() => null)
   if (!user) return { ok: false, reason: 'unauthenticated' }
 
-  const orgId = await resourceResolvers[req.kind](req.id)
+  // TOUTES les appartenances de l'appelant (pas seulement l'org de la
+  // ressource) : c'est ce qui permet le parallélisme. Quelques lignes par
+  // utilisateur, jamais une donnée d'un autre tenant — ce sont SES propres
+  // appartenances. Si la ressource n'existe pas, cette lecture est simplement
+  // jetée : elle n'autorise rien et ne modifie aucune décision.
+  const [orgId, membershipsRes] = await Promise.all([
+    resourceResolvers[req.kind](req.id),
+    createAdminClient()
+      .from('organization_memberships')
+      .select('organization_id, role, status')
+      .eq('user_id', user.id),
+  ])
+
   if (orgId === undefined) return { ok: false, reason: 'not_found' }
   if (orgId === null) {
     // Anomalie structurelle : après M2A une ressource métier connaît toujours
@@ -174,16 +204,12 @@ export async function resolveResourceAccess(req: ResourceAccessRequest): Promise
     return { ok: false, reason: 'missing_organization' }
   }
 
-  // Lecture DISCRIMINÉE de l'appartenance : « pas membre » et « suspendu »
+  // Décision DISCRIMINÉE de l'appartenance : « pas membre » et « suspendu »
   // mènent au même 404 externe, mais on les sépare pour l'observabilité.
-  const { data, error } = await createAdminClient()
-    .from('organization_memberships')
-    .select('role, status')
-    .eq('user_id', user.id)
-    .eq('organization_id', orgId)
-    .maybeSingle()
-  if (error || !data) return { ok: false, reason: 'membership_missing' }
-  const m = data as { role: UserRole; status: string }
+  if (membershipsRes.error || !membershipsRes.data) return { ok: false, reason: 'membership_missing' }
+  const rows = membershipsRes.data as Array<{ organization_id: string; role: UserRole; status: string }>
+  const m = rows.find((r) => r.organization_id === orgId)
+  if (!m) return { ok: false, reason: 'membership_missing' }
   if (m.status !== 'active') return { ok: false, reason: 'membership_inactive' }
 
   return { ok: true, context: { resourceId: req.id, organizationId: orgId, membershipRole: m.role, userId: user.id } }

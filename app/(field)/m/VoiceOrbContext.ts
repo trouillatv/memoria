@@ -13,14 +13,30 @@ import { createContext, useContext } from 'react'
  */
 export type VoiceTurnResult = { answer?: string }
 
+/**
+ * Callbacks que l'orbe fournit au tour vocal (P2-C : l'audio part entier vers
+ * la feuille, transcription et réponse reviennent par la même requête).
+ */
+export type VoiceTurnHandlers = {
+  /**
+   * Transcript arrivé du serveur. Renvoie `false` si l'orbe refuse le tour
+   * (fermée entre-temps, transcription vide) : l'appelant doit alors abandonner
+   * — la réponse est jetée, jamais affichée ni réutilisée au tour suivant.
+   */
+  onTranscript: (text: string) => boolean
+}
+
 export type OpenOrbOptions = {
   siteId: string
   siteName?: string
   /**
-   * Envoi de la question au copilote. Renvoyer une promesse fait rester l'orbe
-   * à l'écran, en état « réflexion », jusqu'à l'arrivée de la réponse.
+   * Un tour vocal complet : l'orbe fournit l'audio capturé, la feuille fusionne
+   * transcription et réponse en une seule requête serveur. La promesse fait
+   * rester l'orbe à l'écran, en état « réflexion », jusqu'à la réponse.
+   * Doit LEVER si le tour échoue avant le transcript (l'orbe affiche alors
+   * l'erreur de transcription).
    */
-  onResult: (text: string) => void | Promise<void | VoiceTurnResult>
+  onVoiceTurn: (audio: Blob, mimeType: string, handlers: VoiceTurnHandlers) => Promise<void | VoiceTurnResult>
 }
 
 export type VoiceOrbContextValue = {

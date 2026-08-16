@@ -7,7 +7,7 @@ import { VoiceLatencyBadge } from '@/components/field/VoiceLatencyBadge'
 
 type OrbSession = OpenOrbOptions & { open: boolean }
 
-const CLOSED: OrbSession = { open: false, siteId: '', onResult: () => {} }
+const CLOSED: OrbSession = { open: false, siteId: '', onVoiceTurn: async () => {} }
 
 export function VoiceOrbProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<OrbSession>(CLOSED)
@@ -27,7 +27,7 @@ export function VoiceOrbProvider({ children }: { children: React.ReactNode }) {
         open={session.open}
         siteId={session.siteId}
         siteName={session.siteName}
-        onResult={session.onResult}
+        onVoiceTurn={session.onVoiceTurn}
         onClose={closeOrb}
       />
       {/* Un seul point de montage pour les deux feuilles : la mesure est

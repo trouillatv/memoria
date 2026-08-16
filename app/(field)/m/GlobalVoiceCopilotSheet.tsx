@@ -13,12 +13,12 @@ import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { ProposalCard, ScheduleProposalCard } from '@/components/copilot/CopilotProposalCards'
 import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
-import { useVoiceOrb, type VoiceTurnResult } from './VoiceOrbContext'
+import { useVoiceOrb, type VoiceTurnHandlers, type VoiceTurnResult } from './VoiceOrbContext'
 import { listMeetingSitesAction } from './meeting-actions'
 import { speak } from '@/lib/voice/speech-output'
 import { markVoice } from '@/lib/voice/voice-latency'
 import { traceVoice } from '@/lib/voice/voice-trace'
-import { askCopilotFreeActionStreamed } from '@/lib/voice/copilot-stream-client'
+import { askCopilotVoiceTurnStreamed } from '@/lib/voice/copilot-stream-client'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -122,18 +122,25 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
     return result
   }
 
-  /**
-   * `spoken` : la question est arrivée par la voix. MemorIA répond alors aussi à
-   * l'oral. Une question TAPÉE reste silencieuse — voir le même commentaire dans
-   * `CopilotMobileSheet`.
-   */
-  async function send(
-    question: string,
-    extraResolvedIds?: string[],
-    opts?: { spoken?: boolean },
-  ): Promise<VoiceTurnResult> {
-    // Tracé avant le garde — voir le même commentaire dans `CopilotMobileSheet`.
-    if (opts?.spoken) traceVoice('sheet-send', { surface: 'global', loading, questionLength: question.trim().length })
+  /** Remplace le « thinking » par le message correspondant au résultat. */
+  function pushResultMessage(result: CopilotFreeResult) {
+    setMessages((prev) => {
+      const without = prev.filter((m) => m.kind !== 'thinking')
+      if (result.kind === 'answer') {
+        return [...without, { kind: 'answer' as const, id: uid(), text: result.text, source: result.source, refs: result.references }]
+      }
+      if (result.kind === 'clarification') {
+        return [...without, { kind: 'clarification' as const, id: uid(), text: result.text, candidates: result.candidates }]
+      }
+      if (result.kind === 'proposal') {
+        return [...without, { kind: 'proposal' as const, id: uid(), text: result.text, proposal: result.proposal, interactionId: result.interactionId }]
+      }
+      return [...without, { kind: 'answer' as const, id: uid(), text: result.text, source: 'fallback' as const, refs: [] }]
+    })
+  }
+
+  /** Question TAPÉE — transport non streamé, jamais de lecture vocale. */
+  async function send(question: string, extraResolvedIds?: string[]): Promise<VoiceTurnResult> {
     if (loading || !question.trim()) return {}
     setLoading(true)
 
@@ -145,89 +152,102 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
     const allResolvedIds = [...resolvedSubjectIds, ...(extraResolvedIds ?? [])]
 
     try {
-      let result: CopilotFreeResult
-      // D1 (2026-08-16) : une question parlée emprunte le transport streamé —
-      // `onSpokenReady` déclenche la lecture dès que la synthèse orale est
-      // prête, avant la réponse écrite complète. Une question tapée n'a rien à
-      // prononcer : elle garde le transport non streamé, plus simple.
-      if (opts?.spoken) {
-        // Le repli déterministe DANS le flux (provider en échec pendant le
-        // streaming) ne passe jamais par `onSpokenReady` — sa synthèse orale
-        // n'est jamais un fragment JSON streamé. `spokenAnnounced` distingue
-        // ce cas : si la voix n'a encore rien dit à la fin du flux, on la
-        // déclenche sur la synthèse du résultat final, exactement comme le
-        // transport non streamé l'a toujours fait.
-        let spokenAnnounced = false
-        try {
-          result = await askCopilotFreeActionStreamed(
-            { siteId, question, history: buildHistory(), resolvedSubjectIds: allResolvedIds },
-            {
-              onSpokenReady: (spokenText) => {
-                spokenAnnounced = true
-                markVoice('spokenReady')
-                const accepted = speak(spokenText)
-                traceVoice('speak-returned', { accepted, transport: 'stream' })
-              },
-            },
-          )
-          if (!spokenAnnounced && result.kind === 'answer') {
-            const accepted = speak(result.spokenText)
-            traceVoice('speak-returned', { accepted, transport: 'stream-final' })
-          }
-        } catch (err) {
-          // Repli propre sur le transport non streamé (contrainte Vincent #8) :
-          // aucune réponse partielle, juste pas de gain de latence orale.
-          traceVoice('stream-fallback', { reason: err instanceof Error ? err.message : String(err) })
-          result = await askCopilotFreeAction({
-            siteId, question, history: buildHistory(), resolvedSubjectIds: allResolvedIds,
-          })
-          if (result.kind === 'answer') {
-            const accepted = speak(result.spokenText)
-            traceVoice('speak-returned', { accepted, transport: 'fallback' })
-          }
-        }
-      } else {
-        result = await askCopilotFreeAction({
-          siteId, question, history: buildHistory(), resolvedSubjectIds: allResolvedIds,
-        })
-      }
-
-      // Jalon « réponse disponible » : posé avant le rendu, pour n'imputer au
-      // serveur que le temps du serveur.
-      if (opts?.spoken) markVoice('answer')
-
-      if (opts?.spoken) {
-        const spoken = result.kind === 'answer' ? result.spokenText : null
-        traceVoice('answer', {
-          kind: result.kind,
-          source: result.kind === 'answer' ? result.source : null,
-          spokenText: result.kind === 'answer' ? (spoken == null ? 'null' : 'present') : 'n/a',
-          spokenLength: spoken?.length ?? 0,
-        })
-      }
-
-      setMessages((prev) => {
-        const without = prev.filter((m) => m.kind !== 'thinking')
-        if (result.kind === 'answer') {
-          return [...without, { kind: 'answer', id: uid(), text: result.text, source: result.source, refs: result.references }]
-        }
-        if (result.kind === 'clarification') {
-          return [...without, { kind: 'clarification', id: uid(), text: result.text, candidates: result.candidates }]
-        }
-        if (result.kind === 'proposal') {
-          return [...without, { kind: 'proposal', id: uid(), text: result.text, proposal: result.proposal, interactionId: result.interactionId }]
-        }
-        return [...without, { kind: 'answer', id: uid(), text: result.text, source: 'fallback', refs: [] }]
+      const result = await askCopilotFreeAction({
+        siteId, question, history: buildHistory(), resolvedSubjectIds: allResolvedIds,
       })
-
-      // Ce que l'orbe affichera dans son fil. Une proposition en est exclue :
-      // elle se valide dans la feuille, pas dans la conversation vocale.
+      pushResultMessage(result)
       return result.kind === 'proposal' ? {} : { answer: result.text }
     } catch {
       setMessages((prev) => {
         const without = prev.filter((m) => m.kind !== 'thinking')
         return [...without, { kind: 'answer', id: uid(), text: 'Réessayez dans quelques instants.', source: 'fallback', refs: [] }]
       })
+      return {}
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  /**
+   * Tour VOCAL complet (P2-C) : l'audio de l'orbe part tel quel vers le serveur,
+   * qui transcrit ET répond dans la même requête — le contexte chantier se
+   * charge pendant le STT. Une question parlée est aussi lue à l'oral ; une
+   * question tapée (`send`) reste silencieuse.
+   */
+  async function sendVoiceTurn(
+    audio: Blob,
+    mimeType: string,
+    handlers: VoiceTurnHandlers,
+  ): Promise<VoiceTurnResult> {
+    // Tracé avant le garde : un `loading` resté vrai avalerait le tour suivant
+    // en silence, et c'est exactement ce qu'on cherche à écarter ou à prouver.
+    traceVoice('sheet-send', { surface: 'global', loading, mode: 'voice', audioBytes: audio.size })
+    if (loading) throw new Error('sheet busy')
+    setLoading(true)
+
+    let transcriptText: string | null = null
+    let spokenAnnounced = false
+    try {
+      const outcome = await askCopilotVoiceTurnStreamed(
+        { siteId, audio, mimeType, history: buildHistory(), resolvedSubjectIds },
+        {
+          onTranscript: (text) => {
+            transcriptText = text
+            const keepGoing = handlers.onTranscript(text)
+            if (keepGoing) {
+              // La question entre dans la feuille au moment où elle est connue,
+              // exactement comme une question tapée.
+              setMessages((prev) => [...prev, { kind: 'user', id: uid(), text }, { kind: 'thinking', id: uid() }])
+            }
+            return keepGoing
+          },
+          onSpokenReady: (spokenText) => {
+            spokenAnnounced = true
+            markVoice('spokenReady')
+            const accepted = speak(spokenText)
+            traceVoice('speak-returned', { accepted, transport: 'voice-stream' })
+          },
+        },
+      )
+
+      if (outcome.aborted) return {}
+
+      let result = outcome.result
+      if (!result) {
+        // Échec avant transcript → l'orbe affiche l'erreur de transcription.
+        if (!outcome.transcript) throw new Error('voice turn failed before transcript')
+        // Repli propre sur le transport non streamé (contrainte Vincent #8) :
+        // le transcript est acquis, seule la réponse streamée a échoué.
+        traceVoice('stream-fallback', { reason: 'voice-stream failed after transcript' })
+        result = await askCopilotFreeAction({
+          siteId, question: outcome.transcript, history: buildHistory(), resolvedSubjectIds,
+        })
+      }
+
+      // Le repli déterministe DANS le flux (provider en échec pendant le
+      // streaming) ne passe jamais par `onSpokenReady` — si la voix n'a encore
+      // rien dit, on la déclenche sur la synthèse du résultat final.
+      if (!spokenAnnounced && result.kind === 'answer') {
+        const accepted = speak(result.spokenText)
+        traceVoice('speak-returned', { accepted, transport: 'voice-final' })
+      }
+
+      const spoken = result.kind === 'answer' ? result.spokenText : null
+      traceVoice('answer', {
+        kind: result.kind,
+        source: result.kind === 'answer' ? result.source : null,
+        spokenText: result.kind === 'answer' ? (spoken == null ? 'null' : 'present') : 'n/a',
+        spokenLength: spoken?.length ?? 0,
+      })
+
+      pushResultMessage(result)
+      // Ce que l'orbe affichera dans son fil. Une proposition en est exclue :
+      // elle se valide dans la feuille, pas dans la conversation vocale.
+      return result.kind === 'proposal' ? {} : { answer: result.text }
+    } catch (err) {
+      setMessages((prev) => prev.filter((m) => m.kind !== 'thinking'))
+      if (transcriptText === null) throw err instanceof Error ? err : new Error('voice turn failed')
+      setMessages((prev) => [...prev, { kind: 'answer', id: uid(), text: 'Réessayez dans quelques instants.', source: 'fallback', refs: [] }])
       return {}
     } finally {
       setLoading(false)
@@ -382,11 +402,11 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
           disabled={loading}
           className="flex-1 rounded-full border border-border bg-background px-4 py-2.5 text-[14px] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-violet-400/40 disabled:opacity-50"
         />
-        {/* La transcription part directement dans `send` — même porte que le
-            champ texte, sans écran de confirmation intermédiaire. */}
+        {/* L'audio part entier dans `sendVoiceTurn` — transcription et réponse
+            reviennent par la même requête, sans écran de confirmation. */}
         <VoiceCopilotTrigger
           disabled={loading}
-          onOpenOrb={() => openOrb({ siteId, siteName, onResult: (text) => send(text, undefined, { spoken: true }) })}
+          onOpenOrb={() => openOrb({ siteId, siteName, onVoiceTurn: sendVoiceTurn })}
         />
         <button
           type="submit"
