@@ -12,7 +12,7 @@ import 'server-only'
 // En cas d'ambiguïté, la UI doit demander à l'utilisateur de choisir.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { jaccardSimilarity } from '@/lib/documents/subject-reconciliation'
+import { jaccardSimilarity, strongContainmentMatch } from '@/lib/documents/subject-reconciliation'
 import { extractTechnicalCodes } from '@/lib/documents/semantic-subject-resolution'
 
 export type CanonicalSubjectCandidate = {
@@ -50,6 +50,37 @@ function scoreSubject(
 ): number {
   const allLabels = [label, ...aliases]
   return Math.max(...allLabels.map((l) => jaccardSimilarity(queryText, l)))
+}
+
+type SubjectRow = { id: string; label: string; aliases: string[] | null }
+
+/**
+ * Ancrage lexical discriminant (P4-A.1, 2026-08-17) : un terme court parlé
+ * naturellement ("cadenas", "portail") est mécaniquement pénalisé par Jaccard
+ * face à un label canonique long ("Accès sécurisé au chantier (portail et
+ * cadenas à code)") — le ratio d'intersection s'effondre avec la taille du
+ * label, pas avec la pertinence sémantique.
+ *
+ * strongContainmentMatch() (déjà utilisée pour réconcilier les threads de
+ * sujets entre PV) porte déjà la bonne garde : un token isolé n'est accepté
+ * comme discriminant que s'il fait ≥ 7 caractères et n'est pas un mot trop
+ * générique (GENERIC_TOKENS). Ici, la sûreté vient du COMPTAGE de sujets
+ * distincts touchés plutôt que d'un score : un seul sujet touché → résolution
+ * certaine ; plusieurs → collision, jamais tranchée automatiquement (ex.
+ * "planning" ou "matériel" partagés par plusieurs sujets du même chantier).
+ *
+ * Exportée pour les tests unitaires (pas d'appel DB).
+ */
+export function findLexicalAnchorMatches(
+  queryText: string,
+  subjects: SubjectRow[],
+): CanonicalSubjectCandidate[] {
+  return subjects
+    .filter((s) => {
+      const allTexts = [s.label, ...(s.aliases ?? [])]
+      return allTexts.some((t) => strongContainmentMatch(queryText, t))
+    })
+    .map((s) => ({ id: s.id, label: s.label }))
 }
 
 // Réactive un canonical_subject auto_archived → active.
@@ -119,6 +150,17 @@ export async function resolveCanonicalSubjectReference(
   if (exactMatches.length > 1) {
     return { kind: 'ambiguous', candidates: exactMatches.map((s) => ({ id: s.id, label: s.label })) }
   }
+
+  // ── Pass 1.5 : ancrage lexical discriminant (containment, cf. findLexicalAnchorMatches) ──
+  const anchorMatches = findLexicalAnchorMatches(queryText, subjects)
+
+  if (anchorMatches.length === 1) {
+    return resolved({ id: anchorMatches[0].id, label: anchorMatches[0].label })
+  }
+  if (anchorMatches.length > 1) {
+    return { kind: 'ambiguous', candidates: anchorMatches }
+  }
+  // 0 ancrage → continuer vers Pass 2 (code technique) puis Pass 3 (Jaccard)
 
   // ── Pass 2 : code technique → Jaccard parmi les candidats avec code commun ────
   if (queryCodes.size > 0) {

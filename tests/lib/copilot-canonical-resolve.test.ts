@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   normalizeCanonicalLabel,
   resolveCanonicalSubjectReference,
+  findLexicalAnchorMatches,
   type SubjectResolutionResult,
 } from '@/lib/db/canonical-subject-resolve'
 
@@ -115,5 +116,85 @@ describe('normalisation et correspondance exacte', () => {
     const a = normalizeCanonicalLabel('essais G3 plateforme')
     const b = normalizeCanonicalLabel('G3 essais plateforme')
     expect(a).not.toBe(b)
+  })
+})
+
+// ── findLexicalAnchorMatches — P4-A.1 (2026-08-17) ─────────────────────────────
+// Ancrage lexical discriminant : un mot court parlé naturellement ("cadenas",
+// "portail") doit retrouver un canonical_subject dont le libellé est long,
+// sans dépendre du seuil Jaccard global. Sûreté par comptage de sujets touchés :
+// 1 seul sujet → résolution certaine ; plusieurs → ambiguïté, jamais tranchée.
+
+describe('findLexicalAnchorMatches', () => {
+  const PETRO_ACCES = {
+    id: 'subj-acces',
+    label: 'Accès sécurisé au chantier (portail et cadenas à code)',
+    aliases: null,
+  }
+  const PETRO_TERRASSEMENT = {
+    id: 'subj-terrassement',
+    label: 'Terrassement plateforme G3',
+    aliases: null,
+  }
+
+  // resolveCanonicalSubjectReference reçoit toujours une entité déjà extraite
+  // (classification.entities.subjectLabels[0]), jamais la phrase brute — c'est
+  // le LLM de compréhension (mergeComprehension) qui isole "cadenas"/"portail"
+  // depuis "Le cadenas n'est toujours pas installé." avant l'appel.
+
+  it('"cadenas" seul retrouve le sujet "Accès sécurisé..." sans ambiguïté', () => {
+    const result = findLexicalAnchorMatches('cadenas', [PETRO_ACCES, PETRO_TERRASSEMENT])
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('subj-acces')
+  })
+
+  it('"portail" seul retrouve le même sujet', () => {
+    const result = findLexicalAnchorMatches('portail', [PETRO_ACCES, PETRO_TERRASSEMENT])
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('subj-acces')
+  })
+
+  it('la même entité "cadenas" retrouve le même sujet que ce soit issue d\'un READ ou d\'une OBSERVATION', () => {
+    // "Où en est le cadenas ?" (READ) et "Le cadenas n'est toujours pas installé." (OBSERVATION)
+    // convergent toutes deux vers la même entité extraite "cadenas" avant résolution.
+    const readResult = findLexicalAnchorMatches('cadenas', [PETRO_ACCES, PETRO_TERRASSEMENT])
+    const observationResult = findLexicalAnchorMatches('cadenas', [PETRO_ACCES, PETRO_TERRASSEMENT])
+    expect(readResult).toHaveLength(1)
+    expect(observationResult).toHaveLength(1)
+    expect(readResult[0].id).toBe(observationResult[0].id)
+  })
+
+  it('un mot absent de tout label → aucun ancrage (laisse la main au Jaccard/not_found)', () => {
+    const result = findLexicalAnchorMatches('gaines', [PETRO_ACCES, PETRO_TERRASSEMENT])
+    expect(result).toHaveLength(0)
+  })
+
+  it('collision : "planning" partagé par deux sujets → ambiguïté, pas de résolution auto', () => {
+    const planningA = { id: 'subj-planning-a', label: 'Planning travaux gros œuvre', aliases: null }
+    const planningB = { id: 'subj-planning-b', label: 'Planning livraison matériaux', aliases: null }
+    const result = findLexicalAnchorMatches('planning', [planningA, planningB, PETRO_ACCES])
+    expect(result).toHaveLength(2)
+    expect(result.map((r) => r.id).sort()).toEqual(['subj-planning-a', 'subj-planning-b'])
+  })
+
+  it('collision : terme générique "matériel" présent dans plusieurs sujets → abstention', () => {
+    const materielA = { id: 'subj-materiel-a', label: 'Livraison matériel électrique', aliases: null }
+    const materielB = { id: 'subj-materiel-b', label: 'Stockage matériel chantier', aliases: null }
+    const result = findLexicalAnchorMatches('matériel', [materielA, materielB])
+    expect(result).toHaveLength(2)
+  })
+
+  it('un token unique trop court (< 7 caractères) ne matche pas seul', () => {
+    // "porte" (5 lettres) ne doit pas suffire à matcher par containment.
+    const porte = { id: 'subj-porte', label: 'Porte du local technique', aliases: null }
+    const result = findLexicalAnchorMatches('la porte', [porte])
+    expect(result).toHaveLength(0)
+  })
+
+  it('un alias discriminant retrouve aussi le sujet', () => {
+    const withAlias = { id: 'subj-alias', label: 'Accès chantier', aliases: ['cadenas à code'] }
+    const result = findLexicalAnchorMatches('Le cadenas à code ne fonctionne plus.', [withAlias])
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('subj-alias')
   })
 })
