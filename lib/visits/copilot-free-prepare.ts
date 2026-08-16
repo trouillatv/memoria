@@ -37,7 +37,7 @@ import {
 import { classifyIntent } from '@/lib/visits/copilot-classify'
 import { understandQuestion, mergeComprehension } from '@/lib/visits/copilot-comprehension'
 import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
-import { buildCopilotProposal, buildScheduleProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
+import { buildCopilotProposal, buildScheduleProposal, buildObservationProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { parseScheduleFromQuestion, toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
 import { detectIntent, readRemainsPlausible } from '@/lib/visits/copilot-intent-router'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -511,6 +511,98 @@ export async function prepareCopilotAnswer(
         result: {
           kind: 'proposal',
           text: `Voici le brouillon pour planifier cette ${eventLabel}. Vérifiez et ajustez avant de valider.`,
+          proposal,
+          interactionId: iid,
+        },
+      }
+    }
+
+    // ── OBSERVATION ──────────────────────────────────────────────────────────
+    // Constat terrain daté implicitement à aujourd'hui. Contrairement à action/
+    // visit_item, canonical_subject_occurrence.canonical_subject_id est NOT NULL
+    // en base (mig 291) : un constat sans sujet résolu avec certitude ne peut
+    // pas devenir un brouillon confirmable, il faut le dire plutôt que produire
+    // une proposition qui échouera à la confirmation.
+    if (intentResult.intent === 'OBSERVATION') {
+      let obsSubjectId: string | null = null
+      let obsSubjectLabel: string | null = null
+      let obsResolvedWithConfidence = false
+
+      if (classification.entities.subjectLabels.length > 0) {
+        const resolution = await resolveCanonicalSubjectReference(siteId, classification.entities.subjectLabels[0])
+        if (resolution.kind === 'resolved') {
+          obsSubjectId = resolution.candidate.id
+          obsSubjectLabel = resolution.candidate.label
+          obsResolvedWithConfidence = true
+        } else if (resolution.kind === 'ambiguous') {
+          const labels = resolution.candidates.map((c) => `• ${c.label}`).join('\n')
+          const iid = await logCopilotInteraction({
+            siteId, userId, conversationId: conversationId ?? null,
+            question, conversationMode: 'free',
+            primaryIntent: 'proposal_request', secondaryIntents: [],
+            scope: 'canonical_subject', resolvedSubjectIds: [],
+            answerText: null, answerMode: 'clarification', answerStatus: 'ambiguous',
+            citedReferenceCount: 0, sourcesUsed: [],
+            model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+            estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+          })
+          return {
+            kind: 'result',
+            result: {
+              kind: 'clarification',
+              text: `Plusieurs sujets correspondent à ce constat. Lequel souhaitez-vous associer ?\n\n${labels}`,
+              candidates: resolution.candidates,
+              interactionId: iid,
+            },
+          }
+        }
+      }
+
+      // Aucun sujet résolu avec certitude → pas de brouillon (contrainte NOT NULL
+      // en base), on l'explique plutôt que de proposer une confirmation vouée à échouer.
+      if (!obsSubjectId) {
+        const iid = await logCopilotInteraction({
+          siteId, userId, conversationId: conversationId ?? null,
+          question, conversationMode: 'free',
+          primaryIntent: 'proposal_request', secondaryIntents: [],
+          scope: 'canonical_subject', resolvedSubjectIds: [],
+          answerText: null, answerMode: 'clarification', answerStatus: 'not_found',
+          citedReferenceCount: 0, sourcesUsed: [],
+          model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+          estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+        })
+        const clarText = "Je n'ai pas identifié avec certitude le sujet concerné par ce constat. Précisez de quel élément du chantier il s'agit."
+        return { kind: 'result', result: { kind: 'answer', text: clarText, references: [], source: 'fallback', interactionId: iid, spokenText: spokenFromShortAnswer(clarText) } }
+      }
+
+      const proposal = buildObservationProposal({
+        question,
+        canonicalSubjectId: obsSubjectId,
+        canonicalSubjectLabel: obsSubjectLabel,
+        resolvedWithConfidence: obsResolvedWithConfidence,
+        actorLabel: classification.entities.actorLabels[0] ?? null,
+      })
+
+      const iid = await logCopilotInteraction({
+        siteId, userId, conversationId: conversationId ?? null,
+        question, conversationMode: 'free',
+        primaryIntent: 'proposal_request', secondaryIntents: [],
+        scope: 'canonical_subject',
+        resolvedSubjectIds: [obsSubjectId],
+        answerText: null, answerMode: 'deterministic_fallback', answerStatus: 'answered',
+        citedReferenceCount: 0, sourcesUsed: [],
+        model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+        estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+        proposalKind: proposal.kind,
+        proposalId: proposal.proposalId,
+        proposalStatus: 'shown',
+      })
+
+      return {
+        kind: 'result',
+        result: {
+          kind: 'proposal',
+          text: `Voici le constat que je propose d'enregistrer. Vérifiez et ajustez avant de valider.`,
           proposal,
           interactionId: iid,
         },

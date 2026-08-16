@@ -16,6 +16,7 @@ export type WritingIntent =
   | 'ADD_VISIT_ITEM'
   | 'SCHEDULE_VISIT'
   | 'SCHEDULE_MEETING'
+  | 'OBSERVATION'
   | 'UNKNOWN_WRITE'
   // Réservés — pipeline brouillon→confirmation→écriture non implémenté
   | 'CREATE_RESERVE'
@@ -112,6 +113,36 @@ const WEAK_WRITE_RE = /\b(?:faudr|il\s+faut\s|pens[eo][rz]?\s+a|gard[ea]\b|conse
 // Objets non encore supportés — déclenchent UNKNOWN_WRITE plutôt que CREATE_ACTION
 const UNSUPPORTED_RE = /\b(?:reserve|echeance|point\s+de\s+vigilance|alerte|signalement|litige|non[-\s]?conformite)\b/
 
+// ── Signaux OBSERVATION ────────────────────────────────────────────────────────
+//
+// Un constat factuel sur l'état réel du chantier : « Le cadenas n'est toujours
+// pas installé », « Les gaines sont arrivées ce matin ». Les deux signaux sont
+// exigés ENSEMBLE — l'être-verbe seul est omniprésent (trop de faux positifs),
+// un marqueur temporel seul sert déjà DATETIME_RE pour la planification.
+//
+// Ne code aucune notion d'évolution : une occurrence peut confirmer un état
+// inchangé, la décision "évolution ou pas" se prend après matérialisation
+// (doctrine Fact Ledger), jamais dans le routeur.
+const OBSERVATION_STATE_RE  = /\b(?:est|sont|etait|etaient|reste[nt]?|demeure[nt]?)\b/
+const OBSERVATION_MARKER_RE = /\b(?:toujours\s+pas|encore|deja|desormais|enfin|maintenant|ce\s+matin|ce\s+soir|aujourd\s*hui|hier|depuis\s+(?:ce\s+matin|hier|peu))\b/
+
+// Exclut l'engagement futur : « sera installé vendredi » n'est pas un constat.
+const FUTURE_TENSE_RE = /\b(?:sera|seront|serai|seras|va\s+(?:etre|venir|arriver)|vont\s+(?:etre|venir|arriver)|devrait\s+etre)\b/
+
+// Exclut l'opinion : « je pense que X est responsable » n'est pas un constat terrain.
+const OPINION_RE = /\b(?:je\s+pense\s+que|je\s+crois\s+que|j\s*estime\s+que|a\s+mon\s+avis)\b/
+
+/**
+ * Extrait le marqueur temporel littéral d'un constat OBSERVATION, pour affichage
+ * uniquement (champ « temporalité » du brouillon) — ne participe à aucun routage.
+ * Retourne le texte normalisé (sans accents), pas le texte source original.
+ */
+export function extractObservationMarker(question: string): string | null {
+  const q = normalizeQuery(question)
+  const match = OBSERVATION_MARKER_RE.exec(q)
+  return match ? match[0] : null
+}
+
 // ── Demande de PRÉPARATION de visite ──────────────────────────────────────────
 //
 // « Fais-moi les points de contrôle pour ma prochaine visite » demande à MemorIA
@@ -193,6 +224,10 @@ export function detectIntent(question: string): IntentResult {
   const hasUnsupported  = UNSUPPORTED_RE.test(q)
   const hasCreateVisit  = hasVisit && CREATE_VISIT_RE.test(q)
   const isWrite         = hasStrongWrite || hasSchedVerb
+  const hasObsState     = OBSERVATION_STATE_RE.test(q)
+  const hasObsMarker    = OBSERVATION_MARKER_RE.test(q)
+  const hasFutureTense  = FUTURE_TENSE_RE.test(q)
+  const hasOpinion      = OPINION_RE.test(q)
 
   if (isRead)                            signals.push('read_signal')
   if (hasNextVisit)                      signals.push('next_visit')
@@ -257,6 +292,18 @@ export function detectIntent(question: string): IntentResult {
   }
   if (isWrite && !hasUnsupported && !hasVisit && !hasMeeting) {
     return { intent: 'CREATE_ACTION', confidence: 'ambiguous', signals }
+  }
+
+  // ── Priorité 4bis : OBSERVATION ──────────────────────────────────────────
+  // Constat factuel (être-verbe + marqueur de continuité/temporalité), sans
+  // verbe d'écriture ni demande de lecture explicite. Jamais de promotion en
+  // "évolution" ici — voir le commentaire au-dessus de OBSERVATION_STATE_RE.
+  if (
+    !isWrite && !hasWeakWrite && !hasUnsupported &&
+    hasObsState && hasObsMarker && !hasFutureTense && !hasOpinion
+  ) {
+    signals.push('observation_state')
+    return { intent: 'OBSERVATION', confidence: 'ambiguous', signals }
   }
 
   // ── Priorité 5 : UNKNOWN_WRITE ───────────────────────────────────────────

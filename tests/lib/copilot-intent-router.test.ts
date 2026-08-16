@@ -305,6 +305,86 @@ describe('UNKNOWN_WRITE — verbe implicite sans objet résolu', () => {
   })
 })
 
+// ── OBSERVATION (P4-A) ────────────────────────────────────────────────────────
+// Spec Vincent (2026-08-17) : constat factuel daté implicitement maintenant.
+// Un constat peut confirmer un état inchangé — jamais de promotion en
+// "évolution" dans le routeur, cette décision se prend après matérialisation.
+
+describe('OBSERVATION — constats positifs (spec Vincent)', () => {
+  const cases = [
+    "Le cadenas n'est toujours pas installé.",
+    'Le tableau électrique est encore hors tension.',
+    "Clim Expair n'est pas venu aujourd'hui.",
+    'Les gaines sont arrivées ce matin.',
+    'Le portail est maintenant réparé.',
+  ]
+  for (const q of cases) {
+    it(`"${q}" → OBSERVATION`, () => {
+      expect(intent(q)).toBe('OBSERVATION')
+      expect(confidence(q)).toBe('ambiguous')
+    })
+  }
+})
+
+describe('OBSERVATION — non-régression (spec Vincent, contre-exemples)', () => {
+  it('"Il faut rappeler Clim Expair" → CREATE_ACTION (pas OBSERVATION)', () => {
+    expect(intent('Il faut rappeler Clim Expair')).toBe('CREATE_ACTION')
+  })
+  it('"Qui intervient sur la clim ?" → READ (pas OBSERVATION)', () => {
+    expect(intent('Qui intervient sur la clim ?')).toBe('READ')
+  })
+  it('"Le cadenas sera installé vendredi" → pas OBSERVATION (engagement futur)', () => {
+    expect(intent('Le cadenas sera installé vendredi')).not.toBe('OBSERVATION')
+  })
+  it('"Je pense que Clim Expair est encore responsable" → pas OBSERVATION (opinion)', () => {
+    expect(intent('Je pense que Clim Expair est encore responsable')).not.toBe('OBSERVATION')
+  })
+  it('"Mets ça dans ma prochaine visite" → ADD_VISIT_ITEM (pas OBSERVATION)', () => {
+    expect(intent('Mets ça dans ma prochaine visite')).toBe('ADD_VISIT_ITEM')
+  })
+})
+
+describe('OBSERVATION — recette terrain (6 scénarios, spec Vincent)', () => {
+  it('1. état inchangé : "Le cadenas n\'est toujours pas installé." → OBSERVATION', () => {
+    expect(intent("Le cadenas n'est toujours pas installé.")).toBe('OBSERVATION')
+  })
+  it('2. état résolu : "Le portail est maintenant réparé." → OBSERVATION', () => {
+    expect(intent('Le portail est maintenant réparé.')).toBe('OBSERVATION')
+  })
+  it('3. nouvelle information : "Les gaines sont arrivées ce matin." → OBSERVATION', () => {
+    expect(intent('Les gaines sont arrivées ce matin.')).toBe('OBSERVATION')
+  })
+  it('4. phrase ambiguë action vs observation : "Il faut vérifier le tableau qui est encore hors tension" → CREATE_ACTION (verbe fort domine)', () => {
+    expect(intent('Il faut vérifier le tableau qui est encore hors tension')).toBe('CREATE_ACTION')
+  })
+  it('5. phrase future : "Le cadenas sera installé vendredi" → pas OBSERVATION', () => {
+    expect(intent('Le cadenas sera installé vendredi')).not.toBe('OBSERVATION')
+  })
+  it('6. observation avec acteur mentionné : "Clim Expair n\'est pas venu aujourd\'hui." → OBSERVATION', () => {
+    const { intent: i, signals } = detectIntent("Clim Expair n'est pas venu aujourd'hui.")
+    expect(i).toBe('OBSERVATION')
+    expect(signals).toContain('observation_state')
+  })
+})
+
+describe('OBSERVATION — n\'affecte pas les autres intentions', () => {
+  it('READ reste READ : "Où en est R4 ?"', () => {
+    expect(intent('Où en est R4 ?')).toBe('READ')
+  })
+  it('CREATE_ACTION reste CREATE_ACTION : "Crée une action pour contrôler R4"', () => {
+    expect(intent('Crée une action pour contrôler R4')).toBe('CREATE_ACTION')
+  })
+  it('SCHEDULE_VISIT reste SCHEDULE_VISIT : "Planifie une visite mercredi à 9h"', () => {
+    expect(intent('Planifie une visite mercredi à 9h')).toBe('SCHEDULE_VISIT')
+  })
+  it('SCHEDULE_MEETING reste SCHEDULE_MEETING : "Planifie une réunion vendredi à 14h"', () => {
+    expect(intent('Planifie une réunion vendredi à 14h')).toBe('SCHEDULE_MEETING')
+  })
+  it('UNKNOWN_WRITE reste UNKNOWN_WRITE : "Mets-moi une réserve sur R4"', () => {
+    expect(intent('Mets-moi une réserve sur R4')).toBe('UNKNOWN_WRITE')
+  })
+})
+
 // ── COLLISIONS — les tests les plus importants ────────────────────────────────
 
 describe('COLLISION : ADD_VISIT_ITEM vs CREATE_ACTION', () => {

@@ -5,9 +5,9 @@
 // AUCUNE écriture DB ici — le brouillon est éditable avant confirmation humaine.
 
 import { formatScheduleLabel } from '@/lib/visits/copilot-schedule-parse'
-import { detectIntent } from '@/lib/visits/copilot-intent-router'
+import { detectIntent, extractObservationMarker } from '@/lib/visits/copilot-intent-router'
 
-export type CopilotProposalKind = 'action' | 'visit_item' | 'schedule_visit' | 'schedule_meeting'
+export type CopilotProposalKind = 'action' | 'visit_item' | 'schedule_visit' | 'schedule_meeting' | 'observation'
 
 export type CopilotConfidence = 'strong' | 'medium' | 'suggestion'
 
@@ -26,6 +26,9 @@ export type CopilotProposal = {
   scheduledDate: string | null      // yyyy-mm-dd (date civile Pacific/Noumea)
   scheduledTime: string | null      // HH:MM (Pacific/Noumea) ou null
   scheduledObjective: string | null // objectif visite ou ordre du jour réunion
+  // Champs OBSERVATION — non nuls uniquement pour kind = 'observation'.
+  observationTemporality: string | null // marqueur littéral détecté (« encore », « ce matin »…)
+  observationActorLabel: string | null  // acteur/objet éventuellement mentionné dans le constat
 }
 
 export const COPILOT_PROMPT_VERSION = '3c-v1'
@@ -38,6 +41,7 @@ const INTENT_TO_KIND: Partial<Record<string, CopilotProposalKind>> = {
   SCHEDULE_MEETING: 'schedule_meeting',
   ADD_VISIT_ITEM:   'visit_item',
   CREATE_ACTION:    'action',
+  OBSERVATION:      'observation',
 }
 
 /** Délègue au routeur centralisé et mappe vers CopilotProposalKind. */
@@ -102,6 +106,8 @@ export function buildCopilotProposal(params: {
     scheduledDate: null,
     scheduledTime: null,
     scheduledObjective: null,
+    observationTemporality: null,
+    observationActorLabel: null,
   }
 }
 
@@ -135,5 +141,55 @@ export function buildScheduleProposal(params: {
     scheduledDate: parsedDate,
     scheduledTime: parsedTime,
     scheduledObjective: null,
+    observationTemporality: null,
+    observationActorLabel: null,
+  }
+}
+
+/**
+ * Builder dédié aux constats OBSERVATION.
+ *
+ * `body` porte le texte source verbatim (jamais une paraphrase LLM — doctrine
+ * anti-faits-fictifs) : c'est lui qui sert de « constat exprimé ». `title` en
+ * dérive une version courte pour l'affichage en liste, sans réinterpréter.
+ */
+export function buildObservationProposal(params: {
+  question: string
+  canonicalSubjectId: string | null
+  canonicalSubjectLabel: string | null
+  resolvedWithConfidence: boolean
+  actorLabel: string | null
+}): CopilotProposal {
+  const { question, canonicalSubjectId, canonicalSubjectLabel, resolvedWithConfidence, actorLabel } = params
+
+  const title = buildTitle(question, 'action', canonicalSubjectLabel)
+  const temporality = extractObservationMarker(question)
+  const subject = canonicalSubjectLabel
+    ? `Constat relié au sujet « ${canonicalSubjectLabel} ».`
+    : "Constat sans sujet canonique résolu avec certitude — à confirmer."
+  const whyText = `${subject} Sera enregistré comme observation datée d'aujourd'hui.`
+
+  const confidence: CopilotConfidence = resolvedWithConfidence
+    ? 'strong'
+    : canonicalSubjectId
+    ? 'medium'
+    : 'suggestion'
+
+  return {
+    proposalId: crypto.randomUUID(),
+    kind: 'observation',
+    title,
+    body: question.trim(),
+    canonicalSubjectId,
+    canonicalSubjectLabel,
+    confidence,
+    whyText,
+    llmModel: COPILOT_LLM_MODEL,
+    promptVersion: COPILOT_PROMPT_VERSION,
+    scheduledDate: null,
+    scheduledTime: null,
+    scheduledObjective: null,
+    observationTemporality: temporality,
+    observationActorLabel: actorLabel,
   }
 }

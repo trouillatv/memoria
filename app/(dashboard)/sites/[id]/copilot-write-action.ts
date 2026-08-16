@@ -13,6 +13,7 @@ import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import { updateCopilotProposalStatus } from '@/lib/db/copilot-telemetry'
 import { toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
+import { todayLocalIso } from '@/lib/time/local-date'
 
 // ── Créer une action depuis une proposition copilote ─────────────────────────
 
@@ -227,4 +228,83 @@ export async function createCopilotScheduledEvent(
   if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
   console.log('[ScheduleVisit] SCHEDULE_VISIT_CONFIRM_SUCCESS', { eventId })
   return { ok: true, eventId }
+}
+
+// ── Enregistrer un constat OBSERVATION depuis une proposition copilote ───────
+//
+// P4-A — canal séparé des 3 actions ci-dessus : écrit directement dans
+// canonical_subject_occurrence (source_kind='copilot', mig 326), pas dans
+// site_actions/visit_preparation/site_scheduled_events. canonical_subject_id
+// est NOT NULL en base : un constat sans sujet résolu ne peut pas être
+// confirmé (le brouillon n'est même pas construit dans ce cas, voir
+// copilot-free-prepare.ts). validation_status='confirmed' d'emblée : cette
+// action ne s'exécute qu'après confirmation humaine explicite. Aucune écriture
+// de lastMeaningfulChangeAt ici — la doctrine Fact Ledger décide "évolution ou
+// pas" après matérialisation, jamais à l'écriture.
+
+const createObservationSchema = z.object({
+  siteId: z.string().uuid(),
+  canonicalSubjectId: z.string().uuid(),
+  label: z.string().min(1).max(255),
+  body: z.string().max(2000).nullable().optional(),
+  copilotProposalId: z.string().uuid(),
+  interactionId: z.string().uuid().nullable().optional(),
+})
+
+export type CreateCopilotObservationResult =
+  | { ok: true; occurrenceId: string }
+  | { ok: false; error: string }
+
+export async function createCopilotObservation(rawInput: unknown): Promise<CreateCopilotObservationResult> {
+  const parsed = createObservationSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides.' }
+  const { siteId, canonicalSubjectId, label, body, copilotProposalId, interactionId } = parsed.data
+
+  try {
+    await requireSiteAccess(siteId)
+  } catch {
+    return { ok: false, error: 'Accès non autorisé.' }
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Non authentifié.' }
+
+  const admin = createAdminClient()
+
+  // Idempotence : la même proposition ne peut créer qu'une seule occurrence
+  // (miroir de cso_copilot_uniq, mig 326 : canonical_subject_id + source_ref_id).
+  const { data: existing } = await admin
+    .from('canonical_subject_occurrence')
+    .select('id')
+    .eq('source_kind', 'copilot')
+    .eq('source_ref_id', copilotProposalId)
+    .maybeSingle()
+  if (existing) return { ok: true, occurrenceId: (existing as { id: string }).id }
+
+  const { data, error } = await admin
+    .from('canonical_subject_occurrence')
+    .insert({
+      canonical_subject_id: canonicalSubjectId,
+      site_id: siteId,
+      source_kind: 'copilot',
+      source_ref_id: copilotProposalId,
+      source_proposal_id: null,
+      visit_status: null,
+      label,
+      note: body ?? null,
+      evidence_count: 0,
+      effective_date: todayLocalIso(),
+      created_by: user.id,
+      validation_status: 'confirmed',
+    })
+    .select('id')
+    .single()
+
+  if (error || !data) return { ok: false, error: error?.message ?? 'Impossible d\'enregistrer ce constat.' }
+
+  const occurrenceId = (data as { id: string }).id
+  invalidateSiteProjection(siteId)
+  if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
+  return { ok: true, occurrenceId }
 }
