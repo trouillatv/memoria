@@ -198,6 +198,54 @@ describe('mergeComprehension — barrière de mutation', () => {
   })
 })
 
+// ── 3bis. OBSERVATION — recette terrain P4-A (Vincent, 2026-08-17) ────────────
+//
+// COMPREHENSION_LABELS n'a aucun concept d'observation factuelle : le LLM
+// classe systématiquement un constat déclaratif ("le cadenas n'est toujours
+// pas installé") en 'read' faute de mieux. Sans exemption, read_downgrade
+// annulait la capture pour 2 des 3 formulations positives de la recette.
+// Le garde READ du routeur déterministe s'exécute AVANT la branche OBSERVATION
+// (Priorité 4bis) : une vraie question ne peut donc jamais atteindre
+// OBSERVATION, ce qui rend l'exemption sûre.
+describe('mergeComprehension — OBSERVATION n’est jamais rétrogradée par le LLM', () => {
+  it('un constat factuel classé "read" par le LLM reste OBSERVATION', () => {
+    const q = "Le cadenas n'est toujours pas installé."
+    expect(detectIntent(q).intent).toBe('OBSERVATION')
+    const merged = route(q, comprehension('READ_ACTION_STATUS', { intent: 'action_status', entities: ['cadenas'] }))
+    expect(merged.intentResult.intent).toBe('OBSERVATION')
+    expect(merged.applied).not.toContain('read_downgrade')
+  })
+
+  it('un constat avec acteur classé "read" par le LLM reste OBSERVATION', () => {
+    const q = "Clim Expair n'est pas venu aujourd'hui."
+    expect(detectIntent(q).intent).toBe('OBSERVATION')
+    const merged = route(q, comprehension('READ_ACTION_STATUS', { intent: 'action_status', entities: ['Clim Expair'] }))
+    expect(merged.intentResult.intent).toBe('OBSERVATION')
+    expect(merged.applied).not.toContain('read_downgrade')
+  })
+
+  it('les indices de sujet du LLM alimentent subjectLabels pour OBSERVATION (canonical_subject_id est NOT NULL en base)', () => {
+    const q = 'Le portail est maintenant réparé.'
+    const merged = route(q, comprehension('POSSIBLE_WRITE', { intent: 'subject_evolution', entities: ['portail'] }))
+    expect(merged.intentResult.intent).toBe('OBSERVATION')
+    expect(merged.classification.entities.subjectLabels).toEqual(['portail'])
+    expect(merged.applied).toContain('subject_hints')
+  })
+
+  it('un code technique tapé par l’utilisateur n’est jamais écrasé par un indice LLM', () => {
+    const q = 'G3 est toujours pas terminé.'
+    const merged = route(q, comprehension('READ_SUBJECT', { intent: 'subject_status', entities: ['autre sujet'] }))
+    expect(merged.intentResult.intent).toBe('OBSERVATION')
+    expect(merged.classification.entities.subjectLabels).toEqual(['G3'])
+  })
+
+  it('reste OBSERVATION même sans compréhension LLM (repli déterministe)', () => {
+    const q = "Le cadenas n'est toujours pas installé."
+    const merged = route(q, null)
+    expect(merged.intentResult.intent).toBe('OBSERVATION')
+  })
+})
+
 // ── 4. Erreur de chargement ≠ zéro résultat ───────────────────────────────────
 
 describe('resolveQuantitativeVerdict — ne jamais affirmer "aucune" à tort', () => {

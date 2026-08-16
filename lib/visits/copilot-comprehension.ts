@@ -325,12 +325,21 @@ export function mergeComprehension(
   //   — un verbe d'écriture explicite ("ajoute", "planifie") exige une compréhension
   //     franche (high). Cas visé : « tu me FAIS le point sur le chantier ? », où
   //     "fais" est un faux positif de verbe d'écriture.
+  //
+  // OBSERVATION est exemptée : le garde-fou READ du routeur déterministe s'exécute
+  // AVANT la branche OBSERVATION (si isRead && !isWrite, on repart déjà en READ sans
+  // jamais atteindre Priorité 4bis) — une vraie question ne peut donc pas atteindre
+  // OBSERVATION. La compréhension n'a ici aucun concept d'observation factuelle
+  // (COMPREHENSION_LABELS n'en propose pas) : elle classe systématiquement un constat
+  // déclaratif en 'read' faute de mieux, ce qui annulerait la capture sans apporter
+  // de sûreté réelle.
   const hasExplicitWriteVerb =
     intentResult.signals.includes('write_verb') || intentResult.signals.includes('schedule_verb')
 
   if (
     comprehension.mode === 'read' &&
     intentResult.intent !== 'READ' &&
+    intentResult.intent !== 'OBSERVATION' &&
     intentResult.confidence === 'ambiguous' &&
     comprehension.confidence !== 'low' &&
     (!hasExplicitWriteVerb || comprehension.confidence === 'high')
@@ -375,49 +384,57 @@ export function mergeComprehension(
     applied.push('possible_write_ignored')
   }
 
-  // Chemin écriture : la compréhension n'a plus rien à apporter.
-  if (nextIntent.intent !== 'READ') {
+  // Chemin écriture (hors OBSERVATION) : la compréhension n'a plus rien à apporter.
+  if (nextIntent.intent !== 'READ' && nextIntent.intent !== 'OBSERVATION') {
     return { classification: nextClassification, intentResult: nextIntent, subjectHintsFromLlm, applied }
   }
 
   // ── 4. Orientation de la famille de lecture ────────────────────────────────
-  const labelFamily = comprehension.label === 'POSSIBLE_WRITE' || comprehension.label === 'UNKNOWN'
-    ? null
-    : LABEL_TO_FAMILY[comprehension.label]
+  // N'a de sens que pour READ : OBSERVATION n'a pas de "famille" de lecture,
+  // et classification.primary y sert à autre chose (cf. copilot-classify.ts).
+  if (nextIntent.intent === 'READ') {
+    const labelFamily = comprehension.label === 'POSSIBLE_WRITE' || comprehension.label === 'UNKNOWN'
+      ? null
+      : LABEL_TO_FAMILY[comprehension.label]
 
-  // Affinage par l'INTENTION quand l'étiquette est trop grossière. Les étiquettes
-  // ne distinguent pas « qu'est-ce qui n'avance pas ? » (stagnation d'un sujet)
-  // de « quelles actions sont en retard ? » (date dépassée) : les deux tombent
-  // sur READ_ACTION_STATUS. L'intention `stale_subjects`, elle, les sépare — et
-  // c'est cette confusion qui a produit « aucune action en retard » sur PETRO.
-  const family: IntentFamily | null =
-    comprehension.intent === 'stale_subjects' && labelFamily !== null
-      ? 'stagnation'
-      : labelFamily
+    // Affinage par l'INTENTION quand l'étiquette est trop grossière. Les étiquettes
+    // ne distinguent pas « qu'est-ce qui n'avance pas ? » (stagnation d'un sujet)
+    // de « quelles actions sont en retard ? » (date dépassée) : les deux tombent
+    // sur READ_ACTION_STATUS. L'intention `stale_subjects`, elle, les sépare — et
+    // c'est cette confusion qui a produit « aucune action en retard » sur PETRO.
+    const family: IntentFamily | null =
+      comprehension.intent === 'stale_subjects' && labelFamily !== null
+        ? 'stagnation'
+        : labelFamily
 
-  if (family && family !== nextClassification.primary) {
-    // Le déterministe n'a rien trouvé ("global" = aucun signal) → le LLM tranche.
-    // Sinon on n'écrase que sur une compréhension franche.
-    const deterministicIsBlind = nextClassification.primary === 'global'
-    // Une stagnation détectée déterministiquement ("n'avance pas", "stagne") est
-    // une formulation explicite : le LLM ne la rétrograde pas vers les actions.
-    const wouldDowngradeStagnation = nextClassification.primary === 'stagnation'
-    if (!wouldDowngradeStagnation && (deterministicIsBlind || comprehension.confidence === 'high')) {
-      const previous = nextClassification.primary
-      nextClassification = {
-        ...nextClassification,
-        primary: family,
-        secondary: previous === family || previous === 'global'
-          ? nextClassification.secondary
-          : [previous, ...nextClassification.secondary.filter((s) => s !== family)],
+    if (family && family !== nextClassification.primary) {
+      // Le déterministe n'a rien trouvé ("global" = aucun signal) → le LLM tranche.
+      // Sinon on n'écrase que sur une compréhension franche.
+      const deterministicIsBlind = nextClassification.primary === 'global'
+      // Une stagnation détectée déterministiquement ("n'avance pas", "stagne") est
+      // une formulation explicite : le LLM ne la rétrograde pas vers les actions.
+      const wouldDowngradeStagnation = nextClassification.primary === 'stagnation'
+      if (!wouldDowngradeStagnation && (deterministicIsBlind || comprehension.confidence === 'high')) {
+        const previous = nextClassification.primary
+        nextClassification = {
+          ...nextClassification,
+          primary: family,
+          secondary: previous === family || previous === 'global'
+            ? nextClassification.secondary
+            : [previous, ...nextClassification.secondary.filter((s) => s !== family)],
+        }
+        applied.push(`family:${family}`)
       }
-      applied.push(`family:${family}`)
     }
   }
 
   // ── 5. Indices de sujet ────────────────────────────────────────────────────
   // Uniquement en complément : jamais à la place d'un code technique ou d'une
-  // citation entre guillemets tapés par l'utilisateur.
+  // citation entre guillemets tapés par l'utilisateur. S'applique aussi à
+  // OBSERVATION : canonical_subject_id est NOT NULL en base (mig 291), un constat
+  // sans sujet résolu ne peut pas devenir un brouillon — l'entité déjà validée par
+  // sanitizeEntities() est la seule source de résolution pour une phrase déclarative
+  // sans code technique ni guillemets ("Le cadenas...", "Clim Expair n'est pas venu...").
   if (comprehension.entities.length > 0 && nextClassification.entities.subjectLabels.length === 0) {
     nextClassification = {
       ...nextClassification,
