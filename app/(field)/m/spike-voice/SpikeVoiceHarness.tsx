@@ -14,8 +14,24 @@
 // On mesure au passage le plancher de bruit réel et le RMS max : ce sont les
 // deux entrées dont le lot 1 a besoin pour calibrer la VAD ailleurs qu'au doigt
 // mouillé.
+//
+// ── P3-A (mandat Vincent, 16/08) — scénario 5, isolé ────────────────────────
+//
+// Question unique : Gemini Live mérite-t-il d'entrer dans l'architecture ?
+// Trois mesures, sur les 10 phrases déjà utilisées, et rien d'autre :
+//   1. fin de parole → transcription finale Live    GO si < 1 s p50 (idéal <500 ms)
+//   2. « PETRO ATITI » correct au moins 3 fois sur 3
+//   3. SSI / TD / AGP / Clim Expert / Jérôme / Vincent Milon sans régression
+//
+// Le batch Gemini actuel tourne EN PARALLÈLE, sur exactement le même audio
+// (un seul getUserMedia, deux consommateurs), pour donner sur chaque essai :
+// transcript Live / transcript batch / phrase attendue / latence Live /
+// latence batch. C'est un banc, pas une architecture : aucun code du Copilote
+// n'est touché, il n'y a pas de « Live provisoire + batch vérité ». On teste le
+// moteur avant l'architecture.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { LiveServerMessage } from '@google/genai'
 
 // ── Typage minimal de la Web Speech API (absente de lib.dom pour webkit) ──────
 
@@ -52,14 +68,73 @@ function getSRCtor(): SRCtor | null {
 
 // ── Scénarios ────────────────────────────────────────────────────────────────
 
-type Scenario = 'mic' | 'speech' | 'speech-then-mic' | 'mic-then-speech'
+type Scenario = 'mic' | 'speech' | 'speech-then-mic' | 'mic-then-speech' | 'live'
 
 const SCENARIOS: Array<{ id: Scenario; label: string; hint: string }> = [
   { id: 'mic',             label: '1 · Micro seul',              hint: 'MediaRecorder + AnalyserNode' },
   { id: 'speech',          label: '2 · Reconnaissance seule',    hint: 'webkitSpeechRecognition' },
   { id: 'speech-then-mic', label: '3 · Reconnaissance → micro',  hint: 'SR démarrée en premier' },
   { id: 'mic-then-speech', label: '4 · Micro → reconnaissance',  hint: 'ordre de notre code actuel' },
+  { id: 'live',            label: '5 · Gemini Live ∥ batch',     hint: 'P3-A — même audio, deux moteurs' },
 ]
+
+// ── P3-A · capture PCM pour Gemini Live ──────────────────────────────────────
+//
+// Gemini Live n'accepte pas de WebM : il veut du PCM 16 bits little-endian à
+// 16 kHz, envoyé au fil de l'eau. Google recommande des blocs de 20-40 ms et
+// déconseille explicitement de tamponner une seconde — ce qui rendrait la
+// mesure absurde puisque c'est justement l'anticipation qu'on cherche à
+// mesurer. 640 échantillons à 16 kHz = 40 ms.
+//
+// Le worklet est chargé depuis une Blob URL : pas de fichier dans /public à
+// nettoyer quand le spike sera supprimé.
+const PCM_WORKLET_SOURCE = `
+class PcmTap extends AudioWorkletProcessor {
+  constructor() { super(); this.buf = new Int16Array(640); this.n = 0 }
+  process(inputs) {
+    const ch = inputs[0] && inputs[0][0]
+    if (!ch) return true
+    for (let i = 0; i < ch.length; i++) {
+      let s = ch[i]
+      if (s > 1) s = 1; else if (s < -1) s = -1
+      this.buf[this.n++] = s < 0 ? s * 0x8000 : s * 0x7fff
+      if (this.n === this.buf.length) { this.port.postMessage(this.buf.slice()); this.n = 0 }
+    }
+    return true
+  }
+}
+registerProcessor('pcm-tap', PcmTap)
+`
+
+/**
+ * Int16 → base64, par tranches pour ne pas exploser la pile d'arguments.
+ *
+ * Exportée uniquement pour être testée : une erreur d'octets ici enverrait de
+ * l'audio corrompu à Gemini Live, et on imputerait au modèle une transcription
+ * fausse. C'est la seule façon dont ce banc pourrait produire un verdict
+ * d'architecture erroné sans que rien ne le signale à l'écran.
+ */
+export function pcmToBase64(pcm: Int16Array): string {
+  const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength)
+  let s = ''
+  const CHUNK = 0x8000
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    s += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
+  return btoa(s)
+}
+
+// VAD locale — le repère « fin de parole » PARTAGÉ par les deux pipelines.
+//
+// Pourquoi pas un appui manuel : le temps de réaction humain (200-400 ms) est
+// du même ordre que le seuil qu'on teste (<500 ms). Il empoisonnerait la
+// mesure au lieu de la fournir. Le RMS est calculé sur les blocs PCM eux-mêmes,
+// pas sur l'AnalyserNode, dont le lissage (0,85) décalerait le repère de
+// plusieurs dizaines de millisecondes vers le tard.
+const VAD_CALIBRATION_CHUNKS = 12   // ≈ 480 ms de plancher de bruit
+const VAD_HANGOVER_MS        = 700  // silence continu avant de déclarer la fin
+const VAD_MIN_LOUD_CHUNKS    = 3    // il faut avoir parlé pour pouvoir se taire
+const LIVE_FINALIZE_TIMEOUT_MS = 8000
 
 // P2-C item 2 (mandat Vincent, 16/08) : corpus obligatoire, entités métier
 // réelles + phrases naturelles chantier — sert à comparer Web Speech (résultat
@@ -91,6 +166,17 @@ type RunRecord = {
   srText: string | null
   backendLatencyMs: number | null
   backendText: string | null
+  // P3-A — Gemini Live sur EXACTEMENT le même audio que le batch.
+  //   liveFirstPartialMs : depuis le DÉBUT de parole. Une valeur nettement
+  //     inférieure à la durée de la phrase prouve que la transcription commence
+  //     pendant que l'utilisateur parle — c'est la preuve de concept.
+  //   liveFinalMs : depuis la FIN de parole. C'est LE critère du mandat
+  //     (GO < 1 s p50, idéalement < 500 ms). Une valeur NÉGATIVE est un
+  //     résultat valide et excellent : la transcription était complète avant
+  //     même que la VAD locale ne déclare le silence.
+  liveFirstPartialMs: number | null
+  liveFinalMs: number | null
+  liveText: string | null
 }
 
 function resultsToText(results: RunRecord[]): string {
@@ -98,14 +184,39 @@ function resultsToText(results: RunRecord[]): string {
     .map((r, i) => {
       const delta =
         r.srLatencyMs != null && r.backendLatencyMs != null ? r.backendLatencyMs - r.srLatencyMs : null
-      return (
-        `#${i + 1} [${r.scenario}] "${r.phrase}"\n` +
-        `  SR   : ${r.srLatencyMs != null ? `${r.srLatencyMs} ms` : '—'} · "${r.srText ?? '—'}"\n` +
-        `  back : ${r.backendLatencyMs != null ? `${r.backendLatencyMs} ms` : '—'} · "${r.backendText ?? '—'}"` +
-        (delta != null ? `\n  delta (back - SR) : ${delta} ms` : '')
-      )
+      const gain =
+        r.liveFinalMs != null && r.backendLatencyMs != null ? r.backendLatencyMs - r.liveFinalMs : null
+      const lines = [
+        `#${i + 1} [${r.scenario}] attendu : "${r.phrase}"`,
+      ]
+      if (r.scenario === 'live') {
+        lines.push(
+          `  live : final ${r.liveFinalMs != null ? `${r.liveFinalMs} ms` : '—'} depuis fin de parole` +
+            (r.liveFirstPartialMs != null ? ` · 1er partiel ${r.liveFirstPartialMs} ms après début de parole` : '') +
+            `\n         "${r.liveText ?? '—'}"`,
+          `  batch: ${r.backendLatencyMs != null ? `${r.backendLatencyMs} ms` : '—'} · "${r.backendText ?? '—'}"`,
+        )
+        if (gain != null) lines.push(`  gain live vs batch : ${gain} ms`)
+      } else {
+        lines.push(
+          `  SR   : ${r.srLatencyMs != null ? `${r.srLatencyMs} ms` : '—'} · "${r.srText ?? '—'}"`,
+          `  back : ${r.backendLatencyMs != null ? `${r.backendLatencyMs} ms` : '—'} · "${r.backendText ?? '—'}"`,
+        )
+        if (delta != null) lines.push(`  delta (back - SR) : ${delta} ms`)
+      }
+      return lines.join('\n')
     })
     .join('\n\n')
+}
+
+/** Ligne vide d'un essai — un seul endroit à modifier quand le type change. */
+function emptyRun(id: number, phrase: string, scenario: Scenario): RunRecord {
+  return {
+    id, phrase, scenario,
+    srLatencyMs: null, srText: null,
+    backendLatencyMs: null, backendText: null,
+    liveFirstPartialMs: null, liveFinalMs: null, liveText: null,
+  }
 }
 
 export function SpikeVoiceHarness() {
@@ -123,6 +234,7 @@ export function SpikeVoiceHarness() {
   const [phraseIndex, setPhraseIndex] = useState(0)
   const [results, setResults]   = useState<RunRecord[]>([])
   const [copied, setCopied]     = useState(false)
+  const [liveText, setLiveText] = useState('')
 
   const t0Ref       = useRef(0)
   const srRef       = useRef<SRInstance | null>(null)
@@ -144,6 +256,21 @@ export function SpikeVoiceHarness() {
   // final ne s'est jamais présenté.
   const latestTranscriptRef = useRef('')
 
+  // ── P3-A · état de la session Live ─────────────────────────────────────────
+  type LiveSession = { sendRealtimeInput: (p: unknown) => void; close: () => void }
+  const liveSessionRef      = useRef<LiveSession | null>(null)
+  const liveTextRef         = useRef('')
+  const liveFirstPartialRef = useRef<number | null>(null)
+  const liveLastPartialRef  = useRef<number | null>(null)
+  const liveFinalizedRef    = useRef(false)
+  const liveTimeoutRef      = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // VAD locale, calculée sur les blocs PCM.
+  const speechStartAtRef    = useRef<number | null>(null)
+  const lastLoudAtRef       = useRef<number | null>(null)
+  const loudChunksRef       = useRef(0)
+  const vadFloorRef         = useRef<number[]>([])
+  const vadThresholdRef     = useRef<number | null>(null)
+
   const say = useCallback((msg: string, bad?: boolean) => {
     setLog((prev) => [...prev, { t: Date.now() - t0Ref.current, msg, bad }])
   }, [])
@@ -162,6 +289,9 @@ export function SpikeVoiceHarness() {
 
   const stopAll = useCallback(() => {
     if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+    if (liveTimeoutRef.current != null) { clearTimeout(liveTimeoutRef.current); liveTimeoutRef.current = null }
+    try { liveSessionRef.current?.close() } catch { /* déjà fermée */ }
+    liveSessionRef.current = null
     try { srRef.current?.stop() } catch { /* déjà arrêtée */ }
     srRef.current = null
     if (recRef.current?.state === 'recording') {
@@ -272,7 +402,7 @@ export function SpikeVoiceHarness() {
 
   // ── Micro : MediaRecorder + AnalyserNode ───────────────────────────────────
 
-  async function startMic(): Promise<boolean> {
+  async function startMic(opts?: { pcm?: (chunk: Int16Array) => void }): Promise<boolean> {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
@@ -283,12 +413,37 @@ export function SpikeVoiceHarness() {
       track.onended = () => say('piste micro TERMINÉE par le système', true)
       track.onmute  = () => say('piste micro MUTE — conflit probable', true)
 
-      const ctx = new AudioContext()
+      // P3-A : un SEUL `getUserMedia`, deux consommateurs (MediaRecorder pour le
+      // batch, tap PCM pour Live). C'est ce qui rend la comparaison honnête —
+      // exactement le même audio. Et contrairement à Web Speech ∥ MediaRecorder,
+      // il n'y a ici aucune contention micro : rien ne redemande le micro.
+      const ctx = opts?.pcm ? new AudioContext({ sampleRate: 16000 }) : new AudioContext()
       ctxRef.current = ctx
+      if (opts?.pcm && ctx.sampleRate !== 16000) {
+        // Ne JAMAIS envoyer du 48 kHz étiqueté 16 kHz : la transcription serait
+        // fausse et on l'imputerait au modèle. Mieux vaut échouer visiblement.
+        say(`AudioContext refuse 16 kHz (${ctx.sampleRate} Hz) — scénario Live impossible ici`, true)
+        return false
+      }
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 256
       analyser.smoothingTimeConstant = 0.85
-      ctx.createMediaStreamSource(stream).connect(analyser)
+      const source = ctx.createMediaStreamSource(stream)
+      source.connect(analyser)
+
+      if (opts?.pcm) {
+        const url = URL.createObjectURL(new Blob([PCM_WORKLET_SOURCE], { type: 'application/javascript' }))
+        try {
+          await ctx.audioWorklet.addModule(url)
+        } finally {
+          URL.revokeObjectURL(url)
+        }
+        const node = new AudioWorkletNode(ctx, 'pcm-tap')
+        node.port.onmessage = (e) => opts.pcm?.(e.data as Int16Array)
+        // Pas de connexion vers `ctx.destination` : on ne veut aucun retour audio.
+        source.connect(node)
+        say(`tap PCM actif — ${ctx.sampleRate} Hz, blocs de 40 ms`)
+      }
 
       const buf = new Uint8Array(analyser.fftSize)
       peakRef.current = 0
@@ -373,6 +528,196 @@ export function SpikeVoiceHarness() {
     }
   }
 
+  // ── P3-A · Gemini Live ─────────────────────────────────────────────────────
+
+  /**
+   * Fige le résultat Live de l'essai courant.
+   *
+   * `liveFinalMs` = arrivée du DERNIER morceau de transcription de l'utilisateur
+   * moins la fin de parole. On ne prend surtout pas `turnComplete` : celui-ci
+   * arrive après que le modèle a commencé à répondre, et facturerait au STT une
+   * latence de génération qui ne le concerne pas.
+   */
+  const finalizeLive = useCallback((runId: number | null, reason: string) => {
+    if (liveFinalizedRef.current) return
+    liveFinalizedRef.current = true
+    if (liveTimeoutRef.current != null) { clearTimeout(liveTimeoutRef.current); liveTimeoutRef.current = null }
+
+    const speechEnd = speechEndAtRef.current
+    const speechStart = speechStartAtRef.current
+    const last = liveFirstPartialRef.current != null ? liveLastPartialRef.current : null
+    const finalMs = speechEnd != null && last != null ? last - speechEnd : null
+    const firstMs =
+      speechStart != null && liveFirstPartialRef.current != null
+        ? liveFirstPartialRef.current - speechStart
+        : null
+    const text = liveTextRef.current.trim()
+
+    if (finalMs == null) {
+      say(`Live figé (${reason}) SANS mesure — aucune transcription reçue`, true)
+    } else if (finalMs < 0) {
+      say(`Live figé (${reason}) : transcription complète ${-finalMs} ms AVANT la fin de parole détectée`)
+    } else {
+      say(`Live figé (${reason}) : ${finalMs} ms depuis la fin de parole`, finalMs > 1000)
+    }
+    if (firstMs != null) say(`Live 1er partiel : ${firstMs} ms après le début de parole`)
+
+    if (runId != null) {
+      setResults((prev) =>
+        prev.map((r) =>
+          r.id === runId
+            ? { ...r, liveFinalMs: finalMs, liveFirstPartialMs: firstMs, liveText: text || '(aucune transcription)' }
+            : r,
+        ),
+      )
+    }
+    try { liveSessionRef.current?.close() } catch { /* déjà fermée */ }
+    liveSessionRef.current = null
+    // La capture n'a plus rien à faire : le MediaRecorder a déjà été arrêté par
+    // la VAD (bien avant, c'est le réseau qui nous amène ici) et son blob est
+    // parti vers le backend.
+    stopAll()
+    setRunning(null)
+  }, [say, stopAll])
+
+  /**
+   * VAD locale sur les blocs PCM — pose le repère « fin de parole » commun aux
+   * deux pipelines, puis déclenche les deux fins : `audioStreamEnd` côté Live,
+   * `MediaRecorder.stop()` côté batch. Les deux latences partent donc du MÊME
+   * instant, condition sans laquelle la comparaison ne veut rien dire.
+   */
+  function onPcmChunk(runId: number, chunk: Int16Array) {
+    const now = Date.now()
+
+    // Envoi immédiat vers Live — aucun tampon, c'est tout l'enjeu.
+    const session = liveSessionRef.current
+    if (session) {
+      try {
+        session.sendRealtimeInput({ audio: { data: pcmToBase64(chunk), mimeType: 'audio/pcm;rate=16000' } })
+      } catch (err) {
+        say(`envoi Live échoué : ${(err as Error).message}`, true)
+      }
+    }
+
+    let sum = 0
+    for (let i = 0; i < chunk.length; i++) { const v = chunk[i] / 32768; sum += v * v }
+    const rms = Math.sqrt(sum / chunk.length)
+
+    // Calibration : plancher de bruit du lieu, mesuré au début de chaque essai.
+    if (vadThresholdRef.current == null) {
+      vadFloorRef.current.push(rms)
+      if (vadFloorRef.current.length >= VAD_CALIBRATION_CHUNKS) {
+        const sorted = [...vadFloorRef.current].sort((a, b) => a - b)
+        const floor = sorted[Math.floor(sorted.length / 2)]
+        const threshold = Math.max(floor * 4, 0.015)
+        vadThresholdRef.current = threshold
+        say(`VAD calibrée — plancher ${floor.toFixed(4)}, seuil ${threshold.toFixed(4)}`)
+      }
+      return
+    }
+
+    if (rms > vadThresholdRef.current) {
+      loudChunksRef.current++
+      lastLoudAtRef.current = now
+      if (speechStartAtRef.current == null && loudChunksRef.current >= VAD_MIN_LOUD_CHUNKS) {
+        speechStartAtRef.current = now
+        say('VAD : début de parole')
+      }
+      return
+    }
+
+    // Silence. On ne peut se taire que si on a parlé.
+    if (speechStartAtRef.current == null || speechEndAtRef.current != null) return
+    const lastLoud = lastLoudAtRef.current
+    if (lastLoud == null || now - lastLoud < VAD_HANGOVER_MS) return
+
+    // Repère daté au DÉBUT du silence, pas à la fin du hangover : sinon on
+    // s'accorderait gratuitement 700 ms sur les deux mesures.
+    speechEndAtRef.current = lastLoud
+    say(`VAD : fin de parole (datée ${VAD_HANGOVER_MS} ms en arrière)`)
+
+    try { liveSessionRef.current?.sendRealtimeInput({ audioStreamEnd: true }) } catch { /* session fermée */ }
+    if (recRef.current?.state === 'recording') {
+      try { recRef.current.stop() } catch { /* déjà arrêté */ }
+    }
+    liveTimeoutRef.current = setTimeout(() => finalizeLive(runId, 'délai dépassé'), LIVE_FINALIZE_TIMEOUT_MS)
+  }
+
+  async function startLive(runId: number): Promise<boolean> {
+    // 1. Jeton éphémère — la clé Gemini permanente reste sur le serveur.
+    say('POST /api/spike/live-token…')
+    let token: string
+    let model: string
+    let instruction: string
+    try {
+      const res = await fetch('/api/spike/live-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteId: PETRO_SITE_ID }),
+      })
+      const data = (await res.json()) as {
+        token?: string; model?: string; instruction?: string; lexiconTerms?: number
+        error?: string; detail?: string
+      }
+      if (!res.ok || !data.token) {
+        say(`jeton refusé (${res.status}) : ${data.error ?? '—'}${data.detail ? ` · ${data.detail}` : ''}`, true)
+        return false
+      }
+      token = data.token
+      model = data.model ?? ''
+      instruction = data.instruction ?? ''
+      say(`jeton obtenu · modèle ${model} · lexique ${data.lexiconTerms ?? 0} terme(s)`, (data.lexiconTerms ?? 0) === 0)
+    } catch (err) {
+      say(`jeton indisponible : ${(err as Error).message}`, true)
+      return false
+    }
+
+    // 2. WebSocket DIRECT téléphone → Gemini. Pas de relais : Vercel n'héberge
+    //    pas de serveur WebSocket, et le mandat l'interdit explicitement.
+    try {
+      const { GoogleGenAI, Modality } = await import('@google/genai')
+      const ai = new GoogleGenAI({ apiKey: token })
+      const connectedAt = Date.now()
+      const session = await ai.live.connect({
+        model,
+        config: {
+          // La réponse du modèle ne nous intéresse pas : on mesure le canal
+          // `inputTranscription`. TEXT + une instruction « réponds ok » gardent
+          // le tour bon marché sans perturber la transcription de l'entrée.
+          responseModalities: [Modality.TEXT],
+          inputAudioTranscription: {},
+          systemInstruction: instruction,
+        },
+        callbacks: {
+          onopen: () => say(`Live ouvert en ${Date.now() - connectedAt} ms`),
+          onmessage: (msg: LiveServerMessage) => {
+            const t = msg.serverContent?.inputTranscription?.text
+            if (t) {
+              const now = Date.now()
+              if (liveFirstPartialRef.current == null) {
+                liveFirstPartialRef.current = now
+                say('Live : 1er morceau de transcription reçu')
+              }
+              liveLastPartialRef.current = now
+              liveTextRef.current += t
+              setLiveText(liveTextRef.current)
+            }
+            if (msg.serverContent?.turnComplete || msg.serverContent?.generationComplete) {
+              finalizeLive(runId, 'tour terminé')
+            }
+          },
+          onerror: (e: ErrorEvent) => say(`Live onerror : ${e.message || 'erreur'}`, true),
+          onclose: (e: CloseEvent) => say(`Live fermé (${e.code}${e.reason ? ` — ${e.reason}` : ''})`),
+        },
+      })
+      liveSessionRef.current = session as unknown as LiveSession
+      return true
+    } catch (err) {
+      say(`connexion Live impossible : ${(err as Error).message}`, true)
+      return false
+    }
+  }
+
   // ── Lancement d'un scénario ────────────────────────────────────────────────
 
   async function run(scenario: Scenario) {
@@ -386,16 +731,23 @@ export function SpikeVoiceHarness() {
     setNoise(null)
     setPeak(0)
     setRunning(scenario)
+    setLiveText('')
     speechEndAtRef.current = null
     srLatencyLoggedRef.current = false
     latestTranscriptRef.current = ''
+    liveTextRef.current = ''
+    liveFirstPartialRef.current = null
+    liveLastPartialRef.current = null
+    liveFinalizedRef.current = false
+    speechStartAtRef.current = null
+    lastLoudAtRef.current = null
+    loudChunksRef.current = 0
+    vadFloorRef.current = []
+    vadThresholdRef.current = null
     const runId = ++runIdSeqRef.current
     currentRunIdRef.current = runId
     const phrase = PHRASES[phraseIndex]
-    setResults((prev) => [
-      ...prev,
-      { id: runId, phrase, scenario, srLatencyMs: null, srText: null, backendLatencyMs: null, backendText: null },
-    ])
+    setResults((prev) => [...prev, emptyRun(runId, phrase, scenario)])
     say(`▶ ${SCENARIOS.find((s) => s.id === scenario)?.label}`)
 
     // L'ordre est le sujet du test : SR d'abord reste dans le geste utilisateur,
@@ -407,14 +759,28 @@ export function SpikeVoiceHarness() {
     } else if (scenario === 'speech-then-mic') {
       startSpeech()
       await startMic()
-    } else {
+    } else if (scenario === 'mic-then-speech') {
       const micOk = await startMic()
       if (micOk) startSpeech()
+    } else {
+      // P3-A : la session Live d'abord (jeton + WebSocket = un aller-retour
+      // réseau), le micro ensuite. Ouvrir le micro avant reviendrait à
+      // enregistrer du silence pendant l'établissement de la connexion — et,
+      // pire, à perdre les premiers mots si Vincent parle trop tôt.
+      const liveOk = await startLive(runId)
+      if (!liveOk) { setRunning(null); stopAll(); return }
+      const micOk = await startMic({ pcm: (chunk) => onPcmChunk(runId, chunk) })
+      if (!micOk) { setRunning(null); stopAll(); return }
+      say('Prêt — énoncez la phrase.')
     }
   }
 
   function finish() {
     say('■ arrêt manuel')
+    if (running === 'live') {
+      finalizeLive(currentRunIdRef.current, 'arrêt manuel')
+      return // `finalizeLive` arrête déjà la capture et rend la main.
+    }
     stopAll()
     setRunning(null)
   }
@@ -424,10 +790,11 @@ export function SpikeVoiceHarness() {
   return (
     <div className="space-y-4 pb-10">
       <div>
-        <h1 className="text-lg font-semibold">Spike vocal — lot 0</h1>
+        <h1 className="text-lg font-semibold">Spike vocal — lot 0 / P3-A</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
-          Page temporaire. Objectif : micro et reconnaissance vocale peuvent-ils
-          coexister sur ce téléphone ?
+          Page temporaire. Scénarios 1-4 : micro et reconnaissance vocale
+          peuvent-ils coexister ? (tranché, piste close). Scénario 5 : Gemini
+          Live tient-il &lt; 1 s après la fin de parole sans perdre PETRO ATITI ?
         </p>
       </div>
 
@@ -522,6 +889,13 @@ export function SpikeVoiceHarness() {
       </div>
 
       <div className="rounded-xl border border-border bg-background p-3">
+        <p className="text-[12px] font-medium text-muted-foreground">
+          Transcription Gemini Live (P3-A · pendant la parole)
+        </p>
+        <p className="mt-1 min-h-[2.5rem] text-[14px] leading-snug">{liveText || '—'}</p>
+      </div>
+
+      <div className="rounded-xl border border-border bg-background p-3">
         <p className="text-[12px] font-medium text-muted-foreground">Transcription backend (source de vérité)</p>
         <p className="mt-1 min-h-[2.5rem] text-[14px] leading-snug">{backend ?? '—'}</p>
         {blobInfo && <p className="mt-1 text-[11px] text-muted-foreground">Audio : {blobInfo}</p>}
@@ -574,16 +948,36 @@ export function SpikeVoiceHarness() {
           {results.length === 0 && <p className="text-[12px] text-muted-foreground">—</p>}
           {results.map((r, i) => {
             const delta = r.srLatencyMs != null && r.backendLatencyMs != null ? r.backendLatencyMs - r.srLatencyMs : null
+            const gain = r.liveFinalMs != null && r.backendLatencyMs != null ? r.backendLatencyMs - r.liveFinalMs : null
             return (
               <div key={r.id} className="border-t border-border pt-1.5 first:border-t-0 first:pt-0">
                 <p className="text-[11.5px] font-medium">#{i + 1} · {r.scenario} · « {r.phrase} »</p>
-                <p className="text-[11.5px] text-muted-foreground">
-                  SR {r.srLatencyMs != null ? `${r.srLatencyMs} ms` : '—'} · back{' '}
-                  {r.backendLatencyMs != null ? `${r.backendLatencyMs} ms` : '—'}
-                  {delta != null && ` · delta ${delta > 0 ? '+' : ''}${delta} ms`}
-                </p>
-                <p className="text-[11.5px] text-muted-foreground">SR : {r.srText ?? '—'}</p>
-                <p className="text-[11.5px] text-muted-foreground">back : {r.backendText ?? '—'}</p>
+                {r.scenario === 'live' ? (
+                  <>
+                    <p className="text-[11.5px] text-muted-foreground">
+                      live{' '}
+                      <span className={r.liveFinalMs != null && r.liveFinalMs > 1000 ? 'font-medium text-rose-600' : ''}>
+                        {r.liveFinalMs != null ? `${r.liveFinalMs} ms` : '—'}
+                      </span>
+                      {r.liveFirstPartialMs != null && ` · 1er partiel +${r.liveFirstPartialMs} ms`}
+                      {' · batch '}
+                      {r.backendLatencyMs != null ? `${r.backendLatencyMs} ms` : '—'}
+                      {gain != null && ` · gain ${gain > 0 ? '+' : ''}${gain} ms`}
+                    </p>
+                    <p className="text-[11.5px] text-muted-foreground">live : {r.liveText ?? '—'}</p>
+                    <p className="text-[11.5px] text-muted-foreground">batch : {r.backendText ?? '—'}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[11.5px] text-muted-foreground">
+                      SR {r.srLatencyMs != null ? `${r.srLatencyMs} ms` : '—'} · back{' '}
+                      {r.backendLatencyMs != null ? `${r.backendLatencyMs} ms` : '—'}
+                      {delta != null && ` · delta ${delta > 0 ? '+' : ''}${delta} ms`}
+                    </p>
+                    <p className="text-[11.5px] text-muted-foreground">SR : {r.srText ?? '—'}</p>
+                    <p className="text-[11.5px] text-muted-foreground">back : {r.backendText ?? '—'}</p>
+                  </>
+                )}
               </div>
             )
           })}
