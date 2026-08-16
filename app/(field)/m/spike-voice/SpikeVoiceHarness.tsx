@@ -77,6 +77,12 @@ const PHRASES = [
   "Prépare-moi un résumé de la visite d'hier avec les points bloquants.",
 ]
 
+// En production la route de transcription reçoit un `siteId` et injecte le
+// lexique du chantier (nom + sujets canoniques) dans le prompt STT. Sans lui,
+// Gemini fait les mêmes fautes que Web Speech (« P3 City » observé le 16/08) —
+// la comparaison de qualité n'est équitable qu'avec ce lexique.
+const PETRO_SITE_ID = '75bd3d23-d515-46bd-8de8-254495a5bade'
+
 type RunRecord = {
   id: number
   phrase: string
@@ -345,6 +351,7 @@ export function SpikeVoiceHarness() {
       const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
       const form = new FormData()
       form.append('audio', blob, `spike.${ext}`)
+      form.append('siteId', PETRO_SITE_ID)
       const res = await fetch('/api/copilot/transcribe', { method: 'POST', body: form })
       const data = await res.json() as { text?: string; model?: string; error?: string }
       if (!res.ok) { say(`backend ${res.status} : ${data.error ?? '—'}`, true); return }
