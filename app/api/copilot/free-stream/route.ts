@@ -21,6 +21,17 @@ function sseEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
 }
 
+// Audit D1 (16/08) : gain théorique (~1,9 s vs ~6,7 s, `_audit-ordre-spoken.ts`)
+// non confirmé terrain. `COPILOT_DIAG=1` isole où il disparaît côté serveur —
+// route → appel Gemini → 1er chunk → champ spokenText → événement SSE. Fermé
+// par défaut, même convention que `[copilot-diag]` dans `copilot-free-action.ts`.
+const diagEnabled = process.env.COPILOT_DIAG === '1'
+
+function diagLog(stage: string, extra: Record<string, unknown> = {}) {
+  if (!diagEnabled) return
+  console.log('[copilot-stream-diag]', JSON.stringify({ stage, t: Date.now(), ...extra }))
+}
+
 export async function POST(req: NextRequest) {
   let rawInput: unknown
   try {
@@ -29,6 +40,9 @@ export async function POST(req: NextRequest) {
     console.error('[copilot-stream] body_parse_error:', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'Corps de requête invalide', code: 'BODY_PARSE_ERROR' }, { status: 400 })
   }
+
+  const q = (rawInput as { question?: unknown } | null)?.question
+  diagLog('route_start', { q: typeof q === 'string' ? q.slice(0, 60) : null })
 
   const prep = await prepareCopilotAnswer(rawInput)
 
@@ -54,6 +68,7 @@ export async function POST(req: NextRequest) {
           prep.extra,
           {
             onSpokenReady: (spokenText) => {
+              diagLog('sse_spoken_enqueue', { spokenLength: spokenText.length })
               controller.enqueue(encoder.encode(sseEvent('spoken', { spokenText })))
             },
           },

@@ -479,7 +479,17 @@ export async function answerCopilotFreeQuestionStream(
   const req = prepareFreeAnswerRequest(question, history, items, subjectDetails, delta, prepItems, siteName, extra)
   const controls = extra?.visitPlanDetail ?? []
 
+  // Audit D1 (16/08) : gain théorique non confirmé terrain — ces jalons isolent
+  // où il disparaît entre l'appel Gemini et l'événement SSE `spoken`. Fermé par
+  // défaut (`COPILOT_DIAG=1`), même convention que `[copilot-diag]`.
+  const diagEnabled = process.env.COPILOT_DIAG === '1'
+  const diagLog = (stage: string, extra2: Record<string, unknown> = {}) => {
+    if (!diagEnabled) return
+    console.log('[copilot-stream-diag]', JSON.stringify({ stage, t: Date.now(), q: question.slice(0, 40), ...extra2 }))
+  }
+
   try {
+    diagLog('gemini_call_start')
     const gen = provider.completeStream({
       systemPrompt: SYSTEM_PROMPT,
       userMessage: `${question}\n\nContexte :\n${req.contextJson}`,
@@ -491,18 +501,32 @@ export async function answerCopilotFreeQuestionStream(
 
     let acc = ''
     let spokenAnnounced = false
+    let firstChunkSeen = false
+    let spokenFieldStartSeen = false
     let step = await gen.next()
     while (!step.done) {
+      if (!firstChunkSeen) {
+        firstChunkSeen = true
+        diagLog('first_chunk')
+      }
       acc += step.value
+      if (!spokenFieldStartSeen && acc.includes('"spokenText"')) {
+        spokenFieldStartSeen = true
+        diagLog('spoken_field_start')
+      }
       if (!spokenAnnounced) {
         const m = SPOKEN_FIELD_RE.exec(acc)
         if (m) {
           spokenAnnounced = true
+          diagLog('spoken_field_complete')
           try {
             const candidateRaw = JSON.parse(`"${m[1]}"`) as string
             const candidate = sanitizeSpokenText(candidateRaw)
             if (candidate && isSpokenTextWithinPlanVoix(candidate, controls)) {
               handlers?.onSpokenReady?.(candidate)
+              diagLog('spoken_handler_invoked')
+            } else {
+              diagLog('spoken_rejected_plan_voix')
             }
           } catch {
             // JSON invalide en cours de flux (échappement partiel) : on
@@ -512,6 +536,7 @@ export async function answerCopilotFreeQuestionStream(
       }
       step = await gen.next()
     }
+    diagLog('full_text_complete')
 
     const finalized = finalizeParsedResult(step.value, req)
     if (finalized) return finalized
