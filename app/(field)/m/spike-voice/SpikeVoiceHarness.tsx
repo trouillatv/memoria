@@ -179,6 +179,16 @@ type RunRecord = {
   liveFirstPartialMs: number | null
   liveFinalMs: number | null
   liveText: string | null
+  // Campagne 2 (mandat Vincent, 16/08) — instruments qui rendent VISIBLE le
+  // défaut suspecté sur la campagne 1 : avoir parlé avant que le micro écoute.
+  //   speechMs      : durée de parole réellement captée. Nettement inférieure à
+  //     la durée naturelle de la phrase = le début (ou la fin) est perdu, et ce
+  //     n'est alors pas la peine d'interpréter `liveFinalMs`.
+  //   readyDelayMs  : temps écoulé entre MIC_READY et le premier mot. Une valeur
+  //     proche de 0 signale un départ au ras du signal ; une valeur nulle avec
+  //     `speechMs` nul signale qu'on a parlé pendant la calibration.
+  speechMs: number | null
+  readyDelayMs: number | null
 }
 
 function resultsToText(results: RunRecord[]): string {
@@ -193,6 +203,8 @@ function resultsToText(results: RunRecord[]): string {
       ]
       if (r.scenario === 'live') {
         lines.push(
+          `  capture : parole ${r.speechMs != null ? `${r.speechMs} ms` : '—'}` +
+            (r.readyDelayMs != null ? ` · démarrée ${r.readyDelayMs} ms après MIC_READY` : ' · début de parole JAMAIS détecté'),
           `  live : final ${r.liveFinalMs != null ? `${r.liveFinalMs} ms` : '—'} depuis fin de parole` +
             (r.liveFirstPartialMs != null ? ` · 1er partiel ${r.liveFirstPartialMs} ms après début de parole` : '') +
             `\n         "${r.liveText ?? '—'}"`,
@@ -218,8 +230,22 @@ function emptyRun(id: number, phrase: string, scenario: Scenario): RunRecord {
     srLatencyMs: null, srText: null,
     backendLatencyMs: null, backendText: null,
     liveFirstPartialMs: null, liveFinalMs: null, liveText: null,
+    speechMs: null, readyDelayMs: null,
   }
 }
+
+// ── Campagne 2 · état de préparation du micro ────────────────────────────────
+//
+// Le défaut de la campagne 1 n'était pas dans le moteur : rien à l'écran ne
+// distinguait « bouton appuyé » de « micro réellement en écoute ». Entre les
+// deux il y a le jeton, le WebSocket, `setupComplete`, `getUserMedia`, puis
+// 480 ms de calibration du plancher de bruit — soit plusieurs secondes pendant
+// lesquelles parler est doublement destructeur : le début de la phrase n'est
+// pas mesuré ET la voix contamine le plancher de bruit, ce qui remonte le seuil
+// de la VAD au point qu'elle peut ne jamais déclarer de début de parole.
+//
+// D'où un état explicite, et un seul instant qui autorise à parler : `ready`.
+type MicPhase = 'idle' | 'preparing' | 'ready' | 'speaking'
 
 export function SpikeVoiceHarness() {
   const [running, setRunning]   = useState<Scenario | null>(null)
@@ -237,6 +263,7 @@ export function SpikeVoiceHarness() {
   const [results, setResults]   = useState<RunRecord[]>([])
   const [copied, setCopied]     = useState(false)
   const [liveText, setLiveText] = useState('')
+  const [micPhase, setMicPhase] = useState<MicPhase>('idle')
 
   const t0Ref       = useRef(0)
   const srRef       = useRef<SRInstance | null>(null)
@@ -272,10 +299,32 @@ export function SpikeVoiceHarness() {
   const loudChunksRef       = useRef(0)
   const vadFloorRef         = useRef<number[]>([])
   const vadThresholdRef     = useRef<number | null>(null)
+  /** Instant MIC_READY — origine du chronomètre et des délais de la campagne 2. */
+  const readyAtRef          = useRef<number | null>(null)
 
   const say = useCallback((msg: string, bad?: boolean) => {
     setLog((prev) => [...prev, { t: Date.now() - t0Ref.current, msg, bad }])
   }, [])
+
+  /**
+   * Franchit MIC_READY : c'est le seul instant à partir duquel parler est licite.
+   *
+   * Le chronomètre du journal est remis à zéro ICI et non à l'appui : mesurer
+   * depuis le tap mêlerait le réseau (jeton, WebSocket, setupComplete) à la
+   * latence de parole, alors que l'utilisateur n'a rien à dire pendant ce temps.
+   *
+   * Signal haptique plutôt que sonore : un bip serait capté par le micro juste
+   * après la calibration et pourrait être pris pour un début de parole par la
+   * VAD — on refuse de perturber la mesure pour signaler qu'elle commence.
+   */
+  const markReady = useCallback(() => {
+    const now = Date.now()
+    readyAtRef.current = now
+    say('── MIC_READY · PARLEZ MAINTENANT (chronomètre remis à zéro ; les lignes au-dessus sont datées depuis l\'appui)')
+    t0Ref.current = now
+    setMicPhase('ready')
+    try { navigator.vibrate?.([40, 60, 40]) } catch { /* pas de vibreur */ }
+  }, [say])
 
   // Environnement — décisif pour interpréter un échec (PWA ? HTTPS ? quel OS ?).
   useEffect(() => {
@@ -304,6 +353,7 @@ export function SpikeVoiceHarness() {
     ctxRef.current?.close().catch(() => {})
     ctxRef.current = null
     setLevel(0)
+    setMicPhase('idle')
   }, [])
 
   useEffect(() => stopAll, [stopAll])
@@ -554,6 +604,20 @@ export function SpikeVoiceHarness() {
         ? liveFirstPartialRef.current - speechStart
         : null
     const text = liveTextRef.current.trim()
+    // Campagne 2 : ces deux chiffres se lisent AVANT `liveFinalMs`. Si la parole
+    // captée est bien plus courte que la phrase, la latence ne veut rien dire.
+    const speechMs = speechStart != null && speechEnd != null ? speechEnd - speechStart : null
+    const readyDelayMs =
+      readyAtRef.current != null && speechStart != null ? speechStart - readyAtRef.current : null
+
+    if (speechStart == null) {
+      say('Aucun début de parole détecté — essai à refaire, ne pas compter dans la campagne', true)
+    } else {
+      say(
+        `Parole captée : ${speechMs} ms` +
+          (readyDelayMs != null ? ` · démarrée ${readyDelayMs} ms après MIC_READY` : ''),
+      )
+    }
 
     if (finalMs == null) {
       say(`Live figé (${reason}) SANS mesure — aucune transcription reçue`, true)
@@ -568,7 +632,14 @@ export function SpikeVoiceHarness() {
       setResults((prev) =>
         prev.map((r) =>
           r.id === runId
-            ? { ...r, liveFinalMs: finalMs, liveFirstPartialMs: firstMs, liveText: text || '(aucune transcription)' }
+            ? {
+                ...r,
+                liveFinalMs: finalMs,
+                liveFirstPartialMs: firstMs,
+                liveText: text || '(aucune transcription)',
+                speechMs,
+                readyDelayMs,
+              }
             : r,
         ),
       )
@@ -614,6 +685,10 @@ export function SpikeVoiceHarness() {
         const threshold = Math.max(floor * 4, 0.015)
         vadThresholdRef.current = threshold
         say(`VAD calibrée — plancher ${floor.toFixed(4)}, seuil ${threshold.toFixed(4)}`)
+        // C'est ICI que le micro est réellement en état d'écoute mesurable, pas
+        // au retour de `getUserMedia` : tant que le seuil n'est pas posé, aucune
+        // parole ne peut être datée. Le signal « parlez » ne part pas avant.
+        markReady()
       }
       return
     }
@@ -623,6 +698,7 @@ export function SpikeVoiceHarness() {
       lastLoudAtRef.current = now
       if (speechStartAtRef.current == null && loudChunksRef.current >= VAD_MIN_LOUD_CHUNKS) {
         speechStartAtRef.current = now
+        setMicPhase('speaking')
         say('VAD : début de parole')
       }
       return
@@ -771,6 +847,8 @@ export function SpikeVoiceHarness() {
     loudChunksRef.current = 0
     vadFloorRef.current = []
     vadThresholdRef.current = null
+    readyAtRef.current = null
+    if (scenario === 'live') setMicPhase('preparing')
     const runId = ++runIdSeqRef.current
     currentRunIdRef.current = runId
     const phrase = PHRASES[phraseIndex]
@@ -798,7 +876,9 @@ export function SpikeVoiceHarness() {
       if (!liveOk) { setRunning(null); stopAll(); return }
       const micOk = await startMic({ pcm: (chunk) => onPcmChunk(runId, chunk) })
       if (!micOk) { setRunning(null); stopAll(); return }
-      say('Prêt — énoncez la phrase.')
+      // Surtout PAS « prêt » ici : le micro est ouvert mais la VAD n'a pas encore
+      // son plancher de bruit. Parler maintenant contamine la calibration.
+      say('Micro ouvert — calibration du bruit ambiant, ne parlez pas encore')
     }
   }
 
@@ -813,9 +893,53 @@ export function SpikeVoiceHarness() {
   }
 
   const levelPct = Math.min(100, Math.round((level / 0.28) * 100))
+  // Nombre d'essais Live déjà faits sur la phrase affichée — le protocole de la
+  // campagne 2 demande au moins 3 répétitions sur PETRO ATITI et Vincent Milon,
+  // et compter de tête au milieu d'un banc est le meilleur moyen de se tromper.
+  const livePhraseCount = results.filter(
+    (r) => r.scenario === 'live' && r.phrase === PHRASES[phraseIndex],
+  ).length
 
   return (
     <div className="space-y-4 pb-10">
+      {/* Bandeau d'état — fixé en haut : sur un téléphone, la page est souvent
+          défilée vers les résultats au moment où l'on relance un essai, et un
+          message dans le journal est exactement ce qu'on rate. C'est ce défaut
+          d'instrument, pas le moteur, qui a rendu la campagne 1 inexploitable. */}
+      {micPhase !== 'idle' && (
+        <div
+          className={`fixed inset-x-0 top-0 z-50 px-4 py-5 text-center shadow-lg ${
+            micPhase === 'preparing'
+              ? 'bg-amber-500 text-white'
+              : micPhase === 'ready'
+                ? 'bg-emerald-500 text-white'
+                : 'bg-violet-600 text-white'
+          }`}
+        >
+          {micPhase === 'preparing' && (
+            <>
+              <p className="text-[26px] font-bold leading-tight">NE PARLEZ PAS</p>
+              <p className="mt-1 text-[13px] opacity-90">
+                Connexion Live puis calibration du bruit ambiant…
+              </p>
+            </>
+          )}
+          {micPhase === 'ready' && (
+            <>
+              <p className="text-[32px] font-bold leading-tight">PARLEZ MAINTENANT</p>
+              <p className="mt-1 text-[13px] opacity-90">Micro en écoute · le chronomètre part d&apos;ici</p>
+            </>
+          )}
+          {micPhase === 'speaking' && (
+            <>
+              <p className="text-[26px] font-bold leading-tight">Parole détectée…</p>
+              <p className="mt-1 text-[13px] opacity-90">Terminez la phrase, puis taisez-vous</p>
+            </>
+          )}
+        </div>
+      )}
+      {micPhase !== 'idle' && <div aria-hidden className="h-[104px]" />}
+
       <div>
         <h1 className="text-lg font-semibold">Spike vocal — lot 0 / P3-A</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
@@ -828,7 +952,10 @@ export function SpikeVoiceHarness() {
       <div className="rounded-xl border border-border bg-background p-3">
         <div className="flex items-center justify-between">
           <p className="text-[12px] font-medium text-muted-foreground">
-            Phrase {phraseIndex + 1}/{PHRASES.length} — corpus P2-C
+            Phrase {phraseIndex + 1}/{PHRASES.length} — corpus P2-C ·{' '}
+            <span className={livePhraseCount >= 3 ? 'text-emerald-600' : undefined}>
+              {livePhraseCount} essai{livePhraseCount > 1 ? 's' : ''} Live
+            </span>
           </p>
           <div className="flex gap-1">
             <button
@@ -981,6 +1108,16 @@ export function SpikeVoiceHarness() {
                 <p className="text-[11.5px] font-medium">#{i + 1} · {r.scenario} · « {r.phrase} »</p>
                 {r.scenario === 'live' ? (
                   <>
+                    {/* En premier : la capture. Une latence mesurée sur une
+                        phrase tronquée n'est pas une latence, c'est un artefact. */}
+                    <p
+                      className={`text-[11.5px] ${r.speechMs == null ? 'font-medium text-rose-600' : 'text-muted-foreground'}`}
+                    >
+                      capture{' '}
+                      {r.speechMs != null
+                        ? `${r.speechMs} ms de parole${r.readyDelayMs != null ? ` · +${r.readyDelayMs} ms après MIC_READY` : ''}`
+                        : 'AUCUNE parole détectée — essai à refaire'}
+                    </p>
                     <p className="text-[11.5px] text-muted-foreground">
                       live{' '}
                       <span className={r.liveFinalMs != null && r.liveFinalMs > 1000 ? 'font-medium text-rose-600' : ''}>
