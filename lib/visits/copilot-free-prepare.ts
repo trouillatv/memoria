@@ -650,7 +650,7 @@ export async function prepareCopilotAnswer(
         // vient de trancher une ambiguïté déjà posée sur CETTE question.
         target = await resolveActorCandidateById(organizationId, selectedCandidateId)
       } else {
-        const resolution = await resolveActorTarget(organizationId, extraction.target)
+        const resolution = await resolveActorTarget(organizationId, extraction.target, extraction.targetOrg)
         if (resolution.kind === 'resolved') {
           target = resolution.candidate
         } else if (resolution.kind === 'ambiguous') {

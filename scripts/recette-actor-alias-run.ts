@@ -70,9 +70,34 @@ async function countActorAlias(supabase: ReturnType<typeof admin>, organizationI
 // Scénarios à réel effet d'écriture (cible résoluble sans ambiguïté sur PETRO).
 // Les scénarios de frontière (RELATION_CLAIM) et les cibles introuvables ne
 // produisent aucune ligne — ils prouvent l'absence d'écriture, pas une écriture.
+//
+// Scénarios 3 et 4 (formes ajoutées le 2026-08-17, checklist Vincent) :
+//  - #3 reprend la phrase littérale de Vincent pour ON_APPELLE_RE, avec la
+//    virgule déjà documentée comme insertion délibérée (grammaire orale sans
+//    virgule, regex qui en exige une pour séparer les deux segments — même
+//    précédent que DE_RE/NON_RE).
+//  - #4 NE reprend PAS la phrase littérale de Vincent pour PLAIN_CEST_RE
+//    ("Clim Expair, c'est Climatisation Expair.") : cette cible ("Climatisation
+//    Expair") ne correspond à aucune société réelle de PETRO (vérifié en base —
+//    la société s'appelle exactement "Clim Expair", short_name null), donc ne
+//    produirait aucune écriture. La réordonner ("Climatisation Expair, c'est
+//    Clim Expair.") produirait la MÊME paire alias/cible que le scénario 3 et
+//    serait rejetée par la contrainte d'unicité (preuve de non-régression, pas
+//    une preuve d'écriture nouvelle). Le scénario 4 utilise donc une paire
+//    réelle différente (contact) pour prouver la forme PLAIN_CEST_RE par une
+//    écriture effective distincte. La phrase littérale de Vincent est couverte
+//    au niveau extraction + routeur (tests unitaires), pas ici.
 const WRITE_SCENARIOS: { label: string; phrase: string }[] = [
   { label: '1. transcription_alias — Clim Expert → Clim Expair (company réelle)', phrase: 'Quand je dis Clim Expert, je parle de Clim Expair.' },
   { label: '2. transcription_alias — Vincent → Vincent Milon (contact réel)', phrase: 'Quand je dis Vincent, je parle de Vincent Milon.' },
+  { label: '3. business_alias (ON_APPELLE_RE) — Clim Expair → Climatisation Expair (company réelle)', phrase: 'On appelle aussi Clim Expair, Climatisation Expair.' },
+  { label: '4. business_alias (PLAIN_CEST_RE) — Vincent M → Vincent Milon (contact réel, paire distincte du 3)', phrase: "Vincent M, c'est Vincent Milon." },
+]
+
+// Scénarios sans effet d'écriture — doivent produire zéro ligne actor_alias.
+const NO_WRITE_SCENARIOS: { label: string; phrase: string; expected: 'not_found' | 'not_correction_identity' }[] = [
+  { label: '5. cible inexistante — aucune société "Société Totalement Inconnue" sur PETRO', phrase: 'Quand je dis Clim Expert, je parle de Société Totalement Inconnue.', expected: 'not_found' },
+  { label: '6. frontière RELATION_CLAIM — jamais absorbée par CORRECTION_IDENTITY', phrase: "Clim Expair s'occupe de la climatisation.", expected: 'not_correction_identity' },
 ]
 
 async function main() {
@@ -155,6 +180,32 @@ async function main() {
     const { data: row } = await supabase.from('actor_alias').select('id, status, source, alias_norm, copilot_proposal_id').eq('id', result.aliasId).single()
     const okRow = row && row.status === 'confirmed' && row.source === RECETTE_SOURCE && row.copilot_proposal_id === copilotProposalId
     console.log(`   vérifié en base : ${okRow ? 'OK' : 'ECART — ' + JSON.stringify(row)}\n`)
+  }
+
+  // Scénarios sans écriture — la preuve est l'ABSENCE de ligne, pas une ligne.
+  for (const s of NO_WRITE_SCENARIOS) {
+    console.log(`── ${s.label}`)
+    console.log(`   phrase: "${s.phrase}"`)
+
+    const intentResult = detectIntent(s.phrase)
+    if (s.expected === 'not_correction_identity') {
+      const ok = intentResult.intent !== 'CORRECTION_IDENTITY'
+      console.log(`   intent=${intentResult.intent} — ${ok ? 'OK (pipeline CORRECTION_IDENTITY jamais atteint, aucune écriture possible)' : 'ECART — devrait rester hors CORRECTION_IDENTITY'}\n`)
+      continue
+    }
+
+    if (intentResult.intent !== 'CORRECTION_IDENTITY') {
+      console.log(`   ECART — intent=${intentResult.intent}, attendu CORRECTION_IDENTITY pour tester la résolution.\n`)
+      continue
+    }
+    const extraction = extractIdentityCorrection(s.phrase)
+    if (!extraction) {
+      console.log('   ECART — extraction NULL, scénario ne teste pas ce qu\'il prétend.\n')
+      continue
+    }
+    const resolution = await resolveActorTarget(organizationId, extraction.target)
+    const ok = resolution.kind === 'not_found'
+    console.log(`   resolution=${resolution.kind} — ${ok ? 'OK (not_found, aucune écriture tentée)' : 'ECART — attendu not_found'}\n`)
   }
 
   // Rejeu idempotence : même copilotProposalId → même aliasId, pas de doublon.

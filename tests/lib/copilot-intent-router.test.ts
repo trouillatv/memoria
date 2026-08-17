@@ -526,6 +526,23 @@ describe('CORRECTION_IDENTITY — frontière RELATION_CLAIM (P4-B.3, jamais abso
   })
 })
 
+describe('CORRECTION_IDENTITY — formes 4 et 5 (Vincent, 2026-08-17)', () => {
+  it('"On appelle aussi Clim Expair, Climatisation Expair." → CORRECTION_IDENTITY strong', () => {
+    expect(intent('On appelle aussi Clim Expair, Climatisation Expair.')).toBe('CORRECTION_IDENTITY')
+    expect(confidence('On appelle aussi Clim Expair, Climatisation Expair.')).toBe('strong')
+  })
+  it('"Clim Expair, c\'est Climatisation Expair." (forme nue) → CORRECTION_IDENTITY strong', () => {
+    expect(intent("Clim Expair, c'est Climatisation Expair.")).toBe('CORRECTION_IDENTITY')
+    expect(confidence("Clim Expair, c'est Climatisation Expair.")).toBe('strong')
+  })
+  it('heuristique nom propre : "Le plan, c\'est de refaire la dalle." → PAS CORRECTION_IDENTITY (2ᵉ mot en minuscule)', () => {
+    expect(intent("Le plan, c'est de refaire la dalle.")).not.toBe('CORRECTION_IDENTITY')
+  })
+  it('heuristique nom propre : "Ce sujet, c\'est important." → PAS CORRECTION_IDENTITY', () => {
+    expect(intent("Ce sujet, c'est important.")).not.toBe('CORRECTION_IDENTITY')
+  })
+})
+
 describe('CORRECTION_IDENTITY — n\'affecte pas les autres intentions', () => {
   it('READ reste READ : "Où en est R4 ?"', () => {
     expect(intent('Où en est R4 ?')).toBe('READ')

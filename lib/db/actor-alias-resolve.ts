@@ -72,8 +72,40 @@ function buildContactCandidates(rows: ContactRow[]): ActorCandidate[] {
 }
 
 /**
+ * Restreint un ensemble ambigu de candidats à ceux dont l'entreprise porteuse
+ * correspond à `targetOrg` (ex. « Jérôme Martin de BECIB » → ne garde que le
+ * contact Jérôme Martin dont l'entreprise est BECIB). Une company candidate
+ * est comparée à elle-même (elle EST l'entreprise) ; un contact candidat est
+ * comparé à son entreprise parente via `companyById` (déjà chargée, pas de
+ * requête supplémentaire).
+ *
+ * Ne tranche jamais en absence d'info : un candidat sans entreprise connue
+ * (companyId null / introuvable) est exclu, jamais gardé par défaut.
+ */
+function narrowByOrg(
+  candidates: ActorCandidate[],
+  targetOrg: string,
+  companyById: Map<string, string>,
+): ActorCandidate[] {
+  return candidates.filter((c) => {
+    const companyName = c.kind === 'company' ? c.label : (c.companyId ? companyById.get(c.companyId) ?? null : null)
+    if (!companyName) return false
+    return (
+      normalizeActorLabel(companyName) === normalizeActorLabel(targetOrg) ||
+      actorTokenContainment(targetOrg, companyName)
+    )
+  })
+}
+
+/**
  * Résout une mention textuelle libre (ex : "Clim Expair", "Jérôme") vers un
  * acteur existant (company ou company_contact) de l'organisation.
+ *
+ * `targetOrg` (optionnel, ex. "BECIB" extrait de « Jérôme Martin de BECIB »)
+ * ne sert qu'à DÉSAMBIGUÏSER un ensemble déjà ambigu — jamais à remplacer la
+ * correspondance sur le nom lui-même. Si la restriction par organisation ne
+ * laisse aucun candidat, on revient à l'ensemble ambigu non restreint plutôt
+ * que de perdre l'information (jamais de not_found silencieux par ce biais).
  *
  * La validation que l'utilisateur a accès à organizationId est portée par la
  * couche appelante (requireSiteAccess + vérification org du site).
@@ -81,6 +113,7 @@ function buildContactCandidates(rows: ContactRow[]): ActorCandidate[] {
 export async function resolveActorTarget(
   organizationId: string,
   targetText: string,
+  targetOrg?: string | null,
 ): Promise<ActorResolutionResult> {
   const supabase = createAdminClient()
 
@@ -102,6 +135,7 @@ export async function resolveActorTarget(
 
   if (companyRows.length === 0 && contactRows.length === 0) return { kind: 'not_found' }
 
+  const companyById = new Map(companyRows.map((c) => [c.id, c.name]))
   const normalizedTarget = normalizeActorLabel(targetText)
 
   // ── Pass 1 : correspondance exacte normalisée ─────────────────────────────
@@ -117,7 +151,14 @@ export async function resolveActorTarget(
   ]
 
   if (exactMatches.length === 1) return { kind: 'resolved', candidate: exactMatches[0] }
-  if (exactMatches.length > 1) return { kind: 'ambiguous', candidates: exactMatches }
+  if (exactMatches.length > 1) {
+    if (targetOrg) {
+      const narrowed = narrowByOrg(exactMatches, targetOrg, companyById)
+      if (narrowed.length === 1) return { kind: 'resolved', candidate: narrowed[0] }
+      if (narrowed.length > 1) return { kind: 'ambiguous', candidates: narrowed }
+    }
+    return { kind: 'ambiguous', candidates: exactMatches }
+  }
 
   // ── Pass 2 : containment par tokens ────────────────────────────────────────
   const containedCompanies = companyRows.filter(
@@ -132,7 +173,14 @@ export async function resolveActorTarget(
   ]
 
   if (containedMatches.length === 1) return { kind: 'resolved', candidate: containedMatches[0] }
-  if (containedMatches.length > 1) return { kind: 'ambiguous', candidates: containedMatches }
+  if (containedMatches.length > 1) {
+    if (targetOrg) {
+      const narrowed = narrowByOrg(containedMatches, targetOrg, companyById)
+      if (narrowed.length === 1) return { kind: 'resolved', candidate: narrowed[0] }
+      if (narrowed.length > 1) return { kind: 'ambiguous', candidates: narrowed }
+    }
+    return { kind: 'ambiguous', candidates: containedMatches }
+  }
 
   return { kind: 'not_found' }
 }

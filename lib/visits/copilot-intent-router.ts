@@ -151,6 +151,19 @@ const OPINION_RE = /\b(?:je\s+pense\s+que|je\s+crois\s+que|j\s*estime\s+que|a\s+
 const IDENTITY_CORRECTION_QUAND_RE = /\bquand\s+je\s+dis\s+.+\s+je\s+parle\s+de\s+.+/
 const IDENTITY_CORRECTION_NON_RE   = /^non\s+.+\s+c\s+est\s+.+/
 const IDENTITY_CORRECTION_DE_RE    = /\bc\s+est\s+.+\s+de\s+.+/
+// "On appelle aussi X, Y" (texte normalisé) — ancre "on appelle aussi" rare
+// et non ambiguë, aucune garde supplémentaire nécessaire.
+const IDENTITY_CORRECTION_ON_APPELLE_RE = /\bon\s+appelle\s+aussi\b/
+// "X, c'est Y" nue (Vincent, 2026-08-17) — sans "non"/"de", structure trop
+// commune en français pour être détectée sur le seul mot "c'est" (cf.
+// hasIdentityCorrection → CORRECTION_IDENTITY strong, qui prime sur TOUT,
+// y compris READ/OBSERVATION). Gardée par une heuristique nom-propre : le
+// segment avant la virgule doit être 1 à 4 mots CONSÉCUTIFS capitalisés,
+// testés sur le texte ORIGINAL (la casse disparaît dans `q`). Le français ne
+// capitalise que le début de phrase et les noms propres : "Le plan, c'est…"
+// a un 2ᵉ mot en minuscule et ne matche pas ; "Clim Expair, c'est…" matche.
+const IDENTITY_CORRECTION_BARE_CEST_RE =
+  /^[A-ZÀ-Ý][\wÀ-ÿ]*(?:\s+[A-ZÀ-Ý][\wÀ-ÿ]*){0,3}\s*,\s*c['’`]?\s?est\s+.+/
 
 /**
  * Extrait le marqueur temporel littéral d'un constat OBSERVATION, pour affichage
@@ -251,7 +264,9 @@ export function detectIntent(question: string): IntentResult {
   const hasIdentityCorrection =
     IDENTITY_CORRECTION_QUAND_RE.test(q) ||
     IDENTITY_CORRECTION_NON_RE.test(q) ||
-    IDENTITY_CORRECTION_DE_RE.test(q)
+    IDENTITY_CORRECTION_DE_RE.test(q) ||
+    IDENTITY_CORRECTION_ON_APPELLE_RE.test(q) ||
+    IDENTITY_CORRECTION_BARE_CEST_RE.test(question.trim())
 
   if (isRead)                            signals.push('read_signal')
   if (hasNextVisit)                      signals.push('next_visit')

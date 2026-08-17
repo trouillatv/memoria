@@ -35,4 +35,30 @@ describe('extractIdentityCorrection — 3 formes (spec Vincent, P4-B.2)', () => 
   it('phrase sans forme reconnue → null', () => {
     expect(extractIdentityCorrection('Où en est le portail ?')).toBeNull()
   })
+
+  it('"On appelle aussi Clim Expair, Climatisation Expair." → business_alias, target=1er segment', () => {
+    const result = extractIdentityCorrection('On appelle aussi Clim Expair, Climatisation Expair.')
+    expect(result).toEqual({
+      alias: 'Climatisation Expair',
+      target: 'Clim Expair',
+      targetOrg: null,
+      proposedNature: 'business_alias',
+    })
+  })
+
+  it('"Clim Expair, c\'est Climatisation Expair." (forme nue) → business_alias, alias=1er segment', () => {
+    const result = extractIdentityCorrection("Clim Expair, c'est Climatisation Expair.")
+    expect(result).toEqual({
+      alias: 'Clim Expair',
+      target: 'Climatisation Expair',
+      targetOrg: null,
+      proposedNature: 'business_alias',
+    })
+  })
+
+  it('forme nue "X, c\'est Y de Z" reste captée par DE_RE (avec org), pas par la forme nue', () => {
+    const result = extractIdentityCorrection("Jérôme, c'est Jérôme Martin de BECIB.")
+    expect(result?.proposedNature).toBe('business_alias')
+    expect(result?.targetOrg).toBe('BECIB')
+  })
 })
