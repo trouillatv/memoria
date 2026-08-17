@@ -5,8 +5,9 @@
 //
 // Règles d'architecture :
 //   — Le routeur représente les capacités RÉELLES de MemorIA, pas les futures.
-//   — CREATE_RESERVE / CREATE_DEADLINE / CREATE_WATCHPOINT existent dans le type
-//     mais ne sont jamais détectés tant que leur pipeline n'est pas implémenté.
+//   — CREATE_RESERVE / CREATE_DEADLINE existent dans le type mais ne sont
+//     jamais détectés tant que leur pipeline n'est pas implémenté.
+//     CREATE_WATCHPOINT est implémenté depuis P4-E1 (2026-08-17).
 //   — UNKNOWN_WRITE remplace le LLM pour tout verbe d'écriture non résolu.
 //   — Même routeur pour le texte et pour la voix (speech-to-text → même entrée).
 
@@ -20,11 +21,11 @@ export type WritingIntent =
   | 'FACT'
   | 'CORRECTION_IDENTITY'
   | 'RELATION_CLAIM'
+  | 'CREATE_WATCHPOINT'
   | 'UNKNOWN_WRITE'
   // Réservés — pipeline brouillon→confirmation→écriture non implémenté
   | 'CREATE_RESERVE'
   | 'CREATE_DEADLINE'
-  | 'CREATE_WATCHPOINT'
 
 export type IntentConfidence = 'strong' | 'ambiguous'
 
@@ -182,6 +183,34 @@ export function extractFactTemporality(question: string): string | null {
   return match ? match[0] : null
 }
 
+// ── Signaux CREATE_WATCHPOINT (P4-E1, Vincent 2026-08-17) ────────────────────
+//
+// Une vigilance DURABLE, sans échéance et sans ancrage sur la prochaine
+// visite : « Surveille le SSI tant que ce n'est pas réglé », « Garde un œil
+// sur la fissure du mur nord », « Ça fait trois visites qu'on parle du SSI,
+// il faudrait le suivre. » Se distingue d'ADD_VISIT_ITEM (contrôle borné à
+// UNE visite, cf. NEXT_VISIT_RE) et de CREATE_ACTION (geste ponctuel confié à
+// quelqu'un) — voir audit-watchpoint-vs-visit-item : les trois objets
+// (site_visit_preparation_item / visit_watchlist_item / site_watchpoints) ne
+// sont jamais interchangeables.
+//
+// "garde" est aussi une tige de WEAK_WRITE_RE (gard[ea]\b) — volontairement
+// non retiré de là (portée générale, ex. "garde cette info"). La construction
+// explicite "garde un œil (sur)" doit être interceptée AVANT que le fallback
+// WEAK_WRITE n'absorbe la phrase en UNKNOWN_WRITE générique.
+//
+// "œil" n'est pas décomposé par la normalisation NFD (ligature, pas un
+// caractère accentué) : les deux graphies (oeil/œil) doivent être couvertes.
+const WATCHPOINT_VERB_RE =
+  /\b(?:surveill\w*|garde\s+(?:un\s+)?(?:a\s+l\s+)?(?:oeil|œil)|(?:faudrait|faut)\s+(?:le\s+|la\s+|les\s+)?suivre)\b/
+
+// Récurrence explicite ("à chaque visite") : aucun objet du modèle actuel ne
+// représente "vérifier à chaque visite jusqu'à résolution" — un site_watchpoint
+// simple perdrait cette exigence de répétition. Doit rester NON GÉRÉ pour
+// P4-E1 (roadmap notée sous P4-E4, non conçue) : jamais absorbé silencieusement
+// dans un simple point de vigilance, toujours une clarification.
+const RECURRENCE_RE = /\b(?:a\s+chaque\s+visite|chaque\s+visite|toutes\s+les\s+visites)\b/
+
 // ── Signaux RELATION_CLAIM (P4-D1, Vincent 2026-08-17) ────────────────────────
 //
 // Une phrase affirme une relation causale explicite et déterministe entre deux
@@ -333,6 +362,8 @@ export function detectIntent(question: string): IntentResult {
   const hasFactAssertion = FACT_ASSERTION_RE.test(q)
   const hasReportedWish  = FACT_REPORTED_WISH_RE.test(q)
   const hasRelationClaim = RELATION_CLAIM_RE.test(q)
+  const hasWatchpointVerb = WATCHPOINT_VERB_RE.test(q)
+  const hasRecurrence     = RECURRENCE_RE.test(q)
   const hasQuestionMark  = /\?\s*$/.test(question.trim())
   const hasIdentityCorrection =
     IDENTITY_CORRECTION_QUAND_RE.test(q) ||
@@ -355,6 +386,8 @@ export function detectIntent(question: string): IntentResult {
   if (hasFactAssertion)                  signals.push('fact_assertion')
   if (hasReportedWish)                   signals.push('reported_wish')
   if (hasRelationClaim)                  signals.push('relation_claim')
+  if (hasWatchpointVerb)                 signals.push('watchpoint_verb')
+  if (hasRecurrence)                     signals.push('recurrence_pattern')
 
   // ── Garde PRÉPARATION DE VISITE ───────────────────────────────────────────
   // Prime sur tout : « fais-moi les points de contrôle pour ma prochaine visite »
@@ -390,6 +423,23 @@ export function detectIntent(question: string): IntentResult {
   if (hasNextVisit && !hasAction) {
     const confidence: IntentConfidence = (isWrite || hasWeakWrite) ? 'strong' : 'ambiguous'
     return { intent: 'ADD_VISIT_ITEM', confidence, signals }
+  }
+
+  // ── Priorité 1bis : CREATE_WATCHPOINT (P4-E1) ────────────────────────────
+  // Vigilance durable, sans échéance et sans ancrage sur la prochaine visite.
+  // Placée ICI (juste après ADD_VISIT_ITEM, avant FACT/RELATION_CLAIM) car
+  // "Surveille le SSI tant que ce n'est pas réglé" matcherait FACT_ASSERTION_RE
+  // ("est") à la priorité 2bis sans garde dédiée plus haut dans la chaîne —
+  // hasNextVisit ayant déjà renvoyé à la priorité 1, cette branche ne voit
+  // jamais une phrase ancrée sur la prochaine visite.
+  if (hasWatchpointVerb && !hasNextVisit && !hasDatetime && !hasUnsupported) {
+    if (hasRecurrence) {
+      // Récurrence explicite ("à chaque visite") : capacité non représentée
+      // par site_watchpoints (P4-E4, non conçu) → clarification, jamais une
+      // absorption silencieuse en vigilance simple.
+      return { intent: 'UNKNOWN_WRITE', confidence: 'ambiguous', signals: [...signals, 'recurrence_unsupported'] }
+    }
+    return { intent: 'CREATE_WATCHPOINT', confidence: 'strong', signals }
   }
 
   // ── Priorité 2 : SCHEDULE_VISIT ──────────────────────────────────────────

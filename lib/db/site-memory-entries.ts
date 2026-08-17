@@ -150,6 +150,8 @@ export interface CreateWatchpointInput {
   reportId?: string | null
   sourceCaptureIds?: string[]
   confirmedBy: string | null
+  /** Idempotence Copilote (P4-E1) — clé générée côté client, absente hors Copilote. */
+  copilotProposalId?: string | null
 }
 
 /**
@@ -168,6 +170,7 @@ export async function createWatchpoint(input: CreateWatchpointInput): Promise<st
       report_id: input.reportId ?? null,
       source_capture_ids: input.sourceCaptureIds ?? [],
       confirmed_by: input.confirmedBy,
+      copilot_proposal_id: input.copilotProposalId ?? null,
     })
     .select('id')
     .single()

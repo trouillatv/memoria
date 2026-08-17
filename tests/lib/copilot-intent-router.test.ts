@@ -676,3 +676,61 @@ describe('FACT — n\'affecte pas les autres intentions', () => {
     expect(intent("Non, Vincent Millon c'est Vincent Milon.")).toBe('CORRECTION_IDENTITY')
   })
 })
+
+// ── CREATE_WATCHPOINT (P4-E1, Vincent 2026-08-17) ────────────────────────────
+// Vigilance durable SANS échéance et SANS ancrage sur la prochaine visite.
+
+describe('CREATE_WATCHPOINT — exemples positifs (spec Vincent)', () => {
+  it('"Surveille le SSI tant que ce n\'est pas réglé." → CREATE_WATCHPOINT', () => {
+    expect(intent("Surveille le SSI tant que ce n'est pas réglé.")).toBe('CREATE_WATCHPOINT')
+    expect(confidence("Surveille le SSI tant que ce n'est pas réglé.")).toBe('strong')
+  })
+  it('"Garde un œil sur la fissure du mur nord." → CREATE_WATCHPOINT', () => {
+    expect(intent('Garde un œil sur la fissure du mur nord.')).toBe('CREATE_WATCHPOINT')
+    expect(confidence('Garde un œil sur la fissure du mur nord.')).toBe('strong')
+  })
+  it('"Ça fait trois visites qu\'on parle du SSI, il faudrait le suivre." → CREATE_WATCHPOINT', () => {
+    expect(intent("Ça fait trois visites qu'on parle du SSI, il faudrait le suivre.")).toBe('CREATE_WATCHPOINT')
+    expect(confidence("Ça fait trois visites qu'on parle du SSI, il faudrait le suivre.")).toBe('strong')
+  })
+})
+
+describe('CREATE_WATCHPOINT — non-régression (spec Vincent)', () => {
+  it('"À ma prochaine visite, vérifie le SSI." → ADD_VISIT_ITEM (pas CREATE_WATCHPOINT)', () => {
+    expect(intent('À ma prochaine visite, vérifie le SSI.')).toBe('ADD_VISIT_ITEM')
+  })
+  it('"Fais poser un cadenas sur le portail." → CREATE_ACTION (pas CREATE_WATCHPOINT)', () => {
+    expect(intent('Fais poser un cadenas sur le portail.')).toBe('CREATE_ACTION')
+  })
+  it('"Appelle le fournisseur pour la fissure." → pas CREATE_WATCHPOINT (préexistant, hors verbes d\'écriture forts)', () => {
+    expect(intent('Appelle le fournisseur pour la fissure.')).not.toBe('CREATE_WATCHPOINT')
+  })
+  it('"Demande au chef d\'équipe de vérifier le SSI." → pas CREATE_WATCHPOINT', () => {
+    expect(intent("Demande au chef d'équipe de vérifier le SSI.")).not.toBe('CREATE_WATCHPOINT')
+  })
+})
+
+describe('CREATE_WATCHPOINT — récurrence non gérée (tripwire P4-E4)', () => {
+  // "à chaque visite" reste NON GÉRÉ pour P4-E1 : ni absorbé silencieusement
+  // dans un simple watchpoint, ni traité comme ADD_VISIT_ITEM — remonte comme
+  // clarification (UNKNOWN_WRITE), en attendant un futur objet de contrôle
+  // récurrent (P4-E4, non conçu, non implémenté).
+  it('"Pense à revérifier le SSI à chaque visite tant que ce n\'est pas réglé." → UNKNOWN_WRITE', () => {
+    expect(intent("Pense à revérifier le SSI à chaque visite tant que ce n'est pas réglé.")).toBe('UNKNOWN_WRITE')
+  })
+  it('"Surveille le SSI à chaque visite." → UNKNOWN_WRITE (pas CREATE_WATCHPOINT silencieux)', () => {
+    expect(intent('Surveille le SSI à chaque visite.')).toBe('UNKNOWN_WRITE')
+  })
+})
+
+describe('CREATE_WATCHPOINT — n\'affecte pas les autres intentions', () => {
+  it('ADD_VISIT_ITEM reste ADD_VISIT_ITEM : "Ajoute R4 au plan de visite"', () => {
+    expect(intent('Ajoute R4 au plan de visite')).toBe('ADD_VISIT_ITEM')
+  })
+  it('CREATE_ACTION reste CREATE_ACTION : "Il faut rappeler Clim Expair"', () => {
+    expect(intent('Il faut rappeler Clim Expair')).toBe('CREATE_ACTION')
+  })
+  it('FACT reste FACT : "Jérôme passe demain matin."', () => {
+    expect(intent('Jérôme passe demain matin.')).toBe('FACT')
+  })
+})

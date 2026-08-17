@@ -10,7 +10,7 @@ import {
   type CopilotFreeCandidate,
 } from '@/app/(dashboard)/sites/[id]/copilot-free-action'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
-import { ProposalCard, ScheduleProposalCard, ObservationProposalCard, ActorAliasProposalCard, FactProposalCard, RelationClaimProposalCard } from '@/components/copilot/CopilotProposalCards'
+import { ProposalCard, ScheduleProposalCard, ObservationProposalCard, ActorAliasProposalCard, FactProposalCard, RelationClaimProposalCard, WatchpointProposalCard } from '@/components/copilot/CopilotProposalCards'
 import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
 import { useVoiceOrb, type VoiceTurnHandlers, type VoiceTurnPayload, type VoiceTurnResult } from './VoiceOrbContext'
@@ -402,6 +402,13 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
                     />
                   ) : msg.proposal.kind === 'relation_claim' ? (
                     <RelationClaimProposalCard
+                      siteId={siteId}
+                      proposal={msg.proposal}
+                      interactionId={msg.interactionId}
+                      onDone={replaceDone}
+                    />
+                  ) : msg.proposal.kind === 'watchpoint' ? (
+                    <WatchpointProposalCard
                       siteId={siteId}
                       proposal={msg.proposal}
                       interactionId={msg.interactionId}

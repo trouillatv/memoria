@@ -40,7 +40,7 @@ import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-res
 import { resolveActorTarget, resolveActorCandidateById, type ActorCandidate } from '@/lib/db/actor-alias-resolve'
 import { extractIdentityCorrection } from '@/lib/visits/copilot-identity-correction'
 import { extractRelationClaim } from '@/lib/visits/copilot-relation-claim'
-import { buildCopilotProposal, buildScheduleProposal, buildObservationProposal, buildIdentityCorrectionProposal, buildFactProposal, buildRelationClaimProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
+import { buildCopilotProposal, buildScheduleProposal, buildObservationProposal, buildIdentityCorrectionProposal, buildFactProposal, buildRelationClaimProposal, buildWatchpointProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { parseScheduleFromQuestion, toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
 import { detectIntent, readRemainsPlausible } from '@/lib/visits/copilot-intent-router'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -677,6 +677,63 @@ export async function prepareCopilotAnswer(
         result: {
           kind: 'proposal',
           text: `Voici l'information que je propose de retenir. Choisissez sa nature et validez.`,
+          proposal,
+          interactionId: iid,
+        },
+      }
+    }
+
+    // ── CREATE_WATCHPOINT ────────────────────────────────────────────────────
+    // Vigilance durable sans échéance ni ancrage sur la prochaine visite
+    // (P4-E1). Même doctrine que FACT : la résolution de sujet canonique est
+    // tentée à titre d'enrichissement d'affichage, jamais bloquante — une
+    // ambiguïté ou une absence de résolution laisse le brouillon sans sujet
+    // associé plutôt que de redemander une clarification. Le statut naît et
+    // reste 'active' : la fermeture est un geste humain hors périmètre ici.
+    if (intentResult.intent === 'CREATE_WATCHPOINT') {
+      let watchpointSubjectId: string | null = null
+      let watchpointSubjectLabel: string | null = null
+
+      if (selectedCandidateId) {
+        watchpointSubjectId = selectedCandidateId
+        const labels = await getCanonicalSubjectLabelsByIds([selectedCandidateId])
+        watchpointSubjectLabel = labels[selectedCandidateId] ?? null
+      } else if (classification.entities.subjectLabels.length > 0) {
+        const resolution = await resolveCanonicalSubjectReference(siteId, classification.entities.subjectLabels[0])
+        if (resolution.kind === 'resolved') {
+          watchpointSubjectId = resolution.candidate.id
+          watchpointSubjectLabel = resolution.candidate.label
+        }
+        // ambiguous / not_found → pas de sujet, jamais de clarification bloquante ici.
+      }
+
+      const proposal = buildWatchpointProposal({
+        question,
+        canonicalSubjectId: watchpointSubjectId,
+        canonicalSubjectLabel: watchpointSubjectLabel,
+      })
+
+      const watchpointScope: CopilotScope = watchpointSubjectId ? 'canonical_subject' : 'site'
+      const iid = await logCopilotInteraction({
+        siteId, userId, conversationId: conversationId ?? null,
+        question, conversationMode: 'free',
+        primaryIntent: 'proposal_request', secondaryIntents: [],
+        scope: watchpointScope,
+        resolvedSubjectIds: watchpointSubjectId ? [watchpointSubjectId] : [],
+        answerText: null, answerMode: 'deterministic_fallback', answerStatus: 'answered',
+        citedReferenceCount: 0, sourcesUsed: [],
+        model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+        estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+        proposalKind: proposal.kind,
+        proposalId: proposal.proposalId,
+        proposalStatus: 'shown',
+      })
+
+      return {
+        kind: 'result',
+        result: {
+          kind: 'proposal',
+          text: `Voici le point de vigilance que je propose d'enregistrer. Validez pour le retenir.`,
           proposal,
           interactionId: iid,
         },

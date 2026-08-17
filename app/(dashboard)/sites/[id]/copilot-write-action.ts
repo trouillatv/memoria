@@ -17,6 +17,7 @@ import { todayLocalIso } from '@/lib/time/local-date'
 import { confirmActorAlias } from '@/lib/db/actor-alias-write'
 import { confirmSiteFact } from '@/lib/db/site-fact-write'
 import { confirmSiteRelation } from '@/lib/db/canonical-subject-link-write'
+import { confirmSiteWatchpoint } from '@/lib/db/site-watchpoint-write'
 
 // ── Créer une action depuis une proposition copilote ─────────────────────────
 
@@ -460,6 +461,56 @@ export async function createCopilotRelationClaim(rawInput: unknown): Promise<Cre
     sourceSubjectId,
     targetSubjectId,
     evidenceText,
+    copilotProposalId,
+    interactionId: interactionId ?? null,
+  })
+}
+
+// ── Retenir un point de vigilance depuis une proposition copilote (P4-E1) ───
+//
+// « Surveille le SSI tant que ce n'est pas réglé » → site_watchpoints,
+// status='active' (défaut de la table). Aucune nature à choisir (contrairement
+// à FACT) : un point de vigilance n'a qu'une seule forme. Pas de résolution ni
+// de FK de sujet ici — même doctrine que FACT (canonicalSubjectId reste un
+// enrichissement d'affichage du brouillon, jamais persisté). La fermeture
+// (résolu/converti en réserve) reste un geste humain exclusif, hors périmètre
+// de cette action.
+
+const createWatchpointSchema = z.object({
+  siteId: z.string().uuid(),
+  title: z.string().min(1).max(255),
+  body: z.string().max(2000).nullable().optional(),
+  copilotProposalId: z.string().uuid(),
+  interactionId: z.string().uuid().nullable().optional(),
+})
+
+export type CreateCopilotWatchpointResult =
+  | { ok: true; watchpointId: string }
+  | { ok: false; error: string }
+
+export async function createCopilotWatchpoint(rawInput: unknown): Promise<CreateCopilotWatchpointResult> {
+  const parsed = createWatchpointSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides.' }
+  const { siteId, title, body, copilotProposalId, interactionId } = parsed.data
+
+  let organizationId: string
+  try {
+    const access = await requireSiteAccess(siteId)
+    organizationId = access.organizationId
+  } catch {
+    return { ok: false, error: 'Accès non autorisé.' }
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Non authentifié.' }
+
+  return confirmSiteWatchpoint({
+    organizationId,
+    siteId,
+    userId: user.id,
+    title,
+    body: body ?? null,
     copilotProposalId,
     interactionId: interactionId ?? null,
   })

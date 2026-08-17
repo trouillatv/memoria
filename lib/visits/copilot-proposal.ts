@@ -18,6 +18,7 @@ export type CopilotProposalKind =
   | 'fact'
   | 'actor_alias'
   | 'relation_claim'
+  | 'watchpoint'
 
 export type CopilotConfidence = 'strong' | 'medium' | 'suggestion'
 
@@ -59,6 +60,13 @@ export type CopilotProposal = {
   relationTargetSubjectLabel: string | null
 }
 
+// kind = 'watchpoint' (P4-E1) ne requiert aucun champ dédié : title/body
+// portent le point de vigilance, canonicalSubjectId/Label restent
+// l'enrichissement optionnel déjà défini plus haut (même doctrine que FACT —
+// jamais de FK bloquante). La phrase de clôture montrée à l'utilisateur
+// (« Ce point restera actif… ») est fixe et vit dans WatchpointProposalCard,
+// pas dans la donnée du brouillon.
+
 export const COPILOT_PROMPT_VERSION = '3c-v1'
 export const COPILOT_LLM_MODEL = 'classifier-deterministic'
 
@@ -73,6 +81,7 @@ const INTENT_TO_KIND: Partial<Record<string, CopilotProposalKind>> = {
   FACT:             'fact',
   CORRECTION_IDENTITY: 'actor_alias',
   RELATION_CLAIM:   'relation_claim',
+  CREATE_WATCHPOINT: 'watchpoint',
 }
 
 /** Délègue au routeur centralisé et mappe vers CopilotProposalKind. */
@@ -83,10 +92,18 @@ export function detectKind(question: string): CopilotProposalKind {
 
 // ── Builders ──────────────────────────────────────────────────────────────────
 
+// Verbes de vigilance en tête de phrase ("Surveille…", "Garde un œil sur…") —
+// strippés UNIQUEMENT pour kind = 'watchpoint', avant le strip générique
+// ci-dessous : ni "cr[eé]e"/"ajoute" ni "surveille"/"garde" ne se recouvrent,
+// chaque kind ne subit que le strip qui le concerne.
+const WATCHPOINT_TITLE_PREFIX_RE =
+  /^(?:surveill[a-zé]*|garde[zr]?\s+(?:un\s+)?(?:a\s+l['’]?\s*)?(?:œil|oeil)(?:\s+sur)?)\s*/i
+
 function buildTitle(question: string, kind: CopilotProposalKind, subjectLabel: string | null): string {
   if (kind === 'visit_item' && subjectLabel) return `Vérifier : ${subjectLabel}`
-  const clean = question
-    .trim()
+  let source = question.trim()
+  if (kind === 'watchpoint') source = source.replace(WATCHPOINT_TITLE_PREFIX_RE, '')
+  const clean = source
     .replace(/^(cr[eé]e[rz]?|ajoute[rz]?|planifie[rz]?|note[rz]?|programme[rz]?|mets?\s+en\s+plan)\s+/i, '')
     .replace(/^(une?\s+|l[ae]\s+)/i, '')
   const clipped = clean.length > 90 ? clean.slice(0, 87) + '…' : clean
@@ -94,6 +111,7 @@ function buildTitle(question: string, kind: CopilotProposalKind, subjectLabel: s
   if (label) return label
   if (kind === 'visit_item') return 'Point à vérifier'
   if (kind === 'fact') return 'Nouvelle information'
+  if (kind === 'watchpoint') return 'Point à surveiller'
   return 'Nouvelle action'
 }
 
@@ -432,5 +450,60 @@ export function buildRelationClaimProposal(params: {
     relationSourceSubjectLabel: sourceSubjectLabel,
     relationTargetSubjectId: targetSubjectId,
     relationTargetSubjectLabel: targetSubjectLabel,
+  }
+}
+
+/**
+ * Builder dédié aux points de vigilance (CREATE_WATCHPOINT, P4-E1).
+ *
+ * `body` porte le texte source verbatim (même doctrine anti-faits-fictifs que
+ * FACT/OBSERVATION). `canonicalSubjectId` reste un enrichissement optionnel,
+ * jamais requis — même doctrine que FACT : si la résolution de sujet est
+ * ambiguë ou absente, la vigilance se crée quand même, sans lien.
+ *
+ * Cette proposition naît TOUJOURS 'active' — la fermeture (résolu/converti en
+ * réserve) reste un geste humain exclusif, jamais proposé ni décidé ici.
+ */
+export function buildWatchpointProposal(params: {
+  question: string
+  canonicalSubjectId: string | null
+  canonicalSubjectLabel: string | null
+}): CopilotProposal {
+  const { question, canonicalSubjectId, canonicalSubjectLabel } = params
+
+  const title = buildTitle(question, 'watchpoint', canonicalSubjectLabel)
+  const subject = canonicalSubjectLabel
+    ? `Relié au sujet « ${canonicalSubjectLabel} ».`
+    : "Sans sujet canonique associé."
+  const whyText = `${subject} Restera actif sur le chantier jusqu'à ce que vous le marquiez résolu — aucune fermeture automatique.`
+
+  return {
+    proposalId: crypto.randomUUID(),
+    kind: 'watchpoint',
+    title,
+    body: question.trim(),
+    canonicalSubjectId,
+    canonicalSubjectLabel,
+    confidence: canonicalSubjectId ? 'strong' : 'medium',
+    whyText,
+    llmModel: COPILOT_LLM_MODEL,
+    promptVersion: COPILOT_PROMPT_VERSION,
+    scheduledDate: null,
+    scheduledTime: null,
+    scheduledObjective: null,
+    observationTemporality: null,
+    observationActorLabel: null,
+    aliasText: null,
+    aliasTargetKind: null,
+    aliasTargetId: null,
+    aliasTargetLabel: null,
+    aliasNature: null,
+    factNature: null,
+    factTemporality: null,
+    relationType: null,
+    relationSourceSubjectId: null,
+    relationSourceSubjectLabel: null,
+    relationTargetSubjectId: null,
+    relationTargetSubjectLabel: null,
   }
 }
