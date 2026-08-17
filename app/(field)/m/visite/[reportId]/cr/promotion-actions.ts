@@ -11,7 +11,7 @@
 // traçabilité passe de trois maillons à quatre — et le lien n'est pas déduit,
 // il est DÉSIGNÉ par un humain qui clique.
 
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { getVisit } from '@/lib/db/visits'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
@@ -64,7 +64,7 @@ export async function promoteEvidenceToCrAction(input: {
   const visit = await getVisit(input.reportId)
   if (!visit) return { ok: false, error: 'Visite introuvable' }
   // Isolation tenant : le service-role passe outre la RLS, le filtre est ICI.
-  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+  if (visit.organization_id && !(await userBelongsToOrg(user.id, visit.organization_id))) {
     return { ok: false, error: 'Visite introuvable' }
   }
 

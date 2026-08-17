@@ -35,7 +35,7 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Camera, ChevronRight } from 'lucide-react'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
 import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
@@ -61,7 +61,7 @@ export default async function VisitCrDesktopPage({
   const [identity, visit] = await Promise.all([getSiteIdentity(id), getVisit(visitId)])
   if (!identity || !visit || visit.site_id !== id) notFound()
   // Isolation tenant : le service-role passe outre la RLS, le filtre est ICI.
-  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+  if (visit.organization_id && !(await userBelongsToOrg(user.id, visit.organization_id))) {
     notFound()
   }
 

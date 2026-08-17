@@ -21,7 +21,7 @@ import {
   Camera, CheckCheck, CheckCircle2, ChevronRight, FileDown, FileText, Home, Images, Pencil,
   Sparkles, Users,
 } from 'lucide-react'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getVisit } from '@/lib/db/visits'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -71,7 +71,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
   ])
   if (!identity || !visit || visit.site_id !== id || !narrative) notFound()
   // Isolation tenant : le service-role passe outre la RLS, le filtre est ICI.
-  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+  if (visit.organization_id && !(await userBelongsToOrg(user.id, visit.organization_id))) {
     notFound()
   }
 

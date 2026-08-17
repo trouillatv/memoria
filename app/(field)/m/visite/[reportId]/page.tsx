@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisit, buildVisitImpact, gatherVisitSuites, gatherVisitTextSuites } from '@/lib/db/visits'
 import { listWatchlist } from '@/lib/db/visit-watchlist'
@@ -27,7 +27,7 @@ export default async function VisitDebriefPage({
   const visit = await getVisit(reportId)
   if (!visit || !visit.site_id) notFound()
   // Scope org : une visite d'une autre organisation n'existe pas pour cet agent.
-  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+  if (visit.organization_id && !(await userBelongsToOrg(user.id, visit.organization_id))) {
     notFound()
   }
 

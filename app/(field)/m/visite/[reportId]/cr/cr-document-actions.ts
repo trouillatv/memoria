@@ -15,7 +15,7 @@
 // refusée ici, et `updateReportDocumentSections` la refuse une seconde fois côté
 // base (`.eq('status', 'draft')`). Aucun geste d'édition ne défige un CR.
 
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { getVisit } from '@/lib/db/visits'
 import { updateReportDocumentSections } from '@/lib/db/report-documents'
 import { getVisitCrDocument, finalizeVisitCr, reopenVisitCr } from '@/lib/db/visit-cr-documents'
@@ -47,7 +47,7 @@ async function openDraft(reportId: string): Promise<Opened> {
   const visit = await getVisit(reportId)
   if (!visit) return { ok: false, error: 'Visite introuvable' }
   // Isolation tenant : le service-role passe outre la RLS, le filtre est ICI.
-  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+  if (visit.organization_id && !(await userBelongsToOrg(user.id, visit.organization_id))) {
     return { ok: false, error: 'Visite introuvable' }
   }
   const doc = await getVisitCrDocument(reportId)
@@ -154,7 +154,7 @@ export async function finalizeCrAction(reportId: string): Promise<LifecycleResul
   if (!user) return { ok: false, error: 'Session expirée' }
   const visit = await getVisit(reportId)
   if (!visit) return { ok: false, error: 'Visite introuvable' }
-  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+  if (visit.organization_id && !(await userBelongsToOrg(user.id, visit.organization_id))) {
     return { ok: false, error: 'Visite introuvable' }
   }
   const ok = await finalizeVisitCr(reportId, user.id)
@@ -167,7 +167,7 @@ export async function reopenCrAction(reportId: string): Promise<LifecycleResult>
   if (!user) return { ok: false, error: 'Session expirée' }
   const visit = await getVisit(reportId)
   if (!visit) return { ok: false, error: 'Visite introuvable' }
-  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+  if (visit.organization_id && !(await userBelongsToOrg(user.id, visit.organization_id))) {
     return { ok: false, error: 'Visite introuvable' }
   }
   const ok = await reopenVisitCr(reportId, user.id)

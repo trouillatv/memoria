@@ -5,7 +5,7 @@ import {
   ListChecks, AlertTriangle, Scale, Lightbulb, Users, CalendarClock,
   CheckCircle2, Clock3, XCircle, RefreshCw, UserCheck, UserX, Building2,
 } from 'lucide-react'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { getVisit } from '@/lib/db/visits'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildVisitUnderstandingChain } from '@/lib/knowledge/understanding-chain'
@@ -89,7 +89,7 @@ export default async function VisitComprehensionPage({
 
   const visit = await getVisit(reportId)
   if (!visit || !visit.site_id) notFound()
-  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+  if (visit.organization_id && !(await userBelongsToOrg(user.id, visit.organization_id))) {
     notFound()
   }
 

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft, Gavel, Monitor, History } from 'lucide-react'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
@@ -34,7 +34,7 @@ export default async function MeetingRecapPage({
     .maybeSingle()
   const report = (data as DbSiteReport | null) ?? null
   if (!report || !report.site_id) notFound()
-  if (report.organization_id && user.organization_id && report.organization_id !== user.organization_id) {
+  if (report.organization_id && !(await userBelongsToOrg(user.id, report.organization_id))) {
     notFound()
   }
 

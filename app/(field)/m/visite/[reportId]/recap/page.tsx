@@ -5,7 +5,7 @@ import {
   Camera, Video, Mic, Pencil, Target, MapPin, Star, Clock, FileText, ChevronRight, Sparkles, CheckCircle2,
 } from 'lucide-react'
 import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { visitIntentLabel } from '@/lib/field/visit-intents'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisit, buildVisitProduction, buildSitePatrimoine } from '@/lib/db/visits'
@@ -58,7 +58,7 @@ export default async function VisitRecapPage({
 
   const visit = await getVisit(reportId)
   if (!visit || !visit.site_id) notFound()
-  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+  if (visit.organization_id && !(await userBelongsToOrg(user.id, visit.organization_id))) {
     notFound()
   }
 

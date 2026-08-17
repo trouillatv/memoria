@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Users } from 'lucide-react'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { getVisit } from '@/lib/db/visits'
 import { loadKnowledgeEntities } from '@/lib/knowledge/semantic-entities'
 import { associerCandidat } from '../semantic-actions'
@@ -24,7 +24,7 @@ export default async function AssocierPage({
 
   const visit = await getVisit(reportId)
   if (!visit || !visit.site_id || !visit.organization_id) notFound()
-  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+  if (visit.organization_id && !(await userBelongsToOrg(user.id, visit.organization_id))) {
     notFound()
   }
 

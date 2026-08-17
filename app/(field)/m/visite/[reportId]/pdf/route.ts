@@ -7,7 +7,7 @@
 
 import { NextResponse } from 'next/server'
 import { renderToBuffer } from '@react-pdf/renderer'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
 import { loadOrRunVisitDebrief } from '@/lib/visits/debrief-analysis'
 import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
@@ -33,7 +33,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
   const visit = await getVisit(reportId)
   if (!visit) return NextResponse.json({ error: 'Visite introuvable' }, { status: 404 })
   // Scope org : une visite d'une autre organisation n'existe pas pour cet agent.
-  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+  if (visit.organization_id && !(await userBelongsToOrg(user.id, visit.organization_id))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

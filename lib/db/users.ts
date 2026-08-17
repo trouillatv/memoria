@@ -75,6 +75,19 @@ async function activeOrgIdsOf(userId: string): Promise<string[]> {
 }
 
 /**
+ * Isolation tenant CORRECTE pour un compte multi-organisations : appartenance
+ * ACTIVE à `organizationId`, jamais une comparaison à `user.organization_id`
+ * (colonne mono-org PAR DÉFAUT, cf. `getOrgId()` ci-dessus). Un admin/manager
+ * membre de plusieurs organisations (ex: AGP + SERVINORD + Becib) doit pouvoir
+ * ouvrir une ressource de CHACUNE — comparer à la seule org par défaut la
+ * rendait `notFound()` par erreur dès que la ressource n'appartenait pas à
+ * cette org par défaut.
+ */
+export async function userBelongsToOrg(userId: string, organizationId: string): Promise<boolean> {
+  return (await activeOrgIdsOf(userId)).includes(organizationId)
+}
+
+/**
  * Liste TOUTES les personnes, toutes organisations — CONSOLE PLATEFORME
  * UNIQUEMENT (/admin/personnes, layout gated rôle 'admin').
  *

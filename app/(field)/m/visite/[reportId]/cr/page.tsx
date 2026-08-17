@@ -5,7 +5,7 @@ import {
   ArrowLeft, Eye, ClipboardList, ListTodo, Gavel, Camera, FileText,
   ChevronRight, Star, Monitor, Check, MapPin, Download, CheckCircle2, ArrowRight, Home, Pencil, Sparkles,
 } from 'lucide-react'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
@@ -47,7 +47,7 @@ export default async function VisitCrPreviewPage({
 
   const visit = await getVisit(reportId)
   if (!visit || !visit.site_id) notFound()
-  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+  if (visit.organization_id && !(await userBelongsToOrg(user.id, visit.organization_id))) {
     notFound()
   }
 

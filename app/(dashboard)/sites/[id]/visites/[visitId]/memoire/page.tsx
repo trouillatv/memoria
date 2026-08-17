@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getVisit } from '@/lib/db/visits'
 import { listProposalsByReport, getCanonicalSubjectLabels } from '@/lib/db/knowledge-proposals'
@@ -24,7 +24,7 @@ export default async function VisitMemoirePage({ params }: { params: Promise<{ i
     listProposalsByReport(visitId),
   ])
   if (!identity || !visit || visit.site_id !== id) notFound()
-  if (visit.organization_id && user.organization_id && visit.organization_id !== user.organization_id) {
+  if (visit.organization_id && !(await userBelongsToOrg(user.id, visit.organization_id))) {
     notFound()
   }
 
