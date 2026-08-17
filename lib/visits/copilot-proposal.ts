@@ -64,6 +64,11 @@ export type CopilotProposal = {
   // null = « à planifier » (état valide, mig 215) — jamais une date inventée ;
   // `body` porte la phrase verbatim et mappe directement sur constraint_text.
   deadlineDueDate: string | null    // yyyy-mm-dd (Pacific/Noumea) ou null
+  // Champ CREATE_ACTION — non nul uniquement pour kind = 'action' (P5-F1).
+  // null = pas d'échéance détectée dans la phrase (état valide) — jamais une
+  // date inventée ; éditable sur le brouillon avant confirmation, comme
+  // deadlineDueDate.
+  actionDueDate: string | null      // yyyy-mm-dd (Pacific/Noumea) ou null
 }
 
 // kind = 'reserve' (P4-E3) ne requiert aucun champ dédié : title/body portent
@@ -153,6 +158,7 @@ export function buildCopilotProposal(params: {
   const kind = detectKind(question)
   const title = buildTitle(question, kind, canonicalSubjectLabel)
   const whyText = buildWhyText(kind, canonicalSubjectLabel)
+  const actionDueDate = kind === 'action' ? (parseScheduleFromQuestion(question)?.date ?? null) : null
 
   const confidence: CopilotConfidence = resolvedWithConfidence
     ? 'strong'
@@ -189,6 +195,7 @@ export function buildCopilotProposal(params: {
     relationTargetSubjectId: null,
     relationTargetSubjectLabel: null,
     deadlineDueDate: null,
+    actionDueDate,
   }
 }
 
@@ -237,6 +244,7 @@ export function buildScheduleProposal(params: {
     relationTargetSubjectId: null,
     relationTargetSubjectLabel: null,
     deadlineDueDate: null,
+    actionDueDate: null,
   }
 }
 
@@ -298,6 +306,7 @@ export function buildObservationProposal(params: {
     relationTargetSubjectId: null,
     relationTargetSubjectLabel: null,
     deadlineDueDate: null,
+    actionDueDate: null,
   }
 }
 
@@ -351,6 +360,7 @@ export function buildIdentityCorrectionProposal(params: {
     relationTargetSubjectId: null,
     relationTargetSubjectLabel: null,
     deadlineDueDate: null,
+    actionDueDate: null,
   }
 }
 
@@ -405,6 +415,7 @@ export function buildFactProposal(params: {
     relationTargetSubjectId: null,
     relationTargetSubjectLabel: null,
     deadlineDueDate: null,
+    actionDueDate: null,
   }
 }
 
@@ -472,6 +483,7 @@ export function buildRelationClaimProposal(params: {
     relationTargetSubjectId: targetSubjectId,
     relationTargetSubjectLabel: targetSubjectLabel,
     deadlineDueDate: null,
+    actionDueDate: null,
   }
 }
 
@@ -528,6 +540,7 @@ export function buildWatchpointProposal(params: {
     relationTargetSubjectId: null,
     relationTargetSubjectLabel: null,
     deadlineDueDate: null,
+    actionDueDate: null,
   }
 }
 
@@ -588,6 +601,7 @@ export function buildDeadlineProposal(params: {
     relationTargetSubjectId: null,
     relationTargetSubjectLabel: null,
     deadlineDueDate: dueDate,
+    actionDueDate: null,
   }
 }
 
@@ -644,5 +658,6 @@ export function buildReserveProposal(params: {
     relationTargetSubjectId: null,
     relationTargetSubjectLabel: null,
     deadlineDueDate: null,
+    actionDueDate: null,
   }
 }

@@ -37,6 +37,7 @@ export function ProposalCard({
 }) {
   const [title, setTitle]       = useState(proposal.title)
   const [body, setBody]         = useState(proposal.body ?? '')
+  const [dueDate, setDueDate]   = useState(proposal.actionDueDate ?? '')
   const [whyOpen, setWhyOpen]   = useState(false)
   const [saving, setSaving]     = useState(false)
   const [cancelled, setCancelled] = useState(false)
@@ -55,6 +56,7 @@ export function ProposalCard({
           title: title.trim(),
           body: body.trim() || null,
           canonicalSubjectId: proposal.canonicalSubjectId,
+          dueDate: dueDate || null,
           copilotProposalId: proposal.proposalId,
           llmModel: proposal.llmModel,
           promptVersion: proposal.promptVersion,
@@ -118,6 +120,18 @@ export function ProposalCard({
         </div>
       )}
 
+      {proposal.kind === 'action' && (
+        <div>
+          <label className="block text-[11px] text-muted-foreground mb-0.5">Échéance (optionnel)</label>
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+          />
+        </div>
+      )}
+
       <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border text-[12px]">
         {proposal.canonicalSubjectLabel && (
           <div className="flex items-center gap-2 px-2.5 py-1.5">
@@ -126,16 +140,10 @@ export function ProposalCard({
           </div>
         )}
         {proposal.kind === 'action' && (
-          <>
-            <div className="flex items-center gap-2 px-2.5 py-1.5">
-              <span className="w-28 shrink-0 text-muted-foreground">Responsable</span>
-              <span className="italic text-muted-foreground">Non attribué</span>
-            </div>
-            <div className="flex items-center gap-2 px-2.5 py-1.5">
-              <span className="w-28 shrink-0 text-muted-foreground">Échéance</span>
-              <span className="italic text-muted-foreground">Non définie</span>
-            </div>
-          </>
+          <div className="flex items-center gap-2 px-2.5 py-1.5">
+            <span className="w-28 shrink-0 text-muted-foreground">Responsable</span>
+            <span className="italic text-muted-foreground">Non attribué</span>
+          </div>
         )}
         {proposal.kind === 'visit_item' && (
           <div className="flex items-center gap-2 px-2.5 py-1.5">

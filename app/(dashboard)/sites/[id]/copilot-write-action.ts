@@ -21,6 +21,7 @@ import { confirmSiteRelation } from '@/lib/db/canonical-subject-link-write'
 import { confirmSiteWatchpoint } from '@/lib/db/site-watchpoint-write'
 import { confirmSiteDeadline } from '@/lib/db/site-deadline-write'
 import { confirmSiteReserve } from '@/lib/db/site-reserve-write'
+import { confirmSiteAction } from '@/lib/db/site-action-write'
 
 // ── Créer une action depuis une proposition copilote ─────────────────────────
 
@@ -29,6 +30,7 @@ const createActionSchema = z.object({
   title: z.string().min(1).max(255),
   body: z.string().max(2000).nullable().optional(),
   canonicalSubjectId: z.string().uuid().nullable().optional(),
+  dueDate: z.string().nullable().optional(),
   copilotProposalId: z.string().uuid(),
   llmModel: z.string().max(100),
   promptVersion: z.string().max(50),
@@ -42,7 +44,9 @@ export type CreateCopilotActionResult =
 export async function createCopilotAction(rawInput: unknown): Promise<CreateCopilotActionResult> {
   const parsed = createActionSchema.safeParse(rawInput)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides.' }
-  const { siteId, title, body, canonicalSubjectId, copilotProposalId, llmModel, promptVersion, interactionId } = parsed.data
+  // canonicalSubjectId : site_actions n'a pas de colonne dédiée à l'écriture copilote
+  // (même divergence que FACT/WATCHPOINT/DEADLINE) — reste un enrichissement d'affichage.
+  const { siteId, title, body, dueDate, copilotProposalId, llmModel, promptVersion, interactionId } = parsed.data
 
   try {
     await requireSiteAccess(siteId)
@@ -54,40 +58,17 @@ export async function createCopilotAction(rawInput: unknown): Promise<CreateCopi
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: 'Non authentifié.' }
 
-  const admin = createAdminClient()
-
-  // Idempotence : la même proposition ne peut créer qu'une seule action
-  const { data: existing } = await admin
-    .from('site_actions')
-    .select('id')
-    .eq('copilot_proposal_id', copilotProposalId)
-    .maybeSingle()
-  if (existing) return { ok: true, actionId: (existing as { id: string }).id }
-
-  const { data, error } = await admin
-    .from('site_actions')
-    .insert({
-      site_id: siteId,
-      title,
-      body: body ?? null,
-      status: 'open',
-      created_by: user.id,
-      created_from: 'copilot',
-      copilot_proposal_id: copilotProposalId,
-      confirmed_by: user.id,
-      confirmed_at: new Date().toISOString(),
-      llm_model: llmModel,
-      prompt_version: promptVersion,
-    })
-    .select('id')
-    .single()
-
-  if (error) return { ok: false, error: error.message }
-
-  invalidateSiteProjection(siteId)
-  // Mise à jour best-effort du statut de proposition dans la télémétrie
-  if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
-  return { ok: true, actionId: (data as { id: string }).id }
+  return confirmSiteAction({
+    siteId,
+    userId: user.id,
+    title,
+    body: body ?? null,
+    dueDate: dueDate ?? null,
+    copilotProposalId,
+    llmModel,
+    promptVersion,
+    interactionId: interactionId ?? null,
+  })
 }
 
 // ── Ajouter au plan de visite depuis une proposition copilote ────────────────
