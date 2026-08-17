@@ -21,6 +21,8 @@ export type CopilotProposalKind =
   | 'watchpoint'
   | 'deadline'
   | 'reserve'
+  | 'knowledge_supersession'
+  | 'knowledge_archive'
 
 export type CopilotConfidence = 'strong' | 'medium' | 'suggestion'
 
@@ -69,6 +71,20 @@ export type CopilotProposal = {
   // date inventée ; éditable sur le brouillon avant confirmation, comme
   // deadlineDueDate.
   actionDueDate: string | null      // yyyy-mm-dd (Pacific/Noumea) ou null
+  // Champ CORRECTION_KNOWLEDGE — non nul uniquement pour kind =
+  // 'knowledge_supersession' | 'knowledge_archive' (P5-F2b). Candidats
+  // proposés SANS présélection : l'humain choisit, jamais le LLM/routeur
+  // (cadrage Vincent) — max 5, ordre = listRecentCurrentInformationEntries.
+  // Pour 'knowledge_supersession', la nouvelle information vit dans
+  // `title`/`body` (mêmes champs communs que FACT), éditable avant validation.
+  knowledgeCandidates: KnowledgeCorrectionCandidate[] | null
+}
+
+export type KnowledgeCorrectionCandidate = {
+  id: string
+  title: string
+  body: string | null
+  confirmedAt: string
 }
 
 // kind = 'reserve' (P4-E3) ne requiert aucun champ dédié : title/body portent
@@ -97,6 +113,7 @@ const INTENT_TO_KIND: Partial<Record<string, CopilotProposalKind>> = {
   OBSERVATION:      'observation',
   FACT:             'fact',
   CORRECTION_IDENTITY: 'actor_alias',
+  CORRECTION_KNOWLEDGE: 'knowledge_supersession',
   RELATION_CLAIM:   'relation_claim',
   CREATE_WATCHPOINT: 'watchpoint',
   CREATE_DEADLINE:  'deadline',
@@ -196,6 +213,7 @@ export function buildCopilotProposal(params: {
     relationTargetSubjectLabel: null,
     deadlineDueDate: null,
     actionDueDate,
+    knowledgeCandidates: null,
   }
 }
 
@@ -245,6 +263,7 @@ export function buildScheduleProposal(params: {
     relationTargetSubjectLabel: null,
     deadlineDueDate: null,
     actionDueDate: null,
+    knowledgeCandidates: null,
   }
 }
 
@@ -307,6 +326,7 @@ export function buildObservationProposal(params: {
     relationTargetSubjectLabel: null,
     deadlineDueDate: null,
     actionDueDate: null,
+    knowledgeCandidates: null,
   }
 }
 
@@ -361,6 +381,7 @@ export function buildIdentityCorrectionProposal(params: {
     relationTargetSubjectLabel: null,
     deadlineDueDate: null,
     actionDueDate: null,
+    knowledgeCandidates: null,
   }
 }
 
@@ -416,6 +437,7 @@ export function buildFactProposal(params: {
     relationTargetSubjectLabel: null,
     deadlineDueDate: null,
     actionDueDate: null,
+    knowledgeCandidates: null,
   }
 }
 
@@ -484,6 +506,7 @@ export function buildRelationClaimProposal(params: {
     relationTargetSubjectLabel: targetSubjectLabel,
     deadlineDueDate: null,
     actionDueDate: null,
+    knowledgeCandidates: null,
   }
 }
 
@@ -541,6 +564,7 @@ export function buildWatchpointProposal(params: {
     relationTargetSubjectLabel: null,
     deadlineDueDate: null,
     actionDueDate: null,
+    knowledgeCandidates: null,
   }
 }
 
@@ -602,6 +626,7 @@ export function buildDeadlineProposal(params: {
     relationTargetSubjectLabel: null,
     deadlineDueDate: dueDate,
     actionDueDate: null,
+    knowledgeCandidates: null,
   }
 }
 
@@ -659,5 +684,112 @@ export function buildReserveProposal(params: {
     relationTargetSubjectLabel: null,
     deadlineDueDate: null,
     actionDueDate: null,
+    knowledgeCandidates: null,
+  }
+}
+
+/**
+ * Builder dédié à la supersession d'une information mémorisée (CORRECTION_KNOWLEDGE,
+ * mode 'supersede', P5-F2b).
+ *
+ * `candidates` sont les entrées `current_information` actives proposées à
+ * l'utilisateur, SANS présélection — cf. listRecentCurrentInformationEntries.
+ * `title`/`body` portent la nouvelle information verbatim (même doctrine
+ * anti-faits-fictifs que FACT), éditable avant confirmation. L'écriture réelle
+ * (choix du candidat remplacé, ou création indépendante via « Aucune de
+ * celles-ci ») se décide sur la carte, jamais ici.
+ */
+export function buildKnowledgeSupersessionProposal(params: {
+  newTitle: string
+  candidates: KnowledgeCorrectionCandidate[]
+}): CopilotProposal {
+  const { newTitle, candidates } = params
+
+  const title = newTitle || 'Nouvelle information'
+  const whyText = candidates.length > 0
+    ? `Correction détectée. Choisissez quelle information actuelle remplacer parmi les ${candidates.length} plus récente(s), ou « Aucune de celles-ci » pour créer une information indépendante.`
+    : "Correction détectée, mais aucune information actuelle n'est enregistrée sur ce chantier — sera créée comme information indépendante."
+
+  return {
+    proposalId: crypto.randomUUID(),
+    kind: 'knowledge_supersession',
+    title,
+    body: null,
+    canonicalSubjectId: null,
+    canonicalSubjectLabel: null,
+    confidence: 'medium',
+    whyText,
+    llmModel: COPILOT_LLM_MODEL,
+    promptVersion: COPILOT_PROMPT_VERSION,
+    scheduledDate: null,
+    scheduledTime: null,
+    scheduledObjective: null,
+    observationTemporality: null,
+    observationActorLabel: null,
+    aliasText: null,
+    aliasTargetKind: null,
+    aliasTargetId: null,
+    aliasTargetLabel: null,
+    aliasNature: null,
+    factNature: null,
+    factTemporality: null,
+    relationType: null,
+    relationSourceSubjectId: null,
+    relationSourceSubjectLabel: null,
+    relationTargetSubjectId: null,
+    relationTargetSubjectLabel: null,
+    deadlineDueDate: null,
+    actionDueDate: null,
+    knowledgeCandidates: candidates,
+  }
+}
+
+/**
+ * Builder dédié à l'archivage d'une information mémorisée (CORRECTION_KNOWLEDGE,
+ * mode 'archive', P5-F2b).
+ *
+ * Aucune nouvelle valeur à saisir — seulement le choix du candidat à marquer
+ * obsolète, SANS présélection, même doctrine que la supersession ci-dessus.
+ */
+export function buildKnowledgeArchiveProposal(params: {
+  candidates: KnowledgeCorrectionCandidate[]
+}): CopilotProposal {
+  const { candidates } = params
+
+  const whyText = candidates.length > 0
+    ? `Obsolescence détectée. Choisissez quelle information actuelle marquer comme obsolète parmi les ${candidates.length} plus récente(s).`
+    : "Obsolescence détectée, mais aucune information actuelle n'est enregistrée sur ce chantier."
+
+  return {
+    proposalId: crypto.randomUUID(),
+    kind: 'knowledge_archive',
+    title: 'Marquer une information comme obsolète',
+    body: null,
+    canonicalSubjectId: null,
+    canonicalSubjectLabel: null,
+    confidence: 'medium',
+    whyText,
+    llmModel: COPILOT_LLM_MODEL,
+    promptVersion: COPILOT_PROMPT_VERSION,
+    scheduledDate: null,
+    scheduledTime: null,
+    scheduledObjective: null,
+    observationTemporality: null,
+    observationActorLabel: null,
+    aliasText: null,
+    aliasTargetKind: null,
+    aliasTargetId: null,
+    aliasTargetLabel: null,
+    aliasNature: null,
+    factNature: null,
+    factTemporality: null,
+    relationType: null,
+    relationSourceSubjectId: null,
+    relationSourceSubjectLabel: null,
+    relationTargetSubjectId: null,
+    relationTargetSubjectLabel: null,
+    deadlineDueDate: null,
+    actionDueDate: null,
+    knowledgeCandidates: candidates,
   }
 }

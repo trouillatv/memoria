@@ -15,19 +15,36 @@ vi.mock('@/lib/knowledge/invalidate', () => ({
 }))
 
 let maybeSingleResult: { data: unknown } = { data: null }
+let listResult: { data: unknown } = { data: [] }
 let rpcResult: { data: unknown; error: unknown } = { data: null, error: null }
 const eqCalls: Array<[string, unknown]> = []
 const rpcCalls: Array<[string, unknown]> = []
+const limitCalls: number[] = []
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     from: () => ({
-      select: () => ({
-        eq: (col: string, val: unknown) => {
-          eqCalls.push([col, val])
-          return { maybeSingle: async () => maybeSingleResult }
-        },
-      }),
+      select: () => {
+        const builder = {
+          eq: (col: string, val: unknown) => {
+            eqCalls.push([col, val])
+            return builder
+          },
+          is: (col: string, val: unknown) => {
+            eqCalls.push([col, val])
+            return builder
+          },
+          order: () => builder,
+          limit: (n: number) => {
+            limitCalls.push(n)
+            return builder
+          },
+          maybeSingle: async () => maybeSingleResult,
+          then: (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
+            Promise.resolve(listResult).then(resolve, reject),
+        }
+        return builder
+      },
       update: () => ({
         eq: (col1: string, val1: unknown) => {
           eqCalls.push([col1, val1])
@@ -52,13 +69,15 @@ vi.mock('@/lib/supabase/admin', () => ({
   }),
 }))
 
-import { archiveKnowledgeEntry, supersedeKnowledgeEntry } from '@/lib/db/site-memory-entries'
+import { archiveKnowledgeEntry, supersedeKnowledgeEntry, listRecentCurrentInformationEntries } from '@/lib/db/site-memory-entries'
 
 beforeEach(() => {
   invalidateSiteProjection.mockClear()
   eqCalls.length = 0
   rpcCalls.length = 0
+  limitCalls.length = 0
   maybeSingleResult = { data: null }
+  listResult = { data: [] }
   rpcResult = { data: null, error: null }
 })
 
@@ -116,5 +135,43 @@ describe('supersedeKnowledgeEntry', () => {
     rpcResult = { data: null, error: null }
     const res = await supersedeKnowledgeEntry(baseInput)
     expect(res).toEqual({ ok: false, error: 'Supersession impossible.' })
+  })
+})
+
+describe('listRecentCurrentInformationEntries', () => {
+  it('scope à current_information actif, sans suppression, et limite à 5 par défaut', async () => {
+    await listRecentCurrentInformationEntries('site-1')
+    expect(eqCalls).toEqual([
+      ['site_id', 'site-1'],
+      ['kind', 'current_information'],
+      ['status', 'active'],
+      ['deleted_at', null],
+    ])
+    expect(limitCalls).toEqual([5])
+  })
+
+  it('respecte une limite explicite', async () => {
+    await listRecentCurrentInformationEntries('site-1', 2)
+    expect(limitCalls).toEqual([2])
+  })
+
+  it('ne présélectionne rien : retourne les candidats bruts, dans l’ordre reçu', async () => {
+    listResult = {
+      data: [
+        { id: 'e1', kind: 'current_information', title: 'Titre 1', body: 'Corps 1', source_report_id: null, valid_from: '2026-08-01', confirmed_at: '2026-08-10T10:00:00Z' },
+        { id: 'e2', kind: 'current_information', title: 'Titre 2', body: null, source_report_id: 'rep-1', valid_from: '2026-08-02', confirmed_at: '2026-08-05T10:00:00Z' },
+      ],
+    }
+    const res = await listRecentCurrentInformationEntries('site-1')
+    expect(res).toEqual([
+      { id: 'e1', kind: 'current_information', title: 'Titre 1', body: 'Corps 1', sourceReportId: null, validFrom: '2026-08-01', confirmedAt: '2026-08-10T10:00:00Z' },
+      { id: 'e2', kind: 'current_information', title: 'Titre 2', body: null, sourceReportId: 'rep-1', validFrom: '2026-08-02', confirmedAt: '2026-08-05T10:00:00Z' },
+    ])
+  })
+
+  it('renvoie une liste vide quand aucune entrée active n’existe', async () => {
+    listResult = { data: null }
+    const res = await listRecentCurrentInformationEntries('site-1')
+    expect(res).toEqual([])
   })
 })

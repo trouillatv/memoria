@@ -10,7 +10,7 @@ import {
   type CopilotFreeCandidate,
 } from '@/app/(dashboard)/sites/[id]/copilot-free-action'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
-import { ProposalCard, ScheduleProposalCard, ObservationProposalCard, ActorAliasProposalCard, FactProposalCard, RelationClaimProposalCard, WatchpointProposalCard, DeadlineProposalCard, ReserveProposalCard } from '@/components/copilot/CopilotProposalCards'
+import { ProposalCard, ScheduleProposalCard, ObservationProposalCard, ActorAliasProposalCard, FactProposalCard, RelationClaimProposalCard, WatchpointProposalCard, DeadlineProposalCard, ReserveProposalCard, KnowledgeSupersessionProposalCard, KnowledgeArchiveProposalCard } from '@/components/copilot/CopilotProposalCards'
 import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
 import { useVoiceOrb, type VoiceTurnHandlers, type VoiceTurnPayload, type VoiceTurnResult } from './VoiceOrbContext'
@@ -423,6 +423,20 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
                     />
                   ) : msg.proposal.kind === 'reserve' ? (
                     <ReserveProposalCard
+                      siteId={siteId}
+                      proposal={msg.proposal}
+                      interactionId={msg.interactionId}
+                      onDone={replaceDone}
+                    />
+                  ) : msg.proposal.kind === 'knowledge_supersession' ? (
+                    <KnowledgeSupersessionProposalCard
+                      siteId={siteId}
+                      proposal={msg.proposal}
+                      interactionId={msg.interactionId}
+                      onDone={replaceDone}
+                    />
+                  ) : msg.proposal.kind === 'knowledge_archive' ? (
+                    <KnowledgeArchiveProposalCard
                       siteId={siteId}
                       proposal={msg.proposal}
                       interactionId={msg.interactionId}

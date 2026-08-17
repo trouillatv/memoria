@@ -827,3 +827,53 @@ describe('CREATE_RESERVE — n\'affecte pas les autres intentions', () => {
     expect(intent('Jérôme passe demain matin.')).toBe('FACT')
   })
 })
+
+// ── CORRECTION_KNOWLEDGE (P5-F2b, Vincent 2026-08-17) ──────────────────────────
+//
+// Marqueur explicite de correction/obsolescence d'une information mémorisée
+// (site_knowledge_entries, kind='current_information' uniquement). Une simple
+// nouvelle affirmation sans marqueur reste FACT — aucune recherche de
+// supersession n'est déclenchée par défaut (cadrage Vincent, pour ne pas
+// dériver en détecteur de contradiction général).
+
+describe('CORRECTION_KNOWLEDGE — 4 formes reconnues (spec Vincent)', () => {
+  it('"Correction, Jérôme passe lundi." → CORRECTION_KNOWLEDGE', () => {
+    expect(intent('Correction, Jérôme passe lundi.')).toBe('CORRECTION_KNOWLEDGE')
+    expect(confidence('Correction, Jérôme passe lundi.')).toBe('strong')
+  })
+  it('"Finalement Jérôme ne vient plus demain." → CORRECTION_KNOWLEDGE', () => {
+    expect(intent('Finalement Jérôme ne vient plus demain.')).toBe('CORRECTION_KNOWLEDGE')
+    expect(confidence('Finalement Jérôme ne vient plus demain.')).toBe('strong')
+  })
+  it('"Ce n\'est plus 4812, c\'est 5830." → CORRECTION_KNOWLEDGE', () => {
+    expect(intent("Ce n'est plus 4812, c'est 5830.")).toBe('CORRECTION_KNOWLEDGE')
+    expect(confidence("Ce n'est plus 4812, c'est 5830.")).toBe('strong')
+  })
+  it('"Cette information n\'est plus valable." → CORRECTION_KNOWLEDGE', () => {
+    expect(intent("Cette information n'est plus valable.")).toBe('CORRECTION_KNOWLEDGE')
+    expect(confidence("Cette information n'est plus valable.")).toBe('strong')
+  })
+})
+
+describe('CORRECTION_KNOWLEDGE — frontière FACT (jamais absorbée par défaut)', () => {
+  it('"Jérôme passe lundi." → reste FACT, aucun marqueur de correction', () => {
+    expect(intent('Jérôme passe lundi.')).toBe('FACT')
+    expect(intent('Jérôme passe lundi.')).not.toBe('CORRECTION_KNOWLEDGE')
+  })
+  it('"Le code d\'accès est 5830." → reste FACT, simple affirmation', () => {
+    expect(intent("Le code d'accès est 5830.")).toBe('FACT')
+    expect(intent("Le code d'accès est 5830.")).not.toBe('CORRECTION_KNOWLEDGE')
+  })
+})
+
+describe('CORRECTION_KNOWLEDGE — n\'affecte pas les autres intentions', () => {
+  it('FACT reste FACT : "Jérôme passe demain matin."', () => {
+    expect(intent('Jérôme passe demain matin.')).toBe('FACT')
+  })
+  it('CORRECTION_IDENTITY reste CORRECTION_IDENTITY : "Non, Vincent Millon c\'est Vincent Milon."', () => {
+    expect(intent("Non, Vincent Millon c'est Vincent Milon.")).toBe('CORRECTION_IDENTITY')
+  })
+  it('CREATE_RESERVE reste CREATE_RESERVE : "Crée une réserve sur le portail cassé."', () => {
+    expect(intent('Crée une réserve sur le portail cassé.')).toBe('CREATE_RESERVE')
+  })
+})

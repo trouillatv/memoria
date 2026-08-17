@@ -22,6 +22,7 @@ import { confirmSiteWatchpoint } from '@/lib/db/site-watchpoint-write'
 import { confirmSiteDeadline } from '@/lib/db/site-deadline-write'
 import { confirmSiteReserve } from '@/lib/db/site-reserve-write'
 import { confirmSiteAction } from '@/lib/db/site-action-write'
+import { supersedeKnowledgeEntry, archiveKnowledgeEntry } from '@/lib/db/site-memory-entries'
 
 // ── Créer une action depuis une proposition copilote ─────────────────────────
 
@@ -595,4 +596,113 @@ export async function createCopilotReserve(rawInput: unknown): Promise<CreateCop
     copilotProposalId,
     interactionId: interactionId ?? null,
   })
+}
+
+// ── Corriger/périmer une information mémorisée (P5-F2b, CORRECTION_KNOWLEDGE) ─
+//
+// Deux gestes distincts, deux actions distinctes — même séparation que le
+// reste du fichier :
+//
+//   SUPERSESSION : `oldEntryId` porte le choix de l'utilisateur sur la carte.
+//   `null` = « Aucune de celles-ci » → crée une information `current_information`
+//   indépendante, EXACTEMENT le chemin FACT (confirmSiteFact), pas un nouveau
+//   chemin d'écriture. Un id non nul appelle `supersedeKnowledgeEntry` (RPC
+//   transactionnelle mig 334, F2a) : soit la nouvelle entrée existe et
+//   l'ancienne est supersédée, soit rien ne change.
+//
+//   ARCHIVAGE : `entryId` est TOUJOURS requis — pas d'équivalent « Aucune de
+//   celles-ci » ici, archiver sans candidat n'a pas de sens. Passe par
+//   `archiveKnowledgeEntry` (F2a), déjà idempotent par construction (no-op sur
+//   une entrée déjà 'archived'/'superseded').
+
+const createKnowledgeSupersessionSchema = z.object({
+  siteId: z.string().uuid(),
+  oldEntryId: z.string().uuid().nullable(),
+  title: z.string().min(1).max(255),
+  body: z.string().max(2000).nullable().optional(),
+  copilotProposalId: z.string().uuid(),
+  interactionId: z.string().uuid().nullable().optional(),
+})
+
+export type CreateCopilotKnowledgeSupersessionResult =
+  | { ok: true; entryId: string }
+  | { ok: false; error: string }
+
+export async function createCopilotKnowledgeSupersession(rawInput: unknown): Promise<CreateCopilotKnowledgeSupersessionResult> {
+  const parsed = createKnowledgeSupersessionSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides.' }
+  const { siteId, oldEntryId, title, body, copilotProposalId, interactionId } = parsed.data
+
+  let organizationId: string
+  try {
+    const access = await requireSiteAccess(siteId)
+    organizationId = access.organizationId
+  } catch {
+    return { ok: false, error: 'Accès non autorisé.' }
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Non authentifié.' }
+
+  if (!oldEntryId) {
+    return confirmSiteFact({
+      organizationId,
+      siteId,
+      userId: user.id,
+      kind: 'current_information',
+      title,
+      body: body ?? null,
+      copilotProposalId,
+      interactionId: interactionId ?? null,
+    })
+  }
+
+  const result = await supersedeKnowledgeEntry({
+    organizationId,
+    siteId,
+    oldEntryId,
+    title,
+    body: body ?? null,
+    confirmedBy: user.id,
+    copilotProposalId,
+  })
+  if (!result.ok) return { ok: false, error: result.error }
+  if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
+  return { ok: true, entryId: result.newEntryId }
+}
+
+const createKnowledgeArchiveSchema = z.object({
+  siteId: z.string().uuid(),
+  entryId: z.string().uuid(),
+  interactionId: z.string().uuid().nullable().optional(),
+})
+
+export type CreateCopilotKnowledgeArchiveResult =
+  | { ok: true }
+  | { ok: false; error: string }
+
+export async function createCopilotKnowledgeArchive(rawInput: unknown): Promise<CreateCopilotKnowledgeArchiveResult> {
+  const parsed = createKnowledgeArchiveSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides.' }
+  const { siteId, entryId, interactionId } = parsed.data
+
+  try {
+    await requireSiteAccess(siteId)
+  } catch {
+    return { ok: false, error: 'Accès non autorisé.' }
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Non authentifié.' }
+
+  try {
+    await archiveKnowledgeEntry(entryId, siteId)
+  } catch (err) {
+    return { ok: false, error: (err as Error).message || 'Impossible de marquer cette information comme obsolète.' }
+  }
+
+  if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
+  return { ok: true }
 }

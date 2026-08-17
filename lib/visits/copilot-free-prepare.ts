@@ -40,7 +40,9 @@ import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-res
 import { resolveActorTarget, resolveActorCandidateById, type ActorCandidate } from '@/lib/db/actor-alias-resolve'
 import { extractIdentityCorrection } from '@/lib/visits/copilot-identity-correction'
 import { extractRelationClaim } from '@/lib/visits/copilot-relation-claim'
-import { buildCopilotProposal, buildScheduleProposal, buildObservationProposal, buildIdentityCorrectionProposal, buildFactProposal, buildRelationClaimProposal, buildWatchpointProposal, buildDeadlineProposal, buildReserveProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
+import { extractKnowledgeCorrection } from '@/lib/visits/copilot-knowledge-correction'
+import { listRecentCurrentInformationEntries } from '@/lib/db/site-memory-entries'
+import { buildCopilotProposal, buildScheduleProposal, buildObservationProposal, buildIdentityCorrectionProposal, buildFactProposal, buildRelationClaimProposal, buildWatchpointProposal, buildDeadlineProposal, buildReserveProposal, buildKnowledgeSupersessionProposal, buildKnowledgeArchiveProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { parseScheduleFromQuestion, toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
 import { detectIntent, readRemainsPlausible } from '@/lib/visits/copilot-intent-router'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -677,6 +679,61 @@ export async function prepareCopilotAnswer(
         result: {
           kind: 'proposal',
           text: `Voici l'information que je propose de retenir. Choisissez sa nature et validez.`,
+          proposal,
+          interactionId: iid,
+        },
+      }
+    }
+
+    // ── CORRECTION_KNOWLEDGE ─────────────────────────────────────────────────
+    // Correction/obsolescence explicite d'une information mémorisée (P5-F2b,
+    // mandat Vincent 2026-08-17). Le routeur n'a détecté qu'un booléen sur
+    // texte normalisé ; l'extraction (texte original) distingue ici le mode
+    // (supersession vs archivage). Les candidats proposés sont les 5
+    // `current_information` actives les plus récentes, SANS présélection —
+    // l'utilisateur choisit sur la carte, jamais le LLM/routeur. `body: null`
+    // en sortie de extraction : la fiche reprend la phrase entière comme titre
+    // éditable, l'humain corrige avant de valider (même doctrine que FACT).
+    if (intentResult.intent === 'CORRECTION_KNOWLEDGE') {
+      const extraction = extractKnowledgeCorrection(question)
+      if (!extraction) {
+        const clarText = "Je n'ai pas compris cette correction. Reformulez, par exemple : « Correction, Jérôme passe lundi » ou « Cette information n'est plus valable. »"
+        return { kind: 'result', result: { kind: 'answer', text: clarText, references: [], source: 'fallback', interactionId: null, spokenText: spokenFromShortAnswer(clarText) } }
+      }
+
+      const candidateEntries = await listRecentCurrentInformationEntries(siteId)
+      const knowledgeCandidates = candidateEntries.map((c) => ({
+        id: c.id,
+        title: c.title,
+        body: c.body,
+        confirmedAt: c.confirmedAt,
+      }))
+
+      const proposal = extraction.mode === 'supersede'
+        ? buildKnowledgeSupersessionProposal({ newTitle: extraction.newTitle, candidates: knowledgeCandidates })
+        : buildKnowledgeArchiveProposal({ candidates: knowledgeCandidates })
+
+      const iid = await logCopilotInteraction({
+        siteId, userId, conversationId: conversationId ?? null,
+        question, conversationMode: 'free',
+        primaryIntent: 'proposal_request', secondaryIntents: [],
+        scope: 'site', resolvedSubjectIds: [],
+        answerText: null, answerMode: 'deterministic_fallback', answerStatus: 'answered',
+        citedReferenceCount: 0, sourcesUsed: [],
+        model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+        estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+        proposalKind: proposal.kind,
+        proposalId: proposal.proposalId,
+        proposalStatus: 'shown',
+      })
+
+      return {
+        kind: 'result',
+        result: {
+          kind: 'proposal',
+          text: extraction.mode === 'supersede'
+            ? "Voici la nouvelle information. Choisissez quelle information actuelle elle remplace, ou indiquez qu'aucune ne correspond."
+            : 'Choisissez quelle information actuelle marquer comme obsolète.',
           proposal,
           interactionId: iid,
         },

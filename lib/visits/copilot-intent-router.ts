@@ -20,6 +20,7 @@ export type WritingIntent =
   | 'OBSERVATION'
   | 'FACT'
   | 'CORRECTION_IDENTITY'
+  | 'CORRECTION_KNOWLEDGE'
   | 'RELATION_CLAIM'
   | 'CREATE_WATCHPOINT'
   | 'CREATE_DEADLINE'
@@ -296,6 +297,26 @@ const IDENTITY_CORRECTION_ON_APPELLE_RE = /\bon\s+appelle\s+aussi\b/
 const IDENTITY_CORRECTION_BARE_CEST_RE =
   /^[A-ZÀ-Ý][\wÀ-ÿ]*(?:\s+[A-ZÀ-Ý][\wÀ-ÿ]*){0,3}\s*,\s*c['’`]?\s?est\s+.+/
 
+// ── Signaux CORRECTION_KNOWLEDGE (P5-F2b, Vincent 2026-08-17) ────────────────
+//
+// Corrige ou périme explicitement une entrée de la mémoire du chantier
+// (site_knowledge_entries, kind='current_information' uniquement — même garde
+// que la RPC supersede_knowledge_entry, mig 334) : « Correction, Jérôme passe
+// lundi. » / « Ce n'est plus 4812, c'est 5830. » / « Finalement Jérôme ne
+// vient plus demain. » / « Cette information n'est plus valable. » — jamais
+// une simple nouvelle affirmation sans marqueur explicite (« Jérôme passe
+// lundi » seul reste FACT, ne déclenche AUCUNE recherche de supersession :
+// cadrage Vincent, pour ne pas dériver en détecteur de contradiction général).
+//
+// Détection uniquement ICI (booléen, texte normalisé) — le mode
+// (supersession vs archivage) et le contenu structuré sont extraits sur le
+// texte ORIGINAL par lib/visits/copilot-knowledge-correction.ts (même
+// séparation que CORRECTION_IDENTITY ci-dessus).
+const KNOWLEDGE_CORRECTION_PREFIX_RE = /^correction\b/
+const KNOWLEDGE_CORRECTION_CE_NEST_PLUS_RE = /\bce\s+n\s+est\s+plus\b.+\bc\s+est\b/
+const KNOWLEDGE_CORRECTION_FINALEMENT_RE = /\bfinalement\b.*\bne\s+\w+\s+plus\b/
+const KNOWLEDGE_CORRECTION_VALABLE_RE = /\bn\s+est\s+plus\s+valable\b/
+
 /**
  * Extrait le marqueur temporel littéral d'un constat OBSERVATION, pour affichage
  * uniquement (champ « temporalité » du brouillon) — ne participe à aucun routage.
@@ -406,6 +427,11 @@ export function detectIntent(question: string): IntentResult {
     IDENTITY_CORRECTION_DE_RE.test(q) ||
     IDENTITY_CORRECTION_ON_APPELLE_RE.test(q) ||
     IDENTITY_CORRECTION_BARE_CEST_RE.test(question.trim())
+  const hasKnowledgeCorrection =
+    KNOWLEDGE_CORRECTION_PREFIX_RE.test(q) ||
+    KNOWLEDGE_CORRECTION_CE_NEST_PLUS_RE.test(q) ||
+    KNOWLEDGE_CORRECTION_FINALEMENT_RE.test(q) ||
+    KNOWLEDGE_CORRECTION_VALABLE_RE.test(q)
 
   if (isRead)                            signals.push('read_signal')
   if (hasNextVisit)                      signals.push('next_visit')
@@ -442,6 +468,17 @@ export function detectIntent(question: string): IntentResult {
   // seraient sinon perdues en fallback READ (cf. commentaire des signaux).
   if (hasIdentityCorrection) {
     return { intent: 'CORRECTION_IDENTITY', confidence: 'strong', signals: [...signals, 'identity_correction'] }
+  }
+
+  // ── Garde CORRECTION_KNOWLEDGE ────────────────────────────────────────────
+  // Marqueur explicite de correction/obsolescence d'une information mémorisée
+  // → prime sur READ/FACT/écriture générique. Sans cette garde, « Ce n'est
+  // plus 4812, c'est 5830 » serait absorbée par FACT (Priorité 2bis, "est"
+  // matche FACT_ASSERTION_RE) — perdant la distinction avec une simple
+  // nouvelle affirmation, exactement le risque que CORRECTION_IDENTITY a déjà
+  // résolu pour les acteurs.
+  if (hasKnowledgeCorrection) {
+    return { intent: 'CORRECTION_KNOWLEDGE', confidence: 'strong', signals: [...signals, 'knowledge_correction'] }
   }
 
   // ── Garde READ ────────────────────────────────────────────────────────────

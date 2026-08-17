@@ -117,6 +117,34 @@ export async function listKnowledgeEntries(siteId: string): Promise<KnowledgeEnt
 }
 
 /**
+ * P5-F2b — candidates pour une correction/obsolescence conversationnelle
+ * (CORRECTION_KNOWLEDGE) : les 5 `current_information` actives les plus
+ * récentes, SANS filtrage ni présélection — le LLM/routeur aide à chercher,
+ * ne choisit jamais seul (cadrage Vincent). `durable_knowledge` reste hors
+ * périmètre en V1, même garde que la RPC supersede_knowledge_entry (mig 334).
+ */
+export async function listRecentCurrentInformationEntries(siteId: string, limit = 5): Promise<KnowledgeEntry[]> {
+  const { data } = await createAdminClient()
+    .from('site_knowledge_entries')
+    .select('id, kind, title, body, source_report_id, valid_from, confirmed_at')
+    .eq('site_id', siteId)
+    .eq('kind', 'current_information')
+    .eq('status', 'active')
+    .is('deleted_at', null)
+    .order('confirmed_at', { ascending: false })
+    .limit(limit)
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    id: r.id as string,
+    kind: r.kind as KnowledgeEntryKind,
+    title: r.title as string,
+    body: (r.body as string) ?? null,
+    sourceReportId: (r.source_report_id as string) ?? null,
+    validFrom: r.valid_from as string,
+    confirmedAt: r.confirmed_at as string,
+  }))
+}
+
+/**
  * P5-F2a — geste humain explicite (bouton « Marquer comme obsolète »), jamais
  * une expiration automatique : aucun TTL, aucun cron, aucun calcul d'âge ne
  * doit jamais appeler cette fonction. Idempotent : archiver une entrée déjà

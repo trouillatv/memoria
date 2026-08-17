@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Loader2, Check, ChevronDown, ChevronUp } from 'lucide-react'
-import { createCopilotAction, addCopilotToBriefing, createCopilotScheduledEvent, createCopilotObservation, createCopilotActorAlias, createCopilotFact, createCopilotRelationClaim, createCopilotWatchpoint, createCopilotDeadline, createCopilotReserve } from '@/app/(dashboard)/sites/[id]/copilot-write-action'
+import { createCopilotAction, addCopilotToBriefing, createCopilotScheduledEvent, createCopilotObservation, createCopilotActorAlias, createCopilotFact, createCopilotRelationClaim, createCopilotWatchpoint, createCopilotDeadline, createCopilotReserve, createCopilotKnowledgeSupersession, createCopilotKnowledgeArchive } from '@/app/(dashboard)/sites/[id]/copilot-write-action'
 import { trackCopilotProposalCancelled } from '@/app/(dashboard)/sites/[id]/copilot-event-action'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { cn } from '@/lib/utils'
@@ -1279,6 +1279,306 @@ export function ReserveProposalCard({
       <p className="text-[12px] text-muted-foreground leading-relaxed">
         Sera enregistrée comme réserve ouverte sur ce chantier.
       </p>
+
+      <button
+        type="button"
+        onClick={() => setWhyOpen((v) => !v)}
+        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+      >
+        {whyOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        Pourquoi cette proposition ?
+      </button>
+      {whyOpen && (
+        <p className="text-[12px] text-muted-foreground leading-relaxed pl-4 border-l border-border">
+          {proposal.whyText}
+        </p>
+      )}
+
+      <div className="flex gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={confirm}
+          disabled={saving || !canConfirm}
+          className="flex items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-[12px] font-medium text-white hover:bg-violet-600 disabled:opacity-40 transition-colors"
+        >
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+          Valider
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setCancelled(true)
+            if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+          }}
+          disabled={saving}
+          className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+        >
+          Annuler
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function formatKnowledgeConfirmedAt(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+  } catch {
+    return iso
+  }
+}
+
+// ── KnowledgeSupersessionProposalCard — corriger une information (P5-F2b) ────
+//
+// « Correction, … » / « Ce n'est plus X, c'est Y » : la nouvelle information
+// (titre/détail) est éditable, comme FactProposalCard. Le candidat à remplacer
+// N'EST JAMAIS présélectionné (cadrage Vincent) — l'utilisateur choisit parmi
+// les 5 entrées actives les plus récentes, ou « Aucune de celles-ci » pour
+// créer une information indépendante (même chemin que FACT côté serveur).
+
+const NO_CANDIDATE = '__none__'
+
+export function KnowledgeSupersessionProposalCard({
+  siteId,
+  proposal,
+  interactionId,
+  onDone,
+}: {
+  siteId: string
+  proposal: CopilotProposal
+  interactionId: string | null
+  onDone: (successText: string) => void
+}) {
+  const [title, setTitle]         = useState(proposal.title)
+  const [body, setBody]           = useState(proposal.body ?? '')
+  const [selection, setSelection] = useState<string | null>(null)
+  const [whyOpen, setWhyOpen]     = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [cancelled, setCancelled] = useState(false)
+
+  if (cancelled) {
+    return <p className="text-[12px] text-muted-foreground italic">Proposition annulée.</p>
+  }
+
+  const candidates = proposal.knowledgeCandidates ?? []
+  const canConfirm = !!title.trim() && selection !== null
+
+  async function confirm() {
+    if (saving || !canConfirm || selection === null) return
+    setSaving(true)
+    try {
+      const res = await createCopilotKnowledgeSupersession({
+        siteId,
+        oldEntryId: selection === NO_CANDIDATE ? null : selection,
+        title: title.trim(),
+        body: body.trim() || null,
+        copilotProposalId: proposal.proposalId,
+        interactionId,
+      })
+      onDone(res.ok ? 'Information mise à jour.' : `Erreur : ${res.error}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-foreground/10 bg-card p-3 space-y-2.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', CONFIDENCE_CLASSES[proposal.confidence])}>
+          {CONFIDENCE_LABELS[proposal.confidence]}
+        </span>
+        <span className="text-[11px] text-muted-foreground">Correction d'information</span>
+      </div>
+
+      <div>
+        <label className="block text-[11px] text-muted-foreground mb-0.5">Nouvelle information</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          maxLength={255}
+          className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+        />
+      </div>
+
+      <div>
+        <label className="block text-[11px] text-muted-foreground mb-0.5">Détail (optionnel)</label>
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={2}
+          maxLength={2000}
+          className="w-full resize-none rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+        />
+      </div>
+
+      <div>
+        <label className="block text-[11px] text-muted-foreground mb-1">Remplace quelle information ? — à choisir</label>
+        <div className="space-y-1.5">
+          {candidates.map((c) => (
+            <label
+              key={c.id}
+              className={cn(
+                'flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] cursor-pointer',
+                selection === c.id ? 'border-violet-400 bg-violet-50 dark:bg-violet-950/30' : 'border-border',
+              )}
+            >
+              <input
+                type="radio"
+                name={`knowledge-candidate-${proposal.proposalId}`}
+                checked={selection === c.id}
+                onChange={() => setSelection(c.id)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium block">{c.title}</span>
+                <span className="text-muted-foreground">{formatKnowledgeConfirmedAt(c.confirmedAt)}</span>
+              </span>
+            </label>
+          ))}
+          <label
+            className={cn(
+              'flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] cursor-pointer',
+              selection === NO_CANDIDATE ? 'border-violet-400 bg-violet-50 dark:bg-violet-950/30' : 'border-border',
+            )}
+          >
+            <input
+              type="radio"
+              name={`knowledge-candidate-${proposal.proposalId}`}
+              checked={selection === NO_CANDIDATE}
+              onChange={() => setSelection(NO_CANDIDATE)}
+            />
+            <span className="text-muted-foreground italic">Aucune de celles-ci — créer une information indépendante</span>
+          </label>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setWhyOpen((v) => !v)}
+        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+      >
+        {whyOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        Pourquoi cette proposition ?
+      </button>
+      {whyOpen && (
+        <p className="text-[12px] text-muted-foreground leading-relaxed pl-4 border-l border-border">
+          {proposal.whyText}
+        </p>
+      )}
+
+      <div className="flex gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={confirm}
+          disabled={saving || !canConfirm}
+          className="flex items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-[12px] font-medium text-white hover:bg-violet-600 disabled:opacity-40 transition-colors"
+        >
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+          Valider
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setCancelled(true)
+            if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+          }}
+          disabled={saving}
+          className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+        >
+          Annuler
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── KnowledgeArchiveProposalCard — périmer une information (P5-F2b) ──────────
+//
+// « Finalement… ne… plus… » / « Cette information n'est plus valable. » — pas
+// de nouvelle valeur à saisir, seulement le choix du candidat à marquer
+// obsolète. Pas d'option « Aucune de celles-ci » ici : archiver sans candidat
+// n'a pas de sens.
+
+export function KnowledgeArchiveProposalCard({
+  siteId,
+  proposal,
+  interactionId,
+  onDone,
+}: {
+  siteId: string
+  proposal: CopilotProposal
+  interactionId: string | null
+  onDone: (successText: string) => void
+}) {
+  const [selection, setSelection] = useState<string | null>(null)
+  const [whyOpen, setWhyOpen]     = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [cancelled, setCancelled] = useState(false)
+
+  if (cancelled) {
+    return <p className="text-[12px] text-muted-foreground italic">Proposition annulée.</p>
+  }
+
+  const candidates = proposal.knowledgeCandidates ?? []
+  const canConfirm = selection !== null
+
+  async function confirm() {
+    if (saving || !canConfirm || selection === null) return
+    setSaving(true)
+    try {
+      const res = await createCopilotKnowledgeArchive({
+        siteId,
+        entryId: selection,
+        interactionId,
+      })
+      onDone(res.ok ? 'Information marquée comme obsolète.' : `Erreur : ${res.error}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-foreground/10 bg-card p-3 space-y-2.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', CONFIDENCE_CLASSES[proposal.confidence])}>
+          {CONFIDENCE_LABELS[proposal.confidence]}
+        </span>
+        <span className="text-[11px] text-muted-foreground">Information obsolète</span>
+      </div>
+
+      {candidates.length === 0 ? (
+        <p className="text-[12px] text-muted-foreground italic">
+          Aucune information actuelle n'est enregistrée sur ce chantier.
+        </p>
+      ) : (
+        <div>
+          <label className="block text-[11px] text-muted-foreground mb-1">Quelle information marquer comme obsolète ? — à choisir</label>
+          <div className="space-y-1.5">
+            {candidates.map((c) => (
+              <label
+                key={c.id}
+                className={cn(
+                  'flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] cursor-pointer',
+                  selection === c.id ? 'border-violet-400 bg-violet-50 dark:bg-violet-950/30' : 'border-border',
+                )}
+              >
+                <input
+                  type="radio"
+                  name={`knowledge-archive-${proposal.proposalId}`}
+                  checked={selection === c.id}
+                  onChange={() => setSelection(c.id)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium block">{c.title}</span>
+                  <span className="text-muted-foreground">{formatKnowledgeConfirmedAt(c.confirmedAt)}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       <button
         type="button"
