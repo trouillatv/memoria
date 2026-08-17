@@ -40,7 +40,7 @@ import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-res
 import { resolveActorTarget, resolveActorCandidateById, type ActorCandidate } from '@/lib/db/actor-alias-resolve'
 import { extractIdentityCorrection } from '@/lib/visits/copilot-identity-correction'
 import { extractRelationClaim } from '@/lib/visits/copilot-relation-claim'
-import { buildCopilotProposal, buildScheduleProposal, buildObservationProposal, buildIdentityCorrectionProposal, buildFactProposal, buildRelationClaimProposal, buildWatchpointProposal, buildDeadlineProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
+import { buildCopilotProposal, buildScheduleProposal, buildObservationProposal, buildIdentityCorrectionProposal, buildFactProposal, buildRelationClaimProposal, buildWatchpointProposal, buildDeadlineProposal, buildReserveProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { parseScheduleFromQuestion, toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
 import { detectIntent, readRemainsPlausible } from '@/lib/visits/copilot-intent-router'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -790,6 +790,61 @@ export async function prepareCopilotAnswer(
         result: {
           kind: 'proposal',
           text: `Voici l'échéance que je propose d'enregistrer. Validez pour la retenir.`,
+          proposal,
+          interactionId: iid,
+        },
+      }
+    }
+
+    // ── CREATE_RESERVE ───────────────────────────────────────────────────────
+    // Intention explicite de créer une réserve (P4-E3). Même doctrine que
+    // WATCHPOINT/DEADLINE : la résolution de sujet canonique est un
+    // enrichissement d'affichage tenté à titre indicatif, jamais bloquant.
+    // Aucune gravité inventée, aucune due_date, aucun responsable personne.
+    if (intentResult.intent === 'CREATE_RESERVE') {
+      let reserveSubjectId: string | null = null
+      let reserveSubjectLabel: string | null = null
+
+      if (selectedCandidateId) {
+        reserveSubjectId = selectedCandidateId
+        const labels = await getCanonicalSubjectLabelsByIds([selectedCandidateId])
+        reserveSubjectLabel = labels[selectedCandidateId] ?? null
+      } else if (classification.entities.subjectLabels.length > 0) {
+        const resolution = await resolveCanonicalSubjectReference(siteId, classification.entities.subjectLabels[0])
+        if (resolution.kind === 'resolved') {
+          reserveSubjectId = resolution.candidate.id
+          reserveSubjectLabel = resolution.candidate.label
+        }
+        // ambiguous / not_found → pas de sujet, jamais de clarification bloquante ici.
+      }
+
+      const proposal = buildReserveProposal({
+        question,
+        canonicalSubjectId: reserveSubjectId,
+        canonicalSubjectLabel: reserveSubjectLabel,
+      })
+
+      const reserveScope: CopilotScope = reserveSubjectId ? 'canonical_subject' : 'site'
+      const iid = await logCopilotInteraction({
+        siteId, userId, conversationId: conversationId ?? null,
+        question, conversationMode: 'free',
+        primaryIntent: 'proposal_request', secondaryIntents: [],
+        scope: reserveScope,
+        resolvedSubjectIds: reserveSubjectId ? [reserveSubjectId] : [],
+        answerText: null, answerMode: 'deterministic_fallback', answerStatus: 'answered',
+        citedReferenceCount: 0, sourcesUsed: [],
+        model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+        estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+        proposalKind: proposal.kind,
+        proposalId: proposal.proposalId,
+        proposalStatus: 'shown',
+      })
+
+      return {
+        kind: 'result',
+        result: {
+          kind: 'proposal',
+          text: `Voici la réserve que je propose d'enregistrer. Validez pour la retenir.`,
           proposal,
           interactionId: iid,
         },

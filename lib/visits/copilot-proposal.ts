@@ -20,6 +20,7 @@ export type CopilotProposalKind =
   | 'relation_claim'
   | 'watchpoint'
   | 'deadline'
+  | 'reserve'
 
 export type CopilotConfidence = 'strong' | 'medium' | 'suggestion'
 
@@ -65,6 +66,12 @@ export type CopilotProposal = {
   deadlineDueDate: string | null    // yyyy-mm-dd (Pacific/Noumea) ou null
 }
 
+// kind = 'reserve' (P4-E3) ne requiert aucun champ dédié : title/body portent
+// la réserve, canonicalSubjectId/Label restent l'enrichissement optionnel déjà
+// défini plus haut (même doctrine que WATCHPOINT/FACT). Pas de gravité, pas de
+// due_date, pas de responsable personne (issuedBy toujours null à l'écriture,
+// cf. confirmSiteReserve) — cadrage Vincent explicite.
+
 // kind = 'watchpoint' (P4-E1) ne requiert aucun champ dédié : title/body
 // portent le point de vigilance, canonicalSubjectId/Label restent
 // l'enrichissement optionnel déjà défini plus haut (même doctrine que FACT —
@@ -88,6 +95,7 @@ const INTENT_TO_KIND: Partial<Record<string, CopilotProposalKind>> = {
   RELATION_CLAIM:   'relation_claim',
   CREATE_WATCHPOINT: 'watchpoint',
   CREATE_DEADLINE:  'deadline',
+  CREATE_RESERVE:   'reserve',
 }
 
 /** Délègue au routeur centralisé et mappe vers CopilotProposalKind. */
@@ -119,6 +127,7 @@ function buildTitle(question: string, kind: CopilotProposalKind, subjectLabel: s
   if (kind === 'fact') return 'Nouvelle information'
   if (kind === 'watchpoint') return 'Point à surveiller'
   if (kind === 'deadline') return 'Nouvelle échéance'
+  if (kind === 'reserve') return 'Nouvelle réserve'
   return 'Nouvelle action'
 }
 
@@ -579,5 +588,61 @@ export function buildDeadlineProposal(params: {
     relationTargetSubjectId: null,
     relationTargetSubjectLabel: null,
     deadlineDueDate: dueDate,
+  }
+}
+
+/**
+ * Builder dédié aux réserves (CREATE_RESERVE, P4-E3).
+ *
+ * `body` porte le texte source verbatim (même doctrine anti-faits-fictifs que
+ * FACT/WATCHPOINT/DEADLINE). Aucun champ de gravité, de date d'échéance ou de
+ * responsable — cadrage Vincent explicite : `issuedBy` reste toujours null à
+ * l'écriture (confirmSiteReserve), `issuedOn` est daté du jour de création,
+ * jamais un champ du brouillon. `canonicalSubjectId` reste un enrichissement
+ * d'affichage optionnel, même doctrine que FACT/WATCHPOINT/DEADLINE —
+ * `site_reserve` n'a pas de colonne `canonical_subject_id`.
+ */
+export function buildReserveProposal(params: {
+  question: string
+  canonicalSubjectId: string | null
+  canonicalSubjectLabel: string | null
+}): CopilotProposal {
+  const { question, canonicalSubjectId, canonicalSubjectLabel } = params
+
+  const title = buildTitle(question, 'reserve', canonicalSubjectLabel)
+  const subject = canonicalSubjectLabel
+    ? `Reliée au sujet « ${canonicalSubjectLabel} ».`
+    : "Sans sujet canonique associé."
+  const whyText = `${subject} Sera enregistrée comme réserve ouverte sur ce chantier.`
+
+  return {
+    proposalId: crypto.randomUUID(),
+    kind: 'reserve',
+    title,
+    body: question.trim(),
+    canonicalSubjectId,
+    canonicalSubjectLabel,
+    confidence: canonicalSubjectId ? 'strong' : 'medium',
+    whyText,
+    llmModel: COPILOT_LLM_MODEL,
+    promptVersion: COPILOT_PROMPT_VERSION,
+    scheduledDate: null,
+    scheduledTime: null,
+    scheduledObjective: null,
+    observationTemporality: null,
+    observationActorLabel: null,
+    aliasText: null,
+    aliasTargetKind: null,
+    aliasTargetId: null,
+    aliasTargetLabel: null,
+    aliasNature: null,
+    factNature: null,
+    factTemporality: null,
+    relationType: null,
+    relationSourceSubjectId: null,
+    relationSourceSubjectLabel: null,
+    relationTargetSubjectId: null,
+    relationTargetSubjectLabel: null,
+    deadlineDueDate: null,
   }
 }

@@ -7,6 +7,7 @@
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { requireSiteAccess } from '@/lib/auth/resource-access'
+import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { upsertPreparationItem } from '@/lib/db/visit-preparation'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
@@ -19,6 +20,7 @@ import { confirmSiteFact } from '@/lib/db/site-fact-write'
 import { confirmSiteRelation } from '@/lib/db/canonical-subject-link-write'
 import { confirmSiteWatchpoint } from '@/lib/db/site-watchpoint-write'
 import { confirmSiteDeadline } from '@/lib/db/site-deadline-write'
+import { confirmSiteReserve } from '@/lib/db/site-reserve-write'
 
 // ── Créer une action depuis une proposition copilote ─────────────────────────
 
@@ -563,6 +565,52 @@ export async function createCopilotDeadline(rawInput: unknown): Promise<CreateCo
     title,
     constraintText: body ?? null,
     dueDate: dueDate ?? null,
+    copilotProposalId,
+    interactionId: interactionId ?? null,
+  })
+}
+
+// ── Créer une réserve depuis une proposition copilote (P4-E3) ───────────────
+//
+// « Crée une réserve sur le portail cassé » → site_reserve, status='open'
+// (défaut de la table). Pas de gravité, pas de date d'échéance, pas de
+// responsable (issuedBy reste null — confirmSiteReserve), pas de sujet
+// canonique forcé — cadrage Vincent explicite (2026-08-17). Divergence
+// délibérée par rapport à WATCHPOINT/DEADLINE ci-dessus : la permission suit
+// le flux terrain existant (chef_equipe/manager/admin via
+// requireSiteWriteAccess), PAS `requireSiteAccess` (membership seul, sans
+// contrôle de rôle) — le formulaire desktop de réserve est manager-only, mais
+// le Copilote doit rester utilisable par un chef d'équipe sur le terrain,
+// comme pour toute autre proposition Copilote de ce fichier.
+//
+// Pas de champ `body` ici (contrairement à WATCHPOINT/DEADLINE) : site_reserve
+// n'a qu'une colonne `label`, aucune colonne de détail libre — ajouter un tel
+// champ serait un nouveau champ métier, hors mandat P4-E3.
+
+const createReserveSchema = z.object({
+  siteId: z.string().uuid(),
+  title: z.string().min(1).max(255),
+  copilotProposalId: z.string().uuid(),
+  interactionId: z.string().uuid().nullable().optional(),
+})
+
+export type CreateCopilotReserveResult =
+  | { ok: true; reserveId: string }
+  | { ok: false; error: string }
+
+export async function createCopilotReserve(rawInput: unknown): Promise<CreateCopilotReserveResult> {
+  const parsed = createReserveSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides.' }
+  const { siteId, title, copilotProposalId, interactionId } = parsed.data
+
+  const access = await requireSiteWriteAccess(siteId, 'operator')
+  if (!access.ok) return { ok: false, error: access.error }
+
+  return confirmSiteReserve({
+    organizationId: access.organizationId,
+    siteId,
+    userId: access.userId,
+    label: title,
     copilotProposalId,
     interactionId: interactionId ?? null,
   })

@@ -140,17 +140,31 @@ export async function createSiteReserve(input: {
   userId: string | null
   /** Capture d'origine (mig 183) — traçabilité de la réserve née d'une visite. */
   sourceCaptureId?: string | null
+  /**
+   * Fourni par un appelant qui a DÉJÀ vérifié le droit d'écriture (ex.
+   * copilot-write-action.ts via requireSiteWriteAccess) — saute la vérification
+   * interne requireOrganizationMembership(), qui résout la session HTTP
+   * courante et ne fonctionne pas hors contexte HTTP (ex. harnais de recette).
+   * Omis : comportement inchangé pour les appelants existants (desktop/terrain).
+   */
+  organizationId?: string | null
+  /** Idempotence Copilote (mig 333) — cf. copilot_proposal_id sur site_watchpoints/site_deadlines. */
+  copilotProposalId?: string | null
 }): Promise<{ id: string }> {
   const sb = createAdminClient()
-  const { data: siteRow } = await sb.from('sites').select('organization_id').eq('id', input.siteId).maybeSingle()
-  if (!siteRow) throw new Error('Chantier introuvable')
-  const membership = await requireOrganizationMembership((siteRow as { organization_id: string }).organization_id)
-  if (!membership.ok) throw new Error(membership.error)
+  let organizationId = input.organizationId ?? null
+  if (!organizationId) {
+    const { data: siteRow } = await sb.from('sites').select('organization_id').eq('id', input.siteId).maybeSingle()
+    if (!siteRow) throw new Error('Chantier introuvable')
+    const membership = await requireOrganizationMembership((siteRow as { organization_id: string }).organization_id)
+    if (!membership.ok) throw new Error(membership.error)
+    organizationId = (siteRow as { organization_id: string }).organization_id
+  }
   const { data, error } = await sb
     .from('site_reserve')
     .insert({
       site_id: input.siteId,
-      organization_id: (siteRow as { organization_id: string }).organization_id,
+      organization_id: organizationId,
       label: input.label,
       location: input.location,
       issued_by: input.issuedBy,
@@ -158,6 +172,7 @@ export async function createSiteReserve(input: {
       status: 'open',
       created_by: input.userId,
       source_capture_id: input.sourceCaptureId ?? null,
+      copilot_proposal_id: input.copilotProposalId ?? null,
       updated_at: new Date().toISOString(),
     })
     .select('id')

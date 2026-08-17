@@ -775,3 +775,55 @@ describe('CREATE_DEADLINE — n\'affecte pas les autres intentions', () => {
     expect(intent('Jérôme passe demain matin.')).toBe('FACT')
   })
 })
+
+// ── CREATE_RESERVE (P4-E3, Vincent 2026-08-17) ───────────────────────────────
+// Intention explicite de créer une réserve. Formulations anaphoriques
+// ("mets ça en réserve") restent hors V1 tant qu'il n'y a pas de résolution
+// de contexte.
+
+describe('CREATE_RESERVE — exemples positifs (spec Vincent)', () => {
+  it('"Crée une réserve sur le portail cassé." → CREATE_RESERVE', () => {
+    expect(intent('Crée une réserve sur le portail cassé.')).toBe('CREATE_RESERVE')
+    expect(confidence('Crée une réserve sur le portail cassé.')).toBe('strong')
+  })
+  it('"Ajoute une réserve sur la fissure du mur." → CREATE_RESERVE', () => {
+    expect(intent('Ajoute une réserve sur la fissure du mur.')).toBe('CREATE_RESERVE')
+    expect(confidence('Ajoute une réserve sur la fissure du mur.')).toBe('strong')
+  })
+  it('"Mets une réserve sur le carrelage décollé." → CREATE_RESERVE', () => {
+    expect(intent('Mets une réserve sur le carrelage décollé.')).toBe('CREATE_RESERVE')
+  })
+})
+
+describe('CREATE_RESERVE — frontières du mandat (matrice Vincent)', () => {
+  it('"Le portail est cassé." → pas CREATE_RESERVE (simple constat)', () => {
+    expect(intent('Le portail est cassé.')).not.toBe('CREATE_RESERVE')
+  })
+  it('"Surveille le portail." → CREATE_WATCHPOINT (pas CREATE_RESERVE)', () => {
+    expect(intent('Surveille le portail.')).toBe('CREATE_WATCHPOINT')
+  })
+  it('"Fais réparer le portail." → CREATE_ACTION (pas CREATE_RESERVE)', () => {
+    expect(intent('Fais réparer le portail.')).toBe('CREATE_ACTION')
+  })
+  it('"Le portail doit être réparé avant vendredi." → CREATE_DEADLINE (pas CREATE_RESERVE)', () => {
+    expect(intent('Le portail doit être réparé avant vendredi.')).toBe('CREATE_DEADLINE')
+  })
+  it('"Mets ça en réserve." → pas CREATE_RESERVE (anaphorique, hors V1)', () => {
+    expect(intent('Mets ça en réserve.')).not.toBe('CREATE_RESERVE')
+  })
+})
+
+describe('CREATE_RESERVE — n\'affecte pas les autres intentions', () => {
+  it('ADD_VISIT_ITEM reste ADD_VISIT_ITEM : "Ajoute R4 au plan de visite"', () => {
+    expect(intent('Ajoute R4 au plan de visite')).toBe('ADD_VISIT_ITEM')
+  })
+  it('CREATE_WATCHPOINT reste CREATE_WATCHPOINT : "Surveille le SSI tant que ce n\'est pas réglé."', () => {
+    expect(intent("Surveille le SSI tant que ce n'est pas réglé.")).toBe('CREATE_WATCHPOINT')
+  })
+  it('CREATE_DEADLINE reste CREATE_DEADLINE : "Le SSI doit être réglé avant vendredi."', () => {
+    expect(intent('Le SSI doit être réglé avant vendredi.')).toBe('CREATE_DEADLINE')
+  })
+  it('FACT reste FACT : "Jérôme passe demain matin."', () => {
+    expect(intent('Jérôme passe demain matin.')).toBe('FACT')
+  })
+})

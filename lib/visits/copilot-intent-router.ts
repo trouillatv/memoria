@@ -5,10 +5,9 @@
 //
 // Règles d'architecture :
 //   — Le routeur représente les capacités RÉELLES de MemorIA, pas les futures.
-//   — CREATE_RESERVE existe dans le type mais n'est jamais détecté tant que
-//     son pipeline n'est pas implémenté.
 //     CREATE_WATCHPOINT est implémenté depuis P4-E1 (2026-08-17).
 //     CREATE_DEADLINE est implémenté depuis P4-E2 (2026-08-17).
+//     CREATE_RESERVE est implémenté depuis P4-E3 (2026-08-17).
 //   — UNKNOWN_WRITE remplace le LLM pour tout verbe d'écriture non résolu.
 //   — Même routeur pour le texte et pour la voix (speech-to-text → même entrée).
 
@@ -24,9 +23,8 @@ export type WritingIntent =
   | 'RELATION_CLAIM'
   | 'CREATE_WATCHPOINT'
   | 'CREATE_DEADLINE'
-  | 'UNKNOWN_WRITE'
-  // Réservé — pipeline brouillon→confirmation→écriture non implémenté
   | 'CREATE_RESERVE'
+  | 'UNKNOWN_WRITE'
 
 export type IntentConfidence = 'strong' | 'ambiguous'
 
@@ -246,6 +244,24 @@ const RELATION_CLAIM_RE =
 // recouvrement avec une regex existante.
 const DEADLINE_OBLIGATION_RE = /\b(?:doit|doivent)\b/
 
+// ── Signaux CREATE_RESERVE (P4-E3, Vincent 2026-08-17) ───────────────────────
+//
+// Uniquement sur commande explicite de création : « Crée une réserve sur le
+// portail cassé. », « Ajoute une réserve sur X. » — un verbe de création
+// (crée/ajoute/mets/mettre) IMMÉDIATEMENT suivi d'un déterminant + "réserve(s)"
+// en objet direct. Cadrage Vincent : les formulations anaphoriques comme
+// « Mets ça en réserve. » restent HORS V1 tant qu'il n'y a pas de résolution
+// de contexte — cette regex les exclut par construction (le verbe y est suivi
+// de "ça en réserve", pas d'un déterminant directement accolé à "réserve").
+//
+// "reserve" est aussi capturé par UNSUPPORTED_RE (ligne ~127) — c'est
+// attendu : hasUnsupported reste vrai pour ces phrases (défense en profondeur
+// contre FACT/RELATION_CLAIM, qui excluent hasUnsupported), mais la branche
+// CREATE_RESERVE elle-même ne le vérifie pas, exactement comme CREATE_DEADLINE
+// ne vérifie aucune exclusion sur les familles de verbes d'écriture générales :
+// son propre signal dédié est suffisamment étroit.
+const RESERVE_CREATE_RE = /\b(?:cree\w*|ajout\w*|mets?\w*|mettr\w*)\s+(?:une?|la|cette|ces|des)\s+reserves?\b/
+
 // ── Signaux CORRECTION_IDENTITY (P4-B.2, Vincent 2026-08-17) ──────────────────
 //
 // Corrige une mécoupure STT ou une manière de désigner un acteur DÉJÀ CONNU
@@ -382,6 +398,7 @@ export function detectIntent(question: string): IntentResult {
   const hasWatchpointVerb = WATCHPOINT_VERB_RE.test(q)
   const hasRecurrence     = RECURRENCE_RE.test(q)
   const hasObligation     = DEADLINE_OBLIGATION_RE.test(q)
+  const hasReserveCreate  = RESERVE_CREATE_RE.test(q)
   const hasQuestionMark  = /\?\s*$/.test(question.trim())
   const hasIdentityCorrection =
     IDENTITY_CORRECTION_QUAND_RE.test(q) ||
@@ -407,6 +424,7 @@ export function detectIntent(question: string): IntentResult {
   if (hasWatchpointVerb)                 signals.push('watchpoint_verb')
   if (hasRecurrence)                     signals.push('recurrence_pattern')
   if (hasObligation)                     signals.push('obligation_marker')
+  if (hasReserveCreate)                  signals.push('reserve_create_verb')
 
   // ── Garde PRÉPARATION DE VISITE ───────────────────────────────────────────
   // Prime sur tout : « fais-moi les points de contrôle pour ma prochaine visite »
@@ -535,6 +553,15 @@ export function detectIntent(question: string): IntentResult {
   // vérifié sur le routeur réel avant implémentation.
   if (hasObligation && hasDatetime && !hasNextVisit && !hasMeeting && !hasQuestionMark) {
     return { intent: 'CREATE_DEADLINE', confidence: 'strong', signals }
+  }
+
+  // ── Priorité 2quinquies : CREATE_RESERVE (P4-E3) ─────────────────────────
+  // Commande explicite de création de réserve — verbe+déterminant+"réserve"
+  // adjacents (RESERVE_CREATE_RE). Ne vérifie pas hasUnsupported : "réserve"
+  // le déclenche systématiquement (UNSUPPORTED_RE), c'est le signal dédié
+  // lui-même qui porte la précision, comme CREATE_DEADLINE pour "doit".
+  if (hasReserveCreate) {
+    return { intent: 'CREATE_RESERVE', confidence: 'strong', signals }
   }
 
   // ── Priorité 3 : SCHEDULE_MEETING ────────────────────────────────────────

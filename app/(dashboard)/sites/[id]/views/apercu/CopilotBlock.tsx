@@ -18,7 +18,7 @@ import { trackCopilotReferenceClick } from '../../copilot-event-action'
 import { fetchPlanItems, removePlanItem, getCopilotSuggestions, type PlanItemSummary } from '../../copilot-plan-actions'
 import type { CopilotIntent } from '@/lib/visits/copilot-context'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
-import { ProposalCard, ScheduleProposalCard, ObservationProposalCard, ActorAliasProposalCard, FactProposalCard, RelationClaimProposalCard, WatchpointProposalCard, DeadlineProposalCard } from '@/components/copilot/CopilotProposalCards'
+import { ProposalCard, ScheduleProposalCard, ObservationProposalCard, ActorAliasProposalCard, FactProposalCard, RelationClaimProposalCard, WatchpointProposalCard, DeadlineProposalCard, ReserveProposalCard } from '@/components/copilot/CopilotProposalCards'
 import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { CapabilityDiscoveryPanel } from '@/components/copilot/CapabilityDiscoveryPanel'
 import { cn } from '@/lib/utils'
@@ -409,6 +409,13 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
                     />
                   ) : msg.proposal.kind === 'deadline' ? (
                     <DeadlineProposalCard
+                      siteId={siteId}
+                      proposal={msg.proposal}
+                      interactionId={msg.interactionId}
+                      onDone={replaceDone}
+                    />
+                  ) : msg.proposal.kind === 'reserve' ? (
+                    <ReserveProposalCard
                       siteId={siteId}
                       proposal={msg.proposal}
                       interactionId={msg.interactionId}

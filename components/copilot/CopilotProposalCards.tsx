@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Loader2, Check, ChevronDown, ChevronUp } from 'lucide-react'
-import { createCopilotAction, addCopilotToBriefing, createCopilotScheduledEvent, createCopilotObservation, createCopilotActorAlias, createCopilotFact, createCopilotRelationClaim, createCopilotWatchpoint, createCopilotDeadline } from '@/app/(dashboard)/sites/[id]/copilot-write-action'
+import { createCopilotAction, addCopilotToBriefing, createCopilotScheduledEvent, createCopilotObservation, createCopilotActorAlias, createCopilotFact, createCopilotRelationClaim, createCopilotWatchpoint, createCopilotDeadline, createCopilotReserve } from '@/app/(dashboard)/sites/[id]/copilot-write-action'
 import { trackCopilotProposalCancelled } from '@/app/(dashboard)/sites/[id]/copilot-event-action'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { cn } from '@/lib/utils'
@@ -1152,6 +1152,125 @@ export function DeadlineProposalCard({
           </div>
         </div>
       )}
+
+      <button
+        type="button"
+        onClick={() => setWhyOpen((v) => !v)}
+        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+      >
+        {whyOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        Pourquoi cette proposition ?
+      </button>
+      {whyOpen && (
+        <p className="text-[12px] text-muted-foreground leading-relaxed pl-4 border-l border-border">
+          {proposal.whyText}
+        </p>
+      )}
+
+      <div className="flex gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={confirm}
+          disabled={saving || !canConfirm}
+          className="flex items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-[12px] font-medium text-white hover:bg-violet-600 disabled:opacity-40 transition-colors"
+        >
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+          Valider
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setCancelled(true)
+            if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+          }}
+          disabled={saving}
+          className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+        >
+          Annuler
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── ReserveProposalCard — réserve (P4-E3) ─────────────────────────────────────
+//
+// « Crée une réserve sur le portail cassé. » → site_reserve, status='open'.
+// Titre uniquement (pas de champ Détail) : site_reserve n'a qu'une colonne
+// `label`, aucune colonne de texte libre — même doctrine anti-champ-inventé
+// que le builder (buildReserveProposal). Pas de gravité, pas de date, pas de
+// responsable — cadrage Vincent explicite.
+
+export function ReserveProposalCard({
+  siteId,
+  proposal,
+  interactionId,
+  onDone,
+}: {
+  siteId: string
+  proposal: CopilotProposal
+  interactionId: string | null
+  onDone: (successText: string) => void
+}) {
+  const [title, setTitle]         = useState(proposal.title)
+  const [whyOpen, setWhyOpen]     = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [cancelled, setCancelled] = useState(false)
+
+  if (cancelled) {
+    return <p className="text-[12px] text-muted-foreground italic">Proposition annulée.</p>
+  }
+
+  const canConfirm = !!title.trim()
+
+  async function confirm() {
+    if (saving || !canConfirm) return
+    setSaving(true)
+    try {
+      const res = await createCopilotReserve({
+        siteId,
+        title: title.trim(),
+        copilotProposalId: proposal.proposalId,
+        interactionId,
+      })
+      onDone(res.ok ? 'Réserve enregistrée.' : `Erreur : ${res.error}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-foreground/10 bg-card p-3 space-y-2.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', CONFIDENCE_CLASSES[proposal.confidence])}>
+          {CONFIDENCE_LABELS[proposal.confidence]}
+        </span>
+        <span className="text-[11px] text-muted-foreground">Réserve</span>
+      </div>
+
+      <div>
+        <label className="block text-[11px] text-muted-foreground mb-0.5">Titre</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          maxLength={255}
+          className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+        />
+      </div>
+
+      {proposal.canonicalSubjectLabel && (
+        <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border text-[12px]">
+          <div className="flex items-center gap-2 px-2.5 py-1.5">
+            <span className="w-28 shrink-0 text-muted-foreground">Sujet suivi</span>
+            <span className="font-medium">{proposal.canonicalSubjectLabel}</span>
+          </div>
+        </div>
+      )}
+
+      <p className="text-[12px] text-muted-foreground leading-relaxed">
+        Sera enregistrée comme réserve ouverte sur ce chantier.
+      </p>
 
       <button
         type="button"
