@@ -47,6 +47,7 @@ import { parseScheduleFromQuestion, toNomeaTimestamp } from '@/lib/visits/copilo
 import { detectIntent, readRemainsPlausible } from '@/lib/visits/copilot-intent-router'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logCopilotInteraction } from '@/lib/db/copilot-telemetry'
+import { scheduleDecomposeShadow } from '@/lib/visits/copilot-decompose-shadow'
 import type { CopilotScope, CopilotSttRoute } from '@/lib/db/copilot-telemetry'
 import { extractQuestionSubjectPhrase } from '@/lib/visits/copilot-classify'
 import { getCanonicalSubjectLifeForSite, getCanonicalSubjectLabelsByIds } from '@/lib/db/canonical-subject-life'
@@ -291,6 +292,14 @@ export async function prepareCopilotAnswer(
       userId = user?.id ?? null
     } catch { /* non bloquant */ }
   }
+
+  // ── P6-A2 : shadow mode decompose-v2 (mandat Vincent 2026-08-17) ────────────
+  // Planifié ICI, avant toute branche : couvre uniformément les intents
+  // d'écriture (retour anticipé plus bas) et de lecture (via `finish`), sans
+  // dépendre de l'ID d'interaction réel (généré plus tard, par branche —
+  // certaines n'en génèrent aucun). `after()` garantit qu'il ne retarde
+  // jamais la réponse ; le rapprochement se fait par conversation_id.
+  scheduleDecomposeShadow({ siteId, userId, organizationId, conversationId: conversationId ?? null, question })
 
   // ── Classification déterministe ───────────────────────────────────────────────
   const deterministicClassification = classifyIntent(question)
