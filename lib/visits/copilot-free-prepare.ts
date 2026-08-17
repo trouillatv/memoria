@@ -44,7 +44,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logCopilotInteraction } from '@/lib/db/copilot-telemetry'
 import type { CopilotScope, CopilotSttRoute } from '@/lib/db/copilot-telemetry'
 import { extractQuestionSubjectPhrase } from '@/lib/visits/copilot-classify'
-import { getCanonicalSubjectLifeForSite } from '@/lib/db/canonical-subject-life'
+import { getCanonicalSubjectLifeForSite, getCanonicalSubjectLabelsByIds } from '@/lib/db/canonical-subject-life'
 import { buildSubjectDetailForCopilot } from '@/lib/visits/copilot-subject-context'
 import type { FreeAnswer, FreeAnswerContext, HistoryMessage, RecentChangeContext } from '@/lib/visits/copilot-free-answer'
 import { buildVisitPlan } from '@/lib/visits/visit-plan-builder'
@@ -528,7 +528,15 @@ export async function prepareCopilotAnswer(
       let obsSubjectLabel: string | null = null
       let obsResolvedWithConfidence = false
 
-      if (classification.entities.subjectLabels.length > 0) {
+      if (selectedCandidateId) {
+        // Correction locale du tour (P4-B.1) : l'utilisateur vient de trancher
+        // une clarification déjà posée — pas de nouvelle résolution lexicale,
+        // sinon on retomberait sur la même ambiguïté (ex. « cadenas »).
+        obsSubjectId = selectedCandidateId
+        obsResolvedWithConfidence = true
+        const labels = await getCanonicalSubjectLabelsByIds([selectedCandidateId])
+        obsSubjectLabel = labels[selectedCandidateId] ?? null
+      } else if (classification.entities.subjectLabels.length > 0) {
         const resolution = await resolveCanonicalSubjectReference(siteId, classification.entities.subjectLabels[0])
         if (resolution.kind === 'resolved') {
           obsSubjectId = resolution.candidate.id
@@ -614,7 +622,13 @@ export async function prepareCopilotAnswer(
     let canonicalSubjectLabel: string | null = null
     let resolvedWithConfidence = false
 
-    if (classification.entities.subjectLabels.length > 0) {
+    if (selectedCandidateId) {
+      // Correction locale du tour (P4-B.1) — même court-circuit que OBSERVATION.
+      canonicalSubjectId = selectedCandidateId
+      resolvedWithConfidence = true
+      const labels = await getCanonicalSubjectLabelsByIds([selectedCandidateId])
+      canonicalSubjectLabel = labels[selectedCandidateId] ?? null
+    } else if (classification.entities.subjectLabels.length > 0) {
       const resolution = await resolveCanonicalSubjectReference(siteId, classification.entities.subjectLabels[0])
       if (resolution.kind === 'resolved') {
         canonicalSubjectId = resolution.candidate.id
