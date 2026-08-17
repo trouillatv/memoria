@@ -734,3 +734,44 @@ describe('CREATE_WATCHPOINT — n\'affecte pas les autres intentions', () => {
     expect(intent('Jérôme passe demain matin.')).toBe('FACT')
   })
 })
+
+// ── CREATE_DEADLINE (P4-E2, Vincent 2026-08-17) ──────────────────────────────
+// Obligation sur un état attendu + contrainte temporelle explicite.
+
+describe('CREATE_DEADLINE — exemples positifs (spec Vincent)', () => {
+  it('"Le SSI doit être réglé avant vendredi." → CREATE_DEADLINE', () => {
+    expect(intent('Le SSI doit être réglé avant vendredi.')).toBe('CREATE_DEADLINE')
+    expect(confidence('Le SSI doit être réglé avant vendredi.')).toBe('strong')
+  })
+  it('"Le VISA doit arriver avant le 25 août." → CREATE_DEADLINE', () => {
+    expect(intent('Le VISA doit arriver avant le 25 août.')).toBe('CREATE_DEADLINE')
+    expect(confidence('Le VISA doit arriver avant le 25 août.')).toBe('strong')
+  })
+})
+
+describe('CREATE_DEADLINE — non-régression (spec Vincent)', () => {
+  it('"Fais régler le SSI vendredi." → CREATE_ACTION (pas CREATE_DEADLINE)', () => {
+    expect(intent('Fais régler le SSI vendredi.')).toBe('CREATE_ACTION')
+  })
+  it('"Le chantier sera fermé vendredi." → FACT (pas CREATE_DEADLINE)', () => {
+    expect(intent('Le chantier sera fermé vendredi.')).toBe('FACT')
+  })
+  it('"Réunion vendredi à 14h." → SCHEDULE_MEETING (pas CREATE_DEADLINE)', () => {
+    expect(intent('Réunion vendredi à 14h.')).toBe('SCHEDULE_MEETING')
+  })
+  it('"Rappelle-moi vendredi de vérifier le SSI." → CREATE_ACTION (pas CREATE_DEADLINE)', () => {
+    expect(intent('Rappelle-moi vendredi de vérifier le SSI.')).toBe('CREATE_ACTION')
+  })
+})
+
+describe('CREATE_DEADLINE — n\'affecte pas les autres intentions', () => {
+  it('ADD_VISIT_ITEM reste ADD_VISIT_ITEM : "Ajoute R4 au plan de visite"', () => {
+    expect(intent('Ajoute R4 au plan de visite')).toBe('ADD_VISIT_ITEM')
+  })
+  it('CREATE_WATCHPOINT reste CREATE_WATCHPOINT : "Surveille le SSI tant que ce n\'est pas réglé."', () => {
+    expect(intent("Surveille le SSI tant que ce n'est pas réglé.")).toBe('CREATE_WATCHPOINT')
+  })
+  it('FACT reste FACT : "Jérôme passe demain matin."', () => {
+    expect(intent('Jérôme passe demain matin.')).toBe('FACT')
+  })
+})

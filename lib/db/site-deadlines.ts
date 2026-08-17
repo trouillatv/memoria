@@ -67,6 +67,8 @@ export async function createSiteDeadline(input: {
   due_date?: string | null
   created_by?: string | null
   created_from?: string | null
+  /** Clé d'idempotence Copilote (P4-E2) — même mécanique que site_watchpoints.copilot_proposal_id, mig 332. */
+  copilot_proposal_id?: string | null
 }): Promise<string> {
   // La date décide de l'état : datée → elle vit dans le planning ; sinon elle
   // attend une décision. Aucun autre chemin — l'état ne se contredit pas avec la donnée.
@@ -83,6 +85,7 @@ export async function createSiteDeadline(input: {
       status,
       created_by: input.created_by ?? null,
       created_from: input.created_from ?? 'manual',
+      copilot_proposal_id: input.copilot_proposal_id ?? null,
     })
     .select('id')
     .single()

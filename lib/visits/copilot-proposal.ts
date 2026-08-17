@@ -4,7 +4,7 @@
 // Ce module construit le brouillon affiché à l'utilisateur.
 // AUCUNE écriture DB ici — le brouillon est éditable avant confirmation humaine.
 
-import { formatScheduleLabel } from '@/lib/visits/copilot-schedule-parse'
+import { formatScheduleLabel, parseScheduleFromQuestion } from '@/lib/visits/copilot-schedule-parse'
 import { detectIntent, extractObservationMarker, extractFactTemporality } from '@/lib/visits/copilot-intent-router'
 import { CHOOSABLE_KNOWLEDGE_KINDS, type KnowledgeEntryKind } from '@/lib/db/site-memory-entries'
 import type { RelationClaimType } from '@/lib/visits/copilot-relation-claim'
@@ -19,6 +19,7 @@ export type CopilotProposalKind =
   | 'actor_alias'
   | 'relation_claim'
   | 'watchpoint'
+  | 'deadline'
 
 export type CopilotConfidence = 'strong' | 'medium' | 'suggestion'
 
@@ -58,6 +59,10 @@ export type CopilotProposal = {
   relationSourceSubjectLabel: string | null
   relationTargetSubjectId: string | null
   relationTargetSubjectLabel: string | null
+  // Champ CREATE_DEADLINE — non nul uniquement pour kind = 'deadline' (P4-E2).
+  // null = « à planifier » (état valide, mig 215) — jamais une date inventée ;
+  // `body` porte la phrase verbatim et mappe directement sur constraint_text.
+  deadlineDueDate: string | null    // yyyy-mm-dd (Pacific/Noumea) ou null
 }
 
 // kind = 'watchpoint' (P4-E1) ne requiert aucun champ dédié : title/body
@@ -82,6 +87,7 @@ const INTENT_TO_KIND: Partial<Record<string, CopilotProposalKind>> = {
   CORRECTION_IDENTITY: 'actor_alias',
   RELATION_CLAIM:   'relation_claim',
   CREATE_WATCHPOINT: 'watchpoint',
+  CREATE_DEADLINE:  'deadline',
 }
 
 /** Délègue au routeur centralisé et mappe vers CopilotProposalKind. */
@@ -112,6 +118,7 @@ function buildTitle(question: string, kind: CopilotProposalKind, subjectLabel: s
   if (kind === 'visit_item') return 'Point à vérifier'
   if (kind === 'fact') return 'Nouvelle information'
   if (kind === 'watchpoint') return 'Point à surveiller'
+  if (kind === 'deadline') return 'Nouvelle échéance'
   return 'Nouvelle action'
 }
 
@@ -172,6 +179,7 @@ export function buildCopilotProposal(params: {
     relationSourceSubjectLabel: null,
     relationTargetSubjectId: null,
     relationTargetSubjectLabel: null,
+    deadlineDueDate: null,
   }
 }
 
@@ -219,6 +227,7 @@ export function buildScheduleProposal(params: {
     relationSourceSubjectLabel: null,
     relationTargetSubjectId: null,
     relationTargetSubjectLabel: null,
+    deadlineDueDate: null,
   }
 }
 
@@ -279,6 +288,7 @@ export function buildObservationProposal(params: {
     relationSourceSubjectLabel: null,
     relationTargetSubjectId: null,
     relationTargetSubjectLabel: null,
+    deadlineDueDate: null,
   }
 }
 
@@ -331,6 +341,7 @@ export function buildIdentityCorrectionProposal(params: {
     relationSourceSubjectLabel: null,
     relationTargetSubjectId: null,
     relationTargetSubjectLabel: null,
+    deadlineDueDate: null,
   }
 }
 
@@ -384,6 +395,7 @@ export function buildFactProposal(params: {
     relationSourceSubjectLabel: null,
     relationTargetSubjectId: null,
     relationTargetSubjectLabel: null,
+    deadlineDueDate: null,
   }
 }
 
@@ -450,6 +462,7 @@ export function buildRelationClaimProposal(params: {
     relationSourceSubjectLabel: sourceSubjectLabel,
     relationTargetSubjectId: targetSubjectId,
     relationTargetSubjectLabel: targetSubjectLabel,
+    deadlineDueDate: null,
   }
 }
 
@@ -505,5 +518,66 @@ export function buildWatchpointProposal(params: {
     relationSourceSubjectLabel: null,
     relationTargetSubjectId: null,
     relationTargetSubjectLabel: null,
+    deadlineDueDate: null,
+  }
+}
+
+/**
+ * Builder dédié aux échéances (CREATE_DEADLINE, P4-E2).
+ *
+ * `body` porte le texte source verbatim (même doctrine anti-faits-fictifs que
+ * FACT/WATCHPOINT) et devient `constraint_text` à la confirmation — jamais une
+ * reformulation. `deadlineDueDate` est extrait par le même parseur que
+ * SCHEDULE_VISIT/SCHEDULE_MEETING ; `null` reste un état valide (« à
+ * planifier », doctrine mig 215), jamais une date inventée. Aucun sujet requis
+ * en V1 (audit p4-e2-audit-deadline : `createSiteDeadline` n'expose pas de
+ * `subject_id`, aucune colonne `canonical_subject_id` n'existe sur
+ * `site_deadlines`) — `canonicalSubjectId` reste un enrichissement d'affichage
+ * optionnel, même doctrine que FACT/WATCHPOINT.
+ */
+export function buildDeadlineProposal(params: {
+  question: string
+  canonicalSubjectId: string | null
+  canonicalSubjectLabel: string | null
+}): CopilotProposal {
+  const { question, canonicalSubjectId, canonicalSubjectLabel } = params
+
+  const title = buildTitle(question, 'deadline', canonicalSubjectLabel)
+  const dueDate = parseScheduleFromQuestion(question)?.date ?? null
+  const subject = canonicalSubjectLabel
+    ? `Reliée au sujet « ${canonicalSubjectLabel} ».`
+    : "Sans sujet canonique associé."
+  let whyText = `${subject} Sera enregistrée comme échéance sur ce chantier.`
+  if (!dueDate) whyText += ' Pensez à préciser la date avant de valider, ou laissez « à planifier ».'
+
+  return {
+    proposalId: crypto.randomUUID(),
+    kind: 'deadline',
+    title,
+    body: question.trim(),
+    canonicalSubjectId,
+    canonicalSubjectLabel,
+    confidence: canonicalSubjectId ? 'strong' : 'medium',
+    whyText,
+    llmModel: COPILOT_LLM_MODEL,
+    promptVersion: COPILOT_PROMPT_VERSION,
+    scheduledDate: null,
+    scheduledTime: null,
+    scheduledObjective: null,
+    observationTemporality: null,
+    observationActorLabel: null,
+    aliasText: null,
+    aliasTargetKind: null,
+    aliasTargetId: null,
+    aliasTargetLabel: null,
+    aliasNature: null,
+    factNature: null,
+    factTemporality: null,
+    relationType: null,
+    relationSourceSubjectId: null,
+    relationSourceSubjectLabel: null,
+    relationTargetSubjectId: null,
+    relationTargetSubjectLabel: null,
+    deadlineDueDate: dueDate,
   }
 }

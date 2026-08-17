@@ -18,6 +18,7 @@ import { confirmActorAlias } from '@/lib/db/actor-alias-write'
 import { confirmSiteFact } from '@/lib/db/site-fact-write'
 import { confirmSiteRelation } from '@/lib/db/canonical-subject-link-write'
 import { confirmSiteWatchpoint } from '@/lib/db/site-watchpoint-write'
+import { confirmSiteDeadline } from '@/lib/db/site-deadline-write'
 
 // ── Créer une action depuis une proposition copilote ─────────────────────────
 
@@ -511,6 +512,57 @@ export async function createCopilotWatchpoint(rawInput: unknown): Promise<Create
     userId: user.id,
     title,
     body: body ?? null,
+    copilotProposalId,
+    interactionId: interactionId ?? null,
+  })
+}
+
+// ── Créer une échéance depuis une proposition copilote (P4-E2) ──────────────
+//
+// « Le SSI doit être réglé avant vendredi » → site_deadlines. `dueDate` null
+// reste un état valide (« à planifier », doctrine mig 215) — jamais rejeté ni
+// forcé. Pas de sujet ni de nature à choisir ici — même doctrine que FACT/
+// WATCHPOINT (canonicalSubjectId n'existe même pas comme colonne sur
+// site_deadlines, audit p4-e2-audit-deadline). `body` (constraint_text) porte
+// la phrase verbatim, jamais une date déduite du texte.
+
+const createDeadlineSchema = z.object({
+  siteId: z.string().uuid(),
+  title: z.string().min(1).max(255),
+  body: z.string().max(2000).nullable().optional(),
+  dueDate: z.string().nullable().optional(),
+  copilotProposalId: z.string().uuid(),
+  interactionId: z.string().uuid().nullable().optional(),
+})
+
+export type CreateCopilotDeadlineResult =
+  | { ok: true; deadlineId: string }
+  | { ok: false; error: string }
+
+export async function createCopilotDeadline(rawInput: unknown): Promise<CreateCopilotDeadlineResult> {
+  const parsed = createDeadlineSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides.' }
+  const { siteId, title, body, dueDate, copilotProposalId, interactionId } = parsed.data
+
+  let organizationId: string
+  try {
+    const access = await requireSiteAccess(siteId)
+    organizationId = access.organizationId
+  } catch {
+    return { ok: false, error: 'Accès non autorisé.' }
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Non authentifié.' }
+
+  return confirmSiteDeadline({
+    organizationId,
+    siteId,
+    userId: user.id,
+    title,
+    constraintText: body ?? null,
+    dueDate: dueDate ?? null,
     copilotProposalId,
     interactionId: interactionId ?? null,
   })

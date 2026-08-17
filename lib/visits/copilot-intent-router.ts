@@ -5,9 +5,10 @@
 //
 // Règles d'architecture :
 //   — Le routeur représente les capacités RÉELLES de MemorIA, pas les futures.
-//   — CREATE_RESERVE / CREATE_DEADLINE existent dans le type mais ne sont
-//     jamais détectés tant que leur pipeline n'est pas implémenté.
+//   — CREATE_RESERVE existe dans le type mais n'est jamais détecté tant que
+//     son pipeline n'est pas implémenté.
 //     CREATE_WATCHPOINT est implémenté depuis P4-E1 (2026-08-17).
+//     CREATE_DEADLINE est implémenté depuis P4-E2 (2026-08-17).
 //   — UNKNOWN_WRITE remplace le LLM pour tout verbe d'écriture non résolu.
 //   — Même routeur pour le texte et pour la voix (speech-to-text → même entrée).
 
@@ -22,10 +23,10 @@ export type WritingIntent =
   | 'CORRECTION_IDENTITY'
   | 'RELATION_CLAIM'
   | 'CREATE_WATCHPOINT'
-  | 'UNKNOWN_WRITE'
-  // Réservés — pipeline brouillon→confirmation→écriture non implémenté
-  | 'CREATE_RESERVE'
   | 'CREATE_DEADLINE'
+  | 'UNKNOWN_WRITE'
+  // Réservé — pipeline brouillon→confirmation→écriture non implémenté
+  | 'CREATE_RESERVE'
 
 export type IntentConfidence = 'strong' | 'ambiguous'
 
@@ -229,6 +230,22 @@ const RECURRENCE_RE = /\b(?:a\s+chaque\s+visite|chaque\s+visite|toutes\s+les\s+v
 const RELATION_CLAIM_RE =
   /\b(?:depend(?:ent)?\s+de|necessite(?:nt)?|requiert|requierent|permet(?:tent)?|valide(?:nt)?|cause(?:nt)?|entraine(?:nt)?|provoque(?:nt)?|remplace(?:nt)?)\b/
 
+// ── Signaux CREATE_DEADLINE (P4-E2, Vincent 2026-08-17) ──────────────────────
+//
+// Une obligation sur un ÉTAT attendu, assortie d'une contrainte temporelle
+// explicite : « Le SSI doit être réglé avant vendredi. », « Le VISA doit
+// arriver avant le 25 août. » — distinct de toutes les familles de verbes
+// d'écriture existantes (STRONG_WRITE_RE, WEAK_WRITE_RE, SCHEDULE_VERB_RE,
+// CREATE_VISIT_RE) : "doit"/"doivent" n'y figurent nulle part (vérifié par
+// grep, audit p4-e2-audit-deadline). Sans cette primitive dédiée, ces deux
+// phrases tombent en READ (fallback Priorité 6) — perte totale, mesurée sur
+// le routeur réel avant tout code.
+//
+// "doit"/"doivent" est distinct de "dois"/"je dois" (1ʳᵉ personne, déjà capté
+// par READ_RE) et de "faut"/"faudrait" (STRONG_WRITE_RE/WEAK_WRITE_RE) — aucun
+// recouvrement avec une regex existante.
+const DEADLINE_OBLIGATION_RE = /\b(?:doit|doivent)\b/
+
 // ── Signaux CORRECTION_IDENTITY (P4-B.2, Vincent 2026-08-17) ──────────────────
 //
 // Corrige une mécoupure STT ou une manière de désigner un acteur DÉJÀ CONNU
@@ -364,6 +381,7 @@ export function detectIntent(question: string): IntentResult {
   const hasRelationClaim = RELATION_CLAIM_RE.test(q)
   const hasWatchpointVerb = WATCHPOINT_VERB_RE.test(q)
   const hasRecurrence     = RECURRENCE_RE.test(q)
+  const hasObligation     = DEADLINE_OBLIGATION_RE.test(q)
   const hasQuestionMark  = /\?\s*$/.test(question.trim())
   const hasIdentityCorrection =
     IDENTITY_CORRECTION_QUAND_RE.test(q) ||
@@ -388,6 +406,7 @@ export function detectIntent(question: string): IntentResult {
   if (hasRelationClaim)                  signals.push('relation_claim')
   if (hasWatchpointVerb)                 signals.push('watchpoint_verb')
   if (hasRecurrence)                     signals.push('recurrence_pattern')
+  if (hasObligation)                     signals.push('obligation_marker')
 
   // ── Garde PRÉPARATION DE VISITE ───────────────────────────────────────────
   // Prime sur tout : « fais-moi les points de contrôle pour ma prochaine visite »
@@ -503,6 +522,19 @@ export function detectIntent(question: string): IntentResult {
     !hasOpinion
   ) {
     return { intent: 'RELATION_CLAIM', confidence: 'strong', signals }
+  }
+
+  // ── Priorité 2quater : CREATE_DEADLINE (P4-E2) ───────────────────────────
+  // Obligation sur un état + contrainte temporelle explicite. Exclut
+  // hasNextVisit (reste ADD_VISIT_ITEM — un ancrage sur la prochaine visite
+  // n'est pas une échéance datée) et hasMeeting (reste SCHEDULE_MEETING).
+  // Ne pose aucune exclusion sur hasStrongWrite/hasAction : par construction
+  // "doit"/"doivent" n'est jamais capturé par STRONG_WRITE_RE/ACTION_RE, donc
+  // aucune des phrases de non-régression (Fais régler…, Rappelle-moi…, Le
+  // chantier sera fermé…, Réunion vendredi…) ne contient ce marqueur —
+  // vérifié sur le routeur réel avant implémentation.
+  if (hasObligation && hasDatetime && !hasNextVisit && !hasMeeting && !hasQuestionMark) {
+    return { intent: 'CREATE_DEADLINE', confidence: 'strong', signals }
   }
 
   // ── Priorité 3 : SCHEDULE_MEETING ────────────────────────────────────────
