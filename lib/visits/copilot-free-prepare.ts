@@ -39,7 +39,8 @@ import { understandQuestion, mergeComprehension } from '@/lib/visits/copilot-com
 import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
 import { resolveActorTarget, resolveActorCandidateById, type ActorCandidate } from '@/lib/db/actor-alias-resolve'
 import { extractIdentityCorrection } from '@/lib/visits/copilot-identity-correction'
-import { buildCopilotProposal, buildScheduleProposal, buildObservationProposal, buildIdentityCorrectionProposal, buildFactProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
+import { extractRelationClaim } from '@/lib/visits/copilot-relation-claim'
+import { buildCopilotProposal, buildScheduleProposal, buildObservationProposal, buildIdentityCorrectionProposal, buildFactProposal, buildRelationClaimProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { parseScheduleFromQuestion, toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
 import { detectIntent, readRemainsPlausible } from '@/lib/visits/copilot-intent-router'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -776,6 +777,169 @@ export async function prepareCopilotAnswer(
         result: {
           kind: 'proposal',
           text: 'Voici la correspondance que je propose de retenir. Vérifiez et ajustez avant de valider.',
+          proposal,
+          interactionId: iid,
+        },
+      }
+    }
+
+    // ── RELATION_CLAIM ───────────────────────────────────────────────────────
+    // « Le SSI dépend de la mise sous tension » (P4-D1, mandat Vincent
+    // 2026-08-17). Réutilise STRICTEMENT canonical_subject_links (mig 316),
+    // écrit directement en status='confirmed' (l'utilisateur affirme ET valide
+    // lui-même la relation — pas une suggestion statistique du moteur P0-B1).
+    //
+    // Deux sujets à résoudre AVEC CERTITUDE (source ET cible), alors que le
+    // protocole existant (selectedCandidateId singulier + resolvedSubjectIds
+    // accumulé côté client, cf. OBSERVATION/CORRECTION_IDENTITY ci-dessus) n'a
+    // qu'un seul emplacement de résolution par tour. Réutilisé SANS extension
+    // (CLAUDE.md §5, aucun nouveau champ de protocole) : à chaque tour, un
+    // syntagme ambigu est considéré tranché si l'un de ses candidats a déjà été
+    // choisi lors d'un tour précédent (présent dans resolvedSubjectIds ou
+    // selectedCandidateId) ; sinon on pose la clarification pour CE seul
+    // syntagme et on s'arrête — jamais les deux clarifications à la fois. La
+    // source est toujours résolue avant la cible, donc la clarification en
+    // cours ne peut porter que sur le syntagme réellement en attente.
+    if (intentResult.intent === 'RELATION_CLAIM') {
+      const extraction = extractRelationClaim(question)
+      if (!extraction) {
+        const clarText = "Je n'ai pas compris cette relation. Reformulez, par exemple : « Le SSI dépend de la mise sous tension »."
+        return { kind: 'result', result: { kind: 'answer', text: clarText, references: [], source: 'fallback', interactionId: null, spokenText: spokenFromShortAnswer(clarText) } }
+      }
+
+      const priorIds = new Set<string>(resolvedSubjectIds)
+      if (selectedCandidateId) priorIds.add(selectedCandidateId)
+
+      type SlotResolution =
+        | { kind: 'resolved'; id: string; label: string }
+        | { kind: 'ambiguous'; candidates: { id: string; label: string }[] }
+        | { kind: 'not_found' }
+
+      const resolveSlot = async (text: string): Promise<SlotResolution> => {
+        const resolution = await resolveCanonicalSubjectReference(siteId, text)
+        if (resolution.kind === 'resolved') {
+          return { kind: 'resolved', id: resolution.candidate.id, label: resolution.candidate.label }
+        }
+        if (resolution.kind === 'ambiguous') {
+          const already = resolution.candidates.find((c) => priorIds.has(c.id))
+          if (already) return { kind: 'resolved', id: already.id, label: already.label }
+          return { kind: 'ambiguous', candidates: resolution.candidates }
+        }
+        return { kind: 'not_found' }
+      }
+
+      const sourceResolution = await resolveSlot(extraction.sourceText)
+      if (sourceResolution.kind === 'ambiguous') {
+        const labels = sourceResolution.candidates.map((c) => `• ${c.label}`).join('\n')
+        const iid = await logCopilotInteraction({
+          siteId, userId, conversationId: conversationId ?? null,
+          question, conversationMode: 'free',
+          primaryIntent: 'proposal_request', secondaryIntents: [],
+          scope: 'canonical_subject', resolvedSubjectIds: [],
+          answerText: null, answerMode: 'clarification', answerStatus: 'ambiguous',
+          citedReferenceCount: 0, sourcesUsed: [],
+          model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+          estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+        })
+        return {
+          kind: 'result',
+          result: {
+            kind: 'clarification',
+            text: `Plusieurs sujets correspondent à « ${extraction.sourceText} ». Lequel souhaitez-vous désigner ?\n\n${labels}`,
+            candidates: sourceResolution.candidates,
+            interactionId: iid,
+          },
+        }
+      }
+      if (sourceResolution.kind === 'not_found') {
+        const iid = await logCopilotInteraction({
+          siteId, userId, conversationId: conversationId ?? null,
+          question, conversationMode: 'free',
+          primaryIntent: 'proposal_request', secondaryIntents: [],
+          scope: 'canonical_subject', resolvedSubjectIds: [],
+          answerText: null, answerMode: 'clarification', answerStatus: 'not_found',
+          citedReferenceCount: 0, sourcesUsed: [],
+          model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+          estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+        })
+        const clarText = `Je ne trouve aucun sujet correspondant à « ${extraction.sourceText} » sur ce chantier.`
+        return { kind: 'result', result: { kind: 'answer', text: clarText, references: [], source: 'fallback', interactionId: iid, spokenText: spokenFromShortAnswer(clarText) } }
+      }
+
+      priorIds.add(sourceResolution.id)
+
+      const targetResolution = await resolveSlot(extraction.targetText)
+      if (targetResolution.kind === 'ambiguous') {
+        const labels = targetResolution.candidates.map((c) => `• ${c.label}`).join('\n')
+        const iid = await logCopilotInteraction({
+          siteId, userId, conversationId: conversationId ?? null,
+          question, conversationMode: 'free',
+          primaryIntent: 'proposal_request', secondaryIntents: [],
+          scope: 'canonical_subject', resolvedSubjectIds: [sourceResolution.id],
+          answerText: null, answerMode: 'clarification', answerStatus: 'ambiguous',
+          citedReferenceCount: 0, sourcesUsed: [],
+          model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+          estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+        })
+        return {
+          kind: 'result',
+          result: {
+            kind: 'clarification',
+            text: `Plusieurs sujets correspondent à « ${extraction.targetText} ». Lequel souhaitez-vous désigner ?\n\n${labels}`,
+            candidates: targetResolution.candidates,
+            interactionId: iid,
+          },
+        }
+      }
+      if (targetResolution.kind === 'not_found') {
+        const iid = await logCopilotInteraction({
+          siteId, userId, conversationId: conversationId ?? null,
+          question, conversationMode: 'free',
+          primaryIntent: 'proposal_request', secondaryIntents: [],
+          scope: 'canonical_subject', resolvedSubjectIds: [sourceResolution.id],
+          answerText: null, answerMode: 'clarification', answerStatus: 'not_found',
+          citedReferenceCount: 0, sourcesUsed: [],
+          model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+          estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+        })
+        const clarText = `Je ne trouve aucun sujet correspondant à « ${extraction.targetText} » sur ce chantier.`
+        return { kind: 'result', result: { kind: 'answer', text: clarText, references: [], source: 'fallback', interactionId: iid, spokenText: spokenFromShortAnswer(clarText) } }
+      }
+
+      if (sourceResolution.id === targetResolution.id) {
+        const clarText = 'La source et la cible de cette relation semblent désigner le même sujet. Reformulez pour préciser les deux éléments concernés.'
+        return { kind: 'result', result: { kind: 'answer', text: clarText, references: [], source: 'fallback', interactionId: null, spokenText: spokenFromShortAnswer(clarText) } }
+      }
+
+      const proposal = buildRelationClaimProposal({
+        question,
+        relationType: extraction.relationType,
+        sourceSubjectId: sourceResolution.id,
+        sourceSubjectLabel: sourceResolution.label,
+        targetSubjectId: targetResolution.id,
+        targetSubjectLabel: targetResolution.label,
+      })
+
+      const iid = await logCopilotInteraction({
+        siteId, userId, conversationId: conversationId ?? null,
+        question, conversationMode: 'free',
+        primaryIntent: 'proposal_request', secondaryIntents: [],
+        scope: 'canonical_subject',
+        resolvedSubjectIds: [sourceResolution.id, targetResolution.id],
+        answerText: null, answerMode: 'deterministic_fallback', answerStatus: 'answered',
+        citedReferenceCount: 0, sourcesUsed: [],
+        model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+        estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+        proposalKind: proposal.kind,
+        proposalId: proposal.proposalId,
+        proposalStatus: 'shown',
+      })
+
+      return {
+        kind: 'result',
+        result: {
+          kind: 'proposal',
+          text: `Voici la relation que je propose d'enregistrer. Vérifiez et ajustez avant de valider.`,
           proposal,
           interactionId: iid,
         },

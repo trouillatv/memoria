@@ -19,6 +19,7 @@ export type WritingIntent =
   | 'OBSERVATION'
   | 'FACT'
   | 'CORRECTION_IDENTITY'
+  | 'RELATION_CLAIM'
   | 'UNKNOWN_WRITE'
   // Réservés — pipeline brouillon→confirmation→écriture non implémenté
   | 'CREATE_RESERVE'
@@ -146,8 +147,8 @@ const OPINION_RE = /\b(?:je\s+pense\s+que|je\s+crois\s+que|j\s*estime\s+que|a\s+
 //
 // Une information déclarative à retenir qui n'est ni une question, ni une
 // action demandée, ni un constat d'état terrain (OBSERVATION), ni une
-// correction d'identité, ni une relation structurée (RELATION_CLAIM, futur
-// P4-B.3), ni une planification. Exemples de l'audit : « Jérôme passe demain
+// correction d'identité, ni une relation structurée (RELATION_CLAIM, P4-D1),
+// ni une planification. Exemples de l'audit : « Jérôme passe demain
 // matin. », « Vincent Milon est l'interlocuteur principal sur ce dossier. »,
 // « Le code du portail est 4812. » — 5 des 8 phrases de l'audit tombaient en
 // READ fallback (perte pure), 2 étaient absorbées par SCHEDULE_MEETING ou
@@ -181,6 +182,24 @@ export function extractFactTemporality(question: string): string | null {
   return match ? match[0] : null
 }
 
+// ── Signaux RELATION_CLAIM (P4-D1, Vincent 2026-08-17) ────────────────────────
+//
+// Une phrase affirme une relation causale explicite et déterministe entre deux
+// sujets suivis : « Le SSI dépend de la mise sous tension. » Détection ICI
+// uniquement booléenne (le verbe relationnel existe-t-il dans la phrase) — le
+// contenu structuré (relationType, sourceText, targetText) est extrait sur le
+// texte ORIGINAL par lib/visits/copilot-relation-claim.ts (même séparation que
+// CORRECTION_IDENTITY : détection normalisée ici, extraction non-normalisée
+// dans un module dédié, cf. commentaire IDENTITY_CORRECTION_* ci-dessus).
+//
+// Cinq verbes seulement, ceux du mandat : dépend de/nécessite/requiert,
+// permet, valide, cause/entraîne/provoque, remplace — mappés un-à-un sur
+// canonical_subject_links.relation_type (mig 316). Hors périmètre par
+// construction (aucun de ces verbes ne les capture) : "s'occupe de" (acteur↔
+// sujet), "travaille chez" (affiliation), toute anaphore.
+const RELATION_CLAIM_RE =
+  /\b(?:depend(?:ent)?\s+de|necessite(?:nt)?|requiert|requierent|permet(?:tent)?|valide(?:nt)?|cause(?:nt)?|entraine(?:nt)?|provoque(?:nt)?|remplace(?:nt)?)\b/
+
 // ── Signaux CORRECTION_IDENTITY (P4-B.2, Vincent 2026-08-17) ──────────────────
 //
 // Corrige une mécoupure STT ou une manière de désigner un acteur DÉJÀ CONNU
@@ -188,9 +207,11 @@ export function extractFactTemporality(question: string): string | null {
 // Expair. » / « Non, Vincent Millon c'est Vincent Milon. » / « Jérôme, c'est
 // Jérôme Martin de BECIB. » — jamais un fait ou une relation nouvelle
 // (« Clim Expair s'occupe de la climatisation », « Jérôme travaille chez
-// BECIB » = RELATION_CLAIM, futur P4-B.3). Ces 3 formes exigent toutes
-// "je parle de" ou "c'est" — structurellement absent des exemples relationnels
-// ci-dessus, donc aucune garde anti-collision supplémentaire n'est nécessaire.
+// BECIB » = acteur↔domaine / affiliation, hors périmètre RELATION_CLAIM par
+// construction — P4-D1 ne couvre QUE canonical_subject↔canonical_subject, cf.
+// copilot-relation-claim.ts). Ces 3 formes exigent toutes "je parle de" ou
+// "c'est" — structurellement absent des exemples relationnels ci-dessus, donc
+// aucune garde anti-collision supplémentaire n'est nécessaire.
 //
 // Détection uniquement ICI (booléen, texte normalisé) — l'extraction du
 // contenu structuré (alias/cible/nature) opère sur le texte ORIGINAL et vit
@@ -311,6 +332,7 @@ export function detectIntent(question: string): IntentResult {
   const hasOpinion      = OPINION_RE.test(q)
   const hasFactAssertion = FACT_ASSERTION_RE.test(q)
   const hasReportedWish  = FACT_REPORTED_WISH_RE.test(q)
+  const hasRelationClaim = RELATION_CLAIM_RE.test(q)
   const hasQuestionMark  = /\?\s*$/.test(question.trim())
   const hasIdentityCorrection =
     IDENTITY_CORRECTION_QUAND_RE.test(q) ||
@@ -332,6 +354,7 @@ export function detectIntent(question: string): IntentResult {
   if (hasUnsupported)                    signals.push('unsupported_object')
   if (hasFactAssertion)                  signals.push('fact_assertion')
   if (hasReportedWish)                   signals.push('reported_wish')
+  if (hasRelationClaim)                  signals.push('relation_claim')
 
   // ── Garde PRÉPARATION DE VISITE ───────────────────────────────────────────
   // Prime sur tout : « fais-moi les points de contrôle pour ma prochaine visite »
@@ -389,10 +412,12 @@ export function detectIntent(question: string): IntentResult {
   //                          prendrait, FACT s'efface)
   //   — correction d'identité → déjà tranché par la garde CORRECTION_IDENTITY
   //                          plus haut, jamais atteint ici
-  //   — relation structurée (RELATION_CLAIM, futur P4-B.3) → aucune exclusion
-  //                          dédiée : les verbes relationnels (s'occupe de,
-  //                          travaille chez, dépend de) ne déclenchent jamais
-  //                          FACT_ASSERTION_RE, par construction
+  //   — relation structurée (RELATION_CLAIM, P4-D1) → aucune exclusion dédiée
+  //                          nécessaire ici : les verbes relationnels (dépend
+  //                          de, permet, valide…) ne déclenchent jamais
+  //                          FACT_ASSERTION_RE, par construction — la garde
+  //                          RELATION_CLAIM propre (Priorité 2ter) suit juste
+  //                          après ce bloc
   //   — planification      → hasSchedVerb (SCHEDULE_VISIT/SCHEDULE_MEETING à
   //                          verbe explicite priment déjà, Priorité 1/2)
   // hasWeakWrite est toléré UNIQUEMENT si porté par un souhait rapporté
@@ -411,6 +436,23 @@ export function detectIntent(question: string): IntentResult {
     (!hasWeakWrite || hasReportedWish)
   ) {
     return { intent: 'FACT', confidence: 'ambiguous', signals }
+  }
+
+  // ── Priorité 2ter : RELATION_CLAIM ───────────────────────────────────────
+  // Relation causale explicite entre deux sujets (P4-D1). Mêmes exclusions
+  // que FACT (question/action/planification/opinion) : un verbe relationnel
+  // dans une question ("Est-ce que le SSI dépend de la mise sous tension ?")
+  // ou une commande reste hors périmètre de l'affirmation directe.
+  if (
+    hasRelationClaim &&
+    !hasQuestionMark &&
+    !hasStrongWrite &&
+    !hasSchedVerb &&
+    !hasAction &&
+    !hasUnsupported &&
+    !hasOpinion
+  ) {
+    return { intent: 'RELATION_CLAIM', confidence: 'strong', signals }
   }
 
   // ── Priorité 3 : SCHEDULE_MEETING ────────────────────────────────────────

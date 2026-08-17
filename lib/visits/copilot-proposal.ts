@@ -7,6 +7,7 @@
 import { formatScheduleLabel } from '@/lib/visits/copilot-schedule-parse'
 import { detectIntent, extractObservationMarker, extractFactTemporality } from '@/lib/visits/copilot-intent-router'
 import { CHOOSABLE_KNOWLEDGE_KINDS, type KnowledgeEntryKind } from '@/lib/db/site-memory-entries'
+import type { RelationClaimType } from '@/lib/visits/copilot-relation-claim'
 
 export type CopilotProposalKind =
   | 'action'
@@ -16,6 +17,7 @@ export type CopilotProposalKind =
   | 'observation'
   | 'fact'
   | 'actor_alias'
+  | 'relation_claim'
 
 export type CopilotConfidence = 'strong' | 'medium' | 'suggestion'
 
@@ -47,6 +49,14 @@ export type CopilotProposal = {
   // factNature reste choisi par l'humain, jamais inféré par le LLM (doctrine explicite).
   factNature: KnowledgeEntryKind | null
   factTemporality: string | null        // marqueur temporel littéral détecté, jamais inventé
+  // Champs RELATION_CLAIM — non nuls uniquement pour kind = 'relation_claim' (P4-D1).
+  // Les deux sujets sont déjà résolus avec certitude avant l'appel du builder
+  // (ambiguïté/absence → clarification en amont, jamais ici, cf. copilot-free-prepare.ts).
+  relationType: RelationClaimType | null
+  relationSourceSubjectId: string | null
+  relationSourceSubjectLabel: string | null
+  relationTargetSubjectId: string | null
+  relationTargetSubjectLabel: string | null
 }
 
 export const COPILOT_PROMPT_VERSION = '3c-v1'
@@ -62,6 +72,7 @@ const INTENT_TO_KIND: Partial<Record<string, CopilotProposalKind>> = {
   OBSERVATION:      'observation',
   FACT:             'fact',
   CORRECTION_IDENTITY: 'actor_alias',
+  RELATION_CLAIM:   'relation_claim',
 }
 
 /** Délègue au routeur centralisé et mappe vers CopilotProposalKind. */
@@ -138,6 +149,11 @@ export function buildCopilotProposal(params: {
     aliasNature: null,
     factNature: null,
     factTemporality: null,
+    relationType: null,
+    relationSourceSubjectId: null,
+    relationSourceSubjectLabel: null,
+    relationTargetSubjectId: null,
+    relationTargetSubjectLabel: null,
   }
 }
 
@@ -180,6 +196,11 @@ export function buildScheduleProposal(params: {
     aliasNature: null,
     factNature: null,
     factTemporality: null,
+    relationType: null,
+    relationSourceSubjectId: null,
+    relationSourceSubjectLabel: null,
+    relationTargetSubjectId: null,
+    relationTargetSubjectLabel: null,
   }
 }
 
@@ -235,6 +256,11 @@ export function buildObservationProposal(params: {
     aliasNature: null,
     factNature: null,
     factTemporality: null,
+    relationType: null,
+    relationSourceSubjectId: null,
+    relationSourceSubjectLabel: null,
+    relationTargetSubjectId: null,
+    relationTargetSubjectLabel: null,
   }
 }
 
@@ -282,6 +308,11 @@ export function buildIdentityCorrectionProposal(params: {
     aliasNature: proposedNature,
     factNature: null,
     factTemporality: null,
+    relationType: null,
+    relationSourceSubjectId: null,
+    relationSourceSubjectLabel: null,
+    relationTargetSubjectId: null,
+    relationTargetSubjectLabel: null,
   }
 }
 
@@ -330,5 +361,76 @@ export function buildFactProposal(params: {
     aliasNature: null,
     factNature: null,
     factTemporality: temporality,
+    relationType: null,
+    relationSourceSubjectId: null,
+    relationSourceSubjectLabel: null,
+    relationTargetSubjectId: null,
+    relationTargetSubjectLabel: null,
+  }
+}
+
+// Libellés d'affichage français pour chaque relation_type (mig 316) — utilisés
+// UNIQUEMENT en présentation (title/whyText), jamais en persistance : la valeur
+// écrite reste toujours l'enum anglais canonical_subject_links.relation_type.
+const RELATION_TYPE_LABEL_FR: Record<RelationClaimType, string> = {
+  requires:  'dépend de',
+  enables:   'permet',
+  validates: 'valide',
+  causes:    'cause',
+  replaces:  'remplace',
+}
+
+/**
+ * Builder dédié aux relations entre deux sujets canoniques (RELATION_CLAIM, P4-D1).
+ *
+ * Les deux sujets DOIVENT déjà être résolus avec certitude par l'appelant —
+ * ambiguïté ou absence de résolution sur l'un des deux = clarification en
+ * amont, jamais d'appel à ce builder (garantie du mandat Vincent 2026-08-17).
+ * `body` porte la phrase source verbatim : c'est elle qui devient
+ * `canonical_subject_link_evidence.evidence_text` à la confirmation — jamais
+ * une reformulation.
+ */
+export function buildRelationClaimProposal(params: {
+  question: string
+  relationType: RelationClaimType
+  sourceSubjectId: string
+  sourceSubjectLabel: string
+  targetSubjectId: string
+  targetSubjectLabel: string
+}): CopilotProposal {
+  const { question, relationType, sourceSubjectId, sourceSubjectLabel, targetSubjectId, targetSubjectLabel } = params
+
+  const verbLabel = RELATION_TYPE_LABEL_FR[relationType]
+  const title = `${sourceSubjectLabel} ${verbLabel} ${targetSubjectLabel}`
+  const whyText = `Relation « ${verbLabel} » entre « ${sourceSubjectLabel} » et « ${targetSubjectLabel} », d'après votre phrase. Sera enregistrée immédiatement comme confirmée (pas une suggestion).`
+
+  return {
+    proposalId: crypto.randomUUID(),
+    kind: 'relation_claim',
+    title,
+    body: question.trim(),
+    canonicalSubjectId: null,
+    canonicalSubjectLabel: null,
+    confidence: 'strong',
+    whyText,
+    llmModel: COPILOT_LLM_MODEL,
+    promptVersion: COPILOT_PROMPT_VERSION,
+    scheduledDate: null,
+    scheduledTime: null,
+    scheduledObjective: null,
+    observationTemporality: null,
+    observationActorLabel: null,
+    aliasText: null,
+    aliasTargetKind: null,
+    aliasTargetId: null,
+    aliasTargetLabel: null,
+    aliasNature: null,
+    factNature: null,
+    factTemporality: null,
+    relationType,
+    relationSourceSubjectId: sourceSubjectId,
+    relationSourceSubjectLabel: sourceSubjectLabel,
+    relationTargetSubjectId: targetSubjectId,
+    relationTargetSubjectLabel: targetSubjectLabel,
   }
 }

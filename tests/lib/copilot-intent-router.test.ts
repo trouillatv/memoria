@@ -612,20 +612,47 @@ describe('FACT — frontière CORRECTION_IDENTITY (jamais absorbée)', () => {
   })
 })
 
-describe('FACT — frontière RELATION_CLAIM (futur P4-B.3, pas encore absorbée par FACT)', () => {
-  // Ces phrases relationnelles ne déclenchent aucun signal FACT_ASSERTION_RE
-  // par construction (s'occupe de / travaille chez / dépend de) : elles
-  // retombent en READ fallback (Priorité 6), pas en FACT. Documente l'état
-  // réel du routeur avant l'implémentation de RELATION_CLAIM — un futur lot
-  // devra intercepter ces formes AVANT la garde READ pour ne pas les perdre.
-  it('"Clim Expair s\'occupe de la climatisation." → READ fallback (pas FACT)', () => {
+describe('FACT — frontière RELATION_CLAIM (P4-D1, jamais absorbée par FACT)', () => {
+  // "s'occupe de" / "travaille chez" restent hors périmètre RELATION_CLAIM
+  // (acteur↔domaine / affiliation, cf. copilot-relation-claim.ts) et ne
+  // déclenchent aucun signal FACT_ASSERTION_RE non plus : READ fallback.
+  // "dépend de" déclenche désormais RELATION_CLAIM (Priorité 2ter), plus FACT
+  // ni READ, depuis l'implémentation P4-D1.
+  it('"Clim Expair s\'occupe de la climatisation." → READ fallback (pas FACT, pas RELATION_CLAIM)', () => {
     expect(intent("Clim Expair s'occupe de la climatisation.")).toBe('READ')
   })
-  it('"Jérôme travaille chez BECIB." → READ fallback (pas FACT)', () => {
+  it('"Jérôme travaille chez BECIB." → READ fallback (pas FACT, pas RELATION_CLAIM)', () => {
     expect(intent('Jérôme travaille chez BECIB.')).toBe('READ')
   })
-  it('"Le SSI dépend de la mise sous tension." → READ fallback (pas FACT)', () => {
-    expect(intent('Le SSI dépend de la mise sous tension.')).toBe('READ')
+  it('"Le SSI dépend de la mise sous tension." → RELATION_CLAIM (pas FACT)', () => {
+    expect(intent('Le SSI dépend de la mise sous tension.')).toBe('RELATION_CLAIM')
+  })
+})
+
+describe('RELATION_CLAIM — cinq verbes reconnus (P4-D1)', () => {
+  it('"Le SSI dépend de la mise sous tension." → RELATION_CLAIM (requires)', () => {
+    expect(intent('Le SSI dépend de la mise sous tension.')).toBe('RELATION_CLAIM')
+  })
+  it('"La mise sous tension permet le SSI." → RELATION_CLAIM (enables)', () => {
+    expect(intent('La mise sous tension permet le SSI.')).toBe('RELATION_CLAIM')
+  })
+  it('"Le rapport d\'essai valide la mise en service." → RELATION_CLAIM (validates)', () => {
+    expect(intent("Le rapport d'essai valide la mise en service.")).toBe('RELATION_CLAIM')
+  })
+  it('"La fuite cause le retard du terrassement." → RELATION_CLAIM (causes)', () => {
+    expect(intent('La fuite cause le retard du terrassement.')).toBe('RELATION_CLAIM')
+  })
+  it('"Le nouveau schéma remplace le schéma électrique." → RELATION_CLAIM (replaces)', () => {
+    expect(intent('Le nouveau schéma remplace le schéma électrique.')).toBe('RELATION_CLAIM')
+  })
+})
+
+describe('RELATION_CLAIM — frontière question/action/planification (jamais absorbée)', () => {
+  it('"Est-ce que le SSI dépend de la mise sous tension ?" → pas RELATION_CLAIM (question)', () => {
+    expect(intent('Est-ce que le SSI dépend de la mise sous tension ?')).not.toBe('RELATION_CLAIM')
+  })
+  it('"Planifie une réunion, la mise sous tension dépend du SSI." → SCHEDULE_MEETING (pas RELATION_CLAIM)', () => {
+    expect(intent('Planifie une réunion, la mise sous tension dépend du SSI.')).toBe('SCHEDULE_MEETING')
   })
 })
 

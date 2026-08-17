@@ -16,6 +16,7 @@ import { toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { confirmActorAlias } from '@/lib/db/actor-alias-write'
 import { confirmSiteFact } from '@/lib/db/site-fact-write'
+import { confirmSiteRelation } from '@/lib/db/canonical-subject-link-write'
 
 // ── Créer une action depuis une proposition copilote ─────────────────────────
 
@@ -409,6 +410,56 @@ export async function createCopilotFact(rawInput: unknown): Promise<CreateCopilo
     kind,
     title,
     body: body ?? null,
+    copilotProposalId,
+    interactionId: interactionId ?? null,
+  })
+}
+
+// ── Confirmer une relation entre deux sujets (P4-D1, RELATION_CLAIM) ────────
+//
+// « Le SSI dépend de la mise sous tension » → canonical_subject_links,
+// status='confirmed' d'emblée (l'utilisateur affirme ET valide lui-même —
+// pas une suggestion statistique du moteur P0-B1). evidenceText = phrase
+// verbatim de l'utilisateur (invariant canonical_subject_link_evidence.
+// evidence_text, mig 316). Aucune résolution ni création de sujet ici : les
+// deux id ont déjà été résolus avec certitude dans copilot-free-prepare.ts.
+
+const createRelationClaimSchema = z.object({
+  siteId: z.string().uuid(),
+  relationType: z.enum(['requires', 'enables', 'validates', 'causes', 'replaces']),
+  sourceSubjectId: z.string().uuid(),
+  targetSubjectId: z.string().uuid(),
+  evidenceText: z.string().min(1).max(2000),
+  copilotProposalId: z.string().uuid(),
+  interactionId: z.string().uuid().nullable().optional(),
+})
+
+export type CreateCopilotRelationClaimResult =
+  | { ok: true; linkId: string }
+  | { ok: false; error: string }
+
+export async function createCopilotRelationClaim(rawInput: unknown): Promise<CreateCopilotRelationClaimResult> {
+  const parsed = createRelationClaimSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides.' }
+  const { siteId, relationType, sourceSubjectId, targetSubjectId, evidenceText, copilotProposalId, interactionId } = parsed.data
+
+  try {
+    await requireSiteAccess(siteId)
+  } catch {
+    return { ok: false, error: 'Accès non autorisé.' }
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Non authentifié.' }
+
+  return confirmSiteRelation({
+    siteId,
+    userId: user.id,
+    relationType,
+    sourceSubjectId,
+    targetSubjectId,
+    evidenceText,
     copilotProposalId,
     interactionId: interactionId ?? null,
   })

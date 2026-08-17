@@ -12,7 +12,7 @@ import {
 import { askCopilotAction, type CopilotActionResult } from '@/app/(dashboard)/sites/[id]/copilot-action'
 import type { CopilotIntent } from '@/lib/visits/copilot-context'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
-import { ProposalCard, ScheduleProposalCard, ObservationProposalCard, ActorAliasProposalCard, FactProposalCard } from '@/components/copilot/CopilotProposalCards'
+import { ProposalCard, ScheduleProposalCard, ObservationProposalCard, ActorAliasProposalCard, FactProposalCard, RelationClaimProposalCard } from '@/components/copilot/CopilotProposalCards'
 import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
 import { useVoiceOrb, type VoiceTurnHandlers, type VoiceTurnPayload, type VoiceTurnResult } from '@/app/(field)/m/VoiceOrbContext'
@@ -388,6 +388,13 @@ export function CopilotMobileSheet({
                         />
                       ) : msg.proposal.kind === 'fact' ? (
                         <FactProposalCard
+                          siteId={siteId}
+                          proposal={msg.proposal}
+                          interactionId={msg.interactionId}
+                          onDone={replaceDone}
+                        />
+                      ) : msg.proposal.kind === 'relation_claim' ? (
+                        <RelationClaimProposalCard
                           siteId={siteId}
                           proposal={msg.proposal}
                           interactionId={msg.interactionId}
