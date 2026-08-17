@@ -912,3 +912,72 @@ describe('CORRECTION_KNOWLEDGE — n\'affecte pas les autres intentions', () => 
     expect(intent('Crée une réserve sur le portail cassé.')).toBe('CREATE_RESERVE')
   })
 })
+
+// ── Audit de robustesse du routeur (Vincent 2026-08-18) ──────────────────────
+// Chasse systématique de l'asymétrie « verbe fort d'écriture + question »
+// repérée sur CREATE_WATCHPOINT (bug OCEF, d35e50ad) : même trou vérifié et
+// corrigé sur ADD_VISIT_ITEM, SCHEDULE_VISIT, CREATE_RESERVE, SCHEDULE_MEETING
+// (confiance), CREATE_ACTION, CORRECTION_IDENTITY, CORRECTION_KNOWLEDGE.
+// Une seule table factorisée : question → intent attendu → confiance attendue.
+
+describe('Frontière interrogative ↔ écriture (audit de robustesse, corrections)', () => {
+  const cases: [string, string, string][] = [
+    ['Est-ce que je dois créer une action pour R4 ?', 'UNKNOWN_WRITE', 'ambiguous'],
+    ['Quelle action dois-je créer pour R4 ?', 'UNKNOWN_WRITE', 'ambiguous'],
+    ["Qui doit créer l'action de suivi ?", 'UNKNOWN_WRITE', 'ambiguous'],
+    ["Est-ce qu'il faut ajouter R4 à ma prochaine visite ?", 'UNKNOWN_WRITE', 'ambiguous'],
+    ['Quels points dois-je ajouter à ma prochaine visite ?', 'UNKNOWN_WRITE', 'ambiguous'],
+    ["Est-ce qu'il faut planifier une visite mercredi ?", 'UNKNOWN_WRITE', 'ambiguous'],
+    ["Est-ce qu'il faut planifier une réunion vendredi ?", 'SCHEDULE_MEETING', 'ambiguous'],
+  ]
+  for (const [q, expectedIntent, expectedConfidence] of cases) {
+    it(`"${q}" → ${expectedIntent}/${expectedConfidence}`, () => {
+      expect(intent(q)).toBe(expectedIntent)
+      expect(confidence(q)).toBe(expectedConfidence)
+    })
+  }
+})
+
+describe('Frontière interrogative ↔ écriture (audit de robustesse, intent seul)', () => {
+  const cases: [string, string][] = [
+    ['Est-ce que je dois créer une réserve sur le portail cassé ?', 'UNKNOWN_WRITE'],
+    ["Jérôme, c'est bien Jérôme Martin de BECIB ?", 'READ'],
+    ['Tu peux surveiller le SSI ?', 'READ'],
+  ]
+  for (const [q, expectedIntent] of cases) {
+    it(`"${q}" → ${expectedIntent}`, () => {
+      expect(intent(q)).toBe(expectedIntent)
+    })
+  }
+})
+
+describe('Frontière interrogative ↔ écriture (audit de robustesse, non-régression)', () => {
+  // La question ne doit jamais déclencher l'intention d'écriture correspondante.
+  const cases: [string, string][] = [
+    ['Est-ce que le SSI doit être réglé avant vendredi ?', 'CREATE_DEADLINE'],
+    ['Est-ce que Jérôme ne vient plus demain ?', 'CORRECTION_KNOWLEDGE'],
+  ]
+  for (const [q, forbidden] of cases) {
+    it(`"${q}" → pas ${forbidden}`, () => {
+      expect(intent(q)).not.toBe(forbidden)
+    })
+  }
+})
+
+// Formes non interrogatives jamais testées pour CREATE_WATCHPOINT : déclarative,
+// condition, futur/suggestion. Comportement jugé raisonnable par lecture du
+// code (sémantique proche de l'impératif) mais non validé sur du vrai terrain
+// — à confirmer ou corriger si le terrain contredit ces trois cas.
+describe('CREATE_WATCHPOINT — formes non testées, assumées (audit de robustesse)', () => {
+  const cases: [string, string, string][] = [
+    ['Le SSI est à surveiller.', 'CREATE_WATCHPOINT', 'strong'],
+    ['Si le SSI reste ouvert, surveille-le.', 'CREATE_WATCHPOINT', 'strong'],
+    ['Il faudra surveiller le SSI.', 'CREATE_WATCHPOINT', 'strong'],
+  ]
+  for (const [q, expectedIntent, expectedConfidence] of cases) {
+    it(`"${q}" → ${expectedIntent}/${expectedConfidence} (assumé)`, () => {
+      expect(intent(q)).toBe(expectedIntent)
+      expect(confidence(q)).toBe(expectedConfidence)
+    })
+  }
+})

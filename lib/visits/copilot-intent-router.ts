@@ -466,7 +466,14 @@ export function detectIntent(question: string): IntentResult {
   // Forme reconnue explicite ("je parle de" / "c'est") → prime sur READ/écriture
   // générique : ces phrases ne portent aucun verbe de lecture ni d'action, elles
   // seraient sinon perdues en fallback READ (cf. commentaire des signaux).
-  if (hasIdentityCorrection) {
+  //
+  // !hasQuestionMark (audit de robustesse, Vincent 2026-08-18) : cette garde
+  // s'exécute AVANT la Garde READ et ne dépend d'aucun verbe de lecture — une
+  // question de confirmation orale ("Jérôme, c'est bien Jérôme Martin de
+  // BECIB ?") matche IDENTITY_CORRECTION_DE_RE indépendamment de la ponctuation
+  // finale et écrivait silencieusement une correction d'alias. Même asymétrie
+  // que CREATE_WATCHPOINT ; repli sûr = READ (Priorité 6), pas d'écriture.
+  if (hasIdentityCorrection && !hasQuestionMark) {
     return { intent: 'CORRECTION_IDENTITY', confidence: 'strong', signals: [...signals, 'identity_correction'] }
   }
 
@@ -477,7 +484,10 @@ export function detectIntent(question: string): IntentResult {
   // matche FACT_ASSERTION_RE) — perdant la distinction avec une simple
   // nouvelle affirmation, exactement le risque que CORRECTION_IDENTITY a déjà
   // résolu pour les acteurs.
-  if (hasKnowledgeCorrection) {
+  //
+  // !hasQuestionMark (audit de robustesse, Vincent 2026-08-18) : même asymétrie
+  // que CORRECTION_IDENTITY ci-dessus, appliquée par cohérence.
+  if (hasKnowledgeCorrection && !hasQuestionMark) {
     return { intent: 'CORRECTION_KNOWLEDGE', confidence: 'strong', signals: [...signals, 'knowledge_correction'] }
   }
 
@@ -494,7 +504,13 @@ export function detectIntent(question: string): IntentResult {
 
   // ── Priorité 1 : ADD_VISIT_ITEM ──────────────────────────────────────────
   // "prochaine visite" / "plan de visite" domine le verbe, sauf si "action" est explicite.
-  if (hasNextVisit && !hasAction) {
+  //
+  // !hasQuestionMark (audit de robustesse, Vincent 2026-08-18) : même asymétrie
+  // que CREATE_WATCHPOINT avant son correctif — "Est-ce qu'il faut ajouter R4 à
+  // ma prochaine visite ?" contient un verbe fort ("ajouter"), donc isWrite est
+  // vrai et la Garde READ (qui exige !isWrite) ne l'intercepte jamais. Sans
+  // cette exclusion, la question tombait ici en ADD_VISIT_ITEM strong.
+  if (hasNextVisit && !hasAction && !hasQuestionMark) {
     const confidence: IntentConfidence = (isWrite || hasWeakWrite) ? 'strong' : 'ambiguous'
     return { intent: 'ADD_VISIT_ITEM', confidence, signals }
   }
@@ -528,7 +544,13 @@ export function detectIntent(question: string): IntentResult {
   // "visite" + verbe de planification OU temporalité OU verbe de création.
   // hasCreateVisit ("crée/nouvelle") = planification implicite sans date → ambiguous.
   // "démarrer/commencer" ≠ hasCreateVisit : lancement opérationnel, non couvert ici.
-  if (hasVisit && !hasNextVisit && !hasAction && (hasSchedVerb || hasDatetime || hasCreateVisit)) {
+  //
+  // !hasQuestionMark (audit de robustesse, Vincent 2026-08-18) : même asymétrie
+  // que CREATE_WATCHPOINT — "Est-ce qu'il faut planifier une visite mercredi ?"
+  // porte hasSchedVerb (isWrite vrai), donc la Garde READ ne l'intercepte
+  // jamais. Sans cette exclusion, la question tombait ici en SCHEDULE_VISIT
+  // strong.
+  if (hasVisit && !hasNextVisit && !hasAction && !hasQuestionMark && (hasSchedVerb || hasDatetime || hasCreateVisit)) {
     const confidence: IntentConfidence = hasSchedVerb ? 'strong' : 'ambiguous'
     return { intent: 'SCHEDULE_VISIT', confidence, signals }
   }
@@ -605,23 +627,45 @@ export function detectIntent(question: string): IntentResult {
   // adjacents (RESERVE_CREATE_RE). Ne vérifie pas hasUnsupported : "réserve"
   // le déclenche systématiquement (UNSUPPORTED_RE), c'est le signal dédié
   // lui-même qui porte la précision, comme CREATE_DEADLINE pour "doit".
-  if (hasReserveCreate) {
+  //
+  // !hasQuestionMark (audit de robustesse, Vincent 2026-08-18) : même asymétrie
+  // que CREATE_WATCHPOINT — "Est-ce que je dois créer une réserve sur X ?"
+  // matche RESERVE_CREATE_RE ("créer une réserve" adjacents) indépendamment de
+  // la question posée autour. Sans cette exclusion, la question tombait ici en
+  // CREATE_RESERVE strong.
+  if (hasReserveCreate && !hasQuestionMark) {
     return { intent: 'CREATE_RESERVE', confidence: 'strong', signals }
   }
 
   // ── Priorité 3 : SCHEDULE_MEETING ────────────────────────────────────────
+  //
+  // Confiance seulement, jamais l'intent (audit de robustesse, Vincent
+  // 2026-08-18) : un test existant fixe volontairement que « Quels sont les
+  // points de la réunion de demain à évoquer ? » reste SCHEDULE_MEETING/
+  // ambiguous (hasDatetime seul, hasSchedVerb faux — non affecté ici). Mais
+  // "Est-ce qu'il faut planifier une réunion vendredi ?" porte hasSchedVerb :
+  // sans le garde-fou sur la confiance, une question avec verbe de
+  // planification devenait strong — même asymétrie que CREATE_WATCHPOINT.
+  // Exclure hasQuestionMark de la condition ELLE-MÊME casserait le test
+  // préservé ci-dessus ; seule la confiance doit changer.
   if (hasMeeting && (hasSchedVerb || hasDatetime)) {
-    const confidence: IntentConfidence = hasSchedVerb ? 'strong' : 'ambiguous'
+    const confidence: IntentConfidence = (hasSchedVerb && !hasQuestionMark) ? 'strong' : 'ambiguous'
     return { intent: 'SCHEDULE_MEETING', confidence, signals }
   }
 
   // ── Priorité 4 : CREATE_ACTION ───────────────────────────────────────────
   // Objet "action/tâche" explicite → toujours fort.
   // Verbe fort sans objet non supporté et sans visite/réunion → action par défaut.
-  if (hasAction && (isWrite || hasWeakWrite)) {
+  //
+  // !hasQuestionMark (audit de robustesse, Vincent 2026-08-18) : même asymétrie
+  // que CREATE_WATCHPOINT — "Est-ce que je dois créer une action pour R4 ?"
+  // porte un verbe fort ("créer"), donc isWrite est vrai et la Garde READ ne
+  // l'intercepte jamais. Sans cette exclusion, la question tombait ici en
+  // CREATE_ACTION strong (voire ambiguous pour la 2ᵉ branche).
+  if (hasAction && (isWrite || hasWeakWrite) && !hasQuestionMark) {
     return { intent: 'CREATE_ACTION', confidence: 'strong', signals }
   }
-  if (isWrite && !hasUnsupported && !hasVisit && !hasMeeting) {
+  if (isWrite && !hasUnsupported && !hasVisit && !hasMeeting && !hasQuestionMark) {
     return { intent: 'CREATE_ACTION', confidence: 'ambiguous', signals }
   }
 
