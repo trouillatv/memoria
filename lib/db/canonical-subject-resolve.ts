@@ -2,11 +2,15 @@ import 'server-only'
 
 // Résolution d'une référence textuelle libre vers un canonical_subject.
 //
-// Doctrine :
+// Doctrine (passes, appliquées à un pool de sujets — cf. matchCanonicalSubjects) :
 //   1. Exact normalized match (label ou alias) → resolved si unique
 //   2. Technical code filter + Jaccard → resolved si gagnant clair, ambiguous sinon
 //   3. Jaccard seul (pas de code) → resolved si unique au-dessus du seuil
 //   4. not_found si aucun candidat plausible
+//
+// P4-D1.1 : ces passes tournent d'abord sur le pool 'active' seul ; le pool
+// 'auto_archived' n'est consulté qu'en repli si le pool actif ne trouve rien
+// (cf. resolveCanonicalSubjectReference).
 //
 // Le LLM ne tranche JAMAIS entre plusieurs candidats crédibles.
 // En cas d'ambiguïté, la UI doit demander à l'utilisateur de choisir.
@@ -102,37 +106,19 @@ export function canReactivate(status: string): boolean {
 }
 
 /**
- * Résout une référence textuelle libre (ex : "G3", "Regard R4") vers un
- * ou plusieurs canonical_subjects actifs ou auto-archivés du chantier.
+ * Applique les 4 passes de résolution (exact → ancrage lexical → code
+ * technique → Jaccard) à UN pool de sujets donné. Pure, aucun accès DB, aucun
+ * effet de bord (pas de réactivation) : c'est resolveCanonicalSubjectReference
+ * qui décide, selon le statut du pool, si le résultat doit déclencher une
+ * réactivation.
  *
- * Si le candidat retenu est 'auto_archived', il est réactivé avant le retour.
- * Les mêmes seuils de résolution s'appliquent quel que soit le statut de départ.
- *
- * La validation que l'utilisateur a accès au siteId est portée par la couche appelante.
+ * Exportée pour les tests unitaires.
  */
-export async function resolveCanonicalSubjectReference(
-  siteId: string,
+export function matchCanonicalSubjects(
   queryText: string,
-): Promise<SubjectResolutionResult> {
-  const supabase = createAdminClient()
-
-  const { data: subjects } = await supabase
-    .from('canonical_subject')
-    .select('id, label, aliases, status')
-    .eq('site_id', siteId)
-    .in('status', ['active', 'auto_archived'])
-
-  if (!subjects || subjects.length === 0) return { kind: 'not_found' }
-
-  const statusById = new Map<string, string>(subjects.map((s) => [s.id, s.status as string]))
-
-  // Réactive si nécessaire et retourne le résultat résolu.
-  const resolved = async (candidate: { id: string; label: string }): Promise<SubjectResolutionResult> => {
-    if (canReactivate(statusById.get(candidate.id) ?? '')) {
-      await reactivateCanonicalSubject(supabase, candidate.id)
-    }
-    return { kind: 'resolved', candidate }
-  }
+  subjects: SubjectRow[],
+): SubjectResolutionResult {
+  if (subjects.length === 0) return { kind: 'not_found' }
 
   const normalized = normalizeCanonicalLabel(queryText)
   const queryCodes = extractTechnicalCodes(queryText)
@@ -145,7 +131,7 @@ export async function resolveCanonicalSubjectReference(
   })
 
   if (exactMatches.length === 1) {
-    return resolved({ id: exactMatches[0].id, label: exactMatches[0].label })
+    return { kind: 'resolved', candidate: { id: exactMatches[0].id, label: exactMatches[0].label } }
   }
   if (exactMatches.length > 1) {
     return { kind: 'ambiguous', candidates: exactMatches.map((s) => ({ id: s.id, label: s.label })) }
@@ -155,7 +141,7 @@ export async function resolveCanonicalSubjectReference(
   const anchorMatches = findLexicalAnchorMatches(queryText, subjects)
 
   if (anchorMatches.length === 1) {
-    return resolved({ id: anchorMatches[0].id, label: anchorMatches[0].label })
+    return { kind: 'resolved', candidate: { id: anchorMatches[0].id, label: anchorMatches[0].label } }
   }
   if (anchorMatches.length > 1) {
     return { kind: 'ambiguous', candidates: anchorMatches }
@@ -181,13 +167,13 @@ export async function resolveCanonicalSubjectReference(
       .sort((a, b) => b.score - a.score)
 
     if (codeMatches.length === 1) {
-      return resolved({ id: codeMatches[0].id, label: codeMatches[0].label })
+      return { kind: 'resolved', candidate: { id: codeMatches[0].id, label: codeMatches[0].label } }
     }
 
     if (codeMatches.length > 1) {
       // Gagnant clair : premier ≥ 0.50 ET second < 0.20 (large écart)
       if (codeMatches[0].score >= 0.50 && codeMatches[1].score < 0.20) {
-        return resolved({ id: codeMatches[0].id, label: codeMatches[0].label })
+        return { kind: 'resolved', candidate: { id: codeMatches[0].id, label: codeMatches[0].label } }
       }
 
       // Ambiguïté : montrer les candidats pertinents (score ≥ 0.10, max 5)
@@ -214,16 +200,64 @@ export async function resolveCanonicalSubjectReference(
 
   if (jaccardMatches.length === 0) return { kind: 'not_found' }
   if (jaccardMatches.length === 1) {
-    return resolved({ id: jaccardMatches[0].id, label: jaccardMatches[0].label })
+    return { kind: 'resolved', candidate: { id: jaccardMatches[0].id, label: jaccardMatches[0].label } }
   }
 
   // Gagnant clair en Jaccard seul : premier ≥ 0.70 et second reste sous le seuil
   if (jaccardMatches[0].score >= 0.70 && jaccardMatches[1].score < JACCARD_THRESHOLD) {
-    return resolved({ id: jaccardMatches[0].id, label: jaccardMatches[0].label })
+    return { kind: 'resolved', candidate: { id: jaccardMatches[0].id, label: jaccardMatches[0].label } }
   }
 
   return {
     kind: 'ambiguous',
     candidates: jaccardMatches.slice(0, 5).map((s) => ({ id: s.id, label: s.label })),
   }
+}
+
+/**
+ * Résout une référence textuelle libre (ex : "G3", "Regard R4") vers un
+ * canonical_subject du chantier.
+ *
+ * P4-D1.1 (2026-08-17) : résolution à DEUX niveaux, active en priorité.
+ *   1. Les 4 passes tournent d'abord UNIQUEMENT sur les sujets 'active'. Un
+ *      sujet 'auto_archived' n'entre jamais en collision avec un sujet actif
+ *      portant le même libellé — ce n'est plus une ambiguïté artificielle.
+ *   2. Seulement si le pool actif ne produit aucune correspondance
+ *      (not_found), les mêmes passes, mêmes seuils, tournent sur le pool
+ *      'auto_archived'. Un résultat 'resolved' déclenche alors la
+ *      réactivation explicite du sujet avant retour — c'est le SEUL chemin de
+ *      réactivation, volontairement préservé.
+ *
+ * Aucun seuil n'est modifié, aucune logique d'ancrage lexical n'est touchée :
+ * seul l'ORDRE d'exposition des pools change.
+ *
+ * La validation que l'utilisateur a accès au siteId est portée par la couche appelante.
+ */
+export async function resolveCanonicalSubjectReference(
+  siteId: string,
+  queryText: string,
+): Promise<SubjectResolutionResult> {
+  const supabase = createAdminClient()
+
+  const { data: subjects } = await supabase
+    .from('canonical_subject')
+    .select('id, label, aliases, status')
+    .eq('site_id', siteId)
+    .in('status', ['active', 'auto_archived'])
+
+  if (!subjects || subjects.length === 0) return { kind: 'not_found' }
+
+  const activeSubjects = subjects.filter((s) => s.status === 'active')
+  const archivedSubjects = subjects.filter((s) => s.status === 'auto_archived')
+
+  // ── Niveau 1 : résolution courante, sujets actifs uniquement ──────────────────
+  const activeResult = matchCanonicalSubjects(queryText, activeSubjects)
+  if (activeResult.kind !== 'not_found') return activeResult
+
+  // ── Niveau 2 : repli explicite sur les sujets archivés → réactivation ─────────
+  const archivedResult = matchCanonicalSubjects(queryText, archivedSubjects)
+  if (archivedResult.kind === 'resolved') {
+    await reactivateCanonicalSubject(supabase, archivedResult.candidate.id)
+  }
+  return archivedResult
 }

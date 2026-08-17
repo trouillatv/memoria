@@ -75,13 +75,28 @@ describe('canonical-subject-archive — Lot 2 doctrine', () => {
     expect(src).not.toContain("'merged'")
   })
 
-  it('le résolveur cherche active + auto_archived avec les mêmes seuils', () => {
+  it('le résolveur récupère active + auto_archived en une requête, mais résout active en priorité (P4-D1.1)', () => {
     const src = codeOf(RESOLVE_SRC)
-    // in('status', ['active', 'auto_archived']) — même dataset, mêmes seuils Jaccard
+    // Une seule requête DB : in('status', ['active', 'auto_archived'])
     expect(src).toContain("in('status', ['active', 'auto_archived'])")
-    // Pas d'embranchement spécifique aux seuils selon le statut
+    // Les deux pools sont ensuite séparés avant résolution — jamais fusionnés
+    expect(src).toContain("s.status === 'active'")
+    expect(src).toContain("s.status === 'auto_archived'")
+    // Le pool actif est résolu avant tout repli sur le pool archivé
+    const activeCallIdx = src.indexOf('matchCanonicalSubjects(queryText, activeSubjects)')
+    const archivedCallIdx = src.indexOf('matchCanonicalSubjects(queryText, archivedSubjects)')
+    expect(activeCallIdx).toBeGreaterThan(0)
+    expect(archivedCallIdx).toBeGreaterThan(activeCallIdx)
+    // Mêmes seuils Jaccard pour les deux pools — un seul jeu de passes, appelé deux fois
     const JACCARD_THRESHOLD_COUNT = (src.match(/JACCARD_THRESHOLD/g) ?? []).length
     expect(JACCARD_THRESHOLD_COUNT).toBeLessThanOrEqual(4) // défini 1 fois, utilisé au plus 3
+  })
+
+  it('un sujet actif ne collisionne plus avec un sujet auto_archived du même libellé (P4-D1.1)', () => {
+    const src = codeOf(RESOLVE_SRC)
+    // Le pool archivé n'est consulté qu'en repli sur not_found du pool actif —
+    // jamais fusionné avec le pool actif dans un seul passage de passes.
+    expect(src).toContain("if (activeResult.kind !== 'not_found') return activeResult")
   })
 
   it('autoArchiveOrphanedSubjects est appelé dans le pipeline debrief après réconciliation', () => {

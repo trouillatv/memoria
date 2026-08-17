@@ -1,10 +1,47 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   normalizeCanonicalLabel,
   resolveCanonicalSubjectReference,
   findLexicalAnchorMatches,
+  matchCanonicalSubjects,
   type SubjectResolutionResult,
 } from '@/lib/db/canonical-subject-resolve'
+
+// ── Mock supabase/admin — table canonical_subject en mémoire ──────────────────
+// resolveCanonicalSubjectReference n'utilise que deux formes de requête :
+//   select().eq('site_id', ..).in('status', [...])   → lecture
+//   update({status:'active'}).eq('id', ..).eq('status','auto_archived') → réactivation
+// Le mock reproduit ces deux formes sans toucher à une vraie DB.
+type FakeRow = { id: string; label: string; aliases: string[] | null; status: string; site_id: string }
+
+function makeAdminClientMock(rows: FakeRow[]) {
+  function builder() {
+    let mode: 'select' | 'update' = 'select'
+    let updatePayload: Partial<FakeRow> = {}
+    const filters: Array<(r: FakeRow) => boolean> = []
+    const api = {
+      select(_cols: string) { mode = 'select'; return api },
+      update(payload: Partial<FakeRow>) { mode = 'update'; updatePayload = payload; return api },
+      eq(field: keyof FakeRow, value: unknown) { filters.push((r) => r[field] === value); return api },
+      in(field: keyof FakeRow, values: unknown[]) { filters.push((r) => values.includes(r[field] as never)); return api },
+      then(resolve: (result: { data: FakeRow[]; error: null }) => void) {
+        const matched = rows.filter((r) => filters.every((f) => f(r)))
+        if (mode === 'update') {
+          matched.forEach((r) => Object.assign(r, updatePayload))
+        }
+        resolve({ data: matched.map((r) => ({ ...r })), error: null })
+      },
+    }
+    return api
+  }
+  return { from: (_table: string) => builder() }
+}
+
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: () => makeAdminClientMock(mockRows),
+}))
+
+let mockRows: FakeRow[] = []
 
 // ── Tests de normalizeCanonicalLabel ─────────────────────────────────────────
 
@@ -72,34 +109,83 @@ describe('jaccardSimilarity — base de la résolution', () => {
   })
 })
 
-// ── Doctrine de résolution : assertions de comportement attendu ───────────────
-// Ces tests documentent les invariants sans appeler la DB.
+// ── matchCanonicalSubjects — passes appliquées à UN pool (pure, sans DB) ──────
 
-describe('doctrine resolveCanonicalSubjectReference', () => {
-  it('G3 seul avec 2 sujets G3 → doit retourner ambiguous (validé par intégration)', () => {
-    // Ce test documente le comportement attendu.
-    // La résolution réelle nécessite un appel DB.
-    // En intégration : resolveCanonicalSubjectReference(siteId, 'G3') → { kind: 'ambiguous' }
-    const doc = `
-      "G3" avec deux sujets canoniques distincts (G3 purge comp + G3 essais plateforme)
-      doit retourner ambiguous car les deux partagent le code technique G3
-      et aucun n'a une avance Jaccard suffisante.
-    `
-    expect(doc).toBeTruthy()
+describe('matchCanonicalSubjects', () => {
+  it('G3 seul avec 2 sujets G3 → ambiguous (code technique commun, pas d\'écart Jaccard)', () => {
+    const result = matchCanonicalSubjects('G3', [
+      { id: 'g3-purge', label: 'G3 purge complémentaire', aliases: null },
+      { id: 'g3-essais', label: 'G3 essais plateforme support dalle', aliases: null },
+    ])
+    expect(result.kind).toBe('ambiguous')
   })
 
   it('label exact unique → resolved', () => {
-    // Comportement documenté : un label normalisé qui correspond exactement à un seul
-    // canonical_subject doit retourner { kind: 'resolved', candidate: { id, label } }
-    const doc = `normalizeCanonicalLabel(query) === normalizeCanonicalLabel(label) → resolved`
-    expect(doc).toBeTruthy()
+    const result = matchCanonicalSubjects('G3 purge complémentaire', [
+      { id: 'g3-purge', label: 'G3 purge complémentaire', aliases: null },
+      { id: 'r4-essais', label: 'R4 essais béton', aliases: null },
+    ])
+    expect(result).toEqual<SubjectResolutionResult>({
+      kind: 'resolved',
+      candidate: { id: 'g3-purge', label: 'G3 purge complémentaire' },
+    })
   })
 
-  it('canonical d\'un autre site → refuse (sécurité)', () => {
-    // getCanonicalSubjectLifeForSite(siteId, canonicalSubjectId) retourne null
-    // si canonical_subject.site_id !== siteId
-    const doc = `getCanonicalSubjectLifeForSite garantit la cloisonisation inter-chantier`
-    expect(doc).toBeTruthy()
+  it('pool vide → not_found', () => {
+    expect(matchCanonicalSubjects('G3', [])).toEqual({ kind: 'not_found' })
+  })
+
+  it('aucun candidat plausible → not_found', () => {
+    const result = matchCanonicalSubjects('gaines techniques verticales', [
+      { id: 'sujet-sans-rapport', label: 'Accès sécurisé au chantier (portail et cadenas à code)', aliases: null },
+    ])
+    expect(result).toEqual({ kind: 'not_found' })
+  })
+})
+
+// ── resolveCanonicalSubjectReference — deux niveaux (P4-D1.1, 2026-08-17) ─────
+// Mandat : "doit ignorer les sujets non actifs dans la résolution courante,
+// sans casser les chemins explicites de réactivation."
+
+describe('resolveCanonicalSubjectReference — priorité active, repli auto_archived', () => {
+  const SITE_ID = 'site-petro'
+  const DUP_LABEL = 'Dépose du SSI et matériel incendie : identification du responsable'
+
+  it('même libellé actif + auto_archived (cas réel PETRO) → resolved vers l\'actif, jamais ambiguous', async () => {
+    mockRows = [
+      { id: 'active-id', label: DUP_LABEL, aliases: null, status: 'active', site_id: SITE_ID },
+      { id: 'archived-id', label: DUP_LABEL, aliases: null, status: 'auto_archived', site_id: SITE_ID },
+    ]
+    const result = await resolveCanonicalSubjectReference(SITE_ID, DUP_LABEL)
+    expect(result).toEqual({ kind: 'resolved', candidate: { id: 'active-id', label: DUP_LABEL } })
+  })
+
+  it('même cas → le sujet auto_archived n\'est pas réactivé (l\'actif suffit)', async () => {
+    mockRows = [
+      { id: 'active-id', label: DUP_LABEL, aliases: null, status: 'active', site_id: SITE_ID },
+      { id: 'archived-id', label: DUP_LABEL, aliases: null, status: 'auto_archived', site_id: SITE_ID },
+    ]
+    await resolveCanonicalSubjectReference(SITE_ID, DUP_LABEL)
+    const archived = mockRows.find((r) => r.id === 'archived-id')
+    expect(archived?.status).toBe('auto_archived')
+  })
+
+  it('sujet uniquement auto_archived, aucun actif correspondant → repli explicite, réactivé', async () => {
+    mockRows = [
+      { id: 'archived-id', label: 'Regard R4 béton', aliases: null, status: 'auto_archived', site_id: SITE_ID },
+      { id: 'other-active', label: 'Terrassement plateforme G3', aliases: null, status: 'active', site_id: SITE_ID },
+    ]
+    const result = await resolveCanonicalSubjectReference(SITE_ID, 'Regard R4 béton')
+    expect(result).toEqual({ kind: 'resolved', candidate: { id: 'archived-id', label: 'Regard R4 béton' } })
+    expect(mockRows.find((r) => r.id === 'archived-id')?.status).toBe('active')
+  })
+
+  it('aucune correspondance dans aucun pool → not_found', async () => {
+    mockRows = [
+      { id: 'active-id', label: 'Terrassement plateforme G3', aliases: null, status: 'active', site_id: SITE_ID },
+    ]
+    const result = await resolveCanonicalSubjectReference(SITE_ID, 'gaines techniques verticales')
+    expect(result).toEqual({ kind: 'not_found' })
   })
 })
 
