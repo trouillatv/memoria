@@ -37,7 +37,7 @@ import Link from 'next/link'
 import { ArrowLeft, Camera, ChevronRight } from 'lucide-react'
 import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
+import { getVisit, buildVisitCrDoc, selectCrPhotos } from '@/lib/db/visits'
 import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
 import { getOrCreateVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import type { CrPhotoCandidate } from '@/app/(field)/m/visite/[reportId]/cr/CrDocumentSections'
@@ -78,6 +78,11 @@ export default async function VisitCrDesktopPage({
   const rawCaptures = await listVisitCaptures(visitId).catch(() => [])
   const photoRows = rawCaptures.filter((c) => c.status !== 'discarded' && c.kind === 'photo')
   const previewUrls = await getVisitCapturePreviewUrls(photoRows)
+  // Tier RÉSOLU (Vincent, 2026-08-18) : même calcul que buildVisitCrDoc — une
+  // photo explicitement 'key'/'reportage' garde son choix, une photo non
+  // tranchée hérite du poids automatique. C'est ce que l'écran affiche comme
+  // état courant du bouton de statut, jamais un second calcul divergent.
+  const keyIds = new Set(selectCrPhotos(photoRows.filter((c) => c.included_in_cr)).map((c) => c.id))
   const crPhotoCandidates: CrPhotoCandidate[] = photoRows
     .map((c) => ({
       id: c.id,
@@ -85,6 +90,7 @@ export default async function VisitCrDesktopPage({
       caption: c.body?.trim() || null,
       includedInCr: c.included_in_cr,
       triageIntent: c.triage_intent,
+      tier: keyIds.has(c.id) ? ('key' as const) : ('reportage' as const),
     }))
     .filter((p): p is CrPhotoCandidate => !!p.url)
 

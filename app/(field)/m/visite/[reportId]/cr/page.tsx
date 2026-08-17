@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
+import { getVisit, buildVisitCrDoc, selectCrPhotos } from '@/lib/db/visits'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
 import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
 import { CaptureMap } from '@/components/CaptureMap'
@@ -82,6 +82,11 @@ export default async function VisitCrPreviewPage({
   const rawCaptures = await listVisitCaptures(reportId).catch(() => [])
   const photoRows = rawCaptures.filter((c) => c.status !== 'discarded' && c.kind === 'photo')
   const previewUrls = await getVisitCapturePreviewUrls(photoRows)
+  // Tier RÉSOLU (Vincent, 2026-08-18) : même calcul que buildVisitCrDoc — une
+  // photo explicitement 'key'/'reportage' garde son choix, une photo non
+  // tranchée hérite du poids automatique. C'est ce que l'écran affiche comme
+  // état courant du bouton de statut, jamais un second calcul divergent.
+  const keyIds = new Set(selectCrPhotos(photoRows.filter((c) => c.included_in_cr)).map((c) => c.id))
   const crPhotoCandidates: CrPhotoCandidate[] = photoRows
     .map((c) => ({
       id: c.id,
@@ -89,6 +94,7 @@ export default async function VisitCrPreviewPage({
       caption: c.body?.trim() || null,
       includedInCr: c.included_in_cr,
       triageIntent: c.triage_intent,
+      tier: keyIds.has(c.id) ? ('key' as const) : ('reportage' as const),
     }))
     .filter((p): p is CrPhotoCandidate => !!p.url)
 

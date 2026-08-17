@@ -15,7 +15,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
-import { listVisitCaptures, getVisitCapturePreviewUrls, listSiteViewpointRows, type VisitCaptureKind, type CaptureTriageIntent, type VisitCaptureRow } from '@/lib/db/visit-captures'
+import { listVisitCaptures, getVisitCapturePreviewUrls, listSiteViewpointRows, type VisitCaptureKind, type CaptureTriageIntent, type VisitCaptureRow, type CaptureCrTier } from '@/lib/db/visit-captures'
 import { groupViewpointChains, sampleSerie } from '@/lib/visits/viewpoints'
 import { listDecisionsBySite } from '@/lib/db/site-decisions'
 import { buildSiteMemorySignals, buildSuggestedQuestions, detectRecurringTopics, detectOverdueActions, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
@@ -2158,20 +2158,32 @@ type CrPhotoLike = {
   starred: boolean
   captured_at: string | null
   created_at: string
+  /** Statut éditorial explicite (mig 340) — prime sur le calcul automatique
+   *  ci-dessous quand il est posé ; `null`/`undefined` laisse le poids décider
+   *  seul, comme avant ce champ (aucune régression sur les CR déjà produits). */
+  cr_tier?: CaptureCrTier
 }
 
 const captureTime = (c: Pick<CrPhotoLike, 'captured_at' | 'created_at'>): number =>
   Date.parse(c.captured_at ?? c.created_at) || 0
 
 export function selectCrPhotos<T extends CrPhotoLike>(photos: T[]): T[] {
-  const includeFollow = photos.filter((c) => c.triage_intent === 'follow').length <= CR_FOLLOW_MAX
+  // Choix éditorial explicite (mig 340, Vincent 2026-08-18) : un clic sur
+  // « Photo clé » l'y place TOUJOURS, hors du plafond automatique — ce n'est
+  // plus un poids parmi d'autres qui peut se faire écarter, c'est une décision
+  // humaine. Symétriquement, « Reportage » exclut la photo du calcul du
+  // plafond, même si son tag métier (ex. réserve) l'y aurait fait entrer.
+  const explicitKey = photos.filter((c) => c.cr_tier === 'key')
+  const automaticPool = photos.filter((c) => c.cr_tier !== 'key' && c.cr_tier !== 'reportage')
+
+  const includeFollow = automaticPool.filter((c) => c.triage_intent === 'follow').length <= CR_FOLLOW_MAX
   const weight = (c: T): number =>
     c.starred ? 0
     : c.triage_intent === 'reserve' ? 1
     : c.triage_intent === 'action' ? 2
     : c.triage_intent === 'follow' ? 3
     : 4 // mémoire / non tagué — seulement en repli
-  const eligible = photos.filter((c) =>
+  const eligible = automaticPool.filter((c) =>
     c.starred ||
     c.triage_intent === 'reserve' ||
     c.triage_intent === 'action' ||
@@ -2181,10 +2193,15 @@ export function selectCrPhotos<T extends CrPhotoLike>(photos: T[]): T[] {
   // aucune photo ; on prend les premières, plafonnées. `memoire` reste exclu du
   // repli : c'est une décision humaine explicite (« documenter, pas mettre en
   // avant ») — la respecter veut dire ne JAMAIS la faire remonter en Photo clé,
-  // pas même faute de mieux (P0 reportage photographique, 2026-08-17).
-  const untaggedOnly = photos.filter((c) => c.triage_intent !== 'memoire')
-  const pool = eligible.length > 0 ? eligible : untaggedOnly
-  return [...pool].sort((a, b) => weight(a) - weight(b) || captureTime(a) - captureTime(b)).slice(0, CR_PHOTO_CAP)
+  // pas même faute de mieux (P0 reportage photographique, 2026-08-17). Ce repli
+  // ne s'applique que si aucune Photo clé explicite n'existe déjà — sinon le CR
+  // n'est justement plus « sans aucune photo ».
+  const untaggedOnly = automaticPool.filter((c) => c.triage_intent !== 'memoire')
+  const pool = eligible.length > 0 ? eligible : explicitKey.length > 0 ? [] : untaggedOnly
+  const automaticPicks = [...pool]
+    .sort((a, b) => weight(a) - weight(b) || captureTime(a) - captureTime(b))
+    .slice(0, Math.max(0, CR_PHOTO_CAP - explicitKey.length))
+  return [...explicitKey.sort((a, b) => captureTime(a) - captureTime(b)), ...automaticPicks]
 }
 
 /**

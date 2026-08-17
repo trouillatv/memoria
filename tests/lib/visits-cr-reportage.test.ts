@@ -38,6 +38,7 @@ function cap(over: Partial<VisitCaptureRow> = {}): VisitCaptureRow {
     viewpoint_of: null,
     annotated_original_id: null,
     included_in_cr: true,
+    cr_tier: null,
     created_at: ts,
     ...over,
   }
@@ -176,5 +177,47 @@ describe('Reportage photographique — non-régression (P0, 2026-08-17)', () => 
     expect(selected.length).toBeLessThanOrEqual(CR_PHOTO_CAP)
     const selectedIds = new Set(selected.map((c) => c.id))
     for (const c of reportage) expect(selectedIds.has(c.id)).toBe(false)
+  })
+})
+
+describe('cr_tier — statut éditorial explicite Photo clé / Reportage (Vincent, 2026-08-18)', () => {
+  it('cr_tier: null ne change rien — comportement automatique inchangé', () => {
+    const action = cap({ triage_intent: 'action' })
+    const memoire = cap({ triage_intent: 'memoire' })
+    const photos = visiblePhotosFrom([action, memoire])
+    const selected = selectCrPhotos(photos)
+    expect(selected.map((c) => c.id)).toEqual([action.id])
+  })
+
+  it('cr_tier "key" explicite : toujours incluse en Photo clé, même sans qualification métier', () => {
+    const explicitKey = cap({ triage_intent: null, cr_tier: 'key' })
+    const memoire = cap({ triage_intent: 'memoire' })
+    const photos = visiblePhotosFrom([explicitKey, memoire])
+    const selected = selectCrPhotos(photos)
+    expect(selected.map((c) => c.id)).toContain(explicitKey.id)
+  })
+
+  it('cr_tier "key" explicite : jamais plafonnée, même au-delà de CR_PHOTO_CAP', () => {
+    const explicitKeys = Array.from({ length: CR_PHOTO_CAP + 4 }, () => cap({ triage_intent: null, cr_tier: 'key' }))
+    const photos = visiblePhotosFrom(explicitKeys)
+    const selected = selectCrPhotos(photos)
+    expect(selected).toHaveLength(explicitKeys.length)
+  })
+
+  it('cr_tier "reportage" explicite : jamais promue en Photo clé, même avec un triage_intent qualifiant', () => {
+    const demoted = cap({ triage_intent: 'action', starred: true, cr_tier: 'reportage' })
+    const other = cap({ triage_intent: 'reserve' })
+    const photos = visiblePhotosFrom([demoted, other])
+    const selected = selectCrPhotos(photos)
+    expect(selected.map((c) => c.id)).not.toContain(demoted.id)
+    expect(selected.map((c) => c.id)).toEqual([other.id])
+  })
+
+  it('repli suspendu : un choix "key" explicite suffit, aucune photo non taguée n’est ajoutée par défaut', () => {
+    const explicitKey = cap({ triage_intent: null, cr_tier: 'key' })
+    const untagged = cap({ triage_intent: null })
+    const photos = visiblePhotosFrom([explicitKey, untagged])
+    const selected = selectCrPhotos(photos)
+    expect(selected.map((c) => c.id)).toEqual([explicitKey.id])
   })
 })

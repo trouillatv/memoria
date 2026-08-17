@@ -25,7 +25,7 @@
 // Un bouton qui ne restaurerait rien — ou qui ramènerait au vide — mentirait.
 
 import { useState } from 'react'
-import { Pencil, RotateCcw, Check, X, Loader2, Lock, Plus, Circle } from 'lucide-react'
+import { Pencil, RotateCcw, Check, X, Loader2, Lock, Plus, Circle, Star } from 'lucide-react'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
 import type { CaptureTriageIntent } from '@/lib/db/visit-captures'
 import {
@@ -34,17 +34,23 @@ import {
   finalizeCrAction,
   reopenCrAction,
   setCaptureIncludedInCrAction,
+  setCapturePhotoTierAction,
   type PersistedCrDocument,
 } from './cr-document-actions'
+import { updateVisitPhotoCaptionAction } from '@/app/(dashboard)/sites/[id]/visites/[visitId]/photo-actions'
 
 /** Ce que chaque famille narrative est devenue dans le chantier — le liant
  *  entre le récit (« Actions ») et les objets réels (« 2 actions créées »). */
 export type ConcretisationSummary = Record<string, { created: number; pending: number }>
 
 /**
- * Une photo candidate à la sélection éditoriale du CR (Vincent, 2026-08-17).
- * `includedInCr` est la SEULE donnée que cet écran modifie ; `triageIntent`
- * n'est affiché qu'à titre INFORMATIF (qualification métier posée au débrief).
+ * Une photo candidate à la sélection éditoriale du CR (Vincent, 2026-08-17,
+ * étendu 2026-08-18 avec `tier`). `includedInCr` et `tier` sont les DEUX
+ * données que cet écran modifie ; `triageIntent` n'est affiché qu'à titre
+ * INFORMATIF (qualification métier posée au débrief).
+ *
+ * `tier` est la valeur RÉSOLUE (choix humain explicite ou poids automatique) —
+ * calculée côté page par `selectCrPhotos`, jamais recalculée ici.
  */
 export interface CrPhotoCandidate {
   id: string
@@ -52,6 +58,7 @@ export interface CrPhotoCandidate {
   caption: string | null
   includedInCr: boolean
   triageIntent: CaptureTriageIntent
+  tier: 'key' | 'reportage'
 }
 
 export function CrDocumentSections({
@@ -194,14 +201,17 @@ export function CrDocumentSections({
   )
 }
 
-// ── SÉLECTION ÉDITORIALE DES PHOTOS (Vincent, 2026-08-17) ───────────────────
+// ── SÉLECTION ÉDITORIALE DES PHOTOS (Vincent, 2026-08-17, étendu 2026-08-18) ─
 //
 // Deux décisions, jamais confondues :
-//   - AU DÉBRIEF, le conducteur qualifie une capture (métier — 📚/👀/⚠️/✅).
-//   - ICI, il choisit ce qui doit apparaître dans LE DOCUMENT.
-// Toute photo gardée entre par défaut : décocher la retire du PDF, jamais de
-// MemorIA. Aucun plafond invisible — au-delà d'un certain nombre, un
-// avertissement se dit, rien ne se coupe silencieusement.
+//   - AU DÉBRIEF, le conducteur qualifie une capture (métier — 📚/👀/⚠️/✅) :
+//     c'est le badge `TRIAGE_BADGE`, affiché tel quel, jamais recalculé ici.
+//   - ICI, il choisit ce qui doit apparaître dans LE DOCUMENT, et COMMENT :
+//     Hors CR (absente du PDF) → Reportage (vignette) → Photo clé (grande,
+//     avec légende) — un CYCLE à un clic/tap, jamais de glisser-déposer.
+// Toute photo gardée entre par défaut en Reportage. Aucun plafond invisible —
+// au-delà d'un certain nombre, un avertissement se dit, rien ne se coupe
+// silencieusement.
 
 // Seuil purement INDICATIF (aligné sur CR_REPORTAGE_PHOTO_CAP, lib/db/visits.ts)
 // : au-delà, le reportage devient volumineux. Ce n'est jamais une coupure.
@@ -213,6 +223,23 @@ const TRIAGE_BADGE: Partial<Record<NonNullable<CaptureTriageIntent>, string>> = 
   follow: 'À surveiller',
   memoire: 'Mémoire',
 }
+
+type PhotoStatus = 'out' | 'reportage' | 'key'
+
+const STATUS_LABEL: Record<PhotoStatus, string> = {
+  out: 'Hors CR',
+  reportage: 'Reportage',
+  key: 'Clé',
+}
+
+const STATUS_STYLE: Record<PhotoStatus, string> = {
+  out: 'bg-white/80 text-foreground',
+  reportage: 'bg-sky-600 text-white',
+  key: 'bg-amber-500 text-white',
+}
+
+/** Le cycle, dans un seul sens : Hors CR → Reportage → Clé → Hors CR. */
+const NEXT_STATUS: Record<PhotoStatus, PhotoStatus> = { out: 'reportage', reportage: 'key', key: 'out' }
 
 function PhotoSelectionSection({
   reportId,
@@ -226,9 +253,20 @@ function PhotoSelectionSection({
   const [included, setIncluded] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(initialPhotos.map((p) => [p.id, p.includedInCr])),
   )
+  const [tier, setTier] = useState<Record<string, 'key' | 'reportage'>>(() =>
+    Object.fromEntries(initialPhotos.map((p) => [p.id, p.tier])),
+  )
+  const [captions, setCaptions] = useState<Record<string, string | null>>(() =>
+    Object.fromEntries(initialPhotos.map((p) => [p.id, p.caption])),
+  )
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [viewing, setViewing] = useState<CrPhotoCandidate | null>(null)
+  const [editingCaption, setEditingCaption] = useState(false)
+  const [captionDraft, setCaptionDraft] = useState('')
+  const [savingCaption, setSavingCaption] = useState(false)
+
+  const statusOf = (id: string): PhotoStatus => (included[id] ? tier[id] : 'out')
 
   const selectedCount = initialPhotos.filter((p) => included[p.id]).length
   const total = initialPhotos.length
@@ -255,21 +293,63 @@ function PhotoSelectionSection({
     }
   }
 
-  const toggle = async (photo: CrPhotoCandidate) => {
+  /** Un clic = un cran du cycle Hors CR → Reportage → Clé → Hors CR. */
+  const cycleStatus = async (photo: CrPhotoCandidate) => {
     if (!editable || pendingIds.has(photo.id)) return
-    const next = !included[photo.id]
+    const current = statusOf(photo.id)
+    const next = NEXT_STATUS[current]
+    const prevIncluded = included[photo.id]
+    const prevTier = tier[photo.id]
+
     // Réponse immédiate à l'écran ; le serveur confirme ensuite.
-    setIncluded((prev) => ({ ...prev, [photo.id]: next }))
+    setIncluded((prev) => ({ ...prev, [photo.id]: next !== 'out' }))
+    if (next !== 'out') setTier((prev) => ({ ...prev, [photo.id]: next }))
     setPendingIds((prev) => new Set(prev).add(photo.id))
     setError(null)
-    const res = await setCaptureIncludedInCrAction(reportId, photo.id, next)
+
+    const calls: Promise<{ ok: boolean; error?: string }>[] = []
+    if ((next !== 'out') !== prevIncluded) calls.push(setCaptureIncludedInCrAction(reportId, photo.id, next !== 'out'))
+    if (next !== 'out' && next !== prevTier) calls.push(setCapturePhotoTierAction(reportId, photo.id, next))
+
+    const results = await Promise.all(calls)
     setPendingIds((prev) => {
       const p = new Set(prev)
       p.delete(photo.id)
       return p
     })
-    if (!res.ok) {
-      setIncluded((prev) => ({ ...prev, [photo.id]: !next }))
+    const failed = results.find((r) => !r.ok)
+    if (failed) {
+      setIncluded((prev) => ({ ...prev, [photo.id]: prevIncluded }))
+      setTier((prev) => ({ ...prev, [photo.id]: prevTier }))
+      setError(failed.error ?? 'Mise à jour impossible')
+    }
+  }
+
+  const openViewer = (photo: CrPhotoCandidate) => {
+    setViewing(photo)
+    setEditingCaption(false)
+  }
+
+  const startEditCaption = () => {
+    if (!viewing) return
+    setCaptionDraft(captions[viewing.id] ?? '')
+    setEditingCaption(true)
+  }
+
+  const saveCaption = async () => {
+    if (!viewing || savingCaption) return
+    setSavingCaption(true)
+    setError(null)
+    const res = await updateVisitPhotoCaptionAction({
+      report_id: reportId,
+      capture_id: viewing.id,
+      caption: captionDraft,
+    })
+    setSavingCaption(false)
+    if (res.ok) {
+      setCaptions((prev) => ({ ...prev, [viewing.id]: captionDraft.trim() || null }))
+      setEditingCaption(false)
+    } else {
       setError(res.error)
     }
   }
@@ -278,11 +358,11 @@ function PhotoSelectionSection({
     <section className="mt-3.5 border-t pt-3.5">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-[13px] font-semibold">Photos du compte-rendu</h3>
-        <span className="text-[12px] text-muted-foreground">{selectedCount} / {total} sélectionnées</span>
+        <span className="text-[12px] text-muted-foreground">{selectedCount} / {total} dans le document</span>
       </div>
       <p className="mt-1 text-[12px] text-muted-foreground">
-        Toutes les photos conservées sont proposées dans le document. Décochez celles que vous ne
-        voulez pas y voir apparaître — elles restent disponibles dans MemorIA.
+        Appuyez sur le statut d’une photo pour la faire tourner : Hors CR → Reportage → Photo clé.
+        Une photo clé s’affiche en grand avec sa légende ; une photo en reportage reste en vignette.
       </p>
 
       {editable && (
@@ -292,7 +372,7 @@ function PhotoSelectionSection({
             onClick={() => setAll(true)}
             className="text-[12px] font-medium text-foreground underline underline-offset-2 hover:text-foreground/80"
           >
-            Tout sélectionner
+            Tout inclure
           </button>
           <span className="text-muted-foreground">·</span>
           <button
@@ -300,7 +380,7 @@ function PhotoSelectionSection({
             onClick={() => setAll(false)}
             className="text-[12px] font-medium text-foreground underline underline-offset-2 hover:text-foreground/80"
           >
-            Tout désélectionner
+            Tout mettre hors CR
           </button>
         </div>
       )}
@@ -311,50 +391,57 @@ function PhotoSelectionSection({
         </p>
       )}
 
-      <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+      <div className="mt-2.5 grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-5">
         {initialPhotos.map((photo) => {
-          const isIncluded = included[photo.id] ?? photo.includedInCr
+          const status = statusOf(photo.id)
           const badge = photo.triageIntent ? TRIAGE_BADGE[photo.triageIntent] : undefined
+          const caption = captions[photo.id]
           return (
-            <div key={photo.id} className="relative aspect-square overflow-hidden rounded-lg bg-muted">
-              <button
-                type="button"
-                onClick={() => setViewing(photo)}
-                className="absolute inset-0"
-                aria-label="Voir la photo"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={photo.url}
-                  alt={photo.caption ?? ''}
-                  className={`h-full w-full object-cover ${isIncluded ? '' : 'opacity-40'}`}
-                  loading="lazy"
-                />
-              </button>
-              {badge && (
-                <span className="pointer-events-none absolute bottom-1 left-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
-                  {badge}
-                </span>
-              )}
-              {editable ? (
+            <div key={photo.id} className="flex flex-col gap-1">
+              <div className="relative aspect-square overflow-hidden rounded-lg bg-muted">
                 <button
                   type="button"
-                  onClick={() => toggle(photo)}
-                  disabled={pendingIds.has(photo.id)}
-                  aria-label={isIncluded ? 'Retirer du compte-rendu' : 'Inclure dans le compte-rendu'}
-                  className={`absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white shadow-sm ${
-                    isIncluded ? 'bg-emerald-600' : 'bg-white/70'
-                  } disabled:opacity-60`}
+                  onClick={() => openViewer(photo)}
+                  className="absolute inset-0"
+                  aria-label="Voir la photo"
                 >
-                  {isIncluded && <Check className="h-3.5 w-3.5 text-white" aria-hidden />}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photo.url}
+                    alt={caption ?? ''}
+                    className={`h-full w-full object-cover ${status === 'out' ? 'opacity-40' : ''}`}
+                    loading="lazy"
+                  />
                 </button>
-              ) : (
-                !isIncluded && (
-                  <span className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
-                    Exclue
+                {badge && (
+                  <span className="pointer-events-none absolute bottom-1 left-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                    {badge}
                   </span>
-                )
-              )}
+                )}
+                {editable ? (
+                  <button
+                    type="button"
+                    onClick={() => cycleStatus(photo)}
+                    disabled={pendingIds.has(photo.id)}
+                    aria-label={`Statut : ${STATUS_LABEL[status]} — appuyer pour changer`}
+                    className={`absolute right-1 top-1 inline-flex items-center gap-0.5 rounded-full border-2 border-white px-1.5 py-0.5 text-[9px] font-semibold leading-none shadow-sm disabled:opacity-60 ${STATUS_STYLE[status]}`}
+                  >
+                    {status === 'key' && <Star className="h-2.5 w-2.5 shrink-0" aria-hidden fill="currentColor" />}
+                    {status === 'reportage' && <Check className="h-2.5 w-2.5 shrink-0" aria-hidden />}
+                    {status === 'out' && <Circle className="h-2.5 w-2.5 shrink-0" aria-hidden />}
+                    {STATUS_LABEL[status]}
+                  </button>
+                ) : (
+                  status !== 'out' ? null : (
+                    <span className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                      Hors CR
+                    </span>
+                  )
+                )}
+              </div>
+              <p className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                {caption || <span className="italic">Sans légende</span>}
+              </p>
             </div>
           )
         })}
@@ -378,13 +465,58 @@ function PhotoSelectionSection({
           </div>
           <div className="flex flex-1 items-center justify-center overflow-hidden px-2" onClick={(e) => e.stopPropagation()}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={viewing.url} alt={viewing.caption ?? ''} className="max-h-full max-w-full rounded object-contain" />
+            <img src={viewing.url} alt={captions[viewing.id] ?? ''} className="max-h-full max-w-full rounded object-contain" />
           </div>
-          {viewing.caption && (
-            <div className="shrink-0 px-4 py-4" onClick={(e) => e.stopPropagation()}>
-              <p className="text-sm text-white/80">{viewing.caption}</p>
-            </div>
-          )}
+          <div className="shrink-0 px-4 py-4" onClick={(e) => e.stopPropagation()}>
+            {editable && editingCaption ? (
+              <div className="space-y-2">
+                <textarea
+                  value={captionDraft}
+                  onChange={(e) => setCaptionDraft(e.target.value)}
+                  rows={2}
+                  maxLength={500}
+                  autoFocus
+                  placeholder="Ajouter une légende…"
+                  className="w-full rounded-lg border border-white/20 bg-white/10 p-2 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-1 focus:ring-white/40"
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={saveCaption}
+                    disabled={savingCaption}
+                    className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-[12px] font-medium text-black disabled:opacity-50"
+                  >
+                    {savingCaption ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Check className="h-3.5 w-3.5" aria-hidden />}
+                    Enregistrer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingCaption(false)}
+                    disabled={savingCaption}
+                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[12px] text-white/70 disabled:opacity-50"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm text-white/80">
+                  {captions[viewing.id] || (editable ? <span className="italic text-white/40">Aucune légende</span> : null)}
+                </p>
+                {editable && (
+                  <button
+                    type="button"
+                    onClick={startEditCaption}
+                    className="shrink-0 rounded-full p-1.5 text-white/70 active:bg-white/10"
+                    aria-label="Modifier la légende"
+                  >
+                    <Pencil className="h-4 w-4" aria-hidden />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </section>

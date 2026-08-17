@@ -19,7 +19,7 @@ import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { getVisit } from '@/lib/db/visits'
 import { updateReportDocumentSections } from '@/lib/db/report-documents'
 import { getVisitCrDocument, finalizeVisitCr, reopenVisitCr } from '@/lib/db/visit-cr-documents'
-import { setCaptureIncludedInCr } from '@/lib/db/visit-captures'
+import { setCaptureIncludedInCr, setCaptureCrTier, type CaptureCrTier } from '@/lib/db/visit-captures'
 import { restoreSectionProposal } from '@/lib/visits/cr-visite-policy'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
 
@@ -134,6 +134,28 @@ export async function setCaptureIncludedInCrAction(
 
   try {
     await setCaptureIncludedInCr(captureId, included)
+  } catch {
+    return { ok: false, error: 'Mise à jour impossible' }
+  }
+  return { ok: true }
+}
+
+/**
+ * Statut éditorial Photo clé / Reportage / Hors CR (Vincent, 2026-08-18) — un clic.
+ * `tier: null` ne repose PAS « Hors CR » : ce troisième état reste porté par
+ * `included_in_cr` (voir plus haut) et se pose via `setCaptureIncludedInCrAction`.
+ * Ici on ne pose que le choix explicite entre les deux niveaux du document.
+ */
+export async function setCapturePhotoTierAction(
+  reportId: string,
+  captureId: string,
+  tier: CaptureCrTier,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const opened = await openDraft(reportId)
+  if (!opened.ok) return opened
+
+  try {
+    await setCaptureCrTier(captureId, tier)
   } catch {
     return { ok: false, error: 'Mise à jour impossible' }
   }

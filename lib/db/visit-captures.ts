@@ -32,6 +32,12 @@ export type CaptureTriageIntent = 'action' | 'follow' | 'reserve' | 'memoire' | 
  *  visite, jour du dépôt, ou date saisie. NULL = inconnue, et on le dit. */
 export type CaptureDateSource = 'file' | 'visit' | 'today' | 'chosen'
 
+/** Statut éditorial explicite Photo clé / Reportage (mig 340, Vincent 2026-08-18) :
+ *  un choix HUMAIN posé à l'écran du CR, distinct du poids automatique
+ *  (starred/triage_intent). NULL = pas encore choisi — le calcul automatique
+ *  de `selectCrPhotos` (lib/db/visits.ts) continue de décider seul. */
+export type CaptureCrTier = 'key' | 'reportage' | null
+
 export interface VisitCaptureRow {
   id: string
   report_id: string
@@ -67,6 +73,9 @@ export interface VisitCaptureRow {
    *  (qualification métier) et de status (mémoire de MemorIA). Décocher ici ne
    *  touche ni l'un ni l'autre. */
   included_in_cr: boolean
+  /** Statut éditorial explicite Photo clé/Reportage (mig 340) — NULL tant que
+   *  personne n'a tranché, auquel cas `selectCrPhotos` décide seule. */
+  cr_tier: CaptureCrTier
   created_at: string
 }
 
@@ -192,7 +201,7 @@ export async function listVisitCaptures(reportId: string): Promise<VisitCaptureR
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('report_id', reportId)
     .is('hidden_at', null) // masque un original ARCHIVÉ (remplacé par sa version annotée, mig 185)
     .order('captured_at', { ascending: true, nullsFirst: true })
@@ -206,7 +215,7 @@ export async function listVisitCapturesBySubject(subjectId: string): Promise<Vis
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('subject_id', subjectId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -222,7 +231,7 @@ export async function listVisitCapturesBySite(siteId: string, limit = 300): Prom
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('site_id', siteId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -240,7 +249,7 @@ export async function listVisitCapturesByDossier(dossierId: string, limit = 300)
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('dossier_id', dossierId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -317,7 +326,7 @@ export async function listSiteViewpointRows(siteId: string): Promise<VisitCaptur
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('site_id', siteId)
     .eq('kind', 'photo')
     .neq('status', 'discarded')
@@ -335,7 +344,7 @@ export async function listSitePhotoCaptures(siteId: string, limit = 500): Promis
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('site_id', siteId)
     .eq('kind', 'photo')
     .neq('status', 'discarded')
@@ -580,6 +589,23 @@ export async function setCaptureIncludedInCr(captureId: string, includedInCr: bo
   const { error } = await supabase
     .from('visit_capture')
     .update({ included_in_cr: includedInCr, updated_at: new Date().toISOString() })
+    .eq('id', captureId)
+  if (error) throw error
+}
+
+/**
+ * Statut éditorial explicite Photo clé/Reportage (mig 340) : un clic pose ce
+ * choix, qui prime ensuite sur le calcul automatique dans `selectCrPhotos`
+ * (lib/db/visits.ts). `null` = retour au calcul automatique (pas d'état
+ * « indécis » à part — c'est la même sémantique qu'avant ce lot). Ne touche
+ * ni triage_intent ni starred : la qualification métier et la mémoire de
+ * MemorIA restent inchangées.
+ */
+export async function setCaptureCrTier(captureId: string, tier: CaptureCrTier): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('visit_capture')
+    .update({ cr_tier: tier, updated_at: new Date().toISOString() })
     .eq('id', captureId)
   if (error) throw error
 }
