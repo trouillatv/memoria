@@ -330,6 +330,15 @@ function PhotoSelectionSection({
     setEditingCaption(false)
   }
 
+  /** Clic direct sur la légende sous la vignette (Vincent, 2026-08-18) : ouvre
+   *  la visionneuse déjà en édition — la légende du CR se corrige ICI, sans
+   *  quitter la composition pour retrouver la photo ailleurs dans MemorIA. */
+  const openCaptionEditor = (photo: CrPhotoCandidate) => {
+    setViewing(photo)
+    setCaptionDraft(captions[photo.id] ?? '')
+    setEditingCaption(true)
+  }
+
   const startEditCaption = () => {
     if (!viewing) return
     setCaptionDraft(captions[viewing.id] ?? '')
@@ -439,9 +448,19 @@ function PhotoSelectionSection({
                   )
                 )}
               </div>
-              <p className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
-                {caption || <span className="italic">Sans légende</span>}
-              </p>
+              {editable ? (
+                <button
+                  type="button"
+                  onClick={() => openCaptionEditor(photo)}
+                  className="line-clamp-2 text-left text-[11px] leading-snug text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                >
+                  {caption || <span className="italic">Ajouter une légende…</span>}
+                </button>
+              ) : (
+                <p className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                  {caption || <span className="italic">Sans légende</span>}
+                </p>
+              )}
             </div>
           )
         })}
