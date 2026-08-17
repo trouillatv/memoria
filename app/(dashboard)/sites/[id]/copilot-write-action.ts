@@ -14,7 +14,7 @@ import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import { updateCopilotProposalStatus } from '@/lib/db/copilot-telemetry'
 import { toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
 import { todayLocalIso } from '@/lib/time/local-date'
-import { normalizeActorLabel } from '@/lib/db/actor-alias-resolve'
+import { confirmActorAlias } from '@/lib/db/actor-alias-write'
 
 // ── Créer une action depuis une proposition copilote ─────────────────────────
 
@@ -352,73 +352,14 @@ export async function createCopilotActorAlias(rawInput: unknown): Promise<Create
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: 'Non authentifié.' }
 
-  const admin = createAdminClient()
-
-  // Idempotence : la même proposition ne peut confirmer qu'une seule correspondance.
-  const { data: existing } = await admin
-    .from('actor_alias')
-    .select('id, status')
-    .eq('copilot_proposal_id', copilotProposalId)
-    .maybeSingle()
-  if (existing) {
-    const row = existing as { id: string; status: string }
-    if (row.status !== 'confirmed') {
-      await admin
-        .from('actor_alias')
-        .update({ status: 'confirmed', confirmed_by: user.id, confirmed_at: new Date().toISOString() })
-        .eq('id', row.id)
-    }
-    if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
-    return { ok: true, aliasId: row.id }
-  }
-
-  // Revérification serveur de la cible — jamais la parole du client.
-  if (targetKind === 'company') {
-    const { data: company } = await admin
-      .from('companies')
-      .select('id')
-      .eq('id', targetId)
-      .eq('organization_id', organizationId)
-      .is('deleted_at', null)
-      .maybeSingle()
-    if (!company) return { ok: false, error: 'Acteur introuvable dans cette organisation.' }
-  } else {
-    const { data: contact } = await admin
-      .from('company_contacts')
-      .select('id')
-      .eq('id', targetId)
-      .eq('organization_id', organizationId)
-      .is('deleted_at', null)
-      .maybeSingle()
-    if (!contact) return { ok: false, error: 'Acteur introuvable dans cette organisation.' }
-  }
-
-  const { data, error } = await admin
-    .from('actor_alias')
-    .insert({
-      organization_id: organizationId,
-      company_id: targetKind === 'company' ? targetId : null,
-      contact_id: targetKind === 'contact' ? targetId : null,
-      alias,
-      alias_norm: normalizeActorLabel(alias),
-      alias_nature: aliasNature,
-      status: 'confirmed',
-      source: 'copilot',
-      copilot_proposal_id: copilotProposalId,
-      copilot_interaction_id: interactionId ?? null,
-      created_by: user.id,
-      confirmed_by: user.id,
-      confirmed_at: new Date().toISOString(),
-    })
-    .select('id')
-    .single()
-
-  if (error || !data) {
-    if (error?.code === '23505') return { ok: false, error: 'Cette correspondance est déjà mémorisée pour cet acteur.' }
-    return { ok: false, error: error?.message ?? "Impossible d'enregistrer cette correspondance." }
-  }
-
-  const aliasId = (data as { id: string }).id
-  if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
-  return { ok: true, aliasId }
+  return confirmActorAlias({
+    organizationId,
+    userId: user.id,
+    alias,
+    targetKind,
+    targetId,
+    aliasNature,
+    copilotProposalId,
+    interactionId: interactionId ?? null,
+  })
 }

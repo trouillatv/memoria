@@ -16,6 +16,9 @@
 # scratch / harnais de capture (artefacts jetables : screenshots, traces, env local)
 /tmp
 
+# harnais de recette réversible — manifestes de run (test_run_id → IDs créés)
+/.recette-runs
+
 # next.js
 /.next/
 /out/
