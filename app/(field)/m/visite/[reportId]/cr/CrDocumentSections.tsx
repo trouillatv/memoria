@@ -27,11 +27,13 @@
 import { useState } from 'react'
 import { Pencil, RotateCcw, Check, X, Loader2, Lock, Plus, Circle } from 'lucide-react'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
+import type { CaptureTriageIntent } from '@/lib/db/visit-captures'
 import {
   saveCrSectionAction,
   restoreCrSectionAction,
   finalizeCrAction,
   reopenCrAction,
+  setCaptureIncludedInCrAction,
   type PersistedCrDocument,
 } from './cr-document-actions'
 
@@ -39,12 +41,26 @@ import {
  *  entre le récit (« Actions ») et les objets réels (« 2 actions créées »). */
 export type ConcretisationSummary = Record<string, { created: number; pending: number }>
 
+/**
+ * Une photo candidate à la sélection éditoriale du CR (Vincent, 2026-08-17).
+ * `includedInCr` est la SEULE donnée que cet écran modifie ; `triageIntent`
+ * n'est affiché qu'à titre INFORMATIF (qualification métier posée au débrief).
+ */
+export interface CrPhotoCandidate {
+  id: string
+  url: string
+  caption: string | null
+  includedInCr: boolean
+  triageIntent: CaptureTriageIntent
+}
+
 export function CrDocumentSections({
   reportId,
   sections: initialSections,
   status: initialStatus,
   onEdited,
   concretisation,
+  photos,
 }: {
   reportId: string
   sections: ReportDocumentSection[]
@@ -62,6 +78,8 @@ export function CrDocumentSections({
    * ne change. Il ne porte pas le document — seulement le fait qu'il a bougé.
    */
   onEdited?: () => void
+  /** Photos candidates à la sélection éditoriale — absent/vide : pas de section. */
+  photos?: CrPhotoCandidate[]
 }) {
   // La vérité affichée vient du serveur, puis de CE QU'IL A ÉCRIT à chaque
   // geste. Pas de rafraîchissement global, donc pas de saut en haut de page.
@@ -167,7 +185,208 @@ export function CrDocumentSections({
         )
       })()}
 
+      {photos && photos.length > 0 && (
+        <PhotoSelectionSection reportId={reportId} initialPhotos={photos} editable={editable} />
+      )}
+
       <Lifecycle reportId={reportId} status={status} onChanged={setStatus} />
+    </section>
+  )
+}
+
+// ── SÉLECTION ÉDITORIALE DES PHOTOS (Vincent, 2026-08-17) ───────────────────
+//
+// Deux décisions, jamais confondues :
+//   - AU DÉBRIEF, le conducteur qualifie une capture (métier — 📚/👀/⚠️/✅).
+//   - ICI, il choisit ce qui doit apparaître dans LE DOCUMENT.
+// Toute photo gardée entre par défaut : décocher la retire du PDF, jamais de
+// MemorIA. Aucun plafond invisible — au-delà d'un certain nombre, un
+// avertissement se dit, rien ne se coupe silencieusement.
+
+// Seuil purement INDICATIF (aligné sur CR_REPORTAGE_PHOTO_CAP, lib/db/visits.ts)
+// : au-delà, le reportage devient volumineux. Ce n'est jamais une coupure.
+const PHOTO_COUNT_WARNING_THRESHOLD = 30
+
+const TRIAGE_BADGE: Partial<Record<NonNullable<CaptureTriageIntent>, string>> = {
+  action: 'Action',
+  reserve: 'Réserve',
+  follow: 'À surveiller',
+  memoire: 'Mémoire',
+}
+
+function PhotoSelectionSection({
+  reportId,
+  initialPhotos,
+  editable,
+}: {
+  reportId: string
+  initialPhotos: CrPhotoCandidate[]
+  editable: boolean
+}) {
+  const [included, setIncluded] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(initialPhotos.map((p) => [p.id, p.includedInCr])),
+  )
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set())
+  const [error, setError] = useState<string | null>(null)
+  const [viewing, setViewing] = useState<CrPhotoCandidate | null>(null)
+
+  const selectedCount = initialPhotos.filter((p) => included[p.id]).length
+  const total = initialPhotos.length
+
+  const setAll = async (value: boolean) => {
+    if (!editable) return
+    const ids = initialPhotos.filter((p) => included[p.id] !== value).map((p) => p.id)
+    if (ids.length === 0) return
+    setIncluded((prev) => {
+      const next = { ...prev }
+      for (const id of ids) next[id] = value
+      return next
+    })
+    setError(null)
+    const results = await Promise.all(ids.map((id) => setCaptureIncludedInCrAction(reportId, id, value)))
+    const failedIds = ids.filter((_, i) => !results[i]!.ok)
+    if (failedIds.length > 0) {
+      setIncluded((prev) => {
+        const next = { ...prev }
+        for (const id of failedIds) next[id] = !value
+        return next
+      })
+      setError('Certaines photos n’ont pas pu être mises à jour.')
+    }
+  }
+
+  const toggle = async (photo: CrPhotoCandidate) => {
+    if (!editable || pendingIds.has(photo.id)) return
+    const next = !included[photo.id]
+    // Réponse immédiate à l'écran ; le serveur confirme ensuite.
+    setIncluded((prev) => ({ ...prev, [photo.id]: next }))
+    setPendingIds((prev) => new Set(prev).add(photo.id))
+    setError(null)
+    const res = await setCaptureIncludedInCrAction(reportId, photo.id, next)
+    setPendingIds((prev) => {
+      const p = new Set(prev)
+      p.delete(photo.id)
+      return p
+    })
+    if (!res.ok) {
+      setIncluded((prev) => ({ ...prev, [photo.id]: !next }))
+      setError(res.error)
+    }
+  }
+
+  return (
+    <section className="mt-3.5 border-t pt-3.5">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-[13px] font-semibold">Photos du compte-rendu</h3>
+        <span className="text-[12px] text-muted-foreground">{selectedCount} / {total} sélectionnées</span>
+      </div>
+      <p className="mt-1 text-[12px] text-muted-foreground">
+        Toutes les photos conservées sont proposées dans le document. Décochez celles que vous ne
+        voulez pas y voir apparaître — elles restent disponibles dans MemorIA.
+      </p>
+
+      {editable && (
+        <div className="mt-1.5 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setAll(true)}
+            className="text-[12px] font-medium text-foreground underline underline-offset-2 hover:text-foreground/80"
+          >
+            Tout sélectionner
+          </button>
+          <span className="text-muted-foreground">·</span>
+          <button
+            type="button"
+            onClick={() => setAll(false)}
+            className="text-[12px] font-medium text-foreground underline underline-offset-2 hover:text-foreground/80"
+          >
+            Tout désélectionner
+          </button>
+        </div>
+      )}
+
+      {selectedCount > PHOTO_COUNT_WARNING_THRESHOLD && (
+        <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[12px] text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          {selectedCount} photos sélectionnées — le reportage sera volumineux.
+        </p>
+      )}
+
+      <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+        {initialPhotos.map((photo) => {
+          const isIncluded = included[photo.id] ?? photo.includedInCr
+          const badge = photo.triageIntent ? TRIAGE_BADGE[photo.triageIntent] : undefined
+          return (
+            <div key={photo.id} className="relative aspect-square overflow-hidden rounded-lg bg-muted">
+              <button
+                type="button"
+                onClick={() => setViewing(photo)}
+                className="absolute inset-0"
+                aria-label="Voir la photo"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photo.url}
+                  alt={photo.caption ?? ''}
+                  className={`h-full w-full object-cover ${isIncluded ? '' : 'opacity-40'}`}
+                  loading="lazy"
+                />
+              </button>
+              {badge && (
+                <span className="pointer-events-none absolute bottom-1 left-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                  {badge}
+                </span>
+              )}
+              {editable ? (
+                <button
+                  type="button"
+                  onClick={() => toggle(photo)}
+                  disabled={pendingIds.has(photo.id)}
+                  aria-label={isIncluded ? 'Retirer du compte-rendu' : 'Inclure dans le compte-rendu'}
+                  className={`absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white shadow-sm ${
+                    isIncluded ? 'bg-emerald-600' : 'bg-white/70'
+                  } disabled:opacity-60`}
+                >
+                  {isIncluded && <Check className="h-3.5 w-3.5 text-white" aria-hidden />}
+                </button>
+              ) : (
+                !isIncluded && (
+                  <span className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                    Exclue
+                  </span>
+                )
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {error && <p className="mt-2 text-[12px] text-rose-600 dark:text-rose-400">{error}</p>}
+
+      {viewing && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-black"
+          onClick={() => setViewing(null)}
+        >
+          <div className="flex shrink-0 items-center justify-end px-4 py-3">
+            <button
+              type="button"
+              onClick={() => setViewing(null)}
+              className="rounded-full p-1 text-white/80 active:bg-white/10"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="flex flex-1 items-center justify-center overflow-hidden px-2" onClick={(e) => e.stopPropagation()}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={viewing.url} alt={viewing.caption ?? ''} className="max-h-full max-w-full rounded object-contain" />
+          </div>
+          {viewing.caption && (
+            <div className="shrink-0 px-4 py-4" onClick={(e) => e.stopPropagation()}>
+              <p className="text-sm text-white/80">{viewing.caption}</p>
+            </div>
+          )}
+        </div>
+      )}
     </section>
   )
 }

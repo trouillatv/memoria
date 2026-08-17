@@ -38,7 +38,7 @@
 import { useState } from 'react'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
 import type { VisitCrDoc } from '@/lib/db/visits'
-import { CrDocumentSections } from '@/app/(field)/m/visite/[reportId]/cr/CrDocumentSections'
+import { CrDocumentSections, type CrPhotoCandidate } from '@/app/(field)/m/visite/[reportId]/cr/CrDocumentSections'
 import { CrConcretisation } from '@/app/(field)/m/visite/[reportId]/cr/CrConcretisation'
 import { MemoriaRetained } from '@/app/(field)/m/visite/[reportId]/cr/MemoriaRetained'
 import { PanneauArbitrage } from './PanneauArbitrage'
@@ -49,6 +49,7 @@ export function AtelierColonnes({
   sections,
   status,
   transcriptions,
+  photos,
 }: {
   reportId: string
   siteId: string
@@ -57,6 +58,7 @@ export function AtelierColonnes({
   // Le type vient du contrat de `buildVisitCrDoc`, jamais réécrit à la main :
   // une copie divergerait sans que rien ne le signale.
   transcriptions: VisitCrDoc['transcriptions']
+  photos?: CrPhotoCandidate[]
 }) {
   const [revisionTexte, setRevisionTexte] = useState(0)
   const [creations, setCreations] = useState(0)
@@ -70,6 +72,7 @@ export function AtelierColonnes({
           reportId={reportId}
           sections={sections}
           status={status}
+          photos={photos}
           onEdited={() => setRevisionTexte((n) => n + 1)}
         />
         {/* MARCHE 3 — je vois ce qui sera créé. `asStep` retire son total

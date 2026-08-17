@@ -123,6 +123,14 @@ describe('Chaque élément dit pourquoi il est là', () => {
     expect(explainCapture({ kept: true, intent }).label).toContain(mot)
   })
 
+  it('une capture "memoire" (documentation volontaire) n’est jamais confondue avec "kept" simple (null)', () => {
+    const memoire = explainCapture({ kept: true, intent: 'memoire' })
+    const nonQualifiee = explainCapture({ kept: true, intent: null })
+    expect(memoire.code).toBe('capture.tagged.memoire')
+    expect(nonQualifiee.code).toBe('capture.kept')
+    expect(memoire.code).not.toBe(nonQualifiee.code)
+  })
+
   it('une obsolescence n’est JAMAIS présentée comme un rejet humain', () => {
     const r = explainProposal({ status: 'superseded' })
     expect(r.label).toBe('N’est plus active dans l’analyse actuelle')

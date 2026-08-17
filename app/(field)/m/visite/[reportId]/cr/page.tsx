@@ -9,10 +9,11 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
+import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
 import { CaptureMap } from '@/components/CaptureMap'
 import { CrMapSnapshotTrigger } from './CrMapSnapshotTrigger'
 import { MemoriaRetained } from './MemoriaRetained'
-import { CrDocumentSections } from './CrDocumentSections'
+import { CrDocumentSections, type CrPhotoCandidate } from './CrDocumentSections'
 import { CrConcretisation } from './CrConcretisation'
 import { CrAnalyseOrigine } from './CrAnalyseOrigine'
 import { WatchlistBilan } from './WatchlistBilan'
@@ -74,6 +75,22 @@ export default async function VisitCrPreviewPage({
     }
   }
   const concretisation = { actions: summarize('action'), decisions: summarize('decision') }
+
+  // Sélection éditoriale du CR (Vincent, 2026-08-17) : les photos candidates au
+  // document — même panier que buildVisitCrDoc (status non écarté), avec l'URL
+  // de prévisualisation déjà résolue. Sans URL, une photo n'est pas proposable.
+  const rawCaptures = await listVisitCaptures(reportId).catch(() => [])
+  const photoRows = rawCaptures.filter((c) => c.status !== 'discarded' && c.kind === 'photo')
+  const previewUrls = await getVisitCapturePreviewUrls(photoRows)
+  const crPhotoCandidates: CrPhotoCandidate[] = photoRows
+    .map((c) => ({
+      id: c.id,
+      url: previewUrls[c.id]?.url,
+      caption: c.body?.trim() || null,
+      includedInCr: c.included_in_cr,
+      triageIntent: c.triage_intent,
+    }))
+    .filter((p): p is CrPhotoCandidate => !!p.url)
 
   // ── LE PDF CHANGE QUAND LA SYNTHÈSE CHANGE — ET SON NOM AUSSI ──────────────
   // Le nom du fichier était unique par VISITE (chantier + date + heure), jamais
@@ -214,6 +231,7 @@ export default async function VisitCrPreviewPage({
             sections={crDocument.sections}
             status={crDocument.status}
             concretisation={concretisation}
+            photos={crPhotoCandidates}
           />
           {isFinal ? (
             /* Document clôturé : la fabrication ne s'affiche plus ici. La

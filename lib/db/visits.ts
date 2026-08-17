@@ -2056,6 +2056,14 @@ export interface VisitCrDoc {
   photos: string[]
   /** Photos sélectionnées AVEC leur légende (commentaire de la capture). */
   photoItems: Array<{ url: string; caption: string | null }>
+  /** Reportage photographique (Tier 2, P0 mémoire/reportage 2026-08-17) : le
+   *  complément des Photos clés — rien n'est perdu. `isMemoire` distingue une
+   *  décision humaine explicite (`memoire`) d'une capture jamais qualifiée
+   *  (`null`) : les deux restent visibles, mais ne sont jamais confondues. */
+  reportagePhotos: Array<{ url: string; caption: string | null; isMemoire: boolean }>
+  /** Combien de photos au-delà de CR_REPORTAGE_PHOTO_CAP ont été omises du PDF
+   *  (jamais silencieusement) — pour « +N autres photos disponibles dans MemorIA ». */
+  reportagePhotosOverflow: number
   /** Bloc « Évolution — même point de vue » (mig 195) : les séries de photos de
    *  référence TOUCHÉES par cette visite, échantillonnées (≤3 séries × ≤4 photos,
    *  premier jour → aujourd'hui). Le client reçoit la transformation dans le CR,
@@ -2136,6 +2144,14 @@ async function fetchCompanyLogoDataUri(url: string): Promise<string | null> {
 // rattachement photo→objet viendra après). Déterministe, sans IA.
 export const CR_FOLLOW_MAX = 5
 export const CR_PHOTO_CAP = 12
+// Reportage photographique (P0 mémoire/reportage, 2026-08-17) : le complément
+// des Photos clés. Depuis la sélection éditoriale (Vincent, 2026-08-17), ce
+// n'est plus une troncature : TOUTE capture avec included_in_cr=true doit
+// apparaître, sans exception silencieuse — « Je ne remettrais pas un cap
+// invisible de 12 qui reproduirait exactement notre problème sous une autre
+// forme. » Ce seuil ne sert plus qu'à déclencher un AVERTISSEMENT non bloquant
+// à l'écran de sélection (« reportage volumineux »), jamais une exclusion.
+export const CR_REPORTAGE_PHOTO_CAP = 30
 
 type CrPhotoLike = {
   triage_intent: CaptureTriageIntent
@@ -2143,6 +2159,9 @@ type CrPhotoLike = {
   captured_at: string | null
   created_at: string
 }
+
+const captureTime = (c: Pick<CrPhotoLike, 'captured_at' | 'created_at'>): number =>
+  Date.parse(c.captured_at ?? c.created_at) || 0
 
 export function selectCrPhotos<T extends CrPhotoLike>(photos: T[]): T[] {
   const includeFollow = photos.filter((c) => c.triage_intent === 'follow').length <= CR_FOLLOW_MAX
@@ -2152,7 +2171,6 @@ export function selectCrPhotos<T extends CrPhotoLike>(photos: T[]): T[] {
     : c.triage_intent === 'action' ? 2
     : c.triage_intent === 'follow' ? 3
     : 4 // mémoire / non tagué — seulement en repli
-  const time = (c: T): number => Date.parse(c.captured_at ?? c.created_at) || 0
   const eligible = photos.filter((c) =>
     c.starred ||
     c.triage_intent === 'reserve' ||
@@ -2160,9 +2178,33 @@ export function selectCrPhotos<T extends CrPhotoLike>(photos: T[]): T[] {
     (includeFollow && c.triage_intent === 'follow'),
   )
   // Repli : visite non triée (aucune photo taguée/clé) → on ne rend pas un CR sans
-  // aucune photo ; on prend les premières, plafonnées.
-  const pool = eligible.length > 0 ? eligible : photos
-  return [...pool].sort((a, b) => weight(a) - weight(b) || time(a) - time(b)).slice(0, CR_PHOTO_CAP)
+  // aucune photo ; on prend les premières, plafonnées. `memoire` reste exclu du
+  // repli : c'est une décision humaine explicite (« documenter, pas mettre en
+  // avant ») — la respecter veut dire ne JAMAIS la faire remonter en Photo clé,
+  // pas même faute de mieux (P0 reportage photographique, 2026-08-17).
+  const untaggedOnly = photos.filter((c) => c.triage_intent !== 'memoire')
+  const pool = eligible.length > 0 ? eligible : untaggedOnly
+  return [...pool].sort((a, b) => weight(a) - weight(b) || captureTime(a) - captureTime(b)).slice(0, CR_PHOTO_CAP)
+}
+
+/**
+ * Reportage photographique (Tier 2) — le complément des Photos clés : tout ce
+ * qui n'a pas été retenu par `selectCrPhotos` reste visible ici, JAMAIS perdu
+ * ni tronqué (Vincent, 2026-08-17 : « je ne remettrais pas un cap invisible »).
+ * Priorité d'affichage : `memoire` (décision humaine explicite) avant `null`
+ * (jamais qualifiée) — les deux ne sont JAMAIS confondues (cf. `isMemoire` en
+ * sortie). `overflow` reste dans la signature pour compat d'appel ; il vaut
+ * toujours 0 désormais.
+ */
+export function selectReportagePhotos<T extends CrPhotoLike & { id: string }>(
+  photos: T[],
+  selectedPhotos: T[],
+): { photos: T[]; overflow: number } {
+  const selectedIds = new Set(selectedPhotos.map((p) => p.id))
+  const pool = photos.filter((c) => !selectedIds.has(c.id))
+  const weight = (c: T): number => (c.triage_intent === 'memoire' ? 0 : 1) // memoire avant null
+  const sorted = [...pool].sort((a, b) => weight(a) - weight(b) || captureTime(a) - captureTime(b))
+  return { photos: sorted, overflow: 0 }
 }
 
 /**
@@ -2246,6 +2288,12 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     .filter((c) => c.kind === 'vocal' && c.body?.trim())
     .map((c) => `« ${c.body!.trim()} »`)
   const photoCaptures = captures.filter((c) => c.kind === 'photo')
+  // Sélection ÉDITORIALE (Vincent, 2026-08-17) : seule la capture explicitement
+  // incluse par l'humain à l'écran du CR entre dans le document — décision
+  // DISTINCTE de triage_intent. `photoCount` (plus bas) reste basé sur
+  // `photoCaptures` NON filtré : MemorIA garde toutes les photos captées, que
+  // le CR les montre ou non.
+  const crPhotoCaptures = photoCaptures.filter((c) => c.included_in_cr)
   const videoCount = captures.filter((c) => c.kind === 'video').length
   const vocalCount = captures.filter((c) => c.kind === 'vocal').length
   const isImportedVisit = visit.origin === 'import'
@@ -2287,7 +2335,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   // Sélection intelligente (par tag + photo clé, plafonnée) : le CR ne montre que
   // ce qui sert à comprendre/décider ; MemorIA garde les autres. URLs signées des
   // seules photos retenues.
-  const selectedPhotos = selectCrPhotos(photoCaptures)
+  const selectedPhotos = selectCrPhotos(crPhotoCaptures)
   const previews: Record<string, { url: string; mime: string | null }> =
     await getVisitCapturePreviewUrls(selectedPhotos).catch(() => ({}))
   const photos = selectedPhotos
@@ -2297,6 +2345,21 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   const photoItems = selectedPhotos
     .map((c) => ({ url: previews[c.id]?.url, caption: c.body?.trim() || null }))
     .filter((p): p is { url: string; caption: string | null } => !!p.url)
+
+  // Reportage photographique (Tier 2) : complément des Photos clés — priorité
+  // memoire (décision explicite) puis null (jamais qualifiée), jamais tronqué.
+  // `selectCrPhotos` reste inchangé ; ceci lit son résultat.
+  const { photos: reportageCaptures, overflow: reportagePhotosOverflow } =
+    selectReportagePhotos(crPhotoCaptures, selectedPhotos)
+  const reportagePreviews: Record<string, { url: string; mime: string | null }> =
+    await getVisitCapturePreviewUrls(reportageCaptures).catch(() => ({}))
+  const reportagePhotos = reportageCaptures
+    .map((c) => ({
+      url: reportagePreviews[c.id]?.url,
+      caption: c.body?.trim() || null,
+      isMemoire: c.triage_intent === 'memoire',
+    }))
+    .filter((p): p is { url: string; caption: string | null; isMemoire: boolean } => !!p.url)
 
   // Positions GPS des captures → carte des observations (le « où »).
   const positions = captures
@@ -2335,7 +2398,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   const kept = captures.filter((c) => c.status === 'kept')
   const textOf = (c: (typeof kept)[number]) => c.body?.trim() || kindLabel[c.kind]
   const points = {
-    memoire: kept.filter((c) => c.triage_intent == null).map(textOf),
+    memoire: kept.filter((c) => c.triage_intent === 'memoire').map(textOf),
     surveiller: kept.filter((c) => c.triage_intent === 'follow').map(textOf),
     reserve: kept.filter((c) => c.triage_intent === 'reserve').map(textOf),
     action: kept.filter((c) => c.triage_intent === 'action').map(textOf),
@@ -2410,6 +2473,8 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     actions: ctx.capturedActions,
     photos: isImportedVisit ? importedPhotoItems.map((p) => p.url) : photos,
     photoItems: isImportedVisit ? importedPhotoItems : photoItems,
+    reportagePhotos,
+    reportagePhotosOverflow,
     evolutions,
     positions,
     photoCount: isImportedVisit ? importedPhotoCount : photoCaptures.length,

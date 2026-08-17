@@ -40,6 +40,26 @@ export interface VisitPhotoItem {
   annotatedOriginalId: string | null
   /** Instant réel de la capture, pour l'annotée : repris de l'original. */
   capturedAt: string | null
+  /** Qualification humaine (débrief) — sert UNIQUEMENT à choisir l'aperçu ; ne
+   *  filtre jamais cette galerie, qui reste « tout ce qui appartient à la
+   *  visite » (Vincent, 2026-08-17 — à ne pas confondre avec la sélection
+   *  éditoriale du compte-rendu, `included_in_cr`, une surface différente). */
+  triageIntent: 'action' | 'follow' | 'reserve' | 'memoire' | null
+}
+
+/** Aperçu de la galerie (Vincent, 2026-08-17) : la fiche visite montre TOUT via
+ *  « Tout voir », mais n'ouvre plus les 11 photos d'emblée — 3 miniatures
+ *  choisies par pertinence suffisent à raconter « quelles preuves existent ». */
+const PREVIEW_COUNT = 3
+
+/** Photo clé (starred/action/réserve/à suivre) > Documentation (mémoire) >
+ *  chronologie (jamais qualifiée) — même priorité que la sélection du CR
+ *  (`selectCrPhotos`), mais ici pour CHOISIR l'aperçu, jamais pour exclure :
+ *  toutes les photos restent dans la galerie complète, dans l'ordre du terrain. */
+function previewWeight(p: VisitPhotoItem): number {
+  if (p.starred || p.triageIntent === 'action' || p.triageIntent === 'reserve' || p.triageIntent === 'follow') return 0
+  if (p.triageIntent === 'memoire') return 1
+  return 2
 }
 
 export function VisitPhotosSection({ siteId, reportId, photos }: {
@@ -48,6 +68,7 @@ export function VisitPhotosSection({ siteId, reportId, photos }: {
   photos: VisitPhotoItem[]
 }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null)
+  const [expanded, setExpanded] = useState(false)
 
   if (photos.length === 0) {
     return (
@@ -64,54 +85,75 @@ export function VisitPhotosSection({ siteId, reportId, photos }: {
     )
   }
 
+  // Aperçu par défaut (Vincent, 2026-08-17) : la galerie exhaustive écrasait la
+  // fiche. On ne réduit rien du CONTENU — juste ce qui s'affiche d'emblée.
+  const showPreview = !expanded && photos.length > PREVIEW_COUNT
+  const previewPicks = showPreview
+    ? photos
+        .map((p, i) => ({ p, i }))
+        .sort((a, b) => previewWeight(a.p) - previewWeight(b.p) || a.i - b.i)
+        .slice(0, PREVIEW_COUNT)
+    : []
+  const overflowCount = photos.length - PREVIEW_COUNT
+
   return (
     <section id="photos" className="rounded-xl border bg-card p-4 space-y-3">
-      <h2 className="flex items-center gap-2 text-[15px] font-semibold">
-        <Camera className="h-4 w-4 text-sky-600" aria-hidden /> Photos de la visite
-        <span className="text-xs font-normal text-muted-foreground">
-          {photos.length} · cliquez pour agrandir, annoter, légender
-        </span>
-      </h2>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
-        {photos.map((p, i) => (
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-[15px] font-semibold">
+          <Camera className="h-4 w-4 text-sky-600" aria-hidden /> Photos de la visite
+          <span className="text-xs font-normal text-muted-foreground">
+            {photos.length}{!showPreview && ' · cliquez pour agrandir, annoter, légender'}
+          </span>
+        </h2>
+        {showPreview && (
           <button
-            key={p.id}
             type="button"
-            onClick={() => setOpenIndex(i)}
-            className="group text-left"
-            aria-label={`Ouvrir la ${p.kind === 'video' ? 'vidéo' : 'photo'} ${i + 1}`}
+            onClick={() => setExpanded(true)}
+            className="text-[13px] font-medium text-primary hover:underline"
           >
-            <div className="relative aspect-video overflow-hidden rounded-lg border bg-muted">
-              {p.url ? (
-                p.kind === 'video' ? (
-                  <video src={p.url} muted preload="metadata" className="h-full w-full object-cover" />
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={p.url} alt={p.caption ?? ''} className="h-full w-full object-cover transition-opacity group-hover:opacity-90" />
-                )
-              ) : (
-                <div className="grid h-full w-full place-items-center text-muted-foreground">
-                  <ImageOff className="h-6 w-6" aria-hidden />
-                </div>
-              )}
-              <div className="absolute left-1.5 top-1.5 flex gap-1">
-                {p.kind === 'video' && (
-                  <span className="rounded bg-black/60 p-1 text-white"><Video className="h-3 w-3" aria-hidden /></span>
-                )}
-                {p.annotatedOriginalId && (
-                  <span className="rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">Annotée</span>
-                )}
-              </div>
-              {p.starred && (
-                <span title="Photo clé — privilégiée dans le compte-rendu" className="absolute right-1.5 top-1.5 rounded bg-black/60 p-1 text-amber-300">
-                  <Star className="h-3 w-3 fill-current" aria-hidden />
-                </span>
-              )}
-            </div>
-            {p.caption && <p className="mt-1 truncate text-[11.5px] text-muted-foreground">{p.caption}</p>}
+            Tout voir →
           </button>
-        ))}
+        )}
       </div>
+
+      {showPreview ? (
+        <div className="grid grid-cols-4 gap-2">
+          {previewPicks.map(({ p, i }) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setOpenIndex(i)}
+              className="group text-left"
+              aria-label={`Ouvrir la ${p.kind === 'video' ? 'vidéo' : 'photo'} ${i + 1}`}
+            >
+              <PhotoThumb p={p} />
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="grid aspect-video place-items-center rounded-lg border bg-muted text-[13px] font-semibold text-muted-foreground hover:bg-muted/70"
+            aria-label={`Voir les ${overflowCount} autres photos`}
+          >
+            +{overflowCount}
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
+          {photos.map((p, i) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setOpenIndex(i)}
+              className="group text-left"
+              aria-label={`Ouvrir la ${p.kind === 'video' ? 'vidéo' : 'photo'} ${i + 1}`}
+            >
+              <PhotoThumb p={p} />
+              {p.caption && <p className="mt-1 truncate text-[11.5px] text-muted-foreground">{p.caption}</p>}
+            </button>
+          ))}
+        </div>
+      )}
 
       {openIndex !== null && (
         <PhotoViewer
@@ -124,6 +166,40 @@ export function VisitPhotosSection({ siteId, reportId, photos }: {
         />
       )}
     </section>
+  )
+}
+
+// ── LA MINIATURE — partagée entre l'aperçu et la galerie complète ────────────
+
+function PhotoThumb({ p }: { p: VisitPhotoItem }) {
+  return (
+    <div className="relative aspect-video overflow-hidden rounded-lg border bg-muted">
+      {p.url ? (
+        p.kind === 'video' ? (
+          <video src={p.url} muted preload="metadata" className="h-full w-full object-cover" />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={p.url} alt={p.caption ?? ''} className="h-full w-full object-cover transition-opacity group-hover:opacity-90" />
+        )
+      ) : (
+        <div className="grid h-full w-full place-items-center text-muted-foreground">
+          <ImageOff className="h-6 w-6" aria-hidden />
+        </div>
+      )}
+      <div className="absolute left-1.5 top-1.5 flex gap-1">
+        {p.kind === 'video' && (
+          <span className="rounded bg-black/60 p-1 text-white"><Video className="h-3 w-3" aria-hidden /></span>
+        )}
+        {p.annotatedOriginalId && (
+          <span className="rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">Annotée</span>
+        )}
+      </div>
+      {p.starred && (
+        <span title="Photo clé — privilégiée dans le compte-rendu" className="absolute right-1.5 top-1.5 rounded bg-black/60 p-1 text-amber-300">
+          <Star className="h-3 w-3 fill-current" aria-hidden />
+        </span>
+      )}
+    </div>
   )
 }
 

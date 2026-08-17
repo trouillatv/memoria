@@ -129,6 +129,14 @@ const styles = StyleSheet.create({
   evoPhoto: { width: 120, height: 80, objectFit: 'cover', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3 },
   evoDate: { fontSize: 7.5, color: COLORS.muted, marginTop: 2, textAlign: 'center' },
 
+  // Reportage photographique (Tier 2, P0 mémoire/reportage 2026-08-17) : compact,
+  // même gabarit que la bande « Évolution » — une galerie dense, jamais une preuve
+  // mise en avant comme les Photos clés.
+  reportageGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  reportageCell: { width: 120, marginRight: 8, marginBottom: 8 },
+  reportagePhoto: { width: 120, height: 80, objectFit: 'cover', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3 },
+  reportageCap: { fontSize: 7.5, color: COLORS.muted, marginTop: 2 },
+
   // Carte des observations (schéma).
   map: { width: MAP_W, height: MAP_H, backgroundColor: '#f1f5f9', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 5, position: 'relative' },
   mapImage: { width: MAP_W, height: MAP_H, borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 5, objectFit: 'cover' },
@@ -755,6 +763,35 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
                 </View>
               ))}
             </View>
+          </View>
+        )}
+
+        {/* Reportage photographique — le complément des Photos clés : rien n'est
+            perdu (Vincent, 2026-08-17). Priorité memoire (décision humaine
+            explicite) puis null (jamais qualifiée) — jamais présentées comme si
+            elles portaient une classification qu'elles n'ont pas. Galerie DENSE,
+            jamais mise en avant comme les Photos clés. */}
+        {doc.reportagePhotos.length > 0 && (
+          <View style={styles.section}>
+            <SectionTitle
+              text="Reportage photographique"
+              color={COLORS.slate}
+              sub={`${doc.reportagePhotos.length}`}
+            />
+            <View style={styles.reportageGrid}>
+              {doc.reportagePhotos.map((p, i) => (
+                <View key={i} style={styles.reportageCell} wrap={false}>
+                  {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
+                  <Image src={p.url} style={styles.reportagePhoto} />
+                  {p.caption ? <Text style={styles.reportageCap}>{p.caption}</Text> : null}
+                </View>
+              ))}
+            </View>
+            {doc.reportagePhotosOverflow > 0 && (
+              <Text style={styles.mediaNote}>
+                +{doc.reportagePhotosOverflow} autre{doc.reportagePhotosOverflow > 1 ? 's' : ''} photo{doc.reportagePhotosOverflow > 1 ? 's' : ''} disponible{doc.reportagePhotosOverflow > 1 ? 's' : ''} dans MemorIA.
+              </Text>
+            )}
           </View>
         )}
 

@@ -38,7 +38,9 @@ import { ArrowLeft, Camera, ChevronRight } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
+import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
 import { getOrCreateVisitCrDocument } from '@/lib/db/visit-cr-documents'
+import type { CrPhotoCandidate } from '@/app/(field)/m/visite/[reportId]/cr/CrDocumentSections'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { MemoriaRetained } from '@/app/(field)/m/visite/[reportId]/cr/MemoriaRetained'
 import { WatchlistBilan } from '@/app/(field)/m/visite/[reportId]/cr/WatchlistBilan'
@@ -70,6 +72,21 @@ export default async function VisitCrDesktopPage({
     getOrCreateVisitCrDocument(visitId, user.id).catch(() => null),
   ])
   if (!doc) notFound()
+
+  // Sélection éditoriale du CR (Vincent, 2026-08-17) : même panier qu'en
+  // mobile — un seul moteur, deux surfaces.
+  const rawCaptures = await listVisitCaptures(visitId).catch(() => [])
+  const photoRows = rawCaptures.filter((c) => c.status !== 'discarded' && c.kind === 'photo')
+  const previewUrls = await getVisitCapturePreviewUrls(photoRows)
+  const crPhotoCandidates: CrPhotoCandidate[] = photoRows
+    .map((c) => ({
+      id: c.id,
+      url: previewUrls[c.id]?.url,
+      caption: c.body?.trim() || null,
+      includedInCr: c.included_in_cr,
+      triageIntent: c.triage_intent,
+    }))
+    .filter((p): p is CrPhotoCandidate => !!p.url)
 
   const debut = visit.started_at ?? visit.created_at
 
@@ -126,6 +143,7 @@ export default async function VisitCrDesktopPage({
           sections={crDocument.sections}
           status={crDocument.status}
           transcriptions={doc.transcriptions}
+          photos={crPhotoCandidates}
         />
       ) : (
         // Aucun document : il n'y a rien à corriger ni à arbitrer tant que

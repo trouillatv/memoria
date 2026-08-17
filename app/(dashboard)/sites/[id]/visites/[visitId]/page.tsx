@@ -119,6 +119,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
       starred: c.starred,
       annotatedOriginalId: c.annotated_original_id,
       capturedAt: c.captured_at,
+      triageIntent: c.triage_intent,
     }))
   }
 
@@ -615,14 +616,20 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
             </section>
           )}
 
-          {/* Les preuves terrain, reprises au bureau : galerie + grand format +
-              annotation + légende — même modèle et mêmes gestes que le mobile. */}
+          {/* Ordre de lecture (Vincent, 2026-08-17) : ce que ça change → ce qui
+              reste à décider → les preuves photo (aperçu) → le déroulé terrain.
+              Les preuves terrain, reprises au bureau — même modèle et mêmes
+              gestes que le mobile — s'intercalent DANS VisitDesk (photosSlot),
+              entre les arbitrages et la chronologie, pas avant elles. */}
           {!isImport && (
-            <VisitPhotosSection siteId={id} reportId={visitId} photos={photosVisite} />
-          )}
-
-          {!isImport && (
-            <VisitDesk narrative={narrative} media={media} canPromote={doc?.status === 'draft'} crHref={crHref} changes={changes} />
+            <VisitDesk
+              narrative={narrative}
+              media={media}
+              canPromote={doc?.status === 'draft'}
+              crHref={crHref}
+              changes={changes}
+              photosSlot={<VisitPhotosSection siteId={id} reportId={visitId} photos={photosVisite} />}
+            />
           )}
         </div>
 

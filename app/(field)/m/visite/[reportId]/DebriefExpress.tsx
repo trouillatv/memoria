@@ -153,6 +153,7 @@ export function DebriefExpress({
         decision === 'action' ? 'action'
         : decision === 'surveiller' ? 'follow'
         : decision === 'reserve' ? 'reserve'
+        : decision === 'memoire' ? 'memoire'
         : null,
       ...(comment !== undefined && canComment ? { body: comment.trim() || null } : {}),
     }
@@ -306,14 +307,14 @@ export function DebriefExpress({
           « C'est terminé » qui casse le rythme avant de voir son travail. */}
       <div className="fixed inset-x-0 bottom-0 border-t bg-background/95 p-3 backdrop-blur safe-bottom">
         <div className="mx-auto max-w-md space-y-2">
-          {/* Garde-fou (F12) : une capture non triée est gardée en Mémoire — et
-              une photo « Mémoire » n'apparaît PAS dans le compte-rendu. On le DIT
-              avant de fermer, une fois, sans bloquer. */}
+          {/* Garde-fou (F12) : une capture non triée reste visible dans le compte-rendu
+              (rien n'est perdu — les photos rejoignent le Reportage photographique)
+              mais n'entre PAS dans les Photos clés. On le DIT avant de fermer, une
+              fois, sans bloquer. */}
           {confirmFinish && triaged < total && (
             <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-[13px] leading-snug text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
               <p>
-                {total - triaged} capture{total - triaged > 1 ? 's' : ''} non triée{total - triaged > 1 ? 's' : ''} ser{total - triaged > 1 ? 'ont' : 'a'} gardée{total - triaged > 1 ? 's' : ''} en mémoire —
-                elle{total - triaged > 1 ? 's' : ''} n&apos;apparaîtr{total - triaged > 1 ? 'ont' : 'a'} <span className="font-semibold">pas dans le compte-rendu</span>.
+                {total - triaged} capture{total - triaged > 1 ? 's' : ''} non triée{total - triaged > 1 ? 's' : ''} rester{total - triaged > 1 ? 'ont' : 'a'} visible{total - triaged > 1 ? 's' : ''} dans le compte-rendu — mais n&apos;apparaîtr{total - triaged > 1 ? 'ont' : 'a'} pas parmi les <span className="font-semibold">Photos clés</span>.
               </p>
               <button
                 type="button"
@@ -488,7 +489,7 @@ function captureLabel(c: VisitCaptureRow): string {
 
 // Tag métier d'une capture déjà triée — chip discret dans la liste récap.
 const TAG_META: Record<TriageDecision, { label: string; Icon: typeof BookMarked; cls: string }> = {
-  memoire: { label: 'Mémoire', Icon: BookMarked, cls: 'text-slate-600 dark:text-slate-300' },
+  memoire: { label: 'Documentation', Icon: BookMarked, cls: 'text-slate-600 dark:text-slate-300' },
   surveiller: { label: 'À surveiller', Icon: Eye, cls: 'text-amber-600 dark:text-amber-400' },
   reserve: { label: 'Réserve', Icon: AlertTriangle, cls: 'text-rose-600 dark:text-rose-400' },
   action: { label: 'Action', Icon: Check, cls: 'text-emerald-600 dark:text-emerald-400' },
@@ -501,7 +502,10 @@ function currentDecision(c: VisitCaptureRow): TriageDecision | null {
     if (c.triage_intent === 'action') return 'action'
     if (c.triage_intent === 'follow') return 'surveiller'
     if (c.triage_intent === 'reserve') return 'reserve'
-    return 'memoire'
+    if (c.triage_intent === 'memoire') return 'memoire'
+    // triage_intent null = jamais qualifiée explicitement — reste « À trier »,
+    // distinct d'une décision volontaire « memoire » (P0 reportage photo).
+    return null
   }
   return null
 }

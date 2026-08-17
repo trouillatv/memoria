@@ -27,7 +27,10 @@ function currentDecision(c: VisitCaptureRow): TriageDecision | null {
     if (c.triage_intent === 'action') return 'action'
     if (c.triage_intent === 'follow') return 'surveiller'
     if (c.triage_intent === 'reserve') return 'reserve'
-    return 'memoire'
+    if (c.triage_intent === 'memoire') return 'memoire'
+    // triage_intent null = jamais qualifiée explicitement : aucun tag ne
+    // doit apparaître sélectionné (distinct de « memoire », décision volontaire).
+    return null
   }
   return null
 }
@@ -35,11 +38,12 @@ function currentDecision(c: VisitCaptureRow): TriageDecision | null {
 const KEEP_TAGS: Array<{
   decision: Exclude<TriageDecision, 'delete'>
   label: string
+  sub?: string
   icon: typeof BookMarked
   swipe: string
   cls: string
 }> = [
-  { decision: 'memoire', label: 'Un élément à conserver', icon: BookMarked, swipe: '←', cls: 'border-slate-300 text-slate-700 dark:text-slate-200' },
+  { decision: 'memoire', label: 'Documenter la visite', sub: 'Conserver comme documentation photographique de la visite', icon: BookMarked, swipe: '←', cls: 'border-slate-300 text-slate-700 dark:text-slate-200' },
   { decision: 'surveiller', label: 'Un point à surveiller', icon: Eye, swipe: '↑', cls: 'border-amber-300 text-amber-700 dark:text-amber-300' },
   // « Une réserve » etait le SEUL tag sans verbe — les trois autres disent « à
   // conserver », « à surveiller », « à prévoir ». Dans un écran où tous les
@@ -294,7 +298,10 @@ export function CaptureTriage({
                 className={`flex items-center gap-2 rounded-xl border-2 px-3 py-3 text-left text-sm font-medium active:scale-[0.98] transition ${t.cls} ${active ? 'bg-muted ring-2 ring-current ring-offset-1' : 'bg-background'}`}
               >
                 {active ? <Check className="h-5 w-5 shrink-0" /> : <Icon className="h-5 w-5 shrink-0" />}
-                <span className="min-w-0 flex-1 leading-tight">{t.label}</span>
+                <span className="min-w-0 flex-1 leading-tight">
+                  {t.label}
+                  {t.sub && <span className="mt-0.5 block text-[11px] font-normal text-muted-foreground/70">{t.sub}</span>}
+                </span>
                 <span className="shrink-0 text-xs text-muted-foreground/60" aria-hidden>{t.swipe}</span>
               </button>
             )

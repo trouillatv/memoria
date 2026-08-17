@@ -19,6 +19,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getVisit } from '@/lib/db/visits'
 import { updateReportDocumentSections } from '@/lib/db/report-documents'
 import { getVisitCrDocument, finalizeVisitCr, reopenVisitCr } from '@/lib/db/visit-cr-documents'
+import { setCaptureIncludedInCr } from '@/lib/db/visit-captures'
 import { restoreSectionProposal } from '@/lib/visits/cr-visite-policy'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
 
@@ -113,6 +114,30 @@ async function reread(reportId: string, error: string): Promise<Result> {
     ok: true,
     document: { id: doc.id, status: doc.status, sections: doc.sections, updatedAt: doc.updated_at },
   }
+}
+
+// ── SÉLECTION ÉDITORIALE DES PHOTOS (Vincent, 2026-08-17) ───────────────────
+//
+// Une case décochée retire la photo du DOCUMENT, uniquement. Elle ne touche
+// jamais triage_intent ni status : la qualification métier et la mémoire de
+// MemorIA restent intactes. Même verrou que le texte du CR (brouillon
+// seulement) — une fois validé, le document ne se recompose plus.
+
+/** Inclut/retire une capture du compte-rendu (case à cocher, jamais silencieux). */
+export async function setCaptureIncludedInCrAction(
+  reportId: string,
+  captureId: string,
+  included: boolean,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const opened = await openDraft(reportId)
+  if (!opened.ok) return opened
+
+  try {
+    await setCaptureIncludedInCr(captureId, included)
+  } catch {
+    return { ok: false, error: 'Mise à jour impossible' }
+  }
+  return { ok: true }
 }
 
 // ── LE CYCLE DE VIE, CÔTÉ ÉCRAN ─────────────────────────────────────────────

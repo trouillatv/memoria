@@ -57,12 +57,18 @@ export function VisitDesk({
   canPromote,
   crHref,
   changes,
+  photosSlot,
 }: {
   narrative: VisitNarrative
   media: CaptureMedia
   canPromote: boolean
   crHref: string | null
   changes: VisitChangeGroup[]
+  /** Les preuves photo de la visite (Vincent, 2026-08-17) : entre les
+   *  arbitrages et la chronologie — « voilà ce que ça change → voilà ce que tu
+   *  dois décider → voilà les preuves et le déroulé ». Optionnel : le mobile
+   *  n'a pas cette galerie desktop. */
+  photosSlot?: React.ReactNode
 }) {
   const [preuve, setPreuve] = useState<NarrativeCapture | null>(null)
   const { captured, understood, ignored } = narrative
@@ -83,9 +89,12 @@ export function VisitDesk({
 
   return (
     <div className="space-y-4">
-      <Chronologie captures={terrain} media={media} onOuvrir={setPreuve} />
+      {/* Voilà ce que ça change → voilà ce que tu dois décider → voilà les
+          preuves et le déroulé (Vincent, 2026-08-17). */}
       <VisitChanges changes={changes} />
       <EnAttente propositions={enAttente} crHref={crHref} />
+      {photosSlot}
+      <Chronologie captures={terrain} media={media} onOuvrir={setPreuve} />
       <PiecesVersees pieces={versees} media={media} onOuvrir={setPreuve} />
       <NonRetenu ignored={ignored} total={ecarteTotal} activeBySubject={activeBySubject} />
 

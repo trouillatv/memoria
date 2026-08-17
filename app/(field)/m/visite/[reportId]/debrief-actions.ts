@@ -38,7 +38,7 @@ export type TriageDecision = 'memoire' | 'surveiller' | 'reserve' | 'action' | '
 // Décision métier → état technique (caché au terrain). AUCUN tag ne supprime :
 // seul « delete » (volontaire) pose discarded.
 const MAP: Record<TriageDecision, { status: 'kept' | 'discarded'; intent: CaptureTriageIntent }> = {
-  memoire: { status: 'kept', intent: null },
+  memoire: { status: 'kept', intent: 'memoire' },
   surveiller: { status: 'kept', intent: 'follow' },
   reserve: { status: 'kept', intent: 'reserve' },
   action: { status: 'kept', intent: 'action' },

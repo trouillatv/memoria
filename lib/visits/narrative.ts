@@ -150,6 +150,8 @@ export function explainCapture(capture: { kept: boolean; intent: string | null }
       return { code: 'capture.tagged.reserve', label: 'Retenue, taguée « réserve à lever »' }
     case 'follow':
       return { code: 'capture.tagged.follow', label: 'Retenue, taguée « point à surveiller »' }
+    case 'memoire':
+      return { code: 'capture.tagged.memoire', label: 'Retenue, documentée volontairement' }
     default:
       return { code: 'capture.kept', label: 'Retenue comme élément à conserver' }
   }
