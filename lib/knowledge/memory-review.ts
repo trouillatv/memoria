@@ -67,6 +67,11 @@ export interface ConfirmedItem {
    *  types sans fiche propre (connaissances, vigilances) — on ne fabrique pas de
    *  lien qui n'ouvre rien. */
   href: string | null
+  /** L'id de la `site_knowledge_entries` correspondante — présent uniquement
+   *  pour le groupe « Ce que le chantier sait » (P5-F2a). Porte le geste
+   *  « Marquer comme obsolète » : seule cette table a un cycle de vie
+   *  (archivage/supersession), les autres groupes n'en ont pas encore. */
+  knowledgeEntryId: string | null
 }
 
 export interface MemoryReview {
@@ -109,10 +114,10 @@ export async function getMemoryReview(siteId: string, options?: { includeWork?: 
   const confirmed: ConfirmedItem[] = [
     ...entries
       .filter((e) => e.kind === 'durable_knowledge')
-      .map((e) => ({ id: e.id, group: 'Ce que le chantier sait', title: e.title, nature: natureOf(e.kind), href: null })),
+      .map((e) => ({ id: e.id, group: 'Ce que le chantier sait', title: e.title, nature: natureOf(e.kind), href: null, knowledgeEntryId: e.id })),
     ...entries
       .filter((e) => e.kind !== 'durable_knowledge')
-      .map((e) => ({ id: e.id, group: 'Ce que le chantier sait', title: e.title, nature: natureOf(e.kind), href: null })),
+      .map((e) => ({ id: e.id, group: 'Ce que le chantier sait', title: e.title, nature: natureOf(e.kind), href: null, knowledgeEntryId: e.id })),
     ...intervenants.map((i) => ({
       // D1 (P0-3D) : personne ou entreprise si connues, sinon le rôle porte
       // seul l'affichage — jamais un « — ELECTRICIEN » amputé.
@@ -120,12 +125,14 @@ export async function getMemoryReview(siteId: string, options?: { includeWork?: 
       title: [i.contactName || i.companyShort || i.companyName || null, i.role].filter(Boolean).join(' — ') || i.role,
       nature: null,
       href: `/sites/${siteId}/intervenant/${i.id}`,
+      knowledgeEntryId: null,
     })),
     ...decisions.map((d) => ({
       id: d.id, group: 'Décisions', title: d.titre, nature: null,
       href: `/sites/${siteId}/decision/${d.id}`,
+      knowledgeEntryId: null,
     })),
-    ...watchpoints.map((w) => ({ id: w.id, group: 'Points de vigilance', title: w.title, nature: null, href: null })),
+    ...watchpoints.map((w) => ({ id: w.id, group: 'Points de vigilance', title: w.title, nature: null, href: null, knowledgeEntryId: null })),
   ]
 
   return {

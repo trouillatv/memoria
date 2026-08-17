@@ -14,6 +14,7 @@ import { Check, ChevronRight } from 'lucide-react'
 import { MemoryInbox } from '@/app/(field)/m/site/[siteId]/MemoryReviewPanel'
 import { WhyButton } from '@/components/provenance/WhyButton'
 import { PrepareSitePassationButton } from '../memory/PrepareSitePassationButton'
+import { ArchiveKnowledgeEntryButton } from './ArchiveKnowledgeEntryButton'
 import type { MemoryReview } from '@/lib/knowledge/memory-review'
 import type { MemorySignal } from '@/lib/db/site-memory-signals'
 import type { DbTeam } from '@/types/db'
@@ -82,6 +83,11 @@ export function MemoireConfirmer({
                         {c.nature && <span className="ml-1.5 text-[11px] text-muted-foreground">· {c.nature}</span>}
                         {c.group === 'Décisions' && (
                           <span className="mt-0.5 block"><WhyButton objectType="decision" objectId={c.id} label="Voir l’origine" /></span>
+                        )}
+                        {c.knowledgeEntryId && (
+                          <span className="mt-0.5 block">
+                            <ArchiveKnowledgeEntryButton siteId={siteId} entryId={c.knowledgeEntryId} />
+                          </span>
                         )}
                       </span>
                     </li>
