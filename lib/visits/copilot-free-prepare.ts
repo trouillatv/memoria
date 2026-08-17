@@ -37,7 +37,9 @@ import {
 import { classifyIntent } from '@/lib/visits/copilot-classify'
 import { understandQuestion, mergeComprehension } from '@/lib/visits/copilot-comprehension'
 import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
-import { buildCopilotProposal, buildScheduleProposal, buildObservationProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
+import { resolveActorTarget, resolveActorCandidateById, type ActorCandidate } from '@/lib/db/actor-alias-resolve'
+import { extractIdentityCorrection } from '@/lib/visits/copilot-identity-correction'
+import { buildCopilotProposal, buildScheduleProposal, buildObservationProposal, buildIdentityCorrectionProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { parseScheduleFromQuestion, toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
 import { detectIntent, readRemainsPlausible } from '@/lib/visits/copilot-intent-router'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -260,12 +262,19 @@ export async function prepareCopilotAnswer(
   // Vérification d'accès — l'utilisateur doit avoir accès au chantier.
   // Si la route vocale l'a déjà décidé via `resolveResourceAccess` (même
   // primitive que `requireSiteAccess`), on ne paie pas une seconde fois.
+  // `organizationId` est retenu pour CORRECTION_IDENTITY (P4-B.2) : la
+  // résolution d'acteur doit être bornée à l'organisation de l'utilisateur,
+  // jamais à un organization_id fourni côté client.
+  let organizationId: string | null = null
   if (!injected) {
     try {
-      await requireSiteAccess(siteId)
+      const access = await requireSiteAccess(siteId)
+      organizationId = access.organizationId
     } catch {
       return { kind: 'result', result: { kind: 'answer', text: 'Accès non autorisé.', references: [], source: 'fallback', interactionId: null } }
     }
+  } else {
+    organizationId = injected.access.organizationId
   }
 
   // Utilisateur courant (pour les prep items)
@@ -611,6 +620,106 @@ export async function prepareCopilotAnswer(
         result: {
           kind: 'proposal',
           text: `Voici le constat que je propose d'enregistrer. Vérifiez et ajustez avant de valider.`,
+          proposal,
+          interactionId: iid,
+        },
+      }
+    }
+
+    // ── CORRECTION_IDENTITY ──────────────────────────────────────────────────
+    // « Quand je dis X, je parle de Y » — enseigner qu'une mention désigne un
+    // acteur existant (company OU company_contact), P4-B.2. La cible n'est
+    // JAMAIS créée ici : seule une résolution vers une identité déjà en base
+    // produit un brouillon ; sinon on l'explique plutôt que d'halluciner un
+    // acteur. `organizationId` vient de `requireSiteAccess`/l'accès précalculé,
+    // jamais d'une valeur transmise par le client.
+    if (intentResult.intent === 'CORRECTION_IDENTITY') {
+      const extraction = extractIdentityCorrection(question)
+      if (!extraction) {
+        const clarText = "Je n'ai pas compris cette correction d'identité. Reformulez, par exemple : « Quand je dis Clim Expert, je parle de Clim Expair »."
+        return { kind: 'result', result: { kind: 'answer', text: clarText, references: [], source: 'fallback', interactionId: null, spokenText: spokenFromShortAnswer(clarText) } }
+      }
+      if (!organizationId) {
+        return { kind: 'result', result: { kind: 'answer', text: 'Accès non autorisé.', references: [], source: 'fallback', interactionId: null } }
+      }
+
+      let target: ActorCandidate | null = null
+
+      if (selectedCandidateId) {
+        // Correction locale du tour (même court-circuit que OBSERVATION) : l'utilisateur
+        // vient de trancher une ambiguïté déjà posée sur CETTE question.
+        target = await resolveActorCandidateById(organizationId, selectedCandidateId)
+      } else {
+        const resolution = await resolveActorTarget(organizationId, extraction.target)
+        if (resolution.kind === 'resolved') {
+          target = resolution.candidate
+        } else if (resolution.kind === 'ambiguous') {
+          const labels = resolution.candidates.map((c) => `• ${c.label}`).join('\n')
+          const iid = await logCopilotInteraction({
+            siteId, userId, conversationId: conversationId ?? null,
+            question, conversationMode: 'free',
+            primaryIntent: 'proposal_request', secondaryIntents: [],
+            scope: 'actor', resolvedSubjectIds: [],
+            answerText: null, answerMode: 'clarification', answerStatus: 'ambiguous',
+            citedReferenceCount: 0, sourcesUsed: [],
+            model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+            estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+          })
+          return {
+            kind: 'result',
+            result: {
+              kind: 'clarification',
+              text: `Plusieurs acteurs correspondent à « ${extraction.target} ». Lequel souhaitez-vous désigner ?\n\n${labels}`,
+              candidates: resolution.candidates.map((c) => ({ id: c.id, label: c.label })),
+              interactionId: iid,
+            },
+          }
+        }
+      }
+
+      if (!target) {
+        const iid = await logCopilotInteraction({
+          siteId, userId, conversationId: conversationId ?? null,
+          question, conversationMode: 'free',
+          primaryIntent: 'proposal_request', secondaryIntents: [],
+          scope: 'actor', resolvedSubjectIds: [],
+          answerText: null, answerMode: 'clarification', answerStatus: 'not_found',
+          citedReferenceCount: 0, sourcesUsed: [],
+          model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+          estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+        })
+        const clarText = `Je ne trouve aucun acteur correspondant à « ${extraction.target} » sur ce chantier.`
+        return { kind: 'result', result: { kind: 'answer', text: clarText, references: [], source: 'fallback', interactionId: iid, spokenText: spokenFromShortAnswer(clarText) } }
+      }
+
+      const proposal = buildIdentityCorrectionProposal({
+        alias: extraction.alias,
+        targetKind: target.kind,
+        targetId: target.id,
+        targetLabel: target.label,
+        proposedNature: extraction.proposedNature,
+      })
+
+      const iid = await logCopilotInteraction({
+        siteId, userId, conversationId: conversationId ?? null,
+        question, conversationMode: 'free',
+        primaryIntent: 'proposal_request', secondaryIntents: [],
+        scope: 'actor',
+        resolvedSubjectIds: [],
+        answerText: null, answerMode: 'deterministic_fallback', answerStatus: 'answered',
+        citedReferenceCount: 0, sourcesUsed: [],
+        model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+        estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+        proposalKind: proposal.kind,
+        proposalId: proposal.proposalId,
+        proposalStatus: 'shown',
+      })
+
+      return {
+        kind: 'result',
+        result: {
+          kind: 'proposal',
+          text: 'Voici la correspondance que je propose de retenir. Vérifiez et ajustez avant de valider.',
           proposal,
           interactionId: iid,
         },

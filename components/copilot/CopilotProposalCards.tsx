@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Loader2, Check, ChevronDown, ChevronUp } from 'lucide-react'
-import { createCopilotAction, addCopilotToBriefing, createCopilotScheduledEvent, createCopilotObservation } from '@/app/(dashboard)/sites/[id]/copilot-write-action'
+import { createCopilotAction, addCopilotToBriefing, createCopilotScheduledEvent, createCopilotObservation, createCopilotActorAlias } from '@/app/(dashboard)/sites/[id]/copilot-write-action'
 import { trackCopilotProposalCancelled } from '@/app/(dashboard)/sites/[id]/copilot-event-action'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { cn } from '@/lib/utils'
@@ -486,6 +486,132 @@ export function ScheduleProposalCard({
       >
         {whyOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
         Détails
+      </button>
+      {whyOpen && (
+        <p className="text-[12px] text-muted-foreground leading-relaxed pl-4 border-l border-border">
+          {proposal.whyText}
+        </p>
+      )}
+
+      <div className="flex gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={confirm}
+          disabled={saving || !canConfirm}
+          className="flex items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-[12px] font-medium text-white hover:bg-violet-600 disabled:opacity-40 transition-colors"
+        >
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+          Valider
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setCancelled(true)
+            if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+          }}
+          disabled={saving}
+          className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+        >
+          Annuler
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── ActorAliasProposalCard — correspondance d'identité d'acteur (P4-B.2) ──────
+//
+// La cible (company/contact) est toujours déjà résolue avec certitude quand
+// cette carte est affichée (copilot-free-prepare.ts ne construit ce brouillon
+// qu'après resolveActorTarget → 'resolved') : elle n'est donc pas éditable.
+// Seule `aliasNature` reste une proposition initiale modifiable par
+// l'utilisateur avant confirmation.
+
+const ALIAS_NATURE_LABELS: Record<'business_alias' | 'transcription_alias', string> = {
+  business_alias: 'Autre nom métier (ex. surnom, nom d’usage)',
+  transcription_alias: 'Variante de prononciation / transcription',
+}
+
+export function ActorAliasProposalCard({
+  siteId,
+  proposal,
+  interactionId,
+  onDone,
+}: {
+  siteId: string
+  proposal: CopilotProposal
+  interactionId: string | null
+  onDone: (successText: string) => void
+}) {
+  const [nature, setNature]       = useState<'business_alias' | 'transcription_alias'>(proposal.aliasNature ?? 'business_alias')
+  const [whyOpen, setWhyOpen]     = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [cancelled, setCancelled] = useState(false)
+
+  if (cancelled) {
+    return <p className="text-[12px] text-muted-foreground italic">Proposition annulée.</p>
+  }
+
+  const canConfirm = !!proposal.aliasText && !!proposal.aliasTargetKind && !!proposal.aliasTargetId
+
+  async function confirm() {
+    if (saving || !canConfirm || !proposal.aliasText || !proposal.aliasTargetKind || !proposal.aliasTargetId) return
+    setSaving(true)
+    try {
+      const res = await createCopilotActorAlias({
+        siteId,
+        alias: proposal.aliasText,
+        targetKind: proposal.aliasTargetKind,
+        targetId: proposal.aliasTargetId,
+        aliasNature: nature,
+        copilotProposalId: proposal.proposalId,
+        interactionId,
+      })
+      onDone(res.ok ? 'Correspondance mémorisée.' : `Erreur : ${res.error}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-foreground/10 bg-card p-3 space-y-2.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', CONFIDENCE_CLASSES[proposal.confidence])}>
+          {CONFIDENCE_LABELS[proposal.confidence]}
+        </span>
+        <span className="text-[11px] text-muted-foreground">Correspondance d'identité</span>
+      </div>
+
+      <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border text-[12px]">
+        <div className="flex items-center gap-2 px-2.5 py-1.5">
+          <span className="w-28 shrink-0 text-muted-foreground">Nom utilisé</span>
+          <span className="font-medium">{proposal.aliasText}</span>
+        </div>
+        <div className="flex items-center gap-2 px-2.5 py-1.5">
+          <span className="w-28 shrink-0 text-muted-foreground">Désigne</span>
+          <span className="font-medium">{proposal.aliasTargetLabel}</span>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-[11px] text-muted-foreground mb-0.5">Nature</label>
+        <select
+          value={nature}
+          onChange={(e) => setNature(e.target.value as 'business_alias' | 'transcription_alias')}
+          className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+        >
+          <option value="business_alias">{ALIAS_NATURE_LABELS.business_alias}</option>
+          <option value="transcription_alias">{ALIAS_NATURE_LABELS.transcription_alias}</option>
+        </select>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setWhyOpen((v) => !v)}
+        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+      >
+        {whyOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        Pourquoi cette proposition ?
       </button>
       {whyOpen && (
         <p className="text-[12px] text-muted-foreground leading-relaxed pl-4 border-l border-border">

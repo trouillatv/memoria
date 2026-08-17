@@ -17,6 +17,7 @@ export type WritingIntent =
   | 'SCHEDULE_VISIT'
   | 'SCHEDULE_MEETING'
   | 'OBSERVATION'
+  | 'CORRECTION_IDENTITY'
   | 'UNKNOWN_WRITE'
   // Réservés — pipeline brouillon→confirmation→écriture non implémenté
   | 'CREATE_RESERVE'
@@ -132,6 +133,25 @@ const FUTURE_TENSE_RE = /\b(?:sera|seront|serai|seras|va\s+(?:etre|venir|arriver
 // Exclut l'opinion : « je pense que X est responsable » n'est pas un constat terrain.
 const OPINION_RE = /\b(?:je\s+pense\s+que|je\s+crois\s+que|j\s*estime\s+que|a\s+mon\s+avis)\b/
 
+// ── Signaux CORRECTION_IDENTITY (P4-B.2, Vincent 2026-08-17) ──────────────────
+//
+// Corrige une mécoupure STT ou une manière de désigner un acteur DÉJÀ CONNU
+// (company/company_contact) : « Quand je dis Clim Expert, je parle de Clim
+// Expair. » / « Non, Vincent Millon c'est Vincent Milon. » / « Jérôme, c'est
+// Jérôme Martin de BECIB. » — jamais un fait ou une relation nouvelle
+// (« Clim Expair s'occupe de la climatisation », « Jérôme travaille chez
+// BECIB » = RELATION_CLAIM, futur P4-B.3). Ces 3 formes exigent toutes
+// "je parle de" ou "c'est" — structurellement absent des exemples relationnels
+// ci-dessus, donc aucune garde anti-collision supplémentaire n'est nécessaire.
+//
+// Détection uniquement ICI (booléen, texte normalisé) — l'extraction du
+// contenu structuré (alias/cible/nature) opère sur le texte ORIGINAL et vit
+// dans lib/visits/copilot-identity-correction.ts (normalizeQuery supprime les
+// virgules, ce qui casserait la lecture "X, c'est Y de Z").
+const IDENTITY_CORRECTION_QUAND_RE = /\bquand\s+je\s+dis\s+.+\s+je\s+parle\s+de\s+.+/
+const IDENTITY_CORRECTION_NON_RE   = /^non\s+.+\s+c\s+est\s+.+/
+const IDENTITY_CORRECTION_DE_RE    = /\bc\s+est\s+.+\s+de\s+.+/
+
 /**
  * Extrait le marqueur temporel littéral d'un constat OBSERVATION, pour affichage
  * uniquement (champ « temporalité » du brouillon) — ne participe à aucun routage.
@@ -228,6 +248,10 @@ export function detectIntent(question: string): IntentResult {
   const hasObsMarker    = OBSERVATION_MARKER_RE.test(q)
   const hasFutureTense  = FUTURE_TENSE_RE.test(q)
   const hasOpinion      = OPINION_RE.test(q)
+  const hasIdentityCorrection =
+    IDENTITY_CORRECTION_QUAND_RE.test(q) ||
+    IDENTITY_CORRECTION_NON_RE.test(q) ||
+    IDENTITY_CORRECTION_DE_RE.test(q)
 
   if (isRead)                            signals.push('read_signal')
   if (hasNextVisit)                      signals.push('next_visit')
@@ -249,6 +273,14 @@ export function detectIntent(question: string): IntentResult {
   // question elle-même (recette PETRO, 2026-08-15).
   if (isVisitPrepRequest(question)) {
     return { intent: 'READ', confidence: 'strong', signals: [...signals, 'visit_prep_request'] }
+  }
+
+  // ── Garde CORRECTION_IDENTITY ─────────────────────────────────────────────
+  // Forme reconnue explicite ("je parle de" / "c'est") → prime sur READ/écriture
+  // générique : ces phrases ne portent aucun verbe de lecture ni d'action, elles
+  // seraient sinon perdues en fallback READ (cf. commentaire des signaux).
+  if (hasIdentityCorrection) {
+    return { intent: 'CORRECTION_IDENTITY', confidence: 'strong', signals: [...signals, 'identity_correction'] }
   }
 
   // ── Garde READ ────────────────────────────────────────────────────────────

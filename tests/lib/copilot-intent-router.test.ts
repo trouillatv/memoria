@@ -498,3 +498,39 @@ describe('readRemainsPlausible — anticipation du contexte', () => {
     }
   })
 })
+
+// ── CORRECTION_IDENTITY (P4-B.2, Vincent 2026-08-17) ───────────────────────────
+
+describe('CORRECTION_IDENTITY — 3 formes reconnues (spec Vincent)', () => {
+  it('"Quand je dis Clim Expert, je parle de Clim Expair." → CORRECTION_IDENTITY strong', () => {
+    expect(intent('Quand je dis Clim Expert, je parle de Clim Expair.')).toBe('CORRECTION_IDENTITY')
+    expect(confidence('Quand je dis Clim Expert, je parle de Clim Expair.')).toBe('strong')
+  })
+  it('"Jérôme, c\'est Jérôme Martin de BECIB." → CORRECTION_IDENTITY strong', () => {
+    expect(intent("Jérôme, c'est Jérôme Martin de BECIB.")).toBe('CORRECTION_IDENTITY')
+  })
+  it('"Non, Vincent Millon c\'est Vincent Milon." → CORRECTION_IDENTITY strong', () => {
+    expect(intent("Non, Vincent Millon c'est Vincent Milon.")).toBe('CORRECTION_IDENTITY')
+  })
+})
+
+describe('CORRECTION_IDENTITY — frontière RELATION_CLAIM (P4-B.3, jamais absorbée)', () => {
+  it('"Clim Expair s\'occupe de la climatisation." → PAS CORRECTION_IDENTITY', () => {
+    expect(intent("Clim Expair s'occupe de la climatisation.")).not.toBe('CORRECTION_IDENTITY')
+  })
+  it('"Jérôme travaille chez BECIB." → PAS CORRECTION_IDENTITY', () => {
+    expect(intent('Jérôme travaille chez BECIB.')).not.toBe('CORRECTION_IDENTITY')
+  })
+  it('"Le SSI dépend de la mise sous tension." → PAS CORRECTION_IDENTITY', () => {
+    expect(intent('Le SSI dépend de la mise sous tension.')).not.toBe('CORRECTION_IDENTITY')
+  })
+})
+
+describe('CORRECTION_IDENTITY — n\'affecte pas les autres intentions', () => {
+  it('READ reste READ : "Où en est R4 ?"', () => {
+    expect(intent('Où en est R4 ?')).toBe('READ')
+  })
+  it('OBSERVATION reste OBSERVATION : "Le cadenas n\'est toujours pas installé."', () => {
+    expect(intent("Le cadenas n'est toujours pas installé.")).toBe('OBSERVATION')
+  })
+})

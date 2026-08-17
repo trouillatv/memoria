@@ -7,7 +7,13 @@
 import { formatScheduleLabel } from '@/lib/visits/copilot-schedule-parse'
 import { detectIntent, extractObservationMarker } from '@/lib/visits/copilot-intent-router'
 
-export type CopilotProposalKind = 'action' | 'visit_item' | 'schedule_visit' | 'schedule_meeting' | 'observation'
+export type CopilotProposalKind =
+  | 'action'
+  | 'visit_item'
+  | 'schedule_visit'
+  | 'schedule_meeting'
+  | 'observation'
+  | 'actor_alias'
 
 export type CopilotConfidence = 'strong' | 'medium' | 'suggestion'
 
@@ -29,6 +35,12 @@ export type CopilotProposal = {
   // Champs OBSERVATION — non nuls uniquement pour kind = 'observation'.
   observationTemporality: string | null // marqueur littéral détecté (« encore », « ce matin »…)
   observationActorLabel: string | null  // acteur/objet éventuellement mentionné dans le constat
+  // Champs CORRECTION_IDENTITY — non nuls uniquement pour kind = 'actor_alias' (P4-B.2).
+  aliasText: string | null              // forme mentionnée par l'utilisateur (« Clim Expert »)
+  aliasTargetKind: 'company' | 'contact' | null
+  aliasTargetId: string | null          // company.id ou company_contact.id résolu, jamais créé
+  aliasTargetLabel: string | null       // libellé d'affichage de la cible résolue
+  aliasNature: 'business_alias' | 'transcription_alias' | null
 }
 
 export const COPILOT_PROMPT_VERSION = '3c-v1'
@@ -42,6 +54,7 @@ const INTENT_TO_KIND: Partial<Record<string, CopilotProposalKind>> = {
   ADD_VISIT_ITEM:   'visit_item',
   CREATE_ACTION:    'action',
   OBSERVATION:      'observation',
+  CORRECTION_IDENTITY: 'actor_alias',
 }
 
 /** Délègue au routeur centralisé et mappe vers CopilotProposalKind. */
@@ -108,6 +121,11 @@ export function buildCopilotProposal(params: {
     scheduledObjective: null,
     observationTemporality: null,
     observationActorLabel: null,
+    aliasText: null,
+    aliasTargetKind: null,
+    aliasTargetId: null,
+    aliasTargetLabel: null,
+    aliasNature: null,
   }
 }
 
@@ -143,6 +161,11 @@ export function buildScheduleProposal(params: {
     scheduledObjective: null,
     observationTemporality: null,
     observationActorLabel: null,
+    aliasText: null,
+    aliasTargetKind: null,
+    aliasTargetId: null,
+    aliasTargetLabel: null,
+    aliasNature: null,
   }
 }
 
@@ -191,5 +214,55 @@ export function buildObservationProposal(params: {
     scheduledObjective: null,
     observationTemporality: temporality,
     observationActorLabel: actorLabel,
+    aliasText: null,
+    aliasTargetKind: null,
+    aliasTargetId: null,
+    aliasTargetLabel: null,
+    aliasNature: null,
+  }
+}
+
+/**
+ * Builder dédié aux corrections d'identité d'acteur (CORRECTION_IDENTITY, P4-B.2).
+ *
+ * La cible doit déjà être résolue avec certitude (resolveActorTarget → 'resolved')
+ * avant d'appeler ce builder — l'ambiguïté ou l'absence de cible sont traitées en
+ * amont (clarification), jamais ici. `aliasNature` reste modifiable par
+ * l'utilisateur avant confirmation : ce n'est qu'une proposition initiale.
+ */
+export function buildIdentityCorrectionProposal(params: {
+  alias: string
+  targetKind: 'company' | 'contact'
+  targetId: string
+  targetLabel: string
+  proposedNature: 'business_alias' | 'transcription_alias'
+}): CopilotProposal {
+  const { alias, targetKind, targetId, targetLabel, proposedNature } = params
+
+  const title = `Retenir que « ${alias} » désigne ${targetLabel} ?`
+  const whyText = `MemorIA a compris que « ${alias} » et « ${targetLabel} » désignent le même acteur. ` +
+    "Cette correspondance sera mémorisée et réutilisée pour la reconnaissance vocale et l'affichage."
+
+  return {
+    proposalId: crypto.randomUUID(),
+    kind: 'actor_alias',
+    title,
+    body: null,
+    canonicalSubjectId: null,
+    canonicalSubjectLabel: null,
+    confidence: 'strong',
+    whyText,
+    llmModel: COPILOT_LLM_MODEL,
+    promptVersion: COPILOT_PROMPT_VERSION,
+    scheduledDate: null,
+    scheduledTime: null,
+    scheduledObjective: null,
+    observationTemporality: null,
+    observationActorLabel: null,
+    aliasText: alias,
+    aliasTargetKind: targetKind,
+    aliasTargetId: targetId,
+    aliasTargetLabel: targetLabel,
+    aliasNature: proposedNature,
   }
 }

@@ -143,21 +143,49 @@ export async function buildSiteVocabulary(siteId: string): Promise<VocabularyTer
     const companyIds = [...new Set(rows.map((r) => r.company_id).filter(Boolean) as string[])]
     const contactIds = [...new Set(rows.map((r) => r.main_contact_id).filter(Boolean) as string[])]
 
-    const [companiesRes, contactsRes] = await Promise.all([
+    const [companiesRes, contactsRes, actorAliasRes] = await Promise.all([
       companyIds.length
-        ? admin.from('companies').select('name, short_name').in('id', companyIds)
-        : Promise.resolve({ data: [] as Array<{ name: string | null; short_name: string | null }> }),
+        ? admin.from('companies').select('id, name, short_name').in('id', companyIds)
+        : Promise.resolve({ data: [] as Array<{ id: string; name: string | null; short_name: string | null }> }),
       contactIds.length
-        ? admin.from('company_contacts').select('full_name').in('id', contactIds)
-        : Promise.resolve({ data: [] as Array<{ full_name: string | null }> }),
+        ? admin.from('company_contacts').select('id, full_name').in('id', contactIds)
+        : Promise.resolve({ data: [] as Array<{ id: string; full_name: string | null }> }),
+      (companyIds.length || contactIds.length)
+        ? admin
+            .from('actor_alias')
+            .select('company_id, contact_id, alias')
+            .eq('status', 'confirmed')
+            .or([
+              companyIds.length ? `company_id.in.(${companyIds.join(',')})` : null,
+              contactIds.length ? `contact_id.in.(${contactIds.join(',')})` : null,
+            ].filter(Boolean).join(','))
+        : Promise.resolve({ data: [] as Array<{ company_id: string | null; contact_id: string | null; alias: string }> }),
     ])
 
+    // Correspondances enseignées via le Copilote (P4-B.2) : les deux natures
+    // (business_alias/transcription_alias) alimentent la STT indifféremment —
+    // seule business_alias doit s'afficher ailleurs comme « autre nom ».
+    const aliasesByCompany = new Map<string, string[]>()
+    const aliasesByContact = new Map<string, string[]>()
+    for (const a of actorAliasRes.data ?? []) {
+      if (a.company_id) {
+        const list = aliasesByCompany.get(a.company_id) ?? []
+        list.push(a.alias)
+        aliasesByCompany.set(a.company_id, list)
+      } else if (a.contact_id) {
+        const list = aliasesByContact.get(a.contact_id) ?? []
+        list.push(a.alias)
+        aliasesByContact.set(a.contact_id, list)
+      }
+    }
+
     for (const c of companiesRes.data ?? []) {
-      if (c.name) push(c.name, 'company', c.short_name ? [c.short_name] : [])
-      else if (c.short_name) push(c.short_name, 'company')
+      const extra = aliasesByCompany.get(c.id) ?? []
+      if (c.name) push(c.name, 'company', c.short_name ? [c.short_name, ...extra] : extra)
+      else if (c.short_name) push(c.short_name, 'company', extra)
     }
     for (const c of contactsRes.data ?? []) {
-      if (c.full_name) push(c.full_name, 'person')
+      if (c.full_name) push(c.full_name, 'person', aliasesByContact.get(c.id) ?? [])
     }
 
     // Mémoire sémantique — portée chantier ou portée organisation (site_id NULL).

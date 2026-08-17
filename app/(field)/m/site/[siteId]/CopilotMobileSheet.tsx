@@ -12,7 +12,7 @@ import {
 import { askCopilotAction, type CopilotActionResult } from '@/app/(dashboard)/sites/[id]/copilot-action'
 import type { CopilotIntent } from '@/lib/visits/copilot-context'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
-import { ProposalCard, ScheduleProposalCard, ObservationProposalCard } from '@/components/copilot/CopilotProposalCards'
+import { ProposalCard, ScheduleProposalCard, ObservationProposalCard, ActorAliasProposalCard } from '@/components/copilot/CopilotProposalCards'
 import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
 import { useVoiceOrb, type VoiceTurnHandlers, type VoiceTurnPayload, type VoiceTurnResult } from '@/app/(field)/m/VoiceOrbContext'
@@ -374,6 +374,13 @@ export function CopilotMobileSheet({
                         />
                       ) : msg.proposal.kind === 'observation' ? (
                         <ObservationProposalCard
+                          siteId={siteId}
+                          proposal={msg.proposal}
+                          interactionId={msg.interactionId}
+                          onDone={replaceDone}
+                        />
+                      ) : msg.proposal.kind === 'actor_alias' ? (
+                        <ActorAliasProposalCard
                           siteId={siteId}
                           proposal={msg.proposal}
                           interactionId={msg.interactionId}
