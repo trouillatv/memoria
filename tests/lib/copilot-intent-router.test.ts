@@ -710,6 +710,41 @@ describe('CREATE_WATCHPOINT — non-régression (spec Vincent)', () => {
   })
 })
 
+// ── Frontière READ ↔ CREATE_WATCHPOINT (bug OCEF, Vincent 2026-08-18) ────────
+// "Quels sont les sujets importants à surveiller ?" était routée deux fois de
+// manière déterministe vers CREATE_WATCHPOINT/strong (proposition de créer un
+// point de vigilance intitulé avec la question elle-même) alors qu'il s'agit
+// d'une lecture. Cause : READ_RE n'a pas d'alternative "quels/quelles sont…",
+// et la Priorité 1bis CREATE_WATCHPOINT ne vérifiait pas hasQuestionMark,
+// contrairement à FACT/RELATION_CLAIM/CREATE_DEADLINE.
+describe('Frontière READ ↔ CREATE_WATCHPOINT (spec Vincent 2026-08-18)', () => {
+  it('"Quels sont les sujets importants à surveiller ?" → READ (pas CREATE_WATCHPOINT)', () => {
+    expect(intent('Quels sont les sujets importants à surveiller ?')).toBe('READ')
+  })
+  it('"Qu\'est-ce que je dois surveiller ?" → READ', () => {
+    expect(intent("Qu'est-ce que je dois surveiller ?")).toBe('READ')
+  })
+  it('"Quels points dois-je garder à l\'œil ?" → READ', () => {
+    expect(intent("Quels points dois-je garder à l'œil ?")).toBe('READ')
+  })
+  it('"Surveille le SSI tant que ce n\'est pas réglé" → CREATE_WATCHPOINT (pas de "?", reste une commande)', () => {
+    expect(intent("Surveille le SSI tant que ce n'est pas réglé")).toBe('CREATE_WATCHPOINT')
+  })
+  it('"Garde un œil sur le SSI" → CREATE_WATCHPOINT (pas de "?", reste une commande)', () => {
+    expect(intent('Garde un œil sur le SSI')).toBe('CREATE_WATCHPOINT')
+  })
+  it('toute question avec "surveiller" reste READ, jamais CREATE_WATCHPOINT', () => {
+    const questions = [
+      'Quels sont les points à surveiller sur ce chantier ?',
+      'Est-ce qu\'il y a des choses à surveiller ?',
+      'Qu\'y a-t-il à surveiller cette semaine ?',
+    ]
+    for (const q of questions) {
+      expect(intent(q)).not.toBe('CREATE_WATCHPOINT')
+    }
+  })
+})
+
 describe('CREATE_WATCHPOINT — récurrence non gérée (tripwire P4-E4)', () => {
   // "à chaque visite" reste NON GÉRÉ pour P4-E1 : ni absorbé silencieusement
   // dans un simple watchpoint, ni traité comme ADD_VISIT_ITEM — remonte comme

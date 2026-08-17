@@ -506,7 +506,15 @@ export function detectIntent(question: string): IntentResult {
   // ("est") à la priorité 2bis sans garde dédiée plus haut dans la chaîne —
   // hasNextVisit ayant déjà renvoyé à la priorité 1, cette branche ne voit
   // jamais une phrase ancrée sur la prochaine visite.
-  if (hasWatchpointVerb && !hasNextVisit && !hasDatetime && !hasUnsupported) {
+  //
+  // !hasQuestionMark (Vincent, 2026-08-18) : "Quels sont les sujets importants
+  // à surveiller ?" est une lecture, pas une commande — READ_RE n'a pas
+  // d'alternative pour "quels/quelles sont…", donc isRead restait faux et la
+  // Garde READ (ligne ~487) ne l'interceptait jamais. Sans cette exclusion, la
+  // phrase tombait ici en CREATE_WATCHPOINT strong (bug OCEF, reproduit 2/2).
+  // Mêmes exclusion et raison que FACT/RELATION_CLAIM/CREATE_DEADLINE
+  // ci-dessous — CREATE_WATCHPOINT ne l'avait simplement jamais reçue.
+  if (hasWatchpointVerb && !hasNextVisit && !hasDatetime && !hasUnsupported && !hasQuestionMark) {
     if (hasRecurrence) {
       // Récurrence explicite ("à chaque visite") : capacité non représentée
       // par site_watchpoints (P4-E4, non conçu) → clarification, jamais une
