@@ -39,7 +39,7 @@ import { understandQuestion, mergeComprehension } from '@/lib/visits/copilot-com
 import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
 import { resolveActorTarget, resolveActorCandidateById, type ActorCandidate } from '@/lib/db/actor-alias-resolve'
 import { extractIdentityCorrection } from '@/lib/visits/copilot-identity-correction'
-import { buildCopilotProposal, buildScheduleProposal, buildObservationProposal, buildIdentityCorrectionProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
+import { buildCopilotProposal, buildScheduleProposal, buildObservationProposal, buildIdentityCorrectionProposal, buildFactProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { parseScheduleFromQuestion, toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
 import { detectIntent, readRemainsPlausible } from '@/lib/visits/copilot-intent-router'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -620,6 +620,62 @@ export async function prepareCopilotAnswer(
         result: {
           kind: 'proposal',
           text: `Voici le constat que je propose d'enregistrer. Vérifiez et ajustez avant de valider.`,
+          proposal,
+          interactionId: iid,
+        },
+      }
+    }
+
+    // ── FACT ─────────────────────────────────────────────────────────────────
+    // Information déclarative à retenir (P4-C). Contrairement à OBSERVATION,
+    // canonical_subject_id n'est PAS exigé en V1 (cadrage Vincent) : la
+    // résolution de sujet est tentée à titre d'enrichissement, jamais bloquante
+    // — une ambiguïté ou une absence de résolution laisse simplement le
+    // brouillon sans sujet associé plutôt que de redemander une clarification.
+    if (intentResult.intent === 'FACT') {
+      let factSubjectId: string | null = null
+      let factSubjectLabel: string | null = null
+
+      if (selectedCandidateId) {
+        factSubjectId = selectedCandidateId
+        const labels = await getCanonicalSubjectLabelsByIds([selectedCandidateId])
+        factSubjectLabel = labels[selectedCandidateId] ?? null
+      } else if (classification.entities.subjectLabels.length > 0) {
+        const resolution = await resolveCanonicalSubjectReference(siteId, classification.entities.subjectLabels[0])
+        if (resolution.kind === 'resolved') {
+          factSubjectId = resolution.candidate.id
+          factSubjectLabel = resolution.candidate.label
+        }
+        // ambiguous / not_found → pas de sujet, jamais de clarification bloquante ici.
+      }
+
+      const proposal = buildFactProposal({
+        question,
+        canonicalSubjectId: factSubjectId,
+        canonicalSubjectLabel: factSubjectLabel,
+      })
+
+      const factScope: CopilotScope = factSubjectId ? 'canonical_subject' : 'site'
+      const iid = await logCopilotInteraction({
+        siteId, userId, conversationId: conversationId ?? null,
+        question, conversationMode: 'free',
+        primaryIntent: 'proposal_request', secondaryIntents: [],
+        scope: factScope,
+        resolvedSubjectIds: factSubjectId ? [factSubjectId] : [],
+        answerText: null, answerMode: 'deterministic_fallback', answerStatus: 'answered',
+        citedReferenceCount: 0, sourcesUsed: [],
+        model: null, promptVersion: null, inputTokens: null, outputTokens: null,
+        estimatedCostEur: null, latencyMs: Date.now() - t0, usedFallback: true,
+        proposalKind: proposal.kind,
+        proposalId: proposal.proposalId,
+        proposalStatus: 'shown',
+      })
+
+      return {
+        kind: 'result',
+        result: {
+          kind: 'proposal',
+          text: `Voici l'information que je propose de retenir. Choisissez sa nature et validez.`,
           proposal,
           interactionId: iid,
         },

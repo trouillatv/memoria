@@ -551,3 +551,101 @@ describe('CORRECTION_IDENTITY — n\'affecte pas les autres intentions', () => {
     expect(intent("Le cadenas n'est toujours pas installé.")).toBe('OBSERVATION')
   })
 })
+
+// ── FACT (P4-C, Vincent 2026-08-17) ────────────────────────────────────────────
+
+describe('FACT — 8 phrases de l\'audit (spec Vincent)', () => {
+  const cases = [
+    'Jérôme passe demain matin.',
+    'Le client veut conserver cette porte.',
+    "Vincent Milon est l'interlocuteur principal sur ce dossier.",
+    'La réunion de coordination est toujours le mardi.',
+    "L'accès livraison se fait par l'arrière du bâtiment.",
+    'Le code du portail est 4812.',
+    "L'entreprise a prévu deux personnes pour la mise en service.",
+    'Le chantier sera fermé vendredi après-midi.',
+  ]
+  for (const q of cases) {
+    it(`"${q}" → FACT`, () => {
+      expect(intent(q)).toBe('FACT')
+      expect(confidence(q)).toBe('ambiguous')
+    })
+  }
+})
+
+describe('FACT — frontière OBSERVATION (jamais absorbée)', () => {
+  it('"Le cadenas n\'est toujours pas installé." → OBSERVATION (pas FACT)', () => {
+    expect(intent("Le cadenas n'est toujours pas installé.")).toBe('OBSERVATION')
+  })
+  it('"Le portail est maintenant réparé." → OBSERVATION (pas FACT)', () => {
+    expect(intent('Le portail est maintenant réparé.')).toBe('OBSERVATION')
+  })
+  it('"Le cadenas sera installé vendredi" → FACT (futur, exclu d\'OBSERVATION)', () => {
+    expect(intent('Le cadenas sera installé vendredi')).toBe('FACT')
+  })
+})
+
+describe('FACT — frontière CREATE_ACTION (jamais absorbée)', () => {
+  it('"Crée une action pour planifier les essais béton" → CREATE_ACTION (pas FACT)', () => {
+    expect(intent('Crée une action pour planifier les essais béton')).toBe('CREATE_ACTION')
+  })
+  it('"Il faut rappeler Clim Expair" → CREATE_ACTION (pas FACT)', () => {
+    expect(intent('Il faut rappeler Clim Expair')).toBe('CREATE_ACTION')
+  })
+})
+
+describe('FACT — frontière SCHEDULE_MEETING (jamais absorbée)', () => {
+  it('"Planifie une réunion vendredi à 14h" → SCHEDULE_MEETING (pas FACT)', () => {
+    expect(intent('Planifie une réunion vendredi à 14h')).toBe('SCHEDULE_MEETING')
+  })
+  it('"Quels sont les points de la réunion de demain à évoquer ?" → SCHEDULE_MEETING (pas FACT, question)', () => {
+    expect(intent('Quels sont les points de la réunion de demain à évoquer ?')).toBe('SCHEDULE_MEETING')
+  })
+})
+
+describe('FACT — frontière CORRECTION_IDENTITY (jamais absorbée)', () => {
+  it('"Jérôme, c\'est Jérôme Martin de BECIB." → CORRECTION_IDENTITY (pas FACT)', () => {
+    expect(intent("Jérôme, c'est Jérôme Martin de BECIB.")).toBe('CORRECTION_IDENTITY')
+  })
+  it('"Quand je dis Clim Expert, je parle de Clim Expair." → CORRECTION_IDENTITY (pas FACT)', () => {
+    expect(intent('Quand je dis Clim Expert, je parle de Clim Expair.')).toBe('CORRECTION_IDENTITY')
+  })
+})
+
+describe('FACT — frontière RELATION_CLAIM (futur P4-B.3, pas encore absorbée par FACT)', () => {
+  // Ces phrases relationnelles ne déclenchent aucun signal FACT_ASSERTION_RE
+  // par construction (s'occupe de / travaille chez / dépend de) : elles
+  // retombent en READ fallback (Priorité 6), pas en FACT. Documente l'état
+  // réel du routeur avant l'implémentation de RELATION_CLAIM — un futur lot
+  // devra intercepter ces formes AVANT la garde READ pour ne pas les perdre.
+  it('"Clim Expair s\'occupe de la climatisation." → READ fallback (pas FACT)', () => {
+    expect(intent("Clim Expair s'occupe de la climatisation.")).toBe('READ')
+  })
+  it('"Jérôme travaille chez BECIB." → READ fallback (pas FACT)', () => {
+    expect(intent('Jérôme travaille chez BECIB.')).toBe('READ')
+  })
+  it('"Le SSI dépend de la mise sous tension." → READ fallback (pas FACT)', () => {
+    expect(intent('Le SSI dépend de la mise sous tension.')).toBe('READ')
+  })
+})
+
+describe('FACT — vraie question READ inchangée', () => {
+  it('"Où en est R4 ?" → READ (inchangé)', () => {
+    expect(intent('Où en est R4 ?')).toBe('READ')
+  })
+  it('"Qui est l\'interlocuteur principal sur ce dossier ?" → pas FACT (question)', () => {
+    expect(intent("Qui est l'interlocuteur principal sur ce dossier ?")).not.toBe('FACT')
+  })
+})
+
+describe('FACT — n\'affecte pas les autres intentions', () => {
+  it('CREATE_ACTION reste CREATE_ACTION : "Ajoute une action de suivi"', () => {
+    expect(intent('Ajoute une action de suivi')).toBe('CREATE_ACTION')
+  })
+  it('OBSERVATION reste OBSERVATION : "Les gaines sont arrivées ce matin."', () => {
+    expect(intent('Les gaines sont arrivées ce matin.')).toBe('OBSERVATION')
+  })
+  it('CORRECTION_IDENTITY reste CORRECTION_IDENTITY : "Non, Vincent Millon c\'est Vincent Milon."', () => {
+    expect(intent("Non, Vincent Millon c'est Vincent Milon.")).toBe('CORRECTION_IDENTITY')
+  })
+})

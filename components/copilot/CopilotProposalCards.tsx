@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Loader2, Check, ChevronDown, ChevronUp } from 'lucide-react'
-import { createCopilotAction, addCopilotToBriefing, createCopilotScheduledEvent, createCopilotObservation, createCopilotActorAlias } from '@/app/(dashboard)/sites/[id]/copilot-write-action'
+import { createCopilotAction, addCopilotToBriefing, createCopilotScheduledEvent, createCopilotObservation, createCopilotActorAlias, createCopilotFact } from '@/app/(dashboard)/sites/[id]/copilot-write-action'
 import { trackCopilotProposalCancelled } from '@/app/(dashboard)/sites/[id]/copilot-event-action'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { cn } from '@/lib/utils'
@@ -604,6 +604,162 @@ export function ActorAliasProposalCard({
           <option value="transcription_alias">{ALIAS_NATURE_LABELS.transcription_alias}</option>
         </select>
       </div>
+
+      <button
+        type="button"
+        onClick={() => setWhyOpen((v) => !v)}
+        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+      >
+        {whyOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        Pourquoi cette proposition ?
+      </button>
+      {whyOpen && (
+        <p className="text-[12px] text-muted-foreground leading-relaxed pl-4 border-l border-border">
+          {proposal.whyText}
+        </p>
+      )}
+
+      <div className="flex gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={confirm}
+          disabled={saving || !canConfirm}
+          className="flex items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-[12px] font-medium text-white hover:bg-violet-600 disabled:opacity-40 transition-colors"
+        >
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+          Valider
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setCancelled(true)
+            if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+          }}
+          disabled={saving}
+          className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+        >
+          Annuler
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── FactProposalCard — information FACT (P4-C) ────────────────────────────────
+//
+// canonicalSubjectId n'est jamais exigé ici (contrairement à OBSERVATION) —
+// une information peut être retenue sans sujet associé. `nature` n'a AUCUNE
+// valeur par défaut : c'est un choix humain explicite (mig 218, cadrage
+// Vincent), jamais déduit silencieusement — le bouton Valider reste désactivé
+// tant qu'il n'a pas été fait.
+
+const FACT_NATURE_LABELS: Record<'current_information' | 'durable_knowledge', string> = {
+  current_information: 'Vraie en ce moment (information actuelle)',
+  durable_knowledge: 'Vraie durablement (connaissance du chantier)',
+}
+
+export function FactProposalCard({
+  siteId,
+  proposal,
+  interactionId,
+  onDone,
+}: {
+  siteId: string
+  proposal: CopilotProposal
+  interactionId: string | null
+  onDone: (successText: string) => void
+}) {
+  const [title, setTitle]         = useState(proposal.title)
+  const [body, setBody]           = useState(proposal.body ?? '')
+  const [nature, setNature]       = useState<'current_information' | 'durable_knowledge' | ''>('')
+  const [whyOpen, setWhyOpen]     = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [cancelled, setCancelled] = useState(false)
+
+  if (cancelled) {
+    return <p className="text-[12px] text-muted-foreground italic">Proposition annulée.</p>
+  }
+
+  const canConfirm = !!title.trim() && !!nature
+
+  async function confirm() {
+    if (saving || !canConfirm || !nature) return
+    setSaving(true)
+    try {
+      const res = await createCopilotFact({
+        siteId,
+        kind: nature,
+        title: title.trim(),
+        body: body.trim() || null,
+        copilotProposalId: proposal.proposalId,
+        interactionId,
+      })
+      onDone(res.ok ? 'Information mémorisée.' : `Erreur : ${res.error}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-foreground/10 bg-card p-3 space-y-2.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', CONFIDENCE_CLASSES[proposal.confidence])}>
+          {CONFIDENCE_LABELS[proposal.confidence]}
+        </span>
+        <span className="text-[11px] text-muted-foreground">Information</span>
+      </div>
+
+      <div>
+        <label className="block text-[11px] text-muted-foreground mb-0.5">Titre</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          maxLength={255}
+          className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+        />
+      </div>
+
+      <div>
+        <label className="block text-[11px] text-muted-foreground mb-0.5">Détail (optionnel)</label>
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={2}
+          maxLength={2000}
+          className="w-full resize-none rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+        />
+      </div>
+
+      <div>
+        <label className="block text-[11px] text-muted-foreground mb-0.5">Nature — à choisir</label>
+        <select
+          value={nature}
+          onChange={(e) => setNature(e.target.value as 'current_information' | 'durable_knowledge' | '')}
+          className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-violet-400/40"
+        >
+          <option value="">Choisissez…</option>
+          <option value="current_information">{FACT_NATURE_LABELS.current_information}</option>
+          <option value="durable_knowledge">{FACT_NATURE_LABELS.durable_knowledge}</option>
+        </select>
+      </div>
+
+      {(proposal.canonicalSubjectLabel || proposal.factTemporality) && (
+        <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border text-[12px]">
+          {proposal.canonicalSubjectLabel && (
+            <div className="flex items-center gap-2 px-2.5 py-1.5">
+              <span className="w-28 shrink-0 text-muted-foreground">Sujet suivi</span>
+              <span className="font-medium">{proposal.canonicalSubjectLabel}</span>
+            </div>
+          )}
+          {proposal.factTemporality && (
+            <div className="flex items-center gap-2 px-2.5 py-1.5">
+              <span className="w-28 shrink-0 text-muted-foreground">Temporalité</span>
+              <span className="font-medium">{proposal.factTemporality}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       <button
         type="button"

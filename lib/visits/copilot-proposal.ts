@@ -5,7 +5,8 @@
 // AUCUNE écriture DB ici — le brouillon est éditable avant confirmation humaine.
 
 import { formatScheduleLabel } from '@/lib/visits/copilot-schedule-parse'
-import { detectIntent, extractObservationMarker } from '@/lib/visits/copilot-intent-router'
+import { detectIntent, extractObservationMarker, extractFactTemporality } from '@/lib/visits/copilot-intent-router'
+import { CHOOSABLE_KNOWLEDGE_KINDS, type KnowledgeEntryKind } from '@/lib/db/site-memory-entries'
 
 export type CopilotProposalKind =
   | 'action'
@@ -13,6 +14,7 @@ export type CopilotProposalKind =
   | 'schedule_visit'
   | 'schedule_meeting'
   | 'observation'
+  | 'fact'
   | 'actor_alias'
 
 export type CopilotConfidence = 'strong' | 'medium' | 'suggestion'
@@ -41,6 +43,10 @@ export type CopilotProposal = {
   aliasTargetId: string | null          // company.id ou company_contact.id résolu, jamais créé
   aliasTargetLabel: string | null       // libellé d'affichage de la cible résolue
   aliasNature: 'business_alias' | 'transcription_alias' | null
+  // Champs FACT — non nuls uniquement pour kind = 'fact' (P4-C).
+  // factNature reste choisi par l'humain, jamais inféré par le LLM (doctrine explicite).
+  factNature: KnowledgeEntryKind | null
+  factTemporality: string | null        // marqueur temporel littéral détecté, jamais inventé
 }
 
 export const COPILOT_PROMPT_VERSION = '3c-v1'
@@ -54,6 +60,7 @@ const INTENT_TO_KIND: Partial<Record<string, CopilotProposalKind>> = {
   ADD_VISIT_ITEM:   'visit_item',
   CREATE_ACTION:    'action',
   OBSERVATION:      'observation',
+  FACT:             'fact',
   CORRECTION_IDENTITY: 'actor_alias',
 }
 
@@ -73,7 +80,10 @@ function buildTitle(question: string, kind: CopilotProposalKind, subjectLabel: s
     .replace(/^(une?\s+|l[ae]\s+)/i, '')
   const clipped = clean.length > 90 ? clean.slice(0, 87) + '…' : clean
   const label = clipped.charAt(0).toUpperCase() + clipped.slice(1)
-  return label || (kind === 'visit_item' ? 'Point à vérifier' : 'Nouvelle action')
+  if (label) return label
+  if (kind === 'visit_item') return 'Point à vérifier'
+  if (kind === 'fact') return 'Nouvelle information'
+  return 'Nouvelle action'
 }
 
 function buildWhyText(kind: CopilotProposalKind, subjectLabel: string | null): string {
@@ -126,6 +136,8 @@ export function buildCopilotProposal(params: {
     aliasTargetId: null,
     aliasTargetLabel: null,
     aliasNature: null,
+    factNature: null,
+    factTemporality: null,
   }
 }
 
@@ -166,6 +178,8 @@ export function buildScheduleProposal(params: {
     aliasTargetId: null,
     aliasTargetLabel: null,
     aliasNature: null,
+    factNature: null,
+    factTemporality: null,
   }
 }
 
@@ -219,6 +233,8 @@ export function buildObservationProposal(params: {
     aliasTargetId: null,
     aliasTargetLabel: null,
     aliasNature: null,
+    factNature: null,
+    factTemporality: null,
   }
 }
 
@@ -264,5 +280,55 @@ export function buildIdentityCorrectionProposal(params: {
     aliasTargetId: targetId,
     aliasTargetLabel: targetLabel,
     aliasNature: proposedNature,
+    factNature: null,
+    factTemporality: null,
+  }
+}
+
+/**
+ * Builder dédié aux informations FACT (P4-C).
+ *
+ * `body` porte le texte source verbatim (même doctrine anti-faits-fictifs que
+ * OBSERVATION) : jamais de paraphrase LLM. `factNature` reste `null` tant que
+ * l'humain n'a pas choisi entre information actuelle et connaissance durable —
+ * ce choix n'est jamais déduit ici. `canonicalSubjectId` n'est pas exigé en V1.
+ */
+export function buildFactProposal(params: {
+  question: string
+  canonicalSubjectId: string | null
+  canonicalSubjectLabel: string | null
+}): CopilotProposal {
+  const { question, canonicalSubjectId, canonicalSubjectLabel } = params
+
+  const title = buildTitle(question, 'fact', canonicalSubjectLabel)
+  const temporality = extractFactTemporality(question)
+  const subject = canonicalSubjectLabel
+    ? `Reliée au sujet « ${canonicalSubjectLabel} ».`
+    : "Sans sujet canonique associé."
+  const whyText = `${subject} Choisissez si cette information est vraie en ce moment ou durablement avant de valider.`
+
+  return {
+    proposalId: crypto.randomUUID(),
+    kind: 'fact',
+    title,
+    body: question.trim(),
+    canonicalSubjectId,
+    canonicalSubjectLabel,
+    confidence: 'medium',
+    whyText,
+    llmModel: COPILOT_LLM_MODEL,
+    promptVersion: COPILOT_PROMPT_VERSION,
+    scheduledDate: null,
+    scheduledTime: null,
+    scheduledObjective: null,
+    observationTemporality: null,
+    observationActorLabel: null,
+    aliasText: null,
+    aliasTargetKind: null,
+    aliasTargetId: null,
+    aliasTargetLabel: null,
+    aliasNature: null,
+    factNature: null,
+    factTemporality: temporality,
   }
 }

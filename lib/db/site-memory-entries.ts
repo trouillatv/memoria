@@ -49,6 +49,8 @@ export interface CreateKnowledgeEntryInput {
   sourceReportId?: string | null
   sourceCaptureIds?: string[]
   confirmedBy: string | null
+  /** Idempotence Copilote (P4-C) — clé générée côté client, absente hors Copilote. */
+  copilotProposalId?: string | null
 }
 
 /** Entre dans la mémoire du chantier — uniquement par un geste humain. */
@@ -64,6 +66,7 @@ export async function createKnowledgeEntry(input: CreateKnowledgeEntryInput): Pr
       source_report_id: input.sourceReportId ?? null,
       source_capture_ids: input.sourceCaptureIds ?? [],
       confirmed_by: input.confirmedBy,
+      copilot_proposal_id: input.copilotProposalId ?? null,
     })
     .select('id')
     .single()

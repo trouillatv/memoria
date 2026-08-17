@@ -15,6 +15,7 @@ import { updateCopilotProposalStatus } from '@/lib/db/copilot-telemetry'
 import { toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { confirmActorAlias } from '@/lib/db/actor-alias-write'
+import { confirmSiteFact } from '@/lib/db/site-fact-write'
 
 // ── Créer une action depuis une proposition copilote ─────────────────────────
 
@@ -359,6 +360,55 @@ export async function createCopilotActorAlias(rawInput: unknown): Promise<Create
     targetKind,
     targetId,
     aliasNature,
+    copilotProposalId,
+    interactionId: interactionId ?? null,
+  })
+}
+
+// ── Retenir une information depuis une proposition copilote (P4-C, FACT) ────
+//
+// La nature (current_information / durable_knowledge) est choisie par
+// l'humain sur le brouillon — jamais déduite ici ni en amont. Écrit
+// directement dans site_knowledge_entries, pas de résolution de sujet
+// requise en V1 (cadrage Vincent).
+
+const createFactSchema = z.object({
+  siteId: z.string().uuid(),
+  kind: z.enum(['current_information', 'durable_knowledge']),
+  title: z.string().min(1).max(255),
+  body: z.string().max(2000).nullable().optional(),
+  copilotProposalId: z.string().uuid(),
+  interactionId: z.string().uuid().nullable().optional(),
+})
+
+export type CreateCopilotFactResult =
+  | { ok: true; entryId: string }
+  | { ok: false; error: string }
+
+export async function createCopilotFact(rawInput: unknown): Promise<CreateCopilotFactResult> {
+  const parsed = createFactSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides.' }
+  const { siteId, kind, title, body, copilotProposalId, interactionId } = parsed.data
+
+  let organizationId: string
+  try {
+    const access = await requireSiteAccess(siteId)
+    organizationId = access.organizationId
+  } catch {
+    return { ok: false, error: 'Accès non autorisé.' }
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, error: 'Non authentifié.' }
+
+  return confirmSiteFact({
+    organizationId,
+    siteId,
+    userId: user.id,
+    kind,
+    title,
+    body: body ?? null,
     copilotProposalId,
     interactionId: interactionId ?? null,
   })

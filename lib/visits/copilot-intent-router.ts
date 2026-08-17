@@ -17,6 +17,7 @@ export type WritingIntent =
   | 'SCHEDULE_VISIT'
   | 'SCHEDULE_MEETING'
   | 'OBSERVATION'
+  | 'FACT'
   | 'CORRECTION_IDENTITY'
   | 'UNKNOWN_WRITE'
   // Réservés — pipeline brouillon→confirmation→écriture non implémenté
@@ -108,6 +109,14 @@ const CREATE_VISIT_RE = /\bcree\w*\b|\bnouve(?:aux?|ll?e[sx]?)\b/
 // retour Guillaume, phrase orale dégradée "euh... qu'est-ce qu'il faut que...").
 const STRONG_WRITE_RE = /\b(?:(?:ajout|rajoute|cree|note|notons|mets|mettr|fai[st]|ouvr|declenche|genere|rappell?)\w*|(?<!qu\s(?:il|on|elle)\s)faut)\b/
 
+// La tige fai[st] (dans STRONG_WRITE_RE) capture aussi bien « Fais une action »
+// (commande) que « L'accès se fait par l'arrière » (constat descriptif à la
+// forme réfléchie-passive) — cette 2ᵉ tournure n'est jamais une commande.
+// Découvert sur l'audit P4-C (2026-08-17, phrase 5/8) : la phrase partait en
+// CREATE_ACTION ambiguous au lieu de FACT. Aucun test existant ne s'appuie sur
+// « fai[st] » précisément (vérifié par grep) — carve-out sans risque.
+const REFLEXIVE_DESCRIPTIVE_RE = /\bse\s+fai[st]\w*\b/
+
 // Verbes d'écriture implicites — besoin exprimé sans commande directe
 const WEAK_WRITE_RE = /\b(?:faudr|il\s+faut\s|pens[eo][rz]?\s+a|gard[ea]\b|conserv|checker|controler|verifi)\w*/
 
@@ -132,6 +141,45 @@ const FUTURE_TENSE_RE = /\b(?:sera|seront|serai|seras|va\s+(?:etre|venir|arriver
 
 // Exclut l'opinion : « je pense que X est responsable » n'est pas un constat terrain.
 const OPINION_RE = /\b(?:je\s+pense\s+que|je\s+crois\s+que|j\s*estime\s+que|a\s+mon\s+avis)\b/
+
+// ── Signaux FACT (P4-C, Vincent 2026-08-17) ───────────────────────────────────
+//
+// Une information déclarative à retenir qui n'est ni une question, ni une
+// action demandée, ni un constat d'état terrain (OBSERVATION), ni une
+// correction d'identité, ni une relation structurée (RELATION_CLAIM, futur
+// P4-B.3), ni une planification. Exemples de l'audit : « Jérôme passe demain
+// matin. », « Vincent Milon est l'interlocuteur principal sur ce dossier. »,
+// « Le code du portail est 4812. » — 5 des 8 phrases de l'audit tombaient en
+// READ fallback (perte pure), 2 étaient absorbées par SCHEDULE_MEETING ou
+// CREATE_ACTION en ambiguous, 1 restait UNKNOWN_WRITE non exploitée.
+//
+// Recouvrement DÉLIBÉRÉ avec OBSERVATION_STATE_RE (est/sont) et FUTURE_TENSE_RE
+// (sera/seront) : FACT doit justement capturer les faits au futur que
+// OBSERVATION exclut explicitement (« Le chantier sera fermé vendredi
+// après-midi. »). La frontière avec OBSERVATION se fait par exclusion : si la
+// condition OBSERVATION serait vraie (état + marqueur de continuité, sans
+// futur ni opinion), FACT s'efface — l'inverse ferait perdre un constat
+// terrain daté au profit d'une simple information générique.
+const FACT_ASSERTION_RE =
+  /\b(?:est|sont|etait|etaient|sera|seront|a\s+prevu|ont\s+prevu|passe|passent|se\s+fait|se\s+font)\b/
+
+// « Le client veut conserver cette porte. » — souhait RAPPORTÉ (3ᵉ personne),
+// pas une commande directe à MemorIA (contrairement à « Garde cette porte »,
+// impératif 2ᵉ personne que WEAK_WRITE_RE capture par ailleurs). Ce signal
+// prime sur l'exclusion générique des verbes d'écriture faibles.
+const FACT_REPORTED_WISH_RE = /\b(?:veut|veulent|voudrait|voudraient|souhaite(?:nt)?)\b/
+
+/**
+ * Extrait le marqueur temporel littéral d'un FACT (jour/date/heure), pour
+ * affichage uniquement (champ « temporalité » du brouillon) — jamais inventé,
+ * jamais utilisé pour router. Retourne le texte normalisé, ou null si aucune
+ * temporalité n'est explicitement exprimée (doctrine anti-faits-fictifs).
+ */
+export function extractFactTemporality(question: string): string | null {
+  const q = normalizeQuery(question)
+  const match = DATETIME_RE.exec(q)
+  return match ? match[0] : null
+}
 
 // ── Signaux CORRECTION_IDENTITY (P4-B.2, Vincent 2026-08-17) ──────────────────
 //
@@ -252,7 +300,7 @@ export function detectIntent(question: string): IntentResult {
   const hasAction      = ACTION_RE.test(q)
   const hasDatetime    = DATETIME_RE.test(q)
   const hasSchedVerb   = SCHEDULE_VERB_RE.test(q)
-  const hasStrongWrite  = STRONG_WRITE_RE.test(q)
+  const hasStrongWrite  = STRONG_WRITE_RE.test(q) && !REFLEXIVE_DESCRIPTIVE_RE.test(q)
   const hasWeakWrite    = WEAK_WRITE_RE.test(q)
   const hasUnsupported  = UNSUPPORTED_RE.test(q)
   const hasCreateVisit  = hasVisit && CREATE_VISIT_RE.test(q)
@@ -261,6 +309,9 @@ export function detectIntent(question: string): IntentResult {
   const hasObsMarker    = OBSERVATION_MARKER_RE.test(q)
   const hasFutureTense  = FUTURE_TENSE_RE.test(q)
   const hasOpinion      = OPINION_RE.test(q)
+  const hasFactAssertion = FACT_ASSERTION_RE.test(q)
+  const hasReportedWish  = FACT_REPORTED_WISH_RE.test(q)
+  const hasQuestionMark  = /\?\s*$/.test(question.trim())
   const hasIdentityCorrection =
     IDENTITY_CORRECTION_QUAND_RE.test(q) ||
     IDENTITY_CORRECTION_NON_RE.test(q) ||
@@ -279,6 +330,8 @@ export function detectIntent(question: string): IntentResult {
   if (hasStrongWrite && !hasSchedVerb)   signals.push('write_verb')
   if (hasWeakWrite)                      signals.push('implicit_write')
   if (hasUnsupported)                    signals.push('unsupported_object')
+  if (hasFactAssertion)                  signals.push('fact_assertion')
+  if (hasReportedWish)                   signals.push('reported_wish')
 
   // ── Garde PRÉPARATION DE VISITE ───────────────────────────────────────────
   // Prime sur tout : « fais-moi les points de contrôle pour ma prochaine visite »
@@ -323,6 +376,41 @@ export function detectIntent(question: string): IntentResult {
   if (hasVisit && !hasNextVisit && !hasAction && (hasSchedVerb || hasDatetime || hasCreateVisit)) {
     const confidence: IntentConfidence = hasSchedVerb ? 'strong' : 'ambiguous'
     return { intent: 'SCHEDULE_VISIT', confidence, signals }
+  }
+
+  // ── Priorité 2bis : FACT ──────────────────────────────────────────────────
+  // Information déclarative à retenir (P4-C). Exclusions explicites contre les
+  // 6 catégories du cadrage Vincent :
+  //   — question           → hasQuestionMark (le guard READ ne couvre pas les
+  //                          interrogatives sans mot-clé, ex. "Quels sont…?")
+  //   — action demandée    → hasStrongWrite / hasAction / hasSchedVerb
+  //   — observation        → looksLikeObservation (miroir exact de la
+  //                          condition Priorité 4bis : si OBSERVATION la
+  //                          prendrait, FACT s'efface)
+  //   — correction d'identité → déjà tranché par la garde CORRECTION_IDENTITY
+  //                          plus haut, jamais atteint ici
+  //   — relation structurée (RELATION_CLAIM, futur P4-B.3) → aucune exclusion
+  //                          dédiée : les verbes relationnels (s'occupe de,
+  //                          travaille chez, dépend de) ne déclenchent jamais
+  //                          FACT_ASSERTION_RE, par construction
+  //   — planification      → hasSchedVerb (SCHEDULE_VISIT/SCHEDULE_MEETING à
+  //                          verbe explicite priment déjà, Priorité 1/2)
+  // hasWeakWrite est toléré UNIQUEMENT si porté par un souhait rapporté
+  // (« Le client veut conserver cette porte. ») — sinon il reste un signal
+  // d'écriture implicite (UNKNOWN_WRITE, Priorité 5).
+  const looksLikeObservation = hasObsState && hasObsMarker && !hasFutureTense && !hasOpinion
+  if (
+    (hasFactAssertion || hasReportedWish) &&
+    !hasQuestionMark &&
+    !hasStrongWrite &&
+    !hasSchedVerb &&
+    !hasAction &&
+    !hasUnsupported &&
+    !hasOpinion &&
+    !looksLikeObservation &&
+    (!hasWeakWrite || hasReportedWish)
+  ) {
+    return { intent: 'FACT', confidence: 'ambiguous', signals }
   }
 
   // ── Priorité 3 : SCHEDULE_MEETING ────────────────────────────────────────

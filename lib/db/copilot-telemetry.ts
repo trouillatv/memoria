@@ -65,7 +65,7 @@ export interface CopilotInteractionInput {
   usedFallback: boolean
 
   // Proposition 3C
-  proposalKind?: 'action' | 'visit_item' | 'schedule_visit' | 'schedule_meeting' | 'observation' | 'actor_alias' | null
+  proposalKind?: 'action' | 'visit_item' | 'schedule_visit' | 'schedule_meeting' | 'observation' | 'actor_alias' | 'fact' | null
   proposalId?: string | null
   proposalStatus?: 'none' | 'shown'
 

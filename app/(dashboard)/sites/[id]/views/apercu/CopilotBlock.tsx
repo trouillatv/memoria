@@ -18,7 +18,7 @@ import { trackCopilotReferenceClick } from '../../copilot-event-action'
 import { fetchPlanItems, removePlanItem, getCopilotSuggestions, type PlanItemSummary } from '../../copilot-plan-actions'
 import type { CopilotIntent } from '@/lib/visits/copilot-context'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
-import { ProposalCard, ScheduleProposalCard, ObservationProposalCard, ActorAliasProposalCard } from '@/components/copilot/CopilotProposalCards'
+import { ProposalCard, ScheduleProposalCard, ObservationProposalCard, ActorAliasProposalCard, FactProposalCard } from '@/components/copilot/CopilotProposalCards'
 import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { CapabilityDiscoveryPanel } from '@/components/copilot/CapabilityDiscoveryPanel'
 import { cn } from '@/lib/utils'
@@ -381,6 +381,13 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
                     />
                   ) : msg.proposal.kind === 'actor_alias' ? (
                     <ActorAliasProposalCard
+                      siteId={siteId}
+                      proposal={msg.proposal}
+                      interactionId={msg.interactionId}
+                      onDone={replaceDone}
+                    />
+                  ) : msg.proposal.kind === 'fact' ? (
+                    <FactProposalCard
                       siteId={siteId}
                       proposal={msg.proposal}
                       interactionId={msg.interactionId}
