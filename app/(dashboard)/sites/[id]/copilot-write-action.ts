@@ -8,13 +8,9 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { requireSiteAccess } from '@/lib/auth/resource-access'
 import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { upsertPreparationItem } from '@/lib/db/visit-preparation'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
-import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import { updateCopilotProposalStatus } from '@/lib/db/copilot-telemetry'
-import { toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
-import { todayLocalIso } from '@/lib/time/local-date'
 import { confirmActorAlias } from '@/lib/db/actor-alias-write'
 import { confirmSiteFact } from '@/lib/db/site-fact-write'
 import { confirmSiteRelation } from '@/lib/db/canonical-subject-link-write'
@@ -22,6 +18,8 @@ import { confirmSiteWatchpoint } from '@/lib/db/site-watchpoint-write'
 import { confirmSiteDeadline } from '@/lib/db/site-deadline-write'
 import { confirmSiteReserve } from '@/lib/db/site-reserve-write'
 import { confirmSiteAction } from '@/lib/db/site-action-write'
+import { confirmScheduledEvent } from '@/lib/db/site-scheduled-event-write'
+import { confirmSiteObservation } from '@/lib/db/site-observation-write'
 import { supersedeKnowledgeEntry, archiveKnowledgeEntry } from '@/lib/db/site-memory-entries'
 
 // ── Créer une action depuis une proposition copilote ─────────────────────────
@@ -160,63 +158,17 @@ export async function createCopilotScheduledEvent(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: 'Non authentifié.' }
 
-  const admin = createAdminClient()
-
-  // Idempotence : la même proposition ne peut créer qu'un seul événement
-  const { data: existing } = await admin
-    .from('site_scheduled_events')
-    .select('id')
-    .eq('copilot_proposal_id', copilotProposalId)
-    .maybeSingle()
-  if (existing) return { ok: true, eventId: (existing as { id: string }).id }
-
-  // Récupérer organization_id (NOT NULL sur site_scheduled_events)
-  const { data: site } = await admin
-    .from('sites')
-    .select('organization_id')
-    .eq('id', siteId)
-    .is('deleted_at', null)
-    .maybeSingle()
-  const orgId = (site as { organization_id: string } | null)?.organization_id
-  if (!orgId) return { ok: false, error: 'Chantier introuvable.' }
-
-  // Construire le payload discriminé selon le type
-  const payload = type === 'visit'
-    ? { type: 'visit', ...(objective?.trim() ? { objective: objective.trim() } : {}) }
-    : { type: 'meeting', ...(objective?.trim() ? { agenda: objective.trim() } : {}) }
-
-  const plannedStart = toNomeaTimestamp(scheduledDate, scheduledTime)
-
-  console.log('[ScheduleVisit] SCHEDULE_VISIT_CONFIRM_START', { siteId, type, scheduledDate, scheduledTime, title: title.trim() })
-
-  const { data, error } = await admin
-    .from('site_scheduled_events')
-    .insert({
-      organization_id: orgId,
-      site_id: siteId,
-      type,
-      status: 'planned',
-      planned_start: plannedStart,
-      title: title.trim(),
-      payload,
-      created_from: 'manual',
-      created_by: user.id,
-      copilot_proposal_id: copilotProposalId,
-    })
-    .select('id')
-    .single()
-
-  if (error || !data) {
-    console.error('[ScheduleVisit] SCHEDULE_VISIT_CONFIRM_ERROR', { code: error?.code, message: error?.message, details: error?.details, hint: error?.hint })
-    return { ok: false, error: 'Impossible de créer cet événement.' }
-  }
-
-  const eventId = (data as { id: string }).id
-  console.log('[ScheduleVisit] SCHEDULE_VISIT_DB_CREATED', { eventId, siteId, plannedStart })
-  invalidateSiteProjection(siteId)
-  if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
-  console.log('[ScheduleVisit] SCHEDULE_VISIT_CONFIRM_SUCCESS', { eventId })
-  return { ok: true, eventId }
+  return confirmScheduledEvent({
+    siteId,
+    userId: user.id,
+    type,
+    title,
+    scheduledDate,
+    scheduledTime,
+    objective: objective ?? null,
+    copilotProposalId,
+    interactionId: interactionId ?? null,
+  })
 }
 
 // ── Enregistrer un constat OBSERVATION depuis une proposition copilote ───────
@@ -259,43 +211,15 @@ export async function createCopilotObservation(rawInput: unknown): Promise<Creat
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: 'Non authentifié.' }
 
-  const admin = createAdminClient()
-
-  // Idempotence : la même proposition ne peut créer qu'une seule occurrence
-  // (miroir de cso_copilot_uniq, mig 326 : canonical_subject_id + source_ref_id).
-  const { data: existing } = await admin
-    .from('canonical_subject_occurrence')
-    .select('id')
-    .eq('source_kind', 'copilot')
-    .eq('source_ref_id', copilotProposalId)
-    .maybeSingle()
-  if (existing) return { ok: true, occurrenceId: (existing as { id: string }).id }
-
-  const { data, error } = await admin
-    .from('canonical_subject_occurrence')
-    .insert({
-      canonical_subject_id: canonicalSubjectId,
-      site_id: siteId,
-      source_kind: 'copilot',
-      source_ref_id: copilotProposalId,
-      source_proposal_id: null,
-      visit_status: null,
-      label,
-      note: body ?? null,
-      evidence_count: 0,
-      effective_date: todayLocalIso(),
-      created_by: user.id,
-      validation_status: 'confirmed',
-    })
-    .select('id')
-    .single()
-
-  if (error || !data) return { ok: false, error: error?.message ?? 'Impossible d\'enregistrer ce constat.' }
-
-  const occurrenceId = (data as { id: string }).id
-  invalidateSiteProjection(siteId)
-  if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
-  return { ok: true, occurrenceId }
+  return confirmSiteObservation({
+    siteId,
+    userId: user.id,
+    canonicalSubjectId,
+    label,
+    body: body ?? null,
+    copilotProposalId,
+    interactionId: interactionId ?? null,
+  })
 }
 
 // ── Confirmer une correspondance d'identité d'acteur (P4-B.2) ───────────────
