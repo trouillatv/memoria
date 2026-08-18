@@ -269,3 +269,68 @@ describe('VoiceOrbOverlay — bandeau sticky', () => {
     expect(viewPendingProposal).toHaveBeenCalledWith('p2')
   })
 })
+
+// ── Couche 3 : retour automatique à l'orbe après Voir (Vincent, 2026-08-18) ────
+//
+// Corrige le parcours signalé en recette OCEF : Voir → feuille → Valider ne
+// doit pas laisser l'utilisateur échoué dans l'historique de la feuille.
+// Testé via le provider réel (pas de mock) : `useVoiceOrb()` pilote openOrb /
+// viewPendingProposal / removePendingProposal exactement comme le bandeau et
+// les cartes de proposition le font en production.
+
+function ReturnToOrbProbe() {
+  const { openOrb, addPendingProposal, removePendingProposal, viewPendingProposal } = useVoiceOrb()
+  return (
+    <div>
+      <button type="button" onClick={() => openOrb({ siteId: SITE.id, onVoiceTurn: async () => ({}) })}>
+        open-orb
+      </button>
+      <button
+        type="button"
+        onClick={() => addPendingProposal({ id: 'r1', kind: 'watchpoint', kindLabel: 'Point à surveiller', title: 'Fissure façade nord' })}
+      >
+        add-proposal
+      </button>
+      <button type="button" onClick={() => viewPendingProposal('r1')}>voir</button>
+      <button type="button" onClick={() => removePendingProposal('r1')}>resolve</button>
+    </div>
+  )
+}
+
+function renderReturnToOrb() {
+  return render(
+    <VoiceOrbProvider>
+      <ReturnToOrbProbe />
+    </VoiceOrbProvider>,
+  )
+}
+
+describe('VoiceOrbProvider — retour automatique à l\'orbe après Voir', () => {
+  beforeEach(stubMicDenied)
+
+  it('Voir depuis le bandeau ferme l\'orbe (la feuille redevient visible dessous)', async () => {
+    renderReturnToOrb()
+    fireEvent.click(screen.getByText('open-orb'))
+    await waitFor(() => expect(screen.getByRole('button', { name: /réessayer/i })).toBeInTheDocument())
+
+    fireEvent.click(screen.getByText('add-proposal'))
+    fireEvent.click(screen.getByText('voir'))
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: /réessayer/i })).not.toBeInTheDocument())
+  })
+
+  it('résoudre la proposition consultée via Voir restitue automatiquement l\'orbe', async () => {
+    renderReturnToOrb()
+    fireEvent.click(screen.getByText('open-orb'))
+    await waitFor(() => expect(screen.getByRole('button', { name: /réessayer/i })).toBeInTheDocument())
+    fireEvent.click(screen.getByText('add-proposal'))
+    fireEvent.click(screen.getByText('voir'))
+    await waitFor(() => expect(screen.queryByRole('button', { name: /réessayer/i })).not.toBeInTheDocument())
+
+    // Équivalent de Valider/Annuler dans la feuille : la carte disparaît de
+    // pendingProposals, il n'en reste aucune → retour automatique à l'orbe.
+    fireEvent.click(screen.getByText('resolve'))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /réessayer/i })).toBeInTheDocument())
+  })
+})
