@@ -96,6 +96,7 @@ Règles absolues :
 — Quand "sujets_detail" contient un sujet dont le label diffère du terme employé dans la question : réponds directement sur le sujet présent dans sujets_detail en utilisant son label exact. Ne jamais affirmer ni expliquer que les deux noms désignent le même objet ou que l'un "est en réalité" l'autre.
 — Dans "confirmedLinks" de sujets_detail : le champ "linkType" est le seul vocabulaire autorisé pour qualifier la relation. Lexique de traduction obligatoire : depends_on→"dépend de", blocks→"bloque", is_blocked_by→"est bloqué par", precedes→"précède", is_preceded_by→"est précédé par", relates_to→"est associé à". Pour tout linkType non listé : utilise "est associé à". Ne jamais substituer des verbes non couverts par ce lexique ("requiert", "est causé par", "conditionne", "est lié à") sauf si "relates_to" s'y prête.
 — "intervenants_detail" liste les entreprises et contacts actifs du chantier, avec leur "role" (un rôle de suivi de projet générique, ex. "PLANIF" — jamais un corps de métier) et leurs actions assignées. Aucun champ ne donne le corps de métier ou le domaine d'une entreprise : c'est son "companyName" qui porte cette information (une entreprise dont le nom évoque un domaine, ex. climatisation ou électricité, intervient probablement sur ce lot). Quand la question nomme un domaine ou un corps d'état, cherche d'abord dans "intervenants_detail" une entreprise dont le nom s'y rapporte avant de conclure qu'aucun intervenant n'est désigné. Ne conclus "aucun intervenant désigné pour ce point" que si "intervenants_detail" est vide ou qu'aucune entreprise ne s'y rapporte, même par son nom.
+— "mutation.status" indique si un ajout, retrait, création, planification, modification ou clôture a RÉELLEMENT eu lieu pendant ce tour. Il vaut toujours "none" ici : tu n'as jamais toi-même produit d'écriture, quelle que soit la formulation de la question. Tant que "mutation.status" vaut "none", n'affirme JAMAIS qu'une action a été ajoutée, retirée, créée, planifiée, modifiée ou clôturée ("je l'ai retiré de votre suivi", "j'ai supprimé la réunion", "c'est fait", "j'ai créé l'action"...) — même si la question demandait explicitement cette écriture. Quand "mutation.neutralizedWrite" est true, la question contenait une négation portant sur une intention d'écriture (ex. "Ne surveille pas...", "Ne planifie jamais...", "Ne crée rien...") : confirme l'absence d'action dans les mêmes termes que la demande, sans jamais prétendre avoir exécuté un retrait ou une suppression qui n'a pas eu lieu. Une reformulation neutre reste toujours possible et attendue ("D'accord, rien ne sera planifié.", "Aucune réunion n'est prévue vendredi.", "Ce point n'est pas suivi.") — ce qui est interdit, c'est de revendiquer l'effet d'un writer qui n'a pas tourné, pas de confirmer l'absence d'action.
 ${SPOKEN_PROMPT_RULES}`
 
 export interface HistoryMessage {
@@ -188,6 +189,19 @@ export interface FreeAnswerContext {
   visitDelta?: VisitDeltaContext
   actionsSummary?: ActionsSummaryContext
   stagnation?: StagnationContext
+  /**
+   * `answerCopilotFreeQuestion` n'est jamais atteint après une écriture réelle
+   * (le routeur retourne tôt pour tout intent != READ) : `mutationStatus` vaut
+   * donc toujours 'none' ici — transmis explicitement plutôt que déduit, pour
+   * que le prompt n'ait jamais à le supposer. `neutralizedWrite` distingue une
+   * question de lecture ordinaire d'un verbe d'écriture volontairement neutralisé
+   * par une négation (NEGATION_SCOPE) : dans ce second cas, le tour porte une
+   * tentation particulière de répondre comme si l'action avait eu lieu (terrain
+   * OCEF 2026-08-18 : « Ne surveille pas le regard R4. » → « Je l'ai retiré de
+   * votre suivi actif. », alors qu'aucun writer n'a tourné).
+   */
+  mutationStatus?: 'none'
+  neutralizedWrite?: boolean
 }
 
 // Requête préparée une seule fois, consommée par les deux transports (non
@@ -237,6 +251,14 @@ function prepareFreeAnswerRequest(
       // ni situer « demain » ni le reprendre dans sa réponse. Formatée en zone
       // Nouméa, comme `depuis` — un ISO brut ferait annoncer la veille.
       date_du_jour: frDayMonthYearLocal(new Date()),
+      // Toujours présent, jamais un spread conditionnel : contrairement aux
+      // autres champs `extra`, cet état ne doit jamais pouvoir manquer au
+      // prompt — un tour sans ce fait explicite retombe sur la probabilité
+      // du LLM, exactement le trou que ce champ ferme.
+      mutation: {
+        status: extra?.mutationStatus ?? 'none',
+        neutralizedWrite: extra?.neutralizedWrite ?? false,
+      },
       question,
       ...(history.length > 0 ? { historique: history } : {}),
       items: items.map((i) => ({

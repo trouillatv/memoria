@@ -9,6 +9,7 @@ import { detectIntent, readRemainsPlausible } from '@/lib/visits/copilot-intent-
 
 const intent = (q: string) => detectIntent(q).intent
 const confidence = (q: string) => detectIntent(q).confidence
+const signals = (q: string) => detectIntent(q).signals
 
 // ── READ ──────────────────────────────────────────────────────────────────────
 // Ces tests sont les plus importants : aucune de ces phrases ne doit déclencher
@@ -1092,6 +1093,34 @@ describe('NEGATION_SCOPE — "plus" ne neutralise jamais sans marqueur "ne" stru
   for (const [q, expectedIntent] of cases) {
     it(`"${q}" → reste ${expectedIntent} (écriture autorisée)`, () => {
       expect(intent(q)).toBe(expectedIntent)
+    })
+  }
+})
+
+// ── NEGATION_SCOPE — contrat neutralizedWrite pour copilot-free-answer.ts
+// (fix mutation-claim, Vincent 2026-08-18) ───────────────────────────────────
+// copilot-free-prepare.ts calcule `neutralizedWrite = intentResult.signals
+// .includes('negated_write_verb')` — le signal EXACT vérifié ici, pas
+// seulement l'intent final. Un cas par famille d'écriture neutralisable,
+// couvrant les 7 familles listées par Vincent dans le mandat de correction.
+// CREATE_RESERVE, CREATE_DEADLINE et ADD_VISIT_ITEM n'avaient jusqu'ici aucun
+// cas NEGATION_SCOPE dédié (seuls action/réunion/visite/watchpoint l'étaient) ;
+// probé lecture seule via detectIntent avant d'écrire ces cas — la détection
+// est déjà générique par verbe (WRITE_TRIGGER_VERB_RE), aucune modification du
+// routeur n'a été nécessaire.
+describe('NEGATION_SCOPE — signal negated_write_verb couvre les 7 familles', () => {
+  const cases: [string, string][] = [
+    ['Ne crée rien pour demain.', 'action'],
+    ['Ne crée pas de réserve sur le portail cassé.', 'réserve'],
+    ['Ne programme plus de visite vendredi.', 'visite'],
+    ['Ne planifie jamais de réunion vendredi.', 'réunion'],
+    ['Le SSI ne doit pas être réglé avant vendredi.', 'échéance'],
+    ["N'ajoute pas R4 au plan de visite.", 'point de visite'],
+    ['Ne surveille pas le SSI', 'watchpoint'],
+  ]
+  for (const [q, famille] of cases) {
+    it(`"${q}" → signal negated_write_verb (famille: ${famille})`, () => {
+      expect(signals(q)).toContain('negated_write_verb')
     })
   }
 })

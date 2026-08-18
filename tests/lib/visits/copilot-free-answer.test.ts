@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { AIProvider, CompletionOutput } from '@/services/ai'
 
 // Dette signalée par Vincent en revue de D1 (streaming vocal, commit
@@ -18,7 +20,7 @@ import type { AIProvider, CompletionOutput } from '@/services/ai'
 const mocks = vi.hoisted(() => ({ getAIProvider: vi.fn() }))
 vi.mock('@/services/ai/factory', () => ({ getAIProvider: mocks.getAIProvider }))
 
-import { answerCopilotFreeQuestionStream } from '@/lib/visits/copilot-free-answer'
+import { answerCopilotFreeQuestion, answerCopilotFreeQuestionStream } from '@/lib/visits/copilot-free-answer'
 import { sanitizeSpokenText } from '@/lib/voice/spoken-answer'
 
 const FINAL: CompletionOutput = {
@@ -131,5 +133,66 @@ describe('answerCopilotFreeQuestionStream — robustesse du parsing spokenText e
     const badJson = '{"spokenText":"Valeur cass\\qée bizarre.","text":"Réponse écrite complète.","citedIds":[]}'
     const spoken = await runStream(chunkEvery(badJson, 6))
     expect(spoken).toEqual([])
+  })
+})
+
+// Fix mutation-claim (Vincent 2026-08-18) : une réponse READ/answer/llm affirmait
+// avoir exécuté un retrait/une création alors qu'aucun writer n'avait tourné
+// (terrain OCEF : « Ne surveille pas le regard R4. » → « Je l'ai retiré de votre
+// suivi actif. »). Garantie structurelle à deux niveaux — vérifiée ici au niveau
+// du contexte transmis au LLM, jamais au niveau d'une reformulation de prompt
+// seule : `mutation` doit TOUJOURS être présent dans le contexte envoyé au
+// modèle, quel que soit l'appelant, et refléter fidèlement `extra`.
+describe('answerCopilotFreeQuestion — contexte "mutation" toujours transmis au LLM', () => {
+  beforeEach(() => {
+    mocks.getAIProvider.mockReset()
+  })
+
+  function captureUserMessage(extra?: Parameters<typeof answerCopilotFreeQuestion>[7]): Promise<string> {
+    let captured = ''
+    mocks.getAIProvider.mockReturnValue({
+      name: 'mock',
+      complete: async (req: { userMessage: string }) => {
+        captured = req.userMessage
+        return FINAL
+      },
+    })
+    return answerCopilotFreeQuestion('Question test', [], [], [], null, [], 'Chantier Test', extra).then(() => captured)
+  }
+
+  it('sans `extra` (aucun appelant ne le fournit) : mutation.status="none", neutralizedWrite=false', async () => {
+    const userMessage = await captureUserMessage(undefined)
+    expect(userMessage).toContain('"mutation"')
+    const context = JSON.parse(userMessage.split('\n\nContexte :\n')[1]!)
+    expect(context.mutation).toEqual({ status: 'none', neutralizedWrite: false })
+  })
+
+  it('avec `extra.neutralizedWrite=true` (négation d\'un verbe d\'écriture) : le contexte le porte fidèlement', async () => {
+    const userMessage = await captureUserMessage({ mutationStatus: 'none', neutralizedWrite: true })
+    const context = JSON.parse(userMessage.split('\n\nContexte :\n')[1]!)
+    expect(context.mutation).toEqual({ status: 'none', neutralizedWrite: true })
+  })
+
+  it('avec `extra.neutralizedWrite=false` (lecture ordinaire, aucune négation) : le contexte le porte fidèlement', async () => {
+    const userMessage = await captureUserMessage({ mutationStatus: 'none', neutralizedWrite: false })
+    const context = JSON.parse(userMessage.split('\n\nContexte :\n')[1]!)
+    expect(context.mutation).toEqual({ status: 'none', neutralizedWrite: false })
+  })
+})
+
+// Le niveau prompt de la même garantie : une règle absolue doit interdire toute
+// revendication de mutation quand mutation.status="none", sans jamais interdire
+// la reformulation naturelle d'une absence d'action (« D'accord, rien ne sera
+// planifié » reste une réponse acceptable — ce n'est pas la même chose que
+// « J'ai supprimé la réunion »).
+describe('SYSTEM_PROMPT — règle absolue anti-revendication de mutation', () => {
+  it('interdit explicitement de revendiquer un ajout/retrait/création/planification/modification/clôture quand mutation.status="none"', () => {
+    const source = readFileSync(join(__dirname, '..', '..', '..', 'lib', 'visits', 'copilot-free-answer.ts'), 'utf-8')
+    const match = source.match(/const SYSTEM_PROMPT = `[\s\S]*?`/)
+    expect(match).not.toBeNull()
+    const prompt = match![0]
+    expect(prompt).toMatch(/mutation\.status/)
+    expect(prompt).toMatch(/JAMAIS/)
+    expect(prompt).toContain('neutralizedWrite')
   })
 })

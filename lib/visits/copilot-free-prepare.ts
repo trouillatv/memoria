@@ -1488,6 +1488,14 @@ export async function prepareCopilotAnswer(
 
   // ── Contexte 3B — modules chargés à la demande ───────────────────────────────
   const extra: FreeAnswerContext = {}
+  // Garantie architecturale (Vincent 2026-08-18) : cette fonction n'atteint ce
+  // point que sur la branche READ (retour anticipé ligne ~445 pour tout autre
+  // intent) — mutationStatus vaut donc toujours 'none' ici, jamais déduit côté
+  // prompt. neutralizedWrite signale au moteur de réponse qu'une négation a
+  // désarmé une intention d'écriture (NEGATION_SCOPE), pour qu'il ne prétende
+  // jamais avoir exécuté ce que le routeur a justement neutralisé.
+  extra.mutationStatus = 'none'
+  extra.neutralizedWrite = intentResult.signals.includes('negated_write_verb')
 
   // Timeline : filtrer les changements récents à l'intervalle du delta
   // Ne remonter que les événements dont occurredAt est dans [fromDate, toDate].
