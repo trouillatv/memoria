@@ -9,7 +9,10 @@
 //   2. Elle ne lit ni n'écrit JAMAIS en base. Aucune donnée du chantier ne lui est transmise.
 //   3. Elle ne possède JAMAIS l'autorité de déclencher une mutation. `POSSIBLE_WRITE` ne
 //      produit au mieux qu'un BROUILLON soumis à validation humaine explicite.
-//   4. Toute ambiguïté retombe côté READ.
+//   4. Toute ambiguïté retombe côté sûr : lecture (READ) quand la compréhension dit
+//      'read', clarification neutre (UNKNOWN_WRITE) quand elle ne comprend pas
+//      ('unknown', quelle que soit sa confiance) — jamais une proposition fabriquée
+//      dans le noir.
 //   5. Timeout, erreur réseau, JSON invalide, entité hallucinée → `null`, et le pipeline
 //      déterministe existant reprend la main SILENCIEUSEMENT. Le Copilote reste
 //      fonctionnel sans LLM.
@@ -351,6 +354,40 @@ export function mergeComprehension(
     }
     nextClassification = classifyReadIntent(question)
     applied.push('read_downgrade')
+  }
+
+  // ── 1bis. Rétrogradation de sûreté (compréhension 'unknown') ──────────────
+  // Écriture DÉDUITE (confiance déterministe 'ambiguous') alors que la compréhension
+  // ne comprend rien du tout ('unknown') → ni lecture ni écriture confirmée, on ne
+  // fabrique JAMAIS un brouillon dans le noir (terrain 2026-08-19, tours [10] « Et
+  // pas grand monde de visite vendredi. » et [11] « Ricoto Ah non. Tu fais toto. »,
+  // tous deux transformés en carte de proposition avant ce correctif).
+  //
+  // Cible UNKNOWN_WRITE (clarification neutre), jamais READ : le LLM ne dit pas
+  // « c'est une question », il dit « je ne comprends pas » — répondre à une lecture
+  // que personne n'a demandée serait une fausse compréhension, pas une sûreté.
+  // copilot-free-prepare.ts répond alors par une demande de clarification, jamais
+  // par une carte de proposition.
+  //
+  // Volontairement ASYMÉTRIQUE par rapport à la règle 1 : aucune passerelle de
+  // confiance ('unknown'/low reste rétrogradé, cf. tour [11]) — un verdict 'unknown'
+  // ne doit jamais renforcer une écriture ambiguë, quelle que soit sa propre confiance.
+  // Seul verrou conservé : une écriture déterministe 'strong' n'est jamais rétrogradée
+  // — un ordre explicite ("crée une action sur le regard R4") ne doit pas être annulé
+  // parce que le LLM a eu un raté.
+  if (
+    comprehension.mode === 'unknown' &&
+    nextIntent.intent !== 'READ' &&
+    nextIntent.intent !== 'OBSERVATION' &&
+    nextIntent.intent !== 'UNKNOWN_WRITE' &&
+    nextIntent.confidence === 'ambiguous'
+  ) {
+    nextIntent = {
+      intent: 'UNKNOWN_WRITE',
+      confidence: 'ambiguous',
+      signals: [...nextIntent.signals, 'llm_unknown_downgrade'],
+    }
+    applied.push('unknown_downgrade')
   }
 
   // ── 2. Précision d'une écriture non résolue ────────────────────────────────

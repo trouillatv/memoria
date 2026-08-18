@@ -290,6 +290,81 @@ describe('mergeComprehension — NEGATION_SCOPE ne doit jamais être écrasée p
   })
 })
 
+// ── 3quater. UNKNOWN ne doit jamais renforcer une écriture ambiguë (audit
+// causal tours [10]/[11], Vincent 2026-08-19) ────────────────────────────────
+//
+// La règle 1 (read_downgrade) ne couvrait que comprehension.mode === 'read'.
+// Aucune règle ne gérait 'unknown' : une écriture déterministe 'ambiguous'
+// passait alors intacte jusqu'à la carte de proposition, y compris quand le
+// LLM répondait explicitement « je ne comprends pas ». Repro exacte des deux
+// transcripts terrain (STT très dégradée) qui produisaient une carte avant
+// ce correctif.
+//
+// Asymétrie volontaire : contrairement à read_downgrade, aucune passerelle
+// de confiance n'est appliquée ici (cf. tour [11], unknown/low, qui reste
+// rétrogradé). Un ordre déterministe 'strong' n'est jamais rétrogradé — c'est
+// une conséquence naturelle du gate sur intentResult.confidence === 'ambiguous',
+// pas un cas codé séparément.
+describe('mergeComprehension — comprehension "unknown" ne fabrique jamais un brouillon dans le noir', () => {
+  it('« Et pas grand monde de visite vendredi. » (STT dégradée, unknown/high) → UNKNOWN_WRITE, jamais SCHEDULE_VISIT', () => {
+    const q = 'Et pas grand monde de visite vendredi.'
+    const det = detectIntent(q)
+    expect(det.intent).toBe('SCHEDULE_VISIT')
+    expect(det.confidence).toBe('ambiguous')
+    const merged = route(q, comprehension('UNKNOWN', { intent: 'other', confidence: 'high' }))
+    expect(merged.intentResult.intent).toBe('UNKNOWN_WRITE')
+    expect(merged.applied).toContain('unknown_downgrade')
+  })
+
+  it('« Ricoto Ah non. Tu fais toto. » (STT dégradée, unknown/low) → UNKNOWN_WRITE, jamais CREATE_ACTION', () => {
+    const q = 'Ricoto Ah non. Tu fais toto.'
+    const det = detectIntent(q)
+    expect(det.intent).toBe('CREATE_ACTION')
+    expect(det.confidence).toBe('ambiguous')
+    // Asymétrique : confidence 'low' de la compréhension ne change rien — un
+    // 'unknown' peu sûr de lui-même reste tout aussi dangereux à confirmer.
+    const merged = route(q, comprehension('UNKNOWN', { intent: 'other', confidence: 'low' }))
+    expect(merged.intentResult.intent).toBe('UNKNOWN_WRITE')
+    expect(merged.applied).toContain('unknown_downgrade')
+  })
+
+  it('« Planifie une visite vendredi » (ordre explicite, strong) → reste SCHEDULE_VISIT même si le LLM ne comprend pas', () => {
+    const q = 'Planifie une visite vendredi'
+    const det = detectIntent(q)
+    expect(det.intent).toBe('SCHEDULE_VISIT')
+    expect(det.confidence).toBe('strong')
+    const merged = route(q, comprehension('UNKNOWN', { intent: 'other', confidence: 'high' }))
+    expect(merged.intentResult.intent).toBe('SCHEDULE_VISIT')
+    expect(merged.applied).not.toContain('unknown_downgrade')
+  })
+
+  it('« Fais une action sur le regard R4 » (ordre explicite, strong) → reste CREATE_ACTION même si le LLM ne comprend pas', () => {
+    const q = 'Fais une action sur le regard R4'
+    const det = detectIntent(q)
+    expect(det.intent).toBe('CREATE_ACTION')
+    expect(det.confidence).toBe('strong')
+    const merged = route(q, comprehension('UNKNOWN', { intent: 'other', confidence: 'high' }))
+    expect(merged.intentResult.intent).toBe('CREATE_ACTION')
+    expect(merged.applied).not.toContain('unknown_downgrade')
+  })
+
+  it('OBSERVATION classée "unknown" par le LLM reste OBSERVATION (aucun concept d\'observation côté compréhension)', () => {
+    const q = "Le cadenas n'est toujours pas installé."
+    expect(detectIntent(q).intent).toBe('OBSERVATION')
+    const merged = route(q, comprehension('UNKNOWN', { intent: 'other', confidence: 'high' }))
+    expect(merged.intentResult.intent).toBe('OBSERVATION')
+    expect(merged.applied).not.toContain('unknown_downgrade')
+  })
+
+  it('UNKNOWN_WRITE déjà résolu par le déterministe reste UNKNOWN_WRITE (pas de double marquage)', () => {
+    const q = 'faudrait peut-être vérifier les toilettes'
+    expect(detectIntent(q).intent).toBe('UNKNOWN_WRITE')
+    const merged = route(q, comprehension('UNKNOWN', { intent: 'other', confidence: 'high' }))
+    expect(merged.intentResult.intent).toBe('UNKNOWN_WRITE')
+    expect(merged.applied).not.toContain('unknown_downgrade')
+  })
+})
+
 // ── 4. Erreur de chargement ≠ zéro résultat ───────────────────────────────────
 
 describe('resolveQuantitativeVerdict — ne jamais affirmer "aucune" à tort', () => {
