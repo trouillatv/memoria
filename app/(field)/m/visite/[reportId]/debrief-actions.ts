@@ -82,7 +82,11 @@ export async function triageCaptureAction(
       if (reportId) await undoSuggestionsAfterDiscard(reportId).catch(() => null)
     }
     return { ok: true }
-  } catch {
+  } catch (e) {
+    // Ne jamais avaler l'erreur réelle : un « Échec du tri » générique sans
+    // trace serveur a déjà masqué une régression (mig 341 — contrainte
+    // triage_intent désynchronisée du code applicatif) invisible côté client.
+    console.error('[triageCaptureAction] échec:', e)
     return { ok: false, error: 'Échec du tri' }
   }
 }
