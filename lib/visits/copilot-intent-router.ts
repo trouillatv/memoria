@@ -266,30 +266,42 @@ const RESERVE_CREATE_RE = /\b(?:cree\w*|ajout\w*|mets?\w*|mettr\w*)\s+(?:une?|la
 // ── Signaux NEGATION_SCOPE (Vincent 2026-08-18) ──────────────────────────────
 //
 // Neutralise une intention d'écriture uniquement quand la négation porte sur
-// le verbe d'écriture/intention lui-même — jamais un filtre global sur "pas".
-// Découvert en recette terrain : « Je surveille pas le regard aircon »
-// (français oral spontané, sans "ne") produisait une proposition de vigilance
-// POSITIVE. Aucune régression synthétique n'aurait suffi à la découvrir —
-// c'est la forme réelle, pas l'académique « Ne surveille pas le SSI ».
+// le verbe d'écriture/intention lui-même — jamais un filtre global sur un mot
+// négatif. Découvert en recette terrain : « Je surveille pas le regard
+// aircon » (français oral spontané, sans "ne") produisait une proposition de
+// vigilance POSITIVE. Aucune régression synthétique n'aurait suffi à la
+// découvrir — c'est la forme réelle, pas l'académique « Ne surveille pas le
+// SSI ».
 //
 // Portée = la CLAUSE (segment séparé par virgule/point-virgule dans le texte
 // ORIGINAL, avant que normalizeQuery n'efface la ponctuation), jamais la
 // phrase entière : « Le SSI n'est pas réglé, crée une action. » doit garder
 // son 2ᵉ segment intact — "crée" n'est neutralisé que s'IL est lui-même
-// adjacent à "pas" dans SA clause, jamais parce qu'un "pas" descriptif
-// traîne ailleurs dans la phrase.
+// adjacent à une particule négative dans SA clause, jamais parce qu'une
+// négation descriptive traîne ailleurs dans la phrase.
 //
-// Détection = adjacence stricte (le verbe d'écriture touche "pas", juste
-// avant ou juste après, dans la même clause) — pas une portée large
-// "ne...pas" sur toute la clause. Cette adjacence seule suffit à couvrir tous
-// les cas oraux du cadrage (« surveille pas », « planifie pas », « faut pas
-// créer », « je veux pas créer » — "pas" touche "faut"/"créer" dans les deux
-// derniers) SANS jamais neutraliser un constat descriptif : dans « le SSI
-// n'est pas réglé », les tokens adjacents à "pas" sont "est"/"réglé", ni l'un
-// ni l'autre n'est un verbe d'écriture. "ne" lui-même n'a pas besoin d'être
-// détecté séparément : quand il est présent, le verbe reste adjacent à "pas"
-// exactement comme dans la forme orale sans "ne" (« ne surveille pas » et
-// « surveille pas » placent tous deux "surveille" juste avant "pas").
+// Détection = adjacence stricte (le verbe d'écriture touche la particule
+// négative, juste avant ou juste après, dans la même clause) — pas une
+// portée large "ne...X" sur toute la clause. Cette adjacence seule suffit à
+// couvrir tous les cas oraux du cadrage (« surveille pas », « planifie pas »,
+// « faut pas créer », « je veux pas créer » — "pas" touche "faut"/"créer"
+// dans les deux derniers) SANS jamais neutraliser un constat descriptif :
+// dans « le SSI n'est pas réglé », les tokens adjacents à "pas" sont
+// "est"/"réglé", ni l'un ni l'autre n'est un verbe d'écriture. "ne" lui-même
+// n'a pas besoin d'être détecté séparément pour "pas" : quand il est
+// présent, le verbe reste adjacent à "pas" exactement comme dans la forme
+// orale sans "ne" (« ne surveille pas » et « surveille pas » placent tous
+// deux "surveille" juste avant "pas").
+//
+// Extension bornée (audit causal P6-A2, bloqueur n°2, 2026-08-18) : "jamais"
+// et "rien" sont des particules négatives aussi sûres que "pas" — même
+// détection par adjacence stricte, sans exiger "ne"/"n'" (« ne fait rien
+// plus demain », « planifie jamais de réunion » suivent le même patron oral).
+// "plus" est structurellement AMBIGU (« plus tard », « plus importante », ou
+// « ajoute plus de détails » ne sont jamais des négations) : il ne déclenche
+// la négation QUE si la clause porte en plus un marqueur "ne"/"n'" explicite
+// (NE_MARKER_RE) — jamais par adjacence seule. C'est le patron structuré
+// « ne/n' ... plus » mandaté par Vincent, pas un mot isolé.
 //
 // Reprend exactement les tiges des familles de verbes d'écriture déjà
 // définies ci-dessus (STRONG_WRITE_RE, SCHEDULE_VERB_RE, WATCHPOINT_VERB_RE,
@@ -298,14 +310,29 @@ const RESERVE_CREATE_RE = /\b(?:cree\w*|ajout\w*|mets?\w*|mettr\w*)\s+(?:une?|la
 const WRITE_TRIGGER_VERB_RE =
   /\b(?:ajout|rajoute|cree|note|notons|mets|mettr|fai[st]|ouvr|declenche|genere|rappell?|faut|planifi|programm|organis|prevois|inscri|marqu|convoque|surveill|doit|doivent)\w*\b/
 
+// Particules négatives sûres par elles-mêmes : détectées par simple
+// adjacence au verbe d'écriture, comme "pas" (pas de garde "ne" requise —
+// couvre l'oral spontané sans "ne").
+const NEGATION_PARTICLES_UNAMBIGUOUS = new Set(['pas', 'jamais', 'rien'])
+
+// Marqueur structurel "ne"/"n'" dans la clause (après normalizeQuery,
+// l'apostrophe de "n'est" devient un espace : "n'est" → tokens "n","est").
+// Seule garde requise avant de traiter "plus" comme négatif.
+const NE_MARKER_RE = /\b(?:ne|n)\b/
+
 function splitClauses(question: string): string[] {
   return question.split(/[,;]/).map((c) => c.trim()).filter(Boolean)
 }
 
 function clauseHasNegatedWriteVerb(clause: string): boolean {
-  const tokens = normalizeQuery(clause).split(' ')
+  const normalized = normalizeQuery(clause)
+  const tokens = normalized.split(' ')
+  const hasNeMarker = NE_MARKER_RE.test(normalized)
   for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i] !== 'pas') continue
+    const token = tokens[i]
+    const isNegationParticle =
+      NEGATION_PARTICLES_UNAMBIGUOUS.has(token) || (token === 'plus' && hasNeMarker)
+    if (!isNegationParticle) continue
     const before = tokens[i - 1]
     const after = tokens[i + 1]
     if ((before && WRITE_TRIGGER_VERB_RE.test(before)) || (after && WRITE_TRIGGER_VERB_RE.test(after))) {

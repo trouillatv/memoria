@@ -274,6 +274,20 @@ describe('mergeComprehension — NEGATION_SCOPE ne doit jamais être écrasée p
     const merged = route(q, comprehension('POSSIBLE_WRITE', { intent: 'schedule_meeting' }))
     expect(merged.intentResult.intent).not.toBe('SCHEDULE_MEETING')
   })
+
+  // Extension bornée jamais/rien/plus (bloqueur n°2, audit causal P6-A2
+  // 2026-08-18) : la garde ci-dessus ne teste que "pas". Elle doit protéger
+  // identiquement les nouveaux patrons de négation structurée, car elle est
+  // générique (clé sur la présence du signal 'negated_write_verb', jamais sur
+  // le mot qui l'a déclenché) — à vérifier, pas à réécrire.
+  it('"Ne planifie jamais de réunion vendredi." → jamais SCHEDULE_MEETING, même si le LLM y voit un ordre', () => {
+    const q = 'Ne planifie jamais de réunion vendredi.'
+    const det = detectIntent(q)
+    expect(det.intent).not.toBe('SCHEDULE_MEETING')
+    expect(det.signals).toContain('negated_write_verb')
+    const merged = route(q, comprehension('POSSIBLE_WRITE', { intent: 'schedule_meeting' }))
+    expect(merged.intentResult.intent).not.toBe('SCHEDULE_MEETING')
+  })
 })
 
 // ── 4. Erreur de chargement ≠ zéro résultat ───────────────────────────────────

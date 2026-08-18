@@ -1053,3 +1053,45 @@ describe('NEGATION_SCOPE — négation descriptive ne neutralise jamais une acti
     expect(intent("Le SSI n'est pas réglé, crée une action.")).toBe('CREATE_ACTION')
   })
 })
+
+// ── NEGATION_SCOPE — extension bornée jamais/rien/plus structurés
+// (bloqueur n°2 de l'audit causal P6-A2, 2026-08-18) ─────────────────────────
+// clauseHasNegatedWriteVerb() ne reconnaissait que le token isolé "pas",
+// jamais "jamais"/"rien"/"plus" : « Enfin, ne fait rien plus demain. »,
+// « Ne planifie jamais de réunion vendredi. », « Ne crée rien pour demain. »
+// et « Ne programme plus de visite vendredi. » produisaient un writer positif
+// malgré une négation explicite et non ambiguë. Correctif borné mandaté par
+// Vincent : reconnaître des PATRONS structurés (ne/n' ... {jamais|rien|plus},
+// ou forme orale équivalente déjà admise pour "pas") autour du verbe
+// d'écriture — jamais un mot isolé. "plus" reste ambigu ("plus tard", "plus
+// importante") et ne doit JAMAIS déclencher de négation sans marqueur "ne"/
+// "n'" (ou équivalent oral) structurellement associé au verbe d'écriture.
+describe('NEGATION_SCOPE — jamais/rien/plus structurés → jamais un writer (bloqueur n°2)', () => {
+  const cases: [string, string][] = [
+    ['vert. Enfin, ne fait rien plus demain.', 'CREATE_ACTION'],
+    ['Le garage R4 est toujours ouvert. Enfin, ne fait rien plus demain.', 'CREATE_ACTION'],
+    ['Ne planifie jamais de réunion vendredi.', 'SCHEDULE_MEETING'],
+    ['Ne crée rien pour demain.', 'CREATE_ACTION'],
+    ['Ne programme plus de visite vendredi.', 'SCHEDULE_VISIT'],
+  ]
+  for (const [q, forbidden] of cases) {
+    it(`"${q}" → jamais ${forbidden} (aucun writer)`, () => {
+      expect(intent(q)).not.toBe(forbidden)
+      expect(WRITER_INTENTS).not.toContain(intent(q))
+    })
+  }
+})
+
+describe('NEGATION_SCOPE — "plus" ne neutralise jamais sans marqueur "ne" structuré', () => {
+  const cases: [string, string][] = [
+    ['Programme une réunion plus tard.', 'SCHEDULE_MEETING'],
+    ['Crée une action plus importante.', 'CREATE_ACTION'],
+    ["Le SSI n'est plus réglé, crée une action.", 'CREATE_ACTION'],
+    ['Crée une action pour que le SSI ne reste jamais ouvert.', 'CREATE_ACTION'],
+  ]
+  for (const [q, expectedIntent] of cases) {
+    it(`"${q}" → reste ${expectedIntent} (écriture autorisée)`, () => {
+      expect(intent(q)).toBe(expectedIntent)
+    })
+  }
+})
