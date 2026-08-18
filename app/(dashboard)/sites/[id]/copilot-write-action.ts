@@ -241,6 +241,9 @@ const createActorAliasSchema = z.object({
   aliasNature: z.enum(['business_alias', 'transcription_alias']),
   copilotProposalId: z.string().uuid(),
   interactionId: z.string().uuid().nullable().optional(),
+  // Q5 — uniquement transmis par le bouton « Confirmer cette correction
+  // vocale » (palier reinforced). Absent/false pour un Valider normal.
+  reinforcedConfirmation: z.boolean().optional(),
 })
 
 export type CreateCopilotActorAliasResult =
@@ -250,7 +253,7 @@ export type CreateCopilotActorAliasResult =
 export async function createCopilotActorAlias(rawInput: unknown): Promise<CreateCopilotActorAliasResult> {
   const parsed = createActorAliasSchema.safeParse(rawInput)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides.' }
-  const { siteId, alias, targetKind, targetId, aliasNature, copilotProposalId, interactionId } = parsed.data
+  const { siteId, alias, targetKind, targetId, aliasNature, copilotProposalId, interactionId, reinforcedConfirmation } = parsed.data
 
   let organizationId: string
   try {
@@ -273,6 +276,7 @@ export async function createCopilotActorAlias(rawInput: unknown): Promise<Create
     aliasNature,
     copilotProposalId,
     interactionId: interactionId ?? null,
+    reinforcedConfirmation,
   })
 }
 

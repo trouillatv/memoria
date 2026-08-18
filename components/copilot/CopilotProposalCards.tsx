@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { Loader2, Check, ChevronDown, ChevronUp } from 'lucide-react'
+import { Loader2, Check, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react'
 import { createCopilotAction, addCopilotToBriefing, createCopilotScheduledEvent, createCopilotObservation, createCopilotActorAlias, createCopilotFact, createCopilotRelationClaim, createCopilotWatchpoint, createCopilotDeadline, createCopilotReserve, createCopilotKnowledgeSupersession, createCopilotKnowledgeArchive } from '@/app/(dashboard)/sites/[id]/copilot-write-action'
 import { trackCopilotProposalCancelled } from '@/app/(dashboard)/sites/[id]/copilot-event-action'
 import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
+import { evaluateTranscriptionAliasPlausibility } from '@/lib/ai/alias-plausibility'
 import { cn } from '@/lib/utils'
 
 // ── Badges confiance ──────────────────────────────────────────────────────────
@@ -562,8 +563,21 @@ export function ActorAliasProposalCard({
 
   const canConfirm = !!proposal.aliasText && !!proposal.aliasTargetKind && !!proposal.aliasTargetId
 
-  async function confirm() {
+  // Q5 — un `transcription_alias` réécrit le transcript vocal (Q4.5) : sa
+  // plausibilité structurelle se juge ici AVANT confirmation. Périmètre vide
+  // (pas d'accès DB côté client) : cette carte ne peut jamais détecter une
+  // collision — seul le writer (`confirmActorAlias`) le peut, et c'est lui la
+  // vraie barrière. Ici, seulement un avertissement.
+  const plausibility = nature === 'transcription_alias' && proposal.aliasText && proposal.aliasTargetLabel
+    ? evaluateTranscriptionAliasPlausibility(proposal.aliasText, proposal.aliasTargetLabel, [])
+    : null
+
+  const refused = plausibility?.level === 'refused'
+  const reinforced = plausibility?.level === 'reinforced'
+
+  async function confirm(reinforcedConfirmation?: boolean) {
     if (saving || !canConfirm || !proposal.aliasText || !proposal.aliasTargetKind || !proposal.aliasTargetId) return
+    if (refused) return
     setSaving(true)
     try {
       const res = await createCopilotActorAlias({
@@ -574,6 +588,7 @@ export function ActorAliasProposalCard({
         aliasNature: nature,
         copilotProposalId: proposal.proposalId,
         interactionId,
+        reinforcedConfirmation,
       })
       onDone(res.ok ? 'Correspondance mémorisée.' : `Erreur : ${res.error}`)
     } finally {
@@ -627,16 +642,45 @@ export function ActorAliasProposalCard({
         </p>
       )}
 
+      {refused && (
+        <p className="flex items-start gap-1.5 text-[12px] text-red-600 dark:text-red-400 leading-relaxed">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          Cette correspondance n'est pas confirmable telle quelle : « {proposal.aliasText} » est un mot trop
+          courant, ou correspond déjà à un autre acteur connu. Annulez, ou choisissez une autre nature.
+        </p>
+      )}
+
+      {reinforced && (
+        <p className="flex items-start gap-1.5 text-[12px] text-amber-700 dark:text-amber-400 leading-relaxed">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          Quand MemorIA entend « {proposal.aliasText} », il écrira « {proposal.aliasTargetLabel} » sur les
+          chantiers où {proposal.aliasTargetLabel} intervient. Confirmer cette correction vocale ?
+        </p>
+      )}
+
       <div className="flex gap-2 pt-0.5">
-        <button
-          type="button"
-          onClick={confirm}
-          disabled={saving || !canConfirm}
-          className="flex items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-[12px] font-medium text-white hover:bg-violet-600 disabled:opacity-40 transition-colors"
-        >
-          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-          Valider
-        </button>
+        {!refused && !reinforced && (
+          <button
+            type="button"
+            onClick={() => confirm()}
+            disabled={saving || !canConfirm}
+            className="flex items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-[12px] font-medium text-white hover:bg-violet-600 disabled:opacity-40 transition-colors"
+          >
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+            Valider
+          </button>
+        )}
+        {reinforced && (
+          <button
+            type="button"
+            onClick={() => confirm(true)}
+            disabled={saving || !canConfirm}
+            className="flex items-center gap-1.5 rounded-full bg-amber-600 px-3.5 py-1.5 text-[12px] font-medium text-white hover:bg-amber-700 disabled:opacity-40 transition-colors"
+          >
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <AlertTriangle className="h-3 w-3" />}
+            Confirmer cette correction vocale
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {

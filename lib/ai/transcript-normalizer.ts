@@ -96,7 +96,12 @@ export type NormalizedTranscript = {
  * réconciliation de sujets ne doit pas pouvoir modifier silencieusement des
  * transcriptions vocales.
  */
-function normalize(s: string): string {
+// `normalize`/`compact`/`levenshtein`/`STOP_WORDS` sont exportées (purement
+// additif) pour `lib/ai/alias-plausibility.ts` (Q5) : la plausibilité d'un
+// `transcription_alias` doit se juger avec EXACTEMENT le même rapprochement
+// que celui qui décide une réécriture, pas une seconde implémentation qui
+// pourrait diverger.
+export function normalize(s: string): string {
   return s
     .toLowerCase()
     .normalize('NFD')
@@ -107,11 +112,11 @@ function normalize(s: string): string {
 }
 
 /** Forme compactée : c'est sur elle que se joue « pétro à Titi » ≈ « PETRO ATTITI ». */
-function compact(s: string): string {
+export function compact(s: string): string {
   return normalize(s).replace(/ /g, '')
 }
 
-function levenshtein(a: string, b: string): number {
+export function levenshtein(a: string, b: string): number {
   if (a === b) return 0
   let prev = Array.from({ length: b.length + 1 }, (_, j) => j)
   for (let i = 1; i <= a.length; i++) {
@@ -139,7 +144,7 @@ export function maxDistanceFor(length: number): number {
 }
 
 /** Mots trop courants pour qu'une fenêtre composée d'eux seuls vise un nom propre. */
-const STOP_WORDS = new Set([
+export const STOP_WORDS = new Set([
   'le', 'la', 'les', 'un', 'une', 'des', 'de', 'du', 'au', 'aux', 'en', 'a', 'et', 'ou',
   'sur', 'pour', 'par', 'dans', 'avec', 'sans', 'ce', 'cette', 'ces', 'il', 'elle', 'on',
   'je', 'tu', 'nous', 'vous', 'ils', 'elles', 'qui', 'que', 'quoi', 'est', 'sont', 'a',
