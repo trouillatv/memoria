@@ -745,6 +745,26 @@ describe('Frontière READ ↔ CREATE_WATCHPOINT (spec Vincent 2026-08-18)', () =
   })
 })
 
+// ── Frontière READ ↔ OBSERVATION (recette OCEF, Vincent 2026-08-18) ─────────
+// "Quelles sont les réserves encore ouvertes ?" était routée en OBSERVATION/
+// ambiguous (résolution de sujet unique, échec) au lieu d'une lecture globale.
+// Cause : la Priorité 4bis OBSERVATION était la seule branche create/read
+// encore privée du garde !hasQuestionMark posé ailleurs le même jour.
+describe('Frontière READ ↔ OBSERVATION (spec Vincent 2026-08-18)', () => {
+  it('"Quelles sont les réserves encore ouvertes ?" → READ (pas OBSERVATION)', () => {
+    expect(intent('Quelles sont les réserves encore ouvertes ?')).toBe('READ')
+  })
+  it('"Quelles observations sont encore ouvertes ?" → READ (pas OBSERVATION)', () => {
+    expect(intent('Quelles observations sont encore ouvertes ?')).toBe('READ')
+  })
+  it('"Le regard R4 est encore ouvert." → OBSERVATION (pas de "?", reste un constat)', () => {
+    expect(intent('Le regard R4 est encore ouvert.')).toBe('OBSERVATION')
+  })
+  it('"Le regard R4 est encore ouvert, crée une action." → CREATE_ACTION (verbe fort domine)', () => {
+    expect(intent('Le regard R4 est encore ouvert, crée une action.')).toBe('CREATE_ACTION')
+  })
+})
+
 describe('CREATE_WATCHPOINT — récurrence non gérée (tripwire P4-E4)', () => {
   // "à chaque visite" reste NON GÉRÉ pour P4-E1 : ni absorbé silencieusement
   // dans un simple watchpoint, ni traité comme ADD_VISIT_ITEM — remonte comme

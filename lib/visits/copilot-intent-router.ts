@@ -673,8 +673,20 @@ export function detectIntent(question: string): IntentResult {
   // Constat factuel (être-verbe + marqueur de continuité/temporalité), sans
   // verbe d'écriture ni demande de lecture explicite. Jamais de promotion en
   // "évolution" ici — voir le commentaire au-dessus de OBSERVATION_STATE_RE.
+  //
+  // !hasQuestionMark (audit de robustesse, Vincent 2026-08-18) : même asymétrie
+  // que CREATE_WATCHPOINT/CREATE_ACTION/etc. — "Quelles sont les réserves
+  // encore ouvertes ?" porte "sont" (hasObsState) et "encore" (hasObsMarker)
+  // sans aucun verbe d'écriture, donc la Garde READ (qui exige isRead, absent
+  // ici faute d'alternative "quels/quelles sont…" dans READ_RE) ne
+  // l'interceptait jamais. UNSUPPORTED_RE ne bloque pas non plus : \breserve\b
+  // est singulier, "réserves" au pluriel ne matche pas. Sans cette exclusion,
+  // la question tombait ici en OBSERVATION ambiguous, qui tente une résolution
+  // de sujet UNIQUE et échoue sur une lecture globale (recette OCEF terrain,
+  // 2026-08-18). C'était la seule branche create/read encore privée de ce
+  // garde depuis la vague du 2026-08-18 sur les autres priorités.
   if (
-    !isWrite && !hasWeakWrite && !hasUnsupported &&
+    !isWrite && !hasWeakWrite && !hasUnsupported && !hasQuestionMark &&
     hasObsState && hasObsMarker && !hasFutureTense && !hasOpinion
   ) {
     signals.push('observation_state')
