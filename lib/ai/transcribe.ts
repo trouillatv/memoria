@@ -93,21 +93,31 @@ export type ProviderTimings = {
   payloadBytes?: number
 }
 
+/** Construit la part `contents` référençant l'audio (Files API si volumineux, inline sinon). */
+async function buildGeminiAudioPart(rawBuffer: ArrayBuffer, safeMime: string, apiKey: string) {
+  return rawBuffer.byteLength > GEMINI_INLINE_MAX_BYTES
+    ? { file_data: { mime_type: safeMime, file_uri: await uploadToGeminiFiles(rawBuffer, safeMime, apiKey) } }
+    : { inline_data: { mime_type: safeMime, data: Buffer.from(rawBuffer).toString('base64') } }
+}
+
+type GeminiCallResult = {
+  text: string
+  finishReason?: string
+  candidatesTokenCount?: number
+}
+
 async function transcribeWithGeminiTimed(
   rawBuffer: ArrayBuffer,
   mimeType: string,
   lexicalPrompt?: string,
-): Promise<{ text: string; timings: ProviderTimings }> {
+): Promise<{ text: string; timings: ProviderTimings; finishReason?: string; candidatesTokenCount?: number }> {
   const apiKey = process.env.GOOGLE_GENAI_API_KEY!
   // Gemini n'accepte pas le suffixe codec (ex: "audio/webm;codecs=opus" → "audio/webm")
   const safeMime = mimeType.split(';')[0].trim()
 
   const tEncode = Date.now()
   // Audio long (réunion) → Files API ; audio court → inline base64.
-  const audioPart =
-    rawBuffer.byteLength > GEMINI_INLINE_MAX_BYTES
-      ? { file_data: { mime_type: safeMime, file_uri: await uploadToGeminiFiles(rawBuffer, safeMime, apiKey) } }
-      : { inline_data: { mime_type: safeMime, data: Buffer.from(rawBuffer).toString('base64') } }
+  const audioPart = await buildGeminiAudioPart(rawBuffer, safeMime, apiKey)
 
   // Le contenu utilisateur ne contient QUE l'audio.
   // Le vocabulaire et les instructions sont isolés dans systemInstruction.
@@ -133,17 +143,198 @@ async function transcribeWithGeminiTimed(
 
   if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`)
   const tBody = Date.now()
-  const data = (await res.json()) as { candidates: Array<{ content: { parts: Array<{ text: string }> } }> }
+  const data = (await res.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>
+    usageMetadata?: { candidatesTokenCount?: number }
+  }
   const providerBodyMs = Date.now() - tBody
 
   return {
     text: data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '',
+    finishReason: data.candidates?.[0]?.finishReason,
+    candidatesTokenCount: data.usageMetadata?.candidatesTokenCount,
     timings: { encodeMs, providerWaitMs, providerBodyMs, payloadBytes: payload.length },
   }
 }
 
+// ── Détection d'arrêt prématuré (audit vocal 6487ff04, 2026-08-18) ───────────
+//
+// Gemini répond parfois `finishReason: STOP` avec très peu de tokens et une
+// phrase inachevée (le modèle décide — à tort — que l'audio est terminé,
+// souvent après une pause/hésitation). Ce n'est ni un plafond de tokens
+// (candidatesTokenCount observé : 65, très loin de maxOutputTokens=65536) ni
+// un bug de troncature côté code : le modèle lui-même n'a rien généré de plus.
+// Le renforcement du prompt seul ne suffit pas (testé, même point de coupure) :
+// il faut une continuation ciblée, déclenchée uniquement quand le signal est net.
+
+const TERMINAL_PUNCT = /[.!?…»"']\s*$/
+// En dessous, une réponse courte est parfaitement plausible (vocal bref) —
+// pas de retry systématique sur les petits vocaux.
+const CONTINUATION_MIN_AUDIO_BYTES = 60_000
+
+/**
+ * Le modèle s'est arrêté sur STOP sans ponctuation finale — le signal robuste.
+ * `candidatesTokenCount` a été essayé comme filtre absolu (audit vocal
+ * 6487ff04) puis abandonné : un vocal long réellement tronqué produit largement
+ * plus de tokens qu'un vocal court réellement tronqué, un seuil fixe manque
+ * donc les cas longs (vérifié sur bc8fe207, 862 caractères, encore coupé). La
+ * valeur reste dans les logs à titre diagnostique, mais ne bloque plus la
+ * détection.
+ */
+function isAbruptStop(text: string, finishReason: string | undefined): boolean {
+  const trimmed = text.trim()
+  if (!trimmed) return false
+  if (finishReason !== 'STOP') return false
+  return !TERMINAL_PUNCT.test(trimmed)
+}
+
+/** Déclenche une continuation seulement si l'arrêt est suspect ET l'audio assez long. */
+function looksLikeTruncatedTranscript(text: string, finishReason: string | undefined, audioBytes: number): boolean {
+  if (audioBytes < CONTINUATION_MIN_AUDIO_BYTES) return false
+  return isAbruptStop(text, finishReason)
+}
+
+function buildGeminiContinuationInstruction(partialText: string, lexicalPrompt?: string): string {
+  const base =
+    'Voici la transcription déjà obtenue du DÉBUT de cet audio :\n' +
+    '"""\n' + partialText.trim() + '\n"""\n' +
+    'Reprends la transcription exactement là où elle s\'arrête, à partir de la suite du même audio.\n' +
+    'Ne répète PAS le texte déjà transcrit ci-dessus. Restitue uniquement la SUITE effectivement audible, ' +
+    'jusqu\'à la toute fin du fichier.\n' +
+    'Si l\'audio ne contient rien de plus après ce point, réponds une chaîne vide.\n' +
+    'Retourne uniquement les mots prononcés, sans ajout ni commentaire.'
+  if (!lexicalPrompt) return base
+  return (
+    base +
+    '\nCes termes peuvent apparaître dans l\'audio et servent uniquement d\'aide à la reconnaissance : ' +
+    lexicalPrompt +
+    '.\nNe les ajoute jamais s\'ils ne sont pas prononcés dans l\'audio.'
+  )
+}
+
+async function transcribeWithGeminiContinuation(
+  rawBuffer: ArrayBuffer,
+  mimeType: string,
+  partialText: string,
+  lexicalPrompt?: string,
+): Promise<GeminiCallResult> {
+  const apiKey = process.env.GOOGLE_GENAI_API_KEY!
+  const safeMime = mimeType.split(';')[0].trim()
+  const audioPart = await buildGeminiAudioPart(rawBuffer, safeMime, apiKey)
+
+  const payload = JSON.stringify({
+    systemInstruction: { parts: [{ text: buildGeminiContinuationInstruction(partialText, lexicalPrompt) }] },
+    contents: [{ role: 'user', parts: [audioPart] }],
+    generationConfig: { temperature: 0, maxOutputTokens: 65536, thinkingConfig: { thinkingBudget: 0 } },
+  })
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload },
+  )
+  if (!res.ok) throw new Error(`Gemini (continuation) ${res.status}: ${await res.text()}`)
+  const data = (await res.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>
+    usageMetadata?: { candidatesTokenCount?: number }
+  }
+  return {
+    text: data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '',
+    finishReason: data.candidates?.[0]?.finishReason,
+    candidatesTokenCount: data.usageMetadata?.candidatesTokenCount,
+  }
+}
+
+function normalizeWord(w: string): string {
+  return w.toLowerCase().replace(/[.,;:!?…«»"']/g, '')
+}
+
+/** Retire, en tête de `continuation`, les mots qui répètent la fin de `partial`. */
+function dedupeOverlap(partial: string, continuation: string): string {
+  const partialWords = partial.trim().split(/\s+/)
+  const contWords = continuation.trim().split(/\s+/)
+  const maxOverlap = Math.min(12, partialWords.length, contWords.length)
+  for (let n = maxOverlap; n >= 1; n--) {
+    const tail = partialWords.slice(-n).map(normalizeWord)
+    const head = contWords.slice(0, n).map(normalizeWord)
+    if (tail.every((w, i) => w.length > 0 && w === head[i])) {
+      return contWords.slice(n).join(' ')
+    }
+  }
+  return continuation.trim()
+}
+
+/**
+ * Valide la continuation puis fusionne : elle doit ajouter du contenu réel
+ * (pas seulement les mots déjà présents) et ne pas être elle-même tronquée
+ * de façon manifeste — sinon elle ne fait que déplacer le problème.
+ */
+const MIN_CONTINUATION_ADDED_CHARS = 8
+
+function validateAndMergeContinuation(partialText: string, continuation: GeminiCallResult): string | null {
+  const contText = continuation.text.trim()
+  if (!contText) return null
+  if (isAbruptStop(contText, continuation.finishReason)) return null
+
+  const deduped = dedupeOverlap(partialText, contText).trim()
+  if (deduped.length < MIN_CONTINUATION_ADDED_CHARS || !/[a-zà-öø-ÿ]/i.test(deduped)) return null
+
+  return `${partialText.trim()} ${deduped}`.replace(/\s+/g, ' ').trim()
+}
+
+function logTranscribe(event: string, fields: Record<string, unknown>): void {
+  console.log(JSON.stringify({ service: 'transcribe', event, ts: new Date().toISOString(), ...fields }))
+}
+
 async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string, lexicalPrompt?: string): Promise<string> {
-  return (await transcribeWithGeminiTimed(rawBuffer, mimeType, lexicalPrompt)).text
+  const primary = await transcribeWithGeminiTimed(rawBuffer, mimeType, lexicalPrompt)
+
+  if (!looksLikeTruncatedTranscript(primary.text, primary.finishReason, rawBuffer.byteLength)) {
+    return primary.text
+  }
+
+  logTranscribe('suspect_truncation', {
+    source: 'gemini_primary',
+    textLength: primary.text.length,
+    finishReason: primary.finishReason,
+    candidatesTokenCount: primary.candidatesTokenCount,
+    audioBytes: rawBuffer.byteLength,
+  })
+
+  try {
+    const continuation = await transcribeWithGeminiContinuation(rawBuffer, mimeType, primary.text, lexicalPrompt)
+    const merged = validateAndMergeContinuation(primary.text, continuation)
+    if (merged) {
+      logTranscribe('continuation_applied', {
+        source: 'gemini_continuation',
+        addedChars: merged.length - primary.text.length,
+        finalLength: merged.length,
+      })
+      return merged
+    }
+    logTranscribe('continuation_rejected', {
+      continuationLength: continuation.text.length,
+      continuationFinishReason: continuation.finishReason,
+      continuationTokens: continuation.candidatesTokenCount,
+    })
+  } catch (e) {
+    logTranscribe('continuation_error', { error: e instanceof Error ? e.message : String(e) })
+  }
+
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const whisperText = (await transcribeWithWhisper(rawBuffer, mimeType, mimeToExt(mimeType))).trim()
+      if (whisperText) {
+        logTranscribe('whisper_fallback_applied', { source: 'whisper_fallback', length: whisperText.length })
+        return whisperText
+      }
+    } catch (e) {
+      logTranscribe('whisper_fallback_error', { error: e instanceof Error ? e.message : String(e) })
+    }
+  }
+
+  // Aucun filet n'a amélioré le résultat : on retourne le texte Gemini initial
+  // (potentiellement tronqué) plutôt que de faire échouer toute la capture.
+  return primary.text
 }
 
 /**
