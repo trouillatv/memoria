@@ -215,7 +215,7 @@ describe('normalizeTranscript — PETRO ATTITI (recette terrain du 17/08)', () =
 })
 
 describe('normalizeTranscript — formes alternatives', () => {
-  it('accepte un alias comme cible et écrit toujours la forme canonique', () => {
+  it('accepte un transcription_alias comme cible et écrit toujours la forme canonique', () => {
     const vocab: VocabularyTerm[] = [
       {
         canonical: 'CEGELEC',
@@ -225,7 +225,7 @@ describe('normalizeTranscript — formes alternatives', () => {
           {
             value: 'Cégélec Nouvelle-Calédonie',
             source: 'actor_alias',
-            aliasNature: 'business_alias',
+            aliasNature: 'transcription_alias',
             actorId: 'company-cegelec',
             canonicalValue: 'CEGELEC',
           },
@@ -236,9 +236,78 @@ describe('normalizeTranscript — formes alternatives', () => {
     expect(r.text).toBe('Relance CEGELEC')
     expect(r.corrections[0]).toMatchObject({
       source: 'actor_alias',
-      aliasNature: 'business_alias',
+      aliasNature: 'transcription_alias',
       actorId: 'company-cegelec',
     })
+  })
+})
+
+// Q4.5 (Vincent 2026-08-18) : un `business_alias` résout une IDENTITÉ pendant
+// la compréhension, il ne prouve jamais qu'un mot du français courant a été
+// PRONONCÉ à la place du nom propre. Seul `transcription_alias` réécrit le
+// transcript. Ces tests fixent les deux cas de doctrine donnés verbatim par
+// Vincent, plus la garde symétrique sur `knowledge_alias`.
+describe('normalizeTranscript — Q4.5 séparation alias métier / alias STT', () => {
+  it('« La clim est en retard » ne devient jamais « Clim Expair est en retard » (business_alias)', () => {
+    const vocab: VocabularyTerm[] = [
+      {
+        canonical: 'Clim Expair',
+        kind: 'company',
+        forms: [
+          canonicalForm('Clim Expair'),
+          {
+            value: 'clim',
+            source: 'actor_alias',
+            aliasNature: 'business_alias',
+            actorId: 'company-climexpair',
+            canonicalValue: 'Clim Expair',
+          },
+        ],
+      },
+    ]
+    const phrase = 'La clim est en retard'
+    const r = normalizeTranscript(phrase, vocab)
+    expect(r.text).toBe(phrase)
+    expect(r.corrections).toEqual([])
+  })
+
+  it('« Bessie doit revenir demain » devient « BECIB doit revenir demain » (transcription_alias confirmé)', () => {
+    const vocab: VocabularyTerm[] = [
+      {
+        canonical: 'BECIB',
+        kind: 'company',
+        forms: [
+          canonicalForm('BECIB'),
+          {
+            value: 'Bessie',
+            source: 'actor_alias',
+            aliasNature: 'transcription_alias',
+            actorId: 'company-becib',
+            canonicalValue: 'BECIB',
+          },
+        ],
+      },
+    ]
+    const r = normalizeTranscript('Bessie doit revenir demain', vocab)
+    expect(r.text).toBe('BECIB doit revenir demain')
+    expect(r.corrections[0]).toMatchObject({ source: 'actor_alias', aliasNature: 'transcription_alias' })
+  })
+
+  it('un alias de mémoire sémantique ne réécrit jamais le transcript (« l’élec » → Élec Plus, mig. 248)', () => {
+    const vocab: VocabularyTerm[] = [
+      {
+        canonical: 'Élec Plus',
+        kind: 'company',
+        forms: [
+          canonicalForm('Élec Plus'),
+          { value: 'l’élec', source: 'knowledge_alias', canonicalValue: 'Élec Plus' },
+        ],
+      },
+    ]
+    const phrase = 'Demande à l’élec de vérifier le tableau'
+    const r = normalizeTranscript(phrase, vocab)
+    expect(r.text).toBe(phrase)
+    expect(r.corrections).toEqual([])
   })
 })
 

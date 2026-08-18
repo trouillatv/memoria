@@ -180,9 +180,12 @@ export async function buildSiteVocabulary(siteId: string): Promise<VocabularyTer
           }),
     ])
 
-    // Correspondances enseignées via le Copilote (P4-B.2) : les deux natures
-    // (business_alias/transcription_alias) alimentent la STT indifféremment —
-    // seule business_alias doit s'afficher ailleurs comme « autre nom ».
+    // Correspondances enseignées via le Copilote (P4-B.2). Les deux natures sont
+    // construites ici avec leur provenance complète, mais NE sont PAS
+    // consommées de façon indifférenciée : seul `transcription_alias` réécrit
+    // le transcript, `business_alias` reste réservé à la résolution/
+    // compréhension d'acteur en aval (filtre dans `transcript-normalizer.ts`,
+    // Q4.5, Vincent 2026-08-18).
     const aliasesByCompany = new Map<string, ExtraForm[]>()
     const aliasesByContact = new Map<string, ExtraForm[]>()
     for (const a of actorAliasRes.data ?? []) {

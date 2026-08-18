@@ -17,6 +17,15 @@
 //     pire que pas de correction du tout.
 //   - corriger quand deux termes réels sont également plausibles. On préfère
 //     laisser passer une faute qu'écrire le nom d'un autre acteur du chantier.
+//   - réécrire le transcript à partir d'un `business_alias` ou d'un alias de
+//     mémoire sémantique (Q4.5, Vincent 2026-08-18). Ces alias résolvent une
+//     IDENTITÉ pendant la compréhension (« clim » peut désigner l'entreprise
+//     Clim Expair) ; ils ne prouvent jamais qu'un mot du français courant a
+//     été PRONONCÉ à la place du nom propre. « La clim est en retard » ne
+//     doit jamais devenir « Clim Expair est en retard » au seul motif que cet
+//     alias existe — ce serait fabriquer un fait non prononcé. Seuls
+//     `known_mistranscription` et `actor_alias`/`transcription_alias` sont
+//     des corrections de RECONNAISSANCE, donc éligibles à la réécriture.
 //
 // Module PUR : aucune I/O, aucune dépendance serveur. Le vocabulaire lui est
 // fourni par `lib/ai/stt-vocabulary.ts`.
@@ -163,6 +172,21 @@ type Match = {
 }
 
 /**
+ * Une forme peut IDENTIFIER un acteur (résolution/compréhension) sans jamais
+ * prouver qu'elle a été PRONONCÉE (Q4.5). Seules les corrections de
+ * reconnaissance vocale — nom canonique, nom court, faute connue,
+ * `transcription_alias` confirmé — réécrivent le transcript. Un
+ * `business_alias` (« clim » → Clim Expair) ou un alias de mémoire
+ * sémantique (« l'élec » → Élec Plus, mig. 248) restent dans le vocabulaire
+ * pour la compréhension en aval, mais ne sont jamais des cibles de réécriture.
+ */
+function isRewriteEligible(form: VocabularyForm): boolean {
+  if (form.source === 'actor_alias') return form.aliasNature === 'transcription_alias'
+  if (form.source === 'knowledge_alias') return false
+  return true
+}
+
+/**
  * Rapproche un transcript d'un vocabulaire fermé et réécrit uniquement les
  * empans dont la cible est certaine.
  *
@@ -184,6 +208,7 @@ export function normalizeTranscript(text: string, vocabulary: VocabularyTerm[]):
       ? term.forms
       : [{ value: term.canonical, source: 'canonical_name', canonicalValue: term.canonical }]
     for (const form of forms) {
+      if (!isRewriteEligible(form)) continue
       const c = compact(form.value)
       if (c.length < MIN_TERM_LENGTH || seen.has(c)) continue
       seen.add(c)
