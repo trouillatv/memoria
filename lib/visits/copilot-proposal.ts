@@ -24,6 +24,26 @@ export type CopilotProposalKind =
   | 'knowledge_supersession'
   | 'knowledge_archive'
 
+// Libellé court affiché partout où une proposition doit s'identifier sans sa
+// carte complète (bandeau de propositions en attente de l'orbe vocal, etc.) —
+// un seul point de vérité pour ne pas faire diverger le vocabulaire entre
+// surfaces (Vincent, Lot A propositions vocales, 2026-08-18).
+export const COPILOT_PROPOSAL_KIND_LABELS: Record<CopilotProposalKind, string> = {
+  action: 'Action',
+  visit_item: 'Point de visite',
+  schedule_visit: 'Visite',
+  schedule_meeting: 'Réunion',
+  observation: 'Constat',
+  fact: 'Information',
+  actor_alias: "Correspondance d'identité",
+  relation_claim: 'Relation entre sujets',
+  watchpoint: 'Point à surveiller',
+  deadline: 'Échéance',
+  reserve: 'Réserve',
+  knowledge_supersession: "Correction d'information",
+  knowledge_archive: 'Information obsolète',
+}
+
 export type CopilotConfidence = 'strong' | 'medium' | 'suggestion'
 
 export type CopilotProposal = {

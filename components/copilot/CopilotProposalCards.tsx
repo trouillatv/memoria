@@ -29,12 +29,14 @@ export function ProposalCard({
   interactionId,
   onDone,
   onPlanChange,
+  onCancel,
 }: {
   siteId: string
   proposal: CopilotProposal
   interactionId: string | null
   onDone: (successText: string) => void
   onPlanChange?: () => void
+  onCancel?: () => void
 }) {
   const [title, setTitle]       = useState(proposal.title)
   const [body, setBody]         = useState(proposal.body ?? '')
@@ -183,6 +185,7 @@ export function ProposalCard({
           onClick={() => {
             setCancelled(true)
             if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+            onCancel?.()
           }}
           disabled={saving}
           className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
@@ -207,11 +210,13 @@ export function ObservationProposalCard({
   proposal,
   interactionId,
   onDone,
+  onCancel,
 }: {
   siteId: string
   proposal: CopilotProposal
   interactionId: string | null
   onDone: (successText: string) => void
+  onCancel?: () => void
 }) {
   const [title, setTitle]         = useState(proposal.title)
   const [body, setBody]           = useState(proposal.body ?? '')
@@ -334,6 +339,7 @@ export function ObservationProposalCard({
           onClick={() => {
             setCancelled(true)
             if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+            onCancel?.()
           }}
           disabled={saving}
           className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
@@ -353,12 +359,14 @@ export function ScheduleProposalCard({
   interactionId,
   planItemCount,
   onDone,
+  onCancel,
 }: {
   siteId: string
   proposal: CopilotProposal
   interactionId: string | null
   planItemCount: number
   onDone: (successText: string) => void
+  onCancel?: () => void
 }) {
   const [title, setTitle]         = useState(proposal.title)
   const [date, setDate]           = useState(proposal.scheduledDate ?? '')
@@ -517,6 +525,7 @@ export function ScheduleProposalCard({
           onClick={() => {
             setCancelled(true)
             if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+            onCancel?.()
           }}
           disabled={saving}
           className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
@@ -546,11 +555,13 @@ export function ActorAliasProposalCard({
   proposal,
   interactionId,
   onDone,
+  onCancel,
 }: {
   siteId: string
   proposal: CopilotProposal
   interactionId: string | null
   onDone: (successText: string) => void
+  onCancel?: () => void
 }) {
   const [nature, setNature]       = useState<'business_alias' | 'transcription_alias'>(proposal.aliasNature ?? 'business_alias')
   const [whyOpen, setWhyOpen]     = useState(false)
@@ -686,6 +697,7 @@ export function ActorAliasProposalCard({
           onClick={() => {
             setCancelled(true)
             if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+            onCancel?.()
           }}
           disabled={saving}
           className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
@@ -715,11 +727,13 @@ export function FactProposalCard({
   proposal,
   interactionId,
   onDone,
+  onCancel,
 }: {
   siteId: string
   proposal: CopilotProposal
   interactionId: string | null
   onDone: (successText: string) => void
+  onCancel?: () => void
 }) {
   const [title, setTitle]         = useState(proposal.title)
   const [body, setBody]           = useState(proposal.body ?? '')
@@ -842,6 +856,7 @@ export function FactProposalCard({
           onClick={() => {
             setCancelled(true)
             if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+            onCancel?.()
           }}
           disabled={saving}
           className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
@@ -873,11 +888,13 @@ export function RelationClaimProposalCard({
   proposal,
   interactionId,
   onDone,
+  onCancel,
 }: {
   siteId: string
   proposal: CopilotProposal
   interactionId: string | null
   onDone: (successText: string) => void
+  onCancel?: () => void
 }) {
   const [whyOpen, setWhyOpen]     = useState(false)
   const [saving, setSaving]       = useState(false)
@@ -963,6 +980,7 @@ export function RelationClaimProposalCard({
           onClick={() => {
             setCancelled(true)
             if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+            onCancel?.()
           }}
           disabled={saving}
           className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
@@ -986,11 +1004,13 @@ export function WatchpointProposalCard({
   proposal,
   interactionId,
   onDone,
+  onCancel,
 }: {
   siteId: string
   proposal: CopilotProposal
   interactionId: string | null
   onDone: (successText: string) => void
+  onCancel?: () => void
 }) {
   const [title, setTitle]         = useState(proposal.title)
   const [body, setBody]           = useState(proposal.body ?? '')
@@ -1094,6 +1114,7 @@ export function WatchpointProposalCard({
           onClick={() => {
             setCancelled(true)
             if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+            onCancel?.()
           }}
           disabled={saving}
           className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
@@ -1118,11 +1139,13 @@ export function DeadlineProposalCard({
   proposal,
   interactionId,
   onDone,
+  onCancel,
 }: {
   siteId: string
   proposal: CopilotProposal
   interactionId: string | null
   onDone: (successText: string) => void
+  onCancel?: () => void
 }) {
   const [title, setTitle]         = useState(proposal.title)
   const [body, setBody]           = useState(proposal.body ?? '')
@@ -1234,6 +1257,7 @@ export function DeadlineProposalCard({
           onClick={() => {
             setCancelled(true)
             if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+            onCancel?.()
           }}
           disabled={saving}
           className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
@@ -1258,11 +1282,13 @@ export function ReserveProposalCard({
   proposal,
   interactionId,
   onDone,
+  onCancel,
 }: {
   siteId: string
   proposal: CopilotProposal
   interactionId: string | null
   onDone: (successText: string) => void
+  onCancel?: () => void
 }) {
   const [title, setTitle]         = useState(proposal.title)
   const [whyOpen, setWhyOpen]     = useState(false)
@@ -1353,6 +1379,7 @@ export function ReserveProposalCard({
           onClick={() => {
             setCancelled(true)
             if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+            onCancel?.()
           }}
           disabled={saving}
           className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
@@ -1387,11 +1414,13 @@ export function KnowledgeSupersessionProposalCard({
   proposal,
   interactionId,
   onDone,
+  onCancel,
 }: {
   siteId: string
   proposal: CopilotProposal
   interactionId: string | null
   onDone: (successText: string) => void
+  onCancel?: () => void
 }) {
   const [title, setTitle]         = useState(proposal.title)
   const [body, setBody]           = useState(proposal.body ?? '')
@@ -1526,6 +1555,7 @@ export function KnowledgeSupersessionProposalCard({
           onClick={() => {
             setCancelled(true)
             if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+            onCancel?.()
           }}
           disabled={saving}
           className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
@@ -1549,11 +1579,13 @@ export function KnowledgeArchiveProposalCard({
   proposal,
   interactionId,
   onDone,
+  onCancel,
 }: {
   siteId: string
   proposal: CopilotProposal
   interactionId: string | null
   onDone: (successText: string) => void
+  onCancel?: () => void
 }) {
   const [selection, setSelection] = useState<string | null>(null)
   const [whyOpen, setWhyOpen]     = useState(false)
@@ -1653,6 +1685,7 @@ export function KnowledgeArchiveProposalCard({
           onClick={() => {
             setCancelled(true)
             if (interactionId) void trackCopilotProposalCancelled({ interactionId, siteId })
+            onCancel?.()
           }}
           disabled={saving}
           className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"

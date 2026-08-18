@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { X, Volume2, VolumeX } from 'lucide-react'
 import { createVad, DEFAULT_VAD_CONFIG, type Vad } from '@/lib/voice/vad'
-import type { VoiceTurnHandlers, VoiceTurnResult } from '@/app/(field)/m/VoiceOrbContext'
+import { useVoiceOrb, type VoiceTurnHandlers, type VoiceTurnResult } from '@/app/(field)/m/VoiceOrbContext'
 import type { VoiceTurnPayload } from '@/lib/voice/copilot-stream-client'
 import { openLiveStt, type LiveSttOutcome, type LiveSttSession } from '@/lib/voice/live-stt'
 import { attachPcmTap, openPcmTapCount, type PcmTap } from '@/lib/voice/pcm-tap'
@@ -62,6 +62,15 @@ interface Props {
 const REARM_DELAY_MS = 400
 
 /**
+ * Délai de réarmement après un tour qui a produit une PROPOSITION. Plus long
+ * que `REARM_DELAY_MS` : rouvrir le micro instantanément donnerait l'impression
+ * que rien ne s'est passé, alors qu'une décision humaine reste en attente dans
+ * le bandeau. Aucun blocage pour autant — si l'utilisateur reparle avant, le
+ * flux vocal continue normalement (Lot A, Vincent, 2026-08-18).
+ */
+const PROPOSAL_REARM_DELAY_MS = 1100
+
+/**
  * Silence au bout duquel on relâche le micro sans fermer l'orbe. Garder un micro
  * ouvert indéfiniment est un coût batterie et une promesse d'écoute que personne
  * n'a demandée ; fermer serait plus brutal encore. Entre les deux : `ready`.
@@ -103,6 +112,8 @@ function vibrateEndOfSpeech() {
 }
 
 export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }: Props) {
+  const { pendingProposals, viewPendingProposal } = useVoiceOrb()
+
   // La machine à états est la seule autorité sur le parcours. `stateRef` en est
   // le miroir synchrone : les callbacks audio (RAF, `onstop`) se déclenchent
   // hors du cycle de rendu React et doivent lire l'état réel, pas celui de la
@@ -585,7 +596,9 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
     // on ne fabrique pas une phase `speaking` fictive : on réécoute tout de
     // suite.
     if (isSpeaking() && dispatch({ type: 'SPEECH_STARTED' })) return
-    if (dispatch({ type: 'ANSWER_SETTLED' })) scheduleRearm()
+    if (dispatch({ type: 'ANSWER_SETTLED' })) {
+      scheduleRearm(result?.proposalPending ? PROPOSAL_REARM_DELAY_MS : REARM_DELAY_MS)
+    }
   }
 
   function clearRearmTimer() {
@@ -917,6 +930,42 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
               )
             })}
             <div ref={threadEndRef} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Bandeau propositions en attente ──
+          Ne ferme jamais tout seul et ne se fait jamais recouvrir par un
+          nouveau tour : c'est le point de départ du Lot A — sans lui, une
+          proposition créée à la voix disparaissait dès l'échange suivant sans
+          qu'aucune trace visuelle ne reste (Vincent, 2026-08-18). Modélisé en
+          collection dès maintenant pour préparer P6-B, même si un seul tour
+          ne produit aujourd'hui qu'une proposition. */}
+      {pendingProposals.length > 0 && (
+        <div
+          className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3"
+        >
+          <div className="pointer-events-auto mx-auto flex max-w-[520px] flex-col gap-2 rounded-2xl border border-white/15 bg-[rgba(20,20,32,0.94)] px-4 py-3 shadow-[0_8px_30px_rgba(0,0,0,0.4)] backdrop-blur">
+            {pendingProposals.length > 1 && (
+              <p className="text-[11px] font-medium uppercase tracking-wide text-white/45">
+                {pendingProposals.length} propositions en attente
+              </p>
+            )}
+            {pendingProposals.map((p) => (
+              <div key={p.id} className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-violet-300/80">{p.kindLabel}</p>
+                  <p className="truncate text-[14px] text-white/90">{p.title}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => viewPendingProposal(p.id)}
+                  className="shrink-0 rounded-full bg-violet-500/90 px-3.5 py-1.5 text-[12px] font-medium text-white active:bg-violet-600"
+                >
+                  Voir
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}

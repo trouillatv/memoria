@@ -9,7 +9,7 @@ import {
   type CopilotFreeResult,
   type CopilotFreeCandidate,
 } from '@/app/(dashboard)/sites/[id]/copilot-free-action'
-import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
+import { COPILOT_PROPOSAL_KIND_LABELS, type CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { ProposalCard, ScheduleProposalCard, ObservationProposalCard, ActorAliasProposalCard, FactProposalCard, RelationClaimProposalCard, WatchpointProposalCard, DeadlineProposalCard, ReserveProposalCard, KnowledgeSupersessionProposalCard, KnowledgeArchiveProposalCard } from '@/components/copilot/CopilotProposalCards'
 import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
@@ -102,7 +102,7 @@ function SitePicker({ onSelect }: { onSelect: (site: Site) => void }) {
 // ── Chat copilote (après sélection du chantier) ────────────────────────────────
 
 function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string }) {
-  const { openOrb } = useVoiceOrb()
+  const { openOrb, addPendingProposal, removePendingProposal, registerProposalViewHandler } = useVoiceOrb()
   const [messages, setMessages]              = useState<Msg[]>([])
   const [inputText, setInputText]            = useState('')
   const [loading, setLoading]                = useState(false)
@@ -112,6 +112,15 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Se fait connaître comme cible du bouton « Voir » du bandeau tant que cette
+  // feuille est la conversation active — l'orbe ne connaît pas ce DOM.
+  useEffect(() => {
+    registerProposalViewHandler((id) => {
+      document.getElementById(`copilot-proposal-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+    return () => registerProposalViewHandler(null)
+  }, [registerProposalViewHandler])
 
   function buildHistory(): { role: 'user' | 'assistant'; content: string }[] {
     const result: { role: 'user' | 'assistant'; content: string }[] = []
@@ -133,7 +142,14 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
         return [...without, { kind: 'clarification' as const, id: uid(), text: result.text, candidates: result.candidates }]
       }
       if (result.kind === 'proposal') {
-        return [...without, { kind: 'proposal' as const, id: uid(), text: result.text, proposal: result.proposal, interactionId: result.interactionId }]
+        const id = uid()
+        addPendingProposal({
+          id,
+          kind: result.proposal.kind,
+          kindLabel: COPILOT_PROPOSAL_KIND_LABELS[result.proposal.kind],
+          title: result.proposal.title,
+        })
+        return [...without, { kind: 'proposal' as const, id, text: result.text, proposal: result.proposal, interactionId: result.interactionId }]
       }
       return [...without, { kind: 'answer' as const, id: uid(), text: result.text, source: 'fallback' as const, refs: [] }]
     })
@@ -156,7 +172,7 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
         siteId, question, history: buildHistory(), resolvedSubjectIds: allResolvedIds,
       })
       pushResultMessage(result)
-      return result.kind === 'proposal' ? {} : { answer: result.text }
+      return result.kind === 'proposal' ? { proposalPending: true } : { answer: result.text }
     } catch {
       setMessages((prev) => {
         const without = prev.filter((m) => m.kind !== 'thinking')
@@ -282,8 +298,10 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
 
       pushResultMessage(result)
       // Ce que l'orbe affichera dans son fil. Une proposition en est exclue :
-      // elle se valide dans la feuille, pas dans la conversation vocale.
-      return result.kind === 'proposal' ? {} : { answer: result.text }
+      // elle se valide dans la feuille, pas dans la conversation vocale. Elle
+      // signale `proposalPending` pour que l'orbe marque une pause avant de
+      // rouvrir le micro, au lieu de repartir comme si de rien n'était.
+      return result.kind === 'proposal' ? { proposalPending: true } : { answer: result.text }
     } catch (err) {
       setMessages((prev) => prev.filter((m) => m.kind !== 'thinking'))
       if (transcriptText === null) throw err instanceof Error ? err : new Error('voice turn failed')
@@ -362,6 +380,7 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
               const isSchedule = msg.proposal.kind === 'schedule_visit' || msg.proposal.kind === 'schedule_meeting'
               const msgId = msg.id
               const replaceDone = (successText: string) => {
+                removePendingProposal(msgId)
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === msgId
@@ -370,8 +389,9 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
                   )
                 )
               }
+              const onCancel = () => removePendingProposal(msgId)
               return (
-                <div key={msg.id} className="space-y-2">
+                <div key={msg.id} id={`copilot-proposal-${msg.id}`} className="space-y-2">
                   <div className="rounded-2xl rounded-bl-sm border border-foreground/[0.06] bg-muted/40 px-3 py-2">
                     <p className="text-[14px] leading-relaxed text-foreground">{msg.text}</p>
                   </div>
@@ -382,6 +402,7 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
                       interactionId={msg.interactionId}
                       planItemCount={0}
                       onDone={replaceDone}
+                      onCancel={onCancel}
                     />
                   ) : msg.proposal.kind === 'observation' ? (
                     <ObservationProposalCard
@@ -389,6 +410,7 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
                       proposal={msg.proposal}
                       interactionId={msg.interactionId}
                       onDone={replaceDone}
+                      onCancel={onCancel}
                     />
                   ) : msg.proposal.kind === 'actor_alias' ? (
                     <ActorAliasProposalCard
@@ -396,6 +418,7 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
                       proposal={msg.proposal}
                       interactionId={msg.interactionId}
                       onDone={replaceDone}
+                      onCancel={onCancel}
                     />
                   ) : msg.proposal.kind === 'fact' ? (
                     <FactProposalCard
@@ -403,6 +426,7 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
                       proposal={msg.proposal}
                       interactionId={msg.interactionId}
                       onDone={replaceDone}
+                      onCancel={onCancel}
                     />
                   ) : msg.proposal.kind === 'relation_claim' ? (
                     <RelationClaimProposalCard
@@ -410,6 +434,7 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
                       proposal={msg.proposal}
                       interactionId={msg.interactionId}
                       onDone={replaceDone}
+                      onCancel={onCancel}
                     />
                   ) : msg.proposal.kind === 'watchpoint' ? (
                     <WatchpointProposalCard
@@ -417,6 +442,7 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
                       proposal={msg.proposal}
                       interactionId={msg.interactionId}
                       onDone={replaceDone}
+                      onCancel={onCancel}
                     />
                   ) : msg.proposal.kind === 'deadline' ? (
                     <DeadlineProposalCard
@@ -424,6 +450,7 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
                       proposal={msg.proposal}
                       interactionId={msg.interactionId}
                       onDone={replaceDone}
+                      onCancel={onCancel}
                     />
                   ) : msg.proposal.kind === 'reserve' ? (
                     <ReserveProposalCard
@@ -431,6 +458,7 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
                       proposal={msg.proposal}
                       interactionId={msg.interactionId}
                       onDone={replaceDone}
+                      onCancel={onCancel}
                     />
                   ) : msg.proposal.kind === 'knowledge_supersession' ? (
                     <KnowledgeSupersessionProposalCard
@@ -438,6 +466,7 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
                       proposal={msg.proposal}
                       interactionId={msg.interactionId}
                       onDone={replaceDone}
+                      onCancel={onCancel}
                     />
                   ) : msg.proposal.kind === 'knowledge_archive' ? (
                     <KnowledgeArchiveProposalCard
@@ -445,6 +474,7 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
                       proposal={msg.proposal}
                       interactionId={msg.interactionId}
                       onDone={replaceDone}
+                      onCancel={onCancel}
                     />
                   ) : (
                     <ProposalCard
@@ -452,6 +482,7 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
                       proposal={msg.proposal}
                       interactionId={msg.interactionId}
                       onDone={replaceDone}
+                      onCancel={onCancel}
                     />
                   )}
                 </div>

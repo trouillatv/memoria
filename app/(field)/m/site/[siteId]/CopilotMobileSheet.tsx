@@ -11,7 +11,7 @@ import {
 } from '@/app/(dashboard)/sites/[id]/copilot-free-action'
 import { askCopilotAction, type CopilotActionResult } from '@/app/(dashboard)/sites/[id]/copilot-action'
 import type { CopilotIntent } from '@/lib/visits/copilot-context'
-import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
+import { COPILOT_PROPOSAL_KIND_LABELS, type CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { ProposalCard, ScheduleProposalCard, ObservationProposalCard, ActorAliasProposalCard, FactProposalCard, RelationClaimProposalCard, WatchpointProposalCard, DeadlineProposalCard, ReserveProposalCard, KnowledgeSupersessionProposalCard, KnowledgeArchiveProposalCard } from '@/components/copilot/CopilotProposalCards'
 import { CopilotAnswer } from '@/components/copilot/CopilotAnswer'
 import { VoiceCopilotTrigger } from '@/components/field/VoiceCopilotTrigger'
@@ -52,7 +52,7 @@ export function CopilotMobileSheet({
   siteName?: string
   initialSubjectIds?: string[]
 }) {
-  const { openOrb } = useVoiceOrb()
+  const { openOrb, addPendingProposal, removePendingProposal, registerProposalViewHandler } = useVoiceOrb()
   const [open, setOpen]                      = useState(false)
   const [messages, setMessages]              = useState<Msg[]>([])
   const [inputText, setInputText]            = useState('')
@@ -63,6 +63,16 @@ export function CopilotMobileSheet({
   useEffect(() => {
     if (open) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, open])
+
+  // Se fait connaître comme cible du bouton « Voir » du bandeau tant que cette
+  // feuille est ouverte — l'orbe ne connaît pas ce DOM.
+  useEffect(() => {
+    if (!open) return
+    registerProposalViewHandler((id) => {
+      document.getElementById(`copilot-proposal-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+    return () => registerProposalViewHandler(null)
+  }, [open, registerProposalViewHandler])
 
   function closeSheet(v: boolean) {
     setOpen(v)
@@ -93,7 +103,14 @@ export function CopilotMobileSheet({
         return [...without, { kind: 'clarification' as const, id: uid(), text: result.text, candidates: result.candidates }]
       }
       if (result.kind === 'proposal') {
-        return [...without, { kind: 'proposal' as const, id: uid(), text: result.text, proposal: result.proposal, interactionId: result.interactionId }]
+        const id = uid()
+        addPendingProposal({
+          id,
+          kind: result.proposal.kind,
+          kindLabel: COPILOT_PROPOSAL_KIND_LABELS[result.proposal.kind],
+          title: result.proposal.title,
+        })
+        return [...without, { kind: 'proposal' as const, id, text: result.text, proposal: result.proposal, interactionId: result.interactionId }]
       }
       return [...without, { kind: 'answer' as const, id: uid(), text: result.text, source: 'fallback' as const, refs: [] }]
     })
@@ -121,7 +138,7 @@ export function CopilotMobileSheet({
         siteId, question, history: buildHistory(), resolvedSubjectIds: allResolvedIds,
       })
       pushResultMessage(result)
-      return result.kind === 'proposal' ? {} : { answer: result.text }
+      return result.kind === 'proposal' ? { proposalPending: true } : { answer: result.text }
     } catch {
       setMessages((prev) => {
         const without = prev.filter((m) => m.kind !== 'thinking')
@@ -244,8 +261,10 @@ export function CopilotMobileSheet({
 
       pushResultMessage(result)
       // Ce que l'orbe affichera dans son fil. Une proposition en est exclue :
-      // elle se valide dans la feuille, pas dans la conversation vocale.
-      return result.kind === 'proposal' ? {} : { answer: result.text }
+      // elle se valide dans la feuille, pas dans la conversation vocale. Elle
+      // signale `proposalPending` pour que l'orbe marque une pause avant de
+      // rouvrir le micro, au lieu de repartir comme si de rien n'était.
+      return result.kind === 'proposal' ? { proposalPending: true } : { answer: result.text }
     } catch (err) {
       setMessages((prev) => prev.filter((m) => m.kind !== 'thinking'))
       if (transcriptText === null) throw err instanceof Error ? err : new Error('voice turn failed')
@@ -385,6 +404,7 @@ export function CopilotMobileSheet({
                   const isSchedule = msg.proposal.kind === 'schedule_visit' || msg.proposal.kind === 'schedule_meeting'
                   const msgId = msg.id
                   const replaceDone = (successText: string) => {
+                    removePendingProposal(msgId)
                     setMessages((prev) =>
                       prev.map((m) =>
                         m.id === msgId
@@ -393,8 +413,9 @@ export function CopilotMobileSheet({
                       )
                     )
                   }
+                  const onCancel = () => removePendingProposal(msgId)
                   return (
-                    <div key={msg.id} className="space-y-2">
+                    <div key={msg.id} id={`copilot-proposal-${msg.id}`} className="space-y-2">
                       <div className="rounded-2xl rounded-bl-sm border border-foreground/[0.06] bg-muted/40 px-3 py-2">
                         <p className="text-[14px] leading-relaxed text-foreground">{msg.text}</p>
                       </div>
@@ -405,6 +426,7 @@ export function CopilotMobileSheet({
                           interactionId={msg.interactionId}
                           planItemCount={0}
                           onDone={replaceDone}
+                          onCancel={onCancel}
                         />
                       ) : msg.proposal.kind === 'observation' ? (
                         <ObservationProposalCard
@@ -412,6 +434,7 @@ export function CopilotMobileSheet({
                           proposal={msg.proposal}
                           interactionId={msg.interactionId}
                           onDone={replaceDone}
+                          onCancel={onCancel}
                         />
                       ) : msg.proposal.kind === 'actor_alias' ? (
                         <ActorAliasProposalCard
@@ -419,6 +442,7 @@ export function CopilotMobileSheet({
                           proposal={msg.proposal}
                           interactionId={msg.interactionId}
                           onDone={replaceDone}
+                          onCancel={onCancel}
                         />
                       ) : msg.proposal.kind === 'fact' ? (
                         <FactProposalCard
@@ -426,6 +450,7 @@ export function CopilotMobileSheet({
                           proposal={msg.proposal}
                           interactionId={msg.interactionId}
                           onDone={replaceDone}
+                          onCancel={onCancel}
                         />
                       ) : msg.proposal.kind === 'relation_claim' ? (
                         <RelationClaimProposalCard
@@ -433,6 +458,7 @@ export function CopilotMobileSheet({
                           proposal={msg.proposal}
                           interactionId={msg.interactionId}
                           onDone={replaceDone}
+                          onCancel={onCancel}
                         />
                       ) : msg.proposal.kind === 'watchpoint' ? (
                         <WatchpointProposalCard
@@ -440,6 +466,7 @@ export function CopilotMobileSheet({
                           proposal={msg.proposal}
                           interactionId={msg.interactionId}
                           onDone={replaceDone}
+                          onCancel={onCancel}
                         />
                       ) : msg.proposal.kind === 'deadline' ? (
                         <DeadlineProposalCard
@@ -447,6 +474,7 @@ export function CopilotMobileSheet({
                           proposal={msg.proposal}
                           interactionId={msg.interactionId}
                           onDone={replaceDone}
+                          onCancel={onCancel}
                         />
                       ) : msg.proposal.kind === 'reserve' ? (
                         <ReserveProposalCard
@@ -454,6 +482,7 @@ export function CopilotMobileSheet({
                           proposal={msg.proposal}
                           interactionId={msg.interactionId}
                           onDone={replaceDone}
+                          onCancel={onCancel}
                         />
                       ) : msg.proposal.kind === 'knowledge_supersession' ? (
                         <KnowledgeSupersessionProposalCard
@@ -461,6 +490,7 @@ export function CopilotMobileSheet({
                           proposal={msg.proposal}
                           interactionId={msg.interactionId}
                           onDone={replaceDone}
+                          onCancel={onCancel}
                         />
                       ) : msg.proposal.kind === 'knowledge_archive' ? (
                         <KnowledgeArchiveProposalCard
@@ -468,6 +498,7 @@ export function CopilotMobileSheet({
                           proposal={msg.proposal}
                           interactionId={msg.interactionId}
                           onDone={replaceDone}
+                          onCancel={onCancel}
                         />
                       ) : (
                         <ProposalCard
@@ -475,6 +506,7 @@ export function CopilotMobileSheet({
                           proposal={msg.proposal}
                           interactionId={msg.interactionId}
                           onDone={replaceDone}
+                          onCancel={onCancel}
                         />
                       )}
                     </div>

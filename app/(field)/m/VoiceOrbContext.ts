@@ -2,6 +2,7 @@
 
 import { createContext, useContext } from 'react'
 import type { VoiceTurnPayload } from '@/lib/voice/copilot-stream-client'
+import type { CopilotProposalKind } from '@/lib/visits/copilot-proposal'
 
 export type { VoiceTurnPayload }
 
@@ -13,8 +14,25 @@ export type { VoiceTurnPayload }
  * elle se valide dans la feuille, avec sa carte et ses boutons ; en afficher le
  * texte seul laisserait croire que l'action est faite. Une clarification, elle,
  * se lit et se répond à la voix — elle passe donc bien par `answer`.
+ *
+ * `proposalPending` signale ce même cas à l'orbe pour une seconde raison :
+ * marquer une pause visuelle avant de rouvrir le micro, plutôt que de repartir
+ * comme si rien ne s'était passé (Lot A propositions vocales, Vincent, 2026-08-18).
  */
-export type VoiceTurnResult = { answer?: string }
+export type VoiceTurnResult = { answer?: string; proposalPending?: boolean }
+
+/**
+ * Proposition en attente de décision humaine, affichée dans le bandeau sticky
+ * de l'orbe. Modélisée en collection dès le Lot A même si le système ne
+ * produit aujourd'hui qu'une proposition par tour : prépare P6-B sans le
+ * brancher (Vincent, 2026-08-18).
+ */
+export type PendingProposal = {
+  id: string
+  kind: CopilotProposalKind
+  kindLabel: string
+  title: string
+}
 
 /**
  * Callbacks que l'orbe fournit au tour vocal. `onTranscript` est appelé une
@@ -47,10 +65,27 @@ export type OpenOrbOptions = {
 
 export type VoiceOrbContextValue = {
   openOrb: (opts: OpenOrbOptions) => void
+  /** File des propositions en attente — partagée entre l'orbe et la feuille. */
+  pendingProposals: PendingProposal[]
+  addPendingProposal: (proposal: PendingProposal) => void
+  removePendingProposal: (id: string) => void
+  /**
+   * Bouton « Voir » du bandeau : ferme l'orbe (la feuille est déjà ouverte
+   * dessous) puis délègue à la feuille active le scroll vers la carte —
+   * l'orbe ne connaît pas le DOM de la feuille.
+   */
+  viewPendingProposal: (id: string) => void
+  /** Appelé par la feuille active pour se faire connaître comme cible du scroll. */
+  registerProposalViewHandler: (handler: ((id: string) => void) | null) => void
 }
 
 export const VoiceOrbContext = createContext<VoiceOrbContextValue>({
   openOrb: () => {},
+  pendingProposals: [],
+  addPendingProposal: () => {},
+  removePendingProposal: () => {},
+  viewPendingProposal: () => {},
+  registerProposalViewHandler: () => {},
 })
 
 export function useVoiceOrb(): VoiceOrbContextValue {
