@@ -263,6 +263,81 @@ const DEADLINE_OBLIGATION_RE = /\b(?:doit|doivent)\b/
 // son propre signal dédié est suffisamment étroit.
 const RESERVE_CREATE_RE = /\b(?:cree\w*|ajout\w*|mets?\w*|mettr\w*)\s+(?:une?|la|cette|ces|des)\s+reserves?\b/
 
+// ── Signaux NEGATION_SCOPE (Vincent 2026-08-18) ──────────────────────────────
+//
+// Neutralise une intention d'écriture uniquement quand la négation porte sur
+// le verbe d'écriture/intention lui-même — jamais un filtre global sur "pas".
+// Découvert en recette terrain : « Je surveille pas le regard aircon »
+// (français oral spontané, sans "ne") produisait une proposition de vigilance
+// POSITIVE. Aucune régression synthétique n'aurait suffi à la découvrir —
+// c'est la forme réelle, pas l'académique « Ne surveille pas le SSI ».
+//
+// Portée = la CLAUSE (segment séparé par virgule/point-virgule dans le texte
+// ORIGINAL, avant que normalizeQuery n'efface la ponctuation), jamais la
+// phrase entière : « Le SSI n'est pas réglé, crée une action. » doit garder
+// son 2ᵉ segment intact — "crée" n'est neutralisé que s'IL est lui-même
+// adjacent à "pas" dans SA clause, jamais parce qu'un "pas" descriptif
+// traîne ailleurs dans la phrase.
+//
+// Détection = adjacence stricte (le verbe d'écriture touche "pas", juste
+// avant ou juste après, dans la même clause) — pas une portée large
+// "ne...pas" sur toute la clause. Cette adjacence seule suffit à couvrir tous
+// les cas oraux du cadrage (« surveille pas », « planifie pas », « faut pas
+// créer », « je veux pas créer » — "pas" touche "faut"/"créer" dans les deux
+// derniers) SANS jamais neutraliser un constat descriptif : dans « le SSI
+// n'est pas réglé », les tokens adjacents à "pas" sont "est"/"réglé", ni l'un
+// ni l'autre n'est un verbe d'écriture. "ne" lui-même n'a pas besoin d'être
+// détecté séparément : quand il est présent, le verbe reste adjacent à "pas"
+// exactement comme dans la forme orale sans "ne" (« ne surveille pas » et
+// « surveille pas » placent tous deux "surveille" juste avant "pas").
+//
+// Reprend exactement les tiges des familles de verbes d'écriture déjà
+// définies ci-dessus (STRONG_WRITE_RE, SCHEDULE_VERB_RE, WATCHPOINT_VERB_RE,
+// DEADLINE_OBLIGATION_RE, RESERVE_CREATE_RE) — à tenir synchronisé si une
+// nouvelle famille de verbe d'écriture est ajoutée au routeur.
+const WRITE_TRIGGER_VERB_RE =
+  /\b(?:ajout|rajoute|cree|note|notons|mets|mettr|fai[st]|ouvr|declenche|genere|rappell?|faut|planifi|programm|organis|prevois|inscri|marqu|convoque|surveill|doit|doivent)\w*\b/
+
+function splitClauses(question: string): string[] {
+  return question.split(/[,;]/).map((c) => c.trim()).filter(Boolean)
+}
+
+function clauseHasNegatedWriteVerb(clause: string): boolean {
+  const tokens = normalizeQuery(clause).split(' ')
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] !== 'pas') continue
+    const before = tokens[i - 1]
+    const after = tokens[i + 1]
+    if ((before && WRITE_TRIGGER_VERB_RE.test(before)) || (after && WRITE_TRIGGER_VERB_RE.test(after))) {
+      return true
+    }
+  }
+  return false
+}
+
+function clauseHasPositiveWriteVerb(clause: string): boolean {
+  const q = normalizeQuery(clause)
+  return WRITE_TRIGGER_VERB_RE.test(q) && !clauseHasNegatedWriteVerb(clause)
+}
+
+/**
+ * Toute intention d'écriture de la phrase est-elle négatée ? Vrai seulement
+ * si AUCUNE clause ne porte de verbe d'écriture positif — une clause
+ * négative et une clause positive séparées par une virgule cohabitent
+ * (« Le SSI n'est pas réglé, crée une action. » reste CREATE_ACTION).
+ *
+ * Ne route vers aucun intent lui-même : les branches d'écriture s'en servent
+ * comme exclusion, exactement comme !hasQuestionMark. Neutraliser signifie
+ * ici retomber en READ/UNKNOWN_WRITE selon le contrat existant du routeur —
+ * jamais construire un nouvel intent NEGATION dédié.
+ */
+function isFullyNegatedWriteIntent(question: string): boolean {
+  const clauses = splitClauses(question)
+  const hasAnyNegated = clauses.some(clauseHasNegatedWriteVerb)
+  if (!hasAnyNegated) return false
+  return !clauses.some(clauseHasPositiveWriteVerb)
+}
+
 // ── Signaux CORRECTION_IDENTITY (P4-B.2, Vincent 2026-08-17) ──────────────────
 //
 // Corrige une mécoupure STT ou une manière de désigner un acteur DÉJÀ CONNU
@@ -421,6 +496,7 @@ export function detectIntent(question: string): IntentResult {
   const hasObligation     = DEADLINE_OBLIGATION_RE.test(q)
   const hasReserveCreate  = RESERVE_CREATE_RE.test(q)
   const hasQuestionMark  = /\?\s*$/.test(question.trim())
+  const hasNegatedWrite  = isFullyNegatedWriteIntent(question)
   const hasIdentityCorrection =
     IDENTITY_CORRECTION_QUAND_RE.test(q) ||
     IDENTITY_CORRECTION_NON_RE.test(q) ||
@@ -451,6 +527,7 @@ export function detectIntent(question: string): IntentResult {
   if (hasRecurrence)                     signals.push('recurrence_pattern')
   if (hasObligation)                     signals.push('obligation_marker')
   if (hasReserveCreate)                  signals.push('reserve_create_verb')
+  if (hasNegatedWrite)                   signals.push('negated_write_verb')
 
   // ── Garde PRÉPARATION DE VISITE ───────────────────────────────────────────
   // Prime sur tout : « fais-moi les points de contrôle pour ma prochaine visite »
@@ -510,7 +587,7 @@ export function detectIntent(question: string): IntentResult {
   // ma prochaine visite ?" contient un verbe fort ("ajouter"), donc isWrite est
   // vrai et la Garde READ (qui exige !isWrite) ne l'intercepte jamais. Sans
   // cette exclusion, la question tombait ici en ADD_VISIT_ITEM strong.
-  if (hasNextVisit && !hasAction && !hasQuestionMark) {
+  if (hasNextVisit && !hasAction && !hasQuestionMark && !hasNegatedWrite) {
     const confidence: IntentConfidence = (isWrite || hasWeakWrite) ? 'strong' : 'ambiguous'
     return { intent: 'ADD_VISIT_ITEM', confidence, signals }
   }
@@ -530,7 +607,7 @@ export function detectIntent(question: string): IntentResult {
   // phrase tombait ici en CREATE_WATCHPOINT strong (bug OCEF, reproduit 2/2).
   // Mêmes exclusion et raison que FACT/RELATION_CLAIM/CREATE_DEADLINE
   // ci-dessous — CREATE_WATCHPOINT ne l'avait simplement jamais reçue.
-  if (hasWatchpointVerb && !hasNextVisit && !hasDatetime && !hasUnsupported && !hasQuestionMark) {
+  if (hasWatchpointVerb && !hasNextVisit && !hasDatetime && !hasUnsupported && !hasQuestionMark && !hasNegatedWrite) {
     if (hasRecurrence) {
       // Récurrence explicite ("à chaque visite") : capacité non représentée
       // par site_watchpoints (P4-E4, non conçu) → clarification, jamais une
@@ -550,7 +627,7 @@ export function detectIntent(question: string): IntentResult {
   // porte hasSchedVerb (isWrite vrai), donc la Garde READ ne l'intercepte
   // jamais. Sans cette exclusion, la question tombait ici en SCHEDULE_VISIT
   // strong.
-  if (hasVisit && !hasNextVisit && !hasAction && !hasQuestionMark && (hasSchedVerb || hasDatetime || hasCreateVisit)) {
+  if (hasVisit && !hasNextVisit && !hasAction && !hasQuestionMark && !hasNegatedWrite && (hasSchedVerb || hasDatetime || hasCreateVisit)) {
     const confidence: IntentConfidence = hasSchedVerb ? 'strong' : 'ambiguous'
     return { intent: 'SCHEDULE_VISIT', confidence, signals }
   }
@@ -618,7 +695,7 @@ export function detectIntent(question: string): IntentResult {
   // aucune des phrases de non-régression (Fais régler…, Rappelle-moi…, Le
   // chantier sera fermé…, Réunion vendredi…) ne contient ce marqueur —
   // vérifié sur le routeur réel avant implémentation.
-  if (hasObligation && hasDatetime && !hasNextVisit && !hasMeeting && !hasQuestionMark) {
+  if (hasObligation && hasDatetime && !hasNextVisit && !hasMeeting && !hasQuestionMark && !hasNegatedWrite) {
     return { intent: 'CREATE_DEADLINE', confidence: 'strong', signals }
   }
 
@@ -633,7 +710,7 @@ export function detectIntent(question: string): IntentResult {
   // matche RESERVE_CREATE_RE ("créer une réserve" adjacents) indépendamment de
   // la question posée autour. Sans cette exclusion, la question tombait ici en
   // CREATE_RESERVE strong.
-  if (hasReserveCreate && !hasQuestionMark) {
+  if (hasReserveCreate && !hasQuestionMark && !hasNegatedWrite) {
     return { intent: 'CREATE_RESERVE', confidence: 'strong', signals }
   }
 
@@ -648,7 +725,7 @@ export function detectIntent(question: string): IntentResult {
   // planification devenait strong — même asymétrie que CREATE_WATCHPOINT.
   // Exclure hasQuestionMark de la condition ELLE-MÊME casserait le test
   // préservé ci-dessus ; seule la confiance doit changer.
-  if (hasMeeting && (hasSchedVerb || hasDatetime)) {
+  if (hasMeeting && (hasSchedVerb || hasDatetime) && !hasNegatedWrite) {
     const confidence: IntentConfidence = (hasSchedVerb && !hasQuestionMark) ? 'strong' : 'ambiguous'
     return { intent: 'SCHEDULE_MEETING', confidence, signals }
   }
@@ -662,10 +739,10 @@ export function detectIntent(question: string): IntentResult {
   // porte un verbe fort ("créer"), donc isWrite est vrai et la Garde READ ne
   // l'intercepte jamais. Sans cette exclusion, la question tombait ici en
   // CREATE_ACTION strong (voire ambiguous pour la 2ᵉ branche).
-  if (hasAction && (isWrite || hasWeakWrite) && !hasQuestionMark) {
+  if (hasAction && (isWrite || hasWeakWrite) && !hasQuestionMark && !hasNegatedWrite) {
     return { intent: 'CREATE_ACTION', confidence: 'strong', signals }
   }
-  if (isWrite && !hasUnsupported && !hasVisit && !hasMeeting && !hasQuestionMark) {
+  if (isWrite && !hasUnsupported && !hasVisit && !hasMeeting && !hasQuestionMark && !hasNegatedWrite) {
     return { intent: 'CREATE_ACTION', confidence: 'ambiguous', signals }
   }
 

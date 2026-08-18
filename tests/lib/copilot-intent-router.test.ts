@@ -1001,3 +1001,55 @@ describe('CREATE_WATCHPOINT — formes non testées, assumées (audit de robuste
     })
   }
 })
+
+// ── NEGATION_SCOPE (spec Vincent 2026-08-18) ─────────────────────────────────
+// Découvert en recette terrain OCEF : « Je surveille pas le regard aircon »
+// (français oral spontané, sans "ne") produisait une vigilance POSITIVE — la
+// négation ne protégeait aucune des 7 branches d'écriture du routeur.
+//
+// Portée bornée : adjacence stricte entre un verbe d'écriture et le token
+// "pas", dans la CLAUSE (segment séparé par virgule/point-virgule dans le
+// texte ORIGINAL). Jamais un filtre global sur le mot "pas" — une négation
+// descriptive dans le contenu (« Le SSI n'est pas réglé ») ne doit neutraliser
+// aucune action légitime portée par une autre clause.
+const WRITER_INTENTS = [
+  'CREATE_ACTION', 'ADD_VISIT_ITEM', 'SCHEDULE_VISIT', 'SCHEDULE_MEETING',
+  'CREATE_WATCHPOINT', 'CREATE_DEADLINE', 'CREATE_RESERVE',
+]
+
+describe('NEGATION_SCOPE — négation du verbe d\'écriture → jamais un writer', () => {
+  // La négation porte sur le verbe d'écriture/intention lui-même (avec ou sans
+  // "ne" — l'oral spontané l'omet systématiquement) : aucune proposition
+  // positive ne doit être créée. Cible précise établie par lecture du code
+  // (READ quand aucun autre signal ne subsiste, UNKNOWN_WRITE quand un verbe
+  // fort résiduel existe) — l'invariant qui compte pour Vincent est "jamais un
+  // writer", vérifié séparément ci-dessous en plus de la cible exacte.
+  const cases: [string, string][] = [
+    ['Ne surveille pas le SSI', 'READ'],
+    ['Je surveille pas le SSI', 'READ'],
+    ['Surveille pas le SSI', 'READ'],
+    ['Ne planifie pas de réunion vendredi', 'UNKNOWN_WRITE'],
+    ['Planifie pas de réunion vendredi', 'UNKNOWN_WRITE'],
+    ["Il ne faut pas créer d'action", 'UNKNOWN_WRITE'],
+    ["Faut pas créer d'action", 'UNKNOWN_WRITE'],
+    ["Je veux pas créer d'action", 'UNKNOWN_WRITE'],
+  ]
+  for (const [q, expectedIntent] of cases) {
+    it(`"${q}" → ${expectedIntent} (jamais un writer)`, () => {
+      expect(intent(q)).toBe(expectedIntent)
+      expect(WRITER_INTENTS).not.toContain(intent(q))
+    })
+  }
+})
+
+describe('NEGATION_SCOPE — négation descriptive ne neutralise jamais une action légitime', () => {
+  it('"Le SSI n\'est pas réglé" → FACT (négation descriptive, aucun verbe d\'écriture adjacent à "pas")', () => {
+    expect(intent("Le SSI n'est pas réglé")).toBe('FACT')
+  })
+  it('"Crée une action pour que le SSI ne reste pas ouvert" → CREATE_ACTION ("reste"/"ouvert" ne sont pas des verbes d\'écriture)', () => {
+    expect(intent('Crée une action pour que le SSI ne reste pas ouvert')).toBe('CREATE_ACTION')
+  })
+  it('"Le SSI n\'est pas réglé, crée une action." → CREATE_ACTION (clause négative ≠ clause positive, jamais fusionnées)', () => {
+    expect(intent("Le SSI n'est pas réglé, crée une action.")).toBe('CREATE_ACTION')
+  })
+})
