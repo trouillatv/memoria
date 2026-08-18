@@ -291,9 +291,9 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
         answerKind: result.kind,
         answerSource: result.kind === 'answer' ? result.source : null,
         spokenLength: _spoken != null ? _spoken.length : 0,
-        spoken: _spoken != null ? _spoken.slice(0, 120) : null,
+        spoken: _spoken,
         answerLength: result.kind === 'answer' ? result.text.length : null,
-        answer: result.kind === 'answer' ? result.text.slice(0, 150) : null,
+        answer: result.kind === 'answer' ? result.text : null,
       })
 
       pushResultMessage(result)
