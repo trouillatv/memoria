@@ -320,6 +320,7 @@ async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string, le
     logTranscribe('continuation_error', { error: e instanceof Error ? e.message : String(e) })
   }
 
+  let whisperReason = 'not_configured'
   if (process.env.OPENAI_API_KEY) {
     try {
       const whisperText = (await transcribeWithWhisper(rawBuffer, mimeType, mimeToExt(mimeType))).trim()
@@ -327,13 +328,21 @@ async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string, le
         logTranscribe('whisper_fallback_applied', { source: 'whisper_fallback', length: whisperText.length })
         return whisperText
       }
+      whisperReason = 'empty_result'
     } catch (e) {
+      whisperReason = 'error'
       logTranscribe('whisper_fallback_error', { error: e instanceof Error ? e.message : String(e) })
     }
   }
 
   // Aucun filet n'a amélioré le résultat : on retourne le texte Gemini initial
-  // (potentiellement tronqué) plutôt que de faire échouer toute la capture.
+  // (potentiellement tronqué) plutôt que de faire échouer toute la capture. On
+  // trace explicitement ce cas — sans ce log, un transcript encore tronqué
+  // finit indiscernable d'un transcript complet dans `body`.
+  logTranscribe('truncation_unrecovered', {
+    textLength: primary.text.length,
+    whisperReason,
+  })
   return primary.text
 }
 
