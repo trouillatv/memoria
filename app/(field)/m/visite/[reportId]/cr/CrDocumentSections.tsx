@@ -370,7 +370,7 @@ function PhotoSelectionSection({
         <span className="text-[12px] text-muted-foreground">{selectedCount} / {total} dans le document</span>
       </div>
       <p className="mt-1 text-[12px] text-muted-foreground">
-        Appuyez sur le statut d’une photo pour la faire tourner : Hors CR → Reportage → Photo clé.
+        Appuyez sur le statut d’une photo pour la changer : Hors CR → Reportage → Photo clé.
         Une photo clé s’affiche en grand avec sa légende ; une photo en reportage reste en vignette.
       </p>
 
