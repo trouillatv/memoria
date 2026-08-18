@@ -361,9 +361,17 @@ export function mergeComprehension(
   //
   // S'applique aussi à une écriture déterministe 'ambiguous' : on ne crée pas
   // l'écriture, on précise seulement la cible d'un brouillon déjà décidé.
+  //
+  // Exception : si le déterministe a posé 'negated_write_verb' (NEGATION_SCOPE),
+  // UNKNOWN_WRITE n'est pas une intention floue à préciser mais un verdict — la
+  // négation orale a délibérément bloqué la branche d'écriture. Le LLM n'a
+  // aucune notion de négation (le prompt ne la mentionne pas) : le laisser
+  // reclasser ici annulerait silencieusement le jugement du routeur (terrain
+  // OCEF 2026-08-18 : « Ne planifie pas de réunion vendredi » → SCHEDULE_MEETING).
   const writeIsUnresolved =
-    nextIntent.intent === 'UNKNOWN_WRITE' ||
-    (nextIntent.intent !== 'READ' && nextIntent.confidence === 'ambiguous')
+    !nextIntent.signals.includes('negated_write_verb') &&
+    (nextIntent.intent === 'UNKNOWN_WRITE' ||
+      (nextIntent.intent !== 'READ' && nextIntent.confidence === 'ambiguous'))
 
   if (writeIsUnresolved && comprehension.mode === 'possible_write') {
     const mapped = WRITE_INTENT_TO_ROUTER[comprehension.intent]

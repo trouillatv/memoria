@@ -246,6 +246,36 @@ describe('mergeComprehension — OBSERVATION n’est jamais rétrogradée par le
   })
 })
 
+// ── 3ter. NEGATION_SCOPE doit survivre à la fusion LLM (régression terrain
+// OCEF, 2026-08-18) ────────────────────────────────────────────────────────
+//
+// « Ne planifie pas de réunion vendredi. » : le routeur déterministe neutralise
+// bien la négation (hasNegatedWrite bloque la branche SCHEDULE_MEETING,
+// signals contient 'negated_write_verb') et retombe sur UNKNOWN_WRITE — mais
+// la couche de compréhension LLM (SYSTEM_PROMPT sans AUCUNE notion de
+// négation) classe la phrase POSSIBLE_WRITE/schedule_meeting sur la seule
+// présence de "planifie…réunion…vendredi". La section 2 de mergeComprehension
+// ("précision d'une écriture non résolue") traite alors UNKNOWN_WRITE comme
+// un cas ouvert à la précision du LLM, sans jamais consulter les signals du
+// routeur : elle réintroduit exactement l'intention que NEGATION_SCOPE avait
+// neutralisée. Repro exacte des deux transcripts terrain (Vincent).
+describe('mergeComprehension — NEGATION_SCOPE ne doit jamais être écrasée par la précision LLM', () => {
+  it('"Ne planifie pas de réunion vendredi." → jamais SCHEDULE_MEETING, même si le LLM y voit un ordre', () => {
+    const q = 'Ne planifie pas de réunion vendredi.'
+    const det = detectIntent(q)
+    expect(det.intent).toBe('UNKNOWN_WRITE')
+    expect(det.signals).toContain('negated_write_verb')
+    const merged = route(q, comprehension('POSSIBLE_WRITE', { intent: 'schedule_meeting' }))
+    expect(merged.intentResult.intent).not.toBe('SCHEDULE_MEETING')
+  })
+
+  it('STT dégradé "Ne ne planifie pas de réunion vendredi." → même garde', () => {
+    const q = 'Ne ne planifie pas de réunion vendredi.'
+    const merged = route(q, comprehension('POSSIBLE_WRITE', { intent: 'schedule_meeting' }))
+    expect(merged.intentResult.intent).not.toBe('SCHEDULE_MEETING')
+  })
+})
+
 // ── 4. Erreur de chargement ≠ zéro résultat ───────────────────────────────────
 
 describe('resolveQuantitativeVerdict — ne jamais affirmer "aucune" à tort', () => {
