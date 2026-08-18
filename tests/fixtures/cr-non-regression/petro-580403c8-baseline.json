@@ -1,0 +1,75 @@
+{
+  "_comment": "Corpus de non-régression CR — visite PETRO ATTITI du 17/08/2026 (Vincent, 2026-08-18). Figé après clôture des lots STT (2e3525d9, 50a6de12) et P0-H (9ae323d5). Invariants MÉTIER, pas de prose exacte : chaque évolution de formulation du LLM ne doit pas casser ce témoin, seule une régression sur un fait, une correction humaine ou une règle de section le doit.",
+  "reportId": "580403c8-8a48-489f-a40f-6adef8e2c361",
+  "siteId": "75bd3d23-d515-46bd-8de8-254495a5bade",
+  "frozenAt": "2026-08-18",
+  "sourceFingerprint": {
+    "_comment": "Sanity guard : si le nombre de captures change, le témoin ne porte plus sur la même matière — le script avertit sans bloquer. 14 inclut une capture-photo légendée « Légende recette cr_tier 2026-08-18 » (artefact de recette, sans contenu narratif propre) — n'affecte aucun invariant ci-dessous.",
+    "captureCount": 14
+  },
+  "invariants": [
+    {
+      "id": "balayage-gravats-present",
+      "description": "Le balayage global et le regroupement des gravats dans un sac à l'extérieur doivent rester racontés dans le CR validé.",
+      "rule": { "kind": "must_appear", "scope": "validated_doc", "allOf": ["balayage"], "anyOf": ["gravats"] }
+    },
+    {
+      "id": "etagere-distributeur-present",
+      "description": "Le démontage de l'étagère et du distributeur de produits doit rester raconté dans le CR validé.",
+      "rule": { "kind": "must_appear", "scope": "validated_doc", "allOf": ["étagère", "distributeur"] }
+    },
+    {
+      "id": "jour1-present",
+      "description": "Le CR doit continuer à situer cette visite comme premier jour / première intervention.",
+      "rule": { "kind": "must_appear", "scope": "validated_doc", "anyOf": ["jour 1", "première intervention", "première journée"] }
+    },
+    {
+      "id": "acces-employes-decision-present",
+      "description": "La décision « accès employés communiqués après réception de la liste » doit rester présente (CR validé et/ou débrief IA).",
+      "rule": { "kind": "must_appear", "scope": "all", "allOf": ["accès"], "anyOf": ["employés", "employé"] }
+    },
+    {
+      "id": "acces-employes-date-grounding-p0h",
+      "description": "P0-H (9ae323d5) : cette décision vient du report 9df10426 daté du 15/07/2026. Si une date explicite est citée, ce doit être le 15/07 — jamais le 17/07 (bug corrigé : date_decision valait le jour de promotion de la proposition, pas celui de la visite).",
+      "rule": { "kind": "forbidden_substring", "scope": "all", "anyOf": ["17/07/2026", "17 juillet", "juillet, comme décidé le 17", "décidé le 17 juillet", "acté le 17 juillet", "actée le 17/07"] }
+    },
+    {
+      "id": "toilette-vigilance-preserved",
+      "description": "Correction humaine : « Un toilette devrait être installé dans la semaine » a été ajoutée à la main en Points de vigilance (absente de l'ai_content) — ne doit jamais disparaître d'une régénération de document.",
+      "rule": { "kind": "must_appear", "scope": "vigilances", "anyOf": ["toilette"] }
+    },
+    {
+      "id": "toilette-not-duplicated-elsewhere",
+      "description": "État actuel (2026-08-18) : le fait « toilette » ne vit que dans Points de vigilance. S'il apparaît aussi ailleurs, c'est soit une vraie évolution doctrinale à documenter explicitement (matrice §2 de la séquence Vincent), soit une redondance à corriger — jamais un changement silencieux.",
+      "rule": { "kind": "section_exclusive", "scope": "validated_doc", "keyword": "toilette", "allowedSections": ["vigilances"] }
+    },
+    {
+      "id": "no-p3t-regression",
+      "description": "Correction humaine : « P3T » (mauvaise transcription STT du nom du chantier) a été remplacé par « PETRO ATTITI » / « Petro ATTITI » dans le CR validé — ne doit jamais réapparaître.",
+      "rule": { "kind": "forbidden_substring", "scope": "validated_doc", "anyOf": ["p3t"] }
+    },
+    {
+      "id": "no-legend-as-narrative-fact",
+      "description": "Correction humaine : la liste des légendes/zones photo (Magasinier, Plonge Batterie, Couloir vers la préparation chaude, etc.) a été retirée de « À savoir » — une légende identifie/localise une photo, elle ne devient pas à elle seule un fait narratif du CR.",
+      "rule": {
+        "kind": "forbidden_substring",
+        "scope": "a_savoir",
+        "anyOf": [
+          "magasinier",
+          "plonge batterie",
+          "norvégiennes",
+          "vestiaires et sanitaires femmes",
+          "couloir vers la préparation chaude",
+          "réserve sèche et cf négative",
+          "dgmt chariots",
+          "dgmt entrée"
+        ]
+      }
+    },
+    {
+      "id": "rejected-demontage-action-no-resurface",
+      "description": "4 propositions d'action en doublon sur le démontage étagère/distributeur ont été rejetées (0b1a5f50, e5bf2692, 85110321, cd2e3b07) — ce fait est une narration terminée, pas une action à suivre ; ne doit pas revenir comme action suggérée par le débrief IA.",
+      "rule": { "kind": "forbidden_substring", "scope": "debrief_actions", "anyOf": ["démonté l'étagère", "démonter l'étagère", "démontage de l'étagère", "démontage du distributeur"] }
+    }
+  ]
+}
