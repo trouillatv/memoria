@@ -19,7 +19,7 @@ import { useVoiceOrb, type VoiceTurnHandlers, type VoiceTurnPayload, type VoiceT
 import { speak } from '@/lib/voice/speech-output'
 import { markVoice } from '@/lib/voice/voice-latency'
 import { traceVoice } from '@/lib/voice/voice-trace'
-import { askCopilotVoiceTurnStreamed } from '@/lib/voice/copilot-stream-client'
+import { askCopilotVoiceTurnStreamed, type CopilotTurnDiag } from '@/lib/voice/copilot-stream-client'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -155,6 +155,10 @@ export function CopilotMobileSheet({
 
     let transcriptText: string | null = null
     let spokenAnnounced = false
+    let spokenCaptured: string | null = null
+    let diagCaptured: CopilotTurnDiag | null = null
+    // Raw STT disponible uniquement sur le chemin Live — nul sur le chemin audio.
+    const rawStt = turn.kind === 'transcript' ? (turn.rawText ?? null) : null
     try {
       const outcome = await askCopilotVoiceTurnStreamed(
         { siteId, turn, history: buildHistory(), resolvedSubjectIds },
@@ -169,8 +173,12 @@ export function CopilotMobileSheet({
             }
             return keepGoing
           },
+          onDiag: (diag) => {
+            diagCaptured = diag
+          },
           onSpokenReady: (spokenText) => {
             spokenAnnounced = true
+            spokenCaptured = spokenText
             markVoice('spokenReady')
             const accepted = speak(spokenText)
             traceVoice('speak-returned', { accepted, transport: 'voice-stream' })
@@ -206,6 +214,32 @@ export function CopilotMobileSheet({
         source: result.kind === 'answer' ? result.source : null,
         spokenText: result.kind === 'answer' ? (spoken == null ? 'null' : 'present') : 'n/a',
         spokenLength: spoken?.length ?? 0,
+      })
+
+      // Trace sémantique bout-en-bout — lisible dans le panneau ?voicedebug=1,
+      // même contrat que GlobalVoiceCopilotSheet (Vincent, 2026-08-18) : sans
+      // elle, cette feuille (chantier) ne montrait ni le routage ni ce que la
+      // couche de compréhension LLM avait retenu de la question.
+      const _diag = diagCaptured as CopilotTurnDiag | null
+      const _spoken = spokenCaptured as string | null
+      traceVoice('turn-semantic', {
+        // Étage STT
+        rawStt: rawStt ?? transcriptText ?? '?',
+        normalized: transcriptText ?? '?',
+        sttRoute: turn.kind === 'transcript' ? 'live' : 'server',
+        // Étage routage (vient du serveur via SSE diag)
+        det: _diag != null ? _diag.det : '?',
+        merged: _diag != null ? _diag.merged : '?',
+        family: _diag != null ? _diag.family : '?',
+        applied: _diag != null ? _diag.applied : '—',
+        comp: _diag != null ? _diag.comp : '?',
+        // Étage réponse
+        answerKind: result.kind,
+        answerSource: result.kind === 'answer' ? result.source : null,
+        spokenLength: _spoken != null ? _spoken.length : 0,
+        spoken: _spoken != null ? _spoken.slice(0, 120) : null,
+        answerLength: result.kind === 'answer' ? result.text.length : null,
+        answer: result.kind === 'answer' ? result.text.slice(0, 150) : null,
       })
 
       pushResultMessage(result)

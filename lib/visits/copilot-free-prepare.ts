@@ -214,6 +214,8 @@ export interface PreparedCopilotAnswerDiag {
   family: string
   applied: string
   q: string
+  /** Ce que la couche de compréhension LLM a extrait de `q` — label + entités reconnues. */
+  comp: string
 }
 
 export interface PreparedCopilotAnswerReady {
@@ -1721,6 +1723,9 @@ export async function prepareCopilotAnswer(
       family: classification.primary,
       applied: traceBase.applied,
       q: question.slice(0, 120),
+      comp: comprehension
+        ? `${comprehension.label}[${comprehension.entities.join(',')}]`
+        : 'null',
     },
     finish,
   }

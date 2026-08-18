@@ -76,7 +76,7 @@ async function streamPreparedAnswer(
     // Chemin déterministe : pas de classification LLM, mais on signale quand même
     // que la réponse n'est pas passée par le LLM.
     controller.enqueue(encoder.encode(sseEvent('diag', {
-      det: 'deterministic', merged: 'deterministic', family: 'deterministic', applied: '', q: '',
+      det: 'deterministic', merged: 'deterministic', family: 'deterministic', applied: '', q: '', comp: 'null',
     })))
     controller.enqueue(encoder.encode(sseEvent('result', prep.result)))
     return

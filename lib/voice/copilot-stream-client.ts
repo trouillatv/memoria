@@ -61,6 +61,8 @@ export type CopilotTurnDiag = {
   family: string
   applied: string
   q: string
+  /** Ce que la couche de compréhension LLM a extrait de `q` — label + entités reconnues. */
+  comp: string
 }
 
 type StreamHandlers = {

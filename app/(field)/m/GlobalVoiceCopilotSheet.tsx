@@ -267,6 +267,10 @@ function CopilotChat({ siteId, siteName }: { siteId: string; siteName: string })
         merged: _diag != null ? _diag.merged : '?',
         family: _diag != null ? _diag.family : '?',
         applied: _diag != null ? _diag.applied : '—',
+        // Ce que la couche de compréhension LLM a compris de la question — à
+        // comparer avec `rawStt`/`normalized` pour voir si la corruption STT
+        // s'est propagée jusqu'au LLM (Vincent, 2026-08-18).
+        comp: _diag != null ? _diag.comp : '?',
         // Étage réponse
         answerKind: result.kind,
         answerSource: result.kind === 'answer' ? result.source : null,
