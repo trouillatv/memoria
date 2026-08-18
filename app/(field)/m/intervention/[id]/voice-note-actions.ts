@@ -143,7 +143,7 @@ export async function uploadVoiceNoteAction(formData: FormData): Promise<
   if (insertErr) return { error: 'Erreur base de données' }
 
   try {
-    const text = await transcribeAudio(rawBuffer, mime_type, ext)
+    const text = await transcribeAudio(rawBuffer, mime_type, ext, site.id)
     await supabase
       .from('intervention_voice_notes')
       .update({ transcription_raw: text, transcription_status: 'done', status: 'transcribed' })

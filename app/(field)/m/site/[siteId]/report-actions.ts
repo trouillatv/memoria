@@ -517,7 +517,7 @@ export async function transcribeReportAction(
       try {
         const mime = s.mimeType || 'audio/webm'
         const buffer = await blob.arrayBuffer()
-        const t = await transcribeAudio(buffer, mime, mimeToExt(mime))
+        const t = await transcribeAudio(buffer, mime, mimeToExt(mime), report.site_id ?? undefined)
         await setSourceTranscript(s.id, t, 'done')
         transcribed++
       } catch (e) {
@@ -550,7 +550,7 @@ export async function transcribeReportAction(
   const ext = mimeToExt(mime)
   try {
     const buffer = await blob.arrayBuffer()
-    const transcript = await transcribeAudio(buffer, mime, ext)
+    const transcript = await transcribeAudio(buffer, mime, ext, report.site_id ?? undefined)
     await setTranscript(reportId, { raw: transcript, status: 'done' })
     await setReportStatus(reportId, 'ready')
     await logUsage('success', null)

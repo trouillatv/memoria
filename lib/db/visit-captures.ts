@@ -473,6 +473,7 @@ export interface CapturePipelineRow {
   transcript_status: CaptureTranscriptStatus | null
   processing_stage: CaptureProcessingStage
   processing_attempts: number
+  site_id: string
 }
 
 /** Charge l'état pipeline d'une capture (pour le worker). */
@@ -480,7 +481,7 @@ export async function getCapturePipelineRow(captureId: string): Promise<CaptureP
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('visit_capture')
-    .select('id, kind, transcript_status, processing_stage, processing_attempts')
+    .select('id, kind, transcript_status, processing_stage, processing_attempts, site_id')
     .eq('id', captureId)
     .maybeSingle()
   return (data as CapturePipelineRow | null) ?? null

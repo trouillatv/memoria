@@ -16,6 +16,8 @@ import {
   recordAvailable,
   type BreakerState,
 } from './provider-breaker'
+import { normalizeTranscript } from './transcript-normalizer'
+import { buildSiteVocabulary } from './stt-vocabulary'
 
 export function mimeToExt(mime: string): string {
   if (mime.includes('mp4') || mime.includes('m4a')) return 'm4a'
@@ -31,19 +33,36 @@ export function transcriptionProvider(): 'gemini' | 'openai' | null {
   return null
 }
 
+/**
+ * Normalisation lexicale commune (P0-1, 6fda9f64) : jusqu'ici réservée au
+ * Copilote vocal live (`live-stt.ts`), absente de cette transcription
+ * différée (visites, réunions, notes vocales) — un même terme métier
+ * ("PETRO ATTITI") restait donc mal orthographié selon la surface qui
+ * l'avait capté (audit vocal 6487ff04, 2026-08-18). `siteId` optionnel :
+ * sans lui (réunion sans chantier, script hors contexte), le texte est
+ * rendu inchangé — `buildSiteVocabulary` ne lève jamais, mais un vocabulaire
+ * vide rend la normalisation simplement inopérante.
+ */
+async function normalizeForSite(text: string, siteId: string | undefined): Promise<string> {
+  if (!siteId || !text) return text
+  const vocabulary = await buildSiteVocabulary(siteId)
+  if (vocabulary.length === 0) return text
+  return normalizeTranscript(text, vocabulary).text
+}
+
 // Même priorité que les embeddings : Google → OpenAI → vide
 export async function transcribeAudio(
   rawBuffer: ArrayBuffer,
   mimeType: string,
   ext: string,
+  siteId?: string,
 ): Promise<string> {
-  if (process.env.GOOGLE_GENAI_API_KEY) {
-    return transcribeWithGemini(rawBuffer, mimeType)
-  }
-  if (process.env.OPENAI_API_KEY) {
-    return transcribeWithWhisper(rawBuffer, mimeType, ext)
-  }
-  return ''
+  const raw = process.env.GOOGLE_GENAI_API_KEY
+    ? await transcribeWithGemini(rawBuffer, mimeType)
+    : process.env.OPENAI_API_KEY
+      ? await transcribeWithWhisper(rawBuffer, mimeType, ext)
+      : ''
+  return normalizeForSite(raw, siteId)
 }
 
 // Au-delà de ce seuil (octets bruts), l'audio en base64 fait exploser la limite
@@ -270,10 +289,35 @@ function dedupeOverlap(partial: string, continuation: string): string {
  */
 const MIN_CONTINUATION_ADDED_CHARS = 8
 
+// Réparation 6487ff04 (2026-08-18) : sur un silence/bruit prolongé en fin
+// d'audio, la continuation Gemini peut dégénérer en boucle de répétition
+// (« des des des... » × 40 000) jusqu'à épuiser maxOutputTokens. Le
+// finishReason associé n'est alors PAS 'STOP' (c'est 'MAX_TOKENS'), donc
+// `isAbruptStop` — qui ne regarde QUE 'STOP' — laisse passer ce texte sans
+// le rejeter. Garde structurelle ciblée (pas de détection sémantique
+// générique) : une répétition consécutive du même mot au-delà d'un seuil
+// qu'aucun bégaiement réel n'atteint est rejetée comme la continuation.
+const MAX_CONSECUTIVE_WORD_REPEAT = 12
+
+function looksLikeDegenerateRepetition(text: string): boolean {
+  const words = text.trim().split(/\s+/).map(normalizeWord).filter(Boolean)
+  let run = 1
+  for (let i = 1; i < words.length; i++) {
+    if (words[i] === words[i - 1]) {
+      run++
+      if (run > MAX_CONSECUTIVE_WORD_REPEAT) return true
+    } else {
+      run = 1
+    }
+  }
+  return false
+}
+
 function validateAndMergeContinuation(partialText: string, continuation: GeminiCallResult): string | null {
   const contText = continuation.text.trim()
   if (!contText) return null
   if (isAbruptStop(contText, continuation.finishReason)) return null
+  if (looksLikeDegenerateRepetition(contText)) return null
 
   const deduped = dedupeOverlap(partialText, contText).trim()
   if (deduped.length < MIN_CONTINUATION_ADDED_CHARS || !/[a-zà-öø-ÿ]/i.test(deduped)) return null
@@ -283,6 +327,25 @@ function validateAndMergeContinuation(partialText: string, continuation: GeminiC
 
 function logTranscribe(event: string, fields: Record<string, unknown>): void {
   console.log(JSON.stringify({ service: 'transcribe', event, ts: new Date().toISOString(), ...fields }))
+}
+
+// ── Garde anti-hallucination Whisper (audit vocaux 56065499 + 3f381cc3, 2026-08-18) ──
+//
+// Whisper, entraîné sur un large corpus de sous-titres YouTube/Amara, invente
+// parfois une formule de fin plausible (incitation à s'abonner, mention de
+// sous-titrage communautaire) en traitant un silence/bruit de fin — un mode
+// d'échec connu, démontré deux fois sur ce corpus réel. Décision explicite
+// (Vincent, 2026-08-18) : PAS de détection générique d'hallucination ni de
+// comparaison sémantique Gemini/Whisper — une petite liste de signatures
+// démontrées suffit pour P0. Appliquée UNIQUEMENT à la sortie du fallback
+// Whisper ; un texte Gemini n'emprunte jamais ce chemin.
+const WHISPER_HALLUCINATION_SIGNATURES: Array<{ name: string; pattern: RegExp }> = [
+  { name: 'youtube_subscribe_outro', pattern: /\bma cha[iî]ne\b|\bvous abonner\b|\bmanquer aucune de mes vid[ée]os\b/i },
+  { name: 'amara_subtitle_credit', pattern: /amara\.org|sous-titres? r[ée]alis[ée]s? par la communaut[ée]/i },
+]
+
+function detectWhisperHallucination(text: string): string | null {
+  return WHISPER_HALLUCINATION_SIGNATURES.find((sig) => sig.pattern.test(text))?.name ?? null
 }
 
 async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string, lexicalPrompt?: string): Promise<string> {
@@ -315,6 +378,7 @@ async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string, le
       continuationLength: continuation.text.length,
       continuationFinishReason: continuation.finishReason,
       continuationTokens: continuation.candidatesTokenCount,
+      degenerateRepetition: looksLikeDegenerateRepetition(continuation.text),
     })
   } catch (e) {
     logTranscribe('continuation_error', { error: e instanceof Error ? e.message : String(e) })
@@ -325,10 +389,21 @@ async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string, le
     try {
       const whisperText = (await transcribeWithWhisper(rawBuffer, mimeType, mimeToExt(mimeType))).trim()
       if (whisperText) {
-        logTranscribe('whisper_fallback_applied', { source: 'whisper_fallback', length: whisperText.length })
-        return whisperText
+        const hallucination = detectWhisperHallucination(whisperText)
+        if (hallucination) {
+          whisperReason = 'hallucination_signature'
+          logTranscribe('whisper_fallback_rejected', {
+            reason: whisperReason,
+            signature: hallucination,
+            length: whisperText.length,
+          })
+        } else {
+          logTranscribe('whisper_fallback_applied', { source: 'whisper_fallback', length: whisperText.length })
+          return whisperText
+        }
+      } else {
+        whisperReason = 'empty_result'
       }
-      whisperReason = 'empty_result'
     } catch (e) {
       whisperReason = 'error'
       logTranscribe('whisper_fallback_error', { error: e instanceof Error ? e.message : String(e) })

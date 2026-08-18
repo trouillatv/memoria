@@ -71,7 +71,7 @@ export async function addMeetingAudioSourceAction(
     // Transcription de CETTE source (best-effort) puis reconstruction du corpus fusionné.
     let transcribed = false
     try {
-      const transcript = await transcribeAudio(arrayBuf, file.type, ext)
+      const transcript = await transcribeAudio(arrayBuf, file.type, ext, report.site_id ?? undefined)
       await setSourceTranscript(att.id as string, transcript, 'done')
       transcribed = true
       const corpus = await buildCombinedCorpus(reportId)
@@ -142,7 +142,8 @@ export async function retranscribeSourceAction(
       return { ok: false, error: 'Audio introuvable dans le stockage.' }
     }
     const mime = (att.mime_type as string | null) ?? 'audio/webm'
-    const transcript = await transcribeAudio(await blob.arrayBuffer(), mime, mimeToExt(mime))
+    const report = await getSiteReport(reportId)
+    const transcript = await transcribeAudio(await blob.arrayBuffer(), mime, mimeToExt(mime), report?.site_id ?? undefined)
     if (!transcript.trim()) {
       await setSourceTranscript(attachmentId, '', 'failed'); revalidatePath(`/meetings/${reportId}`)
       return { ok: false, error: 'Transcription revenue vide — réessayez, ou vérifiez que l’audio est audible.' }

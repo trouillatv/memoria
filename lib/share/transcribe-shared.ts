@@ -21,6 +21,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { mimeToExt, transcribeAudio } from '@/lib/ai/transcribe'
 import { runCapturePipeline } from '@/lib/visits/capture-pipeline'
 import { setSourceTranscript, buildCombinedCorpus } from '@/lib/db/report-audio-sources'
+import { getSiteReport } from '@/lib/db/site-reports'
 
 const BUCKET = 'site-reports'
 
@@ -90,6 +91,7 @@ export async function transcribeMeetingAudios(reportId: string): Promise<Transcr
   const rows = (data ?? []) as Array<{ id: string; storage_path: string; mime_type: string | null }>
   if (rows.length === 0) return { transcribed: 0, pending: 0 }
 
+  const report = await getSiteReport(reportId)
   let transcribed = 0
   for (const att of rows.slice(0, MAX_INLINE)) {
     try {
@@ -97,7 +99,7 @@ export async function transcribeMeetingAudios(reportId: string): Promise<Transcr
       if (error || !blob) throw error ?? new Error('Audio introuvable')
 
       const mime = att.mime_type ?? 'audio/ogg'
-      const text = (await transcribeAudio(await blob.arrayBuffer(), mime, mimeToExt(mime))).trim()
+      const text = (await transcribeAudio(await blob.arrayBuffer(), mime, mimeToExt(mime), report?.site_id ?? undefined)).trim()
 
       // Une transcription vide n'est pas un succès : on le dit, et la source
       // garde son bouton « Retranscrire ». L'audio, lui, reste intact.

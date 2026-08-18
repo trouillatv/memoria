@@ -53,7 +53,7 @@ export async function runCapturePipeline(
         const { data: blob, error } = await supabase.storage.from(BUCKET).download(audio.storagePath)
         if (error || !blob) throw error ?? new Error('Audio introuvable')
         const buf = (await blob.arrayBuffer()) as ArrayBuffer
-        const text = (await transcribeAudio(buf, audio.mimeType, mimeToExt(audio.mimeType))).trim()
+        const text = (await transcribeAudio(buf, audio.mimeType, mimeToExt(audio.mimeType), row.site_id)).trim()
         await setCaptureTranscript(captureId, { text, status: text ? 'done' : 'failed' })
       }
     }
