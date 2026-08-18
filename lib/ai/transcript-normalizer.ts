@@ -21,13 +21,38 @@
 // Module PUR : aucune I/O, aucune dépendance serveur. Le vocabulaire lui est
 // fourni par `lib/ai/stt-vocabulary.ts`.
 
+/** D'où vient une forme de surface — pure traçabilité, ne pèse jamais sur le matching. */
+export type VocabularyFormSource =
+  | 'canonical_name'
+  | 'short_name'
+  | 'actor_alias'
+  | 'knowledge_alias'
+  | 'known_mistranscription'
+
+/**
+ * Une forme de surface et sa provenance. Ajouté pour Q6 (audit BECIB, 17-18/08) :
+ * distinguer dans les traces une correction issue d'un `actor_alias` confirmé
+ * d'un simple rapprochement flou sur le nom canonique. Champ purement additif —
+ * `normalizeTranscript` ne lit jamais `source`/`aliasNature`/`actorId` pour
+ * décider d'une correction, seulement `value`.
+ */
+export type VocabularyForm = {
+  value: string
+  source: VocabularyFormSource
+  /** Renseigné seulement quand `source === 'actor_alias'`. */
+  aliasNature?: 'business_alias' | 'transcription_alias'
+  /** `company_id`/`contact_id` de l'acteur visé, quand `source === 'actor_alias'`. */
+  actorId?: string
+  canonicalValue: string
+}
+
 /** Un terme du vocabulaire fermé : ce qu'on écrit, et tout ce qui doit le viser. */
 export type VocabularyTerm = {
   /** Forme écrite retenue en cas de correction. */
   canonical: string
   kind: 'site' | 'company' | 'person' | 'acronym' | 'expression'
   /** Formes de surface acceptées (inclut toujours `canonical`). */
-  forms: string[]
+  forms: VocabularyForm[]
 }
 
 export type TranscriptCorrection = {
@@ -36,6 +61,10 @@ export type TranscriptCorrection = {
   kind: VocabularyTerm['kind']
   /** Distance d'édition sur la forme compactée — 0 = simple reformatage. */
   distance: number
+  /** Provenance de la forme qui a déclenché la correction (Q6). */
+  source: VocabularyFormSource
+  aliasNature?: 'business_alias' | 'transcription_alias'
+  actorId?: string
 }
 
 export type TranscriptAbstention = {
@@ -129,6 +158,7 @@ type Match = {
   from: number   // index de jeton (inclus)
   to: number     // index de jeton (exclu)
   term: VocabularyTerm
+  form: VocabularyForm
   distance: number
 }
 
@@ -147,14 +177,17 @@ export function normalizeTranscript(text: string, vocabulary: VocabularyTerm[]):
   }
 
   // Chaque forme de surface devient une cible ; la canonique reste ce qu'on écrit.
-  const targets: Array<{ term: VocabularyTerm; compact: string; tokenCount: number }> = []
+  const targets: Array<{ term: VocabularyTerm; form: VocabularyForm; compact: string; tokenCount: number }> = []
   for (const term of vocabulary) {
     const seen = new Set<string>()
-    for (const form of term.forms.length ? term.forms : [term.canonical]) {
-      const c = compact(form)
+    const forms: VocabularyForm[] = term.forms.length
+      ? term.forms
+      : [{ value: term.canonical, source: 'canonical_name', canonicalValue: term.canonical }]
+    for (const form of forms) {
+      const c = compact(form.value)
       if (c.length < MIN_TERM_LENGTH || seen.has(c)) continue
       seen.add(c)
-      targets.push({ term, compact: c, tokenCount: normalize(form).split(' ').filter(Boolean).length })
+      targets.push({ term, form, compact: c, tokenCount: normalize(form.value).split(' ').filter(Boolean).length })
     }
   }
   if (targets.length === 0) return { text, corrections: [], abstentions: [] }
@@ -173,7 +206,7 @@ export function normalizeTranscript(text: string, vocabulary: VocabularyTerm[]):
         if (window.every((t) => STOP_WORDS.has(t.norm))) continue
         const windowCompact = window.map((t) => t.norm).join('')
         const distance = levenshtein(windowCompact, target.compact)
-        if (distance <= tolerance) matches.push({ from: i, to: i + size, term: target.term, distance })
+        if (distance <= tolerance) matches.push({ from: i, to: i + size, term: target.term, form: target.form, distance })
       }
     }
   }
@@ -215,7 +248,15 @@ export function normalizeTranscript(text: string, vocabulary: VocabularyTerm[]):
     const span = text.slice(start, end)
     if (span === match.term.canonical) continue // déjà juste : rien à signaler
     replacements.push({ start, end, to: match.term.canonical })
-    corrections.push({ from: span, to: match.term.canonical, kind: match.term.kind, distance: match.distance })
+    corrections.push({
+      from: span,
+      to: match.term.canonical,
+      kind: match.term.kind,
+      distance: match.distance,
+      source: match.form.source,
+      ...(match.form.aliasNature ? { aliasNature: match.form.aliasNature } : {}),
+      ...(match.form.actorId ? { actorId: match.form.actorId } : {}),
+    })
   }
 
   if (replacements.length === 0) return { text, corrections: [], abstentions }

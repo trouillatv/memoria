@@ -22,7 +22,15 @@ const OPENAI_URL = 'https://api.openai.com/v1/audio/transcriptions'
 vi.mock('@/lib/ai/stt-vocabulary', () => ({
   buildSiteVocabulary: vi.fn(
     async (): Promise<VocabularyTerm[]> => [
-      { canonical: 'PETRO ATTITI', kind: 'site', forms: ['P3 à Titi', 'Pétro à Titi', 'Petrofac Titi'] },
+      {
+        canonical: 'PETRO ATTITI',
+        kind: 'site',
+        forms: [
+          { value: 'P3 à Titi', source: 'known_mistranscription', canonicalValue: 'PETRO ATTITI' },
+          { value: 'Pétro à Titi', source: 'known_mistranscription', canonicalValue: 'PETRO ATTITI' },
+          { value: 'Petrofac Titi', source: 'known_mistranscription', canonicalValue: 'PETRO ATTITI' },
+        ],
+      },
     ],
   ),
 }))

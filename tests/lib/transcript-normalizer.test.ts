@@ -9,19 +9,45 @@
  * Ce que ces tests protègent surtout, c'est le droit de NE PAS corriger.
  */
 import { describe, it, expect } from 'vitest'
-import { normalizeTranscript, maxDistanceFor, type VocabularyTerm } from '@/lib/ai/transcript-normalizer'
+import { normalizeTranscript, maxDistanceFor, type VocabularyTerm, type VocabularyForm } from '@/lib/ai/transcript-normalizer'
+
+/**
+ * Q6 (audit BECIB, 17-18/08) : `forms` porte désormais sa provenance. Ces deux
+ * fabriques reproduisent exactement ce que `buildSiteVocabulary` produit pour
+ * un nom canonique et pour une faute documentée dans `KNOWN_MISTRANSCRIPTIONS` —
+ * elles ne changent rien au matching, seulement à la forme des fixtures.
+ */
+function canonicalForm(value: string): VocabularyForm {
+  return { value, source: 'canonical_name', canonicalValue: value }
+}
+function knownForm(value: string, canonicalValue: string): VocabularyForm {
+  return { value, source: 'known_mistranscription', canonicalValue }
+}
 
 /** Vocabulaire fermé réel de PETRO (audit du 16/08 : 7 termes, 0 paire ambiguë). */
 const PETRO: VocabularyTerm[] = [
   // Formes fausses documentées, telles que `buildSiteVocabulary` les produit.
-  { canonical: 'PETRO ATTITI', kind: 'site', forms: ['PETRO ATTITI', 'P3 à Titi', 'Pétro à Titi', 'Petrofac Titi'] },
-  { canonical: 'Vincent Milon', kind: 'person', forms: ['Vincent Milon'] },
+  {
+    canonical: 'PETRO ATTITI',
+    kind: 'site',
+    forms: [
+      canonicalForm('PETRO ATTITI'),
+      knownForm('P3 à Titi', 'PETRO ATTITI'),
+      knownForm('Pétro à Titi', 'PETRO ATTITI'),
+      knownForm('Petrofac Titi', 'PETRO ATTITI'),
+    ],
+  },
+  { canonical: 'Vincent Milon', kind: 'person', forms: [canonicalForm('Vincent Milon')] },
   // Forme fausse documentée, telle que `buildSiteVocabulary` la produit désormais.
-  { canonical: 'Clim Expair', kind: 'company', forms: ['Clim Expair', 'Clim Expert'] },
-  { canonical: 'CEGELEC', kind: 'company', forms: ['CEGELEC'] },
-  { canonical: 'APAVE', kind: 'company', forms: ['APAVE'] },
-  { canonical: 'Ginger', kind: 'company', forms: ['Ginger'] },
-  { canonical: 'AGP', kind: 'acronym', forms: ['AGP'] },
+  {
+    canonical: 'Clim Expair',
+    kind: 'company',
+    forms: [canonicalForm('Clim Expair'), knownForm('Clim Expert', 'Clim Expair')],
+  },
+  { canonical: 'CEGELEC', kind: 'company', forms: [canonicalForm('CEGELEC')] },
+  { canonical: 'APAVE', kind: 'company', forms: [canonicalForm('APAVE')] },
+  { canonical: 'Ginger', kind: 'company', forms: [canonicalForm('Ginger')] },
+  { canonical: 'AGP', kind: 'acronym', forms: [canonicalForm('AGP')] },
 ]
 
 describe('maxDistanceFor', () => {
@@ -45,7 +71,7 @@ describe('normalizeTranscript — corrections certaines', () => {
     const r = normalizeTranscript('Ajoute une réserve sur le chantier pétro à Titi', PETRO)
     expect(r.text).toBe('Ajoute une réserve sur le chantier PETRO ATTITI')
     expect(r.corrections).toEqual([
-      { from: 'pétro à Titi', to: 'PETRO ATTITI', kind: 'site', distance: 0 },
+      { from: 'pétro à Titi', to: 'PETRO ATTITI', kind: 'site', distance: 0, source: 'known_mistranscription' },
     ])
     expect(r.abstentions).toEqual([])
   })
@@ -71,7 +97,7 @@ describe('normalizeTranscript — corrections certaines', () => {
 
 describe('normalizeTranscript — refus de corriger', () => {
   it('ne transforme jamais un sigle en un autre sigle', () => {
-    const vocab: VocabularyTerm[] = [{ canonical: 'CSI', kind: 'acronym', forms: ['CSI'] }]
+    const vocab: VocabularyTerm[] = [{ canonical: 'CSI', kind: 'acronym', forms: [canonicalForm('CSI')] }]
     const r = normalizeTranscript('Vérifie le SSI du bâtiment', vocab)
     expect(r.text).toBe('Vérifie le SSI du bâtiment')
     expect(r.corrections).toEqual([])
@@ -95,8 +121,8 @@ describe('normalizeTranscript — refus de corriger', () => {
 
   it('s’abstient quand deux termes réels sont également plausibles', () => {
     const vocab: VocabularyTerm[] = [
-      { canonical: 'Martin Dupont', kind: 'person', forms: ['Martin Dupont'] },
-      { canonical: 'Martin Dupond', kind: 'person', forms: ['Martin Dupond'] },
+      { canonical: 'Martin Dupont', kind: 'person', forms: [canonicalForm('Martin Dupont')] },
+      { canonical: 'Martin Dupond', kind: 'person', forms: [canonicalForm('Martin Dupond')] },
     ]
     const r = normalizeTranscript('Appelle Martin Dupone ce matin', vocab)
     expect(r.text).toBe('Appelle Martin Dupone ce matin')
@@ -120,7 +146,7 @@ describe('normalizeTranscript — Clim Expair (arbitrage métier du 17/08)', () 
     const r = normalizeTranscript('Clim Expert doit repasser sur le lot climatisation', PETRO)
     expect(r.text).toBe('Clim Expair doit repasser sur le lot climatisation')
     expect(r.corrections).toEqual([
-      { from: 'Clim Expert', to: 'Clim Expair', kind: 'company', distance: 0 },
+      { from: 'Clim Expert', to: 'Clim Expair', kind: 'company', distance: 0, source: 'known_mistranscription' },
     ])
     expect(r.abstentions).toEqual([])
   })
@@ -133,7 +159,7 @@ describe('normalizeTranscript — Clim Expair (arbitrage métier du 17/08)', () 
   it('laisse « Clim Expert » intact si l’entreprise n’est pas au vocabulaire', () => {
     // L'alias est une faute attendue SUR UN TERME RÉEL : sans le terme, rien.
     const r = normalizeTranscript('Clim Expert doit repasser', [
-      { canonical: 'CEGELEC', kind: 'company', forms: ['CEGELEC'] },
+      { canonical: 'CEGELEC', kind: 'company', forms: [canonicalForm('CEGELEC')] },
     ])
     expect(r.text).toBe('Clim Expert doit repasser')
     expect(r.corrections).toEqual([])
@@ -149,7 +175,7 @@ describe('normalizeTranscript — PETRO ATTITI (recette terrain du 17/08)', () =
     const r = normalizeTranscript('où en est le chantier P3 à Titi ?', PETRO)
     expect(r.text).toBe('où en est le chantier PETRO ATTITI ?')
     expect(r.corrections).toEqual([
-      { from: 'P3 à Titi', to: 'PETRO ATTITI', kind: 'site', distance: 0 },
+      { from: 'P3 à Titi', to: 'PETRO ATTITI', kind: 'site', distance: 0, source: 'known_mistranscription' },
     ])
     expect(r.abstentions).toEqual([])
   })
@@ -169,7 +195,7 @@ describe('normalizeTranscript — PETRO ATTITI (recette terrain du 17/08)', () =
     const r = normalizeTranscript('où en est le chantier Petrofac Titi ?', PETRO)
     expect(r.text).toBe('où en est le chantier PETRO ATTITI ?')
     expect(r.corrections).toEqual([
-      { from: 'Petrofac Titi', to: 'PETRO ATTITI', kind: 'site', distance: 0 },
+      { from: 'Petrofac Titi', to: 'PETRO ATTITI', kind: 'site', distance: 0, source: 'known_mistranscription' },
     ])
     expect(r.abstentions).toEqual([])
   })
@@ -191,9 +217,106 @@ describe('normalizeTranscript — PETRO ATTITI (recette terrain du 17/08)', () =
 describe('normalizeTranscript — formes alternatives', () => {
   it('accepte un alias comme cible et écrit toujours la forme canonique', () => {
     const vocab: VocabularyTerm[] = [
-      { canonical: 'CEGELEC', kind: 'company', forms: ['CEGELEC', 'Cégélec Nouvelle-Calédonie'] },
+      {
+        canonical: 'CEGELEC',
+        kind: 'company',
+        forms: [
+          canonicalForm('CEGELEC'),
+          {
+            value: 'Cégélec Nouvelle-Calédonie',
+            source: 'actor_alias',
+            aliasNature: 'business_alias',
+            actorId: 'company-cegelec',
+            canonicalValue: 'CEGELEC',
+          },
+        ],
+      },
     ]
     const r = normalizeTranscript('Relance Cégélec Nouvelle Calédonie', vocab)
     expect(r.text).toBe('Relance CEGELEC')
+    expect(r.corrections[0]).toMatchObject({
+      source: 'actor_alias',
+      aliasNature: 'business_alias',
+      actorId: 'company-cegelec',
+    })
+  })
+})
+
+// Q6 (audit BECIB, 17-18/08) : la provenance d'une forme (`source`/`aliasNature`/
+// `actorId`) doit se retrouver dans `TranscriptCorrection`, sans jamais peser sur
+// la décision de correction elle-même — les mêmes transcripts contre des
+// vocabulaires équivalents (mêmes `value`, provenance différente) doivent
+// produire exactement le même texte et les mêmes abstentions.
+describe('normalizeTranscript — Q6 provenance (purement additive)', () => {
+  it('la provenance ne change jamais la décision : même texte, même distance, quelle que soit la source des formes', () => {
+    const vocabA: VocabularyTerm[] = [
+      { canonical: 'BECIB', kind: 'company', forms: [canonicalForm('BECIB'), knownForm('Bessie', 'BECIB')] },
+    ]
+    const vocabB: VocabularyTerm[] = [
+      {
+        canonical: 'BECIB',
+        kind: 'company',
+        forms: [
+          canonicalForm('BECIB'),
+          {
+            value: 'Bessie',
+            source: 'actor_alias',
+            aliasNature: 'transcription_alias',
+            actorId: 'company-becib',
+            canonicalValue: 'BECIB',
+          },
+        ],
+      },
+    ]
+    const phrase = 'Rappel Bessie de la visite'
+    const a = normalizeTranscript(phrase, vocabA)
+    const b = normalizeTranscript(phrase, vocabB)
+    expect(a.text).toBe('Rappel BECIB de la visite')
+    expect(a.text).toBe(b.text)
+    expect(a.abstentions).toEqual(b.abstentions)
+    expect(a.corrections.map(({ from, to, kind, distance }) => ({ from, to, kind, distance }))).toEqual(
+      b.corrections.map(({ from, to, kind, distance }) => ({ from, to, kind, distance })),
+    )
+  })
+
+  it('porte la provenance actor_alias/transcription_alias jusqu’à la correction', () => {
+    const vocab: VocabularyTerm[] = [
+      {
+        canonical: 'BECIB',
+        kind: 'company',
+        forms: [
+          canonicalForm('BECIB'),
+          {
+            value: 'Bessie',
+            source: 'actor_alias',
+            aliasNature: 'transcription_alias',
+            actorId: 'company-becib',
+            canonicalValue: 'BECIB',
+          },
+        ],
+      },
+    ]
+    const r = normalizeTranscript('Rappel Bessie de la visite', vocab)
+    expect(r.corrections).toEqual([
+      {
+        from: 'Bessie',
+        to: 'BECIB',
+        kind: 'company',
+        distance: 0,
+        source: 'actor_alias',
+        aliasNature: 'transcription_alias',
+        actorId: 'company-becib',
+      },
+    ])
+  })
+
+  it('porte la provenance known_mistranscription jusqu’à la correction', () => {
+    const r = normalizeTranscript('Clim Expert doit repasser sur le lot climatisation', PETRO)
+    expect(r.corrections[0]).toMatchObject({ source: 'known_mistranscription' })
+  })
+
+  it('porte la provenance canonical_name quand la forme retenue est le nom canonique lui-même', () => {
+    const r = normalizeTranscript('Note que Vincent Millon a validé le point', PETRO)
+    expect(r.corrections[0]).toMatchObject({ source: 'canonical_name' })
   })
 })

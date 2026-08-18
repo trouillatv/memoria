@@ -14,7 +14,10 @@ import 'server-only'
 // AVANT de l'appeler (même contrainte que `buildLexicalPrompt`).
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { VocabularyTerm } from '@/lib/ai/transcript-normalizer'
+import type { VocabularyForm, VocabularyTerm } from '@/lib/ai/transcript-normalizer'
+
+/** Ce que chaque site d'appel de `push()` sait sur une forme, avant qu'on y attache `canonicalValue`. */
+type ExtraForm = Omit<VocabularyForm, 'canonicalValue'>
 
 /**
  * Mots de type générique en tête d'un nom de chantier. « Lycée PETRO ATTITI »
@@ -124,14 +127,22 @@ export async function buildSiteVocabulary(siteId: string): Promise<VocabularyTer
     ])
 
     const terms: VocabularyTerm[] = []
-    const push = (canonical: string, kind: VocabularyTerm['kind'], forms: string[] = []) => {
+    const push = (canonical: string, kind: VocabularyTerm['kind'], extraForms: ExtraForm[] = []) => {
       const label = canonical.trim()
       if (!label) return
-      terms.push({
-        canonical: label,
-        kind,
-        forms: [label, ...forms.map((f) => f.trim()).filter(Boolean), ...knownFormsFor(label)],
-      })
+      const forms: VocabularyForm[] = [
+        { value: label, source: 'canonical_name', canonicalValue: label },
+        ...extraForms
+          .map((f) => ({ ...f, value: f.value.trim() }))
+          .filter((f) => f.value)
+          .map((f) => ({ ...f, canonicalValue: label })),
+        ...knownFormsFor(label).map((value) => ({
+          value,
+          source: 'known_mistranscription' as const,
+          canonicalValue: label,
+        })),
+      ]
+      terms.push({ canonical: label, kind, forms })
     }
 
     push(distinctiveCore(siteRes.data.name as string), 'site')
@@ -153,35 +164,49 @@ export async function buildSiteVocabulary(siteId: string): Promise<VocabularyTer
       (companyIds.length || contactIds.length)
         ? admin
             .from('actor_alias')
-            .select('company_id, contact_id, alias')
+            .select('company_id, contact_id, alias, alias_nature')
             .eq('status', 'confirmed')
             .or([
               companyIds.length ? `company_id.in.(${companyIds.join(',')})` : null,
               contactIds.length ? `contact_id.in.(${contactIds.join(',')})` : null,
             ].filter(Boolean).join(','))
-        : Promise.resolve({ data: [] as Array<{ company_id: string | null; contact_id: string | null; alias: string }> }),
+        : Promise.resolve({
+            data: [] as Array<{
+              company_id: string | null
+              contact_id: string | null
+              alias: string
+              alias_nature: 'business_alias' | 'transcription_alias'
+            }>,
+          }),
     ])
 
     // Correspondances enseignées via le Copilote (P4-B.2) : les deux natures
     // (business_alias/transcription_alias) alimentent la STT indifféremment —
     // seule business_alias doit s'afficher ailleurs comme « autre nom ».
-    const aliasesByCompany = new Map<string, string[]>()
-    const aliasesByContact = new Map<string, string[]>()
+    const aliasesByCompany = new Map<string, ExtraForm[]>()
+    const aliasesByContact = new Map<string, ExtraForm[]>()
     for (const a of actorAliasRes.data ?? []) {
+      const form: ExtraForm = {
+        value: a.alias,
+        source: 'actor_alias',
+        aliasNature: a.alias_nature,
+        actorId: a.company_id ?? a.contact_id ?? undefined,
+      }
       if (a.company_id) {
         const list = aliasesByCompany.get(a.company_id) ?? []
-        list.push(a.alias)
+        list.push(form)
         aliasesByCompany.set(a.company_id, list)
       } else if (a.contact_id) {
         const list = aliasesByContact.get(a.contact_id) ?? []
-        list.push(a.alias)
+        list.push(form)
         aliasesByContact.set(a.contact_id, list)
       }
     }
 
     for (const c of companiesRes.data ?? []) {
       const extra = aliasesByCompany.get(c.id) ?? []
-      if (c.name) push(c.name, 'company', c.short_name ? [c.short_name, ...extra] : extra)
+      const shortForm: ExtraForm[] = c.short_name ? [{ value: c.short_name, source: 'short_name' }] : []
+      if (c.name) push(c.name, 'company', [...shortForm, ...extra])
       else if (c.short_name) push(c.short_name, 'company', extra)
     }
     for (const c of contactsRes.data ?? []) {
@@ -195,10 +220,10 @@ export async function buildSiteVocabulary(siteId: string): Promise<VocabularyTer
         .from('site_knowledge_entity_aliases')
         .select('entity_id, alias')
         .in('entity_id', entities.map((e) => e.id))
-      const aliasesByEntity = new Map<string, string[]>()
+      const aliasesByEntity = new Map<string, ExtraForm[]>()
       for (const a of aliasRes.data ?? []) {
         const list = aliasesByEntity.get(a.entity_id as string) ?? []
-        list.push(a.alias as string)
+        list.push({ value: a.alias as string, source: 'knowledge_alias' })
         aliasesByEntity.set(a.entity_id as string, list)
       }
       for (const e of entities) {
@@ -213,13 +238,23 @@ export async function buildSiteVocabulary(siteId: string): Promise<VocabularyTer
     // Un même terme peut venir de deux sources (entreprise + entité de mémoire) :
     // on fusionne les formes plutôt que de laisser deux cibles rivales, qui
     // feraient renoncer le normaliseur pour cause d'ambiguïté.
+    const dedupeForms = (forms: VocabularyForm[]): VocabularyForm[] => {
+      const seen = new Set<string>()
+      const out: VocabularyForm[] = []
+      for (const f of forms) {
+        if (seen.has(f.value)) continue
+        seen.add(f.value)
+        out.push(f)
+      }
+      return out
+    }
     const merged = new Map<string, VocabularyTerm>()
     for (const t of terms) {
       const key = strip(t.canonical).replace(/[^a-z0-9]/g, '')
       if (!key) continue
       const existing = merged.get(key)
-      if (existing) existing.forms = [...new Set([...existing.forms, ...t.forms])]
-      else merged.set(key, { ...t, forms: [...new Set(t.forms)] })
+      if (existing) existing.forms = dedupeForms([...existing.forms, ...t.forms])
+      else merged.set(key, { ...t, forms: dedupeForms(t.forms) })
     }
     return [...merged.values()]
   } catch {

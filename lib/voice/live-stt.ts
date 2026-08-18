@@ -266,7 +266,9 @@ export function openLiveStt(siteId: string): LiveSttSession {
       const normalized = normalizeTranscript(raw, vocabulary)
       traceVoice('live-stt', {
         chars: normalized.text.length,
-        corrections: normalized.corrections.map((c) => `${c.from}→${c.to}`),
+        corrections: normalized.corrections.map(
+          (c) => `${c.from}→${c.to}·${c.source}${c.aliasNature ? '/' + c.aliasNature : ''}`,
+        ),
         abstentions: normalized.abstentions.length,
         vocabulary: vocabulary.length,
         droppedChunks: dropped,
