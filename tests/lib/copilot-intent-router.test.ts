@@ -1124,3 +1124,98 @@ describe('NEGATION_SCOPE — signal negated_write_verb couvre les 7 familles', (
     })
   }
 })
+
+// ── NEGATION_SCOPE — correctif générique 2026-08-19 (Vincent) ───────────────
+// Audit causal du 18/08 : deux phrases terrain réelles produisaient une
+// proposition d'écriture POSITIVE malgré une négation explicite.
+//   1. « ne fait aucune action » — "aucun/aucune" était absent de
+//      NEGATION_PARTICLES_UNAMBIGUOUS : aucune particule de la phrase
+//      n'était reconnue, la négation entière échappait à la détection.
+//   2. « ne garde pas ce point sous surveillance » — WRITE_TRIGGER_VERB_RE
+//      était une liste manuelle qui avait dérivé de WEAK_WRITE_RE (le verbe
+//      "garde" n'y figurait pas).
+// Correctif : WRITE_TRIGGER_VERB_RE est désormais construit PAR CONSTRUCTION
+// (union des .source des 6 familles), pas une liste recopiée à la main.
+describe('NEGATION_SCOPE — cas terrain 2026-08-19 (aucun/aucune, garde)', () => {
+  it('"Le regard R4 n\'est toujours pas réglé, ne fait aucune action pour demain." → jamais CREATE_ACTION', () => {
+    const q = "Le regard R4 n'est toujours pas réglé, ne fait aucune action pour demain."
+    expect(intent(q)).not.toBe('CREATE_ACTION')
+    expect(WRITER_INTENTS).not.toContain(intent(q))
+    expect(signals(q)).toContain('negated_write_verb')
+  })
+
+  it('"Le regard R4 est toujours ouvert et ne garde pas ce point sous surveillance." → jamais CREATE_WATCHPOINT', () => {
+    const q = 'Le regard R4 est toujours ouvert et ne garde pas ce point sous surveillance.'
+    expect(intent(q)).not.toBe('CREATE_WATCHPOINT')
+    expect(WRITER_INTENTS).not.toContain(intent(q))
+    expect(signals(q)).toContain('negated_write_verb')
+  })
+})
+
+// ── NEGATION_SCOPE — matrice WEAK_WRITE_RE × particules (Vincent 2026-08-19) ─
+// Avant ce correctif, WRITE_TRIGGER_VERB_RE excluait ENTIÈREMENT la famille
+// WEAK_WRITE_RE (aucune de ses tiges — "garde", "faudrait", "pense à",
+// "conserve", "vérifie", "checker/contrôle" — ne pouvait jamais être détectée
+// comme négatée). "pense à" et "contrôle" exigent en négation orale une
+// tolérance dédiée (la particule s'insère entre le verbe et son complément :
+// « ne pense PAS à ça », « ne contrôle PAS le SSI ») — cf. commentaire
+// WRITE_TRIGGER_NEGATION_ONLY_RE dans le routeur.
+describe('NEGATION_SCOPE — matrice verbes WEAK_WRITE_RE × particules négatives', () => {
+  const verbs: [string, string][] = [
+    ['vérifie', 'le SSI'],
+    ['contrôle', 'le SSI'],
+    ['garde', 'ce point'],
+    ['conserve', 'ce document'],
+    ['pense', 'à ça'],
+    ['faudrait', 'le faire'],
+  ]
+  const particles: [string, (verb: string, obj: string) => string][] = [
+    ['pas', (v, o) => `Je ne ${v} pas ${o}.`],
+    ['jamais', (v, o) => `Je ne ${v} jamais ${o}.`],
+    ['rien', (v, o) => `Je ne ${v} rien ${o !== '' ? 'pour ' + o : ''}.`],
+    ['aucun/aucune', (v, o) => `Je n'y ${v} aucune attention pour ${o}.`],
+  ]
+
+  for (const [verb, obj] of verbs) {
+    for (const [particleLabel, build] of particles) {
+      // "rien"/"aucune" collés à un verbe transitif ne produisent pas toujours
+      // une phrase naturelle — seul le patron "ne V pas/jamais O" est garanti
+      // grammatical pour tous les verbes de la matrice ; les deux autres
+      // patrons sont couverts séparément ci-dessous avec des tournures dédiées.
+      if (particleLabel === 'rien' || particleLabel === 'aucun/aucune') continue
+      const q = build(verb, obj)
+      it(`"${q}" → signal negated_write_verb (verbe: ${verb}, particule: ${particleLabel})`, () => {
+        expect(signals(q)).toContain('negated_write_verb')
+        expect(WRITER_INTENTS).not.toContain(intent(q))
+      })
+    }
+  }
+
+  it('"Je ne garde rien sous surveillance." → signal negated_write_verb (particule: rien)', () => {
+    const q = 'Je ne garde rien sous surveillance.'
+    expect(signals(q)).toContain('negated_write_verb')
+  })
+  it('"Je ne fais aucune vérification aujourd\'hui." → signal negated_write_verb (particule: aucune)', () => {
+    const q = "Je ne fais aucune vérification aujourd'hui."
+    expect(signals(q)).toContain('negated_write_verb')
+  })
+  it('"Je ne fais plus de contrôle sur ce point." → signal negated_write_verb (particule: plus + marqueur ne)', () => {
+    const q = 'Je ne fais plus de contrôle sur ce point.'
+    expect(signals(q)).toContain('negated_write_verb')
+  })
+})
+
+describe('NEGATION_SCOPE — témoins positifs (aucune régression)', () => {
+  const cases: [string, string][] = [
+    ['Vérifie le regard R4', 'UNKNOWN_WRITE'],
+    ['Garde le regard R4 sous surveillance', 'CREATE_WATCHPOINT'],
+    ['Programme une visite vendredi', 'SCHEDULE_VISIT'],
+    ['Crée une action', 'CREATE_ACTION'],
+  ]
+  for (const [q, expectedIntent] of cases) {
+    it(`"${q}" → reste ${expectedIntent} (écriture positive intacte)`, () => {
+      expect(intent(q)).toBe(expectedIntent)
+      expect(signals(q)).not.toContain('negated_write_verb')
+    })
+  }
+})

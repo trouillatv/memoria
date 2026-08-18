@@ -303,17 +303,53 @@ const RESERVE_CREATE_RE = /\b(?:cree\w*|ajout\w*|mets?\w*|mettr\w*)\s+(?:une?|la
 // (NE_MARKER_RE) — jamais par adjacence seule. C'est le patron structuré
 // « ne/n' ... plus » mandaté par Vincent, pas un mot isolé.
 //
-// Reprend exactement les tiges des familles de verbes d'écriture déjà
-// définies ci-dessus (STRONG_WRITE_RE, SCHEDULE_VERB_RE, WATCHPOINT_VERB_RE,
-// DEADLINE_OBLIGATION_RE, RESERVE_CREATE_RE) — à tenir synchronisé si une
-// nouvelle famille de verbe d'écriture est ajoutée au routeur.
-const WRITE_TRIGGER_VERB_RE =
-  /\b(?:ajout|rajoute|cree|note|notons|mets|mettr|fai[st]|ouvr|declenche|genere|rappell?|faut|planifi|programm|organis|prevois|inscri|marqu|convoque|surveill|doit|doivent)\w*\b/
+// Construit PAR CONSTRUCTION à partir des 6 familles de verbes d'écriture
+// déjà définies ci-dessus (union de leurs .source) — plus aucune liste
+// manuelle à tenir synchronisée : toute future tige ajoutée à l'une de ces
+// 6 regex est automatiquement reconnue ici aussi.
+//
+// Audit terrain du 18/08 (Vincent) : la précédente liste manuelle avait
+// dérivé de ses sources — "aucun/aucune" absent des particules, et "garde"
+// (tige de WEAK_WRITE_RE) absent de la liste — laissant passer deux
+// écritures positives sur des phrases pourtant négatées (« ne fait aucune
+// action », « ne garde pas ce point sous surveillance »).
+const WRITE_TRIGGER_FAMILY_RE = new RegExp(
+  [
+    STRONG_WRITE_RE.source,
+    SCHEDULE_VERB_RE.source,
+    WATCHPOINT_VERB_RE.source,
+    DEADLINE_OBLIGATION_RE.source,
+    RESERVE_CREATE_RE.source,
+    WEAK_WRITE_RE.source,
+  ].join('|'),
+)
+
+// Exception BORNÉE à la construction ci-dessus : "pense à" (WEAK_WRITE_RE)
+// et "contrôle" exigent, pour la détection POSITIVE, un complément adjacent
+// au verbe ("à", ou la forme infinitive "contrôler") — précision nécessaire
+// là-bas pour éviter les faux positifs (ex. "je pense que…" sans "à" est une
+// opinion, pas une commande). Mais à l'oral négatif, la particule s'insère
+// PRÉCISÉMENT entre le verbe et son complément (« ne pense PAS à ça », « ne
+// contrôle PAS le SSI ») : sous adjacence stricte distance=1 (non modifiée
+// dans ce lot), la regex complète ne peut plus matcher le verbe seul.
+// Asymétrie volontaire (Vincent, 2026-08-19) : la détection de négation doit
+// être AU MOINS aussi permissive que la détection positive, jamais l'inverse
+// — un faux positif ici ne fait qu'exclure une écriture à tort, jamais en
+// proposer une par erreur. `control` exclut explicitement les dérivés
+// nominaux "contrôleur/contrôleuse" (métier BTP fréquent) pour ne pas
+// neutraliser à tort une AUTRE clause réellement écrivante.
+const WRITE_TRIGGER_NEGATION_ONLY_RE = /\b(?:pens[eo][rz]?|control(?!eur|euse)\w*)\w*/
+
+const WRITE_TRIGGER_VERB_RE = new RegExp(
+  [WRITE_TRIGGER_FAMILY_RE.source, WRITE_TRIGGER_NEGATION_ONLY_RE.source].join('|'),
+)
 
 // Particules négatives sûres par elles-mêmes : détectées par simple
 // adjacence au verbe d'écriture, comme "pas" (pas de garde "ne" requise —
-// couvre l'oral spontané sans "ne").
-const NEGATION_PARTICLES_UNAMBIGUOUS = new Set(['pas', 'jamais', 'rien'])
+// couvre l'oral spontané sans "ne"). "aucun/aucune" ajouté le 2026-08-19
+// (Vincent) : « ne fait aucune action » ne portait aucune particule reconnue
+// avant ce correctif — la négation entière échappait à la détection.
+const NEGATION_PARTICLES_UNAMBIGUOUS = new Set(['pas', 'jamais', 'rien', 'aucun', 'aucune'])
 
 // Marqueur structurel "ne"/"n'" dans la clause (après normalizeQuery,
 // l'apostrophe de "n'est" devient un espace : "n'est" → tokens "n","est").
