@@ -19,7 +19,7 @@
 // (le cas B — le contrôleur refuse — est éliminé par preuve depuis `802631d5`.)
 
 import { useState, useSyncExternalStore } from 'react'
-import { Copy, Check, Trash2 } from 'lucide-react'
+import { Copy, Check, Trash2, Download } from 'lucide-react'
 import { voiceDebugEnabled } from '@/lib/voice/voice-debug'
 import {
   subscribeVoiceTrace,
@@ -56,6 +56,19 @@ export function VoiceTracePanel() {
     } catch { /* presse-papier refusé hors contexte sécurisé */ }
   }
 
+  // Repli du copier-coller : le presse-papier mobile tronque parfois un texte
+  // long (partage OS, apps de notes). Le fichier téléchargé porte, lui,
+  // TOUJOURS l'intégralité du tampon, quelle que soit sa taille.
+  function exportAll() {
+    const blob = new Blob([voiceTraceText()], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `voice-trace-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="pointer-events-auto absolute inset-x-2 bottom-2 z-10 max-h-[38vh] overflow-hidden rounded-xl border border-white/15 bg-black/80 text-white/80">
       <div className="flex items-center gap-2 border-b border-white/10 px-3 py-1.5">
@@ -70,6 +83,14 @@ export function VoiceTracePanel() {
             className="flex h-7 w-7 items-center justify-center rounded-md bg-white/10 active:bg-white/20"
           >
             {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          </button>
+          <button
+            type="button"
+            onClick={exportAll}
+            aria-label="Exporter la trace"
+            className="flex h-7 w-7 items-center justify-center rounded-md bg-white/10 active:bg-white/20"
+          >
+            <Download className="h-3.5 w-3.5" />
           </button>
           <button
             type="button"

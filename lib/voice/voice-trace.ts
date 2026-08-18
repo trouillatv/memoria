@@ -53,11 +53,16 @@ export function traceVoice(event: string, fields: Record<string, unknown> = {}):
 // retomberait sur une correction spéculative — exactement ce que ce lot refuse.
 // D'où ce tampon circulaire : mêmes lignes, exposées à un panneau de recette.
 //
-// Borné à 200 entrées : au-delà, ce n'est plus un diagnostic, c'est une fuite.
+// Borné à 5000 entrées : un filet de sécurité contre une fuite réelle (boucle
+// d'événements pathologique), pas un plafond de session — à ~20 événements par
+// tour, une session terrain de 100 tours en tient large (~2000 entrées, quelques
+// centaines de Ko en mémoire). Le panneau affiche tout ; « Copier »/« Exporter »
+// portent l'intégralité du tampon, jamais une fenêtre tronquée (Vincent, 2026-08-18
+// — la troncature à 200 coupait le début d'une session terrain longue).
 
 export type VoiceTraceEntry = { turn: number; event: string; at: number; fields: Record<string, unknown> }
 
-const MAX_ENTRIES = 200
+const MAX_ENTRIES = 5000
 let entries: VoiceTraceEntry[] = []
 let listeners: Array<() => void> = []
 
