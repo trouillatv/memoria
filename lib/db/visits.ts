@@ -15,7 +15,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
-import { listVisitCaptures, getVisitCapturePreviewUrls, listSiteViewpointRows, type VisitCaptureKind, type CaptureTriageIntent, type VisitCaptureRow, type CaptureCrTier } from '@/lib/db/visit-captures'
+import { listVisitCaptures, getVisitCapturePreviewUrls, listSiteViewpointRows, type VisitCaptureKind, type CaptureTriageIntent, type VisitCaptureRow, type CaptureCrTier, type DebriefCapturedNote } from '@/lib/db/visit-captures'
 import { groupViewpointChains, sampleSerie } from '@/lib/visits/viewpoints'
 import { listDecisionsBySite } from '@/lib/db/site-decisions'
 import { buildSiteMemorySignals, buildSuggestedQuestions, detectRecurringTopics, detectOverdueActions, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
@@ -1921,7 +1921,9 @@ export interface VisitDebriefContext {
   capturedText: string | null
   transcript: string | null
   attachmentNames: string[]
-  capturedNotes: string[]
+  /** P0-I.2 : chaque note/légende porte son triageIntent — un repère de photo
+   *  sans triage (null) reste distinct d'un constat qualifié (follow/reserve/action). */
+  capturedNotes: DebriefCapturedNote[]
   capturedActions: Array<{ title: string; corps_etat: string | null }>
   capturedReserves: Array<{ label: string; location: string | null }>
   /** Contexte site : détecteurs déterministes (obligations, réserves, retards…). */
@@ -1959,11 +1961,13 @@ export async function gatherVisitDebriefContext(reportId: string): Promise<Visit
     // ⚠️ Sans ça, le débrief IA n'avait AUCUNE matière : les transcriptions des
     // mémos vivent dans visit_capture.body, pas dans visit.transcript_raw — l'agent
     // ne voyait que l'objectif + des compteurs, d'où des résumés génériques.
-    supabase.from('visit_capture').select('kind, body, created_at').eq('report_id', reportId).neq('status', 'discarded').order('created_at', { ascending: true }),
+    // triage_intent (P0-I.2) : porté jusqu'au prompt pour distinguer un repère de
+    // photo (légende seule) d'un constat qualifié par l'humain (follow/reserve/action).
+    supabase.from('visit_capture').select('kind, body, created_at, triage_intent').eq('report_id', reportId).neq('status', 'discarded').order('created_at', { ascending: true }),
     buildSiteMemorySignals(siteId),
   ])
 
-  const caps = ((capturesRes.data ?? []) as Array<{ kind: string; body: string | null; created_at: string }>)
+  const caps = ((capturesRes.data ?? []) as Array<{ kind: string; body: string | null; created_at: string; triage_intent: CaptureTriageIntent }>)
   const countKind = (k: string) => caps.filter((c) => c.kind === k).length
   const lastCaptureAt = caps.reduce<string | null>((max, c) => (!max || c.created_at > max ? c.created_at : max), null)
   const sourceSnapshot: VisitSourceSnapshot = {
@@ -1974,17 +1978,17 @@ export async function gatherVisitDebriefContext(reportId: string): Promise<Visit
     last_capture_at: lastCaptureAt,
   }
   const vocalBodies = caps.filter((c) => c.kind === 'vocal' && c.body?.trim()).map((c) => c.body!.trim())
-  const captureNotes = caps
+  const captureNotes: DebriefCapturedNote[] = caps
     .filter((c) => (c.kind === 'note' || c.kind === 'photo' || c.kind === 'video') && c.body?.trim())
-    .map((c) => c.body!.trim())
+    .map((c) => ({ kind: c.kind as 'note' | 'photo' | 'video', body: c.body!.trim(), triageIntent: c.triage_intent }))
 
   // Le transcript de l'agent = le transcript de rapport (le cas échéant) + TOUS les
   // mémos vocaux transcrits de la visite.
   const transcript = [visit.transcript_corrected ?? visit.transcript_raw, ...vocalBodies]
     .filter((t): t is string => !!t && t.trim().length > 0)
     .join('\n\n') || null
-  const capturedNotes = [
-    ...((notesRes.data ?? []) as Array<{ body: string }>).map((n) => n.body),
+  const capturedNotes: DebriefCapturedNote[] = [
+    ...((notesRes.data ?? []) as Array<{ body: string }>).map((n) => ({ kind: 'note' as const, body: n.body, triageIntent: null })),
     ...captureNotes,
   ]
   const openSubjects = ((subjectsRes.data ?? []) as Array<{ id: string; name: string }>).map((s) => ({ id: s.id, name: s.name }))
@@ -2403,8 +2407,9 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   }
   // Constats = tout (compat markdown/aperçu). Observations = écrits ; transcriptions
   // = vocaux bruts (relégués plus bas dans le PDF, « pour vérifier »).
-  const constats = dedup([...ctx.capturedNotes, ...noteBodies, ...vocalBodies])
-  const observations = dedup([...ctx.capturedNotes, ...noteBodies])
+  const capturedNoteBodies = ctx.capturedNotes.map((n) => n.body)
+  const constats = dedup([...capturedNoteBodies, ...noteBodies, ...vocalBodies])
+  const observations = dedup([...capturedNoteBodies, ...noteBodies])
   const transcriptions = dedup(vocalBodies)
 
   // Points du CR groupés par TAG (écran 2). Texte = commentaire de la capture,

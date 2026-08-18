@@ -80,6 +80,10 @@ async function main() {
     if (scope === 'validated_doc') return validatedDocText
     if (scope === 'all') return `${validatedDocText}\n${debriefAllText}`
     if (scope === 'debrief_actions') return debriefActionsText
+    // P0-I.2 : sortie brute du débrief IA (Agent 1/2), INDÉPENDANTE du document
+    // validé — utile pour tester une régénération sans dépendre d'un validated_doc
+    // figé avant le correctif (cf. task #82/#83).
+    if (scope === 'debrief_analysis') return debriefAllText
     return sectionText.get(scope) ?? ''
   }
 

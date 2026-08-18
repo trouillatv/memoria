@@ -70,6 +70,43 @@
       "id": "rejected-demontage-action-no-resurface",
       "description": "4 propositions d'action en doublon sur le démontage étagère/distributeur ont été rejetées (0b1a5f50, e5bf2692, 85110321, cd2e3b07) — ce fait est une narration terminée, pas une action à suivre ; ne doit pas revenir comme action suggérée par le débrief IA.",
       "rule": { "kind": "forbidden_substring", "scope": "debrief_actions", "anyOf": ["démonté l'étagère", "démonter l'étagère", "démontage de l'étagère", "démontage du distributeur"] }
+    },
+    {
+      "id": "p0i2-no-canonical-label-as-past-event",
+      "description": "P0-I.2 (fait #12, Vincent 2026-08-18) : le sujet suivi canonical_subject «Lancement et avancement de la dépose du matériel de cuisine» ne doit jamais, à lui seul, produire l'affirmation qu'un « restant » de matériel de cuisine a été déposé pendant cette visite, sans preuve de la visite courante. Scope volontairement limité à la sortie FRAÎCHE du débrief IA (debrief_analysis) : le document déjà validé contient encore l'ancienne formulation, corrigée par régénération + revalidation humaine (task #83), pas par ce witness.",
+      "rule": {
+        "kind": "forbidden_substring",
+        "scope": "debrief_analysis",
+        "anyOf": [
+          "restants de matériels de cuisine ont été déposés",
+          "restants de matériel de cuisine ont été déposés",
+          "matériels de cuisine ont été déposés",
+          "matériel de cuisine ont été déposés"
+        ]
+      }
+    },
+    {
+      "id": "p0i2-no-untriaged-legend-as-fact-in-debrief",
+      "description": "P0-I.2 : une légende de photo SANS triage (repère de localisation — Magasinier, Plonge Batterie, Couloir vers la préparation chaude, etc.) ne doit jamais, à elle seule, devenir un fait dans la sortie fraîche du débrief IA (a_savoir/important_points/decisions/echeances), sans corroboration par le vocal ou une note. Complète p0i2-no-canonical-label-as-past-event et no-legend-as-narrative-fact (qui porte sur le document déjà validé) en couvrant la sortie IA elle-même.",
+      "rule": {
+        "kind": "forbidden_substring",
+        "scope": "debrief_analysis",
+        "anyOf": [
+          "magasinier",
+          "plonge batterie",
+          "zone départ norvégiennes",
+          "vestiaires et sanitaires femmes",
+          "couloir vers la préparation chaude",
+          "réserve sèche et cf négative",
+          "dgmt chariots",
+          "dgmt entrée"
+        ]
+      }
+    },
+    {
+      "id": "p0i2-vigilance-sac-dechets-ilot-central-capability",
+      "description": "P0-I.2 (cas positif) : la capture photo triée triage_intent=follow «Sac à l'entrée des déchets suite dépose de l'îlot central» (dceeab33) doit pouvoir alimenter un Point de vigilance de la sortie fraîche du débrief IA, sans inventer une action non exprimée. NE PASSE QU'APRÈS RÉGÉNÉRATION avec le correctif P0-I.2 (task #83) — la sortie stockée au moment du gel de ce fixture précède le correctif et ne contient pas encore ce point de vigilance ; ce witness documente la CAPACITÉ attendue, pas un état déjà observé. La non-invention d'action est vérifiée qualitativement lors du rapport multi-régénération (task #83), pas par une substring rigide.",
+      "rule": { "kind": "must_appear", "scope": "debrief_analysis", "allOf": ["sac"], "anyOf": ["déchets", "îlot central", "ilot central"] }
     }
   ]
 }

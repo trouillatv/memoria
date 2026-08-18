@@ -28,6 +28,17 @@ const TERMINAL_STAGES: CaptureProcessingStage[] = ['ready', 'failed']
 // confondues (P0 reportage photographique, 2026-08-17).
 export type CaptureTriageIntent = 'action' | 'follow' | 'reserve' | 'memoire' | null
 
+/** Corps d'une capture (note/photo/vidéo) transmis au débrief IA (P0-I.2,
+ *  Vincent 2026-08-18) : porte son `triageIntent` au lieu d'un texte brut
+ *  anonyme. Une légende de photo SANS triage (`triageIntent: null`) reste un
+ *  repère, pas un fait — le prompt du débrief s'appuie sur ce champ pour ne
+ *  jamais transformer un repère de localisation en constat narratif. */
+export interface DebriefCapturedNote {
+  kind: 'note' | 'photo' | 'video'
+  body: string
+  triageIntent: CaptureTriageIntent
+}
+
 /** Origine de `captured_at` (mig 230) : métadonnées du fichier, jour de la
  *  visite, jour du dépôt, ou date saisie. NULL = inconnue, et on le dit. */
 export type CaptureDateSource = 'file' | 'visit' | 'today' | 'chosen'

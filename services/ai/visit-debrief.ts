@@ -19,6 +19,7 @@ import { z } from 'zod'
 import { getAIProvider } from './factory'
 import { withAITracking } from './tracking'
 import type { AIProviderName } from './index'
+import type { DebriefCapturedNote } from '@/lib/db/visit-captures'
 
 const OUTCOMES = ['ras', 'conforme', 'conforme_reserves', 'non_conforme', 'a_revoir', 'info'] as const
 const RESOLUTIONS = ['resolue', 'a_suivre', 'recontrole'] as const
@@ -167,8 +168,23 @@ RÈGLES ABSOLUES :
 - JAMAIS de jugement sur une personne : tu parles de l'ouvrage, des sujets, des
   obligations, jamais de la valeur des gens.
 
-Tu peux relier la visite à l'historique du site fourni, mais SANS méta-récit : donne
-le fait, jamais la façon dont tu l'as trouvé.
+FRONTIÈRE DES SOURCES (P0-I.2 — chaque source a un droit différent, pas juste un
+contenu différent) :
+- Seuls les éléments sous « PREUVES DE LA VISITE COURANTE » (vocal, notes, photos
+  qualifiées par un triage) peuvent FONDER un fait de CETTE visite.
+- Les photos SANS triage sont des repères de localisation, pas des constats :
+  n'en tire JAMAIS un fait narratif à elles seules (une légende comme « Plonge
+  Batterie » ne dit rien sur ce qui s'y est passé). Elles ne deviennent un fait
+  que si le vocal ou une note confirme indépendamment le même contenu.
+- Les éléments sous « CONTEXTE DU CHANTIER » (sujets suivis, signaux, historique)
+  disent DE QUOI parle le chantier, JAMAIS ce qui s'est passé pendant cette
+  visite. Un sujet encore ouvert, ou l'intitulé d'un sujet suivi, ne devient un
+  fait de cette visite QUE si les preuves ci-dessus montrent qu'il a été discuté,
+  confirmé, modifié, réalisé ou reporté MAINTENANT. Le contexte t'aide à
+  COMPRENDRE et NOMMER un fait déjà présent dans les preuves — jamais à le
+  CRÉER. Exemple interdit : un sujet suivi intitulé « Lancement et avancement de
+  la dépose du matériel de cuisine » ne devient PAS « des restants de matériel
+  de cuisine ont été déposés » sans preuve de cette visite.
 
 Exemple de BON résumé (STYLE et niveau de concret attendus — les faits ci-dessous
 sont fictifs, n'utilise QUE ceux de TA visite) : « La chape du hall n'est pas sèche,
@@ -180,14 +196,29 @@ des délais, des suites. AUCUN méta (« la visite a permis de… », « les pho
 // ── Agent 2 — Extraction (structure stable à partir du débrief) ───────────────
 
 const EXTRACTION_SYSTEM = `Tu es un EXTRACTEUR. On te donne le DÉBRIEF rédigé par le conducteur de travaux,
+les éléments BRUTS de la visite (notes, photos qualifiées ou non par un triage),
 et la liste des sujets connus du site (par index). Tu produis UNIQUEMENT la
 structure JSON demandée, FIDÈLE au débrief : n'ajoute AUCUN fait que le débrief ne
 contient pas. Si le débrief ne dit rien sur un champ, laisse-le vide / null.
+
+FRONTIÈRE DES SOURCES (P0-I.2) : la liste des sujets connus du site NOMME des
+THÈMES suivis par le chantier, jamais des événements. N'en tire un fait QUE si le
+débrief l'affirme explicitement pour cette visite — le simple rapprochement entre
+un sujet connu et le vocabulaire du débrief n'est pas une preuve. Une photo SANS
+triage citée dans les éléments bruts est un repère de localisation, pas un
+constat : ne la transforme en fait que si le débrief la corrobore.
 
 Les « rationale » et le « pourquoi » REFORMULENT ce que dit le débrief (pas
 d'invention). La confiance (elevee | moyenne | faible) reflète la FERMETÉ du
 débrief sur ce point (le conducteur hésite → faible). « attention » = 3 à 5 MAX,
 les éléments les plus décisifs du débrief — c'est un FILTRE, pas un résumé complet.
+
+CHAQUE INFORMATION A UNE SEULE DESTINATION (P0-I.2) : ne recopie pas le même fait
+dans plusieurs champs. Ordre de priorité — un fait va dans le champ structuré le
+plus spécifique qui le concerne (important_points, suggested_actions, decisions,
+echeances, intervenants) ; « attention » n'en retient qu'un résumé filtré (3-5) ;
+« a_savoir » est un DERNIER RECOURS résiduel (voir plus bas), jamais un champ à
+remplir pour lui-même.
 
 Champs :
 - attention : 3 à 5 max, les éléments les plus décisifs.
@@ -198,11 +229,11 @@ Champs :
 - subject_rationale : pourquoi ce sujet. subject_confidence : elevee|moyenne|faible|null.
 - outcome : ras|conforme|conforme_reserves|non_conforme|a_revoir|info, ou null. JAMAIS un jugement sur une personne.
 - resolution : resolue|a_suivre|recontrole, ou null.
-- important_points : les RISQUES / points de vigilance, EXPLOITABLES. [{ label (le risque, court), impact (conséquence si non traité), owner (qui doit agir, si le débrief le dit), due (échéance, si dite) }]. Laisse impact/owner/due VIDES si le débrief ne les donne pas — n'invente pas.
+- important_points : les RISQUES / points de vigilance, EXPLOITABLES, CONSTATÉS pendant cette visite (par le vocal, une note, ou une photo qualifiée « À surveiller »/« Réserve à lever »). [{ label (le risque, court), impact (conséquence si non traité), owner (qui doit agir, si le débrief le dit), due (échéance, si dite) }]. Laisse impact/owner/due VIDES si le débrief ne les donne pas — n'invente pas. Un sujet du site resté ouvert n'y entre QUE si le débrief montre qu'il a été observé/reconfirmé maintenant, pas par simple rapprochement de vocabulaire.
 - suggested_actions : les actions à FAIRE. [{ title, rationale, priority, owner, due }]. Le title doit être PILOTABLE et AUTOPORTANT — compréhensible plusieurs semaines plus tard sans le contexte : « Contacter M. Vincent Milon (PAVE) pour transmettre le plan de prévention avant le démarrage », JAMAIS « Contacter Vincent ». priority "haute"|"moyenne"|"basse" selon l'urgence exprimée, sinon null ; owner/due si dits.
-- decisions : les DÉCISIONS PRISES / engagements actés pendant la visite — ce qui a été TRANCHÉ, ni action à faire ni risque. Ex. « Les accès seront fournis ultérieurement. », « Une nouvelle visite sera organisée. »
-- a_savoir : extrais TOUTES les informations importantes qui ne sont NI une action, NI un risque, NI une décision, NI une échéance, mais qui devront être CONNUES lors des prochaines visites (contexte, contraintes, faits durables). Ex. « Première visite du chantier. », « Le nettoyage précède l'intervention. »
-- echeances : ce qui doit arriver À UN MOMENT. Une échéance n'existe QUE s'il y a une notion de TEMPS — une date (« le 28 juillet »), un délai (« sous une dizaine de jours »), ou une dépendance (« avant le démarrage », « après la visite PAVE »). Si le débrief dit seulement qu'il faudra faire quelque chose, SANS aucune notion de temps, ce n'est PAS une échéance : c'est une action, ne la mets pas ici.
+- decisions : les DÉCISIONS PRISES / engagements actés PENDANT CETTE VISITE — ce qui a été TRANCHÉ, ni action à faire ni risque. Ex. « Les accès seront fournis ultérieurement. », « Une nouvelle visite sera organisée. » Un sujet resté ouvert depuis une visite précédente n'est PAS une décision de cette visite, SAUF si le débrief dit explicitement qu'il a été rediscuté, confirmé ou tranché maintenant.
+- a_savoir : DERNIER RECOURS, résiduel — n'utilise ce champ QUE pour une information importante et durable qui n'a sa place NULLE PART ailleurs (ni attention, ni risque, ni décision, ni échéance, ni action). Ne le remplis JAMAIS pour combler un champ vide ou paraphraser un sujet connu du site : si rien ne reste après avoir rempli les autres champs, laisse a_savoir VIDE. Ex. « Première visite du chantier. », « Le nettoyage précède l'intervention. »
+- echeances : ce qui doit arriver À UN MOMENT PENDANT CETTE VISITE ou décidé pendant celle-ci. Une échéance n'existe QUE s'il y a une notion de TEMPS — une date (« le 28 juillet »), un délai (« sous une dizaine de jours »), ou une dépendance (« avant le démarrage », « après la visite PAVE »). Si le débrief dit seulement qu'il faudra faire quelque chose, SANS aucune notion de temps, ce n'est PAS une échéance : c'est une action, ne la mets pas ici. Une échéance déjà connue d'un sujet du site n'est reprise ici QUE si le débrief la mentionne à nouveau pour cette visite (confirmée, modifiée ou reportée) — pas parce qu'elle reste ouverte.
   Format : [{ label, date, constraint }].
   · label : CE QUI doit arriver, court et autoportant. Ex. « Poser le coffret électrique », « Programmer la visite PAVE ». Pas de délai dans le label.
   · date : UNIQUEMENT une vraie date, au format AAAA-MM-JJ. Si le débrief dit « le 28 juillet », donne-la EN UTILISANT L'ANNÉE DE LA DATE DE VISITE fournie en tête (jamais une autre année). Si tu n'as PAS de date certaine, laisse VIDE. « Sous dix jours », « fin de la semaine », « avant le démarrage » ne sont PAS des dates : n'invente jamais une date à partir d'un délai.
@@ -216,7 +247,11 @@ export interface VisitDebriefInput {
   capturedText: string | null
   transcript: string | null
   attachmentNames: string[]
-  capturedNotes: string[]
+  /** P0-I.2 : chaque note/légende porte son triageIntent — jamais un texte brut
+   *  anonyme. Une légende de photo sans triage (null) est un repère de
+   *  localisation, pas un constat ; un triage explicite (follow/reserve/action)
+   *  signale un contenu qualifié par l'humain, exploitable comme fait. */
+  capturedNotes: DebriefCapturedNote[]
   capturedActions: Array<{ title: string; corps_etat: string | null }>
   capturedReserves: Array<{ label: string; location: string | null }>
   signalLines: string[]
@@ -261,35 +296,79 @@ function referenceDateBlock(referenceDate: string | null): string {
   ].join('\n')
 }
 
-/** Bloc de contexte fourni à l'Agent 1. */
+const TRIAGE_INTENT_FR: Record<NonNullable<DebriefCapturedNote['triageIntent']>, string> = {
+  follow: 'À surveiller',
+  reserve: 'Réserve à lever',
+  action: 'Action à prévoir',
+  memoire: 'Documenter la visite',
+}
+
+/** Sépare les captures par ce qu'elles ont le droit d'affirmer (P0-I.2) :
+ *  note = constat direct ; média triés = constat qualifié par l'humain ;
+ *  média non triés = repère de localisation, jamais un fait à lui seul. */
+function splitCapturedNotes(capturedNotes: DebriefCapturedNote[]) {
+  return {
+    notes: capturedNotes.filter((n) => n.kind === 'note'),
+    triagedMedia: capturedNotes.filter((n) => n.kind !== 'note' && n.triageIntent),
+    untriagedMedia: capturedNotes.filter((n) => n.kind !== 'note' && !n.triageIntent),
+  }
+}
+
+/** Doctrine P0-I.2 (Vincent, 2026-08-18) — CE QUE chaque source A LE DROIT
+ *  d'affirmer, pas seulement ce qu'elle sait :
+ *   - « Constats actuels » (notes, légendes triées) = preuve d'événement.
+ *   - « Repères photo » (légende SANS triage) = identifie/localise, jamais un
+ *     fait à lui seul.
+ *   - « Contexte du chantier » (sujets canoniques, historique, signaux) =
+ *     VOCABULAIRE et mémoire pour interpréter, jamais une preuve que
+ *     quelque chose s'est produit PENDANT cette visite.
+ *  Rendu séparé pour que le prompt porte cette frontière dans sa structure,
+ *  pas seulement dans une consigne générale. */
 function buildContextBlock(input: VisitDebriefInput): string {
+  const { notes, triagedMedia, untriagedMedia } = splitCapturedNotes(input.capturedNotes)
+
   return [
     referenceDateBlock(input.referenceDate),
     ...(input.watchlistBlock ? [input.watchlistBlock, ''] : []),
-    ...(input.semanticBlock ? [input.semanticBlock, ''] : []),
-    ...(input.siteContext ? [input.siteContext, ''] : []),
-    '=== Vocal / transcription ===',
+    '=== PREUVES DE LA VISITE COURANTE (ce qui s\'est produit MAINTENANT) ===',
+    '',
+    '--- Vocal / transcription ---',
     input.transcript?.slice(0, 10000) || '(aucun)',
     '',
-    '=== Notes saisies ===',
-    input.capturedNotes.length > 0 ? input.capturedNotes.join('\n') : (input.capturedText ?? '(aucune)'),
+    '--- Notes saisies (constats) ---',
+    notes.length > 0 ? notes.map((n) => n.body).join('\n') : (input.capturedText ?? '(aucune)'),
     '',
-    '=== Photos / pièces (noms uniquement) ===',
+    '--- Photos/vidéos QUALIFIÉES par l\'humain (triage explicite) ---',
+    "Le triage indique la destination métier probable — utilise le contenu de la légende comme un fait, pas seulement le triage.",
+    triagedMedia.length > 0
+      ? triagedMedia.map((n) => `- [${TRIAGE_INTENT_FR[n.triageIntent!]}] ${n.body}`).join('\n')
+      : '(aucune)',
+    '',
+    '--- Photos/vidéos SANS triage (repères de localisation) ---',
+    'Ce sont des LÉGENDES qui identifient/localisent la photo, PAS des constats terrain. N\'en fais JAMAIS un fait narratif à elles seules (ex. « Plonge Batterie » ne dit rien sur ce qui s\'y est passé). Elles ne deviennent un fait que si le vocal ou une note ci-dessus confirme indépendamment le même contenu.',
+    untriagedMedia.length > 0 ? untriagedMedia.map((n) => `- ${n.body}`).join('\n') : '(aucune)',
+    '',
+    '--- Photos / pièces (noms uniquement) ---',
     input.attachmentNames.length > 0 ? input.attachmentNames.join('\n') : '(aucune)',
     '',
-    '=== Actions créées pendant la visite ===',
+    '--- Actions créées pendant la visite ---',
     input.capturedActions.length > 0 ? input.capturedActions.map((a) => `- ${a.corps_etat ? `(${a.corps_etat}) ` : ''}${a.title}`).join('\n') : '(aucune)',
     '',
-    '=== Réserves créées pendant la visite ===',
+    '--- Réserves créées pendant la visite ---',
     input.capturedReserves.length > 0 ? input.capturedReserves.map((r) => `- ${r.label}${r.location ? ` @ ${r.location}` : ''}`).join('\n') : '(aucune)',
     '',
-    '=== Contexte mémoire du site (signaux déterministes) ===',
+    ...(input.semanticBlock ? [input.semanticBlock, ''] : []),
+    ...(input.siteContext ? [input.siteContext, ''] : []),
+    '=== CONTEXTE DU CHANTIER (vocabulaire et mémoire — PAS une preuve d\'événement de cette visite) ===',
+    "Un sujet suivi, un signal ou l'historique ci-dessous décrivent DE QUOI parle le chantier ou ce qui reste ouvert — jamais CE QUI S'EST PASSÉ pendant CETTE visite. N'en tire un fait de la visite courante QUE si les preuves ci-dessus (vocal, notes, photos qualifiées) montrent que ce sujet a été discuté, confirmé, modifié, réalisé ou reporté MAINTENANT. Le simple fait qu'un sujet soit encore ouvert ne suffit pas à l'affirmer comme un événement de cette visite.",
+    '',
+    '--- Signaux mémoire du site (déterministes) ---',
     input.signalLines.length > 0 ? input.signalLines.join('\n') : '(aucun signal)',
     '',
-    '=== Contexte métier du chantier (synthèse) ===',
+    '--- Historique condensé du chantier ---',
     input.siteHistory || '(aucun historique)',
     '',
-    '=== Sujets ouverts du chantier (avec leur ancienneté/activité) ===',
+    '--- Sujets ouverts du chantier (avec leur ancienneté/activité) ---',
     input.subjectDigests.length > 0
       ? input.subjectDigests.map((d) => `- ${d}`).join('\n') + '\nIDENTIFIE lequel cette visite concerne (par son sens, pas par les mots exacts), ou « aucun / nouveau sujet ».'
       : '(aucun sujet ouvert)',
@@ -301,7 +380,7 @@ function buildContextBlock(input: VisitDebriefInput): string {
 function mockNarrative(input: VisitDebriefInput): string {
   const bits: string[] = []
   bits.push(`Je suis passé sur le chantier${input.objectiveHint ? ` pour ${input.objectiveHint.toLowerCase()}` : ''}.`)
-  if (input.capturedNotes[0]) bits.push(`J'ai noté : ${input.capturedNotes[0]}.`)
+  if (input.capturedNotes[0]) bits.push(`J'ai noté : ${input.capturedNotes[0].body}.`)
   if (input.capturedReserves[0]) bits.push(`J'ai relevé une réserve : ${input.capturedReserves[0].label}.`)
   const subj = input.openSubjects[0]?.name ?? null
   if (subj) bits.push(`Ça rejoint le sujet « ${subj} » qu'on suit déjà${input.subjectDigests.length > 1 ? ' — et qui revient régulièrement' : ''}.`)
@@ -313,7 +392,7 @@ function mockNarrative(input: VisitDebriefInput): string {
 
 /** Mock Agent 2 : extraction déterministe (démo sans clé IA). */
 function mockExtraction(input: VisitDebriefInput): VisitDebriefParsed {
-  const firstNote = input.capturedNotes[0] ?? input.transcript ?? input.capturedText ?? ''
+  const firstNote = input.capturedNotes[0]?.body ?? input.transcript ?? input.capturedText ?? ''
   const hasReserve = input.capturedReserves.length > 0
   return {
     attention: [...input.signalLines.slice(0, 3), ...(hasReserve ? [`Réserve « ${input.capturedReserves[0].label} » créée`] : [])].slice(0, 5),
@@ -326,7 +405,7 @@ function mockExtraction(input: VisitDebriefInput): VisitDebriefParsed {
     subject_confidence: input.openSubjects[0] ? 'moyenne' : 'faible',
     outcome: hasReserve ? 'conforme_reserves' : null,
     resolution: hasReserve ? 'recontrole' : null,
-    important_points: input.capturedNotes.slice(0, 3).map((n) => ({ label: n, impact: '', owner: '', due: '' })),
+    important_points: input.capturedNotes.slice(0, 3).map((n) => ({ label: n.body, impact: '', owner: '', due: '' })),
     suggested_actions: hasReserve
       ? [{ title: `Suivre la réserve « ${input.capturedReserves[0].label} »`, rationale: 'Une réserve a été créée pendant la visite.', priority: 'moyenne' as const, owner: '', due: '' }]
       : [],
@@ -367,6 +446,7 @@ export async function runVisitDebriefAgent(input: VisitDebriefInput): Promise<Vi
       const subjectsList = input.openSubjects.length > 0
         ? input.openSubjects.map((s, i) => `[${i}] ${s.name}`).join('\n')
         : '(aucun sujet connu)'
+      const { notes, triagedMedia, untriagedMedia } = splitCapturedNotes(input.capturedNotes)
       userMessage = [
         referenceDateBlock(input.referenceDate),
         ...(input.watchlistBlock ? [input.watchlistBlock, ''] : []),
@@ -376,7 +456,13 @@ export async function runVisitDebriefAgent(input: VisitDebriefInput): Promise<Vi
         '',
         '=== Éléments BRUTS de la visite (pour ne RIEN omettre : noms, délais, faits à retenir) ===',
         input.transcript?.slice(0, 8000) || '(aucun mémo vocal)',
-        input.capturedNotes.length > 0 ? `\nNotes :\n${input.capturedNotes.join('\n')}` : '',
+        notes.length > 0 ? `\nNotes :\n${notes.map((n) => n.body).join('\n')}` : '',
+        triagedMedia.length > 0
+          ? `\nPhotos/vidéos QUALIFIÉES par l'humain (le triage indique la destination — utilise le contenu comme un fait) :\n${triagedMedia.map((n) => `- [${TRIAGE_INTENT_FR[n.triageIntent!]}] ${n.body}`).join('\n')}`
+          : '',
+        untriagedMedia.length > 0
+          ? `\nLégendes de photos SANS triage (repères de localisation — n'en extrais un fait que si le vocal ou une note ci-dessus confirme indépendamment le même contenu) :\n${untriagedMedia.map((n) => `- ${n.body}`).join('\n')}`
+          : '',
         '',
         '=== Sujets connus du site (par index, pour subject_match_index) ===',
         subjectsList,
