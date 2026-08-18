@@ -799,6 +799,22 @@ export async function promoteProposal(params: {
     // et `confiance: 'sûr'` parce qu'un humain vient de la valider. Sans quoi la
     // fiche chantier ne saurait plus distinguer ce qu'elle a entendu de ce qu'on
     // lui a affirmé.
+    //
+    // dateDecision = date de la VISITE où la décision a été prise, jamais le jour
+    // de la promotion (P0-H, 2026-08-18) : sans elle, createSiteDecision retombe
+    // sur le défaut DB `current_date` — le jour où le conducteur clique « Valider »,
+    // parfois des jours après la visite. Cette date erronée remonte ensuite telle
+    // quelle dans les signaux mémoire (site-memory-signals.ts) et le débrief IA la
+    // recopie fidèlement : un fait juste avec une date fausse.
+    let dateDecision: string | null = null
+    if (p.report_id) {
+      const { data: reportRow } = await supabase
+        .from('site_reports')
+        .select('started_at, created_at')
+        .eq('id', p.report_id)
+        .single()
+      dateDecision = (reportRow?.started_at ?? reportRow?.created_at ?? null)?.slice(0, 10) ?? null
+    }
     const id = await createSiteDecision({
       siteId: p.site_id,
       reportId: p.report_id ?? null,
@@ -807,6 +823,7 @@ export async function promoteProposal(params: {
       source: 'transcript',
       confiance: 'sûr',
       createdBy: params.userId,
+      dateDecision,
     })
     result = { objectType: 'site_decision', objectId: id }
   } else if (p.kind === 'stakeholder') {
