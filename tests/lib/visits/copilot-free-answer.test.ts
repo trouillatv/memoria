@@ -186,13 +186,44 @@ describe('answerCopilotFreeQuestion — contexte "mutation" toujours transmis au
 // planifié » reste une réponse acceptable — ce n'est pas la même chose que
 // « J'ai supprimé la réunion »).
 describe('SYSTEM_PROMPT — règle absolue anti-revendication de mutation', () => {
-  it('interdit explicitement de revendiquer un ajout/retrait/création/planification/modification/clôture quand mutation.status="none"', () => {
+  function readSystemPrompt(): string {
     const source = readFileSync(join(__dirname, '..', '..', '..', 'lib', 'visits', 'copilot-free-answer.ts'), 'utf-8')
     const match = source.match(/const SYSTEM_PROMPT = `[\s\S]*?`/)
     expect(match).not.toBeNull()
-    const prompt = match![0]
+    return match![0]
+  }
+
+  it('interdit explicitement de revendiquer un ajout/retrait/création/planification/modification/clôture quand mutation.status="none"', () => {
+    const prompt = readSystemPrompt()
     expect(prompt).toMatch(/mutation\.status/)
     expect(prompt).toMatch(/JAMAIS/)
     expect(prompt).toContain('neutralizedWrite')
+  })
+
+  // Vincent 2026-08-19 : le fix précédent (05eeb1f0) n'interdisait que les
+  // revendications au PASSÉ ("j'ai retiré"). La recette terrain OCEF a montré
+  // deux échecs au FUTUR — sémantiquement identiques au bug initial :
+  // « Ne surveille pas le regard R4. » → « ... ne sera plus surveillé... »
+  // « ... ne fait rien pour demain. » → « ... ne sera pas inclus dans votre plan... »
+  // La garde doit donc explicitement couvrir les formulations futures, pas
+  // seulement les exemples au passé.
+  it('interdit explicitement les formulations FUTURES de changement d\'état ("ne sera plus", "sera retiré", "ne sera pas inclus"), pas seulement le passé', () => {
+    const prompt = readSystemPrompt()
+    expect(prompt).toMatch(/passé/)
+    expect(prompt).toMatch(/présent/)
+    expect(prompt).toMatch(/futur/i)
+    expect(prompt).toContain('ne sera plus surveillé')
+    expect(prompt).toContain('ne sera pas inclus dans votre plan de visite')
+    expect(prompt).toContain('sera supprimée')
+    expect(prompt).toContain('sera retiré')
+  })
+
+  it('distingue la négation d\'une création nouvelle (reformulation simple) de la négation d\'un suivi existant (confirmation explicite sans changement)', () => {
+    const prompt = readSystemPrompt()
+    // Cas 1 — création nouvelle : reformulation d'absence d'action au présent.
+    expect(prompt).toContain('Je ne programme aucune nouvelle visite vendredi à partir de cette demande.')
+    expect(prompt).toContain('Je ne crée ni ne planifie rien pour demain à partir de cette demande.')
+    // Cas 2 — arrêt d'un suivi possiblement déjà existant : confirmation explicite, aucun changement affirmé.
+    expect(prompt).toContain("J'ai compris que vous ne souhaitez plus surveiller le Regard R4. Aucun changement n'a été effectué sur le suivi.")
   })
 })
