@@ -22,6 +22,7 @@ import { GlobalVoiceCopilotSheet } from '@/app/(field)/m/GlobalVoiceCopilotSheet
 import { VoiceOrbOverlay } from '@/components/field/VoiceOrbOverlay'
 import { buildFactProposal } from '@/lib/visits/copilot-proposal'
 import type { CopilotFreeResult } from '@/lib/visits/copilot-free-prepare'
+import type { CopilotProposal } from '@/lib/visits/copilot-proposal'
 
 const askCopilotFreeAction = vi.fn()
 vi.mock('@/app/(dashboard)/sites/[id]/copilot-free-action', () => ({
@@ -54,6 +55,16 @@ function factResult(question: string): CopilotFreeResult {
 
 function answerResult(text: string): CopilotFreeResult {
   return { kind: 'answer', text, references: [], source: 'fallback', interactionId: null }
+}
+
+/** P6-B (mandat Vincent, 2026-08-19) : résultat multi-propositions d'un même tour. */
+function proposalsResult(
+  items: { text: string; proposal: CopilotProposal; interactionId: string | null; segmentText: string }[],
+): CopilotFreeResult {
+  return {
+    kind: 'proposals',
+    proposals: items.map((item, segmentIndex) => ({ ...item, segmentIndex })),
+  }
 }
 
 function stubMatchMedia() {
@@ -197,6 +208,74 @@ describe('GlobalVoiceCopilotSheet — pendingProposals (état partagé)', () => 
     fireEvent.click(screen.getByText('remove-1'))
     expect(screen.getByTestId('probe-count')).toHaveTextContent('1')
     expect(screen.getByTestId('probe-item')).toHaveTextContent('Échéance — Livraison ferronnerie')
+  })
+})
+
+// ── P6-B — plusieurs propositions RÉELLES pour un même tour (mandat Vincent, 2026-08-19) ──
+//
+// Contrairement au scénario 5 ci-dessus (injection artificielle), ces tests
+// passent par le VRAI résultat `kind:'proposals'` renvoyé par le pipeline —
+// prouvant le câblage `pushResultMessage` (GlobalVoiceCopilotSheet.tsx:154-168)
+// et non plus seulement l'état partagé isolé.
+
+describe('GlobalVoiceCopilotSheet — P6-B, plusieurs propositions pour un même tour', () => {
+  it('8 — un résultat kind:"proposals" à 2 éléments alimente pendingProposals.length === 2', async () => {
+    const p1 = buildFactProposal({ question: 'Le code du portail est 4812.', canonicalSubjectId: null, canonicalSubjectLabel: null })
+    const p2 = buildFactProposal({ question: 'Le compresseur est en panne.', canonicalSubjectId: null, canonicalSubjectLabel: null })
+    askCopilotFreeAction.mockResolvedValue(proposalsResult([
+      { text: 'Constat 1', proposal: p1, interactionId: 'iid-1', segmentText: 'Le code du portail est 4812.' },
+      { text: 'Constat 2', proposal: p2, interactionId: 'iid-2', segmentText: 'Le compresseur est en panne.' },
+    ]))
+    renderSheet()
+    await selectSite()
+
+    askTyped('Le code du portail est 4812. Le compresseur est en panne.')
+
+    await waitFor(() => expect(screen.getByTestId('probe-count')).toHaveTextContent('2'))
+    expect(screen.getAllByTestId('probe-item')).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: /valider/i })).toHaveLength(2)
+  })
+
+  it('9 — valider une proposition parmi 2 laisse l\'autre en attente', async () => {
+    const p1 = buildFactProposal({ question: 'Le code du portail est 4812.', canonicalSubjectId: null, canonicalSubjectLabel: null })
+    const p2 = buildFactProposal({ question: 'Le compresseur est en panne.', canonicalSubjectId: null, canonicalSubjectLabel: null })
+    askCopilotFreeAction.mockResolvedValue(proposalsResult([
+      { text: 'Constat 1', proposal: p1, interactionId: 'iid-1', segmentText: 'Le code du portail est 4812.' },
+      { text: 'Constat 2', proposal: p2, interactionId: 'iid-2', segmentText: 'Le compresseur est en panne.' },
+    ]))
+    renderSheet()
+    await selectSite()
+    askTyped('Le code du portail est 4812. Le compresseur est en panne.')
+    await waitFor(() => expect(screen.getByTestId('probe-count')).toHaveTextContent('2'))
+
+    const combos = screen.getAllByRole('combobox')
+    fireEvent.change(combos[0], { target: { value: 'current_information' } })
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /valider/i })[0])
+    })
+
+    // Même primitive d'écriture que le mono (aucun nouveau writer introduit par P6-B).
+    await waitFor(() => expect(createCopilotFact).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(screen.getByTestId('probe-count')).toHaveTextContent('1'))
+    expect(screen.getByTestId('probe-item')).toHaveTextContent(p2.title)
+  })
+
+  it('10 (volet UI) — chaque proposition P6-B garde son propre interactionId côté carte', async () => {
+    const p1 = buildFactProposal({ question: 'Le code du portail est 4812.', canonicalSubjectId: null, canonicalSubjectLabel: null })
+    const p2 = buildFactProposal({ question: 'Le compresseur est en panne.', canonicalSubjectId: null, canonicalSubjectLabel: null })
+    askCopilotFreeAction.mockResolvedValue(proposalsResult([
+      { text: 'Constat 1', proposal: p1, interactionId: 'iid-p6-a', segmentText: 'Le code du portail est 4812.' },
+      { text: 'Constat 2', proposal: p2, interactionId: 'iid-p6-b', segmentText: 'Le compresseur est en panne.' },
+    ]))
+    renderSheet()
+    await selectSite()
+    askTyped('Le code du portail est 4812. Le compresseur est en panne.')
+    await waitFor(() => expect(screen.getByTestId('probe-count')).toHaveTextContent('2'))
+
+    // Les deux cartes coexistent, chacune identifiable par son propre id DOM
+    // (`copilot-proposal-${msg.id}`, dérivé du pendingProposal.id) — pas de
+    // pipeline parallèle, pas de fusion des deux propositions en une seule.
+    expect(document.querySelectorAll('[id^="copilot-proposal-"]')).toHaveLength(2)
   })
 })
 

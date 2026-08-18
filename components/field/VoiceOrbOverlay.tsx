@@ -945,7 +945,7 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
         <div
           className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3"
         >
-          <div className="pointer-events-auto mx-auto flex max-w-[520px] flex-col gap-2 rounded-2xl border border-white/15 bg-[rgba(20,20,32,0.94)] px-4 py-3 shadow-[0_8px_30px_rgba(0,0,0,0.4)] backdrop-blur">
+          <div className="pointer-events-auto mx-auto flex max-w-[520px] flex-col gap-2 rounded-2xl border border-white/15 bg-[rgba(20,20,32,0.94)] px-4 py-4 shadow-[0_8px_30px_rgba(0,0,0,0.4)] backdrop-blur">
             {pendingProposals.length > 1 && (
               <p className="text-[11px] font-medium uppercase tracking-wide text-white/45">
                 {pendingProposals.length} propositions en attente
@@ -960,7 +960,7 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
                 <button
                   type="button"
                   onClick={() => viewPendingProposal(p.id)}
-                  className="shrink-0 rounded-full bg-violet-500/90 px-3.5 py-1.5 text-[12px] font-medium text-white active:bg-violet-600"
+                  className="flex min-h-[46px] shrink-0 items-center justify-center rounded-full bg-violet-500 px-5 py-3 text-[15px] font-semibold text-white shadow-[0_2px_10px_rgba(139,92,246,0.4)] active:bg-violet-600"
                 >
                   Voir
                 </button>

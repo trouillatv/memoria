@@ -35,7 +35,7 @@ import {
   COPILOT_MAX_VISIT_PLAN,
 } from '@/lib/visits/copilot-context'
 import { classifyIntent } from '@/lib/visits/copilot-classify'
-import { understandQuestion, mergeComprehension } from '@/lib/visits/copilot-comprehension'
+import { understandQuestion, mergeComprehension, type Comprehension, type ComprehensionMerge } from '@/lib/visits/copilot-comprehension'
 import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
 import { resolveActorTarget, resolveActorCandidateById, type ActorCandidate } from '@/lib/db/actor-alias-resolve'
 import { extractIdentityCorrection } from '@/lib/visits/copilot-identity-correction'
@@ -44,10 +44,11 @@ import { extractKnowledgeCorrection } from '@/lib/visits/copilot-knowledge-corre
 import { listRecentCurrentInformationEntries } from '@/lib/db/site-memory-entries'
 import { buildCopilotProposal, buildScheduleProposal, buildObservationProposal, buildIdentityCorrectionProposal, buildFactProposal, buildRelationClaimProposal, buildWatchpointProposal, buildDeadlineProposal, buildReserveProposal, buildKnowledgeSupersessionProposal, buildKnowledgeArchiveProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { parseScheduleFromQuestion, toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
-import { detectIntent, readRemainsPlausible } from '@/lib/visits/copilot-intent-router'
+import { detectIntent, readRemainsPlausible, type IntentResult } from '@/lib/visits/copilot-intent-router'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logCopilotInteraction } from '@/lib/db/copilot-telemetry'
 import { scheduleDecomposeShadow } from '@/lib/visits/copilot-decompose-shadow'
+import { decomposeUtterance, routeSegments, isP6MultiSegmentAdmissible } from '@/lib/visits/copilot-decompose'
 import type { CopilotScope, CopilotSttRoute } from '@/lib/db/copilot-telemetry'
 import { extractQuestionSubjectPhrase } from '@/lib/visits/copilot-classify'
 import { getCanonicalSubjectLifeForSite, getCanonicalSubjectLabelsByIds } from '@/lib/db/canonical-subject-life'
@@ -139,6 +140,22 @@ export type CopilotFreeResult =
       kind: 'write_not_supported'
       text: string
     }
+  | {
+      /**
+       * P6-B (mandat Vincent, 2026-08-19) : plusieurs unités métier indépendantes
+       * détectées dans un même tour (ex. constat + consigne + vigilance), chacune
+       * transformée en proposition indépendante. Tout-ou-rien à la construction —
+       * voir `attemptP6MultiIntent` : jamais un sous-ensemble silencieux.
+       */
+      kind: 'proposals'
+      proposals: Array<{
+        text: string
+        proposal: CopilotProposal
+        interactionId: string | null
+        segmentText: string
+        segmentIndex: number
+      }>
+    }
 
 // ── Préchargement d'un tour vocal (P2-C overlap) ─────────────────────────────
 //
@@ -207,7 +224,67 @@ export interface CopilotPrecomputedTurn {
 // identique quel que soit le transport — c'est ce qui interdit toute divergence
 // de comportement entre les deux.
 
-/** Données de routage propagées au client via SSE `diag` — diagnostic P3-B. */
+/**
+ * Diagnostic d'un segment P6-B — un par segment produit par `decomposeUtterance`,
+ * routé par le déterministe seul (jamais `understandQuestion`/`mergeComprehension`,
+ * cf. Arbitrage 1 d'`attemptP6MultiIntent`). `interactionId` permet la corrélation
+ * ultérieure avec `copilot_interactions.proposal_status` (mandat Vincent, 2026-08-19
+ * — source de vérité unique pour shown/confirmed/cancelled, jamais dupliquée ici).
+ */
+export interface P6SegmentDiag {
+  index: number
+  text: string
+  intent: string
+  confidence: string
+  signals: string[]
+  admissible: boolean
+  rejectionReason: string | null
+  resultKind: string | null
+  proposalKind: string | null
+  interactionId: string | null
+}
+
+/** Diagnostic de la tentative d'orchestration P6-B pour ce tour (jamais dupliqué ailleurs). */
+export interface P6PipelineDiag {
+  p6Attempted: boolean
+  p6Ambiguous: boolean
+  p6SegmentsCount: number
+  p6Segments: P6SegmentDiag[]
+  /** 'single' = P6-B jamais tenté (intent déterministe global = READ). */
+  p6Decision: 'single' | 'multi' | 'mono_fallback'
+  p6FallbackReason: string | null
+  p6ProposalCount: number
+}
+
+const P6_NOT_ATTEMPTED: P6PipelineDiag = {
+  p6Attempted: false,
+  p6Ambiguous: false,
+  p6SegmentsCount: 0,
+  p6Segments: [],
+  p6Decision: 'single',
+  p6FallbackReason: null,
+  p6ProposalCount: 0,
+}
+
+/**
+ * Diagnostic des sorties anticipées avant tout calcul d'intent (paramètres
+ * invalides, accès refusé) — aucune décision de pipeline n'a encore eu lieu.
+ */
+const EARLY_EXIT_DIAG: PreparedCopilotAnswerDiag = {
+  det: 'n/a', merged: 'n/a', family: 'n/a', applied: '—', q: '', comp: 'null',
+  detIntent: 'n/a', detConfidence: 'n/a', detSignals: [],
+  mergedIntent: null, mergedConfidence: null, mergedSignals: null,
+  comprehensionMode: null, comprehensionConfidence: null, comprehensionIntent: null,
+  appliedRules: [],
+  ...P6_NOT_ATTEMPTED,
+}
+
+/**
+ * Données de routage propagées au client via SSE `diag` — diagnostic P3-B,
+ * enrichi par le mandat Vincent (2026-08-19) pour reconstruire la décision
+ * d'orchestration d'un tour (déterministe / compréhension / P6-B) sans dupliquer
+ * le statut des propositions, qui reste porté par `copilot_interactions`.
+ */
 export interface PreparedCopilotAnswerDiag {
   det: string
   merged: string
@@ -216,6 +293,61 @@ export interface PreparedCopilotAnswerDiag {
   q: string
   /** Ce que la couche de compréhension LLM a extrait de `q` — label + entités reconnues. */
   comp: string
+  detIntent: string
+  detConfidence: string
+  detSignals: string[]
+  /** `null` quand la compréhension/fusion n'a pas tourné pour ce tour (P6-B multi). */
+  mergedIntent: string | null
+  mergedConfidence: string | null
+  mergedSignals: string[] | null
+  comprehensionMode: string | null
+  comprehensionConfidence: string | null
+  comprehensionIntent: string | null
+  /** Version tableau de `applied` — `applied` (string jointe) reste inchangé pour les lecteurs existants. */
+  appliedRules: string[]
+  p6Attempted: boolean
+  p6Ambiguous: boolean
+  p6SegmentsCount: number
+  p6Segments: P6SegmentDiag[]
+  p6Decision: 'single' | 'multi' | 'mono_fallback'
+  p6FallbackReason: string | null
+  p6ProposalCount: number
+}
+
+/**
+ * Construit le diagnostic enrichi à partir des mêmes données que `traceBase` —
+ * un seul point de construction pour les trois sites de retour de
+ * `prepareCopilotAnswer` (P6-B multi, écriture mono, lecture/LLM), afin qu'aucun
+ * ne diverge du contrat ci-dessus.
+ */
+function buildPipelineDiag(args: {
+  question: string
+  deterministicIntent: IntentResult
+  comprehension: Comprehension | null
+  merged: ComprehensionMerge | null
+  classification: ReturnType<typeof classifyIntent>
+  p6: P6PipelineDiag
+}): PreparedCopilotAnswerDiag {
+  const { question, deterministicIntent, comprehension, merged, classification, p6 } = args
+  return {
+    det: `${deterministicIntent.intent}/${deterministicIntent.confidence}`,
+    merged: merged ? merged.intentResult.intent : deterministicIntent.intent,
+    family: classification.primary,
+    applied: merged ? (merged.applied.join('+') || '—') : '—',
+    q: question.slice(0, 120),
+    comp: comprehension ? `${comprehension.label}[${comprehension.entities.join(',')}]` : 'null',
+    detIntent: deterministicIntent.intent,
+    detConfidence: deterministicIntent.confidence,
+    detSignals: deterministicIntent.signals,
+    mergedIntent: merged ? merged.intentResult.intent : null,
+    mergedConfidence: merged ? merged.intentResult.confidence : null,
+    mergedSignals: merged ? merged.intentResult.signals : null,
+    comprehensionMode: comprehension?.mode ?? null,
+    comprehensionConfidence: comprehension?.confidence ?? null,
+    comprehensionIntent: comprehension?.intent ?? null,
+    appliedRules: merged ? merged.applied : [],
+    ...p6,
+  }
 }
 
 export interface PreparedCopilotAnswerReady {
@@ -235,213 +367,35 @@ export interface PreparedCopilotAnswerReady {
 }
 
 export type PreparedCopilotAnswer =
-  | { kind: 'result'; result: CopilotFreeResult }
+  | { kind: 'result'; result: CopilotFreeResult; _diag: PreparedCopilotAnswerDiag }
   | PreparedCopilotAnswerReady
 
-export async function prepareCopilotAnswer(
-  rawInput: unknown,
-  precomputed?: CopilotPrecomputedTurn,
-): Promise<PreparedCopilotAnswer> {
-  const parsed = inputSchema.safeParse(rawInput)
-  if (!parsed.success) {
-    return { kind: 'result', result: { kind: 'answer', text: 'Paramètres invalides.', references: [], source: 'fallback', interactionId: null } }
-  }
-  const { siteId, question, history, resolvedSubjectIds, conversationId, selectedCandidateId, diag, rawTranscript, transcriptionCorrections, transcriptionAbstentions } = parsed.data
-  const t0 = Date.now()
-  const diagEnabled = diag || process.env.COPILOT_DIAG === '1'
-  // Audit Copilote (brique 2) : route STT réellement empruntée pour ce tour.
-  // `precomputed` n'est jamais fourni ailleurs que par la route vocale
-  // audio→serveur (P2-C) ; sinon, `rawTranscript` distingue un tour vocal
-  // Live (P3-B) d'une question tapée.
-  const sttRoute: CopilotSttRoute = precomputed ? 'server_stt' : (rawTranscript ? 'client_live' : 'typed')
+type ResolveWriteBranchParams = {
+  question: string
+  classification: ReturnType<typeof classifyIntent>
+  intentResult: ReturnType<typeof detectIntent>
+  selectedCandidateId: string | undefined
+  resolvedSubjectIds: string[]
+  siteId: string
+  userId: string | null
+  organizationId: string | null
+  conversationId: string | undefined
+  t0: number
+  traceBase: Record<string, unknown>
+  prefetchSource: CopilotSitePrefetch | null
+}
 
-  // Le précalcul n'est accepté QUE s'il porte exactement ce chantier — un
-  // décalage (bug d'appelant) le fait ignorer entièrement, et les gardes
-  // normales reprennent. Jeter une spéculation ne coûte rien ; lui faire
-  // confiance à tort coûterait le cloisonnement.
-  const injected = precomputed
-    && precomputed.access.resourceId === siteId
-    && precomputed.prefetch.siteId === siteId
-    ? precomputed
-    : null
+// Extrait de `prepareCopilotAnswer` (mandat P6-B, Vincent 2026-08-19) : porte
+// TOUTE la branche d'écriture mono-intent, verbatim, pour être réutilisable à
+// la fois par le pipeline mono (appel unique ci-dessous) et par l'orchestration
+// multi-segment P6-B (un appel par segment admissible). Aucune ligne de logique
+// métier n'a été modifiée pendant l'extraction — seul le paramétrage a changé.
+async function resolveWriteBranch(params: ResolveWriteBranchParams): Promise<{ kind: 'result'; result: CopilotFreeResult }> {
+  const {
+    question, classification, intentResult, selectedCandidateId, resolvedSubjectIds,
+    siteId, userId, organizationId, conversationId, t0, traceBase, prefetchSource,
+  } = params
 
-  // Vérification d'accès — l'utilisateur doit avoir accès au chantier.
-  // Si la route vocale l'a déjà décidé via `resolveResourceAccess` (même
-  // primitive que `requireSiteAccess`), on ne paie pas une seconde fois.
-  // `organizationId` est retenu pour CORRECTION_IDENTITY (P4-B.2) : la
-  // résolution d'acteur doit être bornée à l'organisation de l'utilisateur,
-  // jamais à un organization_id fourni côté client.
-  let organizationId: string | null = null
-  if (!injected) {
-    try {
-      const access = await requireSiteAccess(siteId)
-      organizationId = access.organizationId
-    } catch {
-      return { kind: 'result', result: { kind: 'answer', text: 'Accès non autorisé.', references: [], source: 'fallback', interactionId: null } }
-    }
-  } else {
-    organizationId = injected.access.organizationId
-  }
-
-  // Utilisateur courant (pour les prep items)
-  let userId: string | null = null
-  if (injected) {
-    userId = injected.access.userId
-  } else {
-    try {
-      const supabase = await createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      userId = user?.id ?? null
-    } catch { /* non bloquant */ }
-  }
-
-  // ── P6-A2 : shadow mode decompose-v2 (mandat Vincent 2026-08-17) ────────────
-  // Planifié ICI, avant toute branche : couvre uniformément les intents
-  // d'écriture (retour anticipé plus bas) et de lecture (via `finish`), sans
-  // dépendre de l'ID d'interaction réel (généré plus tard, par branche —
-  // certaines n'en génèrent aucun). `after()` garantit qu'il ne retarde
-  // jamais la réponse ; le rapprochement se fait par conversation_id.
-  scheduleDecomposeShadow({ siteId, userId, organizationId, conversationId: conversationId ?? null, question })
-
-  // ── Classification déterministe ───────────────────────────────────────────────
-  const deterministicClassification = classifyIntent(question)
-  const deterministicIntent = detectIntent(question)
-
-  // ── Instrumentation de latence ────────────────────────────────────────────
-  // Mandat Vincent (15/08) : « ne fais pas d'autre optimisation de latence à
-  // l'aveugle ». Le badge `?voicedebug=1` mesure « texte → réponse » d'un seul
-  // bloc ; ces marques disent ce qu'il y a DEDANS. Aucune décision produit n'en
-  // dépend — c'est une trace, pas un moteur.
-  const marks: Record<string, number> = {}
-  function timed<T>(key: string, run: () => Promise<T>): Promise<T> {
-    const t = Date.now()
-    return run().then((v) => { marks[key] = Date.now() - t; return v })
-  }
-
-  // ── Chargement anticipé du contexte chantier ──────────────────────────────
-  // La compréhension (appel LLM) et les read-models du chantier (DB) ne
-  // dépendent pas l'un de l'autre : les enchaîner coûtait leur somme pour rien.
-  // On lance donc ici les trois chargements INDÉPENDANTS de la classification ;
-  // les deux qui en dépendent réellement (contexte acteur, vies de sujets)
-  // restent après, inchangés. Mêmes fonctions, mêmes arguments, mêmes gardes
-  // d'échec : seul l'instant du `await` change.
-  //
-  // Garde-fou : on anticipe dès qu'une LECTURE reste plausible — pas seulement
-  // quand elle est certaine (`readRemainsPlausible`). Le cas mesuré en
-  // production le 16/08 était exactement le contraire : « Quels sont les points
-  // de la réunion de demain à évoquer ? » sortait du routeur en
-  // SCHEDULE_MEETING/ambiguous, donc sans anticipation ; la compréhension la
-  // requalifiait ensuite en lecture (`read_downgrade`), et le contexte ne
-  // démarrait qu'après elle — 1729 ms d'attente au lieu de ~150.
-  //
-  // Une écriture `strong` (verbe de planification explicite, objet « action »)
-  // ne redescend jamais en lecture : elle ne déclenche aucun chargement.
-  // Une spéculation fausse coûte trois lectures jamais consommées — la branche
-  // d'écriture sort avant de les lire — et RIEN d'autre : pas de cache, pas
-  // d'état partagé, pas de contexte réutilisé d'un tour à l'autre.
-  //
-  // Un échec de chargement produit un overview VIDE, indiscernable d'un chantier
-  // réellement sans signal. On trace donc l'échec : il interdit toute affirmation
-  // quantitative ("aucune action en retard") — cf. resolveQuantitativeVerdict.
-  let overviewLoadFailed = false
-  // Même règle pour le briefing : il porte les compteurs de stagnation et le
-  // delta terrain. En échec, ses mesures valent `null` — jamais zéro.
-  let briefingLoadFailed = false
-
-  const unwrapOverview = (r: Awaited<CopilotSitePrefetch['overview']>) => {
-    if (!r.ok) { overviewLoadFailed = true; return emptySiteOverview(siteId) }
-    return r.value
-  }
-  const unwrapBriefing = (r: Awaited<CopilotSitePrefetch['briefing']>) => {
-    if (!r.ok) { briefingLoadFailed = true; return null }
-    return r.value
-  }
-
-  const loadOverview = () => timed('overviewMs', () =>
-    getSiteOverview(siteId).catch(() => { overviewLoadFailed = true; return emptySiteOverview(siteId) }))
-  // buildVisitBriefing est l'agrégateur déjà utilisé par « Préparer ma visite ».
-  // Le Copilote consomme LA MÊME intelligence plutôt que de reconstruire un
-  // agrégat parallèle : une seule source, une seule vérité (arbitrage Vincent).
-  const loadBriefing = () => timed('briefingMs', () =>
-    buildVisitBriefing(siteId).catch(() => { briefingLoadFailed = true; return null }))
-  const loadPrepItems = () => userId
-    ? listActivePreparationItems(siteId, userId).catch(() => [])
-    : Promise.resolve([])
-
-  // Origine des temps du chargement métier : l'instant où la PREMIÈRE requête
-  // part réellement, et non celui où on l'attend. La distinction est tout
-  // l'objet de la mesure : en lecture les requêtes partent avant la
-  // compréhension, et `contextWaitMs` seul ferait croire à une DB rapide alors
-  // qu'elle a simplement eu le temps de finir pendant l'appel LLM léger.
-  let contextStartAt = Date.now()
-  const speculative = readRemainsPlausible(deterministicIntent)
-  // P2-C : si la route vocale a déjà lancé les lectures pendant le STT, on les
-  // réutilise — elles sont en vol depuis bien avant l'entrée dans cette
-  // fonction. Sinon, elles démarrent ici, comme avant. Pour un tour injecté,
-  // `overviewMs`/`briefingMs` mesurent l'attente RÉSIDUELLE (souvent ~0 si le
-  // STT a tout masqué), et `contextStartAt` remonte au vrai départ.
-  const prefetchSource: CopilotSitePrefetch | null =
-    injected?.prefetch ?? (speculative ? startCopilotSitePrefetch(siteId, userId) : null)
-  if (injected) contextStartAt = injected.prefetch.startedAt
-  const prefetched = prefetchSource && speculative
-    ? {
-        overview: timed('overviewMs', () => prefetchSource.overview.then(unwrapOverview)),
-        briefing: timed('briefingMs', () => prefetchSource.briefing.then(unwrapBriefing)),
-        prepItems: prefetchSource.prepItems,
-      }
-    : null
-
-  // ── Couche de compréhension (LLM léger, jamais de réponse ni d'écriture) ─────
-  // Traduit une formulation orale imparfaite en structure. En cas de timeout,
-  // d'erreur ou de JSON invalide → null, et le déterministe reprend la main
-  // silencieusement (le Copilote doit rester fonctionnel sans LLM).
-  const comprehension = await timed('comprehensionMs', () => understandQuestion(question))
-  const merged = mergeComprehension(
-    question,
-    deterministicClassification,
-    deterministicIntent,
-    comprehension,
-  )
-  const classification = merged.classification
-  const intentResult = merged.intentResult
-
-  // ── Trace de production (mandat Vincent, 15/08) ───────────────────────────
-  // Aucune fonctionnalité : une ligne structurée pour répondre en un passage à
-  // « où cette requête bifurque-t-elle ? ». La recette du 15/08 a montré qu'on
-  // ne pouvait pas le dire : `copilot_interactions` ne porte ni l'intent
-  // déterministe, ni l'intent après compréhension, ni le nombre de contrôles,
-  // ni le build qui a servi — et une session navigateur reste épinglée au
-  // déploiement sur lequel elle a été chargée, donc « c'est en production »
-  // ne dit pas « c'est ce commit qui a répondu ».
-  const traceBase = {
-    dpl: process.env.VERCEL_DEPLOYMENT_ID ?? null,
-    q: question.slice(0, 80),
-    det: `${deterministicIntent.intent}/${deterministicIntent.confidence}`,
-    detSignals: deterministicIntent.signals.join('+') || '—',
-    comp: comprehension ? `${comprehension.label}/${comprehension.confidence}` : 'null',
-    merged: intentResult.intent,
-    applied: merged.applied.join('+') || '—',
-    primary: classification.primary,
-  }
-  console.log('[copilot-trace] routing', JSON.stringify(traceBase))
-
-  // Scope dérivé de l'intention primaire (pour la télémétrie)
-  const INTENT_SCOPE_MAP: Record<string, CopilotScope> = {
-    subject_detail:   'canonical_subject',
-    timeline:         'historical_pv',
-    action_status:    'action',
-    actor:            'actor',
-    plan_visite:      'visit_plan',
-    // La stagnation se mesure sur les sujets canoniques (moteur canonical-subject-life),
-    // pas sur les actions : sans cette entrée le scope télémétrique retomberait sur
-    // 'unknown' et la famille serait invisible dans l'Observatoire.
-    stagnation:       'canonical_subject',
-    global:           'site',
-    proposal_request: 'site',
-  }
-  const baseScope: CopilotScope = INTENT_SCOPE_MAP[classification.primary] ?? 'unknown'
-
-  // Écriture détectée — Copilote 3C : résoudre le sujet puis construire un brouillon.
   if (intentResult.intent !== 'READ') {
     // Sortie anticipée : aucune donnée du chantier n'est chargée au-delà de ce
     // point. C'est ici, et nulle part ailleurs, qu'une question de préparation
@@ -1261,6 +1215,438 @@ export async function prepareCopilotAnswer(
     }
   }
 
+  throw new Error("resolveWriteBranch: aucune branche n'a produit de resultat")
+}
+
+type AttemptP6MultiIntentParams = {
+  question: string
+  siteId: string
+  userId: string | null
+  organizationId: string | null
+  conversationId: string | undefined
+  t0: number
+}
+
+type AttemptP6MultiIntentResult = {
+  outcome: { kind: 'result'; result: CopilotFreeResult } | null
+  /** Toujours peuplé, succès ou repli — jamais un simple `null` (mandat télémétrie, 2026-08-19). */
+  diag: P6PipelineDiag
+}
+
+/**
+ * P6-B (mandat Vincent, 2026-08-19) — tentative d'orchestration multi-intent.
+ *
+ * Appelée UNE SEULE fois, depuis un unique site d'appel dans
+ * `prepareCopilotAnswer`, avant la couche de compréhension. Ne rappelle
+ * jamais `decomposeUtterance` ni elle-même : c'est une fonction en ligne
+ * droite qui retourne soit un succès complet, soit `outcome: null` — jamais de
+ * récursion, jamais de second appel au décomposeur pour cette requête.
+ *
+ * Arbitrage 1 : chaque segment n'est routé QUE par le déterministe
+ * (`classifyIntent` + `detectIntent`, via `routeSegments`) — jamais par
+ * `understandQuestion`/`mergeComprehension`, qui restent réservés au
+ * pipeline mono.
+ *
+ * Arbitrage 2 (tout ou rien) : le moindre segment non admissible
+ * (`isP6MultiSegmentAdmissible`) ou dont `resolveWriteBranch` ne produit pas
+ * directement `kind: 'proposal'` (clarification, réponse, écriture non
+ * supportée…) fait retourner `outcome: null` immédiatement — aucune
+ * proposition partielle n'est jamais construite ni retournée. Le `diag`
+ * accompagnant ce repli porte toujours la raison exacte, par segment.
+ */
+async function attemptP6MultiIntent(
+  params: AttemptP6MultiIntentParams,
+): Promise<AttemptP6MultiIntentResult> {
+  const { question, siteId, userId, organizationId, conversationId, t0 } = params
+
+  const decomposition = await decomposeUtterance(question)
+  const routed = routeSegments(question, decomposition)
+  const segmentDiags: P6SegmentDiag[] = routed.map((seg, i) => ({
+    index: i,
+    text: seg.text,
+    intent: seg.intent.intent,
+    confidence: seg.intent.confidence,
+    signals: seg.intent.signals,
+    admissible: isP6MultiSegmentAdmissible(seg.intent),
+    rejectionReason: null,
+    resultKind: null,
+    proposalKind: null,
+    interactionId: null,
+  }))
+
+  if (decomposition.ambiguous || decomposition.segments.length < 2) {
+    return {
+      outcome: null,
+      diag: {
+        p6Attempted: true,
+        p6Ambiguous: decomposition.ambiguous,
+        p6SegmentsCount: routed.length,
+        p6Segments: segmentDiags,
+        p6Decision: 'mono_fallback',
+        p6FallbackReason: decomposition.ambiguous ? 'ambiguous_decomposition' : 'single_segment',
+        p6ProposalCount: 0,
+      },
+    }
+  }
+
+  const firstNonAdmissible = segmentDiags.findIndex((s) => !s.admissible)
+  if (firstNonAdmissible !== -1) {
+    segmentDiags[firstNonAdmissible].rejectionReason = 'not_admissible'
+    return {
+      outcome: null,
+      diag: {
+        p6Attempted: true,
+        p6Ambiguous: false,
+        p6SegmentsCount: routed.length,
+        p6Segments: segmentDiags,
+        p6Decision: 'mono_fallback',
+        p6FallbackReason: 'segment_not_admissible',
+        p6ProposalCount: 0,
+      },
+    }
+  }
+
+  const proposals: Array<{
+    text: string
+    proposal: CopilotProposal
+    interactionId: string | null
+    segmentText: string
+    segmentIndex: number
+  }> = []
+
+  for (let i = 0; i < routed.length; i++) {
+    const seg = routed[i]
+    const segClassification = classifyIntent(seg.text)
+    const segTraceBase = {
+      dpl: process.env.VERCEL_DEPLOYMENT_ID ?? null,
+      q: seg.text.slice(0, 80),
+      det: `${seg.intent.intent}/${seg.intent.confidence}`,
+      detSignals: seg.intent.signals.join('+') || '—',
+      merged: seg.intent.intent,
+      primary: segClassification.primary,
+      p6bSegmentIndex: i,
+      p6bSegmentCount: routed.length,
+    }
+    const outcome = await resolveWriteBranch({
+      question: seg.text,
+      classification: segClassification,
+      intentResult: seg.intent,
+      selectedCandidateId: undefined,
+      resolvedSubjectIds: [],
+      siteId,
+      userId,
+      organizationId,
+      conversationId,
+      t0,
+      traceBase: segTraceBase,
+      prefetchSource: null,
+    })
+    segmentDiags[i].resultKind = outcome.result.kind
+    if (outcome.result.kind !== 'proposal') {
+      segmentDiags[i].rejectionReason = 'resolution_not_proposal'
+      return {
+        outcome: null,
+        diag: {
+          p6Attempted: true,
+          p6Ambiguous: false,
+          p6SegmentsCount: routed.length,
+          p6Segments: segmentDiags,
+          p6Decision: 'mono_fallback',
+          p6FallbackReason: 'segment_resolution_not_proposal',
+          p6ProposalCount: 0,
+        },
+      }
+    }
+    segmentDiags[i].proposalKind = outcome.result.proposal.kind
+    segmentDiags[i].interactionId = outcome.result.interactionId
+    proposals.push({
+      text: outcome.result.text,
+      proposal: outcome.result.proposal,
+      interactionId: outcome.result.interactionId,
+      segmentText: seg.text,
+      segmentIndex: i,
+    })
+  }
+
+  console.log('[copilot-trace] p6b-multi', JSON.stringify({
+    q: question.slice(0, 80),
+    segments: routed.length,
+    intents: routed.map((s) => `${s.intent.intent}/${s.intent.confidence}`),
+  }))
+
+  return {
+    outcome: { kind: 'result', result: { kind: 'proposals', proposals } },
+    diag: {
+      p6Attempted: true,
+      p6Ambiguous: false,
+      p6SegmentsCount: routed.length,
+      p6Segments: segmentDiags,
+      p6Decision: 'multi',
+      p6FallbackReason: null,
+      p6ProposalCount: proposals.length,
+    },
+  }
+}
+
+export async function prepareCopilotAnswer(
+  rawInput: unknown,
+  precomputed?: CopilotPrecomputedTurn,
+): Promise<PreparedCopilotAnswer> {
+  const parsed = inputSchema.safeParse(rawInput)
+  if (!parsed.success) {
+    return { kind: 'result', result: { kind: 'answer', text: 'Paramètres invalides.', references: [], source: 'fallback', interactionId: null }, _diag: EARLY_EXIT_DIAG }
+  }
+  const { siteId, question, history, resolvedSubjectIds, conversationId, selectedCandidateId, diag, rawTranscript, transcriptionCorrections, transcriptionAbstentions } = parsed.data
+  const t0 = Date.now()
+  const diagEnabled = diag || process.env.COPILOT_DIAG === '1'
+  // Audit Copilote (brique 2) : route STT réellement empruntée pour ce tour.
+  // `precomputed` n'est jamais fourni ailleurs que par la route vocale
+  // audio→serveur (P2-C) ; sinon, `rawTranscript` distingue un tour vocal
+  // Live (P3-B) d'une question tapée.
+  const sttRoute: CopilotSttRoute = precomputed ? 'server_stt' : (rawTranscript ? 'client_live' : 'typed')
+
+  // Le précalcul n'est accepté QUE s'il porte exactement ce chantier — un
+  // décalage (bug d'appelant) le fait ignorer entièrement, et les gardes
+  // normales reprennent. Jeter une spéculation ne coûte rien ; lui faire
+  // confiance à tort coûterait le cloisonnement.
+  const injected = precomputed
+    && precomputed.access.resourceId === siteId
+    && precomputed.prefetch.siteId === siteId
+    ? precomputed
+    : null
+
+  // Vérification d'accès — l'utilisateur doit avoir accès au chantier.
+  // Si la route vocale l'a déjà décidé via `resolveResourceAccess` (même
+  // primitive que `requireSiteAccess`), on ne paie pas une seconde fois.
+  // `organizationId` est retenu pour CORRECTION_IDENTITY (P4-B.2) : la
+  // résolution d'acteur doit être bornée à l'organisation de l'utilisateur,
+  // jamais à un organization_id fourni côté client.
+  let organizationId: string | null = null
+  if (!injected) {
+    try {
+      const access = await requireSiteAccess(siteId)
+      organizationId = access.organizationId
+    } catch {
+      return { kind: 'result', result: { kind: 'answer', text: 'Accès non autorisé.', references: [], source: 'fallback', interactionId: null }, _diag: EARLY_EXIT_DIAG }
+    }
+  } else {
+    organizationId = injected.access.organizationId
+  }
+
+  // Utilisateur courant (pour les prep items)
+  let userId: string | null = null
+  if (injected) {
+    userId = injected.access.userId
+  } else {
+    try {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      userId = user?.id ?? null
+    } catch { /* non bloquant */ }
+  }
+
+  // ── P6-A2 : shadow mode decompose-v2 (mandat Vincent 2026-08-17) ────────────
+  // Planifié ICI, avant toute branche : couvre uniformément les intents
+  // d'écriture (retour anticipé plus bas) et de lecture (via `finish`), sans
+  // dépendre de l'ID d'interaction réel (généré plus tard, par branche —
+  // certaines n'en génèrent aucun). `after()` garantit qu'il ne retarde
+  // jamais la réponse ; le rapprochement se fait par conversation_id.
+  scheduleDecomposeShadow({ siteId, userId, organizationId, conversationId: conversationId ?? null, question })
+
+  // ── Classification déterministe ───────────────────────────────────────────────
+  const deterministicClassification = classifyIntent(question)
+  const deterministicIntent = detectIntent(question)
+
+  // ── P6-B : tentative d'orchestration multi-intent (mandat Vincent, 2026-08-19) ──
+  // Positionnée ICI, avant `understandQuestion`/`mergeComprehension` (Arbitrage 1
+  // interdit tout appel de compréhension par segment — routage 100% déterministe).
+  //
+  // Pré-filtre de latence : `deterministicIntent` porte déjà l'intent de la
+  // phrase ENTIÈRE, et les signaux d'écriture balaient le texte en entier — un
+  // texte classé READ au global ne peut donc contenir aucun segment d'écriture.
+  // On évite ainsi l'appel LLM bloquant de `decomposeUtterance` (jusqu'à 2,5 s)
+  // sur la majorité du trafic (lectures simples), sans jamais manquer un cas
+  // multi-écriture réel. Coût zéro : `deterministicIntent` est déjà calculé.
+  //
+  // `decomposeUtterance` n'est appelé qu'UNE SEULE fois par requête, dans
+  // `attemptP6MultiIntent` — jamais rappelé, jamais récursif (voir sa
+  // documentation). Un échec à n'importe quelle étape retourne `null` et cette
+  // branche ne modifie RIEN à l'état ci-dessous : le pipeline mono reprend sur
+  // la phrase originale, exactement comme si P6-B n'avait pas été tenté.
+  let p6Diag: P6PipelineDiag = P6_NOT_ATTEMPTED
+  if (deterministicIntent.intent !== 'READ') {
+    const { outcome, diag } = await attemptP6MultiIntent({ question, siteId, userId, organizationId, conversationId, t0 })
+    p6Diag = diag
+    if (outcome) {
+      return {
+        kind: 'result',
+        result: outcome.result,
+        _diag: buildPipelineDiag({
+          question,
+          deterministicIntent,
+          comprehension: null,
+          merged: null,
+          classification: deterministicClassification,
+          p6: p6Diag,
+        }),
+      }
+    }
+  }
+
+  // ── Instrumentation de latence ────────────────────────────────────────────
+  // Mandat Vincent (15/08) : « ne fais pas d'autre optimisation de latence à
+  // l'aveugle ». Le badge `?voicedebug=1` mesure « texte → réponse » d'un seul
+  // bloc ; ces marques disent ce qu'il y a DEDANS. Aucune décision produit n'en
+  // dépend — c'est une trace, pas un moteur.
+  const marks: Record<string, number> = {}
+  function timed<T>(key: string, run: () => Promise<T>): Promise<T> {
+    const t = Date.now()
+    return run().then((v) => { marks[key] = Date.now() - t; return v })
+  }
+
+  // ── Chargement anticipé du contexte chantier ──────────────────────────────
+  // La compréhension (appel LLM) et les read-models du chantier (DB) ne
+  // dépendent pas l'un de l'autre : les enchaîner coûtait leur somme pour rien.
+  // On lance donc ici les trois chargements INDÉPENDANTS de la classification ;
+  // les deux qui en dépendent réellement (contexte acteur, vies de sujets)
+  // restent après, inchangés. Mêmes fonctions, mêmes arguments, mêmes gardes
+  // d'échec : seul l'instant du `await` change.
+  //
+  // Garde-fou : on anticipe dès qu'une LECTURE reste plausible — pas seulement
+  // quand elle est certaine (`readRemainsPlausible`). Le cas mesuré en
+  // production le 16/08 était exactement le contraire : « Quels sont les points
+  // de la réunion de demain à évoquer ? » sortait du routeur en
+  // SCHEDULE_MEETING/ambiguous, donc sans anticipation ; la compréhension la
+  // requalifiait ensuite en lecture (`read_downgrade`), et le contexte ne
+  // démarrait qu'après elle — 1729 ms d'attente au lieu de ~150.
+  //
+  // Une écriture `strong` (verbe de planification explicite, objet « action »)
+  // ne redescend jamais en lecture : elle ne déclenche aucun chargement.
+  // Une spéculation fausse coûte trois lectures jamais consommées — la branche
+  // d'écriture sort avant de les lire — et RIEN d'autre : pas de cache, pas
+  // d'état partagé, pas de contexte réutilisé d'un tour à l'autre.
+  //
+  // Un échec de chargement produit un overview VIDE, indiscernable d'un chantier
+  // réellement sans signal. On trace donc l'échec : il interdit toute affirmation
+  // quantitative ("aucune action en retard") — cf. resolveQuantitativeVerdict.
+  let overviewLoadFailed = false
+  // Même règle pour le briefing : il porte les compteurs de stagnation et le
+  // delta terrain. En échec, ses mesures valent `null` — jamais zéro.
+  let briefingLoadFailed = false
+
+  const unwrapOverview = (r: Awaited<CopilotSitePrefetch['overview']>) => {
+    if (!r.ok) { overviewLoadFailed = true; return emptySiteOverview(siteId) }
+    return r.value
+  }
+  const unwrapBriefing = (r: Awaited<CopilotSitePrefetch['briefing']>) => {
+    if (!r.ok) { briefingLoadFailed = true; return null }
+    return r.value
+  }
+
+  const loadOverview = () => timed('overviewMs', () =>
+    getSiteOverview(siteId).catch(() => { overviewLoadFailed = true; return emptySiteOverview(siteId) }))
+  // buildVisitBriefing est l'agrégateur déjà utilisé par « Préparer ma visite ».
+  // Le Copilote consomme LA MÊME intelligence plutôt que de reconstruire un
+  // agrégat parallèle : une seule source, une seule vérité (arbitrage Vincent).
+  const loadBriefing = () => timed('briefingMs', () =>
+    buildVisitBriefing(siteId).catch(() => { briefingLoadFailed = true; return null }))
+  const loadPrepItems = () => userId
+    ? listActivePreparationItems(siteId, userId).catch(() => [])
+    : Promise.resolve([])
+
+  // Origine des temps du chargement métier : l'instant où la PREMIÈRE requête
+  // part réellement, et non celui où on l'attend. La distinction est tout
+  // l'objet de la mesure : en lecture les requêtes partent avant la
+  // compréhension, et `contextWaitMs` seul ferait croire à une DB rapide alors
+  // qu'elle a simplement eu le temps de finir pendant l'appel LLM léger.
+  let contextStartAt = Date.now()
+  const speculative = readRemainsPlausible(deterministicIntent)
+  // P2-C : si la route vocale a déjà lancé les lectures pendant le STT, on les
+  // réutilise — elles sont en vol depuis bien avant l'entrée dans cette
+  // fonction. Sinon, elles démarrent ici, comme avant. Pour un tour injecté,
+  // `overviewMs`/`briefingMs` mesurent l'attente RÉSIDUELLE (souvent ~0 si le
+  // STT a tout masqué), et `contextStartAt` remonte au vrai départ.
+  const prefetchSource: CopilotSitePrefetch | null =
+    injected?.prefetch ?? (speculative ? startCopilotSitePrefetch(siteId, userId) : null)
+  if (injected) contextStartAt = injected.prefetch.startedAt
+  const prefetched = prefetchSource && speculative
+    ? {
+        overview: timed('overviewMs', () => prefetchSource.overview.then(unwrapOverview)),
+        briefing: timed('briefingMs', () => prefetchSource.briefing.then(unwrapBriefing)),
+        prepItems: prefetchSource.prepItems,
+      }
+    : null
+
+  // ── Couche de compréhension (LLM léger, jamais de réponse ni d'écriture) ─────
+  // Traduit une formulation orale imparfaite en structure. En cas de timeout,
+  // d'erreur ou de JSON invalide → null, et le déterministe reprend la main
+  // silencieusement (le Copilote doit rester fonctionnel sans LLM).
+  const comprehension = await timed('comprehensionMs', () => understandQuestion(question))
+  const merged = mergeComprehension(
+    question,
+    deterministicClassification,
+    deterministicIntent,
+    comprehension,
+  )
+  const classification = merged.classification
+  const intentResult = merged.intentResult
+
+  // ── Trace de production (mandat Vincent, 15/08) ───────────────────────────
+  // Aucune fonctionnalité : une ligne structurée pour répondre en un passage à
+  // « où cette requête bifurque-t-elle ? ». La recette du 15/08 a montré qu'on
+  // ne pouvait pas le dire : `copilot_interactions` ne porte ni l'intent
+  // déterministe, ni l'intent après compréhension, ni le nombre de contrôles,
+  // ni le build qui a servi — et une session navigateur reste épinglée au
+  // déploiement sur lequel elle a été chargée, donc « c'est en production »
+  // ne dit pas « c'est ce commit qui a répondu ».
+  const traceBase = {
+    dpl: process.env.VERCEL_DEPLOYMENT_ID ?? null,
+    q: question.slice(0, 80),
+    det: `${deterministicIntent.intent}/${deterministicIntent.confidence}`,
+    detSignals: deterministicIntent.signals.join('+') || '—',
+    comp: comprehension ? `${comprehension.label}/${comprehension.confidence}` : 'null',
+    merged: intentResult.intent,
+    applied: merged.applied.join('+') || '—',
+    primary: classification.primary,
+  }
+  console.log('[copilot-trace] routing', JSON.stringify(traceBase))
+
+  // Scope dérivé de l'intention primaire (pour la télémétrie)
+  const INTENT_SCOPE_MAP: Record<string, CopilotScope> = {
+    subject_detail:   'canonical_subject',
+    timeline:         'historical_pv',
+    action_status:    'action',
+    actor:            'actor',
+    plan_visite:      'visit_plan',
+    // La stagnation se mesure sur les sujets canoniques (moteur canonical-subject-life),
+    // pas sur les actions : sans cette entrée le scope télémétrique retomberait sur
+    // 'unknown' et la famille serait invisible dans l'Observatoire.
+    stagnation:       'canonical_subject',
+    global:           'site',
+    proposal_request: 'site',
+  }
+  const baseScope: CopilotScope = INTENT_SCOPE_MAP[classification.primary] ?? 'unknown'
+
+  // Écriture détectée — Copilote 3C : résoudre le sujet puis construire un brouillon.
+  if (intentResult.intent !== 'READ') {
+    const outcome = await resolveWriteBranch({
+      question, classification, intentResult, selectedCandidateId, resolvedSubjectIds,
+      siteId, userId, organizationId, conversationId, t0, traceBase, prefetchSource,
+    })
+    return {
+      kind: 'result',
+      result: outcome.result,
+      _diag: buildPipelineDiag({
+        question,
+        deterministicIntent,
+        comprehension,
+        merged,
+        classification,
+        p6: p6Diag,
+      }),
+    }
+  }
+
   // ── Résolution des entités sujet ─────────────────────────────────────────────
   // On collecte tous les IDs à charger : ceux déjà résolus + ceux de la question courante
   const subjectIdsToLoad = new Set<string>(resolvedSubjectIds)
@@ -1338,6 +1724,7 @@ export async function prepareCopilotAnswer(
         interactionId: iid,
         spokenText: spokenFromShortAnswer(notFoundText),
       },
+      _diag: buildPipelineDiag({ question, deterministicIntent, comprehension, merged, classification, p6: p6Diag }),
     }
   }
 
@@ -1362,6 +1749,7 @@ export async function prepareCopilotAnswer(
         candidates: clarificationCandidates,
         interactionId: iid,
       },
+      _diag: buildPipelineDiag({ question, deterministicIntent, comprehension, merged, classification, p6: p6Diag }),
     }
   }
 
@@ -1478,7 +1866,11 @@ export async function prepareCopilotAnswer(
         ...marks,
       }))
     }
-    return { kind: 'result', result: { kind: 'answer', text: quantitative.text, references: [], source: 'deterministic', interactionId: iid, spokenText: qSpoken } }
+    return {
+      kind: 'result',
+      result: { kind: 'answer', text: quantitative.text, references: [], source: 'deterministic', interactionId: iid, spokenText: qSpoken },
+      _diag: buildPipelineDiag({ question, deterministicIntent, comprehension, merged, classification, p6: p6Diag }),
+    }
   }
 
   // Enrichissement sujets détaillés
@@ -1725,16 +2117,14 @@ export async function prepareCopilotAnswer(
     filteredPrep,
     siteName,
     extra,
-    _diag: {
-      det: traceBase.det,
-      merged: intentResult.intent,
-      family: classification.primary,
-      applied: traceBase.applied,
-      q: question.slice(0, 120),
-      comp: comprehension
-        ? `${comprehension.label}[${comprehension.entities.join(',')}]`
-        : 'null',
-    },
+    _diag: buildPipelineDiag({
+      question,
+      deterministicIntent,
+      comprehension,
+      merged,
+      classification,
+      p6: p6Diag,
+    }),
     finish,
   }
 }

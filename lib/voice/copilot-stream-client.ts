@@ -55,6 +55,20 @@ export interface VoiceTurnStreamOutcome {
   aborted: boolean
 }
 
+/** Segment d'une décomposition P6-B (une entrée par intent détecté dans le tour). */
+export type CopilotTurnP6Segment = {
+  index: number
+  text: string
+  intent: string
+  confidence: string
+  signals: string[]
+  admissible: boolean
+  rejectionReason: string | null
+  resultKind: string | null
+  proposalKind: string | null
+  interactionId: string | null
+}
+
 export type CopilotTurnDiag = {
   det: string
   merged: string
@@ -63,6 +77,25 @@ export type CopilotTurnDiag = {
   q: string
   /** Ce que la couche de compréhension LLM a extrait de `q` — label + entités reconnues. */
   comp: string
+  detIntent: string
+  detConfidence: string
+  detSignals: string[]
+  /** `null` quand la compréhension/fusion n'a pas tourné pour ce tour (P6-B multi). */
+  mergedIntent: string | null
+  mergedConfidence: string | null
+  mergedSignals: string[] | null
+  comprehensionMode: string | null
+  comprehensionConfidence: string | null
+  comprehensionIntent: string | null
+  /** Version tableau de `applied` — `applied` (string jointe) reste inchangé. */
+  appliedRules: string[]
+  p6Attempted: boolean
+  p6Ambiguous: boolean
+  p6SegmentsCount: number
+  p6Segments: CopilotTurnP6Segment[]
+  p6Decision: 'single' | 'multi' | 'mono_fallback'
+  p6FallbackReason: string | null
+  p6ProposalCount: number
 }
 
 type StreamHandlers = {

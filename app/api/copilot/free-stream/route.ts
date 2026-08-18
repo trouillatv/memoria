@@ -73,11 +73,9 @@ async function streamPreparedAnswer(
   encoder: TextEncoder,
 ): Promise<void> {
   if (prep.kind === 'result') {
-    // Chemin déterministe : pas de classification LLM, mais on signale quand même
-    // que la réponse n'est pas passée par le LLM.
-    controller.enqueue(encoder.encode(sseEvent('diag', {
-      det: 'deterministic', merged: 'deterministic', family: 'deterministic', applied: '', q: '', comp: 'null',
-    })))
+    // Chemin déterministe/écriture/P6-B : `_diag` porte le vrai diagnostic de
+    // routage depuis le mandat Vincent (2026-08-19) — plus de placeholder.
+    controller.enqueue(encoder.encode(sseEvent('diag', prep._diag)))
     controller.enqueue(encoder.encode(sseEvent('result', prep.result)))
     return
   }

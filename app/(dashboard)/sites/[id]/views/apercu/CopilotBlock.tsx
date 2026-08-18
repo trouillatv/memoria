@@ -156,6 +156,15 @@ export function CopilotBlock({ siteId }: { siteId: string }) {
             interactionId: result.interactionId,
           }]
         }
+        if (result.kind === 'proposals') {
+          return [...withoutThinking, ...result.proposals.map((item) => ({
+            kind: 'proposal' as const,
+            id: uid(),
+            text: item.text,
+            proposal: item.proposal,
+            interactionId: item.interactionId,
+          }))]
+        }
         // write_not_supported (fallback legacy)
         return [...withoutThinking, {
           kind: 'answer',

@@ -120,6 +120,15 @@ describe('POST /api/copilot/free-stream — tour vocal fusionné (P2-C)', () => 
     prepareCopilotAnswer.mockResolvedValue({
       kind: 'result',
       result: { kind: 'answer', text: 'Réponse.', references: [], source: 'deterministic', interactionId: null },
+      _diag: {
+        det: 'READ/strong', merged: 'READ', family: 'global', applied: '—', q: '', comp: 'null',
+        detIntent: 'READ', detConfidence: 'strong', detSignals: [],
+        mergedIntent: 'READ', mergedConfidence: 'strong', mergedSignals: [],
+        comprehensionMode: null, comprehensionConfidence: null, comprehensionIntent: null,
+        appliedRules: [],
+        p6Attempted: false, p6Ambiguous: false, p6SegmentsCount: 0, p6Segments: [],
+        p6Decision: 'single', p6FallbackReason: null, p6ProposalCount: 0,
+      },
     })
   })
 

@@ -140,10 +140,8 @@ describe('prepareCopilotAnswer — identique avec et sans précalcul', () => {
 
     const prep = await prepareCopilotAnswer({ siteId: SITE_ID, question: QUESTION })
 
-    expect(prep).toEqual({
-      kind: 'result',
-      result: { kind: 'answer', text: 'Accès non autorisé.', references: [], source: 'fallback', interactionId: null },
-    })
+    expect(prep.kind).toBe('result')
+    expect(prep.kind === 'result' && prep.result).toEqual({ kind: 'answer', text: 'Accès non autorisé.', references: [], source: 'fallback', interactionId: null })
     expect(counters.overview).toBe(0)
     expect(counters.briefing).toBe(0)
   })

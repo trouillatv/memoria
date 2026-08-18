@@ -112,6 +112,19 @@ export function CopilotMobileSheet({
         })
         return [...without, { kind: 'proposal' as const, id, text: result.text, proposal: result.proposal, interactionId: result.interactionId }]
       }
+      if (result.kind === 'proposals') {
+        const newMsgs: Msg[] = result.proposals.map((item) => {
+          const id = uid()
+          addPendingProposal({
+            id,
+            kind: item.proposal.kind,
+            kindLabel: COPILOT_PROPOSAL_KIND_LABELS[item.proposal.kind],
+            title: item.proposal.title,
+          })
+          return { kind: 'proposal' as const, id, text: item.text, proposal: item.proposal, interactionId: item.interactionId }
+        })
+        return [...without, ...newMsgs]
+      }
       return [...without, { kind: 'answer' as const, id: uid(), text: result.text, source: 'fallback' as const, refs: [] }]
     })
   }
@@ -138,7 +151,7 @@ export function CopilotMobileSheet({
         siteId, question, history: buildHistory(), resolvedSubjectIds: allResolvedIds,
       })
       pushResultMessage(result)
-      return result.kind === 'proposal' ? { proposalPending: true } : { answer: result.text }
+      return result.kind === 'proposal' || result.kind === 'proposals' ? { proposalPending: true } : { answer: result.text }
     } catch {
       setMessages((prev) => {
         const without = prev.filter((m) => m.kind !== 'thinking')
@@ -250,6 +263,25 @@ export function CopilotMobileSheet({
         family: _diag != null ? _diag.family : '?',
         applied: _diag != null ? _diag.applied : '—',
         comp: _diag != null ? _diag.comp : '?',
+        // Décision/orchestration détaillée (mandat Vincent, 2026-08-19) —
+        // corrélation avec `copilot_interactions.proposal_status` via interactionId.
+        detIntent: _diag?.detIntent ?? '?',
+        detConfidence: _diag?.detConfidence ?? '?',
+        detSignals: _diag?.detSignals ?? [],
+        mergedIntent: _diag?.mergedIntent ?? null,
+        mergedConfidence: _diag?.mergedConfidence ?? null,
+        mergedSignals: _diag?.mergedSignals ?? null,
+        comprehensionMode: _diag?.comprehensionMode ?? null,
+        comprehensionConfidence: _diag?.comprehensionConfidence ?? null,
+        comprehensionIntent: _diag?.comprehensionIntent ?? null,
+        appliedRules: _diag?.appliedRules ?? [],
+        p6Attempted: _diag?.p6Attempted ?? false,
+        p6Ambiguous: _diag?.p6Ambiguous ?? false,
+        p6SegmentsCount: _diag?.p6SegmentsCount ?? 0,
+        p6Segments: _diag?.p6Segments ?? [],
+        p6Decision: _diag?.p6Decision ?? 'single',
+        p6FallbackReason: _diag?.p6FallbackReason ?? null,
+        p6ProposalCount: _diag?.p6ProposalCount ?? 0,
         // Étage réponse
         answerKind: result.kind,
         answerSource: result.kind === 'answer' ? result.source : null,
@@ -264,7 +296,7 @@ export function CopilotMobileSheet({
       // elle se valide dans la feuille, pas dans la conversation vocale. Elle
       // signale `proposalPending` pour que l'orbe marque une pause avant de
       // rouvrir le micro, au lieu de repartir comme si de rien n'était.
-      return result.kind === 'proposal' ? { proposalPending: true } : { answer: result.text }
+      return result.kind === 'proposal' || result.kind === 'proposals' ? { proposalPending: true } : { answer: result.text }
     } catch (err) {
       setMessages((prev) => prev.filter((m) => m.kind !== 'thinking'))
       if (transcriptText === null) throw err instanceof Error ? err : new Error('voice turn failed')

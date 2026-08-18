@@ -25,14 +25,17 @@
 //   — La provenance d'un fait rapporté (« selon Guillaume ») est une future
 //     notion de provenance, pas une responsabilité du décomposeur.
 //
-// Ce module N'EST PAS branché dans le Copilote réel. C'est un spike isolé.
+// P6-B (mandat Vincent, 2026-08-19) : `decomposeUtterance`/`routeSegments` sont
+// désormais appelés en direct par `copilot-free-prepare.ts` pour la tentative
+// d'orchestration multi-intent (en plus de l'appel différé `after()` de
+// copilot-decompose-shadow.ts, qui reste inchangé et purement observationnel).
 // Zéro modification de copilot-intent-router.ts, copilot-proposal.ts, des
 // writers ou des cartes.
 
 import { z } from 'zod'
 import { getAIProvider } from '@/services/ai/factory'
 import type { AIProvider, CompletionOutput } from '@/services/ai'
-import { detectIntent, type IntentResult } from './copilot-intent-router'
+import { detectIntent, type IntentResult, type WritingIntent } from './copilot-intent-router'
 
 // ── Contrat de sortie ─────────────────────────────────────────────────────────
 
@@ -340,6 +343,38 @@ export function routeSegments(rawText: string, result: DecompositionResult): Rou
     const text = rawText.slice(seg.start, seg.end)
     return { start: seg.start, end: seg.end, dependsOn: seg.dependsOn, text, intent: detectIntent(text) }
   })
+}
+
+// ── Gate d'admissibilité P6-B (orchestration multi-segment) ──────────────────
+//
+// Correction d'arbitrage (Vincent, 2026-08-19) : un gate uniforme
+// `confidence === 'strong'` exclurait structurellement OBSERVATION et FACT,
+// qui ne sont JAMAIS `strong` par construction du routeur (voir
+// copilot-intent-router.ts, Priorité 2bis et 4bis) — alors que le cas métier
+// fondateur de P6-B est précisément « constat + consigne + vigilance »
+// (OBSERVATION + CREATE_ACTION + CREATE_WATCHPOINT). `confidence` n'a donc
+// pas la même sémantique de sûreté selon l'intent : pour OBSERVATION/FACT,
+// `ambiguous` est une propriété historique du routeur, pas un signe de doute
+// sur le segment lui-même.
+//
+// `negated_write_verb` reste un garde-fou UNIVERSEL, y compris pour
+// OBSERVATION/FACT/CORRECTION_*/RELATION_CLAIM — aucun de ces intents ne le
+// vérifie dans le routeur mono (cf. copilot-intent-router.ts, gardes
+// `hasNegatedWrite` absentes de ces branches). P6-B ne peut pas hériter d'un
+// trou de garde du mono ; il le comble localement, sans toucher au routeur.
+const P6_ALWAYS_ADMISSIBLE_INTENTS: ReadonlySet<WritingIntent> = new Set(['OBSERVATION', 'FACT'])
+const P6_NEVER_ADMISSIBLE_INTENTS: ReadonlySet<WritingIntent> = new Set(['READ', 'UNKNOWN_WRITE'])
+
+/**
+ * Un segment ne peut devenir une proposition P6-B QUE s'il passe ce gate.
+ * Tout échec doit faire abandonner l'orchestration multi entière (tout ou
+ * rien) — jamais une proposition partielle silencieuse.
+ */
+export function isP6MultiSegmentAdmissible(intentResult: IntentResult): boolean {
+  if (intentResult.signals.includes('negated_write_verb')) return false
+  if (P6_NEVER_ADMISSIBLE_INTENTS.has(intentResult.intent)) return false
+  if (P6_ALWAYS_ADMISSIBLE_INTENTS.has(intentResult.intent)) return true
+  return intentResult.confidence === 'strong'
 }
 
 export { PROMPT_VERSION as DECOMPOSE_PROMPT_VERSION }
