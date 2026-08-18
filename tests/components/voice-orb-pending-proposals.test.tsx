@@ -313,6 +313,12 @@ const TWO: PendingProposal[] = [
   ...ONE,
   { id: 'p2', kind: 'deadline', kindLabel: 'Échéance', title: 'Livraison ferronnerie' },
 ]
+const TEN: PendingProposal[] = Array.from({ length: 10 }, (_, i) => ({
+  id: `p${i + 1}`,
+  kind: 'watchpoint' as const,
+  kindLabel: 'Point à surveiller',
+  title: `Constat numéro ${i + 1}`,
+}))
 
 describe('VoiceOrbOverlay — bandeau sticky', () => {
   beforeEach(stubMicDenied)
@@ -331,21 +337,61 @@ describe('VoiceOrbOverlay — bandeau sticky', () => {
     expect(screen.queryByText(/propositions en attente/i)).not.toBeInTheDocument()
   })
 
-  it('plusieurs propositions en attente → compteur + un bouton Voir par proposition', async () => {
+  it('2 propositions en attente → une carte résumé compacte, jamais le détail des 2 lignes', async () => {
     renderOverlay(TWO)
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /voir/i })).toHaveLength(2))
-    expect(screen.getByText('2 propositions en attente')).toBeInTheDocument()
-    expect(screen.getByText('Fissure façade nord')).toBeInTheDocument()
-    expect(screen.getByText('Livraison ferronnerie')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('2 propositions en attente')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /examiner/i })).toBeInTheDocument()
+    // Pas de rendu direct du détail : ni les titres, ni un bouton Voir par item.
+    expect(screen.queryByText('Fissure façade nord')).not.toBeInTheDocument()
+    expect(screen.queryByText('Livraison ferronnerie')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^voir$/i })).not.toBeInTheDocument()
   })
 
-  it('clic sur Voir déclenche viewPendingProposal avec l\'id de la proposition', async () => {
-    const { viewPendingProposal } = renderOverlay(TWO)
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /voir/i })).toHaveLength(2))
+  it('10 propositions en attente → toujours une seule carte résumé, hauteur bornée, rien de détaillé avant clic', async () => {
+    renderOverlay(TEN)
+    await waitFor(() => expect(screen.getByText('10 propositions en attente')).toBeInTheDocument())
 
-    fireEvent.click(screen.getAllByRole('button', { name: /voir/i })[1])
+    // Un seul bandeau visible : un seul « Examiner », aucun « Voir » individuel.
+    expect(screen.getAllByRole('button', { name: /examiner/i })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: /^voir$/i })).not.toBeInTheDocument()
+    TEN.forEach((p) => expect(screen.queryByText(p.title)).not.toBeInTheDocument())
 
-    expect(viewPendingProposal).toHaveBeenCalledWith('p2')
+    // L'accessibilité RÉELLE du panneau de debug (`VoiceTracePanel`, sous
+    // `?voicedebug=1`) est un problème de layout mobile (superposition
+    // visuelle), pas d'existence DOM — jsdom ne mesure pas les positions.
+    // Vérifiée par la recette navigateur avec 10 propositions simulées.
+  })
+
+  it('clic sur Examiner ouvre la liste détaillée scrollable des 10 propositions', async () => {
+    renderOverlay(TEN)
+    await waitFor(() => expect(screen.getByRole('button', { name: /examiner/i })).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /examiner/i }))
+
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^voir$/i })).toHaveLength(10))
+    TEN.forEach((p) => expect(screen.getByText(p.title)).toBeInTheDocument())
+  })
+
+  it('clic sur un item de la liste détaillée déclenche viewPendingProposal avec le bon id', async () => {
+    const { viewPendingProposal } = renderOverlay(TEN)
+    fireEvent.click(await screen.findByRole('button', { name: /examiner/i }))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^voir$/i })).toHaveLength(10))
+
+    fireEvent.click(screen.getAllByRole('button', { name: /^voir$/i })[3])
+
+    expect(viewPendingProposal).toHaveBeenCalledWith('p4')
+  })
+
+  it('replier la liste détaillée ne supprime aucune proposition — les 10 restent présentes', async () => {
+    renderOverlay(TEN)
+    fireEvent.click(await screen.findByRole('button', { name: /examiner/i }))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^voir$/i })).toHaveLength(10))
+
+    fireEvent.click(screen.getByRole('button', { name: /réduire la liste/i }))
+
+    await waitFor(() => expect(screen.getByText('10 propositions en attente')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /^voir$/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /examiner/i })).toBeInTheDocument()
   })
 })
 

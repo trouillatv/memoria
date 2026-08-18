@@ -114,6 +114,11 @@ function vibrateEndOfSpeech() {
 export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }: Props) {
   const { pendingProposals, viewPendingProposal } = useVoiceOrb()
 
+  // Second niveau d'interface pour la liste détaillée (>= 2 propositions).
+  // État purement local : le replier ne touche jamais `pendingProposals`
+  // (Vincent, 2026-08-19 — le repli ne doit jamais supprimer une proposition).
+  const [proposalsListOpen, setProposalsListOpen] = useState(false)
+
   // La machine à états est la seule autorité sur le parcours. `stateRef` en est
   // le miroir synchrone : les callbacks audio (RAF, `onstop`) se déclenchent
   // hors du cycle de rendu React et doivent lire l'état réel, pas celui de la
@@ -938,34 +943,86 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
           Ne ferme jamais tout seul et ne se fait jamais recouvrir par un
           nouveau tour : c'est le point de départ du Lot A — sans lui, une
           proposition créée à la voix disparaissait dès l'échange suivant sans
-          qu'aucune trace visuelle ne reste (Vincent, 2026-08-18). Modélisé en
-          collection dès maintenant pour préparer P6-B, même si un seul tour
-          ne produit aujourd'hui qu'une proposition. */}
-      {pendingProposals.length > 0 && (
-        <div
-          className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3"
-        >
+          qu'aucune trace visuelle ne reste (Vincent, 2026-08-18).
+          À partir de 2 propositions (P6-B), l'overlay ne rend JAMAIS le détail
+          de chaque proposition : une seule carte résumé, hauteur quasi
+          identique à 2, 10 ou 50 propositions — le détail scrollable est un
+          second niveau ouvert par « Examiner » (Vincent, 2026-08-19 : le
+          bandeau sticky ne doit jamais afficher toutes les propositions, et le
+          panneau de debug vocal doit rester accessible même à 10+). */}
+      {pendingProposals.length === 1 && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
           <div className="pointer-events-auto mx-auto flex max-w-[520px] flex-col gap-2 rounded-2xl border border-white/15 bg-[rgba(20,20,32,0.94)] px-4 py-4 shadow-[0_8px_30px_rgba(0,0,0,0.4)] backdrop-blur">
-            {pendingProposals.length > 1 && (
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-violet-300/80">{pendingProposals[0].kindLabel}</p>
+                <p className="truncate text-[14px] text-white/90">{pendingProposals[0].title}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => viewPendingProposal(pendingProposals[0].id)}
+                className="flex min-h-[46px] shrink-0 items-center justify-center rounded-full bg-violet-500 px-5 py-3 text-[15px] font-semibold text-white shadow-[0_2px_10px_rgba(139,92,246,0.4)] active:bg-violet-600"
+              >
+                Voir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingProposals.length >= 2 && !proposalsListOpen && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+          <div className="pointer-events-auto mx-auto flex max-w-[520px] items-center gap-3 rounded-2xl border border-white/15 bg-[rgba(20,20,32,0.94)] px-4 py-4 shadow-[0_8px_30px_rgba(0,0,0,0.4)] backdrop-blur">
+            <div className="min-w-0 flex-1">
               <p className="text-[11px] font-medium uppercase tracking-wide text-white/45">
                 {pendingProposals.length} propositions en attente
               </p>
-            )}
-            {pendingProposals.map((p) => (
-              <div key={p.id} className="flex items-center gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-violet-300/80">{p.kindLabel}</p>
-                  <p className="truncate text-[14px] text-white/90">{p.title}</p>
+              <p className="truncate text-[14px] text-white/90">Appuyez pour les examiner</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setProposalsListOpen(true)}
+              className="flex min-h-[46px] shrink-0 items-center justify-center rounded-full bg-violet-500 px-5 py-3 text-[15px] font-semibold text-white shadow-[0_2px_10px_rgba(139,92,246,0.4)] active:bg-violet-600"
+            >
+              Examiner
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pendingProposals.length >= 2 && proposalsListOpen && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+          <div className="pointer-events-auto mx-auto flex max-w-[520px] flex-col gap-2 rounded-2xl border border-white/15 bg-[rgba(20,20,32,0.94)] px-4 py-4 shadow-[0_8px_30px_rgba(0,0,0,0.4)] backdrop-blur">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-white/45">
+                {pendingProposals.length} propositions en attente
+              </p>
+              <button
+                type="button"
+                onClick={() => setProposalsListOpen(false)}
+                aria-label="Réduire la liste"
+                className="flex shrink-0 items-center justify-center rounded-full p-1.5 text-white/50 active:text-white/80"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex max-h-[40vh] flex-col gap-2 overflow-y-auto">
+              {pendingProposals.map((p) => (
+                <div key={p.id} className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-violet-300/80">{p.kindLabel}</p>
+                    <p className="truncate text-[14px] text-white/90">{p.title}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => viewPendingProposal(p.id)}
+                    className="flex min-h-[46px] shrink-0 items-center justify-center rounded-full bg-violet-500 px-5 py-3 text-[15px] font-semibold text-white shadow-[0_2px_10px_rgba(139,92,246,0.4)] active:bg-violet-600"
+                  >
+                    Voir
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => viewPendingProposal(p.id)}
-                  className="flex min-h-[46px] shrink-0 items-center justify-center rounded-full bg-violet-500 px-5 py-3 text-[15px] font-semibold text-white shadow-[0_2px_10px_rgba(139,92,246,0.4)] active:bg-violet-600"
-                >
-                  Voir
-                </button>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       )}
