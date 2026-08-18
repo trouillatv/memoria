@@ -99,12 +99,19 @@ export const MAX_SEGMENTS = 5
 const MIN_SEGMENT_CHARS = 2
 
 /**
- * Longueur max tolérée pour un intervalle non couvert par un segment (avant
- * le premier, entre deux segments, après le dernier) même s'il est jugé
- * inerte par `detectIntent`. Garde-fou en plus de la vérification de signal :
- * un long fragment ignoré reste suspect même sans signal reconnu.
+ * Un intervalle non couvert par un segment (avant le premier, entre deux
+ * segments, après le dernier) ne contenant QUE ces caractères est un
+ * connecteur structurel neutre — jamais du contenu métier à lui seul.
+ * P6-A.1 : remplace l'ancien seuil `MAX_GAP_CHARS`, qui autorisait une
+ * perte silencieuse (accepter un gap court sans le rattacher à rien).
  */
-const MAX_GAP_CHARS = 30
+const SEPARATOR_ONLY_RE = /^[\s.,;:!?…\-–—()'"«»]*$/u
+
+/**
+ * Lettre ou chiffre — un gap qui en contient au moins un porte du contenu
+ * métier potentiel et ne peut plus être silencieusement ignoré.
+ */
+const WORD_CHAR_RE = /[\p{L}\p{N}]/u
 
 /** Longueur max du texte soumis au LLM — garde de coût, pas une contrainte métier. */
 const MAX_INPUT_CHARS = 2000
@@ -183,25 +190,50 @@ export function parseDecomposition(rawText: string, raw: unknown): Decomposition
     if (dep < 0 || dep >= i) return null
   }
 
-  // Aucune perte silencieuse de texte métier : tout ce qui sépare deux
-  // segments (ou précède/suit) doit être inerte. On ne duplique pas les
-  // regex privées du routeur — on réutilise `detectIntent()` lui-même comme
-  // détecteur de « ce fragment contient-il un signal métier ? ». Un fragment
-  // inerte retombe en READ (Priorité 6, fallback) avec `signals` vide ; tout
-  // le reste (READ explicite, écriture, FACT, OBSERVATION, corrections…)
-  // pousse au moins un signal avant de retourner.
+  // Aucune perte silencieuse de texte métier : les offsets du LLM ne sont
+  // que des propositions de frontière, approximatives par construction — le
+  // texte original reste l'unique source de vérité (P6-A.1). Un gap
+  // purement séparateur (espace/ponctuation) reste hors segment, inchangé.
+  // Un gap qui porte du contenu (lettre/chiffre) n'est JAMAIS ignoré : s'il
+  // est collé — sans séparateur — à UN SEUL voisin, c'est une frontière mal
+  // placée au milieu d'un mot ou d'un groupe collé, et il lui est rattaché
+  // en entier (borne étendue). S'il touche les deux voisins, aucun des deux,
+  // ou porte un fragment métier autonome (détaché par des espaces), le
+  // rattachement est ambigu : le découpage entier est refusé, jamais résolu
+  // arbitrairement — l'appelant réplique alors vers le mono-segment, qui ne
+  // perd par construction aucun caractère.
   const cuts: number[] = [0]
   for (const seg of segments) cuts.push(seg.start, seg.end)
   cuts.push(textLen)
+
+  const adjusted = segments.map((s) => ({ ...s }))
+
   for (let i = 0; i < cuts.length; i += 2) {
-    const gap = rawText.slice(cuts[i], cuts[i + 1])
-    if (!gap.trim()) continue
-    if (gap.length > MAX_GAP_CHARS) return null
-    if (detectIntent(gap).signals.length > 0) return null
+    const gapStart = cuts[i]
+    const gapEnd = cuts[i + 1]
+    if (gapStart >= gapEnd) continue
+    const gap = rawText.slice(gapStart, gapEnd)
+    if (SEPARATOR_ONLY_RE.test(gap)) continue
+
+    const prevIdx = i / 2 - 1
+    const nextIdx = i / 2
+    const prevChar = gapStart > 0 ? rawText[gapStart - 1] : ''
+    const nextChar = gapEnd < textLen ? rawText[gapEnd] : ''
+    const gluedToPrev = prevIdx >= 0 && WORD_CHAR_RE.test(prevChar) && WORD_CHAR_RE.test(gap[0])
+    const gluedToNext =
+      nextIdx < adjusted.length && WORD_CHAR_RE.test(nextChar) && WORD_CHAR_RE.test(gap[gap.length - 1])
+
+    if (gluedToPrev && !gluedToNext) {
+      adjusted[prevIdx].end = gapEnd
+    } else if (gluedToNext && !gluedToPrev) {
+      adjusted[nextIdx].start = gapStart
+    } else {
+      return null
+    }
   }
 
   return {
-    segments: segments.map((s) => ({ start: s.start, end: s.end, dependsOn: s.dependsOn })),
+    segments: adjusted.map((s) => ({ start: s.start, end: s.end, dependsOn: s.dependsOn })),
     ambiguous: false,
   }
 }

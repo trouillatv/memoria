@@ -168,9 +168,76 @@ describe('parseDecomposition — aucune perte silencieuse de texte métier', () 
     expect(parseDecomposition(text, raw)).not.toBeNull()
   })
 
-  it('rejette un intervalle inerte mais trop long (perte potentielle)', () => {
-    const filler = 'x'.repeat(40) // inerte pour detectIntent, mais dépasse MAX_GAP_CHARS
+  it('rejette un intervalle inerte mais détaché des deux segments par des espaces (perte potentielle)', () => {
+    const filler = 'x'.repeat(40) // entouré d'espaces des deux côtés : collé à aucun voisin
     const text = `Le portail est cassé. ${filler} Rappelle le prestataire demain.`
+    const raw = {
+      segments: [seg(text, 'Le portail est cassé'), seg(text, 'Rappelle le prestataire demain')],
+      ambiguous: false,
+    }
+    expect(parseDecomposition(text, raw)).toBeNull()
+  })
+})
+
+// ── 1bis. Réconciliation des frontières approximatives du LLM (P6-A.1) ────────
+//
+// L'audit shadow terrain (2026-08-18, tours R4) a montré que le contrat
+// précédent (MAX_GAP_CHARS + detectIntent(gap)) pouvait accepter un
+// découpage tout en laissant des caractères du transcript hors de tout
+// segment — perdus silencieusement à la reconstruction. Les offsets du LLM
+// restent approximatifs par construction : le texte original est l'unique
+// source de vérité, et toute frontière mal placée doit soit être réparée
+// sans ambiguïté, soit faire échouer le découpage (repli mono-segment).
+
+describe('parseDecomposition — réconciliation des frontières approximatives du LLM (P6-A.1)', () => {
+  const tour1 = "Le regard R4 n'est pas terminé. Créer une action."
+  const tour2 = "Le regard R4 n'est toujours pas réglé. Rappel Bessie de"
+
+  it('frontière au milieu de "terminé" ("termin" | "é") → absorbée dans le segment gauche, rien n’est perdu', () => {
+    const cut = tour1.indexOf('terminé') + 'termin'.length
+    const raw = {
+      segments: [{ start: 0, end: cut, dependsOn: null }, seg(tour1, 'Créer une action')],
+      ambiguous: false,
+    }
+    const result = parseDecomposition(tour1, raw)
+    expect(result).not.toBeNull()
+    expect(result?.segments).toHaveLength(2)
+    const left = tour1.slice(result!.segments[0].start, result!.segments[0].end)
+    expect(left.trim()).toBe("Le regard R4 n'est pas terminé.")
+  })
+
+  it('frontière au milieu de "action." ("actio" | "n.") → absorbée sans perte, quelle que soit la borne proposée', () => {
+    const cut = tour1.indexOf('action') + 'actio'.length
+    const raw = {
+      segments: [
+        seg(tour1, "Le regard R4 n'est pas terminé"),
+        { start: tour1.indexOf('Créer'), end: cut, dependsOn: null },
+      ],
+      ambiguous: false,
+    }
+    const result = parseDecomposition(tour1, raw)
+    expect(result).not.toBeNull()
+    const right = tour1.slice(result!.segments[1].start, result!.segments[1].end)
+    expect(right).toBe('Créer une action.')
+  })
+
+  it('frontière au milieu de "Bessie" ("B" | "essie de") → "Bessie de" intégralement conservé (le problème STT en amont reste hors périmètre)', () => {
+    const cut = tour2.indexOf('Bessie') + 'B'.length
+    const raw = {
+      segments: [
+        seg(tour2, "Le regard R4 n'est toujours pas réglé"),
+        { start: tour2.indexOf('Rappel'), end: cut, dependsOn: null },
+      ],
+      ambiguous: false,
+    }
+    const result = parseDecomposition(tour2, raw)
+    expect(result).not.toBeNull()
+    const right = tour2.slice(result!.segments[1].start, result!.segments[1].end)
+    expect(right).toBe('Rappel Bessie de')
+  })
+
+  it('un gap métier autonome, détaché des deux segments par des espaces ("et le SSI reste ouvert") → split refusé, jamais absorbé arbitrairement', () => {
+    const text = 'Le portail est cassé. et le SSI reste ouvert Rappelle le prestataire demain.'
     const raw = {
       segments: [seg(text, 'Le portail est cassé'), seg(text, 'Rappelle le prestataire demain')],
       ambiguous: false,
