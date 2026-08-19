@@ -460,4 +460,144 @@ describe('P6-B — orchestration multi-intent (prepareCopilotAnswer réel)', () 
     // stripé et le titre commencerait par "Une action…", pas par le premier segment.
     expect(prep.result.proposal.title).toBe(question.trim())
   })
+
+  // ── Mandat Vincent (2026-08-19) — verrou sémantique commun de resolveWriteBranch ──
+  // hasWriteBlockingSemanticSignal() ne protégeait auparavant que la branche FACT
+  // (garde retirée, cf. lib/visits/copilot-free-prepare.ts). Le verrou est
+  // désormais posé en tête de resolveWriteBranch, avant toute branche métier, et
+  // s'applique quel que soit intentResult.intent. Les 6 tests suivants reprennent
+  // verbatim la liste transmise par Vincent.
+
+  // ── 1. CREATE_ACTION/strong + negated_assertion_claim → aucune proposition ──
+  it('verrou commun 1 : CREATE_ACTION/strong + negated_assertion_claim → aucune proposition', async () => {
+    const question = 'Je ne considère pas que le SSI soit réglé. Crée une action pour vérifier la grille demain.'
+    decomposeUtterance.mockResolvedValue({
+      segments: [{ start: 0, end: question.length, dependsOn: null }],
+      ambiguous: false,
+    })
+
+    const { prepareCopilotAnswer } = await import('@/lib/visits/copilot-free-prepare')
+    const prep = await prepareCopilotAnswer({ siteId: SITE_ID, question })
+
+    expect(prep.kind).toBe('result')
+    if (prep.kind !== 'result') throw new Error('unreachable')
+    expect(prep.result.kind).not.toBe('proposal')
+    expect(prep.result.kind).not.toBe('proposals')
+  })
+
+  // ── 2. CREATE_ACTION/strong + negated_write_verb → aucune proposition ───────
+  // negated_write_verb n'est posé par le routeur QUE lorsque isFullyNegatedWriteIntent()
+  // est vrai — aucune clause de la phrase ne porte de verbe d'écriture positif
+  // (copilot-intent-router.ts:405-421). Or CHAQUE branche 'strong' du routeur
+  // (CREATE_ACTION inclus, ligne 879) exclut elle-même !hasNegatedWrite avant de
+  // retourner : CREATE_ACTION/strong + negated_write_verb est donc structurellement
+  // inatteignable en sortie de detectIntent(). mergeComprehension ne peut pas non
+  // plus produire cette combinaison : son seul chemin de promotion vers une
+  // écriture (possible_write_refined) est lui-même bloqué par
+  // hasWriteBlockingSemanticSignal (copilot-comprehension.ts:427). Le plus proche
+  // équivalent réellement atteignable est UNKNOWN_WRITE/ambiguous (négation totale
+  // d'un seul verbe d'écriture) — ce test vérifie que le verrou couvre bien cet
+  // intent-là aussi, même si UNKNOWN_WRITE était déjà sûr par construction avant
+  // ce correctif (sa branche historique ne produit qu'une clarification). La
+  // propriété générale « n'importe quel intent, n'importe quel signal bloquant »
+  // reste couverte au niveau unitaire par hasWriteBlockingSemanticSignal
+  // (tests/lib/copilot-intent-router.test.ts, describe "propriété centrale sticky").
+  it('verrou commun 2 : UNKNOWN_WRITE/ambiguous + negated_write_verb → aucune proposition (verrou déclenché en premier)', async () => {
+    const question = "Ne crée pas d'action pour vérifier la grille."
+    decomposeUtterance.mockResolvedValue({
+      segments: [{ start: 0, end: question.length, dependsOn: null }],
+      ambiguous: false,
+    })
+
+    const { prepareCopilotAnswer } = await import('@/lib/visits/copilot-free-prepare')
+    const prep = await prepareCopilotAnswer({ siteId: SITE_ID, question })
+
+    expect(prep.kind).toBe('result')
+    if (prep.kind !== 'result') throw new Error('unreachable')
+    expect(prep.result.kind).not.toBe('proposal')
+    expect(prep.result.kind).not.toBe('proposals')
+    // Le texte prouve que c'est le NOUVEAU verrou commun qui a répondu, pas
+    // l'ancienne branche UNKNOWN_WRITE (qui renvoie "Je n'ai pas bien compris…").
+    expect(prep.result.kind).toBe('answer')
+    if (prep.result.kind !== 'answer') throw new Error('unreachable')
+    expect(prep.result.text).toContain('rejette une affirmation')
+  })
+
+  // ── 3. CREATE_WATCHPOINT/strong + signal bloquant → aucune proposition ──────
+  it('verrou commun 3 : CREATE_WATCHPOINT/strong + negated_assertion_claim → aucune proposition', async () => {
+    const question = 'Je ne considère pas que le SSI soit réglé. Surveille le SSI.'
+    decomposeUtterance.mockResolvedValue({
+      segments: [{ start: 0, end: question.length, dependsOn: null }],
+      ambiguous: false,
+    })
+
+    const { prepareCopilotAnswer } = await import('@/lib/visits/copilot-free-prepare')
+    const prep = await prepareCopilotAnswer({ siteId: SITE_ID, question })
+
+    expect(prep.kind).toBe('result')
+    if (prep.kind !== 'result') throw new Error('unreachable')
+    expect(prep.result.kind).not.toBe('proposal')
+    expect(prep.result.kind).not.toBe('proposals')
+  })
+
+  // ── 4. SCHEDULE_MEETING/strong + signal bloquant → aucune proposition ───────
+  it('verrou commun 4 : SCHEDULE_MEETING/strong + negated_assertion_claim → aucune proposition', async () => {
+    const question = 'Je ne considère pas que la réunion soit nécessaire. Planifie une réunion demain à 9h.'
+    decomposeUtterance.mockResolvedValue({
+      segments: [{ start: 0, end: question.length, dependsOn: null }],
+      ambiguous: false,
+    })
+
+    const { prepareCopilotAnswer } = await import('@/lib/visits/copilot-free-prepare')
+    const prep = await prepareCopilotAnswer({ siteId: SITE_ID, question })
+
+    expect(prep.kind).toBe('result')
+    if (prep.kind !== 'result') throw new Error('unreachable')
+    expect(prep.result.kind).not.toBe('proposal')
+    expect(prep.result.kind).not.toBe('proposals')
+  })
+
+  // ── 5. Témoins positifs identiques sans signal bloquant → propositions inchangées ──
+  it('verrou commun 5 : témoins positifs — CREATE_ACTION/CREATE_WATCHPOINT/SCHEDULE_MEETING sans négation → propositions inchangées', async () => {
+    const { prepareCopilotAnswer } = await import('@/lib/visits/copilot-free-prepare')
+
+    const cases: [string, string][] = [
+      ['Crée une action pour vérifier la grille demain.', 'action'],
+      ['Surveille le SSI.', 'watchpoint'],
+      ['Planifie une réunion demain à 9h.', 'schedule_meeting'],
+    ]
+
+    for (const [question, expectedKind] of cases) {
+      decomposeUtterance.mockResolvedValue({
+        segments: [{ start: 0, end: question.length, dependsOn: null }],
+        ambiguous: false,
+      })
+      const prep = await prepareCopilotAnswer({ siteId: SITE_ID, question })
+      expect(prep.kind).toBe('result')
+      if (prep.kind !== 'result') throw new Error('unreachable')
+      expect(prep.result.kind).toBe('proposal')
+      if (prep.result.kind !== 'proposal') throw new Error('unreachable')
+      expect(prep.result.proposal.kind).toBe(expectedKind)
+    }
+  })
+
+  // ── 6. Rejeu end-to-end de la phrase terrain exacte (tour [6], 2026-08-19) ──
+  it('verrou commun 6 : phrase terrain exacte tour [6], décomposition ambiguous:true/1 segment → jamais proposal', async () => {
+    const question = 'Je ne considère pas que R4 est réglé. Crée une action pour vérifier la grille demain.'
+    decomposeUtterance.mockResolvedValue({
+      segments: [{ start: 0, end: question.length, dependsOn: null }],
+      ambiguous: true,
+    })
+
+    const { prepareCopilotAnswer } = await import('@/lib/visits/copilot-free-prepare')
+    const prep = await prepareCopilotAnswer({ siteId: SITE_ID, question })
+
+    expect(prep.kind).toBe('result')
+    if (prep.kind !== 'result') throw new Error('unreachable')
+    expect(prep.result.kind).not.toBe('proposal')
+    expect(prep.result.kind).not.toBe('proposals')
+    expect(prep._diag.p6Decision).toBe('mono_fallback')
+    expect(prep._diag.p6FallbackReason).toBe('ambiguous_decomposition')
+    expect(prep._diag.p6ProposalCount).toBe(0)
+  })
 })

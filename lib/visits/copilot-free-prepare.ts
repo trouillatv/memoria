@@ -406,6 +406,31 @@ async function resolveWriteBranch(params: ResolveWriteBranchParams): Promise<{ k
     console.log('[copilot-trace] write', JSON.stringify({
       ...traceBase, branch: intentResult.intent, speculationDiscarded: prefetchSource !== null,
     }))
+
+    // ── Verrou sémantique commun (Vincent 2026-08-19, suite trou de sûreté P6-B) ──
+    // Jusqu'ici hasWriteBlockingSemanticSignal n'était vérifié que dans la
+    // branche FACT (ci-dessous, désormais retirée car redondante) et dans
+    // isP6MultiSegmentAdmissible (P6-B, par segment). Un repli mono après
+    // échec du décomposeur (`ambiguous_decomposition`) agrège plusieurs actes
+    // de langage dans un seul IntentResult — le nom de l'intent final
+    // (CREATE_ACTION, CREATE_WATCHPOINT…) ne dit alors plus si le TEXTE
+    // envoyé ici est sûr. « Je ne considère pas que R4 est réglé. Crée une
+    // action pour vérifier la grille demain. » sort du routeur en
+    // CREATE_ACTION/strong tout en portant negated_assertion_claim : sans ce
+    // verrou, la branche catch-all (plus bas) construisait une proposition
+    // sur la phrase entière, négation comprise. Le signal ne dit pas
+    // « cette phrase contient une négation », il dit « l'unité de texte
+    // actuellement évaluée ne doit pas être réinterprétée comme une
+    // commande » — donc le verrou porte sur l'entrée de resolveWriteBranch,
+    // avant toute branche métier, quel que soit intentResult.intent.
+    if (hasWriteBlockingSemanticSignal(intentResult.signals)) {
+      const text = "J'ai compris votre remarque, mais je n'ai rien enregistré : une partie de cette formulation rejette une affirmation plutôt que de la confirmer."
+      return {
+        kind: 'result',
+        result: { kind: 'answer', text, references: [], source: 'fallback', interactionId: null, spokenText: spokenFromShortAnswer(text) },
+      }
+    }
+
     // ── Intention non supportée (réserve, échéance…) ou ambiguë → clarification ──
     if (intentResult.intent === 'UNKNOWN_WRITE') {
       const hasUnsupported = intentResult.signals.includes('unsupported_object')
@@ -601,26 +626,10 @@ async function resolveWriteBranch(params: ResolveWriteBranchParams): Promise<{ k
     // — une ambiguïté ou une absence de résolution laisse simplement le
     // brouillon sans sujet associé plutôt que de redemander une clarification.
     //
-    // Garde negated_assertion_claim (Vincent 2026-08-19, suite du correctif
-    // fd25c5e6) : ce signal bloquait déjà le refinement vers une écriture
-    // (mergeComprehension), mais rien n'empêchait la branche FACT elle-même de
-    // matérialiser une carte de constat sur la proposition rejetée. « Je ne
-    // considère pas que R4 est réglé » produisait alors une carte « R4 est
-    // réglé » — un rejet de croyance transformé en fait à enregistrer. Le
-    // signal signifie « l'utilisateur refuse d'endosser cette proposition » :
-    // aucune carte ne doit en naître, ni la proposition telle quelle, ni son
-    // contraire construit automatiquement (¬P n'est pas une affirmation ferme
-    // de ¬P). hasWriteBlockingSemanticSignal couvre aussi negated_write_verb,
-    // si un FACT venait un jour à le porter : même doctrine, même sortie non
-    // mutante.
-    if (intentResult.intent === 'FACT' && hasWriteBlockingSemanticSignal(intentResult.signals)) {
-      const text = "J'ai compris votre remarque, mais je n'ai enregistré aucun constat : vous ne confirmez pas cette information."
-      return {
-        kind: 'result',
-        result: { kind: 'answer', text, references: [], source: 'fallback', interactionId: null, spokenText: spokenFromShortAnswer(text) },
-      }
-    }
-
+    // La garde negated_assertion_claim/negated_write_verb (ex-P4-C, ex-ligne
+    // dédiée ici) est désormais le verrou commun en tête de fonction — cette
+    // branche n'est atteinte que lorsque intentResult.signals ne porte aucun
+    // signal bloquant.
     if (intentResult.intent === 'FACT') {
       let factSubjectId: string | null = null
       let factSubjectLabel: string | null = null
