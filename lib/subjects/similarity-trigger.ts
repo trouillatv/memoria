@@ -23,24 +23,59 @@ import { runSimilarityAnalysisForSubjects } from './similarity-run'
 export interface IncrementalSimilarityTriggerParams {
   siteId: string
   touchedSubjectIds: string[]
+  /** Visite historique d'origine — si fournie, le statut du pipeline est persisté (mig 342, widget mémoire). */
+  siteReportId?: string | null
 }
 
 export async function triggerIncrementalSimilarityAnalysis(
   params: IncrementalSimilarityTriggerParams,
 ): Promise<void> {
-  const { siteId, touchedSubjectIds } = params
-  if (touchedSubjectIds.length === 0) return
+  const { siteId, touchedSubjectIds, siteReportId } = params
+  const supabase = createAdminClient()
+
+  const markStarted = async () => {
+    if (!siteReportId) return
+    await supabase
+      .from('site_reports')
+      .update({ similarity_analysis_started_at: new Date().toISOString() })
+      .eq('id', siteReportId)
+  }
+  const markCompleted = async (subjectCount: number) => {
+    if (!siteReportId) return
+    await supabase
+      .from('site_reports')
+      .update({
+        similarity_analysis_completed_at: new Date().toISOString(),
+        similarity_analysis_subject_count: subjectCount,
+        similarity_analysis_error: null,
+      })
+      .eq('id', siteReportId)
+  }
+  const markFailed = async (message: string) => {
+    if (!siteReportId) return
+    await supabase
+      .from('site_reports')
+      .update({ similarity_analysis_error: message })
+      .eq('id', siteReportId)
+  }
+
+  if (touchedSubjectIds.length === 0) {
+    await markStarted()
+    await markCompleted(0)
+    return
+  }
+
+  await markStarted()
 
   try {
     const subjects = await loadSimilarityContextSubjects(siteId)
-    if (subjects.length < 2) return
+    if (subjects.length < 2) { await markCompleted(subjects.length); return }
 
     const scopeSet = new Set(touchedSubjectIds)
     // Un sujet touché absent du contexte (hors périmètre métier, ou personne/entreprise)
     // ne bloque pas l'analyse des autres sujets touchés.
-    if (![...subjects].some((s) => scopeSet.has(s.forCandidates.id))) return
+    if (![...subjects].some((s) => scopeSet.has(s.forCandidates.id))) { await markCompleted(subjects.length); return }
 
-    const supabase = createAdminClient()
     const { data: rejected } = await supabase
       .from('canonical_subject_similarity_suggestion')
       .select('subject_a_id, subject_b_id')
@@ -62,7 +97,10 @@ export async function triggerIncrementalSimilarityAnalysis(
       `candidates=${summary.scopedCandidateCount}/${summary.candidateCount} ` +
       `persisted=${summary.persistedCount} errors=${summary.errorCount}`,
     )
+    await markCompleted(summary.subjectCount)
   } catch (err) {
-    console.error('[similarity-trigger] failed:', err instanceof Error ? err.message : String(err))
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[similarity-trigger] failed:', message)
+    await markFailed(message)
   }
 }

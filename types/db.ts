@@ -493,6 +493,20 @@ export interface DbSiteReport {
   deleted_at: string | null
   /** Run d'extraction IA source — posé à la matérialisation d'une visite historique (mig 258). */
   extraction_run_id?: string | null
+  /** Soft lock réconciliation canonique (mig 318+323). NULL = aucun run actif. */
+  canonical_reconcile_started_at?: string | null
+  /** Dernière réconciliation canonique réussie (mig 318). NULL = jamais effectuée ou en échec. */
+  canonical_reconciled_at?: string | null
+  /** Erreur de la dernière réconciliation canonique échouée (mig 318). NULL si succès. */
+  canonical_reconcile_error?: string | null
+  /** Début du pipeline de construction de mémoire (occurrences + similarité) (mig 342). */
+  similarity_analysis_started_at?: string | null
+  /** Fin réussie du pipeline de construction de mémoire (mig 342). NULL = en cours, jamais lancé, ou en échec. */
+  similarity_analysis_completed_at?: string | null
+  /** Erreur de la dernière exécution du pipeline de construction de mémoire (mig 342). Technique — jamais affichée telle quelle à l'utilisateur. */
+  similarity_analysis_error?: string | null
+  /** Nombre de sujets métier analysés lors de la dernière exécution réussie (mig 342). */
+  similarity_analysis_subject_count?: number | null
 }
 
 export type SiteReportAttachmentKind = 'audio' | 'photo' | 'file' | 'video'

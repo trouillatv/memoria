@@ -39,6 +39,7 @@ import { RegenerateNarrativeButton } from './RegenerateNarrativeButton'
 import { getVisitSourceDocument } from '@/lib/db/visit-source-document'
 import { VisitSourceDocumentCard } from './VisitSourceDocument'
 import { listProposalsByReport } from '@/lib/db/knowledge-proposals'
+import { MemoryBuildStatus } from './MemoryBuildStatus'
 
 export const dynamic = 'force-dynamic'
 
@@ -370,6 +371,18 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         <div className="min-w-0 flex-1 space-y-4">
           {/* ── ÉTAT DE L'ANALYSE — jamais un numéro de version ─────────────── */}
           <BandeauAnalyse enrichment={enrichment} visitId={visitId} crHref={crHref} isImport={isImport} />
+
+          {/* ── CONSTRUCTION DE LA MÉMOIRE — statut du pipeline occurrences + similarité (P1-A) ── */}
+          {isImport && runId && (
+            <MemoryBuildStatus
+              siteId={id}
+              siteReportId={visitId}
+              startedAt={visit.similarity_analysis_started_at ?? null}
+              completedAt={visit.similarity_analysis_completed_at ?? null}
+              error={visit.similarity_analysis_error ?? null}
+              subjectCount={visit.similarity_analysis_subject_count ?? null}
+            />
+          )}
 
           {/* ── RÉSUMÉ + LES QUATRE CHIFFRES ────────────────────────────────── */}
           <section className="rounded-xl border bg-card p-4 lg:flex lg:gap-6">

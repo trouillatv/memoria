@@ -1,15 +1,16 @@
 'use server'
 
+import { after } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { reviewProposal, linkProposalEvidence } from '@/lib/db/document-extractions'
 import { materializeHistoricalVisit } from '@/lib/db/historical-visit-materialization'
-import { ensureHistoricalPdfOccurrences } from '@/lib/db/canonical-subject-historical-occurrence'
 import { reconcileHistoricalPvCanonicalSubjects } from '@/lib/db/canonical-subject-historical-reconcile'
 import { decideReconcileLock, acquireReconcileLock } from '@/lib/db/canonical-subject-source-reconcile'
-import { triggerIncrementalSimilarityAnalysis } from '@/lib/subjects/similarity-trigger'
+import { runHistoricalMemoryBuildPipeline } from '@/lib/subjects/memory-build-pipeline'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType } from '@/types/db'
 
 type ActionResult = { ok: boolean; error?: string }
@@ -539,26 +540,24 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
     }
   }
 
-  // ── P0-B2 : occurrences canoniques historiques (fire-and-forget) ──────────
+  // ── P0-B2 + P1-A : construction de la mémoire (arrière-plan garanti) ──────
   // Alimente canonical_subject_occurrence avec source_kind='historical_pdf' pour
-  // que le moteur de relations puisse exploiter l'historique des PV importés.
+  // que le moteur de relations puisse exploiter l'historique des PV importés,
+  // puis déclenche l'analyse de similarité incrémentale — sujets touchés par ce
+  // PV × sujets actifs du chantier. Suggestions uniquement, jamais de fusion
+  // automatique. after() garantit l'exécution complète après la réponse HTTP
+  // (sans lui, Vercel peut tuer la fonction avant la fin du .then()).
   //
-  // P1-A : une fois les occurrences posées (getNavigableSubjectsForSite exige
-  // au moins une occurrence pour rendre un sujet visible), on déclenche l'analyse
-  // de similarité incrémentale — sujets touchés par ce PV × sujets actifs du
-  // chantier. Suggestions uniquement, jamais de fusion automatique.
-  void ensureHistoricalPdfOccurrences({
-    runId,
-    siteId,
-    siteReportId,
-    visitDate,
-  }).then(
-    () => {
-      if (touchedCanonicalSubjectIds.length > 0) {
-        void triggerIncrementalSimilarityAnalysis({ siteId, touchedSubjectIds: touchedCanonicalSubjectIds })
-      }
-    },
-    (err) => console.error('[review-actions] historical occurrences failed:', err instanceof Error ? err.message : String(err)),
+  // Écriture synchrone de similarity_analysis_started_at : le client redirige
+  // immédiatement vers la page de la visite (handleCreateVisit), qui doit déjà
+  // voir "en cours" sans dépendre du timing de after() sur la requête précédente.
+  await admin
+    .from('site_reports')
+    .update({ similarity_analysis_started_at: new Date().toISOString() })
+    .eq('id', siteReportId)
+
+  after(() =>
+    runHistoricalMemoryBuildPipeline({ runId, siteId, siteReportId, visitDate, touchedCanonicalSubjectIds }),
   )
 
   // ── Pipeline post-RPC : knowledge_fact → site_knowledge_entries ──────────
@@ -1091,4 +1090,80 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
   }
 
   return { ok: true, siteReportId, siteId }
+}
+
+// ─── Construction de la mémoire — réessai manuel ──────────────────────────────
+// Widget "MemorIA construit la mémoire du chantier" (P1-A, lot UI final) :
+// permet de relancer le pipeline occurrences + similarité après un échec,
+// sans redemander la canonicalisation des threads (déjà posée à la création
+// de la visite — subject_thread_identity existe déjà).
+
+export async function retryMemoryBuildAction(fd: FormData): Promise<ActionResult> {
+  const siteReportId = fd.get('site_report_id')?.toString()
+  if (!siteReportId) return { ok: false, error: 'Paramètres manquants' }
+
+  const admin = createAdminClient()
+
+  const { data: report } = await admin
+    .from('site_reports')
+    .select('id, site_id, extraction_run_id')
+    .eq('id', siteReportId)
+    .maybeSingle()
+  if (!report) return { ok: false, error: 'Visite introuvable' }
+
+  const siteId = (report as { site_id: string | null }).site_id
+  const runId = (report as { extraction_run_id: string | null }).extraction_run_id
+  if (!siteId || !runId) return { ok: false, error: "Cette visite n'est pas issue d'un import." }
+
+  const { data: run } = await admin
+    .from('document_extraction_run')
+    .select('document_id')
+    .eq('id', runId)
+    .maybeSingle()
+  const documentId = (run as { document_id: string | null } | null)?.document_id
+  if (!documentId) return { ok: false, error: 'Document source introuvable' }
+
+  const access = await verifyReviewAccess(documentId)
+  if (!access.ok) return { ok: false, error: access.error }
+
+  const { data: doc } = await admin
+    .from('documents')
+    .select('effective_date')
+    .eq('id', documentId)
+    .maybeSingle()
+  const visitDate = (doc as { effective_date: string | null } | null)?.effective_date
+  if (!visitDate) return { ok: false, error: "Date du PV introuvable" }
+
+  // Sujets canoniques touchés par ce run — recalculés via subject_thread_identity,
+  // déjà posée lors de la création de la visite (pas besoin de refaire la canonicalisation).
+  const { data: propsRaw } = await admin
+    .from('document_extraction_proposal')
+    .select('subject_thread_id')
+    .eq('extraction_run_id', runId)
+    .not('subject_thread_id', 'is', null)
+  const threadIds = [...new Set((propsRaw ?? []).map((p) => (p as { subject_thread_id: string }).subject_thread_id))]
+
+  let touchedCanonicalSubjectIds: string[] = []
+  if (threadIds.length > 0) {
+    const { data: stiRows } = await admin
+      .from('subject_thread_identity')
+      .select('canonical_subject_id')
+      .eq('site_id', siteId)
+      .in('subject_thread_id', threadIds)
+    touchedCanonicalSubjectIds = [...new Set((stiRows ?? []).map((r) => (r as { canonical_subject_id: string }).canonical_subject_id))]
+  }
+
+  // Écriture synchrone de l'état "démarré" : la lecture qui suit la soumission
+  // du formulaire (revalidatePath) doit déjà voir "en cours", sans attendre after().
+  await admin
+    .from('site_reports')
+    .update({ similarity_analysis_started_at: new Date().toISOString(), similarity_analysis_error: null })
+    .eq('id', siteReportId)
+
+  after(() =>
+    runHistoricalMemoryBuildPipeline({ runId, siteId, siteReportId, visitDate, touchedCanonicalSubjectIds }),
+  )
+
+  revalidatePath(`/sites/${siteId}/visites/${siteReportId}`)
+  return { ok: true }
 }

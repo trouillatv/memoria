@@ -396,6 +396,19 @@ export async function getSiteSuggestions(
 }
 
 /**
+ * Compte les suggestions pending pour un site (widget statut mémoire).
+ * Réutilise getSiteSuggestions pour garder le même filtrage (sujets actifs, score min).
+ */
+export async function getPendingSuggestionCount(
+  supabase: SupabaseClient,
+  siteId: string,
+  minScore = 50,
+): Promise<number> {
+  const suggestions = await getSiteSuggestions(supabase, siteId, minScore)
+  return suggestions.length
+}
+
+/**
  * Cherche une suggestion persistée pour une paire donnée (DnD fallback).
  * Retourne null si absente ou obsolète/rejetée.
  */
