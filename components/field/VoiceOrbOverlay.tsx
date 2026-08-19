@@ -970,29 +970,44 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
                   <stop offset="100%" stopColor="#9f1239" />
                 </radialGradient>
 
-                {/* Dégradé du TRAIT des filaments (Stade 1.1) — centré sur
-                    l'orbe (userSpaceOnUse, mêmes coordonnées que les <path>
+                {/* Dégradé du TRAIT des filaments (Stade 1.1, recalibré
+                    Stade 1.2) — centré sur l'orbe (userSpaceOnUse, mêmes
+                    coordonnées que les <path>
                     des filaments). Un seul objet statique porte trois
                     exigences à la fois : plus lumineux près du centre,
                     opacité dégressive vers la pointe, et une base qui se
                     fond dans le halo du noyau au lieu d'un bord net — sans
-                    aucun calcul par frame. */}
-                <radialGradient id="filamentStrokeGradient" gradientUnits="userSpaceOnUse" cx="56" cy="56" r="100">
+                    aucun calcul par frame.
+                    Recalibrage Stade 1.2 (audit `_audit-filaments-visibility`) :
+                    avec les nouvelles portées, la pointe d'une fibre bien
+                    déployée peut atteindre ~130 unités du centre — largement
+                    au-delà de l'ancien r=100, qui la faisait donc retomber
+                    purement et simplement sur le stop final (opacité 0),
+                    d'où des fibres qui « s'évaporaient ». r porté à 150 et
+                    stop final remonté à une opacité plancher non nulle :
+                    décroissance lumineuse jusqu'au bout, jamais une
+                    disparition prématurée. */}
+                <radialGradient id="filamentStrokeGradient" gradientUnits="userSpaceOnUse" cx="56" cy="56" r="150">
                   <stop offset="0%" stopColor="#f5f3ff" stopOpacity="1" />
-                  <stop offset="35%" stopColor="#c4b5fd" stopOpacity="0.85" />
-                  <stop offset="70%" stopColor="#8b5cf6" stopOpacity="0.35" />
-                  <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0" />
+                  <stop offset="30%" stopColor="#ded9fc" stopOpacity="0.94" />
+                  <stop offset="60%" stopColor="#c4b5fd" stopOpacity="0.74" />
+                  <stop offset="85%" stopColor="#a78bfa" stopOpacity="0.5" />
+                  <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.3" />
                 </radialGradient>
-                <radialGradient id="filamentStrokeGradientError" gradientUnits="userSpaceOnUse" cx="56" cy="56" r="100">
+                <radialGradient id="filamentStrokeGradientError" gradientUnits="userSpaceOnUse" cx="56" cy="56" r="150">
                   <stop offset="0%" stopColor="#fff1f2" stopOpacity="1" />
-                  <stop offset="35%" stopColor="#fda4af" stopOpacity="0.85" />
-                  <stop offset="70%" stopColor="#e11d48" stopOpacity="0.35" />
-                  <stop offset="100%" stopColor="#e11d48" stopOpacity="0" />
+                  <stop offset="30%" stopColor="#fecdd3" stopOpacity="0.94" />
+                  <stop offset="60%" stopColor="#fda4af" stopOpacity="0.74" />
+                  <stop offset="85%" stopColor="#fb7185" stopOpacity="0.5" />
+                  <stop offset="100%" stopColor="#e11d48" stopOpacity="0.3" />
                 </radialGradient>
 
-                {/* Lueur discrète du trait — flou léger, ressource statique. */}
-                <filter id="filamentGlow" x="-60%" y="-60%" width="220%" height="220%">
-                  <feGaussianBlur stdDeviation="0.55" />
+                {/* Lueur du trait — flou renforcé (Stade 1.2 : « surtout leur
+                    glow ») et région de filtre élargie en conséquence pour ne
+                    pas rogner le halo des fibres les plus longues. Toujours
+                    une ressource statique, coût zéro par frame. */}
+                <filter id="filamentGlow" x="-100%" y="-100%" width="300%" height="300%">
+                  <feGaussianBlur stdDeviation="0.95" />
                 </filter>
               </defs>
 
