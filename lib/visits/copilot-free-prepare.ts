@@ -44,7 +44,7 @@ import { extractKnowledgeCorrection } from '@/lib/visits/copilot-knowledge-corre
 import { listRecentCurrentInformationEntries } from '@/lib/db/site-memory-entries'
 import { buildCopilotProposal, buildScheduleProposal, buildObservationProposal, buildIdentityCorrectionProposal, buildFactProposal, buildRelationClaimProposal, buildWatchpointProposal, buildDeadlineProposal, buildReserveProposal, buildKnowledgeSupersessionProposal, buildKnowledgeArchiveProposal, type CopilotProposal } from '@/lib/visits/copilot-proposal'
 import { parseScheduleFromQuestion, toNomeaTimestamp } from '@/lib/visits/copilot-schedule-parse'
-import { detectIntent, readRemainsPlausible, type IntentResult } from '@/lib/visits/copilot-intent-router'
+import { detectIntent, readRemainsPlausible, hasWriteBlockingSemanticSignal, type IntentResult } from '@/lib/visits/copilot-intent-router'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logCopilotInteraction } from '@/lib/db/copilot-telemetry'
 import { scheduleDecomposeShadow } from '@/lib/visits/copilot-decompose-shadow'
@@ -600,6 +600,27 @@ async function resolveWriteBranch(params: ResolveWriteBranchParams): Promise<{ k
     // résolution de sujet est tentée à titre d'enrichissement, jamais bloquante
     // — une ambiguïté ou une absence de résolution laisse simplement le
     // brouillon sans sujet associé plutôt que de redemander une clarification.
+    //
+    // Garde negated_assertion_claim (Vincent 2026-08-19, suite du correctif
+    // fd25c5e6) : ce signal bloquait déjà le refinement vers une écriture
+    // (mergeComprehension), mais rien n'empêchait la branche FACT elle-même de
+    // matérialiser une carte de constat sur la proposition rejetée. « Je ne
+    // considère pas que R4 est réglé » produisait alors une carte « R4 est
+    // réglé » — un rejet de croyance transformé en fait à enregistrer. Le
+    // signal signifie « l'utilisateur refuse d'endosser cette proposition » :
+    // aucune carte ne doit en naître, ni la proposition telle quelle, ni son
+    // contraire construit automatiquement (¬P n'est pas une affirmation ferme
+    // de ¬P). hasWriteBlockingSemanticSignal couvre aussi negated_write_verb,
+    // si un FACT venait un jour à le porter : même doctrine, même sortie non
+    // mutante.
+    if (intentResult.intent === 'FACT' && hasWriteBlockingSemanticSignal(intentResult.signals)) {
+      const text = "J'ai compris votre remarque, mais je n'ai enregistré aucun constat : vous ne confirmez pas cette information."
+      return {
+        kind: 'result',
+        result: { kind: 'answer', text, references: [], source: 'fallback', interactionId: null, spokenText: spokenFromShortAnswer(text) },
+      }
+    }
+
     if (intentResult.intent === 'FACT') {
       let factSubjectId: string | null = null
       let factSubjectLabel: string | null = null
