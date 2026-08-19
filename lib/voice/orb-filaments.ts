@@ -46,17 +46,36 @@
 // remontés pour approcher 1,4–1,7× le rayon du noyau dans les phases
 // actives, et l'opacité est réduite (aspect semi-transparent, lumineux)
 // pour que le noyau reste dominant (~65-70 % du poids visuel).
+//
+// Stade 1.1 (mandat Vincent, 2026-08-19, quatrième passe) : le retour
+// géométrique persistait même après la correction de paramètres ci-dessus —
+// la cause n'était pas l'ampleur des paramètres mais la TECHNIQUE de rendu
+// elle-même. Un ruban rempli (polygone fermé, `fill`) a toujours une base
+// large et un contour net : à cette échelle il se lit comme un « triangle
+// collé au noyau », jamais comme une fibre. `buildRibbon` est donc remplacé
+// par `buildOpenPath` : un unique tracé de Bézier cubique OUVERT
+// (`M origine C ctrl1 ctrl2 pointe`), peint en `stroke` (jamais `fill`), à
+// largeur fine et CONSTANTE par filament (`strokeWidthFactor`, dérivé du
+// seul index — aucune modulation par le cycle de vie : ce qui « grandit »
+// pendant grow/hold reste la longueur et l'ondulation, jamais la largeur).
+// La luminosité centre→pointe, le fondu base-dans-le-halo et
+// `stroke-linecap: round` sont portés par le rendu (dégradé radial statique
+// + arrondi SVG côté VoiceOrbOverlay), pas par ce module : `computeFilaments`
+// n'a plus besoin de connaître la couleur, seulement la géométrie et une
+// largeur de trait.
 
 import type { VoiceBlobPhase } from './blob-shape'
 
 export type FilamentLayer = 'back' | 'front'
 
 export type Filament = {
-  /** Path SVG fermé (ruban effilé), ou chaîne vide si le filament est dormant — rien à peindre. */
+  /** Path SVG OUVERT (Bézier cubique, `M...C...`), destiné à être peint en `stroke` — jamais `fill`. Chaîne vide si le filament est dormant — rien à peindre. */
   d: string
   /** Constante par calque/phase — jamais utilisée pour faire apparaître/disparaître un filament. */
   opacity: number
   layer: FilamentLayer
+  /** Largeur de trait — constante pour un filament donné (dérivée de l'index, pas du cycle de vie). 0 si dormant. */
+  strokeWidth: number
 }
 
 export type ComputeFilamentsInput = {
@@ -259,7 +278,7 @@ type SlotGeometry = {
   driftPhase: number
   jitterFreq: number
   jitterPhase: number
-  baseWidthFactor: number
+  strokeWidthFactor: number
   envelope: EnvelopeShape
   layer: FilamentLayer
 }
@@ -303,11 +322,12 @@ function slotGeometry(i: number): SlotGeometry {
     driftPhase: i * 0.9,
     jitterFreq: (TWO_PI / 220) * (1 + (i % 4) * 0.31),
     jitterPhase: i * 2.1,
-    // Base nettement plus fine (retour téléphone : « trop épais, trop
-    // triangulaires ») — divisée par ~2,5 par rapport à la première passe,
-    // pour qu'un filament se lise comme une fibre et non un crochet planté
-    // dans le noyau.
-    baseWidthFactor: (isBranch ? 0.055 : 0.1) + ((i * 0.09) % 1) * (isBranch ? 0.025 : 0.045),
+    // Trait fin et CONSTANT (Stade 1.1) : ce n'est plus la largeur d'une base
+    // de ruban mais l'épaisseur uniforme du `stroke` sur toute la longueur du
+    // filament — d'où des facteurs nettement plus petits que l'ancien
+    // `baseWidthFactor`. Un filament se lit comme un trait lumineux flexible,
+    // pas comme une surface pleine attachée au noyau.
+    strokeWidthFactor: (isBranch ? 0.02 : 0.034) + ((i * 0.09) % 1) * (isBranch ? 0.01 : 0.018),
     envelope: { dormantFrac: dormantW / totalW, growFrac: growW / totalW, holdFrac: holdW / totalW },
     layer: FILAMENT_LAYERS[i],
   }
@@ -347,19 +367,6 @@ function cubicBezierPoint(
   ]
 }
 
-function cubicBezierTangent(
-  p0: [number, number], p1: [number, number], p2: [number, number], p3: [number, number], t: number,
-): [number, number] {
-  const mt = 1 - t
-  const a = 3 * mt * mt
-  const b = 6 * mt * t
-  const c = 3 * t * t
-  const dx = a * (p1[0] - p0[0]) + b * (p2[0] - p1[0]) + c * (p3[0] - p2[0])
-  const dy = a * (p1[1] - p0[1]) + b * (p2[1] - p1[1]) + c * (p3[1] - p2[1])
-  const len = Math.hypot(dx, dy) || 1
-  return [dx / len, dy / len]
-}
-
 type FilamentCurve = { origin: [number, number]; control1: [number, number]; control2: [number, number]; tip: [number, number] }
 
 function buildCurve(origin: [number, number], angle: number, length: number, bend: number, wobble1: number, wobble2: number): FilamentCurve {
@@ -383,27 +390,13 @@ function buildCurve(origin: [number, number], angle: number, length: number, ben
   return { origin, control1, control2, tip }
 }
 
-// Peu de points par courbe (contrainte de coût, Vincent 2026-08-19) : 5
-// échantillons suffisent pour un ruban qui a l'air effilé à cette échelle,
-// sans jamais rivaliser en coût avec un système à points multiples.
-const RIBBON_SAMPLES = 5
-
-/** Ruban effilé (fermé) le long de la centerline — base large raccordée au noyau, pointe fine. */
-function buildRibbon(curve: FilamentCurve, baseWidth: number, tipWidth: number): string {
-  const left: Array<[number, number]> = []
-  const right: Array<[number, number]> = []
-  for (let k = 0; k < RIBBON_SAMPLES; k++) {
-    const s = k / (RIBBON_SAMPLES - 1)
-    const p = cubicBezierPoint(curve.origin, curve.control1, curve.control2, curve.tip, s)
-    const [tx, ty] = cubicBezierTangent(curve.origin, curve.control1, curve.control2, curve.tip, s)
-    const nx = -ty
-    const ny = tx
-    const w = (baseWidth + (tipWidth - baseWidth) * smoothstep(s)) / 2
-    left.push([p[0] + nx * w, p[1] + ny * w])
-    right.push([p[0] - nx * w, p[1] - ny * w])
-  }
-  const pts = [...left, ...right.reverse()]
-  return `M${pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' L')}Z`
+/** Trace ouvert (Bézier cubique unique) le long de la centerline — destiné à être peint en `stroke`, jamais `fill`. Un seul segment : pas d'échantillonnage, coût minimal. */
+function buildOpenPath(curve: FilamentCurve): string {
+  const [ox, oy] = curve.origin
+  const [c1x, c1y] = curve.control1
+  const [c2x, c2y] = curve.control2
+  const [tx, ty] = curve.tip
+  return `M${ox.toFixed(2)},${oy.toFixed(2)} C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${tx.toFixed(2)},${ty.toFixed(2)}`
 }
 
 export function computeFilaments(input: ComputeFilamentsInput): Filament[] {
@@ -490,20 +483,19 @@ export function computeFilaments(input: ComputeFilamentsInput): Filament[] {
     }
 
     if (!curve) {
-      results.push({ d: '', opacity: 0, layer: slot.layer })
+      results.push({ d: '', opacity: 0, layer: slot.layer, strokeWidth: 0 })
       continue
     }
 
-    // Largeur ET longueur croissent ensemble depuis la base : un filament
-    // « sort » du noyau, il n'apparaît pas par transparence.
-    const baseWidth = input.coreRadius * slot.baseWidthFactor * smoothstep(Math.min(1, envelope * 1.3))
-    // Pointe fine mais non nulle — « effilée, jamais une pointe massive » :
-    // un ruban qui s'annule à zéro lirait comme une aiguille, pas une fibre.
-    const tipWidth = 0.85
-    const d = buildRibbon(curve, baseWidth, tipWidth)
+    // C'est la longueur (et l'ondulation portée par `buildCurve`) qui
+    // « sort » du noyau — plus la largeur : un trait fin et constant reste
+    // un trait, même en train de grandir. La largeur ne dépend donc plus de
+    // `envelope`.
+    const strokeWidth = input.coreRadius * slot.strokeWidthFactor
+    const d = buildOpenPath(curve)
     const opacityBase = slot.layer === 'front' ? activity.opacityFront : activity.opacityBack
 
-    results.push({ d, opacity: opacityBase, layer: slot.layer })
+    results.push({ d, opacity: opacityBase, layer: slot.layer, strokeWidth })
   }
 
   return results

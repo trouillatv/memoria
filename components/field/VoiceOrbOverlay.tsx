@@ -266,6 +266,7 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
           if (!el) continue
           el.setAttribute('d', filaments[i].d)
           el.setAttribute('opacity', String(filaments[i].opacity))
+          el.setAttribute('stroke-width', String(filaments[i].strokeWidth))
         }
       }
 
@@ -787,6 +788,13 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
   // <path> SVG (fill + filter) plutôt qu'à un <div> (background + boxShadow).
   // Rose en état d'erreur.
   const coreFill = isError ? 'url(#voiceBlobGradientError)' : 'url(#voiceBlobGradient)'
+  // Stade 1.1 : les filaments ne sont plus `fill`, mais `stroke` — un dégradé
+  // radial dédié, centré sur l'orbe, tient à lui seul trois exigences du
+  // retour téléphone : centre plus lumineux, opacité dégressive vers la
+  // pointe, et une base qui se fond dans le halo du noyau plutôt qu'un bord
+  // net (cf. les stops dans <defs>, plus bas). Coût : zéro par frame, c'est
+  // une ressource SVG statique.
+  const filamentStroke = isError ? 'url(#filamentStrokeGradientError)' : 'url(#filamentStrokeGradient)'
   const coreDropShadow = isError
     ? 'drop-shadow(0 0 22px rgba(225,29,72,0.38)) drop-shadow(0 0 44px rgba(225,29,72,0.12))'
     : 'drop-shadow(0 0 22px rgba(139,92,246,0.42)) drop-shadow(0 0 44px rgba(139,92,246,0.12))'
@@ -961,14 +969,50 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
                   <stop offset="55%" stopColor="#e11d48" />
                   <stop offset="100%" stopColor="#9f1239" />
                 </radialGradient>
+
+                {/* Dégradé du TRAIT des filaments (Stade 1.1) — centré sur
+                    l'orbe (userSpaceOnUse, mêmes coordonnées que les <path>
+                    des filaments). Un seul objet statique porte trois
+                    exigences à la fois : plus lumineux près du centre,
+                    opacité dégressive vers la pointe, et une base qui se
+                    fond dans le halo du noyau au lieu d'un bord net — sans
+                    aucun calcul par frame. */}
+                <radialGradient id="filamentStrokeGradient" gradientUnits="userSpaceOnUse" cx="56" cy="56" r="100">
+                  <stop offset="0%" stopColor="#f5f3ff" stopOpacity="1" />
+                  <stop offset="35%" stopColor="#c4b5fd" stopOpacity="0.85" />
+                  <stop offset="70%" stopColor="#8b5cf6" stopOpacity="0.35" />
+                  <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0" />
+                </radialGradient>
+                <radialGradient id="filamentStrokeGradientError" gradientUnits="userSpaceOnUse" cx="56" cy="56" r="100">
+                  <stop offset="0%" stopColor="#fff1f2" stopOpacity="1" />
+                  <stop offset="35%" stopColor="#fda4af" stopOpacity="0.85" />
+                  <stop offset="70%" stopColor="#e11d48" stopOpacity="0.35" />
+                  <stop offset="100%" stopColor="#e11d48" stopOpacity="0" />
+                </radialGradient>
+
+                {/* Lueur discrète du trait — flou léger, ressource statique. */}
+                <filter id="filamentGlow" x="-60%" y="-60%" width="220%" height="220%">
+                  <feGaussianBlur stdDeviation="0.55" />
+                </filter>
               </defs>
 
               {/* Filaments arrière — peints avant le noyau, qui les masque
                   partiellement : c'est ce masquage qui donne la profondeur
-                  avant/arrière (cf. FILAMENT_LAYERS, orb-filaments.ts). */}
-              <g>
+                  avant/arrière (cf. FILAMENT_LAYERS, orb-filaments.ts).
+                  Stade 1.1 : `stroke` (jamais `fill`) — un trait ouvert, pas
+                  un polygone. `strokeLinecap="round"` arrondit les deux
+                  extrémités, y compris la pointe : aucun bord pointu. */}
+              <g filter="url(#filamentGlow)">
                 {BACK_FILAMENT_INDICES.map((i) => (
-                  <path key={i} ref={(el) => { filamentRefs.current[i] = el }} fill={coreFill} d="" opacity={0} />
+                  <path
+                    key={i}
+                    ref={(el) => { filamentRefs.current[i] = el }}
+                    fill="none"
+                    stroke={filamentStroke}
+                    strokeLinecap="round"
+                    d=""
+                    opacity={0}
+                  />
                 ))}
               </g>
 
@@ -978,10 +1022,20 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
                 d={computeBlobPath({ time: 0, phase, audioLevel: 0, reducedMotion, size: 112 })}
               />
 
-              {/* Filaments avant — peints après le noyau, jamais masqués. */}
-              <g>
+              {/* Filaments avant — peints après le noyau. Le dégradé du trait
+                  reste translucide même ici : jamais l'impression de
+                  traverser physiquement une boule opaque. */}
+              <g filter="url(#filamentGlow)">
                 {FRONT_FILAMENT_INDICES.map((i) => (
-                  <path key={i} ref={(el) => { filamentRefs.current[i] = el }} fill={coreFill} d="" opacity={0} />
+                  <path
+                    key={i}
+                    ref={(el) => { filamentRefs.current[i] = el }}
+                    fill="none"
+                    stroke={filamentStroke}
+                    strokeLinecap="round"
+                    d=""
+                    opacity={0}
+                  />
                 ))}
               </g>
             </svg>

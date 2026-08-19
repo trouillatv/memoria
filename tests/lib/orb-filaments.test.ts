@@ -52,12 +52,14 @@ describe('computeFilaments — géométrie de base', () => {
     expect(a).toEqual(b)
   })
 
-  it('un filament actif produit un path fermé (M...Z)', () => {
+  it('un filament actif produit un tracé ouvert (M...C..., pas de fermeture Z)', () => {
     const active = findActiveFrame(0)
     expect(active).not.toBeNull()
     const filaments = computeFilaments(active!)
     expect(filaments[0].d.startsWith('M')).toBe(true)
-    expect(filaments[0].d.endsWith('Z')).toBe(true)
+    expect(filaments[0].d).toContain('C')
+    expect(filaments[0].d.endsWith('Z')).toBe(false)
+    expect(filaments[0].strokeWidth).toBeGreaterThan(0)
   })
 
   it('reste défini (ne lève pas) pour toutes les phases de la machine à états', () => {
@@ -144,14 +146,15 @@ describe('computeFilaments — ramifications', () => {
     // garanti par le code (cf. `maxLength` dans computeFilaments) est la
     // longueur PROPRE base→pointe du ruban.
     const chordLength = (d: string) => {
-      const nums = d.replace(/[MLZ]/g, '').split(/[, ]/).filter(Boolean).map(Number)
+      // Construit par buildOpenPath : `M ox,oy C c1x,c1y c2x,c2y tx,ty` — un
+      // seul segment, 4 points de contrôle. La longueur base→pointe (pas la
+      // distance au centre global) est la distance origine→pointe (pts[0]→pts[3]).
+      const nums = d.replace(/[MC]/g, '').split(/[, ]/).filter(Boolean).map(Number)
       const pts: Array<[number, number]> = []
       for (let i = 0; i < nums.length; i += 2) pts.push([nums[i], nums[i + 1]])
-      // Construit par buildRibbon : pts = [left(s=0..1), rightReversed(s=1..0)],
-      // RIBBON_SAMPLES=5 → left=pts[0..4], rightReversed=pts[5..9].
-      const baseMid: [number, number] = [(pts[0][0] + pts[9][0]) / 2, (pts[0][1] + pts[9][1]) / 2]
-      const tipMid: [number, number] = [(pts[4][0] + pts[5][0]) / 2, (pts[4][1] + pts[5][1]) / 2]
-      return Math.hypot(tipMid[0] - baseMid[0], tipMid[1] - baseMid[1])
+      const [ox, oy] = pts[0]
+      const [tx, ty] = pts[3]
+      return Math.hypot(tx - ox, ty - oy)
     }
     for (let t = 0; t < 20_000; t += 211) {
       const filaments = computeFilaments(base({ time: t, phase: 'thinking' }))
