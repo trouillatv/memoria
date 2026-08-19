@@ -1,0 +1,483 @@
+// Filaments énergétiques de l'orbe vocale — module pur, sans DOM, sans état
+// mutable partagé. Comme `blob-shape.ts`, `computeFilaments` n'évalue qu'une
+// fonction déterministe de (temps, phase, niveau audio) : la RAF de
+// l'appelant reste la seule boucle d'animation, et reste seule maîtresse du
+// budget de frame — ce module ne fait jamais d'`await`, ne pose aucun timer,
+// ne lit ni n'écrit le DOM.
+//
+// Direction (retour Vincent, 2026-08-19, deux passes) :
+//   - un unique path fermé ne peut pas représenter des filaments indépendants
+//     qui naissent, s'étirent, se rétractent et se ramifient — certains
+//     devant le noyau, d'autres derrière ;
+//   - « 7 filaments ≠ 7 tentacules visibles » : à un instant donné, seule une
+//     fraction du pool doit être active (quelques prolongements courts, 2-3
+//     plus affirmés), pas la totalité en permanence — d'où la phase DORMANT
+//     ci-dessous, absente de la toute première ébauche ;
+//   - un filament ne doit pas apparaître/disparaître par fondu d'opacité : il
+//     doit sortir physiquement du noyau (longueur ET largeur qui croissent
+//     ensemble depuis la base), vivre, puis y rentrer — d'où le rendu en
+//     ruban effilé (`buildRibbon`) et non plus un simple trait à largeur
+//     constante ;
+//   - les branches doivent être occasionnelles, naître d'un filament
+//     PRÉSENT (pas du noyau), rester plus courtes/fines que leur parent, et
+//     disparaître avec lui.
+//
+// Contrainte non négociable (Vincent, 2026-08-19, second retour) : ce module
+// reste décoratif et asynchrone du pipeline vocal. Aucun `Math.random()`,
+// aucun état React, un nombre fixe et petit de filaments (5 primaires + 2
+// ramifications), peu de points échantillonnés par courbe, aucune physique
+// ni collision. La dégradation sous charge (sauter le calcul des filaments
+// certaines frames) est la responsabilité de l'appelant — cf.
+// `orb-frame-budget.ts` — jamais de ce module, qui reste un pur calcul
+// géométrique sans notion de coût.
+//
+// Stade 1 (ce module) : squelette — géométrie, cycle de vie à quatre phases,
+// ramification gatée sur le parent, ruban effilé, calque avant/arrière,
+// réactivité de phase. Stade 2 (à venir, une fois le squelette validé au
+// téléphone) : petits points lumineux voyageant vers le noyau pendant
+// `thinking` et arcs de connexion transitoires entre deux pointes.
+
+import type { VoiceBlobPhase } from './blob-shape'
+
+export type FilamentLayer = 'back' | 'front'
+
+export type Filament = {
+  /** Path SVG fermé (ruban effilé), ou chaîne vide si le filament est dormant — rien à peindre. */
+  d: string
+  /** Constante par calque/phase — jamais utilisée pour faire apparaître/disparaître un filament. */
+  opacity: number
+  layer: FilamentLayer
+}
+
+export type ComputeFilamentsInput = {
+  /** Horodatage en ms — le `ts` de la RAF appelante, même horloge que le noyau. */
+  time: number
+  phase: VoiceBlobPhase
+  /** Niveau audio lissé [0,1] — même source que le noyau (`smoothedRef.current`). */
+  audioLevel: number
+  reducedMotion: boolean
+  centerX: number
+  centerY: number
+  /** Rayon de référence du noyau — ancre la base des filaments primaires nettement à l'intérieur de sa silhouette. */
+  coreRadius: number
+  /** Cf. `ComputeBlobPathInput` dans blob-shape.ts — même mécanique de fondu de phase. */
+  prevPhase?: VoiceBlobPhase | null
+  phaseElapsedMs?: number
+}
+
+export const PRIMARY_COUNT = 5
+export const BRANCH_COUNT = 2
+export const FILAMENT_COUNT = PRIMARY_COUNT + BRANCH_COUNT
+
+/** Calque avant/arrière par slot — dérivé de l'index, stable, exposé pour que
+ *  l'appelant partitionne son rendu (groupe `back` peint avant le noyau,
+ *  `front` après) sans dupliquer la géométrie interne. */
+export const FILAMENT_LAYERS: FilamentLayer[] = Array.from({ length: FILAMENT_COUNT }, (_, i) => (i % 3 === 0 ? 'back' : 'front'))
+
+const TWO_PI = Math.PI * 2
+const PHASE_TRANSITION_MS = 280
+/** Angle d'or (rad) — répartit les origines des filaments primaires sans les aligner. */
+const GOLDEN_ANGLE = 2.399963229728653
+/** En dessous, un filament est considéré dormant : rien n'est construit ni peint. */
+const RENDER_LENGTH_THRESHOLD = 1.2
+/** Un filament de ramification ne se montre que si son parent a déjà bien émergé. */
+const BRANCH_PARENT_THRESHOLD = 0.45
+
+type PhaseActivity = {
+  /** Multiplicateur global de la portée en régime établi (0..~1). */
+  reachScale: number
+  /** Portée additionnelle proportionnelle à `audioLevel` (écoute). */
+  audioReach: number
+  /** Amplitude du tremblement rapide (syllabes / vivacité) — aussi modulée par l'audio en écoute. */
+  jitterAmp: number
+  /** Multiplicateur de la dérive lente (flottement, changement de direction). */
+  driftMul: number
+  /** Multiplicateur de VITESSE de la dérive — indépendant de son amplitude (« lent » ≠ « peu ample »). */
+  driftSpeedMul: number
+  /** Visibilité additionnelle des filaments de ramification (avant gate sur le parent). */
+  branchBoost: number
+  /** Profondeur de la pulsation rythmique (parole, sans amplitude audio réelle en sortie). */
+  rhythmDepth: number
+  rhythmSpeedMs: number
+  opacityFront: number
+  opacityBack: number
+}
+
+const CALM: PhaseActivity = {
+  reachScale: 0.55, audioReach: 0, jitterAmp: 0.03, driftMul: 1, driftSpeedMul: 1,
+  branchBoost: 0.25, rhythmDepth: 0, rhythmSpeedMs: 0,
+  opacityFront: 0.56, opacityBack: 0.3,
+}
+
+// idle/ready/exiting partagent la respiration la plus neutre — cf. la même
+// convention dans blob-shape.ts (`RESTING`). Le cycle de vie tourne en
+// permanence quelle que soit la phase (cf. `lifeEnvelope`) : « déjà vivante,
+// disponible » ne dépend pas d'un déclenchement, seule l'AMPLITUDE en dépend.
+const PHASE_ACTIVITY: Record<VoiceBlobPhase, PhaseActivity> = {
+  idle: CALM,
+  ready: CALM,
+  exiting: CALM,
+  entering: {
+    reachScale: 0.62, audioReach: 0.08, jitterAmp: 0.045, driftMul: 1.05, driftSpeedMul: 1,
+    branchBoost: 0.3, rhythmDepth: 0, rhythmSpeedMs: 0,
+    opacityFront: 0.6, opacityBack: 0.34,
+  },
+  listening: {
+    // « les filaments deviennent sensibles au son » — la portée reste bornée
+    // par `audioReach`, la voix donne de la présence sans jamais faire
+    // « grossir l'ensemble » d'un bloc (cf. `jitterAmp` modulé par l'audio
+    // dans `computeFilaments`, pas ici).
+    reachScale: 0.7, audioReach: 0.55, jitterAmp: 0.09, driftMul: 1, driftSpeedMul: 1,
+    branchBoost: 0.32, rhythmDepth: 0, rhythmSpeedMs: 0,
+    opacityFront: 0.7, opacityBack: 0.38,
+  },
+  finalizing: {
+    // Baseline déjà resserrée ; le vrai retour vers le centre vient de
+    // `contractionPulse`, appliqué seulement dans les ~400 ms qui suivent la
+    // transition depuis `listening`. « ne fais pas tout disparaître » : la
+    // baseline reste non nulle.
+    reachScale: 0.34, audioReach: 0.06, jitterAmp: 0.035, driftMul: 0.75, driftSpeedMul: 1,
+    branchBoost: 0.15, rhythmDepth: 0, rhythmSpeedMs: 0,
+    opacityFront: 0.5, opacityBack: 0.26,
+  },
+  sending: {
+    reachScale: 0.36, audioReach: 0.05, jitterAmp: 0.03, driftMul: 0.7, driftSpeedMul: 1,
+    branchBoost: 0.15, rhythmDepth: 0, rhythmSpeedMs: 0,
+    opacityFront: 0.48, opacityBack: 0.25,
+  },
+  thinking: {
+    // « déplacements LENTS, changements de direction » — vitesse de dérive
+    // réduite (`driftSpeedMul`), pas amplifiée : la sensation recherchée est
+    // exploratoire, pas nerveuse. Les ramifications sont « un peu plus
+    // présentes », pas maximales.
+    reachScale: 0.78, audioReach: 0, jitterAmp: 0.05, driftMul: 1.25, driftSpeedMul: 0.55,
+    branchBoost: 0.7, rhythmDepth: 0, rhythmSpeedMs: 0,
+    opacityFront: 0.76, opacityBack: 0.44,
+  },
+  speaking: {
+    // Pas d'amplitude audio réelle en sortie (le micro ne mesure pas la
+    // synthèse vocale). `rhythmDepth` reste faible et déphasé par filament
+    // (cf. `computeFilaments`) : « un mouvement plus ouvert, PAS une simple
+    // pulsation » — si tous les filaments gonflaient à l'unisson, ce serait
+    // exactement l'effet à éviter.
+    reachScale: 0.82, audioReach: 0, jitterAmp: 0.075, driftMul: 1.5, driftSpeedMul: 1.1,
+    branchBoost: 0.42, rhythmDepth: 0.14, rhythmSpeedMs: 0.0045,
+    opacityFront: 0.74, opacityBack: 0.4,
+  },
+  error: {
+    reachScale: 0.34, audioReach: 0, jitterAmp: 0.02, driftMul: 0.6, driftSpeedMul: 1,
+    branchBoost: 0.1, rhythmDepth: 0, rhythmSpeedMs: 0,
+    opacityFront: 0.4, opacityBack: 0.2,
+  },
+}
+
+const REDUCED_JITTER = 0.2
+const REDUCED_DRIFT = 0.4
+const REDUCED_REACH = 0.7
+
+function smoothstep(x: number): number {
+  if (x <= 0) return 0
+  if (x >= 1) return 1
+  return x * x * (3 - 2 * x)
+}
+
+function resolveActivity(phase: VoiceBlobPhase): PhaseActivity {
+  return PHASE_ACTIVITY[phase] ?? CALM
+}
+
+function blendActivity(a: PhaseActivity, b: PhaseActivity, t: number): PhaseActivity {
+  const m = smoothstep(t)
+  const lerp = (x: number, y: number) => x + (y - x) * m
+  return {
+    reachScale: lerp(a.reachScale, b.reachScale),
+    audioReach: lerp(a.audioReach, b.audioReach),
+    jitterAmp: lerp(a.jitterAmp, b.jitterAmp),
+    driftMul: lerp(a.driftMul, b.driftMul),
+    driftSpeedMul: lerp(a.driftSpeedMul, b.driftSpeedMul),
+    branchBoost: lerp(a.branchBoost, b.branchBoost),
+    rhythmDepth: lerp(a.rhythmDepth, b.rhythmDepth),
+    rhythmSpeedMs: lerp(a.rhythmSpeedMs, b.rhythmSpeedMs),
+    opacityFront: lerp(a.opacityFront, b.opacityFront),
+    opacityBack: lerp(a.opacityBack, b.opacityBack),
+  }
+}
+
+function resolveActivityBlend(input: ComputeFilamentsInput): PhaseActivity {
+  const current = resolveActivity(input.phase)
+  const elapsed = input.phaseElapsedMs ?? PHASE_TRANSITION_MS
+  if (!input.prevPhase || input.prevPhase === input.phase || elapsed >= PHASE_TRANSITION_MS) {
+    return current
+  }
+  const previous = resolveActivity(input.prevPhase)
+  return blendActivity(previous, current, elapsed / PHASE_TRANSITION_MS)
+}
+
+/**
+ * Pulsation de contraction : un creux bref (~400 ms) juste après une
+ * transition listening → finalizing, avant de relâcher vers la baseline de
+ * `finalizing`. « comme si l'information était absorbée » — mais jamais à
+ * zéro : `1 - 0.5*dip` garde toujours une présence minimale.
+ */
+function contractionPulse(input: ComputeFilamentsInput): number {
+  if (input.phase !== 'finalizing' || input.prevPhase !== 'listening') return 1
+  const elapsed = input.phaseElapsedMs ?? 999
+  const WINDOW = 400
+  if (elapsed >= WINDOW) return 1
+  const x = elapsed / WINDOW
+  const dip = Math.sin(Math.PI * smoothstep(Math.min(1, x / 0.5))) * (1 - smoothstep(x))
+  return 1 - 0.5 * dip
+}
+
+type EnvelopeShape = { dormantFrac: number; growFrac: number; holdFrac: number }
+
+type SlotGeometry = {
+  isBranch: boolean
+  parentIndex: number
+  parentT: number
+  baseAngle: number
+  cycleMs: number
+  offsetMs: number
+  maxReachFactor: number
+  bend: number
+  bendFreq1: number
+  bendFreq2: number
+  bendPhase1: number
+  bendPhase2: number
+  driftFreq: number
+  driftAmp: number
+  driftPhase: number
+  jitterFreq: number
+  jitterPhase: number
+  baseWidthFactor: number
+  envelope: EnvelopeShape
+  layer: FilamentLayer
+}
+
+/** Dérive tous les paramètres d'un slot depuis son seul index — déterministe, aucun tirage par frame. */
+function slotGeometry(i: number): SlotGeometry {
+  const isBranch = i >= PRIMARY_COUNT
+  const parentIndex = isBranch ? ((i - PRIMARY_COUNT) * 2) % PRIMARY_COUNT : -1
+
+  // Poids relatifs (pas des fractions directement) : la normalisation par le
+  // total garantit dormant+grow+hold+retract = 1 sans jamais produire de
+  // rétraction négative, quelle que soit la variation par slot ci-dessous.
+  const dormantW = isBranch ? 5.2 + (i % 3) * 0.6 : 3.0 + (i % 4) * 0.5
+  const growW = isBranch ? 0.6 + (i % 2) * 0.2 : 0.9 + (i % 3) * 0.15
+  const holdW = isBranch ? 0.9 + (i % 3) * 0.25 : 1.7 + (i % 3) * 0.3
+  const retractW = isBranch ? 0.8 + (i % 2) * 0.2 : 1.3 + (i % 2) * 0.25
+  const totalW = dormantW + growW + holdW + retractW
+
+  return {
+    isBranch,
+    parentIndex,
+    parentT: 0.5 + ((i * 0.13) % 0.22),
+    baseAngle: (i * GOLDEN_ANGLE) % TWO_PI,
+    cycleMs: (isBranch ? 2600 : 3400) + ((i * 733) % 2700),
+    offsetMs: (i * 1187) % 5000,
+    maxReachFactor: (isBranch ? 0.4 : 1.15) + ((i * 0.37) % 1) * (isBranch ? 0.3 : 0.65),
+    bend: (i % 2 === 0 ? 1 : -1) * (0.18 + ((i * 0.05) % 0.22)),
+    bendFreq1: (TWO_PI / 2600) * (1 + i * 0.09),
+    bendFreq2: (TWO_PI / 1900) * (1 + i * 0.07),
+    bendPhase1: i * 0.7,
+    bendPhase2: i * 1.3 + 0.4,
+    driftFreq: (TWO_PI / 6200) * (1 + i * 0.05),
+    driftAmp: 0.12 + ((i * 0.11) % 1) * 0.1,
+    driftPhase: i * 0.9,
+    jitterFreq: (TWO_PI / 220) * (1 + (i % 4) * 0.31),
+    jitterPhase: i * 2.1,
+    baseWidthFactor: (isBranch ? 0.16 : 0.28) + ((i * 0.09) % 1) * (isBranch ? 0.06 : 0.1),
+    envelope: { dormantFrac: dormantW / totalW, growFrac: growW / totalW, holdFrac: holdW / totalW },
+    layer: FILAMENT_LAYERS[i],
+  }
+}
+
+/**
+ * Enveloppe de cycle de vie [0,1] à QUATRE phases : dormant (rien, rentré
+ * dans le noyau) → croissance → tenue → rétraction, périodique. La phase
+ * dormante est ce qui garantit qu'à un instant donné seule une fraction du
+ * pool est visible — pas les 7 filaments en permanence.
+ */
+function lifeEnvelope(time: number, slot: SlotGeometry): number {
+  const t = ((time + slot.offsetMs) % slot.cycleMs + slot.cycleMs) % slot.cycleMs
+  const x = t / slot.cycleMs
+  const { dormantFrac, growFrac, holdFrac } = slot.envelope
+  if (x < dormantFrac) return 0
+  const xg = x - dormantFrac
+  if (xg < growFrac) return smoothstep(xg / growFrac)
+  const xh = xg - growFrac
+  if (xh < holdFrac) return 1
+  const retractFrac = 1 - dormantFrac - growFrac - holdFrac
+  const xr = xh - holdFrac
+  return 1 - smoothstep(xr / Math.max(0.001, retractFrac))
+}
+
+function cubicBezierPoint(
+  p0: [number, number], p1: [number, number], p2: [number, number], p3: [number, number], t: number,
+): [number, number] {
+  const mt = 1 - t
+  const a = mt * mt * mt
+  const b = 3 * mt * mt * t
+  const c = 3 * mt * t * t
+  const d = t * t * t
+  return [
+    a * p0[0] + b * p1[0] + c * p2[0] + d * p3[0],
+    a * p0[1] + b * p1[1] + c * p2[1] + d * p3[1],
+  ]
+}
+
+function cubicBezierTangent(
+  p0: [number, number], p1: [number, number], p2: [number, number], p3: [number, number], t: number,
+): [number, number] {
+  const mt = 1 - t
+  const a = 3 * mt * mt
+  const b = 6 * mt * t
+  const c = 3 * t * t
+  const dx = a * (p1[0] - p0[0]) + b * (p2[0] - p1[0]) + c * (p3[0] - p2[0])
+  const dy = a * (p1[1] - p0[1]) + b * (p2[1] - p1[1]) + c * (p3[1] - p2[1])
+  const len = Math.hypot(dx, dy) || 1
+  return [dx / len, dy / len]
+}
+
+type FilamentCurve = { origin: [number, number]; control1: [number, number]; control2: [number, number]; tip: [number, number] }
+
+function buildCurve(origin: [number, number], angle: number, length: number, bend: number, wobble1: number, wobble2: number): FilamentCurve {
+  const [ox, oy] = origin
+  const dx = Math.cos(angle)
+  const dy = Math.sin(angle)
+  const px = -dy
+  const py = dx
+  const tip: [number, number] = [ox + dx * length, oy + dy * length]
+  const control1: [number, number] = [
+    ox + dx * length * 0.33 + px * bend * length * 0.35 * wobble1,
+    oy + dy * length * 0.33 + py * bend * length * 0.35 * wobble1,
+  ]
+  const control2: [number, number] = [
+    ox + dx * length * 0.66 - px * bend * length * 0.3 * wobble2,
+    oy + dy * length * 0.66 - py * bend * length * 0.3 * wobble2,
+  ]
+  return { origin, control1, control2, tip }
+}
+
+// Peu de points par courbe (contrainte de coût, Vincent 2026-08-19) : 5
+// échantillons suffisent pour un ruban qui a l'air effilé à cette échelle,
+// sans jamais rivaliser en coût avec un système à points multiples.
+const RIBBON_SAMPLES = 5
+
+/** Ruban effilé (fermé) le long de la centerline — base large raccordée au noyau, pointe fine. */
+function buildRibbon(curve: FilamentCurve, baseWidth: number, tipWidth: number): string {
+  const left: Array<[number, number]> = []
+  const right: Array<[number, number]> = []
+  for (let k = 0; k < RIBBON_SAMPLES; k++) {
+    const s = k / (RIBBON_SAMPLES - 1)
+    const p = cubicBezierPoint(curve.origin, curve.control1, curve.control2, curve.tip, s)
+    const [tx, ty] = cubicBezierTangent(curve.origin, curve.control1, curve.control2, curve.tip, s)
+    const nx = -ty
+    const ny = tx
+    const w = (baseWidth + (tipWidth - baseWidth) * smoothstep(s)) / 2
+    left.push([p[0] + nx * w, p[1] + ny * w])
+    right.push([p[0] - nx * w, p[1] - ny * w])
+  }
+  const pts = [...left, ...right.reverse()]
+  return `M${pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' L')}Z`
+}
+
+export function computeFilaments(input: ComputeFilamentsInput): Filament[] {
+  const activity = resolveActivityBlend(input)
+  const audioLevel = Math.min(1, Math.max(0, input.audioLevel))
+  const contraction = contractionPulse(input)
+  const reducedMotion = input.reducedMotion
+
+  // L'audio module la vivacité locale (courbure, tremblement) en écoute,
+  // jamais un simple facteur d'échelle global — cf. retour Vincent : « la
+  // voix ne doit plus simplement faire grossir l'ensemble ».
+  const jitterAudioBoost = 1 + audioLevel * activity.audioReach
+  const jitterAmp = activity.jitterAmp * jitterAudioBoost * (reducedMotion ? REDUCED_JITTER : 1)
+  const driftMul = activity.driftMul * (reducedMotion ? REDUCED_DRIFT : 1)
+  const reachMul = reducedMotion ? REDUCED_REACH : 1
+
+  const primaryCurves: Array<FilamentCurve | null> = new Array(PRIMARY_COUNT).fill(null)
+  const primaryLengths: number[] = new Array(PRIMARY_COUNT).fill(0)
+  const primaryEnvelopes: number[] = new Array(PRIMARY_COUNT).fill(0)
+
+  const results: Filament[] = []
+
+  for (let i = 0; i < FILAMENT_COUNT; i++) {
+    const slot = slotGeometry(i)
+    const life = lifeEnvelope(input.time, slot)
+
+    // Respiration légère pendant la tenue — sans quoi un filament « affirmé »
+    // reste figé pendant toute sa phase HOLD.
+    const breathe = 1 + 0.05 * Math.sin(input.time * slot.driftFreq * 1.7 + slot.driftPhase)
+
+    const drift = slot.driftAmp * driftMul * Math.sin(input.time * activity.driftSpeedMul * slot.driftFreq + slot.driftPhase)
+    const jitter = jitterAmp * Math.sin(input.time * slot.jitterFreq + slot.jitterPhase)
+    const rhythm =
+      activity.rhythmDepth > 0
+        // Déphasé par filament (`slot.driftPhase`) : plusieurs rubans qui
+        // respirent à des instants différents, jamais une seule pulsation
+        // synchronisée sur l'ensemble du pool.
+        ? 1 + activity.rhythmDepth * (0.5 + 0.5 * Math.sin(input.time * activity.rhythmSpeedMs + slot.driftPhase * 3))
+        : 1
+
+    let envelope: number
+    let origin: [number, number] | null = null
+    let parentCurve: FilamentCurve | null = null
+    let maxLength: number | null = null
+
+    if (!slot.isBranch) {
+      envelope = life
+      origin = [
+        input.centerX + input.coreRadius * 0.82 * Math.cos(slot.baseAngle),
+        input.centerY + input.coreRadius * 0.82 * Math.sin(slot.baseAngle),
+      ]
+    } else {
+      const parentEnvelope = primaryEnvelopes[slot.parentIndex] ?? 0
+      const gate = smoothstep((parentEnvelope - BRANCH_PARENT_THRESHOLD) / (1 - BRANCH_PARENT_THRESHOLD))
+      envelope = life * gate * Math.min(1, activity.branchBoost * 1.3)
+      parentCurve = primaryCurves[slot.parentIndex]
+      if (parentCurve) {
+        origin = cubicBezierPoint(parentCurve.origin, parentCurve.control1, parentCurve.control2, parentCurve.tip, slot.parentT)
+        // Toujours plus courte que son parent — pas seulement en moyenne.
+        maxLength = Math.max(0, (primaryLengths[slot.parentIndex] ?? 0) * 0.55)
+      }
+    }
+
+    const audioBoost = slot.isBranch ? activity.audioReach * 0.4 : activity.audioReach
+    const reachFactor =
+      slot.maxReachFactor * envelope * activity.reachScale * reachMul * contraction * rhythm * breathe +
+      audioBoost * audioLevel * envelope
+
+    const angle = slot.baseAngle + drift + jitter
+    let length = Math.max(0, input.coreRadius * reachFactor)
+    if (maxLength != null) length = Math.min(length, maxLength)
+
+    let curve: FilamentCurve | null = null
+    if (origin && length > RENDER_LENGTH_THRESHOLD && (!slot.isBranch || parentCurve)) {
+      const wobble1 = Math.sin(input.time * slot.bendFreq1 + slot.bendPhase1)
+      const wobble2 = Math.sin(input.time * slot.bendFreq2 + slot.bendPhase2)
+      curve = buildCurve(origin, angle, length, slot.bend, wobble1, wobble2)
+    }
+
+    if (!slot.isBranch) {
+      primaryCurves[i] = curve
+      primaryLengths[i] = length
+      primaryEnvelopes[i] = envelope
+    }
+
+    if (!curve) {
+      results.push({ d: '', opacity: 0, layer: slot.layer })
+      continue
+    }
+
+    // Largeur ET longueur croissent ensemble depuis la base : un filament
+    // « sort » du noyau, il n'apparaît pas par transparence.
+    const baseWidth = input.coreRadius * slot.baseWidthFactor * smoothstep(Math.min(1, envelope * 1.3))
+    const tipWidth = 1.1
+    const d = buildRibbon(curve, baseWidth, tipWidth)
+    const opacityBase = slot.layer === 'front' ? activity.opacityFront : activity.opacityBack
+
+    results.push({ d, opacity: opacityBase, layer: slot.layer })
+  }
+
+  return results
+}

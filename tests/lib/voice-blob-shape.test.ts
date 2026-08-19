@@ -64,11 +64,15 @@ describe('computeBlobPath — silhouette', () => {
   it('borne fermement le facteur de rayon, même à audioLevel extrême', () => {
     const path = computeBlobPath(base({ phase: 'listening', audioLevel: 1, time: 999_999 }))
     const center = SIZE / 2
+    // Tolérance élargie à ~1e-4 : `pointsToClosedPath` sérialise les
+    // coordonnées avec `toFixed(2)`, donc reconstruire le facteur à partir du
+    // path perd déjà ~0.005px par coordonnée avant même de comparer au clamp.
+    const roundTripEpsilon = 2e-4
     for (const [x, y] of parsePoints(path)) {
       const r = Math.hypot(x - center, y - center)
       const factor = r / center
-      expect(factor).toBeGreaterThanOrEqual(MIN_BLOB_FACTOR - 1e-9)
-      expect(factor).toBeLessThanOrEqual(MAX_BLOB_FACTOR + 1e-9)
+      expect(factor).toBeGreaterThanOrEqual(MIN_BLOB_FACTOR - roundTripEpsilon)
+      expect(factor).toBeLessThanOrEqual(MAX_BLOB_FACTOR + roundTripEpsilon)
     }
   })
 

@@ -99,7 +99,7 @@ type PhaseParams = {
 
 const RESTING: PhaseParams = {
   baseScale: 1.0,
-  restAmplitude: 0.02,
+  restAmplitude: 0.07,
   audioAmplitude: 0,
   audioScale: 0,
   internalAmplitude: 0,
@@ -111,13 +111,22 @@ const RESTING: PhaseParams = {
 // Table phase → paramètres. `idle`/`ready`/`exiting` partagent la respiration
 // la plus neutre : `idle` ne rend jamais rien côté composant (l'overlay est
 // démonté), mais la fonction doit rester définie pour toute valeur du type.
+//
+// Recalibrage post-recette téléphone (retour Vincent, 2026-08-19) : la
+// première passe (restAmplitude ~0.02, audioAmplitude listening 0.12) était
+// sous le seuil de perception à 112px — une capture au repos ressemblait à un
+// cercle parfait. `restAmplitude` de chaque phase est remontée en conservant
+// son ratio relatif à `RESTING` ; seul `listening.audioAmplitude` (voix) et
+// `thinking`/`speaking.internalAmplitude` (mouvement interne) sont montés
+// séparément, sur demande explicite. Fréquences, `baseScale` et clamps
+// inchangés.
 const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
   idle: RESTING,
   ready: RESTING,
   exiting: RESTING,
   entering: {
     baseScale: 1.0,
-    restAmplitude: 0.026,
+    restAmplitude: 0.09,
     audioAmplitude: 0.05,
     audioScale: 0.02,
     internalAmplitude: 0.015,
@@ -127,8 +136,8 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
   },
   listening: {
     baseScale: 1.0,
-    restAmplitude: 0.022,
-    audioAmplitude: 0.12,
+    restAmplitude: 0.08,
+    audioAmplitude: 0.24,
     audioScale: 0.03,
     internalAmplitude: 0,
     rotationSpeed: 0,
@@ -137,7 +146,7 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
   },
   finalizing: {
     baseScale: 0.94,
-    restAmplitude: 0.02,
+    restAmplitude: 0.07,
     audioAmplitude: 0.06,
     audioScale: 0.02,
     internalAmplitude: 0.01,
@@ -147,7 +156,7 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
   },
   sending: {
     baseScale: 0.94,
-    restAmplitude: 0.02,
+    restAmplitude: 0.07,
     audioAmplitude: 0.06,
     audioScale: 0.02,
     internalAmplitude: 0.01,
@@ -157,27 +166,27 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
   },
   thinking: {
     baseScale: 0.9,
-    restAmplitude: 0.016,
+    restAmplitude: 0.06,
     audioAmplitude: 0,
     audioScale: 0,
-    internalAmplitude: 0.055,
+    internalAmplitude: 0.083,
     rotationSpeed: 0.00035,
     rhythmDepth: 0,
     rhythmSpeed: 0,
   },
   speaking: {
     baseScale: 0.95,
-    restAmplitude: 0.018,
+    restAmplitude: 0.06,
     audioAmplitude: 0,
     audioScale: 0,
-    internalAmplitude: 0.045,
+    internalAmplitude: 0.068,
     rotationSpeed: 0.00012,
     rhythmDepth: 0.35,
     rhythmSpeed: 0.0045,
   },
   error: {
     baseScale: 1.0,
-    restAmplitude: 0.012,
+    restAmplitude: 0.04,
     audioAmplitude: 0,
     audioScale: 0,
     internalAmplitude: 0.008,

@@ -26,6 +26,9 @@ import {
 import { markVoice } from '@/lib/voice/voice-latency'
 import { beginVoiceTurn, traceVoice } from '@/lib/voice/voice-trace'
 import { computeBlobPath, type VoiceBlobPhase } from '@/lib/voice/blob-shape'
+import { computeFilaments, FILAMENT_COUNT, FILAMENT_LAYERS } from '@/lib/voice/orb-filaments'
+import { createFrameBudget } from '@/lib/voice/orb-frame-budget'
+import { voiceDebugEnabled } from '@/lib/voice/voice-debug'
 import { VoiceTracePanel } from '@/components/field/VoiceTracePanel'
 import { VoiceThreadAnswer } from '@/components/field/VoiceThreadAnswer'
 import {
@@ -33,6 +36,13 @@ import {
   createWakeLockController,
   phaseNeedsWakeLock,
 } from '@/lib/voice/wake-lock'
+
+// Partition avant/arrière des filaments — dérivée une seule fois de
+// FILAMENT_LAYERS (constant, cf. orb-filaments.ts) pour que le JSX peigne le
+// groupe `back` avant le noyau et `front` après, sans recalculer cette
+// répartition à chaque rendu.
+const BACK_FILAMENT_INDICES = FILAMENT_LAYERS.map((_, i) => i).filter((i) => FILAMENT_LAYERS[i] === 'back')
+const FRONT_FILAMENT_INDICES = FILAMENT_LAYERS.map((_, i) => i).filter((i) => FILAMENT_LAYERS[i] === 'front')
 
 interface Props {
   open: boolean
@@ -181,6 +191,9 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
   const blobCurrentPhaseRef = useRef<VoiceBlobPhase>('idle')
   const blobPrevPhaseRef   = useRef<VoiceBlobPhase>('idle')
   const blobPhaseSinceRef  = useRef(0)
+  // Filaments — même RAF, mêmes refs imperatives (aucun setState par frame).
+  // Un `null` tant que le <path> correspondant n'est pas monté.
+  const filamentRefs = useRef<Array<SVGPathElement | null>>(Array.from({ length: FILAMENT_COUNT }, () => null))
 
   const phase = state.phase
 
@@ -208,25 +221,60 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
   // vie ouvert de l'overlay (contrairement à la RAF audio, démontée avec le
   // micro). Lecture seule de `smoothedRef.current`, écriture imperative de
   // l'attribut `d` — aucun rerender React à chaque frame.
+  //
+  // Filaments (mandat Vincent, second retour 2026-08-19) : calculés dans
+  // CETTE MÊME boucle — jamais une RAF additionnelle — et purement
+  // décoratifs : leur coût est mesuré (`orb-frame-budget.ts`) et, si l'EMA
+  // dérive au-dessus du seuil, leur calcul est sauté certaines frames (le
+  // noyau, lui, continue toujours d'être mis à jour). Rien ici ne peut
+  // retarder ou conditionner le pipeline vocal : ce bloc ne lit que la phase
+  // et `smoothedRef.current`, n'écrit que des attributs SVG, ne pose aucun
+  // timer et ne fait aucun `await`.
   useEffect(() => {
     if (!open) return
     const size = 112 // px — doit rester égal au noyau (h-28 w-28, cf. JSX).
+    // Rayon d'ancrage des filaments : nettement à l'intérieur du noyau
+    // (MIN_BLOB_FACTOR=0.74 → 0.74*56≈41.4px), pour que leur base reste
+    // toujours recouverte quelle que soit la pulsation du noyau.
+    const coreRadius = 42
+    const frameBudget = createFrameBudget(voiceDebugEnabled())
     const loop = (ts: number) => {
-      const d = computeBlobPath({
-        time: ts,
-        phase: stateRef.current.phase,
-        audioLevel: smoothedRef.current,
-        reducedMotion,
-        size,
-        prevPhase: blobPrevPhaseRef.current,
-        phaseElapsedMs: ts - blobPhaseSinceRef.current,
-      })
+      const phase = stateRef.current.phase
+      const audioLevel = smoothedRef.current
+      const prevPhase = blobPrevPhaseRef.current
+      const phaseElapsedMs = ts - blobPhaseSinceRef.current
+
+      const d = computeBlobPath({ time: ts, phase, audioLevel, reducedMotion, size, prevPhase, phaseElapsedMs })
       pathRef.current?.setAttribute('d', d)
+
+      if (!frameBudget.shouldSkipDetail()) {
+        const start = typeof performance !== 'undefined' ? performance.now() : 0
+        const filaments = computeFilaments({
+          time: ts,
+          phase,
+          audioLevel,
+          reducedMotion,
+          centerX: size / 2,
+          centerY: size / 2,
+          coreRadius,
+          prevPhase,
+          phaseElapsedMs,
+        })
+        if (typeof performance !== 'undefined') frameBudget.record(performance.now() - start)
+        for (let i = 0; i < filaments.length; i++) {
+          const el = filamentRefs.current[i]
+          if (!el) continue
+          el.setAttribute('d', filaments[i].d)
+          el.setAttribute('opacity', String(filaments[i].opacity))
+        }
+      }
+
       blobRafRef.current = requestAnimationFrame(loop)
     }
     blobRafRef.current = requestAnimationFrame(loop)
     return () => {
       if (blobRafRef.current != null) { cancelAnimationFrame(blobRafRef.current); blobRafRef.current = null }
+      traceVoice('blob-frame-budget', frameBudget.snapshot())
     }
   }, [open, reducedMotion])
 
@@ -891,11 +939,15 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
             <div className={`absolute h-40 w-40 rounded-full bg-violet-400/[0.14] ${reducedMotion ? '' : 'orb-halo-b'}`} />
 
             {/* Noyau — silhouette organique. viewBox = taille du path (112,
-                cf. la RAF dédiée) ; h-28 w-28 (112px) en garde la taille CSS. */}
+                cf. la RAF dédiée) ; h-28 w-28 (112px) en garde la taille CSS.
+                `overflow: visible` : les filaments peuvent dépasser ce
+                cadre sans que rien ne soit reclippé — la mise à l'échelle
+                CSS/viewBox du noyau reste inchangée, seul le débordement de
+                peinture est autorisé. */}
             <svg
               viewBox="0 0 112 112"
               className="relative h-28 w-28 transition-[filter] duration-500"
-              style={{ filter: coreDropShadow }}
+              style={{ filter: coreDropShadow, overflow: 'visible' }}
               aria-hidden
             >
               <defs>
@@ -910,11 +962,28 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
                   <stop offset="100%" stopColor="#9f1239" />
                 </radialGradient>
               </defs>
+
+              {/* Filaments arrière — peints avant le noyau, qui les masque
+                  partiellement : c'est ce masquage qui donne la profondeur
+                  avant/arrière (cf. FILAMENT_LAYERS, orb-filaments.ts). */}
+              <g>
+                {BACK_FILAMENT_INDICES.map((i) => (
+                  <path key={i} ref={(el) => { filamentRefs.current[i] = el }} fill={coreFill} d="" opacity={0} />
+                ))}
+              </g>
+
               <path
                 ref={pathRef}
                 fill={coreFill}
                 d={computeBlobPath({ time: 0, phase, audioLevel: 0, reducedMotion, size: 112 })}
               />
+
+              {/* Filaments avant — peints après le noyau, jamais masqués. */}
+              <g>
+                {FRONT_FILAMENT_INDICES.map((i) => (
+                  <path key={i} ref={(el) => { filamentRefs.current[i] = el }} fill={coreFill} d="" opacity={0} />
+                ))}
+              </g>
             </svg>
           </div>
         </button>
