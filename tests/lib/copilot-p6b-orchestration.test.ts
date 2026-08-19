@@ -339,6 +339,53 @@ describe('P6-B — orchestration multi-intent (prepareCopilotAnswer réel)', () 
     expect(isP6MultiSegmentAdmissible(intent)).toBe(false)
   })
 
+  // ── Correctif B (Vincent 2026-08-19) — hasWriteBlockingSemanticSignal généralise
+  // le gate P6-B au-delà du seul littéral 'negated_write_verb' ────────────────
+  it("correctif B : FACT/ambiguous + ['fact_assertion','negated_assertion_claim'] → non admissible", () => {
+    const intent: IntentResult = { intent: 'FACT', confidence: 'ambiguous', signals: ['fact_assertion', 'negated_assertion_claim'] }
+    expect(isP6MultiSegmentAdmissible(intent)).toBe(false)
+  })
+
+  it("correctif B : OBSERVATION/ambiguous + ['observation_state','negated_assertion_claim'] → non admissible", () => {
+    const intent: IntentResult = { intent: 'OBSERVATION', confidence: 'ambiguous', signals: ['observation_state', 'negated_assertion_claim'] }
+    expect(isP6MultiSegmentAdmissible(intent)).toBe(false)
+  })
+
+  it("correctif B : témoin positif — FACT/ambiguous + ['fact_assertion'] seul (sans négation) → admissible", () => {
+    const intent: IntentResult = { intent: 'FACT', confidence: 'ambiguous', signals: ['fact_assertion'] }
+    expect(isP6MultiSegmentAdmissible(intent)).toBe(true)
+  })
+
+  // ── Recette terrain item 5 (Vincent 2026-08-19) — segment FACT négatif dans un
+  // multi réel → non admissible dès le gate, tout-ou-rien → fallback mono ─────
+  it('recette 5 : "Je ne considère pas que R4 est réglé, crée une action pour vérifier la grille demain." → segment FACT négatif non admissible, fallback mono', async () => {
+    const NEGATED_FACT_R4 = 'Je ne considère pas que R4 est réglé'
+    const CREATE_ACTION_GRILLE = 'crée une action pour vérifier la grille demain.'
+    const question = `${NEGATED_FACT_R4}, ${CREATE_ACTION_GRILLE}`
+    decomposeUtterance.mockResolvedValue({
+      segments: [seg(question, NEGATED_FACT_R4), seg(question, CREATE_ACTION_GRILLE)],
+      ambiguous: false,
+    })
+
+    const { prepareCopilotAnswer } = await import('@/lib/visits/copilot-free-prepare')
+    const prep = await prepareCopilotAnswer({ siteId: SITE_ID, question })
+
+    expect(prep.kind).toBe('result')
+    if (prep.kind !== 'result') throw new Error('unreachable')
+    expect(prep.result.kind).not.toBe('proposals')
+
+    expect(prep._diag.p6Attempted).toBe(true)
+    expect(prep._diag.p6Decision).toBe('mono_fallback')
+    expect(prep._diag.p6FallbackReason).toBe('segment_not_admissible')
+    expect(prep._diag.p6ProposalCount).toBe(0)
+    expect(prep._diag.p6Segments[0].intent).toBe('FACT')
+    expect(prep._diag.p6Segments[0].signals).toContain('negated_assertion_claim')
+    expect(prep._diag.p6Segments[0].admissible).toBe(false)
+    expect(prep._diag.p6Segments[0].rejectionReason).toBe('not_admissible')
+    // Repli immédiat au premier échec : le second segment n'a jamais été résolu.
+    expect(prep._diag.p6Segments[1].resultKind).toBeNull()
+  })
+
   // ── Complémentaire — un segment retourne clarification → fallback mono total ─
   it('complémentaire : un segment qui retourne clarification → fallback mono total', async () => {
     // Deux candidats pour "cadenas" → resolveWriteBranch retourne kind:'clarification'

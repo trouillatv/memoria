@@ -35,7 +35,7 @@
 import { z } from 'zod'
 import { getAIProvider } from '@/services/ai/factory'
 import type { AIProvider, CompletionOutput } from '@/services/ai'
-import { detectIntent, type IntentResult, type WritingIntent } from './copilot-intent-router'
+import { detectIntent, hasWriteBlockingSemanticSignal, type IntentResult, type WritingIntent } from './copilot-intent-router'
 
 // ── Contrat de sortie ─────────────────────────────────────────────────────────
 
@@ -357,11 +357,21 @@ export function routeSegments(rawText: string, result: DecompositionResult): Rou
 // `ambiguous` est une propriété historique du routeur, pas un signe de doute
 // sur le segment lui-même.
 //
-// `negated_write_verb` reste un garde-fou UNIVERSEL, y compris pour
-// OBSERVATION/FACT/CORRECTION_*/RELATION_CLAIM — aucun de ces intents ne le
-// vérifie dans le routeur mono (cf. copilot-intent-router.ts, gardes
-// `hasNegatedWrite` absentes de ces branches). P6-B ne peut pas hériter d'un
-// trou de garde du mono ; il le comble localement, sans toucher au routeur.
+// `hasWriteBlockingSemanticSignal` reste un garde-fou UNIVERSEL, y compris
+// pour OBSERVATION/FACT/CORRECTION_*/RELATION_CLAIM — aucun de ces intents ne
+// vérifie ces signaux dans le routeur mono (cf. copilot-intent-router.ts,
+// gardes `hasNegatedWrite` absentes de ces branches). P6-B ne peut pas
+// hériter d'un trou de garde du mono ; il le comble localement, sans toucher
+// au routeur.
+//
+// Primitive partagée (Vincent 2026-08-19, suite recette terrain) : le test
+// portait auparavant sur le seul littéral 'negated_write_verb', antérieur à
+// l'introduction de 'negated_assertion_claim' (fd25c5e6). Un segment FACT
+// portant negated_assertion_claim passait alors admissible:true — protégé
+// uniquement par le repli tout-ou-rien de resolveWriteBranch en aval, pas
+// par ce gate lui-même. hasWriteBlockingSemanticSignal couvre les deux
+// signaux (et tout futur signal de la même famille) au même endroit que
+// mergeComprehension.
 const P6_ALWAYS_ADMISSIBLE_INTENTS: ReadonlySet<WritingIntent> = new Set(['OBSERVATION', 'FACT'])
 const P6_NEVER_ADMISSIBLE_INTENTS: ReadonlySet<WritingIntent> = new Set(['READ', 'UNKNOWN_WRITE'])
 
@@ -371,7 +381,7 @@ const P6_NEVER_ADMISSIBLE_INTENTS: ReadonlySet<WritingIntent> = new Set(['READ',
  * rien) — jamais une proposition partielle silencieuse.
  */
 export function isP6MultiSegmentAdmissible(intentResult: IntentResult): boolean {
-  if (intentResult.signals.includes('negated_write_verb')) return false
+  if (hasWriteBlockingSemanticSignal(intentResult.signals)) return false
   if (P6_NEVER_ADMISSIBLE_INTENTS.has(intentResult.intent)) return false
   if (P6_ALWAYS_ADMISSIBLE_INTENTS.has(intentResult.intent)) return true
   return intentResult.confidence === 'strong'

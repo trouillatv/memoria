@@ -22,7 +22,7 @@ import {
   type ComprehensionLabel,
 } from '@/lib/visits/copilot-comprehension'
 import { classifyIntent, classifyReadIntent } from '@/lib/visits/copilot-classify'
-import { detectIntent } from '@/lib/visits/copilot-intent-router'
+import { detectIntent, type IntentResult } from '@/lib/visits/copilot-intent-router'
 import { resolveQuantitativeVerdict } from '@/lib/visits/copilot-context'
 import type { AIProvider, CompletionOutput } from '@/services/ai'
 
@@ -413,6 +413,82 @@ describe('mergeComprehension — negated_assertion_claim ne doit jamais être é
     const det = detectIntent(q)
     expect(det.signals).not.toContain('negated_assertion_claim')
     expect(det.signals).not.toContain('negated_write_verb')
+  })
+})
+
+// ── 3sexies. FACT/OBSERVATION positifs ne sont jamais raffinés en écriture
+// (Vincent 2026-08-19, suite recette terrain sur 25d91801) ────────────────────
+//
+// Régression distincte de 3quinquies : ici AUCUN signal write-blocking n'est
+// posé (cf. témoin positif ci-dessus). « Le regard R4 n'est pas réglé. » est
+// un FACT/ambiguous nominal — la garde hasWriteBlockingSemanticSignal ne
+// s'applique donc pas. Avant ce correctif, confidence:'ambiguous' (propriété
+// structurelle de la branche FACT, jamais 'strong') suffisait à faire passer
+// FACT pour une écriture non résolue dès que le LLM répondait
+// possible_write/create_action : le constat correct devenait une proposition
+// CREATE_ACTION. mergeComprehension exclut désormais FACT et OBSERVATION de
+// la règle 2 par leur intent, indépendamment de tout signal.
+describe('mergeComprehension — FACT/OBSERVATION positifs ne sont jamais raffinés en écriture (recette terrain 25d91801)', () => {
+  it('"Le regard R4 n\'est pas réglé." (FACT positif, sans négation) → reste FACT même si le LLM force POSSIBLE_WRITE/create_action/high', () => {
+    const q = "Le regard R4 n'est pas réglé."
+    const det = detectIntent(q)
+    expect(det.intent).toBe('FACT')
+    expect(det.confidence).toBe('ambiguous')
+    expect(det.signals).not.toContain('negated_assertion_claim')
+    expect(det.signals).not.toContain('negated_write_verb')
+    const merged = route(q, comprehension('POSSIBLE_WRITE', { intent: 'create_action', confidence: 'high' }))
+    expect(merged.intentResult.intent).toBe('FACT')
+    expect(merged.applied).not.toContain('possible_write_refined')
+  })
+
+  it('"Le cadenas n\'est toujours pas installé." (OBSERVATION positive) → reste OBSERVATION même si le LLM force POSSIBLE_WRITE/create_action/high', () => {
+    const q = "Le cadenas n'est toujours pas installé."
+    const det = detectIntent(q)
+    expect(det.intent).toBe('OBSERVATION')
+    expect(det.confidence).toBe('ambiguous')
+    const merged = route(q, comprehension('POSSIBLE_WRITE', { intent: 'create_action', confidence: 'high' }))
+    expect(merged.intentResult.intent).toBe('OBSERVATION')
+    expect(merged.applied).not.toContain('possible_write_refined')
+  })
+
+  it('témoin non-régression : UNKNOWN_WRITE reste raffinable (POSSIBLE_WRITE/add_visit_item)', () => {
+    const q = 'faudrait peut-être vérifier les toilettes'
+    expect(detectIntent(q).intent).toBe('UNKNOWN_WRITE')
+    const merged = route(q, comprehension('POSSIBLE_WRITE', { intent: 'add_visit_item', entities: ['toilettes'] }))
+    expect(merged.intentResult.intent).toBe('ADD_VISIT_ITEM')
+    expect(merged.applied).toContain('possible_write_refined')
+  })
+
+  it('témoin non-régression : CREATE_ACTION/ambiguous reste raffinable vers un autre intent d’écriture', () => {
+    const classification = classifyIntent('note libre')
+    const intentResult: IntentResult = { intent: 'CREATE_ACTION', confidence: 'ambiguous', signals: [] }
+    const merged = mergeComprehension('note libre', classification, intentResult, comprehension('POSSIBLE_WRITE', { intent: 'add_visit_item', entities: ['toilettes'] }))
+    expect(merged.intentResult.intent).toBe('ADD_VISIT_ITEM')
+    expect(merged.applied).toContain('possible_write_refined')
+  })
+
+  it('témoin non-régression : ADD_VISIT_ITEM/ambiguous reste raffinable vers un autre intent d’écriture', () => {
+    const classification = classifyIntent('note libre')
+    const intentResult: IntentResult = { intent: 'ADD_VISIT_ITEM', confidence: 'ambiguous', signals: [] }
+    const merged = mergeComprehension('note libre', classification, intentResult, comprehension('POSSIBLE_WRITE', { intent: 'create_action', entities: ['R4'] }))
+    expect(merged.intentResult.intent).toBe('CREATE_ACTION')
+    expect(merged.applied).toContain('possible_write_refined')
+  })
+
+  it('témoin non-régression : SCHEDULE_VISIT/ambiguous reste raffinable vers un autre intent d’écriture', () => {
+    const classification = classifyIntent('note libre')
+    const intentResult: IntentResult = { intent: 'SCHEDULE_VISIT', confidence: 'ambiguous', signals: [] }
+    const merged = mergeComprehension('note libre', classification, intentResult, comprehension('POSSIBLE_WRITE', { intent: 'create_action', entities: ['R4'] }))
+    expect(merged.intentResult.intent).toBe('CREATE_ACTION')
+    expect(merged.applied).toContain('possible_write_refined')
+  })
+
+  it('témoin non-régression : SCHEDULE_MEETING/ambiguous reste raffinable vers un autre intent d’écriture', () => {
+    const classification = classifyIntent('note libre')
+    const intentResult: IntentResult = { intent: 'SCHEDULE_MEETING', confidence: 'ambiguous', signals: [] }
+    const merged = mergeComprehension('note libre', classification, intentResult, comprehension('POSSIBLE_WRITE', { intent: 'create_action', entities: ['R4'] }))
+    expect(merged.intentResult.intent).toBe('CREATE_ACTION')
+    expect(merged.applied).toContain('possible_write_refined')
   })
 })
 

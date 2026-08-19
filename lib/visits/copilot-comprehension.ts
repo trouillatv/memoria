@@ -410,8 +410,23 @@ export function mergeComprehension(
   // 2026-08-19, tour [4] : « ne considère pas que R4 est réglé » → CREATE_ACTION).
   // Centralisé dans copilot-intent-router.ts pour qu'un futur 3ᵉ signal de
   // négation n'exige pas un nouveau patch nommé ici.
+  //
+  // Exclusion FACT/OBSERVATION (Vincent 2026-08-19, suite recette terrain) :
+  // ces deux intents sont des classifications déterministes DÉJÀ RÉSOLUES.
+  // Leur `confidence: 'ambiguous'` est une propriété structurelle du routeur
+  // (aucune branche FACT/OBSERVATION ne retourne jamais 'strong', cf.
+  // copilot-intent-router.ts Priorité 2bis/4bis) — elle ne signifie pas que
+  // l'intent lui-même est incertain. Sans cette exclusion, un FACT positif
+  // sans aucune négation (« Le regard R4 n'est pas réglé. ») se faisait
+  // écraser par possible_write_refined dès que le LLM répondait
+  // possible_write/create_action : le constat déterministe, pourtant
+  // correct, devenait une proposition CREATE_ACTION. La garde
+  // hasWriteBlockingSemanticSignal ci-dessus ne couvrait que le cas où une
+  // négation était présente ; elle ne protégeait pas le cas nominal.
   const writeIsUnresolved =
     !hasWriteBlockingSemanticSignal(nextIntent.signals) &&
+    nextIntent.intent !== 'FACT' &&
+    nextIntent.intent !== 'OBSERVATION' &&
     (nextIntent.intent === 'UNKNOWN_WRITE' ||
       (nextIntent.intent !== 'READ' && nextIntent.confidence === 'ambiguous'))
 
