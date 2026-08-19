@@ -85,6 +85,8 @@ export interface HistoricalReconcileResult {
   siteId: string
   totalThreads: number
   byFamily: HistoricalReconcileFamilyStat[]
+  /** canonical_subject touchés (rattachés ou créés) lors de ce passage — seed du scope P1-A. */
+  touchedCanonicalSubjectIds: string[]
 }
 
 function emptyStat(family: DocumentProposalFamily): HistoricalReconcileFamilyStat {
@@ -108,8 +110,10 @@ export async function reconcileHistoricalPvCanonicalSubjects(params: {
     if (!stats.has(f)) stats.set(f, emptyStat(f))
     return stats.get(f)!
   }
+  const touchedCanonicalSubjectIds = new Set<string>()
   const finish = (totalThreads: number): HistoricalReconcileResult => ({
     runId, siteId, totalThreads, byFamily: [...stats.values()],
+    touchedCanonicalSubjectIds: [...touchedCanonicalSubjectIds],
   })
 
   // 1. Propositions métier éligibles du run (threads déjà posés par
@@ -184,6 +188,7 @@ export async function reconcileHistoricalPvCanonicalSubjects(params: {
     const resolution = await resolveCanonicalSubjectReference(siteId, g.queryText)
     if (resolution.kind === 'resolved') {
       await attachThread(sb, g.threadId, siteId, resolution.candidate.id)
+      touchedCanonicalSubjectIds.add(resolution.candidate.id)
       statFor(g.family).matchedExisting++
     } else if (resolution.kind === 'ambiguous') {
       // Jamais tranché automatiquement — cohérent avec la doctrine du moteur live.
@@ -212,6 +217,7 @@ export async function reconcileHistoricalPvCanonicalSubjects(params: {
       const decision = resolveMatchExistingDecision(match, existingCs)
       if (decision === 'attach') {
         await attachThread(sb, g.threadId, siteId, match!.canonicalSubjectId!)
+        touchedCanonicalSubjectIds.add(match!.canonicalSubjectId!)
         statFor(g.family).matchedExisting++
       } else {
         afterLlmMatch.push(g)
@@ -287,6 +293,7 @@ export async function reconcileHistoricalPvCanonicalSubjects(params: {
     for (const g of memberThreads) {
       await attachThread(sb, g.threadId, siteId, canonicalSubjectId)
     }
+    touchedCanonicalSubjectIds.add(canonicalSubjectId)
   }
 
   return finish(threadGroups.length)

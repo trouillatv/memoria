@@ -1029,11 +1029,10 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
             <X className="h-4 w-4" />
           </button>
         </div>
-        <p className="text-sm text-muted-foreground">Aucune suggestion persistée pour ce chantier.</p>
-        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">Lancez le batch d&apos;analyse pour alimenter les suggestions :</p>
-        <code className="mt-2 block text-[10px] bg-muted rounded px-2 py-1.5 text-muted-foreground break-all">
-          analyze-subject-similarities.ts --site=… --apply
-        </code>
+        <p className="text-sm text-muted-foreground">Aucune suggestion pertinente pour ce chantier.</p>
+        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+          L&apos;analyse se relance automatiquement après chaque import de PV historique.
+        </p>
       </div>
     )}
 

@@ -9,6 +9,7 @@ import { materializeHistoricalVisit } from '@/lib/db/historical-visit-materializ
 import { ensureHistoricalPdfOccurrences } from '@/lib/db/canonical-subject-historical-occurrence'
 import { reconcileHistoricalPvCanonicalSubjects } from '@/lib/db/canonical-subject-historical-reconcile'
 import { decideReconcileLock, acquireReconcileLock } from '@/lib/db/canonical-subject-source-reconcile'
+import { triggerIncrementalSimilarityAnalysis } from '@/lib/subjects/similarity-trigger'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType } from '@/types/db'
 
 type ActionResult = { ok: boolean; error?: string }
@@ -497,6 +498,7 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
   // silencieusement tout thread encore sans identité (cf. P0-B2, ligne ~123).
   // Verrou soft (P0-2, même colonnes que le chemin field_visit) : idempotent,
   // protège contre un double-clic sur "Créer visite historique".
+  let touchedCanonicalSubjectIds: string[] = []
   {
     const sb = createAdminClient()
     const now = new Date().toISOString()
@@ -514,7 +516,8 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
 
       if (locked) {
         try {
-          await reconcileHistoricalPvCanonicalSubjects({ runId, siteId })
+          const reconcileResult = await reconcileHistoricalPvCanonicalSubjects({ runId, siteId })
+          touchedCanonicalSubjectIds = reconcileResult.touchedCanonicalSubjectIds
           await sb
             .from('site_reports')
             .update({
@@ -539,13 +542,23 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
   // ── P0-B2 : occurrences canoniques historiques (fire-and-forget) ──────────
   // Alimente canonical_subject_occurrence avec source_kind='historical_pdf' pour
   // que le moteur de relations puisse exploiter l'historique des PV importés.
+  //
+  // P1-A : une fois les occurrences posées (getNavigableSubjectsForSite exige
+  // au moins une occurrence pour rendre un sujet visible), on déclenche l'analyse
+  // de similarité incrémentale — sujets touchés par ce PV × sujets actifs du
+  // chantier. Suggestions uniquement, jamais de fusion automatique.
   void ensureHistoricalPdfOccurrences({
     runId,
     siteId,
     siteReportId,
     visitDate,
-  }).catch((err) =>
-    console.error('[review-actions] historical occurrences failed:', err instanceof Error ? err.message : String(err))
+  }).then(
+    () => {
+      if (touchedCanonicalSubjectIds.length > 0) {
+        void triggerIncrementalSimilarityAnalysis({ siteId, touchedSubjectIds: touchedCanonicalSubjectIds })
+      }
+    },
+    (err) => console.error('[review-actions] historical occurrences failed:', err instanceof Error ? err.message : String(err)),
   )
 
   // ── Pipeline post-RPC : knowledge_fact → site_knowledge_entries ──────────
