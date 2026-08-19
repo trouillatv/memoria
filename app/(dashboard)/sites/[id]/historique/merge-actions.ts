@@ -168,6 +168,7 @@ export async function createLinkFromMatrixAction(
   toCanonicalSubjectId: string,
   linkType: string,
   siteId: string,
+  justification?: string | null,
 ): Promise<{ error?: string }> {
   const user = await getCurrentUserWithProfile().catch(() => null)
   if (!user) return { error: 'Non authentifié' }
@@ -178,7 +179,7 @@ export async function createLinkFromMatrixAction(
     fromCanonicalSubjectId,
     toCanonicalSubjectId,
     linkType: linkType as import('@/lib/db/subject-thread-links').SubjectLinkType,
-    justification: null,
+    justification: justification ?? null,
     userId: user.id,
   })
 

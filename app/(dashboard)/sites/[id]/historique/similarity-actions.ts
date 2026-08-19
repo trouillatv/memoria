@@ -159,12 +159,13 @@ export async function acceptSuggestionAsLinkAction(
   toSubjectId: string,
   linkType: string,
   siteId: string,
+  reason?: string | null,
 ): Promise<{ error?: string }> {
   const user = await getCurrentUserWithProfile().catch(() => null)
   if (!user) return { error: 'Non authentifié' }
 
-  // Créer le lien via l'action existante
-  const linkResult = await createLinkFromMatrixAction(fromSubjectId, toSubjectId, linkType, siteId)
+  // Créer le lien via l'action existante — reason propagé en justification pour traçabilité.
+  const linkResult = await createLinkFromMatrixAction(fromSubjectId, toSubjectId, linkType, siteId, reason)
   if (linkResult.error) return { error: linkResult.error }
 
   // Marquer la suggestion
