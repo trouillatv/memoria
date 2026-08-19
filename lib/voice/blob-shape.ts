@@ -21,16 +21,33 @@
 // une amplitude propre à la phase — bornée par construction — et le facteur
 // de rayon de CORPS est reclampé fermement en sortie (MIN/MAX_BLOB_FACTOR).
 //
-// EXCROISSANCES (mandat Vincent, 2026-08-19 — remplace le chantier filaments
-// abandonné) : 4 points fixes du même anneau de POINT_COUNT points reçoivent,
-// en plus, un terme additif indépendant qui naît et se rétracte lentement
-// (cycle dormant→grow→hold→retract→dormant, désynchronisé par excroissance).
-// Ce n'est jamais une géométrie séparée : c'est une bosse locale sur le MÊME
-// contour fermé, avec une portée angulaire étroite (falloff cosinus sur
-// quelques points voisins seulement) — d'où « soudée au corps », jamais un
-// filament indépendant. Le facteur final (corps + bosse) reste borné par
-// EXCROISSANCE_MAX_FACTOR, volontairement modeste : excroissances courtes,
-// pas des tentacules.
+// EXCROISSANCES — pseudopode organique, jamais un filament ni une géométrie
+// séparée : une bosse locale sur le MÊME contour fermé, soudée au corps.
+//   - RÉSOLUTION : POINT_COUNT=24 (au lieu de 16) donne assez de points pour
+//     qu'un groupe de voisins dessine une silhouette de langue plutôt qu'une
+//     simple bosse — toujours un seul path fermé.
+//   - PROFIL DE POIDS : discret, indexé par distance entière en pas de point
+//     depuis l'ancre (0/1/2/3 → 1.00/0.65/0.25/0), interpolé linéairement
+//     entre pas entiers (utile pendant la dérive angulaire, cf. plus bas). Un
+//     groupe de 5 points (centre + 2 voisins de chaque côté) porte la bosse,
+//     jamais un point isolé — d'où « base large et arrondie », jamais une
+//     pointe.
+//   - HIÉRARCHIE : 3 ancres, mais un seul « hero » à poids plein (1.0), les
+//     deux autres nettement plus faibles (0.55 / 0.35) — un pseudopode
+//     principal lisible, pas trois tentacules équivalents qui brouillent la
+//     lecture.
+//   - DÉRIVE ANGULAIRE : l'angle de l'ancre dévie légèrement (± quelques
+//     degrés, nul en dormance, maximal à mi-cycle actif) pour que la langue
+//     semble fléchir plutôt que pulser radialement à l'identique.
+//   - ENVELOPPE 4 PHASES, durées ABSOLUES en ms (indépendantes de la période
+//     de désync) : naissance (montée douce vers une fraction partielle),
+//     extension (montée jusqu'au maximum), maintien (plateau), rétraction.
+//     Naissance et rétraction utilisent toutes deux `smoothstep` — départ ET
+//     arrivée doux aux deux bouts, jamais une courbe qui accélère brutalement
+//     en fin de rétraction (effet « aspiration » à éviter).
+//   - PLAFOND : le facteur final (corps + bosse) reste borné par
+//     EXCROISSANCE_MAX_FACTOR (1.9, plafond de sécurité — pas une amplitude
+//     visée systématiquement).
 
 export type VoiceBlobPhase =
   | 'idle'
@@ -58,44 +75,61 @@ export type ComputeBlobPathInput = {
    * sans eux, aucun fondu — les paramètres de `phase` s'appliquent
    * intégralement. Avec eux, un fondu de ~280 ms évite le saut de valeur
    * qu'un changement brutal de table de paramètres produirait en pleine
-   * oscillation (déviation disclosée par rapport à la signature conceptuelle
-   * du mandat, nécessaire pour respecter « aucune cassure visible »).
+   * oscillation.
    */
   prevPhase?: VoiceBlobPhase | null
   phaseElapsedMs?: number
 }
 
-export const POINT_COUNT = 16
+export const POINT_COUNT = 24
 export const MIN_BLOB_FACTOR = 0.74
 export const MAX_BLOB_FACTOR = 1.26
 /** Plafond du facteur de rayon UNE FOIS la bosse d'excroissance ajoutée au corps. */
-export const EXCROISSANCE_MAX_FACTOR = 1.48
+export const EXCROISSANCE_MAX_FACTOR = 1.9
 const PHASE_TRANSITION_MS = 280
 
 const TWO_PI = Math.PI * 2
 const ANGLES = Array.from({ length: POINT_COUNT }, (_, i) => i * (TWO_PI / POINT_COUNT))
+const STEP_RAD = TWO_PI / POINT_COUNT
 
-// 4 points du même anneau, écartement irrégulier (5/3/4/4) pour éviter une
-// croix parfaitement symétrique. Ce sont des ANGLES fixes, pas des indices de
-// points — la fonction reste continue en angle comme le reste du module.
-const EXCROISSANCE_COUNT = 4
-const EXCROISSANCE_INDICES = [1, 6, 9, 13]
+// 3 ancres sur l'anneau de POINT_COUNT points, écartement fortement irrégulier
+// (9/7/8 pas sur 24) pour éviter toute répartition régulière et empêcher les
+// zones d'influence (± 2 pas) de se chevaucher.
+const EXCROISSANCE_COUNT = 3
+const EXCROISSANCE_INDICES = [1, 10, 17]
 const EXCROISSANCE_ANGLES = EXCROISSANCE_INDICES.map((i) => i * (TWO_PI / POINT_COUNT))
-// Portée angulaire de la bosse : ~1.4 pas de point de large, donc seuls le
-// point central et son voisin immédiat de chaque côté sont concernés — bosse
-// courte et contenue, jamais un lobe qui gagne tout le contour.
-const EXCROISSANCE_WIDTH_RAD = (TWO_PI / POINT_COUNT) * 1.4
+// Un seul pseudopode « hero » à poids plein, les deux autres nettement plus
+// faibles — la première recette doit permettre de juger UN pseudopode
+// convaincant, pas trois lectures concurrentes.
+const EXCROISSANCE_HERO_WEIGHTS = [1.0, 0.55, 0.35]
+// Profil de poids discret par distance entière en pas de point depuis
+// l'ancre — reproduit la cible « 0.25 / 0.65 / 1.00 / 0.65 / 0.25 » (5 points
+// : centre + 2 voisins de chaque côté), interpolé linéairement entre pas
+// entiers pour rester continu pendant la dérive angulaire.
+const WEIGHT_PROFILE = [1.0, 0.65, 0.25, 0]
+// Dérive angulaire très légère (~8°) — le pseudopode doit sembler fléchir,
+// pas glisser autour du blob. Signe alterné par ancre pour l'asymétrie.
+const EXCROISSANCE_DRIFT_RAD = 0.14
+const EXCROISSANCE_DRIFT_SIGN = [1, -1, 1]
 // Périodes et déphasages désynchronisés par excroissance (ms) — mouvement
 // visqueux et lent, jamais deux excroissances qui respirent à l'unisson.
-const EXCROISSANCE_PERIODS = [11_000, 12_700, 14_400, 16_100]
-const EXCROISSANCE_OFFSETS = [0, 2_600, 5_300, 8_100]
-// Fractions du cycle (dormant la majorité du temps → rare, jamais 4 excroissances
-// pleinement sorties en même temps) : dormant 0-60%, grow 60-72%, hold 72-84%,
-// retract 84-96%, dormant 96-100%.
-const EXCROISSANCE_DORMANT_END = 0.6
-const EXCROISSANCE_GROW_END = 0.72
-const EXCROISSANCE_HOLD_END = 0.84
-const EXCROISSANCE_RETRACT_END = 0.96
+// Duty-cycle (ACTIVE_MS / période) volontairement bas sur les trois ancres :
+// une excroissance en pleine sortie doit rester l'exception, pas la norme.
+const EXCROISSANCE_PERIODS = [16_000, 19_000, 22_000]
+const EXCROISSANCE_OFFSETS = [0, 5_000, 11_000]
+// Durées ABSOLUES (ms) des 4 phases actives — indépendantes de la période de
+// désync, cible « 25% naissance / 35% extension / 15% maintien / 25%
+// rétraction ». La naissance monte à une fraction partielle (cf.
+// EXCROISSANCE_NAISSANCE_PEAK) avant que l'extension ne prenne le relais
+// jusqu'au maximum ; la rétraction redescend avec la même douceur `smoothstep`
+// que la naissance, jamais une chute qui accélère en fin de course.
+const EXCROISSANCE_NAISSANCE_MS = 650
+const EXCROISSANCE_EXTENSION_MS = 910
+const EXCROISSANCE_MAINTIEN_MS = 390
+const EXCROISSANCE_RETRACT_MS = 650
+const EXCROISSANCE_NAISSANCE_PEAK = 0.3
+const EXCROISSANCE_ACTIVE_MS =
+  EXCROISSANCE_NAISSANCE_MS + EXCROISSANCE_EXTENSION_MS + EXCROISSANCE_MAINTIEN_MS + EXCROISSANCE_RETRACT_MS
 
 // Fréquences temporelles fixes (rad/ms). Périodes en commentaire pour
 // lisibilité — aucune de ces valeurs ne varie pendant la vie du composant.
@@ -129,7 +163,7 @@ type PhaseParams = {
   rhythmDepth: number
   /** rad/ms de l'enveloppe rythmique (speaking). */
   rhythmSpeed: number
-  /** Profondeur de la bosse d'excroissance à pleine extension (voir EXCROISSANCE_*). */
+  /** Amplitude du pseudopode hero à pleine extension (voir EXCROISSANCE_*). */
   excroissanceAmplitude: number
 }
 
@@ -142,21 +176,19 @@ const RESTING: PhaseParams = {
   rotationSpeed: 0,
   rhythmDepth: 0,
   rhythmSpeed: 0,
-  excroissanceAmplitude: 0.05,
+  excroissanceAmplitude: 0.2,
 }
 
 // Table phase → paramètres. `idle`/`ready`/`exiting` partagent la respiration
 // la plus neutre : `idle` ne rend jamais rien côté composant (l'overlay est
 // démonté), mais la fonction doit rester définie pour toute valeur du type.
 //
-// Recalibrage post-recette téléphone (retour Vincent, 2026-08-19) : la
-// première passe (restAmplitude ~0.02, audioAmplitude listening 0.12) était
-// sous le seuil de perception à 112px — une capture au repos ressemblait à un
-// cercle parfait. `restAmplitude` de chaque phase est remontée en conservant
-// son ratio relatif à `RESTING` ; seul `listening.audioAmplitude` (voix) et
-// `thinking`/`speaking.internalAmplitude` (mouvement interne) sont montés
-// séparément, sur demande explicite. Fréquences, `baseScale` et clamps
-// inchangés.
+// `excroissanceAmplitude` est le pic du pseudopode HERO (poids 1.0) ; les deux
+// ancres secondaires sont automatiquement plus faibles via
+// EXCROISSANCE_HERO_WEIGHTS. `thinking` reste la plus haute (mouvement interne
+// le plus marqué) ; volontairement expressive — le plafond
+// EXCROISSANCE_MAX_FACTOR (1.9) garde une marge confortable à tout instant,
+// la validation se fait sur téléphone plutôt qu'en réduisant préventivement.
 const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
   idle: RESTING,
   ready: RESTING,
@@ -170,7 +202,7 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
     rotationSpeed: 0.00006,
     rhythmDepth: 0,
     rhythmSpeed: 0,
-    excroissanceAmplitude: 0.06,
+    excroissanceAmplitude: 0.26,
   },
   listening: {
     baseScale: 1.0,
@@ -181,7 +213,7 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
     rotationSpeed: 0,
     rhythmDepth: 0,
     rhythmSpeed: 0,
-    excroissanceAmplitude: 0.09,
+    excroissanceAmplitude: 0.4,
   },
   finalizing: {
     baseScale: 0.94,
@@ -192,7 +224,7 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
     rotationSpeed: 0,
     rhythmDepth: 0,
     rhythmSpeed: 0,
-    excroissanceAmplitude: 0.05,
+    excroissanceAmplitude: 0.2,
   },
   sending: {
     baseScale: 0.94,
@@ -203,7 +235,7 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
     rotationSpeed: 0,
     rhythmDepth: 0,
     rhythmSpeed: 0,
-    excroissanceAmplitude: 0.05,
+    excroissanceAmplitude: 0.2,
   },
   thinking: {
     baseScale: 0.9,
@@ -214,7 +246,7 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
     rotationSpeed: 0.00035,
     rhythmDepth: 0,
     rhythmSpeed: 0,
-    excroissanceAmplitude: 0.12,
+    excroissanceAmplitude: 0.6,
   },
   speaking: {
     baseScale: 0.95,
@@ -225,7 +257,7 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
     rotationSpeed: 0.00012,
     rhythmDepth: 0.35,
     rhythmSpeed: 0.0045,
-    excroissanceAmplitude: 0.08,
+    excroissanceAmplitude: 0.38,
   },
   error: {
     baseScale: 1.0,
@@ -306,20 +338,50 @@ function internalTerm(angle: number, t: number, rotation: number): number {
   return 0.65 * a + 0.35 * b
 }
 
-/** Enveloppe 0..1 d'une excroissance : dormant → grow → hold → retract → dormant, cycle propre. */
-function excroissanceEnvelope(t: number, index: number): number {
+type ExcroissanceState = {
+  /** 0..1, enveloppe naissance→extension→maintien→rétraction. */
+  value: number
+  /** 0..1, progression continue sur toute la fenêtre active — pilote la dérive angulaire. */
+  activeProgress: number
+}
+
+/**
+ * État d'une excroissance à l'instant t : dormant → naissance → extension →
+ * maintien → rétraction → dormant. Les 4 phases actives ont des durées
+ * ABSOLUES en ms placées en fin de période ; le reste (dormant) occupe
+ * toujours la majorité du cycle. Naissance et rétraction utilisent
+ * `smoothstep` aux deux bouts — jamais une courbe qui traîne puis accélère
+ * brutalement (effet « aspiration » explicitement à éviter).
+ */
+function excroissanceState(t: number, index: number): ExcroissanceState {
   const period = EXCROISSANCE_PERIODS[index]
   const offset = EXCROISSANCE_OFFSETS[index]
-  const u = (((t + offset) % period) + period) % period / period
-  if (u < EXCROISSANCE_DORMANT_END) return 0
-  if (u < EXCROISSANCE_GROW_END) {
-    return smoothstep((u - EXCROISSANCE_DORMANT_END) / (EXCROISSANCE_GROW_END - EXCROISSANCE_DORMANT_END))
+  const u = (((t + offset) % period) + period) % period
+  const dormantEnd = period - EXCROISSANCE_ACTIVE_MS
+  if (u < dormantEnd) return { value: 0, activeProgress: 0 }
+
+  const activeProgress = (u - dormantEnd) / EXCROISSANCE_ACTIVE_MS
+  const naissanceEnd = dormantEnd + EXCROISSANCE_NAISSANCE_MS
+  const extensionEnd = naissanceEnd + EXCROISSANCE_EXTENSION_MS
+  const maintienEnd = extensionEnd + EXCROISSANCE_MAINTIEN_MS
+  const retractEnd = maintienEnd + EXCROISSANCE_RETRACT_MS
+
+  if (u < naissanceEnd) {
+    const local = smoothstep((u - dormantEnd) / EXCROISSANCE_NAISSANCE_MS)
+    return { value: local * EXCROISSANCE_NAISSANCE_PEAK, activeProgress }
   }
-  if (u < EXCROISSANCE_HOLD_END) return 1
-  if (u < EXCROISSANCE_RETRACT_END) {
-    return 1 - smoothstep((u - EXCROISSANCE_HOLD_END) / (EXCROISSANCE_RETRACT_END - EXCROISSANCE_HOLD_END))
+  if (u < extensionEnd) {
+    const local = smoothstep((u - naissanceEnd) / EXCROISSANCE_EXTENSION_MS)
+    return { value: EXCROISSANCE_NAISSANCE_PEAK + local * (1 - EXCROISSANCE_NAISSANCE_PEAK), activeProgress }
   }
-  return 0
+  if (u < maintienEnd) {
+    return { value: 1, activeProgress }
+  }
+  if (u < retractEnd) {
+    const local = smoothstep((u - maintienEnd) / EXCROISSANCE_RETRACT_MS)
+    return { value: 1 - local, activeProgress }
+  }
+  return { value: 0, activeProgress: 1 }
 }
 
 function angularDistance(a: number, b: number): number {
@@ -327,15 +389,35 @@ function angularDistance(a: number, b: number): number {
   return d > Math.PI ? TWO_PI - d : d
 }
 
-/** Bosse locale (jamais un lobe global) : falloff cosinus autour de chaque excroissance active. */
+/** Poids discret par distance en pas de point, interpolé entre pas entiers. */
+function profileWeight(stepDist: number): number {
+  const maxStep = WEIGHT_PROFILE.length - 1
+  if (stepDist >= maxStep) return 0
+  const lo = Math.floor(stepDist)
+  const hi = lo + 1
+  const frac = stepDist - lo
+  const a = WEIGHT_PROFILE[lo] ?? 0
+  const b = WEIGHT_PROFILE[hi] ?? 0
+  return a + (b - a) * frac
+}
+
+/**
+ * Bosse locale (jamais un lobe global) : groupe de points voisins autour de
+ * chaque ancre active, poids décroissant par le profil discret, hiérarchie
+ * hero/secondaires, légère dérive angulaire pendant la fenêtre active.
+ */
 function excroissanceTerm(angle: number, t: number, amplitude: number): number {
   if (amplitude <= 0) return 0
   let sum = 0
   for (let e = 0; e < EXCROISSANCE_COUNT; e++) {
-    const dist = angularDistance(angle, EXCROISSANCE_ANGLES[e])
-    if (dist > EXCROISSANCE_WIDTH_RAD) continue
-    const falloff = 0.5 * (1 + Math.cos((Math.PI * dist) / EXCROISSANCE_WIDTH_RAD))
-    sum += falloff * excroissanceEnvelope(t, e)
+    const { value, activeProgress } = excroissanceState(t, e)
+    if (value <= 0) continue
+    const drift = EXCROISSANCE_DRIFT_SIGN[e] * EXCROISSANCE_DRIFT_RAD * Math.sin(Math.PI * activeProgress)
+    const driftedAngle = EXCROISSANCE_ANGLES[e] + drift
+    const stepDist = angularDistance(angle, driftedAngle) / STEP_RAD
+    const weight = profileWeight(stepDist)
+    if (weight <= 0) continue
+    sum += weight * EXCROISSANCE_HERO_WEIGHTS[e] * value
   }
   return amplitude * sum
 }
