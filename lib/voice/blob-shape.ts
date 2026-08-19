@@ -27,15 +27,17 @@
 //     qu'un groupe de voisins dessine une silhouette de langue plutôt qu'une
 //     simple bosse — toujours un seul path fermé.
 //   - PROFIL DE POIDS : discret, indexé par distance entière en pas de point
-//     depuis l'ancre (0/1/2/3 → 1.00/0.65/0.25/0), interpolé linéairement
-//     entre pas entiers (utile pendant la dérive angulaire, cf. plus bas). Un
-//     groupe de 5 points (centre + 2 voisins de chaque côté) porte la bosse,
-//     jamais un point isolé — d'où « base large et arrondie », jamais une
-//     pointe.
-//   - HIÉRARCHIE : 3 ancres, mais un seul « hero » à poids plein (1.0), les
-//     deux autres nettement plus faibles (0.55 / 0.35) — un pseudopode
-//     principal lisible, pas trois tentacules équivalents qui brouillent la
-//     lecture.
+//     depuis l'ancre (0/1/2/3 → 1.00/0.40/0.10/0), interpolé linéairement
+//     entre pas entiers (utile pendant la dérive angulaire, cf. plus bas).
+//     Volontairement RESSERRÉ (pas le 1.00/0.65/0.25 du premier essai) : ce
+//     dernier profil, combiné à plusieurs ancres actives, redessinait toute
+//     la circonférence (amibe triangulaire/étoilée) au lieu de laisser un
+//     seul point sortir nettement au-dessus de ses voisins.
+//   - UNE SEULE ANCRE ACTIVE (recette en cours) : EXCROISSANCE_COUNT=1. Le
+//     corps doit rester lisible comme une boule pendant qu'UNE seule langue
+//     en sort — pas trois zones qui gonflent en même temps. Le tableau reste
+//     générique (EXCROISSANCE_COUNT pilote la boucle) pour pouvoir réintroduire
+//     des ancres secondaires plus tard, une fois ce mouvement unique validé.
 //   - DÉRIVE ANGULAIRE : l'angle de l'ancre dévie légèrement (± quelques
 //     degrés, nul en dormance, maximal à mi-cycle actif) pour que la langue
 //     semble fléchir plutôt que pulser radialement à l'identique.
@@ -92,31 +94,28 @@ const TWO_PI = Math.PI * 2
 const ANGLES = Array.from({ length: POINT_COUNT }, (_, i) => i * (TWO_PI / POINT_COUNT))
 const STEP_RAD = TWO_PI / POINT_COUNT
 
-// 3 ancres sur l'anneau de POINT_COUNT points, écartement fortement irrégulier
-// (9/7/8 pas sur 24) pour éviter toute répartition régulière et empêcher les
-// zones d'influence (± 2 pas) de se chevaucher.
-const EXCROISSANCE_COUNT = 3
-const EXCROISSANCE_INDICES = [1, 10, 17]
+// Une seule ancre pour cette recette (cf. note plus haut) — un point de
+// l'anneau de POINT_COUNT points, poids plein.
+const EXCROISSANCE_COUNT = 1
+const EXCROISSANCE_INDICES = [1]
 const EXCROISSANCE_ANGLES = EXCROISSANCE_INDICES.map((i) => i * (TWO_PI / POINT_COUNT))
-// Un seul pseudopode « hero » à poids plein, les deux autres nettement plus
-// faibles — la première recette doit permettre de juger UN pseudopode
-// convaincant, pas trois lectures concurrentes.
-const EXCROISSANCE_HERO_WEIGHTS = [1.0, 0.55, 0.35]
+const EXCROISSANCE_HERO_WEIGHTS = [1.0]
 // Profil de poids discret par distance entière en pas de point depuis
-// l'ancre — reproduit la cible « 0.25 / 0.65 / 1.00 / 0.65 / 0.25 » (5 points
-// : centre + 2 voisins de chaque côté), interpolé linéairement entre pas
-// entiers pour rester continu pendant la dérive angulaire.
-const WEIGHT_PROFILE = [1.0, 0.65, 0.25, 0]
+// l'ancre — resserré (1.00/0.40/0.10/0, pas 1.00/0.65/0.25) pour que le point
+// central sorte nettement au-dessus de ses voisins : base relativement
+// étroite, extrémité qui s'allonge franchement, jamais une bosse triangulaire
+// large. Interpolé linéairement entre pas entiers pour rester continu
+// pendant la dérive angulaire.
+const WEIGHT_PROFILE = [1.0, 0.4, 0.1, 0]
 // Dérive angulaire très légère (~8°) — le pseudopode doit sembler fléchir,
-// pas glisser autour du blob. Signe alterné par ancre pour l'asymétrie.
+// pas glisser autour du blob.
 const EXCROISSANCE_DRIFT_RAD = 0.14
-const EXCROISSANCE_DRIFT_SIGN = [1, -1, 1]
-// Périodes et déphasages désynchronisés par excroissance (ms) — mouvement
-// visqueux et lent, jamais deux excroissances qui respirent à l'unisson.
-// Duty-cycle (ACTIVE_MS / période) volontairement bas sur les trois ancres :
-// une excroissance en pleine sortie doit rester l'exception, pas la norme.
-const EXCROISSANCE_PERIODS = [16_000, 19_000, 22_000]
-const EXCROISSANCE_OFFSETS = [0, 5_000, 11_000]
+const EXCROISSANCE_DRIFT_SIGN = [1]
+// Période et déphasage (ms) — mouvement visqueux et lent. Duty-cycle
+// (ACTIVE_MS / période) volontairement bas : une excroissance en pleine
+// sortie doit rester l'exception, pas la norme.
+const EXCROISSANCE_PERIODS = [15_000]
+const EXCROISSANCE_OFFSETS = [0]
 // Durées ABSOLUES (ms) des 4 phases actives — indépendantes de la période de
 // désync, cible « 25% naissance / 35% extension / 15% maintien / 25%
 // rétraction ». La naissance monte à une fraction partielle (cf.
