@@ -891,10 +891,14 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
             <div className={`absolute h-40 w-40 rounded-full bg-violet-400/[0.14] ${reducedMotion ? '' : 'orb-halo-b'}`} />
 
             {/* Noyau — silhouette organique. viewBox = taille du path (112,
-                cf. la RAF dédiée) ; h-28 w-28 (112px) en garde la taille CSS. */}
+                cf. la RAF dédiée) ; h-28 w-28 (112px) en garde la taille CSS.
+                overflow-visible : le path (excroissances incluses) peut
+                dépasser 0..112 sans être rogné par le clip SVG par défaut
+                (mandat Vincent 2026-08-19 — viewBox et blob-shape.ts
+                inchangés, seul le clipping saute). */}
             <svg
               viewBox="0 0 112 112"
-              className="relative h-28 w-28 transition-[filter] duration-500"
+              className="relative h-28 w-28 overflow-visible transition-[filter] duration-500"
               style={{ filter: coreDropShadow }}
               aria-hidden
             >
