@@ -4,6 +4,7 @@ import {
   CAN_CREATE_SUBJECT_KINDS,
   MATCH_EXISTING_THRESHOLD,
   resolveMatchExistingDecision,
+  computeClusterMaxOutputTokens,
 } from '@/lib/db/canonical-subject-source-reconcile'
 import { ELIGIBLE_KINDS } from '@/lib/db/canonical-subject-reconcile'
 
@@ -139,5 +140,29 @@ describe('resolveMatchExistingDecision', () => {
     const geminiOutput = { canonicalSubjectId: CS_LIST[0].id, confidence: 0.80 }
     expect(resolveMatchExistingDecision(geminiOutput, CS_LIST, 0.75)).toBe('attach')
     expect(resolveMatchExistingDecision(geminiOutput, CS_LIST, 0.85)).toBe('orphan')
+  })
+})
+
+// ─── computeClusterMaxOutputTokens — verrou anti-régression MAX_TOKENS ───────
+// Bug réel découvert lors du dry-run P0-J.1 : un budget fixe de 1200 tokens
+// tronque la réponse Gemini (finishReason: MAX_TOKENS) dès ~15 orphelins,
+// JSON.parse échoue silencieusement, clusterOrphansWithGemini retourne null,
+// et tous les orphelins sont traités comme non résolus sans erreur visible.
+
+describe('computeClusterMaxOutputTokens', () => {
+  it('applique le plancher de 1200 sur un petit lot', () => {
+    expect(computeClusterMaxOutputTokens(1)).toBe(1200)
+    expect(computeClusterMaxOutputTokens(5)).toBe(1200)
+    expect(computeClusterMaxOutputTokens(11)).toBe(1200)
+  })
+
+  it('dimensionne proportionnellement au-delà du plancher', () => {
+    expect(computeClusterMaxOutputTokens(20)).toBe(2000)
+    expect(computeClusterMaxOutputTokens(50)).toBe(5000)
+  })
+
+  it('plafonne à 8192 sur un gros lot', () => {
+    expect(computeClusterMaxOutputTokens(100)).toBe(8192)
+    expect(computeClusterMaxOutputTokens(486)).toBe(8192)
   })
 })

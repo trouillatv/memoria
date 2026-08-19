@@ -37,7 +37,7 @@ export interface ReconcileSourceResult {
 const CLUSTER_JOIN_THRESHOLD = 0.28
 
 // Seuil de confiance minimum pour créer un nouveau CS automatiquement
-const CREATE_THRESHOLD = 0.85
+export const CREATE_THRESHOLD = 0.85
 
 // Kinds pouvant créer un nouveau canonical_subject (deadline exclu)
 export const CAN_CREATE_SUBJECT_KINDS = new Set(['action', 'vigilance', 'decision', 'knowledge'])
@@ -63,7 +63,7 @@ const clusterOutputSchema = z.object({
   groups: z.array(clusterGroupSchema),
 })
 
-type ClusterOutput = z.infer<typeof clusterOutputSchema>
+export type ClusterOutput = z.infer<typeof clusterOutputSchema>
 
 // ─── Schéma Gemini — matching existant (deadline) ────────────────────────────
 
@@ -78,7 +78,7 @@ const existingMatchSchema = z.object({
   reason: z.string().max(200).catch(''),
 })
 
-type ExistingMatchOutput = z.infer<typeof existingMatchSchema>
+export type ExistingMatchOutput = z.infer<typeof existingMatchSchema>
 
 const SYSTEM_PROMPT_CLUSTERING = `Tu es un assistant de catégorisation de sujets de chantier BTP.
 On t'envoie un ensemble de propositions issues d'une visite terrain qui n'ont pas trouvé de sujet canonique existant.
@@ -308,6 +308,50 @@ export function clusterByJaccard(
     representativeIdx: representative,
     memberIdxs,
   }))
+}
+
+// ─── Clustering Gemini (extrait, réutilisable hors reconcileSourceToCanonicalSubjects) ──
+
+/**
+ * Dimensionne le budget de sortie Gemini pour le clustering selon la taille du lot.
+ * Chaque groupe renvoyé porte un tableau d'UUID complets + label : un budget
+ * fixe de 1200 tokens tronque la réponse (MAX_TOKENS) dès ~15 orphelins et
+ * fait échouer le parsing JSON silencieusement. Plancher 1200 (comportement
+ * historique sur petits lots), plafond 8192 (limite pratique du modèle).
+ */
+export function computeClusterMaxOutputTokens(proposalsCount: number): number {
+  return Math.min(8192, Math.max(1200, proposalsCount * 100))
+}
+
+/**
+ * Regroupe des propositions orphelines par sujet métier via Gemini et évalue
+ * si chaque groupe constitue un sujet durable. Retourne null si Gemini échoue
+ * ou si la réponse ne valide pas le schéma — dans ce cas l'appelant doit
+ * traiter tous les orphelins comme non résolus, jamais créer à l'aveugle.
+ */
+export async function clusterOrphansWithGemini(
+  proposals: Array<{ id: string; title: string; body: string | null }>,
+): Promise<ClusterOutput['groups'] | null> {
+  try {
+    const { getAIProvider } = await import('@/services/ai/factory')
+    const provider = getAIProvider()
+    const maxOutputTokens = computeClusterMaxOutputTokens(proposals.length)
+    const output = await provider.complete({
+      systemPrompt: SYSTEM_PROMPT_CLUSTERING,
+      userMessage: buildClusterPrompt(proposals.map((p) => ({ id: p.id, title: p.title, body: p.body }))),
+      responseSchema: clusterOutputSchema,
+      modelTier: 'light',
+      maxOutputTokens,
+    })
+    if (output.parsed) {
+      const validated = clusterOutputSchema.safeParse(output.parsed)
+      if (validated.success) return validated.data.groups
+    }
+    return null
+  } catch (err) {
+    console.error('[reconcile-source] erreur Gemini clustering:', String(err).slice(0, 200))
+    return null
+  }
 }
 
 // ─── Réconciliation principale ────────────────────────────────────────────────
@@ -591,25 +635,7 @@ export async function reconcileSourceToCanonicalSubjects(
   // ── Phase 2a : clustering + création des orphelins éligibles ─────────────
   if (orphansForClustering.length > 0) {
     // Appel Gemini sur les orphelins éligibles à la création
-    let geminiGroups: ClusterOutput['groups'] | null = null
-
-    try {
-      const { getAIProvider } = await import('@/services/ai/factory')
-      const provider = getAIProvider()
-      const output = await provider.complete({
-        systemPrompt: SYSTEM_PROMPT_CLUSTERING,
-        userMessage: buildClusterPrompt(orphansForClustering.map((p) => ({ id: p.id, title: p.title, body: p.body }))),
-        responseSchema: clusterOutputSchema,
-        modelTier: 'light',
-        maxOutputTokens: 1200,
-      })
-      if (output.parsed) {
-        const validated = clusterOutputSchema.safeParse(output.parsed)
-        if (validated.success) geminiGroups = validated.data.groups
-      }
-    } catch (err) {
-      console.error('[reconcile-source] erreur Gemini clustering:', String(err).slice(0, 200))
-    }
+    const geminiGroups = await clusterOrphansWithGemini(orphansForClustering)
 
     // ── Phase 3 : créer les CS éligibles ───────────────────────────────────
     if (geminiGroups) {
@@ -825,7 +851,7 @@ type SupabaseAdmin = ReturnType<typeof createAdminClient>
  * Phase 2b — Gemini existing-only : une deadline peut rejoindre un CS existant,
  * jamais en créer un. Retourne null si Gemini échoue ou si la confiance est trop basse.
  */
-async function matchExistingSubject(
+export async function matchExistingSubject(
   proposal: { id: string; title: string; body: string | null; kind: string },
   existingCs: Array<{ id: string; label: string }>,
 ): Promise<ExistingMatchOutput | null> {

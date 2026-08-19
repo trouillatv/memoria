@@ -7,6 +7,8 @@ import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { reviewProposal, linkProposalEvidence } from '@/lib/db/document-extractions'
 import { materializeHistoricalVisit } from '@/lib/db/historical-visit-materialization'
 import { ensureHistoricalPdfOccurrences } from '@/lib/db/canonical-subject-historical-occurrence'
+import { reconcileHistoricalPvCanonicalSubjects } from '@/lib/db/canonical-subject-historical-reconcile'
+import { decideReconcileLock } from '@/lib/db/canonical-subject-source-reconcile'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType } from '@/types/db'
 
 type ActionResult = { ok: boolean; error?: string }
@@ -485,6 +487,57 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
     })
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Erreur lors de la matérialisation' }
+  }
+
+  // ── P0-J.1 : canonicalisation des threads métier (synchrone, avant P0-B2) ──
+  // Pose l'identité canonique (canonical_subject + subject_thread_identity) des
+  // threads action/decision/knowledge_fact/deadline/observation/reservation.
+  // Doit compléter AVANT ensureHistoricalPdfOccurrences() : celui-ci résout
+  // thread → canonical_subject_id via subject_thread_identity et saute
+  // silencieusement tout thread encore sans identité (cf. P0-B2, ligne ~123).
+  // Verrou soft (P0-2, même colonnes que le chemin field_visit) : idempotent,
+  // protège contre un double-clic sur "Créer visite historique".
+  {
+    const sb = createAdminClient()
+    const now = new Date().toISOString()
+    const { data: reportStatus } = await sb
+      .from('site_reports')
+      .select('canonical_reconciled_at, canonical_reconcile_started_at')
+      .eq('id', siteReportId)
+      .maybeSingle()
+
+    const decision = decideReconcileLock(reportStatus, Date.now())
+    if (decision === 'acquire') {
+      const { data: locked } = await sb
+        .from('site_reports')
+        .update({ canonical_reconcile_started_at: now })
+        .eq('id', siteReportId)
+        .is('canonical_reconcile_started_at', null)
+        .select('id')
+        .maybeSingle()
+
+      if (locked) {
+        try {
+          await reconcileHistoricalPvCanonicalSubjects({ runId, siteId })
+          await sb
+            .from('site_reports')
+            .update({
+              canonical_reconciled_at: new Date().toISOString(),
+              canonical_reconcile_error: null,
+              canonical_reconcile_started_at: null,
+            })
+            .eq('id', siteReportId)
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err)
+          console.error('[review-actions] historical canonicalization failed:', reason)
+          await sb
+            .from('site_reports')
+            .update({ canonical_reconcile_error: reason, canonical_reconcile_started_at: null })
+            .eq('id', siteReportId)
+            .then(undefined, () => {})
+        }
+      }
+    }
   }
 
   // ── P0-B2 : occurrences canoniques historiques (fire-and-forget) ──────────
