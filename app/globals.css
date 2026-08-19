@@ -26,32 +26,16 @@
 }
 
 /* ── VoiceOrbOverlay — animations MemorIA ────────────────────────────────────
-   Breathing : deux keyframes désynchronisés (3.1 s + 5.3 s) → irrégularité
-   naturelle sans JS.
-   Audio : --audio-delta (RAF loop) sur le wrapper core, et via héritage CSS
-   var() sur le halo externe (multiplicateur plus fort → énergie qui se propage).
+   La réaction de phase du NOYAU (écoute/réflexion/parole) vit dans la
+   silhouette SVG calculée par lib/voice/blob-shape.ts, pas ici — d'où
+   l'absence de classes `orb-breathing`/`orb-processing`/`orb-speaking` :
+   les garder actives en parallèle aurait doublé l'animation.
+   Le HALO, lui, reste un pur `scale()` CSS : --audio-delta (RAF loop) est
+   toujours écrit sur le halo externe, avec un multiplicateur fort → l'énergie
+   perçue se propage du noyau organique vers le halo qui l'entoure.
    orb-halo-a : opacité seule (pas de transform) — le halo externe porte son
    propre transform audio via .orb-halo-outer-reactive, les deux ne conflictent pas. */
 
-@keyframes orb-breathe-a {
-  0%, 100% { transform: scale(1); }
-  50%       { transform: scale(1.07); }
-}
-@keyframes orb-breathe-b {
-  0%, 100% { transform: scale(1.02); }
-  33%      { transform: scale(0.97); }
-  66%      { transform: scale(1.09); }
-}
-/* Transcribing : contraction nette (forward-fill) — l'utilisateur perçoit immédiatement qu'on ne l'écoute plus. */
-@keyframes orb-contract {
-  from { transform: scale(1); }
-  to   { transform: scale(0.88); }
-}
-/* Processing : micro-pulsation à taille réduite — le traitement est en cours. */
-@keyframes orb-process-pulse {
-  0%, 100% { transform: scale(0.82); }
-  50%       { transform: scale(0.87); }
-}
 @keyframes orb-reduced-pulse {
   0%, 100% { opacity: 0.85; }
   50%       { opacity: 0.50; }
@@ -75,18 +59,6 @@
   to   { transform: scale(0.15); opacity: 0; }
 }
 
-.orb-breathing {
-  animation: orb-breathe-a 3.1s ease-in-out infinite,
-             orb-breathe-b 5.3s ease-in-out infinite;
-}
-/* Transcribing (écoute terminée, en attente de résultat) : contraction rapide puis stable. */
-.orb-breathing.orb-transcribing {
-  animation: orb-contract 0.35s ease-out forwards;
-}
-/* Processing (800ms+ de traitement) : pulsation lente à taille réduite. */
-.orb-breathing.orb-processing {
-  animation: orb-process-pulse 2.4s ease-in-out infinite;
-}
 .orb-reduced-motion {
   animation: orb-reduced-pulse 2.5s ease-in-out infinite;
 }
@@ -104,15 +76,10 @@
 }
 
 /* Halo externe — audio-réactif fort pendant l'écoute.
-   --audio-delta est normalisé [0,1] (pas le RMS brut) → les multiplicateurs CSS
-   indiquent directement l'amplitude cible : 0.50 = +50% à signal max. */
+   --audio-delta est normalisé [0,1] (pas le RMS brut) → le multiplicateur CSS
+   indique directement l'amplitude cible : 0.50 = +50% à signal max. */
 .orb-halo-outer-reactive {
   transform: scale(calc(1 + var(--audio-delta, 0) * 0.50));
-  transition: transform 55ms linear;
-}
-/* Core audio-réactif — multiplicateur doux, composition avec le breathing du parent. */
-.orb-audio-reactive {
-  transform: scale(calc(1 + var(--audio-delta, 0) * 0.22));
   transition: transform 55ms linear;
 }
 
@@ -127,25 +94,10 @@
 }
 
 /* ── État PAROLE ──
-   Rythme procédural, volontairement distinct de la réflexion : l'amplitude est
-   plus large et le cycle deux fois plus court, avec une reprise sur deux temps
-   (comme un débit de phrase). Ce n'est PAS un affichage du signal audio réel :
-   `speechSynthesis` n'expose aucun niveau de sortie, et faire semblant de le
-   mesurer serait mentir sur ce que MemorIA sait. Ici l'orbe indique seulement
-   « je parle », pas « voilà ce que j'émets ».
-   Taille de base 0.90 : entre la réflexion (0.82) et l'écoute (1) — MemorIA
-   reprend de la présence sans redevenir attentive. */
-@keyframes orb-speak-pulse {
-  0%    { transform: scale(0.90); }
-  22%   { transform: scale(1.00); }
-  44%   { transform: scale(0.93); }
-  66%   { transform: scale(0.99); }
-  100%  { transform: scale(0.90); }
-}
-.orb-breathing.orb-speaking {
-  animation: orb-speak-pulse 1.25s ease-in-out infinite;
-}
-
+   Le rythme du noyau pendant la parole (plus rythmé que la réflexion, sans
+   corrélation à l'audio réel — `speechSynthesis` n'expose aucun niveau de
+   sortie) vit dans computeBlobPath (rhythmDepth/rhythmSpeed), pas ici. Seul
+   le halo garde son animation CSS dédiée. */
 @keyframes orb-halo-speaking {
   0%    { opacity: 0.08; transform: scale(0.98); }
   30%   { opacity: 0.24; transform: scale(1.12); }
@@ -156,9 +108,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .orb-breathing, .orb-halo-a, .orb-halo-b, .orb-halo-processing,
-  .orb-speaking, .orb-halo-speaking { animation: none; }
-  .orb-audio-reactive, .orb-halo-outer-reactive { transition: none; transform: none; }
+  .orb-halo-a, .orb-halo-b, .orb-halo-processing, .orb-halo-speaking { animation: none; }
+  .orb-halo-outer-reactive { transition: none; transform: none; }
 }
 
 @theme {

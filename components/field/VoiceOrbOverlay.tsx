@@ -25,6 +25,7 @@ import {
 } from '@/lib/voice/speech-output'
 import { markVoice } from '@/lib/voice/voice-latency'
 import { beginVoiceTurn, traceVoice } from '@/lib/voice/voice-trace'
+import { computeBlobPath, type VoiceBlobPhase } from '@/lib/voice/blob-shape'
 import { VoiceTracePanel } from '@/components/field/VoiceTracePanel'
 import { VoiceThreadAnswer } from '@/components/field/VoiceThreadAnswer'
 import {
@@ -165,6 +166,22 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
   // Lissage asymétrique du signal audio — persiste entre les frames RAF.
   const smoothedRef  = useRef(0)
 
+  // ── Silhouette du blob (SVG path) ────────────────────────────────────────
+  // RAF dédiée, distincte de celle qui mesure l'audio : cette dernière est
+  // démontée avec le micro (`stopAudioLoop`) et ne tourne donc pas pendant
+  // thinking/speaking/ready, alors que le blob doit continuer à vivre dans
+  // ces phases. Elle ne lit que `smoothedRef.current` (source unique
+  // inchangée) et n'écrit que l'attribut `d` du path — aucun `setState` par
+  // frame, aucune ressource audio créée ici.
+  const pathRef            = useRef<SVGPathElement>(null)
+  const blobRafRef         = useRef<number | null>(null)
+  // Phase actuellement "vue" par le blob, la précédente, et l'instant
+  // (horloge RAF) où le changement a eu lieu — alimentent le fondu de
+  // transition de `computeBlobPath` (~280 ms, cf. lib/voice/blob-shape.ts).
+  const blobCurrentPhaseRef = useRef<VoiceBlobPhase>('idle')
+  const blobPrevPhaseRef   = useRef<VoiceBlobPhase>('idle')
+  const blobPhaseSinceRef  = useRef(0)
+
   const phase = state.phase
 
   // Détection de prefers-reduced-motion côté client uniquement.
@@ -176,6 +193,42 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
     mq.addEventListener('change', h)
     return () => mq.removeEventListener('change', h)
   }, [])
+
+  // Repère le changement de phase pour le fondu du blob — voir les refs
+  // `blobPrevPhaseRef`/`blobPhaseSinceRef` ci-dessus.
+  useEffect(() => {
+    if (blobCurrentPhaseRef.current !== phase) {
+      blobPrevPhaseRef.current = blobCurrentPhaseRef.current
+      blobCurrentPhaseRef.current = phase
+      blobPhaseSinceRef.current = typeof performance !== 'undefined' ? performance.now() : 0
+    }
+  }, [phase])
+
+  // Boucle dédiée à la silhouette du blob, active pendant tout le cycle de
+  // vie ouvert de l'overlay (contrairement à la RAF audio, démontée avec le
+  // micro). Lecture seule de `smoothedRef.current`, écriture imperative de
+  // l'attribut `d` — aucun rerender React à chaque frame.
+  useEffect(() => {
+    if (!open) return
+    const size = 112 // px — doit rester égal au noyau (h-28 w-28, cf. JSX).
+    const loop = (ts: number) => {
+      const d = computeBlobPath({
+        time: ts,
+        phase: stateRef.current.phase,
+        audioLevel: smoothedRef.current,
+        reducedMotion,
+        size,
+        prevPhase: blobPrevPhaseRef.current,
+        phaseElapsedMs: ts - blobPhaseSinceRef.current,
+      })
+      pathRef.current?.setAttribute('d', d)
+      blobRafRef.current = requestAnimationFrame(loop)
+    }
+    blobRafRef.current = requestAnimationFrame(loop)
+    return () => {
+      if (blobRafRef.current != null) { cancelAnimationFrame(blobRafRef.current); blobRafRef.current = null }
+    }
+  }, [open, reducedMotion])
 
   // Cycle principal : open → entering → écoute ; !open → sortie propre.
   useEffect(() => {
@@ -248,7 +301,6 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
     if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
     smoothedRef.current = 0
     vadRef.current = null
-    orbAudioRef.current?.style.setProperty('--audio-delta', '0')
     haloOuterRef.current?.style.setProperty('--audio-delta', '0')
   }
 
@@ -447,9 +499,11 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
         smoothedRef.current = alpha * curved + (1 - alpha) * smoothedRef.current
 
         if (!reducedMotion) {
-          const delta = smoothedRef.current.toFixed(3)
-          orbAudioRef.current?.style.setProperty('--audio-delta', delta)
-          haloOuterRef.current?.style.setProperty('--audio-delta', delta)
+          // Le noyau ne reçoit plus --audio-delta : sa réaction à la voix vit
+          // maintenant dans la silhouette du blob (computeBlobPath), pas dans
+          // un scale() séparé qui la doublerait. Le halo externe garde sa
+          // propre réaction, indépendante de la forme du noyau.
+          haloOuterRef.current?.style.setProperty('--audio-delta', smoothedRef.current.toFixed(3))
         }
 
         const signal = vadRef.current?.push(smoothedRef.current, ts) ?? null
@@ -669,30 +723,25 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
 
   const speaking = phase === 'speaking'
 
-  // Cinq comportements perceptibles sans texte supplémentaire :
-  // écoute (réactif à la voix) → prise de la phrase (contraction) →
-  // réflexion (pulsation lente) → parole (pulsation rythmée) → sortie.
+  // Les cinq comportements (écoute → prise de la phrase → réflexion → parole
+  // → sortie) vivent désormais dans la silhouette du blob (computeBlobPath),
+  // pilotée par la RAF dédiée — plus dans des classes `scale()` séparées, qui
+  // les doubleraient. Seules restent l'entrée/sortie de l'overlay (montage/
+  // démontage) et la variante réduite (canal d'opacité, complémentaire).
   const orbClasses = reducedMotion
     ? 'orb-reduced-motion'
     : [
-        'orb-breathing',
-        heard                && 'orb-transcribing',
-        phase === 'thinking' && 'orb-processing',
-        speaking             && 'orb-speaking',
         phase === 'entering' && 'orb-enter',
         phase === 'exiting'  && 'orb-exit',
       ].filter(Boolean).join(' ')
 
-  // Style du noyau : radial-gradient centré → lumière émise de l'intérieur,
-  // sans effet 3D directionnel. Rose en état d'erreur.
-  const coreStyle: React.CSSProperties = {
-    background: isError
-      ? 'radial-gradient(circle at 50% 42%, #fda4af, #e11d48 55%, #9f1239)'
-      : 'radial-gradient(circle at 50% 42%, #ede9fe, #8b5cf6 52%, #4338ca)',
-    boxShadow: isError
-      ? '0 0 40px 6px rgba(225,29,72,0.35), 0 0 80px 16px rgba(225,29,72,0.10)'
-      : '0 0 40px 6px rgba(139,92,246,0.38), 0 0 80px 16px rgba(139,92,246,0.10)',
-  }
+  // Dégradé + lueur du noyau — même identité violette qu'avant, appliqués au
+  // <path> SVG (fill + filter) plutôt qu'à un <div> (background + boxShadow).
+  // Rose en état d'erreur.
+  const coreFill = isError ? 'url(#voiceBlobGradientError)' : 'url(#voiceBlobGradient)'
+  const coreDropShadow = isError
+    ? 'drop-shadow(0 0 22px rgba(225,29,72,0.38)) drop-shadow(0 0 44px rgba(225,29,72,0.12))'
+    : 'drop-shadow(0 0 22px rgba(139,92,246,0.42)) drop-shadow(0 0 44px rgba(139,92,246,0.12))'
 
   // Le libellé est l'état courant, formulé du point de vue de l'utilisateur : ce
   // que MemorIA fait, ou ce qu'il peut faire. En `ready` on dit l'action
@@ -800,12 +849,15 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
         <div style={{ transform: hasThread ? 'scale(0.52)' : 'scale(1)', transition: 'transform 0.45s ease' }}>
 
         {/* ── Orbe ──
-            Couche 1 (button) : animation CSS breathing.
+            Couche 1 (button) : entrée/sortie du montage seulement — la
+              réaction de phase vit désormais dans la silhouette (couche 5).
             Couche 2 (haloOuterRef) : absolute, opacité animée (orb-halo-a)
               + scale audio-réactif fort (orb-halo-outer-reactive via --audio-delta).
-            Couche 3 (orbAudioRef) : scale audio-réactif doux (orb-audio-reactive).
+            Couche 3 (orbAudioRef) : simple wrapper, plus de scale audio (évite
+              de doubler la réaction déjà portée par la silhouette).
               Couche 4 (halo interne) : absolute, opacité + scale animés.
-              Couche 5 (noyau) : radial-gradient centré, glow symétrique. */}
+              Couche 5 (noyau) : <svg><path/></svg> — silhouette organique
+              calculée par computeBlobPath, écrite hors du cycle de rendu React. */}
         <button
           type="button"
           onClick={handleOrbTap}
@@ -833,20 +885,37 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
             style={{ '--audio-delta': '0' } as React.CSSProperties}
           />
 
-          {/* Wrapper audio-réactif doux — noyau + halo interne */}
-          <div
-            ref={orbAudioRef}
-            className="orb-audio-reactive relative flex items-center justify-center"
-            style={{ '--audio-delta': '0' } as React.CSSProperties}
-          >
+          {/* Wrapper — noyau + halo interne */}
+          <div ref={orbAudioRef} className="relative flex items-center justify-center">
             {/* Halo interne */}
             <div className={`absolute h-40 w-40 rounded-full bg-violet-400/[0.14] ${reducedMotion ? '' : 'orb-halo-b'}`} />
 
-            {/* Noyau */}
-            <div
-              className="relative h-28 w-28 rounded-full transition-[background] duration-500"
-              style={coreStyle}
-            />
+            {/* Noyau — silhouette organique. viewBox = taille du path (112,
+                cf. la RAF dédiée) ; h-28 w-28 (112px) en garde la taille CSS. */}
+            <svg
+              viewBox="0 0 112 112"
+              className="relative h-28 w-28 transition-[filter] duration-500"
+              style={{ filter: coreDropShadow }}
+              aria-hidden
+            >
+              <defs>
+                <radialGradient id="voiceBlobGradient" cx="50%" cy="42%" r="65%">
+                  <stop offset="0%" stopColor="#ede9fe" />
+                  <stop offset="52%" stopColor="#8b5cf6" />
+                  <stop offset="100%" stopColor="#4338ca" />
+                </radialGradient>
+                <radialGradient id="voiceBlobGradientError" cx="50%" cy="42%" r="65%">
+                  <stop offset="0%" stopColor="#fda4af" />
+                  <stop offset="55%" stopColor="#e11d48" />
+                  <stop offset="100%" stopColor="#9f1239" />
+                </radialGradient>
+              </defs>
+              <path
+                ref={pathRef}
+                fill={coreFill}
+                d={computeBlobPath({ time: 0, phase, audioLevel: 0, reducedMotion, size: 112 })}
+              />
+            </svg>
           </div>
         </button>
         </div>
