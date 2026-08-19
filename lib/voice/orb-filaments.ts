@@ -36,6 +36,16 @@
 // réactivité de phase. Stade 2 (à venir, une fois le squelette validé au
 // téléphone) : petits points lumineux voyageant vers le noyau pendant
 // `thinking` et arcs de connexion transitoires entre deux pointes.
+//
+// Correction géométrique (retour recette téléphone, troisième passe
+// 2026-08-19) : la première version du ruban lisait « épines/crochets », pas
+// « fibres neurales » — base bien trop épaisse par rapport à la longueur,
+// courbure trop faible (sortie quasi rectiligne du noyau), silhouette trop
+// courte. `baseWidthFactor` est divisé par ~2,5, `bend` et les offsets de
+// contrôle de courbe sont renforcés, `maxReachFactor`/`reachScale` sont
+// remontés pour approcher 1,4–1,7× le rayon du noyau dans les phases
+// actives, et l'opacité est réduite (aspect semi-transparent, lumineux)
+// pour que le noyau reste dominant (~65-70 % du poids visuel).
 
 import type { VoiceBlobPhase } from './blob-shape'
 
@@ -104,9 +114,9 @@ type PhaseActivity = {
 }
 
 const CALM: PhaseActivity = {
-  reachScale: 0.55, audioReach: 0, jitterAmp: 0.03, driftMul: 1, driftSpeedMul: 1,
+  reachScale: 0.46, audioReach: 0, jitterAmp: 0.022, driftMul: 0.85, driftSpeedMul: 1,
   branchBoost: 0.25, rhythmDepth: 0, rhythmSpeedMs: 0,
-  opacityFront: 0.56, opacityBack: 0.3,
+  opacityFront: 0.46, opacityBack: 0.2,
 }
 
 // idle/ready/exiting partagent la respiration la plus neutre — cf. la même
@@ -118,41 +128,42 @@ const PHASE_ACTIVITY: Record<VoiceBlobPhase, PhaseActivity> = {
   ready: CALM,
   exiting: CALM,
   entering: {
-    reachScale: 0.62, audioReach: 0.08, jitterAmp: 0.045, driftMul: 1.05, driftSpeedMul: 1,
+    reachScale: 0.6, audioReach: 0.08, jitterAmp: 0.04, driftMul: 1.05, driftSpeedMul: 1,
     branchBoost: 0.3, rhythmDepth: 0, rhythmSpeedMs: 0,
-    opacityFront: 0.6, opacityBack: 0.34,
+    opacityFront: 0.5, opacityBack: 0.24,
   },
   listening: {
     // « les filaments deviennent sensibles au son » — la portée reste bornée
     // par `audioReach`, la voix donne de la présence sans jamais faire
     // « grossir l'ensemble » d'un bloc (cf. `jitterAmp` modulé par l'audio
-    // dans `computeFilaments`, pas ici).
-    reachScale: 0.7, audioReach: 0.55, jitterAmp: 0.09, driftMul: 1, driftSpeedMul: 1,
+    // dans `computeFilaments`, pas ici). `reachScale` remonté (retour
+    // téléphone) pour un vrai déploiement dans l'espace, pas un frémissement.
+    reachScale: 0.8, audioReach: 0.48, jitterAmp: 0.075, driftMul: 1, driftSpeedMul: 1,
     branchBoost: 0.32, rhythmDepth: 0, rhythmSpeedMs: 0,
-    opacityFront: 0.7, opacityBack: 0.38,
+    opacityFront: 0.58, opacityBack: 0.26,
   },
   finalizing: {
     // Baseline déjà resserrée ; le vrai retour vers le centre vient de
     // `contractionPulse`, appliqué seulement dans les ~400 ms qui suivent la
     // transition depuis `listening`. « ne fais pas tout disparaître » : la
     // baseline reste non nulle.
-    reachScale: 0.34, audioReach: 0.06, jitterAmp: 0.035, driftMul: 0.75, driftSpeedMul: 1,
+    reachScale: 0.32, audioReach: 0.06, jitterAmp: 0.035, driftMul: 0.75, driftSpeedMul: 1,
     branchBoost: 0.15, rhythmDepth: 0, rhythmSpeedMs: 0,
-    opacityFront: 0.5, opacityBack: 0.26,
+    opacityFront: 0.4, opacityBack: 0.18,
   },
   sending: {
-    reachScale: 0.36, audioReach: 0.05, jitterAmp: 0.03, driftMul: 0.7, driftSpeedMul: 1,
+    reachScale: 0.34, audioReach: 0.05, jitterAmp: 0.03, driftMul: 0.7, driftSpeedMul: 1,
     branchBoost: 0.15, rhythmDepth: 0, rhythmSpeedMs: 0,
-    opacityFront: 0.48, opacityBack: 0.25,
+    opacityFront: 0.38, opacityBack: 0.17,
   },
   thinking: {
     // « déplacements LENTS, changements de direction » — vitesse de dérive
     // réduite (`driftSpeedMul`), pas amplifiée : la sensation recherchée est
-    // exploratoire, pas nerveuse. Les ramifications sont « un peu plus
-    // présentes », pas maximales.
-    reachScale: 0.78, audioReach: 0, jitterAmp: 0.05, driftMul: 1.25, driftSpeedMul: 0.55,
-    branchBoost: 0.7, rhythmDepth: 0, rhythmSpeedMs: 0,
-    opacityFront: 0.76, opacityBack: 0.44,
+    // exploratoire, pas nerveuse. `reachScale`/`branchBoost` remontés : c'est
+    // la phase la plus « affirmée » du Stade 1, avant les arcs du Stade 2.
+    reachScale: 0.88, audioReach: 0, jitterAmp: 0.05, driftMul: 1.25, driftSpeedMul: 0.55,
+    branchBoost: 0.78, rhythmDepth: 0, rhythmSpeedMs: 0,
+    opacityFront: 0.64, opacityBack: 0.32,
   },
   speaking: {
     // Pas d'amplitude audio réelle en sortie (le micro ne mesure pas la
@@ -160,14 +171,14 @@ const PHASE_ACTIVITY: Record<VoiceBlobPhase, PhaseActivity> = {
     // (cf. `computeFilaments`) : « un mouvement plus ouvert, PAS une simple
     // pulsation » — si tous les filaments gonflaient à l'unisson, ce serait
     // exactement l'effet à éviter.
-    reachScale: 0.82, audioReach: 0, jitterAmp: 0.075, driftMul: 1.5, driftSpeedMul: 1.1,
+    reachScale: 0.86, audioReach: 0, jitterAmp: 0.075, driftMul: 1.5, driftSpeedMul: 1.1,
     branchBoost: 0.42, rhythmDepth: 0.14, rhythmSpeedMs: 0.0045,
-    opacityFront: 0.74, opacityBack: 0.4,
+    opacityFront: 0.62, opacityBack: 0.29,
   },
   error: {
-    reachScale: 0.34, audioReach: 0, jitterAmp: 0.02, driftMul: 0.6, driftSpeedMul: 1,
+    reachScale: 0.3, audioReach: 0, jitterAmp: 0.02, driftMul: 0.6, driftSpeedMul: 1,
     branchBoost: 0.1, rhythmDepth: 0, rhythmSpeedMs: 0,
-    opacityFront: 0.4, opacityBack: 0.2,
+    opacityFront: 0.32, opacityBack: 0.14,
   },
 }
 
@@ -274,8 +285,15 @@ function slotGeometry(i: number): SlotGeometry {
     baseAngle: (i * GOLDEN_ANGLE) % TWO_PI,
     cycleMs: (isBranch ? 2600 : 3400) + ((i * 733) % 2700),
     offsetMs: (i * 1187) % 5000,
-    maxReachFactor: (isBranch ? 0.4 : 1.15) + ((i * 0.37) % 1) * (isBranch ? 0.3 : 0.65),
-    bend: (i % 2 === 0 ? 1 : -1) * (0.18 + ((i * 0.05) % 0.22)),
+    // Portée remontée (retour téléphone) pour approcher 1,4–1,7× le rayon du
+    // noyau dans les phases actives, en gardant l'asymétrie (certains slots
+    // nettement plus longs que d'autres — jamais un rayonnement uniforme).
+    maxReachFactor: (isBranch ? 0.45 : 1.35) + ((i * 0.37) % 1) * (isBranch ? 0.35 : 0.85),
+    // Courbure renforcée : la version initiale sortait quasi droite du
+    // noyau (lecture « épine »). Un bend plus marqué + des offsets de
+    // courbe plus généreux (cf. `buildCurve`) donnent l'ondulation qui lit
+    // « fibre neurale » plutôt que « pointe ».
+    bend: (i % 2 === 0 ? 1 : -1) * (0.34 + ((i * 0.05) % 0.38)),
     bendFreq1: (TWO_PI / 2600) * (1 + i * 0.09),
     bendFreq2: (TWO_PI / 1900) * (1 + i * 0.07),
     bendPhase1: i * 0.7,
@@ -285,7 +303,11 @@ function slotGeometry(i: number): SlotGeometry {
     driftPhase: i * 0.9,
     jitterFreq: (TWO_PI / 220) * (1 + (i % 4) * 0.31),
     jitterPhase: i * 2.1,
-    baseWidthFactor: (isBranch ? 0.16 : 0.28) + ((i * 0.09) % 1) * (isBranch ? 0.06 : 0.1),
+    // Base nettement plus fine (retour téléphone : « trop épais, trop
+    // triangulaires ») — divisée par ~2,5 par rapport à la première passe,
+    // pour qu'un filament se lise comme une fibre et non un crochet planté
+    // dans le noyau.
+    baseWidthFactor: (isBranch ? 0.055 : 0.1) + ((i * 0.09) % 1) * (isBranch ? 0.025 : 0.045),
     envelope: { dormantFrac: dormantW / totalW, growFrac: growW / totalW, holdFrac: holdW / totalW },
     layer: FILAMENT_LAYERS[i],
   }
@@ -347,13 +369,16 @@ function buildCurve(origin: [number, number], angle: number, length: number, ben
   const px = -dy
   const py = dx
   const tip: [number, number] = [ox + dx * length, oy + dy * length]
+  // Offsets de courbe renforcés (0.35→0.5, 0.3→0.42) : une centerline qui
+  // s'incurve nettement plutôt qu'une quasi-droite légèrement ployée — c'est
+  // cette ondulation qui distingue une fibre neurale d'un pic rectiligne.
   const control1: [number, number] = [
-    ox + dx * length * 0.33 + px * bend * length * 0.35 * wobble1,
-    oy + dy * length * 0.33 + py * bend * length * 0.35 * wobble1,
+    ox + dx * length * 0.33 + px * bend * length * 0.5 * wobble1,
+    oy + dy * length * 0.33 + py * bend * length * 0.5 * wobble1,
   ]
   const control2: [number, number] = [
-    ox + dx * length * 0.66 - px * bend * length * 0.3 * wobble2,
-    oy + dy * length * 0.66 - py * bend * length * 0.3 * wobble2,
+    ox + dx * length * 0.66 - px * bend * length * 0.42 * wobble2,
+    oy + dy * length * 0.66 - py * bend * length * 0.42 * wobble2,
   ]
   return { origin, control1, control2, tip }
 }
@@ -472,7 +497,9 @@ export function computeFilaments(input: ComputeFilamentsInput): Filament[] {
     // Largeur ET longueur croissent ensemble depuis la base : un filament
     // « sort » du noyau, il n'apparaît pas par transparence.
     const baseWidth = input.coreRadius * slot.baseWidthFactor * smoothstep(Math.min(1, envelope * 1.3))
-    const tipWidth = 1.1
+    // Pointe fine mais non nulle — « effilée, jamais une pointe massive » :
+    // un ruban qui s'annule à zéro lirait comme une aiguille, pas une fibre.
+    const tipWidth = 0.85
     const d = buildRibbon(curve, baseWidth, tipWidth)
     const opacityBase = slot.layer === 'front' ? activity.opacityFront : activity.opacityBack
 
