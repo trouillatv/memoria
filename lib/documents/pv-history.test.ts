@@ -40,8 +40,8 @@ function prop(overrides: {
   }
 }
 
-function run(id: string, documentId = `doc-${id}`, createdAt = `2026-0${id}-01T10:00:00Z`) {
-  return { id, document_id: documentId, created_at: createdAt }
+function run(id: string, documentId = `doc-${id}`, createdAt = `2026-0${id}-01T10:00:00Z`, targetSiteId = 'site-1') {
+  return { id, document_id: documentId, created_at: createdAt, target_site_id: targetSiteId }
 }
 
 function makePropsChain(data: unknown) {
@@ -52,6 +52,8 @@ function makePropsChain(data: unknown) {
   }
 }
 
+// document_extraction_run sert deux requêtes distinctes : la dérivation du site
+// (select().in()) et la liste des runs canoniques (select().eq().eq().order()).
 function makeRunsChain(data: unknown) {
   return {
     select: vi.fn().mockReturnValue({
@@ -60,6 +62,7 @@ function makeRunsChain(data: unknown) {
           order: vi.fn().mockResolvedValue({ data, error: null }),
         }),
       }),
+      in: vi.fn().mockResolvedValue({ data, error: null }),
     }),
   }
 }
@@ -207,6 +210,26 @@ describe('getSubjectTimeline', () => {
 
     const timeline = await getSubjectTimeline('thread-unknown')
     expect(timeline).toBeNull()
+  })
+
+  // P0-J.2 : document_extraction_proposal.target_site_id est NULL en base pour
+  // tous les threads (y compris les threads légitimement non canonicalisés) —
+  // le site doit se dériver via extraction_run_id → document_extraction_run,
+  // jamais via la colonne target_site_id de la proposition elle-même.
+  it("13b. site dérivé via document_extraction_run même si document_extraction_proposal.target_site_id est NULL", async () => {
+    const runs = [run('1')]
+    const props = [
+      prop({ id: 'p1', extraction_run_id: '1', document_status: 'open', target_site_id: null }),
+    ]
+
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'document_extraction_proposal') return makePropsChain(props)
+      return makeRunsChain(runs)
+    })
+
+    const timeline = await getSubjectTimeline('thread-a')
+    expect(timeline).not.toBeNull()
+    expect(timeline!.occurrences).toHaveLength(1)
   })
 })
 

@@ -62,7 +62,6 @@ export async function canonicalRunsForSite(siteId: string): Promise<RunRow[]> {
 type PropRow = {
   id: string
   extraction_run_id: string
-  target_site_id: string | null
   subject_thread_id: string
   proposal_family: string
   thematic_category: string | null
@@ -183,13 +182,22 @@ export async function getSubjectTimeline(subjectThreadId: string): Promise<Subje
 
   const { data: propsRaw, error: propsErr } = await supabase
     .from('document_extraction_proposal')
-    .select('id, extraction_run_id, target_site_id, subject_thread_id, proposal_family, thematic_category, label, description, document_status, source_page')
+    .select('id, extraction_run_id, subject_thread_id, proposal_family, thematic_category, label, description, document_status, source_page')
     .eq('subject_thread_id', subjectThreadId)
   if (propsErr) throw new Error(propsErr.message)
   if (!propsRaw?.length) return null
 
   const props = propsRaw as PropRow[]
-  const siteId = props.find((p) => p.target_site_id)?.target_site_id ?? null
+
+  // document_extraction_proposal.target_site_id est NULL en base : le site se
+  // dérive via extraction_run_id → document_extraction_run.target_site_id.
+  const runIds = Array.from(new Set(props.map((p) => p.extraction_run_id)))
+  const { data: runsForSite, error: runsForSiteErr } = await supabase
+    .from('document_extraction_run')
+    .select('id, target_site_id')
+    .in('id', runIds)
+  if (runsForSiteErr) throw new Error(runsForSiteErr.message)
+  const siteId = (runsForSite ?? []).find((r) => r.target_site_id)?.target_site_id ?? null
   if (!siteId) return null
 
   // 1 document = 1 snapshot temporel. Seul le run canonique par document est inclus.
