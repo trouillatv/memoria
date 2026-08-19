@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   decideReconcileLock,
+  acquireReconcileLock,
   RECONCILE_LOCK_TTL_MS,
   isUniqueLabelViolation,
   matchInheritedProposals,
@@ -38,6 +39,9 @@ const SRC_INTERVENANTS_ACTIONS = readFileSync(
 )
 const SRC_MIG_323 = readFileSync(
   join(process.cwd(), 'supabase/migrations/323_canonical_reconcile_lock.sql'), 'utf8',
+)
+const SRC_RECONCILE_ACTIONS = readFileSync(
+  join(process.cwd(), 'app/(dashboard)/documents/[id]/extraction/[runId]/review-actions.ts'), 'utf8',
 )
 
 // ─── Cas 1-3 : doctrine acteur ≠ sujet ───────────────────────────────────────
@@ -287,13 +291,50 @@ describe('P0-2 — un seul run acquiert le verrou', () => {
   })
 
   it("'acquire' n’est qu’une autorisation : le CAS SQL reste l’arbitre final", () => {
-    expect(SRC_RECONCILE).toContain('canonical_reconcile_started_at')
-    const src = readFileSync(join(process.cwd(), 'lib/visits/debrief-analysis.ts'), 'utf8')
-    expect(src).toContain('decideReconcileLock')
-    // Compare-and-swap : la mise à jour n'aboutit que si le verrou est libre.
-    expect(src).toMatch(/\.is\('canonical_reconcile_started_at', null\)/)
+    const debrief = readFileSync(join(process.cwd(), 'lib/visits/debrief-analysis.ts'), 'utf8')
+    expect(debrief).toContain('decideReconcileLock')
+    // Les deux chemins (field_visit et historical_pv) passent par le même
+    // CAS partagé — pas de `.is(..., null)` en dur recopié localement.
+    expect(debrief).toMatch(/acquireReconcileLock\(/)
+    expect(SRC_RECONCILE_ACTIONS).toMatch(/acquireReconcileLock\(/)
     // Le verrou est toujours relâché, y compris en erreur.
-    expect(src).toMatch(/canonical_reconcile_started_at: null/)
+    expect(debrief).toMatch(/canonical_reconcile_started_at: null/)
+  })
+})
+
+// ─── P0-J.4 : récupération d'un verrou stale (TTL expiré) ────────────────────
+// Bug réel découvert lors du backfill P0-J.3 : le CAS de review-actions.ts
+// exigeait `.is('canonical_reconcile_started_at', null)` en dur, alors même
+// que decideReconcileLock() venait d'autoriser 'acquire' à cause d'un verrou
+// EXPIRÉ (non-NULL). Le CAS ne matchait donc jamais, `locked` restait null,
+// et le rapport gelait silencieusement — sans erreur visible.
+
+describe('P0-J.4 — acquireReconcileLock reprend un verrou expiré par TTL', () => {
+  it('verrou absent (NULL) → acquisition normale', async () => {
+    const sb = fakeReportLockClient({ id: 'r1', canonical_reconcile_started_at: null })
+    const locked = await acquireReconcileLock(sb, 'r1', null, '2026-08-19T10:00:00.000Z')
+    expect(locked).toBe(true)
+  })
+
+  it('verrou ancien (> TTL), valeur observée == valeur en base → reprise (le cas du bug)', async () => {
+    const stale = '2026-08-19T09:00:00.000Z'
+    const sb = fakeReportLockClient({ id: 'r1', canonical_reconcile_started_at: stale })
+    const locked = await acquireReconcileLock(sb, 'r1', stale, '2026-08-19T10:00:00.000Z')
+    expect(locked).toBe(true)
+  })
+
+  it('course perdue : la valeur observée ne correspond plus à la valeur en base → abandon', async () => {
+    const observed = '2026-08-19T09:00:00.000Z'
+    const actual = '2026-08-19T09:59:00.000Z' // un autre run a déjà repris le verrou entre-temps
+    const sb = fakeReportLockClient({ id: 'r1', canonical_reconcile_started_at: actual })
+    const locked = await acquireReconcileLock(sb, 'r1', observed, '2026-08-19T10:00:00.000Z')
+    expect(locked).toBe(false)
+  })
+
+  it('course perdue : NULL attendu mais un autre run a déjà posé un verrou → abandon', async () => {
+    const sb = fakeReportLockClient({ id: 'r1', canonical_reconcile_started_at: '2026-08-19T09:59:59.000Z' })
+    const locked = await acquireReconcileLock(sb, 'r1', null, '2026-08-19T10:00:00.000Z')
+    expect(locked).toBe(false)
   })
 })
 
@@ -377,6 +418,43 @@ function fakeSubjectsClient(rows: Array<{ id: string; label: string }>): Supabas
     select: () => chain,
     eq: () => chain,
     then: (resolve: (v: { data: typeof rows }) => unknown) => resolve({ data: rows }),
+  }
+  return { from: () => chain } as unknown as SupabaseClient
+}
+
+// ─── Fake client — simule le CAS SQL de acquireReconcileLock ────────────────
+// UPDATE ... WHERE id = :id AND (started_at IS NULL | started_at = :prior)
+// N'aboutit que si TOUTES les conditions matchent l'état courant de la ligne.
+
+function fakeReportLockClient(row: { id: string; canonical_reconcile_started_at: string | null }): SupabaseClient {
+  const state = { ...row }
+  let patch: Record<string, unknown> = {}
+  let conditions: Array<{ col: string; val: unknown; op: 'eq' | 'is' }> = []
+
+  const chain = {
+    update: (p: Record<string, unknown>) => {
+      patch = p
+      return chain
+    },
+    eq: (col: string, val: unknown) => {
+      conditions.push({ col, val, op: 'eq' })
+      return chain
+    },
+    is: (col: string, val: null) => {
+      conditions.push({ col, val, op: 'is' })
+      return chain
+    },
+    select: () => chain,
+    maybeSingle: async () => {
+      const matches = conditions.every((c) => {
+        const current = (state as Record<string, unknown>)[c.col]
+        return c.op === 'is' ? current === null : current === c.val
+      })
+      conditions = []
+      if (!matches) return { data: null }
+      Object.assign(state, patch)
+      return { data: { id: state.id } }
+    },
   }
   return { from: () => chain } as unknown as SupabaseClient
 }

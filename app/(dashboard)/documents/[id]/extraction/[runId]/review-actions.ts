@@ -8,7 +8,7 @@ import { reviewProposal, linkProposalEvidence } from '@/lib/db/document-extracti
 import { materializeHistoricalVisit } from '@/lib/db/historical-visit-materialization'
 import { ensureHistoricalPdfOccurrences } from '@/lib/db/canonical-subject-historical-occurrence'
 import { reconcileHistoricalPvCanonicalSubjects } from '@/lib/db/canonical-subject-historical-reconcile'
-import { decideReconcileLock } from '@/lib/db/canonical-subject-source-reconcile'
+import { decideReconcileLock, acquireReconcileLock } from '@/lib/db/canonical-subject-source-reconcile'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType } from '@/types/db'
 
 type ActionResult = { ok: boolean; error?: string }
@@ -508,13 +508,9 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
 
     const decision = decideReconcileLock(reportStatus, Date.now())
     if (decision === 'acquire') {
-      const { data: locked } = await sb
-        .from('site_reports')
-        .update({ canonical_reconcile_started_at: now })
-        .eq('id', siteReportId)
-        .is('canonical_reconcile_started_at', null)
-        .select('id')
-        .maybeSingle()
+      const priorStartedAt = (reportStatus as { canonical_reconcile_started_at?: string | null } | null)
+        ?.canonical_reconcile_started_at
+      const locked = await acquireReconcileLock(sb, siteReportId, priorStartedAt, now)
 
       if (locked) {
         try {

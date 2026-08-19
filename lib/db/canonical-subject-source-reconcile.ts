@@ -171,8 +171,9 @@ export const RECONCILE_LOCK_TTL_MS = 5 * 60 * 1000
  * - verrou récent (< TTL)      → 'concurrent'(un autre run travaille)
  * - verrou expiré ou absent    → 'acquire'   (on tente le CAS SQL)
  *
- * 'acquire' n'est qu'une autorisation de TENTER : le CAS SQL
- * (WHERE canonical_reconcile_started_at IS NULL) reste l'arbitre final.
+ * 'acquire' n'est qu'une autorisation de TENTER : le CAS SQL reste l'arbitre
+ * final (voir acquireReconcileLock — le CAS compare la valeur observée, qui
+ * peut être NULL ou un verrou expiré par TTL, jamais NULL en dur).
  */
 export function decideReconcileLock(
   state: { canonical_reconciled_at?: string | null; canonical_reconcile_started_at?: string | null } | null,
@@ -183,6 +184,30 @@ export function decideReconcileLock(
   const startedAt = state?.canonical_reconcile_started_at
   if (startedAt && nowMs - Date.parse(startedAt) < ttlMs) return 'concurrent'
   return 'acquire'
+}
+
+/**
+ * Tente d'acquérir le verrou soft (P0-2) par CAS atomique côté SQL.
+ *
+ * P0-J.4 : `decideReconcileLock` peut retourner 'acquire' pour deux raisons
+ * distinctes — `canonical_reconcile_started_at` est NULL, OU il est défini
+ * mais expiré (> TTL). Le CAS doit comparer/remplacer la valeur RÉELLEMENT
+ * observée (`priorStartedAt`), jamais exiger NULL en dur : sinon un verrou
+ * stale (ex. interruption Vercel en plein traitement) ne peut plus jamais
+ * être repris — le rapport reste gelé indéfiniment, sans erreur visible.
+ */
+export async function acquireReconcileLock(
+  sb: SupabaseClient,
+  reportId: string,
+  priorStartedAt: string | null | undefined,
+  now: string,
+): Promise<boolean> {
+  let query = sb.from('site_reports').update({ canonical_reconcile_started_at: now }).eq('id', reportId)
+  query = priorStartedAt
+    ? query.eq('canonical_reconcile_started_at', priorStartedAt)
+    : query.is('canonical_reconcile_started_at', null)
+  const { data } = await query.select('id').maybeSingle()
+  return !!data
 }
 
 // ─── Reprise sur conflit d'unicité (P0-3, mig 323) ───────────────────────────

@@ -37,7 +37,7 @@ import { getWatchlistForDebrief } from '@/lib/db/visit-watchlist'
 import { buildSemanticContextBlock } from '@/lib/knowledge/semantic-entities'
 import { buildWatchlistDebriefBlock } from '@/lib/visits/watchlist-debrief-block'
 import { buildExtractionSiteContext } from '@/lib/db/extraction-context'
-import { decideReconcileLock } from '@/lib/db/canonical-subject-source-reconcile'
+import { decideReconcileLock, acquireReconcileLock } from '@/lib/db/canonical-subject-source-reconcile'
 import {
   buildDebriefSemanticMemory,
   type DebriefSemanticMemory,
@@ -375,7 +375,8 @@ async function projectAndTrace(params: {
 
   // ── Étape 2 : Réconciliation canonique ─────────────────────────────────────
   // Verrou soft (P0-2) : empêche deux runs concurrents sur le même rapport.
-  // Mécanisme : UPDATE ... WHERE canonical_reconcile_started_at IS NULL.
+  // Mécanisme : acquireReconcileLock — CAS sur la valeur observée (NULL ou
+  // verrou expiré par TTL, P0-J.4), jamais NULL en dur.
   // Si la colonne est déjà définie et < 5 min → un autre run est en cours, on abandonne.
   // Si canonical_reconciled_at est déjà défini → idempotence, on abandonne.
   void (async () => {
@@ -398,13 +399,9 @@ async function projectAndTrace(params: {
       }
 
       // Acquérir le soft lock (CAS atomique côté SQL)
-      const { data: locked } = await sb
-        .from('site_reports')
-        .update({ canonical_reconcile_started_at: now })
-        .eq('id', reportId)
-        .is('canonical_reconcile_started_at', null)
-        .select('id')
-        .maybeSingle()
+      const priorStartedAt = (reportStatus as { canonical_reconcile_started_at?: string | null } | null)
+        ?.canonical_reconcile_started_at
+      const locked = await acquireReconcileLock(sb, reportId, priorStartedAt, now)
 
       if (!locked) {
         // Une autre requête a pris le verrou entre le SELECT et l'UPDATE
