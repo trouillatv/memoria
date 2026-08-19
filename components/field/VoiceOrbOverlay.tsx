@@ -26,9 +26,6 @@ import {
 import { markVoice } from '@/lib/voice/voice-latency'
 import { beginVoiceTurn, traceVoice } from '@/lib/voice/voice-trace'
 import { computeBlobPath, type VoiceBlobPhase } from '@/lib/voice/blob-shape'
-import { computeFilaments, FILAMENT_COUNT, FILAMENT_LAYERS } from '@/lib/voice/orb-filaments'
-import { createFrameBudget } from '@/lib/voice/orb-frame-budget'
-import { voiceDebugEnabled } from '@/lib/voice/voice-debug'
 import { VoiceTracePanel } from '@/components/field/VoiceTracePanel'
 import { VoiceThreadAnswer } from '@/components/field/VoiceThreadAnswer'
 import {
@@ -36,13 +33,6 @@ import {
   createWakeLockController,
   phaseNeedsWakeLock,
 } from '@/lib/voice/wake-lock'
-
-// Partition avant/arrière des filaments — dérivée une seule fois de
-// FILAMENT_LAYERS (constant, cf. orb-filaments.ts) pour que le JSX peigne le
-// groupe `back` avant le noyau et `front` après, sans recalculer cette
-// répartition à chaque rendu.
-const BACK_FILAMENT_INDICES = FILAMENT_LAYERS.map((_, i) => i).filter((i) => FILAMENT_LAYERS[i] === 'back')
-const FRONT_FILAMENT_INDICES = FILAMENT_LAYERS.map((_, i) => i).filter((i) => FILAMENT_LAYERS[i] === 'front')
 
 interface Props {
   open: boolean
@@ -191,9 +181,6 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
   const blobCurrentPhaseRef = useRef<VoiceBlobPhase>('idle')
   const blobPrevPhaseRef   = useRef<VoiceBlobPhase>('idle')
   const blobPhaseSinceRef  = useRef(0)
-  // Filaments — même RAF, mêmes refs imperatives (aucun setState par frame).
-  // Un `null` tant que le <path> correspondant n'est pas monté.
-  const filamentRefs = useRef<Array<SVGPathElement | null>>(Array.from({ length: FILAMENT_COUNT }, () => null))
 
   const phase = state.phase
 
@@ -221,61 +208,25 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
   // vie ouvert de l'overlay (contrairement à la RAF audio, démontée avec le
   // micro). Lecture seule de `smoothedRef.current`, écriture imperative de
   // l'attribut `d` — aucun rerender React à chaque frame.
-  //
-  // Filaments (mandat Vincent, second retour 2026-08-19) : calculés dans
-  // CETTE MÊME boucle — jamais une RAF additionnelle — et purement
-  // décoratifs : leur coût est mesuré (`orb-frame-budget.ts`) et, si l'EMA
-  // dérive au-dessus du seuil, leur calcul est sauté certaines frames (le
-  // noyau, lui, continue toujours d'être mis à jour). Rien ici ne peut
-  // retarder ou conditionner le pipeline vocal : ce bloc ne lit que la phase
-  // et `smoothedRef.current`, n'écrit que des attributs SVG, ne pose aucun
-  // timer et ne fait aucun `await`.
   useEffect(() => {
     if (!open) return
     const size = 112 // px — doit rester égal au noyau (h-28 w-28, cf. JSX).
-    // Rayon d'ancrage des filaments : nettement à l'intérieur du noyau
-    // (MIN_BLOB_FACTOR=0.74 → 0.74*56≈41.4px), pour que leur base reste
-    // toujours recouverte quelle que soit la pulsation du noyau.
-    const coreRadius = 42
-    const frameBudget = createFrameBudget(voiceDebugEnabled())
     const loop = (ts: number) => {
-      const phase = stateRef.current.phase
-      const audioLevel = smoothedRef.current
-      const prevPhase = blobPrevPhaseRef.current
-      const phaseElapsedMs = ts - blobPhaseSinceRef.current
-
-      const d = computeBlobPath({ time: ts, phase, audioLevel, reducedMotion, size, prevPhase, phaseElapsedMs })
+      const d = computeBlobPath({
+        time: ts,
+        phase: stateRef.current.phase,
+        audioLevel: smoothedRef.current,
+        reducedMotion,
+        size,
+        prevPhase: blobPrevPhaseRef.current,
+        phaseElapsedMs: ts - blobPhaseSinceRef.current,
+      })
       pathRef.current?.setAttribute('d', d)
-
-      if (!frameBudget.shouldSkipDetail()) {
-        const start = typeof performance !== 'undefined' ? performance.now() : 0
-        const filaments = computeFilaments({
-          time: ts,
-          phase,
-          audioLevel,
-          reducedMotion,
-          centerX: size / 2,
-          centerY: size / 2,
-          coreRadius,
-          prevPhase,
-          phaseElapsedMs,
-        })
-        if (typeof performance !== 'undefined') frameBudget.record(performance.now() - start)
-        for (let i = 0; i < filaments.length; i++) {
-          const el = filamentRefs.current[i]
-          if (!el) continue
-          el.setAttribute('d', filaments[i].d)
-          el.setAttribute('opacity', String(filaments[i].opacity))
-          el.setAttribute('stroke-width', String(filaments[i].strokeWidth))
-        }
-      }
-
       blobRafRef.current = requestAnimationFrame(loop)
     }
     blobRafRef.current = requestAnimationFrame(loop)
     return () => {
       if (blobRafRef.current != null) { cancelAnimationFrame(blobRafRef.current); blobRafRef.current = null }
-      traceVoice('blob-frame-budget', frameBudget.snapshot())
     }
   }, [open, reducedMotion])
 
@@ -788,13 +739,6 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
   // <path> SVG (fill + filter) plutôt qu'à un <div> (background + boxShadow).
   // Rose en état d'erreur.
   const coreFill = isError ? 'url(#voiceBlobGradientError)' : 'url(#voiceBlobGradient)'
-  // Stade 1.1 : les filaments ne sont plus `fill`, mais `stroke` — un dégradé
-  // radial dédié, centré sur l'orbe, tient à lui seul trois exigences du
-  // retour téléphone : centre plus lumineux, opacité dégressive vers la
-  // pointe, et une base qui se fond dans le halo du noyau plutôt qu'un bord
-  // net (cf. les stops dans <defs>, plus bas). Coût : zéro par frame, c'est
-  // une ressource SVG statique.
-  const filamentStroke = isError ? 'url(#filamentStrokeGradientError)' : 'url(#filamentStrokeGradient)'
   const coreDropShadow = isError
     ? 'drop-shadow(0 0 22px rgba(225,29,72,0.38)) drop-shadow(0 0 44px rgba(225,29,72,0.12))'
     : 'drop-shadow(0 0 22px rgba(139,92,246,0.42)) drop-shadow(0 0 44px rgba(139,92,246,0.12))'
@@ -947,21 +891,20 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
             <div className={`absolute h-40 w-40 rounded-full bg-violet-400/[0.14] ${reducedMotion ? '' : 'orb-halo-b'}`} />
 
             {/* Noyau — silhouette organique. viewBox = taille du path (112,
-                cf. la RAF dédiée) ; h-28 w-28 (112px) en garde la taille CSS.
-                `overflow: visible` : les filaments peuvent dépasser ce
-                cadre sans que rien ne soit reclippé — la mise à l'échelle
-                CSS/viewBox du noyau reste inchangée, seul le débordement de
-                peinture est autorisé. */}
+                cf. la RAF dédiée) ; h-28 w-28 (112px) en garde la taille CSS. */}
             <svg
               viewBox="0 0 112 112"
               className="relative h-28 w-28 transition-[filter] duration-500"
-              style={{ filter: coreDropShadow, overflow: 'visible' }}
+              style={{ filter: coreDropShadow }}
               aria-hidden
             >
               <defs>
-                <radialGradient id="voiceBlobGradient" cx="50%" cy="42%" r="65%">
-                  <stop offset="0%" stopColor="#ede9fe" />
-                  <stop offset="52%" stopColor="#8b5cf6" />
+                {/* Lumière diffuse, pas un cœur énergétique (retour Vincent,
+                    2026-08-19) : centre légèrement plus clair que le corps,
+                    sans point chaud quasi blanc. */}
+                <radialGradient id="voiceBlobGradient" cx="50%" cy="45%" r="70%">
+                  <stop offset="0%" stopColor="#c4b5fd" />
+                  <stop offset="55%" stopColor="#8b5cf6" />
                   <stop offset="100%" stopColor="#4338ca" />
                 </radialGradient>
                 <radialGradient id="voiceBlobGradientError" cx="50%" cy="42%" r="65%">
@@ -969,90 +912,12 @@ export function VoiceOrbOverlay({ open, siteId, siteName, onVoiceTurn, onClose }
                   <stop offset="55%" stopColor="#e11d48" />
                   <stop offset="100%" stopColor="#9f1239" />
                 </radialGradient>
-
-                {/* Dégradé du TRAIT des filaments (Stade 1.1, recalibré
-                    Stade 1.2) — centré sur l'orbe (userSpaceOnUse, mêmes
-                    coordonnées que les <path>
-                    des filaments). Un seul objet statique porte trois
-                    exigences à la fois : plus lumineux près du centre,
-                    opacité dégressive vers la pointe, et une base qui se
-                    fond dans le halo du noyau au lieu d'un bord net — sans
-                    aucun calcul par frame.
-                    Recalibrage Stade 1.2 (audit `_audit-filaments-visibility`) :
-                    avec les nouvelles portées, la pointe d'une fibre bien
-                    déployée peut atteindre ~130 unités du centre — largement
-                    au-delà de l'ancien r=100, qui la faisait donc retomber
-                    purement et simplement sur le stop final (opacité 0),
-                    d'où des fibres qui « s'évaporaient ». r porté à 150 et
-                    stop final remonté à une opacité plancher non nulle :
-                    décroissance lumineuse jusqu'au bout, jamais une
-                    disparition prématurée. */}
-                <radialGradient id="filamentStrokeGradient" gradientUnits="userSpaceOnUse" cx="56" cy="56" r="150">
-                  <stop offset="0%" stopColor="#f5f3ff" stopOpacity="1" />
-                  <stop offset="30%" stopColor="#ded9fc" stopOpacity="0.94" />
-                  <stop offset="60%" stopColor="#c4b5fd" stopOpacity="0.74" />
-                  <stop offset="85%" stopColor="#a78bfa" stopOpacity="0.5" />
-                  <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.3" />
-                </radialGradient>
-                <radialGradient id="filamentStrokeGradientError" gradientUnits="userSpaceOnUse" cx="56" cy="56" r="150">
-                  <stop offset="0%" stopColor="#fff1f2" stopOpacity="1" />
-                  <stop offset="30%" stopColor="#fecdd3" stopOpacity="0.94" />
-                  <stop offset="60%" stopColor="#fda4af" stopOpacity="0.74" />
-                  <stop offset="85%" stopColor="#fb7185" stopOpacity="0.5" />
-                  <stop offset="100%" stopColor="#e11d48" stopOpacity="0.3" />
-                </radialGradient>
-
-                {/* Lueur du trait — flou renforcé (Stade 1.2 : « surtout leur
-                    glow ») et région de filtre élargie en conséquence pour ne
-                    pas rogner le halo des fibres les plus longues. Toujours
-                    une ressource statique, coût zéro par frame. */}
-                <filter id="filamentGlow" x="-100%" y="-100%" width="300%" height="300%">
-                  <feGaussianBlur stdDeviation="0.95" />
-                </filter>
               </defs>
-
-              {/* Filaments arrière — peints avant le noyau, qui les masque
-                  partiellement : c'est ce masquage qui donne la profondeur
-                  avant/arrière (cf. FILAMENT_LAYERS, orb-filaments.ts).
-                  Stade 1.1 : `stroke` (jamais `fill`) — un trait ouvert, pas
-                  un polygone. `strokeLinecap="round"` arrondit les deux
-                  extrémités, y compris la pointe : aucun bord pointu. */}
-              <g filter="url(#filamentGlow)">
-                {BACK_FILAMENT_INDICES.map((i) => (
-                  <path
-                    key={i}
-                    ref={(el) => { filamentRefs.current[i] = el }}
-                    fill="none"
-                    stroke={filamentStroke}
-                    strokeLinecap="round"
-                    d=""
-                    opacity={0}
-                  />
-                ))}
-              </g>
-
               <path
                 ref={pathRef}
                 fill={coreFill}
                 d={computeBlobPath({ time: 0, phase, audioLevel: 0, reducedMotion, size: 112 })}
               />
-
-              {/* Filaments avant — peints après le noyau. Le dégradé du trait
-                  reste translucide même ici : jamais l'impression de
-                  traverser physiquement une boule opaque. */}
-              <g filter="url(#filamentGlow)">
-                {FRONT_FILAMENT_INDICES.map((i) => (
-                  <path
-                    key={i}
-                    ref={(el) => { filamentRefs.current[i] = el }}
-                    fill="none"
-                    stroke={filamentStroke}
-                    strokeLinecap="round"
-                    d=""
-                    opacity={0}
-                  />
-                ))}
-              </g>
             </svg>
           </div>
         </button>

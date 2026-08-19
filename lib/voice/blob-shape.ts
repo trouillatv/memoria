@@ -18,9 +18,19 @@
 //              thinking/speaking, avec rotation lente optionnelle des lobes.
 //
 // Chaque groupe est normalisé (coefficients internes ≤ 1) puis multiplié par
-// une amplitude propre à la phase — bornée par construction — et l'facteur de
-// rayon final est reclampé fermement en sortie : double filet, jamais de
-// pointe fine ni de tentacule.
+// une amplitude propre à la phase — bornée par construction — et le facteur
+// de rayon de CORPS est reclampé fermement en sortie (MIN/MAX_BLOB_FACTOR).
+//
+// EXCROISSANCES (mandat Vincent, 2026-08-19 — remplace le chantier filaments
+// abandonné) : 4 points fixes du même anneau de POINT_COUNT points reçoivent,
+// en plus, un terme additif indépendant qui naît et se rétracte lentement
+// (cycle dormant→grow→hold→retract→dormant, désynchronisé par excroissance).
+// Ce n'est jamais une géométrie séparée : c'est une bosse locale sur le MÊME
+// contour fermé, avec une portée angulaire étroite (falloff cosinus sur
+// quelques points voisins seulement) — d'où « soudée au corps », jamais un
+// filament indépendant. Le facteur final (corps + bosse) reste borné par
+// EXCROISSANCE_MAX_FACTOR, volontairement modeste : excroissances courtes,
+// pas des tentacules.
 
 export type VoiceBlobPhase =
   | 'idle'
@@ -58,10 +68,34 @@ export type ComputeBlobPathInput = {
 export const POINT_COUNT = 16
 export const MIN_BLOB_FACTOR = 0.74
 export const MAX_BLOB_FACTOR = 1.26
+/** Plafond du facteur de rayon UNE FOIS la bosse d'excroissance ajoutée au corps. */
+export const EXCROISSANCE_MAX_FACTOR = 1.48
 const PHASE_TRANSITION_MS = 280
 
 const TWO_PI = Math.PI * 2
 const ANGLES = Array.from({ length: POINT_COUNT }, (_, i) => i * (TWO_PI / POINT_COUNT))
+
+// 4 points du même anneau, écartement irrégulier (5/3/4/4) pour éviter une
+// croix parfaitement symétrique. Ce sont des ANGLES fixes, pas des indices de
+// points — la fonction reste continue en angle comme le reste du module.
+const EXCROISSANCE_COUNT = 4
+const EXCROISSANCE_INDICES = [1, 6, 9, 13]
+const EXCROISSANCE_ANGLES = EXCROISSANCE_INDICES.map((i) => i * (TWO_PI / POINT_COUNT))
+// Portée angulaire de la bosse : ~1.4 pas de point de large, donc seuls le
+// point central et son voisin immédiat de chaque côté sont concernés — bosse
+// courte et contenue, jamais un lobe qui gagne tout le contour.
+const EXCROISSANCE_WIDTH_RAD = (TWO_PI / POINT_COUNT) * 1.4
+// Périodes et déphasages désynchronisés par excroissance (ms) — mouvement
+// visqueux et lent, jamais deux excroissances qui respirent à l'unisson.
+const EXCROISSANCE_PERIODS = [11_000, 12_700, 14_400, 16_100]
+const EXCROISSANCE_OFFSETS = [0, 2_600, 5_300, 8_100]
+// Fractions du cycle (dormant la majorité du temps → rare, jamais 4 excroissances
+// pleinement sorties en même temps) : dormant 0-60%, grow 60-72%, hold 72-84%,
+// retract 84-96%, dormant 96-100%.
+const EXCROISSANCE_DORMANT_END = 0.6
+const EXCROISSANCE_GROW_END = 0.72
+const EXCROISSANCE_HOLD_END = 0.84
+const EXCROISSANCE_RETRACT_END = 0.96
 
 // Fréquences temporelles fixes (rad/ms). Périodes en commentaire pour
 // lisibilité — aucune de ces valeurs ne varie pendant la vie du composant.
@@ -95,6 +129,8 @@ type PhaseParams = {
   rhythmDepth: number
   /** rad/ms de l'enveloppe rythmique (speaking). */
   rhythmSpeed: number
+  /** Profondeur de la bosse d'excroissance à pleine extension (voir EXCROISSANCE_*). */
+  excroissanceAmplitude: number
 }
 
 const RESTING: PhaseParams = {
@@ -106,6 +142,7 @@ const RESTING: PhaseParams = {
   rotationSpeed: 0,
   rhythmDepth: 0,
   rhythmSpeed: 0,
+  excroissanceAmplitude: 0.05,
 }
 
 // Table phase → paramètres. `idle`/`ready`/`exiting` partagent la respiration
@@ -133,6 +170,7 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
     rotationSpeed: 0.00006,
     rhythmDepth: 0,
     rhythmSpeed: 0,
+    excroissanceAmplitude: 0.06,
   },
   listening: {
     baseScale: 1.0,
@@ -143,6 +181,7 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
     rotationSpeed: 0,
     rhythmDepth: 0,
     rhythmSpeed: 0,
+    excroissanceAmplitude: 0.09,
   },
   finalizing: {
     baseScale: 0.94,
@@ -153,6 +192,7 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
     rotationSpeed: 0,
     rhythmDepth: 0,
     rhythmSpeed: 0,
+    excroissanceAmplitude: 0.05,
   },
   sending: {
     baseScale: 0.94,
@@ -163,6 +203,7 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
     rotationSpeed: 0,
     rhythmDepth: 0,
     rhythmSpeed: 0,
+    excroissanceAmplitude: 0.05,
   },
   thinking: {
     baseScale: 0.9,
@@ -173,6 +214,7 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
     rotationSpeed: 0.00035,
     rhythmDepth: 0,
     rhythmSpeed: 0,
+    excroissanceAmplitude: 0.12,
   },
   speaking: {
     baseScale: 0.95,
@@ -183,6 +225,7 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
     rotationSpeed: 0.00012,
     rhythmDepth: 0.35,
     rhythmSpeed: 0.0045,
+    excroissanceAmplitude: 0.08,
   },
   error: {
     baseScale: 1.0,
@@ -193,6 +236,7 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
     rotationSpeed: 0,
     rhythmDepth: 0,
     rhythmSpeed: 0,
+    excroissanceAmplitude: 0.03,
   },
 }
 
@@ -202,6 +246,7 @@ const PHASE_PARAMS: Record<VoiceBlobPhase, PhaseParams> = {
 const REDUCED_REST = 0.5
 const REDUCED_AUDIO = 0.15
 const REDUCED_INTERNAL = 0.35
+const REDUCED_EXCROISSANCE = 0.35
 
 function smoothstep(x: number): number {
   if (x <= 0) return 0
@@ -225,6 +270,7 @@ function blendParams(a: PhaseParams, b: PhaseParams, t: number): PhaseParams {
     rotationSpeed: lerp(a.rotationSpeed, b.rotationSpeed),
     rhythmDepth: lerp(a.rhythmDepth, b.rhythmDepth),
     rhythmSpeed: lerp(a.rhythmSpeed, b.rhythmSpeed),
+    excroissanceAmplitude: lerp(a.excroissanceAmplitude, b.excroissanceAmplitude),
   }
 }
 
@@ -260,6 +306,40 @@ function internalTerm(angle: number, t: number, rotation: number): number {
   return 0.65 * a + 0.35 * b
 }
 
+/** Enveloppe 0..1 d'une excroissance : dormant → grow → hold → retract → dormant, cycle propre. */
+function excroissanceEnvelope(t: number, index: number): number {
+  const period = EXCROISSANCE_PERIODS[index]
+  const offset = EXCROISSANCE_OFFSETS[index]
+  const u = (((t + offset) % period) + period) % period / period
+  if (u < EXCROISSANCE_DORMANT_END) return 0
+  if (u < EXCROISSANCE_GROW_END) {
+    return smoothstep((u - EXCROISSANCE_DORMANT_END) / (EXCROISSANCE_GROW_END - EXCROISSANCE_DORMANT_END))
+  }
+  if (u < EXCROISSANCE_HOLD_END) return 1
+  if (u < EXCROISSANCE_RETRACT_END) {
+    return 1 - smoothstep((u - EXCROISSANCE_HOLD_END) / (EXCROISSANCE_RETRACT_END - EXCROISSANCE_HOLD_END))
+  }
+  return 0
+}
+
+function angularDistance(a: number, b: number): number {
+  const d = Math.abs(a - b) % TWO_PI
+  return d > Math.PI ? TWO_PI - d : d
+}
+
+/** Bosse locale (jamais un lobe global) : falloff cosinus autour de chaque excroissance active. */
+function excroissanceTerm(angle: number, t: number, amplitude: number): number {
+  if (amplitude <= 0) return 0
+  let sum = 0
+  for (let e = 0; e < EXCROISSANCE_COUNT; e++) {
+    const dist = angularDistance(angle, EXCROISSANCE_ANGLES[e])
+    if (dist > EXCROISSANCE_WIDTH_RAD) continue
+    const falloff = 0.5 * (1 + Math.cos((Math.PI * dist) / EXCROISSANCE_WIDTH_RAD))
+    sum += falloff * excroissanceEnvelope(t, e)
+  }
+  return amplitude * sum
+}
+
 function radiusFactor(angle: number, t: number, audioLevel: number, p: PhaseParams): number {
   const rotation = t * p.rotationSpeed
   const rhythm = p.rhythmDepth > 0 ? 1 + p.rhythmDepth * (0.5 + 0.5 * Math.sin(t * p.rhythmSpeed)) : 1
@@ -269,7 +349,9 @@ function radiusFactor(angle: number, t: number, audioLevel: number, p: PhasePara
     p.audioAmplitude * audioTerm(angle, t, audioLevel) +
     p.internalAmplitude * rhythm * internalTerm(angle, t, rotation) +
     p.audioScale * audioLevel
-  return Math.min(MAX_BLOB_FACTOR, Math.max(MIN_BLOB_FACTOR, raw))
+  const body = Math.min(MAX_BLOB_FACTOR, Math.max(MIN_BLOB_FACTOR, raw))
+  const bump = excroissanceTerm(angle, t, p.excroissanceAmplitude)
+  return Math.min(EXCROISSANCE_MAX_FACTOR, body + bump)
 }
 
 /** Catmull-Rom (tension 1) → Bézier cubique, courbe fermée — continuité de tangente garantie. */
@@ -301,6 +383,7 @@ export function computeBlobPath(input: ComputeBlobPathInput): string {
         audioAmplitude: params.audioAmplitude * REDUCED_AUDIO,
         audioScale: params.audioScale * REDUCED_AUDIO,
         internalAmplitude: params.internalAmplitude * REDUCED_INTERNAL,
+        excroissanceAmplitude: params.excroissanceAmplitude * REDUCED_EXCROISSANCE,
       }
     : params
 

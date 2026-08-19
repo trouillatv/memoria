@@ -4,6 +4,7 @@ import {
   POINT_COUNT,
   MIN_BLOB_FACTOR,
   MAX_BLOB_FACTOR,
+  EXCROISSANCE_MAX_FACTOR,
   type ComputeBlobPathInput,
   type VoiceBlobPhase,
 } from '@/lib/voice/blob-shape'
@@ -61,19 +62,40 @@ describe('computeBlobPath — silhouette', () => {
     expect(spread(radii(loud))).toBeGreaterThan(spread(radii(quiet)))
   })
 
-  it('borne fermement le facteur de rayon, même à audioLevel extrême', () => {
-    const path = computeBlobPath(base({ phase: 'listening', audioLevel: 1, time: 999_999 }))
+  it('borne fermement le facteur de rayon, même à audioLevel extrême et excroissance en pleine extension', () => {
     const center = SIZE / 2
     // Tolérance élargie à ~1e-4 : `pointsToClosedPath` sérialise les
     // coordonnées avec `toFixed(2)`, donc reconstruire le facteur à partir du
     // path perd déjà ~0.005px par coordonnée avant même de comparer au clamp.
     const roundTripEpsilon = 2e-4
-    for (const [x, y] of parsePoints(path)) {
-      const r = Math.hypot(x - center, y - center)
-      const factor = r / center
-      expect(factor).toBeGreaterThanOrEqual(MIN_BLOB_FACTOR - roundTripEpsilon)
-      expect(factor).toBeLessThanOrEqual(MAX_BLOB_FACTOR + roundTripEpsilon)
+    // Balayage temporel : le plafond doit tenir à tout instant, y compris
+    // pendant la phase "hold" d'une excroissance (bosse locale ajoutée au
+    // corps — cf. EXCROISSANCE_MAX_FACTOR, remplace l'ancien MAX_BLOB_FACTOR
+    // comme borne haute globale).
+    for (let t = 0; t < 20_000; t += 733) {
+      const path = computeBlobPath(base({ phase: 'thinking', audioLevel: 1, time: t }))
+      for (const [x, y] of parsePoints(path)) {
+        const r = Math.hypot(x - center, y - center)
+        const factor = r / center
+        expect(factor).toBeGreaterThanOrEqual(MIN_BLOB_FACTOR - roundTripEpsilon)
+        expect(factor).toBeLessThanOrEqual(EXCROISSANCE_MAX_FACTOR + roundTripEpsilon)
+      }
     }
+  })
+
+  it('hors bosse d’excroissance, le corps seul reste dans MIN/MAX_BLOB_FACTOR', () => {
+    // idle: excroissanceAmplitude la plus faible (0.05) et falloff étroit —
+    // la grande majorité des points, à tout instant, restent sur le corps pur.
+    const center = SIZE / 2
+    let sawNearBodyBound = false
+    for (let t = 0; t < 20_000; t += 400) {
+      const path = computeBlobPath(base({ phase: 'idle', audioLevel: 0, time: t }))
+      for (const [x, y] of parsePoints(path)) {
+        const factor = Math.hypot(x - center, y - center) / center
+        if (factor <= MAX_BLOB_FACTOR + 0.01) sawNearBodyBound = true
+      }
+    }
+    expect(sawNearBodyBound).toBe(true)
   })
 
   it('thinking et listening produisent des silhouettes différentes au même instant', () => {
