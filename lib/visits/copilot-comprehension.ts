@@ -20,7 +20,7 @@
 import { z } from 'zod'
 import { getAIProvider } from '@/services/ai/factory'
 import type { AIProvider } from '@/services/ai'
-import { normalizeQuery, type IntentResult } from './copilot-intent-router'
+import { normalizeQuery, hasWriteBlockingSemanticSignal, type IntentResult } from './copilot-intent-router'
 import { classifyReadIntent, type IntentClassification, type IntentFamily } from './copilot-classify'
 
 // ── Contrat de sortie ─────────────────────────────────────────────────────────
@@ -399,14 +399,19 @@ export function mergeComprehension(
   // S'applique aussi à une écriture déterministe 'ambiguous' : on ne crée pas
   // l'écriture, on précise seulement la cible d'un brouillon déjà décidé.
   //
-  // Exception : si le déterministe a posé 'negated_write_verb' (NEGATION_SCOPE),
-  // UNKNOWN_WRITE n'est pas une intention floue à préciser mais un verdict — la
-  // négation orale a délibérément bloqué la branche d'écriture. Le LLM n'a
-  // aucune notion de négation (le prompt ne la mentionne pas) : le laisser
-  // reclasser ici annulerait silencieusement le jugement du routeur (terrain
-  // OCEF 2026-08-18 : « Ne planifie pas de réunion vendredi » → SCHEDULE_MEETING).
+  // Exception : si le déterministe a posé un signal write-blocking
+  // (hasWriteBlockingSemanticSignal — negated_write_verb, negated_assertion_claim,
+  // et tout futur signal de la même famille), UNKNOWN_WRITE/FACT n'est pas une
+  // intention floue à préciser mais un verdict — une négation sémantique a
+  // délibérément bloqué la branche d'écriture. Le LLM n'a aucune notion de
+  // négation (le prompt ne la mentionne pas) : le laisser reclasser ici
+  // annulerait silencieusement le jugement du routeur (terrain OCEF 2026-08-18 :
+  // « Ne planifie pas de réunion vendredi » → SCHEDULE_MEETING ; terrain
+  // 2026-08-19, tour [4] : « ne considère pas que R4 est réglé » → CREATE_ACTION).
+  // Centralisé dans copilot-intent-router.ts pour qu'un futur 3ᵉ signal de
+  // négation n'exige pas un nouveau patch nommé ici.
   const writeIsUnresolved =
-    !nextIntent.signals.includes('negated_write_verb') &&
+    !hasWriteBlockingSemanticSignal(nextIntent.signals) &&
     (nextIntent.intent === 'UNKNOWN_WRITE' ||
       (nextIntent.intent !== 'READ' && nextIntent.confidence === 'ambiguous'))
 

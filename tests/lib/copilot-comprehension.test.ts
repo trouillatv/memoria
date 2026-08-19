@@ -365,6 +365,57 @@ describe('mergeComprehension — comprehension "unknown" ne fabrique jamais un b
   })
 })
 
+// ── 3quinquies. negated_assertion_claim doit survivre à la fusion LLM (audit
+// causal tour terrain [4], 2026-08-19) ──────────────────────────────────────
+//
+// « Ne considère pas que le regard R4 est réglé. » : le déterministe classe
+// FACT/ambiguous, signals=['fact_assertion','negated_assertion_claim'] — un
+// simple rejet d'assertion, aucun ordre d'écriture. Mais la compréhension LLM
+// (SYSTEM_PROMPT sans aucune notion de négation) peut y voir POSSIBLE_WRITE/
+// create_action sur la seule présence de "R4"+contexte de suivi de chantier.
+// Avant ce correctif, la section 2 de mergeComprehension ("précision d'une
+// écriture non résolue") ne consultait que le signal 'negated_write_verb' par
+// son nom : FACT/ambiguous était traité comme une écriture non résolue et
+// refiné en CREATE_ACTION/ambiguous. hasWriteBlockingSemanticSignal généralise
+// la garde à 'negated_assertion_claim' (et tout futur signal de la même
+// famille) sans jamais forcer FACT vers UNKNOWN_WRITE par principe : le
+// verdict FACT reste FACT, seul le raffinement vers l'écriture est interdit.
+describe('mergeComprehension — negated_assertion_claim ne doit jamais être écrasé par la précision LLM (tour terrain [4])', () => {
+  it('"Ne considère pas que le regard R4 est réglé." → reste FACT même si le LLM force POSSIBLE_WRITE/create_action/high', () => {
+    const q = 'Ne considère pas que le regard R4 est réglé.'
+    const det = detectIntent(q)
+    expect(det.intent).toBe('FACT')
+    expect(det.confidence).toBe('ambiguous')
+    expect(det.signals).toContain('negated_assertion_claim')
+    const merged = route(q, comprehension('POSSIBLE_WRITE', { intent: 'create_action', confidence: 'high' }))
+    expect(merged.intentResult.intent).toBe('FACT')
+    expect(merged.applied).not.toContain('possible_write_refined')
+  })
+
+  it('"Je considère pas que le regard R4 est réglé." (sans "ne") → même garde', () => {
+    const q = 'Je considère pas que le regard R4 est réglé.'
+    const det = detectIntent(q)
+    expect(det.intent).toBe('FACT')
+    expect(det.signals).toContain('negated_assertion_claim')
+    const merged = route(q, comprehension('POSSIBLE_WRITE', { intent: 'create_action', confidence: 'high' }))
+    expect(merged.intentResult.intent).toBe('FACT')
+    expect(merged.applied).not.toContain('possible_write_refined')
+  })
+
+  it('reste FACT même sans compréhension LLM (repli déterministe)', () => {
+    const q = 'Ne considère pas que le regard R4 est réglé.'
+    const merged = route(q, null)
+    expect(merged.intentResult.intent).toBe('FACT')
+  })
+
+  it('témoin positif : "R4 n\'est pas réglé" (constat métier négatif valide) → aucun signal write-blocking posé', () => {
+    const q = "Le regard R4 n'est pas réglé."
+    const det = detectIntent(q)
+    expect(det.signals).not.toContain('negated_assertion_claim')
+    expect(det.signals).not.toContain('negated_write_verb')
+  })
+})
+
 // ── 4. Erreur de chargement ≠ zéro résultat ───────────────────────────────────
 
 describe('resolveQuantitativeVerdict — ne jamais affirmer "aucune" à tort', () => {

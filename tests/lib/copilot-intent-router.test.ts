@@ -1219,3 +1219,84 @@ describe('NEGATION_SCOPE — témoins positifs (aucune régression)', () => {
     })
   }
 })
+
+// ── negated_assertion_claim (Vincent 2026-08-19) ─────────────────────────────
+//
+// Bug terrain tour [4] : « Ne considère pas que le regard R4 est réglé. » —
+// FACT/ambiguous, aucun signal de négation (negated_write_verb ne peut pas
+// s'appliquer : "considère" n'est pas un verbe d'écriture) → la compréhension
+// LLM voit POSSIBLE_WRITE/create_action → mergeComprehension rule 2 refine en
+// CREATE_ACTION/ambiguous → proposition d'action fabriquée sur un simple rejet
+// d'assertion. Catégorie sémantique distincte de negated_write_verb (négation
+// d'un ACTE D'ÉCRITURE) et d'un constat métier négatif valide (aucun signal).
+//
+// Détection STRUCTURELLE : [je/on, ou sujet ellipsé en tête de clause] +
+// [ne] + verbe d'attitude propositionnelle (considère/pense/crois/estime) +
+// pas/jamais + ... que + proposition. Jamais un patch lexical sur "considère"
+// seul.
+describe('negated_assertion_claim — rejet d\'une assertion rapportée (tour terrain [4])', () => {
+  it('"Ne considère pas que R4 est réglé" → FACT + negated_assertion_claim, jamais CREATE_ACTION', () => {
+    const q = 'Ne considère pas que le regard R4 est réglé.'
+    expect(intent(q)).toBe('FACT')
+    expect(signals(q)).toContain('negated_assertion_claim')
+  })
+
+  it('"Je considère pas que R4 est réglé" (sans "ne") → idem', () => {
+    const q = 'Je considère pas que le regard R4 est réglé.'
+    expect(intent(q)).toBe('FACT')
+    expect(signals(q)).toContain('negated_assertion_claim')
+  })
+
+  it('"Je ne pense pas que R4 soit réglé" → negated_assertion_claim', () => {
+    const q = 'Je ne pense pas que le regard R4 soit réglé.'
+    expect(signals(q)).toContain('negated_assertion_claim')
+  })
+
+  it('"Je ne crois pas que R4 soit fermé" → negated_assertion_claim', () => {
+    const q = 'Je ne crois pas que le regard R4 soit fermé.'
+    expect(signals(q)).toContain('negated_assertion_claim')
+  })
+
+  it('"Je n\'estime pas que ce point soit résolu" → negated_assertion_claim', () => {
+    const q = "Je n'estime pas que ce point soit résolu."
+    expect(signals(q)).toContain('negated_assertion_claim')
+  })
+
+  it('"R4 n\'est pas réglé" (constat métier négatif valide) → aucun signal de négation', () => {
+    const q = "R4 n'est pas réglé."
+    expect(signals(q)).not.toContain('negated_assertion_claim')
+    expect(signals(q)).not.toContain('negated_write_verb')
+  })
+
+  it('"Je pense que R4 n\'est pas réglé" (négation dans la complétive, pas sur le verbe d\'attitude) → pas de negated_assertion_claim', () => {
+    const q = "Je pense que le regard R4 n'est pas réglé."
+    expect(signals(q)).not.toContain('negated_assertion_claim')
+  })
+
+  it('"Paul ne pense pas que R4 est réglé" (sujet tiers explicite) → pas de negated_assertion_claim', () => {
+    const q = 'Paul ne pense pas que le regard R4 est réglé.'
+    expect(signals(q)).not.toContain('negated_assertion_claim')
+  })
+
+  it('"Ne crée pas d\'action pour R4" → garde negated_write_verb existante inchangée', () => {
+    const q = "Ne crée pas d'action pour le regard R4."
+    expect(signals(q)).toContain('negated_write_verb')
+    expect(signals(q)).not.toContain('negated_assertion_claim')
+  })
+
+  it('"Je ne pense pas créer une action demain" (rejet d\'une intention, pas d\'une assertion : pas de "que") → pas de negated_assertion_claim, déjà bloqué par negated_write_verb', () => {
+    const q = 'Je ne pense pas créer une action demain.'
+    expect(signals(q)).not.toContain('negated_assertion_claim')
+    expect(signals(q)).toContain('negated_write_verb')
+  })
+})
+
+describe('hasWriteBlockingSemanticSignal — propriété centrale sticky', () => {
+  it('regroupe negated_write_verb et negated_assertion_claim', async () => {
+    const { hasWriteBlockingSemanticSignal } = await import('@/lib/visits/copilot-intent-router')
+    expect(hasWriteBlockingSemanticSignal(['negated_write_verb'])).toBe(true)
+    expect(hasWriteBlockingSemanticSignal(['negated_assertion_claim'])).toBe(true)
+    expect(hasWriteBlockingSemanticSignal(['fact_assertion'])).toBe(false)
+    expect(hasWriteBlockingSemanticSignal([])).toBe(false)
+  })
+})

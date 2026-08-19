@@ -54,6 +54,25 @@ export function readRemainsPlausible(result: IntentResult): boolean {
   return result.intent === 'READ' || result.confidence === 'ambiguous'
 }
 
+/**
+ * Un intent porte-t-il un signal qui interdit tout raffinement vers une
+ * écriture ? Propriété centrale (Vincent 2026-08-19) : un signal marqué
+ * write-blocking est STICKY — aucune couche en aval (compréhension LLM,
+ * fusion, refinement) ne peut le supprimer ni transformer l'intent en intent
+ * d'écriture tant qu'il est présent. Membres actuels :
+ *   — negated_write_verb : négation d'un acte d'écriture lui-même
+ *   — negated_assertion_claim : rejet d'une assertion rapportée (distinct
+ *     d'un constat métier négatif valide, qui ne porte aucun signal)
+ * Centraliser cette liste ici évite de reproduire le même trou de sûreté à
+ * chaque nouveau signal de négation (cf. audit tour terrain [4], 2026-08-19 :
+ * mergeComprehension ne testait que negated_write_verb par son nom).
+ */
+const WRITE_BLOCKING_SIGNALS = new Set(['negated_write_verb', 'negated_assertion_claim'])
+
+export function hasWriteBlockingSemanticSignal(signals: readonly string[]): boolean {
+  return signals.some((s) => WRITE_BLOCKING_SIGNALS.has(s))
+}
+
 // ── Normalisation ─────────────────────────────────────────────────────────────
 
 /**
@@ -401,6 +420,59 @@ function isFullyNegatedWriteIntent(question: string): boolean {
   return !clauses.some(clauseHasPositiveWriteVerb)
 }
 
+// ── Signal NEGATION_ASSERTION_CLAIM (Vincent 2026-08-19) ─────────────────────
+//
+// Distinct de negated_write_verb par construction : « ne considère pas que R4
+// est réglé » ne nie pas un ACTE D'ÉCRITURE (aucun verbe d'écriture présent),
+// elle REJETTE une proposition rapportée — une troisième catégorie sémantique,
+// séparée de :
+//   — négation d'un acte d'écriture (« ne crée pas d'action ») → negated_write_verb
+//   — constat métier négatif valide (« R4 n'est pas réglé ») → aucun signal,
+//     doit rester enregistrable tel quel
+//
+// Détection STRUCTURELLE, pas lexicale : « considère »/« pense »/« crois »/
+// « estime » ne sont PAS ajoutés à WRITE_TRIGGER_VERB_RE (ça polluerait la
+// détection positive d'écriture ailleurs). Le signal n'existe que sur le
+// patron [je/on] + [ne] + verbe d'attitude propositionnelle + pas/jamais + que
+// + proposition — jamais sur le verbe seul. Le sujet peut être ELLIPSÉ
+// (« Ne considère pas que R4 est réglé », forme orale/dictée directe — c'est
+// le tour terrain [4] exact, 2026-08-19) : seul le début de clause tolère
+// cette ellipse ; un sujet EXPLICITE présent doit être je/on, jamais un tiers
+// (« Paul ne pense pas au regard R4 » reste exclu par ce garde-fou). Ce patron
+// exclut par construction :
+//   — un sujet tiers explicite (« Paul ne pense pas que R4 est réglé »)
+//   — une négation sans complétive "que" (« je ne pense pas créer une
+//     action demain » — rejet d'une INTENTION, pas d'une assertion)
+//   — une opinion POSITIVE dont la négation porte sur la proposition
+//     rapportée, pas sur le verbe d'attitude (« je pense que R4 n'est pas
+//     réglé » — "pense" n'est adjacent à aucune particule négative)
+const ASSERTION_ATTITUDE_SUBJECT_RE = /^(?:je|j|on)$/
+const ASSERTION_ATTITUDE_VERB_RE = /^(?:consider|pens[eo]|croi[st]?|estim)\w*$/
+const ASSERTION_NEGATION_PARTICLES = new Set(['pas', 'jamais'])
+
+function clauseHasNegatedAssertionClaim(clause: string): boolean {
+  const tokens = normalizeQuery(clause).split(' ')
+  for (let k = 0; k < tokens.length; k++) {
+    if (!ASSERTION_ATTITUDE_VERB_RE.test(tokens[k])) continue
+    // Le marqueur "ne"/"n" juste avant le verbe, s'il existe, décale d'autant
+    // la position où chercher le sujet (« je ne considère » vs « je considère »).
+    const neIndex = k - 1 >= 0 && NE_MARKER_RE.test(tokens[k - 1]) ? k - 1 : null
+    const subjectIndex = (neIndex ?? k) - 1
+    const subjectOk =
+      subjectIndex < 0 || ASSERTION_ATTITUDE_SUBJECT_RE.test(tokens[subjectIndex])
+    if (!subjectOk) continue
+    const particle = tokens[k + 1]
+    if (!particle || !ASSERTION_NEGATION_PARTICLES.has(particle)) continue
+    const rest = tokens.slice(k + 2).join(' ')
+    if (/\bque\b/.test(rest)) return true
+  }
+  return false
+}
+
+function isNegatedAssertionClaim(question: string): boolean {
+  return splitClauses(question).some(clauseHasNegatedAssertionClaim)
+}
+
 // ── Signaux CORRECTION_IDENTITY (P4-B.2, Vincent 2026-08-17) ──────────────────
 //
 // Corrige une mécoupure STT ou une manière de désigner un acteur DÉJÀ CONNU
@@ -560,6 +632,7 @@ export function detectIntent(question: string): IntentResult {
   const hasReserveCreate  = RESERVE_CREATE_RE.test(q)
   const hasQuestionMark  = /\?\s*$/.test(question.trim())
   const hasNegatedWrite  = isFullyNegatedWriteIntent(question)
+  const hasNegatedAssertionClaim = isNegatedAssertionClaim(question)
   const hasIdentityCorrection =
     IDENTITY_CORRECTION_QUAND_RE.test(q) ||
     IDENTITY_CORRECTION_NON_RE.test(q) ||
@@ -591,6 +664,7 @@ export function detectIntent(question: string): IntentResult {
   if (hasObligation)                     signals.push('obligation_marker')
   if (hasReserveCreate)                  signals.push('reserve_create_verb')
   if (hasNegatedWrite)                   signals.push('negated_write_verb')
+  if (hasNegatedAssertionClaim)          signals.push('negated_assertion_claim')
 
   // ── Garde PRÉPARATION DE VISITE ───────────────────────────────────────────
   // Prime sur tout : « fais-moi les points de contrôle pour ma prochaine visite »
