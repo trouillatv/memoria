@@ -1,0 +1,331 @@
+{
+  "corpusId": "ENV_001",
+  "documentId": "c3cb72f2-37db-41b2-8b16-45ec03a61779",
+  "extractionRunId": "af971a92-d8ce-4f02-8947-53ba6252ae37",
+  "proposals": [],
+  "evidence": [
+    {
+      "id": "0304b574-41f8-4bbc-82b9-d5080ff99559",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "af971a92-d8ce-4f02-8947-53ba6252ae37",
+      "document_id": "c3cb72f2-37db-41b2-8b16-45ec03a61779",
+      "evidence_type": "image",
+      "source_page": 1,
+      "storage_path": "snapshots/c3cb72f2-37db-41b2-8b16-45ec03a61779/img-p1-1.png",
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          0,
+          0,
+          595.2000122070312,
+          841.4400024414062
+        ],
+        "nativeWidth": 1240,
+        "nativeHeight": 1753
+      },
+      "created_at": "2026-08-20T02:43:40.128895+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "9e043c35-ab08-42ac-97df-eee1ec1d978a",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "af971a92-d8ce-4f02-8947-53ba6252ae37",
+      "document_id": "c3cb72f2-37db-41b2-8b16-45ec03a61779",
+      "evidence_type": "image",
+      "source_page": 1,
+      "storage_path": "snapshots/c3cb72f2-37db-41b2-8b16-45ec03a61779/img-p1-2.png",
+      "caption": "Ré",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          67.19999694824219,
+          11.52001953125,
+          531.8400268554688,
+          781.4400024414062
+        ],
+        "nativeWidth": 1936,
+        "nativeHeight": 3208
+      },
+      "created_at": "2026-08-20T02:43:40.128895+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "1b40313d-05a2-4164-9fc6-9744f22136f4",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "af971a92-d8ce-4f02-8947-53ba6252ae37",
+      "document_id": "c3cb72f2-37db-41b2-8b16-45ec03a61779",
+      "evidence_type": "image",
+      "source_page": 2,
+      "storage_path": "snapshots/c3cb72f2-37db-41b2-8b16-45ec03a61779/img-p2-1.png",
+      "caption": "Absence",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          0,
+          0,
+          595.2000122070312,
+          841.4400024414062
+        ],
+        "nativeWidth": 1240,
+        "nativeHeight": 1753
+      },
+      "created_at": "2026-08-20T02:43:40.128895+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "76cb493f-9dc0-48f1-80ac-3a490aeceea2",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "af971a92-d8ce-4f02-8947-53ba6252ae37",
+      "document_id": "c3cb72f2-37db-41b2-8b16-45ec03a61779",
+      "evidence_type": "image",
+      "source_page": 2,
+      "storage_path": "snapshots/c3cb72f2-37db-41b2-8b16-45ec03a61779/img-p2-2.png",
+      "caption": "Préparation",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          67.19999694824219,
+          67.20001220703125,
+          531.8400268554688,
+          782.4000244140625
+        ],
+        "nativeWidth": 1936,
+        "nativeHeight": 2980
+      },
+      "created_at": "2026-08-20T02:43:40.128895+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "3feef6eb-3e4a-4a4d-8247-8cd1cd3eac69",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "af971a92-d8ce-4f02-8947-53ba6252ae37",
+      "document_id": "c3cb72f2-37db-41b2-8b16-45ec03a61779",
+      "evidence_type": "image",
+      "source_page": 3,
+      "storage_path": "snapshots/c3cb72f2-37db-41b2-8b16-45ec03a61779/img-p3-1.png",
+      "caption": "L'",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          0,
+          0,
+          595.2000122070312,
+          841.4400024414062
+        ],
+        "nativeWidth": 1240,
+        "nativeHeight": 1753
+      },
+      "created_at": "2026-08-20T02:43:40.128895+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "e4ea3df3-f165-45ec-b5cd-62c18046b561",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "af971a92-d8ce-4f02-8947-53ba6252ae37",
+      "document_id": "c3cb72f2-37db-41b2-8b16-45ec03a61779",
+      "evidence_type": "image",
+      "source_page": 3,
+      "storage_path": "snapshots/c3cb72f2-37db-41b2-8b16-45ec03a61779/img-p3-2.png",
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          65.27999877929688,
+          68.1600341796875,
+          529.9200439453125,
+          782.4000244140625
+        ],
+        "nativeWidth": 1936,
+        "nativeHeight": 2976
+      },
+      "created_at": "2026-08-20T02:43:40.128895+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "a08c1f53-c0da-48b7-a8a2-f91e7f7e229e",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "af971a92-d8ce-4f02-8947-53ba6252ae37",
+      "document_id": "c3cb72f2-37db-41b2-8b16-45ec03a61779",
+      "evidence_type": "image",
+      "source_page": 4,
+      "storage_path": "snapshots/c3cb72f2-37db-41b2-8b16-45ec03a61779/img-p4-1.png",
+      "caption": "NF HAB",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          0,
+          0,
+          595.2000122070312,
+          841.4400024414062
+        ],
+        "nativeWidth": 1240,
+        "nativeHeight": 1753
+      },
+      "created_at": "2026-08-20T02:43:40.128895+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "51df3d27-59aa-46ce-96a1-871600927113",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "af971a92-d8ce-4f02-8947-53ba6252ae37",
+      "document_id": "c3cb72f2-37db-41b2-8b16-45ec03a61779",
+      "evidence_type": "image",
+      "source_page": 4,
+      "storage_path": "snapshots/c3cb72f2-37db-41b2-8b16-45ec03a61779/img-p4-2.png",
+      "caption": "Dém",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          65.27999877929688,
+          79.67999267578125,
+          529.9200439453125,
+          781.4400024414062
+        ],
+        "nativeWidth": 1936,
+        "nativeHeight": 2924
+      },
+      "created_at": "2026-08-20T02:43:40.128895+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "0947c9bf-559b-4ee7-9b45-c3fcaa45a149",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "af971a92-d8ce-4f02-8947-53ba6252ae37",
+      "document_id": "c3cb72f2-37db-41b2-8b16-45ec03a61779",
+      "evidence_type": "image",
+      "source_page": 5,
+      "storage_path": "snapshots/c3cb72f2-37db-41b2-8b16-45ec03a61779/img-p5-1.png",
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          0,
+          0,
+          595.2000122070312,
+          841.4400024414062
+        ],
+        "nativeWidth": 1240,
+        "nativeHeight": 1753
+      },
+      "created_at": "2026-08-20T02:43:40.128895+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "149eb4c4-4b3c-45ac-80c7-9b99e96dca9d",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "af971a92-d8ce-4f02-8947-53ba6252ae37",
+      "document_id": "c3cb72f2-37db-41b2-8b16-45ec03a61779",
+      "evidence_type": "image",
+      "source_page": 5,
+      "storage_path": "snapshots/c3cb72f2-37db-41b2-8b16-45ec03a61779/img-p5-2.png",
+      "caption": "Terrasse",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          65.27999877929688,
+          79.67999267578125,
+          529.9200439453125,
+          781.4400024414062
+        ],
+        "nativeWidth": 1936,
+        "nativeHeight": 2924
+      },
+      "created_at": "2026-08-20T02:43:40.128895+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "5362c30e-7856-419b-8a84-23fe125b7a4d",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "af971a92-d8ce-4f02-8947-53ba6252ae37",
+      "document_id": "c3cb72f2-37db-41b2-8b16-45ec03a61779",
+      "evidence_type": "image",
+      "source_page": 6,
+      "storage_path": "snapshots/c3cb72f2-37db-41b2-8b16-45ec03a61779/img-p6-1.png",
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          0,
+          0,
+          595.2000122070312,
+          841.4400024414062
+        ],
+        "nativeWidth": 1240,
+        "nativeHeight": 1753
+      },
+      "created_at": "2026-08-20T02:43:40.128895+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "dbbc9e6c-0607-4de2-bf5e-ae22f59841b3",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "af971a92-d8ce-4f02-8947-53ba6252ae37",
+      "document_id": "c3cb72f2-37db-41b2-8b16-45ec03a61779",
+      "evidence_type": "image",
+      "source_page": 6,
+      "storage_path": "snapshots/c3cb72f2-37db-41b2-8b16-45ec03a61779/img-p6-2.png",
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          67.19999694824219,
+          67.20001220703125,
+          529.9199829101562,
+          782.4000244140625
+        ],
+        "nativeWidth": 1928,
+        "nativeHeight": 2980
+      },
+      "created_at": "2026-08-20T02:43:40.128895+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "893fdbaa-0a0a-4dd2-bd2b-f866ba188adf",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "af971a92-d8ce-4f02-8947-53ba6252ae37",
+      "document_id": "c3cb72f2-37db-41b2-8b16-45ec03a61779",
+      "evidence_type": "image",
+      "source_page": 7,
+      "storage_path": "snapshots/c3cb72f2-37db-41b2-8b16-45ec03a61779/img-p7-1.png",
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          0,
+          0,
+          595.2000122070312,
+          841.4400024414062
+        ],
+        "nativeWidth": 1240,
+        "nativeHeight": 1753
+      },
+      "created_at": "2026-08-20T02:43:40.128895+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "a791ae4f-e122-400a-b544-dc0765be0190",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "af971a92-d8ce-4f02-8947-53ba6252ae37",
+      "document_id": "c3cb72f2-37db-41b2-8b16-45ec03a61779",
+      "evidence_type": "image",
+      "source_page": 7,
+      "storage_path": "snapshots/c3cb72f2-37db-41b2-8b16-45ec03a61779/img-p7-2.png",
+      "caption": "Tranch",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          67.19999694824219,
+          66.239990234375,
+          531.8400268554688,
+          781.4400024414062
+        ],
+        "nativeWidth": 1936,
+        "nativeHeight": 2980
+      },
+      "created_at": "2026-08-20T02:43:40.128895+00:00",
+      "pinned_for_visit": false
+    }
+  ],
+  "proposalEvidenceLinks": []
+}

@@ -1,0 +1,359 @@
+[
+  {
+    "corpusId": "LRM_CR04",
+    "documentId": "4b767f20-5797-4092-ac89-a2f5d7b928b2",
+    "extractionRunId": "355213d9-5563-424b-8e55-97b5946019fc",
+    "status": "ready_for_review",
+    "proposalsTotal": 67,
+    "proposalsByFamily": {
+      "company": 11,
+      "action": 25,
+      "person": 12,
+      "deadline": 6,
+      "knowledge_fact": 13
+    },
+    "evidenceCount": 85,
+    "imagesDetected": 0,
+    "durationMs": 264813,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "LRM_CR07",
+    "documentId": "04b473c6-7d5a-4eb8-9903-f08430c3a16e",
+    "extractionRunId": "3285b19f-a460-4e06-b640-5d8e7348f470",
+    "status": "ready_for_review",
+    "proposalsTotal": 108,
+    "proposalsByFamily": {
+      "company": 10,
+      "person": 16,
+      "knowledge_fact": 48,
+      "deadline": 5,
+      "action": 24,
+      "decision": 4,
+      "observation": 1
+    },
+    "evidenceCount": 95,
+    "imagesDetected": 0,
+    "durationMs": 194220,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "HER_CR01",
+    "documentId": "bff1a4f7-e710-4aff-a588-d3d2970a4089",
+    "extractionRunId": "3ad5d5e1-2313-496e-9245-6e8dc688673d",
+    "status": "ready_for_review",
+    "proposalsTotal": 16,
+    "proposalsByFamily": {
+      "decision": 1,
+      "knowledge_fact": 10,
+      "deadline": 4,
+      "action": 1
+    },
+    "evidenceCount": 16,
+    "imagesDetected": 0,
+    "durationMs": 51207,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "HER_CR05",
+    "documentId": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+    "extractionRunId": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+    "status": "ready_for_review",
+    "proposalsTotal": 9,
+    "proposalsByFamily": {
+      "knowledge_fact": 4,
+      "company": 1,
+      "observation": 1,
+      "decision": 1,
+      "deadline": 1,
+      "person": 1
+    },
+    "evidenceCount": 8,
+    "imagesDetected": 0,
+    "durationMs": 48597,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "HER_CR10",
+    "documentId": "f0233c02-460b-41df-9bef-77ed8f5b4b60",
+    "extractionRunId": "2d0e7767-a1b4-4899-993c-b72a5425cb26",
+    "status": "ready_for_review",
+    "proposalsTotal": 4,
+    "proposalsByFamily": {
+      "decision": 1,
+      "knowledge_fact": 1,
+      "reservation": 1,
+      "person": 1
+    },
+    "evidenceCount": 4,
+    "imagesDetected": 0,
+    "durationMs": 21291,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "MEL_CR01",
+    "documentId": "7fe3ea2a-e6ed-4b62-8e1a-0c3e504ffa2e",
+    "extractionRunId": "8f39e15f-a089-44fb-b702-db8656429f7d",
+    "status": "ready_for_review",
+    "proposalsTotal": 59,
+    "proposalsByFamily": {
+      "company": 9,
+      "person": 14,
+      "action": 8,
+      "knowledge_fact": 17,
+      "deadline": 3,
+      "observation": 3,
+      "decision": 5
+    },
+    "evidenceCount": 70,
+    "imagesDetected": 0,
+    "durationMs": 139641,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "MEL_CR03",
+    "documentId": "09a34819-d8c7-4296-acbf-d90efdf1cfb7",
+    "extractionRunId": "16093ee3-9314-4ba6-99c3-8c8953500750",
+    "status": "ready_for_review",
+    "proposalsTotal": 80,
+    "proposalsByFamily": {
+      "person": 14,
+      "knowledge_fact": 38,
+      "company": 9,
+      "deadline": 3,
+      "action": 5,
+      "observation": 5,
+      "decision": 6
+    },
+    "evidenceCount": 80,
+    "imagesDetected": 0,
+    "durationMs": 138939,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "JAR_CR02",
+    "documentId": "a7e71deb-1d45-4c4f-bdad-68ef4edd2968",
+    "extractionRunId": "c395cd03-8d3d-4312-8417-040735b5bf38",
+    "status": "ready_for_review",
+    "proposalsTotal": 96,
+    "proposalsByFamily": {
+      "company": 8,
+      "person": 22,
+      "deadline": 7,
+      "knowledge_fact": 30,
+      "action": 23,
+      "decision": 5,
+      "observation": 1
+    },
+    "evidenceCount": 105,
+    "imagesDetected": 7,
+    "durationMs": 207366,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "JAR_CR04",
+    "documentId": "dc0d247a-8d43-44da-85ac-66f035444d5c",
+    "extractionRunId": "9c3a35a5-ace6-4d60-a916-42de20b5f3d3",
+    "status": "ready_for_review",
+    "proposalsTotal": 110,
+    "proposalsByFamily": {
+      "deadline": 1,
+      "person": 22,
+      "company": 9,
+      "knowledge_fact": 54,
+      "action": 22,
+      "observation": 1,
+      "decision": 1
+    },
+    "evidenceCount": 120,
+    "imagesDetected": 9,
+    "durationMs": 205726,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "BTP_009",
+    "documentId": "86edcf23-896c-4177-aaba-8762f713bc88",
+    "extractionRunId": "f566274a-f99a-43bc-bc94-4c49e7da2c65",
+    "status": "ready_for_review",
+    "proposalsTotal": 44,
+    "proposalsByFamily": {
+      "deadline": 1,
+      "knowledge_fact": 31,
+      "person": 8,
+      "company": 3,
+      "decision": 1
+    },
+    "evidenceCount": 45,
+    "imagesDetected": 7,
+    "durationMs": 152016,
+    "error": null,
+    "attempt": 2,
+    "previousError": "The operation was aborted due to timeout"
+  },
+  {
+    "corpusId": "EAU_001",
+    "documentId": "c86af8ef-2194-494a-a98d-88180724aae7",
+    "extractionRunId": "394c1d2f-ef80-45b1-bb87-dc09b12348f3",
+    "status": "ready_for_review",
+    "proposalsTotal": 47,
+    "proposalsByFamily": {
+      "observation": 21,
+      "knowledge_fact": 13,
+      "person": 7,
+      "company": 5,
+      "deadline": 1
+    },
+    "evidenceCount": 43,
+    "imagesDetected": 0,
+    "durationMs": 138166,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "EAU_002",
+    "documentId": "f4709bb1-dd44-4aa6-9732-ce0c51c008fc",
+    "extractionRunId": "402b3a5e-59ab-4a5a-8906-0ec17d9fe526",
+    "status": "ready_for_review",
+    "proposalsTotal": 18,
+    "proposalsByFamily": {
+      "person": 3,
+      "company": 3,
+      "knowledge_fact": 9,
+      "decision": 3
+    },
+    "evidenceCount": 18,
+    "imagesDetected": 0,
+    "durationMs": 89436,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "OPC_003",
+    "documentId": "175f9574-2e34-4fa6-b43a-8bfee9858ceb",
+    "extractionRunId": "aee4e6da-adfc-4c8b-9327-f472f9e1d26e",
+    "status": "ready_for_review",
+    "proposalsTotal": 17,
+    "proposalsByFamily": {
+      "knowledge_fact": 11,
+      "company": 4,
+      "deadline": 2
+    },
+    "evidenceCount": 17,
+    "imagesDetected": 0,
+    "durationMs": 105765,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "OPC_006",
+    "documentId": "3fb83daa-d7d4-474b-9333-ab10e61bd4d4",
+    "extractionRunId": "da436bdf-d64b-4961-bacc-17ce41a7f1fd",
+    "status": "ready_for_review",
+    "proposalsTotal": 0,
+    "proposalsByFamily": {},
+    "evidenceCount": 1,
+    "imagesDetected": 1,
+    "durationMs": 31030,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "QHSE_002",
+    "documentId": "e6fc0c82-a1ab-4a35-8a5f-f0f3b2e90cd4",
+    "extractionRunId": "9319d141-29e8-42ec-8c6d-daa359770214",
+    "status": "ready_for_review",
+    "proposalsTotal": 4,
+    "proposalsByFamily": {
+      "reservation": 2,
+      "company": 1,
+      "knowledge_fact": 1
+    },
+    "evidenceCount": 4,
+    "imagesDetected": 0,
+    "durationMs": 37769,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "REC_001",
+    "documentId": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+    "extractionRunId": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+    "status": "ready_for_review",
+    "proposalsTotal": 32,
+    "proposalsByFamily": {
+      "company": 3,
+      "knowledge_fact": 8,
+      "person": 5,
+      "reservation": 15,
+      "deadline": 1
+    },
+    "evidenceCount": 40,
+    "imagesDetected": 5,
+    "durationMs": 99985,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "VRD_005",
+    "documentId": "8e632184-17d9-40f7-a161-8f37ba029f4b",
+    "extractionRunId": "fb25c46a-070f-4544-8e27-2143ac010d59",
+    "status": "ready_for_review",
+    "proposalsTotal": 30,
+    "proposalsByFamily": {
+      "person": 4,
+      "knowledge_fact": 21,
+      "company": 4,
+      "deadline": 1
+    },
+    "evidenceCount": 56,
+    "imagesDetected": 16,
+    "durationMs": 149519,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "AUT_004",
+    "documentId": "ea9c7480-9a3f-4432-9fbb-91bc2a551bad",
+    "extractionRunId": "764d5000-aa3c-4c44-a1a2-d43782746d54",
+    "status": "ready_for_review",
+    "proposalsTotal": 34,
+    "proposalsByFamily": {
+      "observation": 12,
+      "knowledge_fact": 14,
+      "person": 4,
+      "company": 3,
+      "decision": 1
+    },
+    "evidenceCount": 39,
+    "imagesDetected": 0,
+    "durationMs": 105018,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  }
+]

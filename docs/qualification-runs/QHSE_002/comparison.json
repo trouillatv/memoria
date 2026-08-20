@@ -1,0 +1,74 @@
+{
+  "corpusId": "QHSE_002",
+  "referenceElementCount": 3,
+  "memoriaProposalCount": 4,
+  "elementMatches": [
+    {
+      "referenceId": "QHSE_002-E01",
+      "status": "MATCHED",
+      "matchedProposalIds": ["2294cc25-2463-44d7-bbbe-6d9da4e5cdec"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Les Consultants Conformtech inc. correctement identifiée comme seule entreprise nommée du document (family=company). Écart mineur de métadonnée : source_payload.companyRole=\"AMO\" (Assistance à Maîtrise d'Ouvrage), alors que le document décrit une firme d'inspection/contrôle technique indépendante (vérificateur, pas gestionnaire pour le compte du maître d'ouvrage) — mislabeling du sous-champ de rôle, sans conséquence sur la famille elle-même ni sur le recall/precision."
+    },
+    {
+      "referenceId": "QHSE_002-E02",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Phrase méthodologique du Sommaire (page 1) : « Prendre note que les interventions sont à la base arbitraire à moins d'être mentionné autrement. » Aucune proposition MemorIA, aucune evidence ne reprend ce passage (les 4 evidence texte du run ne couvrent que pages 1 en-tête, 2×2 et 4)."
+    },
+    {
+      "referenceId": "QHSE_002-E03",
+      "status": "PARTIAL",
+      "matchedProposalIds": ["b8817028-7949-4478-a956-41bb42946cdd"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "La référence regroupe en 1 seul élément tout le périmètre normatif du gabarit de contrôle : boulons d'ancrages, fabrication/montage, assemblages boulonnés, assemblages soudés (page 2) ; tablier métallique, revêtements d'acier (page 3) ; ancrages chimiques/mécaniques, goujons, dessins structuraux (page 4) ; normes CSA S16-09 / W59-13 / W47.1-09, spécifications CANAM / HILTI. MemorIA n'en extrait qu'une fraction : 1 seule proposition (kf-dessins-structuraux), reprenant fidèlement, verbatim, la phrase sur les dessins structuraux page 4 avec la bonne référence normative [art.4 de la CSA S16-09]. Tout le reste du périmètre décrit par E03 (boulons, assemblages boulonnés/soudés, tablier métallique, revêtements, ancrages, goujons, citations CSA W59-13/W47.1-09, CANAM, HILTI — plusieurs dizaines de lignes de texte générique de structure similaire) n'est capturé par aucune proposition. Statut PARTIAL : couverture réelle mais très étroite, pas totalement manquée."
+    }
+  ],
+  "unmatchedProposals": [
+    {
+      "proposalId": "055f9d91-da5d-41e2-8735-a596025d9f1a",
+      "family": "reservation",
+      "label": "Recommandation : Renforcement des trous modifiés des ancrages des contreventements",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "« Nous recommandons de mettre des «plate washer» soudées afin de renforcir les trous localement. » — phrase réellement présente en page 2, citée verbatim en source_excerpt (vérifié par lecture directe du PDF source, utilisée en dernier recours car reference.json et memoria-output.json se contredisaient sur l'existence de contenu concret dans ce document). Le paragraphe source est en deux temps : (1) « Nous vérifions SI les trous ... ont été agrandis par oxycoupage » — vérification conditionnelle, qui ne confirme pas que l'agrandissement a effectivement eu lieu — puis (2) la recommandation de plate washers, énoncée sans condition explicite. La description MemorIA (« ... suite à l'agrandissement par oxycoupage des trous dans les plaques de base... ») transforme cette condition en fait accompli, une certitude causale que le texte n'établit pas explicitement — écart de fidélité factuelle à signaler (dimension 2), sans toutefois inventer la recommandation elle-même, qui est bien réelle. Classification family=reservation défendable si ce passage est lu comme une non-conformité constatée. reference.json (Phase A, readerNotes) affirme pourtant explicitement qu'« aucune non-conformité concrète ... ne figure dans le texte source » — assertion non confirmée par la lecture directe du PDF sur ce point précis."
+    },
+    {
+      "proposalId": "6d1a53ca-1e0a-475e-83e6-4ff64573d434",
+      "family": "reservation",
+      "label": "Non-conformité : Verticalité des colonnes",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "« Les colonnes qui sont mentionnées ne respectent pas les tolérances de montage. » — phrase réellement présente en page 2 (vérifiée par lecture directe du PDF), citée verbatim, avec citation normative exacte [Art. 29.3.3 de la norme S16-09] reprise fidèlement par MemorIA. À la différence de la majorité des items du gabarit qui décrivent une méthode générique au présent (« nous vérifions que... », « nous validons... »), ce passage bascule au passé composé (« Nous avons validé la verticalité des colonnes avec un bazooka en bon état ») et affirme une non-conformité constatée — sans toutefois nommer les colonnes concernées ni cocher la case « État » (C/NC/S), colonne entièrement vide sur les 3 pages de la grille. Classification family=reservation cohérente avec le contenu. Comme pour la proposition précédente, reference.json (Phase A) n'a pas isolé ce passage et affirme l'absence de non-conformité concrète dans le document — la lecture directe du PDF ne confirme pas cette affirmation pour ce passage précis."
+    }
+  ],
+  "recallByFamily": {
+    "person": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "company": { "matched": 1, "partial": 0, "missed": 0, "total": 1, "recallScore": 1.0 },
+    "deadline": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "decision": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "action": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "observation": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "reservation": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "knowledge_fact": { "matched": 0, "partial": 1, "missed": 1, "total": 2, "recallScore": 0.25 }
+  },
+  "precisionByFamily": {
+    "person": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "company": { "truePositive": 1, "falsePositive": 0, "legitimateExtra": 0, "total": 1, "precisionScore": 1.0 },
+    "deadline": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "decision": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "action": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "observation": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "reservation": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 2, "total": 2, "precisionScore": null },
+    "knowledge_fact": { "truePositive": 1, "falsePositive": 0, "legitimateExtra": 0, "total": 1, "precisionScore": 1.0 }
+  },
+  "evidenceComparison": {
+    "referencePhotoCount": 1,
+    "referencePhotoRole": "decorative (logo/pictogramme « Conformtech » répété en pied de pages 2, 3, 4 — aucune photographie de constat ou de chantier)",
+    "memoriaImageEvidenceCount": 0,
+    "note": "Cohérent : les 4 evidence produites par MemorIA sont toutes de type text_excerpt ; aucune evidence image. Le seul visuel de la référence est un logo de marque non probant, hors périmètre de comparaison photo détaillée."
+  },
+  "sourceVerificationNote": "reference.json et memoria-output.json se contredisaient frontalement sur l'existence de contenu métier concret dans ce document (reference.json / readerNotes affirme : « aucune non-conformité concrète ... ne figure dans le texte source », alors que memoria-output.json contient 2 propositions reservation avec des source_excerpt très spécifiques). Le PDF source a donc été lu directement (dernier recours, comme prévu par la tâche). Verdict : le document EST bien un gabarit très majoritairement vierge (aucun champ d'identification projet/client/date rempli, colonne « État » C/NC/S entièrement vide sur les 3 pages de grille, page 5 « Liste item déficient » totalement blanche) — sur ce point reference.json est exact. MAIS le corps de la grille contient, noyées dans un texte à 95% générique et répétitif (« nous vérifions que... », « nous validons... », au présent, sans conclusion), 2 phrases qui rompent ce patron : une recommandation inconditionnelle (« Nous recommandons de mettre des «plate washer» soudées... ») et une affirmation de non-conformité au passé composé (« Les colonnes qui sont mentionnées ne respectent pas les tolérances de montage »). Ces 2 phrases sont verbatim réelles, pas fabriquées par MemorIA. L'affirmation de reference.json selon laquelle aucune non-conformité concrète ne figure dans le texte n'est donc pas entièrement exacte : la lecture Phase A a traité l'intégralité du corps de la grille comme générique/méthodologique sans repérer ces 2 exceptions. Ceci nuance sans invalider le diagnostic global de reference.json (le document reste très majoritairement vide) et explique pourquoi cette comparaison classe les 2 propositions reservation en LEGITIMATE_EXTRA plutôt qu'en FALSE_POSITIVE : leur contenu textuel est réel, seule leur interprétation comme « non-conformité confirmée » (plutôt que candidate ambiguë) reste discutable, en particulier pour res-trous-ancrages dont la description ajoute une certitude causale non explicite dans la source."
+}

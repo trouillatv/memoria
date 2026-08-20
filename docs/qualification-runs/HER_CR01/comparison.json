@@ -1,0 +1,227 @@
+{
+  "corpusId": "HER_CR01",
+  "referenceElementCount": 20,
+  "memoriaProposalCount": 16,
+  "elementMatches": [
+    {
+      "referenceId": "HER_CR01-E01",
+      "status": "MATCHED",
+      "matchedProposalIds": ["4d100e64-8142-4d40-8e68-13889bb5b9db"],
+      "referenceFamily": "deadline",
+      "memoriaFamily": "deadline",
+      "note": "Rebouchage des tranchées. Famille correcte. Problème de fidélité factuelle (voir factualFidelityIssues) : MemorIA fixe dueDate=2018-09-27, retenant une seule des deux dates alternatives explicitement données dans le texte (« jeudi 27 et/ou vendredi 28 »), alors que la référence a délibérément laissé deadlineDate à null pour ne pas trancher cette ambiguïté."
+    },
+    {
+      "referenceId": "HER_CR01-E02",
+      "status": "MATCHED",
+      "matchedProposalIds": ["5a75ddd4-f58d-44b4-ba46-6dc135462c96"],
+      "referenceFamily": "deadline",
+      "memoriaFamily": "deadline",
+      "note": "Début de la 1e phase des travaux, 1er octobre 2018, 10 semaines. dueDate=2018-10-01 identique à la deadlineDate de référence (seule date calendaire explicite du document) — aucun problème de fidélité ici."
+    },
+    {
+      "referenceId": "HER_CR01-E03",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["2b0034c6-7a16-4fba-87ab-8d16f927b3f7"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Contenu retrouvé intégralement (« sous réserve que l'INRAP ne décide pas de continuer les fouilles »), mais classé knowledge_fact côté MemorIA au lieu de reservation. La famille 'reservation' n'a produit aucune proposition sur ce document."
+    },
+    {
+      "referenceId": "HER_CR01-E04",
+      "status": "MATCHED",
+      "matchedProposalIds": ["e8bab6f5-1915-48e6-92ce-9d0ac90af5a0"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "decision",
+      "note": "Fermeture du Clos aux voitures côté rue des Fossés, engins de chantier seuls autorisés. Seule décision du document correctement classée en famille decision."
+    },
+    {
+      "referenceId": "HER_CR01-E05",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["18203ce0-ca16-4024-b7b7-92a18e9b1dbc"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Passage piéton le long du mur existant : contenu retrouvé fidèlement mais classé knowledge_fact au lieu de decision."
+    },
+    {
+      "referenceId": "HER_CR01-E06",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["f466e04b-c862-4f4f-aa1e-d99193e2fec3"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "knowledge_fact",
+      "note": "25 places place du Clos, zone bleue, accès rue de l'Eglise : contenu retrouvé fidèlement mais classé knowledge_fact au lieu de decision."
+    },
+    {
+      "referenceId": "HER_CR01-E07",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["ac5cd302-bb6a-4473-8c40-7f45f50e7903"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "knowledge_fact",
+      "note": "8 places parvis de l'Orangerie : contenu retrouvé fidèlement mais classé knowledge_fact au lieu de decision."
+    },
+    {
+      "referenceId": "HER_CR01-E08",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["23216fef-fa7c-4e6e-998c-b0d6d3e88fc4"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "knowledge_fact",
+      "note": "15 places cour de la Mairie, consigne aux élus et agents de se garer sur la partie cailloux : responsible de la référence bien couvert dans la description MemorIA, mais famille knowledge_fact au lieu de decision."
+    },
+    {
+      "referenceId": "HER_CR01-E09",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["1f2e79b5-c5f6-4eac-b0dd-21986b254647"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "knowledge_fact",
+      "note": "10 places cour des communs : contenu retrouvé fidèlement mais classé knowledge_fact au lieu de decision."
+    },
+    {
+      "referenceId": "HER_CR01-E10",
+      "status": "MATCHED",
+      "matchedProposalIds": ["0a3678f2-fac4-461f-bf88-54baee0ac985"],
+      "referenceFamily": "deadline",
+      "memoriaFamily": "deadline",
+      "note": "20 places parking du Clos, ouverture après sécurisation de la cour de l'école. Famille correcte. Problème de fidélité factuelle (voir factualFidelityIssues) : MemorIA fixe dueDate=2018-09-28, une date calendaire absente du texte, alors que le document dit seulement « fin de semaine prochaine » et que la référence a explicitement laissé deadlineDate à null pour cette raison."
+    },
+    {
+      "referenceId": "HER_CR01-E11",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["b915008c-6c89-4f73-88d0-bf359b347e76"],
+      "referenceFamily": "action",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Pose des grillages et portails (sécurisation de la cour de l'école) : contenu retrouvé fidèlement mais classé knowledge_fact au lieu de action ; il s'agit pourtant d'une tâche opérationnelle concrète, pas d'un simple fait constaté."
+    },
+    {
+      "referenceId": "HER_CR01-E12",
+      "status": "MATCHED",
+      "matchedProposalIds": ["7ec13668-6e37-496d-a2bd-59c22cd85f7c"],
+      "referenceFamily": "action",
+      "memoriaFamily": "action",
+      "note": "Le policier municipal fait respecter la zone bleue. Famille correcte, responsable repris à l'identique (« policier municipal ») et même enrichi via source_payload.responsibleParty."
+    },
+    {
+      "referenceId": "HER_CR01-E13",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["4e9e6874-7ed1-47de-a10c-9233f18d89db"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Aménagement particulier pour les exposants du marché de Noël : contenu retrouvé fidèlement mais classé knowledge_fact au lieu de decision."
+    },
+    {
+      "referenceId": "HER_CR01-E14",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["567f270c-f54d-401c-8711-9c30c30b12a6"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Ouverture provisoire de la zone de chantier devant la salle du Clos pour le marché de Noël : contenu retrouvé fidèlement mais classé knowledge_fact au lieu de decision."
+    },
+    {
+      "referenceId": "HER_CR01-E15",
+      "status": "MATCHED",
+      "matchedProposalIds": ["48b40cd1-9669-49dd-8216-c2b26c700f0b"],
+      "referenceFamily": "deadline",
+      "memoriaFamily": "deadline",
+      "note": "Fléchage commerces/accès au Clos. Famille correcte. Problème de fidélité factuelle (voir factualFidelityIssues) : MemorIA fixe dueDate=2018-09-28, une date calendaire absente du texte (« la semaine prochaine » seulement), alors que la référence a explicitement laissé deadlineDate à null. Même date fabriquée (2018-09-28) que sur E10, ce qui suggère une résolution automatique déterministe de l'expression relative en date calendaire (probablement le prochain vendredi suivant la réunion du 20 septembre)."
+    },
+    {
+      "referenceId": "HER_CR01-E16",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["c6d2375d-d6ae-4c12-a2a5-9722f091f776"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Entrée de l'école élémentaire probablement par la rue de l'Eglise, sous réserve d'entretien avec Mr Morel : contenu et nuance « probablement » bien conservés dans la description MemorIA, mais famille knowledge_fact au lieu de decision."
+    },
+    {
+      "referenceId": "HER_CR01-E17",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "person",
+      "memoriaFamily": null,
+      "note": "Mr Morel n'est extrait comme personne nulle part : son nom apparaît seulement en toile de fond dans la description/l'excerpt de la proposition kf-entree-ecole-p1 (famille knowledge_fact, rattachée à E16), mais aucune proposition de famille 'person' n'a été produite sur ce document (0 proposition person au total)."
+    },
+    {
+      "referenceId": "HER_CR01-E18",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "company",
+      "memoriaFamily": null,
+      "note": "L'INRAP n'est extrait comme organisation nulle part : le sigle apparaît seulement dans l'excerpt de la proposition kf-condition-inrap-p1 (famille knowledge_fact, rattachée à E03), mais aucune proposition de famille 'company' n'a été produite sur ce document (0 proposition company au total)."
+    },
+    {
+      "referenceId": "HER_CR01-E19",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Procédure récurrente (réunion de chantier chaque jeudi, compte rendu publié sur le site de la mairie) : aucune proposition ni evidence MemorIA ne couvre ce passage. Seul élément de référence réellement 'knowledge_fact' du document, et il est manqué — alors que la famille knowledge_fact concentre par ailleurs 10 propositions correspondant en réalité à d'autres familles (voir E05-E09, E11, E13, E14, E16)."
+    },
+    {
+      "referenceId": "HER_CR01-E20",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "company",
+      "memoriaFamily": null,
+      "note": "« La Mairie » n'est extraite comme organisation nulle part malgré des mentions répétées (cour de la Mairie, élus et agents, site internet de la mairie) : ces mentions sont dispersées dans plusieurs propositions knowledge_fact sans qu'aucune entité 'company' dédiée ne soit créée (0 proposition company au total)."
+    }
+  ],
+  "unmatchedProposals": [],
+  "factualFidelityIssues": [
+    {
+      "proposalId": "4d100e64-8142-4d40-8e68-13889bb5b9db",
+      "referenceId": "HER_CR01-E01",
+      "severity": "modérée",
+      "issue": "dueDate=2018-09-27 retient une seule des deux dates alternatives explicitement données dans le texte (« jeudi 27 et/ou vendredi 28 septembre »), en supprimant l'ambiguïté que la référence avait délibérément préservée (deadlineDate=null). La date choisie figure littéralement dans le texte (ce n'est pas une invention pure), mais elle est présentée comme certaine alors que le document ne tranche pas."
+    },
+    {
+      "proposalId": "0a3678f2-fac4-461f-bf88-54baee0ac985",
+      "referenceId": "HER_CR01-E10",
+      "severity": "forte",
+      "issue": "dueDate=2018-09-28 est une date calendaire absente du texte source, qui ne dit que « fin de semaine prochaine ». Fabrication par calcul (probablement : vendredi suivant la date de réunion du 20 septembre 2018). La référence a explicitement laissé deadlineDate à null pour cette raison précise."
+    },
+    {
+      "proposalId": "48b40cd1-9669-49dd-8216-c2b26c700f0b",
+      "referenceId": "HER_CR01-E15",
+      "severity": "forte",
+      "issue": "dueDate=2018-09-28 est une date calendaire absente du texte source, qui ne dit que « la semaine prochaine ». Même schéma de fabrication que E10, avec exactement la même date calculée — signe d'une résolution automatique et systématique des expressions temporelles relatives en date calendaire absolue, sans expression d'incertitude."
+    }
+  ],
+  "recallByFamily": {
+    "person": { "matched": 0, "partial": 0, "missed": 1, "misclassified": 0, "total": 1, "recallScore": 0.0 },
+    "company": { "matched": 0, "partial": 0, "missed": 2, "misclassified": 0, "total": 2, "recallScore": 0.0 },
+    "deadline": { "matched": 4, "partial": 0, "missed": 0, "misclassified": 0, "total": 4, "recallScore": 1.0 },
+    "decision": { "matched": 1, "partial": 0, "missed": 0, "misclassified": 8, "total": 9, "recallScore": 0.111 },
+    "action": { "matched": 1, "partial": 0, "missed": 0, "misclassified": 1, "total": 2, "recallScore": 0.5 },
+    "observation": { "matched": 0, "partial": 0, "missed": 0, "misclassified": 0, "total": 0, "recallScore": null },
+    "reservation": { "matched": 0, "partial": 0, "missed": 0, "misclassified": 1, "total": 1, "recallScore": 0.0 },
+    "knowledge_fact": { "matched": 0, "partial": 0, "missed": 1, "misclassified": 0, "total": 1, "recallScore": 0.0 }
+  },
+  "precisionByFamily": {
+    "person": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "misclassified": 0, "total": 0, "precisionScore": null },
+    "company": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "misclassified": 0, "total": 0, "precisionScore": null },
+    "deadline": { "truePositive": 4, "falsePositive": 0, "legitimateExtra": 0, "misclassified": 0, "total": 4, "precisionScore": 1.0 },
+    "decision": { "truePositive": 1, "falsePositive": 0, "legitimateExtra": 0, "misclassified": 0, "total": 1, "precisionScore": 1.0 },
+    "action": { "truePositive": 1, "falsePositive": 0, "legitimateExtra": 0, "misclassified": 0, "total": 1, "precisionScore": 1.0 },
+    "observation": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "misclassified": 0, "total": 0, "precisionScore": null },
+    "reservation": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "misclassified": 0, "total": 0, "precisionScore": null },
+    "knowledge_fact": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "misclassified": 10, "total": 10, "precisionScore": 0.0 }
+  },
+  "globalMetrics": {
+    "recallStrict": { "matched": 6, "total": 20, "score": 0.30, "definition": "MATCHED / total référence (misclassified compté comme échec de classification)" },
+    "recallContentFound": { "matchedOrMisclassified": 16, "total": 20, "score": 0.80, "definition": "(MATCHED + MISCLASSIFIED) / total référence — contenu retrouvé quelle que soit la famille" },
+    "precisionStrict": { "truePositive": 6, "total": 16, "score": 0.375, "definition": "truePositive / total propositions MemorIA (misclassified compté comme échec de classification)" },
+    "precisionContentFound": { "truePositiveOrMisclassified": 16, "total": 16, "score": 1.0, "definition": "(truePositive + misclassified) / total propositions MemorIA — 0 faux positif, 0 legitimate_extra : aucune proposition n'est fabriquée de toutes pièces ou étrangère au document" }
+  },
+  "evidenceComparison": {
+    "referencePhotoCount": 0,
+    "memoriaImageEvidenceCount": 0,
+    "note": "Aucune photo dans le document source (page unique, texte seul). 0 evidence de type image des deux côtés — conforme, pas de section photo détaillée requise."
+  },
+  "overallNotes": [
+    "6/20 éléments de référence MATCHED, 0 PARTIAL, 10 MISCLASSIFIED, 4 MISSED. Aucun élément n'est perdu au sens du contenu (16/20 = 80% du contenu de référence est retrouvé quelque part dans les propositions MemorIA), mais seulement 6/20 (30%) le sont dans la bonne famille métier.",
+    "Biais dominant, très marqué sur ce document : la famille 'knowledge_fact' sert de fourre-tout. Ses 10 propositions correspondent en réalité à 8 decision, 1 action et 1 reservation de la référence — aucune des 10 n'est un vrai knowledge_fact. Le seul élément réellement knowledge_fact du document (E19, procédure récurrente des CR hebdomadaires) est lui-même manqué.",
+    "0 proposition de famille person et 0 proposition de famille company sur l'ensemble du document, alors que la référence identifie 1 personne (Mr Morel) et 2 organisations (INRAP, la Mairie). Recall = 0.0 sur ces deux familles entières.",
+    "3 propositions deadline sur 4 encodent un dueDate ISO précis (jour/mois/année) alors que le texte source ne fournit que des expressions ambiguës ou relatives (« et/ou », « semaine prochaine », « fin de semaine prochaine ») ; la référence a explicitement laissé ces trois deadlineDate à null pour cette raison. Aucune fabrication de personne, société ou montant en revanche.",
+    "0 proposition non appariée (unmatchedProposals vide) : 0 faux positif, 0 legitimate_extra. Toutes les 16 propositions MemorIA correspondent à du contenu réel du document — le seul défaut de précision porte sur la classification en famille et sur la fabrication de 3 dates calendaires, pas sur l'invention de faits.",
+    "0 evidence de type image des deux côtés (document sans photo) — conforme à l'attendu, pas de comparaison photo détaillée nécessaire."
+  ]
+}

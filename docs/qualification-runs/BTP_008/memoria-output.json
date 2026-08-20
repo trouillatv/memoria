@@ -1,0 +1,32 @@
+{
+  "corpusId": "BTP_008",
+  "documentId": "6c26de6a-e835-4ca0-98ab-2930817540d1",
+  "extractionRunId": "b538602f-2a64-44b6-bb09-402eb993cfe7",
+  "proposals": [],
+  "evidence": [
+    {
+      "id": "f0a67acc-94c5-47f7-b516-a4416dd0a62d",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "b538602f-2a64-44b6-bb09-402eb993cfe7",
+      "document_id": "6c26de6a-e835-4ca0-98ab-2930817540d1",
+      "evidence_type": "image",
+      "source_page": 1,
+      "storage_path": "snapshots/6c26de6a-e835-4ca0-98ab-2930817540d1/img-p1-1.png",
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          42.54999923706055,
+          75.89996337890625,
+          522.5999755859375,
+          345.8999938964844
+        ],
+        "nativeWidth": 800,
+        "nativeHeight": 450
+      },
+      "created_at": "2026-08-20T01:21:52.050854+00:00",
+      "pinned_for_visit": false
+    }
+  ],
+  "proposalEvidenceLinks": []
+}

@@ -1,0 +1,143 @@
+[
+  {
+    "corpusId": "LRM_01",
+    "documentId": "720bf782-9602-4b35-be91-0da65241fa01",
+    "extractionRunId": "99ac9867-73ea-4c8e-875d-c9d707393190",
+    "status": "ready_for_review",
+    "proposalsTotal": 55,
+    "proposalsByFamily": {
+      "knowledge_fact": 39,
+      "person": 8,
+      "company": 6,
+      "deadline": 1,
+      "decision": 1
+    },
+    "evidenceCount": 55,
+    "imagesDetected": 0,
+    "durationMs": 143832,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "BTP_008",
+    "documentId": "6c26de6a-e835-4ca0-98ab-2930817540d1",
+    "extractionRunId": "b538602f-2a64-44b6-bb09-402eb993cfe7",
+    "status": "ready_for_review",
+    "proposalsTotal": 0,
+    "proposalsByFamily": {},
+    "evidenceCount": 1,
+    "imagesDetected": 1,
+    "durationMs": 43516,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "QHSE_004",
+    "documentId": "72fc8dd9-509b-4841-a461-02e0ecdb8092",
+    "extractionRunId": "50e60ce6-25e5-4f6a-8b2e-c9a4b83e6d74",
+    "status": "ready_for_review",
+    "proposalsTotal": 28,
+    "proposalsByFamily": {
+      "knowledge_fact": 11,
+      "company": 11,
+      "person": 5,
+      "deadline": 1
+    },
+    "evidenceCount": 29,
+    "imagesDetected": 0,
+    "durationMs": 129117,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "QHSE_003",
+    "documentId": "57b95f8f-4226-4aa3-94f4-9df0f6b91a53",
+    "extractionRunId": "ac79f26a-ff61-47bf-a5b7-0190f6ecf7e9",
+    "status": "failed",
+    "proposalsTotal": 0,
+    "proposalsByFamily": {},
+    "evidenceCount": 0,
+    "imagesDetected": 0,
+    "durationMs": 233985,
+    "error": "The operation was aborted due to timeout",
+    "attempt": 3,
+    "previousError": "Gemini extraction chunk 0 — HTTP 429: {\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing. Learn more at https://ai.google.dev/gemini-api/docs/billing#prepay. \",\n    \"status\": \"RESOURCE_EXHAUSTED\"\n  }\n}\n"
+  },
+  {
+    "corpusId": "VRD_002",
+    "documentId": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+    "extractionRunId": "9b8b5255-266b-44ce-b267-41e7985df386",
+    "status": "ready_for_review",
+    "proposalsTotal": 19,
+    "proposalsByFamily": {
+      "company": 3,
+      "knowledge_fact": 11,
+      "action": 5
+    },
+    "evidenceCount": 27,
+    "imagesDetected": 6,
+    "durationMs": 112762,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "JAR_01",
+    "documentId": "60a2c265-3d3e-4807-aced-d5c6615feacd",
+    "extractionRunId": "3e039767-d619-4deb-88bb-926d64cca789",
+    "status": "ready_for_review",
+    "proposalsTotal": 104,
+    "proposalsByFamily": {
+      "person": 22,
+      "company": 7,
+      "observation": 23,
+      "knowledge_fact": 39,
+      "deadline": 7,
+      "action": 6
+    },
+    "evidenceCount": 113,
+    "imagesDetected": 8,
+    "durationMs": 209937,
+    "error": null,
+    "attempt": 1,
+    "previousError": null
+  },
+  {
+    "corpusId": "IND_002",
+    "documentId": "b8c9fbd8-f6cf-44dd-931c-e9e5b98c2489",
+    "extractionRunId": "cbb86e65-7443-451c-b025-5c1ed5772809",
+    "status": "ready_for_review",
+    "proposalsTotal": 65,
+    "proposalsByFamily": {
+      "knowledge_fact": 50,
+      "deadline": 2,
+      "observation": 5,
+      "person": 4,
+      "company": 3,
+      "action": 1
+    },
+    "evidenceCount": 79,
+    "imagesDetected": 10,
+    "durationMs": 176013,
+    "error": null,
+    "attempt": 2,
+    "previousError": "Gemini extraction chunk 0 â€” HTTP 429: {\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing. Learn more at https://ai.google.dev/gemini-api/docs/billing#prepay. \",\n    \"status\": \"RESOURCE_EXHAUSTED\"\n  }\n}\n"
+  },
+  {
+    "corpusId": "ENV_001",
+    "documentId": "c3cb72f2-37db-41b2-8b16-45ec03a61779",
+    "extractionRunId": "af971a92-d8ce-4f02-8947-53ba6252ae37",
+    "status": "ready_for_review",
+    "proposalsTotal": 0,
+    "proposalsByFamily": {},
+    "evidenceCount": 14,
+    "imagesDetected": 14,
+    "durationMs": 75581,
+    "error": null,
+    "attempt": 2,
+    "previousError": "no_extractable_text"
+  }
+]

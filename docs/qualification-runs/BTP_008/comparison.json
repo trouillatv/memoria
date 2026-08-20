@@ -1,0 +1,19 @@
+{
+  "corpusId": "BTP_008",
+  "referenceElementCount": 0,
+  "memoriaProposalCount": 0,
+  "elementMatches": [],
+  "unmatchedProposals": [],
+  "recallByFamily": {},
+  "precisionByFamily": {},
+  "zeroToleranceCheck": {
+    "pass": true,
+    "note": "reference.json (Phase A, lecture indépendante du PDF) confirme 0 élément métier attendu : le document est un guide méthodologique HMONP (ENSA Paris Belleville, Thierry Roussel, mars 2021) contenant un modèle de compte-rendu vierge — tableau des participants vide, champs date/lieu/opération vierges, rubriques du plan (avancement, sécurité, HQE, suivi financier...) non renseignées. Aucune personne, entreprise, réserve, action, décision ou échéance réelle n'y figure. MemoIA (Phase B, extraction Gemini réelle) a produit 0 proposition sur les 5 familles (person, company, action, decision, deadline, observation, knowledge_fact) : aucune hallucination sur un document conçu pour piéger un extracteur trop permissif (mentions de statuts, de rubriques et de noms de rôles sans contenu réel associé). Tolérance zéro respectée."
+  },
+  "evidenceComparison": {
+    "referencePhotoCount": 1,
+    "memoriaImageEvidenceCount": 1,
+    "note": "1 preuve image de chaque côté (bandeau de couverture décoratif, page 1) ; aucune divergence, pas de comparaison photo dédiée requise pour ce cas."
+  },
+  "overallNotes": "BTP_008 est un cas de test de non-hallucination volontaire (document gabarit/vide, sans contenu métier réel). Les deux côtés (référence indépendante et pipeline de production MemorIA) convergent sur 0 élément : aucun faux positif, aucun faux négatif possible puisque la base de comparaison est vide. Résultat : PASS pour la tolérance zéro. Ce cas ne mesure pas le rappel/la précision du pipeline (rien à extraire) mais valide sa résistance à l'hallucination sur un document trompeur en apparence (vocabulaire de chantier, structure de CR) mais dépourvu de tout fait daté ou nommé."
+}

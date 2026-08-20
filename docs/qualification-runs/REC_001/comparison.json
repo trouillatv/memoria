@@ -1,0 +1,325 @@
+{
+  "corpusId": "REC_001",
+  "referenceElementCount": 33,
+  "memoriaProposalCount": 32,
+  "methodologyNote": "Statuts : MATCHED (contenu et famille corrects, enrichissements légitimes tolérés), MISSED (aucune proposition ne couvre l'élément), MISCLASSIFIED (contenu retrouvé mais rangé dans une famille différente de la référence — compte comme un échec de recall pour la famille de référence et comme faux positif de famille pour la famille où MemorIA l'a rangé, sans nécessairement être un FALSE_POSITIVE de contenu). Extension spécifique à REC_001 : deux éléments MISCLASSIFIED (E15, E16) portent en plus un contenu factuellement inversé par rapport à la case cochée (■) sur le PDF source, vérifié page par page — ils sont comptés comme falsePositive (contenu fabriqué), pas seulement comme misclassifiedFromOtherFamily (famille erronée, contenu fidèle), dans precisionByFamily.",
+  "elementMatches": [
+    {
+      "referenceId": "REC_001-E01",
+      "status": "MATCHED",
+      "matchedProposalIds": ["d558ec9f-bb27-4e0f-be40-030873c8d1a4"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Driss MOULAY RCHID, représentant du Maître d'Ouvrage — capture fidèle."
+    },
+    {
+      "referenceId": "REC_001-E02",
+      "status": "MATCHED",
+      "matchedProposalIds": ["fc16952d-b656-4a54-ab59-9943f7f21353"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "KAMAL HASSAR, Gérant COS CONSTRUCTION SARL — capture fidèle."
+    },
+    {
+      "referenceId": "REC_001-E03",
+      "status": "MATCHED",
+      "matchedProposalIds": ["070e7fdd-917e-4d0b-a867-824d652a6acf"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Mohamed AMARRID, Chef de projet, signataire du PV — capture fidèle."
+    },
+    {
+      "referenceId": "REC_001-E04",
+      "status": "MATCHED",
+      "matchedProposalIds": ["b92c6bf7-7e1d-401c-9238-e6b365657f31"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Mohamed MAATAOUI, Ingénieur Travaux (MO) — capture fidèle, lien vers Casablanca Aménagement correct."
+    },
+    {
+      "referenceId": "REC_001-E05",
+      "status": "MATCHED",
+      "matchedProposalIds": ["a224f974-574c-4562-a4ce-37b319a5ccbd"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Hamza AGDMOUN, Conducteur travaux — capture fidèle, lien vers COS CONSTRUCTION SARL correct."
+    },
+    {
+      "referenceId": "REC_001-E06",
+      "status": "MATCHED",
+      "matchedProposalIds": ["da523662-f1e4-46b2-a5cc-4cde16ad54ac"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Casablanca Aménagement, Maître d'Ouvrage — capture fidèle."
+    },
+    {
+      "referenceId": "REC_001-E07",
+      "status": "MATCHED",
+      "matchedProposalIds": ["159641b2-4ac5-4908-b81c-eaf22e451d94"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "COS CONSTRUCTION SARL, titulaire du marché — capture fidèle."
+    },
+    {
+      "referenceId": "REC_001-E08",
+      "status": "MATCHED",
+      "matchedProposalIds": ["cdaf9705-7306-4b32-afec-ce215c999564"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "DÉFAUT DE FIDÉLITÉ : entité 'Centrale Polytechnique Africaine' bien identifiée (nom exact), mais MemorIA lui attribue description='Maîtrise d'œuvre du projet' et companyRole='maître d'œuvre' alors que le texte source ('agissant pour le compte de...') ne précise aucun rôle — la référence signale explicitement cette ambiguïté (classificationNote de E08). Or ce rôle et cette description sont mot pour mot ceux affichés page 3 à côté d'une AUTRE entité nommée, 'Maitrise d'Œuvre Ingénierie' (voir E09, MISSED) : MemorIA semble avoir fusionné deux entités distinctes en une seule fiche, prêtant à 'Centrale Polytechnique Africaine' un rôle et un libellé qui appartiennent en réalité à 'Maitrise d'Œuvre Ingénierie'. Conservé MATCHED (le nom de l'entité et le contexte du Chef de projet sont corrects) mais avec un champ structuré fabriqué, dans l'esprit de VRD_002-E04 (Hines/AMO)."
+    },
+    {
+      "referenceId": "REC_001-E09",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "company",
+      "memoriaFamily": null,
+      "note": "'Maitrise d'Œuvre Ingénierie', entité explicitement nommée page 3 comme rédacteur du PV ('Dressé par la Maitrise d'œuvre... Maitrise d'Œuvre Ingénierie') : aucune proposition MemorIA distincte ne porte ce nom. Le rôle et le libellé de cette entité réelle ont été absorbés par la fiche de E08 (Centrale Polytechnique Africaine) — voir note ci-dessus. Perte nette d'une entité nommée."
+    },
+    {
+      "referenceId": "REC_001-E10",
+      "status": "MATCHED",
+      "matchedProposalIds": ["1dc30c53-6c7d-46fe-bd48-875223542378"],
+      "referenceFamily": "deadline",
+      "memoriaFamily": "deadline",
+      "note": "Date d'achèvement retenue 30/05/2022, dueDate=2022-05-30 — exacte, aucune précision fabriquée (contrairement au biais observé sur LRM_01, ici le jour est explicitement donné par la source)."
+    },
+    {
+      "referenceId": "REC_001-E11",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "decision",
+      "memoriaFamily": null,
+      "note": "Case cochée '■ Réception provisoire du marché' (vs '□ Réception provisoire partielle' non cochée) : aucune proposition MemorIA, quelle que soit la famille, ne couvre ce choix administratif. Famille 'decision' totalement absente de la sortie MemorIA sur ce document (0 proposition)."
+    },
+    {
+      "referenceId": "REC_001-E12",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["b5cc1493-19a0-44b7-aa65-afb7e4f5a6d2"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Contenu fidèle et vérifié sur le PDF (case '■ sont concluantes' réellement cochée) : 'Épreuves prévues au marché effectuées et concluantes'. Rangé en knowledge_fact par MemorIA au lieu d'observation. Famille erronée, contenu correct."
+    },
+    {
+      "referenceId": "REC_001-E13",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["cfd98f4c-f37c-488d-897e-23f7ede73dcb"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Contenu fidèle et vérifié sur le PDF (case '■ ont été exécutés' réellement cochée, sans exception) : 'Travaux et prestations prévus au marché exécutés'. Rangé en knowledge_fact au lieu d'observation. Famille erronée, contenu correct."
+    },
+    {
+      "referenceId": "REC_001-E14",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["12e6801e-7e2d-4986-880a-aec385f02871"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "reservation",
+      "note": "Contenu fidèle et vérifié sur le PDF (case '■ Présentent des malfaçons...' réellement cochée) : constat déclencheur de la liste de réserves. Rangé en reservation par MemorIA (comme si c'était un item à part de l'Annexe I) au lieu d'observation (constat global). Famille erronée, contenu correct, mais ce constat général ne devrait pas être une 14e ligne de réserve à côté des 13 items réels de l'Annexe I."
+    },
+    {
+      "referenceId": "REC_001-E15",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["3f572a11-b7a3-4a64-84f9-7667b6be9336"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "FIDÉLITÉ CRITIQUE — CONTENU INVERSÉ ET VÉRIFIÉ SUR LE PDF SOURCE (page 2, point 4) : la case réellement cochée est '■ ont été repliées' (installations de chantier repliées, avec réserve sur les équipements d'entretien pendant l'année de parfait achèvement). MemorIA produit la proposition 'Installations de chantier non repliées' / description 'Les installations de chantier n'ont pas été repliées...' — l'exact opposé de la case cochée. Le texte source_excerpt de la proposition contient bien les deux options du formulaire ('ont été repliées n'ont pas été repliées') sans le glyphe ■/□, mais le champ structuré (label/description) tranche pour la mauvaise option. Erreur de fidélité factuelle, pas seulement de classification — comptée comme falsePositive en precisionByFamily malgré le statut MISCLASSIFIED."
+    },
+    {
+      "referenceId": "REC_001-E16",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["8282105f-bd4a-4f2b-8963-d5bc08d11ddd"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "reservation",
+      "note": "FIDÉLITÉ CRITIQUE — CONTENU INVERSÉ ET VÉRIFIÉ SUR LE PDF SOURCE (page 2, point 5) : la case réellement cochée est '■ ont été remis en état' (terrains et lieux remis en état, aucun problème). MemorIA produit la proposition 'Terrains et lieux non remis en état' / description 'Les terrains et les lieux n'ont pas été remis en état.' classée en famille RESERVATION — l'exact opposé de la case cochée, ET une 14e réserve entièrement fabriquée qui n'existe pas dans l'Annexe I (13 items réels, tous par ailleurs correctement capturés — voir E21-E33). C'est l'erreur la plus grave du document : elle invente une non-conformité de terrain inexistante. Comptée comme falsePositive en precisionByFamily malgré le statut MISCLASSIFIED."
+    },
+    {
+      "referenceId": "REC_001-E17",
+      "status": "MATCHED",
+      "matchedProposalIds": ["df94ea53-2a19-4fb4-b346-1da8e2c8e29d"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Date des OPR : 08/06/2022 — capture fidèle."
+    },
+    {
+      "referenceId": "REC_001-E18",
+      "status": "MATCHED",
+      "matchedProposalIds": ["0de49854-9314-40b7-83ba-386f34966a07"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Objet du marché, réhabilitation maison des jeunes Zerktouni — capture fidèle."
+    },
+    {
+      "referenceId": "REC_001-E19",
+      "status": "MATCHED",
+      "matchedProposalIds": ["85265245-53c1-497c-963f-ebf2312a756e"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Liste des épreuves non concluantes = Néant (Annexe II page 5) — capture fidèle, cohérente avec E12."
+    },
+    {
+      "referenceId": "REC_001-E20",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Champ 'Accepté par le titulaire en date du : ……' laissé vierge (page 3) : aucune proposition MemorIA ne signale que l'acceptation formelle du titulaire est en attente à la date du document."
+    },
+    {
+      "referenceId": "REC_001-E21",
+      "status": "MATCHED",
+      "matchedProposalIds": ["7abdf0c8-ce78-4863-a008-1cd05cc78368"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "reservation",
+      "note": "Nettoyage général — capture fidèle, responsable COS CONSTRUCTION SARL correctement attribué."
+    },
+    {
+      "referenceId": "REC_001-E22",
+      "status": "MATCHED",
+      "matchedProposalIds": ["c13efe6e-93fd-439b-9f74-8e4d79251d2a"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "reservation",
+      "note": "Fermeture des joints des fenêtres/châssis alu par silicone — capture fidèle."
+    },
+    {
+      "referenceId": "REC_001-E23",
+      "status": "MATCHED",
+      "matchedProposalIds": ["f3885c27-ad93-47dc-8cc7-40931fc8cf45"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "reservation",
+      "note": "Cacher les faux cadres des fenêtres/châssis alu — capture fidèle."
+    },
+    {
+      "referenceId": "REC_001-E24",
+      "status": "MATCHED",
+      "matchedProposalIds": ["32dc3e03-4f12-4d62-8e14-933a9dfbe266"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "reservation",
+      "note": "Humidité murale, bureau du directeur — capture fidèle, localisation conservée."
+    },
+    {
+      "referenceId": "REC_001-E25",
+      "status": "MATCHED",
+      "matchedProposalIds": ["1f0ead43-3234-4e0c-a4b9-c14b75c453ab"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "reservation",
+      "note": "Fixation de l'isolation murale en liège — capture fidèle."
+    },
+    {
+      "referenceId": "REC_001-E26",
+      "status": "MATCHED",
+      "matchedProposalIds": ["23beccc7-6b66-4bde-b581-e106d63dd257"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "reservation",
+      "note": "Remise en état des murs en pierre — capture fidèle."
+    },
+    {
+      "referenceId": "REC_001-E27",
+      "status": "MATCHED",
+      "matchedProposalIds": ["ddefd25b-cd4b-478f-a8c5-3bfe3c14d34a"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "reservation",
+      "note": "Hauteurs des poteaux métalliques du gradin — capture fidèle."
+    },
+    {
+      "referenceId": "REC_001-E28",
+      "status": "MATCHED",
+      "matchedProposalIds": ["ac4ebf02-8bc1-4d48-b299-9fb913390a39"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "reservation",
+      "note": "Finition du revêtement sur le contour des arbres — capture fidèle."
+    },
+    {
+      "referenceId": "REC_001-E29",
+      "status": "MATCHED",
+      "matchedProposalIds": ["91e35d80-fb04-46d5-8761-a5efbc3eb6ba"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "reservation",
+      "note": "Jonction entre pavés, joints (façade arrière, porte d'entrée) — capture fidèle, localisation conservée."
+    },
+    {
+      "referenceId": "REC_001-E30",
+      "status": "MATCHED",
+      "matchedProposalIds": ["145e24a0-d017-4245-ad38-fe57664f7912"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "reservation",
+      "note": "Finition de l'enduit des murs et de la peinture — capture fidèle."
+    },
+    {
+      "referenceId": "REC_001-E31",
+      "status": "MATCHED",
+      "matchedProposalIds": ["534009f9-c3dd-4a81-92ab-6dfe260425a6"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "reservation",
+      "note": "Finition de la peinture du mur de clôture — capture fidèle."
+    },
+    {
+      "referenceId": "REC_001-E32",
+      "status": "MATCHED",
+      "matchedProposalIds": ["f4b1b9da-5505-45a5-9bb4-8f2a115908e9"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "reservation",
+      "note": "Charpente métallique RDC + fixation des chenaux métalliques — capture fidèle, les deux défauts liés de la même puce source sont conservés ensemble."
+    },
+    {
+      "referenceId": "REC_001-E33",
+      "status": "MATCHED",
+      "matchedProposalIds": ["6f415cb5-9535-4a72-9ddf-e547f1930253"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "reservation",
+      "note": "Nettoyer la terre végétale — capture fidèle, dernier item de la liste."
+    }
+  ],
+  "unmatchedProposals": [
+    {
+      "proposalId": "0f73768a-fe01-4930-a96c-4ef48c644357",
+      "family": "knowledge_fact",
+      "label": "Marché approuvé le 11/05/2021",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "Excerpt vérifié mot pour mot page 1 ('Approuvé le : 11/05/2021'). Fait réel non isolé comme élément propre par la référence Phase A (regroupé dans les métadonnées de E18)."
+    },
+    {
+      "proposalId": "b1041e95-5733-4843-9e73-fd0895935fe1",
+      "family": "knowledge_fact",
+      "label": "Numéro du marché : 281/2021/MJS-PACA-MJZ-TRAV",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "Excerpt vérifié mot pour mot page 1 ('N° Marché : 281/2021/MJS-PACA-MJZ-TRAV'). Fait réel non isolé comme élément propre par la référence Phase A (regroupé dans les métadonnées de E18)."
+    }
+  ],
+  "recallByFamily": {
+    "person": { "matched": 5, "partial": 0, "missed": 0, "misclassified": 0, "total": 5, "recallScore": 1.0 },
+    "company": { "matched": 3, "partial": 0, "missed": 1, "misclassified": 0, "total": 4, "recallScore": 0.75 },
+    "deadline": { "matched": 1, "partial": 0, "missed": 0, "misclassified": 0, "total": 1, "recallScore": 1.0 },
+    "decision": { "matched": 0, "partial": 0, "missed": 1, "misclassified": 0, "total": 1, "recallScore": 0.0 },
+    "observation": { "matched": 0, "partial": 0, "missed": 0, "misclassified": 5, "total": 5, "recallScore": 0.0 },
+    "knowledge_fact": { "matched": 3, "partial": 0, "missed": 1, "misclassified": 0, "total": 4, "recallScore": 0.75 },
+    "reservation": { "matched": 13, "partial": 0, "missed": 0, "misclassified": 0, "total": 13, "recallScore": 1.0 },
+    "action": { "matched": 0, "partial": 0, "missed": 0, "misclassified": 0, "total": 0, "recallScore": null }
+  },
+  "precisionByFamily": {
+    "person": { "truePositive": 5, "falsePositive": 0, "misclassifiedFromOtherFamily": 0, "legitimateExtra": 0, "total": 5, "precisionScore": 1.0 },
+    "company": { "truePositive": 3, "falsePositive": 0, "misclassifiedFromOtherFamily": 0, "legitimateExtra": 0, "total": 3, "precisionScore": 1.0, "note": "1 des 3 (E08) porte un champ companyRole fabriqué par conflation d'entités — précision maintenue mais défaut signalé dans elementMatches." },
+    "deadline": { "truePositive": 1, "falsePositive": 0, "misclassifiedFromOtherFamily": 0, "legitimateExtra": 0, "total": 1, "precisionScore": 1.0 },
+    "decision": { "truePositive": 0, "falsePositive": 0, "misclassifiedFromOtherFamily": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null, "note": "0 proposition émise dans cette famille sur ce document." },
+    "observation": { "truePositive": 0, "falsePositive": 0, "misclassifiedFromOtherFamily": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null, "note": "0 proposition émise dans cette famille sur ce document — les 5 constats de référence ont tous été rangés ailleurs (knowledge_fact ou reservation)." },
+    "knowledge_fact": { "truePositive": 3, "falsePositive": 1, "misclassifiedFromOtherFamily": 2, "legitimateExtra": 2, "total": 8, "denominator": 6, "precisionScore": 0.5, "note": "falsePositive = kf-installations-non-repliees (contenu inversé, voir E15). misclassifiedFromOtherFamily = kf-epreuves-concluantes (E12) et kf-travaux-executes (E13), contenu correct mais famille observation attendue." },
+    "reservation": { "truePositive": 13, "falsePositive": 1, "misclassifiedFromOtherFamily": 1, "legitimateExtra": 0, "total": 15, "denominator": 15, "precisionScore": 0.867, "note": "falsePositive = res-terrains-non-remis-en-etat (contenu inversé, 14e réserve fabriquée, voir E16). misclassifiedFromOtherFamily = res-malfacons-imperfections (E14), contenu correct mais famille observation attendue." },
+    "action": { "truePositive": 0, "falsePositive": 0, "misclassifiedFromOtherFamily": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null }
+  },
+  "photoComparison": {
+    "referencePhotoCount": 0,
+    "memoriaImageEvidenceCount": 5,
+    "note": "La référence Phase A ne recense aucune photo (champ photos=[] ; readerNotes point 6 : chaque page comporte un rendu visuel du formulaire lui-même, artefact de mise en page/scan, mais aucune photographie factuelle de désordre). MemorIA a extrait 5 evidence_type='image', une par page, toutes avec le même bbox exact (89.28,736.56,465.36,840.24) et les mêmes dimensions natives (376x103px) : il s'agit très probablement d'un bandeau/logo d'en-tête répété identiquement sur chaque page du PDF, pas d'un contenu photographique réel. 2 des 5 portent une légende tronquée et non descriptive ('Auc' page 2, 'L'' page 5, dans la continuité du biais de légendes tronquées déjà documenté sur VRD_002). Aucune des 5 evidence image n'est liée à une proposition via proposalEvidenceLinks (0 lien image sur 15 liens, tous vers des evidence text_excerpt) : aucune réserve ne prétend s'appuyer sur une photo de désordre inexistante. Conforme à l'attendu de la référence : ce document ne contient aucune photographie de site, donc aucune perte de contenu réelle sur cette dimension malgré les 5 evidence 'image' superflues et non pertinentes."
+  },
+  "overallNotes": [
+    "25/33 éléments de référence MATCHED, 0 PARTIAL, 5 MISCLASSIFIED (famille observation entièrement absente côté MemorIA), 3 MISSED (E09 société MOE, E11 décision réception, E20 acceptation titulaire en attente). Recall global strict (matched/total) = 25/33 = 76 %.",
+    "FINDING CRITIQUE — inversion de case à cocher vérifiée sur le PDF source (page 2, points 4 et 5) : les deux propositions kf-installations-non-repliees et res-terrains-non-remis-en-etat affirment l'exact contraire de ce qui est réellement coché (■ ont été repliées / ■ ont été remis en état). La seconde va plus loin en classant ce contenu inversé comme une RÉSERVATION, fabriquant ainsi une 14e réserve inexistante dans une famille où les 13 réserves réelles de l'Annexe I sont par ailleurs toutes parfaitement capturées. Ce n'est pas une simple erreur de classification (comme E12/E13/E14) mais une fabrication de contenu contredisant la source — compté comme falsePositive et non comme simple misclassifiedFromOtherFamily. Sur les 5 items à cases à cocher de la page 1-2 (épreuves, travaux, ouvrages, installations, terrains), 3 sont lus correctement (épreuves, travaux, ouvrages) et 2 sont inversés (installations, terrains) : le moteur n'est pas fiable de façon uniforme sur la lecture des cases cochées de ce type de formulaire.",
+    "Cœur métier du document (famille reservation, Annexe I, 13 items) : recall et précision quasi parfaits sur son périmètre réel — 13/13 réserves individuelles retrouvées mot pour mot, localisation et nature du désordre conservées, responsable (COS CONSTRUCTION SARL) correctement attribué à chacune, aucune réserve omise, aucune date de levée fabriquée (deadlineDate correctement laissé absent, cohérent avec la référence). Les deux seuls défauts de la famille reservation viennent de contenu importé d'ailleurs (E14 mal classé, E16 inversé et fabriqué), pas d'une perte ou déformation des réserves elles-mêmes.",
+    "Famille observation (5 constats de la page 1-2) totalement absente de la sortie MemorIA : aucune proposition n'utilise cette famille sur ce document. Les 5 constats sont dispersés en knowledge_fact (3) et reservation (2), avec un contenu fidèle pour 3 d'entre eux (épreuves, travaux, malfaçons) et inversé pour 2 (installations, terrains, cf. finding critique ci-dessus).",
+    "Conflation d'entités sur la société de maîtrise d'œuvre : la proposition company pour 'Centrale Polytechnique Africaine' (E08, rôle non précisé dans le texte source, ambiguïté déjà signalée par la référence) reçoit companyRole='maître d'œuvre' et description='Maîtrise d'œuvre du projet' — libellé emprunté mot pour mot à la page de signatures où c'est en réalité une AUTRE entité nommée, 'Maitrise d'Œuvre Ingénierie', qui porte ce rôle et qui a dressé le PV (E09). Cette dernière n'a aucune fiche société propre côté MemorIA : perte nette d'une entité réelle, masquée par une fabrication de rôle sur une entité différente.",
+    "Décision administrative manquée : la case '■ Réception provisoire du marché' (vs partielle) n'est couverte par aucune proposition — famille decision à 0 proposition sur ce document alors que la référence en identifie 1.",
+    "2 legitimate_extra : numéro de marché et date d'approbation, détails administratifs réels de l'en-tête non isolés comme éléments propres par la référence (regroupés dans les métadonnées de E18 côté référence).",
+    "Deadline (échéance d'achèvement 30/05/2022) : capture exacte, aucune fabrication de précision temporelle — contrairement au biais observé sur LRM_01, la source donne ici explicitement un jour calendaire.",
+    "Photos : 0 photo de désordre attendue par la référence (formulaire scanné pur, aucune photographie de site) ; MemorIA a extrait 5 evidence image quasi identiques (bandeau d'en-tête répété, même bbox sur chaque page), non liées à une proposition — pas de perte de contenu réelle, pas de fausse preuve visuelle attachée à une réserve.",
+    "Aucun élément de la famille action dans la référence ni dans MemorIA — cohérent avec un PV de réception qui liste des réserves à lever (famille reservation) sans action de suivi datée formulée dans le texte."
+  ]
+}

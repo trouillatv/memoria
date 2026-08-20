@@ -1,0 +1,491 @@
+{
+  "corpusId": "EAU_001",
+  "referenceElementCount": 55,
+  "memoriaProposalCount": 47,
+  "elementMatches": [
+    {
+      "referenceId": "EAU_001-E01",
+      "status": "MATCHED",
+      "matchedProposalIds": ["0cf07217-85e5-4ad7-a544-adf85e6534cd"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "ACTeon, bureau d'étude prestataire — rôle et excerpt identiques (page 3)."
+    },
+    {
+      "referenceId": "EAU_001-E02",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "decision",
+      "memoriaFamily": null,
+      "note": "Décision historique des communes du bassin versant de créer le SAGE (« il y a 9 ans »), page 3. Aucune proposition MemorIA ne couvre ce passage. Fait partie du bloc de contexte/gouvernance pages 3-5 entièrement absent côté MemorIA."
+    },
+    {
+      "referenceId": "EAU_001-E03",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Définition générale du SAGE, page 3. Aucune proposition MemorIA correspondante."
+    },
+    {
+      "referenceId": "EAU_001-E04",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "company",
+      "memoriaFamily": null,
+      "note": "La CLE (Commission Locale de l'Eau), instance de gouvernance du SAGE, codée 'company' par la référence faute de famille 'institution' dédiée. Aucune proposition MemorIA (société ou autre) ne l'identifie comme entité propre ; elle n'apparaît nulle part, y compris dans les décisions E05/E08 qui la citent comme responsable et qui sont elles-mêmes MISSED."
+    },
+    {
+      "referenceId": "EAU_001-E05",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "decision",
+      "memoriaFamily": null,
+      "note": "Décision de la CLE d'animer une stratégie commune et de définir un programme d'actions, page 3. Aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "EAU_001-E06",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Pouvoir réglementaire du SAGE opposable aux documents d'urbanisme, page 3. Aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "EAU_001-E07",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Trois livrables déjà réalisés (État des lieux, Profil de territoire, Scénario tendanciel), page 3. Aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "EAU_001-E08",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "decision",
+      "memoriaFamily": null,
+      "note": "Décision de la CLE d'établir plusieurs stratégies alternatives avant arbitrage, page 3. Aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "EAU_001-E09",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Quatre objectifs formels assignés au cycle des 11 réunions, page 4. Aucune proposition MemorIA ; la page 4 entière n'est couverte par aucune proposition ni evidence de ce run."
+    },
+    {
+      "referenceId": "EAU_001-E10",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Trame standardisée en trois temps appliquée à chaque réunion, page 4. Aucune proposition MemorIA (page 4 entière non couverte)."
+    },
+    {
+      "referenceId": "EAU_001-E11",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "decision",
+      "memoriaFamily": null,
+      "note": "Engagement d'ACTeon et de l'animation du SAGE de reprendre les propositions des acteurs dans au moins un scénario, page 4. Aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "EAU_001-E12",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Calendrier et composition des 3 sessions de concertation (5, 12, 17 janvier 2012), page 5. Aucune proposition MemorIA ; seule la deadline du 20 mars (E13, même page) est capturée."
+    },
+    {
+      "referenceId": "EAU_001-E13",
+      "status": "MATCHED",
+      "matchedProposalIds": ["94099b38-507a-4180-bbd4-99981504d2eb"],
+      "referenceFamily": "deadline",
+      "memoriaFamily": "deadline",
+      "note": "Atelier collectif du 20 mars 2012 — dueDate=2012-03-20 exacte, contrairement au biais de date fabriquée observé sur LRM_01 : ici la granularité de la source (jour précis donné) est correctement respectée sans invention."
+    },
+    {
+      "referenceId": "EAU_001-E14",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["7b243128-79c4-42b9-bf31-76b27c3350e4"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "État quantitatif de la ressource, consensus des participants — excerpt identique mais classé knowledge_fact au lieu d'observation."
+    },
+    {
+      "referenceId": "EAU_001-E15",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["bf72882b-c975-4525-9be0-20e314af73cc"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Consommation par habitant / campagnes de sensibilisation — excerpt identique, même écart de famille (observation attendue, knowledge_fact obtenu)."
+    },
+    {
+      "referenceId": "EAU_001-E16",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["5b425329-c352-4a4c-8ec5-350295a74335"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Rendement des réseaux (80-90% en zone urbaine) — chiffre fidèlement repris, classé knowledge_fact au lieu d'observation."
+    },
+    {
+      "referenceId": "EAU_001-E17",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["329ebdd1-a42c-4d6b-85a4-4a7cbfd127f5"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Anticipation de croissance démographique et impact sur les investissements AEP — classé knowledge_fact au lieu d'observation."
+    },
+    {
+      "referenceId": "EAU_001-E18",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["8254f2b5-0491-4282-bb45-1f86c10ec208"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Position sur la récupération des eaux pluviales — classée knowledge_fact au lieu d'observation."
+    },
+    {
+      "referenceId": "EAU_001-E19",
+      "status": "MATCHED",
+      "matchedProposalIds": ["287d3936-88b0-4319-8626-0da03f1b1c9c"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "observation",
+      "note": "Sécurisation de l'AEP faible, manque de concertation intercommunale — correctement classée observation."
+    },
+    {
+      "referenceId": "EAU_001-E20",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["5ddaa5e8-9a3e-4c80-a047-767419f32811"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Maintenance onéreuse des STEP, sous-financement — classée knowledge_fact au lieu d'observation."
+    },
+    {
+      "referenceId": "EAU_001-E21",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["c23e7edb-5c21-43c9-87e8-6ea577b7bd60"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Limites géologiques de l'assainissement non collectif et rejets directs au fossé — classée knowledge_fact au lieu d'observation."
+    },
+    {
+      "referenceId": "EAU_001-E22",
+      "status": "MATCHED",
+      "matchedProposalIds": ["b5eb30de-f3eb-46e1-b0a4-3f71926bae8b"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "observation",
+      "note": "Pollution par les pesticides et manque de protection des captages — correctement classée observation."
+    },
+    {
+      "referenceId": "EAU_001-E23",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["3b21c3ee-9500-4ec0-ab86-245eb2d87325"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « changer les systèmes de prix régressifs en progressifs » — excerpt identique mais classée observation au lieu d'action."
+    },
+    {
+      "referenceId": "EAU_001-E24",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["ff4cb614-5ec5-4342-93c9-b53bcb214f4f"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « améliorer le rendement des réseaux » — classée observation au lieu d'action."
+    },
+    {
+      "referenceId": "EAU_001-E25",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["87056e78-7e3d-4571-a7e7-9f9d14040786"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « développer des interconnexions entre communes » — classée observation au lieu d'action."
+    },
+    {
+      "referenceId": "EAU_001-E26",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["f99542e0-78b7-4108-929f-b716aea26432", "89c39e59-8415-4443-9a1e-bb0947ddd380"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « définir les zones constructibles selon la capacité de traitement » — la phrase principale est reprise en observation (f99542e0) ; la phrase de contexte sur les Scot, mentionnée seulement en classificationNote côté référence, est reprise séparément en knowledge_fact (89c39e59). Sur-fragmentation en plus de la mauvaise famille."
+    },
+    {
+      "referenceId": "EAU_001-E27",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["439a573f-1587-414d-bedd-ac4e9fc8dba3"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « délimiter les zones à enjeux ANC » — classée observation au lieu d'action."
+    },
+    {
+      "referenceId": "EAU_001-E28",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["eaa1babb-c171-42a8-a5d6-e7c3baf7f732"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « réhabiliter les systèmes d'assainissement non collectifs » — classée observation au lieu d'action."
+    },
+    {
+      "referenceId": "EAU_001-E29",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["cf774467-e733-4b88-9159-aadb48ab7748"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « trouver des leviers de financement pour les STEP » — classée observation au lieu d'action."
+    },
+    {
+      "referenceId": "EAU_001-E30",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["5f4c4bab-ff61-43c1-bc59-e3829a39e94a"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Réhabilitation ANC par volontariat, critères hétérogènes entre syndicats — excerpt identique, classée knowledge_fact au lieu d'observation."
+    },
+    {
+      "referenceId": "EAU_001-E31",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["c1152cc3-a15c-4d0c-87e9-3aa0453c7599"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « harmoniser les critères de conformité ANC » — classée observation au lieu d'action."
+    },
+    {
+      "referenceId": "EAU_001-E32",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["a7a7271c-0ca8-4905-a608-c1b96f233d96"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « sensibiliser la population » (contexte ANC, page 9) — classée observation au lieu d'action."
+    },
+    {
+      "referenceId": "EAU_001-E33",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["70f2ecb8-05f8-4771-b2dc-45ce75f08b42"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « définir le rôle du SAGE pour la connaissance de la qualité de l'eau » — classée observation au lieu d'action."
+    },
+    {
+      "referenceId": "EAU_001-E34",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["a93d5858-11aa-446c-bf07-89a3e4bc1e63"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « aller plus loin pour la protection des captages prioritaires » — classée observation au lieu d'action."
+    },
+    {
+      "referenceId": "EAU_001-E35",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["efac4da3-b196-4894-9935-dcf695b59635"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « mettre en place une animation dédiée à la protection des captages prioritaires » — classée observation au lieu d'action ; les options de portage ouvertes (inter-syndicat/CLE/bureau d'étude/chambre d'agriculture) sont conservées dans la description."
+    },
+    {
+      "referenceId": "EAU_001-E36",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["1c8e5a86-4eb8-47a3-81c4-0cb0739cdd41"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « restreindre l'ANC à proximité des captages » — classée observation au lieu d'action."
+    },
+    {
+      "referenceId": "EAU_001-E37",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["3c2da77e-d70f-48f8-b553-ab55cf861369"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « protection préventive des captages non prioritaires » — classée observation au lieu d'action."
+    },
+    {
+      "referenceId": "EAU_001-E38",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["59c26600-0886-4ac7-8a3c-9c8523005f3e"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « sensibiliser la population » (contexte pesticides, page 10) — classée observation au lieu d'action ; occurrence distincte de E32/E38 reprise séparément par MemorIA comme par la référence, sans fusion abusive."
+    },
+    {
+      "referenceId": "EAU_001-E39",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["af4c7e30-7a2a-4e17-9a06-132e6bf775b6"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « lutter contre les pollutions, communes zéro phyto » — classée observation au lieu d'action."
+    },
+    {
+      "referenceId": "EAU_001-E40",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "observation",
+      "memoriaFamily": null,
+      "note": "Regret des participants sur le manque de concertation entre acteurs (avec coquille source « présentent- »), page 10. Aucune proposition MemorIA ne reprend ce passage, bien que le contenu voisin (E41, E42, E43, E44) soit intégralement couvert."
+    },
+    {
+      "referenceId": "EAU_001-E41",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["6e2b9ccc-e914-403b-ac5c-b52a5710bd6e"],
+      "referenceFamily": "action",
+      "memoriaFamily": "observation",
+      "note": "Piste d'action « organiser des rencontres bi-annuelles des acteurs AEP » — classée observation au lieu d'action."
+    },
+    {
+      "referenceId": "EAU_001-E42",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["64dedff4-5fbf-46b1-8742-606ee1ef48e7", "ac196504-0172-4061-92c6-cf797f92ae67"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Synthèse de fin de réunion (faible capacité financière des gestionnaires + marge de manœuvre plus grande sur la qualité que sur les prélèvements) — la référence regroupe les 2 phrases en 1 élément, MemorIA les sépare en 2 propositions (kf-capacite-financiere-p10, kf-marge-qualite-eau-p10), toutes deux classées knowledge_fact au lieu d'observation. Contenu complet, sur-fragmentation + mauvaise famille."
+    },
+    {
+      "referenceId": "EAU_001-E43",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["192c0fe2-d5a6-45e3-ad3f-68f9fc7a21f7"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Disparités entre syndicats (consommation, assainissement, rendements, SPANC) — excerpt identique, classée knowledge_fact au lieu d'observation."
+    },
+    {
+      "referenceId": "EAU_001-E44",
+      "status": "MATCHED",
+      "matchedProposalIds": ["20f9df9d-6dbf-4071-bd86-d2aea007f0b6", "41848e19-c5f5-453d-a22a-7118d7be538a"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "observation",
+      "note": "Attentes vis-à-vis du SAGE (solidarité avec les autres usages + meilleure concertation au bassin) — la référence regroupe les 2 puces en 1 élément, MemorIA en fait 2 propositions distinctes, toutes deux correctement classées observation. Sur-fragmentation sans perte ni erreur de famille."
+    },
+    {
+      "referenceId": "EAU_001-E45",
+      "status": "MATCHED",
+      "matchedProposalIds": ["d0b28395-b5b6-4bab-a772-f129fbb32147"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Vincent Gential, SI Dolon-Varèze — identique."
+    },
+    {
+      "referenceId": "EAU_001-E46",
+      "status": "MATCHED",
+      "matchedProposalIds": ["7fff9a7b-8f52-4819-aadf-f589ee1f47da"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Charlotte Bazin, SIAPA — identique."
+    },
+    {
+      "referenceId": "EAU_001-E47",
+      "status": "MATCHED",
+      "matchedProposalIds": ["04668860-172f-40a9-826c-3657d1e3d5f6"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Alexandra Raynaud, SIE Valloire-Galaure — identique."
+    },
+    {
+      "referenceId": "EAU_001-E48",
+      "status": "MATCHED",
+      "matchedProposalIds": ["9fe2fddb-b614-42d2-bd09-f8a6add9230d"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Yannick Arama, ACTeon (Animateur) — identique."
+    },
+    {
+      "referenceId": "EAU_001-E49",
+      "status": "MATCHED",
+      "matchedProposalIds": ["f5fa0efc-46bc-4acd-98cc-9acc81dac5ba"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Raphaëlle Lavenus, ACTeon — identique."
+    },
+    {
+      "referenceId": "EAU_001-E50",
+      "status": "MATCHED",
+      "matchedProposalIds": ["cc71c335-16d2-4da5-acf6-e3992edc5780"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Guillaume Boudin, Progeo Environnement — identique."
+    },
+    {
+      "referenceId": "EAU_001-E51",
+      "status": "MATCHED",
+      "matchedProposalIds": ["7ba484e8-e63f-45d2-be70-63ef86fbf180"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Christel Constantin-Bertin, Animatrice SAGE — identique."
+    },
+    {
+      "referenceId": "EAU_001-E52",
+      "status": "MATCHED",
+      "matchedProposalIds": ["c4a69bc3-fe18-42ca-8fe6-35dcaa748e75"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "SI Dolon-Varèze — identique."
+    },
+    {
+      "referenceId": "EAU_001-E53",
+      "status": "MATCHED",
+      "matchedProposalIds": ["93ccb3a7-2760-4a00-945d-b937bb606ee8"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "SIAPA — identique."
+    },
+    {
+      "referenceId": "EAU_001-E54",
+      "status": "MATCHED",
+      "matchedProposalIds": ["268195e9-a484-4b2c-a5ab-522afc0f3ea1"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "SIE Valloire-Galaure — identique."
+    },
+    {
+      "referenceId": "EAU_001-E55",
+      "status": "MATCHED",
+      "matchedProposalIds": ["f41154c0-13fa-493c-a3d7-b12cc42dd011"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Progeo Environnement — identique ; companyRole 'maître d'œuvre' ajouté par MemorIA sans base explicite dans le texte, mais plausible pour un bureau d'études (aucun texte source ne le dément)."
+    }
+  ],
+  "unmatchedProposals": [
+    {
+      "proposalId": "cf73ceb9-7140-4169-997b-d7d8580b2225",
+      "family": "knowledge_fact",
+      "label": "Marge de manœuvre pour diminuer les prélèvements AEP",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "« Les marges de manœuvre pour diminuer les prélèvements de l'AEP sont assez restreintes » (page 6). Formulation proche mais distincte de la phrase de synthèse page 10 (« La marge de manœuvre est plus grande sur l'amélioration de la qualité de l'eau que sur la baisse des prélèvements », capturée séparément dans E42/kf-marge-qualite-eau-p10). Cohérent avec une structure de document qui pose le constat en introduction de section (page 6) puis le reprend en synthèse finale (page 10) : contenu plausible, non isolé comme élément propre par la référence Phase A, aucune donnée chiffrée ou nominative fabriquée."
+    }
+  ],
+  "recallByFamily": {
+    "person": { "matched": 7, "partial": 0, "missed": 0, "misclassified": 0, "total": 7, "recallScore": 1.0 },
+    "company": { "matched": 5, "partial": 0, "missed": 1, "misclassified": 0, "total": 6, "recallScore": 0.833 },
+    "decision": { "matched": 0, "partial": 0, "missed": 4, "misclassified": 0, "total": 4, "recallScore": 0.0 },
+    "knowledge_fact": { "matched": 0, "partial": 0, "missed": 6, "misclassified": 0, "total": 6, "recallScore": 0.0 },
+    "deadline": { "matched": 1, "partial": 0, "missed": 0, "misclassified": 0, "total": 1, "recallScore": 1.0 },
+    "observation": { "matched": 3, "partial": 0, "missed": 1, "misclassified": 10, "total": 14, "recallScore": 0.214 },
+    "action": { "matched": 0, "partial": 0, "missed": 0, "misclassified": 17, "total": 17, "recallScore": 0.0 },
+    "reservation": { "matched": 0, "partial": 0, "missed": 0, "misclassified": 0, "total": 0, "recallScore": null }
+  },
+  "precisionByFamily": {
+    "person": { "truePositive": 7, "falsePositive": 0, "legitimateExtra": 0, "total": 7, "precisionScore": 1.0 },
+    "company": { "truePositive": 5, "falsePositive": 0, "legitimateExtra": 0, "total": 5, "precisionScore": 1.0 },
+    "knowledge_fact": { "truePositive": 12, "falsePositive": 0, "legitimateExtra": 1, "total": 13, "precisionScore": 1.0 },
+    "deadline": { "truePositive": 1, "falsePositive": 0, "legitimateExtra": 0, "total": 1, "precisionScore": 1.0 },
+    "observation": { "truePositive": 21, "falsePositive": 0, "legitimateExtra": 0, "total": 21, "precisionScore": 1.0 },
+    "decision": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "action": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "reservation": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null }
+  },
+  "evidenceComparison": {
+    "referencePhotoCount": 5,
+    "memoriaImageEvidenceCount": 0,
+    "note": "5 photos référence, toutes decorative (3, page de couverture) ou document_context (2, bandeau logos institutionnels + logo ACTeon, page 1) — aucune n'a de valeur probante narrative (pas de photo de terrain ou d'ouvrage). MemorIA : 0 evidence image sur 43 evidence (toutes text_excerpt), proposalEvidenceLinks non vide (21 liens texte). Cohérent avec l'attendu : document sans photo de chantier, écart nul sur ce point."
+  },
+  "overallNotes": [
+    "16/55 éléments de référence MATCHED, 0 PARTIAL, 12 MISSED, 27 MISCLASSIFIED. Recall strict (matched+0.5*partial)/total = 16/55 ≈ 29 %. Si on ignore la famille et qu'on ne mesure que la capture de contenu (matched+misclassified)/total = 43/55 ≈ 78 % : l'essentiel du contenu métier est bien détecté, mais la classification en famille est le point de rupture principal de ce document.",
+    "Finding n°1 — confusion bidirectionnelle observation/action/knowledge_fact, exactement le risque signalé pour ce document. (a) Les 17 pistes d'action de la section 3 du CR (E23-E29, E31-E39, E41) sont capturées mot pour mot mais TOUJOURS classées observation, jamais action : la famille 'action' n'est utilisée 0 fois sur les 47 propositions de ce run alors que 17 actions réelles existent. (b) 10 des 14 observations de référence (E14-E18, E20-E21, E30, E42-E43 — constats et positions exprimés par les participants) sont capturées mot pour mot mais classées knowledge_fact au lieu d'observation. Seules 3 observations (E19, E22, E44) et 0 action sont dans la bonne famille côté MemorIA. Le classifieur oscille entre les trois familles sans frontière stable, contrairement à knowledge_fact pur (définitions/faits datés) qui n'est ici jamais concerné par l'inverse (aucune observation ou action classée correctement en knowledge_fact... voir note suivante).",
+    "Finding n°2 — trou complet sur le cadrage méthodologique pages 3-5. Les 6 knowledge_fact de référence décrivant ce qu'est un SAGE, son pouvoir réglementaire, les 3 livrables déjà réalisés, les 4 objectifs des réunions, la trame en 3 temps et le calendrier des 3 sessions de janvier (E03, E06, E07, E09, E10, E12) sont TOUS manqués — 0 proposition MemorIA sur ces pages. Idem pour les 4 décisions de gouvernance (E02, E05, E08, E11, pages 3-4) : la famille 'decision' est totalement absente du run (0/47). La page 4 du document n'a produit aucune proposition ni evidence, quelle que soit la famille. Ce trou concerne exactement le tiers introductif du document (contexte SAGE/CLE/méthodologie), tandis que les pages 6 à 11 (discussion technique, pistes d'action, liste de présence) sont couvertes en quasi-totalité.",
+    "Finding n°3 — la CLE (Commission Locale de l'Eau), instance centrale du document, n'est jamais extraite comme entité (E04, MISSED), cohérent avec le trou pages 3-5 puisque c'est là qu'elle est présentée.",
+    "Aucune fabrication détectée : 0 faux positif sur les 47 propositions, 1 seule non appariée classée LEGITIMATE_EXTRA (kf-marge-prelevements-p6, doublon plausible d'un constat repris ailleurs dans le document, aucune donnée chiffrée ou nominative inventée). La deadline unique du document (20 mars 2012) conserve son jour exact sans granularité fabriquée, contrairement au biais observé sur LRM_01.",
+    "Familles person (7/7), company (5/6, seul manque = l'institution CLE) et deadline (1/1) restent au niveau de qualité habituel du corpus (recall et précision proches de 100 %) : le problème de ce document est concentré sur les familles à contenu narratif (action, observation, decision, knowledge_fact contextuel), pas sur l'identification des acteurs.",
+    "Sur-fragmentation ponctuelle, sans perte de contenu : E42 (2 propositions), E44 (2 propositions), E26 (2 propositions à cheval sur 2 familles) — même schéma que sur les autres documents du corpus.",
+    "Photos : 5 côté référence (toutes decorative/document_context, aucune valeur probante), 0 côté MemorIA (43 evidence, toutes text_excerpt). Écart nul et attendu, document sans photo de terrain."
+  ]
+}

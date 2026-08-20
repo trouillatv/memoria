@@ -1,0 +1,432 @@
+{
+  "corpusScored": [
+    "BTP_008",
+    "ENV_001",
+    "IND_002",
+    "JAR_01",
+    "LRM_01",
+    "QHSE_004",
+    "VRD_002",
+    "LRM_CR04",
+    "LRM_CR07",
+    "HER_CR01",
+    "HER_CR05",
+    "HER_CR10",
+    "MEL_CR01",
+    "MEL_CR03",
+    "JAR_CR02",
+    "JAR_CR04",
+    "BTP_009",
+    "EAU_001",
+    "EAU_002",
+    "OPC_003",
+    "OPC_006",
+    "QHSE_002",
+    "REC_001",
+    "VRD_005",
+    "AUT_004"
+  ],
+  "technicalFailures": [
+    "QHSE_003 (timeout persistant, jamais résolu, exclu du scoring)"
+  ],
+  "transientTechnicalRecovery": [
+    "BTP_009 (timeout au 1er essai à 246900ms, succès au 2e essai identique à 152016ms)"
+  ],
+  "semanticFailureZeroRecall": [
+    "ENV_001 (Phase C — succès technique, 0 proposition produite sur 34 éléments réels de référence)",
+    "OPC_006 (Phase D — succès technique, 0 proposition produite sur 38 éléments réels de référence)"
+  ],
+  "zeroToleranceDocuments": [
+    "BTP_008 (0 élément réel en référence — vérification anti-hallucination pure, PASS)"
+  ],
+  "recallByFamily": {
+    "person": {
+      "referenceTotal": 157,
+      "matched": 142,
+      "partial": 2,
+      "misclassified": 0,
+      "missed": 13,
+      "recall": 0.910828025477707,
+      "docCount": 20
+    },
+    "company": {
+      "referenceTotal": 114,
+      "matched": 97,
+      "partial": 0,
+      "misclassified": 0,
+      "missed": 17,
+      "recall": 0.8508771929824561,
+      "docCount": 22
+    },
+    "deadline": {
+      "referenceTotal": 55,
+      "matched": 31,
+      "partial": 3,
+      "misclassified": 18,
+      "missed": 1,
+      "recall": 0.5909090909090909,
+      "docCount": 15
+    },
+    "decision": {
+      "referenceTotal": 63,
+      "matched": 25,
+      "partial": 0,
+      "misclassified": 27,
+      "missed": 7,
+      "recall": 0.3968253968253968,
+      "docCount": 17
+    },
+    "action": {
+      "referenceTotal": 146,
+      "matched": 98,
+      "partial": 1,
+      "misclassified": 37,
+      "missed": 2,
+      "recall": 0.6746575342465754,
+      "docCount": 11
+    },
+    "observation": {
+      "referenceTotal": 112,
+      "matched": 21,
+      "partial": 2,
+      "misclassified": 77,
+      "missed": 6,
+      "recall": 0.19642857142857142,
+      "docCount": 15
+    },
+    "knowledge_fact": {
+      "referenceTotal": 303,
+      "matched": 136,
+      "partial": 10,
+      "misclassified": 16,
+      "missed": 106,
+      "recall": 0.46534653465346537,
+      "docCount": 23
+    },
+    "reservation": {
+      "referenceTotal": 29,
+      "matched": 13,
+      "partial": 1,
+      "misclassified": 15,
+      "missed": 0,
+      "recall": 0.46551724137931033,
+      "docCount": 6
+    }
+  },
+  "precisionByFamily": {
+    "person": {
+      "totalProposals": 172,
+      "truePositives": 144,
+      "misclassifiedFromOtherFamily": 0,
+      "falsePositives": 0,
+      "legitimateExtra": 28,
+      "precision": 0.8372093023255814,
+      "docCount": 18
+    },
+    "company": {
+      "totalProposals": 105,
+      "truePositives": 99,
+      "misclassifiedFromOtherFamily": 0,
+      "falsePositives": 1,
+      "legitimateExtra": 13,
+      "precision": 0.9428571428571428,
+      "docCount": 20
+    },
+    "deadline": {
+      "totalProposals": 47,
+      "truePositives": 42,
+      "misclassifiedFromOtherFamily": 0,
+      "falsePositives": 1,
+      "legitimateExtra": 4,
+      "precision": 0.8936170212765957,
+      "docCount": 17
+    },
+    "decision": {
+      "totalProposals": 30,
+      "truePositives": 28,
+      "misclassifiedFromOtherFamily": 0,
+      "falsePositives": 0,
+      "legitimateExtra": 1,
+      "precision": 0.9333333333333333,
+      "docCount": 12
+    },
+    "action": {
+      "totalProposals": 120,
+      "truePositives": 106,
+      "misclassifiedFromOtherFamily": 4,
+      "falsePositives": 0,
+      "legitimateExtra": 10,
+      "precision": 0.8833333333333333,
+      "docCount": 10
+    },
+    "observation": {
+      "totalProposals": 73,
+      "truePositives": 56,
+      "misclassifiedFromOtherFamily": 2,
+      "falsePositives": 0,
+      "legitimateExtra": 3,
+      "precision": 0.7671232876712328,
+      "docCount": 10
+    },
+    "knowledge_fact": {
+      "totalProposals": 473,
+      "truePositives": 333,
+      "misclassifiedFromOtherFamily": 56,
+      "falsePositives": 1,
+      "legitimateExtra": 69,
+      "precision": 0.7040169133192389,
+      "docCount": 22
+    },
+    "reservation": {
+      "totalProposals": 18,
+      "truePositives": 13,
+      "misclassifiedFromOtherFamily": 2,
+      "falsePositives": 1,
+      "legitimateExtra": 2,
+      "precision": 0.7222222222222222,
+      "docCount": 3
+    }
+  },
+  "global": {
+    "referenceTotal": 979,
+    "matched": 563,
+    "partial": 19,
+    "misclassified": 190,
+    "missed": 152,
+    "recallStrict": 0.5847803881511746,
+    "contentFoundIgnoringFamily": 0.7885597548518897,
+    "totalProposals": 1038,
+    "truePositives": 821,
+    "falsePositives": 4,
+    "legitimateExtra": 130,
+    "precision": 0.7909441233140655,
+    "fabricationRate": 0.0038535645472061657
+  },
+  "perDocument": [
+    {
+      "corpusId": "BTP_008",
+      "phase": "C",
+      "refCount": 0,
+      "overallRecall": 0,
+      "propCount": 0,
+      "overallPrecision": 0,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "ENV_001",
+      "phase": "C",
+      "refCount": 34,
+      "overallRecall": 0,
+      "propCount": 0,
+      "overallPrecision": 0,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "IND_002",
+      "phase": "C",
+      "refCount": 22,
+      "overallRecall": 0.75,
+      "propCount": 65,
+      "overallPrecision": 0.35384615384615387,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "JAR_01",
+      "phase": "C",
+      "refCount": 72,
+      "overallRecall": 0.7291666666666666,
+      "propCount": 104,
+      "overallPrecision": 0.6826923076923077,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "LRM_01",
+      "phase": "C",
+      "refCount": 25,
+      "overallRecall": 0.96,
+      "propCount": 55,
+      "overallPrecision": 0.9454545454545454,
+      "falsePositives": 1
+    },
+    {
+      "corpusId": "QHSE_004",
+      "phase": "C",
+      "refCount": 23,
+      "overallRecall": 0.6521739130434783,
+      "propCount": 20,
+      "overallPrecision": 1,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "VRD_002",
+      "phase": "C",
+      "refCount": 15,
+      "overallRecall": 0.6666666666666666,
+      "propCount": 19,
+      "overallPrecision": 0.5263157894736842,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "LRM_CR04",
+      "phase": "D",
+      "refCount": 85,
+      "overallRecall": 0.5588235294117647,
+      "propCount": 67,
+      "overallPrecision": 1,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "LRM_CR07",
+      "phase": "D",
+      "refCount": 66,
+      "overallRecall": 0.8106060606060606,
+      "propCount": 108,
+      "overallPrecision": 0.7870370370370371,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "HER_CR01",
+      "phase": "D",
+      "refCount": 20,
+      "overallRecall": 0.3,
+      "propCount": 16,
+      "overallPrecision": 0.375,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "HER_CR05",
+      "phase": "D",
+      "refCount": 10,
+      "overallRecall": 0.6,
+      "propCount": 9,
+      "overallPrecision": 0.6666666666666666,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "HER_CR10",
+      "phase": "D",
+      "refCount": 4,
+      "overallRecall": 0.5,
+      "propCount": 4,
+      "overallPrecision": 0.5,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "MEL_CR01",
+      "phase": "D",
+      "refCount": 59,
+      "overallRecall": 0.7288135593220338,
+      "propCount": 59,
+      "overallPrecision": 0.9830508474576272,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "MEL_CR03",
+      "phase": "D",
+      "refCount": 75,
+      "overallRecall": 0.5866666666666667,
+      "propCount": 80,
+      "overallPrecision": 0.9875,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "JAR_CR02",
+      "phase": "D",
+      "refCount": 102,
+      "overallRecall": 0.6715686274509803,
+      "propCount": 96,
+      "overallPrecision": 0.9895833333333334,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "JAR_CR04",
+      "phase": "D",
+      "refCount": 102,
+      "overallRecall": 0.6666666666666666,
+      "propCount": 110,
+      "overallPrecision": 0.6545454545454545,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "BTP_009",
+      "phase": "D",
+      "refCount": 35,
+      "overallRecall": 0.8428571428571429,
+      "propCount": 44,
+      "overallPrecision": 0.8863636363636364,
+      "falsePositives": 1
+    },
+    {
+      "corpusId": "EAU_001",
+      "phase": "D",
+      "refCount": 55,
+      "overallRecall": 0.2909090909090909,
+      "propCount": 47,
+      "overallPrecision": 0.9787234042553191,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "EAU_002",
+      "phase": "D",
+      "refCount": 19,
+      "overallRecall": 0.5526315789473685,
+      "propCount": 18,
+      "overallPrecision": 0.8888888888888888,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "OPC_003",
+      "phase": "D",
+      "refCount": 32,
+      "overallRecall": 0.3125,
+      "propCount": 17,
+      "overallPrecision": 1,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "OPC_006",
+      "phase": "D",
+      "refCount": 38,
+      "overallRecall": 0,
+      "propCount": 0,
+      "overallPrecision": 0,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "QHSE_002",
+      "phase": "D",
+      "refCount": 3,
+      "overallRecall": 0.5,
+      "propCount": 4,
+      "overallPrecision": 0.5,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "REC_001",
+      "phase": "D",
+      "refCount": 33,
+      "overallRecall": 0.7575757575757576,
+      "propCount": 32,
+      "overallPrecision": 0.78125,
+      "falsePositives": 2
+    },
+    {
+      "corpusId": "VRD_005",
+      "phase": "D",
+      "refCount": 26,
+      "overallRecall": 0.5384615384615384,
+      "propCount": 30,
+      "overallPrecision": 0.43333333333333335,
+      "falsePositives": 0
+    },
+    {
+      "corpusId": "AUT_004",
+      "phase": "D",
+      "refCount": 24,
+      "overallRecall": 0.3958333333333333,
+      "propCount": 34,
+      "overallPrecision": 0.5,
+      "falsePositives": 0
+    }
+  ]
+}

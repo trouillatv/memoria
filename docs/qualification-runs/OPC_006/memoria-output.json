@@ -1,0 +1,32 @@
+{
+  "corpusId": "OPC_006",
+  "documentId": "3fb83daa-d7d4-474b-9333-ab10e61bd4d4",
+  "extractionRunId": "da436bdf-d64b-4961-bacc-17ce41a7f1fd",
+  "proposals": [],
+  "evidence": [
+    {
+      "id": "5618b787-e91b-450e-b249-7fcbefad329e",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "da436bdf-d64b-4961-bacc-17ce41a7f1fd",
+      "document_id": "3fb83daa-d7d4-474b-9333-ab10e61bd4d4",
+      "evidence_type": "image",
+      "source_page": 1,
+      "storage_path": "snapshots/3fb83daa-d7d4-474b-9333-ab10e61bd4d4/img-p1-1.png",
+      "caption": "Logo O",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          56.70000076293945,
+          28.949989318847656,
+          390.45001220703125,
+          105.29998779296875
+        ],
+        "nativeWidth": 927,
+        "nativeHeight": 212
+      },
+      "created_at": "2026-08-20T06:03:51.473285+00:00",
+      "pinned_for_visit": false
+    }
+  ],
+  "proposalEvidenceLinks": []
+}

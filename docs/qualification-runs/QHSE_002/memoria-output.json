@@ -1,0 +1,198 @@
+{
+  "corpusId": "QHSE_002",
+  "documentId": "e6fc0c82-a1ab-4a35-8a5f-f0f3b2e90cd4",
+  "extractionRunId": "9319d141-29e8-42ec-8c6d-daa359770214",
+  "proposals": [
+    {
+      "id": "055f9d91-da5d-41e2-8735-a596025d9f1a",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9319d141-29e8-42ec-8c6d-daa359770214",
+      "document_id": "e6fc0c82-a1ab-4a35-8a5f-f0f3b2e90cd4",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-trous-ancrages",
+      "label": "Recommandation : Renforcement des trous modifiés des ancrages des contreventements",
+      "description": "Mettre des «plate washer» soudées afin de renforcir les trous localement, suite à l'agrandissement par oxycoupage des trous dans les plaques de base des colonnes de contreventements. Les modifications doivent être approuvées par l’ingénieur en structure.",
+      "source_page": 2,
+      "source_excerpt": "Nous recommandons de mettre des «plate washer» soudées afin de renforcir les trous localement.",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "relevanceReason": "Recommandation spécifique pour une modification structurelle."
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:04:27.972644+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "9befc480-0f03-4c48-b591-d7aa9058d496",
+      "document_status": null
+    },
+    {
+      "id": "2294cc25-2463-44d7-bbbe-6d9da4e5cdec",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9319d141-29e8-42ec-8c6d-daa359770214",
+      "document_id": "e6fc0c82-a1ab-4a35-8a5f-f0f3b2e90cd4",
+      "target_site_id": null,
+      "proposal_family": "company",
+      "stable_key": "company-conformtech",
+      "label": "Les Consultants Conformtech inc.",
+      "description": "Société réalisant le rapport d'inspection.",
+      "source_page": 1,
+      "source_excerpt": "RAPPORT INSPECTION Les Consultants Conformtech inc.",
+      "source_payload": {
+        "companyRole": "AMO",
+        "relevanceScore": "strong",
+        "relevanceReason": "Acteur clé réalisant l'inspection du chantier."
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:04:27.972644+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "dae1d92f-414b-4449-baa3-61c8c8d54cd4",
+      "document_status": null
+    },
+    {
+      "id": "6d1a53ca-1e0a-475e-83e6-4ff64573d434",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9319d141-29e8-42ec-8c6d-daa359770214",
+      "document_id": "e6fc0c82-a1ab-4a35-8a5f-f0f3b2e90cd4",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-verticalite-colonnes",
+      "label": "Non-conformité : Verticalité des colonnes",
+      "description": "Les colonnes mentionnées ne respectent pas les tolérances de montage selon l'Art. 29.3.3 de la norme S16-09.",
+      "source_page": 2,
+      "source_excerpt": "Les colonnes qui sont mentionnées ne respectent pas les tolérances de montage.",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "relevanceReason": "Non-conformité explicite aux tolérances de montage."
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:04:27.972644+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "69b8f14e-6d14-4b97-86ac-16d1e4f61e4f",
+      "document_status": null
+    },
+    {
+      "id": "b8817028-7949-4478-a956-41bb42946cdd",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9319d141-29e8-42ec-8c6d-daa359770214",
+      "document_id": "e6fc0c82-a1ab-4a35-8a5f-f0f3b2e90cd4",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-dessins-structuraux",
+      "label": "État des dessins structuraux",
+      "description": "Les dessins structuraux sont validés comme étant détaillés, pour construction et approuvés par l’ingénieur autorisé, conformément à l'art.4 de la CSA S16-09.",
+      "source_page": 4,
+      "source_excerpt": "Nous validons que les dessins structuraux sont détaillés, sont pour construction et sont approuvés par l’ingénieur autorisé.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "administrative"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:04:27.972644+00:00",
+      "thematic_category": "administrative",
+      "subject_thread_id": "a315cc26-9c93-412f-a5aa-c2b4b19254dc",
+      "document_status": null
+    }
+  ],
+  "evidence": [
+    {
+      "id": "30adfab2-3607-42a4-8a2c-a896426d552b",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9319d141-29e8-42ec-8c6d-daa359770214",
+      "document_id": "e6fc0c82-a1ab-4a35-8a5f-f0f3b2e90cd4",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "RAPPORT INSPECTION Les Consultants Conformtech inc."
+      },
+      "created_at": "2026-08-20T06:04:27.688617+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "9f53c0b8-bc38-4f4e-be6d-014934ca7de0",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9319d141-29e8-42ec-8c6d-daa359770214",
+      "document_id": "e6fc0c82-a1ab-4a35-8a5f-f0f3b2e90cd4",
+      "evidence_type": "text_excerpt",
+      "source_page": 2,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Nous recommandons de mettre des «plate washer» soudées afin de renforcir les trous localement."
+      },
+      "created_at": "2026-08-20T06:04:27.688617+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "e5b56d90-3398-497e-9017-4acac4dcaa65",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9319d141-29e8-42ec-8c6d-daa359770214",
+      "document_id": "e6fc0c82-a1ab-4a35-8a5f-f0f3b2e90cd4",
+      "evidence_type": "text_excerpt",
+      "source_page": 2,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Les colonnes qui sont mentionnées ne respectent pas les tolérances de montage."
+      },
+      "created_at": "2026-08-20T06:04:27.688617+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "7a99151d-7c8d-473d-925b-d6fa37de9382",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9319d141-29e8-42ec-8c6d-daa359770214",
+      "document_id": "e6fc0c82-a1ab-4a35-8a5f-f0f3b2e90cd4",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Nous validons que les dessins structuraux sont détaillés, sont pour construction et sont approuvés par l’ingénieur autorisé."
+      },
+      "created_at": "2026-08-20T06:04:27.688617+00:00",
+      "pinned_for_visit": false
+    }
+  ],
+  "proposalEvidenceLinks": [
+    {
+      "proposal_id": "055f9d91-da5d-41e2-8735-a596025d9f1a",
+      "evidence_id": "9f53c0b8-bc38-4f4e-be6d-014934ca7de0",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:04:28.254993+00:00"
+    },
+    {
+      "proposal_id": "6d1a53ca-1e0a-475e-83e6-4ff64573d434",
+      "evidence_id": "e5b56d90-3398-497e-9017-4acac4dcaa65",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:04:28.534769+00:00"
+    }
+  ]
+}

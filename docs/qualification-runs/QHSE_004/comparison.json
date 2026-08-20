@@ -1,0 +1,295 @@
+{
+  "corpusId": "QHSE_004",
+  "referenceElementCount": 23,
+  "memoriaProposalCount": 28,
+  "elementMatches": [
+    {
+      "referenceId": "QHSE_004-E01",
+      "status": "MATCHED",
+      "matchedProposalIds": ["2d83479a-57b7-4be1-a17f-76606dad041b"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "ECHAFAUDAGE 95 correctement identifié comme sous-traitant/prestataire (comp-echafaudage95)."
+    },
+    {
+      "referenceId": "QHSE_004-E02",
+      "status": "MATCHED",
+      "matchedProposalIds": ["922c0b42-c01e-43d3-bce0-c024f55fb6b0"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "PPC BAT correctement identifié comme donneur d'ordre/entreprise titulaire (comp-ppcbat)."
+    },
+    {
+      "referenceId": "QHSE_004-E03",
+      "status": "MATCHED",
+      "matchedProposalIds": [
+        "56d065bd-221e-405c-83f1-41ca2c946b54",
+        "40103556-b677-420e-9972-d2565d2b5464"
+      ],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "La référence fusionne adresse+nature des travaux en un seul élément (page de garde, chantier Poissy) ; MemorIA la scinde en deux proposals (kf-chantier-poissy-addr + kf-chantier-poissy-work) sans perte d'information — granularité plus fine, pas dégradée."
+    },
+    {
+      "referenceId": "QHSE_004-E04",
+      "status": "MATCHED",
+      "matchedProposalIds": [
+        "d6d21e28-2c86-41f3-83cb-517e8abc37a8",
+        "f8d4a405-1b01-4d87-9545-e1d6c98cba99"
+      ],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Même logique que E03 côté page 3 (chantier Igny) : désignation + adresse scindées en 2 proposals (kf-chantier-igny-work + kf-chantier-igny-addr), sans perte."
+    },
+    {
+      "referenceId": "QHSE_004-E05",
+      "status": "MATCHED",
+      "matchedProposalIds": ["ad7f2b82-efae-4791-b3fc-b1564f65ea84"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Maître d'ouvrage (DIR INTERREGIONALE DES SERVICES PENITENTIAIRES) correctement identifié (comp-marches-travaux)."
+    },
+    {
+      "referenceId": "QHSE_004-E06",
+      "status": "PARTIAL",
+      "matchedProposalIds": [
+        "447ce4ce-1bf6-442b-923f-5ef1ae483321",
+        "4a102872-ed57-425b-a8be-b9cdfd034b2c",
+        "69a016ba-349f-4d44-8fc8-bf0c23ece684"
+      ],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Nature des travaux, matériel (COMABI R200) et amarrages sont capturés (kf-nature-travaux-p4, kf-materiel-p4, kf-amarrages-p4), mais l'obligation de port des EPI ('Port de l'ensemble des protections individuelles', même paragraphe page 4) n'est reprise dans aucune proposal dédiée à ce passage précis."
+    },
+    {
+      "referenceId": "QHSE_004-E07",
+      "status": "MATCHED",
+      "matchedProposalIds": ["cffea820-bec6-4fdd-a1e0-e6bca145aa78"],
+      "referenceFamily": "deadline",
+      "memoriaFamily": "deadline",
+      "note": "Début des travaux '1 juillet' capturé à l'identique (dl-debut-travaux-p4). MemorIA ajoute une inférence 'responsibleParty: Echafaudage95' absente du texte littéral mais raisonnable vu le contexte (seule entreprise exécutante du document) ; à surveiller comme enrichissement non explicite."
+    },
+    {
+      "referenceId": "QHSE_004-E08",
+      "status": "MATCHED",
+      "matchedProposalIds": ["3eff2375-8f82-41da-931f-31e93df2a766"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Durée des travaux (1 mois) capturée à l'identique."
+    },
+    {
+      "referenceId": "QHSE_004-E09",
+      "status": "MATCHED",
+      "matchedProposalIds": ["7ed792b4-a23f-4039-8290-1596153c822d"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Effectif prévisionnel (2 à 4 techniciens) capturé à l'identique."
+    },
+    {
+      "referenceId": "QHSE_004-E10",
+      "status": "MATCHED",
+      "matchedProposalIds": ["0163d9d5-660a-494b-933c-95a6a0d00617"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Fréderic Lemoigne (réception des échafaudages) capturé à l'identique."
+    },
+    {
+      "referenceId": "QHSE_004-E11",
+      "status": "MATCHED",
+      "matchedProposalIds": ["9c070a13-2e4d-49f2-a478-92efda04c9cd"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Sambaly Cissoko (chef d'équipe monteur) capturé à l'identique."
+    },
+    {
+      "referenceId": "QHSE_004-E12",
+      "status": "MATCHED",
+      "matchedProposalIds": ["9a2bbf1d-2f3f-4158-95ab-d59db56db83d"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Gomez Gilberto (monteur) capturé à l'identique."
+    },
+    {
+      "referenceId": "QHSE_004-E13",
+      "status": "MATCHED",
+      "matchedProposalIds": ["bfeb8db6-ce6c-4841-87d7-2dc4ca5641ad"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Penon Lucas (aide monteur) capturé à l'identique."
+    },
+    {
+      "referenceId": "QHSE_004-E14",
+      "status": "MATCHED",
+      "matchedProposalIds": ["614b3601-2948-4fa9-9fd5-d9ff0d8615bf"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Alexandre Penon (Gérant, personne chargée de la sécurité) capturé, avec un enrichissement légitime (numéros de téléphone) tiré d'un autre passage de la page 4."
+    },
+    {
+      "referenceId": "QHSE_004-E15",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Consigne permanente de secours (numéros d'urgence Police/Pompiers/SAMU, procédure de signalement d'accident, page 5) : aucune proposal correspondante."
+    },
+    {
+      "referenceId": "QHSE_004-E16",
+      "status": "PARTIAL",
+      "matchedProposalIds": ["dfa07194-82c9-4409-aad3-a64e6d9a29dc"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Seul le contact SOS Main (section complète) est repris (kf-sos-main-p7). Le protocole détaillé de premiers soins (yeux, brûlures, saignement de nez, plaies) qui occupe le reste des pages 6-7 n'est capturé par aucune proposal."
+    },
+    {
+      "referenceId": "QHSE_004-E17",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Mesure générale de respect des consignes de sécurité/circulation vis-à-vis des autres entreprises (page 7) : aucune proposal correspondante."
+    },
+    {
+      "referenceId": "QHSE_004-E18",
+      "status": "MATCHED",
+      "matchedProposalIds": ["5db73ace-35a2-4333-8441-6d2f0173ed50"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Méthodologie de pose (notice COMABI R200 Progress) capturée à l'identique."
+    },
+    {
+      "referenceId": "QHSE_004-E19",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Tableau de prévention 'Manutentions' (risques chutes d'objets/TMS/collisions/pincement, mesures EPI, page 7) : aucune proposal correspondante."
+    },
+    {
+      "referenceId": "QHSE_004-E20",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Tableau de prévention 'Amené et déchargement des matériaux/matériels' (page 8) : aucune proposal correspondante."
+    },
+    {
+      "referenceId": "QHSE_004-E21",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Risque de chutes d'objets aux accès des immeubles et sous les échafaudages, port du casque obligatoire (page 8) : aucune proposal correspondante."
+    },
+    {
+      "referenceId": "QHSE_004-E22",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Consignes générales au personnel + obligation de signaler tout défaut de matériel au chargé d'affaire (page 8) : aucune proposal correspondante."
+    },
+    {
+      "referenceId": "QHSE_004-E23",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "decision",
+      "memoriaFamily": null,
+      "note": "Validation/signature du PPSPS par Alexandre Penon le 27/06/2020 à Saint Leu La Forêt : aucune proposal de famille 'decision' n'existe dans l'extraction MemorIA (la famille decision est absente à 0 sur ce document)."
+    }
+  ],
+  "unmatchedProposals": [
+    {
+      "proposalId": "a302fee0-3a11-49c9-a38a-73e43ced6f12",
+      "family": "company",
+      "label": "CRAMIF",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "Organisme de prévention réellement listé page 3 (\"CRAM CRAMIF ... TEL : 01 44 65 79 40\", confirmé par evidence). La référence n'a pas jugé utile de créer un élément dédié pour cet annuaire d'organismes administratifs génériques du PPSPS. Doublon avec comp-cram-p5 (même organisme, adresse/téléphone différents car listé une 2e fois page 5)."
+    },
+    {
+      "proposalId": "d8de1b91-522b-4ee1-b452-9da00d373cde",
+      "family": "company",
+      "label": "APMT/BTP/RP",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "Médecine du travail réellement listée page 3 (evidence confirmée). Non retenu par la référence (annuaire générique). Recoupe très probablement le même organisme que comp-apstbtprp-p5 (même adresse 92340 Bourg-la-Reine, sigle différent d'une page à l'autre) sans déduplication côté MemorIA."
+    },
+    {
+      "proposalId": "54fa3fa1-ba2a-4105-b8fc-ef3dcc6dc772",
+      "family": "company",
+      "label": "DIRECCTE UC1",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "Inspection du travail réellement listée page 3 (evidence confirmée). Non retenu par la référence. Rôle proche de comp-ddt-p5 (Inspection du Travail, page 5) mais adresses différentes (Mantes-la-Jolie vs Cergy-Pontoise) — pas de fusion côté MemorIA."
+    },
+    {
+      "proposalId": "9bdb5d87-9d4d-4e60-bf0c-41e1622e3cab",
+      "family": "company",
+      "label": "OPPBTP",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "Organisme de prévention réellement listé page 3 (evidence confirmée). Non retenu par la référence. Doublon avec comp-oppbtp-p5 (même organisme, listé une 2e fois page 5 avec adresse/téléphone)."
+    },
+    {
+      "proposalId": "6c259192-eaf5-4ea8-ae1b-e88144aabf75",
+      "family": "company",
+      "label": "O.P.P.B.T.P.",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "Même organisme que comp-oppbtp-p3, listé une seconde fois page 5 avec coordonnées complètes (evidence confirmée). Doublon non fusionné."
+    },
+    {
+      "proposalId": "3c6114ed-4a47-40b5-b2e7-449ad3d81197",
+      "family": "company",
+      "label": "APST BTP RP",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "Médecine du travail listée page 5 (evidence confirmée), même adresse que comp-apmtbtprp-p3 (92340 Bourg-la-Reine) — probable doublon du même organisme sous deux sigles."
+    },
+    {
+      "proposalId": "f496fabe-fb5b-46bb-98d4-86894f29b3d9",
+      "family": "company",
+      "label": "D.D.T.",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "Inspection du travail listée page 5 (evidence confirmée). Probable doublon fonctionnel de comp-direccte (page 3), non fusionné."
+    },
+    {
+      "proposalId": "7411673c-9702-4ebc-8a94-9906b3d8359c",
+      "family": "company",
+      "label": "C.R.A.M.",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "Même organisme que comp-cramif-p3 (CRAMIF), listé une seconde fois page 5 avec une autre adresse/téléphone (evidence confirmée). Doublon non fusionné."
+    }
+  ],
+  "recallByFamily": {
+    "person": { "matched": 5, "partial": 0, "missed": 0, "total": 5, "recall": 1.0 },
+    "company": { "matched": 3, "partial": 0, "missed": 0, "total": 3, "recall": 1.0 },
+    "deadline": { "matched": 1, "partial": 0, "missed": 0, "total": 1, "recall": 1.0 },
+    "decision": { "matched": 0, "partial": 0, "missed": 1, "total": 1, "recall": 0.0 },
+    "action": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recall": null },
+    "observation": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recall": null },
+    "reservation": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recall": null },
+    "knowledge_fact": { "matched": 5, "partial": 2, "missed": 6, "total": 13, "recall": 0.4615 }
+  },
+  "precisionByFamily": {
+    "person": { "truePositives": 5, "falsePositives": 0, "legitimateExtra": 0, "denominator": 5, "precision": 1.0 },
+    "company": { "truePositives": 3, "falsePositives": 0, "legitimateExtra": 8, "denominator": 3, "precision": 1.0 },
+    "deadline": { "truePositives": 1, "falsePositives": 0, "legitimateExtra": 0, "denominator": 1, "precision": 1.0 },
+    "decision": { "truePositives": 0, "falsePositives": 0, "legitimateExtra": 0, "denominator": 0, "precision": null },
+    "action": { "truePositives": 0, "falsePositives": 0, "legitimateExtra": 0, "denominator": 0, "precision": null },
+    "observation": { "truePositives": 0, "falsePositives": 0, "legitimateExtra": 0, "denominator": 0, "precision": null },
+    "reservation": { "truePositives": 0, "falsePositives": 0, "legitimateExtra": 0, "denominator": 0, "precision": null },
+    "knowledge_fact": { "truePositives": 11, "falsePositives": 0, "legitimateExtra": 0, "denominator": 11, "precision": 1.0 }
+  },
+  "photoComparison": {
+    "referencePhotoCount": 2,
+    "referencePhotoRole": "decorative (logo d'en-tête + cachet/signature) — aucune photo de chantier réelle dans ce document",
+    "memoriaImageEvidenceCount": 0,
+    "note": "Cohérent : le document ne contient aucune photographie de chantier exploitable, MemorIA n'a produit aucune evidence de type image."
+  },
+  "overallNotes": [
+    "Recall global (pondéré, 23 éléments) = (14 MATCHED + 0.5×2 PARTIAL) / 23 ≈ 65% ; precision globale (28 proposals, 8 legitimate_extra exclues, 0 false_positive) = 20/20 = 100%.",
+    "Aucun FALSE_POSITIVE (aucune hallucination) identifié sur ce document : toutes les propositions non appariées à un élément de référence correspondent à du contenu réellement présent dans le PDF (annuaire d'organismes de prévention, confirmé par les evidence.text_excerpt), simplement jugé non pertinent par la référence Phase A.",
+    "Biais principal : couverture qui s'effondre après la page 4. Sur les 6 éléments knowledge_fact des pages 5-8 (E15, E17, E19, E20, E21, E22 — consignes de secours génériques et tableaux risques/prévention), 5 sont totalement MISSED et 1 (E16, premiers soins) est seulement PARTIAL (seul le contact SOS Main est repris). Le pipeline semble avoir sous-échantillonné ou dé-priorisé le contenu tabulaire/procédural récurrent des dernières pages du PPSPS.",
+    "La famille 'decision' est totalement absente des propositions MemorIA (0/28) alors que le document en contient une (E23, validation/signature du PPSPS le 27/06/2020) — gap systémique possible sur la reconnaissance des blocs de signature comme des décisions.",
+    "Sur-génération de la famille 'company' avec des organismes administratifs/de prévention génériques (CRAMIF, OPPBTP, DIRECCTE, médecine du travail) que la référence ne juge pas comme des éléments dignes d'extraction. Ce contenu est réel (non halluciné) mais 4 organismes sont chacun dupliqués en 2 proposals distinctes (comp-cramif-p3/comp-cram-p5 ; comp-oppbtp-p3/comp-oppbtp-p5 ; comp-apmtbtprp-p3/comp-apstbtprp-p5 ; comp-direccte/comp-ddt-p5) car listés deux fois dans le document (page 3 sommaire + page 5 annuaire détaillé) sans résolution d'entité — 8 proposals pour ~4 organismes réels.",
+    "proposalEvidenceLinks est vide (0 lien) malgré 28 proposals et 29 evidence : le rattachement proposal→evidence a dû être reconstitué manuellement via les champs source_page/source_excerpt de chaque proposal et par correspondance textuelle avec le tableau evidence, plutôt que via la table de jointure prévue à cet effet.",
+    "Le document contient une contradiction interne (chantier Poissy/clocher en page de garde vs chantier Igny/étanchéité dans le corps) : MemorIA a correctement conservé les deux désignations sans tenter de trancher, comme la référence.",
+    "Vérification directe du PDF non disponible dans cet environnement (pdftoppm/pdftotext absents) ; la classification LEGITIMATE_EXTRA des organismes de prévention s'appuie sur la cohérence entre les evidence.text_excerpt de Phase B (extraction Gemini réelle) et le format standard d'un PPSPS, sans relecture visuelle directe des pages 3 et 5."
+  ]
+}

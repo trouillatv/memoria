@@ -1,0 +1,57 @@
+{
+  "documentId": "QHSE_002",
+  "sourceFile": "docs/corpus-pv/STRESS_TEST/QHSE_HSE/QHSE_002_conformtech-rapport-inspection-chantier-nonconformites.pdf",
+  "pageCount": 5,
+  "elements": [
+    {
+      "id": "QHSE_002-E01",
+      "family": "company",
+      "page": 1,
+      "excerpt": "Les Consultants Conformtech inc.\n9555, sainte-claire Montréal, Qc, Ca\nH1L 2A6\nwww.conformtech.ca",
+      "summary": "Cabinet-conseil ayant émis le gabarit de rapport d'inspection (firme de contrôle/consultants en structure), basé à Montréal (Québec, Canada).",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": null,
+      "statusAtDocumentDate": null,
+      "companyRole": "auteur du rapport / firme d'inspection-consultant",
+      "classificationNote": "Seule entité nommée et identifiable de tout le document (l'en-tête de la firme émettrice). Les champs du formulaire réservés à Client, Contracteur et Sous-traitant sont tous vides : aucune autre entreprise n'est donc nommée dans ce document."
+    },
+    {
+      "id": "QHSE_002-E02",
+      "family": "knowledge_fact",
+      "page": 1,
+      "excerpt": "Voici le rapport d'intervention. Vous trouverez les endroits inspectés jusqu'à ce jour pour chaque élément de la structure, la liste de vérification et les normes respectives s'y rattachant et la liste d'items déficients ou nécessitant des recommandations spécifiques.\nPrendre note que les interventions sont à la base arbitraire à moins d'être mentionné autrement.",
+      "summary": "La méthodologie du rapport précise que les interventions de contrôle sont réalisées sur une base d'échantillonnage arbitraire (aléatoire), sauf mention contraire explicite.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": "general_knowledge",
+      "statusAtDocumentDate": null,
+      "companyRole": null,
+      "classificationNote": "Information méthodologique générale sur la nature du contrôle (échantillonnage aléatoire), sans fait daté ni constat concret associé ; classée knowledge_fact plutôt qu'observation car elle décrit le principe de la démarche de contrôle, pas un résultat de contrôle."
+    },
+    {
+      "id": "QHSE_002-E03",
+      "family": "knowledge_fact",
+      "page": 2,
+      "excerpt": "Boulons d'ancrages coulés\nFabrication et montage des éléments\nAssemblages boulonnés\nAssemblages soudés",
+      "summary": "Le gabarit de contrôle couvre l'inspection d'une charpente métallique : boulons d'ancrages coulés, fabrication/montage des éléments, assemblages boulonnés et assemblages soudés (page 2) ; tablier métallique et revêtements d'acier (page 3) ; autres éléments — ancrages chimiques/mécaniques, goujons, dessins structuraux (page 4). Les critères sont rattachés aux normes CSA S16-09, CSA W59-13, CSA W47.1-09 et aux spécifications techniques CANAM et HILTI.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": "general_knowledge",
+      "statusAtDocumentDate": null,
+      "companyRole": null,
+      "classificationNote": "Décrit le périmètre normatif permanent du gabarit de contrôle (indépendant du projet), et non un constat daté sur un chantier réel : aucune case « État » (C/NC/S) n'est renseignée sur les pages 2 à 4, donc aucune conformité ni non-conformité n'est effectivement établie pour un projet donné."
+    }
+  ],
+  "photos": [
+    {
+      "id": "QHSE_002-P01",
+      "page": 2,
+      "caption": null,
+      "description": "Logo/pictogramme de marque « Les Consultants Conformtech » (icône circulaire bleu/vert stylisée accompagnée du texte « conformtech ») apparaissant en pied de page ; le même logo se répète à l'identique en pied des pages 3 et 4.",
+      "role": "decorative",
+      "roleJustification": "Élément de branding/en-tête de cabinet répété en pied de page ; ne documente aucun constat de chantier ni preuve de non-conformité. Aucune autre photographie (défaut constaté, élément inspecté) n'est présente dans le document."
+    }
+  ],
+  "readerNotes": "Le document est un GABARIT DE RAPPORT D'INSPECTION VIERGE (non rempli) de la firme québécoise « Les Consultants Conformtech inc. », portant sur le contrôle de fabrication/montage d'une charpente métallique (boulons d'ancrages, assemblages boulonnés/soudés, tablier métallique, revêtements d'acier, ancrages chimiques/mécaniques, goujons, dessins), référencé aux normes canadiennes CSA S16-09, CSA W59-13 et CSA W47.1-09 ainsi qu'aux spécifications CANAM et HILTI. Aucun champ d'identification du projet n'est renseigné : Rapport, Projet, V/B/C, Client, Description, Contracteur, Sous-traitant, Adresses, Contacts (nom/titre/téléphone), Date de l'inspection, Inspecté par, Vérifié par, Distribution/Chargé de projet sont TOUS vides sur les 5 pages. La colonne « État » (C=Conforme / NC=Non conforme / S=à suivre) n'est renseignée sur AUCUNE des lignes de contrôle des pages 2 à 4. La page 5, intitulée « Liste item déficient » — censée lister les non-conformités, ce qui correspond au nom de fichier « nonconformites » — est ENTIÈREMENT VIERGE : aucune non-conformité n'est effectivement consignée dans cet exemplaire du document, malgré le titre qui laisse attendre une liste de constats. Conséquence directe pour l'extraction : aucun élément des familles person, deadline, decision, action, observation ou reservation ne peut être extrait de bonne foi, car aucun fait daté, aucune personne nommée, aucune non-conformité concrète, aucun engagement ni aucune échéance ne figure dans le texte source. Seule la firme émettrice (Conformtech) est identifiable comme « company », et le contenu générique du gabarit (méthodologie d'échantillonnage + périmètre normatif) a été capturé en knowledge_fact générique, sans lien avec un chantier ou une date précise — à distinguer explicitement d'un fait observé sur site. Aucune photographie de constat n'est présente ; seul un logo de marque « Conformtech » apparaît en pied de pages 2, 3 et 4 (branding, non probant). Aucun problème d'OCR : le texte est natif et intégralement lisible (formulaire vectoriel type Word/Excel exporté en PDF, sans ambiguïté de lecture). Ce document constitue un cas de test « négatif » utile pour le benchmark de qualification : il permet de vérifier qu'un pipeline d'extraction ne survalorise pas un gabarit vide en hallucinant des non-conformités, des personnes, des entreprises ou des dates absentes du texte source, malgré un nom de fichier suggérant un contenu riche en non-conformités."
+}

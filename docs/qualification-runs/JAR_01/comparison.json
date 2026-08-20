@@ -1,0 +1,1170 @@
+{
+    "corpusId":  "JAR_01",
+    "referenceElementCount":  72,
+    "memoriaProposalCount":  104,
+    "elementMatches":  [
+                           {
+                               "referenceElementId":  "JAR_01-E01",
+                               "referenceFamily":  "company",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "2251ba24-5736-4985-8662-48aaa475d58c"
+                                                      ],
+                               "matchedProposalFamily":  "company",
+                               "note":  "Correctement classée, aucune perte de contenu."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E02",
+                               "referenceFamily":  "company",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "981524a1-a3aa-4639-80e4-079bf5ba2ab4"
+                                                      ],
+                               "matchedProposalFamily":  "company",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E03",
+                               "referenceFamily":  "company",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "c922d64a-4701-4cf5-8544-2ae894040f41"
+                                                      ],
+                               "matchedProposalFamily":  "company",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E04",
+                               "referenceFamily":  "company",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "59b1ebdb-eec5-4322-8e8b-58f4944ddb3f"
+                                                      ],
+                               "matchedProposalFamily":  "company",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E05",
+                               "referenceFamily":  "company",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "6de2034b-5344-47b6-b7a9-e53ceafa1621"
+                                                      ],
+                               "matchedProposalFamily":  "company",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E06",
+                               "referenceFamily":  "company",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "076e5e01-645e-4c16-8125-1045fdabdde3"
+                                                      ],
+                               "matchedProposalFamily":  "company",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E07",
+                               "referenceFamily":  "company",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "c38006a0-80b0-4c47-8c46-961d55c404d2"
+                                                      ],
+                               "matchedProposalFamily":  "company",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E08",
+                               "referenceFamily":  "person",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "097528d0-1470-4e9d-a48b-d4edb5ccdf71"
+                                                      ],
+                               "matchedProposalFamily":  "person",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E09",
+                               "referenceFamily":  "deadline",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "89548299-a4eb-4de1-90ed-fd043deed273"
+                                                      ],
+                               "matchedProposalFamily":  "deadline",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E10",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "68b3a541-4277-4427-8d64-2ade2c080d4a"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  "Fusionné avec E11 dans une seule proposition MemorIA (les deux OS regroupés) ; contenu intégralement présent."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E11",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "68b3a541-4277-4427-8d64-2ade2c080d4a"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  "Fusionné avec E10 dans la même proposition MemorIA ; contenu intégralement présent."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E12",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "edd52628-d374-4f1d-8d17-becc487c3907"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E13",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "3b5bd78a-ea7d-4197-9b55-d8cc089f7851"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  "Contenu identique à la référence (DICT à réaliser), mais classé observation au lieu de action."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E14",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "5fd08b74-162f-44cd-ae9b-ec6421a673a2"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  "Attendu action, classé observation ; contenu correct."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E15",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "3894d3ed-19bc-4f51-a051-84c5c6994bc5"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  "Attendu action, classé observation ; contenu correct."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E16",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "29b998a0-be12-4cc0-9d8d-66e7a115bf76"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  "Attendu action, classé observation ; contenu correct."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E17",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "5a09c090-ed4a-45ac-a499-c365520d41e5"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  "Attendu action, classé observation ; contenu correct."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E18",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "99aeb2ef-f02e-4633-a2cc-10c04cf3195d"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  "Attendu action, classé observation ; contenu correct."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E19",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "c3d4671d-693c-401e-a274-1e8253a91cad"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E20",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "01133ad1-3250-4512-9577-b9c8968ddc81"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  "Attendu action, classé observation ; contenu correct."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E21",
+                               "referenceFamily":  "deadline",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "e1d63195-8fb4-4ad3-8717-77164d429d32"
+                                                      ],
+                               "matchedProposalFamily":  "deadline",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E22",
+                               "referenceFamily":  "deadline",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "5999a988-13f2-41d1-bbf0-7c088c56cb95"
+                                                      ],
+                               "matchedProposalFamily":  "deadline",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E23",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "4468ebc4-e275-413c-bb1b-8dc6899550c5"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  "Attendu deadline (semaine 21), classé knowledge_fact sans dueDate ; contenu correct."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E24",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "ac4851a8-b3af-46b9-892d-b4f634df5d1a"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  "Attendu deadline (semaine 27), classé knowledge_fact sans dueDate ; contenu correct."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E25",
+                               "referenceFamily":  "deadline",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "0ac559af-ff88-4b78-bd8b-a06d9280d73c"
+                                                      ],
+                               "matchedProposalFamily":  "deadline",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E26",
+                               "referenceFamily":  "person",
+                               "verdict":  "PARTIAL",
+                               "matchedProposalIds":  [
+                                                          "81f67417-8816-427e-921c-17b15c3d6766"
+                                                      ],
+                               "matchedProposalFamily":  "person",
+                               "note":  "statusAtDocumentDate = \"présent\" côté MemorIA alors que le PDF (tableau p.1, marqueur E) et la référence indiquent \"excusé\". Personne et rattachement corrects, attribut de statut faux."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E27",
+                               "referenceFamily":  "action",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "a70eadec-746b-4e48-ad80-ea19ef5575ac"
+                                                      ],
+                               "matchedProposalFamily":  "action",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E28",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "39e623a8-1bd2-47ff-88c5-4ca97c330000"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E29",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "2ef94837-3b50-4f3e-9d6a-5a3875ed878d"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E30",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "9037ffb9-2811-4f19-b130-c538f5dc3a8e"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E31",
+                               "referenceFamily":  "deadline",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "b4e07ef7-4e06-4d36-90cb-f3c642b3ecb2"
+                                                      ],
+                               "matchedProposalFamily":  "deadline",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E32",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "20229a7b-7a4a-4ac2-aa89-95bc2ae2c4d9"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E33",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "6a2217f5-5c74-4a5c-a4d0-304439eee3f5"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E34",
+                               "referenceFamily":  "deadline",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "947268e1-a255-4ff1-a41c-5fb545ddeba2"
+                                                      ],
+                               "matchedProposalFamily":  "deadline",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E35",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "4d7e3ecd-6639-42a2-baf4-27cee3586f8a"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  "Voir aussi kf-poursuite-pose-conduites-75ml-p4 (quasi-doublon, cf. duplicateProposalsWithinMemoria)."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E36",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "b0c720a2-b3be-4fce-952b-19a0b8ed38bd"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  "Attendu observation (échéance vague \"semaine prochaine\"), classé knowledge_fact."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E37",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "ceefa530-c224-412a-915a-51cf0e8b351c"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E38",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "07f4d6cf-3c52-4307-9dba-3224033a1d46"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  "Attendu observation, classé knowledge_fact ; contenu correct."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E39",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "93c0c2d6-62c2-4296-ba0a-5d374068503d"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E40",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "387fe133-13fc-40bb-bdcf-394937ac30cf"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E41",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "a373b9ce-c5b7-4bcb-b30c-cab2e13aedca"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  "Attendu decision (validation avec la mairie), classé knowledge_fact. La famille decision n a jamais ete utilisee par MemorIA sur ce document."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E42",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "489c8ab6-8edb-4571-98c0-142ad0219d2d"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E43",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "9eed34a1-f13b-4a89-bf1b-0b304e7ed6c6"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E44",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "ba76ced2-250a-4f20-9317-4a55fad56dbf"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E45",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "86cc34a8-151e-4437-a651-65ed3af2595e"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  "Attendu observation, classé knowledge_fact ; contenu correct."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E46",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "8e3cfa36-326f-4c39-966e-83e895d91970"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  "Attendu decision (validation), classé knowledge_fact."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E47",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "cba4c758-9a42-41bf-938b-3681f38d49f0"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  "Attendu decision (validation), classé knowledge_fact."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E48",
+                               "referenceFamily":  "deadline",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "e9b9b6e7-bc37-4f5d-b50a-73cfff5b0b60"
+                                                      ],
+                               "matchedProposalFamily":  "deadline",
+                               "note":  "Biais de sur-precision : la reference laisse volontairement \"fin juin\" non converti (intervention \"envisagée\" = incertain, family observation) ; MemorIA convertit en dueDate ferme 2023-06-30 et classe en deadline."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E49",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "fa4a1e85-8295-42ee-a09b-dfdd631ceebc"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E50",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "12ef0439-ad27-4fa1-a9a2-10cfd3e25b8a"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E51",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "809ad168-3d1d-4875-ad96-0cce57cf392c"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  "Attendu decision (validation), classé knowledge_fact."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E52",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "35d9f614-02b8-49bd-861b-e583b34aed86"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E53",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "fd9a46b5-5763-43a8-b5a3-8cb8ec762ef0"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E54",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "4b714041-cac8-475b-bc84-81f42e4d0f76"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E55",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "eca2f4dc-62c1-4857-b9e5-df6dae848bd2"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E56",
+                               "referenceFamily":  "action",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "165b1aff-68a8-4d83-87d4-42eb9eb59e3d"
+                                                      ],
+                               "matchedProposalFamily":  "action",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E57",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "7b2e654b-2321-4c71-be99-309ff1387250"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E58",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "cef004f9-7ccf-46fe-a246-aacfc3e99fc1"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E59",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "d5c1ab3d-d92f-4e83-b3d6-232894dcd65a"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E60",
+                               "referenceFamily":  "action",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "e544bad3-0c6c-4af5-872d-2155bad5e8fd"
+                                                      ],
+                               "matchedProposalFamily":  "action",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E61",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "c98264ce-6ba3-4b62-8d09-e78fde7f3236"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  "Attendu knowledge_fact/permanent_instruction, classé observation ; contenu correct."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E62",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "d10dde3a-00f6-40b8-9175-d11486607874"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E63",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "87605c80-8a6e-47bf-90e0-9d46cef225c3"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E64",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "213274d9-f22f-4a16-998b-4848c2e42e54"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E65",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MISCLASSIFIED",
+                               "matchedProposalIds":  [
+                                                          "eec719bd-1848-467c-a69f-95cd93ebc1d4"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  "Attendu action, classé observation ; contenu correct."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E66",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "3dc8790f-3c83-4543-9d2d-4b6a92e7ead7"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  "Référence regroupe les 3 définitions (ronde/carré/hexagonale) en 1 élément ; MemorIA les a scindées en 3 propositions distinctes (granularité plus fine, contenu identique). Voir kf-definition-bouche-cle-carre-p5 et kf-definition-bouche-cle-hexagonale-p5 en LEGITIMATE_EXTRA."
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E67",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "61d31b32-f2fc-4328-a1ee-94745798573b"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E68",
+                               "referenceFamily":  "observation",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "e291d521-bf71-4edb-84b4-11ef96a6ff6f"
+                                                      ],
+                               "matchedProposalFamily":  "observation",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E69",
+                               "referenceFamily":  "action",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "8f330fe1-7137-4477-a6f9-20ace4e78b19"
+                                                      ],
+                               "matchedProposalFamily":  "action",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E70",
+                               "referenceFamily":  "action",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "18ca1f03-1e2c-4d71-b9f8-0c647d796cfd"
+                                                      ],
+                               "matchedProposalFamily":  "action",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E71",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "91ee1891-f39e-48d1-be6c-41ff3376266c"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           },
+                           {
+                               "referenceElementId":  "JAR_01-E72",
+                               "referenceFamily":  "knowledge_fact",
+                               "verdict":  "MATCHED",
+                               "matchedProposalIds":  [
+                                                          "49265bcf-1dfb-46c1-a84d-0e8a9478b2d6"
+                                                      ],
+                               "matchedProposalFamily":  "knowledge_fact",
+                               "note":  ""
+                           }
+                       ],
+    "unmatchedProposals":  [
+                               {
+                                   "proposalId":  "0935f52b-46dd-40f9-b2f1-fb0bf46d8fd5",
+                                   "stableKey":  "kf-date-marche-p2",
+                                   "family":  "knowledge_fact",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Date du marché subséquent (27/10/2022), fait administratif réel du préambule p.2 non retenu dans les 72 éléments de référence."
+                               },
+                               {
+                                   "proposalId":  "7c4c9219-eb44-4a07-9d78-ef126ad0e01e",
+                                   "stableKey":  "obs-stockage-rabotage-hap-a-realiser-p4",
+                                   "family":  "observation",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Contenu réel et substantiel (\"Stockage de l ensemble du rabotage à réaliser au niveau des réservoirs\"), non retenu par la référence."
+                               },
+                               {
+                                   "proposalId":  "8d3cbdb2-8803-417d-a55c-8c114117f83c",
+                                   "stableKey":  "kf-definition-bouche-cle-hexagonale-p5",
+                                   "family":  "knowledge_fact",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Scission fine de la référence E66 (bouche à clé hexagonale = purge) ; contenu réel, pas un nouveau fait."
+                               },
+                               {
+                                   "proposalId":  "b8bfb6ec-3ce6-4ac3-85f9-ffc0ca08b18a",
+                                   "stableKey":  "kf-definition-bouche-cle-carre-p5",
+                                   "family":  "knowledge_fact",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Scission fine de la référence E66 (bouche à clé carré = branchement) ; contenu réel, pas un nouveau fait, granularité plus fine que la référence."
+                               },
+                               {
+                                   "proposalId":  "d1f72223-23ca-4b10-a459-9fcea67da1ea",
+                                   "stableKey":  "pers-m-villeger",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "f5429109-512e-49bc-8990-50f4874ea46b",
+                                   "stableKey":  "pers-m-thomas",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "7763462c-4dd8-4d03-ae96-31051988f78e",
+                                   "stableKey":  "obs-gestion-hap-rabotage-p3",
+                                   "family":  "observation",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Contenu réel mais quasi vide (\"Gestion des HAP issus du rabotage de la première phase (avenue du Général Leclerc) : /\"), non retenu par la référence. Proximité thématique avec obs-stockage-rabotage-hap-a-realiser-p4 sans être une duplication stricte (deux phases de rabotage différentes)."
+                               },
+                               {
+                                   "proposalId":  "d526bc6e-fb5b-403a-80b3-ec15d0450eb5",
+                                   "stableKey":  "pers-m-yunta",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "b0ee30e4-b837-44df-87b0-d1fc96630c3c",
+                                   "stableKey":  "kf-travaux-confies-sogea-p2",
+                                   "family":  "knowledge_fact",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Fait réel (Grand Cognac a confié les travaux à SOGEA), redondant avec la fiche company SOGEA/E03 mais non un des 72 éléments de référence."
+                               },
+                               {
+                                   "proposalId":  "59046e9b-d504-4af7-95de-c09bbce7a963",
+                                   "stableKey":  "kf-poursuite-pose-conduites-75ml-p4",
+                                   "family":  "knowledge_fact",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Quasi-doublon de kf-poursuite-pose-conduites-rue-pasteur-p3 (= E35) : même fait de pose en cours mentionné deux fois dans le CR (état 09/06 courant + état 02/06 antérieur inclus dans le document), avec une métrique différente (75 ml vs jusqu au N°39). Voir duplicateProposalsWithinMemoria."
+                               },
+                               {
+                                   "proposalId":  "ee27a140-70f0-458b-900a-8678d12a731c",
+                                   "stableKey":  "act-plan-coupure-a-transmettre-agur-p4",
+                                   "family":  "action",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Distinct de E32/kf-plan-coupure-transmis-agur-p3 (page 3, \"transmis\", réalisé) : ce plan de coupure p.4 est \"à transmettre\" (futur, non réalisé) et concerne vraisemblablement un autre secteur/réservoir. Contenu réel, non capturé par la référence."
+                               },
+                               {
+                                   "proposalId":  "a318ed73-625d-4066-902e-074a3bc2d2ed",
+                                   "stableKey":  "kf-travaux-consistance-p2",
+                                   "family":  "knowledge_fact",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Détail technique réel de consistance des travaux (métrés de canalisation, nombre de branchements), non retenu par la référence."
+                               },
+                               {
+                                   "proposalId":  "3101cc9a-d3a4-4be0-bfc9-997e24a0a651",
+                                   "stableKey":  "kf-information-generale-usagers-p2",
+                                   "family":  "knowledge_fact",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Information générale par Grand Cognac en lien avec l avenue G Leclerc ; fait réel distinct de E27 (qui concerne rue St Dominique / Pl C. de Gaule), non retenu par la référence."
+                               },
+                               {
+                                   "proposalId":  "371ad735-1078-4786-bff4-81b5fb2e1aca",
+                                   "stableKey":  "kf-enveloppe-travaux-p2",
+                                   "family":  "knowledge_fact",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Enveloppe des travaux 1 138 656 EUR HT, fait réel du préambule p.2 non retenu par la référence."
+                               },
+                               {
+                                   "proposalId":  "6a5f32eb-c926-469a-b9a9-1342e633900a",
+                                   "stableKey":  "kf-passage-carrefour-rue-croix-st-gilles-p4",
+                                   "family":  "knowledge_fact",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Fait de progression réel (passage du carrefour rue Croix St Gilles), non retenu par la référence."
+                               },
+                               {
+                                   "proposalId":  "60d345a3-5110-4177-8e3a-11662e2bfd91",
+                                   "stableKey":  "kf-operation-scope-p2",
+                                   "family":  "knowledge_fact",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Description générale de l opération (aménagement rue Pasteur / av G. Leclerc), fait réel du préambule non retenu par la référence."
+                               },
+                               {
+                                   "proposalId":  "3ea67ba9-6b72-4373-b023-a0a62da09cd4",
+                                   "stableKey":  "pers-m-rougier",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "a9d7d9fa-ed64-4a79-9957-e11ac13f92cf",
+                                   "stableKey":  "pers-m-gallais",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "0293df0e-5c51-429f-829a-d894ad4b2c43",
+                                   "stableKey":  "pers-m-evenou",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "fa6293ce-2d62-4661-923c-f6fa9d15756c",
+                                   "stableKey":  "pers-m-joly",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "04a40461-a908-4060-a5b3-548488399b59",
+                                   "stableKey":  "pers-m-guerry",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "ba010038-9935-4b6d-b97d-1994dbc79a10",
+                                   "stableKey":  "pers-m-baty",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "2f70ea6d-8d48-490a-8bf7-13894fa81750",
+                                   "stableKey":  "pers-dimitri",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "502f4ea2-80d0-4f54-a204-b0c450d9308c",
+                                   "stableKey":  "pers-m-defontaine",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "73b3563d-8eff-4ce7-956d-dcb8468a2b03",
+                                   "stableKey":  "pers-m-carlesso",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "31b560b8-7e23-419a-accc-ab49452c208d",
+                                   "stableKey":  "pers-m-pellison",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "4df5b1a4-d0f7-49a4-89d1-1f632f5278ad",
+                                   "stableKey":  "pers-m-monteiro",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "4c021d82-ecd8-423e-a6c3-b77cbdca775d",
+                                   "stableKey":  "pers-m-robin",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "17e9ce2e-4a3e-4131-869d-252d579819a9",
+                                   "stableKey":  "pers-m-perot",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "9a26cb27-e186-44e9-8fb7-21b498545fb2",
+                                   "stableKey":  "pers-m-legris",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "98a8a6cf-dea2-4551-b06d-9c971bc73d40",
+                                   "stableKey":  "pers-m-lauvige",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "57fd3915-a8dc-484d-9265-08c1f8670b75",
+                                   "stableKey":  "pers-mme-hauret-clos",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               },
+                               {
+                                   "proposalId":  "c5b24b4e-be4e-4ff4-8719-13e1be731330",
+                                   "stableKey":  "pers-m-lolmede",
+                                   "family":  "person",
+                                   "verdict":  "LEGITIMATE_EXTRA",
+                                   "note":  "Membre réel de la liste de présence (tableau p.1, vérifié dans le PDF) ; la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite), MemorIA extrait la totalité du roster (22 personnes). Concerne le champ statusAtDocumentDate potentiellement affecté par le même biais \"présent\" par défaut que E26."
+                               }
+                           ],
+    "recallByFamily":  {
+                           "company":  {
+                                           "referenceTotal":  7,
+                                           "matched":  7,
+                                           "partial":  0,
+                                           "recall":  1
+                                       },
+                           "person":  {
+                                          "referenceTotal":  2,
+                                          "matched":  1,
+                                          "partial":  1,
+                                          "recall":  0.75
+                                      },
+                           "deadline":  {
+                                            "referenceTotal":  8,
+                                            "matched":  6,
+                                            "partial":  0,
+                                            "recall":  0.75
+                                        },
+                           "knowledge_fact":  {
+                                                  "referenceTotal":  22,
+                                                  "matched":  21,
+                                                  "partial":  0,
+                                                  "recall":  0.9545
+                                              },
+                           "observation":  {
+                                               "referenceTotal":  16,
+                                               "matched":  12,
+                                               "partial":  0,
+                                               "recall":  0.75
+                                           },
+                           "action":  {
+                                          "referenceTotal":  13,
+                                          "matched":  5,
+                                          "partial":  0,
+                                          "recall":  0.3846
+                                      },
+                           "decision":  {
+                                            "referenceTotal":  4,
+                                            "matched":  0,
+                                            "partial":  0,
+                                            "recall":  0,
+                                            "note":  "Famille decision jamais utilisée par MemorIA sur ce document ; les 4 éléments de référence sont capturés en contenu mais classés knowledge_fact (E41,E46,E47,E51)."
+                                        }
+                       },
+    "precisionByFamily":  {
+                              "company":  {
+                                              "totalProposals":  7,
+                                              "legitimateExtra":  0,
+                                              "truePositives":  7,
+                                              "falsePositives":  0,
+                                              "precision":  1
+                                          },
+                              "person":  {
+                                             "totalProposals":  22,
+                                             "legitimateExtra":  20,
+                                             "truePositives":  2,
+                                             "falsePositives":  0,
+                                             "precision":  1
+                                         },
+                              "deadline":  {
+                                               "totalProposals":  7,
+                                               "legitimateExtra":  0,
+                                               "truePositives":  7,
+                                               "falsePositives":  0,
+                                               "precision":  1
+                                           },
+                              "knowledge_fact":  {
+                                                     "totalProposals":  39,
+                                                     "legitimateExtra":  10,
+                                                     "truePositives":  29,
+                                                     "falsePositives":  0,
+                                                     "precision":  1
+                                                 },
+                              "observation":  {
+                                                  "totalProposals":  23,
+                                                  "legitimateExtra":  2,
+                                                  "truePositives":  21,
+                                                  "falsePositives":  0,
+                                                  "precision":  1
+                                              },
+                              "action":  {
+                                             "totalProposals":  6,
+                                             "legitimateExtra":  1,
+                                             "truePositives":  5,
+                                             "falsePositives":  0,
+                                             "precision":  1
+                                         },
+                              "decision":  {
+                                               "totalProposals":  0,
+                                               "legitimateExtra":  0,
+                                               "truePositives":  0,
+                                               "falsePositives":  0,
+                                               "precision":  null,
+                                               "note":  "Aucune proposition dans cette famille."
+                                           }
+                          },
+    "duplicateProposalsWithinMemoria":  [
+                                            {
+                                                "proposalIds":  [
+                                                                    "4d7e3ecd-6639-42a2-baf4-27cee3586f8a",
+                                                                    "59046e9b-d504-4af7-95de-c09bbce7a963"
+                                                                ],
+                                                "stableKeys":  [
+                                                                   "kf-poursuite-pose-conduites-rue-pasteur-p3",
+                                                                   "kf-poursuite-pose-conduites-75ml-p4"
+                                                               ],
+                                                "family":  "knowledge_fact",
+                                                "note":  "Duplication réelle : même fait (poursuite de la pose des deux conduites distribution/suppression) extrait deux fois, une fois depuis l état daté 09/06/2023 (page 3, jusqu au N°39, correspond à la référence E35) et une fois depuis l état daté 02/06/2023 inclus dans le même CR (page 4, métrique 75 ml). Le document contient deux sous-rapports temporels imbriqués, ce qui explique le doublon sans qu il s agisse d une erreur d extraction aléatoire."
+                                            },
+                                            {
+                                                "proposalIds":  [
+                                                                    "7763462c-4dd8-4d03-ae96-31051988f78e",
+                                                                    "7c4c9219-eb44-4a07-9d78-ef126ad0e01e"
+                                                                ],
+                                                "stableKeys":  [
+                                                                   "obs-gestion-hap-rabotage-p3",
+                                                                   "obs-stockage-rabotage-hap-a-realiser-p4"
+                                                               ],
+                                                "family":  "observation",
+                                                "note":  "Proximité thématique (gestion du rabotage/HAP) mais PAS une duplication stricte : les deux propositions décrivent des faits distincts (rabotage de la première phase avenue G. Leclerc vs stockage du rabotage au niveau des réservoirs de la phase actuelle). Signalé par prudence, à considérer comme deux faits réels plutôt qu un doublon."
+                                            }
+                                        ],
+    "photoComparison":  {
+                            "referencePhotoCount":  4,
+                            "memoriaImageCount":  8,
+                            "memoriaPageSnapshotCount":  1,
+                            "matches":  [
+                                            {
+                                                "referencePhotoId":  "JAR_01-P01",
+                                                "referenceCaption":  "Antenne Rue de la Côte",
+                                                "matchedEvidenceId":  "caa15885-5286-4405-84a8-7dcf44ed379e",
+                                                "verdict":  "MATCHED",
+                                                "captionQuality":  "TRONQUÉE_RECONNAISSABLE",
+                                                "note":  "Caption MemorIA = \"Antenne\" (tronquée mais univoque). Légende complète disponible via le page_snapshot p.6."
+                                            },
+                                            {
+                                                "referencePhotoId":  "JAR_01-P02",
+                                                "referenceCaption":  "Terrassement rue St Dominique",
+                                                "matchedEvidenceId":  "2c666331-a7a8-4758-af25-2e14a8bbbbff",
+                                                "verdict":  "MATCHED",
+                                                "captionQuality":  "TRONQUÉE_RECONNAISSABLE",
+                                                "note":  "Caption MemorIA = \"Terrasse\" (tronquée mais reconnaissable comme \"Terrassement...\")."
+                                            },
+                                            {
+                                                "referencePhotoId":  "JAR_01-P03",
+                                                "referenceCaption":  "Pose des réseaux en cours",
+                                                "matchedEvidenceId":  "bb14667b-4f2a-4781-84c7-5d1440a59458",
+                                                "verdict":  "MATCHED",
+                                                "captionQuality":  "CAPTURED_NO_CAPTION",
+                                                "note":  "Image correctement isolée (bbox top-left de la grille 2x2 p.6) mais caption vide côté MemorIA."
+                                            },
+                                            {
+                                                "referencePhotoId":  "JAR_01-P04",
+                                                "referenceCaption":  "Maintien de la propreté à l avancement",
+                                                "matchedEvidenceId":  "43761c0d-0442-4f3d-a4b5-158bb0780010",
+                                                "verdict":  "MATCHED",
+                                                "captionQuality":  "CAPTION_ERRONÉE",
+                                                "note":  "Caption MemorIA = \"Terr\", un fragment de légende qui ne correspond pas au contenu réel de cette photo (probable erreur d association bbox-légende lors du découpage de la grille 2x2 p.6). Le page_snapshot p.6 restitue la bonne légende complète pour les 4 photos."
+                                            }
+                                        ],
+                            "missed":  [
+
+                                       ],
+                            "falsePositives":  [
+                                                   {
+                                                       "evidenceId":  "5accd76f-9cb3-466d-b4c5-e851f9abfb6b",
+                                                       "page":  1,
+                                                       "caption":  "Logo Grand",
+                                                       "reason":  "Logo institutionnel Grand Cognac en en-tête de page 1, pas une photo de chantier."
+                                                   }
+                                               ],
+                            "legitimateExtraImages":  [
+                                                          {
+                                                              "evidenceId":  "9c5ae0a8-c13c-4ff5-80ff-5d2dfc102066",
+                                                              "page":  2,
+                                                              "caption":  "Plan de",
+                                                              "reason":  "Plan de localisation des travaux (carte), contenu réel mais pas une photo terrain — bucketé dans evidence_type=image comme les vraies photos."
+                                                          },
+                                                          {
+                                                              "evidenceId":  "ff7ab9b8-7eab-43ed-8cc4-8cf53aa907a8",
+                                                              "page":  3,
+                                                              "caption":  "",
+                                                              "reason":  "Schéma technique d avancement (page 3), pas une photo terrain."
+                                                          },
+                                                          {
+                                                              "evidenceId":  "46d29bb3-7d4c-46a7-998e-78ba85f9b140",
+                                                              "page":  3,
+                                                              "caption":  "Rue Pasteur",
+                                                              "reason":  "Second schéma technique d avancement (page 3), pas une photo terrain."
+                                                          }
+                                                      ],
+                            "qualityFallback":  {
+                                                    "evidenceId":  "11c04d23-2d7a-4770-9626-37d056fb72a7",
+                                                    "evidenceType":  "page_snapshot",
+                                                    "note":  "Capture de la page 6 entière (raster), avec les 4 légendes complètes et correctement associées dans son propre champ caption. Sert de filet de sécurité qualité quand le découpage par image individuelle perd ou déplace la légende."
+                                                },
+                            "explanationRatio":  "8 images extraites vs 4 photos de référence (ratio 2x) : 4 correspondent réellement aux 4 photos de chantier de la page 6 (mais avec une qualité de légende dégradée pour 3/4 d entre elles) ; 1 est un faux positif (logo d en-tête page 1) ; 3 sont des images réelles mais hors périmètre \"photo terrain\" (1 plan de localisation p.2 + 2 schémas techniques p.3), classées indistinctement comme evidence_type=image au même titre que les vraies photos."
+                        },
+    "overallNotes":  [
+                         "Ratio propositions/référence = 104/72 = 1.44x. Cause principale (~62% de l écart de 32) : la famille person extrait la totalité du roster de présence (22 personnes réelles, vérifiées page 1) alors que la référence Phase A n a retenu que 2 personnes notables (rédacteur + demandeur explicite). Ce n est pas de l invention, c est un choix de granularité plus fin.",
+                         "Zéro élément de référence manqué (0 MISSED sur 72) : chaque élément retrouve un contenu MemorIA correspondant, au pire dans la mauvaise famille.",
+                         "19/72 éléments de référence (26%) sont MISCLASSIFIED : contenu correct mais famille différente de l attendu. Deux dérives systématiques dominent : (a) 8 éléments action (documents administratifs à produire par SOGEA + confirmation état vannes) classés observation ; (b) les 4 éléments decision (validations techniques actées en réunion) classés knowledge_fact — la famille decision n est jamais utilisée par MemorIA sur ce document (0/104 propositions).",
+                         "Biais de sur-précision temporelle observé deux fois : une échéance volontairement vague dans le CR (\"envisagée pour fin juin\", E48 ; \"début juillet\", E27) est convertie par MemorIA en date calendaire ferme, alors que la référence a délibérément refusé cette conversion pour E48.",
+                         "Bug systématique suspecté sur les 22 propositions person : statusAtDocumentDate semble figé à \"présent\" indépendamment du marqueur réel P/E du tableau de présence PDF. Confirmé au moins sur M CHARRIER (E26, PARTIAL) où le PDF et la référence indiquent \"excusé\".",
+                         "Aucun faux positif de contenu détecté parmi les 104 propositions (0 hallucination) : chaque proposition non appariée à un élément de référence trace vers un passage réel du PDF (précision 100% sur toutes les familles actives).",
+                         "2 cas de quasi-duplication interne relevés (voir duplicateProposalsWithinMemoria) : 1 duplication réelle (poursuite de pose des conduites, due à deux états temporels imbriqués dans le même CR) et 1 cas de simple proximité thématique sans duplication stricte (gestion HAP/rabotage).",
+                         "1 cas de fusion légitime (E10+E11, deux OS regroupés en une seule proposition) et 1 cas de scission légitime plus fine que la référence (E66, une définition de légende à 3 valeurs scindée en 3 propositions) — ces deux cas compensent partiellement le ratio brut sans indiquer de défaut.",
+                         "Photos : 8 images extraites vs 4 de référence (ratio 2x). Décomposition : 4 correspondances réelles aux photos terrain (qualité de légende dégradée sur 3/4), 1 faux positif (logo), 3 images réelles mais hors périmètre photo terrain (1 plan de localisation + 2 schémas techniques), indistinctement classées evidence_type=image. Voir photoComparison.explanationRatio pour le détail."
+                     ]
+}

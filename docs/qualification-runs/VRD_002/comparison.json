@@ -1,0 +1,232 @@
+{
+  "corpusId": "VRD_002",
+  "referenceElementCount": 15,
+  "memoriaProposalCount": 19,
+  "methodologyNote": "Un élément de référence dont le contenu est capturé par une proposition MemorIA mais classé dans une famille différente (ex. knowledge_fact/permanent_instruction attendu, action produit) est marqué MISCLASSIFIED : il ne compte pas comme MATCHED pour la famille de référence (impact recall comme un miss), et la proposition correspondante compte au dénominateur de precision de la famille où MemorIA l'a rangée sans compter au numérateur (impact precision comme un faux positif de famille, sans être un FALSE_POSITIVE de contenu).",
+  "elementMatches": [
+    {
+      "referenceElementId": "VRD_002-E01",
+      "family": "company",
+      "verdict": "MATCHED",
+      "matchedProposalId": "34c99f82-81d8-4207-84b6-cfcd9b557fa7",
+      "note": "Gecina, MOA, patrimoine — capture équivalente, excerpt quasi identique."
+    },
+    {
+      "referenceElementId": "VRD_002-E02",
+      "family": "knowledge_fact",
+      "verdict": "MATCHED",
+      "matchedProposalId": "b72a691a-cc26-486a-acae-8da2d2b36e61",
+      "note": "19000m2 / ~40M€ — capture équivalente."
+    },
+    {
+      "referenceElementId": "VRD_002-E03",
+      "family": "company",
+      "verdict": "MATCHED",
+      "matchedProposalId": "3ecf4752-11c5-4ebf-a8f7-908eebff9a08",
+      "note": "Valode et Pistre, maître d'œuvre — capture équivalente. MemorIA enrichit avec le rôle DET (page 5, réel, non halluciné), légitime."
+    },
+    {
+      "referenceElementId": "VRD_002-E04",
+      "family": "company",
+      "verdict": "MATCHED",
+      "matchedProposalId": "3c544975-6f61-42cc-89ed-950d2db18840",
+      "note": "Hines, MOA déléguée, 'responsable final de l'ouvrage' — description texte correcte. DÉFAUT MINEUR : source_payload.companyRole='AMO' est incohérent avec la propre description de la proposition et avec le texte source (Hines = MOA déléguée, pas AMO ; AMO désigne une entité distincte page 5 pour le suivi environnemental). Champ structuré erroné, texte libre correct."
+    },
+    {
+      "referenceElementId": "VRD_002-E05",
+      "family": "knowledge_fact",
+      "verdict": "MATCHED",
+      "matchedProposalId": "4b5e09df-a0d6-4257-ab6c-57c8f0a9234a",
+      "note": "Marché corps d'état séparés, 19 entreprises — capture équivalente."
+    },
+    {
+      "referenceElementId": "VRD_002-E06",
+      "family": "knowledge_fact",
+      "verdict": "MATCHED",
+      "matchedProposalId": "ff7438ee-2f3c-44ae-81ce-ec9408f570b8",
+      "note": "Synthèse ~60% du temps de la 1ère année — capture équivalente."
+    },
+    {
+      "referenceElementId": "VRD_002-E07",
+      "family": "observation",
+      "verdict": "MISSED",
+      "matchedProposalId": null,
+      "note": "'Les entreprises ne soulèvent pas forcément de vrais problèmes... l'architecte se doit d'être vigilant' (p9) — aucune proposition MemorIA ne couvre ce contenu, quelle que soit la famille."
+    },
+    {
+      "referenceElementId": "VRD_002-E08",
+      "family": "knowledge_fact",
+      "verdict": "MATCHED",
+      "matchedProposalId": "bd97b795-06da-423d-9562-cfc4f9492ecd",
+      "note": "Validation prototype façade 2-3 mois — capture équivalente."
+    },
+    {
+      "referenceElementId": "VRD_002-E09",
+      "family": "knowledge_fact",
+      "verdict": "MATCHED",
+      "matchedProposalId": "8368bd51-8345-4024-bddb-c127c01fb7f0",
+      "note": "Prototype vitrage/bardage — capture équivalente. thematic_category diverge (test_control vs general_knowledge en référence), divergence mineure de sous-classification, pas de famille."
+    },
+    {
+      "referenceElementId": "VRD_002-E10",
+      "family": "knowledge_fact",
+      "verdict": "MATCHED",
+      "matchedProposalId": "bd7099a9-f929-4daa-b97c-01265134b9ee",
+      "note": "Témoins New Side plus grands, niveau quasi complet — capture équivalente."
+    },
+    {
+      "referenceElementId": "VRD_002-E11",
+      "family": "knowledge_fact",
+      "verdict": "MATCHED",
+      "matchedProposalId": "a5c4b5e4-6b4a-4e7d-a0d8-d589849e860c",
+      "note": "Lots fluides/réseaux visibles avant fin cloisons/murs — capture équivalente, excerpt identique."
+    },
+    {
+      "referenceElementId": "VRD_002-E12",
+      "family": "observation",
+      "verdict": "MISSED",
+      "matchedProposalId": null,
+      "note": "Problèmes de stockage liés au chevauchement des phases, enjeu sécurité (p13) — aucune proposition MemorIA ne couvre ce contenu."
+    },
+    {
+      "referenceElementId": "VRD_002-E13",
+      "family": "knowledge_fact",
+      "verdict": "MISCLASSIFIED",
+      "matchedProposalId": "3b77e25b-e7c7-4066-9b64-557cf1708d0a",
+      "note": "Contenu capturé fidèlement (fiches de visite architecturales, 2/semaine, excerpt identique) mais rangé en famille 'action' par MemorIA alors que le texte décrit une pratique récurrente/permanente sans instance datée (classé permanent_instruction en référence)."
+    },
+    {
+      "referenceElementId": "VRD_002-E14",
+      "family": "knowledge_fact",
+      "verdict": "MISCLASSIFIED",
+      "matchedProposalId": "f777bcc7-2106-454a-8d30-936b392fbd5e",
+      "note": "Contenu capturé fidèlement (reportage photo architecte, excerpt identique) mais rangé en famille 'action' alors que la procédure décrite est générale et récurrente (permanent_instruction en référence), pas une action datée avec échéance."
+    },
+    {
+      "referenceElementId": "VRD_002-E15",
+      "family": "knowledge_fact",
+      "verdict": "MISCLASSIFIED",
+      "matchedProposalId": "42fd1721-e9a6-4be4-8b94-e494969aade4",
+      "note": "Contenu capturé fidèlement (ordre de service mandaté à l'architecte, excerpt identique) mais rangé en famille 'action' alors qu'il s'agit d'une description de processus général de validation (permanent_instruction en référence)."
+    }
+  ],
+  "unmatchedProposals": [
+    {
+      "proposalId": "907a7bad-817e-4078-ab1c-3aafda99d986",
+      "family": "knowledge_fact",
+      "label": "Bureau en blanc témoin avec toilettes et palier réalisé",
+      "verdict": "LEGITIMATE_EXTRA",
+      "note": "Excerpt vérifié mot pour mot page 12 ('nous avons pu en effet pénétrer dans un bureau en blanc témoin avec ses toilettes et son palier'). Fait réel non repris dans la référence Phase A, apporte un détail complémentaire cohérent sur le témoin."
+    },
+    {
+      "proposalId": "c1c90e01-04cc-472b-b323-53cb532f6d19",
+      "family": "action",
+      "label": "OPC doit établir le calendrier général de synthèse",
+      "verdict": "LEGITIMATE_EXTRA",
+      "note": "Excerpt vérifié mot pour mot page 8. Contenu réel non halluciné, mais même biais de famille que E13/E14/E15 : description d'une mission permanente de l'OPC, sans instance datée, plutôt qu'une action ponctuelle. Devrait être knowledge_fact/permanent_instruction."
+    },
+    {
+      "proposalId": "af54b5b2-2e40-4a8f-b8bc-4a6df66bfb69",
+      "family": "knowledge_fact",
+      "label": "Gros œuvre béton monte les étages supérieurs, réseaux s'activent dans les inférieurs achevés",
+      "verdict": "LEGITIMATE_EXTRA",
+      "note": "Excerpt vérifié mot pour mot page 13, phrase distincte (mais voisine) de celle capturée pour E11. Fait réel complémentaire, pas un doublon exact."
+    },
+    {
+      "proposalId": "6dd85af3-f98c-4bab-a9d0-089e3ffd6fbc",
+      "family": "knowledge_fact",
+      "label": "Corps d'états ont eu une mission anticipée pour le témoin",
+      "verdict": "LEGITIMATE_EXTRA",
+      "note": "Excerpt vérifié mot pour mot page 12. Fait réel non repris dans la référence."
+    },
+    {
+      "proposalId": "3cb4271d-3299-4112-897c-736b27cc2c12",
+      "family": "knowledge_fact",
+      "label": "Architecte (Valode et Pistre) assure la mission DET",
+      "verdict": "LEGITIMATE_EXTRA",
+      "note": "Excerpt vérifié mot pour mot page 5. Fait réel, cohérent avec l'enrichissement du même contenu sur la proposition company E03."
+    },
+    {
+      "proposalId": "d1a73b5f-dc96-43b8-9014-84ac8109cce2",
+      "family": "action",
+      "label": "MOE doit produire une liste prévisionnelle de plans pour lancer la production des PEOP",
+      "verdict": "LEGITIMATE_EXTRA",
+      "note": "Excerpt vérifié mot pour mot page 6. Contenu réel non halluciné, mais même biais de famille que ci-dessus : description de processus général (obligation permanente de la MOE), pas une action datée à échéance/responsable identifié en instance unique."
+    }
+  ],
+  "recallByFamily": {
+    "company": { "referenceCount": 3, "matched": 3, "partial": 0, "recall": 1.0 },
+    "knowledge_fact": { "referenceCount": 10, "matched": 7, "partial": 0, "misclassified": 3, "recall": 0.7 },
+    "observation": { "referenceCount": 2, "matched": 0, "partial": 0, "recall": 0.0 },
+    "action": { "referenceCount": 0, "matched": 0, "partial": 0, "recall": null, "note": "Aucun élément de référence dans cette famille pour ce document — recall non défini." }
+  },
+  "precisionByFamily": {
+    "company": { "proposalsCount": 3, "legitimateExtra": 0, "truePositives": 3, "falsePositives": 0, "denominator": 3, "precision": 1.0 },
+    "knowledge_fact": { "proposalsCount": 11, "legitimateExtra": 4, "truePositives": 7, "falsePositives": 0, "denominator": 7, "precision": 1.0 },
+    "observation": { "proposalsCount": 0, "legitimateExtra": 0, "truePositives": 0, "falsePositives": 0, "denominator": 0, "precision": null },
+    "action": { "proposalsCount": 5, "legitimateExtra": 2, "truePositives": 0, "misclassifiedFromOtherFamily": 3, "falsePositives": 0, "denominator": 3, "precision": 0.0, "note": "0 vrai positif : les 3 propositions non-extra correspondent à un contenu réel mais appartenant à knowledge_fact/permanent_instruction en référence (E13/E14/E15), comptées au dénominateur sans compter au numérateur." }
+  },
+  "photoComparison": {
+    "referencePhotoCount": 10,
+    "memoriaImageCount": 6,
+    "matches": [
+      {
+        "referencePhotoId": "VRD_002-P01",
+        "evidenceId": "eec80586-19f6-42af-8771-70592c58a459",
+        "captionQuality": "vague",
+        "note": "Caption 'Préparation' ne décrit pas le contenu réel (perceuse, mètre-ruban, documents/plans en page de couverture). Semble être un fragment générique plutôt qu'une description de l'image."
+      },
+      {
+        "referencePhotoId": "VRD_002-P02",
+        "evidenceId": "491dda5f-b223-4a6f-925e-f7bb3d379a2d",
+        "captionQuality": "vague",
+        "note": "Caption 'Projet' n'apporte aucune information sur le contenu visuel (rendu 3D de rue avec passants, arbres, façade)."
+      },
+      {
+        "referencePhotoId": "VRD_002-P03",
+        "evidenceId": "fd64f94a-368b-457b-8bdb-4af1677d5250",
+        "captionQuality": "hors-sujet",
+        "note": "Caption 'Pro' — fragment tronqué, illisible en l'état, sans valeur descriptive pour un second rendu 3D du bâtiment."
+      },
+      {
+        "referencePhotoId": "VRD_002-P04",
+        "evidenceId": "0f5a44d1-ebe9-4ceb-bd9b-2d3b6e8f1f7f",
+        "captionQuality": "vague",
+        "note": "Caption 'Coordination' — mot thématique lié au chapitre (II La synthèse) mais ne décrit pas la photo réelle (gaines de ventilation dans un couloir en chantier)."
+      },
+      {
+        "referencePhotoId": "VRD_002-P05",
+        "evidenceId": "260a2282-0519-4830-9a8e-3d57be049da3",
+        "captionQuality": "hors-sujet",
+        "note": "Caption 'Coord' — fragment tronqué de 'Coordination', sans lien descriptif avec la photo (tuyauteries calorifugées, échafaudage)."
+      },
+      {
+        "referencePhotoId": "VRD_002-P06",
+        "evidenceId": "45775c76-63ee-4151-b64e-a75277146bd0",
+        "captionQuality": "hors-sujet",
+        "note": "Caption 'Ré' — fragment tronqué illisible, aucune valeur descriptive pour la photo de réunion (deux personnes devant un panneau de plans/photos de chantier)."
+      }
+    ],
+    "missed": [
+      {
+        "referencePhotoId": "VRD_002-P07",
+        "note": "Schéma de phasage type, page 11. Non capturé comme evidence_type='image', mais un evidence_type='page_snapshot' existe (id ec093fcb-d93c-4e95-bfda-523d8b42cd74) avec caption pertinente 'Diagramme de phasage type d'un projet architectural.' — perte purement catégorielle (page_snapshot vs image), pas une perte de contenu."
+      },
+      {
+        "referencePhotoId": "VRD_002-P08",
+        "note": "Photo réelle du témoin/prototype de façade, page 12. Aucune evidence image ni page_snapshot correspondante — perte de contenu réelle, alors que le prototype de façade est un des sujets centraux du document (E08, E09, E10)."
+      },
+      {
+        "referencePhotoId": "VRD_002-P09",
+        "note": "Photo d'espace intérieur fini, page 13. Aucune evidence correspondante — perte de contenu réelle."
+      },
+      {
+        "referencePhotoId": "VRD_002-P10",
+        "note": "Photo du palier d'ascenseurs, page 13. Aucune evidence correspondante — perte de contenu réelle."
+      }
+    ],
+    "falsePositives": [],
+    "additionalNote": "L'extraction d'images de MemorIA s'arrête net après la page 8 : les 6 evidence_type='image' couvrent exactement les pages 1, 4 (x2), 7 (x2) et 8, soit les 6 premières photos intégrées du document dans l'ordre. Aucune image n'a été extraite pour les pages 11 à 14, qui contiennent pourtant 4 visuels de référence (1 schéma + 3 photos réelles, dont 2 illustrant directement le sujet central du prototype/témoin de façade discuté sur 4 éléments de la référence). Il s'agit d'un plafond ou d'une troncature positionnelle de l'extraction d'images, pas d'un problème de pertinence de sélection. Par ailleurs, un evidence_type='page_snapshot' supplémentaire (id 225935f0) capture le second diagramme de la page 14 (non présent dans la liste photos de la référence) avec une caption pertinente — extra légitime, hors périmètre image strict."
+  },
+  "overallNotes": "Sur les propositions texte (19), aucune hallucination détectée : les 19 source_excerpt correspondent mot pour mot à du texte réel du PDF, vérifié page par page. Precision et recall sont excellents pour company (100%/100%) et knowledge_fact (100%/70%), avec un recall knowledge_fact pénalisé uniquement par un biais de famille systématique et non par une perte de contenu : les 3 éléments E13/E14/E15 (pratiques permanentes de l'architecte — fiches de visite, reportage photo, ordre de service) sont capturés avec un excerpt fidèle mais rangés en famille 'action' au lieu de knowledge_fact/permanent_instruction. Ce même biais touche 2 propositions supplémentaires non rattachées à la référence (OPC calendrier p8, MOE liste de plans p6), portant la precision de la famille 'action' à 0% sur ce document (aucun élément action réel n'existe dans ce PV, qui est un rapport pédagogique HMONP sans action datée à responsable/échéance). La famille observation est totalement manquée (0/2, recall 0%) : les deux constats de risque doux du document (vigilance sur les fausses réclamations d'entreprises p9 ; problèmes de stockage liés au chevauchement des phases p13) ne sont couverts par aucune proposition MemorIA, quelle que soit la famille. Côté photos, l'extraction d'images s'interrompt après la page 8 : 3 photos réelles de référence (prototype de façade p12, espace intérieur fini p13, palier ascenseurs p13) sont absentes de toute evidence, et les 6 images bien extraites portent des légendes tronquées ou génériques ('Projet', 'Pro', 'Coord', 'Ré'...) qui ne décrivent jamais le contenu visuel réel de la photo. Biais récurrents à surveiller sur les autres corpus : (1) sur-classification 'action' des descriptions de procédures permanentes avec responsable nommé mais sans instance datée ; (2) troncature de l'extraction d'images sur les documents longs (>8 pages) ; (3) légendes d'images non descriptives, semblant dérivées de fragments de titres de section plutôt que du contenu visuel."
+}

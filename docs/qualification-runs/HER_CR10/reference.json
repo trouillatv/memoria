@@ -1,0 +1,61 @@
+{
+  "documentId": "HER_CR10",
+  "sourceFile": "docs/corpus-pv/LONGITUDINAL/CHANTIER_002_HERICY_PLACE_DU_CLOS/CR_10.pdf",
+  "pageCount": 1,
+  "elements": [
+    {
+      "id": "HER_CR10-E01",
+      "family": "observation",
+      "page": 1,
+      "excerpt": "La pose des bordures de la phase n°1 a débuté et se prolongera la semaine prochaine.",
+      "summary": "La pose des bordures de la phase n°1 des travaux a commencé et va se poursuivre la semaine suivant le CR.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": null,
+      "statusAtDocumentDate": "en cours",
+      "companyRole": null,
+      "classificationNote": "Constat d'avancement des travaux à la date du CR (29/11/2018), sans engagement chiffré ni date d'échéance explicite. 'La semaine prochaine' est une indication relative non datée dans le texte ; classé en observation plutôt qu'en deadline ou action pour éviter d'inventer une date précise."
+    },
+    {
+      "id": "HER_CR10-E02",
+      "family": "decision",
+      "page": 1,
+      "excerpt": "Le principe du déplacement du jardin botanique vers la zone de terre-plein située à côté de la salle du Clos est validé, sous réserve de la présentation du nouveau plan corrigé par l'architecte.",
+      "summary": "Le principe de déplacer le jardin botanique vers le terre-plein près de la salle du Clos est validé, sous condition de la remise d'un plan corrigé par l'architecte.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": null,
+      "statusAtDocumentDate": "validé sous condition",
+      "companyRole": null,
+      "classificationNote": "Validation de principe explicite ('est validé') exprimée par la maîtrise d'ouvrage, assortie d'une condition suspensive. Classé en decision et non en reservation : le terme 'sous réserve' est ici une condition de validation d'un principe d'aménagement, pas une réserve technique de réception de travaux (liste de défauts à lever)."
+    },
+    {
+      "id": "HER_CR10-E03",
+      "family": "action",
+      "page": 1,
+      "excerpt": "sous réserve de la présentation du nouveau plan corrigé par l'architecte.",
+      "summary": "L'architecte doit présenter un nouveau plan corrigé du déplacement du jardin botanique, condition préalable à la confirmation définitive du principe validé.",
+      "responsible": "architecte",
+      "deadlineDate": null,
+      "thematicCategory": null,
+      "statusAtDocumentDate": "en attente",
+      "companyRole": "architecte",
+      "classificationNote": "Tâche implicite découlant de la condition posée dans la décision E02 : remise attendue d'un plan corrigé par l'architecte. Le responsable n'est identifié que par son rôle ('l'architecte'), aucun nom de personne ou de cabinet n'étant donné dans le texte ; aucune date n'est fournie, deadlineDate reste donc null."
+    },
+    {
+      "id": "HER_CR10-E04",
+      "family": "person",
+      "page": 1,
+      "excerpt": "Madame le Maire\nSylvie BOUCHET BELLECOURT",
+      "summary": "Sylvie Bouchet Bellecourt, Maire, signataire du compte rendu de réunion de chantier.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": null,
+      "statusAtDocumentDate": null,
+      "companyRole": "Maire",
+      "classificationNote": "Identifiée nommément avec son titre en pied de document, en tant que signataire du CR."
+    }
+  ],
+  "photos": [],
+  "readerNotes": "Document très court (1 page) : compte rendu de réunion de chantier daté du 29 novembre 2018, concernant l'aménagement de la place du Clos (dernier CR de la séquence longitudinale de ce chantier). Le contenu métier réel est faible : seulement deux paragraphes de texte (un constat d'avancement et une décision conditionnelle), plus la signature de Madame le Maire. Aucune image ni photo dans le document. Aucun problème de lisibilité ou d'OCR : texte dactylographié net et complet. Familles absentes et justification : company (aucune entreprise ni cabinet nommé, seul le rôle générique 'architecte' est cité sans nom propre) ; deadline au sens strict (aucune date précise donnée — 'la semaine prochaine' est relatif et non chiffré, volontairement non transformé en date pour éviter toute invention) ; reservation au sens technique de réception de travaux (le mot 'réserve' apparaît une fois mais désigne une condition de validation d'un principe d'aménagement, pas une réserve de chantier/liste de désordres, d'où le classement en decision) ; knowledge_fact (aucun fait général ou procédure récurrente distincte des deux points métier déjà couverts par observation/decision)."
+}

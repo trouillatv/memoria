@@ -1,0 +1,285 @@
+{
+  "documentId": "VRD_002",
+  "sourceFile": "docs/corpus-pv/STRESS_TEST/VRD_GENIE_CIVIL/VRD_002_Compte_rendu_visite_chantier_GenieCivilPdf.pdf",
+  "pageCount": 15,
+  "elements": [
+    {
+      "id": "VRD_002-E01",
+      "family": "company",
+      "page": 4,
+      "excerpt": "Dans le cas de cette visite la maitrise d'ouvrage était dirigée par Gecina, foncière investissant beaucoup dans la construction de bureaux, avec un patrimoine de 6752M€.",
+      "summary": "Gecina, foncière avec un patrimoine de 6752 M€, assure la maîtrise d'ouvrage du projet New Side.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": null,
+      "statusAtDocumentDate": null,
+      "companyRole": "Maîtrise d'ouvrage (MOA)",
+      "classificationNote": ""
+    },
+    {
+      "id": "VRD_002-E02",
+      "family": "knowledge_fact",
+      "page": 4,
+      "excerpt": "Elle est donc à l'origine du projet de New Side de 19000m2 pour un coût d'environ 40 millions d'euros.",
+      "summary": "Le projet New Side représente 19 000 m² pour un coût d'environ 40 millions d'euros.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": "administrative",
+      "statusAtDocumentDate": null,
+      "companyRole": null,
+      "classificationNote": "Caractéristiques durables du projet (surface, coût) — fait, pas une action ni une décision."
+    },
+    {
+      "id": "VRD_002-E03",
+      "family": "company",
+      "page": 4,
+      "excerpt": "Le projet a été élaboré par l'agence Valode et Pistre, il est au cœur d'un nouveau quartier qui relie l'arrière de la Défense et la ville de Nanterre à la ville de la Garenne – Colombes.",
+      "summary": "L'agence Valode et Pistre a conçu le projet architectural New Side.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": null,
+      "statusAtDocumentDate": null,
+      "companyRole": "Maîtrise d'œuvre / architecte concepteur du projet",
+      "classificationNote": ""
+    },
+    {
+      "id": "VRD_002-E04",
+      "family": "company",
+      "page": 5,
+      "excerpt": "C'est la société Hines qui tient ce rôle . Hines est une société de promotion immobilière très importante, présente dans 17 pays.",
+      "summary": "Hines, société de promotion immobilière présente dans 17 pays (filiale française active dans l'ouest parisien), assure la maîtrise d'ouvrage déléguée et est décrite comme responsable final de l'ouvrage.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": null,
+      "statusAtDocumentDate": null,
+      "companyRole": "Maîtrise d'ouvrage déléguée",
+      "classificationNote": ""
+    },
+    {
+      "id": "VRD_002-E05",
+      "family": "knowledge_fact",
+      "page": 5,
+      "excerpt": "Le marché de ce projet est en corps d'état séparés avec 19 entreprises, une particularité non négligeable.",
+      "summary": "Le marché de travaux du projet New Side est découpé en corps d'état séparés, avec 19 entreprises distinctes.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": "administrative",
+      "statusAtDocumentDate": null,
+      "companyRole": null,
+      "classificationNote": ""
+    },
+    {
+      "id": "VRD_002-E06",
+      "family": "knowledge_fact",
+      "page": 9,
+      "excerpt": "D'après l'architecte du chantier observé, la synthèse (toutes tâches et documents produits) représente environ 60% du temps de la première année de chantier.",
+      "summary": "Selon l'architecte du chantier, la phase de synthèse représente environ 60% du temps de la première année de chantier.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": "general_knowledge",
+      "statusAtDocumentDate": null,
+      "companyRole": null,
+      "classificationNote": "Estimation rapportée par l'architecte, présentée comme un constat durable sur l'organisation du chantier."
+    },
+    {
+      "id": "VRD_002-E07",
+      "family": "observation",
+      "page": 9,
+      "excerpt": "Il faut savoir que parfois, les entreprises ne soulèvent pas forcément de vrais problèmes afin d'y gagner plus. C'est pour cela que l'architecte se doit d'être vigilant pour le bon déroulement de son chantier.",
+      "summary": "Risque que certaines entreprises soulèvent de faux problèmes par intérêt ; l'architecte doit rester vigilant.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": null,
+      "statusAtDocumentDate": null,
+      "companyRole": null,
+      "classificationNote": "Formulation de risque doux (vigilance requise) sans entreprise ni responsable nommé ni échéance → observation, pas une réserve formelle."
+    },
+    {
+      "id": "VRD_002-E08",
+      "family": "knowledge_fact",
+      "page": 12,
+      "excerpt": "Ici, la validation du prototype de façade a pris deux à trois mois.",
+      "summary": "La validation du prototype de façade du projet New Side a nécessité deux à trois mois.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": "progress",
+      "statusAtDocumentDate": "réalisé",
+      "companyRole": null,
+      "classificationNote": "Durée d'une étape déjà achevée au moment du document."
+    },
+    {
+      "id": "VRD_002-E09",
+      "family": "knowledge_fact",
+      "page": 12,
+      "excerpt": "Le prototype permet de proposer différents traitements ou éléments au maitre d'ouvrage ( ici vitrage et bardage).",
+      "summary": "Le prototype a permis de tester des traitements de vitrage et de bardage soumis au maître d'ouvrage.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": "general_knowledge",
+      "statusAtDocumentDate": null,
+      "companyRole": null,
+      "classificationNote": ""
+    },
+    {
+      "id": "VRD_002-E10",
+      "family": "knowledge_fact",
+      "page": 12,
+      "excerpt": "L'architecte de Valode et Pistre nous a fait remarquer que les témoins du projet New Side était plus grand que des témoins classiques. En effet, un niveau quasi complet a été réalisé en tant que témoin.",
+      "summary": "Le témoin du projet New Side, plus grand que les témoins habituels, correspond à un niveau quasi complet déjà réalisé.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": "progress",
+      "statusAtDocumentDate": "réalisé",
+      "companyRole": null,
+      "classificationNote": "Fait rapporté par l'architecte de Valode et Pistre, décrivant un ouvrage déjà réalisé."
+    },
+    {
+      "id": "VRD_002-E11",
+      "family": "knowledge_fact",
+      "page": 13,
+      "excerpt": "Sur ce chantier, nous avons en effet pu voir le travail des lots fluides et réseaux alors que des cloisons et autres murs n'étaient pas encore finis.",
+      "summary": "Au moment de la visite, les lots fluides/réseaux étaient en cours d'installation alors que certaines cloisons et murs n'étaient pas terminés.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": "progress",
+      "statusAtDocumentDate": null,
+      "companyRole": null,
+      "classificationNote": "Constat d'avancement mixte (partiellement fait, partiellement non fini) — pas de statut 'réalisé' unique applicable."
+    },
+    {
+      "id": "VRD_002-E12",
+      "family": "observation",
+      "page": 13,
+      "excerpt": "Les problèmes de stockages liés à ce chevauchement des différentes phases est un élément déterminant.. Un lieu doit être libre pour subir une intervention, ces notions étant liées à des questions pratiques mais aussi et surtout à des questions de sécurité.",
+      "summary": "Le chevauchement des phases (organisation en flux tendu) génère des problèmes de stockage et de disponibilité des espaces, avec des enjeux de sécurité.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": null,
+      "statusAtDocumentDate": null,
+      "companyRole": null,
+      "classificationNote": "Constat général de risque/organisation sans responsable nommé ni échéance → observation."
+    },
+    {
+      "id": "VRD_002-E13",
+      "family": "knowledge_fact",
+      "page": 13,
+      "excerpt": "L'architecte a pour rôle le suivi de chantier, il doit réaliser des fiches de visites architecturales a un rythme soutenu ( environ deux par semaine ).",
+      "summary": "L'architecte assure le suivi de chantier via des fiches de visite architecturales, à raison d'environ deux par semaine.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": "permanent_instruction",
+      "statusAtDocumentDate": null,
+      "companyRole": null,
+      "classificationNote": "Description d'une pratique récurrente et permanente, pas une action ponctuelle."
+    },
+    {
+      "id": "VRD_002-E14",
+      "family": "knowledge_fact",
+      "page": 13,
+      "excerpt": "Il réalise un reportage photo avec nom des entreprises, description des problèmes, et date qui est ensuite transmis à l'entreprise concernée.",
+      "summary": "L'architecte réalise un reportage photo (nom de l'entreprise, description du problème, date) transmis à l'entreprise concernée.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": "permanent_instruction",
+      "statusAtDocumentDate": null,
+      "companyRole": null,
+      "classificationNote": "Procédure permanente décrite en général, sans instance datée précise → knowledge_fact, pas action."
+    },
+    {
+      "id": "VRD_002-E15",
+      "family": "knowledge_fact",
+      "page": 13,
+      "excerpt": "Ces modifications doit être contrôlée au niveau du cout et validées par la MO, l'architecte est alors mandaté pour établir un ordre de service",
+      "summary": "Les modifications de chantier sont contrôlées en coût, validées par la maîtrise d'ouvrage, puis formalisées par un ordre de service rédigé par l'architecte.",
+      "responsible": null,
+      "deadlineDate": null,
+      "thematicCategory": "permanent_instruction",
+      "statusAtDocumentDate": null,
+      "companyRole": null,
+      "classificationNote": "Description du processus général de validation des modifications, pas une action datée avec responsable nommé."
+    }
+  ],
+  "photos": [
+    {
+      "id": "VRD_002-P01",
+      "page": 1,
+      "caption": null,
+      "description": "Photographie de couverture montrant un plan de travail avec une perceuse/visseuse rouge, un mètre-ruban et une liasse de documents et plans.",
+      "role": "document_context",
+      "roleJustification": "Image d'ambiance illustrant le contexte matériel/administratif du chantier en page de couverture, sans lien avec un constat technique précis."
+    },
+    {
+      "id": "VRD_002-P02",
+      "page": 4,
+      "caption": null,
+      "description": "Rendu 3D (image de synthèse) montrant une vue de rue du bâtiment New Side avec passants, arbres, véhicules et façade en construction imaginée.",
+      "role": "document_context",
+      "roleJustification": "Visuel de présentation architecturale (perspective non contractuelle) illustrant le projet, pas une preuve photographique de l'état réel du chantier."
+    },
+    {
+      "id": "VRD_002-P03",
+      "page": 4,
+      "caption": null,
+      "description": "Second rendu 3D montrant une autre façade du bâtiment New Side, avec passants au premier plan sur le trottoir.",
+      "role": "document_context",
+      "roleJustification": "Vue d'ensemble illustrative du projet architectural (rendu de synthèse), non rattachée à un constat de chantier précis."
+    },
+    {
+      "id": "VRD_002-P04",
+      "page": 7,
+      "caption": null,
+      "description": "Photographie d'un couloir en cours de chantier montrant des gaines de ventilation métalliques suspendues au plafond.",
+      "role": "evidence",
+      "roleJustification": "Photo réelle de chantier montrant les réseaux techniques (gaines) évoqués dans le texte adjacent sur la synthèse des réseaux."
+    },
+    {
+      "id": "VRD_002-P05",
+      "page": 7,
+      "caption": null,
+      "description": "Photographie de tuyauteries calorifugées (isolant rouge) fixées le long d'un mur en béton brut, avec un échafaudage visible.",
+      "role": "evidence",
+      "roleJustification": "Photo réelle montrant l'avancement de l'installation des réseaux (plomberie/chauffage) sur le chantier."
+    },
+    {
+      "id": "VRD_002-P06",
+      "page": 8,
+      "caption": null,
+      "description": "Photographie de deux personnes en salle de réunion, l'une assise et l'autre debout, devant un panneau affichant des plans de synthèse et des photographies de chantier punaisées en haut du tableau.",
+      "role": "document_context",
+      "roleJustification": "Scène de réunion illustrant le contexte procédural (procédure/production/visa) évoqué dans le texte, mais ne montre pas directement un ouvrage, un problème ou une non-conformité."
+    },
+    {
+      "id": "VRD_002-P07",
+      "page": 11,
+      "caption": "Phasage type d'un projet",
+      "description": "Schéma organisationnel en diagramme de blocs présentant les phases types d'un projet architectural, de l'étude préalable jusqu'à la vie de l'ouvrage.",
+      "role": "document_context",
+      "roleJustification": "Diagramme explicatif générique du déroulement d'un projet type, pas une photographie de l'état réel du chantier visité."
+    },
+    {
+      "id": "VRD_002-P08",
+      "page": 12,
+      "caption": null,
+      "description": "Photographie d'un module prototype/témoin de façade (bardage clair, vitrages) installé en extérieur, à proximité d'une structure en béton brut, avec un touret de câble et des matériaux au sol.",
+      "role": "evidence",
+      "roleJustification": "Photo réelle du témoin de façade du projet New Side décrit dans le texte adjacent (vitrage et bardage testés)."
+    },
+    {
+      "id": "VRD_002-P09",
+      "page": 13,
+      "caption": null,
+      "description": "Photographie d'un espace intérieur fini, avec faux-plafond, éclairage linéaire, sol souple clair et baie vitrée.",
+      "role": "evidence",
+      "roleJustification": "Photo réelle illustrant l'état d'avancement des espaces intérieurs finis évoqué dans le texte sur le phasage (étages inférieurs achevés)."
+    },
+    {
+      "id": "VRD_002-P10",
+      "page": 13,
+      "caption": null,
+      "description": "Photographie d'un palier d'ascenseurs avec moquette à motif, portes d'ascenseur métalliques et éclairage encastré au plafond.",
+      "role": "evidence",
+      "roleJustification": "Photo réelle d'un espace intérieur fini (circulation/ascenseurs) illustrant l'avancement des travaux sur le chantier."
+    }
+  ],
+  "readerNotes": "Ce document n'est pas un PV opérationnel classique mais un rapport pédagogique HMONP (ENSAPM) analysant de façon théorique les intervenants, la synthèse et le phasage d'un chantier, à partir d'une visite du projet New Side (Gecina/Hines/Valode et Pistre, Garenne-Colombes). Il ne comporte ni liste de présence datée, ni réserves formelles, ni actions à responsable/échéance explicite, ni décisions actées nommément — d'où l'absence des familles reservation, action, decision, deadline et person dans cette référence. Deux images (page 4) sont des rendus 3D de présentation architecturale et une image (page 11) est un schéma organisationnel, non des photographies de chantier ; elles ont été classées document_context plutôt qu'evidence pour cette raison. Aucun problème d'OCR ou de page illisible constaté."
+}

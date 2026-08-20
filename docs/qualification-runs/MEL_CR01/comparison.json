@@ -1,0 +1,521 @@
+{
+  "corpusId": "MEL_CR01",
+  "referenceElementCount": 59,
+  "memoriaProposalCount": 59,
+  "elementMatches": [
+    {
+      "referenceId": "MEL_CR01-E01",
+      "status": "MATCHED",
+      "matchedProposalIds": ["69428cac-7655-4539-8b96-c5710d71a1a7"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. Jean Marie THIEBAUT, Vice-Président Assainissement, présent. Statut fidèle."
+    },
+    {
+      "referenceId": "MEL_CR01-E02",
+      "status": "MATCHED",
+      "matchedProposalIds": ["cacc951f-8e92-42aa-8126-40f7e216c00b"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Mme Françoise MAZELIN. Fidélité : la référence laisse statusAtDocumentDate=null car la case de présence n'est pas exploitable avec certitude sur le tableau p.2 ; MemorIA tranche statusAtDocumentDate=\"absent\", une certitude non étayée par le document."
+    },
+    {
+      "referenceId": "MEL_CR01-E03",
+      "status": "MATCHED",
+      "matchedProposalIds": ["b95538be-fd9e-4f35-87ee-f784f22f741e"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Mme Victorine THABOURIN. Fidélité — écart net : la référence indique statusAtDocumentDate=\"absente\" (case « Absent » explicitement cochée p.2), MemorIA écrit statusAtDocumentDate=\"présent\", soit l'inverse de ce que dit le document. Erreur factuelle, pas une simple imprécision."
+    },
+    {
+      "referenceId": "MEL_CR01-E04",
+      "status": "MATCHED",
+      "matchedProposalIds": ["84e4a0e0-1773-48a4-b1fb-fba5d2af6e45"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. Didier MOUREY, Maire de Melay, présent. Fidèle."
+    },
+    {
+      "referenceId": "MEL_CR01-E05",
+      "status": "MATCHED",
+      "matchedProposalIds": ["1c98bf56-5a10-49e6-8eff-d025100c16d8"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. Denis HUGOT, 1er adjoint, présent. Fidèle."
+    },
+    {
+      "referenceId": "MEL_CR01-E06",
+      "status": "MATCHED",
+      "matchedProposalIds": ["fb0279cd-441a-44b2-80a8-8e47d71b3012"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. Serge BREDELET, 2ème adjoint, présent. Fidèle."
+    },
+    {
+      "referenceId": "MEL_CR01-E07",
+      "status": "MATCHED",
+      "matchedProposalIds": ["a4ba698f-412b-4b4e-a0d5-5f251bea1c3c"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. Sébastien THIERRY (ARTELIA), rédacteur du CR, présent. Fidèle."
+    },
+    {
+      "referenceId": "MEL_CR01-E08",
+      "status": "MATCHED",
+      "matchedProposalIds": ["ae640e2f-c6d2-48dd-89f7-dfb6d618a50c"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. MAIRE (ACE BTP, CSPS). Fidélité — écart net : la référence indique statusAtDocumentDate=\"convoqué (non marqué présent)\" (case Convoqué cochée, case Présent non cochée p.2), MemorIA écrit statusAtDocumentDate=\"présent\", contredisant l'évidence documentaire explicite."
+    },
+    {
+      "referenceId": "MEL_CR01-E09",
+      "status": "MATCHED",
+      "matchedProposalIds": ["f33518fc-d589-4ff2-bb72-9505bbfd2e71"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. Marc HENRIOT (SOPRECO). Fidélité : la référence laisse statusAtDocumentDate=null (aucune case cochée pour cette ligne), MemorIA écrit statusAtDocumentDate=\"absent\", une certitude non étayée."
+    },
+    {
+      "referenceId": "MEL_CR01-E10",
+      "status": "MATCHED",
+      "matchedProposalIds": ["ae2cef3f-d104-4113-a8ab-26dafd12bb1f"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. Guillaume CHRETIEN (STPI), présent. Fidèle."
+    },
+    {
+      "referenceId": "MEL_CR01-E11",
+      "status": "MATCHED",
+      "matchedProposalIds": ["4c00ff64-4eb1-4914-929e-f21ff7a95026"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. Benoit THEVENIN (STPI), présent. Fidèle."
+    },
+    {
+      "referenceId": "MEL_CR01-E12",
+      "status": "MATCHED",
+      "matchedProposalIds": ["05310ed7-def6-4ad7-b42f-3b68a25cd780"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Audrey GRELLOT (Conseil Départemental 52). Référence statusAtDocumentDate=null, MemorIA écrit \"inconnu\" — cohérent, pas de fabrication."
+    },
+    {
+      "referenceId": "MEL_CR01-E13",
+      "status": "MATCHED",
+      "matchedProposalIds": ["c57b81db-77c6-44b4-9b82-3f6f35953119"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Dominique DAMIENS (DDT police de l'Eau 52). Référence statusAtDocumentDate=null, MemorIA écrit \"inconnu\" — cohérent."
+    },
+    {
+      "referenceId": "MEL_CR01-E14",
+      "status": "MATCHED",
+      "matchedProposalIds": ["b795150f-22ff-42fd-a3c5-753c80c5dae9"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Communauté de Communes des Savoirs Faire, maîtrise d'ouvrage."
+    },
+    {
+      "referenceId": "MEL_CR01-E15",
+      "status": "MATCHED",
+      "matchedProposalIds": ["da5a35f1-44af-4bd4-82fa-4881986b1489"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Commune de Melay, maîtrise d'ouvrage."
+    },
+    {
+      "referenceId": "MEL_CR01-E16",
+      "status": "MATCHED",
+      "matchedProposalIds": ["cc571d90-1262-4367-a330-9308d60b3c2d"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "ARTELIA, maîtrise d'œuvre."
+    },
+    {
+      "referenceId": "MEL_CR01-E17",
+      "status": "MATCHED",
+      "matchedProposalIds": ["47c81bae-e4a0-4614-888b-c22f5ab135ac"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "ACE BTP, CSPS."
+    },
+    {
+      "referenceId": "MEL_CR01-E18",
+      "status": "MATCHED",
+      "matchedProposalIds": ["7e48cf5e-1e61-4032-8fd8-f7ac30158653"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "SOPRECO, essais de garanties."
+    },
+    {
+      "referenceId": "MEL_CR01-E19",
+      "status": "MATCHED",
+      "matchedProposalIds": ["22abec9c-c9cc-4ab6-b818-34f1ae0412aa"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "STPI, entreprise LOT 1 et 2."
+    },
+    {
+      "referenceId": "MEL_CR01-E20",
+      "status": "MATCHED",
+      "matchedProposalIds": ["f9d4a1ed-d1a1-4942-96cf-6c969187cf83"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Conseil Départemental 52, autre intervenant."
+    },
+    {
+      "referenceId": "MEL_CR01-E21",
+      "status": "MATCHED",
+      "matchedProposalIds": ["7ed4df91-f4d7-4d61-9471-eb7cf4808e9a"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "DDT police de l'Eau 52, autre intervenant."
+    },
+    {
+      "referenceId": "MEL_CR01-E22",
+      "status": "MATCHED",
+      "matchedProposalIds": ["d4fa2c45-8571-416d-9ec4-89a665dd347d"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Agence de l'Eau. Ligne du tableau vide côté source (aucun contact) ; MemorIA n'invente aucun nom ni contact, se limite au nom de l'organisme — fidèle."
+    },
+    {
+      "referenceId": "MEL_CR01-E23",
+      "status": "MATCHED",
+      "matchedProposalIds": ["1c5e8b1a-1096-4819-8df7-4be23779cc3e"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. Cali VEGA, 3ème adjoint, présent uniquement en feuille de présence p.2. Fidèle."
+    },
+    {
+      "referenceId": "MEL_CR01-E24",
+      "status": "MATCHED",
+      "matchedProposalIds": ["c98cfdcc-91c3-40a3-8e2b-b4e35f2e5f0a"],
+      "referenceFamily": "deadline",
+      "memoriaFamily": "deadline",
+      "note": "Prochaine réunion 13/12/2017 14h, visite chantier LOT 1/2. Date fidèle (dueDate=\"13/12/2017\", format texte non ISO mais jour exact conforme)."
+    },
+    {
+      "referenceId": "MEL_CR01-E25",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Clause « Nota 1 » : CR réputé approuvé sans contestation du MO sous 8 jours. Aucune proposition MemorIA ne couvre ce passage (confirmé par recherche exhaustive sur « 8 jours »/« contestation » dans le fichier de sortie)."
+    },
+    {
+      "referenceId": "MEL_CR01-E26",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Clause « Nota 2 » : diffusion des CR uniquement par courriel. Aucune proposition MemorIA ne couvre ce passage."
+    },
+    {
+      "referenceId": "MEL_CR01-E27",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Clause « Nota 3 » : diffusion aux sous-traitants à la charge des entreprises. Aucune proposition MemorIA ne couvre ce passage. Les 3 clauses administratives récurrentes (E25-E27) forment un angle mort complet, cohérent avec le MISSED déjà observé sur la clause équivalente de LRM_01 (E19)."
+    },
+    {
+      "referenceId": "MEL_CR01-E28",
+      "status": "MATCHED",
+      "matchedProposalIds": ["d80a9df9-472d-439d-a053-c8b9f88818ee"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Notification marché LOT 1, STPI, 23/09/2017. Date et responsable fidèles (STPI explicite côté référence)."
+    },
+    {
+      "referenceId": "MEL_CR01-E29",
+      "status": "MATCHED",
+      "matchedProposalIds": ["0c090282-6513-4b3d-8f13-56ff8dc405b5"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "OS phase préparatoire LOT 1, 13/11/2017, STPI. Fidèle."
+    },
+    {
+      "referenceId": "MEL_CR01-E30",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["77c64548-0197-4b3c-89ef-4d6bee8ca938"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "deadline",
+      "note": "OS phase travaux LOT 1, 08/12/2017. La référence classe ce fait administratif daté en knowledge_fact (déjà survenu/programmé mais pas une échéance de type réunion), MemorIA en fait un deadline. Contenu et date exacts (dueDate=\"08/12/2017\"), aucune fabrication ; responsible=STPI cohérent avec la référence (explicite, pas une invention). Divergence de famille uniquement."
+    },
+    {
+      "referenceId": "MEL_CR01-E31",
+      "status": "MATCHED",
+      "matchedProposalIds": ["90ad48f7-b7ce-47b7-bf16-a1e1aa652739"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Notification marché LOT 2, STPI, 23/09/2017. Fidèle."
+    },
+    {
+      "referenceId": "MEL_CR01-E32",
+      "status": "MATCHED",
+      "matchedProposalIds": ["45c64d05-4e4b-4c19-a8b0-19f04eac46aa"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "OS phase préparatoire LOT 2, 13/11/2017, STPI. Fidèle."
+    },
+    {
+      "referenceId": "MEL_CR01-E33",
+      "status": "MATCHED",
+      "matchedProposalIds": ["dee7cbe9-0c8a-4470-89bc-e999ee9159e4"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "OS phase travaux LOT 2 « En attente ». Aucune date fabriquée pour combler l'absence de date — fidèle."
+    },
+    {
+      "referenceId": "MEL_CR01-E34",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["a5d3720d-9bff-46c0-872f-37e665596e3d"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "0 personnel présent sur site LOT 1. Constat instantané classé observation par la référence, knowledge_fact par MemorIA. Contenu chiffré fidèle (0), divergence de famille."
+    },
+    {
+      "referenceId": "MEL_CR01-E35",
+      "status": "MATCHED",
+      "matchedProposalIds": ["550eedb5-5bb4-497a-9559-790872d0956f"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "observation",
+      "note": "Personnel prévu semaine 50 : donnée inconnue (« ? » dans le CR). MemorIA reprend correctement l'incertitude, sans inventer de chiffre."
+    },
+    {
+      "referenceId": "MEL_CR01-E36",
+      "status": "MATCHED",
+      "matchedProposalIds": ["fc2ca10e-2569-4a65-93f4-852e77a6b5db", "cec52c00-629a-4f55-9c16-d5c39faf1b68"],
+      "referenceFamily": "action",
+      "memoriaFamily": "action",
+      "note": "Site extranet ACE BTP à rendre accessible, déjà réalisé (extranet ouvert). Sur-fragmentation inter-famille : la référence garde 1 élément action, MemorIA en fait 2 propositions — l'action (correcte, famille action, responsable ACE BTP fidèle) et un doublon knowledge_fact pour le même fait de réalisation. Aucune perte de contenu, mais duplication cross-famille du même fait."
+    },
+    {
+      "referenceId": "MEL_CR01-E37",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["14172052-5c66-4ecb-92af-f3c4e8ddca03"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "STPI a présenté à visa les fiches matériaux LOT 1, date 05/12/2017 (incohérence de date déjà signalée par la référence : postérieure à la date de réunion 01/12/2017). MemorIA classe en knowledge_fact au lieu d'observation ; ne reprend pas la date 05/12/2017 dans un champ structuré (pas de deadlineDate fabriqué), donc pas d'aggravation de l'incohérence déjà présente dans la source."
+    },
+    {
+      "referenceId": "MEL_CR01-E38",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["874ea12f-654a-4c30-aee4-f877eeb65b5e"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Plans d'exécution version 0 transmis, LOT 1, à réviser après sondages. Contenu fidèle, divergence de famille (observation attendue, knowledge_fact obtenu)."
+    },
+    {
+      "referenceId": "MEL_CR01-E39",
+      "status": "MATCHED",
+      "matchedProposalIds": ["d3b86278-2d59-4282-9c17-a6d0c84a3ddd"],
+      "referenceFamily": "action",
+      "memoriaFamily": "action",
+      "note": "Documents restant à fournir LOT 1 (DICT, constat d'huissier, permissions de voiries, sondages, planning). POINT DE VIGILANCE : la référence laisse responsible=null explicitement (« colonne Intervenant vide ... laissé à null par rigueur »), MemorIA assigne linkedActorTemporaryKey=\"c-stpi-p1\" (STPI) sans base textuelle confirmée. Plausible contextuellement (STPI est la seule entreprise du marché) mais rupture de la discipline épistémique de la référence — un responsable est inventé là où le texte source ne le nomme pas."
+    },
+    {
+      "referenceId": "MEL_CR01-E40",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["fcda14dd-06b2-4ffd-935d-08b2d60085b7"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "LOT 2 : 0% d'avancement. Contenu chiffré fidèle, divergence de famille (observation attendue, knowledge_fact obtenu)."
+    },
+    {
+      "referenceId": "MEL_CR01-E41",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["df0c67b1-8143-4447-894a-25763c20d00f"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Encombrement du sous-sol révélé par les DICT reçues par le « mandataire » (env. 800 ml AEP). Divergence de famille (observation attendue, knowledge_fact obtenu). Fidélité correcte sur le point de vigilance « mandataire » : aucun linkedActorTemporaryKey n'est assigné, MemorIA ne nomme pas STPI ici — cohérent avec la prudence de la référence (responsible=null)."
+    },
+    {
+      "referenceId": "MEL_CR01-E42",
+      "status": "MATCHED",
+      "matchedProposalIds": ["7c10f179-64c7-4517-8c82-af9aa991a970"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "decision",
+      "note": "Validation par les élus de la technique des sauterelles sur le réseau AEP. Famille correcte. Référence : responsible=\"Les Elus (Communauté de Communes / Commune de Melay)\" — MemorIA ne lie que c-melay-p1, omission mineure de la Communauté de Communes dans le lien structuré (le texte de la description reste correct)."
+    },
+    {
+      "referenceId": "MEL_CR01-E43",
+      "status": "MATCHED",
+      "matchedProposalIds": ["8effc1a0-7568-4ad5-9bba-1b226cafa024"],
+      "referenceFamily": "action",
+      "memoriaFamily": "action",
+      "note": "STPI accompagnée par la commune pour travaux en domaine privé. Responsable STPI explicite côté référence — lien fidèle, pas une invention (contrairement à E39/E46/E52/E56)."
+    },
+    {
+      "referenceId": "MEL_CR01-E44",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["a08e4ce8-6d8c-4eb3-be50-dbc9b5fc3912"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "80% des positionnements futurs des branchements EU évalués par le « mandataire ». Divergence de famille. Fidélité correcte sur le point de vigilance « mandataire » : aucun linkedActorTemporaryKey assigné, pas de nom de responsable inventé — cohérent avec responsible=null de la référence."
+    },
+    {
+      "referenceId": "MEL_CR01-E45",
+      "status": "MATCHED",
+      "matchedProposalIds": ["1998f250-4377-48b0-8a04-2ad223d1ccdc"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "observation",
+      "note": "Question ouverte sur l'usage du forage dirigé sous dalot. Famille correcte, aucun responsable inventé (cohérent avec responsible=null de la référence)."
+    },
+    {
+      "referenceId": "MEL_CR01-E46",
+      "status": "MATCHED",
+      "matchedProposalIds": ["b5a55dfd-c383-4be0-b1cf-989f33b3665f"],
+      "referenceFamily": "action",
+      "memoriaFamily": "action",
+      "note": "Sondages à réaliser avant toute technique alternative de forage dirigé. POINT DE VIGILANCE : la référence laisse responsible=null explicitement (« sans responsable ni échéance explicitement nommés »), MemorIA assigne linkedActorTemporaryKey=\"c-stpi-p1\" (STPI), un responsable non confirmé par le texte source."
+    },
+    {
+      "referenceId": "MEL_CR01-E47",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["2aa4c027-4130-438e-9760-2a1092e47e5a", "a7376514-54ea-4a71-be9f-d50fedaaa449"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "observation, decision",
+      "note": "Présence de fourreaux au droit des réseaux existants ; les élus en ont pris note. La référence classe explicitement l'ensemble en knowledge_fact (« Ont pris note » = acquiescement informatif, pas une décision actée — classificationNote le précise textuellement). MemorIA scinde ce même élément en 2 propositions, TOUTES DEUX dans une famille différente de la référence : la première moitié (constat des fourreaux) en observation, la seconde moitié (prise de note des élus) en decision — reproduisant exactement l'erreur de classification que la référence avait explicitement anticipée et évitée."
+    },
+    {
+      "referenceId": "MEL_CR01-E48",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["ef8362fd-b9b7-4a2f-96af-1bec9506831e"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Technique d'encorbellement sous dalot non écartée (option ouverte). Contenu fidèle, divergence de famille (decision attendue, knowledge_fact obtenu)."
+    },
+    {
+      "referenceId": "MEL_CR01-E49",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["3483e70d-34fe-40ce-be59-84d48f62d213"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Abandon à l'étude du branchement EU parcelle 189. Contenu fidèle, divergence de famille (decision attendue, knowledge_fact obtenu)."
+    },
+    {
+      "referenceId": "MEL_CR01-E50",
+      "status": "MATCHED",
+      "matchedProposalIds": ["568b15d4-e298-4f6d-85fa-c6cee8d2d7ae"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "decision",
+      "note": "Dalot de décharge EP écarté au profit du renforcement rue du Moulin. Famille et contenu fidèles."
+    },
+    {
+      "referenceId": "MEL_CR01-E51",
+      "status": "MATCHED",
+      "matchedProposalIds": ["754bd185-632d-4653-9b90-f6ce94199c53"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "decision",
+      "note": "Positionnement du poste de relevage rue du Moulin acté sur site. Famille correcte ; référence responsible=\"Les Elus / Commune de Melay\", MemorIA ne lie que c-melay-p1 — cohérent, pas d'invention."
+    },
+    {
+      "referenceId": "MEL_CR01-E52",
+      "status": "MATCHED",
+      "matchedProposalIds": ["624ee652-47e5-4308-bcc4-8afdb1ec286b"],
+      "referenceFamily": "action",
+      "memoriaFamily": "action",
+      "note": "Murs de la parcelle 166 à abattre pour le poste de relevage. La référence laisse responsible=null (aucun responsable nommé dans le texte pour cette phrase). MemorIA assigne linkedActorTemporaryKey=\"c-stpi-p1\" (STPI) — même schéma de fabrication de responsable que E39/E46/E56, non listé explicitement dans les cas cités par la campagne mais relevant du même biais systématique."
+    },
+    {
+      "referenceId": "MEL_CR01-E53",
+      "status": "MATCHED",
+      "matchedProposalIds": ["8977c46d-c9bf-4808-9987-8a9dcd29ccb2"],
+      "referenceFamily": "action",
+      "memoriaFamily": "action",
+      "note": "Servitude à signer entre le propriétaire et la commune de Melay. Responsable Commune de Melay explicite côté référence — lien fidèle, pas une invention."
+    },
+    {
+      "referenceId": "MEL_CR01-E54",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["79fc2123-82c4-4115-887c-bcd89200f18f"],
+      "referenceFamily": "deadline",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Réunion publique le 07/12 à 18h00, salle des fêtes de Melay. La référence classe cet événement daté en deadline (deadlineDate=\"2017-12-07\"), MemorIA le classe en knowledge_fact et ne renseigne aucun champ dueDate structuré malgré la date exacte présente dans le texte — perte de structuration de l'échéance, pas de fabrication."
+    },
+    {
+      "referenceId": "MEL_CR01-E55",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["b6835855-4d4d-4b2c-bd33-574cc59cd2ce"],
+      "referenceFamily": "deadline",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Démarrage du chantier LOT 1 en semaine 50. Divergence de famille (deadline attendue, knowledge_fact obtenu). POINT POSITIF sur la fidélité des dates : la référence laisse volontairement deadlineDate=null car seule la semaine est connue (pas de jour exact) — MemorIA ne fabrique aucune date précise non plus (aucun champ dueDate dans le payload), contrairement au cas LRM_01 deadline-startdate-p1 où un jour avait été inventé pour un fait mois/année. Discipline correcte sur ce point malgré l'erreur de famille. Le responsable STPI de la référence (explicite) n'est en revanche pas repris par un lien structuré côté MemorIA (perte mineure, pas une fabrication)."
+    },
+    {
+      "referenceId": "MEL_CR01-E56",
+      "status": "MATCHED",
+      "matchedProposalIds": ["252e0dff-d7fe-4254-98d3-464765806ee8"],
+      "referenceFamily": "action",
+      "memoriaFamily": "action",
+      "note": "Planning LOT 2 à fournir par le mandataire. POINT DE VIGILANCE le plus net du document : la référence laisse explicitement responsible=null (« le terme mandataire n'est pas explicitement rattaché... non confirmé textuellement »). MemorIA va plus loin que E39/E46/E52 : elle assigne linkedActorTemporaryKey=\"c-stpi-p1\" ET écrit littéralement dans la description « Le planning du LOT 2 est à fournir par le mandataire (STPI) », nommant STPI en toutes lettres dans le contenu métier lui-même, alors que le mot « mandataire » n'est jamais rattaché à STPI dans le document source. C'est l'écart de discipline épistémique le plus explicite du document."
+    },
+    {
+      "referenceId": "MEL_CR01-E57",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["04a7ee17-1a32-4566-9b58-e14d08559e90"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "deadline",
+      "note": "Visa des dossiers de sous-traitance par le MOE, au moins 3 semaines avant intervention. La référence classe cette procédure récurrente (permanent_instruction) en knowledge_fact sans date propre à cette réunion ; MemorIA la classe en deadline sans toutefois fabriquer de date absolue (le délai relatif « 3 semaines avant » n'est pas converti en dueDate calendaire) — divergence de famille sans fabrication de date."
+    },
+    {
+      "referenceId": "MEL_CR01-E58",
+      "status": "MATCHED",
+      "matchedProposalIds": ["db6f70a3-c246-4399-8acc-8d8ccf878db5"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Aucune modification prévue du montant prévisionnel des travaux. Fidèle."
+    },
+    {
+      "referenceId": "MEL_CR01-E59",
+      "status": "MATCHED",
+      "matchedProposalIds": ["e5575898-db3d-4e8d-b42c-85ca385f3e03"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "decision",
+      "note": "Prise en charge des sauterelles 50%/50% (commune / COM COM), accord de principe. Famille correcte. Référence responsible=\"Commune de Melay / Communauté de Communes\", MemorIA ne lie que c-melay-p1 dans le champ structuré (le texte de la description mentionne bien les deux) — omission mineure."
+    }
+  ],
+  "unmatchedProposals": [
+    {
+      "proposalId": "7ae88d97-80d8-40f9-a004-044646d907d2",
+      "family": "action",
+      "label": "Diffuser les visas",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "« ARTELIA doit diffuser les visas. » — correspond à l'evidence texte réelle « ARTELIA Diffuser les visas » (page 3, id 8cd31615), vraisemblablement la cellule « Action » du tableau de suivi accolée à la ligne des fiches matériaux LOT 1 présentées à visa (E37). Contenu réel du document que la référence Phase A n'a pas isolé comme élément propre (elle l'a absorbé dans le constat E37). Pas une fabrication."
+    }
+  ],
+  "recallByFamily": {
+    "person": { "matched": 14, "partial": 0, "missed": 0, "misclassified": 0, "total": 14, "recallScore": 1.0 },
+    "company": { "matched": 9, "partial": 0, "missed": 0, "misclassified": 0, "total": 9, "recallScore": 1.0 },
+    "deadline": { "matched": 1, "partial": 0, "missed": 0, "misclassified": 2, "total": 3, "recallScore": 0.333 },
+    "decision": { "matched": 4, "partial": 0, "missed": 0, "misclassified": 2, "total": 6, "recallScore": 0.667 },
+    "action": { "matched": 7, "partial": 0, "missed": 0, "misclassified": 0, "total": 7, "recallScore": 1.0 },
+    "observation": { "matched": 2, "partial": 0, "missed": 0, "misclassified": 6, "total": 8, "recallScore": 0.25 },
+    "reservation": { "matched": 0, "partial": 0, "missed": 0, "misclassified": 0, "total": 0, "recallScore": null },
+    "knowledge_fact": { "matched": 6, "partial": 0, "missed": 3, "misclassified": 3, "total": 12, "recallScore": 0.5 }
+  },
+  "precisionByFamily": {
+    "person": { "truePositive": 14, "falsePositive": 0, "legitimateExtra": 0, "total": 14, "precisionScore": 1.0 },
+    "company": { "truePositive": 9, "falsePositive": 0, "legitimateExtra": 0, "total": 9, "precisionScore": 1.0 },
+    "deadline": { "truePositive": 3, "falsePositive": 0, "legitimateExtra": 0, "total": 3, "precisionScore": 1.0 },
+    "decision": { "truePositive": 5, "falsePositive": 0, "legitimateExtra": 0, "total": 5, "precisionScore": 1.0 },
+    "action": { "truePositive": 7, "falsePositive": 0, "legitimateExtra": 1, "total": 8, "precisionScore": 1.0 },
+    "observation": { "truePositive": 3, "falsePositive": 0, "legitimateExtra": 0, "total": 3, "precisionScore": 1.0 },
+    "reservation": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "knowledge_fact": { "truePositive": 17, "falsePositive": 0, "legitimateExtra": 0, "total": 17, "precisionScore": 1.0 }
+  },
+  "overallNotes": [
+    "Recall global : 43/59 éléments MATCHED (73 %), 0 PARTIAL, 3 MISSED (5 %), 13 MISCLASSIFIED (22 %). Aucun élément de référence n'est totalement absent du contenu extrait au-delà des 3 MISSED : les 13 MISCLASSIFIED correspondent à du contenu réellement capturé mais rangé dans une famille métier différente de celle de la référence.",
+    "Precision globale : 58 vrais positifs sur 59 propositions MemorIA (98 %), 0 faux positif (aucune donnée fabriquée ou dupliquée sans base réelle), 1 legitimate_extra (contenu réel non isolé par la référence). Aucune hallucination de contenu détectée dans ce document — résultat de précision au niveau proposition au moins aussi bon que LRM_01.",
+    "Biais dominant : confusion systématique observation → knowledge_fact. 6 des 8 éléments de référence classés observation (E34, E37, E38, E40, E41, E44 — constats chiffrés ou factuels instantanés) sont reclassés knowledge_fact par MemorIA ; seuls E35 et E45 conservent la bonne famille. Le moteur semble utiliser knowledge_fact comme famille par défaut pour des constats qui ne sont ni des actions ni des décisions ni des rendez-vous datés.",
+    "Biais secondaire : confusion bidirectionnelle deadline ↔ knowledge_fact et decision → knowledge_fact. E30 et E57 (knowledge_fact en référence, faits administratifs/procéduraux datés ou récurrents) deviennent des deadlines côté MemorIA ; E54 et E55 (deadline en référence, événements datés à venir) deviennent des knowledge_fact. E48 et E49 (decision en référence, options techniques actées ou à l'étude) deviennent également des knowledge_fact. E47 est un cas limite : la référence le classe explicitement en knowledge_fact en expliquant pourquoi ce n'est PAS une décision (« ont pris note » ≠ décision actée), et MemorIA le scinde en 2 propositions qui tombent l'une en observation, l'autre en decision — reproduisant exactement l'erreur que la référence avait anticipée et évitée par écrit.",
+    "Point de vigilance principal — fabrication de responsable sur les actions à responsable non nommé : 4 des 7 éléments action ont un responsable STPI (linkedActorTemporaryKey=\"c-stpi-p1\") inventé côté MemorIA alors que la référence a explicitement laissé responsible=null par rigueur (E39, E46, E52) ou par absence de confirmation textuelle du terme « mandataire » (E56). Le cas E56 est le plus net : la description métier elle-même écrit « par le mandataire (STPI) », nommant l'entreprise en toutes lettres dans un contenu jamais explicitement rattaché à STPI dans le document source. À l'inverse, sur les éléments comparables où le mot « mandataire » apparaît sans qu'aucune action n'y soit directement associée (E41, E44), MemorIA n'assigne aucun responsable structuré — la fabrication semble corrélée à la présence d'un couple action+linkedActorTemporaryKey plutôt qu'à toute mention du mot « mandataire ».",
+    "Point de vigilance secondaire — statuts de présence inversés ou inventés : sur 4 personnes à statut ambigu ou négatif dans la feuille de présence, MemorIA affiche 2 statuts directement contredits par la référence (E03 Thabourin : réf. « absente » explicite → MemorIA « présent » ; E08 M. MAIRE : réf. « convoqué, non marqué présent » → MemorIA « présent ») et 2 statuts tranchés sans base documentaire (E02 Mazelin, E09 Henriot : réf. non déterminable/non renseigné → MemorIA « absent »). Le champ family/label reste correct dans tous les cas (statut MATCHED), mais c'est une fabrication de métadonnée factuelle distincte du problème de responsable.",
+    "Point positif sur la discipline temporelle : contrairement à LRM_01 (date précise fabriquée pour un fait mois/année), aucune date calendaire précise n'est inventée ici pour un fait à granularité insuffisante. E55 (« semaine 50 », pas de jour exact) reste sans dueDate structuré côté MemorIA, exactement comme la référence laisse deadlineDate=null pour la même raison.",
+    "3 éléments manqués, tous de même nature : les clauses administratives récurrentes de fin de CR (E25 délai de contestation 8 jours, E26 diffusion par courriel, E27 diffusion aux sous-traitants). Recherche exhaustive confirmée sur le fichier de sortie (aucune occurrence de « 8 jours », « courriel », « sous-traitants », « Nota »). Même angle mort déjà documenté sur LRM_01-E19 (clause d'approbation de CR) : schéma récurrent du corpus sur les clauses procédurales de fin de document.",
+    "Sur-fragmentation croisée famille : E36 (action, extranet ACE BTP) est éclaté en 1 proposition action fidèle + 1 proposition knowledge_fact dupliquant le même fait de réalisation. Aucune perte de contenu, mais le fait est représenté deux fois dans deux familles différentes.",
+    "Photos : convergence totale avec la référence. 0 evidence de type image côté MemorIA (69 evidence, toutes text_excerpt), 0 photo dans reference.json. Conforme à readerNotes (« Famille photos absente : ce CR est un document purement textuel/tabulaire »).",
+    "Aucun élément de la famille reservation ni dans la référence ni dans MemorIA — cohérent avec un chantier en phase préparatoire/administrative (LOT 1 pas démarré, LOT 2 à 0 %), aucune réception de travaux possible à ce stade."
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "corpusId": "HER_CR05",
+  "referenceElementCount": 10,
+  "memoriaProposalCount": 9,
+  "methodologyNote": "Un élément de référence dont le contenu est capturé fidèlement par une proposition MemorIA mais rangé dans une famille différente est marqué MISCLASSIFIED : il ne compte pas comme MATCHED pour le recall de sa famille de référence (impact recall comme un miss), et la proposition correspondante compte au dénominateur de precision de la famille où MemorIA l'a rangée sans compter au numérateur (impact precision comme un faux positif de famille, sans être un FALSE_POSITIVE de contenu ni une hallucination).",
+  "elementMatches": [
+    {
+      "referenceId": "HER_CR05-E01",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["8bde4100-1b85-4505-82f1-e0fef3898161"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "observation",
+      "note": "« Le problème du traitement des eaux usées de la salle du Clos est examiné ce jour. » — excerpt identique (proposal obs-eaux-usees-p1). La référence classe cette phrase comme knowledge_fact administratif (point à l'ordre du jour, pas une constatation de terrain), et le readerNotes de la référence affirme explicitement l'absence de toute famille observation dans ce document (« aucune constatation de terrain de type défaut/état observé »). MemorIA range pourtant ce contenu en famille observation : contenu fidèle, famille erronée."
+    },
+    {
+      "referenceId": "HER_CR05-E02",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["fe77e5c2-45da-4b8c-b416-48422a93e5c2"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "decision",
+      "note": "« L'ensemble des eaux pluviales de la place et de la salle du Clos doivent être traitées dans des puisards adaptés car ces eaux ne doivent pas être rejetées en dehors de cette place. » — la référence isole cette règle technique permanente (thematicCategory permanent_instruction) comme élément knowledge_fact distinct de la décision E03. Le texte apparaît mot pour mot dans le source_excerpt de la proposition dec-puisards-p1 (famille decision), mais fusionné avec la décision d'agrandissement sans exister comme objet propre : la règle générale n'a pas d'identité indépendante côté MemorIA. Compté MISCLASSIFIED plutôt que MATCHED car aucune proposition de famille knowledge_fact ne porte ce contenu en tant que tel."
+    },
+    {
+      "referenceId": "HER_CR05-E03",
+      "status": "MATCHED",
+      "matchedProposalIds": ["fe77e5c2-45da-4b8c-b416-48422a93e5c2"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "decision",
+      "note": "Agrandissement des puisards jugé indispensable et accepté (dec-puisards-p1) — capture fidèle, incluant la justification (manque de perméabilité des sols, eaux pluviales de la cour de l'école élémentaire). Famille correcte : c'est le seul des 3 éléments de référence en famille decision à être classé decision par MemorIA (les 2 autres, E08 et E09, sont MISCLASSIFIED — voir ci-dessous). Voir aussi note de HER_CR05-E02 : la même proposition physique absorbe aussi le contenu d'un élément knowledge_fact voisin."
+    },
+    {
+      "referenceId": "HER_CR05-E04",
+      "status": "MATCHED",
+      "matchedProposalIds": ["78a2635d-bf84-4f46-b73a-9913ae49e191"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Coût supplémentaire d'environ 20 000 € H.T. — capture équivalente, montant et qualificatif « environ » préservés sans arrondi ni précision inventée."
+    },
+    {
+      "referenceId": "HER_CR05-E05",
+      "status": "MATCHED",
+      "matchedProposalIds": ["0abf4329-5cdb-4a34-afd7-c2b9106111e5"],
+      "referenceFamily": "deadline",
+      "memoriaFamily": "deadline",
+      "note": "Intervention Véolia, réparation de la conduite d'assainissement. dueDate=\"2018-10-25\" — date exacte présente telle quelle dans le texte source (« le 25 octobre 2018 »), aucune précision fabriquée (à la différence du cas comparable observé sur LRM_01). responsibleParty=\"Véolia\" correct, linkedActorTemporaryKey pointe vers la proposition company correspondante."
+    },
+    {
+      "referenceId": "HER_CR05-E06",
+      "status": "MATCHED",
+      "matchedProposalIds": ["8c9c0a7d-50bf-417c-b24a-e82fcb8bb4f5"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Véolia, entreprise en charge de la réparation de la conduite d'assainissement. companyRole=\"partenaire\" est un libellé générique par rapport au rôle précis donné par la référence (« réparation ponctuelle du réseau d'assainissement »), mais la description texte reste correcte — pas une fabrication, une perte de précision mineure sur un champ structuré."
+    },
+    {
+      "referenceId": "HER_CR05-E07",
+      "status": "MATCHED",
+      "matchedProposalIds": ["4cf45cec-ae4f-40f1-b053-70fe9422a3d7"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Armoire électrique suffisante pour bornes et éclairage — capture équivalente, excerpt identique. thematic_category=\"general_knowledge\" côté MemorIA contre thematicCategory=\"progress\" côté référence : divergence mineure de sous-classification thématique, sans impact sur la famille."
+    },
+    {
+      "referenceId": "HER_CR05-E08",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["11f94386-d4fe-4b78-97e0-50cc7d17d0f6"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "knowledge_fact",
+      "note": "« La fontaine sera alimentée à partir de la salle de l'Orangerie. » — excerpt identique (kf-fontaine-alim-p1). La référence classe ce choix technique en decision (« il tranche un mode d'alimentation parmi d'éventuelles alternatives »), tout en notant elle-même l'absence de terme explicite de validation (« accepté », « validé »). MemorIA range ce même contenu en knowledge_fact/general_knowledge. Contenu fidèle, famille erronée — même biais de frontière que E09."
+    },
+    {
+      "referenceId": "HER_CR05-E09",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["0996558f-4db4-4ae9-920c-630b8346ed4e"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "knowledge_fact",
+      "note": "« La place équipée d'une borne électrique réservée aux personnes handicapées devient une place sans signalétique mais reste une place prioritaire. » — excerpt identique (kf-place-pmr-p1). Même schéma que E08 : la référence classe ce changement d'aménagement acté en decision malgré l'absence de terme de validation explicite ; MemorIA range en knowledge_fact/general_knowledge. Contenu fidèle, famille erronée."
+    },
+    {
+      "referenceId": "HER_CR05-E10",
+      "status": "MATCHED",
+      "matchedProposalIds": ["df14cd42-c639-45b3-a59d-539ebd352820"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Sylvie Bouchet Bellecourt, Maire, signataire — capture équivalente, excerpt identique (« Madame le Maire Sylvie BOUCHET BELLECOURT »). statusAtDocumentDate=\"inconnu\" ajouté par MemorIA : champ honnête (pas de statut inventé), cohérent avec le statusAtDocumentDate=null de la référence."
+    }
+  ],
+  "unmatchedProposals": [],
+  "recallByFamily": {
+    "person": { "matched": 1, "misclassified": 0, "partial": 0, "missed": 0, "total": 1, "recallScore": 1.0 },
+    "company": { "matched": 1, "misclassified": 0, "partial": 0, "missed": 0, "total": 1, "recallScore": 1.0 },
+    "deadline": { "matched": 1, "misclassified": 0, "partial": 0, "missed": 0, "total": 1, "recallScore": 1.0 },
+    "decision": { "matched": 1, "misclassified": 2, "partial": 0, "missed": 0, "total": 3, "recallScore": 0.333 },
+    "action": { "matched": 0, "misclassified": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "observation": { "matched": 0, "misclassified": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "reservation": { "matched": 0, "misclassified": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "knowledge_fact": { "matched": 2, "misclassified": 2, "partial": 0, "missed": 0, "total": 4, "recallScore": 0.5 }
+  },
+  "precisionByFamily": {
+    "person": { "proposalsCount": 1, "truePositive": 1, "misclassifiedFromOtherFamily": 0, "falsePositive": 0, "legitimateExtra": 0, "denominator": 1, "precisionScore": 1.0 },
+    "company": { "proposalsCount": 1, "truePositive": 1, "misclassifiedFromOtherFamily": 0, "falsePositive": 0, "legitimateExtra": 0, "denominator": 1, "precisionScore": 1.0 },
+    "deadline": { "proposalsCount": 1, "truePositive": 1, "misclassifiedFromOtherFamily": 0, "falsePositive": 0, "legitimateExtra": 0, "denominator": 1, "precisionScore": 1.0 },
+    "decision": { "proposalsCount": 1, "truePositive": 1, "misclassifiedFromOtherFamily": 0, "falsePositive": 0, "legitimateExtra": 0, "denominator": 1, "precisionScore": 1.0, "note": "1 seule proposition physique (dec-puisards-p1) dans cette famille. Elle porte aussi, dans son excerpt, le contenu de l'élément de référence E02 (knowledge_fact) sans lui donner d'existence propre : traité côté recall comme MISCLASSIFIED pour E02 (voir recallByFamily.knowledge_fact), mais non recompté ici pour éviter de compter deux fois la même proposition physique au dénominateur de precision." },
+    "action": { "proposalsCount": 0, "truePositive": 0, "misclassifiedFromOtherFamily": 0, "falsePositive": 0, "legitimateExtra": 0, "denominator": 0, "precisionScore": null },
+    "observation": { "proposalsCount": 1, "truePositive": 0, "misclassifiedFromOtherFamily": 1, "falsePositive": 0, "legitimateExtra": 0, "denominator": 1, "precisionScore": 0.0, "note": "obs-eaux-usees-p1 : contenu réel (phrase d'ouverture de la réunion) mais rangé en observation alors qu'aucun élément observation n'existe dans la référence de ce document ; le contenu correspond à HER_CR05-E01 (knowledge_fact)." },
+    "reservation": { "proposalsCount": 0, "truePositive": 0, "misclassifiedFromOtherFamily": 0, "falsePositive": 0, "legitimateExtra": 0, "denominator": 0, "precisionScore": null },
+    "knowledge_fact": { "proposalsCount": 4, "truePositive": 2, "misclassifiedFromOtherFamily": 2, "falsePositive": 0, "legitimateExtra": 0, "denominator": 4, "precisionScore": 0.5, "note": "2 vrais positifs (kf-cout-puisards-p1 -> E04, kf-armoire-elec-p1 -> E07) et 2 propositions à contenu réel mais rangées ici alors que la référence les classe decision (kf-fontaine-alim-p1 -> E08, kf-place-pmr-p1 -> E09)." }
+  },
+  "overallNotes": [
+    "6/10 éléments de référence MATCHED, 4/10 MISCLASSIFIED (E01, E02, E08, E09), 0 MISSED, 0 PARTIAL. Couverture de contenu totale : les 9 propositions MemorIA correspondent chacune à un élément de référence identifiable (0 unmatchedProposals), 0 FALSE_POSITIVE, 0 LEGITIMATE_EXTRA, aucune hallucination détectée sur ce document d'une seule page.",
+    "Biais dominant : frontière decision / knowledge_fact sensible à la présence d'un marqueur de validation explicite. Sur les 3 éléments de référence en famille decision, seul celui portant le mot « accepté » (E03, agrandissement des puisards) est classé decision par MemorIA. Les 2 autres (E08 « la fontaine sera alimentée... », E09 « ... devient une place sans signalétique... »), qui tranchent bien un choix technique/administratif au présent ou futur mais sans terme de validation explicite, sont classés knowledge_fact/general_knowledge. Recall de la famille decision : 33 % (1/3), entièrement dû à ce biais de classification, pas à une perte de contenu.",
+    "Second biais : la phrase d'ouverture E01 (« le problème du traitement des eaux usées ... est examiné ce jour »), une simple annonce de sujet à l'ordre du jour, est classée observation par MemorIA alors que la référence affirme explicitement l'absence de toute observation de terrain dans ce document. Signal cohérent avec un survalorisation du mot « problème » comme déclencheur de la famille observation, indépendamment du registre réel de la phrase (méta-descriptif, pas un constat physique daté).",
+    "Cas de fusion inter-éléments : la proposition dec-puisards-p1 (famille decision) regroupe dans son excerpt à la fois la règle technique permanente E02 (knowledge_fact/permanent_instruction : obligation de traiter les eaux pluviales sur place) et la décision E03 (agrandissement des puisards). Seule la décision reçoit une existence d'objet propre ; la règle générale n'est pas capturée comme knowledge_fact indépendant. Traité comme MISCLASSIFIED pour E02 plutôt que MATCHED, conformément à la doctrine (famille différente jamais comptée comme succès), avec une note explicite sur la non double-comptabilisation de la même proposition physique côté precision.",
+    "Fidélité factuelle : aucune donnée fabriquée détectée. Point positif notable en miroir d'un biais déjà documenté sur LRM_01 : la date Véolia (25 octobre 2018) est reprise telle quelle depuis le texte source (jour, mois et année tous explicitement présents), sans troncature ni fabrication de granularité temporelle.",
+    "0 evidence de type image des deux côtés (photos=[] en référence, imagesDetected=0 et 8 evidence toutes text_excerpt côté MemorIA) — cohérent, document d'une page sans illustration. Pas de comparaison photo à mener.",
+    "Point technique hors périmètre de notation : proposalEvidenceLinks ne contient qu'un seul lien (obs-eaux-usees-p1 -> evidence 69daa281) sur les 9 propositions et 8 evidence disponibles, alors que chaque proposition a un source_excerpt qui correspond mot pour mot à une evidence text_excerpt distincte. Lacune de liaison structurelle proposal<->evidence à signaler séparément (statut ready_for_review du run n'est pas remis en cause, succès technique déjà acquis)."
+  ]
+}

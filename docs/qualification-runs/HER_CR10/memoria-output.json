@@ -1,0 +1,194 @@
+{
+  "corpusId": "HER_CR10",
+  "documentId": "f0233c02-460b-41df-9bef-77ed8f5b4b60",
+  "extractionRunId": "2d0e7767-a1b4-4899-993c-b72a5425cb26",
+  "proposals": [
+    {
+      "id": "aff2ad52-d867-4cf9-addb-4e66a1b03083",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "2d0e7767-a1b4-4899-993c-b72a5425cb26",
+      "document_id": "f0233c02-460b-41df-9bef-77ed8f5b4b60",
+      "target_site_id": null,
+      "proposal_family": "decision",
+      "stable_key": "prop-jardin-decision-p1",
+      "label": "Déplacement du jardin botanique",
+      "description": "Le principe du déplacement du jardin botanique vers la zone de terre-plein située à côté de la salle du Clos est validé.",
+      "source_page": 1,
+      "source_excerpt": "Le principe du déplacement du jardin botanique vers la zone de terre-plein située à côté de la salle du Clos est validé, sous réserve de la présentation du nouveau plan corrigé par l’architecte.",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "relevanceReason": "Décision structurante avec condition de validation."
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T05:41:41.958533+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "8f011cc5-1bbc-4a67-a9fe-196ca938a858",
+      "document_status": null
+    },
+    {
+      "id": "35754d0a-a597-4f5d-a767-2494cf210281",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "2d0e7767-a1b4-4899-993c-b72a5425cb26",
+      "document_id": "f0233c02-460b-41df-9bef-77ed8f5b4b60",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "prop-bordures-p1",
+      "label": "Pose des bordures de la phase n°1",
+      "description": "La pose des bordures de la phase n°1 a débuté et se prolongera la semaine prochaine.",
+      "source_page": 1,
+      "source_excerpt": "La pose des bordures de la phase n°1 a débuté et se prolongera la semaine prochaine.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "relevanceReason": "Avancement des travaux en cours.",
+        "thematic_category": "progress",
+        "statusAtDocumentDate": "en cours"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T05:41:41.958533+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "fe7158b8-4a2b-4e6c-8c9a-0c8a1f95c4f0",
+      "document_status": "in_progress"
+    },
+    {
+      "id": "ac909cc9-f966-4c96-badd-4d30c0ac1fda",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "2d0e7767-a1b4-4899-993c-b72a5425cb26",
+      "document_id": "f0233c02-460b-41df-9bef-77ed8f5b4b60",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "prop-jardin-reserve-p1",
+      "label": "Présentation du nouveau plan corrigé par l’architecte",
+      "description": "Condition pour la validation du déplacement du jardin botanique.",
+      "source_page": 1,
+      "source_excerpt": "sous réserve de la présentation du nouveau plan corrigé par l’architecte.",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "relevanceReason": "Condition à lever pour une décision majeure.",
+        "statusAtDocumentDate": "en cours"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T05:41:41.958533+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "aa187a10-0d34-4051-9da1-efa0a1266490",
+      "document_status": "in_progress"
+    },
+    {
+      "id": "e6c1d797-4abf-4e12-b0c7-7e5b194827d0",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "2d0e7767-a1b4-4899-993c-b72a5425cb26",
+      "document_id": "f0233c02-460b-41df-9bef-77ed8f5b4b60",
+      "target_site_id": null,
+      "proposal_family": "person",
+      "stable_key": "prop-sylvie-p1",
+      "label": "Sylvie BOUCHET BELLECOURT",
+      "description": "Madame le Maire",
+      "source_page": 1,
+      "source_excerpt": "Madame le Maire Sylvie BOUCHET BELLECOURT",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "relevanceReason": "Personne clé nommée dans le document.",
+        "statusAtDocumentDate": "inconnu"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T05:41:41.958533+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "ed2478ca-b950-4d0a-9a64-74330d4e6475",
+      "document_status": null
+    }
+  ],
+  "evidence": [
+    {
+      "id": "296ccd4e-62c5-4c39-9568-f36d78742bc5",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "2d0e7767-a1b4-4899-993c-b72a5425cb26",
+      "document_id": "f0233c02-460b-41df-9bef-77ed8f5b4b60",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "La pose des bordures de la phase n°1 a débuté et se prolongera la semaine prochaine."
+      },
+      "created_at": "2026-08-20T05:41:41.686009+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "09a084fc-820f-432d-a046-d407ed311479",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "2d0e7767-a1b4-4899-993c-b72a5425cb26",
+      "document_id": "f0233c02-460b-41df-9bef-77ed8f5b4b60",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Le principe du déplacement du jardin botanique vers la zone de terre-plein située à côté de la salle du Clos est validé, sous réserve de la présentation du nouveau plan corrigé par l’architecte."
+      },
+      "created_at": "2026-08-20T05:41:41.686009+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "3b0048a5-86e6-478c-abf1-e76da68e0453",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "2d0e7767-a1b4-4899-993c-b72a5425cb26",
+      "document_id": "f0233c02-460b-41df-9bef-77ed8f5b4b60",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "sous réserve de la présentation du nouveau plan corrigé par l’architecte."
+      },
+      "created_at": "2026-08-20T05:41:41.686009+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "0a10a658-5049-4d3c-847a-a699f2071eaf",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "2d0e7767-a1b4-4899-993c-b72a5425cb26",
+      "document_id": "f0233c02-460b-41df-9bef-77ed8f5b4b60",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Madame le Maire Sylvie BOUCHET BELLECOURT"
+      },
+      "created_at": "2026-08-20T05:41:41.686009+00:00",
+      "pinned_for_visit": false
+    }
+  ],
+  "proposalEvidenceLinks": [
+    {
+      "proposal_id": "ac909cc9-f966-4c96-badd-4d30c0ac1fda",
+      "evidence_id": "3b0048a5-86e6-478c-abf1-e76da68e0453",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T05:41:42.237159+00:00"
+    }
+  ]
+}

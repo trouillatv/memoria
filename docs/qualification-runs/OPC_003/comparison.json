@@ -1,0 +1,307 @@
+{
+  "corpusId": "OPC_003",
+  "referenceElementCount": 32,
+  "memoriaProposalCount": 17,
+  "elementMatches": [
+    {
+      "referenceId": "OPC_003-E01",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Objet du marché (page 1, page de garde) : aucune proposition MemorIA ne couvre ce passage. Page 1 entièrement absente des extractions."
+    },
+    {
+      "referenceId": "OPC_003-E02",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Mode de passation, appel d'offre ouvert (page 1) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E03",
+      "status": "MATCHED",
+      "matchedProposalIds": ["27643530-8543-495a-8931-255db71a0ff1"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Objet de la mission OPC organisée en deux tranches. Texte quasi identique."
+    },
+    {
+      "referenceId": "OPC_003-E04",
+      "status": "MATCHED",
+      "matchedProposalIds": [
+        "1b81f483-1c43-4cd3-ad1b-ae1370268671",
+        "63094803-8209-44cd-b985-c53a7ffaeff0",
+        "1bda9efb-c78c-4a35-a9a0-60e01b589641",
+        "f82387a7-9456-4465-9593-933f3839d4a9"
+      ],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Sur-fragmentation : la référence regroupe le contenu de la tranche ferme (bibliothèque 1000 m², salle mariages/conseils/réunions 150 m²+annexes+100 m² conditionnels, espaces d'accueil communs, études jusqu'au DCE) en 1 élément ; MemorIA en fait 4 propositions distinctes. Contenu intégralement couvert, aucune perte."
+    },
+    {
+      "referenceId": "OPC_003-E05",
+      "status": "MATCHED",
+      "matchedProposalIds": ["3b782e5b-443d-4763-aa7b-968430abaa44"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Tranche conditionnelle : restructuration du bâtiment existant. Correspondance 1:1."
+    },
+    {
+      "referenceId": "OPC_003-E06",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Tableau de synthèse des phases de mission (page 4) : aucune proposition MemorIA. Page 4 entièrement absente."
+    },
+    {
+      "referenceId": "OPC_003-E07",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Phase étude - analyse des contraintes (page 5) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E08",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Planigramme général des études/réalisation par lot (page 5) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E09",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Participation à la rédaction du cahier des charges délais/pénalités (page 5) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E10",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Planigramme « charnière » (page 5) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E11",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Avis sur les variantes des entreprises (page 6) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E12",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Organisation générale des activités, recensement rôles/responsabilités (page 6) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E13",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Phase de préparation - planification des études d'exécution (page 6) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E14",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Planning grosses mailles / planning détaillé (page 6) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E15",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Pilotage de la préparation du démarrage des travaux (page 7) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E16",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Collecte du dossier de chantier, coordination (page 7) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E17",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Réunions de chantier hebdomadaires (page 8) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E18",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Mesures en cas de retard, registre journal de chantier (page 8) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E19",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Contrôle constant de l'activité des entreprises, pénalités (page 8) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E20",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Réunions en cas de retards significatifs (page 9) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E21",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Gestion financière du chantier (page 9) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E22",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Phase de livraison - OPR et réception (page 9) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E23",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Année de parfait achèvement (page 9) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E24",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Commission de sécurité (page 10, avant le bloc identités/chiffres) : aucune proposition MemorIA."
+    },
+    {
+      "referenceId": "OPC_003-E25",
+      "status": "MATCHED",
+      "matchedProposalIds": ["8e2de4cb-b3ab-468e-9805-414bdc32cd88"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Maître d'ouvrage. Écart de libellé mineur : MemorIA écrit « MAIRIE DE MAROMME », la référence « VILLE DE MAROMME » (dénomination exacte du CCTP) — même entité, pas une erreur de contenu. companyRole préservé fidèlement (« maître d'ouvrage »)."
+    },
+    {
+      "referenceId": "OPC_003-E26",
+      "status": "MATCHED",
+      "matchedProposalIds": ["fdb2667e-b84d-4444-881f-b1fb3e43bf41"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Equipag Architecture, maître d'œuvre. companyRole préservé fidèlement."
+    },
+    {
+      "referenceId": "OPC_003-E27",
+      "status": "MATCHED",
+      "matchedProposalIds": ["6ed0624a-9c8a-44fd-9aa4-703a3f26a37c"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Bureau d'études Veritas, coordonnateur SPS. Détection et famille correctes, mais companyRole générique côté MemorIA (« partenaire ») au lieu du rôle spécifique « Coordonnateur SPS » de la référence — perte de granularité de rôle, pas une erreur de famille."
+    },
+    {
+      "referenceId": "OPC_003-E28",
+      "status": "MATCHED",
+      "matchedProposalIds": ["a92a555e-a6d9-4f7d-a6ad-4b6a6ad0a34a"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Société DEKRA Inspection, contrôleur technique + S.S.I. Même schéma que Veritas : companyRole générique « partenaire » côté MemorIA au lieu de « Contrôleur technique + S.S.I »."
+    },
+    {
+      "referenceId": "OPC_003-E29",
+      "status": "MATCHED",
+      "matchedProposalIds": [
+        "19f9821d-48bd-4c1a-9a6b-581e385afbc2",
+        "59d4e760-f258-496a-a28c-8a97744d7579",
+        "ca526a87-ae4e-4b1d-ac28-c3a7da75928f",
+        "2d15f330-998c-42ab-93f9-b734a90ef1a9",
+        "98619c7c-ca43-46bb-9833-6882545130cf"
+      ],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Sur-fragmentation : la référence regroupe SHON, ERP, coût total et coûts par tranche en 1 élément ; MemorIA en fait 5 propositions distinctes (une par ligne du tableau). Contenu intégralement couvert."
+    },
+    {
+      "referenceId": "OPC_003-E30",
+      "status": "MATCHED",
+      "matchedProposalIds": ["edd97e12-b6b1-426f-a7de-296765d6d986"],
+      "referenceFamily": "deadline",
+      "memoriaFamily": "deadline",
+      "note": "Démarrage des travaux, octobre 2011. MemorIA encode dueDate=\"2011-10\" (granularité mois/année, pas de jour inventé) — comportement conforme à la doctrine anti-fabrication, contrairement au cas LRM_01 où un jour calendaire avait été fabriqué pour une date similaire."
+    },
+    {
+      "referenceId": "OPC_003-E31",
+      "status": "MATCHED",
+      "matchedProposalIds": ["39c635b6-7f7f-4ec6-8d21-ffb1f98a209c"],
+      "referenceFamily": "deadline",
+      "memoriaFamily": "deadline",
+      "note": "Livraison de l'opération, avril 2013. MemorIA encode dueDate=\"2013-04\" (mois/année, aucun jour fabriqué)."
+    },
+    {
+      "referenceId": "OPC_003-E32",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Visa de l'opérateur économique (formalité de consultation, page 10) : aucune proposition MemorIA."
+    }
+  ],
+  "unmatchedProposals": [],
+  "recallByFamily": {
+    "person": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "company": { "matched": 4, "partial": 0, "missed": 0, "total": 4, "recallScore": 1.0 },
+    "deadline": { "matched": 2, "partial": 0, "missed": 0, "total": 2, "recallScore": 1.0 },
+    "decision": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "action": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "observation": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "reservation": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "knowledge_fact": { "matched": 4, "partial": 0, "missed": 22, "total": 26, "recallScore": 0.154 }
+  },
+  "precisionByFamily": {
+    "person": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "company": { "truePositive": 4, "falsePositive": 0, "legitimateExtra": 0, "total": 4, "precisionScore": 1.0 },
+    "deadline": { "truePositive": 2, "falsePositive": 0, "legitimateExtra": 0, "total": 2, "precisionScore": 1.0 },
+    "decision": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "action": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "observation": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "reservation": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "knowledge_fact": { "truePositive": 11, "falsePositive": 0, "legitimateExtra": 0, "total": 11, "precisionScore": 1.0 }
+  },
+  "overallNotes": [
+    "10/32 éléments de référence MATCHED, 0 PARTIAL, 22 MISSED, 0 MISCLASSIFIED. Recall global = 31,25 %, le plus bas mesuré sur le corpus qualifié à ce jour.",
+    "Cause dominante et unique du recall bas : une lacune de couverture par page, pas une erreur de classification. Les 17 propositions MemorIA proviennent exclusivement des pages 3 et 10 du PDF (10 pages au total) ; les pages 1, 2 et 4 à 9 n'ont produit aucune proposition. Cela correspond exactement au bloc des 19 obligations contractuelles génériques du titulaire OPC (E06 à E24, classées knowledge_fact/permanent_instruction par la référence) plus l'objet du marché (E01, E02, page 1) et la clause de visa (E32, page 10 mais en fin de document après le bloc chiffré).",
+    "Précision excellente sur le périmètre effectivement traité : 17/17 propositions MemorIA correspondent à un élément réel de la référence (0 faux positif, 0 legitimate_extra, 0 donnée fabriquée). unmatchedProposals est vide.",
+    "Point positif de classification métier : sur les pages traitées, aucune clause contractuelle générique n'a été forcée en action ou decision — le risque spécifique signalé pour ce document (confondre une obligation contractuelle du CCTP avec un fait d'avancement réel de chantier) ne s'est pas matérialisé sur le contenu extrait. Mais ce résultat doit être lu avec prudence : MemorIA n'a pas mal classé les clauses des pages 4-9, il ne les a simplement pas vues du tout — le test de discrimination knowledge_fact/permanent_instruction vs action/decision n'a donc été réellement exercé que sur une fraction du document (pages 3 et 10).",
+    "Sur-fragmentation confirmée sur le contenu traité : E04 (tranche ferme, 1 élément de référence) éclaté en 4 propositions ; E29 (SHON/ERP/coûts, 1 élément) éclaté en 5 propositions. Aucune perte de contenu dans les deux cas, cohérent avec le biais déjà documenté sur les autres CCTP du corpus.",
+    "Fidélité des dates : contrairement au faux positif observé sur LRM_01 (jour calendaire fabriqué), les deux échéances de ce document (démarrage travaux, livraison) sont encodées par MemorIA avec la granularité mois/année exacte de la source (\"2011-10\", \"2013-04\"), sans jour inventé — comportement conforme à la doctrine anti-faits-fictifs.",
+    "Perte de granularité sur companyRole : Veritas (Coordonnateur SPS) et DEKRA (Contrôleur technique + S.S.I) sont tous deux classés avec le rôle générique « partenaire » côté MemorIA au lieu de leur rôle métier spécifique donné par la référence. La famille (company) reste correcte, ce n'est pas une erreur de classification, mais une perte d'information utile pour distinguer les intervenants entre eux.",
+    "Écart de libellé mineur sans impact : « MAIRIE DE MAROMME » (MemorIA) vs « VILLE DE MAROMME » (référence, dénomination exacte du CCTP) désignent la même entité maître d'ouvrage.",
+    "Photos : 1 photo côté référence (logo institutionnel décoratif, page 1, role=decorative, non prioritaire), 0 evidence image côté MemorIA (17 evidence, toutes text_excerpt, proposalEvidenceLinks vide). Cohérent : le logo est explicitement jugé non probatoire par la référence elle-même, aucune perte de contenu substantiel.",
+    "Familles person, decision, action, observation, reservation : absentes des deux côtés (0 dans la référence, 0 dans MemorIA), cohérent avec la nature du document (CCTP de consultation antérieur à la désignation du titulaire OPC, aucune personne physique nommée, aucune décision ni action datée)."
+  ]
+}

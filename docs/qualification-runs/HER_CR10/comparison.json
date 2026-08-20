@@ -1,0 +1,77 @@
+{
+  "corpusId": "HER_CR10",
+  "referenceElementCount": 4,
+  "memoriaProposalCount": 4,
+  "methodologyNote": "Document très court (4 éléments de référence, 4 propositions MemorIA). Un élément de référence dont le contenu est capturé mot pour mot par une proposition MemorIA mais rangé dans une famille différente est marqué MISCLASSIFIED : il ne compte pas comme MATCHED pour le recall de sa famille de référence, et la proposition correspondante compte au dénominateur de precision de la famille où MemorIA l'a rangée sans compter au numérateur (erreur de classification, pas un FALSE_POSITIVE de contenu).",
+  "elementMatches": [
+    {
+      "referenceElementId": "HER_CR10-E01",
+      "referenceFamily": "observation",
+      "verdict": "MISCLASSIFIED",
+      "matchedProposalIds": ["35754d0a-a597-4f5d-a767-2494cf210281"],
+      "matchedProposalFamily": "knowledge_fact",
+      "note": "« La pose des bordures de la phase n°1 a débuté et se prolongera la semaine prochaine. » — source_excerpt identique mot pour mot à la référence. La référence classe ce constat en observation car il s'agit d'un avancement daté au jour du CR sans échéance chiffrée ('la semaine prochaine' reste relatif, volontairement non converti en date). MemorIA le range en knowledge_fact (avec thematic_category='progress', document_status='in_progress'), un statut plus proche d'un fait général/permanent que d'un constat d'avancement ponctuel."
+    },
+    {
+      "referenceElementId": "HER_CR10-E02",
+      "referenceFamily": "decision",
+      "verdict": "MATCHED",
+      "matchedProposalIds": ["aff2ad52-d867-4cf9-addb-4e66a1b03083"],
+      "matchedProposalFamily": "decision",
+      "note": "Déplacement du jardin botanique vers le terre-plein de la salle du Clos, validé sous condition — source_excerpt identique à la référence (texte complet, y compris la clause 'sous réserve de la présentation du nouveau plan corrigé'). Le champ description de MemorIA est un résumé plus court qui omet cette clause, mais l'excerpt source la conserve intégralement : pas de perte de contenu, juste une synthèse plus courte dans le champ structuré."
+    },
+    {
+      "referenceElementId": "HER_CR10-E03",
+      "referenceFamily": "action",
+      "verdict": "MISCLASSIFIED",
+      "matchedProposalIds": ["ac909cc9-f966-4c96-badd-4d30c0ac1fda"],
+      "matchedProposalFamily": "reservation",
+      "note": "« sous réserve de la présentation du nouveau plan corrigé par l'architecte » — source_excerpt identique à la référence. La référence classe ce passage en action (tâche implicite : l'architecte doit remettre un plan corrigé, responsable='architecte', deadlineDate=null car aucune date n'est donnée) et explique explicitement dans la classificationNote de E02 pourquoi le mot 'réserve' ici n'est PAS une réserve technique de réception de travaux. MemorIA range pourtant cette même phrase en famille reservation — exactement la confusion que la lecture de référence avait anticipée et écartée. Contenu fidèle, aucune date ni responsable inventé, mais frontière de famille franchie dans le sens inverse de la doctrine attendue."
+    },
+    {
+      "referenceElementId": "HER_CR10-E04",
+      "referenceFamily": "person",
+      "verdict": "MATCHED",
+      "matchedProposalIds": ["e6c1d797-4abf-4e12-b0c7-7e5b194827d0"],
+      "matchedProposalFamily": "person",
+      "note": "Sylvie Bouchet Bellecourt, Madame le Maire, signataire du CR — source_excerpt identique, companyRole/description cohérents avec la référence ('Madame le Maire')."
+    }
+  ],
+  "unmatchedProposals": [],
+  "recallByFamily": {
+    "person": { "referenceTotal": 1, "matched": 1, "partial": 0, "misclassified": 0, "missed": 0, "recall": 1.0 },
+    "company": { "referenceTotal": 0, "matched": 0, "partial": 0, "misclassified": 0, "missed": 0, "recall": null, "note": "Aucune entreprise ni cabinet nommé dans le document (seul le rôle générique 'architecte' est cité, sans nom propre) — absence confirmée côté référence ET côté MemorIA (0 proposition company)." },
+    "knowledge_fact": { "referenceTotal": 0, "matched": 0, "partial": 0, "misclassified": 0, "missed": 0, "recall": null, "note": "Aucun fait général/récurrent distinct des deux points métier (E01, E02) côté référence. MemorIA a néanmoins produit 1 proposition knowledge_fact, qui est en réalité E01 mal classé (cf. elementMatches)." },
+    "deadline": { "referenceTotal": 0, "matched": 0, "partial": 0, "misclassified": 0, "missed": 0, "recall": null, "note": "Aucune date précise dans le document ('la semaine prochaine' est relatif, volontairement non transformé en date par la référence). MemorIA n'a produit aucune proposition deadline non plus — cohérence confirmée, pas de fabrication de date." },
+    "decision": { "referenceTotal": 1, "matched": 1, "partial": 0, "misclassified": 0, "missed": 0, "recall": 1.0 },
+    "action": { "referenceTotal": 1, "matched": 0, "partial": 0, "misclassified": 1, "missed": 0, "recall": 0.0 },
+    "observation": { "referenceTotal": 1, "matched": 0, "partial": 0, "misclassified": 1, "missed": 0, "recall": 0.0 },
+    "reservation": { "referenceTotal": 0, "matched": 0, "partial": 0, "misclassified": 0, "missed": 0, "recall": null, "note": "Le mot 'réserve' apparaît une fois dans le texte mais désigne une condition de validation d'un principe d'aménagement, pas une réserve technique de chantier — la référence l'exclut donc explicitement de cette famille. MemorIA y range pourtant 1 proposition (E03 mal classé, cf. elementMatches)." },
+    "overall": { "referenceTotal": 4, "matched": 2, "partial": 0, "misclassified": 2, "missed": 0, "recall": 0.5 }
+  },
+  "precisionByFamily": {
+    "person": { "totalProposals": 1, "truePositives": 1, "misclassifiedFromOtherFamily": 0, "falsePositives": 0, "legitimateExtra": 0, "denominator": 1, "precision": 1.0 },
+    "company": { "totalProposals": 0, "truePositives": 0, "misclassifiedFromOtherFamily": 0, "falsePositives": 0, "legitimateExtra": 0, "denominator": 0, "precision": null },
+    "knowledge_fact": { "totalProposals": 1, "truePositives": 0, "misclassifiedFromOtherFamily": 1, "falsePositives": 0, "legitimateExtra": 0, "denominator": 1, "precision": 0.0, "note": "L'unique proposition knowledge_fact est le contenu réel de E01 (observation attendue), aucune fabrication — mais mauvaise famille, donc 0 vrai positif dans ce panier." },
+    "deadline": { "totalProposals": 0, "truePositives": 0, "misclassifiedFromOtherFamily": 0, "falsePositives": 0, "legitimateExtra": 0, "denominator": 0, "precision": null },
+    "decision": { "totalProposals": 1, "truePositives": 1, "misclassifiedFromOtherFamily": 0, "falsePositives": 0, "legitimateExtra": 0, "denominator": 1, "precision": 1.0 },
+    "action": { "totalProposals": 0, "truePositives": 0, "misclassifiedFromOtherFamily": 0, "falsePositives": 0, "legitimateExtra": 0, "denominator": 0, "precision": null, "note": "MemorIA n'a produit aucune proposition action sur ce document, alors que la référence en attendait une (E03) — la proposition correspondante a été rangée en reservation à la place." },
+    "observation": { "totalProposals": 0, "truePositives": 0, "misclassifiedFromOtherFamily": 0, "falsePositives": 0, "legitimateExtra": 0, "denominator": 0, "precision": null, "note": "MemorIA n'a produit aucune proposition observation sur ce document, alors que la référence en attendait une (E01) — la proposition correspondante a été rangée en knowledge_fact à la place." },
+    "reservation": { "totalProposals": 1, "truePositives": 0, "misclassifiedFromOtherFamily": 1, "falsePositives": 0, "legitimateExtra": 0, "denominator": 1, "precision": 0.0, "note": "L'unique proposition reservation est le contenu réel de E03 (action attendue), aucune fabrication — mais mauvaise famille, donc 0 vrai positif dans ce panier." },
+    "overall": { "totalProposals": 4, "truePositives": 2, "misclassifiedFromOtherFamily": 2, "falsePositives": 0, "legitimateExtra": 0, "denominator": 4, "precision": 0.5, "note": "0 hallucination sur les 4 propositions (tous les source_excerpt sont identiques mot pour mot à la référence) ; la precision de classification (2/4) est pénalisée uniquement par les 2 mêmes inversions de famille comptées dans le recall (E01, E03), pas par du contenu inventé." }
+  },
+  "evidenceComparison": {
+    "referencePhotoCount": 0,
+    "memoriaImageEvidenceCount": 0,
+    "note": "0 photo des deux côtés. Les 4 evidence de memoria-output.json sont toutes evidence_type='text_excerpt' ; proposalEvidenceLinks ne contient qu'1 lien (E03/reservation → son propre excerpt). Cohérent avec readerNotes de la référence : document texte dactylographié sans image."
+  },
+  "overallNotes": [
+    "Document très court (4 éléments de référence, 4 propositions MemorIA, 1 seule page) : chaque écart pèse 25 % du score, à interpréter avec prudence statistique plutôt que comme une tendance robuste.",
+    "0 MISSED, 0 PARTIAL, 0 élément non couvert : les 4 faits réels du document sont systématiquement retrouvés par MemorIA. L'écart porte entièrement sur la classification de famille (2 MISCLASSIFIED sur 4, recall global 50 %), jamais sur la détection ou la fidélité du contenu.",
+    "Aucune donnée fabriquée détectée : les 4 source_excerpt de MemorIA sont identiques mot pour mot aux excerpts de la référence humaine. Precision de contenu (absence d'hallucination) = 100 % ; precision de classification = 50 %, ce sont deux mesures distinctes qui ne doivent pas être confondues (cf. dimension 2 vs dimension 3 de la méthodologie).",
+    "Cas E03 particulièrement significatif pour la doctrine du projet : la lecture de référence anticipe et documente explicitement (classificationNote de E02) pourquoi la clause 'sous réserve de...' ne doit pas être classée en famille reservation (ce n'est pas une réserve technique de réception de travaux, mais une condition de validation assortie d'une tâche implicite pour l'architecte). MemorIA commet malgré tout cette confusion précise sur la proposition correspondante — même biais famille observé ailleurs dans le corpus (VRD_002 knowledge_fact→action, IND_002 knowledge_fact→observation, JAR_01 action→observation et decision→knowledge_fact) mais ici dans le sens contraire (action attendue → reservation produite).",
+    "Cas E01 : constat d'avancement daté sans échéance chiffrée ('la semaine prochaine'), classé observation en référence pour éviter d'inventer une date, mais classé knowledge_fact par MemorIA avec un champ structuré document_status='in_progress'. Le champ structuré reste honnête (pas de date fabriquée, statut cohérent avec le texte), mais la famille choisie efface la distinction entre un constat d'avancement ponctuel (observation) et un fait général (knowledge_fact).",
+    "Familles absentes des deux côtés et cohérentes : company (aucune entreprise/cabinet nommé, seulement le rôle générique 'architecte'), deadline au sens strict (aucune date précise dans le texte, ni côté référence ni côté MemorIA — aucune fabrication de date contrairement à d'autres documents du corpus, ex. LRM_01 deadline-startdate-p1 ou JAR_01 E48).",
+    "0 photo des deux côtés — cohérent avec un CR d'une page, texte dactylographié uniquement, sans image."
+  ]
+}

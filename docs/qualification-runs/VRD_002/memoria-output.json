@@ -1,0 +1,1037 @@
+{
+  "corpusId": "VRD_002",
+  "documentId": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+  "extractionRunId": "9b8b5255-266b-44ce-b267-41e7985df386",
+  "proposals": [
+    {
+      "id": "3c544975-6f61-42cc-89ed-950d2db18840",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "company",
+      "stable_key": "comp-hines",
+      "label": "Hines",
+      "description": "Société de promotion immobilière tenant le rôle de maîtrise d'ouvrage déléguée.",
+      "source_page": 5,
+      "source_excerpt": "C'est la société Hines qui tient ce rôle",
+      "source_payload": {
+        "companyRole": "AMO",
+        "relevanceScore": "strong",
+        "relevanceReason": "Identifie la société de maîtrise d'ouvrage déléguée du projet."
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "ad7c1588-8f33-45a1-b7eb-2c7c3d6a6db2",
+      "document_status": null
+    },
+    {
+      "id": "b72a691a-cc26-486a-acae-8da2d2b36e61",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-project-scope-p4",
+      "label": "Projet New Side : 19000m2 pour un coût d'environ 40 millions d'euros",
+      "description": "Le projet New Side, initié par Gecina, concerne 19000m2 de bureaux pour un coût d'environ 40 millions d'euros.",
+      "source_page": 4,
+      "source_excerpt": "projet de New Side de 19000m2 pour un coût d'environ 40 millions d'euros",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "general_knowledge"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": "general_knowledge",
+      "subject_thread_id": "588d8714-1e07-4c50-9df1-12b773ee7eaf",
+      "document_status": null
+    },
+    {
+      "id": "907a7bad-817e-4078-ab1c-3aafda99d986",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-bureau-temoin-p12",
+      "label": "Bureau en blanc témoin avec toilettes et palier réalisé",
+      "description": "Un bureau en blanc témoin, incluant ses toilettes et son palier, a été réalisé et visité.",
+      "source_page": 12,
+      "source_excerpt": "nous avons pu en effet pénétrer dans un bureau en blanc témoin avec ses toilettes et son palier.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "progress"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "c7fb7fea-4acf-4469-9f0f-d0a220ab8fef",
+      "document_status": null
+    },
+    {
+      "id": "c1c90e01-04cc-472b-b323-53cb532f6d19",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "action",
+      "stable_key": "act-opc-calendrier-p8",
+      "label": "OPC doit établir le calendrier général de synthèse",
+      "description": "L'OPC est chargé d'établir le calendrier général de synthèse, basé sur le calendrier détaillé de structure et les circuits des documents en phase 'synthèse'.",
+      "source_page": 8,
+      "source_excerpt": "L’OPC établit le calendrier général de synthèse réalisé à partir du calendrier détaillé de structure et des circuits des documents en phase « synthèse ».",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "OPC",
+        "thematic_category": "administrative"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": "administrative",
+      "subject_thread_id": "7e36013f-a8b2-42ee-a304-b153065a0661",
+      "document_status": null
+    },
+    {
+      "id": "bd97b795-06da-423d-9562-cfc4f9492ecd",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-proto-duration-p12",
+      "label": "Validation du prototype de façade a pris deux à trois mois",
+      "description": "La validation du prototype de façade sur ce chantier a nécessité une durée de deux à trois mois.",
+      "source_page": 12,
+      "source_excerpt": "Ici, la validation du prototype de façade a pris deux à trois mois.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "progress"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "cd44fa02-42b7-45fe-8724-7f2652abec56",
+      "document_status": null
+    },
+    {
+      "id": "4b5e09df-a0d6-4257-ab6c-57c8f0a9234a",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-marche-corps-etat-p5",
+      "label": "Marché du projet New Side en corps d'état séparés avec 19 entreprises",
+      "description": "Le marché du projet New Side est organisé en corps d'état séparés, impliquant 19 entreprises.",
+      "source_page": 5,
+      "source_excerpt": "Le marché de ce projet est en corps d'état séparés avec 19 entreprises",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "administrative"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": "administrative",
+      "subject_thread_id": "7e4bd8d7-9554-4548-9056-7f6348fe6ec3",
+      "document_status": null
+    },
+    {
+      "id": "3b77e25b-e7c7-4066-9b64-557cf1708d0a",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "action",
+      "stable_key": "act-arch-fiches-p13",
+      "label": "Architecte doit réaliser des fiches de visites architecturales (environ deux par semaine)",
+      "description": "L'architecte a pour rôle le suivi de chantier et doit réaliser des fiches de visites architecturales à un rythme soutenu, environ deux par semaine.",
+      "source_page": 13,
+      "source_excerpt": "L’architecte a pour rôle le suivi de chantier, il doit réaliser des fiches de visites architecturales a un rythme soutenu ( environ deux par semaine ).",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "Architecte",
+        "thematic_category": "administrative"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": "administrative",
+      "subject_thread_id": "58b3e772-6553-4490-9413-7e654d24b75a",
+      "document_status": null
+    },
+    {
+      "id": "af54b5b2-2e40-4a8f-b8bc-4a6df66bfb69",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-go-reseaux-p13",
+      "label": "Gros œuvre béton monte les étages supérieurs, réseaux s'activent dans les inférieurs achevés",
+      "description": "Sur le chantier, le gros œuvre béton progresse sur les étages supérieurs tandis que les lots fluides et réseaux sont déjà actifs dans les étages inférieurs achevés.",
+      "source_page": 13,
+      "source_excerpt": "alors que le gros oeuvre béton continu de monter les étages supérieurs, les réseaux s’activent déjà dans les étages inférieurs achevés.",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "thematic_category": "progress"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "973f7c71-27e7-4864-b6d6-32f56590fbc5",
+      "document_status": null
+    },
+    {
+      "id": "42fd1721-e9a6-4be4-8b94-e494969aade4",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "action",
+      "stable_key": "act-arch-os-p13",
+      "label": "Architecte mandaté pour établir un ordre de service suite à modifications validées par la MO",
+      "description": "Suite aux modifications contrôlées au niveau du coût et validées par la Maîtrise d'Ouvrage (MO), l'architecte est mandaté pour établir un ordre de service.",
+      "source_page": 13,
+      "source_excerpt": "Ces modifications doit être contrôlée au niveau du cout et validées par la MO, l’architecte est alors mandaté pour établir un ordre de service",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "Architecte",
+        "thematic_category": "administrative"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": "administrative",
+      "subject_thread_id": "94fde118-5b2f-4960-b97f-1aca5f1fd6dc",
+      "document_status": null
+    },
+    {
+      "id": "a5c4b5e4-6b4a-4e7d-a0d8-d589849e860c",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-fluides-cloisons-p13",
+      "label": "Travail des lots fluides et réseaux visible avant fin des cloisons et murs",
+      "description": "Sur le chantier, le travail des lots fluides et réseaux est visible alors que les cloisons et autres murs ne sont pas encore terminés.",
+      "source_page": 13,
+      "source_excerpt": "nous avons en effet pu voir le travail des lots fluides et réseaux alors que des cloisons et autres murs n’étaient pas encore finis.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "progress"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "0eb42700-b339-43e7-b6f9-afdd0410a79c",
+      "document_status": null
+    },
+    {
+      "id": "8368bd51-8345-4024-bddb-c127c01fb7f0",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-proto-facade-p12",
+      "label": "Prototype de façade pour vitrage et bardage",
+      "description": "Le prototype de façade a été utilisé pour proposer différents traitements ou éléments au maître d'ouvrage, notamment pour le vitrage et le bardage.",
+      "source_page": 12,
+      "source_excerpt": "Le prototype permet de proposer différents traitements ou éléments au maitre d’ouvrage ( ici vitrage et bardage).",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "test_control"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": "test_control",
+      "subject_thread_id": "ff9abc6c-c1ec-464f-9b5a-39cf75851da7",
+      "document_status": null
+    },
+    {
+      "id": "f777bcc7-2106-454a-8d30-936b392fbd5e",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "action",
+      "stable_key": "act-arch-photo-p13",
+      "label": "Architecte réalise un reportage photo (problèmes, entreprises, date) et le transmet à l'entreprise concernée",
+      "description": "L'architecte réalise un reportage photo documentant les problèmes, les entreprises impliquées et la date, puis le transmet à l'entreprise concernée.",
+      "source_page": 13,
+      "source_excerpt": "Il réalise un reportage photo avec nom des entreprises, description des problèmes, et date qui est ensuite transmis à l’entreprise concernée.",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "Architecte",
+        "thematic_category": "administrative"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": "administrative",
+      "subject_thread_id": "1ab27098-d054-4f7d-ab4d-7e726dc7b854",
+      "document_status": null
+    },
+    {
+      "id": "6dd85af3-f98c-4bab-a9d0-089e3ffd6fbc",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-mission-anticipee-p12",
+      "label": "Corps d'états ont eu une mission anticipée pour le témoin",
+      "description": "En raison de la singularité du témoin (ensemble fini dans une enveloppe inachevée), des corps d'états ont eu une mission anticipée.",
+      "source_page": 12,
+      "source_excerpt": "L’ensemble des corps d’états qui ,pour certains, ne devaient pas intervenir avant plusieurs mois, se sont vu donner une mission anticipée.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "administrative"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": "administrative",
+      "subject_thread_id": "65566664-43f2-455a-8e59-aca38875ac24",
+      "document_status": null
+    },
+    {
+      "id": "3ecf4752-11c5-4ebf-a8f7-908eebff9a08",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "company",
+      "stable_key": "comp-valode-pistre",
+      "label": "Valode et Pistre",
+      "description": "Agence d'architecture ayant élaboré le projet New Side et assurant la mission de direction d'exécution des travaux (DET).",
+      "source_page": 4,
+      "source_excerpt": "Le projet a été élaboré par l'agence Valode et Pistre",
+      "source_payload": {
+        "companyRole": "maître d'œuvre",
+        "relevanceScore": "strong",
+        "relevanceReason": "Identifie l'agence d'architecture et maître d'œuvre du projet."
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "6c16c51c-b2de-48a1-893f-7fd1bcb7c13e",
+      "document_status": null
+    },
+    {
+      "id": "34c99f82-81d8-4207-84b6-cfcd9b557fa7",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "company",
+      "stable_key": "comp-gecina",
+      "label": "Gecina",
+      "description": "Maîtrise d'ouvrage du projet New Side Garenne – Colombes",
+      "source_page": 4,
+      "source_excerpt": "la maitrise d'ouvrage était dirigée par Gecina",
+      "source_payload": {
+        "companyRole": "maître d'ouvrage",
+        "relevanceScore": "strong",
+        "relevanceReason": "Identifie l'acteur principal (maître d'ouvrage) du projet."
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "255198e3-2460-4d9f-a2f5-c000ab3685d4",
+      "document_status": null
+    },
+    {
+      "id": "3cb4271d-3299-4112-897c-736b27cc2c12",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-architect-det-p5",
+      "label": "Architecte (Valode et Pistre) assure la mission de direction d'exécution des travaux (DET)",
+      "description": "Dans le projet New Side, l'architecte (Valode et Pistre) a la mission de direction d'exécution des travaux (DET).",
+      "source_page": 5,
+      "source_excerpt": "il peut également avoir la mission de direction d'exécution des travaux (DET), ce qui est le cas ici dans le projet New Side.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "administrative"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": "administrative",
+      "subject_thread_id": "7cac79f4-9363-456d-aa0c-b9c3b63f913f",
+      "document_status": null
+    },
+    {
+      "id": "bd7099a9-f929-4daa-b97c-01265134b9ee",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-temoins-grands-p12",
+      "label": "Témoins du projet New Side plus grands que des témoins classiques (niveau quasi complet)",
+      "description": "Les témoins du projet New Side sont plus grands que les témoins classiques, avec un niveau quasi complet réalisé en tant que témoin.",
+      "source_page": 12,
+      "source_excerpt": "les témoins du projet New Side était plus grand que des témoins classiques. En effet, un niveau quasi complet a été réalisé en tant que témoin.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "general_knowledge"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": "general_knowledge",
+      "subject_thread_id": "dd6f163c-1293-4b4e-b0d8-4be5a12c7d21",
+      "document_status": null
+    },
+    {
+      "id": "ff7438ee-2f3c-44ae-81ce-ec9408f570b8",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-synth-60pc-p9",
+      "label": "Synthèse représente environ 60% du temps de la première année de chantier",
+      "description": "Selon l'architecte du chantier observé, la phase de synthèse (toutes tâches et documents produits) représente environ 60% du temps de la première année du chantier.",
+      "source_page": 9,
+      "source_excerpt": "D’après l’architecte du chantier observé, la synthèse (toutes tâches et documents produits) représente environ 60% du temps de la première année de chantier.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "general_knowledge"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": "general_knowledge",
+      "subject_thread_id": "a1598228-a427-4f27-8d17-e46f474fed0d",
+      "document_status": null
+    },
+    {
+      "id": "d1a73b5f-dc96-43b8-9014-84ac8109cce2",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "target_site_id": null,
+      "proposal_family": "action",
+      "stable_key": "act-moe-plans-p6",
+      "label": "MOE doit produire une liste prévisionnelle de plans pour lancer la production des PEOP",
+      "description": "La Maîtrise d'Œuvre (MOE) doit établir une liste prévisionnelle de plans afin de démarrer la production des Plans d’Exécution des Ouvrages Préalables (PEOP).",
+      "source_page": 6,
+      "source_excerpt": "la MOE doit produire une liste prévisionnelle de plans afin de lancer la production des plans d’exécution des ouvrages préalables (PEOP).",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "MOE",
+        "thematic_category": "administrative"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T01:29:49.161342+00:00",
+      "thematic_category": "administrative",
+      "subject_thread_id": "63c36c0e-510f-431d-add9-0568be0c77a6",
+      "document_status": null
+    }
+  ],
+  "evidence": [
+    {
+      "id": "4d4cfe38-80eb-4957-92b1-3b95b3ffb799",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "la maitrise d'ouvrage était dirigée par Gecina"
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "0479fbce-6157-4e2a-ad61-dab0349599f5",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Le projet a été élaboré par l'agence Valode et Pistre"
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "01f5e064-a86c-4ffe-8292-f70f40158aaa",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 5,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "C'est la société Hines qui tient ce rôle"
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "1d722b63-c00a-4d90-bd97-35451a9b55ea",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "projet de New Side de 19000m2 pour un coût d'environ 40 millions d'euros"
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "a489e1fc-5cb5-44d1-a8f3-b55c288a2787",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 5,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "il peut également avoir la mission de direction d'exécution des travaux (DET), ce qui est le cas ici dans le projet New Side."
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "8b2ab590-ff6b-445b-a97d-692b8074487e",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 5,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Le marché de ce projet est en corps d'état séparés avec 19 entreprises"
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "fe2022f2-51ba-456c-98ac-f64523922f5c",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 6,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "la MOE doit produire une liste prévisionnelle de plans afin de lancer la production des plans d’exécution des ouvrages préalables (PEOP)."
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "b8a20e59-181f-4e7c-bb57-6ebdd2271d8f",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 8,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "L’OPC établit le calendrier général de synthèse réalisé à partir du calendrier détaillé de structure et des circuits des documents en phase « synthèse »."
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "39a4f8ba-de43-4c0c-b3fc-f61a16169321",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 9,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "D’après l’architecte du chantier observé, la synthèse (toutes tâches et documents produits) représente environ 60% du temps de la première année de chantier."
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "ec093fcb-d93c-4e95-bfda-523d8b42cd74",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "page_snapshot",
+      "source_page": 11,
+      "storage_path": null,
+      "caption": "Diagramme de phasage type d'un projet architectural.",
+      "nearby_text": null,
+      "metadata": null,
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "f39e8483-dd38-4b48-b6ff-60c4e51477d0",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 12,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Le prototype permet de proposer différents traitements ou éléments au maitre d’ouvrage ( ici vitrage et bardage)."
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "bf763377-24f4-4465-925e-25379c89c35f",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 12,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Ici, la validation du prototype de façade a pris deux à trois mois."
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "82b6b312-78e9-4be2-aa1f-5babb7a538e5",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 12,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "nous avons pu en effet pénétrer dans un bureau en blanc témoin avec ses toilettes et son palier."
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "15f5a7fc-5c06-4286-bc1b-4231ceb30a8d",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 12,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "les témoins du projet New Side était plus grand que des témoins classiques. En effet, un niveau quasi complet a été réalisé en tant que témoin."
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "2fb23d1c-8c60-4224-aa9f-1eb2e2945a47",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 12,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "L’ensemble des corps d’états qui ,pour certains, ne devaient pas intervenir avant plusieurs mois, se sont vu donner une mission anticipée."
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "0970ce07-4946-48cd-bf27-54147ef5e443",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 13,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "alors que le gros oeuvre béton continu de monter les étages supérieurs, les réseaux s’activent déjà dans les étages inférieurs achevés."
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "39096905-afd5-49e4-9fc3-b2cb5f122bac",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 13,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "nous avons en effet pu voir le travail des lots fluides et réseaux alors que des cloisons et autres murs n’étaient pas encore finis."
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "0b7430e4-dfff-4227-a49d-aa738d31fe66",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 13,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "L’architecte a pour rôle le suivi de chantier, il doit réaliser des fiches de visites architecturales a un rythme soutenu ( environ deux par semaine )."
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "76999c58-e95a-4e9d-a7a8-1fde8d090a5b",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 13,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Il réalise un reportage photo avec nom des entreprises, description des problèmes, et date qui est ensuite transmis à l’entreprise concernée."
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "42710310-7ffb-4b34-9fc6-06029e715211",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "text_excerpt",
+      "source_page": 13,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Ces modifications doit être contrôlée au niveau du cout et validées par la MO, l’architecte est alors mandaté pour établir un ordre de service"
+      },
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "225935f0-ae04-4cd4-a09b-63803669a2cf",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "page_snapshot",
+      "source_page": 14,
+      "storage_path": null,
+      "caption": "Diagramme des phases et processus d'un projet de construction.",
+      "nearby_text": null,
+      "metadata": null,
+      "created_at": "2026-08-20T01:29:48.823798+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "eec80586-19f6-42af-8771-70592c58a459",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "image",
+      "source_page": 1,
+      "storage_path": "snapshots/ff3b4749-e31d-407d-8433-92d860cdcbd8/img-p1-1.png",
+      "caption": "Préparation",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          36,
+          327.40185546875,
+          558.9571533203125,
+          677.4805908203125
+        ],
+        "nativeWidth": 968,
+        "nativeHeight": 648
+      },
+      "created_at": "2026-08-20T01:29:50.962115+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "491dda5f-b223-4a6f-925e-f7bb3d379a2d",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "image",
+      "source_page": 4,
+      "storage_path": "snapshots/ff3b4749-e31d-407d-8433-92d860cdcbd8/img-p4-1.png",
+      "caption": "Projet",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          116.220458984375,
+          308.9766845703125,
+          495.39666748046875,
+          532.9136962890625
+        ],
+        "nativeWidth": 850,
+        "nativeHeight": 502
+      },
+      "created_at": "2026-08-20T01:29:50.962115+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "fd64f94a-368b-457b-8bdb-4af1677d5250",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "image",
+      "source_page": 4,
+      "storage_path": "snapshots/ff3b4749-e31d-407d-8433-92d860cdcbd8/img-p4-2.png",
+      "caption": "Pro",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          114.80656433105469,
+          543.15380859375,
+          496.0240478515625,
+          792.6026611328125
+        ],
+        "nativeWidth": 460,
+        "nativeHeight": 301
+      },
+      "created_at": "2026-08-20T01:29:50.962115+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "0f5a44d1-ebe9-4ceb-bd9b-2d3b6e8f1f7f",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "image",
+      "source_page": 7,
+      "storage_path": "snapshots/ff3b4749-e31d-407d-8433-92d860cdcbd8/img-p7-1.png",
+      "caption": "Coordination",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          36,
+          595.1748046875,
+          177.05715942382812,
+          805.8898315429688
+        ],
+        "nativeWidth": 648,
+        "nativeHeight": 968
+      },
+      "created_at": "2026-08-20T01:29:50.962115+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "260a2282-0519-4830-9a8e-3d57be049da3",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "image",
+      "source_page": 7,
+      "storage_path": "snapshots/ff3b4749-e31d-407d-8433-92d860cdcbd8/img-p7-2.png",
+      "caption": "Coord",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          203.5148162841797,
+          593.5269775390625,
+          559.275634765625,
+          806.8187255859375
+        ],
+        "nativeWidth": 1977,
+        "nativeHeight": 1185
+      },
+      "created_at": "2026-08-20T01:29:50.962115+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "45775c76-63ee-4151-b64e-a75277146bd0",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "9b8b5255-266b-44ce-b267-41e7985df386",
+      "document_id": "ff3b4749-e31d-407d-8433-92d860cdcbd8",
+      "evidence_type": "image",
+      "source_page": 8,
+      "storage_path": "snapshots/ff3b4749-e31d-407d-8433-92d860cdcbd8/img-p8-1.png",
+      "caption": "Ré",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          81.02313232421875,
+          429.732666015625,
+          525.8267822265625,
+          727.4937744140625
+        ],
+        "nativeWidth": 968,
+        "nativeHeight": 648
+      },
+      "created_at": "2026-08-20T01:29:50.962115+00:00",
+      "pinned_for_visit": false
+    }
+  ],
+  "proposalEvidenceLinks": [
+    {
+      "proposal_id": "d1a73b5f-dc96-43b8-9014-84ac8109cce2",
+      "evidence_id": "fe2022f2-51ba-456c-98ac-f64523922f5c",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T01:29:49.478882+00:00"
+    },
+    {
+      "proposal_id": "c1c90e01-04cc-472b-b323-53cb532f6d19",
+      "evidence_id": "b8a20e59-181f-4e7c-bb57-6ebdd2271d8f",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T01:29:49.777936+00:00"
+    },
+    {
+      "proposal_id": "3b77e25b-e7c7-4066-9b64-557cf1708d0a",
+      "evidence_id": "0b7430e4-dfff-4227-a49d-aa738d31fe66",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T01:29:50.063462+00:00"
+    },
+    {
+      "proposal_id": "f777bcc7-2106-454a-8d30-936b392fbd5e",
+      "evidence_id": "76999c58-e95a-4e9d-a7a8-1fde8d090a5b",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T01:29:50.371858+00:00"
+    },
+    {
+      "proposal_id": "42fd1721-e9a6-4be4-8b94-e494969aade4",
+      "evidence_id": "42710310-7ffb-4b34-9fc6-06029e715211",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T01:29:50.658816+00:00"
+    }
+  ]
+}

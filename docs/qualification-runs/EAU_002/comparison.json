@@ -1,0 +1,207 @@
+{
+  "corpusId": "EAU_002",
+  "referenceElementCount": 19,
+  "memoriaProposalCount": 18,
+  "elementMatches": [
+    {
+      "referenceId": "EAU_002-E01",
+      "status": "MATCHED",
+      "matchedProposalIds": ["73f63d9a-ef5f-42f4-a82d-05231411375b"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. JEAN-ELIE Roger, gestionnaire de la SARL SOFATEC — identique, contexte historique conservé."
+    },
+    {
+      "referenceId": "EAU_002-E02",
+      "status": "MATCHED",
+      "matchedProposalIds": ["b34d3874-1c5f-4d79-82d0-a089078493e8"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "SARL SOFATEC — identique."
+    },
+    {
+      "referenceId": "EAU_002-E03",
+      "status": "PARTIAL",
+      "matchedProposalIds": ["a9e3c1d0-475e-46d8-8ec5-89fd2fad1d87"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "La référence regroupe 2 faits en 1 élément : le permis d'aménager (16/09/1999) ET la constitution de l'association syndicale de propriétaires. MemorIA (kf-permis-p1) ne capture que le premier fait comme knowledge_fact ; la constitution de l'association n'est reprise nulle part comme fait daté distinct (seule l'entité résultante 'association syndicale de propriétaires' est extraite ailleurs, sans référence à son acte de constitution). Aucune perte totale d'information sur l'entité, mais perte de l'événement historique lui-même."
+    },
+    {
+      "referenceId": "EAU_002-E04",
+      "status": "MATCHED",
+      "matchedProposalIds": ["36135bae-b1a9-461d-8c2b-c3fa14e5cf7c"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Association syndicale de propriétaires, représentée par M. Bernard PROUDHOM — identique."
+    },
+    {
+      "referenceId": "EAU_002-E05",
+      "status": "MATCHED",
+      "matchedProposalIds": ["f9ff9a31-cffc-429a-9eca-0f86b1198eda"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. Bernard PROUDHOM, président de l'association syndicale — identique."
+    },
+    {
+      "referenceId": "EAU_002-E06",
+      "status": "MATCHED",
+      "matchedProposalIds": ["06bd4a90-e6e3-4634-9c79-11320786aacc"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Communauté d'agglomération de l'Albigeois, service assainissement — identique."
+    },
+    {
+      "referenceId": "EAU_002-E07",
+      "status": "MATCHED",
+      "matchedProposalIds": ["53959487-4d33-4f6b-84fb-bbc64f66cce4"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. Pierre DOAT, vice-président délégué à l'hygiène et l'assainissement — identique."
+    },
+    {
+      "referenceId": "EAU_002-E08",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "« Ces ouvrages n'ont pas vocation à rester durablement du domaine privé... Ils constituent des biens de retour possible aux collectivités intéressées. » — principe juridique général motivant l'acte, aucune proposition MemorIA ne le couvre."
+    },
+    {
+      "referenceId": "EAU_002-E09",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "action",
+      "memoriaFamily": null,
+      "note": "« L'association syndicale des propriétaires invite la communauté d'agglomération... à participer à la réception des ouvrages » — aucune proposition, et la famille 'action' n'est utilisée nulle part ailleurs dans ce run (0 proposition action sur 18)."
+    },
+    {
+      "referenceId": "EAU_002-E10",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["05cf109c-122e-4acc-9b1c-5e1b96820a5e"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Réseau eaux usées (375 ml PVC Ø200/160, 12 regards, 10 branchements) — contenu identique au caractère près, mais classé knowledge_fact au lieu d'observation."
+    },
+    {
+      "referenceId": "EAU_002-E11",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["57b9fee4-81b4-4463-96cf-751e300db0a5"],
+      "referenceFamily": "observation",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Réseau eaux pluviales (370 ml multi-diamètres, 13 regards, 5 grilles avaloirs, 10 branchements) — contenu identique, même écart de famille que E10 (observation attendue, knowledge_fact obtenu)."
+    },
+    {
+      "referenceId": "EAU_002-E12",
+      "status": "MATCHED",
+      "matchedProposalIds": ["9cf4f571-ca12-4247-b9dc-74bfd2faf42a"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Restriction du périmètre de rétrocession aux parcelles ZN 393 et 703 — identique."
+    },
+    {
+      "referenceId": "EAU_002-E13",
+      "status": "MATCHED",
+      "matchedProposalIds": ["0337ce90-13d2-4be4-b4eb-9e216dc966dd"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Documents fournis (plan de récolement dwg, passage caméra EU/EP) — identique."
+    },
+    {
+      "referenceId": "EAU_002-E14",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["fb97336b-58c0-41d2-8102-8068d343d870"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Reconnaissance conjointe de la conformité et du bon entretien des ouvrages — c'est la décision centrale du PV de réception (constat contradictoire des deux parties), captée mot pour mot mais classée knowledge_fact au lieu de decision."
+    },
+    {
+      "referenceId": "EAU_002-E15",
+      "status": "MATCHED",
+      "matchedProposalIds": ["8ba25abf-891a-4e76-b399-04495981fd10"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "decision",
+      "note": "Acceptation de la remise des ouvrages par la communauté d'agglomération — identique, correctement classée decision."
+    },
+    {
+      "referenceId": "EAU_002-E16",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["d2cff1f9-0a71-44fb-89d2-43f519a25344"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Constat de la remise des ouvrages, conditionné à la délibération du conseil communautaire — contenu fidèle (aucune date fabriquée, la conditionnalité est respectée), mais classé knowledge_fact au lieu de decision."
+    },
+    {
+      "referenceId": "EAU_002-E17",
+      "status": "MATCHED",
+      "matchedProposalIds": ["17e694b1-b428-4ac9-b998-9f51ae875ec0"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "decision",
+      "note": "Transfert de la garde et de la responsabilité des ouvrages à la communauté d'agglomération — identique, correctement classée decision, conditionnalité (délibération) respectée sans date fabriquée."
+    },
+    {
+      "referenceId": "EAU_002-E18",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["ab0fa72a-df0f-49cd-a197-e6d5ecf2f47f"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "decision",
+      "note": "Seule réserve du document (juridique : maintien des clauses de garantie/responsabilité des entrepreneurs d'origine malgré la prise en charge de l'entretien par l'agglomération) — texte source repris à l'identique, mais classée decision. La famille 'reservation' n'est utilisée par MemorIA nulle part dans ce run (0/18) : sur un document dont la mission même est de vérifier des réserves de réception, la seule réserve réelle passe inaperçue en tant que telle."
+    },
+    {
+      "referenceId": "EAU_002-E19",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Cadre timbré de contrôle de légalité (envoyé/reçu/affiché en préfecture le 14/10/2019, ID 081-248100737-20191009-DEL2019_167-DE) — aucune proposition ni evidence ne couvre ce passage, alors qu'il rattache le PV à sa délibération d'origine (DEL2019_167)."
+    }
+  ],
+  "unmatchedProposals": [
+    {
+      "proposalId": "d8bc5a1a-e660-4203-b8b7-d5186276ad01",
+      "family": "knowledge_fact",
+      "label": "Lotissement Les Terrasses de la Croisille",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "« Lotissement : rue de l'Autan Les Terrasses de la Croisille » — en-tête du document (adresse/désignation), contenu réel non isolé comme élément propre par la référence Phase A (repris en creux dans E01/E03)."
+    },
+    {
+      "proposalId": "2d902f44-85ff-4013-964c-9224d037223b",
+      "family": "knowledge_fact",
+      "label": "Création de voirie interne (rue de l'Autan), réseau EU et EP",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "« A l'intérieur de cette opération d'aménagement une voirie interne dénommée rue de l'Autan, un réseau d'eaux usées et un réseau d'eaux pluviales ont été créés. » Vérifié dans le PDF source (page 1, 2e paragraphe du PREAMBULE, juste après la phrase captée par E03) : phrase réelle, non fabriquée, simplement non isolée par la référence Phase A comme élément propre."
+    }
+  ],
+  "recallByFamily": {
+    "person": { "matched": 3, "partial": 0, "missed": 0, "misclassified": 0, "total": 3, "recallScore": 1.0 },
+    "company": { "matched": 3, "partial": 0, "missed": 0, "misclassified": 0, "total": 3, "recallScore": 1.0 },
+    "knowledge_fact": { "matched": 2, "partial": 1, "missed": 2, "misclassified": 0, "total": 5, "recallScore": 0.5 },
+    "decision": { "matched": 2, "partial": 0, "missed": 0, "misclassified": 2, "total": 4, "recallScore": 0.5 },
+    "observation": { "matched": 0, "partial": 0, "missed": 0, "misclassified": 2, "total": 2, "recallScore": 0.0 },
+    "reservation": { "matched": 0, "partial": 0, "missed": 0, "misclassified": 1, "total": 1, "recallScore": 0.0 },
+    "action": { "matched": 0, "partial": 0, "missed": 1, "misclassified": 0, "total": 1, "recallScore": 0.0 },
+    "deadline": { "matched": 0, "partial": 0, "missed": 0, "misclassified": 0, "total": 0, "recallScore": null }
+  },
+  "precisionByFamily": {
+    "person": { "truePositive": 3, "falsePositive": 0, "legitimateExtra": 0, "total": 3, "precisionScore": 1.0 },
+    "company": { "truePositive": 3, "falsePositive": 0, "legitimateExtra": 0, "total": 3, "precisionScore": 1.0 },
+    "knowledge_fact": { "truePositive": 7, "falsePositive": 0, "legitimateExtra": 2, "total": 9, "precisionScore": 1.0 },
+    "decision": { "truePositive": 3, "falsePositive": 0, "legitimateExtra": 0, "total": 3, "precisionScore": 1.0 },
+    "observation": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "reservation": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "action": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "deadline": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null }
+  },
+  "overallNotes": [
+    "10/19 éléments de référence MATCHED, 1 PARTIAL (E03), 3 MISSED (E08, E09, E19), 5 MISCLASSIFIED (E10, E11, E14, E16, E18). Recall global au sens strict (matched+0.5*partial)/total = 10.5/19 ≈ 55 %. Aucune donnée fabriquée détectée : les 2 propositions non appariées (LEGITIMATE_EXTRA) ont été vérifiées directement contre le texte du PDF source et correspondent à du contenu réel simplement non isolé par la référence Phase A.",
+    "Précision globale : 16/16 vrais positifs sur les propositions appariées à un fait réel (0 faux positif), 2 legitimate_extra exclues du calcul. Aucune hallucination de personne, société, date ou montant sur ce document.",
+    "Finding principal — réserves ratées en tant que famille : ce PV de réception ne comporte qu'une seule réserve (E18, de nature juridique : maintien des clauses de garantie/responsabilité des entrepreneurs d'origine malgré la prise en charge de l'entretien par l'agglomération). MemorIA capture le contenu à l'identique mais le classe en decision, jamais en reservation — la famille 'reservation' n'est utilisée à aucun moment sur ce document (0/18 propositions). Sur un document dont l'objet même est de vérifier des réserves de réception, la seule réserve réelle du dossier échappe à sa famille métier.",
+    "Deuxième finding — décision centrale de conformité mal classée : E14 (« l'association syndicale et la communauté d'agglomération reconnaissent la conformité et le bon entretien des ouvrages »), qui est le constat contradictoire le plus important du PV, est extraite mot pour mot mais classée knowledge_fact au lieu de decision. Le même écart touche E16 (constat de remise conditionné à la délibération). En revanche E15 et E17 (acceptation de la remise, transfert de garde/responsabilité), extraites du même paragraphe D, sont correctement classées decision : l'incohérence de classification est locale à des phrases quasi voisines du même paragraphe, pas un biais systématique sur tout le document.",
+    "Troisième finding — observations techniques classées knowledge_fact : les deux descriptions quantifiées des réseaux (E10 eaux usées, E11 eaux pluviales : linéaires, diamètres, nombre de regards/branchements) sont classées knowledge_fact au lieu d'observation, avec un contenu numérique intégralement fidèle (aucune valeur altérée).",
+    "Famille 'action' totalement absente du run (0 proposition sur 18) : la seule action de référence (E09, invitation de l'association syndicale à la communauté d'agglomération de participer à la réception) est purement manquée, pas fragmentée ni requalifiée.",
+    "2 éléments manqués concernent des mentions administratives formelles : le principe juridique général des biens de retour (E08) et le cadre timbré de contrôle de légalité rattachant le PV à la délibération DEL2019_167 (E19) — cohérent avec le biais déjà observé sur LRM_01 (clause administrative de fin de CR manquée) : les mentions de procédure/validation sont un angle mort récurrent.",
+    "Biais inverse de la sur-fragmentation habituelle : sur E03, c'est la référence qui regroupe 2 faits (permis d'aménager 1999 + constitution de l'association syndicale) en un seul élément, et MemorIA n'en capture qu'un (le permis) comme knowledge_fact distinct — la constitution de l'association n'est nulle part tracée comme événement daté, même si l'entité qui en résulte (association syndicale de propriétaires) est bien extraite par ailleurs.",
+    "Photos : référence 2 (P01 logo décoratif, P02 cadre timbré préfecture en role document_context) vs MemorIA 0 evidence image (18 evidence, toutes text_excerpt, proposalEvidenceLinks vide). Cohérent avec le MISSED de E19 : le cadre timbré n'est capté ni comme texte ni comme image côté MemorIA.",
+    "Famille documentaire nouvelle par rapport aux CR de chantier/visite habituels du corpus : PV de réception/rétrocession d'ouvrages (acte juridique de transfert de propriété), sans aucune réserve technique de désordre — cohérent avec l'absence de proposition 'observation' anormale et la nature purement juridique de la réserve E18."
+  ]
+}

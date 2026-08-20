@@ -1,0 +1,286 @@
+{
+  "corpusId": "AUT_004",
+  "referenceElementCount": 24,
+  "memoriaProposalCount": 34,
+  "elementMatches": [
+    {
+      "referenceId": "AUT_004-E01",
+      "status": "MATCHED",
+      "matchedProposalIds": ["8bad56a4-5236-40de-8eea-786cd6519bfe"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "BTP Consultants, bureau de contrôle technique et auteur du rapport. Identité et rôle (« Organisme de Contrôle Technique ») correctement repris ; MemorIA n'extrait pas le SIRET/capital social du siège social (non repris dans la proposition), détail administratif secondaire absent sans être inventé ailleurs."
+    },
+    {
+      "referenceId": "AUT_004-E02",
+      "status": "MATCHED",
+      "matchedProposalIds": ["a1ca6251-f69b-4803-8977-744c1a83be7a"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Florent DUFOUR, avec email et rattachement à BTP Consultants — fidèle."
+    },
+    {
+      "referenceId": "AUT_004-E03",
+      "status": "MATCHED",
+      "matchedProposalIds": ["040ac098-b8b4-4dbb-a481-86370bdd1a2d"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Mairie de Coupvray, maître d'ouvrage — fidèle."
+    },
+    {
+      "referenceId": "AUT_004-E04",
+      "status": "MATCHED",
+      "matchedProposalIds": ["6dd0e83f-12a5-4eb5-969d-6a16767036cd"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Fabien BOURDIER, rattaché à la Mairie de Coupvray — fidèle."
+    },
+    {
+      "referenceId": "AUT_004-E05",
+      "status": "MATCHED",
+      "matchedProposalIds": ["537bc634-8954-4f64-a444-5e28a3635e9e"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Brunold Michon Architectes, maître d'œuvre — fidèle."
+    },
+    {
+      "referenceId": "AUT_004-E06",
+      "status": "MATCHED",
+      "matchedProposalIds": ["8d5d7a5d-1343-462f-b34f-32f0040b8d4d"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Raphaël MICHON, rattaché à Brunold Michon Architectes — fidèle."
+    },
+    {
+      "referenceId": "AUT_004-E07",
+      "status": "MATCHED",
+      "matchedProposalIds": ["ffae52db-c34a-4827-8ed5-b49e2402e30a"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Elodie LECLERC, rattachée à BTP Consultants — fidèle."
+    },
+    {
+      "referenceId": "AUT_004-E08",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Dossier d'assurance dommages-ouvrage, commande n° P-CT77-2020-20-100788 notifiée le 03/11/2020 : aucune proposition MemorIA ne couvre ce passage administratif de la fiche d'identité (§1, page 2)."
+    },
+    {
+      "referenceId": "AUT_004-E09",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Mission de contrôle technique LP+LE+SEI+STI, ouvrage non exceptionnel (§1.9/1.10, page 2) : absent des propositions MemorIA."
+    },
+    {
+      "referenceId": "AUT_004-E10",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Montant prévisionnel 0 € HT et délai de 2 mois (§1.7/1.8, page 2) : aucune proposition MemorIA ne reprend ce champ. Point de vigilance positif : MemorIA ne fabrique pas non plus de montant de substitution — le champ est simplement absent, pas halluciné, cohérent avec la remarque de la référence selon laquelle ce 0 € est probablement un champ de modèle non renseigné."
+    },
+    {
+      "referenceId": "AUT_004-E11",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Classification réglementaire du §2 (travaux dans l'existant, ERP type W catégorie 5, CDT H≤8m, catégorie thermique CE2, zones de vent/neige) : entièrement absente des propositions MemorIA."
+    },
+    {
+      "referenceId": "AUT_004-E12",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Dossier PRO reçu les 14 et 20.01.2021 et étude de faisabilité SECC du 15.02.2021 (§3.1, page 4) : aucune proposition ne couvre cette liste de pièces reçues, alors que le contenu technique de l'étude SECC est bien exploité ailleurs (E13/E15)."
+    },
+    {
+      "referenceId": "AUT_004-E13",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "company",
+      "memoriaFamily": null,
+      "note": "SECC, auteure de l'étude de faisabilité structure/charpente, n'est extraite comme entité 'company' nulle part. Son nom apparaît seulement en toile de fond dans la description de la proposition kf-renforcement-charpente-p6 (« Mentionné par le rapport de SECC... »), rattachée à E15, mais aucune proposition company dédiée à SECC n'existe (3 proposition company au total sur le document : Mairie, Brunold Michon, BTP Consultants). L'incohérence administrative notée par la référence (§1.6 'Sans objet' vs rôle réel de SECC) n'est donc pas exploitable côté MemorIA puisque l'acteur SECC lui-même n'est pas identifié comme organisation."
+    },
+    {
+      "referenceId": "AUT_004-E14",
+      "status": "MATCHED",
+      "matchedProposalIds": [
+        "7fd0335d-c2ef-4239-8ae0-ede8113cd90e",
+        "1b0400bd-dbaf-49df-9903-593c933d310d",
+        "152d57ac-91d1-40db-8dd3-b581010c9188",
+        "87a4bb7b-b91f-41bd-9bda-3998864e7097",
+        "7c627b00-e967-4230-857c-668dcdef1967",
+        "dbcca725-8dde-4289-ba99-3bf63557ce69",
+        "167147ca-d47d-4f35-baec-af38deca9901"
+      ],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Sur-fragmentation : la référence regroupe la liste à puces du §3.2 (nature des travaux) en 1 élément, MemorIA en fait 7 propositions distinctes (curage/démolition, charpente, couverture, cloisons/menuiseries/serrurerie, revêtements, installations électriques, CVC hors pièces écrites). Contenu intégralement couvert, famille correcte pour les 7, aucune perte."
+    },
+    {
+      "referenceId": "AUT_004-E15",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": [
+        "4161d82f-c965-42c4-9d3e-d05a6ee7bbe2",
+        "c1ccf56d-6a25-4f92-9988-16f61638e179",
+        "730bce2d-410e-4a50-bb0b-365c08e444c0",
+        "da86211a-be6e-4e17-b937-3ef756a792bb",
+        "f4e7bd3d-6470-49ed-abc7-4d27d7a4f8f1"
+      ],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "observation / knowledge_fact",
+      "note": "Réserve S1 (sondage charpente + renforcement + provision + traitement CTB-P+ + traitement curatif/préventif) : contenu intégralement retrouvé, éclaté en 5 propositions (cohérent avec les 5 recommandations liées du texte source), mais aucune des 5 n'est classée 'reservation' — 3 en 'observation' (sondage, provision, traitement curatif/préventif), 2 en 'knowledge_fact' (renforcement, traitement CTB-P+). Voir aussi factualFidelityIssues pour un champ document_status='done' contradictoire sur 2 de ces propositions."
+    },
+    {
+      "referenceId": "AUT_004-E16",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["5bdf171b-2e48-4678-b7a1-41f1a99cbbb7"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "observation",
+      "note": "Réserve S2 (signalétique 'Sans issue') : contenu fidèle, classée 'observation' au lieu de 'reservation'."
+    },
+    {
+      "referenceId": "AUT_004-E17",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": ["fe991845-6b5e-4e50-a5f7-8ac866188870"],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "observation",
+      "note": "Réserve S3 (BAES circulation bureaux + cage d'escalier) : contenu fidèle, classée 'observation' au lieu de 'reservation'."
+    },
+    {
+      "referenceId": "AUT_004-E18",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": [
+        "b0341306-cfbb-42d2-a947-2892e48d1782",
+        "3d1351fe-428c-48b5-aaa4-7e914c0d18b1"
+      ],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "knowledge_fact / observation",
+      "note": "Réserve S8 (effectif combles limité à 19 personnes + hauteur d'échappée 2,00 m) : contenu fidèle mais scindé en 2 propositions de familles différentes, ni l'une ni l'autre 'reservation' (effectif → knowledge_fact, hauteur d'échappée → observation)."
+    },
+    {
+      "referenceId": "AUT_004-E19",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": [
+        "51842a54-ab09-4095-a2fd-f9e272822225",
+        "1fac01c3-ba89-42aa-a0cf-45999ebddda1",
+        "142e1b4f-6f37-4f6e-9e25-0ff87a07d935"
+      ],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "observation",
+      "note": "Réserve S9 (fusion S6→S9 dans la référence : alarme incendie type 4 + déclencheur manuel + extincteur 6L) : contenu fidèle, éclaté en 3 propositions, toutes classées 'observation' au lieu de 'reservation'. La fusion S6→S9 documentée par la référence n'est pas un problème ici : MemorIA travaille directement sur le texte du chapitre STI et ne duplique pas via le renvoi SEI, donc pas de doublon inter-numérotation à gérer côté MemorIA — mais la classification reste fausse."
+    },
+    {
+      "referenceId": "AUT_004-E20",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": [
+        "f1ff9c20-b967-444a-8278-13074ab08bd8",
+        "d8a740b7-bd7b-4c89-a4a7-40ee4958a027"
+      ],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "decision / observation",
+      "note": "Réserve S10 (fusion S4→S10 : suppression de la porte de recoupement R+1 + cage d'escalier ouverte jusqu'à l'exutoire) : contenu fidèle mais scindé en 2 propositions, aucune 'reservation'. Le sous-point le plus problématique est classé 'decision' ('dec-suppression-porte-recoupement-p7', relevanceReason='Décision explicite de suppression d'un élément du projet') — c'est le seul cas du document où la mauvaise famille n'est pas une simple confusion observation/knowledge_fact mais une re-catégorisation active en 'decision', famille absente de la référence sur ce document entier. Voir factualFidelityIssues."
+    },
+    {
+      "referenceId": "AUT_004-E21",
+      "status": "MISCLASSIFIED",
+      "matchedProposalIds": [
+        "fa7ad3e6-ccdb-461e-a7c8-bacd3a993087",
+        "7b8a0e2d-8822-4385-b9fb-5897f081c06a"
+      ],
+      "referenceFamily": "reservation",
+      "memoriaFamily": "observation / knowledge_fact",
+      "note": "Réserve S11 (fusion S7→S11 : conformité NF P 01-012 garde-corps existant/neuf) : contenu fidèle, scindé en 2 propositions (résistance de l'existant → observation, conformité normative → knowledge_fact), ni l'une ni l'autre 'reservation'. Point positif de fidélité : le cinquième renvoi analogue documenté par la référence (S5, éclairage de sécurité, sans contrepartie textuelle explicite au chapitre STI) n'a donné lieu à aucune proposition MemorIA fabriquée — aucune hallucination de contenu pour combler ce vide du document source."
+    },
+    {
+      "referenceId": "AUT_004-E22",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Synthèse chapitre 5 (répartition F/D/S/SO/HM, 11 avis suspendus S1 à S11, 0 avis défavorable) : aucune proposition MemorIA ne reconstruit cette synthèse transversale, cohérent avec un pipeline qui extrait passage par passage plutôt qu'il n'agrège sur plusieurs pages."
+    },
+    {
+      "referenceId": "AUT_004-E23",
+      "status": "MATCHED",
+      "matchedProposalIds": [
+        "262ecb4a-af13-452c-b95e-3871752a5133",
+        "68bb6832-7c9f-4c8a-8edf-8883ff629ea1",
+        "74107b81-0ff1-4c07-ae02-5869e91dfd41"
+      ],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Demande de communication des annexes d'autorisations de travaux et des réponses aux avis suspendus/défavorables (§6, pages 12-13) : sur-fragmentée en 3 propositions knowledge_fact (annexes autorisations, documents de réponse aux avis, conséquence de la non-communication sur le rapport final), famille correcte, contenu complet."
+    },
+    {
+      "referenceId": "AUT_004-E24",
+      "status": "PARTIAL",
+      "matchedProposalIds": ["1622bfc5-34bd-45e9-8b9d-89d9e78e0b90"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "observation",
+      "note": "Rappels génériques de fin de rapport (§8, page 13) : seule la demande de communication des noms des personnes chargées de l'autocontrôle est retrouvée (classée 'observation' au lieu de 'knowledge_fact'). Les deux autres clauses de l'élément de référence — maintien de la destination initiale des ouvrages, et obligation de vérification des autocontrôles au titre de l'article 1792-1 du Code civil — ne sont couvertes par aucune proposition MemorIA."
+    }
+  ],
+  "unmatchedProposals": [],
+  "factualFidelityIssues": [
+    {
+      "proposalId": "f1ff9c20-b967-444a-8278-13074ab08bd8",
+      "referenceId": "AUT_004-E20",
+      "severity": "modérée",
+      "issue": "Proposition étiquetée famille 'decision' avec relevanceReason='Décision explicite de suppression d'un élément du projet', alors que le document source est un avis technique suspendu (S10, chapitre STI) d'un contrôleur technique tiers en attente de réponse — aucun décideur, aucune réunion ni date associée dans le rapport. Le contenu textuel repris est fidèle (la porte de recoupement est bien à supprimer selon le rapport), mais le cadrage 'decision' suggère à tort qu'un choix a déjà été arrêté par la maîtrise d'ouvrage/d'œuvre, alors qu'il s'agit d'une prescription conditionnelle non actée."
+    },
+    {
+      "proposalId": "c1ccf56d-6a25-4f92-9988-16f61638e179",
+      "referenceId": "AUT_004-E15",
+      "severity": "faible",
+      "issue": "Contradiction interne entre source_payload.statusAtDocumentDate='à réaliser' (lecture correcte : travaux de renforcement recommandés, non encore engagés) et document_status='done' (implique un état achevé). Même contradiction sur la proposition da86211a-be6e-4e17-b937-3ef756a792bb (traitement CTB-P+, même réserve S1). Un consommateur du champ document_status seul afficherait à tort ces deux recommandations comme déjà réalisées, alors que le rapport est un contrôle initial qui les recommande pour l'avenir."
+    }
+  ],
+  "recallByFamily": {
+    "person": { "matched": 4, "partial": 0, "missed": 0, "misclassified": 0, "total": 4, "recallScore": 1.0 },
+    "company": { "matched": 3, "partial": 0, "missed": 1, "misclassified": 0, "total": 4, "recallScore": 0.75 },
+    "deadline": { "matched": 0, "partial": 0, "missed": 0, "misclassified": 0, "total": 0, "recallScore": null },
+    "decision": { "matched": 0, "partial": 0, "missed": 0, "misclassified": 0, "total": 0, "recallScore": null },
+    "action": { "matched": 0, "partial": 0, "missed": 0, "misclassified": 0, "total": 0, "recallScore": null },
+    "observation": { "matched": 0, "partial": 0, "missed": 0, "misclassified": 0, "total": 0, "recallScore": null },
+    "reservation": { "matched": 0, "partial": 0, "missed": 0, "misclassified": 7, "total": 7, "recallScore": 0.0 },
+    "knowledge_fact": { "matched": 2, "partial": 1, "missed": 6, "misclassified": 0, "total": 9, "recallScore": 0.2778 }
+  },
+  "precisionByFamily": {
+    "person": { "truePositive": 4, "falsePositive": 0, "legitimateExtra": 0, "misclassified": 0, "total": 4, "precisionScore": 1.0 },
+    "company": { "truePositive": 3, "falsePositive": 0, "legitimateExtra": 0, "misclassified": 0, "total": 3, "precisionScore": 1.0 },
+    "deadline": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "misclassified": 0, "total": 0, "precisionScore": null },
+    "decision": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "misclassified": 1, "total": 1, "precisionScore": 0.0 },
+    "action": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "misclassified": 0, "total": 0, "precisionScore": null },
+    "observation": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "misclassified": 12, "total": 12, "precisionScore": 0.0 },
+    "reservation": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "misclassified": 0, "total": 0, "precisionScore": null },
+    "knowledge_fact": { "truePositive": 10, "falsePositive": 0, "legitimateExtra": 0, "misclassified": 4, "total": 14, "precisionScore": 0.7143 }
+  },
+  "globalMetrics": {
+    "recallStrict": { "matched": 9, "total": 24, "score": 0.375, "definition": "MATCHED / total référence (PARTIAL compté à moitié exclu, MISCLASSIFIED compté comme échec de classification stricte)" },
+    "recallContentFound": { "matchedOrMisclassified": 17, "total": 24, "score": 0.7083, "definition": "(MATCHED + PARTIAL + MISCLASSIFIED) / total référence — contenu retrouvé quelle que soit la famille ou la complétude" },
+    "precisionStrict": { "truePositive": 17, "total": 34, "score": 0.5, "definition": "truePositive / total propositions MemorIA (misclassified compté comme échec de classification)" },
+    "precisionContentFound": { "truePositiveOrMisclassified": 34, "total": 34, "score": 1.0, "definition": "(truePositive + misclassified) / total propositions MemorIA — 0 faux positif, 0 legitimate_extra : aucune proposition n'est fabriquée de toutes pièces ou étrangère au document" }
+  },
+  "evidenceComparison": {
+    "referencePhotoCount": 0,
+    "memoriaImageEvidenceCount": 0,
+    "note": "0 photo des deux côtés. Le document est purement textuel/tabulaire sur 14 pages (logo en en-tête et paraphe manuscrit en dernière page uniquement, sans contenu factuel propre) ; les 32 evidence MemorIA sont toutes de type text_excerpt, cohérent avec l'attendu. Pas de comparaison photo détaillée requise."
+  },
+  "overallNotes": [
+    "9/24 éléments de référence MATCHED, 1 PARTIAL, 7 MISSED, 7 MISCLASSIFIED. 0 proposition MemorIA non appariée (0 faux positif, 0 legitimate_extra) : les 34 propositions correspondent toutes à du contenu réel du document — le déficit de ce document n'est pas un problème d'invention, c'est un problème de classification et de couverture de l'en-tête administratif.",
+    "Constat dominant : la famille 'reservation' est absente à 100 % côté MemorIA (0 proposition sur 34) alors qu'elle représente 7/24 éléments de référence (les 7 avis suspendus S1/S2/S3/S8/S9/S10/S11 du rapport de contrôle technique). Le contenu de ces 7 réserves est intégralement retrouvé (17 propositions au total, cf. E15-E21), mais reclassé en 'observation' (12 propositions), 'knowledge_fact' (4 propositions) ou, pour le sous-point le plus sensible (suppression de la porte de recoupement, S10), en 'decision' — une famille absente de la référence sur ce document entier. recallContentFound = 71 % (contenu retrouvé) contre recallStrict = 38 % (bonne famille), l'écart de 33 points s'explique presque uniquement par ce blocage sur 'reservation'.",
+    "Second angle mort : l'en-tête administratif du rapport (§1 et §2, pages 2-4) est presque entièrement absent des propositions MemorIA — dossier d'assurance/commande (E08), périmètre de mission LP+LE+SEI+STI (E09), montant/délai (E10), classification réglementaire ERP/CDT/thermique/vent-neige (E11), liste des pièces reçues (E12), et l'entité SECC en tant que société (E13, alors que son contenu technique est bien exploité ailleurs). Ces 6 éléments manqués sont concentrés sur les pages qui précèdent le corps technique du rapport (page 5 et suivantes), suggérant un point faible structurel sur les rubriques de fiche d'identité plutôt qu'un échec aléatoire.",
+    "Aucune hallucination détectée : le budget à 0 € HT (E10, vraisemblablement un champ de modèle non renseigné) n'est ni repris ni remplacé par une valeur inventée ; l'avis S5 (éclairage de sécurité, sans texte STI correspondant, signalé par la référence comme une irrégularité du document source) n'a donné lieu à aucune proposition fabriquée par MemorIA pour combler ce vide.",
+    "Un cas de fidélité notable au-delà de la classification : la proposition 'dec-suppression-porte-recoupement-p7' est étiquetée 'decision' avec la justification 'Décision explicite de suppression d'un élément du projet', alors qu'il s'agit d'un avis technique suspendu en attente de réponse, sans décideur ni réunion associés — un cadrage actif erroné, pas seulement une étiquette de famille inexacte.",
+    "Deux propositions (renforcement de charpente, traitement CTB-P+, toutes deux issues de S1) portent un document_status='done' contradictoire avec leur propre statusAtDocumentDate='à réaliser' — travaux recommandés présentés comme déjà achevés dans ce champ.",
+    "Sur-fragmentation conforme au biais déjà documenté sur le reste du corpus : E14 (liste des travaux, §3.2) éclatée en 7 propositions et E23 (demandes de communication, §6) en 3 propositions, sans perte de contenu.",
+    "0 photo des deux côtés, cohérent avec un rapport purement textuel — pas de comparaison photo détaillée nécessaire."
+  ]
+}

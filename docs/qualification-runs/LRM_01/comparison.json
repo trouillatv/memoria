@@ -1,0 +1,299 @@
+{
+  "corpusId": "LRM_01",
+  "referenceElementCount": 25,
+  "memoriaProposalCount": 55,
+  "elementMatches": [
+    {
+      "referenceId": "LRM_01-E01",
+      "status": "MATCHED",
+      "matchedProposalIds": ["2b7e9747-cc73-4a33-b95e-00d75d36f810"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "E. Baizeau, conduite de réunion — description enrichie côté MemorIA avec le rattachement à l'agence Ponthaud."
+    },
+    {
+      "referenceId": "LRM_01-E02",
+      "status": "MATCHED",
+      "matchedProposalIds": ["0f466d35-8f29-48ec-9a5a-54c4f4e42a78"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. Palaric (Lefevre, maçonnerie)."
+    },
+    {
+      "referenceId": "LRM_01-E03",
+      "status": "MATCHED",
+      "matchedProposalIds": ["b1fb97a0-e9a4-4a87-b689-730f3bf72ec8"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. Le Jeune (UDOC, couverture)."
+    },
+    {
+      "referenceId": "LRM_01-E04",
+      "status": "MATCHED",
+      "matchedProposalIds": ["0d569acc-8aa9-4490-9cf9-5ab5bb6da6e6"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. Le Ber (Le Ber, charpente/menuiseries)."
+    },
+    {
+      "referenceId": "LRM_01-E05",
+      "status": "MATCHED",
+      "matchedProposalIds": ["e3676b35-30c9-4251-a9d1-99a8954c9da8"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. Boujard (Arthema, décors peints/polychromie)."
+    },
+    {
+      "referenceId": "LRM_01-E06",
+      "status": "MATCHED",
+      "matchedProposalIds": ["068c5bc9-df6e-406b-8c97-ca1afa665a70"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "Le Maire, présent."
+    },
+    {
+      "referenceId": "LRM_01-E07",
+      "status": "MATCHED",
+      "matchedProposalIds": ["f6cd8614-1f0f-49f1-93fc-4a6b89a58750"],
+      "referenceFamily": "person",
+      "memoriaFamily": "person",
+      "note": "M. Borzeix (APAVE) — MemorIA ajoute l'email de contact, cohérent avec le tableau page 2."
+    },
+    {
+      "referenceId": "LRM_01-E08",
+      "status": "MATCHED",
+      "matchedProposalIds": ["39be6d6d-282b-4836-b1c4-9e1697f7e3a4"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Lefevre, maçonnerie/pierre de taille, coordonnées complètes."
+    },
+    {
+      "referenceId": "LRM_01-E09",
+      "status": "MATCHED",
+      "matchedProposalIds": ["32c05f62-14ea-4bf3-ac66-b3f297f0f1ce"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Le Ber — MemorIA écrit « charpente/sculpture bois », plus fidèle au CCTP (Lot 03 = sculpture sur bois) que le libellé « menuiseries » de l'en-tête page 1 repris par la référence."
+    },
+    {
+      "referenceId": "LRM_01-E10",
+      "status": "MATCHED",
+      "matchedProposalIds": ["4fde8fc8-06a0-4708-b9d4-bdff2a02f498"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "U.D.O.C., couverture."
+    },
+    {
+      "referenceId": "LRM_01-E11",
+      "status": "MATCHED",
+      "matchedProposalIds": ["dbfbfe28-e4c0-4d9e-bef8-cdc8b37178bf"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Arthema, décors peints/polychromie."
+    },
+    {
+      "referenceId": "LRM_01-E12",
+      "status": "MATCHED",
+      "matchedProposalIds": ["98480a7a-0f78-4b1f-974b-a2cbb6d2f006"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "Agence Marie-Suzanne de Ponthaud, maîtrise d'œuvre."
+    },
+    {
+      "referenceId": "LRM_01-E13",
+      "status": "MATCHED",
+      "matchedProposalIds": ["d50ce4ba-3958-475f-9ac0-228a30f8960e"],
+      "referenceFamily": "decision",
+      "memoriaFamily": "decision",
+      "note": "Report du démarrage à septembre 2014 décidé par la mairie. Le même fait est aussi extrait séparément en famille deadline (voir unmatchedProposals, deadline-startdate-p1) : fragmentation cross-famille, pas une erreur de cette proposition-ci."
+    },
+    {
+      "referenceId": "LRM_01-E14",
+      "status": "MATCHED",
+      "matchedProposalIds": ["c0f7c59a-735c-41dc-ba03-fe14d7c1377e"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Tranche ferme, 7 mois, sept. 2014 - mars 2015."
+    },
+    {
+      "referenceId": "LRM_01-E15",
+      "status": "MATCHED",
+      "matchedProposalIds": ["346ba4ef-0a13-4d6d-ad4c-04f0e6cb7697"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Tranche conditionnelle 1, 7 mois, avril-oct. 2015."
+    },
+    {
+      "referenceId": "LRM_01-E16",
+      "status": "MATCHED",
+      "matchedProposalIds": ["71fdd763-fb6f-4512-baca-5a43edc76844"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Tranche conditionnelle 2, 9 mois, dates non fixées."
+    },
+    {
+      "referenceId": "LRM_01-E17",
+      "status": "MATCHED",
+      "matchedProposalIds": [
+        "daafefb2-debb-407f-a229-e3953d3454a7",
+        "200c2b6f-2cbb-44fb-9dfd-89973da9e67e",
+        "f810ebbc-aeab-46ff-a618-9a5238b0e0ad",
+        "6077dea6-a5c8-450f-b471-769355495af8",
+        "add8abb9-cb21-424b-b1bf-6e0f9d0199be"
+      ],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "Sur-fragmentation : la référence regroupe les 5 puces de « Travaux projetés » en 1 élément, MemorIA en fait 5 propositions distinctes (charpente, voûte, couverture, maçonneries, eaux pluviales). Contenu intégralement couvert, aucune perte d'information."
+    },
+    {
+      "referenceId": "LRM_01-E18",
+      "status": "MATCHED",
+      "matchedProposalIds": ["627bc029-5739-4377-9420-79e89eaa7ee8"],
+      "referenceFamily": "company",
+      "memoriaFamily": "company",
+      "note": "APAVE, coordonnateur sécurité, contact complet."
+    },
+    {
+      "referenceId": "LRM_01-E19",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Clause administrative « Sans remarque des parties sous 8 jours, le présent compte-rendu est considéré comme approuvé » : aucune proposition MemorIA ne couvre ce passage."
+    },
+    {
+      "referenceId": "LRM_01-E20",
+      "status": "MATCHED",
+      "matchedProposalIds": [
+        "8c35cf7f-9fc5-422d-9290-3996fab21229",
+        "b07b4ff5-4202-4e12-b9e5-6006a741adcf",
+        "e05be841-0e89-460a-b3d2-beee525c995c",
+        "86913000-e83b-478a-94f5-d6ed5e35bd0a",
+        "9a6bf49d-50ea-4151-90fe-ec9d5ee2c4c1",
+        "712967c6-33c3-490f-9888-82c43f1df5bd",
+        "630f967d-c694-4667-a8d9-9eb6caa0d148",
+        "a8df2793-a081-4f65-bca8-58cd7f97a8bf"
+      ],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "CCTP Lot 1 : la référence fusionne tout le périmètre contractuel en 1 élément, MemorIA en extrait 8 propositions distinctes (une par phrase du CCTP). Contenu complet, sur-fragmentation."
+    },
+    {
+      "referenceId": "LRM_01-E21",
+      "status": "MATCHED",
+      "matchedProposalIds": [
+        "474b56c8-16b6-4b57-92c5-4a46ee07e435",
+        "79c85cd5-39f1-4bfb-b150-47eb53739f73",
+        "c01bcf5b-dd19-4261-a73c-d6e1c13b5223",
+        "da7d7d92-945a-4858-b43d-5696c25229d3",
+        "0d1ddf57-dbaa-4c67-b71e-1cce59a6ed6e",
+        "d471dba7-6a80-4547-a865-bdaa9484da53",
+        "badfadf9-bd98-4063-8ede-09b923fdbf62"
+      ],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "CCTP Lot 2 : même schéma, 7 propositions MemorIA pour 1 élément de référence. Contenu complet."
+    },
+    {
+      "referenceId": "LRM_01-E22",
+      "status": "MATCHED",
+      "matchedProposalIds": [
+        "9adb0a70-c00a-4480-a4e2-ed362ff4437b",
+        "91909b7a-31c4-46de-98ec-1a8a43746207",
+        "b44fa881-5016-492d-8455-a989a0075e67",
+        "e6322c85-56ad-40ab-9717-53a1945eb9ca",
+        "b962df6d-19a0-4004-bc97-483e0d8077b8"
+      ],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "CCTP Lot 3 : 5 propositions MemorIA pour 1 élément de référence. Contenu complet."
+    },
+    {
+      "referenceId": "LRM_01-E23",
+      "status": "MATCHED",
+      "matchedProposalIds": [
+        "a1216d88-a235-4b30-b19f-ead026d9cbfc",
+        "0572aa2b-fb6a-4d82-ac73-0d271c475264",
+        "d388991d-1cef-4455-bc73-ee3b2eefb666",
+        "926ca09b-a7f9-467c-964a-a02ea944fa7c",
+        "10ede17d-6f00-4093-ac4d-bd3ef8c61816"
+      ],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "CCTP Lot 4 : 5 propositions MemorIA pour 1 élément de référence. Contenu complet."
+    },
+    {
+      "referenceId": "LRM_01-E24",
+      "status": "MATCHED",
+      "matchedProposalIds": ["3f07e2ba-6bc6-423a-a097-de2612844efe"],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "CCTP Lot 5, volet études préalables. Correspondance 1:1. Écart mineur de pagination : la référence situe cette phrase page 3, MemorIA page 4 (le passage est probablement à cheval sur les deux pages) — sans impact sur le contenu."
+    },
+    {
+      "referenceId": "LRM_01-E25",
+      "status": "MATCHED",
+      "matchedProposalIds": [
+        "04306161-3402-4ad9-b07a-ddb9e73f57f9",
+        "d79c824e-a4d6-49b9-ac5a-1e9d44a8a7c8",
+        "124cd9cb-6177-4b2f-b770-a7cb6d18ec1b",
+        "1f4f56c2-5a04-4499-94e4-9913cf60e1ac"
+      ],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": "knowledge_fact",
+      "note": "CCTP Lot 5, second volet (refixages, nettoyages, restauration couches picturales, dossier documentaire) : 4 propositions MemorIA pour 1 élément de référence. Contenu complet."
+    }
+  ],
+  "unmatchedProposals": [
+    {
+      "proposalId": "c1b0802f-f4c3-42c5-8037-544cf47a5c1d",
+      "family": "knowledge_fact",
+      "label": "Lancement du chantier",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "« La réunion avait pour but le lancement du chantier. » — phrase d'ouverture plausible et cohérente avec le reste du document (CR de première réunion), absente de la référence Phase A qui ne l'a simplement pas isolée comme élément propre."
+    },
+    {
+      "proposalId": "86de5a8d-878a-42a6-aeb4-ccf976ff4f6c",
+      "family": "deadline",
+      "label": "Démarrage du chantier",
+      "classification": "FALSE_POSITIVE",
+      "note": "Le texte source (« le chantier ne débute qu'en septembre 2014 ») ne donne qu'un mois/année. La proposition encode pourtant dueDate=\"2014-09-01T00:00:00Z\", c'est-à-dire un jour précis (le 1er) qui n'existe pas dans le document — précision fabriquée. La référence Phase A note explicitement avoir laissé ce champ vide pour ne pas inventer un jour (classificationNote de LRM_01-E13). De plus ce fait est déjà couvert par la proposition decision-startdate-p1 (famille decision), donc doublon inter-famille en plus de la date inventée."
+    },
+    {
+      "proposalId": "4ada20d8-2825-4a5f-866f-217a48d98537",
+      "family": "person",
+      "label": "M. PHILIPPE",
+      "classification": "LEGITIMATE_EXTRA",
+      "note": "Contact de l'entreprise Lefevre figurant dans le tableau des entreprises page 2 (« LEFEVRE M. PHILIPPE »), distinct de M. Palaric qui a physiquement assisté à la réunion. Contenu réel du document ; la référence Phase A n'a listé que les personnes présentes en réunion, pas les contacts du tableau administratif."
+    }
+  ],
+  "recallByFamily": {
+    "person": { "matched": 7, "partial": 0, "missed": 0, "total": 7, "recallScore": 1.0 },
+    "company": { "matched": 6, "partial": 0, "missed": 0, "total": 6, "recallScore": 1.0 },
+    "deadline": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "decision": { "matched": 1, "partial": 0, "missed": 0, "total": 1, "recallScore": 1.0 },
+    "action": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "observation": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "reservation": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "knowledge_fact": { "matched": 10, "partial": 0, "missed": 1, "total": 11, "recallScore": 0.909 }
+  },
+  "precisionByFamily": {
+    "person": { "truePositive": 7, "falsePositive": 0, "legitimateExtra": 1, "total": 8, "precisionScore": 1.0 },
+    "company": { "truePositive": 6, "falsePositive": 0, "legitimateExtra": 0, "total": 6, "precisionScore": 1.0 },
+    "deadline": { "truePositive": 0, "falsePositive": 1, "legitimateExtra": 0, "total": 1, "precisionScore": 0.0 },
+    "decision": { "truePositive": 1, "falsePositive": 0, "legitimateExtra": 0, "total": 1, "precisionScore": 1.0 },
+    "action": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "observation": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "reservation": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "knowledge_fact": { "truePositive": 38, "falsePositive": 0, "legitimateExtra": 1, "total": 39, "precisionScore": 1.0 }
+  },
+  "overallNotes": [
+    "24/25 éléments de référence MATCHED, 0 PARTIAL, 1 MISSED (clause administrative des 8 jours, E19), 0 MISCLASSIFIED. Aucune confusion de famille détectée sur les éléments appariés.",
+    "3 propositions MemorIA non appariées : 2 LEGITIMATE_EXTRA (contenu réel non isolé par la référence) et 1 FALSE_POSITIVE (date fabriquée). Aucune hallucination de contenu (personne, société ou fait inventé) détectée.",
+    "Biais dominant : sur-fragmentation systématique des knowledge_fact de type CCTP/liste — 6 éléments de référence (E17, E20-E23, E25) regroupant des puces sous un même titre sont éclatés en 34 propositions MemorIA (une par phrase). Aucune perte de contenu mais forte multiplication des objets/subject_thread pour un même paragraphe source.",
+    "Point de vigilance principal : la proposition deadline-startdate-p1 fabrique un jour calendaire (01/09/2014) non présent dans le document pour une date exprimée en mois/année seulement — à comparer à la doctrine du projet sur les faits fictifs et à la discipline montrée par la référence Phase A sur ce point précis.",
+    "Duplication inter-famille : le report du chantier à septembre 2014 est extrait à la fois comme decision (fidèle) et comme deadline (avec date fabriquée) — un seul fait métier générant deux objets.",
+    "0 evidence de type image côté MemorIA (55 evidence, toutes text_excerpt, proposalEvidenceLinks vide) contre 1 photo dans la référence (plan de phasage des tranches, role document_context). Conforme à l'attendu : ce document n'est pas dans le périmètre de comparaison photo détaillée.",
+    "Aucun élément des familles action, observation, reservation dans la référence ni dans MemorIA — cohérent avec un CR de lancement où les 5 lots sont notés RAS."
+  ]
+}

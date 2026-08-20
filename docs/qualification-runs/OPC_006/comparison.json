@@ -1,0 +1,348 @@
+{
+  "corpusId": "OPC_006",
+  "referenceElementCount": 38,
+  "memoriaProposalCount": 0,
+  "elementMatches": [
+    {
+      "referenceId": "OPC_006-E01",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "company",
+      "memoriaFamily": null,
+      "note": "Office du BTP Drôme-Ardèche, organisme auteur du document — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E02",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "company",
+      "memoriaFamily": null,
+      "note": "Fédération du BTP Drôme-Ardèche, co-signataire — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E03",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "company",
+      "memoriaFamily": null,
+      "note": "Entreprise SOBRABO (Bruno LESAGE) — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E04",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "company",
+      "memoriaFamily": null,
+      "note": "Entreprise TRAVERSIER (Maurice TRAVERSIER) — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E05",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "company",
+      "memoriaFamily": null,
+      "note": "UNTEC (Yves SARRION) — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E06",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "company",
+      "memoriaFamily": null,
+      "note": "Bureau d'études BETREC IG (C. VUYLSTEKE) — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E07",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "company",
+      "memoriaFamily": null,
+      "note": "Bureau d'études BET MATHIEU (SOULAT) — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E08",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "company",
+      "memoriaFamily": null,
+      "note": "Bureau d'études PEYRIN/MOUNIER, Dieulefit (Pierre MOUNIER) — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E09",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "person",
+      "memoriaFamily": null,
+      "note": "Noël CESSIEUX, Président de l'Office du BTP Drôme-Ardèche, architecte — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E10",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "person",
+      "memoriaFamily": null,
+      "note": "Frédéric REYNIER, Président de la Fédération du BTP Drôme-Ardèche — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E11",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "person",
+      "memoriaFamily": null,
+      "note": "Jean-Claude MICHEL, architecte, membre du groupe de travail — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E12",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "person",
+      "memoriaFamily": null,
+      "note": "Yvon TIXIER, architecte, membre du groupe de travail — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E13",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "person",
+      "memoriaFamily": null,
+      "note": "Bruno LESAGE (entreprise SOBRABO) — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E14",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "person",
+      "memoriaFamily": null,
+      "note": "Maurice TRAVERSIER (entreprise TRAVERSIER) — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E15",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "person",
+      "memoriaFamily": null,
+      "note": "Yves SARRION, économiste (UNTEC) — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E16",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "person",
+      "memoriaFamily": null,
+      "note": "C. VUYLSTEKE, bureau d'études BETREC IG — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E17",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "person",
+      "memoriaFamily": null,
+      "note": "SOULAT, bureau d'études BET MATHIEU — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E18",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "person",
+      "memoriaFamily": null,
+      "note": "Pierre MOUNIER, bureau d'études PEYRIN/MOUNIER — non extrait (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E19",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "decision",
+      "memoriaFamily": null,
+      "note": "Validation en Conseil d'Administration le 17/06/2008 du document et de ses 4 fiches — seule décision datée et instanciée du document, non extraite (proposalsTotal=0)."
+    },
+    {
+      "referenceId": "OPC_006-E20",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Préconisation : la réunion de chantier doit se limiter à la coordination, jamais à la conception (Fiche 2) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E21",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Préconisation : ne traiter en réunion que les points concernant collectivement les intervenants (Fiche 2) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E22",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Composition type des participants à une réunion de chantier (Fiche 2) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E23",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Outil préconisé : réunion MOE/maître d'ouvrage séparée hors présence des entreprises (Fiche 2) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E24",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Préconisation de déroulement chronologique de la réunion et de la visite (Fiche 3) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E25",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Rôle du pilotage MOE/OPC : respecter l'ordre d'intervention des entreprises selon la phase (Fiche 3) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E26",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Outil : convoquer par tranches horaires selon communauté d'intérêts (Fiche 3) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E27",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Outil : constitution d'un groupe de travail technique hors réunion de chantier (Fiche 3) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E28",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Outils de diffusion sur site : casier par entreprise, PV en cabane, dossier chantier à jour (Fiche 3) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E29",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Préconisation : n'exiger des entreprises que des éléments adaptés au phasage du chantier (Fiche 3) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E30",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Procédure : choix collectif en début de chantier du mode d'envoi des CR (mail/fax) (Fiche 4) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E31",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Exigences de contenu du PV : ordre du jour, exploitabilité, détail lot par lot (Fiche 4) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E32",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Exigence : le PV doit décompter le nombre d'absences par entreprise (Fiche 4) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E33",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Règle : le PV ne doit contenir que les informations des 4 dernières réunions (Fiche 4) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E34",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Règles de diffusion du PV à tous les lots et aux sous-traitants (Fiche 4) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E35",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Contenu type de la page de garde d'un PV (coordonnées, absences, responsables, OS) (Fiche 4) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E36",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Recommandations de rédaction de la page interne du PV (qui/quoi/à qui, style sténo) (Fiche 4) — non extrait."
+    },
+    {
+      "referenceId": "OPC_006-E37",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Exigences spécifiques au CR tenu par un OPC (avancement %, tableau début/fin/retard, dates en jours) (Fiche 4) — section la plus pertinente pour la famille OPC/coordination testée ici, non extraite."
+    },
+    {
+      "referenceId": "OPC_006-E38",
+      "status": "MISSED",
+      "matchedProposalIds": [],
+      "referenceFamily": "knowledge_fact",
+      "memoriaFamily": null,
+      "note": "Recommandation d'envoi du PV en un seul exemplaire par e-mail (Fiche 4) — non extrait."
+    }
+  ],
+  "unmatchedProposals": [],
+  "recallByFamily": {
+    "person": { "matched": 0, "partial": 0, "missed": 10, "total": 10, "recallScore": 0.0 },
+    "company": { "matched": 0, "partial": 0, "missed": 8, "total": 8, "recallScore": 0.0 },
+    "deadline": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "decision": { "matched": 0, "partial": 0, "missed": 1, "total": 1, "recallScore": 0.0 },
+    "action": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "observation": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "reservation": { "matched": 0, "partial": 0, "missed": 0, "total": 0, "recallScore": null },
+    "knowledge_fact": { "matched": 0, "partial": 0, "missed": 19, "total": 19, "recallScore": 0.0 }
+  },
+  "precisionByFamily": {
+    "person": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "company": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "deadline": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "decision": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "action": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "observation": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "reservation": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null },
+    "knowledge_fact": { "truePositive": 0, "falsePositive": 0, "legitimateExtra": 0, "total": 0, "precisionScore": null }
+  },
+  "zeroToleranceCheck": {
+    "pass": false,
+    "note": "OPC_006 N'EST PAS un cas analogue à BTP_008. BTP_008 est un document gabarit réellement vide de contenu métier : la référence indépendante (Phase A) y trouve 0 élément (elements: []), donc la convergence à 0 des deux côtés est un vrai PASS (rien à trouver, rien trouvé). OPC_006 est différent : la référence indépendante (Phase A) y trouve 38 éléments réels et nommés — 8 entreprises/organismes nommés (dont l'Office du BTP Drôme-Ardèche et la Fédération du BTP Drôme-Ardèche, éditeurs du document), 10 personnes nommées (architectes, entrepreneurs, économiste, bureaux d'études membres du groupe de travail rédacteur et signataires), 1 décision datée et instanciée (validation en Conseil d'Administration le 17/06/2008), et 19 knowledge_fact (préconisations et règles méthodologiques classées permanent_instruction/general_knowledge, extraites de phrases réelles du texte, pas de champs vides). Le pipeline MemorIA (Phase B, production réelle) a produit 0 proposition sur les 7 familles alors que 38 éléments extractibles existent réellement dans le texte. Recall global = 0/38 = 0.0 sur toutes les familles où total>0 (person, company, decision, knowledge_fact). Ce n'est pas une preuve de non-hallucination : c'est un échec sémantique total du pipeline sur un document au format atypique (note méthodologique en 4 fiches + glossaire, pas un CR de réunion de chantier classique avec tableau de présence et points par lot). zeroToleranceCheck.pass=false car le critère de tolérance zéro ne s'applique qu'aux documents sans contenu métier réel (référence vide) ; OPC_006 a une référence non vide, donc ce cas relève du recall, pas de la tolérance zéro."
+  },
+  "evidenceComparison": {
+    "referencePhotoCount": 4,
+    "memoriaImageEvidenceCount": 1,
+    "note": "Référence : 4 photos, toutes classées role=decorative (logo institutionnel OBTP 07/26 répété en en-tête des pages 1, 3, 4, 5), sans valeur factuelle. MemorIA : 1 evidence de type image (page 1, storage_path img-p1-1.png, caption \"Logo O\"), cohérente avec le logo de couverture (E-P01). Convergence correcte sur ce point précis : les logos décoratifs ne génèrent à juste titre aucune proposition. La détection d'image (imagesDetected=1) prouve que l'extraction a bien parcouru au moins la page 1 ; le problème n'est donc pas un échec total de lecture du PDF mais un échec de génération de propositions textuelles malgré du texte réel disponible sur 10 pages."
+  },
+  "overallNotes": [
+    "0/38 éléments de référence MATCHED, 38 MISSED, 0 PARTIAL, 0 MISCLASSIFIED. Recall = 0.0 sur les 4 familles représentées (person, company, decision, knowledge_fact). Aucune proposition MemorIA à classer côté précision (unmatchedProposals=[]) : le pipeline n'a rien produit, ni vrai positif ni faux positif.",
+    "Distinction essentielle avec BTP_008 (Phase C) : BTP_008 = 0 attendu ET 0 obtenu → PASS zéro-tolérance légitime sur un document gabarit vide. OPC_006 = 38 attendus mais 0 obtenu → échec sémantique total (recall 0%) sur un document qui contient pourtant des personnes nommées, des sociétés nommées et une décision datée bien réelles. Confondre les deux cas reviendrait à valider une perte de recall totale comme si elle était une preuve de robustesse anti-hallucination.",
+    "Hypothèse de cause (structurelle, non vérifiée par exécution du pipeline) : OPC_006 est une NOTE MÉTHODOLOGIQUE de l'Office du BTP Drôme-Ardèche (bonnes pratiques génériques pour réunions de chantier), pas un compte-rendu de réunion de chantier réel. Sa structure diffère fortement du gabarit CR habituel du corpus : pas de tableau de présence daté avec colonnes présent/absent, pas de section par lot avec avancement/réserves/actions à échéance, pas de date de réunion ni de nom de chantier — à la place, 4 fiches sous forme de tableau à 3 colonnes (Constats/Préconisation/Outil) suivies d'un glossaire. Les seules dates du document sont la validation CA du 17/06/2008 (répétée en pied de page) et l'absence de toute date de réunion de chantier. Il est plausible que l'étape de classification/priorisation du pipeline (ou le prompt d'extraction) attende des signaux caractéristiques d'un CR de chantier (tableau de présence, ordre du jour daté, points par lot) pour déclencher la génération de propositions, et que leur absence totale ait conduit à un classement implicite du document comme \"sans contenu extractible\" malgré la présence de texte riche et de personnes/sociétés nommées sur 10 pages.",
+    "Élément à l'appui de l'hypothèse : le pipeline a bien détecté et traité au moins la page 1 au niveau image (1 evidence de type image, logo de couverture), ce qui exclut un échec de lecture pure du PDF (OCR/parsing). Le problème se situe donc en aval, au niveau de la génération de propositions textuelles à partir du contenu, pas en amont au niveau de l'ingestion du document.",
+    "Aucune donnée de trace d'exécution (logs Gemini, prompt effectivement envoyé, réponse brute du modèle) n'a été consultée pour cette qualification : l'hypothèse ci-dessus repose sur la comparaison structurelle reference.json vs memoria-output.json et sur la lecture du readerNotes de la Phase A, pas sur une instrumentation du pipeline. Aucune modification du pipeline, du prompt ou du modèle n'a été effectuée dans le cadre de cette tâche (lecture seule)."
+  ]
+}

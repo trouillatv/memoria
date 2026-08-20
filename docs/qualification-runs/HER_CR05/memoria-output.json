@@ -1,0 +1,394 @@
+{
+  "corpusId": "HER_CR05",
+  "documentId": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+  "extractionRunId": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+  "proposals": [
+    {
+      "id": "78a2635d-bf84-4f46-b73a-9913ae49e191",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-cout-puisards-p1",
+      "label": "Coût supplémentaire pour l'agrandissement des puisards",
+      "description": "L'agrandissement des puisards engendrera un coût supplémentaire d'environ 20 000 € H.T. sur le coût prévisionnel des travaux.",
+      "source_page": 1,
+      "source_excerpt": "Il engendrera un coût supplémentaire d’environ 20 000 € H.T. sur le coût prévisionnel des travaux, mais cette dépense est justifiée pour éviter l’inondation de la rue de l’église.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "administrative"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T05:41:13.391654+00:00",
+      "thematic_category": "administrative",
+      "subject_thread_id": "e473ea88-ce14-4fda-9e76-540cc6bcae99",
+      "document_status": null
+    },
+    {
+      "id": "8c9c0a7d-50bf-417c-b24a-e82fcb8bb4f5",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "target_site_id": null,
+      "proposal_family": "company",
+      "stable_key": "comp-veolia-p1",
+      "label": "Véolia",
+      "description": "Intervenant pour la réparation de la conduite d'assainissement.",
+      "source_page": 1,
+      "source_excerpt": "Véolia interviendra le 25 octobre 2018 pour effectuer la réparation de la conduite d’assainissement située entre la place de l’Orangerie et la place du Clos.",
+      "source_payload": {
+        "companyRole": "partenaire",
+        "relevanceScore": "medium",
+        "relevanceReason": "Entreprise intervenant sur un point clé du chantier."
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T05:41:13.391654+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "d33e8dac-0685-45b9-9d4d-13aff5cb2edf",
+      "document_status": null
+    },
+    {
+      "id": "8bde4100-1b85-4505-82f1-e0fef3898161",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "target_site_id": null,
+      "proposal_family": "observation",
+      "stable_key": "obs-eaux-usees-p1",
+      "label": "Problème de traitement des eaux usées de la salle du Clos",
+      "description": null,
+      "source_page": 1,
+      "source_excerpt": "Le problème du traitement des eaux usées de la salle du Clos est examiné ce jour.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "relevanceReason": "Constat d'un problème spécifique au chantier nécessitant un suivi."
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T05:41:13.391654+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "79011c97-d4ab-4964-8359-76048c152194",
+      "document_status": null
+    },
+    {
+      "id": "fe77e5c2-45da-4b8c-b416-48422a93e5c2",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "target_site_id": null,
+      "proposal_family": "decision",
+      "stable_key": "dec-puisards-p1",
+      "label": "Agrandissement des puisards pour le traitement des eaux pluviales",
+      "description": "L'agrandissement des puisards projetés est indispensable et accepté pour traiter les eaux pluviales de la place, de la salle du Clos et de la cour de l'école élémentaire, en raison du manque de perméabilité des sols.",
+      "source_page": 1,
+      "source_excerpt": "L’ensemble des eaux pluviales de la place et de la salle du Clos doivent être traitées dans des puisards adaptés car ces eaux ne doivent pas être rejetées en dehors de cette place. Compte tenu du manque de perméabilité des sols, et considérant qu’il est aussi nécessaire de prendre en compte le traitement des eaux pluviales de la cour de l’école élémentaire, l’agrandissement des puisards projetés est indispensable et accepté.",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "relevanceReason": "Décision structurante impactant la conception et le coût du chantier."
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T05:41:13.391654+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "cdf77058-89eb-4546-986d-2bed1014ee19",
+      "document_status": null
+    },
+    {
+      "id": "4cf45cec-ae4f-40f1-b053-70fe9422a3d7",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-armoire-elec-p1",
+      "label": "Armoire électrique suffisante pour bornes et éclairage",
+      "description": "L'armoire électrique sur la place du Clos est suffisante pour alimenter les futures bornes pour voitures et l'éclairage.",
+      "source_page": 1,
+      "source_excerpt": "L’armoire électrique située sur la place du Clos est suffisante pour alimenter les futures bornes pour voitures et l’éclairage.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "general_knowledge"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T05:41:13.391654+00:00",
+      "thematic_category": "general_knowledge",
+      "subject_thread_id": "ab5fdefe-90e8-4206-8530-75b51fb2d267",
+      "document_status": null
+    },
+    {
+      "id": "11f94386-d4fe-4b78-97e0-50cc7d17d0f6",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-fontaine-alim-p1",
+      "label": "Alimentation de la fontaine depuis la salle de l'Orangerie",
+      "description": "La fontaine sera alimentée à partir de la salle de l'Orangerie.",
+      "source_page": 1,
+      "source_excerpt": "La fontaine sera alimentée à partir de la salle de l’Orangerie.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "general_knowledge"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T05:41:13.391654+00:00",
+      "thematic_category": "general_knowledge",
+      "subject_thread_id": "ea486231-12a1-4a41-95c5-b044a14e6c60",
+      "document_status": null
+    },
+    {
+      "id": "0abf4329-5cdb-4a34-afd7-c2b9106111e5",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "target_site_id": null,
+      "proposal_family": "deadline",
+      "stable_key": "dl-reparation-veolia-p1",
+      "label": "Réparation de la conduite d'assainissement par Véolia",
+      "description": "Véolia interviendra pour réparer la conduite d'assainissement entre la place de l'Orangerie et la place du Clos.",
+      "source_page": 1,
+      "source_excerpt": "Véolia interviendra le 25 octobre 2018 pour effectuer la réparation de la conduite d’assainissement située entre la place de l’Orangerie et la place du Clos.",
+      "source_payload": {
+        "dueDate": "2018-10-25",
+        "relevanceScore": "strong",
+        "responsibleParty": "Véolia",
+        "thematic_category": "progress",
+        "linkedActorTemporaryKey": "comp-veolia-p1"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T05:41:13.391654+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "02cecfdf-f9cb-4c3e-8fb3-3a6738cb6c22",
+      "document_status": null
+    },
+    {
+      "id": "0996558f-4db4-4ae9-920c-630b8346ed4e",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-place-pmr-p1",
+      "label": "Statut de la place prioritaire pour personnes handicapées",
+      "description": "La place équipée d’une borne électrique réservée aux personnes handicapées devient une place sans signalétique mais reste une place prioritaire.",
+      "source_page": 1,
+      "source_excerpt": "La place équipée d’une borne électrique réservée aux personnes handicapées devient une place sans signalétique mais reste une place prioritaire.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "general_knowledge"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T05:41:13.391654+00:00",
+      "thematic_category": "general_knowledge",
+      "subject_thread_id": "cd27d7c6-1c54-4079-91d4-a4ef59e9c776",
+      "document_status": null
+    },
+    {
+      "id": "df14cd42-c639-45b3-a59d-539ebd352820",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "target_site_id": null,
+      "proposal_family": "person",
+      "stable_key": "pers-sylvie-bouchet-p1",
+      "label": "Sylvie BOUCHET BELLECOURT",
+      "description": "Madame le Maire",
+      "source_page": 1,
+      "source_excerpt": "Madame le Maire Sylvie BOUCHET BELLECOURT",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "thematic_category": "general_knowledge",
+        "statusAtDocumentDate": "inconnu"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T05:41:13.391654+00:00",
+      "thematic_category": "general_knowledge",
+      "subject_thread_id": "ed2478ca-b950-4d0a-9a64-74330d4e6475",
+      "document_status": null
+    }
+  ],
+  "evidence": [
+    {
+      "id": "69daa281-099b-40ac-88ec-e2b62bc44a9a",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Le problème du traitement des eaux usées de la salle du Clos est examiné ce jour."
+      },
+      "created_at": "2026-08-20T05:41:13.084815+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "43430383-df3e-465c-bbcb-1d5c132393f1",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "L’ensemble des eaux pluviales de la place et de la salle du Clos doivent être traitées dans des puisards adaptés car ces eaux ne doivent pas être rejetées en dehors de cette place. Compte tenu du manque de perméabilité des sols, et considérant qu’il est aussi nécessaire de prendre en compte le traitement des eaux pluviales de la cour de l’école élémentaire, l’agrandissement des puisards projetés est indispensable et accepté."
+      },
+      "created_at": "2026-08-20T05:41:13.084815+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "55fc97ac-59c9-4e4a-be1f-f31dd327bbc8",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Il engendrera un coût supplémentaire d’environ 20 000 € H.T. sur le coût prévisionnel des travaux, mais cette dépense est justifiée pour éviter l’inondation de la rue de l’église."
+      },
+      "created_at": "2026-08-20T05:41:13.084815+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "c9da70fd-8497-4e00-8a5b-0e262b232b15",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Véolia interviendra le 25 octobre 2018 pour effectuer la réparation de la conduite d’assainissement située entre la place de l’Orangerie et la place du Clos."
+      },
+      "created_at": "2026-08-20T05:41:13.084815+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "d7c1131c-568f-4d23-aea9-055459ce864a",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "L’armoire électrique située sur la place du Clos est suffisante pour alimenter les futures bornes pour voitures et l’éclairage."
+      },
+      "created_at": "2026-08-20T05:41:13.084815+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "62547943-bf13-4b69-a55d-4686bcb04caa",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "La fontaine sera alimentée à partir de la salle de l’Orangerie."
+      },
+      "created_at": "2026-08-20T05:41:13.084815+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "dc44e544-9c80-41c6-8875-54991c1d9b69",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "La place équipée d’une borne électrique réservée aux personnes handicapées devient une place sans signalétique mais reste une place prioritaire."
+      },
+      "created_at": "2026-08-20T05:41:13.084815+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "7371fa83-a42c-4229-9ac6-bcb40f615f25",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "86986b9c-f2c6-4ffd-9152-e0f6bd70b3bb",
+      "document_id": "9c25d080-0bfe-4d0c-b830-ccea59dfe7cb",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Madame le Maire Sylvie BOUCHET BELLECOURT"
+      },
+      "created_at": "2026-08-20T05:41:13.084815+00:00",
+      "pinned_for_visit": false
+    }
+  ],
+  "proposalEvidenceLinks": [
+    {
+      "proposal_id": "8bde4100-1b85-4505-82f1-e0fef3898161",
+      "evidence_id": "69daa281-099b-40ac-88ec-e2b62bc44a9a",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T05:41:13.693817+00:00"
+    }
+  ]
+}

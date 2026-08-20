@@ -1,0 +1,1692 @@
+{
+  "corpusId": "REC_001",
+  "documentId": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+  "extractionRunId": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+  "proposals": [
+    {
+      "id": "159641b2-4ac5-4908-b81c-eaf22e451d94",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "company",
+      "stable_key": "comp-cos-construction",
+      "label": "COS CONSTRUCTION SARL",
+      "description": "Titulaire du marché",
+      "source_page": null,
+      "source_excerpt": null,
+      "source_payload": {
+        "companyRole": "entreprise titulaire",
+        "relevanceScore": "medium",
+        "relevanceReason": "Identifies the main contractor for the project."
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "a57cf7e3-6d92-4c99-b555-663acf9dbd28",
+      "document_status": null
+    },
+    {
+      "id": "0f73768a-fe01-4930-a96c-4ef48c644357",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-marche-approuve",
+      "label": "Marché approuvé le 11/05/2021",
+      "description": "Approuvé le : 11/05/2021",
+      "source_page": 1,
+      "source_excerpt": "Approuvé le : 11/05/2021",
+      "source_payload": {
+        "relevanceScore": "weak",
+        "thematic_category": "administrative"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "administrative",
+      "subject_thread_id": "6733e825-c711-40d8-999e-edef07d2c0cc",
+      "document_status": null
+    },
+    {
+      "id": "b1041e95-5733-4843-9e73-fd0895935fe1",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-num-marche",
+      "label": "Numéro du marché : 281/2021/MJS-PACA-MJZ-TRAV",
+      "description": "N° Marché : 281/2021/MJS-PACA-MJZ-TRAV",
+      "source_page": 1,
+      "source_excerpt": "N° Marché : 281/2021/MJS-PACA-MJZ-TRAV",
+      "source_payload": {
+        "relevanceScore": "weak",
+        "thematic_category": "administrative"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "administrative",
+      "subject_thread_id": "75443a8d-b20d-438d-8389-04c36a65e6ed",
+      "document_status": null
+    },
+    {
+      "id": "cdaf9705-7306-4b32-afec-ce215c999564",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "company",
+      "stable_key": "comp-centrale-polytechnique",
+      "label": "Centrale Polytechnique Africaine",
+      "description": "Maîtrise d’œuvre du projet",
+      "source_page": null,
+      "source_excerpt": null,
+      "source_payload": {
+        "companyRole": "maître d'œuvre",
+        "relevanceScore": "medium",
+        "relevanceReason": "Identifies the project's design and supervision team."
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "88ac50ba-46b1-44c9-9cd5-a88d0e76dc3f",
+      "document_status": null
+    },
+    {
+      "id": "0de49854-9314-40b7-83ba-386f34966a07",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-objet-marche",
+      "label": "Objet du marché : Travaux de réhabilitation de la maison des jeunes Zerktouni",
+      "description": "Travaux de réhabilitation de la maison des jeunes Zerktouni, au niveau de la Préfecture d’arrondissements Casa-Anfa",
+      "source_page": 1,
+      "source_excerpt": "Objet du marché : Travaux de réhabilitation de la maison des jeunes Zerktouni, au niveau de la Préfecture d’arrondissements Casa-Anfa",
+      "source_payload": {
+        "relevanceScore": "weak",
+        "thematic_category": "general_knowledge"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "general_knowledge",
+      "subject_thread_id": "c6281fdb-ecf1-4d33-8be9-074b28cc436c",
+      "document_status": null
+    },
+    {
+      "id": "da523662-f1e4-46b2-a5cc-4cde16ad54ac",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "company",
+      "stable_key": "comp-casablanca-amenagement",
+      "label": "Casablanca Aménagement",
+      "description": "Maître d'Ouvrage",
+      "source_page": null,
+      "source_excerpt": null,
+      "source_payload": {
+        "companyRole": "maître d'ouvrage",
+        "relevanceScore": "medium",
+        "relevanceReason": "Identifies the client for the project."
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "03a2be30-821f-4a95-9f37-c49c30e6d610",
+      "document_status": null
+    },
+    {
+      "id": "b92c6bf7-7e1d-401c-9238-e6b365657f31",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "person",
+      "stable_key": "person-mohamed-maataoui",
+      "label": "Mohamed MAATAOUI",
+      "description": "Ingénieur Travaux — Maître d’Ouvrage",
+      "source_page": 1,
+      "source_excerpt": "Maître d’Ouvrage : M. Mohamed MAATAOUI, Ingénieur Travaux.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "linkedCompanyName": "Casablanca Aménagement",
+        "thematic_category": "general_knowledge",
+        "statusAtDocumentDate": "présent"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "general_knowledge",
+      "subject_thread_id": "c5a0831c-791b-4d68-aa68-59dc84747da0",
+      "document_status": null
+    },
+    {
+      "id": "3f572a11-b7a3-4a64-84f9-7667b6be9336",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-installations-non-repliees",
+      "label": "Installations de chantier non repliées",
+      "description": "Les installations de chantier n'ont pas été repliées, sauf les équipements et outils nécessaires pour l’entretien pendant l’année de parfait achèvement.",
+      "source_page": 2,
+      "source_excerpt": "4. Les installations de chantier : ont été repliées n'ont pas été repliées Sauf les équipements et outils nécessaires pour l’entretien pendant l’année de parfait achèvement.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "resources"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "resources",
+      "subject_thread_id": "bb892c1c-d599-451f-aa13-285f5c127382",
+      "document_status": null
+    },
+    {
+      "id": "cfd98f4c-f37c-488d-897e-23f7ede73dcb",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-travaux-executes",
+      "label": "Travaux et prestations prévus au marché exécutés",
+      "description": "Les travaux et prestations prévus au marché ont été exécutés, sans prestations non exécutées (Annexe I NA).",
+      "source_page": 1,
+      "source_excerpt": "2. Les travaux et prestations prévus au marché : ont été exécutés ; Ont été exécutés, à l’exception de prestations énumérées dans le tableau ci-après (Annexe I), avec l’accord du titulaire dans le cadre de la diminution de la masse des travaux conformément aux dispositions de l’article 53 du CCAGT.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "progress"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "c3de6acf-3cce-4a12-b350-2c75973b2607",
+      "document_status": null
+    },
+    {
+      "id": "8282105f-bd4a-4f2b-8963-d5bc08d11ddd",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-terrains-non-remis-en-etat",
+      "label": "Terrains et lieux non remis en état",
+      "description": "Les terrains et les lieux n'ont pas été remis en état.",
+      "source_page": 2,
+      "source_excerpt": "5. Les terrains et les lieux : ont été remis en état n'ont pas été remis en état",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "relevanceReason": "Indicates a non-conformity requiring remediation before final reception."
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "669d5358-c385-4bfd-a864-3cce3a7f82df",
+      "document_status": null
+    },
+    {
+      "id": "1dc30c53-6c7d-46fe-bd48-875223542378",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "deadline",
+      "stable_key": "dl-achevement-travaux",
+      "label": "Date proposée pour l'achèvement des travaux : 30/05/2022",
+      "description": "La proposition de date retenue pour l’achèvement des travaux est le 30/05/2022.",
+      "source_page": 2,
+      "source_excerpt": "La proposition de date retenue pour l’achèvement des travaux est le 30/05/2022",
+      "source_payload": {
+        "dueDate": "2022-05-30",
+        "relevanceScore": "strong",
+        "relevanceReason": "Critical date for project completion tracking."
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "b54979e7-75ce-49f3-afb9-cf8045a8d258",
+      "document_status": null
+    },
+    {
+      "id": "f3885c27-ad93-47dc-8cc7-40931fc8cf45",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-faux-cadres-fenetres",
+      "label": "Cacher les faux cadres des fenêtres et châssis en aluminium",
+      "description": "Cacher les faux cadres des fenêtres et châssis en aluminium.",
+      "source_page": 4,
+      "source_excerpt": "- Cacher les faux cadres des fenêtres et châssis en aluminium",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "COS CONSTRUCTION SARL",
+        "thematic_category": "progress",
+        "statusAtDocumentDate": "ouvert"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "92fe2106-64fa-4abd-a360-db0e744424e1",
+      "document_status": "open"
+    },
+    {
+      "id": "32dc3e03-4f12-4d62-8e14-933a9dfbe266",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-humidite-bureau-directeur",
+      "label": "Problème d'humidité mural au bureau du directeur",
+      "description": "Régler le problème de l’humidité mural au niveau du local « bureau du directeur ».",
+      "source_page": 4,
+      "source_excerpt": "- Régler le problème de l’humidité mural au niveau du local « bureau du directeur ».",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "COS CONSTRUCTION SARL",
+        "thematic_category": "progress",
+        "statusAtDocumentDate": "ouvert"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "b9750964-68a9-400f-bf23-7f21cf1e380e",
+      "document_status": "open"
+    },
+    {
+      "id": "23beccc7-6b66-4bde-b581-e106d63dd257",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-remise-etat-murs-pierre",
+      "label": "Reprendre la remise en état des murs en pierre",
+      "description": "Reprendre la remise en état des murs en pierre.",
+      "source_page": 4,
+      "source_excerpt": "- Reprendre la remise en état des murs en pierre.",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "COS CONSTRUCTION SARL",
+        "thematic_category": "progress",
+        "statusAtDocumentDate": "ouvert"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "0fb6f463-41ce-4d33-a274-1f5af26f9070",
+      "document_status": "open"
+    },
+    {
+      "id": "145e24a0-d017-4245-ad38-fe57664f7912",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-finition-enduit-peinture",
+      "label": "Finition de l'enduit des murs et de la peinture",
+      "description": "La finition de l’enduit des murs et de la peinture est à reprendre.",
+      "source_page": 4,
+      "source_excerpt": "- La finition de l’enduit des murs et de la peinture",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "COS CONSTRUCTION SARL",
+        "thematic_category": "progress",
+        "statusAtDocumentDate": "ouvert"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "76356125-6883-47e3-a75b-125d8bea4ee4",
+      "document_status": "open"
+    },
+    {
+      "id": "6f415cb5-9535-4a72-9ddf-e547f1930253",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-nettoyer-terre-vegetale",
+      "label": "Nettoyer la terre végétale",
+      "description": "Nettoyer la terre végétale.",
+      "source_page": 4,
+      "source_excerpt": "- Nettoyer la terre végétale.",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "COS CONSTRUCTION SARL",
+        "thematic_category": "progress",
+        "statusAtDocumentDate": "ouvert"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "8f2bef27-9767-4864-9e50-7b71166e5631",
+      "document_status": "open"
+    },
+    {
+      "id": "d558ec9f-bb27-4e0f-be40-030873c8d1a4",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "person",
+      "stable_key": "person-driss-moulay-rchid",
+      "label": "Driss MOULAY RCHID",
+      "description": "Représentant du Maître d'Ouvrage — Casablanca Aménagement",
+      "source_page": 1,
+      "source_excerpt": "Maître d'Ouvrage : Casablanca Aménagement Représenté par : Monsieur Driss MOULAY RCHID",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "general_knowledge",
+        "statusAtDocumentDate": "inconnu"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "general_knowledge",
+      "subject_thread_id": "a8686e4c-ee78-4581-a2af-1a2bc846cc9e",
+      "document_status": null
+    },
+    {
+      "id": "b5cc1493-19a0-44b7-aa65-afb7e4f5a6d2",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-epreuves-concluantes",
+      "label": "Épreuves prévues au marché effectuées et concluantes",
+      "description": "Les épreuves prévues au marché ont été effectuées et sont concluantes, sans épreuves non concluantes (Annexe III NA et Néant en page 5).",
+      "source_page": 1,
+      "source_excerpt": "1. Les épreuves prévues au marché : ont été effectuées, à l'exception de celles indiquées à l'annexe ci-après ; sont concluantes sont concluantes, à l'exception de celles indiquées ci-après ; Non applicable (pas d’épreuves ou essais prévues au CPS)",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "test_control"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "test_control",
+      "subject_thread_id": "6ec3ec58-2a56-423f-b1b0-4326698984ca",
+      "document_status": null
+    },
+    {
+      "id": "1f0ead43-3234-4e0c-a4b9-c14b75c453ab",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-fixation-isolation-liege",
+      "label": "Reprendre la fixation de l'isolation murale en liège",
+      "description": "Reprendre la fixation de l’isolation murale en liège.",
+      "source_page": 4,
+      "source_excerpt": "- Reprendre la fixation de l’isolation murale en liège",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "COS CONSTRUCTION SARL",
+        "thematic_category": "progress",
+        "statusAtDocumentDate": "ouvert"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "ff25140c-4aea-4596-b67b-6604fd63be63",
+      "document_status": "open"
+    },
+    {
+      "id": "91e35d80-fb04-46d5-8761-a5efbc3eb6ba",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-jonction-paves-joints",
+      "label": "Régler la jonction entre pavés par des joints bien définis",
+      "description": "Régler la jonction entre pavés par des joints bien définis (façade arrière près de la porte d’entrée).",
+      "source_page": 4,
+      "source_excerpt": "- Régler la jonction entre paves par des joints bien défini (façade arrière près de la porte d’entrée)",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "COS CONSTRUCTION SARL",
+        "thematic_category": "progress",
+        "statusAtDocumentDate": "ouvert"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "a728ea12-ca80-436d-8706-4df4f3350d68",
+      "document_status": "open"
+    },
+    {
+      "id": "070e7fdd-917e-4d0b-a867-824d652a6acf",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "person",
+      "stable_key": "person-mohamed-amarrid",
+      "label": "Mohamed AMARRID",
+      "description": "Chef de projet — Centrale Polytechnique Africaine",
+      "source_page": 1,
+      "source_excerpt": "M. Mohamed AMARRID, Chef de projet , agissant pour le compte de Centrale Polytechnique Africaine.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "general_knowledge",
+        "statusAtDocumentDate": "présent"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "general_knowledge",
+      "subject_thread_id": "b38fe696-7c28-46fb-ac4f-d12d69cbedd8",
+      "document_status": null
+    },
+    {
+      "id": "f4b1b9da-5505-45a5-9bb4-8f2a115908e9",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-charpente-chenaux",
+      "label": "Régler la charpente métallique de RDC et fixer les chenaux métalliques",
+      "description": "Bien régler la charpente métallique de RDC et bien fixer les chenaux métalliques.",
+      "source_page": 4,
+      "source_excerpt": "- Bien régler la charpente métallique de RDC et bien fixer les chenaux métalliques",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "COS CONSTRUCTION SARL",
+        "thematic_category": "progress",
+        "statusAtDocumentDate": "ouvert"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "2055bbea-2de6-4be3-8c45-06a10281c429",
+      "document_status": "open"
+    },
+    {
+      "id": "fc16952d-b656-4a54-ab59-9943f7f21353",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "person",
+      "stable_key": "person-kamal-hassar",
+      "label": "KAMAL HASSAR",
+      "description": "Gérant de la société — COS CONSTRUCTION SARL",
+      "source_page": 1,
+      "source_excerpt": "Titulaire du marché : COS CONSTRUCTION SARL. Représenté par : KAMAL HASSAR, Gérant de la société SOCIETE COS CONSTRUCTION SARL.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "general_knowledge",
+        "statusAtDocumentDate": "inconnu"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "general_knowledge",
+      "subject_thread_id": "886b672f-c006-4745-9370-6422dc308ed8",
+      "document_status": null
+    },
+    {
+      "id": "ac4ebf02-8bc1-4d48-b299-9fb913390a39",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-finition-rev-arbres",
+      "label": "Reprendre la finition du revêtement sur le contour des arbres",
+      "description": "Reprendre la finition du revêtement sur le contour des arbres.",
+      "source_page": 4,
+      "source_excerpt": "- Reprendre la finition du revêtement sur le contour des arbres",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "COS CONSTRUCTION SARL",
+        "thematic_category": "progress",
+        "statusAtDocumentDate": "ouvert"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "609ff2fc-72b9-4b77-a2c8-39b991183512",
+      "document_status": "open"
+    },
+    {
+      "id": "85265245-53c1-497c-963f-ebf2312a756e",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-epreuves-non-concluantes-neant",
+      "label": "Aucune épreuve non concluante prévue au marché",
+      "description": "La Maîtrise d’œuvre ingénierie indique 'Néant' pour les réserves concernant les épreuves non concluantes.",
+      "source_page": 5,
+      "source_excerpt": "Réserves Maîtrise d’œuvre ingénierie Néant",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "thematic_category": "test_control"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "test_control",
+      "subject_thread_id": "51f4d533-5477-4b46-a993-23d9a05ccf80",
+      "document_status": null
+    },
+    {
+      "id": "a224f974-574c-4562-a4ce-37b319a5ccbd",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "person",
+      "stable_key": "person-hamza-agdmount",
+      "label": "Hamza AGDMOUN",
+      "description": "Conducteur travaux — Entreprise",
+      "source_page": 1,
+      "source_excerpt": "Entreprise : Représenté par M. Hamza AGDMOUN, Conducteur travaux.",
+      "source_payload": {
+        "relevanceScore": "medium",
+        "linkedCompanyName": "COS CONSTRUCTION SARL",
+        "thematic_category": "general_knowledge",
+        "statusAtDocumentDate": "présent"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "general_knowledge",
+      "subject_thread_id": "c00eef06-e055-4837-9014-a34f01651eaf",
+      "document_status": null
+    },
+    {
+      "id": "c13efe6e-93fd-439b-9f74-8e4d79251d2a",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-joints-fenetres",
+      "label": "Fermeture des joints des fenêtres et châssis en aluminium par silicone",
+      "description": "Finir la fermeture des joints des fenêtres et châssis en aluminium par silicone.",
+      "source_page": 4,
+      "source_excerpt": "- Finir la fermeture des joints des fenêtres et châssis en aluminium par silicone",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "COS CONSTRUCTION SARL",
+        "thematic_category": "progress",
+        "statusAtDocumentDate": "ouvert"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "6ef3e107-d1e6-4370-9b93-f743446c0bf2",
+      "document_status": "open"
+    },
+    {
+      "id": "534009f9-c3dd-4a81-92ab-6dfe260425a6",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-finition-peinture-cloture",
+      "label": "Finition de la peinture du mur de clôture",
+      "description": "La finition de la peinture du mur de clôture est à reprendre.",
+      "source_page": 4,
+      "source_excerpt": "- Finition de la peinture du mur de clôture",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "COS CONSTRUCTION SARL",
+        "thematic_category": "progress",
+        "statusAtDocumentDate": "ouvert"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "2189f65b-3dc3-458c-a0bf-6ec612559faf",
+      "document_status": "open"
+    },
+    {
+      "id": "df94ea53-2a19-4fb4-b346-1da8e2c8e29d",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "knowledge_fact",
+      "stable_key": "kf-date-operations-prealables",
+      "label": "Date des opérations préalables à la réception provisoire : 08/06/2022",
+      "description": "Les opérations préalables à la réception provisoire ont été effectuées le 08/06/2022.",
+      "source_page": 2,
+      "source_excerpt": "Les opérations préalables à la réception provisoire ont été effectuées le 08/06/2022",
+      "source_payload": {
+        "relevanceScore": "weak",
+        "thematic_category": "administrative"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "administrative",
+      "subject_thread_id": "ff021952-0089-4579-a911-5d1057124dbe",
+      "document_status": null
+    },
+    {
+      "id": "7abdf0c8-ce78-4863-a008-1cd05cc78368",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-nettoyage-general",
+      "label": "Nettoyage général",
+      "description": "Nettoyage général à réaliser par l'entreprise.",
+      "source_page": 4,
+      "source_excerpt": "- Nettoyage général ;",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "COS CONSTRUCTION SARL",
+        "thematic_category": "progress",
+        "statusAtDocumentDate": "ouvert"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "f82dd621-e74f-403a-9817-27b90a2c939d",
+      "document_status": "open"
+    },
+    {
+      "id": "ddefd25b-cd4b-478f-a8c5-3bfe3c14d34a",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-hauteurs-poteaux-gradin",
+      "label": "Régler les hauteurs des poteaux métalliques du gradin",
+      "description": "Régler les hauteurs des poteaux métalliques du gradin.",
+      "source_page": 4,
+      "source_excerpt": "- Régler les hauteurs des poteaux métalliques du gradin",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "responsibleParty": "COS CONSTRUCTION SARL",
+        "thematic_category": "progress",
+        "statusAtDocumentDate": "ouvert"
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": "progress",
+      "subject_thread_id": "e7dd66ea-2d7a-4c3f-90bf-061d9860a550",
+      "document_status": "open"
+    },
+    {
+      "id": "12e6801e-7e2d-4986-880a-aec385f02871",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "target_site_id": null,
+      "proposal_family": "reservation",
+      "stable_key": "res-malfacons-imperfections",
+      "label": "Malfaçons ou imperfections constatées sur les ouvrages",
+      "description": "Les ouvrages présentent des malfaçons ou imperfections constatées et dont la liste figure en annexe ci-après (Annexe II).",
+      "source_page": 1,
+      "source_excerpt": "3. Les ouvrages : ne présentent pas de malfaçons ou d'imperfections constatées ; Présentent des malfaçons ou imperfections constatées et dont la liste figure en annexe ci-après (Annexe II).",
+      "source_payload": {
+        "relevanceScore": "strong",
+        "relevanceReason": "Indicates a general issue requiring specific actions, detailed in Annexe II."
+      },
+      "review_status": "pending",
+      "reviewed_label": null,
+      "reviewed_description": null,
+      "reviewed_family": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "created_at": "2026-08-20T06:05:50.215234+00:00",
+      "thematic_category": null,
+      "subject_thread_id": "7961d05c-3e62-46e1-b79f-5e3f6b4a00c5",
+      "document_status": null
+    }
+  ],
+  "evidence": [
+    {
+      "id": "76c3e540-4b7f-4dfc-a665-711f1ecab216",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Maître d'Ouvrage : Casablanca Aménagement"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "6d14ec34-3a0c-4504-9a5e-e608fc470e8e",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Représenté par : Monsieur Driss MOULAY RCHID"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "7edfb445-52b3-4f06-a88e-c4b5256a6742",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Titulaire du marché : COS CONSTRUCTION SARL."
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "75c75a2d-6b35-4998-945f-da957b77000f",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Représenté par : KAMAL HASSAR, Gérant de la société SOCIETE COS CONSTRUCTION SARL."
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "395640f9-c200-442d-bc7e-cb1301aa80c8",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Objet du marché : Travaux de réhabilitation de la maison des jeunes Zerktouni, au niveau de la Préfecture d’arrondissements Casa-Anfa"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "60e76ad8-e3ec-4a95-8a3c-914e9b257bb0",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "N° Marché : 281/2021/MJS-PACA-MJZ-TRAV"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "cba92715-1eca-4bbe-84f2-478c9eb913ba",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Approuvé le : 11/05/2021"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "94228100-89d3-4827-95dd-c920b28aa3da",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "M. Mohamed AMARRID, Chef de projet , agissant pour le compte de Centrale Polytechnique Africaine."
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "0dfd73c3-bc93-45ff-aa52-f8183914d209",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 3,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Dressé par la Maitrise d’œuvre le : 08/06/2022 Maitrise d’œuvre du projet Maitrise d’Œuvre Ingénierie"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "8e726e62-776f-45aa-9066-12a9d8ea4840",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "M. Mohamed AMARRID, Chef de projet , agissant pour le compte de Centrale Polytechnique Africaine."
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "ee03c98b-ebb7-4a89-a763-301086ab6bfd",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Maître d’Ouvrage : M. Mohamed MAATAOUI, Ingénieur Travaux."
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "4a008597-ccdf-49ae-a222-cf7232a6433c",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Entreprise : Représenté par M. Hamza AGDMOUN, Conducteur travaux."
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "eecb8de8-8fe9-438f-80a6-a4e45bdd3b6d",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "1. Les épreuves prévues au marché : ont été effectuées, à l'exception de celles indiquées à l'annexe ci-après ; sont concluantes sont concluantes, à l'exception de celles indiquées ci-après ; Non applicable (pas d’épreuves ou essais prévues au CPS)"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "11ee89bd-1a98-4a8a-8c57-9d67b870a583",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 2,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Liste des épreuves non concluante (Annexe III) NA"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "b76bcdd1-f75d-4497-b6e7-fdb3ebbda5a4",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 5,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Réserves Maîtrise d’œuvre ingénierie Néant"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "467e4cc7-9db1-44e1-af41-5509fc8ebe89",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "2. Les travaux et prestations prévus au marché : ont été exécutés ; Ont été exécutés, à l’exception de prestations énumérées dans le tableau ci-après (Annexe I), avec l’accord du titulaire dans le cadre de la diminution de la masse des travaux conformément aux dispositions de l’article 53 du CCAGT."
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "f3cdbdc2-920e-4ea9-a9f3-d1108a50d721",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 2,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Prestations non exécutées (Annexe I) NA"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "788279cd-6801-442f-8b28-0b943001ef27",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 1,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "3. Les ouvrages : ne présentent pas de malfaçons ou d'imperfections constatées ; Présentent des malfaçons ou imperfections constatées et dont la liste figure en annexe ci-après (Annexe II)."
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "bf61e2ce-de37-432a-98ad-f93c81b1930b",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 2,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "4. Les installations de chantier : ont été repliées n'ont pas été repliées Sauf les équipements et outils nécessaires pour l’entretien pendant l’année de parfait achèvement."
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "cbd9bb86-9311-4ada-bcf4-b94794f26f3e",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 2,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "5. Les terrains et les lieux : ont été remis en état n'ont pas été remis en état"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "2f92b48d-694b-4bc6-87df-b81b2e0efa6c",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 2,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "Les opérations préalables à la réception provisoire ont été effectuées le 08/06/2022"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "e8d1b509-baff-4e94-bcfa-8cbfc3f2eb77",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 2,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "La proposition de date retenue pour l’achèvement des travaux est le 30/05/2022"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "f2e35871-e1e4-4eb8-8b89-8368b11856eb",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "- Nettoyage général ;"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "e8ea7ca7-3ff0-416a-a845-fc640e0f2e43",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "- Finir la fermeture des joints des fenêtres et châssis en aluminium par silicone"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "584898fc-ce4c-470c-a320-fd84e176dd47",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "- Cacher les faux cadres des fenêtres et châssis en aluminium"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "62963c98-6617-43b6-9a21-899df89235cd",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "- Régler le problème de l’humidité mural au niveau du local « bureau du directeur »."
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "b2ec6939-8b96-4e0a-9de5-c8fbf55650b0",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "- Reprendre la fixation de l’isolation murale en liège"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "bdc99e86-a9c9-4f5c-bbd4-d7533ab6ee46",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "- Reprendre la remise en état des murs en pierre."
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "ef37e4d8-8321-4aca-8f4e-b38141ea9fec",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "- Régler les hauteurs des poteaux métalliques du gradin"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "f4afff7d-831b-47e0-9673-fb97b3b0ac0f",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "- Reprendre la finition du revêtement sur le contour des arbres"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "8676aa7f-1ff7-45bc-bfb0-5c2de999e2d5",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "- Régler la jonction entre paves par des joints bien défini (façade arrière près de la porte d’entrée)"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "ee6e681a-60dd-469b-bc5e-7d2fa00dd1f4",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "- La finition de l’enduit des murs et de la peinture"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "c207f6fe-f289-491f-adba-03d5f0d26a1c",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "- Finition de la peinture du mur de clôture"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "5ea619c8-8e0f-408e-af77-86665518d427",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "- Bien régler la charpente métallique de RDC et bien fixer les chenaux métalliques"
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "133dcaac-f5ed-43c3-ab38-6c852ffaa7aa",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "text_excerpt",
+      "source_page": 4,
+      "storage_path": null,
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "text": "- Nettoyer la terre végétale."
+      },
+      "created_at": "2026-08-20T06:05:49.852442+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "944268d2-ac60-43d5-aad9-b757b3a12000",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "image",
+      "source_page": 1,
+      "storage_path": "snapshots/a8a86afc-bb91-4d9a-b05f-b6642347d9fe/img-p1-1.png",
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          89.27999877929688,
+          736.5596923828125,
+          465.3599853515625,
+          840.2396850585938
+        ],
+        "nativeWidth": 376,
+        "nativeHeight": 103
+      },
+      "created_at": "2026-08-20T06:05:54.720191+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "8d2f146f-2ef2-409d-9932-e918a453da95",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "image",
+      "source_page": 2,
+      "storage_path": "snapshots/a8a86afc-bb91-4d9a-b05f-b6642347d9fe/img-p2-1.png",
+      "caption": "Auc",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          89.27999877929688,
+          736.5596923828125,
+          465.3599853515625,
+          840.2396850585938
+        ],
+        "nativeWidth": 376,
+        "nativeHeight": 103
+      },
+      "created_at": "2026-08-20T06:05:54.720191+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "21f010cb-0b49-4ea7-b166-2510e6d54fbd",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "image",
+      "source_page": 3,
+      "storage_path": "snapshots/a8a86afc-bb91-4d9a-b05f-b6642347d9fe/img-p3-1.png",
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          89.27999877929688,
+          736.5596923828125,
+          465.3599853515625,
+          840.2396850585938
+        ],
+        "nativeWidth": 376,
+        "nativeHeight": 103
+      },
+      "created_at": "2026-08-20T06:05:54.720191+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "1d347b01-10d2-4770-96b5-5c922e2fc15e",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "image",
+      "source_page": 4,
+      "storage_path": "snapshots/a8a86afc-bb91-4d9a-b05f-b6642347d9fe/img-p4-1.png",
+      "caption": null,
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          89.27999877929688,
+          736.5596923828125,
+          465.3599853515625,
+          840.2396850585938
+        ],
+        "nativeWidth": 376,
+        "nativeHeight": 103
+      },
+      "created_at": "2026-08-20T06:05:54.720191+00:00",
+      "pinned_for_visit": false
+    },
+    {
+      "id": "9ae9b06e-9b96-43a2-820b-920a956ee542",
+      "organization_id": "95df55b5-11cf-4ace-b2ca-18b000ba9b25",
+      "extraction_run_id": "d4fa5640-06f5-4aea-963b-57a8c971bd15",
+      "document_id": "a8a86afc-bb91-4d9a-b05f-b6642347d9fe",
+      "evidence_type": "image",
+      "source_page": 5,
+      "storage_path": "snapshots/a8a86afc-bb91-4d9a-b05f-b6642347d9fe/img-p5-1.png",
+      "caption": "L'",
+      "nearby_text": null,
+      "metadata": {
+        "bbox": [
+          89.27999877929688,
+          736.5596923828125,
+          465.3599853515625,
+          840.2396850585938
+        ],
+        "nativeWidth": 376,
+        "nativeHeight": 103
+      },
+      "created_at": "2026-08-20T06:05:54.720191+00:00",
+      "pinned_for_visit": false
+    }
+  ],
+  "proposalEvidenceLinks": [
+    {
+      "proposal_id": "12e6801e-7e2d-4986-880a-aec385f02871",
+      "evidence_id": "788279cd-6801-442f-8b28-0b943001ef27",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:05:50.544262+00:00"
+    },
+    {
+      "proposal_id": "91e35d80-fb04-46d5-8761-a5efbc3eb6ba",
+      "evidence_id": "8676aa7f-1ff7-45bc-bfb0-5c2de999e2d5",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:05:53.382169+00:00"
+    },
+    {
+      "proposal_id": "8282105f-bd4a-4f2b-8963-d5bc08d11ddd",
+      "evidence_id": "cbd9bb86-9311-4ada-bcf4-b94794f26f3e",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:05:50.845418+00:00"
+    },
+    {
+      "proposal_id": "145e24a0-d017-4245-ad38-fe57664f7912",
+      "evidence_id": "ee6e681a-60dd-469b-bc5e-7d2fa00dd1f4",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:05:53.648585+00:00"
+    },
+    {
+      "proposal_id": "7abdf0c8-ce78-4863-a008-1cd05cc78368",
+      "evidence_id": "f2e35871-e1e4-4eb8-8b89-8368b11856eb",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:05:51.136906+00:00"
+    },
+    {
+      "proposal_id": "534009f9-c3dd-4a81-92ab-6dfe260425a6",
+      "evidence_id": "c207f6fe-f289-491f-adba-03d5f0d26a1c",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:05:53.915744+00:00"
+    },
+    {
+      "proposal_id": "c13efe6e-93fd-439b-9f74-8e4d79251d2a",
+      "evidence_id": "e8ea7ca7-3ff0-416a-a845-fc640e0f2e43",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:05:51.428131+00:00"
+    },
+    {
+      "proposal_id": "f4b1b9da-5505-45a5-9bb4-8f2a115908e9",
+      "evidence_id": "5ea619c8-8e0f-408e-af77-86665518d427",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:05:54.187409+00:00"
+    },
+    {
+      "proposal_id": "f3885c27-ad93-47dc-8cc7-40931fc8cf45",
+      "evidence_id": "584898fc-ce4c-470c-a320-fd84e176dd47",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:05:51.722281+00:00"
+    },
+    {
+      "proposal_id": "6f415cb5-9535-4a72-9ddf-e547f1930253",
+      "evidence_id": "133dcaac-f5ed-43c3-ab38-6c852ffaa7aa",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:05:54.453882+00:00"
+    },
+    {
+      "proposal_id": "32dc3e03-4f12-4d62-8e14-933a9dfbe266",
+      "evidence_id": "62963c98-6617-43b6-9a21-899df89235cd",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:05:52.016429+00:00"
+    },
+    {
+      "proposal_id": "1f0ead43-3234-4e0c-a4b9-c14b75c453ab",
+      "evidence_id": "b2ec6939-8b96-4e0a-9de5-c8fbf55650b0",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:05:52.300189+00:00"
+    },
+    {
+      "proposal_id": "23beccc7-6b66-4bde-b581-e106d63dd257",
+      "evidence_id": "bdc99e86-a9c9-4f5c-bbd4-d7533ab6ee46",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:05:52.568476+00:00"
+    },
+    {
+      "proposal_id": "ddefd25b-cd4b-478f-a8c5-3bfe3c14d34a",
+      "evidence_id": "ef37e4d8-8321-4aca-8f4e-b38141ea9fec",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:05:52.839706+00:00"
+    },
+    {
+      "proposal_id": "ac4ebf02-8bc1-4d48-b299-9fb913390a39",
+      "evidence_id": "f4afff7d-831b-47e0-9673-fb97b3b0ac0f",
+      "relation_type": "supports",
+      "confidence": null,
+      "created_at": "2026-08-20T06:05:53.11167+00:00"
+    }
+  ]
+}

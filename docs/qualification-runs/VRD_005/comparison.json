@@ -1,0 +1,256 @@
+{
+  "corpusId": "VRD_005",
+  "referenceElementCount": 26,
+  "memoriaProposalCount": 30,
+  "methodologyNote": "Un élément de référence dont le contenu est capturé par une proposition MemorIA mais classé dans une famille différente (ex. observation attendue, knowledge_fact produit) est marqué MISCLASSIFIED : il ne compte pas comme MATCHED pour la famille de référence (impact recall comme un miss), et la ou les proposition(s) correspondante(s) comptent au dénominateur de precision de la famille où MemorIA les a rangées sans compter au numérateur (impact precision comme un faux positif de famille, sans être un FALSE_POSITIVE de contenu).",
+  "elementMatches": [
+    {
+      "referenceElementId": "VRD_005-E01",
+      "family": "person",
+      "verdict": "MATCHED",
+      "matchedProposalId": "e158a059-d6c9-4013-9045-fee441bf41b6",
+      "note": "Aziz Mohamed Mustapha, promoteur — capture équivalente, excerpt identique."
+    },
+    {
+      "referenceElementId": "VRD_005-E02",
+      "family": "person",
+      "verdict": "MATCHED",
+      "matchedProposalId": "0b41a1b8-87d4-4653-9375-b5218e2a699e",
+      "note": "MERIOUA Abderahman, encadrant — capture équivalente."
+    },
+    {
+      "referenceElementId": "VRD_005-E03",
+      "family": "person",
+      "verdict": "MATCHED",
+      "matchedProposalId": "70581dc8-7757-4a4b-bb16-39a30a7c79cb",
+      "note": "TALEB Omar, encadrant — capture équivalente."
+    },
+    {
+      "referenceElementId": "VRD_005-E04",
+      "family": "person",
+      "verdict": "MATCHED",
+      "matchedProposalId": "97a03d32-f35c-42cb-9dea-2bf92e992568",
+      "note": "RAS Abdelouahab, encadrant — capture équivalente."
+    },
+    {
+      "referenceElementId": "VRD_005-E05",
+      "family": "company",
+      "verdict": "MATCHED",
+      "matchedProposalId": "6473eab5-8c9c-4381-bd4a-18012dc95a7c",
+      "note": "Entreprise Hasnaoui, réalisateur — capture équivalente, excerpt identique ('Réalisateur : Entreprise Hasnaoui')."
+    },
+    {
+      "referenceElementId": "VRD_005-E06",
+      "family": "company",
+      "verdict": "MATCHED",
+      "matchedProposalId": "54569045-0af7-4bbc-9e8e-d5e6f5a09e83",
+      "note": "art de ville, maître d'œuvre — capture équivalente."
+    },
+    {
+      "referenceElementId": "VRD_005-E07",
+      "family": "company",
+      "verdict": "MATCHED",
+      "matchedProposalId": "4615bb58-2e96-4ffa-878f-0f1cdb471ab1",
+      "note": "C.T.C ouest Oran, organisme de contrôle — capture équivalente."
+    },
+    {
+      "referenceElementId": "VRD_005-E08",
+      "family": "company",
+      "verdict": "MATCHED",
+      "matchedProposalId": "f435fec2-c820-4b23-9b9b-48fda9f9e857",
+      "note": "H.F.C.M Hasnaoui C.E.S B.T.P.Hasnaoui, entreprise de réalisation béton — capture équivalente, MemorIA conserve prudemment l'entité distincte d'Entreprise Hasnaoui, comme la référence."
+    },
+    {
+      "referenceElementId": "VRD_005-E09",
+      "family": "knowledge_fact",
+      "verdict": "MATCHED",
+      "matchedProposalId": "0e2988f0-5223-49fc-b55e-eb6844188141",
+      "note": "112 logements F4&F6, centre commercial, parking — MemorIA fusionne E09 et E10 (voir ci-dessous) en une seule proposition couvrant tout le paragraphe programmatique, plus une phrase de localisation ('commune d'Oran, Wilaya d'Oran') réelle et non fabriquée. Consolidation, inverse du biais de sur-fragmentation observé ailleurs dans le corpus ; aucune perte de contenu."
+    },
+    {
+      "referenceElementId": "VRD_005-E10",
+      "family": "knowledge_fact",
+      "verdict": "MATCHED",
+      "matchedProposalId": "0e2988f0-5223-49fc-b55e-eb6844188141",
+      "note": "Commodités des logements (cuisine équipée, chauffage, climatisation, isolation, menuiserie) — même proposition consolidée que E09."
+    },
+    {
+      "referenceElementId": "VRD_005-E11",
+      "family": "knowledge_fact",
+      "verdict": "MATCHED",
+      "matchedProposalId": "cca4652f-6f30-492d-b8ef-c755d0679f0c",
+      "note": "Permis de construire numéro 35 du 25 février 2016 — capture équivalente, excerpt identique."
+    },
+    {
+      "referenceElementId": "VRD_005-E12",
+      "family": "knowledge_fact",
+      "verdict": "MATCHED",
+      "matchedProposalId": "7d7b6f7b-d4b6-457e-afed-24d0d08dc478",
+      "note": "Délai de réalisation 24 mois — capture équivalente."
+    },
+    {
+      "referenceElementId": "VRD_005-E13",
+      "family": "knowledge_fact",
+      "verdict": "MATCHED",
+      "matchedProposalId": "229101c4-d08c-47b9-bfb5-4ad7c1928840",
+      "note": "Ouverture de chantier octobre 2017 — capture équivalente. Divergence mineure de sous-classification : thematic_category MemorIA = 'progress' contre 'administrative' en référence (fait passé) ; ne change pas la famille."
+    },
+    {
+      "referenceElementId": "VRD_005-E14",
+      "family": "deadline",
+      "verdict": "MATCHED",
+      "matchedProposalId": "5071659f-8dd4-491f-9772-14f9ef2daca1",
+      "note": "Fin des travaux septembre 2019 — capture équivalente. Point positif : contrairement au biais observé sur d'autres documents du corpus (fabrication d'un jour calendaire), MemorIA ne renseigne ici aucun champ dueDate structuré alors que la source ne donne que mois/année — aucune précision inventée, cohérent avec la prudence de la référence."
+    },
+    {
+      "referenceElementId": "VRD_005-E15",
+      "family": "knowledge_fact",
+      "verdict": "MISSED",
+      "matchedProposalId": null,
+      "note": "'Visite effectuée le : LUNDI 17 décembre 2018 [...] toute la promo 2018/2019' — métadonnée de contexte documentaire (date et composition de la visite). Aucune proposition MemorIA, quelle que soit la famille, ne couvre ce passage."
+    },
+    {
+      "referenceElementId": "VRD_005-E16",
+      "family": "observation",
+      "verdict": "MISCLASSIFIED",
+      "matchedProposalId": ["20f39746-629a-449d-8749-ff9683d6dcf9", "113e28bc-8349-41ff-be65-703094982251"],
+      "note": "Contenu capturé fidèlement et intégralement (R+15 ; gros œuvre presque achevé, tous étages achevés, finition des murs extérieurs en cours) mais rangé en famille 'knowledge_fact' par MemorIA alors qu'il s'agit d'un constat d'avancement fait pendant la visite (observation en référence). Fragmentation additionnelle : 1 élément de référence → 2 propositions."
+    },
+    {
+      "referenceElementId": "VRD_005-E17",
+      "family": "observation",
+      "verdict": "MISSED",
+      "matchedProposalId": null,
+      "note": "'Nous avons comme même eu l'occasion de voir toutes les étapes de construction du RDC au dernier étage grâce au rapport photographique présenté par le chef de chantier.' Aucune proposition MemorIA ne couvre ce passage, quelle que soit la famille."
+    },
+    {
+      "referenceElementId": "VRD_005-E18",
+      "family": "observation",
+      "verdict": "MISCLASSIFIED",
+      "matchedProposalId": ["6a38406a-a9b1-4902-be61-e47a059f167f", "827c70b5-72f7-48d9-8c2c-5ca6c856d3b9", "69489d86-cd26-486d-b02c-461cd330df93", "7661ef12-f47b-44c8-815b-6b28728ca43d"],
+      "note": "Contenu capturé fidèlement et intégralement (chauffage central individuel, réalisé par le groupe Hasnaoui, tuyaux multicouche posés sur dalle, cônes en ciment de protection/nivellement) mais rangé en famille 'knowledge_fact' alors qu'il s'agit d'une description technique observée sur site (observation en référence). Sur-fragmentation marquée : 1 élément de référence → 4 propositions."
+    },
+    {
+      "referenceElementId": "VRD_005-E19",
+      "family": "observation",
+      "verdict": "MISCLASSIFIED",
+      "matchedProposalId": "a30c1e42-5f89-40bd-a7f5-0454c7f63fce",
+      "note": "Dalle pleine en béton armé 20cm — contenu fidèle mais rangé en 'knowledge_fact' au lieu d'observation."
+    },
+    {
+      "referenceElementId": "VRD_005-E20",
+      "family": "observation",
+      "verdict": "MISCLASSIFIED",
+      "matchedProposalId": "bcc1f319-57d8-4e13-be14-3de5b7ec9017",
+      "note": "Poteaux = murs voiles béton armé, coffrage métallique — contenu fidèle mais rangé en 'knowledge_fact' au lieu d'observation."
+    },
+    {
+      "referenceElementId": "VRD_005-E21",
+      "family": "observation",
+      "verdict": "MISCLASSIFIED",
+      "matchedProposalId": ["3da2b58b-d1db-493e-8c02-7bb303888209", "d8269472-cdb8-4e3b-8d4b-aa9fbaf8e7a5"],
+      "note": "Enduit/mortier préparé par le groupe Hasnaoui, projeté sur surface préalablement isolée — contenu fidèle et complet mais rangé en 'knowledge_fact' au lieu d'observation. Fragmentation : 1 élément de référence → 2 propositions."
+    },
+    {
+      "referenceElementId": "VRD_005-E22",
+      "family": "observation",
+      "verdict": "MISCLASSIFIED",
+      "matchedProposalId": "9bd26dbc-f2e4-40d6-8366-cf04e92dcffe",
+      "note": "Murs extérieurs en brique creuse, isolation polystyrène 8cm collé/chevillé/maillé — excerpt identique mais rangé en 'knowledge_fact' au lieu d'observation."
+    },
+    {
+      "referenceElementId": "VRD_005-E23",
+      "family": "observation",
+      "verdict": "MISCLASSIFIED",
+      "matchedProposalId": ["522244ae-90f9-4419-a2ad-27034f422fbe", "90f19d7f-1285-4995-acd2-3dfdbf5e9c58"],
+      "note": "Murs de séparation en brique creuse + cloisons BA13 avec peinture isolante — contenu fidèle et complet mais rangé en 'knowledge_fact' au lieu d'observation. Fragmentation : 1 élément de référence → 2 propositions."
+    },
+    {
+      "referenceElementId": "VRD_005-E24",
+      "family": "observation",
+      "verdict": "MISCLASSIFIED",
+      "matchedProposalId": ["296a6a67-0fcd-4311-80ac-b4b409591f8b", "b3115e3c-60de-4243-9b4b-168c0957edca"],
+      "note": "Fenêtres/portes aluminium double vitrage, fabriqué en interne par Hasnaoui — contenu fidèle et complet mais rangé en 'knowledge_fact' au lieu d'observation. Fragmentation : 1 élément de référence → 2 propositions."
+    },
+    {
+      "referenceElementId": "VRD_005-E25",
+      "family": "knowledge_fact",
+      "verdict": "MISSED",
+      "matchedProposalId": null,
+      "note": "'Le chantier visité nous a permis de répondre à beaucoup de questionnement concernant les techniques d'isolation [...] et surtout de montrer l'importance d'une étude thermique.' Bilan pédagogique de conclusion, aucune proposition MemorIA ne le couvre."
+    },
+    {
+      "referenceElementId": "VRD_005-E26",
+      "family": "observation",
+      "verdict": "MISCLASSIFIED",
+      "matchedProposalId": "f942ccdc-e3c6-4c49-a1e0-93a609670704",
+      "note": "'Le chantier dans son fonctionnement était propre et sécurisé' — contenu fidèle (excerpt identique) mais rangé en 'knowledge_fact' (thematic_category='safety_environment') au lieu d'observation."
+    }
+  ],
+  "unmatchedProposals": [
+    {
+      "proposalId": "4dab3c0d-2ded-47a4-94b8-d3a0eb705dbf",
+      "family": "knowledge_fact",
+      "label": "Projet Résidence Anes, Oran",
+      "verdict": "LEGITIMATE_EXTRA",
+      "note": "Excerpt vérifié mot pour mot page 1 ('Résidence Anes, ORAN'). Fait réel (nom et localisation du projet, page de garde), non isolé comme élément propre par la référence Phase A qui l'a intégré implicitement au reste de la fiche d'identité."
+    }
+  ],
+  "recallByFamily": {
+    "person": { "referenceCount": 4, "matched": 4, "partial": 0, "missed": 0, "misclassified": 0, "recall": 1.0 },
+    "company": { "referenceCount": 4, "matched": 4, "partial": 0, "missed": 0, "misclassified": 0, "recall": 1.0 },
+    "knowledge_fact": { "referenceCount": 7, "matched": 5, "partial": 0, "missed": 2, "misclassified": 0, "recall": 0.714 },
+    "deadline": { "referenceCount": 1, "matched": 1, "partial": 0, "missed": 0, "misclassified": 0, "recall": 1.0 },
+    "observation": { "referenceCount": 10, "matched": 0, "partial": 0, "missed": 1, "misclassified": 9, "recall": 0.0, "note": "0 proposition MemorIA classée en famille 'observation' sur tout le document. 9/10 éléments de référence sont capturés fidèlement mais rangés en 'knowledge_fact' (MISCLASSIFIED, ne compte pas comme un succès de recall) ; 1/10 est purement manqué (E17)." },
+    "decision": { "referenceCount": 0, "matched": 0, "partial": 0, "missed": 0, "misclassified": 0, "recall": null, "note": "Aucun élément de référence dans cette famille pour ce document — recall non défini." },
+    "action": { "referenceCount": 0, "matched": 0, "partial": 0, "missed": 0, "misclassified": 0, "recall": null, "note": "Aucun élément de référence dans cette famille pour ce document — recall non défini." },
+    "reservation": { "referenceCount": 0, "matched": 0, "partial": 0, "missed": 0, "misclassified": 0, "recall": null, "note": "Aucun élément de référence dans cette famille pour ce document — recall non défini." }
+  },
+  "precisionByFamily": {
+    "person": { "proposalsCount": 4, "legitimateExtra": 0, "truePositives": 4, "misclassifiedFromOtherFamily": 0, "falsePositives": 0, "denominator": 4, "precision": 1.0 },
+    "company": { "proposalsCount": 4, "legitimateExtra": 0, "truePositives": 4, "misclassifiedFromOtherFamily": 0, "falsePositives": 0, "denominator": 4, "precision": 1.0 },
+    "knowledge_fact": { "proposalsCount": 21, "legitimateExtra": 1, "truePositives": 4, "misclassifiedFromOtherFamily": 16, "falsePositives": 0, "denominator": 20, "precision": 0.2, "note": "16 propositions correspondent à un contenu réel mais appartenant à la famille 'observation' en référence (E16,E18-E24,E26), comptées au dénominateur sans compter au numérateur." },
+    "deadline": { "proposalsCount": 1, "legitimateExtra": 0, "truePositives": 1, "misclassifiedFromOtherFamily": 0, "falsePositives": 0, "denominator": 1, "precision": 1.0 },
+    "observation": { "proposalsCount": 0, "legitimateExtra": 0, "truePositives": 0, "misclassifiedFromOtherFamily": 0, "falsePositives": 0, "denominator": 0, "precision": null, "note": "MemorIA n'a produit aucune proposition dans cette famille sur ce document." },
+    "decision": { "proposalsCount": 0, "legitimateExtra": 0, "truePositives": 0, "misclassifiedFromOtherFamily": 0, "falsePositives": 0, "denominator": 0, "precision": null },
+    "action": { "proposalsCount": 0, "legitimateExtra": 0, "truePositives": 0, "misclassifiedFromOtherFamily": 0, "falsePositives": 0, "denominator": 0, "precision": null },
+    "reservation": { "proposalsCount": 0, "legitimateExtra": 0, "truePositives": 0, "misclassifiedFromOtherFamily": 0, "falsePositives": 0, "denominator": 0, "precision": null }
+  },
+  "photoComparison": {
+    "referencePhotoCount": 15,
+    "memoriaImageEvidenceCount": 16,
+    "memoriaPageSnapshotCount": 10,
+    "note": "MemorIA extrait les preuves visuelles via deux mécanismes distincts et non liés entre eux (proposalEvidenceLinks vide dans les deux cas) : evidence_type='page_snapshot' (10 items) et evidence_type='image' (16 items, crops bruts).",
+    "matches": [
+      { "referencePhotoId": "VRD_005-P06", "evidenceId": "da30572e-0adf-4c86-9f4b-3d1d4dd0ccbc", "evidenceType": "page_snapshot", "captionQuality": "excellent", "note": "Caption 'Vue générale du projet le jour de la visite, montrant la construction en cours.' — description fidèle et quasi identique à la référence ('Vue en contre-plongée d'un immeuble R+15...'). Deux crops 'image' supplémentaires sur la même page (img-p3-1 'Installation', img-p3-2 'Fa') semblent être des fragments bruts de la même photo, avec des légendes tronquées/vagues sans valeur descriptive propre." },
+      { "referencePhotoId": "VRD_005-P07", "evidenceId": "0c68f564-1f19-4de0-be6c-4d98752e8260", "evidenceType": "page_snapshot", "captionQuality": "excellent", "note": "Caption 'Tuyaux pour chauffage central posés sur la dalle.' — reprend quasi mot pour mot la légende réelle du document ('Tuyaux pour chauffage central posés à terre'). Deux crops 'image' associés (img-p4-1, img-p4-2) portent tous deux la légende tronquée 'Tuy'." },
+      { "referencePhotoId": "VRD_005-P08", "evidenceId": "a6f2db79-cd86-4b4a-9a30-0e5eaace9ef0", "evidenceType": "page_snapshot", "captionQuality": "excellent", "note": "Caption 'Mur de séparation avec enduit appliqué.' — correspond à la légende réelle 'Enduit mur de séparation'." },
+      { "referencePhotoId": "VRD_005-P09", "evidenceId": "c0440a62-d0eb-4ae9-a362-70554e7aa671", "evidenceType": "page_snapshot", "captionQuality": "excellent", "note": "Caption 'Projection d'enduit sur les murs intérieurs.' — identique à la légende réelle du document. Un crop 'image' associé (img-p5-4) porte la légende tronquée 'Projection d'." },
+      { "referencePhotoId": "VRD_005-P10", "evidenceId": "e119e01a-5470-41de-af3e-f5d4af907949", "evidenceType": "page_snapshot", "captionQuality": "excellent", "note": "Caption 'Isolation par polystyrène.' — quasi identique à la légende réelle 'Isolation par Polystyrène'. Un crop 'image' associé (img-p5-1) porte la légende tronquée 'Isolation'." },
+      { "referencePhotoId": "VRD_005-P11", "evidenceId": "cc0ed2b6-b536-4cc5-bc84-952ef3b12a7a", "evidenceType": "page_snapshot", "captionQuality": "excellent", "note": "Caption 'Cheville de fixation pour l'isolation.' — correspond à la légende réelle 'Cheville de fixation'." },
+      { "referencePhotoId": "VRD_005-P12", "evidenceId": "11de7578-a187-4a0a-8924-569c9f90fff5", "evidenceType": "page_snapshot", "captionQuality": "excellent", "note": "Caption 'Colle utilisée pour l'isolation.' — correspond à la légende réelle 'Colle utilisée'." },
+      { "referencePhotoId": "VRD_005-P13", "evidenceId": "3fedb435-004c-4b62-8212-db2ed0fb5456", "evidenceType": "page_snapshot", "captionQuality": "excellent", "note": "Caption 'Montage de plaques de BA13.' — correspond à la légende réelle 'Montage de la BA13'. Deux crops 'image' associés (img-p6-1, img-p6-2) sans légende exploitable." },
+      { "referencePhotoId": "VRD_005-P14", "evidenceId": "af776cbb-200e-448c-8271-87f1703a25c8", "evidenceType": "page_snapshot", "captionQuality": "excellent", "note": "Caption 'Plaques de BA13 adaptées à différentes zones.' — correspond à la légende réelle 'BA13 adapté à chaque zone'. Deux crops 'image' associés (img-p6-3 'Image non', img-p6-4 sans légende)." },
+      { "referencePhotoId": "VRD_005-P15", "evidenceId": "d003d34a-0152-40c7-8723-e4741d832aa2", "evidenceType": "page_snapshot", "captionQuality": "excellent", "note": "Caption 'Menuiserie aluminium pour porte.' — identique à la légende réelle du document. Deux crops 'image' associés (img-p6-5 sans légende, img-p6-6 'Cloisons' — légende probablement mal attribuée entre photos voisines de la même page)." },
+      { "referencePhotoId": "VRD_005-P04", "evidenceId": "3d2fd206-888d-436b-be64-a8440fbd1de2", "evidenceType": "image", "captionQuality": "vague", "note": "Photo de groupe (étudiants + encadrants, casques rouges) captée uniquement en crop 'image', légende 'Visite' — thématiquement plausible mais ne décrit pas le contenu visuel réel (aucun page_snapshot équivalent avec légende riche pour cette photo)." }
+    ],
+    "missed": [],
+    "notCaptured": [
+      { "referencePhotoId": "VRD_005-P01", "note": "Logo Université de Tlemcen, page 1, role decorative — non extrait. Exclusion cohérente avec le rôle non-prioritaire." },
+      { "referencePhotoId": "VRD_005-P02", "note": "Logo Erasmus+, page 1, role decorative — non extrait." },
+      { "referencePhotoId": "VRD_005-P03", "note": "Logo Proemed, page 1, role decorative — non extrait." },
+      { "referencePhotoId": "VRD_005-P05", "note": "Logo groupe Hasnaoui, page 2, role decorative — non extrait." }
+    ],
+    "falsePositives": [],
+    "additionalNote": "Sur les 10 photos à valeur de preuve technique de la référence (P06-P15, role='evidence'), les 10 sont couvertes avec un recall de 100% et une qualité de légende excellente via le mécanisme evidence_type='page_snapshot', qui reprend quasi mot pour mot les légendes réelles imprimées dans le document (contraste net avec le biais de légendes vagues/tronquées documenté sur VRD_002). En parallèle, un second mécanisme evidence_type='image' (16 crops bruts) capture des fragments de ces mêmes photos en quasi-doublon positionnel (bounding boxes très proches par paires sur la quasi-totalité des pages 3 à 6), avec des légendes tronquées à 1-2 mots ou absentes ('Tuy', 'Fa', 'Image non', 'Cloisons' mal attribué, ou caption null) — aucune valeur descriptive autonome, aucun contenu fabriqué (positions et pages toutes cohérentes avec le PDF réel). Les 4 logos institutionnels/décoratifs (P01-P03, P05) ne sont pas extraits, ce qui est cohérent avec leur rôle non-prioritaire. La photo de groupe (P04, role document_context) n'est capturée que par le mécanisme 'image' brut, sans page_snapshot descriptif équivalent, avec une légende vague ('Visite'). proposalEvidenceLinks reste vide sur toute l'extraction : aucune des 56 evidence (30 text_excerpt + 10 page_snapshot + 16 image) n'est reliée formellement à une proposition, y compris les page_snapshot pourtant nommément corrélables aux observations techniques (E16-E24) — la mise en relation reste entièrement implicite (page + texte voisin)."
+  },
+  "overallNotes": [
+    "26 éléments de référence : 14 MATCHED (4 person, 4 company, 5 knowledge_fact, 1 deadline), 0 PARTIAL, 3 MISSED (E15 contexte visite, E17 rapport photographique du chef de chantier, E25 bilan pédagogique), 9 MISCLASSIFIED (E16, E18-E24, E26 — toute la famille 'observation' sauf E17). Recall global = 14/26 = 53,8%.",
+    "Biais dominant et systématique : MemorIA n'a produit AUCUNE proposition de famille 'observation' sur ce document (0/30), alors que la référence en identifie 10/26 (38% du contenu). Toutes les descriptions techniques constatées pendant la visite (dalle, poteaux, murs extérieurs, murs de séparation, cloisons BA13, menuiserie aluminium, enduit, chauffage, propreté/sécurité du chantier) sont capturées avec un contenu fidèle mais systématiquement rangées en famille 'knowledge_fact'. Impact : precision de la famille knowledge_fact chutée à 20% (4 vrais positifs sur 20, hors 1 legitimate_extra) et recall de la famille observation à 0%, alors qu'aucun de ces faits n'est perdu ou halluciné — c'est un biais de frontière de classification (fait décrit au présent, constaté visuellement, avec responsable nommé, vs fait déclaratif de fiche projet), pas une perte de contenu.",
+    "Aucune hallucination détectée : les 30 source_excerpt correspondent mot pour mot à du texte réel du PDF, vérifié page par page contre reference.json. 0 FALSE_POSITIVE, 1 seul LEGITIMATE_EXTRA (titre/localisation du projet, page 1, non isolé par la référence).",
+    "Point positif à relever : contrairement au biais de fabrication de précision temporelle documenté sur LRM_01 (dueDate à un jour calendaire inventé), la proposition deadline 'Fin des travaux' (Sept. 2019, mois/année seulement dans la source) ne porte ici aucun champ dueDate structuré fabriqué — MemorIA n'invente pas de jour absent du texte sur ce document.",
+    "Sur-fragmentation ciblée dans le sous-ensemble observation→knowledge_fact : E18 (chauffage) éclaté en 4 propositions, E16/E21/E23/E24 chacun en 2. À l'inverse, E09+E10 (programme du projet) sont consolidés en une seule proposition — pas de perte de contenu dans les deux sens, mais une organisation en objets nettement différente de la référence.",
+    "Photos (axe de test prioritaire pour ce document, fort volume d'images) : sur les 10 photos de preuve technique de la référence, recall = 100% et légendes de très bonne qualité via le mécanisme 'page_snapshot' (10 items), qui reprend quasi verbatim les légendes imprimées dans le PDF — nettement meilleur que le cas VRD_002 (légendes vagues/tronquées, troncature après la page 8). Un second mécanisme 'image' (16 crops bruts, en quasi-doublon positionnel par paires) apporte du bruit sans valeur descriptive propre (légendes tronquées à 1-2 caractères ou absentes) mais sans fabrication de contenu. Les 4 logos décoratifs de la page de garde sont correctement exclus. proposalEvidenceLinks est vide sur l'ensemble de l'extraction, y compris pour les page_snapshot bien légendés qui auraient pu être rattachés aux observations techniques correspondantes.",
+    "Aucun élément des familles action, decision, reservation dans la référence ni dans MemorIA — cohérent avec un rapport de visite pédagogique sans réunion de chantier ni échéance à responsable assigné."
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "documentId": "BTP_008",
+  "sourceFile": "docs/corpus-pv/STRESS_TEST/BTP_CHANTIER/BTP_008_4_parisbelleville_moe.pdf",
+  "pageCount": 9,
+  "elements": [],
+  "photos": [
+    {
+      "id": "BTP_008-P01",
+      "page": 1,
+      "caption": "La phase chantier - Réunion de suivi contractuel Maîtrise d'ouvrage / Maîtrise d'oeuvre",
+      "description": "Bandeau graphique de couverture (dégradé bleu, motif de vagues abstraites) portant le titre du document et la mention ENSA Paris Belleville / HMONP / Thierry Roussel / Mars 2021. Aucune scène de chantier réelle, aucun ouvrage, aucune personne ni équipement visible.",
+      "role": "decorative",
+      "roleJustification": "Visuel de page de garde purement graphique/typographique, sans contenu métier ni preuve de chantier."
+    }
+  ],
+  "readerNotes": "Ce document n'est pas un compte-rendu de réunion de chantier réel : c'est un guide méthodologique (DOC 5) rédigé par Thierry Roussel dans le cadre de son HMONP à l'ENSA Paris Belleville (mars 2021), destiné à servir de trame reproductible pour de futures réunions MOUV/MOE. Les pages 1 à 4 sont un texte d'accompagnement pédagogique (conseils, métaphores, doctrine de conduite de réunion) sans aucun fait de chantier daté ni nommé. Les pages 5 à 9 sont un modèle de compte-rendu vierge (sections 1 à 13 : organisation du chantier, gestion des contrats, calendriers, avancement, sécurité, HQE, exploitation, études, suivi financier, missions spécifiques, suivi du contrat MOE) : le tableau des participants (Maîtrise d'ouvrage, Maîtrise d'oeuvre, OPC, coordonnateur SPS, coordonnateur SSI, bureau de contrôle, AMO HQE) est entièrement vide (pas de nom, pas d'adresse, pas de statut présent/absent), le champ \"Tenue le ... à ...\" et le champ \"OPERATION :\" sont vierges, et chaque item du plan (ex. §4 Avancement des travaux, §5 Sécurité, §11 Suivi financier) est une simple rubrique à renseigner lors d'une future réunion, pas un fait constaté. Aucune personne, entreprise, réserve, action, décision, échéance ou fait durable propre à un chantier réel n'est donc identifiable dans ce document : le nom \"Thierry Roussel\" n'apparaît qu'en en-tête/pied de page comme auteur du guide, sans statut de présence à une date de réunion, et n'a donc pas été retenu comme élément 'person'. Les tournures 'Attention à X' présentes dans le texte (p.4 sur le CCAG/NFP, p.8 sur la traçabilité HQE) sont des consignes rédactionnelles génériques adressées au futur rédacteur du compte-rendu, non des constats sur un chantier identifié, et n'ont donc pas été retenues comme observations. Le corpus élément est volontairement vide (liste 'elements' à 0 entrée) car aucune donnée exploitable selon la taxonomie ne figure dans ce document gabarit."
+}
