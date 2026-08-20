@@ -1,0 +1,125 @@
+﻿{
+    "aggregateSentinel":  {
+                              "totalDeadlineMatched":  11,
+                              "aggregateRecall":  0.4783,
+                              "totalDeadlineProposals":  21,
+                              "totalDeadlineMisclassified":  10,
+                              "totalDeadlineFalsePositive":  0
+                          },
+    "verdict":  "PASS",
+    "sentinelDeadlineMetrics":  {
+                                    "JAR_01":  {
+                                                   "baselineDeadlineMatched":  6,
+                                                   "sentinelDeadlineMisclassified":  2,
+                                                   "baselineDeadlineRef":  7,
+                                                   "sentinelDeadlineFalsePositive":  0,
+                                                   "delta":  {
+                                                                 "matchedGain":  -1,
+                                                                 "recallDeltaPts":  -0.1429
+                                                             },
+                                                   "sentinelDeadlineMatched":  5,
+                                                   "sentinelDeadlineRecall":  0.7143,
+                                                   "sentinelDeadlineProposals":  7,
+                                                   "baselineDeadlineRecall":  0.8571
+                                               },
+                                    "QHSE_004":  {
+                                                     "baselineDeadlineMatched":  0,
+                                                     "sentinelDeadlineMisclassified":  2,
+                                                     "baselineDeadlineRef":  1,
+                                                     "sentinelDeadlineFalsePositive":  0,
+                                                     "delta":  {
+                                                                   "matchedGain":  0,
+                                                                   "recallDeltaPts":  0
+                                                               },
+                                                     "sentinelDeadlineMatched":  0,
+                                                     "sentinelDeadlineRecall":  0,
+                                                     "sentinelDeadlineProposals":  2,
+                                                     "baselineDeadlineRecall":  0
+                                                 },
+                                    "VRD_005":  {
+                                                    "baselineDeadlineMatched":  0,
+                                                    "sentinelDeadlineMisclassified":  0,
+                                                    "baselineDeadlineRef":  0,
+                                                    "sentinelDeadlineFalsePositive":  0,
+                                                    "delta":  {
+                                                                  "matchedGain":  0,
+                                                                  "recallDeltaPts":  0
+                                                              },
+                                                    "sentinelDeadlineMatched":  0,
+                                                    "sentinelDeadlineRecall":  0,
+                                                    "sentinelDeadlineProposals":  0,
+                                                    "baselineDeadlineRecall":  0
+                                                },
+                                    "JAR_CR04":  {
+                                                     "baselineDeadlineMatched":  1,
+                                                     "sentinelDeadlineMisclassified":  4,
+                                                     "baselineDeadlineRef":  9,
+                                                     "sentinelDeadlineFalsePositive":  0,
+                                                     "delta":  {
+                                                                   "matchedGain":  2,
+                                                                   "recallDeltaPts":  0.2222
+                                                               },
+                                                     "sentinelDeadlineMatched":  3,
+                                                     "sentinelDeadlineRecall":  0.3333,
+                                                     "sentinelDeadlineProposals":  7,
+                                                     "baselineDeadlineRecall":  0.1111
+                                                 },
+                                    "HER_CR01":  {
+                                                     "baselineDeadlineMatched":  0,
+                                                     "sentinelDeadlineMisclassified":  2,
+                                                     "baselineDeadlineRef":  4,
+                                                     "sentinelDeadlineFalsePositive":  0,
+                                                     "delta":  {
+                                                                   "matchedGain":  2,
+                                                                   "recallDeltaPts":  0.5
+                                                               },
+                                                     "sentinelDeadlineMatched":  2,
+                                                     "sentinelDeadlineRecall":  0.5,
+                                                     "sentinelDeadlineProposals":  4,
+                                                     "baselineDeadlineRecall":  0
+                                                 },
+                                    "MEL_CR03":  {
+                                                     "baselineDeadlineMatched":  0,
+                                                     "sentinelDeadlineMisclassified":  0,
+                                                     "baselineDeadlineRef":  2,
+                                                     "sentinelDeadlineFalsePositive":  0,
+                                                     "delta":  {
+                                                                   "matchedGain":  1,
+                                                                   "recallDeltaPts":  0.5
+                                                               },
+                                                     "sentinelDeadlineMatched":  1,
+                                                     "sentinelDeadlineRecall":  0.5,
+                                                     "sentinelDeadlineProposals":  1,
+                                                     "baselineDeadlineRecall":  0
+                                                 },
+                                    "EAU_001":  {
+                                                    "baselineDeadlineMatched":  0,
+                                                    "sentinelDeadlineMisclassified":  0,
+                                                    "baselineDeadlineRef":  0,
+                                                    "sentinelDeadlineFalsePositive":  0,
+                                                    "delta":  {
+                                                                  "matchedGain":  0,
+                                                                  "recallDeltaPts":  0
+                                                              },
+                                                    "sentinelDeadlineMatched":  0,
+                                                    "sentinelDeadlineRecall":  0,
+                                                    "sentinelDeadlineProposals":  0,
+                                                    "baselineDeadlineRecall":  0
+                                                }
+                                },
+    "corpusScored":  [
+                         "JAR_CR04",
+                         "MEL_CR03",
+                         "QHSE_004",
+                         "JAR_01",
+                         "HER_CR01",
+                         "EAU_001",
+                         "VRD_005"
+                     ],
+    "reasoning":  "Recall improved from 30,4% to 47,8% (+17.4.F1) pts) — micro-correctif shows positive impact. FP rate: 0 (controlled).",
+    "aggregateBaseline":  {
+                              "totalDeadlineMatched":  7,
+                              "aggregateRecall":  0.3043,
+                              "totalDeadlineRef":  23
+                          }
+}
