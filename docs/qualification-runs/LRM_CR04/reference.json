@@ -512,7 +512,7 @@
     },
     {
       "id": "LRM_CR04-E40",
-      "family": "decision",
+      "family": "knowledge_fact",
       "page": 3,
       "excerpt": "La couverture des deux premières travées (n°1 et 2) réalisée en 1995 par l'entreprise CCA sera reprise en TC2. Voir si la volige peut être conservée.",
       "summary": "La couverture des travées 1 et 2 (réalisée en 1995) sera reprise lors de la Tranche Conditionnelle 2 ; possibilité de conserver la volige à étudier.",
@@ -521,11 +521,11 @@
       "thematicCategory": null,
       "statusAtDocumentDate": "décidé (échéance reportée à TC2)",
       "companyRole": null,
-      "classificationNote": null
+      "classificationNote": "CORRECTION 2026-08-21 : reclassé de decision → knowledge_fact. Le cœur de l'énoncé est un fait passé daté (réalisée en 1995 par CCA) + report d'échéance à une tranche. Il n'y a pas d'arbitrage entre options concurrentes. La partie investigation (voir si volige conservable) confirme l'absence de décision arrêtée. Doublon company E24 (CCA) confirme la face entreprise. Confiance MEDIUM."
     },
     {
       "id": "LRM_CR04-E41",
-      "family": "decision",
+      "family": "action",
       "page": 3,
       "excerpt": "Prévoir un petit chéneau en plomb, largeur environ 10cm, pour dégager la chevronnière. (Réf. travaux similaires réalisés sur l'église de Le Faouët, Nostang..).",
       "summary": "Décision de prévoir un petit chéneau en plomb (largeur ~10 cm) pour dégager la chevronnière, par référence à des travaux similaires.",
@@ -534,11 +534,11 @@
       "thematicCategory": null,
       "statusAtDocumentDate": "décidé",
       "companyRole": null,
-      "classificationNote": null
+      "classificationNote": "CORRECTION 2026-08-21 : reclassé de decision → action. Prescription impérative de travail (« Prévoir… ») confiée à UDOC, sans choix entre options. Grammaire et sémantique d'une tâche à faire, pas d'un arbitrage entre solutions concurrentes. Confiance HIGH."
     },
     {
       "id": "LRM_CR04-E42",
-      "family": "decision",
+      "family": "action",
       "page": 2,
       "excerpt": "Le panneau de chantier sera installé sur le pignon de l'ossuaire. Taille environ 1.50m x2.50m",
       "summary": "Le panneau de chantier sera installé sur le pignon de l'ossuaire, dimensions environ 1,50 m x 2,50 m.",
@@ -547,11 +547,11 @@
       "thematicCategory": null,
       "statusAtDocumentDate": "décidé",
       "companyRole": null,
-      "classificationNote": null
+      "classificationNote": "CORRECTION 2026-08-21 : reclassé de decision → action. Tâche d'installation planifiée (futur d'exécution), confiée à LEFEVRE. Aucune alternative pesée ; c'est une consigne logistique. Confiance HIGH."
     },
     {
       "id": "LRM_CR04-E43",
-      "family": "decision",
+      "family": "company",
       "page": 3,
       "excerpt": "Sous-traitant pour les travaux électriques : entreprise Archéol. Dépose des luminaires et de la sono.",
       "summary": "Archéol désignée comme sous-traitant de LE BER pour les travaux électriques (dépose luminaires et sono).",
@@ -560,11 +560,11 @@
       "thematicCategory": null,
       "statusAtDocumentDate": "décidé",
       "companyRole": null,
-      "classificationNote": null
+      "classificationNote": "CORRECTION 2026-08-21 : reclassé de decision → company. Attribution/désignation d'un sous-traitant (Archéol). Même nature que E22 déjà classé company sur ce même passage (doublon interne prouvant la sur-classification). La face intervenant prime. Confiance MEDIUM."
     },
     {
       "id": "LRM_CR04-E44",
-      "family": "decision",
+      "family": "action",
       "page": 3,
       "excerpt": "L'entreprise indique réaliser les relevés des sculptures des corniches abimées par scanérisation avec l'entreprise IMAGINE 3D (Camaret 29).",
       "summary": "Choix de la scanérisation (avec IMAGINE 3D) pour réaliser les relevés des sculptures de corniches abîmées.",
@@ -573,7 +573,7 @@
       "thematicCategory": null,
       "statusAtDocumentDate": "décidé",
       "companyRole": null,
-      "classificationNote": null
+      "classificationNote": "CORRECTION 2026-08-21 : reclassé de decision → action. « L'entreprise indique réaliser… » = déclaration d'une tâche que LE BER va exécuter, avec un prestataire (IMAGINE 3D, déjà capté en company E23). Pas d'arbitrage ; c'est l'annonce d'un mode opératoire. Famille primaire = action. Confiance MEDIUM."
     },
     {
       "id": "LRM_CR04-E45",
