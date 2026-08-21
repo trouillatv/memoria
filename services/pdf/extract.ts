@@ -30,7 +30,9 @@ export async function extractPdfText(buffer: Buffer): Promise<ExtractResult> {
   return { text, pageCount, charCount, isLikelyScanned }
 }
 
-// OCR de secours pour PDF scannés — Gemini Vision (inline_data base64).
+// OCR de secours pour PDF scannés — Gemini Vision page par page (inline_data PNG).
+// Chaque page est rendue en PNG via renderPdfPage, puis transcrite individuellement
+// par Gemini Vision. Les transcriptions sont concaténées avec des balises [[page N]].
 // Même priorité que les embeddings : Google uniquement, pas de fallback OpenAI.
 // Tracking ai_usage : 1 entrée par appel OCR (volume très faible, coût élevé
 // par appel — visibilité critique pour budget).
@@ -39,40 +41,74 @@ export async function extractWithGeminiOCR(buffer: Buffer): Promise<string> {
   if (!apiKey) throw new Error('GOOGLE_GENAI_API_KEY not set')
 
   const model = process.env.AI_MODEL_LIGHT ?? 'gemini-2.5-flash'
-  const base64 = buffer.toString('base64')
+  const OCR_PROMPT = 'Transcris intégralement le texte de cette page du document PDF. Préserve la mise en page et la structure. Réponds uniquement le texte transcrit, sans commentaires ni captions.'
 
   const start = Date.now()
   let lastError: string | null = null
   let extractedText = ''
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { inline_data: { mime_type: 'application/pdf', data: base64 } },
-              { text: 'Extrais tout le texte de ce document PDF scanné. Retourne uniquement le texte brut, sans mise en forme ni explication.' },
-            ],
-          }],
-          generationConfig: { temperature: 0, maxOutputTokens: 8000 },
-        }),
-      },
-    )
+    // Déterminer le nombre de pages
+    const { getDocumentProxy } = await import('unpdf')
+    const pdf = await getDocumentProxy(new Uint8Array(buffer))
+    const pageCount = pdf.numPages as number
 
-    if (!res.ok) {
-      lastError = `Gemini OCR ${res.status}: ${await res.text()}`
+    const { renderPdfPage } = await import('./render-page')
+
+    const pageTexts: string[] = []
+    let pagesWithSubstantialText = 0
+
+    for (let i = 0; i < pageCount; i++) {
+      const rendered = await renderPdfPage(buffer, i, 2.0)
+      if (!rendered) {
+        // Page non-rendue : on insère un marqueur vide
+        pageTexts.push(`[[page ${i + 1}]]\n`)
+        continue
+      }
+
+      const base64 = rendered.buffer.toString('base64')
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { inline_data: { mime_type: 'image/png', data: base64 } },
+                { text: OCR_PROMPT },
+              ],
+            }],
+            generationConfig: { temperature: 0, maxOutputTokens: 4096 },
+          }),
+        },
+      )
+
+      let pageText = ''
+      if (res.ok) {
+        const data = (await res.json()) as { candidates: Array<{ content: { parts: Array<{ text: string }> } }> }
+        pageText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
+      } else {
+        const errBody = await res.text()
+        console.error(JSON.stringify({ service: 'extractWithGeminiOCR', event: 'page_ocr_error', page: i + 1, status: res.status, body: errBody.slice(0, 200) }))
+      }
+
+      if (pageText.length >= 50) {
+        pagesWithSubstantialText++
+      }
+      pageTexts.push(`[[page ${i + 1}]]\n${pageText}`)
+    }
+
+    extractedText = pageTexts.join('\n\n').trim()
+
+    // Validation : au moins 50 % des pages doivent produire du texte substantiel
+    const halfPages = Math.max(1, Math.ceil(pageCount / 2))
+    if (pagesWithSubstantialText < halfPages && extractedText.length < 50) {
+      lastError = `Gemini OCR returned insufficient text (${pagesWithSubstantialText}/${pageCount} pages substantial)`
       throw new Error(lastError)
     }
-    const data = (await res.json()) as { candidates: Array<{ content: { parts: Array<{ text: string }> } }> }
-    extractedText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
-    if (extractedText.length < 50) {
-      lastError = 'Gemini OCR returned insufficient text'
-      throw new Error(lastError)
-    }
+
     return extractedText
   } finally {
     // Tracking ai_usage — import dynamique pour éviter le coupling
