@@ -317,7 +317,7 @@ export function prefixChunkResult(result: LlmExtractionResult, chunkIndex: numbe
 
 // ─── Découpage par pages ──────────────────────────────────────────────────────
 
-const PAGES_PER_CHUNK = 20
+const PAGES_PER_CHUNK = 10
 
 function splitTextIntoChunks(text: string): string[] {
   const parts = text.split(/(?=\[\[page \d+\]\])/g).filter((s) => s.trim())
