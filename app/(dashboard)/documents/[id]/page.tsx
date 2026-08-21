@@ -189,11 +189,12 @@ export default async function DocumentViewerPage({
             <p className="text-sm text-muted-foreground">Analyse en cours…</p>
           ) : latestRun.status === 'failed' ? (
             <div>
-              <p className="text-sm text-destructive">L'analyse a échoué.</p>
-              {latestRun.error_message && (
-                <p className="text-xs text-muted-foreground mt-0.5">{latestRun.error_message}</p>
-              )}
+              <p className="text-sm text-destructive">L'analyse du document n'a pas pu être terminée. Réessayer.</p>
             </div>
+          ) : latestRun.empty_reason === 'NO_BUSINESS_ELEMENT_DETECTED' ? (
+            <p className="text-sm text-muted-foreground">
+              Analyse terminée — aucun élément à ajouter à la mémoire.
+            </p>
           ) : (
             <div className="space-y-1.5">
               <Link

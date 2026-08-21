@@ -1,6 +1,12 @@
 import 'server-only'
 import { z } from 'zod'
 
+// ─── Classe sentinelle timeout LLM ───────────────────────────────────────────
+// Exportée pour que extract-historical-pv.ts puisse la détecter dans le catch.
+export class LlmTimeoutError extends Error {
+  constructor(msg: string) { super(msg); this.name = 'LlmTimeoutError' }
+}
+
 // ─── Schémas Zod (contrat de sortie LLM) ─────────────────────────────────────
 
 export const LlmEvidenceSchema = z.object({
@@ -213,6 +219,8 @@ Pour chaque information retenue après la sélection :
 
 Le cartouche du PV, la liste des signataires et la liste de présence contiennent souvent les intervenants clés du chantier.
 
+**Règle de priorité** : le caractère générique ou méthodologique du reste du document ne suspend pas l'extraction des personnes et entreprises nommées lorsqu'elles apparaissent dans un cartouche identifiable (liste de présence, liste de membres, liste de signataires, liste des auteurs, liste d'approbation). L'extraction des familles **person** et **company** obéit à ses propres règles, indépendamment du contenu thématique du document — un guide professionnel, une note méthodologique ou un gabarit contenant une liste nommée de membres ou de signataires doit produire des propositions person/company exactement comme un CR de chantier classique.
+
 Pour chaque **personne physique identifiable** (prénom + nom) mentionnée dans le cartouche, comme signataire ou dans la liste de présence :
 - créer une proposition **person** ;
 - label = "Prénom NOM" ;
@@ -341,23 +349,34 @@ async function callGeminiChunk(
 ): Promise<{ result: LlmExtractionResult; outputText: string }> {
   const prompt = buildExtractionPrompt(chunkText, totalPageCount, siteContext)
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(220000),
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0,
-          maxOutputTokens: 65536,
-          responseMimeType: 'application/json',
-          responseSchema: GEMINI_RESPONSE_SCHEMA,
-        },
-      }),
-    },
-  )
+  let res: Response
+  try {
+    res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(220000),
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0,
+            maxOutputTokens: 65536,
+            responseMimeType: 'application/json',
+            responseSchema: GEMINI_RESPONSE_SCHEMA,
+          },
+        }),
+      },
+    )
+  } catch (fetchErr) {
+    // AbortSignal.timeout() produit un DOMException { name: 'TimeoutError' }
+    const isTimeout = fetchErr instanceof Error &&
+      (fetchErr.name === 'TimeoutError' || fetchErr.name === 'AbortError')
+    if (isTimeout) {
+      throw new LlmTimeoutError(`Gemini extraction timeout on chunk ${chunkIndex}`)
+    }
+    throw fetchErr
+  }
 
   if (!res.ok) {
     const body = await res.text()

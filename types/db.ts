@@ -1193,6 +1193,12 @@ export type DocumentEvidenceType = 'image' | 'text_excerpt' | 'page_snapshot'
 
 export type DocumentEvidenceRelationType = 'supports' | 'illustrates' | 'source' | 'candidate' | 'dismissed'
 
+export type DocumentExtractionEmptyReason =
+  | 'NO_BUSINESS_ELEMENT_DETECTED'
+  | 'OCR_FAILURE'
+  | 'LLM_TIMEOUT'
+  | 'TECHNICAL_FAILURE'
+
 export interface DbDocumentExtractionRun {
   id: string
   organization_id: string
@@ -1208,6 +1214,8 @@ export interface DbDocumentExtractionRun {
   created_at: string
   created_by: string | null
   is_canonical: boolean
+  extracted_text_length: number | null
+  empty_reason: DocumentExtractionEmptyReason | null
 }
 
 export interface DbDocumentExtractionProposal {

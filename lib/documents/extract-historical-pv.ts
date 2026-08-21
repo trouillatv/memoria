@@ -2,7 +2,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { extractPdfText, extractWithGeminiOCR } from '@/services/pdf/extract'
 import { renderPdfPage } from '@/services/pdf/render-page'
-import { extractHistoricalPvProposals } from './historical-visit-extractor'
+import { extractHistoricalPvProposals, LlmTimeoutError } from './historical-visit-extractor'
 import {
   createExtractionRun,
   updateExtractionRunStatus,
@@ -15,7 +15,18 @@ import { mapDocumentStatus, reconcileSubjectThreads } from './subject-reconcilia
 import { resolveOrphansSemantically } from './semantic-subject-resolution'
 import { buildExtractionSiteContext } from '@/lib/db/extraction-context'
 import { embedDocumentChunks } from '@/lib/ai/embed-knowledge-chunks'
-import type { DocumentProposalFamily, DocumentEvidenceType, DocumentEvidenceRelationType } from '@/types/db'
+import type { DocumentProposalFamily, DocumentEvidenceType, DocumentEvidenceRelationType, DocumentExtractionEmptyReason } from '@/types/db'
+
+// Classe sentinelle pour distinguer l'échec OCR/extraction texte.
+class OcrFailureError extends Error {
+  constructor(msg: string) { super(msg); this.name = 'OcrFailureError' }
+}
+
+function classifyExtractionError(e: unknown): DocumentExtractionEmptyReason {
+  if (e instanceof LlmTimeoutError) return 'LLM_TIMEOUT'
+  if (e instanceof OcrFailureError) return 'OCR_FAILURE'
+  return 'TECHNICAL_FAILURE'
+}
 
 const EXTRACTOR_KEY = 'historical_visit_report_v1'
 const EXTRACTOR_VERSION = '1.0.0'
@@ -122,9 +133,10 @@ export async function extractHistoricalPv(
     }
 
     if (text.trim().length < MIN_USABLE_CHARS) {
-      throw new Error('no_extractable_text')
+      throw new OcrFailureError('no_extractable_text')
     }
-    log('text_extracted', documentId, { runId, chars: text.length, pages: extracted.pageCount })
+    const extractedTextLength = text.length
+    log('text_extracted', documentId, { runId, chars: extractedTextLength, pages: extracted.pageCount })
 
     // Persister le texte extrait pour le recall documentaire (Route C / knowledge_chunks).
     // Sans cette écriture, embedDocumentChunks lit un extracted_text null et s'arrête.
@@ -367,8 +379,11 @@ export async function extractHistoricalPv(
     }
 
     // 11. Run terminé
+    const proposalCount = llmResult.proposals.length
     await updateExtractionRunStatus(runId, 'ready_for_review', {
       completed_at: new Date().toISOString(),
+      extracted_text_length: extractedTextLength,
+      empty_reason: proposalCount === 0 ? 'NO_BUSINESS_ELEMENT_DETECTED' : null,
     })
 
     // 11b. Devient canonique seulement si aucun canonique n'existe encore pour ce document.
@@ -492,10 +507,12 @@ export async function extractHistoricalPv(
   } catch (e) {
     const raw = e instanceof Error ? e.message : (e != null && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : String(e))
     const msg = raw || 'erreur inconnue — voir logs Vercel'
-    log('extraction_failed', documentId, { runId, error: msg })
+    const emptyReason = classifyExtractionError(e)
+    log('extraction_failed', documentId, { runId, error: msg, empty_reason: emptyReason })
     await updateExtractionRunStatus(runId, 'failed', {
       error_message: msg,
       completed_at: new Date().toISOString(),
+      empty_reason: emptyReason,
     }).catch((updateErr) => {
       console.error('[extractHistoricalPv] failed to mark run as failed:', updateErr)
     })

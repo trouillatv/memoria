@@ -59,7 +59,13 @@ export async function updateExtractionStage(runId: string, stage: string): Promi
 export async function updateExtractionRunStatus(
   runId: string,
   status: DocumentExtractionRunStatus,
-  extra?: { error_message?: string; completed_at?: string; started_at?: string },
+  extra?: {
+    error_message?: string
+    completed_at?: string
+    started_at?: string
+    extracted_text_length?: number | null
+    empty_reason?: import('@/types/db').DocumentExtractionEmptyReason | null
+  },
 ): Promise<void> {
   const supabase = createAdminClient()
   const { error } = await supabase
@@ -69,6 +75,8 @@ export async function updateExtractionRunStatus(
       ...(extra?.error_message !== undefined ? { error_message: extra.error_message } : {}),
       ...(extra?.completed_at !== undefined ? { completed_at: extra.completed_at } : {}),
       ...(extra?.started_at !== undefined ? { started_at: extra.started_at } : {}),
+      ...(extra?.extracted_text_length !== undefined ? { extracted_text_length: extra.extracted_text_length } : {}),
+      ...(extra?.empty_reason !== undefined ? { empty_reason: extra.empty_reason } : {}),
     })
     .eq('id', runId)
   if (error) throw new Error(error.message)
