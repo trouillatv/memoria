@@ -16,6 +16,7 @@ import { resolveOrphansSemantically } from './semantic-subject-resolution'
 import { buildExtractionSiteContext } from '@/lib/db/extraction-context'
 import { embedDocumentChunks } from '@/lib/ai/embed-knowledge-chunks'
 import type { DocumentProposalFamily, DocumentEvidenceType, DocumentEvidenceRelationType, DocumentExtractionEmptyReason } from '@/types/db'
+import type { CaptionResult } from '@/services/pdf/caption-image'
 
 // Classe sentinelle pour distinguer l'échec OCR/extraction texte.
 class OcrFailureError extends Error {
@@ -158,9 +159,12 @@ export async function extractHistoricalPv(
     // Détection d'images : chemin indépendant, plafond distinct (MAX_IMAGE_DETECTION_PAGES).
     const pagesToDetect = Math.min(extracted.pageCount, MAX_IMAGE_DETECTION_PAGES)
     const snapshotPaths = new Map<number, string | null>()
+    // Buffers snapshot conservés en mémoire pour readImageCaption (pages 1-MAX_SNAPSHOT_PAGES).
+    const snapshotBuffers = new Map<number, Buffer>()
     for (let pageNum = 1; pageNum <= pagesToRender; pageNum++) {
       const rendered = await renderPdfPage(buffer, pageNum - 1)
       if (rendered) {
+        snapshotBuffers.set(pageNum, rendered.buffer)
         const storagePath = `snapshots/${documentId}/page-${pageNum}.png`
         const { error: uploadErr } = await supabase.storage
           .from('documents')
@@ -188,21 +192,43 @@ export async function extractHistoricalPv(
     // par ~5 et garantit le respect du timeout Vercel à 300 s.
     log('step_extracting_images', documentId, { runId })
     const { extractPageImages } = await import('@/services/pdf/extract-images')
-    const { generateImageCaption } = await import('@/services/pdf/caption-image')
-    type ImageInfo = { storagePath: string; pageNum: number; nativeWidth: number; nativeHeight: number; bbox: [number, number, number, number]; caption: string | null }
-    type RawImage = { buffer: Buffer; storagePath: string; pageNum: number; nativeWidth: number; nativeHeight: number; bbox: [number, number, number, number]; pageText: string }
+    const { readImageCaption } = await import('@/services/pdf/caption-image')
+    type ImageInfo = {
+      storagePath: string
+      pageNum: number
+      nativeWidth: number
+      nativeHeight: number
+      bbox: [number, number, number, number]
+      caption: string | null
+      visual_description: string | null
+      association_confidence: CaptionResult['association_confidence'] | null
+    }
+    type RawImage = {
+      buffer: Buffer
+      snapshotBuffer: Buffer | null
+      storagePath: string
+      pageNum: number
+      nativeWidth: number
+      nativeHeight: number
+      bbox: [number, number, number, number]
+      normalizedBbox: [number, number, number, number]
+      pageText: string
+    }
     const rawImages: RawImage[] = []
 
     // Passe 1 : extraction mupdf et upload (séquentiels — mupdf n'est pas thread-safe)
     // Utilise pagesToDetect (MAX_IMAGE_DETECTION_PAGES) et non pagesToRender (MAX_SNAPSHOT_PAGES)
     // pour couvrir toutes les pages du document au-delà de la limite snapshot.
     for (let pageNum = 1; pageNum <= pagesToDetect; pageNum++) {
-      let pageResult: Awaited<ReturnType<typeof extractPageImages>> = { images: [], pageText: '' }
+      let pageResult: Awaited<ReturnType<typeof extractPageImages>> = { images: [], pageText: '', pageBounds: [0, 0, 0, 0] }
       try {
         pageResult = await extractPageImages(buffer, pageNum - 1)
       } catch {
         // page ignorée si extraction échoue
       }
+      const pb = pageResult.pageBounds
+      const pageW = pb[2] - pb[0]
+      const pageH = pb[3] - pb[1]
       for (let i = 0; i < pageResult.images.length; i++) {
         const img = pageResult.images[i]
         const storagePath = `snapshots/${documentId}/img-p${pageNum}-${i + 1}.png`
@@ -210,7 +236,26 @@ export async function extractHistoricalPv(
           .from('documents')
           .upload(storagePath, img.buffer, { contentType: 'image/png', upsert: true })
         if (!uploadErr) {
-          rawImages.push({ buffer: img.buffer, storagePath, pageNum, nativeWidth: img.nativeWidth, nativeHeight: img.nativeHeight, bbox: img.bbox, pageText: pageResult.pageText })
+          // Normalise la bbox en proportion de la page (0-1) pour Vision
+          const normalizedBbox: [number, number, number, number] = pageW > 0 && pageH > 0
+            ? [
+                (img.bbox[0] - pb[0]) / pageW,
+                (img.bbox[1] - pb[1]) / pageH,
+                (img.bbox[2] - pb[0]) / pageW,
+                (img.bbox[3] - pb[1]) / pageH,
+              ]
+            : [0, 0, 1, 1]
+          rawImages.push({
+            buffer: img.buffer,
+            snapshotBuffer: snapshotBuffers.get(pageNum) ?? null,
+            storagePath,
+            pageNum,
+            nativeWidth: img.nativeWidth,
+            nativeHeight: img.nativeHeight,
+            bbox: img.bbox,
+            normalizedBbox,
+            pageText: pageResult.pageText,
+          })
         } else {
           log('image_upload_failed', documentId, { page: pageNum, idx: i, error: uploadErr.message })
         }
@@ -218,31 +263,36 @@ export async function extractHistoricalPv(
     }
     log('images_extracted_raw', documentId, { runId, count: rawImages.length })
 
-    // Passe 2 : légendes IA en parallèle par lots, plafonnées à MAX_CAPTIONS
+    // Passe 2 : lecture des légendes imprimées en parallèle par lots, plafonnées à MAX_CAPTIONS
     const toCaption = rawImages.slice(0, MAX_CAPTIONS)
-    const captionMap = new Map<string, string | null>()
+    const captionResultMap = new Map<string, CaptionResult | null>()
     for (let b = 0; b < toCaption.length; b += CAPTION_CONCURRENCY) {
       const batch = toCaption.slice(b, b + CAPTION_CONCURRENCY)
       await Promise.all(
         batch.map(async (raw) => {
-          let caption: string | null = null
+          let result: CaptionResult | null = null
           try {
-            caption = await generateImageCaption(raw.buffer, raw.pageText)
-          } catch { /* caption reste null */ }
-          captionMap.set(raw.storagePath, caption)
+            result = await readImageCaption(raw.buffer, raw.snapshotBuffer, raw.normalizedBbox, raw.pageNum, raw.pageText)
+          } catch { /* result reste null */ }
+          captionResultMap.set(raw.storagePath, result)
         }),
       )
     }
     log('captions_done', documentId, { runId, captioned: toCaption.length, total: rawImages.length })
 
-    const extractedImageInfos: ImageInfo[] = rawImages.map((raw) => ({
-      storagePath: raw.storagePath,
-      pageNum: raw.pageNum,
-      nativeWidth: raw.nativeWidth,
-      nativeHeight: raw.nativeHeight,
-      bbox: raw.bbox,
-      caption: captionMap.get(raw.storagePath) ?? null,
-    }))
+    const extractedImageInfos: ImageInfo[] = rawImages.map((raw) => {
+      const cr = captionResultMap.get(raw.storagePath) ?? null
+      return {
+        storagePath: raw.storagePath,
+        pageNum: raw.pageNum,
+        nativeWidth: raw.nativeWidth,
+        nativeHeight: raw.nativeHeight,
+        bbox: raw.bbox,
+        caption: cr?.document_caption ?? null,
+        visual_description: cr?.visual_description ?? null,
+        association_confidence: cr?.association_confidence ?? null,
+      }
+    })
     log('images_extracted', documentId, { count: extractedImageInfos.length })
 
     await updateExtractionStage(runId, 'llm_analysis')
@@ -291,6 +341,8 @@ export async function extractHistoricalPv(
               nativeHeight: 0,
               bbox: [0, 0, 0, 0] as [number, number, number, number],
               caption: null,
+              visual_description: null,
+              association_confidence: null,
             })
             log('snapshot_promoted_to_image', documentId, { page: pageNum })
           }
@@ -373,6 +425,8 @@ export async function extractHistoricalPv(
           nativeWidth: info.nativeWidth,
           nativeHeight: info.nativeHeight,
           bbox: info.bbox,
+          ...(info.visual_description ? { visual_description: info.visual_description } : {}),
+          ...(info.association_confidence ? { association_confidence: info.association_confidence } : {}),
         },
       }))
       const imageEvidenceResults = await insertExtractionEvidence(runId, imageEvidenceInputs)

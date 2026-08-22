@@ -17,6 +17,7 @@ export interface ExtractedImage {
 export interface ExtractPageResult {
   images: ExtractedImage[]
   pageText: string   // texte de la page, context pour les légendes IA
+  pageBounds: [number, number, number, number]  // mediabox PDF [x0, y0, x1, y1] en points
 }
 
 // Filtre principal : surface de la bbox >= MIN_PAGE_COVERAGE de la surface de la page.
@@ -122,8 +123,8 @@ export async function extractPageImages(
     sText.destroy()
     page.destroy()
     doc.destroy()
-    return { images, pageText }
+    return { images, pageText, pageBounds }
   } catch {
-    return { images: [], pageText: '' }
+    return { images: [], pageText: '', pageBounds: [0, 0, 0, 0] }
   }
 }
