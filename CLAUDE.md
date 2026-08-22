@@ -879,3 +879,16 @@ Cela réduit fortement le contexte et évite les analyses globales inutiles.
 - N'utiliser un backend LLM que si l'analyse sémantique des docs ou images est réellement nécessaire.
 - `graphify-out/` est versionné dans le dépôt.
 - Ne pas lancer Graphify pour une correction locale, un changement de texte ou un ajustement CSS.
+
+---
+
+## 24. Remote Control — Mobile notifications
+
+For long-running MemorIA work, notify me on mobile only when the requested task has genuinely finished or requires my intervention.
+
+In particular:
+- wait for all Gemini extractions, agents, sentinel documents, tests and validation gates to finish before sending the completion notification;
+- a sub-agent completing is not task completion;
+- a partial sentinel run is not task completion;
+- notify me immediately on a genuine blocker, failed gate or decision requiring my input;
+- when an instruction says HARD STOP, reaching that HARD STOP is task completion and should trigger the mobile notification.
