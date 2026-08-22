@@ -50,6 +50,34 @@ function log(event: string, documentId: string, extra?: Record<string, unknown>)
   )
 }
 
+// Classification des images extraites (P0-Photo-C).
+// Déterministe : s'appuie uniquement sur les champs déjà dans CaptionResult, sans nouvel appel Vision.
+type ImageClass = 'decorative' | 'document_context' | 'evidence' | 'uncertain'
+
+// Mots-clés dans visual_description indiquant un plan/carte/schéma (document_context).
+const DOC_CONTEXT_KEYWORDS = ['plan', 'carte', 'schéma', 'schema', 'coupe', "vue d'ensemble", 'réseau', 'réseaux', 'tracé']
+
+// Au-delà de 15 % de couverture de page, un is_decorative=true n'est pas exclu silencieusement
+// (garde-rail contre faux positif Vision sur une grande photo).
+const DECORATIVE_MAX_COVERAGE = 0.15
+
+function classifyImage(
+  captionResult: CaptionResult | null,
+  normalizedBbox: [number, number, number, number],
+): { imageClass: ImageClass; bboxCoverage: number } {
+  const bboxCoverage = (normalizedBbox[2] - normalizedBbox[0]) * (normalizedBbox[3] - normalizedBbox[1])
+  if (!captionResult || captionResult.is_decorative === null) {
+    return { imageClass: 'uncertain', bboxCoverage }
+  }
+  if (captionResult.is_decorative === true) {
+    return { imageClass: 'decorative', bboxCoverage }
+  }
+  // is_decorative === false
+  const desc = (captionResult.visual_description ?? '').toLowerCase()
+  const isDocContext = DOC_CONTEXT_KEYWORDS.some((kw) => desc.includes(kw))
+  return { imageClass: isDocContext ? 'document_context' : 'evidence', bboxCoverage }
+}
+
 export async function extractHistoricalPv(
   documentId: string,
   userId?: string | null,
@@ -202,6 +230,8 @@ export async function extractHistoricalPv(
       caption: string | null
       visual_description: string | null
       association_confidence: CaptionResult['association_confidence'] | null
+      image_class: ImageClass
+      document_caption_raw: string | null  // caption d'origine si détachée (document_context)
     }
     type RawImage = {
       buffer: Buffer
@@ -280,20 +310,41 @@ export async function extractHistoricalPv(
     }
     log('captions_done', documentId, { runId, captioned: toCaption.length, total: rawImages.length })
 
-    const extractedImageInfos: ImageInfo[] = rawImages.map((raw) => {
+    const extractedImageInfos: ImageInfo[] = []
+    let decorativeDropped = 0
+    for (const raw of rawImages) {
       const cr = captionResultMap.get(raw.storagePath) ?? null
-      return {
+      const { imageClass, bboxCoverage } = classifyImage(cr, raw.normalizedBbox)
+
+      // decorative + petite surface (<15%) → exclure silencieusement (garde-rail inclus)
+      if (imageClass === 'decorative' && bboxCoverage < DECORATIVE_MAX_COVERAGE) {
+        decorativeDropped++
+        log('image_excluded_decorative', documentId, { page: raw.pageNum, coverage: bboxCoverage.toFixed(3) })
+        continue
+      }
+
+      // document_context : détacher la caption si présente (conserver en raw pour audit)
+      let caption = cr?.document_caption ?? null
+      let documentCaptionRaw: string | null = null
+      if (imageClass === 'document_context' && caption !== null) {
+        documentCaptionRaw = caption
+        caption = null
+      }
+
+      extractedImageInfos.push({
         storagePath: raw.storagePath,
         pageNum: raw.pageNum,
         nativeWidth: raw.nativeWidth,
         nativeHeight: raw.nativeHeight,
         bbox: raw.bbox,
-        caption: cr?.document_caption ?? null,
+        caption,
         visual_description: cr?.visual_description ?? null,
         association_confidence: cr?.association_confidence ?? null,
-      }
-    })
-    log('images_extracted', documentId, { count: extractedImageInfos.length })
+        image_class: imageClass,
+        document_caption_raw: documentCaptionRaw,
+      })
+    }
+    log('images_extracted', documentId, { count: extractedImageInfos.length, dropped_decorative: decorativeDropped })
 
     await updateExtractionStage(runId, 'llm_analysis')
     log('step_llm_analysis', documentId, { runId })
@@ -343,6 +394,8 @@ export async function extractHistoricalPv(
               caption: null,
               visual_description: null,
               association_confidence: null,
+              image_class: 'uncertain',
+              document_caption_raw: null,
             })
             log('snapshot_promoted_to_image', documentId, { page: pageNum })
           }
@@ -425,8 +478,10 @@ export async function extractHistoricalPv(
           nativeWidth: info.nativeWidth,
           nativeHeight: info.nativeHeight,
           bbox: info.bbox,
+          image_class: info.image_class,
           ...(info.visual_description ? { visual_description: info.visual_description } : {}),
           ...(info.association_confidence ? { association_confidence: info.association_confidence } : {}),
+          ...(info.document_caption_raw ? { document_caption_raw: info.document_caption_raw } : {}),
         },
       }))
       const imageEvidenceResults = await insertExtractionEvidence(runId, imageEvidenceInputs)
