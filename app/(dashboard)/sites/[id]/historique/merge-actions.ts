@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getAIProvider } from '@/services/ai/factory'
 import { withAITracking } from '@/services/ai/tracking'
+import type { LinkSnapshot } from '@/lib/db/canonical-subject-merge'
 
 // ── Types exportés ────────────────────────────────────────────────────────────
 
@@ -19,6 +20,11 @@ export interface SubjectSimilarity {
  * Fusionne deux canonical_subject. Détermine automatiquement le winner (celui avec
  * le plus de threads). Le loser reçoit status='merged' + merged_into. Un journal
  * canonical_subject_merge est créé pour permettre l'annulation.
+ *
+ * Gère canonical_subject_links :
+ *   — self-links (loser ↔ winner) supprimés
+ *   — duplicates (winner possède déjà la paire) supprimés, lien winner conservé
+ *   — liens reroutés loser → winner
  *
  * Retourne { winnerId } en cas de succès, { error } en cas d'échec.
  */
@@ -56,13 +62,29 @@ export async function mergeCanonicalSubjectsAction(
   if (loser.status === 'merged') return { error: 'Ce sujet est déjà fusionné' }
   if (winner.status === 'merged') return { error: 'Le sujet cible est déjà fusionné' }
 
-  // 3. IDs des entités à déplacer pour le snapshot
-  const [{ data: stiRows }, { data: occRows }] = await Promise.all([
+  // 3. Snapshot avant mutation : STI, occurrences, canonical_subject_links
+  const [
+    { data: stiRows },
+    { data: occRows },
+    { data: linksAsSource },
+    { data: linksAsTarget },
+  ] = await Promise.all([
     supabase.from('subject_thread_identity').select('subject_thread_id').eq('canonical_subject_id', loserId),
     supabase.from('canonical_subject_occurrence').select('id').eq('canonical_subject_id', loserId),
+    supabase.from('canonical_subject_links')
+      .select('id, source_subject_id, target_subject_id, relation_type, status')
+      .eq('source_subject_id', loserId),
+    supabase.from('canonical_subject_links')
+      .select('id, source_subject_id, target_subject_id, relation_type, status')
+      .eq('target_subject_id', loserId),
   ])
+
   const movedThreadIds = ((stiRows ?? []) as Array<{ subject_thread_id: string }>).map((r) => r.subject_thread_id)
   const movedOccurrenceIds = ((occRows ?? []) as Array<{ id: string }>).map((r) => r.id)
+  const loserLinks: LinkSnapshot[] = [
+    ...((linksAsSource ?? []) as LinkSnapshot[]),
+    ...((linksAsTarget ?? []) as LinkSnapshot[]),
+  ]
 
   // 4. Reroutage STI
   if (movedThreadIds.length > 0) {
@@ -91,17 +113,72 @@ export async function mergeCanonicalSubjectsAction(
     if (propsErr) return { error: `Erreur reroutage proposals : ${propsErr.message}` }
   }
 
-  // 7. Marquer le loser
+  // 7. canonical_subject_links
+  const selfLinkIds: string[] = []
+  const deletedDuplicateLinkIds: string[] = []
+  const movedLinkIds: string[] = []
+
+  if (loserLinks.length > 0) {
+    // 7a. Self-links (loser ↔ winner) → DELETE avant reroutage
+    const selfLinks = loserLinks.filter(
+      (l) => l.source_subject_id === winnerId || l.target_subject_id === winnerId,
+    )
+    if (selfLinks.length > 0) {
+      const ids = selfLinks.map((l) => l.id)
+      selfLinkIds.push(...ids)
+      const { error: selfErr } = await supabase
+        .from('canonical_subject_links')
+        .delete()
+        .in('id', ids)
+      if (selfErr) return { error: `Erreur suppression self-links : ${selfErr.message}` }
+    }
+
+    // 7b. Liens restants : duplicate check + reroutage
+    const remaining = loserLinks.filter((l) => !selfLinkIds.includes(l.id))
+    for (const link of remaining) {
+      const otherSideId =
+        link.source_subject_id === loserId ? link.target_subject_id : link.source_subject_id
+      const pairLow = winnerId < otherSideId ? winnerId : otherSideId
+      const pairHigh = winnerId > otherSideId ? winnerId : otherSideId
+
+      const { data: existingWinnerLink } = await supabase
+        .from('canonical_subject_links')
+        .select('id')
+        .eq('pair_low_id', pairLow)
+        .eq('pair_high_id', pairHigh)
+        .maybeSingle()
+
+      if (existingWinnerLink) {
+        // Duplicate : supprimer le lien du loser, conserver celui du winner
+        deletedDuplicateLinkIds.push(link.id)
+        await supabase.from('canonical_subject_links').delete().eq('id', link.id)
+      } else {
+        // Rerouter loser → winner
+        const update =
+          link.source_subject_id === loserId
+            ? { source_subject_id: winnerId }
+            : { target_subject_id: winnerId }
+        const { error: rerouteErr } = await supabase
+          .from('canonical_subject_links')
+          .update(update)
+          .eq('id', link.id)
+        if (rerouteErr) return { error: `Erreur reroutage link ${link.id} : ${rerouteErr.message}` }
+        movedLinkIds.push(link.id)
+      }
+    }
+  }
+
+  // 8. Marquer le loser
   const { error: loserErr } = await supabase
     .from('canonical_subject')
     .update({ status: 'merged', merged_into: winnerId })
     .eq('id', loserId)
   if (loserErr) return { error: `Erreur marquage loser : ${loserErr.message}` }
 
-  // 8. Retirer le loser du topic
+  // 9. Retirer le loser du topic
   await supabase.from('canonical_topic_subject').delete().eq('canonical_subject_id', loserId)
 
-  // 9. Journal de fusion
+  // 10. Journal de fusion (snapshot complet pour rollback)
   const finalLabel = suggestedLabel.trim() || winner.label
   const snapshot = {
     moved_thread_ids: movedThreadIds,
@@ -110,6 +187,10 @@ export async function mergeCanonicalSubjectsAction(
     winner_aliases_before: winner.aliases ?? [],
     loser_label: loser.label,
     loser_aliases: loser.aliases ?? [],
+    moved_link_ids: movedLinkIds,
+    deleted_self_link_ids: selfLinkIds,
+    deleted_duplicate_link_ids: deletedDuplicateLinkIds,
+    links_snapshot_before: loserLinks,
   }
 
   const { error: journalErr } = await supabase.from('canonical_subject_merge').insert({
@@ -117,11 +198,12 @@ export async function mergeCanonicalSubjectsAction(
     loser_subject_id: loserId,
     suggested_label: finalLabel !== winner.label ? finalLabel : null,
     resolution_source: 'manual',
+    engine_version: null,
     snapshot,
   })
   if (journalErr) return { error: `Erreur journal : ${journalErr.message}` }
 
-  // 10. Mettre à jour le winner (label + aliases fusionnés)
+  // 11. Mettre à jour le winner (label + aliases fusionnés)
   const combinedAliases = Array.from(new Set([
     ...(winner.aliases ?? []),
     loser.label,
