@@ -37,6 +37,10 @@ import {
   findActiveSubjectByNormalizedLabel,
 } from '@/lib/db/canonical-subject-source-reconcile'
 import { selectBestText } from '@/lib/db/canonical-subject-historical-occurrence'
+import { jaccardSimilarity } from '@/lib/documents/subject-reconciliation'
+import { normalizeForMatching, P01_NORMALIZED_JACCARD_THRESHOLD } from '@/lib/subjects/normalize-for-matching'
+import { analyzeSubjectPair } from '@/lib/subjects/similarity-analyze'
+import type { SubjectInput } from '@/lib/subjects/similarity-analyze'
 import type { DocumentProposalFamily } from '@/types/db'
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>
@@ -228,10 +232,50 @@ export async function reconcileHistoricalPvCanonicalSubjects(params: {
   }
   if (afterLlmMatch.length === 0) return finish(threadGroups.length)
 
+  // 5.6. Phase 1.6 — P0-1 : génération de candidats normalisés + P0-2 : décision sémantique.
+  // normalizeForMatching() retire les préfixes d'état / suffixes d'outcome pour que
+  // « Prévision : X » et « X = Fait » génèrent le même candidat que « X ».
+  // analyzeSubjectPair() (Gemini P0-2) décide : seul 'same_subject' entraîne un rattachement.
+  // Jamais de mutation automatique sur RELATED/DISTINCT/UNCERTAIN → renvoi en Phase 2.
+  const afterP01: ThreadGroup[] = []
+  for (const g of afterLlmMatch) {
+    const normalizedQuery = normalizeForMatching(g.queryText, g.family)
+    const p01Candidates = existingCs
+      .map((cs) => ({ cs, score: jaccardSimilarity(normalizedQuery, normalizeForMatching(cs.label)) }))
+      .filter((c) => c.score >= P01_NORMALIZED_JACCARD_THRESHOLD)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+
+    if (p01Candidates.length === 0) {
+      afterP01.push(g)
+      continue
+    }
+
+    let matched = false
+    for (const { cs } of p01Candidates) {
+      try {
+        const subjectA: SubjectInput = { id: g.threadId, label: g.queryText, aliases: [] }
+        const subjectB: SubjectInput = { id: cs.id, label: cs.label, aliases: [] }
+        const result = await analyzeSubjectPair(subjectA, subjectB, null)
+        if (result.verdict === 'same_subject') {
+          await attachThread(sb, g.threadId, siteId, cs.id)
+          touchedCanonicalSubjectIds.add(cs.id)
+          statFor(g.family).matchedExisting++
+          matched = true
+          break
+        }
+      } catch (err) {
+        console.error('[historical-reconcile] P0-2 analyzeSubjectPair error:', String(err).slice(0, 200))
+      }
+    }
+    if (!matched) afterP01.push(g)
+  }
+  if (afterP01.length === 0) return finish(threadGroups.length)
+
   // 6. Séparer selon la capacité de création — deadline ne crée jamais (doctrine identique
   //    à CAN_CREATE_SUBJECT_KINDS côté field_visit/meeting).
-  const forClustering = afterLlmMatch.filter((g) => CAN_CREATE_SUBJECT_KINDS.has(g.kind))
-  const matchOnly = afterLlmMatch.filter((g) => !CAN_CREATE_SUBJECT_KINDS.has(g.kind))
+  const forClustering = afterP01.filter((g) => CAN_CREATE_SUBJECT_KINDS.has(g.kind))
+  const matchOnly = afterP01.filter((g) => !CAN_CREATE_SUBJECT_KINDS.has(g.kind))
   for (const g of matchOnly) statFor(g.family).unresolved++
   if (forClustering.length === 0) return finish(threadGroups.length)
 

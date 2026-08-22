@@ -4,6 +4,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCanonicalSubjectReference, normalizeCanonicalLabel } from '@/lib/db/canonical-subject-resolve'
 import { ELIGIBLE_KINDS } from '@/lib/db/canonical-subject-reconcile'
 import { jaccardSimilarity } from '@/lib/documents/subject-reconciliation'
+import { normalizeForMatching, P01_NORMALIZED_JACCARD_THRESHOLD } from '@/lib/subjects/normalize-for-matching'
+import { analyzeSubjectPair } from '@/lib/subjects/similarity-analyze'
+import type { SubjectInput } from '@/lib/subjects/similarity-analyze'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -654,8 +657,78 @@ export async function reconcileSourceToCanonicalSubjects(
 
   if (afterLlmMatch.length === 0) return result
 
-  const orphansForClustering = afterLlmMatch.filter((p) => CAN_CREATE_SUBJECT_KINDS.has(p.kind))
-  const orphansForMatchOnly = afterLlmMatch.filter((p) => !CAN_CREATE_SUBJECT_KINDS.has(p.kind))
+  // ── Phase 1.6 — P0-1 : génération de candidats normalisés + P0-2 : décision sémantique ──
+  // normalizeForMatching() retire préfixes d'état / suffixes d'outcome sans modifier le label DB.
+  // analyzeSubjectPair() (Gemini P0-2) : seul 'same_subject' entraîne un rattachement.
+  // RELATED/DISTINCT/UNCERTAIN → l'orphelin reste en Phase 2 (pas de mutation automatique).
+  const afterP01: typeof afterLlmMatch = []
+  for (const proposal of afterLlmMatch) {
+    const normalizedQuery = normalizeForMatching(proposal.title)
+    const p01Candidates = existingCsForMatch
+      .map((cs) => ({ cs, score: jaccardSimilarity(normalizedQuery, normalizeForMatching(cs.label)) }))
+      .filter((c) => c.score >= P01_NORMALIZED_JACCARD_THRESHOLD)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+
+    if (p01Candidates.length === 0) {
+      afterP01.push(proposal)
+      continue
+    }
+
+    let matched = false
+    for (const { cs } of p01Candidates) {
+      try {
+        const subjectA: SubjectInput = { id: proposal.id, label: proposal.title, aliases: [] }
+        const subjectB: SubjectInput = { id: cs.id, label: cs.label, aliases: [] }
+        const p02Result = await analyzeSubjectPair(subjectA, subjectB, source.authorId)
+        if (p02Result.verdict === 'same_subject') {
+          await sb.from('canonical_subject_occurrence').upsert({
+            canonical_subject_id: cs.id,
+            site_id: source.siteId,
+            source_kind: occSourceKind,
+            source_ref_id: source.id,
+            source_proposal_id: proposal.id,
+            visit_status: occSourceKind === 'field_visit' ? 'field_checked' : 'mentioned',
+            label: proposal.title,
+            note: proposal.body,
+            evidence_count: 0,
+            effective_date: occEffectiveDate,
+            created_by: source.authorId,
+            validation_status: validationStatus,
+            entity_ids: proposal.entity_ids ?? [],
+          }, { onConflict: 'source_kind,source_proposal_id', ignoreDuplicates: true })
+
+          if (validationStatus === 'confirmed') {
+            await sb.from('canonical_subject_occurrence')
+              .update({ validation_status: 'confirmed' })
+              .eq('source_kind', occSourceKind)
+              .eq('source_proposal_id', proposal.id)
+              .eq('validation_status', 'observed')
+          }
+
+          const { error: p01Err } = await sb.from('site_knowledge_proposals')
+            .update({ canonical_subject_id: cs.id, canonical_resolution_status: 'resolved' })
+            .eq('id', proposal.id)
+
+          if (!p01Err) {
+            result.matched++
+            if (proposal.kind === 'action') {
+              await ensureActionThread(sb, proposal.id, source.siteId, cs.id)
+            }
+            matched = true
+            break
+          }
+        }
+      } catch (err) {
+        console.error('[reconcile-source] P0-2 analyzeSubjectPair error:', String(err).slice(0, 200))
+      }
+    }
+    if (!matched) afterP01.push(proposal)
+  }
+  if (afterP01.length === 0) return result
+
+  const orphansForClustering = afterP01.filter((p) => CAN_CREATE_SUBJECT_KINDS.has(p.kind))
+  const orphansForMatchOnly = afterP01.filter((p) => !CAN_CREATE_SUBJECT_KINDS.has(p.kind))
 
   // ── Phase 2a : clustering + création des orphelins éligibles ─────────────
   if (orphansForClustering.length > 0) {
