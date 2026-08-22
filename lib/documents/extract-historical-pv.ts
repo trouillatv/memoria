@@ -31,7 +31,13 @@ function classifyExtractionError(e: unknown): DocumentExtractionEmptyReason {
 const EXTRACTOR_KEY = 'historical_visit_report_v1'
 const EXTRACTOR_VERSION = '1.0.0'
 const MIN_USABLE_CHARS = 100
+// Snapshots de page (PNG renderisés pour affichage) : plafonné à 10 pour rester dans
+// le budget stockage et temps Vercel (renderPdfPage ≈ 2-3 s/page CPU).
 const MAX_SNAPSHOT_PAGES = 10
+// Détection d'images embarquées (mupdf walk, ~1-2 s/page, pas de réseau) : plafond
+// pragmatique à 50 pages — couvre tous les PV terrain connus sans risque de timeout.
+// Découplé de MAX_SNAPSHOT_PAGES : les documents > 10 pages conservent leurs images.
+const MAX_IMAGE_DETECTION_PAGES = 50
 // Plafond de légendes IA par run : au-delà, caption = null (trop long sinon).
 const MAX_CAPTIONS = 20
 // Concurrence des appels Gemini pour les légendes (I/O bound, pas CPU).
@@ -149,6 +155,8 @@ export async function extractHistoricalPv(
     // Plafonné à MAX_SNAPSHOT_PAGES pour rester dans le budget temps Vercel.
     log('step_rendering_pages', documentId, { runId })
     const pagesToRender = Math.min(extracted.pageCount, MAX_SNAPSHOT_PAGES)
+    // Détection d'images : chemin indépendant, plafond distinct (MAX_IMAGE_DETECTION_PAGES).
+    const pagesToDetect = Math.min(extracted.pageCount, MAX_IMAGE_DETECTION_PAGES)
     const snapshotPaths = new Map<number, string | null>()
     for (let pageNum = 1; pageNum <= pagesToRender; pageNum++) {
       const rendered = await renderPdfPage(buffer, pageNum - 1)
@@ -167,7 +175,7 @@ export async function extractHistoricalPv(
         snapshotPaths.set(pageNum, null)
       }
     }
-    log('pages_rendered', documentId, { runId, pages: pagesToRender })
+    log('pages_rendered', documentId, { runId, snapshotPages: pagesToRender, imageDetectionPages: pagesToDetect })
 
     await updateExtractionStage(runId, 'extracting_images')
 
@@ -186,7 +194,9 @@ export async function extractHistoricalPv(
     const rawImages: RawImage[] = []
 
     // Passe 1 : extraction mupdf et upload (séquentiels — mupdf n'est pas thread-safe)
-    for (let pageNum = 1; pageNum <= pagesToRender; pageNum++) {
+    // Utilise pagesToDetect (MAX_IMAGE_DETECTION_PAGES) et non pagesToRender (MAX_SNAPSHOT_PAGES)
+    // pour couvrir toutes les pages du document au-delà de la limite snapshot.
+    for (let pageNum = 1; pageNum <= pagesToDetect; pageNum++) {
       let pageResult: Awaited<ReturnType<typeof extractPageImages>> = { images: [], pageText: '' }
       try {
         pageResult = await extractPageImages(buffer, pageNum - 1)
