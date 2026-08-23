@@ -2,9 +2,10 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { deriveSiteAttentionItems, type SiteAttentionItem, type AttentionUrgency } from './site-attention-items'
-import { getNavigableSubjectsForSite } from '@/lib/db/canonical-subject-life'
+import { getNavigableSubjectsForSite, type SubjectOpenSummary } from '@/lib/db/canonical-subject-life'
 import { getSiteSubjectMatrix } from '@/lib/documents/pv-history'
 import { computeWatchlist } from '@/lib/documents/pv-watchlist'
+import { isProvenOpen } from '@/lib/documents/subject-state'
 
 export interface VisitBriefingDelta {
   since: string
@@ -42,6 +43,12 @@ export interface VisitBriefing {
   delta: VisitBriefingDelta | null
   watchlistOpenCount: number
   stagnation: BriefingStagnation
+  /**
+   * Sujets prouvés ouverts (tri-state=open OU objet terrain actif),
+   * ordonnés par priorité d'attention puis par position dans la liste canonique.
+   * Limité à 5 pour la Prévisite. Jamais unknown seul → filet anti-false-positive.
+   */
+  subjectsOpen: SubjectOpenSummary[]
 }
 
 // ─── Ranking ─────────────────────────────────────────────────────────────────
@@ -176,6 +183,34 @@ export async function buildVisitBriefing(siteId: string): Promise<VisitBriefing>
     .filter(s => !s.isStagnant && (s.stagnationDays ?? 0) > 0)
     .sort((a, b) => (b.stagnationDays ?? 0) - (a.stagnationDays ?? 0))[0]
 
+  // Sujets prouvés ouverts — filet : jamais unknown seul, jamais statut clôturé.
+  // Priorité : ordre d'attention (urgence d'abord), puis résidus non capturés.
+  const CLOSED_FINAL = new Set(['done', 'cancelled', 'not_applicable'])
+  const openSubjectById = new Map(
+    subjects
+      .filter(s => !CLOSED_FINAL.has(s.currentStatus ?? '') && isProvenOpen(s.currentTriState, s.activeObjects.total))
+      .map(s => [s.canonicalSubjectId, s]),
+  )
+  const alreadyPlaced = new Set<string>()
+  const subjectsOpen: SubjectOpenSummary[] = []
+  // Premier tour : parcourir allItems par priorité d'attention
+  for (const item of allItems) {
+    if (subjectsOpen.length >= 5) break
+    const csId = item.metadata?.canonicalSubjectId as string | undefined
+    if (!csId || alreadyPlaced.has(csId)) continue
+    const s = openSubjectById.get(csId)
+    if (!s) continue
+    alreadyPlaced.add(csId)
+    subjectsOpen.push({ canonicalSubjectId: csId, title: s.title, activeObjectsTotal: s.activeObjects.total })
+  }
+  // Second tour : résidus ouverts non couverts par un signal d'attention
+  for (const [csId, s] of openSubjectById.entries()) {
+    if (subjectsOpen.length >= 5) break
+    if (alreadyPlaced.has(csId)) continue
+    alreadyPlaced.add(csId)
+    subjectsOpen.push({ canonicalSubjectId: csId, title: s.title, activeObjectsTotal: s.activeObjects.total })
+  }
+
   return {
     attention: rankBriefingAttention(allItems),
     allAttention: allItems,
@@ -191,5 +226,6 @@ export async function buildVisitBriefing(siteId: string): Promise<VisitBriefing>
           }
         : null,
     },
+    subjectsOpen,
   }
 }

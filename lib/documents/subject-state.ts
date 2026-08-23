@@ -124,6 +124,18 @@ export function deriveCurrentResolvedState(states: PvState[]): boolean | null {
 }
 
 /**
+ * Un sujet est "prouvé ouvert" si son dernier état connu est open,
+ * ou s'il possède au moins un objet terrain actif (action/échéance).
+ *
+ * Garde critique : field_checked sans objet actif → false.
+ * Sur les chantiers 100 % terrain (PETRO), le tri-state est toujours 'unknown' ;
+ * seul un objet actif constitue une preuve d'ouverture.
+ */
+export function isProvenOpen(currentTriState: PvState, activeObjectsTotal: number): boolean {
+  return currentTriState === 'open' || activeObjectsTotal > 0
+}
+
+/**
  * Mappe un visit_status brut vers l'état tri-state.
  *
  * field_checked/mentioned = signal de passage, jamais de résolution → unknown.

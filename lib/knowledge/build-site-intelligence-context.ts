@@ -9,10 +9,11 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { deriveSiteAttentionItems, type SiteAttentionItem } from '@/lib/knowledge/site-attention-items'
-import { getNavigableSubjectsForSite, type NavigableSubjectSummary } from '@/lib/db/canonical-subject-life'
+import { getNavigableSubjectsForSite, type NavigableSubjectSummary, type SubjectOpenSummary } from '@/lib/db/canonical-subject-life'
 import { listConfirmedLinksForSite, type SubjectLinkType } from '@/lib/db/subject-thread-links'
 import { getSiteIntervenantsView } from '@/lib/knowledge/site-intervenants-view'
 import { listBlocagesBySite, type SiteBlocage } from '@/lib/db/site-blocages'
+import { isProvenOpen, type PvState } from '@/lib/documents/subject-state'
 
 // ── Types d'entrée ────────────────────────────────────────────────────────────
 
@@ -36,6 +37,8 @@ export interface IntelligenceSubjectItem {
   canonicalSubjectId: string
   title: string
   currentStatus: string | null
+  currentTriState: PvState
+  isProvenOpen: boolean
   firstSeenAt: string | null
   lastSeenAt: string | null
   lastMeaningfulChangeAt: string | null
@@ -117,6 +120,10 @@ export interface SiteIntelligenceContext {
     total: number
     stagnantCount: number
     truncated: boolean
+  }
+  subjectsOpen?: {
+    items: SubjectOpenSummary[]
+    total: number
   }
   attention?: {
     items: SiteAttentionItem[]
@@ -321,6 +328,7 @@ export async function buildSiteIntelligenceContext(
 
   // subjects
   let subjectsOut: SiteIntelligenceContext['subjects']
+  let subjectsOpenOut: SiteIntelligenceContext['subjectsOpen']
   if (opts.subjects && subjectsResult) {
     dimensionsLoaded.push('subjects')
     const stagnantCount = subjectsResult.filter((s) => s.isStagnant).length
@@ -329,6 +337,8 @@ export async function buildSiteIntelligenceContext(
       canonicalSubjectId: s.canonicalSubjectId,
       title: s.title,
       currentStatus: s.currentStatus,
+      currentTriState: s.currentTriState,
+      isProvenOpen: isProvenOpen(s.currentTriState, s.activeObjects.total),
       firstSeenAt: s.firstSeenAt,
       lastSeenAt: s.lastSeenAt,
       lastMeaningfulChangeAt: s.lastMeaningfulChangeAt,
@@ -338,6 +348,13 @@ export async function buildSiteIntelligenceContext(
       terrainObjects: s.terrainObjects,
     }))
     subjectsOut = { items, total: subjectsResult.length, stagnantCount, truncated }
+
+    // subjectsOpen — sujets prouvés ouverts (tri-state=open OU objet actif), statuts clôturés exclus
+    const CLOSED_FINAL = new Set(['done', 'cancelled', 'not_applicable'])
+    const openItems: SubjectOpenSummary[] = subjectsResult
+      .filter(s => !CLOSED_FINAL.has(s.currentStatus ?? '') && isProvenOpen(s.currentTriState, s.activeObjects.total))
+      .map(s => ({ canonicalSubjectId: s.canonicalSubjectId, title: s.title, activeObjectsTotal: s.activeObjects.total }))
+    subjectsOpenOut = { items: openItems, total: openItems.length }
   }
 
   // attention
@@ -481,6 +498,7 @@ export async function buildSiteIntelligenceContext(
     siteName: siteResult.data?.name ?? null,
     asOf: today,
     subjects: subjectsOut,
+    subjectsOpen: subjectsOpenOut,
     attention: attentionOut,
     activeObjects: activeObjectsOut,
     relations: relationsOut,

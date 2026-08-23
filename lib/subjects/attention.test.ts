@@ -36,6 +36,7 @@ function makeSubject(overrides: Partial<NavigableSubjectSummary>): NavigableSubj
     stagnationDays: 0,
     consecutiveMentionsWithoutChange: 0,
     terrainObjects: [],
+    currentTriState: 'unknown',
     ...overrides,
   }
 }

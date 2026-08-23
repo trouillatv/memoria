@@ -1,4 +1,4 @@
-// Contexte déterministe pour le Copilote Phase 2.
+﻿// Contexte déterministe pour le Copilote Phase 2.
 // Transforme les read-models déjà calculés (SiteOverview + prépItems)
 // en un JSON structuré, prêt à être injecté dans le LLM ou à servir
 // de fallback déterministe. Aucun appel DB ici — pure fonction.
@@ -298,6 +298,7 @@ export interface QuantitativeMeasures {
   reservesOpen?: number | null
   blocagesActive?: number | null
   subjectsStagnant?: number | null
+  subjectsOpen?: number | null
 }
 
 type QuantitativeTopic = {
@@ -319,13 +320,18 @@ const QUANTITATIVE_TOPICS: QuantitativeTopic[] = [
   },
   {
     key: 'blocagesActive',
-    match: /\bblocages?\b|\bbloqu[ée]e?s?\b|\bqu[' ’]?est.ce qui bloque\b/i,
+    match: /\bblocages?\b|\bbloqu[ée]e?s?\b|\bqu[' ']?est.ce qui bloque\b/i,
     subject: 'blocage',
   },
   {
     key: 'reservesOpen',
     match: /\br[ée]serves?\b/i,
     subject: 'réserve',
+  },
+  {
+    key: 'subjectsOpen',
+    match: /\bsujets?\b[\s\S]{0,30}(?:encore )?(?:ouverts?|actifs?|en cours)\b|\b(?:encore )?(?:ouverts?|actifs?)\b[\s\S]{0,30}\bsujets?\b/i,
+    subject: 'sujet ouvert',
   },
   {
     key: 'actionsOverdue',
@@ -340,6 +346,7 @@ const ZERO_TEXT: Record<keyof QuantitativeMeasures, string> = {
   reservesOpen:     "Aucune réserve n'est actuellement ouverte sur ce chantier.",
   blocagesActive:   "Aucun blocage n'est actuellement déclaré sur ce chantier.",
   subjectsStagnant: "Aucun sujet ne franchit actuellement le seuil de stagnation.",
+  subjectsOpen:     "Aucun sujet n'est actuellement prouvé ouvert sur ce chantier.",
 }
 
 export function resolveQuantitativeVerdict(input: {
@@ -352,8 +359,12 @@ export function resolveQuantitativeVerdict(input: {
 }): QuantitativeVerdict {
   // Seules les familles qui POSENT une question de comptage. `global` en est
   // exclu : « où en est le chantier ? » attend une synthèse, jamais un zéro.
+  // subjectsOpen : se déclenche sur regex question (indépendant de l'intent principal).
+  const subjectsOpenTopic = QUANTITATIVE_TOPICS.find(t => t.key === 'subjectsOpen')
+  const isSubjectsOpenQuestion = subjectsOpenTopic?.match.test(input.question) ?? false
   const isCountingFamily =
     input.primaryIntent === 'action_status' || input.primaryIntent === 'stagnation'
+    || isSubjectsOpenQuestion
   if (!isCountingFamily) return null
 
   const key: keyof QuantitativeMeasures | null =

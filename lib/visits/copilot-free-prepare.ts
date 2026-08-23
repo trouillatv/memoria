@@ -1857,6 +1857,7 @@ export async function prepareCopilotAnswer(
       reservesOpen:     engineCount(['reserve_open']),
       blocagesActive:   engineCount(['blocage_active']),
       subjectsStagnant: briefingLoadFailed || !briefing ? null : briefing.stagnation.stagnantCount,
+      subjectsOpen:     briefingLoadFailed || !briefing ? null : briefing.subjectsOpen.length,
     },
     stagnationClosest: briefing?.stagnation.closest
       ? { title: briefing.stagnation.closest.title, days: briefing.stagnation.closest.days }

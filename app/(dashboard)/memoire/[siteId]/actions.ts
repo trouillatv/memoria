@@ -133,6 +133,14 @@ function renderContextForLLM(ctx: SiteIntelligenceContext, route: IntentRoute): 
     if (truncated) lines.push(`  … (${total - items.length} autres sujets)`)
   }
 
+  if (ctx.subjectsOpen && ctx.subjectsOpen.total > 0) {
+    lines.push(`\n[TOUJOURS OUVERTS : ${ctx.subjectsOpen.total}]`)
+    for (const s of ctx.subjectsOpen.items) {
+      const objs = s.activeObjectsTotal > 0 ? ` | ${s.activeObjectsTotal} objet(s) actif(s)` : ''
+      lines.push(`• ${s.title} (${s.canonicalSubjectId})${objs}`)
+    }
+  }
+
   if (ctx.activeObjects) {
     const { counts, actionsEnRetard, reservesOuvertes, echeancesDepassees, blocagesActifs } = ctx.activeObjects
     lines.push(`\n[OBJETS ACTIFS]`)

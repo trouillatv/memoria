@@ -9,7 +9,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { canonicalRunsForSite, runEffectiveDate, computeHistoryTransition } from '@/lib/documents/pv-history'
-import { documentStatusToPvState, visitStatusToPvState, computeLmcaFromOccurrences, type LmcaOccurrence } from '@/lib/documents/subject-state'
+import { documentStatusToPvState, visitStatusToPvState, computeLmcaFromOccurrences, deriveCurrentResolvedState, type LmcaOccurrence, type PvState } from '@/lib/documents/subject-state'
 import type { HistoryTransition } from '@/lib/documents/pv-history'
 import type { SubjectLinkType, SubjectLinkStatus, SubjectLinkSource } from '@/lib/db/subject-thread-links'
 import { isOperationalSubject } from '@/lib/subjects/kind'
@@ -83,6 +83,13 @@ export interface TerrainObject {
   description: string | null
   status: string | null
   createdAt: string
+}
+
+/** Projection minimale d'un sujet prouvé ouvert — pour les contextes Copilote. */
+export interface SubjectOpenSummary {
+  canonicalSubjectId: string
+  title: string
+  activeObjectsTotal: number
 }
 
 export interface MergeRecord {
@@ -1031,6 +1038,8 @@ export interface NavigableSubjectSummary {
   consecutiveMentionsWithoutChange: number
   /** Objets terrain directement liés via canonical_subject_id (actions + échéances, chemin 2B-ter). */
   terrainObjects: TerrainObject[]
+  /** État tri-state dérivé de la dernière occurrence non-unknown (open | resolved | unknown). */
+  currentTriState: PvState
 }
 
 const OPEN_NAV_STATUSES = new Set([
@@ -1361,6 +1370,10 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     }))
     let { lastMeaningfulChangeAt, consecutiveMentionsWithoutChange } = computeLmcaFromOccurrences(lmcaOccsB)
 
+    // Tri-state courant — dernière occurrence non-unknown (open | resolved | unknown)
+    const resolvedState = deriveCurrentResolvedState(lmcaOccsB.map(o => o.pvState))
+    const currentTriState: PvState = resolvedState === null ? 'unknown' : (resolvedState ? 'resolved' : 'open')
+
     // Niveau 2 terrain : objets liés par canonical_subject_id créés après firstSeenAt
     const terrainDates = (csObjectDates.get(csId) ?? []).filter((d) => d > firstSeenAt)
     if (terrainDates.length > 0) {
@@ -1404,6 +1417,7 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
       stagnationDays,
       consecutiveMentionsWithoutChange,
       terrainObjects: csTerrainObjectsMap.get(csId) ?? [],
+      currentTriState,
     })
   }
 
