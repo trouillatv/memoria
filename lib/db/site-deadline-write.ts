@@ -12,14 +12,13 @@ import 'server-only'
 //
 // `due_date` null reste un état valide (« à planifier », doctrine mig 215) —
 // createSiteDeadline dérive status='to_plan' dans ce cas, jamais une erreur.
-// Même doctrine que FACT/WATCHPOINT pour le sujet canonique : `site_deadlines`
-// n'a pas de colonne `canonical_subject_id` (audit p4-e2-audit-deadline,
-// vérifié sur tout l'historique de migrations 215/246/274/275/286) — aucun
-// lien de sujet n'est écrit par ce chemin.
+// P1-3C.1 (mig 346) : `site_deadlines` a désormais une colonne `canonical_subject_id`.
+// Le lien est écrit de façon non-bloquante après création, via Jaccard déterministe.
 
 import { createSiteDeadline } from '@/lib/db/site-deadlines'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { updateCopilotProposalStatus } from '@/lib/db/copilot-telemetry'
+import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
 
 export type ConfirmSiteDeadlineParams = {
   organizationId: string
@@ -64,6 +63,17 @@ export async function confirmSiteDeadline(params: ConfirmSiteDeadlineParams): Pr
       copilot_proposal_id: copilotProposalId,
     })
     if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
+
+    // Non-bloquant : rattache l'échéance à son sujet canonique (mig 346, P1-3C.1)
+    void (async () => {
+      try {
+        const res = await resolveCanonicalSubjectReference(siteId, title)
+        if (res.kind === 'resolved') {
+          await admin.from('site_deadlines').update({ canonical_subject_id: res.candidate.id }).eq('id', deadlineId)
+        }
+      } catch { /* non bloquant */ }
+    })()
+
     return { ok: true, deadlineId }
   } catch (err) {
     const message = (err as Error).message

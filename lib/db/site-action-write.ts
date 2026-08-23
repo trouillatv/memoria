@@ -20,6 +20,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import { updateCopilotProposalStatus } from '@/lib/db/copilot-telemetry'
+import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
 
 export type ConfirmSiteActionParams = {
   siteId: string
@@ -78,5 +79,16 @@ export async function confirmSiteAction(params: ConfirmSiteActionParams): Promis
   const actionId = (data as { id: string }).id
   invalidateSiteProjection(siteId)
   if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
+
+  // Non-bloquant : rattache l'action à son sujet canonique (mig 346, P1-3C.1)
+  void (async () => {
+    try {
+      const res = await resolveCanonicalSubjectReference(siteId, title)
+      if (res.kind === 'resolved') {
+        await admin.from('site_actions').update({ canonical_subject_id: res.candidate.id }).eq('id', actionId)
+      }
+    } catch { /* non bloquant */ }
+  })()
+
   return { ok: true, actionId }
 }

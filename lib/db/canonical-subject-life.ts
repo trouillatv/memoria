@@ -1098,6 +1098,36 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     }
   }
 
+  // 2B-ter. Chemin direct : site_action/site_deadline.canonical_subject_id (terrain-origin, mig 346)
+  // Capture les objets créés depuis le copilote sans PV source ni subject_thread_id.
+  // Complémentaire de 2B (materialization) et 2B-bis (subject_thread_id PV).
+  {
+    const { data: csActs } = await supabase
+      .from('site_actions')
+      .select('id, canonical_subject_id')
+      .eq('site_id', siteId)
+      .not('canonical_subject_id', 'is', null)
+    for (const a of (csActs ?? []) as Array<{ id: string; canonical_subject_id: string }>) {
+      let typeMap = csEntityIds.get(a.canonical_subject_id)
+      if (!typeMap) { typeMap = new Map(); csEntityIds.set(a.canonical_subject_id, typeMap) }
+      let idSet = typeMap.get('site_action')
+      if (!idSet) { idSet = new Set(); typeMap.set('site_action', idSet) }
+      idSet.add(a.id)
+    }
+    const { data: csDls } = await supabase
+      .from('site_deadlines')
+      .select('id, canonical_subject_id')
+      .eq('site_id', siteId)
+      .not('canonical_subject_id', 'is', null)
+    for (const d of (csDls ?? []) as Array<{ id: string; canonical_subject_id: string }>) {
+      let typeMap = csEntityIds.get(d.canonical_subject_id)
+      if (!typeMap) { typeMap = new Map(); csEntityIds.set(d.canonical_subject_id, typeMap) }
+      let idSet = typeMap.get('site_deadline')
+      if (!idSet) { idSet = new Set(); typeMap.set('site_deadline', idSet) }
+      idSet.add(d.id)
+    }
+  }
+
   // 2C. Statuts des objets métier — pour activeObjects par CS (4 requêtes parallèles légères)
   const OPEN_ACTION_STATUS   = new Set(['open', 'planned'])
   const OPEN_RESERVE_STATUS  = new Set(['open'])
