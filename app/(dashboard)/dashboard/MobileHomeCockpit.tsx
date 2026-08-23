@@ -113,12 +113,17 @@ const HERO_ACCENT: Record<DailyBriefing['tone'], string> = {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function familyLabel(card: AttentionCard): string {
+export function familyLabel(card: AttentionCard): string {
   // Anticipation : niveau temporel, jamais « critique » avant l'échéance.
   if (card.kind === 'upcoming_promise' || card.kind === 'upcoming_action') return 'À ANTICIPER'
   // Visites oubliées : le niveau de manque, jamais « critique ».
   if (card.kind === 'overdue_planned_visit') return 'VISITE À RATTRAPER'
   if (card.kind === 'stale_site_visit') return 'SANS VISITE RÉCENTE'
+  // Les types métier ne sont pas interchangeables : une action ancienne n'est pas
+  // une réserve. `icon` seul ne suffit pas à les distinguer — stale_action et
+  // open_reserve partagent 'warning' — donc on tranche sur `kind` avant le switch.
+  if (card.kind === 'stale_action') return 'ACTION ANCIENNE'
+  if (card.kind === 'open_reserve') return card.tone === 'red' ? 'RÉSERVE CRITIQUE' : 'RÉSERVE OUVERTE'
   if (card.subject !== null) {
     return card.tone === 'red' ? 'PROMESSE EN RETARD' : 'PROMESSE À CONFIRMER'
   }
@@ -136,9 +141,12 @@ const FAMILY_COLORS: Record<AttentionCard['tone'], string> = {
   neutral: 'text-[#4973dd] bg-[#eef4ff]',
 }
 
-function ctaLabel(card: AttentionCard): string {
+export function ctaLabel(card: AttentionCard): string {
   if (card.kind === 'overdue_planned_visit' || card.kind === 'stale_site_visit') return 'Voir le chantier'
   if (card.kind === 'upcoming_action') return "Voir l'action"
+  // Même raison que dans familyLabel : le CTA suit le type métier, pas l'icône.
+  if (card.kind === 'stale_action') return "Voir l'action"
+  if (card.kind === 'open_reserve') return 'Voir la réserve'
   if (card.icon === 'calendar') return card.tone === 'red' ? "Voir l'action" : 'Planifier'
   if (card.icon === 'document') return 'Compléter'
   if (card.icon === 'warning') return 'Voir la réserve'

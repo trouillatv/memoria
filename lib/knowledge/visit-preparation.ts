@@ -205,15 +205,28 @@ export function buildUnconfirmedQuestion(text: string): string {
   return `Le point suivant est-il toujours d’actualité : ${text}`
 }
 
-export type PreparationFreshness = { days: number; label: string; level: 'recent' | 'watch' | 'stale' }
+/**
+ * `at` = l'instant réellement mesuré, conservé à côté du délai relatif.
+ *
+ * Un « il y a 3 jours » seul n'est pas vérifiable : il ne dit ni de quoi il parle
+ * ni depuis quand. Exposer la date permet aux surfaces de nommer la preuve —
+ * « dernière visite terrain : 20 août » — au lieu d'un délai abstrait.
+ */
+export type PreparationFreshness = {
+  days: number
+  label: string
+  level: 'recent' | 'watch' | 'stale'
+  at: string | null
+}
 
 export function getPreparationFreshness(lastActivityAt: string | null, now = new Date().toISOString()): PreparationFreshness {
-  if (!lastActivityAt) return { days: 0, label: 'aucune activité récente', level: 'stale' }
+  if (!lastActivityAt) return { days: 0, label: 'aucune activité récente', level: 'stale', at: null }
   const days = Math.max(0, Math.floor((new Date(now).getTime() - new Date(lastActivityAt).getTime()) / 86_400_000))
   return {
     days,
     label: days === 0 ? "aujourd'hui" : days === 1 ? 'il y a 1 jour' : `il y a ${days} jours`,
     level: days <= 7 ? 'recent' : days <= 30 ? 'watch' : 'stale',
+    at: lastActivityAt,
   }
 }
 

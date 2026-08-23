@@ -128,8 +128,11 @@ describe('visit preparation read model', () => {
   })
 
   it('estimates memory freshness and chantier phase deterministically', () => {
-    expect(getPreparationFreshness('2026-07-21T10:00:00Z', '2026-07-25T10:00:00Z')).toEqual({ days: 4, label: 'il y a 4 jours', level: 'recent' })
+    expect(getPreparationFreshness('2026-07-21T10:00:00Z', '2026-07-25T10:00:00Z')).toEqual({ days: 4, label: 'il y a 4 jours', level: 'recent', at: '2026-07-21T10:00:00Z' })
     expect(getPreparationFreshness('2026-06-01T10:00:00Z', '2026-07-25T10:00:00Z').level).toBe('stale')
+    // `at` porte la preuve datée : sans elle, les surfaces ne peuvent afficher
+    // qu'un délai relatif, non vérifiable par l'utilisateur.
+    expect(getPreparationFreshness(null).at).toBeNull()
     expect(estimatePreparationPhase({ actionTitles: ['Dépose des hottes'], deadlineTitles: [], openReserveCount: 0 })).toBe('Dépose')
     expect(estimatePreparationPhase({ actionTitles: [], deadlineTitles: ['Planifier la visite'], openReserveCount: 0 })).toBe('Préparation')
     expect(estimatePreparationPhase({ actionTitles: [], deadlineTitles: [], openReserveCount: 2 })).toBe('Levée des réserves')

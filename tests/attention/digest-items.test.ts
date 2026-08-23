@@ -122,7 +122,9 @@ describe('DÉBRIEFS EN ATTENTE — la visite est finie, les captures dorment', (
     expect(item.tier).toBe('orange')
     expect(item.what).toBe('1 visite à débriefer')
     expect(item.where).toBe('Discount Poindimié')
-    expect(item.why).toBe('la plus ancienne date d’il y a 4 j — 3 éléments en attente')
+    // Une seule visite : « la plus ancienne » n'a pas de sens, et les 3 éléments
+    // sont bien ceux de CETTE visite. On nomme donc la date, pas un délai.
+    expect(item.why).toBe('visite du 10 juillet — 3 éléments en attente')
     expect(item.href).toBe('/sites/s1/visites/r1')
   })
 
@@ -138,7 +140,10 @@ describe('DÉBRIEFS EN ATTENTE — la visite est finie, les captures dorment', (
     expect(items).toHaveLength(1)
     expect(items[0].what).toBe('2 visites à débriefer')
     expect(items[0].href).toBe('/sites/s1/visites/ancienne')
-    expect(items[0].why).toContain('3 éléments')
+    // Deux portées dans la même phrase : le délai décrit UNE visite, le compte
+    // additionne les DEUX. La phrase doit dire à quoi se rapporte le compte,
+    // sinon « 3 éléments » se lit comme ceux de la visite datée.
+    expect(items[0].why).toBe('la plus ancienne remonte à 5 j — 3 éléments en attente sur les 2 visites')
   })
 
   it('une visite du jour se dit sans compter les jours', () => {

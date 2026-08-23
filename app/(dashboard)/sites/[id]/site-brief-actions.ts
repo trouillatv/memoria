@@ -278,6 +278,8 @@ export interface SiteBrief {
   confirmedFacts: SiteBriefFactLine[]
   estimatedPhase: string
   freshness: PreparationFreshness
+  /** Nature de l'activité qui date `freshness` — visite terrain ou réunion. */
+  freshnessKind: 'visit' | 'meeting' | null
   coherenceInsights: SiteBriefFactLine[]
   rememberToday: SiteBriefFactLine[]
   completedSinceVenue: SiteBriefFactLine[]
@@ -761,6 +763,10 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     { text: openReserves.length === 0 ? 'Aucune réserve ouverte' : `${openReserves.length} réserve${openReserves.length > 1 ? 's' : ''} ouverte${openReserves.length > 1 ? 's' : ''}`, sourceType: 'reserve', sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' },
   ]
   const freshness = getPreparationFreshness(preparationActivities[0]?.startedAt ?? null)
+  // La preuve la plus récente n'est pas toujours une visite : `preparationActivities`
+  // mêle visites (origin != null) et réunions. La surface doit nommer la NATURE
+  // réelle de la dernière preuve, pas supposer « visite ».
+  const freshnessKind = preparationActivities[0]?.kind ?? null
   const estimatedPhase = estimatePreparationPhase({
     actionTitles: openActionRows.map((action) => action.title),
     deadlineTitles: deadlineItems.map((deadline) => deadline.title),
@@ -942,6 +948,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       confirmedFacts,
       estimatedPhase,
       freshness,
+      freshnessKind,
       coherenceInsights,
       rememberToday,
       completedSinceVenue,

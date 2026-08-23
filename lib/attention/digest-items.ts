@@ -115,10 +115,18 @@ export function buildDebriefItems(
       tier: 'orange',
       what: `${n} ${plural(n, 'visite à débriefer', 'visites à débriefer')}`,
       where: nameOr(nameOf, siteId),
+      // Deux portées ne doivent jamais tenir dans la même phrase : `jours` décrit
+      // UNE visite (la plus ancienne), `captures` additionne TOUTES les visites du
+      // chantier. Les juxtaposer laissait lire « 5 éléments » comme ceux de la
+      // visite datée. On ne mélange donc que lorsqu'il n'y a qu'une seule visite —
+      // auquel cas les deux portées coïncident, et « la plus ancienne » n'a d'ailleurs
+      // aucun sens.
       why:
         jours <= 0
           ? `${captures} ${plural(captures, 'élément rapporté', 'éléments rapportés')} aujourd’hui, pas encore ${plural(captures, 'trié', 'triés')}`
-          : `la plus ancienne date d’il y a ${jours} j — ${captures} ${plural(captures, 'élément', 'éléments')} en attente`,
+          : n === 1
+            ? `visite du ${frDay((oldest.endedAt ?? '').slice(0, 10))} — ${captures} ${plural(captures, 'élément', 'éléments')} en attente`
+            : `la plus ancienne remonte à ${jours} j — ${captures} ${plural(captures, 'élément', 'éléments')} en attente sur les ${n} visites`,
       // Le débrief se reprend là où il s'est arrêté.
       href: `/sites/${siteId}/visites/${oldest.reportId}`,
       organizationId: orgOf?.get(siteId) ?? '',

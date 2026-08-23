@@ -517,6 +517,7 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
     confirmedFacts,
     estimatedPhase,
     freshness,
+    freshnessKind,
     coherenceInsights,
     rememberToday,
     completedSinceVenue,
@@ -848,7 +849,16 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
         <FactLines items={confirmedFacts} />
         <div className="flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 text-[11px] text-muted-foreground">
           <span>Indice de phase (objets ouverts) : <strong className="font-semibold text-foreground">{estimatedPhase}</strong><span className="ml-1 text-muted-foreground/70">— déduit, non confirmé sur site</span></span>
-          <span>Mémoire : <strong className={freshness.level === 'stale' ? 'font-semibold text-amber-700' : 'font-semibold text-foreground'}>{freshness.label}</strong></span>
+          {/* « Mémoire : il y a 3 jours » ne disait ni de quoi il s'agissait ni depuis
+              quand. C'est le started_at de la dernière activité rapportée : on nomme
+              sa nature et sa date, le délai relatif ne reste qu'en appoint. */}
+          <span>
+            {freshnessKind === 'meeting' ? 'Dernière réunion' : 'Dernière visite terrain'} :{' '}
+            <strong className={freshness.level === 'stale' ? 'font-semibold text-amber-700' : 'font-semibold text-foreground'}>
+              {formatDay(freshness.at?.slice(0, 10)) ?? freshness.label}
+            </strong>
+            {freshness.at ? <span className="ml-1 text-muted-foreground/70">({freshness.label})</span> : null}
+          </span>
         </div>
         <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dernier état rapporté</p>
         <FactLines items={rememberToday.filter((item) => item.sourceType !== 'deadline')} empty="Aucun fait consolidé à retenir pour le moment." />
@@ -898,8 +908,13 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
               ))}
             </ul>
           )}
+          {/* « non mis à jour automatiquement » se lisait comme un aveu de panne.
+              Le fait exact est : ceci est l'état CONSTATÉ à la dernière preuve terrain,
+              et il n'est pas présumé avoir changé depuis. On le dit ainsi. */}
           <p className="text-[11px] text-muted-foreground/80">
-            État à la date de la dernière visite — non mis à jour automatiquement.
+            {formatDay(freshness.at?.slice(0, 10))
+              ? `État constaté lors de ${freshnessKind === 'meeting' ? 'la réunion' : 'la visite'} du ${formatDay(freshness.at?.slice(0, 10))} · à reconfirmer sur site`
+              : 'État constaté lors du dernier passage · à reconfirmer sur site'}
           </p>
         </section>
       )}
