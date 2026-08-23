@@ -8,6 +8,7 @@ import type { PlanningTimelineEvent } from '@/lib/planning/timeline-contract'
 import type { SupervisorInterventionRow } from '@/lib/db/interventions'
 import type { CycleSlot, PlanningCycle } from '@/lib/db/planning-cycles'
 import { CANCEL_REASON_LABEL, type SiteDeadline, type SiteDeadlineHistory } from '@/lib/db/site-deadlines'
+import { type DeadlineFieldEvidence } from '@/lib/db/deadline-field-evidence'
 import type { DbKnowledgeProposal } from '@/lib/db/knowledge-proposals'
 import { WhyButton } from '@/components/provenance/WhyButton'
 import { DeadlineActions } from './DeadlineActions'
@@ -30,6 +31,8 @@ interface PlanningWorkspaceProps {
   deadlineHistory?: SiteDeadlineHistory[]
   /** Propositions masquées par le filtre de suppression — « Masquées — à vérifier ». */
   maskedProposals?: DbKnowledgeProposal[]
+  /** Confrontation échéances ↔ terrain. Clé = deadline id. Lecture seule, pas de mutation de statut. */
+  deadlineEvidence?: Map<string, DeadlineFieldEvidence>
   /** TOUT ce qui est daté sur ce chantier — visites, réunions, échéances,
    *  interventions. Le compteur « Visites » disait `nextEvent?.kind === 'visit'`
    *  : il ne comptait rien, il regardait si le PROCHAIN événement était une
@@ -60,6 +63,7 @@ export function PlanningWorkspace({
   deadlines,
   deadlineHistory,
   maskedProposals,
+  deadlineEvidence,
   timeline,
 }: PlanningWorkspaceProps) {
   // Une échéance sans date n'est pas incomplète : elle attend une décision. Elle a
@@ -159,6 +163,7 @@ export function PlanningWorkspace({
             <ul className="mt-4 space-y-2">
               {dated.map((d) => {
                 const overdue = d.due_date! < todayIso
+                const evidence = overdue ? deadlineEvidence?.get(d.id) : undefined
                 return (
                   <li key={d.id}>
                     <div className="flex items-baseline justify-between gap-3">
@@ -176,6 +181,11 @@ export function PlanningWorkspace({
                     {d.report_id && (
                       <div className="mt-0.5">
                         <WhyButton objectType="deadline" objectId={d.id} />
+                      </div>
+                    )}
+                    {evidence && (
+                      <div className="mt-0.5">
+                        <DeadlineEvidenceTag evidence={evidence} />
                       </div>
                     )}
                   </li>
@@ -373,6 +383,48 @@ const nomeaDayFmt = new Intl.DateTimeFormat('en-CA', {
 function eventDay(start: string): string {
   if (start.length <= 10) return start
   return nomeaDayFmt.format(new Date(start))
+}
+
+const evidenceDateFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'long' })
+function fmtEvidenceDate(iso: string) {
+  return evidenceDateFmt.format(new Date(iso + 'T00:00:00Z'))
+}
+
+/**
+ * Tag de confrontation terrain pour une échéance en retard avec identité canonique.
+ *
+ * Sémantique stricte :
+ * - OVERDUE_WITHOUT_PROGRESS_EVIDENCE / NO_POST_DUE_EVIDENCE = MemorIA ne sait pas, pas «rien n'a été fait»
+ * - FIELD_COMPLETION_EVIDENCE = signal terrain, pas une clôture automatique
+ */
+function DeadlineEvidenceTag({ evidence }: { evidence: DeadlineFieldEvidence }) {
+  switch (evidence.classification) {
+    case 'FIELD_COMPLETION_EVIDENCE':
+      return (
+        <p className="text-[11px] leading-tight text-emerald-700 dark:text-emerald-400">
+          ✓ Réalisation constatée{evidence.lastEvidenceDate ? ` le ${fmtEvidenceDate(evidence.lastEvidenceDate)}` : ''}
+          {evidence.validationStatus !== 'confirmed' && ' — à confirmer'}
+        </p>
+      )
+    case 'FIELD_PROGRESS_OBSERVED':
+      return (
+        <p className="text-[11px] leading-tight text-amber-700 dark:text-amber-400">
+          ↻ Activité terrain{evidence.lastEvidenceDate ? ` le ${fmtEvidenceDate(evidence.lastEvidenceDate)}` : ''}
+        </p>
+      )
+    case 'OVERDUE_WITHOUT_PROGRESS_EVIDENCE':
+      return (
+        <p className="text-[11px] leading-tight text-muted-foreground">
+          Aucune progression observée par MemorIA
+        </p>
+      )
+    case 'NO_POST_DUE_EVIDENCE':
+      return (
+        <p className="text-[11px] leading-tight text-muted-foreground">
+          Aucune observation récente{evidence.lastEvidenceDate ? ` (dernière : ${fmtEvidenceDate(evidence.lastEvidenceDate)})` : ''}
+        </p>
+      )
+  }
 }
 
 /** Historique des échéances (repliable) : réalisées / annulées / remplacées.

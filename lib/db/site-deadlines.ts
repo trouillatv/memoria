@@ -39,6 +39,8 @@ export interface SiteDeadline {
   created_at: string
   /** Date du PV source si l'échéance vient d'un import historique. Null = saisie manuelle. */
   source_document_effective_date: string | null
+  /** FK vers canonical_subject (mig 346). Null = sujet non identifié. */
+  canonical_subject_id: string | null
 }
 
 /** Une échéance sortie du planning actif (réalisée / annulée / remplacée) — pour
@@ -108,7 +110,7 @@ export async function listSiteDeadlines(
 ): Promise<SiteDeadline[]> {
   let query = createAdminClient()
     .from('site_deadlines')
-    .select('id, site_id, report_id, title, constraint_text, due_date, status, created_at, source_document_effective_date')
+    .select('id, site_id, report_id, title, constraint_text, due_date, status, created_at, source_document_effective_date, canonical_subject_id')
     .eq('site_id', siteId)
     .is('deleted_at', null)
     .in('status', ['to_plan', 'planned'])
@@ -230,6 +232,7 @@ export async function listSiteDeadlineHistory(siteId: string): Promise<SiteDeadl
     id: string; site_id: string; report_id: string | null; title: string
     constraint_text: string | null; due_date: string | null; status: DeadlineStatus
     created_at: string; source_document_effective_date: string | null
+    canonical_subject_id: string | null
     completed_at: string | null; completed_by: string | null
     cancelled_at: string | null; cancelled_by: string | null
     cancel_reason: DeadlineCancelReason | null; cancel_comment: string | null
@@ -237,7 +240,7 @@ export async function listSiteDeadlineHistory(siteId: string): Promise<SiteDeadl
   }
   const { data, error } = await db
     .from('site_deadlines')
-    .select('id, site_id, report_id, title, constraint_text, due_date, status, created_at, source_document_effective_date, completed_at, completed_by, cancelled_at, cancelled_by, cancel_reason, cancel_comment, superseded_by')
+    .select('id, site_id, report_id, title, constraint_text, due_date, status, created_at, source_document_effective_date, canonical_subject_id, completed_at, completed_by, cancelled_at, cancelled_by, cancel_reason, cancel_comment, superseded_by')
     .eq('site_id', siteId)
     .is('deleted_at', null)
     .in('status', ['done', 'cancelled', 'superseded'])

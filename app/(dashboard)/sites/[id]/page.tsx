@@ -12,6 +12,7 @@ import { listInterventionsSupervisor } from '@/lib/db/interventions'
 import { listScheduledEvents, scheduledTypeLabel, type ScheduledEvent } from '@/lib/db/scheduled-events'
 import { listCyclesBySite } from '@/lib/db/planning-cycles'
 import { listSiteDeadlines, listSiteDeadlineHistory } from '@/lib/db/site-deadlines'
+import { getDeadlineFieldEvidenceBatch, type DeadlineFieldEvidence } from '@/lib/db/deadline-field-evidence'
 import { listMaskedDeadlineProposals } from '@/lib/db/knowledge-proposals'
 import { listTeams } from '@/lib/db/teams'
 import {
@@ -480,6 +481,14 @@ async function PlanningView({ siteId }: { siteId: string }) {
     getPlanningTimeline({ from: iso(lundi), to: iso(dimanche) }, { siteIds: [siteId] }).catch((): PlanningTimelineEvent[] => []),
     listScheduledEvents(siteId, { from: new Date().toISOString() }).catch((): ScheduledEvent[] => []),
   ])
+  const linkedDeadlines = deadlines
+    .filter((d) => !!d.canonical_subject_id && !!d.due_date)
+    .map((d) => ({ id: d.id, canonical_subject_id: d.canonical_subject_id!, due_date: d.due_date! }))
+  const deadlineEvidence =
+    linkedDeadlines.length > 0
+      ? await getDeadlineFieldEvidenceBatch(linkedDeadlines).catch(() => new Map<string, DeadlineFieldEvidence>())
+      : new Map<string, DeadlineFieldEvidence>()
+
   return (
     <PlanningWorkspace
       siteId={siteId}
@@ -491,6 +500,7 @@ async function PlanningView({ siteId }: { siteId: string }) {
       deadlines={deadlines}
       deadlineHistory={deadlineHistory}
       maskedProposals={maskedProposals}
+      deadlineEvidence={deadlineEvidence}
       teams={teams}
       timeline={timeline}
     />

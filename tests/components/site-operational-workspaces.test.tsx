@@ -249,6 +249,7 @@ function deadlineFixture(overrides: Partial<SiteDeadline> = {}): SiteDeadline {
     status: 'to_plan',
     created_at: '2026-07-17T08:00:00.000Z',
     source_document_effective_date: null,
+    canonical_subject_id: null,
     ...overrides,
   }
 }
