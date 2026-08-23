@@ -76,6 +76,15 @@ export interface MaterializedEvent {
   status: string | null
 }
 
+export interface TerrainObject {
+  entityType: 'site_action' | 'site_deadline'
+  entityId: string
+  title: string
+  description: string | null
+  status: string | null
+  createdAt: string
+}
+
 export interface MergeRecord {
   loserLabel: string
   mergedAt: string
@@ -104,6 +113,7 @@ export interface CanonicalSubjectLife {
   occurrences: SubjectOccurrenceMerged[]
   links: CanonicalLink[]
   materializedEvents: MaterializedEvent[]
+  terrainObjects: TerrainObject[]
   lastMeaningfulChangeAt: string | null
   stagnationDays: number | null
   consecutiveMentionsWithoutChange: number
@@ -197,6 +207,46 @@ function applyEntitySubstitution(
   return changed ? result : null
 }
 
+// ── Helpers terrain (P1-4 Level 2 — objets liés par canonical_subject_id) ────
+
+async function fetchTerrainObjectsByCs(
+  supabase: ReturnType<typeof createAdminClient>,
+  canonicalSubjectId: string,
+): Promise<TerrainObject[]> {
+  const [actRes, dlRes] = await Promise.all([
+    supabase.from('site_actions').select('id, title, body, status, created_at').eq('canonical_subject_id', canonicalSubjectId),
+    supabase.from('site_deadlines').select('id, title, constraint_text, status, created_at').eq('canonical_subject_id', canonicalSubjectId),
+  ])
+  const objects: TerrainObject[] = []
+  type AR = { id: string; title: string; body: string | null; status: string; created_at: string }
+  for (const r of (actRes.data ?? []) as AR[]) {
+    const caDate = r.created_at?.substring(0, 10)
+    if (caDate) objects.push({ entityType: 'site_action', entityId: r.id, title: r.title, description: r.body, status: r.status, createdAt: caDate })
+  }
+  type DL = { id: string; title: string; constraint_text: string | null; status: string | null; created_at: string }
+  for (const r of (dlRes.data ?? []) as DL[]) {
+    const caDate = r.created_at?.substring(0, 10)
+    if (caDate) objects.push({ entityType: 'site_deadline', entityId: r.id, title: r.title, description: r.constraint_text, status: r.status, createdAt: caDate })
+  }
+  return objects
+}
+
+function applyTerrainLevel2(
+  terrainObjects: TerrainObject[],
+  firstSeenAt: string | null,
+  lastMeaningfulChangeAt: string | null,
+  consecutiveMentionsWithoutChange: number,
+): { lastMeaningfulChangeAt: string | null; consecutiveMentionsWithoutChange: number } {
+  if (!firstSeenAt) return { lastMeaningfulChangeAt, consecutiveMentionsWithoutChange }
+  const dates = terrainObjects.map((o) => o.createdAt).filter((d) => d > firstSeenAt)
+  if (dates.length === 0) return { lastMeaningfulChangeAt, consecutiveMentionsWithoutChange }
+  const objectLmca = [...dates].sort().pop()!
+  if (!lastMeaningfulChangeAt || objectLmca > lastMeaningfulChangeAt) {
+    return { lastMeaningfulChangeAt: objectLmca, consecutiveMentionsWithoutChange: 0 }
+  }
+  return { lastMeaningfulChangeAt, consecutiveMentionsWithoutChange }
+}
+
 // ── Read-model ────────────────────────────────────────────────────────────────
 
 /**
@@ -260,22 +310,29 @@ export async function getCanonicalSubjectLife(
       resolvedLabel: applyEntitySubstitution(row.label, row.entity_ids, nativeEntityMap),
     }))
     const nativeReal = nativeOccs.filter((o) => !o.isGap)
+    const nativeFirstSeenAt = nativeReal[0]?.effectiveDate ?? null
     const nativeLastSeenAt = nativeReal[nativeReal.length - 1]?.effectiveDate ?? null
     const nativeMetrics = computeNativeChangeMetrics(nativeReal, nativeLastSeenAt)
+    const terrainObjects = await fetchTerrainObjectsByCs(supabase, canonicalSubjectId)
+    const { lastMeaningfulChangeAt: nativeLmca, consecutiveMentionsWithoutChange: nativeCwc } =
+      applyTerrainLevel2(terrainObjects, nativeFirstSeenAt, nativeMetrics.lastMeaningfulChangeAt, nativeMetrics.consecutiveMentionsWithoutChange)
+    const nativeStagDays = (nativeLmca && nativeLastSeenAt && nativeLmca !== nativeLastSeenAt)
+      ? Math.floor((new Date(nativeLastSeenAt).getTime() - new Date(nativeLmca).getTime()) / 86_400_000)
+      : 0
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
       mergedInto: csMergedInto, mergedIntoLabel: null, mergesAsWinner: [],
-      firstSeenAt: nativeReal[0]?.effectiveDate ?? null,
+      firstSeenAt: nativeFirstSeenAt,
       lastSeenAt: nativeLastSeenAt,
       currentStatus: nativeReal[nativeReal.length - 1]?.visitStatus ?? null,
       primaryFamily: null, threadIds: [],
       pvCount: 0,
       fieldVisitCount: new Set(nativeReal.filter((o) => o.sourceKind === 'field_visit' || o.sourceKind === 'meeting').map((o) => `${o.sourceKind}-${o.effectiveDate}`)).size,
-      runs: [], occurrences: nativeOccs, links: [], materializedEvents: [],
-      lastMeaningfulChangeAt: nativeMetrics.lastMeaningfulChangeAt,
-      stagnationDays: nativeMetrics.stagnationDays,
-      consecutiveMentionsWithoutChange: nativeMetrics.consecutiveMentionsWithoutChange,
-      isStagnant: nativeMetrics.isStagnant,
+      runs: [], occurrences: nativeOccs, links: [], materializedEvents: [], terrainObjects,
+      lastMeaningfulChangeAt: nativeLmca,
+      stagnationDays: nativeStagDays,
+      consecutiveMentionsWithoutChange: nativeCwc,
+      isStagnant: nativeStagDays >= 30 && nativeCwc >= 2,
     }
   }
 
@@ -314,6 +371,12 @@ export async function getCanonicalSubjectLife(
     const fallbackFirst = fallbackReal[0]?.effectiveDate ?? null
     const fallbackLast = fallbackReal[fallbackReal.length - 1]?.effectiveDate ?? null
     const fallbackMetrics = computeNativeChangeMetrics(fallbackReal, fallbackLast)
+    const terrainObjects = await fetchTerrainObjectsByCs(supabase, canonicalSubjectId)
+    const { lastMeaningfulChangeAt: fallbackLmca, consecutiveMentionsWithoutChange: fallbackCwc } =
+      applyTerrainLevel2(terrainObjects, fallbackFirst, fallbackMetrics.lastMeaningfulChangeAt, fallbackMetrics.consecutiveMentionsWithoutChange)
+    const fallbackStagDays = (fallbackLmca && fallbackLast && fallbackLmca !== fallbackLast)
+      ? Math.floor((new Date(fallbackLast).getTime() - new Date(fallbackLmca).getTime()) / 86_400_000)
+      : 0
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
       mergedInto: csMergedInto, mergedIntoLabel: null, mergesAsWinner: [],
@@ -321,11 +384,11 @@ export async function getCanonicalSubjectLife(
       currentStatus: fallbackReal[fallbackReal.length - 1]?.visitStatus ?? null,
       primaryFamily: null, threadIds, pvCount: 0,
       fieldVisitCount: new Set(fallbackReal.map((o) => `${o.sourceKind}-${o.effectiveDate}`)).size,
-      runs: [], occurrences: fallbackOccs, links: [], materializedEvents: [],
-      lastMeaningfulChangeAt: fallbackMetrics.lastMeaningfulChangeAt,
-      stagnationDays: fallbackMetrics.stagnationDays,
-      consecutiveMentionsWithoutChange: fallbackMetrics.consecutiveMentionsWithoutChange,
-      isStagnant: fallbackMetrics.isStagnant,
+      runs: [], occurrences: fallbackOccs, links: [], materializedEvents: [], terrainObjects,
+      lastMeaningfulChangeAt: fallbackLmca,
+      stagnationDays: fallbackStagDays,
+      consecutiveMentionsWithoutChange: fallbackCwc,
+      isStagnant: fallbackStagDays >= 30 && fallbackCwc >= 2,
     }
   }
 
@@ -374,7 +437,7 @@ export async function getCanonicalSubjectLife(
       firstSeenAt: null, lastSeenAt: null, currentStatus: null, primaryFamily: null,
       threadIds, pvCount: 0, fieldVisitCount: 0,
       runs: allRuns.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) })),
-      occurrences: [], links: [], materializedEvents: [],
+      occurrences: [], links: [], materializedEvents: [], terrainObjects: [],
       lastMeaningfulChangeAt: null, stagnationDays: null, consecutiveMentionsWithoutChange: 0, isStagnant: false,
     }
   }
@@ -647,7 +710,11 @@ export async function getCanonicalSubjectLife(
       : documentStatusToPvState(occ.documentStatus),
     objectSig: occ.runId ? (matSigByRun.get(occ.runId) ?? '') : '',
   }))
-  const { lastMeaningfulChangeAt, consecutiveMentionsWithoutChange } = computeLmcaFromOccurrences(lmcaOccsA)
+  const terrainObjects = await fetchTerrainObjectsByCs(supabase, canonicalSubjectId)
+  const lmcaBase = computeLmcaFromOccurrences(lmcaOccsA)
+  const { lastMeaningfulChangeAt, consecutiveMentionsWithoutChange } = applyTerrainLevel2(
+    terrainObjects, firstSeenAt, lmcaBase.lastMeaningfulChangeAt, lmcaBase.consecutiveMentionsWithoutChange,
+  )
 
   const stagnationDays = (lastMeaningfulChangeAt && lastSeenAt && lastMeaningfulChangeAt !== lastSeenAt)
     ? Math.floor((new Date(lastSeenAt).getTime() - new Date(lastMeaningfulChangeAt).getTime()) / 86_400_000)
@@ -784,6 +851,7 @@ export async function getCanonicalSubjectLife(
     occurrences,
     links,
     materializedEvents,
+    terrainObjects,
     lastMeaningfulChangeAt,
     stagnationDays,
     consecutiveMentionsWithoutChange,
