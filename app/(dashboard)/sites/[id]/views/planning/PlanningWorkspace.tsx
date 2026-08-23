@@ -415,7 +415,7 @@ function DeadlineEvidenceTag({ evidence }: { evidence: DeadlineFieldEvidence }) 
     case 'OVERDUE_WITHOUT_PROGRESS_EVIDENCE':
       return (
         <p className="text-[11px] leading-tight text-muted-foreground">
-          Aucune progression observée par MemorIA
+          Aucune progression documentée depuis l'échéance
         </p>
       )
     case 'NO_POST_DUE_EVIDENCE':
