@@ -162,8 +162,22 @@ export function resolveMatchExistingDecision(
 
 // ─── Verrou de réconciliation (P0-2) ─────────────────────────────────────────
 
-/** TTL du verrou soft : au-delà, un run réputé bloqué libère sa place. */
-export const RECONCILE_LOCK_TTL_MS = 5 * 60 * 1000
+/**
+ * TTL du verrou soft : au-delà, un run réputé bloqué libère sa place.
+ *
+ * 15 min, et non plus 5 (RECONCILIATION-RELIABILITY, 2026-08-24). L'audit a
+ * mesuré des réconciliations légitimes de 5 s à ~6 min — la chaîne appelle
+ * Gemini (clusterOrphansWithGemini), sa durée suit le volume de propositions.
+ * Avec un TTL de 5 min, un run encore VIVANT était déclaré mort : le cron de
+ * reprise aurait démarré un second run par-dessus le premier. Double dépense
+ * Gemini, concurrence sur les décisions de canonicalisation, journaux trompeurs.
+ *
+ * Le TTL doit donc rester nettement au-dessus de la durée réelle la plus longue,
+ * et le seuil du sweep nettement au-dessus du TTL. Si les durées observées
+ * approchent un jour 15 min, la réponse n'est pas d'allonger encore : c'est de
+ * renouveler le bail pendant le travail (heartbeat) — disproportionné aujourd'hui.
+ */
+export const RECONCILE_LOCK_TTL_MS = 15 * 60 * 1000
 
 /**
  * Décide si un run de réconciliation peut démarrer, à partir de l'état du
