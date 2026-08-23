@@ -170,12 +170,32 @@ export interface SiteBriefProof {
   reason: 'latest_key_photo' | 'new_since_last_visit' | 'latest_report'
 }
 
+/** Un objet réel derrière un compteur — jamais un objet inventé pour illustrer. */
+export interface SiteBriefFactItem {
+  id: string
+  label: string
+  href: string | null
+}
+
 export interface SiteBriefFactLine {
   text: string
   sourceType: 'visit' | 'meeting' | 'action' | 'deadline' | 'reserve' | 'watchpoint' | 'decision' | 'chronology'
   sourceId: string | null
   sourceHref: string | null
   status: 'validated' | 'in_progress' | 'interpretation' | 'unconfirmed'
+  /**
+   * Les objets que ce nombre compte, quand ils sont DÉJÀ en mémoire.
+   *
+   * Un nombre présenté comme information décisionnelle doit pouvoir s'ouvrir sur
+   * ses objets. Aucune requête supplémentaire n'est faite pour les remplir : si
+   * la liste n'est pas déjà chargée, `items` reste absent et la ligne demeure un
+   * simple lien vers la surface qui, elle, sait les charger.
+   */
+  items?: SiteBriefFactItem[]
+  /** Ce que le compteur inclut exactement, dit en clair au moment de l'ouvrir. */
+  itemsDefinition?: string
+  /** Objets comptés mais non listés ici — jamais tus. */
+  itemsHiddenCount?: number
 }
 
 export interface SiteBriefOpenActivityProposal {
@@ -757,10 +777,52 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
   })
 
   const narrativeHighlights = selectNarrativeHighlights(narratives.map((narrative) => narrative.text), 3)
+
+  // Ces trois compteurs se lisaient sur les listes DÉJÀ TRONQUÉES pour l'affichage
+  // (`openReserves` = 6 max, `deadlineItems` = 8 max). Un chantier à 10 réserves
+  // ouvertes annonçait donc « 6 réserves ouvertes ». On compte désormais sur la
+  // collection complète, déjà en mémoire : aucune requête n'est ajoutée.
+  const allOpenReserves = reserves.filter((r) => r.status === 'open')
+  const allDeadlinesToPlan = deadlineRows.filter((deadline) => deadline.status === 'to_plan')
+  // Combien d'objets on sérialise derrière un compteur. Au-delà, la liste renvoie
+  // vers la surface dédiée — et le reste est annoncé, jamais tu.
+  const DRILLDOWN_MAX = 12
+  const drilldown = <T>(rows: T[], map: (row: T) => SiteBriefFactItem) => ({
+    items: rows.slice(0, DRILLDOWN_MAX).map(map),
+    itemsHiddenCount: Math.max(0, rows.length - DRILLDOWN_MAX),
+  })
+
   const confirmedFacts: SiteBriefFactLine[] = [
-    { text: `${openActionRows.length} action${openActionRows.length > 1 ? 's' : ''} ouverte${openActionRows.length > 1 ? 's' : ''}`, sourceType: 'action', sourceId: null, sourceHref: `/sites/${siteId}?tab=travail`, status: 'validated' },
-    ...(deadlineItems.filter((deadline) => deadline.status === 'to_plan').length > 0 ? [{ text: `${deadlineItems.filter((deadline) => deadline.status === 'to_plan').length} échéance${deadlineItems.filter((deadline) => deadline.status === 'to_plan').length > 1 ? 's' : ''} à planifier`, sourceType: 'deadline' as const, sourceId: null, sourceHref: `/sites/${siteId}/planning`, status: 'validated' as const }] : []),
-    { text: openReserves.length === 0 ? 'Aucune réserve ouverte' : `${openReserves.length} réserve${openReserves.length > 1 ? 's' : ''} ouverte${openReserves.length > 1 ? 's' : ''}`, sourceType: 'reserve', sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' },
+    {
+      text: `${openActionRows.length} action${openActionRows.length > 1 ? 's' : ''} ouverte${openActionRows.length > 1 ? 's' : ''}`,
+      sourceType: 'action', sourceId: null, sourceHref: `/sites/${siteId}?tab=travail`, status: 'validated',
+      itemsDefinition: 'Actions du chantier dont le statut n’est ni « fait » ni « annulé ».',
+      ...drilldown(openActionRows, (action) => ({
+        id: action.id,
+        label: action.title,
+        href: `/sites/${siteId}?action=${action.id}`,
+      })),
+    },
+    ...(allDeadlinesToPlan.length > 0 ? [{
+      text: `${allDeadlinesToPlan.length} échéance${allDeadlinesToPlan.length > 1 ? 's' : ''} à planifier`,
+      sourceType: 'deadline' as const, sourceId: null, sourceHref: `/sites/${siteId}/planning`, status: 'validated' as const,
+      itemsDefinition: 'Échéances au statut « à planifier » — ni datées, ni clôturées.',
+      ...drilldown(allDeadlinesToPlan, (deadline) => ({
+        id: deadline.id,
+        label: deadline.due_date ? `${deadline.title} — échéance ${deadline.due_date}` : deadline.title,
+        href: `/sites/${siteId}/planning`,
+      })),
+    }] : []),
+    {
+      text: allOpenReserves.length === 0 ? 'Aucune réserve ouverte' : `${allOpenReserves.length} réserve${allOpenReserves.length > 1 ? 's' : ''} ouverte${allOpenReserves.length > 1 ? 's' : ''}`,
+      sourceType: 'reserve', sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated',
+      itemsDefinition: 'Réserves du chantier encore au statut « ouverte », non levées.',
+      ...drilldown(allOpenReserves, (reserve) => ({
+        id: reserve.id,
+        label: reserve.location ? `${reserve.label} — ${reserve.location}` : reserve.label,
+        href: `/sites/${siteId}/reserves`,
+      })),
+    },
   ]
   const freshness = getPreparationFreshness(preparationActivities[0]?.startedAt ?? null)
   // La preuve la plus récente n'est pas toujours une visite : `preparationActivities`

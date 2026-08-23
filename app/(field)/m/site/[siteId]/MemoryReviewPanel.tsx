@@ -664,12 +664,19 @@ function confidenceLabel(value: string): string {
   return 'Confiance'
 }
 
-/** Provenance COMPACTE : « ↳ Visite du 15 juillet · 6 traces » — elle garantit
- *  l'honnêteté sans dominer la carte. Le clic ouvre la source. */
+/** Provenance COMPACTE : « ↳ Visite du 15 juillet · 4 photos · 2 vocaux » — elle
+ *  garantit l'honnêteté sans dominer la carte. Le clic ouvre la source.
+ *
+ *  « 16 traces » ne disait pas ce qui était compté : ni la nature des objets, ni
+ *  où les retrouver. Les deux natures sont déjà dans la provenance — on les dit,
+ *  sans requête supplémentaire. */
 function Provenance({ item }: { item: ReviewItem }) {
   const p = item.provenance
   if (!p.reportId) return null
-  const traces = p.photos + p.vocals
+  const parts = [
+    p.photos > 0 ? `${p.photos} photo${p.photos > 1 ? 's' : ''}` : null,
+    p.vocals > 0 ? `${p.vocals} vocal${p.vocals > 1 ? 'ux' : ''}` : null,
+  ].filter(Boolean)
   return (
     <a
       href={`/m/visite/${p.reportId}/cr`}
@@ -677,7 +684,7 @@ function Provenance({ item }: { item: ReviewItem }) {
     >
       <MapPin className="h-3 w-3 shrink-0" />
       {p.visitedAt ? `Visite du ${frDayMonthLocal(p.visitedAt)}` : "Issue d'une visite"}
-      {traces > 0 && ` · ${traces} trace${traces > 1 ? 's' : ''}`}
+      {parts.length > 0 && ` · ${parts.join(' · ')}`}
       <ChevronRight className="h-3 w-3 shrink-0" />
     </a>
   )

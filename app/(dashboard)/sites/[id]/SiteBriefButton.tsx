@@ -433,7 +433,36 @@ function FactLines({ items, empty = 'Rien à signaler.' }: { items: SiteBriefFac
         <li key={`${item.sourceType}:${item.sourceId ?? item.text}:${index}`} className="flex items-start gap-2 text-sm">
           <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.status === 'in_progress' || item.status === 'unconfirmed' ? 'bg-amber-500' : item.status === 'interpretation' ? 'bg-violet-500' : 'bg-emerald-500'}`} aria-hidden />
           <span className="min-w-0 flex-1">
-            {item.sourceHref ? <a href={item.sourceHref} className="hover:underline">{item.text}</a> : item.text}
+            {/* Un nombre qui ne s'ouvre pas oblige à le croire. Quand ses objets sont
+                déjà chargés, il devient dépliable et dit ce qu'il compte exactement. */}
+            {item.items && item.items.length > 0 ? (
+              <details className="group">
+                <summary className="cursor-pointer list-none marker:content-none hover:underline">
+                  {item.text}
+                  <span className="ml-1 text-[10px] text-muted-foreground/70 group-open:hidden">— voir le détail</span>
+                </summary>
+                {item.itemsDefinition && (
+                  <p className="mt-1 text-[11px] italic text-muted-foreground/80">{item.itemsDefinition}</p>
+                )}
+                <ul className="mt-1 space-y-1 border-l pl-3">
+                  {item.items.map((detail) => (
+                    <li key={detail.id} className="text-[13px] text-muted-foreground">
+                      {detail.href ? <a href={detail.href} className="hover:underline">{detail.label}</a> : detail.label}
+                    </li>
+                  ))}
+                </ul>
+                {item.itemsHiddenCount ? (
+                  <p className="mt-1 pl-3 text-[11px] text-muted-foreground/70">
+                    + {item.itemsHiddenCount} {item.itemsHiddenCount > 1 ? 'autres, non listés ici' : 'autre, non listé ici'}
+                    {item.sourceHref ? <> — <a href={item.sourceHref} className="underline">tout voir</a></> : null}
+                  </p>
+                ) : null}
+              </details>
+            ) : item.sourceHref ? (
+              <a href={item.sourceHref} className="hover:underline">{item.text}</a>
+            ) : (
+              item.text
+            )}
           </span>
           {item.status === 'in_progress' && <span className="shrink-0 text-[10px] text-amber-700">En cours</span>}
           {item.status === 'unconfirmed' && <span className="shrink-0 text-[10px] text-amber-700">Non confirmé</span>}
