@@ -17,6 +17,7 @@ function makeRow(overrides: Partial<ActionSummaryRow> & { id: string }): ActionS
     report_id: null,
     corps_etat: null,
     subject_thread_id: null,
+    canonical_subject_id: null,
     ...overrides,
   }
 }

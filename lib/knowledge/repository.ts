@@ -95,11 +95,17 @@ export interface ActionSummaryRow {
   /** Thread de déduplication : même subject_thread_id = une seule entrée opérationnelle.
    *  null = pas de thread, traité individuellement. Backfillé par mig 288. */
   subject_thread_id: string | null
+  /** Sujet canonique auquel cette action appartient (mig 346) — l'identité
+   *  longitudinale, à ne jamais confondre avec `subject_thread_id` qui n'est
+   *  qu'une chaîne lexicale tactique. Sert UNIQUEMENT à ouvrir la mémoire du
+   *  sujet depuis la carte : il ne regroupe pas les actions et n'en masque
+   *  aucune. `null` = lien non résolu, la carte reste telle quelle. */
+  canonical_subject_id: string | null
 }
 export async function readSiteActionSummaries(siteId: string): Promise<ActionSummaryRow[]> {
   const { data, error } = await createAdminClient()
     .from('site_actions')
-    .select('id, title, status, due_date, due_date_status, created_at, done_at, assigned_to, report_id, corps_etat, subject_thread_id')
+    .select('id, title, status, due_date, due_date_status, created_at, done_at, assigned_to, report_id, corps_etat, subject_thread_id, canonical_subject_id')
     .eq('site_id', siteId)
   if (error) return []
   return (data ?? []) as ActionSummaryRow[]
@@ -130,6 +136,23 @@ export interface ActionThreadGroup {
   representative: ActionSummaryRow
   count: number
   reportIds: string[]
+  /** Sujet canonique du groupe, s'il est certain. Voir `resolveGroupCanonicalSubject`. */
+  canonicalSubjectId: string | null
+}
+
+/**
+ * Sujet canonique d'un groupe d'actions — uniquement s'il est CERTAIN.
+ *
+ * Règle : un seul canonical_subject_id distinct parmi les membres → c'est lui.
+ * Zéro → aucun lien. Plusieurs → aucun lien non plus : choisir arbitrairement
+ * enverrait l'utilisateur vers une mémoire qui n'est pas celle de ce qu'il lit.
+ *
+ * On n'interroge pas le représentant seul : il peut être la seule ligne du
+ * groupe sans lien alors qu'une autre en porte un.
+ */
+export function resolveGroupCanonicalSubject(rows: ActionSummaryRow[]): string | null {
+  const ids = new Set(rows.map((r) => r.canonical_subject_id).filter((v): v is string => Boolean(v)))
+  return ids.size === 1 ? [...ids][0] : null
 }
 
 /** Regroupe les actions par subject_thread_id pour l'affichage de la liste enrichie.
@@ -147,10 +170,20 @@ export function groupActionsByThread(rows: ActionSummaryRow[]): ActionThreadGrou
   for (const occurrences of threadMap.values()) {
     const sorted = [...occurrences].sort((a, b) => b.created_at.localeCompare(a.created_at))
     const reportIds = [...new Set(occurrences.map((a) => a.report_id).filter((r): r is string => Boolean(r)))]
-    groups.push({ representative: sorted[0], count: occurrences.length, reportIds })
+    groups.push({
+      representative: sorted[0],
+      count: occurrences.length,
+      reportIds,
+      canonicalSubjectId: resolveGroupCanonicalSubject(occurrences),
+    })
   }
   for (const action of noThread) {
-    groups.push({ representative: action, count: 1, reportIds: action.report_id ? [action.report_id] : [] })
+    groups.push({
+      representative: action,
+      count: 1,
+      reportIds: action.report_id ? [action.report_id] : [],
+      canonicalSubjectId: action.canonical_subject_id,
+    })
   }
   return groups
 }

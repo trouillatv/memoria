@@ -100,6 +100,11 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
       corpsEtat: rep.corps_etat ?? null,
       urgency: urgencyOf(rep.due_date, today, weekEnd),
       actionHref: `/sites/${id}/action/${rep.id}`,
+      // Mémoire longitudinale du sujet, quand le lien existe DÉJÀ en base (mig 346).
+      // Aucun rapprochement n'est calculé ici : pas de FK, pas de lien.
+      subjectHref: g.canonicalSubjectId
+        ? `/sites/${id}/historique/sujets/${g.canonicalSubjectId}`
+        : null,
     }
   })
 

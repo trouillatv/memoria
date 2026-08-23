@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Search, FileText } from 'lucide-react'
+import { Search, FileText, History } from 'lucide-react'
 import { useState } from 'react'
 
 export interface ActionGroupDisplay {
@@ -16,6 +16,9 @@ export interface ActionGroupDisplay {
   corpsEtat: string | null
   urgency: 'late' | 'today' | 'week' | 'later' | 'undated'
   actionHref: string
+  /** Fiche du sujet canonique — présent uniquement si l'action porte déjà la FK.
+   *  `null` = la carte reste strictement inchangée. */
+  subjectHref: string | null
 }
 
 function formatDue(iso: string): string {
@@ -86,6 +89,18 @@ function ActionRow({ group }: { group: ActionGroupDisplay }) {
               : <span className="italic">Non affecté</span>
             }
           </p>
+
+          {/* Mémoire du sujet. La carte dit QUOI faire ; ce lien dit POURQUOI et
+              DEPUIS QUAND. L'action reste un objet distinct : rien n'est fusionné. */}
+          {group.subjectHref && (
+            <Link
+              href={group.subjectHref}
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+            >
+              <History className="h-3 w-3" />
+              Voir l&apos;historique du sujet
+            </Link>
+          )}
         </div>
 
       </div>
