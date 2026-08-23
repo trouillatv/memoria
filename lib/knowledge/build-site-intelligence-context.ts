@@ -42,6 +42,7 @@ export interface IntelligenceSubjectItem {
   isStagnant: boolean
   stagnationDays: number
   activeObjects: NavigableSubjectSummary['activeObjects']
+  terrainObjects: NavigableSubjectSummary['terrainObjects']
 }
 
 export interface IntelligenceRelationItem {
@@ -334,6 +335,7 @@ export async function buildSiteIntelligenceContext(
       isStagnant: s.isStagnant,
       stagnationDays: s.stagnationDays,
       activeObjects: s.activeObjects,
+      terrainObjects: s.terrainObjects,
     }))
     subjectsOut = { items, total: subjectsResult.length, stagnantCount, truncated }
   }

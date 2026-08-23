@@ -125,6 +125,10 @@ function renderContextForLLM(ctx: SiteIntelligenceContext, route: IntentRoute): 
         ? ` | ${s.activeObjects.actionsOpen}A ${s.activeObjects.reservesOpen}R ${s.activeObjects.deadlinesActive}E`
         : ''
       lines.push(`• ${s.title} (${s.canonicalSubjectId}) : ${s.currentStatus ?? '?'}${stag}${objs}`)
+      for (const t of s.terrainObjects) {
+        const ttype = t.entityType === 'site_action' ? 'action' : 'échéance'
+        lines.push(`  ↳ [${ttype}] ${t.title} (${t.entityId}) : ${t.status ?? '?'} — créé ${t.createdAt}`)
+      }
     }
     if (truncated) lines.push(`  … (${total - items.length} autres sujets)`)
   }

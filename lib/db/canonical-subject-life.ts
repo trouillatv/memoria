@@ -1029,6 +1029,8 @@ export interface NavigableSubjectSummary {
   isStagnant: boolean
   stagnationDays: number
   consecutiveMentionsWithoutChange: number
+  /** Objets terrain directement liés via canonical_subject_id (actions + échéances, chemin 2B-ter). */
+  terrainObjects: TerrainObject[]
 }
 
 const OPEN_NAV_STATUSES = new Set([
@@ -1164,14 +1166,16 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
   // Capture les objets créés depuis le copilote sans PV source ni subject_thread_id.
   // Complémentaire de 2B (materialization) et 2B-bis (subject_thread_id PV).
   // P1-4A : created_at collecté pour Level 2 LMCA (objets terrain apparus après firstSeenAt).
-  const csObjectDates = new Map<string, string[]>() // canonical_subject_id → dates YYYY-MM-DD
+  // P0-B : title+status collectés pour exposer les objets terrain au Copilote desktop.
+  const csObjectDates = new Map<string, string[]>()         // canonical_subject_id → dates YYYY-MM-DD
+  const csTerrainObjectsMap = new Map<string, TerrainObject[]>() // canonical_subject_id → objets terrain structurés
   {
     const { data: csActs } = await supabase
       .from('site_actions')
-      .select('id, canonical_subject_id, created_at')
+      .select('id, canonical_subject_id, created_at, title, status')
       .eq('site_id', siteId)
       .not('canonical_subject_id', 'is', null)
-    for (const a of (csActs ?? []) as Array<{ id: string; canonical_subject_id: string; created_at: string }>) {
+    for (const a of (csActs ?? []) as Array<{ id: string; canonical_subject_id: string; created_at: string; title: string; status: string | null }>) {
       let typeMap = csEntityIds.get(a.canonical_subject_id)
       if (!typeMap) { typeMap = new Map(); csEntityIds.set(a.canonical_subject_id, typeMap) }
       let idSet = typeMap.get('site_action')
@@ -1183,13 +1187,16 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
         dates.push(caDate)
         csObjectDates.set(a.canonical_subject_id, dates)
       }
+      const tObjs = csTerrainObjectsMap.get(a.canonical_subject_id) ?? []
+      tObjs.push({ entityType: 'site_action', entityId: a.id, title: a.title, description: null, status: a.status, createdAt: a.created_at.substring(0, 10) })
+      csTerrainObjectsMap.set(a.canonical_subject_id, tObjs)
     }
     const { data: csDls } = await supabase
       .from('site_deadlines')
-      .select('id, canonical_subject_id, created_at')
+      .select('id, canonical_subject_id, created_at, title, status')
       .eq('site_id', siteId)
       .not('canonical_subject_id', 'is', null)
-    for (const d of (csDls ?? []) as Array<{ id: string; canonical_subject_id: string; created_at: string }>) {
+    for (const d of (csDls ?? []) as Array<{ id: string; canonical_subject_id: string; created_at: string; title: string; status: string | null }>) {
       let typeMap = csEntityIds.get(d.canonical_subject_id)
       if (!typeMap) { typeMap = new Map(); csEntityIds.set(d.canonical_subject_id, typeMap) }
       let idSet = typeMap.get('site_deadline')
@@ -1201,6 +1208,9 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
         dates.push(caDate)
         csObjectDates.set(d.canonical_subject_id, dates)
       }
+      const tObjs = csTerrainObjectsMap.get(d.canonical_subject_id) ?? []
+      tObjs.push({ entityType: 'site_deadline', entityId: d.id, title: d.title, description: null, status: d.status, createdAt: d.created_at.substring(0, 10) })
+      csTerrainObjectsMap.set(d.canonical_subject_id, tObjs)
     }
   }
 
@@ -1393,6 +1403,7 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
       isStagnant,
       stagnationDays,
       consecutiveMentionsWithoutChange,
+      terrainObjects: csTerrainObjectsMap.get(csId) ?? [],
     })
   }
 

@@ -68,6 +68,7 @@ function makeSubject(overrides: Partial<NavigableSubjectSummary> = {}): Navigabl
     isStagnant: false,
     stagnationDays: 0,
     consecutiveMentionsWithoutChange: 0,
+    terrainObjects: [],
     ...overrides,
   }
 }
