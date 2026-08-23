@@ -10,6 +10,7 @@ import { reviewProposal, linkProposalEvidence } from '@/lib/db/document-extracti
 import { materializeHistoricalVisit } from '@/lib/db/historical-visit-materialization'
 import { reconcileHistoricalPvCanonicalSubjects } from '@/lib/db/canonical-subject-historical-reconcile'
 import { decideReconcileLock, acquireReconcileLock } from '@/lib/db/canonical-subject-source-reconcile'
+import { projectCanonicalSubjectSafely } from '@/lib/db/canonical-subject-project'
 import { runHistoricalMemoryBuildPipeline } from '@/lib/subjects/memory-build-pipeline'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType } from '@/types/db'
 
@@ -519,6 +520,19 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
         try {
           const reconcileResult = await reconcileHistoricalPvCanonicalSubjects({ runId, siteId })
           touchedCanonicalSubjectIds = reconcileResult.touchedCanonicalSubjectIds
+
+          // ── Projection déterministe de la FK canonique (point d'appel 1/4) ──
+          // Le RPC materialize_historical_visit pose report_id sur les actions et
+          // les échéances, mais ni subject_thread_id ni canonical_subject_id : à
+          // l'instant de l'INSERT, subject_thread_identity n'existe pas encore.
+          // Ici elle existe. La variante `Safely` ne lève jamais : une projection
+          // ratée n'est pas un échec de canonicalisation et ne doit donc pas
+          // renseigner canonical_reconcile_error via le catch ci-dessous.
+          await projectCanonicalSubjectSafely({
+            siteId,
+            scope: { kind: 'report', reportId: siteReportId },
+          })
+
           await sb
             .from('site_reports')
             .update({

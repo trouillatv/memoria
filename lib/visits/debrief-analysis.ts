@@ -472,6 +472,15 @@ export async function runCanonicalReconciliation(params: {
     await autoArchiveOrphanedSubjects(siteId)
     const { runEvolutionV2Shadow } = await import('@/lib/knowledge/evolution-v2-shadow')
     await runEvolutionV2Shadow({ reportId, siteId })
+
+    // ── Projection déterministe de la FK canonique (point d'appel 4/4) ─────────
+    // P0-2 ne se contente plus de relancer la canonicalisation : il répare aussi
+    // les projections manquées. Un objet créé avant le correctif, ou dont la
+    // projection avait échoué, se rattrape ici au replay. C'est le seul des
+    // quatre points d'appel qui balaie rétroactivement.
+    const { projectCanonicalSubjectSafely } = await import('@/lib/db/canonical-subject-project')
+    await projectCanonicalSubjectSafely({ siteId, scope: { kind: 'report', reportId } })
+
     await sb
       .from('site_reports')
       .update({

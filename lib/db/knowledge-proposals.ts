@@ -31,6 +31,7 @@ import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 import { toDebriefEcheance } from '@/lib/visits/echeance-labels'
 import { listExtractionSuppressions, matchSuppression, DEFAULT_SUPPRESSION_THRESHOLD, deleteExtractionSuppression } from '@/lib/db/extraction-suppressions'
 import { reconcileProposalToCanonical, ELIGIBLE_KINDS as RECONCILE_ELIGIBLE_KINDS } from '@/lib/db/canonical-subject-reconcile'
+import { projectCanonicalSubjectSafely } from '@/lib/db/canonical-subject-project'
 import type { EntityResolution } from '@/lib/knowledge/semantic-resolution'
 
 export type ProposalKind = 'action' | 'vigilance' | 'decision' | 'knowledge' | 'stakeholder' | 'deadline'
@@ -949,6 +950,22 @@ export async function promoteProposal(params: {
     })
     .eq('id', params.id)
   if (updErr) throw updErr
+
+  // ── Projection déterministe de la FK canonique (point d'appel 2/4) ──────────
+  // `promoted_object_id` vient d'être écrit : le pont proposition → objet existe
+  // enfin. Si la proposition portait déjà un canonical_subject_id, l'objet créé
+  // ne l'héritait jamais — la connaissance restait sur la proposition. On la
+  // projette ici, avant l'invalidation, pour que l'écran recomposé la voit.
+  // Non bloquant par construction : la promotion métier est déjà écrite.
+  if (result.objectType === 'site_action' || result.objectType === 'site_deadline') {
+    await projectCanonicalSubjectSafely({
+      siteId: p.site_id,
+      scope:
+        result.objectType === 'site_action'
+          ? { kind: 'objects', actionIds: [result.objectId] }
+          : { kind: 'objects', deadlineIds: [result.objectId] },
+    })
+  }
 
   // ── L'INVALIDATION VIENT ICI, ET NULLE PART AILLEURS ────────────────────────
   // Les créateurs (`createSiteAction`, `createSiteDeadline`…) invalident déjà —

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCanonicalSubjectReference, normalizeCanonicalLabel } from '@/lib/db/canonical-subject-resolve'
 import { ELIGIBLE_KINDS } from '@/lib/db/canonical-subject-reconcile'
+import { projectCanonicalSubjectSafely } from '@/lib/db/canonical-subject-project'
 import { jaccardSimilarity } from '@/lib/documents/subject-reconciliation'
 import { normalizeForMatching, P01_NORMALIZED_JACCARD_THRESHOLD } from '@/lib/subjects/normalize-for-matching'
 import { analyzeSubjectPair } from '@/lib/subjects/similarity-analyze'
@@ -1045,4 +1046,19 @@ async function ensureActionThread(
       },
       { onConflict: 'subject_thread_id', ignoreDuplicates: true },
     )
+
+  // ── Projection déterministe de la FK canonique (point d'appel 3/4) ──────────
+  // C'est le cas emblématique de l'audit PRODUCT-CANONICAL-OBJECT-BRIDGE : cette
+  // fonction reçoit le canonicalSubjectId, pose le thread, crée l'identité
+  // canonique… et s'arrêtait juste avant d'écrire la FK de l'action. La
+  // connaissance existait, la surface finale ne la recevait pas.
+  //
+  // On passe par le helper plutôt que d'écrire canonicalSubjectId directement :
+  // l'upsert ci-dessus est en ignoreDuplicates, donc si une identité existait
+  // déjà pour ce thread c'est ELLE qui fait foi, pas le paramètre reçu. Le helper
+  // relit STI, résout les fusions transitivement et n'écrase jamais une FK posée.
+  await projectCanonicalSubjectSafely({
+    siteId,
+    scope: { kind: 'objects', actionIds: [actionId] },
+  })
 }
