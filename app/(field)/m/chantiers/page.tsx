@@ -3,6 +3,7 @@ import { ChevronRight, MapPin, Building2 } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listActiveTeamIdsForUser } from '@/lib/db/teams'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
@@ -24,11 +25,17 @@ export default async function ChantiersPage() {
   const supabase = createAdminClient()
   let sites: SiteRow[] = []
 
-  if ((user.role === 'admin' || user.role === 'manager') && user.organization_id) {
+  // LECTURE M3 — « ce que je pilote » agrège les organisations où le compte est
+  // membre ACTIF, comme le desktop. `user.organization_id` n'est qu'une org par
+  // défaut : s'y tenir masquait les chantiers des autres entreprises du compte.
+  // Fail-closed : aucune appartenance → périmètre d'équipe, jamais l'org par défaut.
+  const orgIds = (user.role === 'admin' || user.role === 'manager') ? await getOrgIdsOfUser() : []
+
+  if (orgIds.length > 0) {
     const { data } = await supabase
       .from('sites')
       .select('id, name, address')
-      .eq('organization_id', user.organization_id)
+      .in('organization_id', orgIds)
       .is('deleted_at', null)
       .order('name')
     sites = (data ?? []) as SiteRow[]

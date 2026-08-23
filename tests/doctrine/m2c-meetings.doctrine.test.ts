@@ -40,16 +40,22 @@ describe('distributions d’actions : frontière du site (pattern B retiré)', (
   })
 })
 
-describe('les gestes SANS ressource sont classés M3, pas oubliés', () => {
-  it('cleanupDraftMeetings garde getOrgId mais est annoté M3', () => {
+// Les deux gestes SANS ressource étaient annotés « M3, agrégation à venir ». La
+// dette est payée : ils agrègent désormais sur les appartenances actives. Le
+// test ne garde plus l'annotation — il garde le comportement.
+describe('les gestes SANS ressource agrègent les organisations du compte', () => {
+  it('cleanupDraftMeetings : getOrgIdsOfUser + .in, fail-closed (aucune org → rien)', () => {
     const i = meetingsActions.indexOf('export async function cleanupDraftMeetingsAction')
-    const corps = meetingsActions.slice(i, i + 700)
-    expect(corps).toMatch(/getOrgId\(\)/)
-    expect(corps).toMatch(/M3/)
+    const corps = meetingsActions.slice(i, i + 900)
+    expect(corps).toMatch(/getOrgIdsOfUser\(\)/)
+    expect(corps).toMatch(/\.in\('organization_id', orgIds\)/)
+    expect(corps).toMatch(/orgIds\.length === 0/)
   })
-  it('listMeetingSites reste M3 annoté (agrégation à venir)', () => {
+  it('listMeetingSites : union des appartenances, plus l’organisation par défaut', () => {
     const i = mMeeting.indexOf('export async function listMeetingSitesAction')
-    const entete = mMeeting.slice(Math.max(0, i - 500), i)
-    expect(entete).toMatch(/M3/)
+    const corps = strip(mMeeting.slice(i, i + 1400))
+    expect(corps).toMatch(/getOrgIdsOfUser\(\)/)
+    expect(corps).toMatch(/\.in\('organization_id', orgIds\)/)
+    expect(corps).not.toMatch(/user\.organization_id/)
   })
 })

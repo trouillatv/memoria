@@ -33,6 +33,7 @@ import {
   type ShareTargetOption,
   type LastShareTarget,
 } from './share-actions'
+import { useOrgChoice, OrgChoiceField } from '../OrgChoiceField'
 
 export interface SharedFile {
   path: string
@@ -85,13 +86,20 @@ export function SharePicker({
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [newAddress, setNewAddress] = useState('')
+  // Une photo reçue de WhatsApp ne dit RIEN de l'entreprise concernée : c'est
+  // ici, plus qu'ailleurs, qu'il faut demander quand le compte est multi-org.
+  const orgChoice = useOrgChoice(creating)
 
   function createAndContinue() {
     const name = newName.trim()
     if (!name || pending) return
     setBusyId('__create__')
     start(async () => {
-      const r = await createSiteFromShareAction({ name, address: newAddress.trim() || undefined })
+      const r = await createSiteFromShareAction({
+        name,
+        address: newAddress.trim() || undefined,
+        organizationId: orgChoice.orgId ?? undefined,
+      })
       setBusyId(null)
       if ('error' in r) {
         toast.error(r.error)
@@ -479,11 +487,16 @@ export function SharePicker({
             disabled={pending}
             className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring"
           />
+          <OrgChoiceField
+            choice={orgChoice}
+            disabled={pending}
+            className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+          />
           <div className="flex gap-2">
             <button
               type="button"
               onClick={createAndContinue}
-              disabled={pending || newName.trim().length < 2}
+              disabled={pending || newName.trim().length < 2 || !orgChoice.ready}
               className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-60"
             >
               {pending && busyId === '__create__' ? (

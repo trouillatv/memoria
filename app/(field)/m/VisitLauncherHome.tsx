@@ -15,6 +15,7 @@ import { toast } from 'sonner'
 import { listMeetingSitesAction } from './meeting-actions'
 import { startVisitAction } from './site/[siteId]/visit-actions'
 import { quickCreateSiteVisitAction } from './quick-site-actions'
+import { useOrgChoice, OrgChoiceField } from './OrgChoiceField'
 import { VISIT_INTENTS, type VisitIntent, type VisitIntentAccent } from '@/lib/field/visit-intents'
 import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
 
@@ -49,6 +50,9 @@ export function VisitLauncherHome() {
   const [name, setName] = useState('')
   const [address, setAddress] = useState('')
   const [clientName, setClientName] = useState('')
+  // « Dans quelle société ? » — question posée seulement en multi-org, et
+  // seulement quand on crée. Choisir un chantier existant n'a rien à décider.
+  const orgChoice = useOrgChoice(open && mode === 'create')
 
   useEffect(() => {
     if (!open || mode !== 'pick' || sites !== null) return
@@ -98,6 +102,7 @@ export function VisitLauncherHome() {
         name: name.trim(),
         address: address.trim() || undefined,
         clientName: clientName.trim() || undefined,
+        organizationId: orgChoice.orgId ?? undefined,
       })
       if (res.ok) {
         toast.success('Chantier créé — visite démarrée', { duration: 1500 })
@@ -290,6 +295,7 @@ export function VisitLauncherHome() {
                       disabled={pending}
                     />
                   </div>
+                  <OrgChoiceField choice={orgChoice} disabled={pending} className={INPUT} />
                   <p className="text-[11px] text-muted-foreground">
                     Le nom suffit pour démarrer. MemorIA complétera le dossier au fur et à mesure.
                   </p>
@@ -305,7 +311,7 @@ export function VisitLauncherHome() {
                     <button
                       type="button"
                       onClick={createAndStart}
-                      disabled={pending || name.trim().length === 0}
+                      disabled={pending || name.trim().length === 0 || !orgChoice.ready}
                       className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                     >
                       {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}

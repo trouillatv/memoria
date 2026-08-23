@@ -10,6 +10,7 @@ import { Mic, X, ChevronRight, Loader2, Plus, ArrowLeft, Play } from 'lucide-rea
 import { toast } from 'sonner'
 import { listMeetingSitesAction } from './meeting-actions'
 import { quickCreateSiteAction } from './quick-site-actions'
+import { useOrgChoice, OrgChoiceField } from './OrgChoiceField'
 import { SiteReportPanel } from './site/[siteId]/SiteReportPanel'
 import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
 
@@ -27,6 +28,9 @@ export function MeetingLauncher() {
   const [address, setAddress] = useState('')
   const [clientName, setClientName] = useState('')
   const [pending, startTransition] = useTransition()
+  // Même règle que la visite : la société n'est demandée qu'en multi-org, et
+  // uniquement au moment où l'on crée. Rien à décider pour un chantier existant.
+  const orgChoice = useOrgChoice(open && mode === 'create')
 
   useEffect(() => {
     if (!open || sites !== null) return
@@ -50,6 +54,7 @@ export function MeetingLauncher() {
         name: name.trim(),
         address: address.trim() || undefined,
         clientName: clientName.trim() || undefined,
+        organizationId: orgChoice.orgId ?? undefined,
       })
       if (res.ok) {
         toast.success('Chantier créé', { duration: 1200 })
@@ -105,11 +110,12 @@ export function MeetingLauncher() {
                       <label className="text-xs font-medium text-muted-foreground">Client <span className="font-normal text-muted-foreground/70">(facultatif)</span></label>
                       <input value={clientName} onChange={(e) => setClientName(e.target.value)} className={INPUT} maxLength={200} placeholder="On pourra rattacher plus tard" disabled={pending} />
                     </div>
+                    <OrgChoiceField choice={orgChoice} disabled={pending} className={INPUT} />
                     <div className="flex items-center gap-2 pt-1">
                       <button type="button" onClick={() => setMode('pick')} disabled={pending} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2.5 text-sm font-medium text-muted-foreground disabled:opacity-50">
                         <ArrowLeft className="h-4 w-4" />
                       </button>
-                      <button type="button" onClick={createAndSelect} disabled={pending || name.trim().length === 0} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+                      <button type="button" onClick={createAndSelect} disabled={pending || name.trim().length === 0 || !orgChoice.ready} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
                         {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                         Créer et enregistrer la réunion
                       </button>

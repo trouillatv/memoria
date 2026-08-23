@@ -553,15 +553,21 @@ export default async function FieldHomePage({
   // Échéances d'actions DU JOUR → racontées dans l'agenda « Aujourd'hui ».
   const dueTodayActions: Array<{ id: string; title: string; siteId: string; siteName: string }> = []
 
+  // LECTURES M3 de la vue terrain — les organisations où le compte est membre
+  // ACTIF, jamais `user.organization_id` (org par DÉFAUT). Résolu une seule fois
+  // ici : les deux blocs ci-dessous ne servent qu'à `isToday`. Fail-closed —
+  // liste vide → aucun élément, jamais « aucun filtre ».
+  const readOrgIds = isToday ? await getOrgIdsOfUser() : []
+
   if (isToday) {
     // 1) Échéances AO (tenders) à rendre — la pression réglementaire d'abord.
     //    🔴 J-≤2 (URGENT) · 🟠 J-≤7 · 🟡 J-≤14. Bornée à l'horizon 14 j.
-    if (user.organization_id) {
+    if (readOrgIds.length > 0) {
       const horizon = addDaysLocal(todayIso, 14)
       const { data: tenderRows } = await supabase
         .from('tenders')
         .select('id, title, client_name, deadline, status')
-        .eq('organization_id', user.organization_id)
+        .in('organization_id', readOrgIds)
         .is('deleted_at', null)
         .not('deadline', 'is', null)
         .gte('deadline', todayIso)
@@ -724,7 +730,7 @@ export default async function FieldHomePage({
     const meetSiteIds = [...new Set(((meetRows ?? []) as Array<{ site_id: string }>).map((r) => r.site_id))]
     if (meetSiteIds.length > 0) {
       let sq = supabase.from('sites').select('id, name').in('id', meetSiteIds).is('deleted_at', null)
-      if (user.organization_id) sq = sq.eq('organization_id', user.organization_id)
+      if (readOrgIds.length > 0) sq = sq.in('organization_id', readOrgIds)
       const { data: meetSites } = await sq
       todayMeetings = ((meetSites ?? []) as Array<{ id: string; name: string }>).map((s) => ({ siteId: s.id, siteName: s.name }))
     }

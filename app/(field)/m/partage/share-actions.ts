@@ -40,7 +40,7 @@ import { ingestBatch } from '@/services/ingestion/ingest-batch'
 import { createSiteReport, addReportSites, addReportAttachment } from '@/lib/db/site-reports'
 import { transcribeVisitAudios, transcribeMeetingAudios } from '@/lib/share/transcribe-shared'
 import { createSite } from '@/lib/db/sites'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { resolveCreationOrgId } from '@/lib/auth/creation-org'
 
 const BUCKET = 'site-reports'
 
@@ -88,6 +88,7 @@ export type ShareResult =
 const createSiteSchema = z.object({
   name: z.string().trim().min(2, 'Nom trop court').max(120),
   address: z.string().trim().max(300).optional(),
+  organizationId: z.string().uuid().optional(),
 })
 
 export async function createSiteFromShareAction(
@@ -99,8 +100,12 @@ export async function createSiteFromShareAction(
   const parsed = createSiteSchema.safeParse(input)
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Nom du chantier requis' }
 
-  const user = await getCurrentUserWithProfile()
-  if (!user?.organization_id) return { error: 'Organisation introuvable' }
+  // Le contenu partagé n'apporte AUCUNE preuve de l'entreprise concernée : une
+  // photo WhatsApp ne dit pas si le chantier est à Becib ou à AGP. Retomber sur
+  // `user.organization_id` créait donc le chantier dans l'org par défaut, en
+  // silence. En multi-org, l'humain tranche ; le serveur revalide son choix.
+  const org = await resolveCreationOrgId(parsed.data.organizationId)
+  if (!org.ok) return { error: org.error }
 
   try {
     const id = await createSite({
@@ -108,7 +113,7 @@ export async function createSiteFromShareAction(
       contract_id: null,
       name: parsed.data.name,
       address: parsed.data.address?.trim() || null,
-      organization_id: user.organization_id,
+      organization_id: org.organizationId,
     })
     revalidatePath('/m')
     revalidatePath('/sites')

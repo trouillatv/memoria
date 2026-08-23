@@ -6,26 +6,40 @@
 
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listActiveTeamIdsForUser } from '@/lib/db/teams'
+import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-// ⚠️ M3 (non migré). Sélecteur d'entrée « sur quel chantier démarrer » : liste
-// AGRÉGÉE des sites, sans ressource de contexte (signature `()`). Pour un
-// admin/manager multi-org, `user.organization_id` (l'org par défaut) ne montre
-// que les sites d'UNE organisation — incomplet, mais sans crash. La vue agrégée
-// (toutes les orgs membres) relève de M3, pas de la frontière d'écriture M2C.
+// M3 (migré). Sélecteur d'entrée « sur quel chantier démarrer » : liste AGRÉGÉE
+// des sites, sans ressource de contexte (signature `()`). C'est la source UNIQUE
+// du choix de chantier pour Visite, Réunion, Intervention ET partage WhatsApp
+// (`/m/partage`) — un défaut ici se voit sur les quatre.
+//
+// LECTURE. `user.organization_id` n'est plus qu'une organisation PAR DÉFAUT
+// (cf. lib/db/users.ts) : la garder ici montrait à un compte multi-org les seuls
+// sites d'UNE org, sans erreur ni trace — un chantier Becib simplement absent du
+// sélecteur. On agrège donc sur les appartenances ACTIVES, comme le desktop
+// (`listSitesGlobal`), et fail-closed : aucune appartenance → aucun site.
+//
+// ⚠️ `getOrgIdsOfUser()`, JAMAIS `getOrgId()` : ce dernier lève en multi-org
+// parce qu'il garde les ÉCRITURES, où une seule org peut être propriétaire.
 export async function listMeetingSitesAction(): Promise<{ id: string; name: string }[]> {
   const user = await getCurrentUserWithProfile()
   if (!user) return []
   const supabase = createAdminClient()
 
-  if ((user.role === 'admin' || user.role === 'manager') && user.organization_id) {
-    const { data } = await supabase
-      .from('sites')
-      .select('id, name')
-      .eq('organization_id', user.organization_id)
-      .is('deleted_at', null)
-      .order('name')
-    return (data ?? []) as { id: string; name: string }[]
+  if (user.role === 'admin' || user.role === 'manager') {
+    const orgIds = await getOrgIdsOfUser()
+    if (orgIds.length > 0) {
+      const { data } = await supabase
+        .from('sites')
+        .select('id, name')
+        .in('organization_id', orgIds)
+        .is('deleted_at', null)
+        .order('name')
+      return (data ?? []) as { id: string; name: string }[]
+    }
+    // Aucune appartenance : on ne rend pas l'org par défaut en repli — ce serait
+    // rouvrir la porte qu'on ferme. On retombe sur le périmètre d'équipe.
   }
 
   const teamIds = await listActiveTeamIdsForUser(user.id)

@@ -8,7 +8,7 @@
 
 import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
-import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { resolveCreationOrgId } from '@/lib/auth/creation-org'
 import { createSite, findOrCreateClientByName, buildCanonicalSiteKey } from '@/lib/db/sites'
 import { createVisit } from '@/lib/db/visits'
 
@@ -32,18 +32,9 @@ export async function quickCreateSiteVisitAction(
   if (!parsed.success) return { ok: false, error: 'Le nom du chantier est requis' }
   const { name, address, clientName } = parsed.data
 
-  const orgIds = await getOrgIdsOfUser()
-  if (orgIds.length === 0) return { ok: false, error: 'Aucune organisation active' }
-  let organizationId: string
-  if (orgIds.length === 1) {
-    organizationId = orgIds[0]
-  } else {
-    const rawOrgId = parsed.data.organizationId
-    if (!rawOrgId || !orgIds.includes(rawOrgId)) {
-      return { ok: false, error: 'Sélectionnez une organisation' }
-    }
-    organizationId = rawOrgId
-  }
+  const org = await resolveCreationOrgId(parsed.data.organizationId)
+  if (!org.ok) return { ok: false, error: org.error }
+  const organizationId = org.organizationId
 
   try {
     const resolvedClientName = clientName || UNASSIGNED_CLIENT
@@ -82,18 +73,9 @@ export async function quickCreateSiteAction(
   if (!parsed.success) return { ok: false, error: 'Le nom du chantier est requis' }
   const { name, address, clientName } = parsed.data
 
-  const orgIds = await getOrgIdsOfUser()
-  if (orgIds.length === 0) return { ok: false, error: 'Aucune organisation active' }
-  let organizationId: string
-  if (orgIds.length === 1) {
-    organizationId = orgIds[0]
-  } else {
-    const rawOrgId = parsed.data.organizationId
-    if (!rawOrgId || !orgIds.includes(rawOrgId)) {
-      return { ok: false, error: 'Sélectionnez une organisation' }
-    }
-    organizationId = rawOrgId
-  }
+  const org = await resolveCreationOrgId(parsed.data.organizationId)
+  if (!org.ok) return { ok: false, error: org.error }
+  const organizationId = org.organizationId
 
   try {
     const resolvedClientName = clientName || UNASSIGNED_CLIENT
