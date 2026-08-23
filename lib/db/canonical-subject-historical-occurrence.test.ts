@@ -5,9 +5,61 @@
 //  2. selectBestText     — sélection indépendante label/description
 //  3. Groupement         — plusieurs propositions → evidence_count correct
 //  4. Séparation canaux  — historical_pdf ≠ field_visit
+//  5. MERGE-REFERENCE    — invariant winner actif (GO Vincent 2026-08-24)
 
-import { describe, it, expect } from 'vitest'
-import { isInformativeText, selectBestText } from './canonical-subject-historical-occurrence'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+
+// ── Faux client admin — même mock que tests/lib/db/canonical-subject-project.test.ts,
+// étendu avec insert() pour couvrir l'écriture de canonical_subject_occurrence.
+type Row = Record<string, unknown>
+type Tables = Record<string, Row[]>
+
+let TABLES: Tables = {}
+
+function makeAdmin(tables: Tables) {
+  function builder(table: string) {
+    const filters: Array<(r: Row) => boolean> = []
+    let mode: 'select' | 'update' = 'select'
+    let payload: Row = {}
+
+    const run = () => {
+      const rows = tables[table] ?? []
+      const matched = rows.filter((r) => filters.every((f) => f(r)))
+      if (mode === 'update') matched.forEach((r) => Object.assign(r, payload))
+      return matched.map((r) => ({ ...r }))
+    }
+
+    const api = {
+      select: () => ((mode = 'select'), api),
+      update: (p: Row) => ((mode = 'update'), (payload = p), api),
+      eq: (f: string, v: unknown) => (filters.push((r) => r[f] === v), api),
+      in: (f: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[f])), api),
+      is: (f: string, v: null) => (filters.push((r) => (r[f] ?? null) === v), api),
+      not: (f: string, _op: string, v: null) => (filters.push((r) => (r[f] ?? null) !== v), api),
+      maybeSingle: () => Promise.resolve({ data: run()[0] ?? null, error: null }),
+      then: (resolve: (x: { data: Row[]; error: null }) => void) => resolve({ data: run(), error: null }),
+      insert: (p: Row) => {
+        const rows = tables[table] ?? (tables[table] = [])
+        if (table === 'canonical_subject_occurrence') {
+          const dup = rows.find(
+            (r) => r.canonical_subject_id === p.canonical_subject_id && r.source_ref_id === p.source_ref_id,
+          )
+          if (dup) return Promise.resolve({ error: { code: '23505', message: 'duplicate' }, status: 409 })
+        }
+        rows.push({ id: `row-${rows.length}`, ...p })
+        return Promise.resolve({ error: null, status: 201 })
+      },
+    }
+    return api
+  }
+  return { from: (t: string) => builder(t) }
+}
+
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: () => makeAdmin(TABLES) as never,
+}))
+
+import { isInformativeText, selectBestText, ensureHistoricalPdfOccurrences } from './canonical-subject-historical-occurrence'
 
 // ── 1. isInformativeText ───────────────────────────────────────────────────────
 
@@ -108,5 +160,76 @@ describe('groupement — invariants documentés', () => {
   it('selectBestText retourne null sur pool vide → fallback canonical_label', () => {
     // Garanti par la signature : selectBestText([]) === null
     expect(selectBestText([])).toBeNull()
+  })
+})
+
+// ── 5. MERGE-REFERENCE — invariant winner actif ────────────────────────────────
+// GO Vincent 2026-08-24 : ensureHistoricalPdfOccurrences() doit être incapable
+// d'écrire une occurrence vers un canonical_subject fusionné, même quand la
+// subject_thread_identity qui la nourrit n'a pas encore été reroutée (résidu
+// legacy — cf. audit MERGE-REFERENCE, 72 STI touchées avant le backfill).
+
+describe('ensureHistoricalPdfOccurrences — invariant winner actif (MERGE-REFERENCE)', () => {
+  const SITE = 'site-merge-ref'
+  const RUN = 'run-merge-ref'
+  const REPORT = 'report-merge-ref'
+
+  beforeEach(() => {
+    TABLES = {
+      canonical_subject: [
+        { id: 'cs-perdant', site_id: SITE, label: 'Sujet perdant', status: 'merged', merged_into: 'cs-vainqueur' },
+        { id: 'cs-vainqueur', site_id: SITE, label: 'Sujet vainqueur', status: 'active', merged_into: null },
+      ],
+      // STI legacy : jamais reroutée après la fusion (exactement la situation des 72
+      // lignes trouvées en production, créées avant l'existence du trigger 306).
+      subject_thread_identity: [
+        { subject_thread_id: 'th-legacy', site_id: SITE, canonical_subject_id: 'cs-perdant' },
+      ],
+      document_extraction_proposal: [
+        {
+          id: 'dep-1',
+          extraction_run_id: RUN,
+          proposal_family: 'decision',
+          label: 'Reprise du terrassement après validation du plan de gestion des eaux',
+          description: null,
+          subject_thread_id: 'th-legacy',
+        },
+      ],
+      canonical_subject_occurrence: [],
+    }
+  })
+
+  it('STI legacy → loser merged → winner actif → création sur winner, jamais sur loser', async () => {
+    const result = await ensureHistoricalPdfOccurrences({
+      runId: RUN,
+      siteId: SITE,
+      siteReportId: REPORT,
+      visitDate: '2026-08-24',
+    })
+
+    expect(result.errors).toBe(0)
+    expect(result.created).toBe(1)
+
+    const occurrences = TABLES.canonical_subject_occurrence
+    expect(occurrences).toHaveLength(1)
+    expect(occurrences[0].canonical_subject_id).toBe('cs-vainqueur')
+    expect(occurrences.some((o) => o.canonical_subject_id === 'cs-perdant')).toBe(false)
+  })
+
+  it('chaîne de fusion cyclique/impasse : aucune écriture, échec silencieux', async () => {
+    // cs-vainqueur pointe à son tour vers cs-perdant → cycle, aucun winner résoluble.
+    ;(TABLES.canonical_subject.find((s) => s.id === 'cs-vainqueur') as Row).status = 'merged'
+    ;(TABLES.canonical_subject.find((s) => s.id === 'cs-vainqueur') as Row).merged_into = 'cs-perdant'
+
+    const result = await ensureHistoricalPdfOccurrences({
+      runId: RUN,
+      siteId: SITE,
+      siteReportId: REPORT,
+      visitDate: '2026-08-24',
+    })
+
+    expect(result.created).toBe(0)
+    expect(result.errors).toBe(0)
+    expect(TABLES.canonical_subject_occurrence).toHaveLength(0)
   })
 })

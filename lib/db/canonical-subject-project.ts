@@ -30,7 +30,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 
-type Sb = ReturnType<typeof createAdminClient>
+export type Sb = ReturnType<typeof createAdminClient>
 
 /** Type d'objet métier portant une FK canonique (mig 346). */
 export type ProjectableObjectType = 'site_action' | 'site_deadline'
@@ -348,7 +348,7 @@ async function loadThreadIndex(sb: Sb, siteId: string): Promise<Map<string, stri
   )
 }
 
-interface SubjectRow {
+export interface SubjectRow {
   id: string
   status: string | null
   merged_into: string | null
@@ -372,7 +372,7 @@ async function loadSiteSubjects(sb: Sb, siteId: string): Promise<Map<string, Sub
  * Borné : une chaîne trop longue ou cyclique retourne null — on préfère ne rien
  * écrire plutôt qu'écrire une cible dont on ne sait pas prouver qu'elle est vivante.
  */
-function makeWinnerResolver(sb: Sb, cache: Map<string, SubjectRow>) {
+export function makeWinnerResolver(sb: Sb, cache: Map<string, SubjectRow>) {
   const missing = new Set<string>()
 
   async function fetchSubject(id: string): Promise<SubjectRow | null> {

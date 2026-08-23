@@ -15,6 +15,7 @@ import 'server-only'
 // evidence_count = nombre de propositions convergentes (multiplicité)
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { makeWinnerResolver, type SubjectRow } from '@/lib/db/canonical-subject-project'
 
 const ELIGIBLE_FAMILIES = new Set(['action', 'vigilance', 'decision', 'knowledge_fact', 'deadline', 'reservation'])
 
@@ -108,19 +109,40 @@ export async function ensureHistoricalPdfOccurrences(params: {
 
   const threadToCs = new Map((stiRows ?? []).map(s => [s.subject_thread_id as string, s.canonical_subject_id as string]))
 
-  // 3. Résoudre canonical_subject labels (fallback)
-  const csIds = [...new Set([...threadToCs.values()])]
-  const { data: csRows } = await supabase
+  // 3. Résoudre le winner actif de chaque canonical_subject référencé par la STI.
+  //    Invariant : toute nouvelle canonical_subject_occurrence pointe vers le
+  //    sujet vivant courant, jamais vers un loser fusionné (même si la STI,
+  //    elle, n'a pas encore été reroutée — cf. MERGE-REFERENCE).
+  const rawCsIds = [...new Set([...threadToCs.values()])]
+  const { data: subjectRows } = await supabase
+    .from('canonical_subject')
+    .select('id, status, merged_into')
+    .in('id', rawCsIds)
+  const subjectCache = new Map<string, SubjectRow>(
+    (subjectRows ?? []).map(r => [r.id as string, r as SubjectRow]),
+  )
+  const resolveWinner = makeWinnerResolver(supabase, subjectCache)
+  const winnerByRawId = new Map<string, string>()
+  for (const rawId of rawCsIds) {
+    const resolved = await resolveWinner(rawId)
+    if (resolved) winnerByRawId.set(rawId, resolved.id)
+    // pas de winner résolu (cycle/impasse) → skip silencieux, comme un thread non promu
+  }
+
+  const winnerIds = [...new Set([...winnerByRawId.values()])]
+  const { data: winnerRows } = await supabase
     .from('canonical_subject')
     .select('id, label')
-    .in('id', csIds)
-  const csLabelMap = new Map((csRows ?? []).map(c => [c.id as string, c.label as string]))
+    .in('id', winnerIds)
+  const csLabelMap = new Map((winnerRows ?? []).map(c => [c.id as string, c.label as string]))
 
-  // 4. Grouper les propositions par canonical_subject_id
+  // 4. Grouper les propositions par winner résolu (jamais le canonical_subject_id brut)
   const groups = new Map<string, OccurrenceToCreate>()
   for (const p of eligible) {
-    const csId = threadToCs.get(p.subject_thread_id as string)
-    if (!csId) continue  // thread non encore promu en canonical_subject — skip silencieux
+    const rawCsId = threadToCs.get(p.subject_thread_id as string)
+    if (!rawCsId) continue  // thread non encore promu en canonical_subject — skip silencieux
+    const csId = winnerByRawId.get(rawCsId)
+    if (!csId) continue  // chaîne de fusion cyclique/incomplète — skip silencieux
     if (!groups.has(csId)) {
       groups.set(csId, {
         canonical_subject_id: csId,
