@@ -478,6 +478,202 @@ inférence plus forte que les preuves disponibles.
 
 ---
 
+### D7 — Résultats de l'audit Opus 4.8 (2026-08-23)
+
+> Audit strict, lecture seule. Chaque fait tracé au fichier + ligne.
+> Note architecturale : les trois briques du périmètre initial (D5) ne produisent
+> PAS "Phase estimée". La chaîne réelle est distincte — information conservée car
+> D0–D6 documente le contrat d'audit (ce qu'on cherchait), D7 documente ce qu'on
+> a trouvé. L'écart est lui-même une information architecturale utile.
+
+#### D7.1 — Localisation réelle (PROUVÉ)
+
+"Phase estimée" est produite par la chaîne **Prévisite** (Site Brief), distincte
+du copilote Q&A :
+
+- **Règle** : `lib/knowledge/visit-preparation.ts:220-230`, `estimatePreparationPhase()`
+- **Appelant** : `app/(dashboard)/sites/[id]/site-brief-actions.ts:758`
+- **Rendu** : `SiteBriefButton.tsx:837`
+
+Règle exacte (L226-229) — pattern-matching lexical pur sur les titres d'objets
+ouverts :
+
+```
+openReserveCount > 0                              → "Levée des réserves"
+/dépose|démolition|déblai|évacuation/.test(all)   → "Dépose"   ← cas PETRO
+/planif|prépar|visite|accès|pave/.test(all)        → "Préparation"
+sinon                                              → "Suivi"
+```
+
+`all = [...actionTitles, ...deadlineTitles].join(' ')` en minuscules (L225).
+**Aucune date. Aucun ordre temporel.**
+
+#### D7.2 — Source des données (PROUVÉ)
+
+`estimatePreparationPhase` reçoit (`site-brief-actions.ts:759-761`) :
+- `actionTitles` ← `openActionRows.map(a => a.title)` — source :
+  `listOpenSiteActions({ siteIds: [siteId] })` (L355), filtre `status='open'`
+  **sans borne de date**. Toute action ouverte depuis le début du chantier
+  pèse autant qu'une action créée hier.
+- `deadlineTitles` ← `deadlineItems.map(d => d.title)` — idem.
+
+La date (`action.created_at`) existe sur les lignes mais n'entre jamais dans
+le calcul de phase.
+
+#### D7.3 — Preuves terrain récentes — présentes, jamais croisées (PROUVÉ)
+
+Narratifs des 17/18/20 août chargés dans le même `Promise.all` :
+- `preparationReports` (L366-375)
+- `sinceLastVenue = buildSinceLastVisitSummary(...)` (L386)
+- `sitePhotos` (L389)
+
+Ces données alimentent `rememberToday`, `changedActivityFacts` (L799-807),
+`coherenceInsights` (L763-778) — mais `estimatePreparationPhase` (L758) ne
+reçoit ni `preparationReports`, ni `narratives`, ni `sinceLastVenue`.
+**Croisement : AUCUN.**
+
+#### D7.4 — Règle de priorité temporelle (PROUVÉ : inexistante)
+
+Règle implicite réelle : **priorité par ordre de `if` (sévérité lexicale)**,
+jamais par date. Un objet ouvert ancien dont le titre contient "dépose" force
+"Dépose" indéfiniment. Aucune règle "la source la plus récente prime".
+
+#### D7.5 — Verdict par agrégat
+
+| Agrégat | Valeur possible PETRO | Source (fichier:ligne) | Date source | Preuves récentes dispo | Croisement | Verdict |
+|---|---|---|---|---|---|---|
+| Phase estimée | "Dépose" | `visit-preparation.ts:220`; `site-brief-actions.ts:758` | Aucune (atemporel) | OUI — narratifs 17/18/20/08 | NON | DÉFAUT — C+D+B |
+| Motif opérationnel / Objectif | ex. "Préparer le passage…" | `visit-preparation.ts:127-131`; `site-brief-actions.ts:727` | Aucune (priorité par type) | OUI | NON | DÉFAUT — D+C |
+| Fraîcheur mémoire ("il y a N jours") | date de la dernière visite | `preparationActivities[0].startedAt`; `site-brief-actions.ts:757` | Visite la plus récente | — | OUI | SAIN |
+| coherenceInsights ("à reconfirmer") | annonces non confirmées | `site-brief-actions.ts:763-778` | `narrative.occurredAt`, niveau non récent | — | OUI | SAIN |
+
+Note (PROBABLE) : `sitePhase` (colonne `sites.phase`, L376) et `dossierPhase`
+(L380) sont chargés dans le brief mais ne sont **pas** la source du rendu
+"Phase estimée" (L837 utilise `estimatedPhase`). Dette de champs chargés non
+consommés pour cet agrégat.
+
+#### D7.6 — Diagnostic de cause
+
+- **C (absence de temporalité)** — cause principale. Aucune date n'entre dans
+  le calcul de `estimatePreparationPhase`.
+- **D (priorité incorrecte entre sources)** — un objet ouvert ancien prime
+  sur les preuves terrain récentes des 17/18/20 août.
+- **B (source trop étroite)** — les narratifs de visite datés, plus probants,
+  sont ignorés.
+- **Non de type E** : le libellé "estimée" est déjà présent ; la valeur
+  elle-même peut être anachronique. Reformuler ne suffit pas.
+
+#### D7.7 — Question ouverte avant tout correctif
+
+L'audit a identifié la cause et esquissé un correctif ("filtrer les actions
+récentes"). Ce correctif est **insuffisant seul** : ancien ≠ obsolète. Une
+action "Dépose des hottes" créée il y a trois semaines mais toujours réellement
+ouverte peut décrire une phase encore en cours. Reproduire la même erreur que
+`lastSeenAt ≠ lastMeaningfulChangeAt`.
+
+La question plus fondamentale, tranchée en D8 : est-ce qu'une "phase unique
+actuelle" est calculable de façon fiable depuis le stock d'objets ouverts, ou
+faut-il séparer "phase déclarée/estimée" de "activité terrain récente constatée" ?
+
+---
+
+### D8 — Mini-audit décision produit (Opus 4.8, 2026-08-23)
+
+> Lecture seule. Aucun fichier modifié.
+> Trois questions tranchées, sentinel PETRO 20/08 fourni.
+
+#### D8.0 — Fait supplémentaire établi
+
+Le brief contient deux notions de "phase" totalement distinctes, jamais croisées :
+
+| Élément | Source (ligne) | Nature |
+|---|---|---|
+| `estimatedPhase` ("Dépose") | `estimatePreparationPhase()` L758 | Dérivé lexical, sans date, volatile |
+| `phase`/`phaseLabel` | `resolveVisitPreparationPhase()` L645 | Cycle de briefing (suivi/première visite…), non métier |
+| `activities` (CR 17/18/20) | `preparationActivities` L409, `startedAt` + `narrative` + `status` | **Preuve terrain datée et textuelle** (in_progress / very_recent / validated) |
+
+La "phase contractuelle travaux" (Dépose au marché) **n'est stockée nulle part**.
+"Phase estimée : Dépose" n'est ni la phase contractuelle ni l'activité terrain —
+c'est un artefact lexical issu d'un titre d'objet non clôturé. PROUVÉ.
+
+#### D8.1 — Q1 : Les phases sont-elles mutuellement exclusives et ordonnées ?
+
+- **Le code impose une phase unique.** PROUVÉ. Signature : `'Préparation' | 'Dépose' | 'Levée des réserves' | 'Suivi'` — cascade `if/return`, premier match gagne.
+- **L'ordre est une préséance lexicale arbitraire, pas une séquence chronologique.** PROUVÉ. Réserves → dépose → prépar → Suivi (fallback). Aucune notion d'avancement temporel dans le code.
+- **Les valeurs semblent séquentielles dans l'intention produit, mais le calcul ne l'est pas.** PROBABLE.
+- **La réalité PETRO contredit le modèle à phase unique.** PROUVÉ. Le 20/08 : dépose (objet ouvert) + nettoyage haute pression + nettoyage entre-toit coexistent. Trois activités simultanées contre une seule étiquette.
+
+#### D8.2 — Q2 : Une visite récente peut-elle supplanter une ancienne phase ?
+
+**Non — elles doivent coexister.** PROBABLE (jugement produit, doctrine "deux axes jamais recombinés").
+
+- Une phase contractuelle répond à "quel est le lot prévu".
+- L'activité terrain répond à "que fait-on réellement en ce moment".
+
+Application PETRO 20/08 — "nettoyage de l'entre-toit commencé, 4e jour d'intervention" :
+
+| | |
+|---|---|
+| **Prouve** | Le 20/08, intervention de nettoyage active sur l'entre-toit ; chantier actif depuis au moins 4 jours |
+| **Ne prouve pas** | Que la dépose est terminée, en cours, ou que le nettoyage l'a remplacée |
+| **Verdict** | L'état de la dépose est **INCONNU**. Les activités peuvent coexister |
+
+#### D8.3 — Q3 : Les données permettent-elles "phase actuelle = X" avec certitude ?
+
+| Modèle | Prouve | Ne prouve pas | Trompeur PETRO ? |
+|---|---|---|---|
+| **A — Phase unique** "Phase estimée : Dépose" | Existence d'un objet ouvert avec mot "dépose" | État terrain réel | **OUI** — affiche certitude là où trois activités simultanées coexistent, ignore les CR des 17/18/20 |
+| **B — Activité constatée** "Activité récente : nettoyage / intervention en cours" | Ce que disent les CR datés (source directe) | La notion de lot/phase contractuelle | Non — mais perd la mention "Dépose" (acceptable : elle n'est pas fiable) |
+| **C — Combinaison** Phase déclarée/incertaine + activité terrain datée | Les deux canaux sans les recombiner | — | Non — à condition que "phase" soit étiquetée comme dérivée/incertaine, pas constatée |
+
+**Verdict : Modèle C**, avec contrainte de formulation forte sur le canal "phase" :
+il doit nommer sa source réelle (titre d'objet) et afficher l'incertitude, non
+prétendre à un état terrain constaté.
+
+#### D8.4 — Sentinel : ce que MemorIA devrait afficher pour PETRO le 20/08
+
+```
+Indice de phase (déduit des objets ouverts) : Dépose
+— déduit d'un intitulé, non confirmé sur site.
+
+Activité terrain récente :
+  • 20/08 — Nettoyage de l'entre-toit commencé (4e jour d'intervention) · en cours
+  • 18/08 — Test du nettoyeur haute pression réussi
+  • 17/08 — Premier jour de chantier : balayage et regroupement des gravats
+
+Plusieurs activités peuvent être en cours simultanément.
+L'état exact de la dépose n'est pas confirmé par les derniers passages.
+```
+
+**Justification** :
+
+1. **"Indice de phase (déduit des objets ouverts)"** — nomme la source réelle du calcul (titre d'objet non clôturé). Retire la prétention à décrire l'état global.
+2. **"non confirmé sur site"** — reflète l'INCONNU prouvé (le calcul n'a jamais croisé les CR terrain).
+3. **Trois activités datées, textuelles, avec statut** — seule information réellement constatée. Données déjà disponibles dans `preparationActivities`, affichées telles quelles.
+4. **"Plusieurs activités peuvent être en cours simultanément"** — casse explicitement le modèle à phase unique.
+5. **"L'état exact de la dépose n'est pas confirmé"** — refuse de trancher terminée/en cours là où les preuves sont muettes. Conforme à la doctrine `unknown ≠ false`.
+
+#### D8.5 — Implication pour le correctif
+
+L'audit D7 proposait "filtrer les actions récentes" → **insuffisant** (D7.7, confirmé).
+
+La vraie direction : **ne pas améliorer `estimatePreparationPhase`, mais changer son
+statut épistémique dans l'UI**. Ce n'est pas un calcul de phase actuelle — c'est un
+indice dérivé de stock. L'étiqueter comme tel (renommage du libellé + sous-titre
+de source) suffit à corriger le problème utilisateur sans modifier le moteur.
+
+La correction de fond, si elle est souhaitée plus tard, serait de brancher
+`estimatedPhase` sur les occurrences datées (`preparationActivities.narrative`)
+plutôt que sur les titres d'objets — mais cela requiert une définition produit de
+"phase" qu'on n'a pas encore (les phases sont-elles des étapes ordonnées ou des
+lots qui coexistent ?). **Ce point reste ouvert.**
+
+Correctif immédiat sans code moteur :
+- `SiteBriefButton.tsx:837` — changer le libellé "Phase estimée" → "Indice de phase (objets ouverts)" + sous-texte "déduit, non confirmé sur site"
+- Pas de modification de `estimatePreparationPhase` ni de son entrée
+
+---
+
 ## PRÉVISITE — Structure
 
 Hiérarchie réelle rendue par `SiteBriefButton.tsx` (ordre de `BriefBody`,
