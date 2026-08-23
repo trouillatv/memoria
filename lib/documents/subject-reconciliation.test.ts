@@ -397,4 +397,48 @@ describe('mapDocumentStatus', () => {
     expect(mapDocumentStatus('', 'knowledge_fact')).toBeNull()
     expect(mapDocumentStatus(undefined, 'knowledge_fact')).toBeNull()
   })
+
+  // ── P1-3C.2 — garde-fou "tâche non soldée" ──────────────────────────────────
+
+  it('maps "à faire" → open (garde-fou : jamais informational/resolved)', () => {
+    expect(mapDocumentStatus('à faire', 'action')).toBe('open')
+    expect(mapDocumentStatus('à faire', 'knowledge_fact')).toBe('open')
+  })
+
+  it('maps "à réaliser" → open (garde-fou : "réalis" ne doit pas court-circuiter vers done)', () => {
+    expect(mapDocumentStatus('à réaliser', 'action')).toBe('open')
+  })
+
+  it('maps "à transmettre" → open', () => {
+    expect(mapDocumentStatus('à transmettre', 'action')).toBe('open')
+  })
+
+  // ── P1-3C.2 — sentinel pièges obligatoires ───────────────────────────────────
+
+  it('piège #1 — "réalisé non conforme" → non_compliant (jamais done/resolved)', () => {
+    expect(mapDocumentStatus('réalisé non conforme', 'action')).toBe('non_compliant')
+    expect(mapDocumentStatus('essais réalisés non conformes', 'action')).toBe('non_compliant')
+  })
+
+  it('piège #2 — "en attente" → awaiting_validation (jamais resolved)', () => {
+    expect(mapDocumentStatus('en attente de confirmation', 'action')).toBe('awaiting_validation')
+  })
+
+  it('piège #3 — "prévu" → planned (état futur, pas résolution)', () => {
+    expect(mapDocumentStatus('prévu semaine 13', 'action')).toBe('planned')
+  })
+
+  it('piège #4 — "VISA FAIT" → awaiting_validation (visa = portée documentaire)', () => {
+    expect(mapDocumentStatus('VISA FAIT', 'action')).toBe('awaiting_validation')
+  })
+
+  it('piège #5 — "Reprise FAIT en attente plan récolement" → awaiting_validation (terminal partiel)', () => {
+    // "en attente" est testé avant "réalis/termin", et avant le nouveau garde-fou
+    expect(mapDocumentStatus('Reprise FAIT en attente plan récolement', 'action')).toBe('awaiting_validation')
+  })
+
+  it('positif — "réalisé" sans réserve → done (résolution réelle)', () => {
+    expect(mapDocumentStatus('réalisé', 'action')).toBe('done')
+    expect(mapDocumentStatus('terminé sans réserve', 'action')).toBe('done')
+  })
 })

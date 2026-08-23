@@ -372,6 +372,9 @@ export function mapDocumentStatus(
   if (/en attente|attendu|visa|validation/.test(s)) return 'awaiting_validation'
   if (/annul|abandonn/.test(s)) return 'cancelled'
   if (/en cours|partiell|démarr/.test(s)) return 'in_progress'
+  // Garde-fou P1-3C.2 : "à faire/réaliser/transmettre" = tâche non soldée → open,
+  // AVANT la règle done ("réalis"/"exécut" matcheraient sinon à tort).
+  if (/à faire|à réaliser|à transmettre/.test(s)) return 'open'
   if (/réalis|termin|levé|exécut|accompl/.test(s) || s === 'fait') return 'done'
   if (/ouvert|signalé|constaté/.test(s)) return 'open'
   return 'informational'
