@@ -35,6 +35,13 @@ export const maxDuration = 300
  * pas la taille du lot. Le reste est repris au passage suivant : la reprise est
  * idempotente, elle n'a pas besoin d'être exhaustive en une fois. Ce qui est
  * reporté est journalisé, jamais silencieux.
+ *
+ * Cette cadence de 6 h est obtenue par QUATRE entrées cron quotidiennes (3 h, 9 h,
+ * 14 h, 20 h UTC) pointant sur cette route, et non par `0 * /6 * * *` : le plan
+ * Hobby refuse toute expression s'exécutant plus d'une fois par jour, et le refus
+ * a lieu à la CRÉATION du déploiement — aucun build, aucune trace côté Vercel,
+ * juste un statut GitHub rouge. Chaque passage relit `findStuckReconciliations()`
+ * depuis la base : la route est sans état, plusieurs entrées ne se gênent pas.
  */
 const MAX_REPLAYS_PER_RUN = 1
 

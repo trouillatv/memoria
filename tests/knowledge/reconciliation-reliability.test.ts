@@ -128,4 +128,30 @@ describe('RECONCILIATION-RELIABILITY — doctrine des chemins d’exécution', (
     const vercel = JSON.parse(read('vercel.json')) as { crons: Array<{ path: string; schedule: string }> }
     expect(vercel.crons.map((c) => c.path)).toContain('/api/cron/sweep-stuck-reconciliation')
   })
+
+  it('aucune expression cron ne s’exécute plus d’une fois par jour — sinon le déploiement est refusé', () => {
+    // Vécu le 2026-08-23 : `0 */6 * * *` a fait REFUSER la création du
+    // déploiement (plan Hobby : « limited to daily cron jobs »). Le refus n'a
+    // produit ni build, ni déploiement consultable — seulement un statut GitHub
+    // rouge. Résultat : ce lot ET le commit suivant, déjà validé, sont restés
+    // invisibles en production pendant près de 4 h sans que rien ne le signale.
+    //
+    // La cadence infra-journalière se compose donc par PLUSIEURS entrées
+    // quotidiennes sur le même path, jamais par un pas dans l'expression.
+    const vercel = JSON.parse(read('vercel.json')) as { crons: Array<{ path: string; schedule: string }> }
+    for (const { path, schedule } of vercel.crons) {
+      const [minute, hour] = schedule.split(' ')
+      expect(minute, `${path} : minute « ${minute} » n'est pas fixe`).toMatch(/^\d{1,2}$/)
+      expect(hour, `${path} : heure « ${hour} » n'est pas fixe`).toMatch(/^\d{1,2}$/)
+    }
+  })
+
+  it('la cadence de reprise reste sous-journalière malgré la contrainte Hobby', () => {
+    const vercel = JSON.parse(read('vercel.json')) as { crons: Array<{ path: string; schedule: string }> }
+    const passes = vercel.crons.filter((c) => c.path === '/api/cron/sweep-stuck-reconciliation')
+    // 1 replay par passage : c'est le NOMBRE de passages qui porte le débit.
+    // Un seul passage quotidien ne reprendrait qu'une réconciliation par jour.
+    expect(passes.length).toBeGreaterThanOrEqual(4)
+    expect(new Set(passes.map((c) => c.schedule)).size).toBe(passes.length)
+  })
 })
