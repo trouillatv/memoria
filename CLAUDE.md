@@ -528,6 +528,26 @@ Avant de pousser :
 - intégrer proprement uniquement si nécessaire ;
 - relancer uniquement les vérifications affectées par une résolution de conflit.
 
+### Gate de livraison — l’arbre commité, pas le working tree
+
+Un typecheck lancé dans le dépôt lit le disque, pas le commit. Après un `git add`
+sélectif, il peut donc réussir grâce à un fichier resté hors du commit — et le
+build distant échouer sur ce même fichier absent. Un `git status` propre ne prouve
+pas l’inverse : il dit ce qui reste à commiter, pas si ce qui est commité se tient.
+
+Avant tout push d’un lot de **niveau 3**, ou de tout lot dont un fichier a été
+ajouté sélectivement :
+
+```bash
+npm run verify:pushable        # défaut HEAD ; accepte un ref en argument
+```
+
+Le script matérialise le SHA exact dans un worktree en HEAD détaché, y rattache
+les artefacts générés non versionnés (`node_modules`, `.next`, `next-env.d.ts`),
+lance `tsc --noEmit` dessus, puis détruit le worktree. Aucune branche n’est créée.
+
+Un gate non exécuté ne vaut jamais un gate réussi.
+
 Ne multiplie pas les commits inutiles.
 
 Regroupe les changements cohérents, mais ne mélange pas des sujets sans rapport.
