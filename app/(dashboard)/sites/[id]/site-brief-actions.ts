@@ -540,9 +540,12 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     .sort((x, y) => Number(y.overdue) - Number(x.overdue) || y.ageDays - x.ageDays)
     .slice(0, 5)
 
-  // Actions récemment clôturées : tri par done_at desc, top 3.
+  // Actions récemment clôturées : historique ANTÉRIEUR à la dernière venue.
+  // Si sinceLastVenue existe, completedSinceVenue porte déjà les clôtures récentes
+  // (doctrine placement unique) — recentDoneActions ne montre que le contexte passé.
+  // Si pas de venue connue : top-3 all-time comme avant.
   const recentDoneActions: SiteBriefDoneAction[] = doneActionRows
-    .filter((a) => a.done_at)
+    .filter((a) => a.done_at && (!sinceLastVenue || a.done_at <= sinceLastVenue.at))
     .sort((x, y) => (x.done_at! < y.done_at! ? 1 : -1))
     .slice(0, 3)
     .map((a) => ({ id: a.id, title: a.title, doneAt: a.done_at }))
@@ -817,12 +820,12 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
   const doneActionsSinceVenueTotal = sinceLastVenue?.actionsDone ?? 0
   const doneActionsRemainder = Math.max(0, doneActionsSinceVenueTotal - doneActionsSinceVenue.length)
 
-  // Doctrine placement unique : le détail nommé va dans completedSinceVenue,
-  // le compteur « N actions terminées » est retiré ici pour éviter le doublon.
+  // Doctrine placement unique :
+  // - actions terminées → completedSinceVenue (nommées)
+  // - réserves levées  → completedSinceVenue uniquement (retiré ici pour éviter le doublon)
   const changedSinceVenue: SiteBriefFactLine[] = [
     ...changedActivityFacts,
     ...(sinceLastVenue?.newReserves ? [{ text: `${sinceLastVenue.newReserves} nouvelle${sinceLastVenue.newReserves > 1 ? 's' : ''} réserve${sinceLastVenue.newReserves > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' as const }] : []),
-    ...(sinceLastVenue?.liftedReserves ? [{ text: `${sinceLastVenue.liftedReserves} réserve${sinceLastVenue.liftedReserves > 1 ? 's' : ''} levée${sinceLastVenue.liftedReserves > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' as const }] : []),
     ...(sinceLastVenue?.meetings ? [{ text: `${sinceLastVenue.meetings} réunion${sinceLastVenue.meetings > 1 ? 's' : ''} depuis votre venue`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const }] : []),
     ...(sinceLastVenue?.newPhotos ? [{ text: `${sinceLastVenue.newPhotos} nouvelle${sinceLastVenue.newPhotos > 1 ? 's' : ''} photo${sinceLastVenue.newPhotos > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const }] : []),
   ]

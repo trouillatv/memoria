@@ -834,7 +834,7 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">État confirmé aujourd&apos;hui</p>
         <FactLines items={confirmedFacts} />
         <div className="flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 text-[11px] text-muted-foreground">
-          <span>Phase estimée : <strong className="font-semibold text-foreground">{estimatedPhase}</strong></span>
+          <span>Indice de phase (objets ouverts) : <strong className="font-semibold text-foreground">{estimatedPhase}</strong><span className="ml-1 text-muted-foreground/70">— déduit, non confirmé sur site</span></span>
           <span>Mémoire : <strong className={freshness.level === 'stale' ? 'font-semibold text-amber-700' : 'font-semibold text-foreground'}>{freshness.label}</strong></span>
         </div>
         <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dernier état rapporté</p>

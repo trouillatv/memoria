@@ -1,6 +1,6 @@
 'use client'
 
-// ── « À CONFIRMER » — DU TRAVAIL, PAS DE L'EXÉCUTION ─────────────────────────
+// -- « À CONFIRMER » — DU TRAVAIL, PAS DE L'EXÉCUTION -----------------------
 // Une proposition est du travail humain restant : quelqu'un doit la lire et
 // trancher. La cacher laisserait le conducteur croire qu'il n'a rien à faire
 // pendant que dix faits attendent.
@@ -12,7 +12,7 @@
 //   · le mot est « à confirmer », jamais « ouvert ».
 // Un seul geste est possible, et il vient du contrat : « Créer l'action ».
 
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { Check, Loader2, MapPin, X, ChevronRight } from 'lucide-react'
 import { promoteFromMemoryAction, dismissFromMemoryAction } from '../site/[siteId]/memory-actions'
 import type { PendingItem, PendingWork } from '@/lib/knowledge/pending-work'
@@ -29,6 +29,18 @@ export function PendingWorkBlock({ work }: { work: PendingWork }) {
   const nbActions = work.actions.filter((i) => !done.has(i.proposalId)).length
   const nbEcheances = work.deadlines.filter((i) => !done.has(i.proposalId)).length
 
+  // Groupement par chantier : le conducteur lit ses engagements chantier par chantier,
+  // pas en flux mêlé. Tri par volume décroissant (chantier avec le plus de travail en tête).
+  const groups = useMemo(() => {
+    const byId = new Map<string, { siteId: string; siteName: string; items: PendingItem[] }>()
+    for (const item of items) {
+      const g = byId.get(item.siteId) ?? { siteId: item.siteId, siteName: item.siteName, items: [] }
+      g.items.push(item)
+      byId.set(item.siteId, g)
+    }
+    return [...byId.values()].sort((x, y) => y.items.length - x.items.length)
+  }, [items])
+
   return (
     <section className="space-y-3 rounded-2xl border border-sky-200 bg-sky-50/50 p-4 dark:border-sky-900 dark:bg-sky-950/20">
       <div>
@@ -40,19 +52,33 @@ export function PendingWorkBlock({ work }: { work: PendingWork }) {
             nbActions > 0 ? `${nbActions} action${nbActions > 1 ? 's' : ''} à confirmer` : null,
             nbEcheances > 0 ? `${nbEcheances} échéance${nbEcheances > 1 ? 's' : ''} à confirmer` : null,
           ].filter(Boolean).join(' · ')}
-          {' — relevées par MemorIA, personne ne s’est encore engagé.'}
+          {' — relevées par MemorIA, personne ne s\'est encore engagé.'}
         </p>
       </div>
-      <ul className="space-y-2">
-        {items.map((item) => (
-          <PendingCard key={item.proposalId} item={item} onDone={() => setDone((s) => new Set(s).add(item.proposalId))} />
+      <div className="space-y-4">
+        {groups.map((g) => (
+          <div key={g.siteId}>
+            <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-sky-700/70 dark:text-sky-300/70">
+              {g.siteName}{' — '}{g.items.length} à confirmer
+            </p>
+            <ul className="space-y-2">
+              {g.items.map((item) => (
+                <PendingCard
+                  key={item.proposalId}
+                  item={item}
+                  hideSite
+                  onDone={() => setDone((s) => new Set(s).add(item.proposalId))}
+                />
+              ))}
+            </ul>
+          </div>
         ))}
-      </ul>
+      </div>
     </section>
   )
 }
 
-function PendingCard({ item, onDone }: { item: PendingItem; onDone: () => void }) {
+function PendingCard({ item, hideSite = false, onDone }: { item: PendingItem; hideSite?: boolean; onDone: () => void }) {
   const [pending, start] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
@@ -78,10 +104,12 @@ function PendingCard({ item, onDone }: { item: PendingItem; onDone: () => void }
     <li className="rounded-xl border bg-background p-2.5 text-[13px] leading-snug">
       <p className="font-medium text-foreground/90">{item.title}</p>
       {item.detail && <p className="mt-0.5 text-[12px] text-muted-foreground">{item.detail}</p>}
-      <p className="mt-0.5 text-[12px] text-muted-foreground">
-        {item.siteName}
-        {item.owner && ` · ${item.owner}`}
-      </p>
+      {(!hideSite || item.owner) && (
+        <p className="mt-0.5 text-[12px] text-muted-foreground">
+          {!hideSite && item.siteName}
+          {item.owner && `${!hideSite ? ' · ' : ''}${item.owner}`}
+        </p>
+      )}
       {/* La provenance : sans elle, le conducteur croirait MemorIA sur parole. */}
       {item.reportId && (
         <a
