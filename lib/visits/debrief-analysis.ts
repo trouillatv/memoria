@@ -27,6 +27,7 @@ import 'server-only'
 // propositions mais ne touche JAMAIS les actions déjà validées.
 
 import { createHash } from 'node:crypto'
+import { after } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { gatherVisitDebriefContext, type VisitSourceSnapshot } from '@/lib/db/visits'
 import { computeSnapshotDelta, type SnapshotDelta } from '@/lib/visits/source-snapshot'
@@ -374,72 +375,122 @@ async function projectAndTrace(params: {
   }
 
   // ── Étape 2 : Réconciliation canonique ─────────────────────────────────────
-  // Verrou soft (P0-2) : empêche deux runs concurrents sur le même rapport.
-  // Mécanisme : acquireReconcileLock — CAS sur la valeur observée (NULL ou
-  // verrou expiré par TTL, P0-J.4), jamais NULL en dur.
-  // Si la colonne est déjà définie et < 5 min → un autre run est en cours, on abandonne.
-  // Si canonical_reconciled_at est déjà défini → idempotence, on abandonne.
-  void (async () => {
-    const sb = createAdminClient()
-    try {
-      const now = new Date().toISOString()
+  // `after()` et non plus `void (async …)()` : en serverless, l'instance gèle dès
+  // la réponse envoyée, et une promesse simplement détachée meurt AVEC elle —
+  // sans erreur, sans trace. `after()` déclare le travail au runtime, qui le
+  // maintient vivant après la réponse HTTP. Idiome déjà employé ailleurs dans le
+  // dépôt (documents, extraction, atelier).
+  //
+  // Ce n'est PAS une garantie de terminaison : un timeout, un redéploiement ou un
+  // kill brutal tue aussi bien une tâche `after()` qu'une promesse attendue —
+  // l'audit RECONCILIATION-RELIABILITY l'a mesuré sur le chemin import, pourtant
+  // `await`-é. Le filet de second niveau est le cron de reprise
+  // (`/api/cron/sweep-stuck-reconciliation`), qui rejoue via ce même point d'entrée.
+  runAfterResponse(() => runCanonicalReconciliation({ reportId, siteId: params.siteId }))
+}
 
-      const { data: reportStatus } = await sb
-        .from('site_reports')
-        .select('canonical_reconciled_at, canonical_reconcile_started_at')
-        .eq('id', reportId)
-        .maybeSingle()
+/**
+ * Planifie un travail à exécuter APRÈS la réponse HTTP.
+ *
+ * `after()` exige un contexte de requête. Hors de ce contexte (script, test,
+ * cron déjà maître de son propre cycle de vie) il lève — on retombe alors sur
+ * une exécution directe plutôt que de perdre le travail.
+ */
+function runAfterResponse(task: () => Promise<unknown>): void {
+  try {
+    after(task)
+  } catch {
+    void task()
+  }
+}
 
-      // Règle unique et testée : decideReconcileLock (canonical-subject-source-reconcile).
-      const decision = decideReconcileLock(reportStatus, Date.now())
-      if (decision === 'done') return
-      if (decision === 'concurrent') {
-        console.log('[reconcile] run concurrent détecté pour', reportId, '— abandon')
-        return
-      }
+/** Issue d'une tentative de réconciliation — observable, y compris quand rien n'a été fait. */
+export type ReconcileOutcome = 'reconciled' | 'already_done' | 'concurrent' | 'lock_lost' | 'failed'
 
-      // Acquérir le soft lock (CAS atomique côté SQL)
-      const priorStartedAt = (reportStatus as { canonical_reconcile_started_at?: string | null } | null)
-        ?.canonical_reconcile_started_at
-      const locked = await acquireReconcileLock(sb, reportId, priorStartedAt, now)
+/**
+ * Réconciliation canonique d'une visite terrain — point d'entrée UNIQUE.
+ *
+ * Appelée en `after()` après un débrief, et rejouée à l'identique par le cron de
+ * reprise. Une seule implémentation : ce que le cron rejoue est exactement ce qui
+ * aurait dû tourner, jamais une variante appauvrie.
+ *
+ * Verrou soft (P0-2) : empêche deux runs concurrents sur le même rapport.
+ * Mécanisme : acquireReconcileLock — CAS sur la valeur observée (NULL ou verrou
+ * expiré par TTL, P0-J.4), jamais NULL en dur.
+ * Si le verrou est défini et récent (< TTL) → un autre run est en cours, on abandonne.
+ * Si canonical_reconciled_at est déjà défini → idempotence, on abandonne.
+ *
+ * Ne lève jamais : l'échec est persisté dans canonical_reconcile_error, ce qui le
+ * rend observable ET rejouable. C'est l'invariant du lot : une visite finit
+ * canonicalisée, ou dans un état d'erreur visible — jamais silencieusement entre
+ * les deux.
+ */
+export async function runCanonicalReconciliation(params: {
+  reportId: string
+  siteId: string
+}): Promise<ReconcileOutcome> {
+  const { reportId, siteId } = params
+  const sb = createAdminClient()
+  try {
+    const now = new Date().toISOString()
 
-      if (!locked) {
-        // Une autre requête a pris le verrou entre le SELECT et l'UPDATE
-        console.log('[reconcile] lock perdu (race) pour', reportId, '— abandon')
-        return
-      }
+    const { data: reportStatus } = await sb
+      .from('site_reports')
+      .select('canonical_reconciled_at, canonical_reconcile_started_at')
+      .eq('id', reportId)
+      .maybeSingle()
 
-      const { reconcileObsoleteProposals } = await import('@/lib/db/visit-impact-reconcile')
-      await reconcileObsoleteProposals({ reportId, siteId: params.siteId })
-      const { reconcileSourceToCanonicalSubjects } = await import('@/lib/db/canonical-subject-source-reconcile')
-      await reconcileSourceToCanonicalSubjects({
-        type: 'field_visit',
-        id: reportId,
-        siteId: params.siteId,
-        authorId: null,
-      })
-      const { autoArchiveOrphanedSubjects } = await import('@/lib/db/canonical-subject-archive')
-      await autoArchiveOrphanedSubjects(params.siteId)
-      const { runEvolutionV2Shadow } = await import('@/lib/knowledge/evolution-v2-shadow')
-      await runEvolutionV2Shadow({ reportId, siteId: params.siteId })
-      await sb
-        .from('site_reports')
-        .update({
-          canonical_reconciled_at: new Date().toISOString(),
-          canonical_reconcile_error: null,
-          canonical_reconcile_started_at: null,
-        })
-        .eq('id', reportId)
-    } catch (err) {
-      const reason = serializeError(err)
-      console.error('[reconcile] erreur pour la visite', reportId, ':', reason)
-      await sb
-        .from('site_reports')
-        .update({ canonical_reconcile_error: reason, canonical_reconcile_started_at: null })
-        .eq('id', reportId)
-        .then(undefined, () => {})
+    // Règle unique et testée : decideReconcileLock (canonical-subject-source-reconcile).
+    const decision = decideReconcileLock(reportStatus, Date.now())
+    if (decision === 'done') return 'already_done'
+    if (decision === 'concurrent') {
+      console.log('[reconcile] run concurrent détecté pour', reportId, '— abandon')
+      return 'concurrent'
     }
-  })()
+
+    // Acquérir le soft lock (CAS atomique côté SQL)
+    const priorStartedAt = (reportStatus as { canonical_reconcile_started_at?: string | null } | null)
+      ?.canonical_reconcile_started_at
+    const locked = await acquireReconcileLock(sb, reportId, priorStartedAt, now)
+
+    if (!locked) {
+      // Une autre requête a pris le verrou entre le SELECT et l'UPDATE
+      console.log('[reconcile] lock perdu (race) pour', reportId, '— abandon')
+      return 'lock_lost'
+    }
+
+    const { reconcileObsoleteProposals } = await import('@/lib/db/visit-impact-reconcile')
+    await reconcileObsoleteProposals({ reportId, siteId })
+    const { reconcileSourceToCanonicalSubjects } = await import('@/lib/db/canonical-subject-source-reconcile')
+    await reconcileSourceToCanonicalSubjects({
+      type: 'field_visit',
+      id: reportId,
+      siteId,
+      authorId: null,
+    })
+    const { autoArchiveOrphanedSubjects } = await import('@/lib/db/canonical-subject-archive')
+    await autoArchiveOrphanedSubjects(siteId)
+    const { runEvolutionV2Shadow } = await import('@/lib/knowledge/evolution-v2-shadow')
+    await runEvolutionV2Shadow({ reportId, siteId })
+    await sb
+      .from('site_reports')
+      .update({
+        canonical_reconciled_at: new Date().toISOString(),
+        canonical_reconcile_error: null,
+        canonical_reconcile_started_at: null,
+      })
+      .eq('id', reportId)
+    return 'reconciled'
+  } catch (err) {
+    const reason = serializeError(err)
+    console.error('[reconcile] erreur pour la visite', reportId, ':', reason)
+    await sb
+      .from('site_reports')
+      .update({ canonical_reconcile_error: reason, canonical_reconcile_started_at: null })
+      .eq('id', reportId)
+      .then(undefined, () => {})
+    return 'failed'
+  }
 }
 
 export interface LoadedDebrief {
