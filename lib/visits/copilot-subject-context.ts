@@ -32,6 +32,14 @@ export interface SubjectConfirmedLinkContext {
   linkType: string
 }
 
+export interface SubjectTerrainObjectContext {
+  type: 'action' | 'deadline'
+  id: string
+  title: string
+  status: string | null
+  createdAt: string
+}
+
 export interface SubjectDetailContext {
   /** UUID du canonical_subject — utilisé comme citedId */
   id: string
@@ -46,6 +54,14 @@ export interface SubjectDetailContext {
   materializedEvents: SubjectMaterializedContext[]
   /** Uniquement les liens confirmés */
   confirmedLinks: SubjectConfirmedLinkContext[]
+  /** Date de la dernière évolution métier prouvée (transition open↔resolved ou objet terrain créé après firstSeen). */
+  lastMeaningfulChangeAt: string | null
+  /** Vrai si le sujet n'a pas évolué depuis ≥ 30 jours avec ≥ 2 répétitions consécutives sans changement. */
+  isStagnant: boolean
+  /** Nombre de jours entre lastMeaningfulChangeAt et lastSeenAt. Null si non calculable. */
+  stagnationDays: number | null
+  /** Actions et échéances terrain liées à ce sujet via canonical_subject_id. */
+  terrainObjects: SubjectTerrainObjectContext[]
 }
 
 const MAX_OCCURRENCES = 20
@@ -107,6 +123,15 @@ export function buildSubjectDetailForCopilot(
       linkType: l.linkType,
     }))
 
+  // Objets terrain liés (actions/échéances) — projection métier uniquement
+  const terrainObjects: SubjectTerrainObjectContext[] = life.terrainObjects.map((t) => ({
+    type: t.entityType === 'site_action' ? 'action' as const : 'deadline' as const,
+    id: t.entityId,
+    title: t.title,
+    status: t.status,
+    createdAt: t.createdAt,
+  }))
+
   return {
     id: life.canonicalSubjectId,
     label: life.label,
@@ -117,5 +142,9 @@ export function buildSubjectDetailForCopilot(
     occurrences,
     materializedEvents,
     confirmedLinks,
+    lastMeaningfulChangeAt: life.lastMeaningfulChangeAt,
+    isStagnant: life.isStagnant,
+    stagnationDays: life.stagnationDays,
+    terrainObjects,
   }
 }
