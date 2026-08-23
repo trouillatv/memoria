@@ -300,6 +300,7 @@ function actionFixture(overrides: Partial<SiteActionRow> = {}): SiteActionRow {
     kind: 'one_shot',
     created_at: '2026-07-13T08:00:00.000Z',
     due_date: '2026-07-15',
+    due_date_status: null,
     report_id: 'visit-1',
     converted_to_type: null,
     converted_to_id: null,

@@ -12,6 +12,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { OrganisationAmbigueError } from '@/lib/auth/organisation-ambigue'
 import { listOpenSiteActions, actionHealth, type SiteActionRow } from '@/lib/db/site-actions'
+import { describeOverdueAction } from '@/lib/knowledge/overdue-action'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { getWeekRange } from '@/lib/week-planning-helpers'
 import { getWeekBySite } from '@/lib/db/week-planning'
@@ -62,6 +63,28 @@ function trunc(s: string, n = 48): string {
   return s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s
 }
 
+/**
+ * Depuis QUAND une réserve est-elle ouverte ?
+ *
+ * `created_at` date l'ENREGISTREMENT, `issued_on` date le FAIT. En saisie
+ * terrain les deux coïncident presque ; à l'import d'un PV historique elles
+ * n'ont plus rien à voir — l'audit Tranche 3 a mesuré jusqu'à 124 jours d'écart,
+ * et 53 réserves ouvertes sur 53 classées de façon contradictoire entre cet
+ * accueil et `deriveSiteAttentionItems` (qui, lui, lit déjà `issued_on`).
+ *
+ * « La plus ancienne depuis 5 j » sur une réserve émise il y a 129 jours est
+ * techniquement exact et sémantiquement faux. On lit donc la date du fait, et on
+ * ne retombe sur la date d'enregistrement que faute de mieux — auquel cas on le
+ * DIT, plutôt que de laisser croire à une date d'émission.
+ */
+export function reserveOpenSince(
+  r: { issued_on?: string | null; created_at: string },
+): { at: string; kind: 'issued' | 'recorded' } {
+  return r.issued_on
+    ? { at: r.issued_on, kind: 'issued' }
+    : { at: r.created_at, kind: 'recorded' }
+}
+
 export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
   const sb = createAdminClient()
   // M3 — était `getOrgId().catch(() => null)` : en multi-org, `null` → AUCUN
@@ -96,22 +119,35 @@ export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
   }
   const [actions, reservesRes, weekRows, closuresBySite, pendingDebriefs] = await Promise.all([
     listOpenSiteActions({ siteIds, orgIds }).catch(guard('actions', [] as SiteActionRow[])),
-    sb.from('site_reserve').select('site_id, label, created_at').in('site_id', siteIds).eq('status', 'open'),
+    sb.from('site_reserve').select('site_id, label, created_at, issued_on').in('site_id', siteIds).eq('status', 'open'),
     getWeekBySite(week, orgIds).catch(guard('semaine', [] as Awaited<ReturnType<typeof getWeekBySite>>)),
     listActiveClosuresForSites(siteIds, week.weekStart, week.weekEnd).catch(guard('clôtures', {} as Record<string, SiteClosure[]>)),
     listPendingDebriefs(siteIds).catch(guard('débriefs', [] as PendingDebrief[])),
   ])
 
-  type Agg = { overdue: SiteActionRow[]; oldOpen: SiteActionRow[]; reserves: Array<{ created_at: string }> }
+  type ReserveRow = { created_at: string; issued_on: string | null }
+  type Agg = {
+    overdue: SiteActionRow[]
+    /** Échéance dépassée mais NON confirmée : « prévu le … », pas « en retard ». */
+    toVerify: SiteActionRow[]
+    oldOpen: SiteActionRow[]
+    reserves: ReserveRow[]
+  }
   const agg = new Map<string, Agg>()
   const get = (id: string): Agg => {
-    let a = agg.get(id); if (!a) { a = { overdue: [], oldOpen: [], reserves: [] }; agg.set(id, a) } return a
+    let a = agg.get(id); if (!a) { a = { overdue: [], toVerify: [], oldOpen: [], reserves: [] }; agg.set(id, a) } return a
   }
   for (const a of actions) {
-    if (a.due_date && a.due_date < today) get(a.site_id).overdue.push(a)
-    else if (actionHealth(a.created_at) === 'critique') get(a.site_id).oldOpen.push(a)
+    if (a.due_date && a.due_date < today) {
+      // Une date DÉDUITE par l'IA n'est pas une preuve de retard (retour
+      // Guillaume, LOT4). `describeOverdueAction` porte déjà cet arbitrage et
+      // sert `deriveSiteAttentionItems` : cet accueil était la dernière surface
+      // à affirmer « en retard » sur une date que personne n'a confirmée.
+      const info = describeOverdueAction(a.title, a.due_date, a.due_date_status, today)
+      ;(info.confirmed ? get(a.site_id).overdue : get(a.site_id).toVerify).push(a)
+    } else if (actionHealth(a.created_at) === 'critique') get(a.site_id).oldOpen.push(a)
   }
-  for (const r of (reservesRes.data ?? []) as Array<{ site_id: string; created_at: string }>) get(r.site_id).reserves.push(r)
+  for (const r of (reservesRes.data ?? []) as Array<{ site_id: string } & ReserveRow>) get(r.site_id).reserves.push(r)
 
   const red: AttentionItem[] = []
   const orange: AttentionItem[] = []
@@ -165,22 +201,53 @@ export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
       })
     }
 
+    // 🟠 Échéance dépassée SANS confirmation — un doute, pas un retard.
+    if (a.toVerify.length > 0) {
+      flagged.add(siteId)
+      const oldest = a.toVerify.reduce((o, x) => ((x.due_date ?? '') < (o.due_date ?? '') ? x : o))
+      const info = describeOverdueAction(oldest.title, oldest.due_date ?? today, oldest.due_date_status, today)
+      orange.push({
+        siteId,
+        tier: 'orange',
+        what: `${a.toVerify.length} action${a.toVerify.length > 1 ? 's' : ''} à vérifier`,
+        where,
+        why: info.reason,
+        href: `/sites/${siteId}/actions`,
+        organizationId,
+        signal: {
+          category: 'question', trigger: { type: 'question', reason: 'question_unanswered' }, actionability: 'investigate', origin: 'rules',
+          dedupeKey: `action-to-verify:${siteId}:${oldest.id}`,
+          sources: [{ type: 'action', id: oldest.id, href: `/sites/${siteId}/actions`, label: oldest.title }],
+        },
+      })
+    }
+
     // Réserves ouvertes → 🔴 si la plus ancienne ≥ 30 j, sinon 🟠.
+    //
+    // On compare des ÂGES, pas des chaînes : `issued_on` est une `date`
+    // (`YYYY-MM-DD`) et `created_at` un `timestamptz`. Un `<` lexicographique sur
+    // un mélange des deux formats classerait au hasard.
     if (a.reserves.length > 0) {
       flagged.add(siteId)
-      const oldest = a.reserves.reduce((o, x) => (x.created_at < o.created_at ? x : o))
-      const age = ageDays(oldest.created_at)
+      const oldest = a.reserves
+        .map((r) => { const s = reserveOpenSince(r); return { ...s, age: ageDays(s.at) } })
+        .reduce((o, x) => (x.age > o.age ? x : o))
+      const age = oldest.age
       const item: AttentionItem = {
         siteId,
         tier: age >= 30 ? 'red' : 'orange',
         what: `${a.reserves.length} réserve${a.reserves.length > 1 ? 's' : ''} ouverte${a.reserves.length > 1 ? 's' : ''}`,
         where,
-        why: `la plus ancienne depuis ${age} j`,
+        // Quand la date d'émission manque, on le DIT : « enregistrée » n'est pas
+        // « émise », et le lecteur doit pouvoir faire la différence.
+        why: oldest.kind === 'issued'
+          ? `la plus ancienne émise il y a ${age} j`
+          : `la plus ancienne enregistrée il y a ${age} j (date d'émission inconnue)`,
         href: `/sites/${siteId}/reserves`,
         organizationId,
         signal: {
           category: 'fragility', trigger: { type: 'open_reserve', reason: 'object_aging' }, actionability: 'investigate', origin: 'rules',
-          dedupeKey: `open-reserve:${siteId}:${oldest.created_at}`,
+          dedupeKey: `open-reserve:${siteId}:${oldest.at}`,
           sources: [{ type: 'reserve', id: siteId, href: `/sites/${siteId}/reserves`, label: 'Réserve ouverte' }],
         },
       }

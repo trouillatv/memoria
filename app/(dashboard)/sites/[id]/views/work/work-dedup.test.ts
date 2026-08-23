@@ -48,6 +48,7 @@ function makeAction(overrides: Partial<SiteActionRow> & { id: string }): SiteAct
     kind: 'one_shot',
     created_at: '2026-08-02T10:00:00Z',
     due_date: null,
+    due_date_status: null,
     report_id: null,
     converted_to_type: null,
     converted_to_id: null,

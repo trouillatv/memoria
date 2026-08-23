@@ -173,6 +173,12 @@ export interface SiteActionRow {
   kind: 'one_shot' | 'deadline' | 'recurring_until_done'
   created_at: string
   due_date: string | null
+  /** Migration 121 — `explicit` = date dite en réunion ; `estimated` = date
+   *  relative résolue par l'IA (« à confirmer ») ; null = aucune preuve.
+   *  Sans ce champ, une surface qui lit `due_date` seul ne peut PAS savoir si
+   *  « en retard » est un fait ou une déduction : elle affirme alors les deux
+   *  de la même façon. Il est porté jusqu'ici pour `describeOverdueAction()`. */
+  due_date_status: 'explicit' | 'estimated' | null
   report_id: string | null
   converted_to_type: string | null
   converted_to_id: string | null
@@ -258,6 +264,7 @@ export async function listOpenSiteActions(opts?: {
       kind: a.kind,
       created_at: a.created_at,
       due_date: a.due_date,
+      due_date_status: a.due_date_status ?? null,
       report_id: a.report_id,
       converted_to_type: a.converted_to_type,
       converted_to_id: a.converted_to_id,
@@ -313,6 +320,7 @@ export async function listOpenSiteActionsByReports(reportIds: string[]): Promise
       kind: a.kind,
       created_at: a.created_at,
       due_date: a.due_date,
+      due_date_status: a.due_date_status ?? null,
       report_id: a.report_id,
       converted_to_type: a.converted_to_type,
       converted_to_id: a.converted_to_id,
