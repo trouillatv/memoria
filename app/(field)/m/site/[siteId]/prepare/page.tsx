@@ -14,6 +14,7 @@ import { DeltaBlock, VisitBriefClient } from './VisitBriefClient'
 import type { PrepItemSeed } from './VisitBriefClient'
 import { CopilotMobileSheet } from '../CopilotMobileSheet'
 import { VisitBriefingBlock } from './VisitBriefingBlock'
+import { OverdueDeadlinesSection } from './OverdueDeadlinesSection'
 
 /**
  * « Préparer ma visite » — le brief décisionnel avant d'aller sur le chantier.
@@ -87,10 +88,13 @@ export default async function PrepareVisitPage({
       {/* 0 — Briefing intelligent avant terrain */}
       {briefing && <VisitBriefingBlock briefing={briefing} siteId={siteId} />}
 
-      {/* 1 — État rapide du chantier */}
+      {/* 1 — Confrontation échéances ↔ terrain */}
+      <OverdueDeadlinesSection siteId={siteId} />
+
+      {/* 2 — État rapide du chantier */}
       <SiteStatusCard cells={status} />
 
-      {/* 2 — Depuis le dernier PV */}
+      {/* 3 — Depuis le dernier PV */}
       {overview.pvLastDelta && (
         <DeltaBlock delta={overview.pvLastDelta} />
       )}
