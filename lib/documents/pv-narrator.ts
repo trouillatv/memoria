@@ -217,7 +217,7 @@ export async function generateSiteHistoryNarrative(siteId: string): Promise<Site
       } else if (!toProp) {
         t = 'non_mentionné'
       } else {
-        t = computeHistoryTransition(toProp.proposal_family, fromProp.document_status, toProp.document_status, false)
+        t = computeHistoryTransition(toProp.proposal_family, null, fromProp.document_status, toProp.document_status, false)
       }
 
       items.push({

@@ -16,9 +16,9 @@ import 'server-only'
 
 // ── Constantes partagées ─────────────────────────────────────────────────────
 
-/** Priorité décroissante : 0 = plus sévère. */
+/** Priorité décroissante : 0 = plus sévère. unknown = rang maximal (signal absent). */
 export const STATUS_RANK: Record<string, number> = {
-  non_compliant: 0, open: 1, awaiting_validation: 2, in_progress: 3, planned: 4, done: 5, cancelled: 5, informational: 6,
+  non_compliant: 0, open: 1, awaiting_validation: 2, in_progress: 3, planned: 4, done: 5, cancelled: 5, informational: 6, unknown: 99,
 }
 
 /** Familles exclues de tous les compteurs de transition opérationnels. */
@@ -92,7 +92,7 @@ export function computeCanonicalTransition(
   const isDone = (s: string) => s === 'done' || s === 'informational'
 
   if (!isDone(fromStatus) && isDone(toStatus)) return 'resolved'
-  if (isDone(fromStatus) && !isDone(toStatus)) return 'reopened'
+  if (isDone(fromStatus) && !isDone(toStatus) && toStatus !== 'unknown') return 'reopened'
 
   if (
     (fromStatus === 'open' || fromStatus === 'in_progress' || fromStatus === 'planned') &&
@@ -129,7 +129,7 @@ function aggregateByCanonical(
 ) {
   const csId  = threadToCs.get(row.subject_thread_id)
   if (!csId) return
-  const status = row.document_status ?? 'open'
+  const status = row.document_status ?? 'unknown'
   const cur    = map.get(csId)
   if (!cur) {
     map.set(csId, {

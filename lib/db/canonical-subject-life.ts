@@ -9,6 +9,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { canonicalRunsForSite, runEffectiveDate, computeHistoryTransition } from '@/lib/documents/pv-history'
+import { documentStatusToPvState } from '@/lib/documents/subject-state'
 import type { HistoryTransition } from '@/lib/documents/pv-history'
 import type { SubjectLinkType, SubjectLinkStatus, SubjectLinkSource } from '@/lib/db/subject-thread-links'
 import { isOperationalSubject } from '@/lib/subjects/kind'
@@ -382,6 +383,7 @@ export async function getCanonicalSubjectLife(
   const occurrences: SubjectOccurrenceMerged[] = []
   let prevProp: ProposalRow | null = null
   let gapSinceLastOccurrence = false
+  let prevResolvedState: boolean | null = null  // dernier état non-unknown avant ce PV
 
   for (const run of relevantRuns) {
     const runProps = propsByRun.get(run.id) ?? []
@@ -425,6 +427,7 @@ export async function getCanonicalSubjectLife(
         ? null
         : computeHistoryTransition(
             primary.proposal_family,
+            prevResolvedState,
             prevProp?.document_status ?? null,
             primary.document_status,
             gapSinceLastOccurrence,
@@ -452,6 +455,10 @@ export async function getCanonicalSubjectLife(
         resolvedLabel: null,
       })
       prevProp = primary
+      // Mettre à jour prevResolvedState ; unknown ne réinitialise pas l'état antérieur
+      const pvState = documentStatusToPvState(primary.document_status ?? null)
+      if (pvState === 'resolved') prevResolvedState = true
+      else if (pvState === 'open') prevResolvedState = false
       gapSinceLastOccurrence = false
     }
   }

@@ -16,6 +16,7 @@ import 'server-only'
 //   - Absence ≠ résolution. Le moteur observe, ne déduit pas.
 
 import type { DeltaTransition } from './pv-comparison'
+import { documentStatusToPvState } from './subject-state'
 
 export type HistoryTransition = DeltaTransition | 'réapparu'
 
@@ -73,21 +74,32 @@ type PropRow = {
 
 /**
  * Calcule la transition d'état entre deux occurrences successives du même sujet.
- * Contrairement à computeTransition (Lot 2), cette version connaît le contexte historique :
- *   hasGap = true → le sujet a disparu puis réapparu → 'réapparu'
+ *
+ * prevResolved : dernier état de résolution connu (hors unknown) avant ce PV.
+ *   null = aucun signal fiable antérieur.
+ *   Permet le D1 fix : resolved → gap → open = réouvert (jamais réapparu).
  */
 export function computeHistoryTransition(
   family: string,
+  prevResolved: boolean | null,
   fromStatus: string | null,
   toStatus: string | null,
   hasGap: boolean,
 ): HistoryTransition {
-  if (hasGap) return 'réapparu'
+  if (hasGap) {
+    // Le signal actuel prime sur le gap (réalisé > réouvert > réapparu)
+    if (toStatus === 'cancelled') return 'annulé'
+    if (toStatus === 'done') return OBSERVATION_FAMILIES.has(family) ? 'levé' : 'réalisé'
+    if (prevResolved === true) return 'réouvert'  // D1 : résolu avant gap + retour actif
+    return 'réapparu'
+  }
   if (toStatus === 'cancelled') return 'annulé'
   if (toStatus === 'done' && fromStatus !== 'done') {
     return OBSERVATION_FAMILIES.has(family) ? 'levé' : 'réalisé'
   }
   if (fromStatus === 'done' && toStatus !== null && toStatus !== 'done' && toStatus !== 'cancelled') return 'réouvert'
+  // D1 sans gap : done → unknown → open (prevResolved=true, fromStatus=null/unknown)
+  if (prevResolved === true && toStatus === 'open') return 'réouvert'
   if ((fromStatus === 'open' || fromStatus === 'in_progress') && toStatus === 'non_compliant') return 'aggravé'
   if (fromStatus === 'planned' && (toStatus === 'in_progress' || toStatus === 'open')) return 'progressé'
   if (fromStatus === toStatus) return 'maintenu'
@@ -224,6 +236,7 @@ export async function getSubjectTimeline(subjectThreadId: string): Promise<Subje
   const occurrences: SubjectOccurrence[] = []
   let prevProp: PropRow | null = null
   let gapSinceLastOccurrence = false
+  let prevResolvedState: boolean | null = null  // dernier état non-unknown avant ce PV
 
   for (const run of relevantRuns) {
     const prop = propByRun.get(run.id) ?? null
@@ -249,6 +262,7 @@ export async function getSubjectTimeline(subjectThreadId: string): Promise<Subje
         ? null
         : computeHistoryTransition(
             prop.proposal_family,
+            prevResolvedState,
             prevProp?.document_status ?? null,
             prop.document_status,
             gapSinceLastOccurrence,
@@ -268,6 +282,10 @@ export async function getSubjectTimeline(subjectThreadId: string): Promise<Subje
         isGap: false,
       })
       prevProp = prop
+      // Mettre à jour prevResolvedState ; unknown ne réinitialise pas l'état antérieur
+      const pvState = documentStatusToPvState(prop.document_status)
+      if (pvState === 'resolved') prevResolvedState = true
+      else if (pvState === 'open') prevResolvedState = false
       gapSinceLastOccurrence = false
     }
   }
@@ -345,7 +363,9 @@ export async function getSiteHistoricalTimeline(siteId: string): Promise<SiteHis
         t = 'non_mentionné'
       } else {
         // Runs consécutifs → hasGap = false (les gaps ne s'appliquent qu'à la chronologie par sujet)
-        t = computeHistoryTransition(toProp.proposal_family, fromProp.document_status, toProp.document_status, false)
+        const fromPvState = documentStatusToPvState(fromProp.document_status)
+        const fromResolved = fromPvState === 'resolved' ? true : fromPvState === 'open' ? false : null
+        t = computeHistoryTransition(toProp.proposal_family, fromResolved, fromProp.document_status, toProp.document_status, false)
       }
       counts[t] = (counts[t] ?? 0) + 1
     }
@@ -442,6 +462,7 @@ export async function getSiteSubjectMatrix(siteId: string): Promise<SiteSubjectM
     let prevProp: MatrixPropRow | null = null
     let firstRunIndex = -1
     let gapSinceLastOccurrence = false
+    let prevResolvedState: boolean | null = null  // dernier état non-unknown avant ce PV
 
     // Find first run index for this thread
     for (let i = 0; i < runs.length; i++) {
@@ -467,6 +488,7 @@ export async function getSiteSubjectMatrix(siteId: string): Promise<SiteSubjectM
           ? null
           : computeHistoryTransition(
               prop.proposal_family,
+              prevResolvedState,
               prevProp?.document_status ?? null,
               prop.document_status,
               gapSinceLastOccurrence,
@@ -479,6 +501,10 @@ export async function getSiteSubjectMatrix(siteId: string): Promise<SiteSubjectM
           label: prop.label,
         })
         prevProp = prop
+        // Mettre à jour prevResolvedState ; unknown ne réinitialise pas l'état antérieur
+        const pvState = documentStatusToPvState(prop.document_status)
+        if (pvState === 'resolved') prevResolvedState = true
+        else if (pvState === 'open') prevResolvedState = false
         gapSinceLastOccurrence = false
       }
     }

@@ -80,36 +80,53 @@ function makePropsInChain(data: unknown) {
 // ─── Section 1 : computeHistoryTransition ─────────────────────────────────────
 
 describe('computeHistoryTransition', () => {
-  it('1. hasGap=true → réapparu (peu importe les statuts)', () => {
-    expect(computeHistoryTransition('observation', 'open', 'open', true)).toBe<HistoryTransition>('réapparu')
+  it('1. hasGap=true, open→open, sans résolution antérieure → réapparu', () => {
+    expect(computeHistoryTransition('observation', false, 'open', 'open', true)).toBe<HistoryTransition>('réapparu')
   })
 
-  it('2. hasGap=true, même avec done → toujours réapparu (pas réalisé)', () => {
-    expect(computeHistoryTransition('action', 'planned', 'done', true)).toBe<HistoryTransition>('réapparu')
+  it('2. hasGap=true, planned→done → réalisé (toStatus prime sur gap)', () => {
+    expect(computeHistoryTransition('action', false, 'planned', 'done', true)).toBe<HistoryTransition>('réalisé')
   })
 
   it('3. open → done, observation → levé', () => {
-    expect(computeHistoryTransition('observation', 'open', 'done', false)).toBe<HistoryTransition>('levé')
+    expect(computeHistoryTransition('observation', false, 'open', 'done', false)).toBe<HistoryTransition>('levé')
   })
 
   it('4. planned → done, action → réalisé', () => {
-    expect(computeHistoryTransition('action', 'planned', 'done', false)).toBe<HistoryTransition>('réalisé')
+    expect(computeHistoryTransition('action', false, 'planned', 'done', false)).toBe<HistoryTransition>('réalisé')
   })
 
   it('5. done → in_progress → réouvert', () => {
-    expect(computeHistoryTransition('observation', 'done', 'in_progress', false)).toBe<HistoryTransition>('réouvert')
+    expect(computeHistoryTransition('observation', true, 'done', 'in_progress', false)).toBe<HistoryTransition>('réouvert')
   })
 
   it('6. open → non_compliant → aggravé', () => {
-    expect(computeHistoryTransition('reservation', 'open', 'non_compliant', false)).toBe<HistoryTransition>('aggravé')
+    expect(computeHistoryTransition('reservation', false, 'open', 'non_compliant', false)).toBe<HistoryTransition>('aggravé')
   })
 
   it('7. planned → in_progress → progressé', () => {
-    expect(computeHistoryTransition('action', 'planned', 'in_progress', false)).toBe<HistoryTransition>('progressé')
+    expect(computeHistoryTransition('action', false, 'planned', 'in_progress', false)).toBe<HistoryTransition>('progressé')
   })
 
   it('8. open → open → maintenu', () => {
-    expect(computeHistoryTransition('observation', 'open', 'open', false)).toBe<HistoryTransition>('maintenu')
+    expect(computeHistoryTransition('observation', false, 'open', 'open', false)).toBe<HistoryTransition>('maintenu')
+  })
+
+  // D1 fix : resolved → gap → open = réouvert (jamais réapparu)
+  it('D1. hasGap=true, prevResolved=true, done→open → réouvert (correction D1)', () => {
+    expect(computeHistoryTransition('action', true, 'done', 'open', true)).toBe<HistoryTransition>('réouvert')
+  })
+
+  it('D1. hasGap=true, prevResolved=true, null→open (via unknown intermédiaire) → réouvert', () => {
+    expect(computeHistoryTransition('action', true, null, 'open', true)).toBe<HistoryTransition>('réouvert')
+  })
+
+  it('D1 sans gap. prevResolved=true, null→open → réouvert', () => {
+    expect(computeHistoryTransition('action', true, null, 'open', false)).toBe<HistoryTransition>('réouvert')
+  })
+
+  it('hasGap=true, prevResolved=null, open→unknown → réapparu (pas de résolution antérieure)', () => {
+    expect(computeHistoryTransition('action', null, null, null, true)).toBe<HistoryTransition>('réapparu')
   })
 })
 
