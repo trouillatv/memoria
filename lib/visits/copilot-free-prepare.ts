@@ -54,6 +54,7 @@ import { extractQuestionSubjectPhrase } from '@/lib/visits/copilot-classify'
 import { getCanonicalSubjectLifeForSite, getCanonicalSubjectLabelsByIds } from '@/lib/db/canonical-subject-life'
 import { buildSubjectDetailForCopilot } from '@/lib/visits/copilot-subject-context'
 import type { FreeAnswer, FreeAnswerContext, HistoryMessage, RecentChangeContext } from '@/lib/visits/copilot-free-answer'
+import { buildSiteActivityReadModel } from '@/lib/knowledge/site-activity-read-model'
 import { buildVisitPlan } from '@/lib/visits/visit-plan-builder'
 import { buildVisitBriefing } from '@/lib/knowledge/visit-briefing'
 import { getSiteActorContext } from '@/lib/db/site-actor-responsibilities'
@@ -1984,6 +1985,35 @@ export async function prepareCopilotAnswer(
       plusProcheDuSeuil: briefing.stagnation.closest
         ? { titre: briefing.stagnation.closest.title, jours: briefing.stagnation.closest.days }
         : null,
+    }
+  }
+
+  // D10 — activités parallèles réelles : « qu'est-ce qui est en cours ? »
+  // Chargé pour les questions de synthèse / timeline. Read-model déterministe
+  // (débriefs terrain + objets ouverts) : le LLM énonce, ne recalcule pas, et
+  // ne fabrique jamais une phase unique. Signalement « à reconfirmer » seulement.
+  if (isGlobal || isTimeline) {
+    const activity = await buildSiteActivityReadModel(siteId, {
+      sinceLastVenueAt: briefing?.delta?.since ?? null,
+    }).catch(() => null)
+    if (activity && (
+      activity.interventionStarted !== null
+      || activity.activitiesInProgress.length > 0
+      || activity.toReconfirm.length > 0
+    )) {
+      extra.activites = {
+        interventionCommencee: activity.interventionStarted,
+        jourIntervention: activity.dayIndex,
+        enCours: activity.activitiesInProgress.map((a) => ({
+          activite: a.label, depuis: a.proofDate, etat: a.status,
+        })),
+        demarreesRecemment: activity.activitiesStartedRecently.map((a) => ({
+          activite: a.label, depuis: a.proofDate,
+        })),
+        aReconfirmer: activity.toReconfirm.map((o) => ({
+          titre: o.title, ouvertDepuisJours: o.ageDays,
+        })),
+      }
     }
   }
 

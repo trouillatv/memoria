@@ -179,6 +179,20 @@ export interface StagnationContext {
   plusProcheDuSeuil: { titre: string; jours: number } | null
 }
 
+/**
+ * D10 — activités parallèles réellement en cours sur le chantier.
+ * Projection de lecture (read-model D10) : le LLM ÉNONCE ces activités et leurs
+ * preuves, il ne les recalcule pas et n'invente JAMAIS une phase globale unique.
+ * `aReconfirmer` est un signalement — jamais une clôture.
+ */
+export interface ActivitesContext {
+  interventionCommencee: boolean | null
+  jourIntervention: number | null
+  enCours: Array<{ activite: string; depuis: string; etat: 'in_progress' | 'started' | 'mentioned' }>
+  demarreesRecemment: Array<{ activite: string; depuis: string }>
+  aReconfirmer: Array<{ titre: string; ouvertDepuisJours: number }>
+}
+
 export interface FreeAnswerContext {
   actorContext?: ActorContext[]
   recentChanges?: RecentChangeContext[]
@@ -191,6 +205,12 @@ export interface FreeAnswerContext {
   visitDelta?: VisitDeltaContext
   actionsSummary?: ActionsSummaryContext
   stagnation?: StagnationContext
+  /**
+   * D10 — activités parallèles datées (« qu'est-ce qui est réellement en cours ? »).
+   * Présent pour les questions de synthèse/timeline. Absence n'autorise aucun « rien
+   * en cours » : elle signifie seulement que le read-model n'a pas été chargé ce tour.
+   */
+  activites?: ActivitesContext
   /**
    * `answerCopilotFreeQuestion` n'est jamais atteint après une écriture réelle
    * (le routeur retourne tôt pour tout intent != READ) : `mutationStatus` vaut
@@ -280,6 +300,7 @@ function prepareFreeAnswerRequest(
       ...(extra?.visitDelta ? { depuis_derniere_visite: extra.visitDelta } : {}),
       ...(extra?.actionsSummary ? { compteurs_actions: extra.actionsSummary } : {}),
       ...(extra?.stagnation ? { stagnation: extra.stagnation } : {}),
+      ...(extra?.activites ? { activites_en_cours: extra.activites } : {}),
       // Plan de visite : distinguer plan humain vs suggestions IA
       // visitPlanDetail est toujours défini pour intent plan_visite (même vide → LLM sait que le plan est vide)
       ...('visitPlanDetail' in (extra ?? {})

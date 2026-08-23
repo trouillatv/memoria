@@ -62,6 +62,7 @@ import {
   type PreparationFreshness,
   type VisitPreparationActivityStatus,
 } from '@/lib/knowledge/visit-preparation'
+import { buildSiteActivityReadModel, type SiteActivityReadModel } from '@/lib/knowledge/site-activity-read-model'
 
 const IdSchema = z.string().uuid()
 
@@ -283,6 +284,8 @@ export interface SiteBrief {
   atRiskOfForgetting: SiteBriefFactLine[]
   unknowns: SiteBriefFactLine[]
   openActivityItems: SiteBriefOpenActivity[]
+  /** D10 — activités parallèles réelles (read-model, projection de lecture). */
+  activityReadModel: SiteActivityReadModel
 }
 
 export type SiteBriefResult =
@@ -874,6 +877,20 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       }))),
   ].slice(0, 5)
 
+  // D10 — read-model d'activités parallèles. Projection de lecture pure :
+  // lit les débriefs terrain récents et les objets ouverts déjà chargés côté DB.
+  // Réutilise `sinceLastVenue` comme référence « depuis la dernière venue ».
+  const activityReadModel = await buildSiteActivityReadModel(siteId, {
+    sinceLastVenueAt: sinceLastVenue?.at ?? null,
+  }).catch(() => ({
+    interventionStarted: null,
+    dayIndex: null,
+    activitiesInProgress: [],
+    activitiesStartedRecently: [],
+    stillOpen: [],
+    toReconfirm: [],
+  } satisfies SiteActivityReadModel))
+
   return {
     ok: true,
     brief: {
@@ -931,6 +948,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       atRiskOfForgetting,
       unknowns,
       openActivityItems,
+      activityReadModel,
     },
   }
 }

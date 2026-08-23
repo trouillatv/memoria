@@ -87,6 +87,18 @@ function formatDate(iso: string | null): string | null {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
 }
 
+// Pour les dates YYYY-MM-DD du read-model — midday UTC évite le décalage de minuit.
+function formatDay(isoDay: string | null | undefined): string | null {
+  if (!isoDay) return null
+  const d = new Date(isoDay + 'T12:00:00Z')
+  if (Number.isNaN(d.getTime())) return null
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+}
+
+function ordinalDay(n: number): string {
+  return n === 1 ? '1er' : `${n}e`
+}
+
 function ageDaysLabel(iso: string | null): string | null {
   if (!iso) return null
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
@@ -510,6 +522,7 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
     completedSinceVenue,
     atRiskOfForgetting,
     unknowns,
+    activityReadModel,
   } = brief
 
   const nextLabel = formatDate(situation.nextScheduledAt)
@@ -858,6 +871,38 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
           </p>
           <FactLines items={changedSinceVenue} empty="Aucun changement enregistré depuis cette venue." />
       </section>
+
+      {/* D10 — Modèle B : activités parallèles constatées. Jamais une phase unique.
+          Ne s'affiche que si le read-model a détecté une intervention ou des activités.
+          OCEF (interventionStarted=null, activitiesInProgress=[]) → bloc absent. */}
+      {(activityReadModel.interventionStarted === true || activityReadModel.activitiesInProgress.length > 0) && (
+        <section className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3.5 space-y-2.5">
+          <SectionTitle icon={<Hammer className="h-3.5 w-3.5 text-emerald-700" />}>Activités constatées récemment</SectionTitle>
+          {activityReadModel.interventionStarted && (
+            <p className="text-[11px] font-medium text-emerald-700">
+              {activityReadModel.dayIndex
+                ? `${ordinalDay(activityReadModel.dayIndex)} jour d’intervention constaté`
+                : 'Intervention en cours'}
+            </p>
+          )}
+          {activityReadModel.activitiesInProgress.length > 0 && (
+            <ul className="space-y-2">
+              {activityReadModel.activitiesInProgress.map((item, i) => (
+                <li key={i} className="flex items-start justify-between gap-3 text-sm leading-snug">
+                  <span className="min-w-0">{item.label}</span>
+                  <span className="shrink-0 whitespace-nowrap text-[11px] text-emerald-700">
+                    {item.status === 'in_progress' ? 'en cours' : 'démarré'}
+                    {formatDay(item.proofDate) ? ` · ${formatDay(item.proofDate)}` : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="text-[11px] text-muted-foreground/80">
+            État à la date de la dernière visite — non mis à jour automatiquement.
+          </p>
+        </section>
+      )}
 
       {coherenceInsights.length > 0 && (
         <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-3.5 space-y-2.5">
