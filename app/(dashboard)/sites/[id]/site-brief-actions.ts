@@ -806,9 +806,21 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       status: narrative.status === 'validated' ? 'unconfirmed' as const : 'in_progress' as const,
     })))
 
+  // Actions clôturées depuis la dernière venue — titres nommés pour completedSinceVenue.
+  // doneActionRows est déjà chargé ; aucune requête supplémentaire.
+  const doneActionsSinceVenue = sinceLastVenue
+    ? doneActionRows
+        .filter((a) => a.done_at && a.done_at > sinceLastVenue.at)
+        .sort((x, y) => (x.done_at! < y.done_at! ? 1 : -1))
+        .slice(0, 3)
+    : []
+  const doneActionsSinceVenueTotal = sinceLastVenue?.actionsDone ?? 0
+  const doneActionsRemainder = Math.max(0, doneActionsSinceVenueTotal - doneActionsSinceVenue.length)
+
+  // Doctrine placement unique : le détail nommé va dans completedSinceVenue,
+  // le compteur « N actions terminées » est retiré ici pour éviter le doublon.
   const changedSinceVenue: SiteBriefFactLine[] = [
     ...changedActivityFacts,
-    ...(sinceLastVenue?.actionsDone ? [{ text: `${sinceLastVenue.actionsDone} action${sinceLastVenue.actionsDone > 1 ? 's' : ''} terminée${sinceLastVenue.actionsDone > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/travail`, status: 'validated' as const }] : []),
     ...(sinceLastVenue?.newReserves ? [{ text: `${sinceLastVenue.newReserves} nouvelle${sinceLastVenue.newReserves > 1 ? 's' : ''} réserve${sinceLastVenue.newReserves > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' as const }] : []),
     ...(sinceLastVenue?.liftedReserves ? [{ text: `${sinceLastVenue.liftedReserves} réserve${sinceLastVenue.liftedReserves > 1 ? 's' : ''} levée${sinceLastVenue.liftedReserves > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' as const }] : []),
     ...(sinceLastVenue?.meetings ? [{ text: `${sinceLastVenue.meetings} réunion${sinceLastVenue.meetings > 1 ? 's' : ''} depuis votre venue`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const }] : []),
@@ -816,12 +828,31 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
   ]
 
   const completedSinceVenue: SiteBriefFactLine[] = [
-    ...(sinceLastVenue?.actionsDone ? [{ text: `${sinceLastVenue.actionsDone} action${sinceLastVenue.actionsDone > 1 ? 's' : ''} terminée${sinceLastVenue.actionsDone > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/travail`, status: 'validated' as const }] : []),
+    // Actions nommées — un compteur seul n'est jamais la seule information disponible.
+    ...doneActionsSinceVenue.map((a) => ({ text: a.title, sourceType: 'action' as const, sourceId: a.id, sourceHref: `/sites/${siteId}/travail`, status: 'validated' as const })),
+    ...(doneActionsRemainder > 0 ? [{ text: `+${doneActionsRemainder} autre${doneActionsRemainder > 1 ? 's' : ''} action${doneActionsRemainder > 1 ? 's' : ''} clôturée${doneActionsRemainder > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/travail`, status: 'validated' as const }] : []),
     ...(sinceLastVenue?.liftedReserves ? [{ text: `${sinceLastVenue.liftedReserves} réserve${sinceLastVenue.liftedReserves > 1 ? 's' : ''} levée${sinceLastVenue.liftedReserves > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' as const }] : []),
   ]
 
+  // Signal "à revalider" : activité terrain récente depuis la dernière venue,
+  // mais l'action ancienne n'a pas été clôturée → l'état réel est incertain.
+  // Pas de fermeture auto : status='interpretation' est une nuance d'affichage,
+  // jamais une transition d'état sur l'objet métier.
+  const hasRecentTerrainActivity = changedActivityFacts.length > 0
+  const REVALIDATION_AGE_DAYS = 21
   const atRiskOfForgetting: SiteBriefFactLine[] = [
-    ...vigilance.filter((item) => item.overdue || item.ageDays >= 7).slice(0, 3).map((item) => ({ text: `${item.title} — ouverte depuis ${item.ageDays} j`, sourceType: 'action' as const, sourceId: item.id, sourceHref: `/sites/${siteId}?action=${item.id}`, status: 'validated' as const })),
+    ...vigilance.filter((item) => item.overdue || item.ageDays >= 7).slice(0, 3).map((item) => {
+      const needsRevalidation = hasRecentTerrainActivity && item.ageDays >= REVALIDATION_AGE_DAYS
+      return {
+        text: needsRevalidation
+          ? `${item.title} — ouverte depuis ${item.ageDays} j, activité terrain récente, à reconfirmer sur site`
+          : `${item.title} — ouverte depuis ${item.ageDays} j`,
+        sourceType: 'action' as const,
+        sourceId: item.id,
+        sourceHref: `/sites/${siteId}?action=${item.id}`,
+        status: (needsRevalidation ? 'interpretation' : 'validated') as 'interpretation' | 'validated',
+      }
+    }),
     ...openActionRows.filter((action) => !vigilance.some((item) => item.id === action.id)).slice(0, 3).map((action) => ({ text: `${action.title} — ouverte depuis ${Math.max(0, Math.floor((now - new Date(action.created_at).getTime()) / 86_400_000))} j`, sourceType: 'action' as const, sourceId: action.id, sourceHref: `/sites/${siteId}?action=${action.id}`, status: 'validated' as const })),
     ...deadlineItems.filter((item) => item.status === 'to_plan').slice(0, 2).map((item) => ({ text: `${item.title} — encore à planifier`, sourceType: 'deadline' as const, sourceId: item.id, sourceHref: `/sites/${siteId}/planning`, status: 'validated' as const })),
   ].slice(0, 5)

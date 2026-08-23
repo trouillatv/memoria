@@ -367,10 +367,12 @@ export function resolveQuantitativeVerdict(input: {
     || isSubjectsOpenQuestion
   if (!isCountingFamily) return null
 
+  // isSubjectsOpenQuestion prime sur la famille inférée : un mot explicitement
+  // présent dans la question (« ouverts ») l'emporte sur le tag LLM (« stale »).
   const key: keyof QuantitativeMeasures | null =
-    input.primaryIntent === 'stagnation'
-      ? 'subjectsStagnant'
-      : QUANTITATIVE_TOPICS.find((t) => t.match.test(input.question))?.key ?? null
+    isSubjectsOpenQuestion ? 'subjectsOpen'
+    : input.primaryIntent === 'stagnation' ? 'subjectsStagnant'
+    : QUANTITATIVE_TOPICS.find((t) => t.match.test(input.question))?.key ?? null
   if (!key) return null
 
   if (input.overviewLoadFailed) {

@@ -570,13 +570,19 @@ const VISIT_PREP_REQUEST_RE = new RegExp([
   // « prépare-moi ma visite », « fais-moi les points de contrôle »
   String.raw`\b${PLAN_GEN_VERB}\s+${PLAN_FILLER}${PLAN_OBJECT}\b`,
   // « qu'est-ce que je dois vérifier », « que dois-je regarder en priorité »
-  String.raw`\b(?:je\s+dois|dois\s+je)\s+(?:\w+\s+){0,2}?${CHECK_VERB}`,
+  // {0,3} (au lieu de {0,2}) : tolère un adverbe intercalé par le STT (ex. « absolument »).
+  String.raw`\b(?:je\s+dois|dois\s+je)\s+(?:\w+\s+){0,3}?${CHECK_VERB}`,
   // « je vérifie quoi ? »
   String.raw`\bje\s+${CHECK_VERB}\s+quoi\b`,
   // « que vérifier sur place ? »
   String.raw`\b(?:quoi|que)\s+${CHECK_VERB}`,
   // « à quoi faire attention ? », « sur quoi me concentrer ? »
   String.raw`\b(?:a|sur)\s+quoi\s+(?:\w+\s+){0,3}?(?:attention|concentrer|focaliser)`,
+  // Oral sans interrogatif : « (absolument) vérifier à ma/votre prochaine visite »
+  // Couverture STT : le « dois-je » peut être absent dans la transcription vocale.
+  // Forme serrée : CHECK_VERB suivi DIRECTEMENT de « a » sans objet intercalé,
+  // pour ne pas capturer « vérifier R4 lors de la prochaine visite » (ADD_VISIT_ITEM).
+  String.raw`\b${CHECK_VERB}\s+a\s+(?:ma|notre|votre|la)\s+prochaine\s+visite\b`,
 ].join('|'))
 
 /**

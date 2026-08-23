@@ -573,6 +573,20 @@ describe('resolveQuantitativeVerdict — ne jamais affirmer "aucune" à tort', (
       measures: { subjectsStagnant: 2 }, overviewLoadFailed: false,
     })).toBeNull()
   })
+
+  // R1 — recette PETRO 2026-08-23 : « sujets encore ouverts » routé en stagnation
+  // mais doit utiliser le canal subjectsOpen (mot explicite prime sur famille inférée).
+  it('« sujets encore ouverts » → subjectsOpen prime sur stagnation', () => {
+    const v = resolveQuantitativeVerdict({
+      question: 'Quels sont les sujets encore ouverts sur ce chantier ?',
+      primaryIntent: 'stagnation',
+      measures: { subjectsStagnant: 0, subjectsOpen: 0 }, overviewLoadFailed: false,
+      stagnationClosest: { title: 'Couche de forme', days: 24 },
+    })
+    expect(v?.kind).toBe('confirmed_zero')
+    expect(v?.text).toContain('prouvé ouvert')
+    expect(v?.text).not.toContain('seuil de stagnation')
+  })
 })
 
 // ── 4bis. Stagnation ≠ retard d'action ────────────────────────────────────────
