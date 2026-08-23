@@ -9,7 +9,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { canonicalRunsForSite, runEffectiveDate, computeHistoryTransition } from '@/lib/documents/pv-history'
-import { documentStatusToPvState } from '@/lib/documents/subject-state'
+import { documentStatusToPvState, visitStatusToPvState, computeLmcaFromOccurrences, type LmcaOccurrence } from '@/lib/documents/subject-state'
 import type { HistoryTransition } from '@/lib/documents/pv-history'
 import type { SubjectLinkType, SubjectLinkStatus, SubjectLinkSource } from '@/lib/db/subject-thread-links'
 import { isOperationalSubject } from '@/lib/subjects/kind'
@@ -639,22 +639,16 @@ export async function getCanonicalSubjectLife(
     matSigByRun.set(runId, items.sort().join(';'))
   }
 
-  let lastMeaningfulChangeAt: string | null = null
-  let lastKnownSig: string | null = null
-  let consecutiveMentionsWithoutChange = 0
-  for (let i = 0; i < realOccurrences.length; i++) {
-    const occ = realOccurrences[i]
-    const statusPart = occ.visitStatus ?? occ.documentStatus ?? ''
-    const matPart = occ.runId ? (matSigByRun.get(occ.runId) ?? '') : ''
-    const sig = `${statusPart}|${matPart}`
-    if (i === 0 || sig !== lastKnownSig) {
-      lastMeaningfulChangeAt = occ.effectiveDate
-      lastKnownSig = sig
-      consecutiveMentionsWithoutChange = 0
-    } else {
-      consecutiveMentionsWithoutChange++
-    }
-  }
+  // LMCA P1-4A — moteur tri-state unifié (remplace signature brute V1B)
+  const lmcaOccsA: LmcaOccurrence[] = realOccurrences.map((occ) => ({
+    effectiveDate: occ.effectiveDate,
+    pvState: occ.visitStatus !== null
+      ? visitStatusToPvState(occ.visitStatus)
+      : documentStatusToPvState(occ.documentStatus),
+    objectSig: occ.runId ? (matSigByRun.get(occ.runId) ?? '') : '',
+  }))
+  const { lastMeaningfulChangeAt, consecutiveMentionsWithoutChange } = computeLmcaFromOccurrences(lmcaOccsA)
+
   const stagnationDays = (lastMeaningfulChangeAt && lastSeenAt && lastMeaningfulChangeAt !== lastSeenAt)
     ? Math.floor((new Date(lastSeenAt).getTime() - new Date(lastMeaningfulChangeAt).getTime()) / 86_400_000)
     : 0
@@ -1101,30 +1095,44 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
   // 2B-ter. Chemin direct : site_action/site_deadline.canonical_subject_id (terrain-origin, mig 346)
   // Capture les objets créés depuis le copilote sans PV source ni subject_thread_id.
   // Complémentaire de 2B (materialization) et 2B-bis (subject_thread_id PV).
+  // P1-4A : created_at collecté pour Level 2 LMCA (objets terrain apparus après firstSeenAt).
+  const csObjectDates = new Map<string, string[]>() // canonical_subject_id → dates YYYY-MM-DD
   {
     const { data: csActs } = await supabase
       .from('site_actions')
-      .select('id, canonical_subject_id')
+      .select('id, canonical_subject_id, created_at')
       .eq('site_id', siteId)
       .not('canonical_subject_id', 'is', null)
-    for (const a of (csActs ?? []) as Array<{ id: string; canonical_subject_id: string }>) {
+    for (const a of (csActs ?? []) as Array<{ id: string; canonical_subject_id: string; created_at: string }>) {
       let typeMap = csEntityIds.get(a.canonical_subject_id)
       if (!typeMap) { typeMap = new Map(); csEntityIds.set(a.canonical_subject_id, typeMap) }
       let idSet = typeMap.get('site_action')
       if (!idSet) { idSet = new Set(); typeMap.set('site_action', idSet) }
       idSet.add(a.id)
+      const caDate = a.created_at?.substring(0, 10)
+      if (caDate) {
+        const dates = csObjectDates.get(a.canonical_subject_id) ?? []
+        dates.push(caDate)
+        csObjectDates.set(a.canonical_subject_id, dates)
+      }
     }
     const { data: csDls } = await supabase
       .from('site_deadlines')
-      .select('id, canonical_subject_id')
+      .select('id, canonical_subject_id, created_at')
       .eq('site_id', siteId)
       .not('canonical_subject_id', 'is', null)
-    for (const d of (csDls ?? []) as Array<{ id: string; canonical_subject_id: string }>) {
+    for (const d of (csDls ?? []) as Array<{ id: string; canonical_subject_id: string; created_at: string }>) {
       let typeMap = csEntityIds.get(d.canonical_subject_id)
       if (!typeMap) { typeMap = new Map(); csEntityIds.set(d.canonical_subject_id, typeMap) }
       let idSet = typeMap.get('site_deadline')
       if (!idSet) { idSet = new Set(); typeMap.set('site_deadline', idSet) }
       idSet.add(d.id)
+      const caDate = d.created_at?.substring(0, 10)
+      if (caDate) {
+        const dates = csObjectDates.get(d.canonical_subject_id) ?? []
+        dates.push(caDate)
+        csObjectDates.set(d.canonical_subject_id, dates)
+      }
     }
   }
 
@@ -1260,27 +1268,30 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     const occs = occsByCsId.get(csId) ?? []
     if (occs.length === 0) continue
 
-    // Stagnation V1B — signature combinée : statut + objets métier créés dans le run
-    let lastMeaningfulChangeAt: string | null = null
-    let lastKnownSig: string | null = null
-    let consecutiveMentionsWithoutChange = 0
-    for (let i = 0; i < occs.length; i++) {
-      const occ = occs[i]
-      const sig = `${occ.status ?? ''}|${occ.matSig}`
-      if (i === 0 || sig !== lastKnownSig) {
-        lastMeaningfulChangeAt = occ.effectiveDate
-        lastKnownSig = sig
-        consecutiveMentionsWithoutChange = 0
-      } else {
-        consecutiveMentionsWithoutChange++
-      }
-    }
-
     const firstSeenAt = occs[0].effectiveDate
     const lastSeenAt = occs[occs.length - 1].effectiveDate
     const currentStatus = occs[occs.length - 1].status ?? null
-    // kind = famille la plus dominante parmi toutes les occurrences PV
-    const kind = occs.find((o) => o.proposalFamily) ?.proposalFamily ?? null
+    const kind = occs.find((o) => o.proposalFamily)?.proposalFamily ?? null
+
+    // LMCA P1-4A — moteur tri-state unifié (remplace signature brute V1B)
+    const lmcaOccsB: LmcaOccurrence[] = occs.map((occ) => ({
+      effectiveDate: occ.effectiveDate,
+      pvState: occ.proposalFamily !== null
+        ? documentStatusToPvState(occ.status)
+        : visitStatusToPvState(occ.status),
+      objectSig: occ.matSig,
+    }))
+    let { lastMeaningfulChangeAt, consecutiveMentionsWithoutChange } = computeLmcaFromOccurrences(lmcaOccsB)
+
+    // Niveau 2 terrain : objets liés par canonical_subject_id créés après firstSeenAt
+    const terrainDates = (csObjectDates.get(csId) ?? []).filter((d) => d > firstSeenAt)
+    if (terrainDates.length > 0) {
+      const objectLmca = [...terrainDates].sort().pop()!
+      if (!lastMeaningfulChangeAt || objectLmca > lastMeaningfulChangeAt) {
+        lastMeaningfulChangeAt = objectLmca
+        consecutiveMentionsWithoutChange = 0
+      }
+    }
 
     const stagnationDays = (lastMeaningfulChangeAt && lastSeenAt && lastMeaningfulChangeAt !== lastSeenAt)
       ? Math.floor((new Date(lastSeenAt).getTime() - new Date(lastMeaningfulChangeAt).getTime()) / 86_400_000)

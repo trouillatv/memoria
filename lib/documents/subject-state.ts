@@ -122,3 +122,77 @@ export function deriveCurrentResolvedState(states: PvState[]): boolean | null {
   }
   return null
 }
+
+/**
+ * Mappe un visit_status brut vers l'état tri-state.
+ *
+ * field_checked/mentioned = signal de passage, jamais de résolution → unknown.
+ * still_open = non résolu explicitement → open.
+ * not_applicable = résolution par inapplicabilité → resolved.
+ * Toute valeur non reconnue → unknown (conservatif).
+ */
+export function visitStatusToPvState(status: string | null): PvState {
+  if (status === null) return 'unknown'
+  if (status === 'still_open') return 'open'
+  if (status === 'not_applicable') return 'resolved'
+  return 'unknown'
+}
+
+/** Occurrence unifiée pour le calcul de lastMeaningfulChangeAt. */
+export interface LmcaOccurrence {
+  effectiveDate: string
+  /** État tri-state projeté depuis le statut source (documentStatus ou visitStatus). */
+  pvState: PvState
+  /** Signature des objets matérialisés dans ce run ('' = aucun / occurrence terrain native). */
+  objectSig: string
+}
+
+/**
+ * Calcule lastMeaningfulChangeAt depuis une timeline d'occurrences pré-projetées.
+ *
+ * Niveau 1 — transitions P1-3 (RESOLVED/REOPEN uniquement) :
+ *   - Première occurrence : baseline inconditionnelle.
+ *   - RESOLVED (lastNonUnknown=open → curr=resolved) et REOPEN (resolved → open) seulement.
+ *   - unknown ne met pas à jour lastNonUnknownState.
+ *   - unknown→open : conservativement non significatif (indistingable d'un meilleur signal).
+ *
+ * Niveau 2 — objets matérialisés : objectSig non vide et différent du précédent.
+ */
+export function computeLmcaFromOccurrences(
+  occs: LmcaOccurrence[],
+): { lastMeaningfulChangeAt: string | null; consecutiveMentionsWithoutChange: number } {
+  if (occs.length === 0) return { lastMeaningfulChangeAt: null, consecutiveMentionsWithoutChange: 0 }
+
+  let lastMeaningfulChangeAt: string | null = null
+  let lastNonUnknownState: PvState | null = null
+  let lastObjectSig: string | null = null
+  let consecutiveMentionsWithoutChange = 0
+
+  for (const occ of occs) {
+    let meaningful = false
+
+    if (lastMeaningfulChangeAt === null) {
+      meaningful = true
+    } else {
+      // Niveau 1 : seulement RESOLVED (open→resolved) et REOPEN (resolved→open)
+      if (occ.pvState !== 'unknown' && lastNonUnknownState !== null) {
+        if (occ.pvState === 'resolved' && lastNonUnknownState === 'open') meaningful = true
+        else if (occ.pvState === 'open' && lastNonUnknownState === 'resolved') meaningful = true
+      }
+      // Niveau 2 : changement d'objets matérialisés
+      if (occ.objectSig !== '' && occ.objectSig !== lastObjectSig) meaningful = true
+    }
+
+    if (meaningful) {
+      lastMeaningfulChangeAt = occ.effectiveDate
+      consecutiveMentionsWithoutChange = 0
+    } else {
+      consecutiveMentionsWithoutChange++
+    }
+
+    if (occ.pvState !== 'unknown') lastNonUnknownState = occ.pvState
+    if (occ.objectSig !== '') lastObjectSig = occ.objectSig
+  }
+
+  return { lastMeaningfulChangeAt, consecutiveMentionsWithoutChange }
+}

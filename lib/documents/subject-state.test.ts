@@ -4,9 +4,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   aggregatePvState,
+  computeLmcaFromOccurrences,
   computeSubjectTransition,
   deriveCurrentResolvedState,
   documentStatusToPvState,
+  visitStatusToPvState,
+  type LmcaOccurrence,
+  type PvState,
 } from './subject-state'
 
 // ── documentStatusToPvState ────────────────────────────────────────────────
@@ -250,5 +254,128 @@ describe('deriveCurrentResolvedState', () => {
 
   it('un seul unknown → null', () => {
     expect(deriveCurrentResolvedState(['unknown'])).toBeNull()
+  })
+})
+
+// ── visitStatusToPvState — P1-4A ───────────────────────────────────────────
+
+describe('visitStatusToPvState', () => {
+  it('null → unknown', () => {
+    expect(visitStatusToPvState(null)).toBe('unknown')
+  })
+
+  it('field_checked → unknown (signal de passage, pas de résolution)', () => {
+    expect(visitStatusToPvState('field_checked')).toBe('unknown')
+  })
+
+  it('mentioned → unknown', () => {
+    expect(visitStatusToPvState('mentioned')).toBe('unknown')
+  })
+
+  it('still_open → open', () => {
+    expect(visitStatusToPvState('still_open')).toBe('open')
+  })
+
+  it('not_applicable → resolved', () => {
+    expect(visitStatusToPvState('not_applicable')).toBe('resolved')
+  })
+
+  it('valeur inconnue → unknown (conservatif)', () => {
+    expect(visitStatusToPvState('some_future_status')).toBe('unknown')
+  })
+})
+
+// ── computeLmcaFromOccurrences — P1-4A ────────────────────────────────────
+
+describe('computeLmcaFromOccurrences', () => {
+  const occ = (effectiveDate: string, pvState: PvState, objectSig = ''): LmcaOccurrence =>
+    ({ effectiveDate, pvState, objectSig })
+
+  it('liste vide → LMCA null, 0 répétitions', () => {
+    const r = computeLmcaFromOccurrences([])
+    expect(r.lastMeaningfulChangeAt).toBeNull()
+    expect(r.consecutiveMentionsWithoutChange).toBe(0)
+  })
+
+  it('une seule occurrence → LMCA = sa date, 0 répétitions (baseline)', () => {
+    const r = computeLmcaFromOccurrences([occ('2026-01-01', 'unknown')])
+    expect(r.lastMeaningfulChangeAt).toBe('2026-01-01')
+    expect(r.consecutiveMentionsWithoutChange).toBe(0)
+  })
+
+  it('all unknown → LMCA = première date (baseline seulement), répétitions comptées', () => {
+    const r = computeLmcaFromOccurrences([
+      occ('2026-01-01', 'unknown'),
+      occ('2026-02-01', 'unknown'),
+      occ('2026-03-01', 'unknown'),
+    ])
+    expect(r.lastMeaningfulChangeAt).toBe('2026-01-01')
+    expect(r.consecutiveMentionsWithoutChange).toBe(2)
+  })
+
+  it('RESOLVED (open → resolved) → LMCA avance', () => {
+    const r = computeLmcaFromOccurrences([
+      occ('2026-01-01', 'open'),
+      occ('2026-02-01', 'resolved'),
+    ])
+    expect(r.lastMeaningfulChangeAt).toBe('2026-02-01')
+    expect(r.consecutiveMentionsWithoutChange).toBe(0)
+  })
+
+  it('REOPEN (resolved → open) → LMCA avance', () => {
+    const r = computeLmcaFromOccurrences([
+      occ('2026-01-01', 'resolved'),
+      occ('2026-02-01', 'open'),
+    ])
+    expect(r.lastMeaningfulChangeAt).toBe('2026-02-01')
+    expect(r.consecutiveMentionsWithoutChange).toBe(0)
+  })
+
+  it('OCEF FP-1 : resolved → unknown × 2 → LMCA ne bouge pas', () => {
+    const r = computeLmcaFromOccurrences([
+      occ('2026-01-01', 'resolved'),
+      occ('2026-02-01', 'unknown'),
+      occ('2026-03-01', 'unknown'),
+    ])
+    expect(r.lastMeaningfulChangeAt).toBe('2026-01-01')
+    expect(r.consecutiveMentionsWithoutChange).toBe(2)
+  })
+
+  it('OCEF FP-2 : resolved → unknown → resolved → LMCA reste au premier resolved', () => {
+    const r = computeLmcaFromOccurrences([
+      occ('2026-01-01', 'resolved'),
+      occ('2026-02-01', 'unknown'),
+      occ('2026-03-01', 'resolved'),
+    ])
+    expect(r.lastMeaningfulChangeAt).toBe('2026-01-01')
+    expect(r.consecutiveMentionsWithoutChange).toBe(2)
+  })
+
+  it('unknown → open : conservativement non significatif (LMCA reste en baseline)', () => {
+    const r = computeLmcaFromOccurrences([
+      occ('2026-01-01', 'unknown'),
+      occ('2026-02-01', 'open'),
+    ])
+    expect(r.lastMeaningfulChangeAt).toBe('2026-01-01')
+    expect(r.consecutiveMentionsWithoutChange).toBe(1)
+  })
+
+  it('PETRO : all unknown + Level 2 objet → LMCA avance via objectSig', () => {
+    const r = computeLmcaFromOccurrences([
+      occ('2026-01-01', 'unknown'),
+      occ('2026-02-01', 'unknown', 'action:id1:open'),
+    ])
+    expect(r.lastMeaningfulChangeAt).toBe('2026-02-01')
+    expect(r.consecutiveMentionsWithoutChange).toBe(0)
+  })
+
+  it('open × 3 → LMCA reste à la première date, répétitions comptées', () => {
+    const r = computeLmcaFromOccurrences([
+      occ('2026-01-01', 'open'),
+      occ('2026-02-01', 'open'),
+      occ('2026-03-01', 'open'),
+    ])
+    expect(r.lastMeaningfulChangeAt).toBe('2026-01-01')
+    expect(r.consecutiveMentionsWithoutChange).toBe(2)
   })
 })

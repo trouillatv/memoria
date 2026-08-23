@@ -53,18 +53,22 @@ describe('computeNativeChangeMetrics', () => {
 
   // ─── Changement de statut détecté ────────────────────────────────────────────
 
-  it('changement de statut 20/07 → 11/08 : LMCA = 11/08', () => {
+  it('P1-4A : null → still_open = unknown → open (non significatif sans état antérieur)', () => {
+    // Avant P1-4A : null ≠ 'still_open' (raw) → LMCA avançait à tort.
+    // Après P1-4A : unknown→open conservativement non significatif (pas de lastNonUnknownState).
     const occs: NativeOccurrence[] = [
       fv('2026-07-20', null),
       fv('2026-08-11', 'still_open'),
     ]
     const r = computeNativeChangeMetrics(occs, '2026-08-11')
-    expect(r.lastMeaningfulChangeAt).toBe('2026-08-11')
-    expect(r.consecutiveMentionsWithoutChange).toBe(0)
-    expect(r.stagnationDays).toBe(0)
+    expect(r.lastMeaningfulChangeAt).toBe('2026-07-20')
+    expect(r.consecutiveMentionsWithoutChange).toBe(1)
+    expect(r.stagnationDays).toBe(22)
   })
 
-  it('statut réglé après stagnation : LMCA = date de la résolution', () => {
+  it('P1-4A : still_open → field_checked = open → unknown (pas un RESOLVED)', () => {
+    // Avant P1-4A : 'field_checked' ≠ 'still_open' (raw) → LMCA avançait à tort.
+    // Après P1-4A : field_checked → unknown, pas de transition RESOLVED/REOPEN → LMCA reste au premier signal.
     const occs: NativeOccurrence[] = [
       fv('2026-06-01', 'still_open'),
       fv('2026-07-01', 'still_open'),
@@ -72,8 +76,8 @@ describe('computeNativeChangeMetrics', () => {
       fv('2026-08-01', 'field_checked'),
     ]
     const r = computeNativeChangeMetrics(occs, '2026-08-01')
-    expect(r.lastMeaningfulChangeAt).toBe('2026-08-01')
-    expect(r.consecutiveMentionsWithoutChange).toBe(0)
+    expect(r.lastMeaningfulChangeAt).toBe('2026-06-01')
+    expect(r.consecutiveMentionsWithoutChange).toBe(3)
   })
 
   // ─── Déduplication par événement (plusieurs preuves même date) ───────────────
@@ -118,9 +122,9 @@ describe('computeNativeChangeMetrics', () => {
       meeting('2026-07-20', 'mentioned'), // sourceKind différent = événement distinct
     ]
     const r = computeNativeChangeMetrics(occs, '2026-07-20')
-    // 'null' puis 'mentioned' → changement détecté → LMCA = 20/07 (deuxième événement)
+    // 'mentioned' → unknown ; null → unknown : aucun RESOLVED/REOPEN → LMCA = baseline 20/07, cwc=1
     expect(r.lastMeaningfulChangeAt).toBe('2026-07-20')
-    expect(r.consecutiveMentionsWithoutChange).toBe(0)
+    expect(r.consecutiveMentionsWithoutChange).toBe(1)
   })
 
   // ─── Stagnation ──────────────────────────────────────────────────────────────
