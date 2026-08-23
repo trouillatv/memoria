@@ -62,7 +62,7 @@ interface Props {
 // Première=vert · Prévisite AO=violet. Aligné sur lib/field/visit-intents.
 const MOTIVE_ACCENT: Record<VisitIntent, { active: string; ring: string; text: string; banner: string }> = {
   avancement:   { active: 'bg-sky-600 text-white',     ring: 'ring-sky-300',     text: 'text-sky-700',     banner: 'Suivi de chantier — ce qui a bougé depuis la dernière fois, ce qui traîne.' },
-  premiere:     { active: 'bg-emerald-600 text-white', ring: 'ring-emerald-300', text: 'text-emerald-700', banner: 'Première visite — vous créez le point de départ. Peu de mémoire, c’est normal.' },
+  premiere:     { active: 'bg-emerald-600 text-white', ring: 'ring-emerald-300', text: 'text-emerald-700', banner: 'Première visite pour vous — MemorIA s’appuie sur l’historique déjà disponible.' },
   previsite_ao: { active: 'bg-violet-600 text-white',  ring: 'ring-violet-300',  text: 'text-violet-700',  banner: 'Prévisite AO — évaluez le chantier avant de répondre à l’appel d’offres.' },
 }
 
@@ -425,13 +425,13 @@ function formatDateTime(iso: string | null): string | null {
   return d.toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
 }
 
-function FactLines({ items, empty = 'Rien à signaler.' }: { items: SiteBriefFactLine[]; empty?: string }) {
+function FactLines({ items, empty = 'Rien à signaler.', defaultDotClass = 'bg-emerald-500' }: { items: SiteBriefFactLine[]; empty?: string; defaultDotClass?: string }) {
   if (items.length === 0) return <p className="text-sm italic text-muted-foreground">{empty}</p>
   return (
     <ul className="space-y-2">
       {items.map((item, index) => (
         <li key={`${item.sourceType}:${item.sourceId ?? item.text}:${index}`} className="flex items-start gap-2 text-sm">
-          <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.status === 'in_progress' || item.status === 'unconfirmed' ? 'bg-amber-500' : item.status === 'interpretation' ? 'bg-violet-500' : 'bg-emerald-500'}`} aria-hidden />
+          <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${item.status === 'in_progress' || item.status === 'unconfirmed' ? 'bg-amber-500' : item.status === 'interpretation' ? 'bg-violet-500' : defaultDotClass}`} aria-hidden />
           <span className="min-w-0 flex-1">
             {/* Un nombre qui ne s'ouvre pas oblige à le croire. Quand ses objets sont
                 déjà chargés, il devient dépliable et dit ce qu'il compte exactement. */}
@@ -882,7 +882,7 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
               quand. C'est le started_at de la dernière activité rapportée : on nomme
               sa nature et sa date, le délai relatif ne reste qu'en appoint. */}
           <span>
-            {freshnessKind === 'meeting' ? 'Dernière réunion' : 'Dernière visite terrain'} :{' '}
+            {freshnessKind === 'meeting' ? 'Dernière réunion' : activities[0]?.status === 'in_progress' ? 'Activité terrain en cours' : 'Dernière visite consolidée'} :{' '}
             <strong className={freshness.level === 'stale' ? 'font-semibold text-amber-700' : 'font-semibold text-foreground'}>
               {formatDay(freshness.at?.slice(0, 10)) ?? freshness.label}
             </strong>
@@ -965,7 +965,7 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
       {atRiskOfForgetting.length > 0 && (
         <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-3.5 space-y-2.5">
           <SectionTitle icon={<BellRing className="h-3.5 w-3.5 text-amber-700" />}>Ce que je risque d&apos;oublier</SectionTitle>
-          <FactLines items={atRiskOfForgetting} />
+          <FactLines items={atRiskOfForgetting} defaultDotClass="bg-amber-400" />
         </section>
       )}
 
