@@ -24,6 +24,7 @@ import { describe, expect, it } from 'vitest'
 
 const RECONCILE = 'lib/db/visit-impact-reconcile.ts'
 const LIFE = 'lib/db/canonical-subject-life.ts'
+const SOURCE_RECONCILE = 'lib/db/canonical-subject-source-reconcile.ts'
 
 function src(rel: string): string {
   return readFileSync(join(process.cwd(), rel), 'utf8')
@@ -85,5 +86,39 @@ describe('Invariant temporel — effective_date ≠ date de modification', () =>
     const migrationSrc = src('supabase/migrations/312_cso_temporal_reconciliation.sql')
     expect(migrationSrc).toContain('source_superseded')
     expect(migrationSrc).toContain('updated_at')
+  })
+})
+
+// ── Le même invariant, côté CRÉATION ─────────────────────────────────────────
+//
+// Les tests ci-dessus gardent le chemin UPDATE (visit-impact-reconcile).
+// Ils ne voyaient donc pas le chemin INSERT, où l'audit PRODUCT-DEAD-BRIDGES
+// a mesuré 42/84 occurrences terrain mal datées : un unique site d'écriture
+// sur six recalculait `new Date()` au lieu de réutiliser `occEffectiveDate`,
+// déjà calculé depuis started_at/created_at du rapport.
+//
+// La garde porte sur la propriété, pas sur la ligne : TOUTE écriture de
+// effective_date dans reconcileSourceToCanonicalSubjects doit être la constante
+// partagée. Une nouvelle branche d'écriture qui recalculerait la date échoue ici.
+
+describe('Invariant temporel — effective_date à la CRÉATION des occurrences', () => {
+  const srcReconcile = src(SOURCE_RECONCILE)
+  const FN = 'export async function reconcileSourceToCanonicalSubjects'
+  const body = srcReconcile.slice(srcReconcile.indexOf(FN))
+
+  it('occEffectiveDate dérive du rapport, pas de la date du jour', () => {
+    expect(body).toMatch(/const occEffectiveDate = \(rm\?\.started_at \?\? rm\?\.created_at/)
+  })
+
+  it('tous les sites d’écriture de effective_date utilisent occEffectiveDate', () => {
+    const writes = [...body.matchAll(/effective_date:\s*([^,\n]+)/g)].map((m) => m[1].trim())
+    expect(writes.length, 'au moins un site d’écriture doit exister').toBeGreaterThanOrEqual(5)
+    const deviants = writes.filter((v) => v !== 'occEffectiveDate')
+    expect(deviants, `effective_date doit toujours valoir occEffectiveDate — trouvé : ${deviants.join(' | ')}`).toEqual([])
+  })
+
+  it('aucun effective_date n’est calculé depuis new Date() dans le fichier', () => {
+    const inline = [...srcReconcile.matchAll(/effective_date:\s*new Date\(/g)]
+    expect(inline, 'une occurrence datée du jour de l’analyse fabrique une fausse évolution').toHaveLength(0)
   })
 })

@@ -833,7 +833,9 @@ export async function reconcileSourceToCanonicalSubjects(
                 label: proposal.title,
                 note: proposal.body,
                 evidence_count: 0,
-                effective_date: new Date().toISOString().slice(0, 10),
+                // Date métier du rapport, jamais la date d'exécution : une occurrence
+                // datée du jour de l'analyse fabrique une fausse évolution.
+                effective_date: occEffectiveDate,
                 created_by: source.authorId,
                 validation_status: validationStatus,
                 entity_ids: proposal.entity_ids ?? [],
