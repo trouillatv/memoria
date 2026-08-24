@@ -20,7 +20,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import { updateCopilotProposalStatus } from '@/lib/db/copilot-telemetry'
-import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
+import { resolveSubjectAndAttachCanonicalBusinessObject } from '@/lib/db/canonical-business-object-attach'
 
 export type ConfirmSiteActionParams = {
   siteId: string
@@ -80,15 +80,16 @@ export async function confirmSiteAction(params: ConfirmSiteActionParams): Promis
   invalidateSiteProjection(siteId)
   if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
 
-  // Non-bloquant : rattache l'action à son sujet canonique (mig 346, P1-3C.1)
-  void (async () => {
-    try {
-      const res = await resolveCanonicalSubjectReference(siteId, title)
-      if (res.kind === 'resolved') {
-        await admin.from('site_actions').update({ canonical_subject_id: res.candidate.id }).eq('id', actionId)
-      }
-    } catch { /* non bloquant */ }
-  })()
+  // Non-bloquant : rattache l'action à son sujet canonique puis à son canonical_business_object
+  // (mig 346, P1-3C.1 ; P1-C2B.2). Ce chemin fait son propre insert (ne passe pas par
+  // createSiteAction), d'où l'appel explicite au même helper partagé que les autres writers.
+  void resolveSubjectAndAttachCanonicalBusinessObject({
+    siteId,
+    entityType: 'site_action',
+    entityId: actionId,
+    label: title,
+    date: dueDate ?? null,
+  })
 
   return { ok: true, actionId }
 }

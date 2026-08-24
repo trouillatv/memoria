@@ -14,9 +14,9 @@ import 'server-only'
 //
 // Doctrine Vincent (P4-E3, 2026-08-17) : pas de gravité inventée, pas de
 // due_date, pas de responsable personne (issuedBy=null), pas de
-// canonical_subject_id forcé — site_reserve n'a d'ailleurs pas cette colonne.
-// issuedOn = date du jour (todayLocalIso), même pattern que
-// createCopilotObservation (effective_date).
+// canonical_subject_id forcé ici — createSiteReserve() le résout lui-même en
+// best-effort (mig 347, P1-C2B.2). issuedOn = date du jour (todayLocalIso),
+// même pattern que createCopilotObservation (effective_date).
 
 import { createSiteReserve } from '@/lib/db/site-reserve'
 import { createAdminClient } from '@/lib/supabase/admin'

@@ -10,6 +10,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
+import { resolveSubjectAndAttachCanonicalBusinessObject } from '@/lib/db/canonical-business-object-attach'
 
 export type DeadlineStatus = 'to_plan' | 'planned' | 'done' | 'cancelled' | 'superseded'
 
@@ -92,8 +93,18 @@ export async function createSiteDeadline(input: {
     .select('id')
     .single()
   if (error) throw error
+  const deadlineId = (data as { id: string }).id
   invalidateSiteProjection(input.site_id)
-  return (data as { id: string }).id
+  // P1-C2B.2 : rattachement sujet canonique + canonical_business_object, best-effort/non bloquant
+  // (mig 346, comble l'absence de résolution qui n'existait auparavant que dans confirmSiteDeadline).
+  void resolveSubjectAndAttachCanonicalBusinessObject({
+    siteId: input.site_id,
+    entityType: 'site_deadline',
+    entityId: deadlineId,
+    label: input.title,
+    date: input.due_date ?? null,
+  })
+  return deadlineId
 }
 
 /**

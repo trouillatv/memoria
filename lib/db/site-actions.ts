@@ -10,6 +10,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { actionHealth, actionAttentionOf, noumeaDayOf, type ActionHealth } from '@/lib/actions/health'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
+import { resolveSubjectAndAttachCanonicalBusinessObject } from '@/lib/db/canonical-business-object-attach'
 import type { DbSiteAction, SiteActionStatus } from '@/types/db'
 
 // Re-export pour compat : la fonction pure vit dans lib/actions/health (sans
@@ -69,10 +70,19 @@ export async function createSiteAction(input: {
     .select('id')
     .single()
   if (error) throw error
+  const actionId = (data as { id: string }).id
   // La MUTATION invalide la projection (jamais l'écran) : toute création d'action,
   // quel que soit l'appelant, rafraîchit automatiquement toutes les vues du chantier.
   invalidateSiteProjection(input.site_id)
-  return (data as { id: string }).id
+  // P1-C2B.2 : rattachement sujet canonique + canonical_business_object, best-effort/non bloquant.
+  void resolveSubjectAndAttachCanonicalBusinessObject({
+    siteId: input.site_id,
+    entityType: 'site_action',
+    entityId: actionId,
+    label: input.title,
+    date: input.due_date ?? null,
+  })
+  return actionId
 }
 
 /**

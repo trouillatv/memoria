@@ -14,6 +14,7 @@ import {
 } from '@/lib/db/canonical-subject-historical-corpus-reconcile'
 import { decideReconcileLock, acquireReconcileLock } from '@/lib/db/canonical-subject-source-reconcile'
 import { projectCanonicalSubjectSafely } from '@/lib/db/canonical-subject-project'
+import { attachHistoricalReportEntitiesToCanonicalBusinessObjects } from '@/lib/db/canonical-business-object-attach'
 import { runHistoricalMemoryBuildPipeline } from '@/lib/subjects/memory-build-pipeline'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType } from '@/types/db'
 
@@ -593,6 +594,11 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
   after(() =>
     runHistoricalMemoryBuildPipeline({ runId, siteId, siteReportId, visitDate, touchedCanonicalSubjectIds }),
   )
+
+  // P1-C2B.2 : rattachement canonical_business_object des actions/réserves/échéances
+  // de ce PV, une fois que projectCanonicalSubjectSafely() (ci-dessus) a posé leur
+  // canonical_subject_id. Non bloquant, différé — ne retarde jamais la réponse au client.
+  after(() => attachHistoricalReportEntitiesToCanonicalBusinessObjects({ siteId, siteReportId }))
 
   // ── Pipeline post-RPC : knowledge_fact → site_knowledge_entries ──────────
   // Le RPC SQL exclut délibérément ces familles (trop riches pour du PL/pgSQL pur).
@@ -1197,6 +1203,10 @@ export async function retryMemoryBuildAction(fd: FormData): Promise<ActionResult
   after(() =>
     runHistoricalMemoryBuildPipeline({ runId, siteId, siteReportId, visitDate, touchedCanonicalSubjectIds }),
   )
+
+  // P1-C2B.2 : idempotent — un réessai ne crée jamais de second membership
+  // (contrainte UNIQUE mig 302), donc rejouable sans risque au même titre que le reste.
+  after(() => attachHistoricalReportEntitiesToCanonicalBusinessObjects({ siteId, siteReportId }))
 
   revalidatePath(`/sites/${siteId}/visites/${siteReportId}`)
   return { ok: true }

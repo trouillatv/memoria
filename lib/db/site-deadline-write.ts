@@ -13,12 +13,12 @@ import 'server-only'
 // `due_date` null reste un état valide (« à planifier », doctrine mig 215) —
 // createSiteDeadline dérive status='to_plan' dans ce cas, jamais une erreur.
 // P1-3C.1 (mig 346) : `site_deadlines` a désormais une colonne `canonical_subject_id`.
-// Le lien est écrit de façon non-bloquante après création, via Jaccard déterministe.
+// Le lien (puis le rattachement canonical_business_object, P1-C2B.2) est résolu de
+// façon non-bloquante DANS createSiteDeadline() — pas ici, pour couvrir tous les appelants.
 
 import { createSiteDeadline } from '@/lib/db/site-deadlines'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { updateCopilotProposalStatus } from '@/lib/db/copilot-telemetry'
-import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
 
 export type ConfirmSiteDeadlineParams = {
   organizationId: string
@@ -64,15 +64,8 @@ export async function confirmSiteDeadline(params: ConfirmSiteDeadlineParams): Pr
     })
     if (interactionId) void updateCopilotProposalStatus(interactionId, 'confirmed')
 
-    // Non-bloquant : rattache l'échéance à son sujet canonique (mig 346, P1-3C.1)
-    void (async () => {
-      try {
-        const res = await resolveCanonicalSubjectReference(siteId, title)
-        if (res.kind === 'resolved') {
-          await admin.from('site_deadlines').update({ canonical_subject_id: res.candidate.id }).eq('id', deadlineId)
-        }
-      } catch { /* non bloquant */ }
-    })()
+    // Rattachement sujet canonique + canonical_business_object désormais fait par
+    // createSiteDeadline() lui-même (P1-C2B.2) — plus de résolution dupliquée ici.
 
     return { ok: true, deadlineId }
   } catch (err) {

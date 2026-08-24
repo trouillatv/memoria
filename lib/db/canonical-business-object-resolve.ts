@@ -43,23 +43,22 @@ export type CanonicalBusinessObjectGroup = {
 
 // ── Lecture des entités ouvertes d'un sujet (généralisation du pilote) ──────────
 
+type AdminClient = ReturnType<typeof createAdminClient>
+
+type RawRow = { id: string; label: string; date: string | null; canonicalSubjectId: string | null }
+
 /**
- * Récupère les entités matérialisées (site_action | site_reserve | site_deadline)
- * rattachées aux subject_thread d'un canonical_subject, pour un object_type donné.
+ * Chemin historique : subject_thread_identity → document_extraction_proposal
+ * → document_proposal_materialization → table cible.
  *
- * Chemin : subject_thread_identity → document_extraction_proposal
- *          → document_proposal_materialization → table cible.
- *
- * Filtre les entités déjà closes (site_reserve.status='lifted',
- * site_deadline.status in done/cancelled) — seules les entités encore ouvertes
- * sont candidates au regroupement.
+ * Seul chemin de rattachement pour les entités issues d'un import PV (le RPC
+ * materialize_historical_visit() n'écrit jamais la colonne directe canonical_subject_id).
  */
-export async function getCanonicalSubjectEntities(
+async function fetchViaHistoricalChain(
+  sb: AdminClient,
   canonicalSubjectId: string,
   targetType: CanonicalBusinessObjectEntityType,
-): Promise<ResolvableEntity[]> {
-  const sb = createAdminClient()
-
+): Promise<{ row: RawRow; stableKey: string | null }[]> {
   const { data: ids } = await sb
     .from('subject_thread_identity')
     .select('subject_thread_id')
@@ -85,46 +84,123 @@ export async function getCanonicalSubjectEntities(
   if (!mats?.length) return []
 
   const entityIds = mats.map((m) => m.target_entity_id)
+  const stableKeyByEntityId = new Map<string, string | null>()
+  for (const m of mats) {
+    const prop = proposals?.find((p) => p.id === m.proposal_id)
+    stableKeyByEntityId.set(m.target_entity_id, prop?.stable_key ?? null)
+  }
 
+  const rows = await fetchRowsByIds(sb, targetType, entityIds)
+  return rows.map((row) => ({ row, stableKey: stableKeyByEntityId.get(row.id) ?? null }))
+}
+
+/**
+ * Chemin direct : colonne canonical_subject_id sur la table cible elle-même,
+ * alimentée best-effort à la création (Copilote / manuel / debrief). Prioritaire
+ * sur le chemin historique (cf. getCanonicalSubjectEntities).
+ */
+async function fetchViaDirectColumn(
+  sb: AdminClient,
+  canonicalSubjectId: string,
+  targetType: CanonicalBusinessObjectEntityType,
+): Promise<RawRow[]> {
+  return fetchRowsByFilter(sb, targetType, (q) => q.eq('canonical_subject_id', canonicalSubjectId))
+}
+
+async function fetchRowsByIds(
+  sb: AdminClient,
+  targetType: CanonicalBusinessObjectEntityType,
+  ids: string[],
+): Promise<RawRow[]> {
+  if (!ids.length) return []
+  return fetchRowsByFilter(sb, targetType, (q) => q.in('id', ids))
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchRowsByFilter(
+  sb: AdminClient,
+  targetType: CanonicalBusinessObjectEntityType,
+  applyFilter: (q: any) => any,
+): Promise<RawRow[]> {
   if (targetType === 'site_action') {
-    const { data: rows } = await sb
-      .from('site_actions')
-      .select('id, title, created_at')
-      .in('id', entityIds)
-
-    return (rows ?? []).map((r) => {
-      const mat = mats.find((m) => m.target_entity_id === r.id)!
-      const prop = proposals?.find((p) => p.id === mat.proposal_id)
-      return { entityId: r.id, label: r.title ?? '', date: r.created_at?.slice(0, 10) ?? null, stableKey: prop?.stable_key ?? null }
-    })
+    const { data } = await applyFilter(
+      sb.from('site_actions').select('id, title, created_at, canonical_subject_id'),
+    )
+    return (data ?? []).map((r: { id: string; title: string | null; created_at: string | null; canonical_subject_id: string | null }) => ({
+      id: r.id,
+      label: r.title ?? '',
+      date: r.created_at?.slice(0, 10) ?? null,
+      canonicalSubjectId: r.canonical_subject_id,
+    }))
   }
 
   if (targetType === 'site_reserve') {
-    const { data: rows } = await sb
-      .from('site_reserve')
-      .select('id, label, issued_on, status')
-      .in('id', entityIds)
-      .not('status', 'in', '("lifted")')
-
-    return (rows ?? []).map((r) => {
-      const mat = mats.find((m) => m.target_entity_id === r.id)!
-      const prop = proposals?.find((p) => p.id === mat.proposal_id)
-      return { entityId: r.id, label: r.label ?? '', date: r.issued_on ?? null, stableKey: prop?.stable_key ?? null }
-    })
+    const { data } = await applyFilter(
+      sb.from('site_reserve').select('id, label, issued_on, status, canonical_subject_id').not('status', 'in', '("lifted")'),
+    )
+    return (data ?? []).map((r: { id: string; label: string | null; issued_on: string | null; canonical_subject_id: string | null }) => ({
+      id: r.id,
+      label: r.label ?? '',
+      date: r.issued_on ?? null,
+      canonicalSubjectId: r.canonical_subject_id,
+    }))
   }
 
   // site_deadline
-  const { data: rows } = await sb
-    .from('site_deadlines')
-    .select('id, title, due_date, status')
-    .in('id', entityIds)
-    .not('status', 'in', '("done","cancelled")')
+  const { data } = await applyFilter(
+    sb.from('site_deadlines').select('id, title, due_date, status, canonical_subject_id').not('status', 'in', '("done","cancelled")'),
+  )
+  return (data ?? []).map((r: { id: string; title: string | null; due_date: string | null; canonical_subject_id: string | null }) => ({
+    id: r.id,
+    label: r.title ?? '',
+    date: r.due_date ?? null,
+    canonicalSubjectId: r.canonical_subject_id,
+  }))
+}
 
-  return (rows ?? []).map((r) => {
-    const mat = mats.find((m) => m.target_entity_id === r.id)!
-    const prop = proposals?.find((p) => p.id === mat.proposal_id)
-    return { entityId: r.id, label: r.title ?? '', date: r.due_date ?? null, stableKey: prop?.stable_key ?? null }
-  })
+/**
+ * Récupère les entités matérialisées (site_action | site_reserve | site_deadline)
+ * appartenant à un canonical_subject, pour un object_type donné.
+ *
+ * Deux mécanismes de rattachement, combinés :
+ *   - colonne directe canonical_subject_id (prioritaire — best-effort à la création) ;
+ *   - chaîne historique subject_thread_identity → ... → document_proposal_materialization
+ *     (fallback / compatibilité — seul chemin pour les entités issues d'un import PV).
+ *
+ * Une entité rattachée par la chaîne historique mais dont la colonne directe pointe
+ * vers un AUTRE sujet canonique est exclue (la colonne directe prime).
+ *
+ * Filtre les entités déjà closes (site_reserve.status='lifted',
+ * site_deadline.status in done/cancelled) — seules les entités encore ouvertes
+ * sont candidates au regroupement. site_action n'a pas de statut de cycle de vie
+ * fermé/ouvert et n'est donc pas filtré (comportement inchangé).
+ */
+export async function getCanonicalSubjectEntities(
+  canonicalSubjectId: string,
+  targetType: CanonicalBusinessObjectEntityType,
+): Promise<ResolvableEntity[]> {
+  const sb = createAdminClient()
+
+  const [direct, historical] = await Promise.all([
+    fetchViaDirectColumn(sb, canonicalSubjectId, targetType),
+    fetchViaHistoricalChain(sb, canonicalSubjectId, targetType),
+  ])
+
+  const byEntityId = new Map<string, ResolvableEntity>()
+
+  for (const row of direct) {
+    byEntityId.set(row.id, { entityId: row.id, label: row.label, date: row.date, stableKey: null })
+  }
+
+  for (const { row, stableKey } of historical) {
+    if (byEntityId.has(row.id)) continue
+    // Priorité à la colonne directe : si elle pointe explicitement vers un autre sujet,
+    // le chemin historique est obsolète pour cette entité.
+    if (row.canonicalSubjectId && row.canonicalSubjectId !== canonicalSubjectId) continue
+    byEntityId.set(row.id, { entityId: row.id, label: row.label, date: row.date, stableKey })
+  }
+
+  return [...byEntityId.values()]
 }
 
 // ── Schéma Gemini (OpenAPI 3.0 subset) ───────────────────────────────────────

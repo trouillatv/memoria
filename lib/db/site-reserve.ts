@@ -10,6 +10,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOrganizationMembership } from '@/lib/auth/memberships'
+import { resolveSubjectAndAttachCanonicalBusinessObject } from '@/lib/db/canonical-business-object-attach'
 
 export type ReserveStatus = 'open' | 'lifted'
 
@@ -178,7 +179,17 @@ export async function createSiteReserve(input: {
     .select('id')
     .single()
   if (error) throw error
-  return { id: data.id as string }
+  const reserveId = data.id as string
+  // P1-C2B.2 (mig 347) : rattachement sujet canonique + canonical_business_object,
+  // best-effort/non bloquant — même resolver que site_actions/site_deadlines (mig 346).
+  void resolveSubjectAndAttachCanonicalBusinessObject({
+    siteId: input.siteId,
+    entityType: 'site_reserve',
+    entityId: reserveId,
+    label: input.label,
+    date: input.issuedOn ?? null,
+  })
+  return { id: reserveId }
 }
 
 /** Levée d'une réserve : status='lifted' + lifted_at=now. Jamais "résolu". */
