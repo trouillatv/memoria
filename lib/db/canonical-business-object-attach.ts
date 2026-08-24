@@ -17,6 +17,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveCanonicalSubjectReference } from '@/lib/db/canonical-subject-resolve'
+import { makeWinnerResolver, type SubjectRow } from '@/lib/db/canonical-subject-project'
 import {
   getCanonicalSubjectEntities,
   resolveCanonicalBusinessObjectGroups,
@@ -148,6 +149,19 @@ export async function attachToCanonicalBusinessObject(params: {
   }
 }
 
+/**
+ * Résout le winner final de canonicalSubjectId (cf. makeWinnerResolver) juste avant
+ * la création d'un CBO — jamais avant : le sujet a pu fusionner entre le début de
+ * la résolution (getCanonicalSubjectEntities) et l'écriture. null si irrésolvable
+ * (chaîne cyclique/rompue) : on préfère ne rien créer plutôt qu'écrire une cible
+ * dont on ne sait pas prouver qu'elle est vivante (P1-C2B.3 Gate 2).
+ */
+async function resolveWinnerSubjectId(sb: AdminClient, canonicalSubjectId: string): Promise<string | null> {
+  const resolveWinner = makeWinnerResolver(sb, new Map<string, SubjectRow>())
+  const resolved = await resolveWinner(canonicalSubjectId)
+  return resolved?.id ?? null
+}
+
 async function createSoloCbo(
   sb: AdminClient,
   siteId: string,
@@ -157,9 +171,15 @@ async function createSoloCbo(
   label: string,
   decidedGroup?: { decision: ResolverDecision; confidence: number; reasoning: string },
 ): Promise<AttachOutcome> {
+  const winnerSubjectId = await resolveWinnerSubjectId(sb, canonicalSubjectId)
+  if (!winnerSubjectId) {
+    logError(`winner introuvable (chaîne de fusion cyclique/rompue) entity=${entityId} subject=${canonicalSubjectId}`, null)
+    return { kind: 'skipped', reason: 'winner_unresolved' }
+  }
+
   const { data: cbo, error } = await sb
     .from('canonical_business_object')
-    .insert({ site_id: siteId, object_type: entityType, label, canonical_subject_id: canonicalSubjectId })
+    .insert({ site_id: siteId, object_type: entityType, label, canonical_subject_id: winnerSubjectId })
     .select('id')
     .single()
   if (error || !cbo) {
@@ -202,9 +222,15 @@ async function createGroupCbo(
 ): Promise<AttachOutcome> {
   const uncoveredMembers = group.members.filter((id) => !cboByEntityId.has(id))
 
+  const winnerSubjectId = await resolveWinnerSubjectId(sb, canonicalSubjectId)
+  if (!winnerSubjectId) {
+    logError(`winner introuvable (chaîne de fusion cyclique/rompue) entity(s)=${uncoveredMembers.join(',')} subject=${canonicalSubjectId}`, null)
+    return { kind: 'skipped', reason: 'winner_unresolved' }
+  }
+
   const { data: cbo, error } = await sb
     .from('canonical_business_object')
-    .insert({ site_id: siteId, object_type: entityType, label: group.label, canonical_subject_id: canonicalSubjectId })
+    .insert({ site_id: siteId, object_type: entityType, label: group.label, canonical_subject_id: winnerSubjectId })
     .select('id')
     .single()
   if (error || !cbo) {

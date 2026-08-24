@@ -18,6 +18,7 @@ export interface MergeResult {
   occurrencesMoved: number
   threadsMoved: number
   proposalsMoved: number
+  canonicalBusinessObjectsMoved: number
   linksMoved: number
   selfLinksDeleted: number
   duplicateLinksDeleted: number

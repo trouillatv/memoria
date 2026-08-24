@@ -37,15 +37,33 @@ export type CanonicalBusinessObjectEntry = {
   statusIsDivergent: boolean
 }
 
+// Un .in() sur des centaines d'UUID dépasse la limite de headers HTTP du client
+// PostgREST (HeadersOverflowError au-delà d'environ 16 Ko d'URL, atteint dès ~430
+// UUID). Chunker évite la limite ; ne jamais avaler l'erreur (cf. P1-C2B.3 Gate 1 —
+// un tel avalage silencieux a produit un faux "0 déjà membre" sur un lot de 502).
+const CBO_MEMBERSHIP_CHUNK_SIZE = 100
+
 /** Charge, pour un lot d'entityId, leur éventuelle appartenance à un canonical_business_object. */
 export async function fetchCboMemberships(entityIds: string[]): Promise<Map<string, string>> {
   if (entityIds.length === 0) return new Map()
   const sb = createAdminClient()
-  const { data } = await sb
-    .from('canonical_business_object_member')
-    .select('member_entity_id, canonical_business_object_id')
-    .in('member_entity_id', entityIds)
-  return new Map((data ?? []).map((m) => [m.member_entity_id as string, m.canonical_business_object_id as string]))
+  const memberMap = new Map<string, string>()
+
+  for (let i = 0; i < entityIds.length; i += CBO_MEMBERSHIP_CHUNK_SIZE) {
+    const chunk = entityIds.slice(i, i + CBO_MEMBERSHIP_CHUNK_SIZE)
+    const { data, error } = await sb
+      .from('canonical_business_object_member')
+      .select('member_entity_id, canonical_business_object_id')
+      .in('member_entity_id', chunk)
+    if (error) {
+      throw new Error(`fetchCboMemberships: échec du chunk [${i}, ${i + chunk.length}) — ${error.message}`)
+    }
+    for (const m of data ?? []) {
+      memberMap.set(m.member_entity_id as string, m.canonical_business_object_id as string)
+    }
+  }
+
+  return memberMap
 }
 
 /**

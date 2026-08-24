@@ -154,6 +154,13 @@ beforeEach(() => {
     document_proposal_materialization: [],
     document_extraction_proposal: [],
     subject_thread_identity: [],
+    // createSoloCbo/createGroupCbo résolvent le winner (makeWinnerResolver) avant
+    // toute écriture (P1-C2B.3 Gate 2) — CS1/CS2 doivent exister et être 'active'
+    // pour que les tests existants (aucun n'exerce une fusion) créent bien un CBO.
+    canonical_subject: [
+      { id: CS1, status: 'active', merged_into: null },
+      { id: CS2, status: 'active', merged_into: null },
+    ],
   }
 })
 
@@ -399,5 +406,64 @@ describe('attachHistoricalReportEntitiesToCanonicalBusinessObjects', () => {
     // réserve : résolue via la chaîne historique (seul chemin pour ce type).
     expect(TABLES.site_reserve.find((r) => r.id === 'r1')?.canonical_subject_id).toBe(CS2)
     expect(memberRowsFor('r1')).toHaveLength(1)
+  })
+})
+
+// SENTINELLES P1-C2B.3 GATE 2 : résolution du winner (makeWinnerResolver) juste
+// avant la création d'un CBO — jamais de CBO écrit sur un sujet déjà fusionné
+// (loser), même si canonicalSubjectId reçu par l'appelant en est un.
+describe('résolution du winner à la création (createSoloCbo)', () => {
+  it('canonicalSubjectId déjà fusionné (1 saut) au moment de la création → le CBO est écrit sur le winner, jamais sur le loser', async () => {
+    const CS_LOSER = 'cs-loser-1hop'
+    TABLES.canonical_subject.push({ id: CS_LOSER, status: 'merged', merged_into: CS1 })
+    TABLES.site_reserve.push({ id: 'r1', label: 'Fissure mur nord', issued_on: null, canonical_subject_id: CS_LOSER })
+
+    const outcome = await attachToCanonicalBusinessObject({
+      siteId: SITE, canonicalSubjectId: CS_LOSER, entityType: 'site_reserve', entityId: 'r1', label: 'Fissure mur nord', date: null,
+    })
+
+    expect(outcome.kind).toBe('created_new')
+    if (outcome.kind === 'created_new') {
+      const cbo = TABLES.canonical_business_object.find((c) => c.id === outcome.canonicalBusinessObjectId)
+      expect(cbo?.canonical_subject_id).toBe(CS1)
+    }
+  })
+
+  it('chaîne de fusion à 2 sauts (A→B→C) → le CBO est écrit sur le winner final C', async () => {
+    const CS_A = 'cs-chain-a'
+    const CS_B = 'cs-chain-b'
+    TABLES.canonical_subject.push(
+      { id: CS_A, status: 'merged', merged_into: CS_B },
+      { id: CS_B, status: 'merged', merged_into: CS1 },
+    )
+    TABLES.site_reserve.push({ id: 'r1', label: 'Fissure mur nord', issued_on: null, canonical_subject_id: CS_A })
+
+    const outcome = await attachToCanonicalBusinessObject({
+      siteId: SITE, canonicalSubjectId: CS_A, entityType: 'site_reserve', entityId: 'r1', label: 'Fissure mur nord', date: null,
+    })
+
+    expect(outcome.kind).toBe('created_new')
+    if (outcome.kind === 'created_new') {
+      const cbo = TABLES.canonical_business_object.find((c) => c.id === outcome.canonicalBusinessObjectId)
+      expect(cbo?.canonical_subject_id).toBe(CS1)
+    }
+  })
+
+  it('chaîne cyclique (irrésolvable) → aucun CBO créé, skip winner_unresolved', async () => {
+    const CS_X = 'cs-cycle-x'
+    const CS_Y = 'cs-cycle-y'
+    TABLES.canonical_subject.push(
+      { id: CS_X, status: 'merged', merged_into: CS_Y },
+      { id: CS_Y, status: 'merged', merged_into: CS_X },
+    )
+    TABLES.site_reserve.push({ id: 'r1', label: 'Fissure mur nord', issued_on: null, canonical_subject_id: CS_X })
+
+    const outcome = await attachToCanonicalBusinessObject({
+      siteId: SITE, canonicalSubjectId: CS_X, entityType: 'site_reserve', entityId: 'r1', label: 'Fissure mur nord', date: null,
+    })
+
+    expect(outcome).toEqual({ kind: 'skipped', reason: 'winner_unresolved' })
+    expect(TABLES.canonical_business_object).toHaveLength(0)
+    expect(memberRowsFor('r1')).toHaveLength(0)
   })
 })
