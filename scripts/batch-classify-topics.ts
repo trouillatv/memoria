@@ -47,20 +47,26 @@ function sep(label: string) {
 // ── Fetch canonical subjects ──────────────────────────────────────────────────
 
 async function fetchSubjects(siteId: string) {
-  // 1. Runs canoniques du site (même logique que getSiteSubjectMatrix)
-  const { data: runs } = await sb
-    .from('document_extraction_run')
-    .select('id')
-    .eq('target_site_id', siteId)
-    .eq('is_canonical', true)
+  // 1. Runs réellement matérialisés (site_reports.extraction_run_id), PAS
+  //    document_extraction_run.is_canonical seul — même doctrine que
+  //    getMaterializedRunIdsForSite (P0-J.3/P1-A.1, GO Vincent 2026-08-24) : un run
+  //    peut être marqué canonique sans jamais avoir produit de visite (fantôme), et
+  //    un run matérialisé mais pas (encore) marqué canonique doit quand même
+  //    apparaître ici. Dupliqué en ligne (pas d'import du helper partagé, gardé
+  //    par 'server-only', incompatible avec ce script CLI) — cf. scripts/_guillaume-metrics-snapshot.ts.
+  const { data: reports } = await sb
+    .from('site_reports')
+    .select('extraction_run_id')
+    .eq('site_id', siteId)
+    .not('extraction_run_id', 'is', null)
 
-  const runIds = (runs ?? []).map((r: { id: string }) => r.id)
+  const runIds = [...new Set((reports ?? []).map((r: { extraction_run_id: string }) => r.extraction_run_id))]
   if (!runIds.length) return []
 
-  // 2. Threads présents dans ces runs
+  // 2. Threads présents dans ces runs (+ proposal_family pour dériver kind, cf. §3bis)
   const { data: props } = await sb
     .from('document_extraction_proposal')
-    .select('subject_thread_id')
+    .select('subject_thread_id, proposal_family')
     .in('extraction_run_id', runIds)
     .not('subject_thread_id', 'is', null)
 
@@ -70,19 +76,49 @@ async function fetchSubjects(siteId: string) {
   // 3. canonical_subject_ids pour ces threads
   const { data: sti } = await sb
     .from('subject_thread_identity')
-    .select('canonical_subject_id')
+    .select('canonical_subject_id, subject_thread_id')
     .in('subject_thread_id', threadIds)
 
   const csIds = [...new Set((sti ?? []).map((r: { canonical_subject_id: string }) => r.canonical_subject_id).filter(Boolean))]
   if (!csIds.length) return []
 
-  // 4. Sujets canoniques
+  // 3bis. Exclure les acteurs (person/company) — même doctrine que isActorKind()
+  //   (lib/subjects/kind.ts) et loadSimilarityContextSubjects() : un thème regroupe
+  //   des sujets métier, pas des personnes/entreprises. kind n'est pas une colonne
+  //   canonical_subject ; il est dérivé de proposal_family, comme dans
+  //   canonical-subject-life.ts. Un sujet est traité comme acteur si AU MOINS une
+  //   occurrence porte person/company (conservateur : mieux vaut exclure à tort
+  //   qu'inclure un acteur dans un topic métier).
+  const threadToCs = new Map(
+    (sti ?? []).map((r: { subject_thread_id: string; canonical_subject_id: string }) => [
+      r.subject_thread_id,
+      r.canonical_subject_id,
+    ]),
+  )
+  const actorCsIds = new Set<string>()
+  for (const p of (props ?? []) as Array<{ subject_thread_id: string; proposal_family: string | null }>) {
+    if (p.proposal_family !== 'person' && p.proposal_family !== 'company') continue
+    const csId = threadToCs.get(p.subject_thread_id)
+    if (csId) actorCsIds.add(csId)
+  }
+  const businessCsIds = csIds.filter((id) => !actorCsIds.has(id))
+  if (actorCsIds.size) {
+    console.log(`  (${actorCsIds.size} sujet(s) acteur(s) person/company exclu(s) du périmètre thèmes)`)
+  }
+  if (!businessCsIds.length) return []
+
+  // 4. Sujets canoniques (actifs uniquement — un sujet merged pointe vers son
+  //    cible canonique, l'inclure produirait un doublon thématique)
   const { data: subjects } = await sb
     .from('canonical_subject')
-    .select('id, label')
-    .in('id', csIds)
+    .select('id, label, status')
+    .in('id', businessCsIds)
+    .eq('status', 'active')
 
-  return (subjects ?? []) as Array<{ id: string; label: string }>
+  return (subjects ?? []).map((s: { id: string; label: string }) => ({ id: s.id, label: s.label })) as Array<{
+    id: string
+    label: string
+  }>
 }
 
 // ── Gemini classification ─────────────────────────────────────────────────────
@@ -170,6 +206,7 @@ async function persistTopics(
   siteId: string,
   topics: Array<{ label: string; subjectIds: string[]; confidence: number; reasoning: string }>,
   validSubjectIds: Set<string>,
+  labelById: Map<string, string>,
 ) {
   sep('Persistance')
 
@@ -191,6 +228,7 @@ async function persistTopics(
 
     if (DRY_RUN) {
       console.log(`  [DRY-RUN] Topic "${topic.label}" (conf ${(topic.confidence * 100).toFixed(0)}%) ← ${validMembers.length} sujets`)
+      for (const id of validMembers) console.log(`      - ${labelById.get(id) ?? id}`)
       validMembers.forEach((id) => assignedSubjects.add(id))
       continue
     }
@@ -239,6 +277,7 @@ async function persistTopics(
   console.log(`  ${topicsCreated} topics créés`)
   console.log(`  ${membersCreated} sujets classifiés`)
   console.log(`  ${unassigned.length} sujets sans topic`)
+  for (const id of unassigned) console.log(`    - ${labelById.get(id) ?? id}`)
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -308,7 +347,8 @@ async function main() {
   }
 
   const validIds = new Set(subjectsToClassify.map((s) => s.id))
-  await persistTopics(SITE_ID, topics, validIds)
+  const labelById = new Map(subjectsToClassify.map((s) => [s.id, s.label]))
+  await persistTopics(SITE_ID, topics, validIds, labelById)
   console.log('\n')
 }
 
