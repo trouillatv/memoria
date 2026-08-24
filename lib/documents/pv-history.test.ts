@@ -53,16 +53,30 @@ function makePropsChain(data: unknown) {
 }
 
 // document_extraction_run sert deux requêtes distinctes : la dérivation du site
-// (select().in()) et la liste des runs canoniques (select().eq().eq().order()).
+// (select().in()) et la liste des runs matérialisés, filtrée par id (P1-A.1 —
+// select().eq().in().order()).
 function makeRunsChain(data: unknown) {
   return {
     select: vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
+        in: vi.fn().mockReturnValue({
           order: vi.fn().mockResolvedValue({ data, error: null }),
         }),
       }),
       in: vi.fn().mockResolvedValue({ data, error: null }),
+    }),
+  }
+}
+
+// P1-A.1 — site_reports.extraction_run_id, source des runs matérialisés
+// (getMaterializedRunIdsForSite, appelée par canonicalRunsForSite).
+function makeSiteReportsChain(runs: Array<{ id: string }>) {
+  const data = runs.map((r) => ({ extraction_run_id: r.id }))
+  return {
+    select: vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        not: vi.fn().mockResolvedValue({ data, error: null }),
+      }),
     }),
   }
 }
@@ -145,6 +159,7 @@ describe('getSubjectTimeline', () => {
 
     mocks.from.mockImplementation((table: string) => {
       if (table === 'document_extraction_proposal') return makePropsChain(props)
+      if (table === 'site_reports') return makeSiteReportsChain(runs)
       return makeRunsChain(runs)
     })
 
@@ -169,6 +184,7 @@ describe('getSubjectTimeline', () => {
 
     mocks.from.mockImplementation((table: string) => {
       if (table === 'document_extraction_proposal') return makePropsChain(props)
+      if (table === 'site_reports') return makeSiteReportsChain(runs)
       return makeRunsChain(runs)
     })
 
@@ -191,6 +207,7 @@ describe('getSubjectTimeline', () => {
 
     mocks.from.mockImplementation((table: string) => {
       if (table === 'document_extraction_proposal') return makePropsChain(props)
+      if (table === 'site_reports') return makeSiteReportsChain(runs)
       return makeRunsChain(runs)
     })
 
@@ -214,6 +231,7 @@ describe('getSubjectTimeline', () => {
 
     mocks.from.mockImplementation((table: string) => {
       if (table === 'document_extraction_proposal') return makePropsChain(props)
+      if (table === 'site_reports') return makeSiteReportsChain(runs)
       return makeRunsChain(runs)
     })
 
@@ -241,6 +259,7 @@ describe('getSubjectTimeline', () => {
 
     mocks.from.mockImplementation((table: string) => {
       if (table === 'document_extraction_proposal') return makePropsChain(props)
+      if (table === 'site_reports') return makeSiteReportsChain(runs)
       return makeRunsChain(runs)
     })
 
@@ -265,6 +284,7 @@ describe('getSiteHistoricalTimeline', () => {
     let call = 0
     mocks.from.mockImplementation((table: string) => {
       if (table === 'document_extraction_run') return makeRunsChain(runs)
+      if (table === 'site_reports') return makeSiteReportsChain(runs)
       return makePropsInChain(call++ === 0 ? props : [])
     })
 
@@ -291,6 +311,7 @@ describe('getSiteHistoricalTimeline', () => {
 
     mocks.from.mockImplementation((table: string) => {
       if (table === 'document_extraction_run') return makeRunsChain(runs)
+      if (table === 'site_reports') return makeSiteReportsChain(runs)
       return makePropsInChain(props)
     })
 
@@ -309,7 +330,10 @@ describe('getSiteHistoricalTimeline', () => {
   })
 
   it('16. site vide → snapshots vides', async () => {
-    mocks.from.mockImplementation(() => makeRunsChain([]))
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'site_reports') return makeSiteReportsChain([])
+      return makeRunsChain([])
+    })
 
     const result = await getSiteHistoricalTimeline('site-vide')
     expect(result.snapshots).toHaveLength(0)
@@ -325,6 +349,7 @@ describe('getSiteHistoricalTimeline', () => {
 
     mocks.from.mockImplementation((table: string) => {
       if (table === 'document_extraction_run') return makeRunsChain(runs)
+      if (table === 'site_reports') return makeSiteReportsChain(runs)
       return makePropsInChain(props)
     })
 

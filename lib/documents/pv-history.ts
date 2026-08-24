@@ -40,17 +40,26 @@ export function runEffectiveDate(run: RunRow): string {
  * Retourne les runs canoniques d'un chantier, triés par date métier du PV (ASC).
  *
  * Invariant : 1 document = 1 snapshot temporel = 1 run canonique.
- * Seuls les runs `is_canonical = true` sont inclus — les re-analyses du même PDF
- * restent en base comme historique technique mais sont exclus des vues temporelles.
+ *
+ * P1-A.1 (parité read-model, GO Vincent 2026-08-24) : source = runs réellement
+ * matérialisés (site_reports.extraction_run_id via getMaterializedRunIdsForSite),
+ * jamais `is_canonical=true` seul. Même doctrine que canonical-subject-historical-
+ * corpus-reconcile.ts : un run peut être canonique sans jamais avoir produit de
+ * visite (fantôme, à ignorer), et un run matérialisé mais non encore marqué
+ * canonique doit quand même apparaître dans les vues temporelles produit
+ * (découverte Guillaume, P0-J.1/P1-A.1).
  */
 export async function canonicalRunsForSite(siteId: string): Promise<RunRow[]> {
   const { createAdminClient } = await import('@/lib/supabase/admin')
+  const { getMaterializedRunIdsForSite } = await import('@/lib/db/canonical-subject-historical-corpus-reconcile')
   const supabase = createAdminClient()
+  const materializedRunIds = await getMaterializedRunIdsForSite(supabase, siteId)
+  if (materializedRunIds.length === 0) return []
   const { data, error } = await supabase
     .from('document_extraction_run')
     .select('id, document_id, created_at, documents!document_id(effective_date)')
     .eq('target_site_id', siteId)
-    .eq('is_canonical', true)
+    .in('id', materializedRunIds)
     .order('created_at', { ascending: true })
   if (error) throw new Error(error.message)
   const rows = ((data ?? []) as unknown as RunRow[])
