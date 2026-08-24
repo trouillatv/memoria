@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { CanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
+import { fetchCboMemberships, groupEventsByCbo } from '@/lib/knowledge/canonical-business-object-projection'
 
 // ── Types publics ──────────────────────────────────────────────────────────────
 
@@ -99,30 +100,11 @@ export async function buildCanonicalSubjectIntelligence(
 
   const allOpenEvents = [...openActions, ...openReserves, ...openDeadlines]
   if (allOpenEvents.length > 0) {
-    const entityIds = allOpenEvents.map((e) => e.entityId)
-    const { data: cboMembers } = await sb
-      .from('canonical_business_object_member')
-      .select('member_entity_id, canonical_business_object_id')
-      .in('member_entity_id', entityIds)
+    const memberMap = await fetchCboMemberships(allOpenEvents.map((e) => e.entityId))
 
-    const memberMap = new Map(
-      (cboMembers ?? []).map((m) => [m.member_entity_id, m.canonical_business_object_id]),
-    )
-
-    const cboAwareCount = (events: Array<{ entityId: string }>): number => {
-      const cboIds = new Set<string>()
-      let unmapped = 0
-      for (const e of events) {
-        const cboId = memberMap.get(e.entityId)
-        if (cboId) cboIds.add(cboId)
-        else unmapped++
-      }
-      return cboIds.size + unmapped
-    }
-
-    actionsCount = cboAwareCount(openActions)
-    reservesCount = cboAwareCount(openReserves)
-    deadlinesCount = cboAwareCount(openDeadlines)
+    actionsCount = groupEventsByCbo(openActions, memberMap).length
+    reservesCount = groupEventsByCbo(openReserves, memberMap).length
+    deadlinesCount = groupEventsByCbo(openDeadlines, memberMap).length
   }
 
   const openItemCount = reservesCount + deadlinesCount

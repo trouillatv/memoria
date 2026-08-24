@@ -7,6 +7,8 @@ import { getCanonicalSubjectLife, listSubjectsForPicker } from '@/lib/db/canonic
 import type { SubjectOccurrenceMerged, CanonicalLink, MaterializedEvent, MaterializedEntityType, SubjectPickerItem, MergeRecord } from '@/lib/db/canonical-subject-life'
 import { buildCanonicalSubjectIntelligence } from '@/lib/knowledge/build-canonical-subject-intelligence'
 import type { CanonicalSubjectIntelligence } from '@/lib/knowledge/build-canonical-subject-intelligence'
+import { projectCanonicalBusinessObjects } from '@/lib/knowledge/canonical-business-object-projection'
+import type { CanonicalBusinessObjectEntry } from '@/lib/knowledge/canonical-business-object-projection'
 import { buildSubjectNarrative } from '@/services/ai/subject-narrative'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
@@ -740,10 +742,10 @@ function OccurrenceCard({ occ, siteId }: { occ: SubjectOccurrenceMerged; siteId:
   )
 }
 
-function MaterializedEventsSection({ events }: { events: MaterializedEvent[] }) {
+function MaterializedEventsSection({ entries }: { entries: CanonicalBusinessObjectEntry[] }) {
   const ORDER: MaterializedEntityType[] = ['site_reserve', 'site_action', 'site_decision', 'site_deadline']
-  const byType = new Map<MaterializedEntityType, MaterializedEvent[]>()
-  for (const e of events) {
+  const byType = new Map<MaterializedEntityType, CanonicalBusinessObjectEntry[]>()
+  for (const e of entries) {
     const list = byType.get(e.entityType) ?? []
     list.push(e)
     byType.set(e.entityType, list)
@@ -760,30 +762,42 @@ function MaterializedEventsSection({ events }: { events: MaterializedEvent[] }) 
               {meta.plural} ({items.length})
             </p>
             <ul className="space-y-1.5">
-              {items.map((ev) => (
-                <li key={ev.entityId} className="flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm">
-                  <span className={cn('mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold', meta.color)}>
-                    {meta.label}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium leading-snug">{ev.title}</p>
-                    {ev.description && (
-                      <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{ev.description}</p>
-                    )}
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      {ev.date && <span>{frDate(ev.date)}</span>}
-                      {ev.status && (
-                        <span className={cn(
-                          'rounded-full px-1.5 py-0.5',
-                          STATUS_COLORS[ev.status] ?? 'bg-muted text-muted-foreground',
-                        )}>
-                          {ENTITY_STATUS_LABELS[ev.status] ?? ev.status}
-                        </span>
+              {items.map((entry) => {
+                const primary = entry.members[0]
+                return (
+                  <li key={entry.key} className="flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm">
+                    <span className={cn('mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold', meta.color)}>
+                      {meta.label}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium leading-snug">{entry.label}</p>
+                      {!entry.isGrouped && primary.description && (
+                        <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{primary.description}</p>
                       )}
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        {!entry.isGrouped && primary.date && <span>{frDate(primary.date)}</span>}
+                        {entry.isGrouped && (
+                          <span className="text-muted-foreground/70">
+                            {entry.members.length} occurrence{entry.members.length > 1 ? 's' : ''}
+                          </span>
+                        )}
+                        {entry.statusIsDivergent ? (
+                          <span className="rounded-full bg-muted px-1.5 py-0.5">
+                            plusieurs états
+                          </span>
+                        ) : entry.status && (
+                          <span className={cn(
+                            'rounded-full px-1.5 py-0.5',
+                            STATUS_COLORS[entry.status] ?? 'bg-muted text-muted-foreground',
+                          )}>
+                            {ENTITY_STATUS_LABELS[entry.status] ?? entry.status}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                )
+              })}
             </ul>
           </div>
         )
@@ -1009,6 +1023,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
 
   const intel = await buildCanonicalSubjectIntelligence(canonicalSubjectId, life)
   const narrativeResult = await buildSubjectNarrative(life, intel, user.id).catch(() => null)
+  const businessObjectEntries = await projectCanonicalBusinessObjects(life.materializedEvents)
 
   const realOccurrences = life.occurrences.filter((o) => !o.isGap)
   const confirmedLinks = life.links.filter((l) => l.status === 'confirmed')
@@ -1131,14 +1146,14 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
           </section>
         )}
 
-        {/* Objets métier matérialisés */}
-        {life.materializedEvents.length > 0 && (
+        {/* Objets métier — identités durables (CBO-aware), preuves physiques en second plan */}
+        {businessObjectEntries.length > 0 && (
           <section id="objets-metier" className="rounded-[18px] border bg-card px-5 py-4 space-y-3">
             <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <LayoutList className="h-3.5 w-3.5" />
-              Objets métier ({life.materializedEvents.length})
+              Objets métier ({businessObjectEntries.length})
             </h2>
-            <MaterializedEventsSection events={life.materializedEvents} />
+            <MaterializedEventsSection entries={businessObjectEntries} />
           </section>
         )}
 
