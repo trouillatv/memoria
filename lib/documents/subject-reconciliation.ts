@@ -29,6 +29,15 @@ const QUALIFIERS = new Set([
   'complementaire','supplementaire','additionnel','partiel','temporaire',
 ])
 
+// P1-C1.2 : vocabulaire de statut nu. Quand stripCategoryFormatting ne laisse plus que
+// ces tokens (ex. "Terrassement plateforme - Purge : Fait" → "Fait"), c'est que le
+// préfixe ou le suffixe retiré contenait en réalité le sujet — le strip doit être annulé.
+// Constitué exclusivement des cas observés dans l'audit read-only P1-C1.2 (23 labels
+// TOO_AGGRESSIVE_PREFIX sur données Guillaume) : liste fermée, pas de généralisation.
+const STATUS_ONLY_VOCAB = new Set([
+  'fait','visa','ok','attente','cours','prevoir','validation','effectuee','non','conforme',
+])
+
 /**
  * Normalise un label pour la comparaison :
  * minuscules → suppression accents → alphanumériques uniquement → filtrage stopwords
@@ -49,6 +58,12 @@ export function normalizeLabel(label: string): string {
  * Retire le préfixe catégorie ("Catégorie : texte" → "texte")
  * et le suffixe statut ("texte = Statut" → "texte") avant le matching par containment.
  * Les PV07+ utilisent ce format enrichi ; PV06 n'a que le sujet nu.
+ *
+ * Garde P1-C1.2 : si le résultat des deux strips ne contient plus que du vocabulaire
+ * de statut générique (STATUS_ONLY_VOCAB), le sujet réel était en fait dans la partie
+ * retirée — annuler le strip et conserver le label complet plutôt que de comparer deux
+ * labels différents réduits au même mot-état (ex. "Plan des installations de chantier : FAIT"
+ * ne doit pas devenir indiscernable de "Plan de gestion des eaux pluviales : FAIT").
  */
 export function stripCategoryFormatting(label: string): string {
   let s = label
@@ -58,7 +73,15 @@ export function stripCategoryFormatting(label: string): string {
   // Retirer le suffixe " = Statut" (dernière occurrence de " = ")
   const eqIdx = s.lastIndexOf(' = ')
   if (eqIdx !== -1) s = s.slice(0, eqIdx)
-  return s.trim()
+  const core = s.trim()
+
+  if (colonIdx === -1 && eqIdx === -1) return core
+
+  const coreTokens = normalizeLabel(core).split(' ').filter(Boolean)
+  const isStatusOnly = coreTokens.length > 0 && coreTokens.every((t) => STATUS_ONLY_VOCAB.has(t))
+  if (isStatusOnly) return label.trim()
+
+  return core
 }
 
 /**

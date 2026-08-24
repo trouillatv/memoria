@@ -116,6 +116,60 @@ describe('stripCategoryFormatting', () => {
   })
 })
 
+// ── stripCategoryFormatting — P1-C1.2 : garde vocabulaire de statut nu ───────
+//
+// Audit read-only P1-C1.2 (486 propositions Guillaume) : 25 continuités réelles
+// cassées quand le texte après " : " ne contient qu'un statut générique
+// (Fait/OK/VISA/...) — le préfixe ou suffixe retiré contenait alors le sujet
+// réel. Voir STATUS_ONLY_VOCAB, constituée exclusivement des cas observés.
+
+describe('stripCategoryFormatting — P1-C1.2 : garde vocabulaire de statut nu', () => {
+  it('"Terrassement plateforme - Purge : Fait" ne se réduit plus à "Fait" (sentinelle Vincent)', () => {
+    expect(stripCategoryFormatting('Terrassement plateforme - Purge : Fait'))
+      .toBe('Terrassement plateforme - Purge : Fait')
+  })
+
+  it('"Plan de gestion des eaux pluviales : FAIT" conserve le label complet (statut nu)', () => {
+    expect(stripCategoryFormatting('Plan de gestion des eaux pluviales : FAIT'))
+      .toBe('Plan de gestion des eaux pluviales : FAIT')
+  })
+
+  it('"Plan des installations de chantier : FAIT" conserve le label complet (statut nu)', () => {
+    expect(stripCategoryFormatting('Plan des installations de chantier : FAIT'))
+      .toBe('Plan des installations de chantier : FAIT')
+  })
+
+  it('le strip reste normal quand le noyau retenu est un vrai sujet, pas un statut (non-régression)', () => {
+    expect(stripCategoryFormatting('Terrassement plateforme : Purge = Fait')).toBe('Purge')
+    expect(stripCategoryFormatting('Accès Plateforme : Reprise accès Est')).toBe('Reprise accès Est')
+  })
+})
+
+describe('resolveMatches1to1 — P1-C1.2 : effets du correctif sur le rejeu Guillaume', () => {
+  it('continuité correcte : deux occurrences du même statut nu se rattachent (label complet identique)', () => {
+    const priors = [stub('p1', 'Plan de gestion des eaux pluviales : FAIT', 'thread-pgep')]
+    const news = [stub('n1', 'Plan de gestion des eaux pluviales : FAIT', null)]
+    const map = resolveMatches1to1(news, priors, () => 'new-uuid')
+    expect(map.get('n1')).toBe('thread-pgep')
+  })
+
+  it('ne fusionne plus deux plans distincts réduits au même "FAIT" (faux rapprochement cassé par le correctif)', () => {
+    const priors = [stub('p1', 'Plan de gestion des eaux pluviales : FAIT', 'thread-pgep')]
+    const news = [stub('n1', 'Plan des installations de chantier : FAIT', null)]
+    let uuidN = 0
+    const map = resolveMatches1to1(news, priors, () => `uuid-${++uuidN}`)
+    expect(map.get('n1')).not.toBe('thread-pgep')
+    expect(map.get('n1')).toMatch(/^uuid-/)
+  })
+
+  it('cas réel où le strip reste nécessaire (STRIP_NECESSARY) : le correctif ne le casse pas', () => {
+    const priors = [stub('p1', 'Reprise accès Est', 'thread-reprise')]
+    const news = [stub('n1', 'Accès Plateforme : Reprise accès Est', null)]
+    const map = resolveMatches1to1(news, priors, () => 'new-uuid')
+    expect(map.get('n1')).toBe('thread-reprise')
+  })
+})
+
 // ── strongContainmentMatch — vrais positifs PV006→PV007 ──────────────────────
 //
 // Cascade dans findBestThread : exact → containment → Jaccard.
