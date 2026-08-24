@@ -349,6 +349,103 @@ describe('resolveMatches1to1 — résolution de collisions 1:1', () => {
   })
 })
 
+// ── P1-C1 — thematic_category n'est plus une condition bloquante d'identité ──
+//
+// Matrice construite à partir des cas réels du replay P1-B sur le chantier Guillaume
+// (OCEF Compostage). proposal_family reste la frontière forte (inchangé) ;
+// thematic_category redevient un signal secondaire de tie-break, jamais un verrou.
+// Chaque cas positif documente le jaccard/containment réel et confirme qu'avant
+// P1-C1 le thème bloquait la continuité malgré une similarité suffisante.
+
+describe('resolveMatches1to1 — continuités récupérées par P1-C1 (5 familles, cas réels)', () => {
+  it('FT matériaux/équipements : "Transmettre les FT..." (theme=-) → (theme=test_control), exact après strip', () => {
+    const priors = [stub('p1', 'Transmettre les fiches techniques des matériaux et équipements', 'thread-ft', null, 'action')]
+    const news = [stub('n1', 'Transmettre les fiches techniques des matériaux et équipements', null, 'test_control', 'action')]
+    const map = resolveMatches1to1(news, priors, () => 'new-uuid')
+    // jaccard=1.00 containment=true — bloqué avant P1-C1 par sameTheme=false, récupéré ici
+    expect(map.get('n1')).toBe('thread-ft')
+  })
+
+  it('Purge G3 : "Rapport G3 pour purge complémentaire" (theme=-) ↔ "Transmission des photos et rapport G3..." (theme=test_control)', () => {
+    const priors = [stub('p1', 'Transmission des photos et rapport G3 pour purge complémentaire', 'thread-g3', 'test_control', 'action')]
+    const news = [stub('n1', 'Rapport G3 pour purge complémentaire', null, null, 'action')]
+    const map = resolveMatches1to1(news, priors, () => 'new-uuid')
+    // jaccard=0.67 containment=true — bloqué avant P1-C1 par sameTheme=false, récupéré ici
+    expect(map.get('n1')).toBe('thread-g3')
+  })
+
+  it('Busage/lagunage : "Raccordement...validation" (theme=administrative) ↔ "...validation du MOA/MOE" (theme=forecast)', () => {
+    const priors = [stub('p1', 'Raccordement sur le lagunage fera l’objet d’une validation du MOA/MOE', 'thread-busage', 'forecast', 'knowledge_fact')]
+    const news = [stub('n1', 'Raccordement sur le lagunage fera l\'objet d\'une validation', null, 'administrative', 'knowledge_fact')]
+    const map = resolveMatches1to1(news, priors, () => 'new-uuid')
+    // jaccard=0.71 containment=true — bloqué avant P1-C1 par sameTheme=false, récupéré ici
+    expect(map.get('n1')).toBe('thread-busage')
+  })
+
+  it('Regard R4 : "Prévision: Problème regard R4 - manque Chute" (theme=forecast) ↔ "...Reprise...Faite" (theme=progress)', () => {
+    const priors = [stub('p1', 'Prévision: Problème regard R4 - manque Chute', 'thread-r4', 'forecast', 'knowledge_fact')]
+    const news = [stub('n1', 'Assainissement : Reprise problème chute dans le regard R4 Faite', null, 'progress', 'knowledge_fact')]
+    const map = resolveMatches1to1(news, priors, () => 'new-uuid')
+    // jaccard=0.50 (seuil exact) containment=false — bloqué avant P1-C1 par sameTheme=false, récupéré ici
+    expect(map.get('n1')).toBe('thread-r4')
+  })
+
+  it('Enrobage : "Épaisseurs d\'enrobage...non conformes" (theme=-) ↔ "...non conforme" (theme=test_control)', () => {
+    const priors = [stub('p1', 'Épaisseurs d\'enrobage sur les conduites d\'assainissement non conformes', 'thread-enrobage', null, 'reservation')]
+    const news = [stub('n1', 'Épaisseurs d’enrobage sur les conduites d’assainissement non conforme', null, 'test_control', 'reservation')]
+    const map = resolveMatches1to1(news, priors, () => 'new-uuid')
+    // jaccard=0.71 containment=false — bloqué avant P1-C1 par sameTheme=false, récupéré ici
+    expect(map.get('n1')).toBe('thread-enrobage')
+  })
+})
+
+describe('resolveMatches1to1 — contre-exemples : deux objets proches restent distincts (P1-C1)', () => {
+  it('"FT matériaux génériques" ne matche pas "FT débourbeur déshuileur" (même thème déjà — dissimilarité lexicale, pas le thème, les sépare)', () => {
+    const priors = [stub('p1', 'Transmettre les fiches techniques des matériaux et équipements', 'thread-ft-generique', null, 'action')]
+    const news = [stub('n1', 'Transmettre FT débourbeur déshuileur', null, null, 'action')]
+    let uuidN = 0
+    const map = resolveMatches1to1(news, priors, () => `uuid-${++uuidN}`)
+    // jaccard=0.13 containment=false, sameTheme=true déjà — jamais protégé par le thème, safe par construction
+    expect(map.get('n1')).not.toBe('thread-ft-generique')
+    expect(map.get('n1')).toMatch(/^uuid-/)
+  })
+
+  it('"Busage provisoire GDE" ne matche pas "Busage entre plateforme et lagunage : zone non conforme" (familles différentes — frontière forte intacte)', () => {
+    const priors = [stub('p1', 'Busage Provisoire GDE', 'thread-busage-gde', 'progress', 'knowledge_fact')]
+    const news = [stub('n1', 'Busage entre la plateforme et le lagunage : Zone de largeur non conforme', null, 'test_control', 'reservation')]
+    let uuidN = 0
+    const map = resolveMatches1to1(news, priors, () => `uuid-${++uuidN}`)
+    // proposal_family knowledge_fact ≠ reservation — bloqué par la frontière forte, jamais atteint par P1-C1
+    expect(map.get('n1')).not.toBe('thread-busage-gde')
+    expect(map.get('n1')).toMatch(/^uuid-/)
+  })
+
+  it('"Purge" (thread existant) vs "Purge complémentaire" — le vrai match exact du run gagne la collision, "complémentaire" reçoit un nouveau thread', () => {
+    // Réplique la situation réelle PV003 Guillaume : le run contient à la fois une proposition
+    // "= Fait" (exact après strip → score 1.0) et "Purge complémentaire" (containment/Jaccard plus faible)
+    // qui compétitionnent pour le même thread prior. resolveMatches1to1 alloue au meilleur score.
+    const priors = [stub('p1', 'Terrassement plateforme : Purge', 'thread-purge', 'progress', 'knowledge_fact')]
+    const news = [
+      stub('n-complementaire', 'Terrassement plateforme : Purge complémentaire', null, 'progress', 'knowledge_fact'),
+      stub('n-exact', 'Terrassement plateforme : Purge = Fait', null, 'progress', 'knowledge_fact'),
+    ]
+    let uuidN = 0
+    const map = resolveMatches1to1(news, priors, () => `uuid-${++uuidN}`)
+    expect(map.get('n-exact')).toBe('thread-purge')
+    expect(map.get('n-complementaire')).not.toBe('thread-purge')
+    expect(map.get('n-complementaire')).toMatch(/^uuid-/)
+  })
+
+  it('Regard R4 : jaccard=0.43 sous le seuil reste sans match malgré sameFamily=true sameTheme=false (pas de sur-fusion au voisinage du seuil)', () => {
+    const priors = [stub('p1', 'Prévision: Problème regard R4 - manque Chute', 'thread-r4-forecast', 'forecast', 'knowledge_fact')]
+    const news = [stub('n1', 'Regard R4 chute manquante', null, 'test_control', 'knowledge_fact')]
+    let uuidN = 0
+    const map = resolveMatches1to1(news, priors, () => `uuid-${++uuidN}`)
+    expect(map.get('n1')).not.toBe('thread-r4-forecast')
+    expect(map.get('n1')).toMatch(/^uuid-/)
+  })
+})
+
 // ── mapDocumentStatus ─────────────────────────────────────────────────────────
 
 describe('mapDocumentStatus', () => {

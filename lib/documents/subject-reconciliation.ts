@@ -179,24 +179,33 @@ function computeBestCandidate(newProp: ProposalStub, priors: ProposalStub[]): Sc
     return match ? { propId: newProp.id, thread: match.subject_thread_id!, score: 1.0 } : null
   }
 
-  const sameTheme = sameFamilyPriors.filter(
-    (p) => p.thematic_category === newProp.thematic_category,
-  )
+  // P1-C1 : thematic_category n'est plus une condition bloquante d'identité.
+  // proposal_family reste la frontière forte (sameFamilyPriors ci-dessus, inchangé).
+  // Le thème redevient un signal secondaire : à score égal (égalité stricte de longueur
+  // ou de score Jaccard), on préfère le candidat de même thème, sans jamais bonifier
+  // artificiellement un score (qui pourrait faire franchir SIMILARITY_THRESHOLD à tort).
+  const sameTheme = (p: ProposalStub) => p.thematic_category === newProp.thematic_category
 
   // Exact après stripping
   const newNormStripped = normalizeLabel(stripCategoryFormatting(newProp.label))
-  const exactMatch = sameTheme.find(
+  const exactMatches = sameFamilyPriors.filter(
     (p) => normalizeLabel(stripCategoryFormatting(p.label)) === newNormStripped,
   )
-  if (exactMatch) return { propId: newProp.id, thread: exactMatch.subject_thread_id!, score: 1.0 }
+  if (exactMatches.length > 0) {
+    const exactMatch = exactMatches.find(sameTheme) ?? exactMatches[0]
+    return { propId: newProp.id, thread: exactMatch.subject_thread_id!, score: 1.0 }
+  }
 
   // Containment fort
   let bestContainment: ProposalStub | null = null
   let bestContainmentLen = 0
-  for (const prior of sameTheme) {
+  for (const prior of sameFamilyPriors) {
     if (strongContainmentMatch(newProp.label, prior.label)) {
       const priorLen = normalizeLabel(stripCategoryFormatting(prior.label)).length
-      if (priorLen > bestContainmentLen) {
+      if (
+        priorLen > bestContainmentLen ||
+        (priorLen === bestContainmentLen && sameTheme(prior) && bestContainment && !sameTheme(bestContainment))
+      ) {
         bestContainment = prior
         bestContainmentLen = priorLen
       }
@@ -207,12 +216,14 @@ function computeBestCandidate(newProp: ProposalStub, priors: ProposalStub[]): Sc
   // Jaccard sur labels strippés
   let bestJaccard = 0
   let bestThread: string | null = null
+  let bestIsSameTheme = false
   const newStripped = stripCategoryFormatting(newProp.label)
-  for (const prior of sameTheme) {
+  for (const prior of sameFamilyPriors) {
     const score = jaccardSimilarity(newStripped, stripCategoryFormatting(prior.label))
-    if (score > bestJaccard) {
+    if (score > bestJaccard || (score === bestJaccard && score > 0 && sameTheme(prior) && !bestIsSameTheme)) {
       bestJaccard = score
       bestThread = prior.subject_thread_id
+      bestIsSameTheme = sameTheme(prior)
     }
   }
   if (bestJaccard >= SIMILARITY_THRESHOLD && bestThread) {
