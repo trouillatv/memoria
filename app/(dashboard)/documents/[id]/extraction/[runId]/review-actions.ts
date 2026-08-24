@@ -8,7 +8,10 @@ import { getUserRoleById } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { reviewProposal, linkProposalEvidence } from '@/lib/db/document-extractions'
 import { materializeHistoricalVisit } from '@/lib/db/historical-visit-materialization'
-import { reconcileHistoricalPvCanonicalSubjects } from '@/lib/db/canonical-subject-historical-reconcile'
+import {
+  reconcileHistoricalCorpusForSite,
+  getMaterializedRunIdsForSite,
+} from '@/lib/db/canonical-subject-historical-corpus-reconcile'
 import { decideReconcileLock, acquireReconcileLock } from '@/lib/db/canonical-subject-source-reconcile'
 import { projectCanonicalSubjectSafely } from '@/lib/db/canonical-subject-project'
 import { runHistoricalMemoryBuildPipeline } from '@/lib/subjects/memory-build-pipeline'
@@ -492,7 +495,7 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
     return { ok: false, error: e instanceof Error ? e.message : 'Erreur lors de la matérialisation' }
   }
 
-  // ── P0-J.1 : canonicalisation des threads métier (synchrone, avant P0-B2) ──
+  // ── P0-J.1/P0-J.3 : canonicalisation des threads métier (synchrone, avant P0-B2) ──
   // Pose l'identité canonique (canonical_subject + subject_thread_identity) des
   // threads action/decision/knowledge_fact/deadline/observation/reservation.
   // Doit compléter AVANT ensureHistoricalPdfOccurrences() : celui-ci résout
@@ -500,6 +503,16 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
   // silencieusement tout thread encore sans identité (cf. P0-B2, ligne ~123).
   // Verrou soft (P0-2, même colonnes que le chemin field_visit) : idempotent,
   // protège contre un double-clic sur "Créer visite historique".
+  //
+  // P0-J.3 (GO Vincent 2026-08-24) : ce workflow importe les PV un par un, sans
+  // notion de « fin de batch » — chaque invocation EST l'unité de travail. Le
+  // point d'ancrage sûr est donc de reconverger tout le corpus déjà matérialisé
+  // du chantier (runIds sourcés depuis site_reports.extraction_run_id, jamais
+  // depuis is_canonical=true seul — cf. découverte Guillaume) à chaque import,
+  // pas seulement le run qui vient d'être créé. reconcileHistoricalCorpusForSite
+  // est idempotent et rejoue ce point fixe en 1 passage à écriture nulle pour
+  // tout run déjà résolu : reconverger tout le corpus à chaque PV ne recrée
+  // jamais N fois le même travail, ça le confirme.
   let touchedCanonicalSubjectIds: string[] = []
   {
     const sb = createAdminClient()
@@ -518,8 +531,15 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
 
       if (locked) {
         try {
-          const reconcileResult = await reconcileHistoricalPvCanonicalSubjects({ runId, siteId })
-          touchedCanonicalSubjectIds = reconcileResult.touchedCanonicalSubjectIds
+          const siteRunIds = await getMaterializedRunIdsForSite(sb, siteId)
+
+          const corpusResult = await reconcileHistoricalCorpusForSite({ siteId, runIds: siteRunIds })
+          if (!corpusResult.reachedFixedPoint) {
+            throw new Error(
+              `Convergence canonique non atteinte après ${corpusResult.passes} passages (site ${siteId})`,
+            )
+          }
+          touchedCanonicalSubjectIds = corpusResult.touchedCanonicalSubjectIds
 
           // ── Projection déterministe de la FK canonique (point d'appel 1/4) ──
           // Le RPC materialize_historical_visit pose report_id sur les actions et

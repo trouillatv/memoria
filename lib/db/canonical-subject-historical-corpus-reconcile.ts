@@ -26,11 +26,34 @@ import 'server-only'
 //     celles-ci dépendent de l'identité STI finale et doivent être posées par l'appelant UNE FOIS la
 //     convergence atteinte (elles sont déjà idempotentes/additives indépendamment de l'ordre des runs).
 
+import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   reconcileHistoricalPvCanonicalSubjects,
   type HistoricalReconcileFamilyStat,
 } from '@/lib/db/canonical-subject-historical-reconcile'
 import type { DocumentProposalFamily } from '@/types/db'
+
+/**
+ * P0-J.3 — Source unique des runIds « déjà matérialisés » d'un chantier.
+ *
+ * Toujours site_reports.extraction_run_id, jamais document_extraction_run
+ * seul ni is_canonical=true : un run peut être canonique sans jamais avoir
+ * été matérialisé en visite (fantôme, à ignorer), et un run matérialisé mais
+ * non canonique doit quand même être pris en compte (découverte Guillaume,
+ * P0-J.1). Partagée par les deux points d'entrée production (review-actions.ts
+ * et reconciliation-sweep.ts) pour qu'ils ne puissent jamais diverger.
+ */
+export async function getMaterializedRunIdsForSite(
+  supabase: SupabaseClient,
+  siteId: string,
+): Promise<string[]> {
+  const { data } = await supabase
+    .from('site_reports')
+    .select('extraction_run_id')
+    .eq('site_id', siteId)
+    .not('extraction_run_id', 'is', null)
+  return [...new Set((data ?? []).map((r) => (r as { extraction_run_id: string }).extraction_run_id))]
+}
 
 export interface HistoricalCorpusReconcileResult {
   siteId: string

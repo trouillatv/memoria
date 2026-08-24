@@ -114,7 +114,10 @@ export type SweepOutcome =
  *
  * Le chemin import n'a pas d'équivalent extractible sans toucher à la server
  * action ; il est reproduit ici avec le MÊME verrou partagé (decideReconcileLock
- * + acquireReconcileLock), jamais un CAS recopié à la main.
+ * + acquireReconcileLock), jamais un CAS recopié à la main. Depuis P0-J.3, ce
+ * chemin appelle aussi reconcileHistoricalCorpusForSite() sur l'ensemble des
+ * runs déjà matérialisés du chantier (pas seulement item.extractionRunId) :
+ * même garantie de point fixe que le chemin primaire de review-actions.ts.
  */
 export async function replayReconciliation(item: StuckReconciliation): Promise<SweepOutcome> {
   if (!item.siteId) return 'no_site'
@@ -143,10 +146,14 @@ export async function replayReconciliation(item: StuckReconciliation): Promise<S
   if (!locked) return 'lock_lost'
 
   try {
-    const { reconcileHistoricalPvCanonicalSubjects } = await import(
-      '@/lib/db/canonical-subject-historical-reconcile'
+    const { reconcileHistoricalCorpusForSite, getMaterializedRunIdsForSite } = await import(
+      '@/lib/db/canonical-subject-historical-corpus-reconcile'
     )
-    await reconcileHistoricalPvCanonicalSubjects({ runId: item.extractionRunId, siteId: item.siteId })
+    const siteRunIds = await getMaterializedRunIdsForSite(sb, item.siteId)
+    const corpusResult = await reconcileHistoricalCorpusForSite({ siteId: item.siteId, runIds: siteRunIds })
+    if (!corpusResult.reachedFixedPoint) {
+      throw new Error(`Convergence canonique non atteinte après ${corpusResult.passes} passages (site ${item.siteId})`)
+    }
     await sb
       .from('site_reports')
       .update({
