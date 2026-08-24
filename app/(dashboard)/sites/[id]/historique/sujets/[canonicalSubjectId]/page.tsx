@@ -329,6 +329,25 @@ function frDateShort(iso: string): string {
   return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
 }
 
+/** Plage "du JJ MMM au JJ MMM YYYY" calculée sur les seuls membres ayant une date exploitable. */
+function formatMemberDateRange(members: MaterializedEvent[]): string | null {
+  const dates = members.map((m) => m.date).filter((d): d is string => !!d).sort()
+  if (dates.length === 0) return null
+  const first = dates[0]
+  const last = dates[dates.length - 1]
+  return first === last ? frDate(first) : `${frDateShort(first)} → ${frDate(last)}`
+}
+
+/** Membres triés chronologiquement (les occurrences sans date restent en fin de liste). */
+function sortMembersByDate(members: MaterializedEvent[]): MaterializedEvent[] {
+  return [...members].sort((a, b) => {
+    if (a.date && b.date) return a.date.localeCompare(b.date)
+    if (a.date) return -1
+    if (b.date) return 1
+    return 0
+  })
+}
+
 function dateToMs(iso: string): number {
   return new Date(iso).getTime()
 }
@@ -764,37 +783,77 @@ function MaterializedEventsSection({ entries }: { entries: CanonicalBusinessObje
             <ul className="space-y-1.5">
               {items.map((entry) => {
                 const primary = entry.members[0]
-                return (
-                  <li key={entry.key} className="flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm">
-                    <span className={cn('mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold', meta.color)}>
-                      {meta.label}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium leading-snug">{entry.label}</p>
-                      {!entry.isGrouped && primary.description && (
-                        <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{primary.description}</p>
-                      )}
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        {!entry.isGrouped && primary.date && <span>{frDate(primary.date)}</span>}
-                        {entry.isGrouped && (
-                          <span className="text-muted-foreground/70">
-                            {entry.members.length} occurrence{entry.members.length > 1 ? 's' : ''}
-                          </span>
+                const isMultiOccurrence = entry.isGrouped && entry.members.length > 1
+
+                const statusBadge = entry.statusIsDivergent ? (
+                  <span className="rounded-full bg-muted px-1.5 py-0.5">
+                    plusieurs états
+                  </span>
+                ) : entry.status && (
+                  <span className={cn(
+                    'rounded-full px-1.5 py-0.5',
+                    STATUS_COLORS[entry.status] ?? 'bg-muted text-muted-foreground',
+                  )}>
+                    {ENTITY_STATUS_LABELS[entry.status] ?? entry.status}
+                  </span>
+                )
+
+                if (!isMultiOccurrence) {
+                  return (
+                    <li key={entry.key} className="flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm">
+                      <span className={cn('mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold', meta.color)}>
+                        {meta.label}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium leading-snug">{entry.label}</p>
+                        {primary.description && (
+                          <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{primary.description}</p>
                         )}
-                        {entry.statusIsDivergent ? (
-                          <span className="rounded-full bg-muted px-1.5 py-0.5">
-                            plusieurs états
-                          </span>
-                        ) : entry.status && (
-                          <span className={cn(
-                            'rounded-full px-1.5 py-0.5',
-                            STATUS_COLORS[entry.status] ?? 'bg-muted text-muted-foreground',
-                          )}>
-                            {ENTITY_STATUS_LABELS[entry.status] ?? entry.status}
-                          </span>
-                        )}
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          {primary.date && <span>{frDate(primary.date)}</span>}
+                          {statusBadge}
+                        </div>
                       </div>
-                    </div>
+                    </li>
+                  )
+                }
+
+                const dateRange = formatMemberDateRange(entry.members)
+                const history = sortMembersByDate(entry.members)
+
+                return (
+                  <li key={entry.key} className="rounded-lg border text-sm">
+                    <details className="group/cbo">
+                      <summary className="flex cursor-pointer list-none items-start gap-2.5 px-3 py-2.5 select-none hover:bg-muted/40">
+                        <span className={cn('mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold', meta.color)}>
+                          {meta.label}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium leading-snug">{entry.label}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                            <span className="text-muted-foreground/70">
+                              {entry.members.length} occurrences regroupées
+                            </span>
+                            {dateRange && <span>{dateRange}</span>}
+                            {statusBadge}
+                          </div>
+                        </div>
+                        <span className="mt-0.5 shrink-0 text-muted-foreground transition-transform group-open/cbo:rotate-90">▸</span>
+                      </summary>
+                      <div className="border-t px-3 py-2.5">
+                        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Historique de cet objet
+                        </p>
+                        <ul className="ml-3 space-y-1 border-l-2 border-muted pl-4">
+                          {history.map((m) => (
+                            <li key={m.entityId} className="text-xs text-muted-foreground">
+                              <span className="font-medium text-foreground">{m.date ? frDate(m.date) : 'Date inconnue'}</span>
+                              {' — '}{m.title}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </details>
                   </li>
                 )
               })}
