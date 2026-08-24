@@ -72,10 +72,12 @@ export function stripCategoryFormatting(label: string): string {
  *   où le sujet est le préfixe du PV07 (ex. "Débroussaillage" ⊂ "Débroussaillage : 100% réalisé").
  *
  * Gardes :
- * - ≥ 2 tokens significatifs (hors GENERIC_TOKENS) dans le court
+ * - Si le long ajoute un qualificatif discriminant (QUALIFIERS) absent du court : rejeter
+ *   ("Purge" ⊄ "Purge complémentaire"), quel que soit le nombre de tokens significatifs du
+ *   court — y compris quand les deux labels partagent un préfixe commun de plusieurs tokens
+ *   (ex. "Terrassement plateforme : Purge" ⊄ "Terrassement plateforme : Purge complémentaire").
+ * - Sinon : ≥ 2 tokens significatifs (hors GENERIC_TOKENS) dans le court
  * - OU 1 token significatif de longueur ≥ 7 (terme métier spécifique)
- * - Si le long ajoute un qualificatif discriminant (QUALIFIERS) et le court n'a qu'un seul
- *   token significatif : rejeter ("Purge" ⊄ "Purge complémentaire")
  */
 export function strongContainmentMatch(labelA: string, labelB: string): boolean {
   // Étape 0 : exact après stripping des deux côtés
@@ -104,6 +106,11 @@ export function strongContainmentMatch(labelA: string, labelB: string): boolean 
     if (!longSet.has(t)) return false
   }
 
+  // Garde : rejeter si le long ajoute un qualificatif discriminant que le court n'a pas,
+  // avant toute décision basée sur le nombre de tokens significatifs (voir docstring).
+  const longOnlyToks = [...longSet].filter((t) => !shortSet.has(t))
+  if (longOnlyToks.some((t) => QUALIFIERS.has(t))) return false
+
   // Tokens significatifs du court (hors génériques)
   const sigShort = shortToks.filter((t) => !GENERIC_TOKENS.has(t))
 
@@ -112,9 +119,6 @@ export function strongContainmentMatch(labelA: string, labelB: string): boolean 
   if (sigShort.length === 1) {
     // Token unique : accepté seulement s'il est assez spécifique (≥ 7 chars)
     if (sigShort[0].length < 7) return false
-    // Garde : rejeter si le long ajoute un qualificatif que le court n'a pas
-    const longOnlyToks = [...longSet].filter((t) => !shortSet.has(t))
-    if (longOnlyToks.some((t) => QUALIFIERS.has(t))) return false
     return true
   }
 
@@ -218,8 +222,18 @@ function computeBestCandidate(newProp: ProposalStub, priors: ProposalStub[]): Sc
   let bestThread: string | null = null
   let bestIsSameTheme = false
   const newStripped = stripCategoryFormatting(newProp.label)
+  const newStrippedTokens = new Set(normalizeLabel(newStripped).split(' ').filter(Boolean))
   for (const prior of sameFamilyPriors) {
-    const score = jaccardSimilarity(newStripped, stripCategoryFormatting(prior.label))
+    const priorStripped = stripCategoryFormatting(prior.label)
+    // Garde : un qualificatif discriminant (QUALIFIERS) présent d'un seul côté écarte
+    // le candidat, même si le score Jaccard atteint le seuil (même règle que containment,
+    // sinon "Purge" ⊂ "Purge complémentaire" repasse par ce chemin après strip).
+    const priorStrippedTokens = new Set(normalizeLabel(priorStripped).split(' ').filter(Boolean))
+    const hasQualifierAsymmetry = [...QUALIFIERS].some(
+      (q) => newStrippedTokens.has(q) !== priorStrippedTokens.has(q),
+    )
+    if (hasQualifierAsymmetry) continue
+    const score = jaccardSimilarity(newStripped, priorStripped)
     if (score > bestJaccard || (score === bestJaccard && score > 0 && sameTheme(prior) && !bestIsSameTheme)) {
       bestJaccard = score
       bestThread = prior.subject_thread_id

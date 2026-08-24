@@ -254,6 +254,57 @@ describe('strongContainmentMatch — faux positifs à rejeter', () => {
   })
 })
 
+// ── strongContainmentMatch — P1-C1.1 : garde QUALIFIERS universel ───────────
+//
+// Avant P1-C1.1, la garde QUALIFIERS n'était consultée que dans la branche
+// sigShort.length === 1. Dès que deux labels partageaient un préfixe/contexte
+// de ≥ 2 tokens significatifs, containment retournait true sans jamais vérifier
+// qu'un qualificatif discriminant (complémentaire, partiel, etc.) n'était
+// présent que du côté long. Cas réel confirmé par audit (_p1b_out2.txt, thread
+// 26c7e2d0 "Purge") : "Terrassement plateforme : Purge complémentaire" matchait
+// déjà "Terrassement plateforme : Purge" avec sameTheme=true — bug actif avant
+// P1-C1, pas seulement exposé par lui.
+
+describe('strongContainmentMatch — P1-C1.1 : qualificatif discriminant avec préfixe commun', () => {
+  it('Purge ⊄ Purge complémentaire avec préfixe commun de plusieurs tokens (cas réel PV003)', () => {
+    // sig court = [terrassement, plateforme, purge] → 3 ≥ 2 aurait matché avant le correctif
+    // longOnly = [complementaire] ∈ QUALIFIERS → rejeté
+    expect(strongContainmentMatch(
+      'Terrassement plateforme : Purge',
+      'Terrassement plateforme : Purge complémentaire',
+    )).toBe(false)
+  })
+
+  it('sens inverse : Purge complémentaire ⊅ Purge (même préfixe)', () => {
+    expect(strongContainmentMatch(
+      'Terrassement plateforme : Purge complémentaire',
+      'Terrassement plateforme : Purge',
+    )).toBe(false)
+  })
+
+  it('qualificatif présent symétriquement des deux côtés → matching toujours autorisé (cas réel PV006)', () => {
+    // "complémentaire" présent des deux côtés → pas d'asymétrie → containment conservé
+    expect(strongContainmentMatch(
+      'Rapport G3 pour purge complémentaire',
+      'Transmission photos et rapport G3 purge complémentaire',
+    )).toBe(true)
+  })
+
+  it('texte identique → matching inchangé', () => {
+    expect(strongContainmentMatch(
+      'Avis G3 sur les essais de la plateforme support de dalle',
+      'Avis G3 sur les essais de la plateforme support de dalle',
+    )).toBe(true)
+  })
+
+  it('autre qualificatif (partiel) avec préfixe commun → rejeté', () => {
+    expect(strongContainmentMatch(
+      'Terrassement plateforme : Purge',
+      'Terrassement plateforme : Purge partiel réalisé',
+    )).toBe(false)
+  })
+})
+
 // ── resolveMatches1to1 — contrainte 1:1 ──────────────────────────────────────
 
 describe('resolveMatches1to1 — assignation sans collision', () => {
@@ -442,6 +493,25 @@ describe('resolveMatches1to1 — contre-exemples : deux objets proches restent d
     let uuidN = 0
     const map = resolveMatches1to1(news, priors, () => `uuid-${++uuidN}`)
     expect(map.get('n1')).not.toBe('thread-r4-forecast')
+    expect(map.get('n1')).toMatch(/^uuid-/)
+  })
+})
+
+// ── P1-C1.1 — régression : plus besoin d'une collision favorable pour séparer ─
+//
+// Avant le correctif, "Purge complémentaire" matchait déjà "Purge" même avec
+// sameTheme=true et sans aucun concurrent dans le run (cas réel f66b84aa/26c7e2d0,
+// PV003 Guillaume/OCEF) — la séparation observée en base ne tenait qu'à une
+// collision favorable dans resolveMatches1to1 côté PV compétiteur. Ce test
+// vérifie que la séparation est maintenant garantie par l'identité elle-même.
+
+describe('resolveMatches1to1 — P1-C1.1 : Purge/Purge complémentaire séparés sans collision (cas réel non protégé par le thème)', () => {
+  it('Purge complémentaire ne matche plus Purge même seul dans le run, même thème (f66b84aa/26c7e2d0)', () => {
+    const priors = [stub('p1', 'Terrassement plateforme : Purge', 'thread-purge', 'progress', 'knowledge_fact')]
+    const news = [stub('n1', 'Terrassement plateforme : Purge complémentaire', null, 'progress', 'knowledge_fact')]
+    let uuidN = 0
+    const map = resolveMatches1to1(news, priors, () => `uuid-${++uuidN}`)
+    expect(map.get('n1')).not.toBe('thread-purge')
     expect(map.get('n1')).toMatch(/^uuid-/)
   })
 })
