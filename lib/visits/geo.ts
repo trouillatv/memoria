@@ -87,6 +87,52 @@ export function buildEvidenceNumberMap<T extends { id: string }>(orderedCaptures
  * groupées, jamais LESQUELLES. Partagée par les trois rendus de carte (schéma
  * PDF, instantané baké, carte live) — jamais reformulée localement.
  */
+export interface ProximityPoint {
+  id: string
+  lat: number
+  lng: number
+}
+
+export interface ProximityGroup<T extends ProximityPoint> {
+  lat: number
+  lng: number
+  points: T[]
+}
+
+/**
+ * Regroupement spatial STABLE, indépendant du zoom (Vincent, Lot Cartographie
+ * CR, 2026-08-26) : la décision « ces preuves sont au même endroit » se prend
+ * UNE SEULE FOIS en coordonnées réelles (mètres, haversine), jamais en pixels
+ * projetés. Contrairement à `clusterMarkersByPixel` (regroupement en pixels,
+ * qui se redéfinit à chaque zoom — « plus on zoome, plus on éclate », rejeté
+ * en recette), le résultat de cette fonction ne dépend d'aucune projection :
+ * chaque renderer (carte live à n'importe quel zoom, instantané PDF baké,
+ * schéma PDF de repli) place ensuite le centroïde déjà décidé dans son propre
+ * espace pixel, sans jamais reconsidérer qui appartient à quel groupe.
+ * Glouton, ordre stable (ordre d'entrée) : un point rejoint le premier groupe
+ * dont le centroïde courant est à portée de `radiusMeters`, sinon il ouvre un
+ * nouveau groupe. Rayon par défaut = `SAME_SPOT_RADIUS_M`, la même doctrine
+ * « même endroit sur un chantier » déjà utilisée par la fiche observation
+ * isolée (« captures près d'ici ») — pas une seconde définition concurrente.
+ */
+export function groupByProximity<T extends ProximityPoint>(
+  points: T[],
+  radiusMeters: number = SAME_SPOT_RADIUS_M,
+): Array<ProximityGroup<T>> {
+  const groups: Array<ProximityGroup<T>> = []
+  for (const p of points) {
+    const existing = groups.find((g) => distanceMeters(g.lat, g.lng, p.lat, p.lng) <= radiusMeters)
+    if (existing) {
+      existing.points.push(p)
+      existing.lat = existing.points.reduce((s, q) => s + q.lat, 0) / existing.points.length
+      existing.lng = existing.points.reduce((s, q) => s + q.lng, 0) / existing.points.length
+    } else {
+      groups.push({ lat: p.lat, lng: p.lng, points: [p] })
+    }
+  }
+  return groups
+}
+
 export function formatEvidenceNumberLabel(numbers: number[]): string {
   const sorted = [...numbers].sort((a, b) => a - b)
   if (sorted.length === 0) return ''

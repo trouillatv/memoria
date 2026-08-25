@@ -3,8 +3,7 @@
 import { useEffect, useRef } from 'react'
 import 'leaflet/dist/leaflet.css'
 import type { Map as LeafletMap } from 'leaflet'
-import { clusterMarkersByPixel, MARKER_CLUSTER_RADIUS_PX } from '@/lib/visits/marker-cluster'
-import { formatEvidenceNumberLabel } from '@/lib/visits/geo'
+import { formatEvidenceNumberLabel, groupByProximity } from '@/lib/visits/geo'
 
 // Carte des CAPTURES géolocalisées — une LECTURE (pas un module) : on l'embarque
 // dans le Journal et dans la lecture AO. Répond à « où ET quoi » : le marqueur
@@ -127,74 +126,66 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
         return
       }
 
-      // Carte du CR (Lot 4.1) : chaque point isolé affiche son numéro ;
-      // plusieurs preuves qui se chevauchent visuellement (même précision GPS)
-      // forment UN SEUL repère qui affiche leurs numéros (ex. « 1–5 »), jamais
-      // un point violet unique sans identité — c'est le défaut que Vincent a
-      // constaté en recette (« je ne peux pas relier une photo à la carte »).
+      // Carte du CR (Lot Cartographie CR, 2026-08-26) : chaque point isolé
+      // affiche son numéro ; plusieurs preuves suffisamment proches (même
+      // précision GPS, cf. SAME_SPOT_RADIUS_M) forment UN SEUL repère qui
+      // affiche leurs numéros (ex. « 1–5 »), jamais un point sans identité.
+      // Le regroupement se décide UNE FOIS en coordonnées réelles (mètres) —
+      // pas en pixels : contrairement à l'ancien clustering par zoom, deux
+      // preuves au même endroit restent groupées à n'importe quel niveau de
+      // zoom (« ce n'est pas Google Maps », Vincent). Chaque marqueur est
+      // ensuite posé à son centroïde lat/lng, que Leaflet replace lui-même à
+      // chaque zoom/pan — aucun recalcul de regroupement n'est nécessaire.
       const initialBounds = L.latLngBounds(captures.map((c) => [c.lat, c.lng] as [number, number]))
       if (captures.length > 0) map.fitBounds(initialBounds.pad(0.2))
       else map.setView([0, 0], 2)
 
-      let layers: import('leaflet').Layer[] = []
-      const render = () => {
-        layers.forEach((l) => map.removeLayer(l))
-        layers = []
-        const pts = captures.map((c) => {
-          const p = map.latLngToLayerPoint([c.lat, c.lng])
-          return { id: c.id, x: p.x, y: p.y, c }
-        })
-        const clusters = clusterMarkersByPixel(pts, MARKER_CLUSTER_RADIUS_PX)
-        for (const cluster of clusters) {
-          const center = map.layerPointToLatLng(L.point(cluster.x, cluster.y))
-          if (cluster.points.length === 1) {
-            const { c } = cluster.points[0]
-            const color = KIND_COLOR[c.kind] ?? '#6b7280'
-            const icon = L.divIcon({
-              className: '',
-              html: `<div style="width:26px;height:26px;border-radius:13px;background:${color};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">${c.number}</div>`,
-              iconSize: [26, 26],
-              iconAnchor: [13, 13],
-            })
-            const m = L.marker(center, { icon })
-            const date = new Date(c.created_at).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
-            const label = escapeHtml(`${KIND_LABEL[c.kind] ?? c.kind} ${c.number}`)
-            const excerpt = c.body ? `<div style="margin-top:4px">${escapeHtml(c.body.slice(0, 140))}</div>` : ''
-            m.bindPopup(
-              `<strong>${label}</strong>` +
-              `<div style="color:#666;font-size:11px">${date}</div>${excerpt}` +
-              (linkPopups
-                ? `<a href="/m/observation/${c.id}" style="display:inline-block;margin-top:6px;color:#2563eb">Voir cette observation →</a>`
-                : ''),
-            )
-            m.bindTooltip(label, { direction: 'top', opacity: 0.9 })
-            m.addTo(map)
-            layers.push(m)
-          } else {
-            const numbers = cluster.points.map((pt) => pt.c.number ?? 0)
-            const rangeLabel = formatEvidenceNumberLabel(numbers)
-            const w = Math.max(30, rangeLabel.length * 7 + 14)
-            const icon = L.divIcon({
-              className: '',
-              html: `<div style="min-width:${w}px;height:26px;padding:0 6px;border-radius:13px;background:#334155;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">${escapeHtml(rangeLabel)}</div>`,
-              iconSize: [w, 26],
-              iconAnchor: [w / 2, 13],
-            })
-            const m = L.marker(center, { icon })
-            m.bindPopup(clusterPopupHtml(cluster.points.map((pt) => pt.c), linkPopups))
-            m.addTo(map)
-            layers.push(m)
-          }
+      const groups = groupByProximity(captures.map((c) => ({ id: c.id, lat: c.lat, lng: c.lng, c })))
+      for (const group of groups) {
+        const center: [number, number] = [group.lat, group.lng]
+        if (group.points.length === 1) {
+          const { c } = group.points[0]
+          const color = KIND_COLOR[c.kind] ?? '#6b7280'
+          const icon = L.divIcon({
+            className: '',
+            html: `<div style="width:26px;height:26px;border-radius:13px;background:${color};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">${c.number}</div>`,
+            iconSize: [26, 26],
+            iconAnchor: [13, 13],
+          })
+          const m = L.marker(center, { icon })
+          const date = new Date(c.created_at).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+          const label = escapeHtml(`${KIND_LABEL[c.kind] ?? c.kind} ${c.number}`)
+          const excerpt = c.body ? `<div style="margin-top:4px">${escapeHtml(c.body.slice(0, 140))}</div>` : ''
+          m.bindPopup(
+            `<strong>${label}</strong>` +
+            `<div style="color:#666;font-size:11px">${date}</div>${excerpt}` +
+            (linkPopups
+              ? `<a href="/m/observation/${c.id}" style="display:inline-block;margin-top:6px;color:#2563eb">Voir cette observation →</a>`
+              : ''),
+          )
+          m.bindTooltip(label, { direction: 'top', opacity: 0.9 })
+          m.addTo(map)
+        } else {
+          const numbers = group.points.map((pt) => pt.c.number ?? 0)
+          const rangeLabel = formatEvidenceNumberLabel(numbers)
+          // Pastille proche de la taille d'un marqueur simple (26px) — pas le
+          // gros ovale surdimensionné rejeté en recette : largeur ajustée au
+          // strict nécessaire pour l'étiquette, hauteur identique au marqueur seul.
+          const w = Math.max(26, rangeLabel.length * 6 + 16)
+          const icon = L.divIcon({
+            className: '',
+            html: `<div style="min-width:${w}px;height:26px;padding:0 6px;border-radius:13px;background:#334155;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">${escapeHtml(rangeLabel)}</div>`,
+            iconSize: [w, 26],
+            iconAnchor: [w / 2, 13],
+          })
+          const m = L.marker(center, { icon })
+          m.bindPopup(clusterPopupHtml(group.points.map((pt) => pt.c), linkPopups))
+          m.addTo(map)
         }
       }
-      render()
-      // Le zoom change la distance en PIXELS entre deux points GPS fixes → le
-      // regroupement doit être recalculé. Un déplacement (pan) ne change pas
-      // ces distances relatives : pas besoin de réagir à 'moveend'.
-      map.on('zoomend', render)
     })
 
-    return () => { cancelled = true; mapRef.current?.off('zoomend'); mapRef.current?.remove(); mapRef.current = null }
+    return () => { cancelled = true; mapRef.current?.remove(); mapRef.current = null }
   }, [captures, siteId, linkPopups])
 
   // Types réellement présents : la légende ne montre jamais un type absent de

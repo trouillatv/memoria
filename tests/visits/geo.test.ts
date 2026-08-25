@@ -9,6 +9,7 @@ import {
   selectCrVisualEvidence,
   buildEvidenceNumberMap,
   formatEvidenceNumberLabel,
+  groupByProximity,
 } from '@/lib/visits/geo'
 
 describe('distanceMeters', () => {
@@ -153,5 +154,63 @@ describe('formatEvidenceNumberLabel — étiquette de repère groupé (Vincent, 
     const label = formatEvidenceNumberLabel([2, 3, 4, 9, 12])
     expect(label).not.toBe('5')
     expect(label).toBe('2–4, 9, 12')
+  })
+})
+
+describe('groupByProximity — regroupement spatial stable, indépendant du zoom (Vincent, Lot Cartographie CR, 2026-08-26)', () => {
+  it('deux points à 5 m → un seul groupe', () => {
+    const groups = groupByProximity([
+      { id: 'a', lat: -22.2758, lng: 166.458 },
+      { id: 'b', lat: -22.27581, lng: 166.458 },
+    ])
+    expect(groups).toHaveLength(1)
+    expect(groups[0].points.map((p) => p.id)).toEqual(['a', 'b'])
+  })
+
+  it('deux points à ~300 m → deux groupes distincts', () => {
+    const groups = groupByProximity([
+      { id: 'a', lat: -22.2758, lng: 166.458 },
+      { id: 'b', lat: -22.2785, lng: 166.458 },
+    ])
+    expect(groups).toHaveLength(2)
+  })
+
+  it('point isolé → son propre groupe à un seul élément', () => {
+    const groups = groupByProximity([{ id: 'a', lat: -22.2758, lng: 166.458 }])
+    expect(groups).toHaveLength(1)
+    expect(groups[0].points).toHaveLength(1)
+  })
+
+  it('ensemble vide → aucun groupe', () => {
+    expect(groupByProximity([])).toHaveLength(0)
+  })
+
+  it('centroïde = moyenne des points du groupe', () => {
+    const groups = groupByProximity([
+      { id: 'a', lat: -22.2758, lng: 166.458 },
+      { id: 'b', lat: -22.27581, lng: 166.458 },
+    ])
+    expect(groups[0].lat).toBeCloseTo((-22.2758 + -22.27581) / 2, 6)
+  })
+
+  it('rayon personnalisé plus petit → deux groupes là où le rayon par défaut n’en ferait qu’un', () => {
+    const points = [
+      { id: 'a', lat: -22.2758, lng: 166.458 },
+      { id: 'b', lat: -22.27581, lng: 166.458 },
+    ]
+    expect(groupByProximity(points, 1)).toHaveLength(2)
+    expect(groupByProximity(points, SAME_SPOT_RADIUS_M)).toHaveLength(1)
+  })
+
+  it('décision indépendante de tout ordre de zoom/projection — même sortie quel que soit l’ordre d’entrée stable', () => {
+    const points = [
+      { id: 'a', lat: -22.2758, lng: 166.458 },
+      { id: 'b', lat: -22.27581, lng: 166.458 },
+      { id: 'c', lat: -22.2785, lng: 166.458 },
+    ]
+    const groups = groupByProximity(points)
+    expect(groups).toHaveLength(2)
+    expect(groups[0].points.map((p) => p.id)).toEqual(['a', 'b'])
+    expect(groups[1].points.map((p) => p.id)).toEqual(['c'])
   })
 })

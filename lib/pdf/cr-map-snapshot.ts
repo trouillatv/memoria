@@ -1,8 +1,7 @@
 import 'server-only'
 import { Resvg } from '@resvg/resvg-js'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { resolveEffectivePosition, selectCrVisualEvidence, buildEvidenceNumberMap, formatEvidenceNumberLabel } from '@/lib/visits/geo'
-import { clusterMarkersByPixel, MARKER_CLUSTER_RADIUS_PX } from '@/lib/visits/marker-cluster'
+import { resolveEffectivePosition, selectCrVisualEvidence, buildEvidenceNumberMap, formatEvidenceNumberLabel, groupByProximity } from '@/lib/visits/geo'
 
 // « Instantané carte » du compte-rendu. Le PDF ne fabrique JAMAIS la carte : cette
 // image est produite UNE SEULE FOIS (à l'ouverture de l'aperçu), stockée sur le
@@ -23,12 +22,6 @@ const PICK_MAX_ZOOM = 18 // niveau rue ; au-delà, un point seul serait sur-zoom
 const MAX_TILES = 30 // garde-fou : jamais un déluge de requêtes OSM
 const TILE_TIMEOUT_MS = 4000
 const OSM_UA = 'MemorIA/1.0 (compte-rendu de visite; +https://memoria.app)'
-// Instantané rendu à 2× la boîte carte du PDF (W/H = 2 × 515/200) : le rayon de
-// regroupement doit suivre la même échelle pour représenter le même seuil
-// visuel de chevauchement que le schéma live (Lot 4) — sinon les deux
-// renderers grouperaient différemment pour un même jeu de points.
-const SNAPSHOT_SCALE = 2
-const CLUSTER_RADIUS_PX = MARKER_CLUSTER_RADIUS_PX * SNAPSHOT_SCALE
 
 const KIND_COLOR: Record<string, string> = {
   photo: '#0284c7', video: '#7c3aed',
@@ -99,7 +92,10 @@ function buildSvg(
           `<text x="${m.cx.toFixed(1)}" y="${(m.cy + 5).toFixed(1)}" font-size="15" font-family="Helvetica, Arial, sans-serif" font-weight="bold" fill="#ffffff" text-anchor="middle">${escapeXml(m.label)}</text>`
         )
       }
-      const w = Math.max(36, m.label.length * 10 + 14)
+      // Pastille proche de la taille du marqueur simple (r=15, soit un
+      // diamètre de 30) — pas de surdimensionnement (Vincent, Lot Cartographie
+      // CR, 2026-08-26) : même hauteur, largeur ajustée au strict nécessaire.
+      const w = Math.max(30, m.label.length * 8 + 12)
       const h = 30
       const x = m.cx - w / 2
       const y = m.cy - h / 2
@@ -182,20 +178,20 @@ export async function ensureCrMapSnapshot(reportId: string): Promise<string | nu
   const tiles = fetched.filter((t): t is NonNullable<typeof t> => t != null)
   if (tiles.length === 0) return null // réseau / OSM indisponible → fallback schéma
 
-  // Regroupement déterministe des marqueurs proches (Lot 4) — même algorithme et
-  // même rayon (mis à l'échelle 2×) que le schéma live (ObservationMap).
-  const rawMarkers = positions.map((p) => {
-    const w = project(p.lat, p.lng, z)
-    return { id: p.id, x: w.x - originX, y: w.y - originY, kind: p.kind, number: p.number }
-  })
-  const clusters = clusterMarkersByPixel(rawMarkers, CLUSTER_RADIUS_PX)
-  const markers = clusters.map((c) => {
-    const single = c.points.length === 1 ? c.points[0] : null
+  // Regroupement spatial stable (Lot Cartographie CR, 2026-08-26) — décidé UNE
+  // FOIS en lat/lng (mètres), avant toute projection, avec le même algorithme
+  // que le schéma live (ObservationMap) : même groupe, quel que soit le zoom
+  // ou l'échelle de rendu de CE renderer. Seule la position de chaque
+  // centroïde est ensuite projetée ici, pour ce cadre précis.
+  const groups = groupByProximity(positions)
+  const markers = groups.map((g) => {
+    const w = project(g.lat, g.lng, z)
+    const single = g.points.length === 1 ? g.points[0] : null
     return {
-      cx: c.x,
-      cy: c.y,
+      cx: w.x - originX,
+      cy: w.y - originY,
       color: single ? (KIND_COLOR[single.kind] ?? '#6b7280') : '#334155',
-      label: single ? String(single.number) : formatEvidenceNumberLabel(c.points.map((p) => p.number)),
+      label: single ? String(single.number) : formatEvidenceNumberLabel(g.points.map((p) => p.number)),
     }
   })
 

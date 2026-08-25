@@ -15,8 +15,7 @@ import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/render
 import type { VisitCrDoc } from '@/lib/db/visits'
 import type { VisitSummary, SummarySection, SummaryItem, HistoricalIntervenant } from '@/lib/knowledge/visit-summary'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
-import { clusterMarkersByPixel, MARKER_CLUSTER_RADIUS_PX } from '@/lib/visits/marker-cluster'
-import { formatEvidenceNumberLabel } from '@/lib/visits/geo'
+import { formatEvidenceNumberLabel, groupByProximity } from '@/lib/visits/geo'
 
 const COLORS = {
   text: '#0f172a',
@@ -40,6 +39,25 @@ const KIND_LABEL: Record<string, string> = {
 
 const MAP_W = 515
 const MAP_H = 200
+
+// Largeurs de cellule — SOURCE UNIQUE, réutilisée à la fois par les styles
+// (ci-dessous) et par le nombre de vignettes par ligne (Vincent, Lot
+// Cartographie CR, 2026-08-26 — KO recette : le Reportage visuel débordait
+// horizontalement du PDF ; `flexWrap: 'wrap'` seul ne garantit pas le retour
+// à la ligne dans ce moteur de rendu). On chunke donc explicitement les
+// lignes plutôt que de compter sur flexWrap.
+const PHOTO_CELL_W = 235
+const PHOTO_CELL_GAP = 12
+const REPORTAGE_CELL_W = 120
+const REPORTAGE_CELL_GAP = 8
+const PHOTO_PER_ROW = Math.floor(MAP_W / (PHOTO_CELL_W + PHOTO_CELL_GAP))
+const REPORTAGE_PER_ROW = Math.floor(MAP_W / (REPORTAGE_CELL_W + REPORTAGE_CELL_GAP))
+
+function chunkRows<T>(items: T[], perRow: number): T[][] {
+  const rows: T[][] = []
+  for (let i = 0; i < items.length; i += perRow) rows.push(items.slice(i, i + perRow))
+  return rows
+}
 
 const styles = StyleSheet.create({
   page: {
@@ -116,9 +134,11 @@ const styles = StyleSheet.create({
   statN: { fontSize: 14, fontFamily: 'Helvetica-Bold' },
   statLabel: { fontSize: 7.5, color: COLORS.muted, marginTop: 2, textAlign: 'center' },
 
-  // Photos.
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  photoCell: { width: 235, marginRight: 12, marginBottom: 8, position: 'relative' },
+  // Photos — grille chunkée en lignes explicites (voir PHOTO_PER_ROW) : un
+  // média ne doit jamais pouvoir sortir de la zone imprimable.
+  photoGrid: { flexDirection: 'column' },
+  photoRow: { flexDirection: 'row' },
+  photoCell: { width: PHOTO_CELL_W, marginRight: PHOTO_CELL_GAP, marginBottom: 8, position: 'relative' },
   photo: { width: 235, height: 150, objectFit: 'cover', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3 },
   photoCap: { fontSize: 9, marginTop: 3 },
   photoCapStrong: { fontFamily: 'Helvetica-Bold' },
@@ -144,8 +164,9 @@ const styles = StyleSheet.create({
   // Reportage photographique (Tier 2, P0 mémoire/reportage 2026-08-17) : compact,
   // même gabarit que la bande « Évolution » — une galerie dense, jamais une preuve
   // mise en avant comme les Photos clés.
-  reportageGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  reportageCell: { width: 120, marginRight: 8, marginBottom: 8, position: 'relative' },
+  reportageGrid: { flexDirection: 'column' },
+  reportageRow: { flexDirection: 'row' },
+  reportageCell: { width: REPORTAGE_CELL_W, marginRight: REPORTAGE_CELL_GAP, marginBottom: 8, position: 'relative' },
   reportagePhoto: { width: 120, height: 80, objectFit: 'cover', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3 },
   reportageCap: { fontSize: 7.5, color: COLORS.muted, marginTop: 2 },
   reportageDate: { fontSize: 7, color: COLORS.faint, marginTop: 1 },
@@ -153,7 +174,7 @@ const styles = StyleSheet.create({
   // Vidéo retenue au CR (Lot 4, 2026-08-25) : jamais jouée dans le PDF — une
   // carte de preuve statique (icône + légende + date), même gabarit que la
   // Reportage photographique pour rester dans la même grille.
-  videoCard: { width: 120, marginRight: 8, marginBottom: 8, position: 'relative' },
+  videoCard: { width: REPORTAGE_CELL_W, marginRight: REPORTAGE_CELL_GAP, marginBottom: 8, position: 'relative' },
   videoIconBox: {
     width: 120, height: 80, backgroundColor: '#ede9fe', borderWidth: 0.5, borderColor: COLORS.border,
     borderRadius: 3, alignItems: 'center', justifyContent: 'center',
@@ -264,36 +285,36 @@ function ObservationMap({ positions }: { positions: VisitCrDoc['positions'] }) {
   const scaleY = (MAP_H / 2) * (1 - PAD) / Math.max(halfH, MIN_HALF_M)
   const scale = Math.min(scaleX, scaleY) // même échelle X/Y → géométrie vraie
 
-  // Regroupement déterministe des marqueurs qui se chevauchent visuellement
-  // (Lot 4) — même algorithme/rayon que l'instantané baké (cr-map-snapshot.ts).
-  const points = offsets.map((o) => ({
-    id: o.p.id,
-    x: MAP_W / 2 + o.dx * scale,
-    y: MAP_H / 2 - o.dy * scale,
-    p: o.p,
-  }))
-  const clusters = clusterMarkersByPixel(points, MARKER_CLUSTER_RADIUS_PX)
-  const hasGroups = clusters.some((c) => c.points.length > 1)
+  // Regroupement spatial stable (Lot Cartographie CR, 2026-08-26) — décidé UNE
+  // FOIS en lat/lng (mètres), avant toute projection locale, avec le même
+  // algorithme que l'instantané baké (cr-map-snapshot.ts) et la carte live
+  // (CaptureMap.tsx) : même groupe, quelle que soit l'échelle de CE schéma.
+  const groups = groupByProximity(positions)
+  const hasGroups = groups.some((g) => g.points.length > 1)
 
   return (
     <View wrap={false}>
       <View style={styles.map}>
-        {clusters.map((c, i) => {
-          const single = c.points.length === 1 ? c.points[0].p : null
+        {groups.map((g, i) => {
+          const x = MAP_W / 2 + (g.lng - cLng) * M_PER_DEG * cosLat * scale
+          const y = MAP_H / 2 - (g.lat - cLat) * M_PER_DEG * scale
+          const single = g.points.length === 1 ? g.points[0] : null
           const color = single ? (KIND_COLOR[single.kind] ?? '#6b7280') : COLORS.slate
           // Un repère groupé affiche les NUMÉROS des preuves qu'il contient
           // (ex. « 1–5 »), jamais un simple compte (Lot 4.1, Vincent) — sur
           // le papier, un repère ne se tape pas : l'étiquette doit dire à
           // elle seule QUELLES preuves il regroupe.
-          const label = single ? String(single.number) : formatEvidenceNumberLabel(c.points.map((pt) => pt.p.number))
+          const label = single ? String(single.number) : formatEvidenceNumberLabel(g.points.map((pt) => pt.number))
           const isWide = label.length > 2
-          const w = isWide ? Math.max(30, label.length * 6 + 12) : 16
+          // Largeur proche du marqueur simple (16px) — pas de pastille
+          // surdimensionnée : ajustée au strict nécessaire pour l'étiquette.
+          const w = isWide ? Math.max(16, label.length * 5 + 10) : 16
           return (
             <View
               key={i}
               style={[
                 styles.marker,
-                { left: c.x - w / 2, top: c.y - 8, width: w, borderRadius: 8, backgroundColor: color },
+                { left: x - w / 2, top: y - 8, width: w, borderRadius: 8, backgroundColor: color },
               ]}
             >
               <Text style={[styles.markerText, isWide ? { fontSize: 6 } : {}]}>{label}</Text>
@@ -828,15 +849,19 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
               sub={doc.photoCount > doc.photoItems.length ? `${doc.photoItems.length} sur ${doc.photoCount}` : `${doc.photoItems.length}`}
             />
             <View style={styles.photoGrid}>
-              {doc.photoItems.map((p, i) => (
-                <View key={i} style={styles.photoCell} wrap={false}>
-                  {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
-                  <Image src={p.url} style={styles.photo} />
-                  <NumberBadge n={p.evidenceNumber} />
-                  <Text style={styles.photoCap}>
-                    <Text style={styles.photoCapStrong}>Photo {p.evidenceNumber}</Text>
-                    {p.caption ? ` — ${p.caption}` : ''}
-                  </Text>
+              {chunkRows(doc.photoItems, PHOTO_PER_ROW).map((row, ri) => (
+                <View key={ri} style={styles.photoRow}>
+                  {row.map((p, i) => (
+                    <View key={i} style={styles.photoCell} wrap={false}>
+                      {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
+                      <Image src={p.url} style={styles.photo} />
+                      <NumberBadge n={p.evidenceNumber} />
+                      <Text style={styles.photoCap}>
+                        <Text style={styles.photoCapStrong}>Photo {p.evidenceNumber}</Text>
+                        {p.caption ? ` — ${p.caption}` : ''}
+                      </Text>
+                    </View>
+                  ))}
                 </View>
               ))}
             </View>
@@ -859,25 +884,29 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
               sub={`${doc.reportagePhotos.length}`}
             />
             <View style={styles.reportageGrid}>
-              {doc.reportagePhotos.map((p, i) => (
-                <View key={i} style={p.kind === 'video' ? styles.videoCard : styles.reportageCell} wrap={false}>
-                  {p.kind === 'video' ? (
-                    <View style={styles.videoIconBox}>
-                      <View style={styles.videoPlayTriangle} />
+              {chunkRows(doc.reportagePhotos, REPORTAGE_PER_ROW).map((row, ri) => (
+                <View key={ri} style={styles.reportageRow}>
+                  {row.map((p, i) => (
+                    <View key={i} style={p.kind === 'video' ? styles.videoCard : styles.reportageCell} wrap={false}>
+                      {p.kind === 'video' ? (
+                        <View style={styles.videoIconBox}>
+                          <View style={styles.videoPlayTriangle} />
+                        </View>
+                      ) : (
+                        // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image
+                        <Image src={p.url as string} style={styles.reportagePhoto} />
+                      )}
+                      <NumberBadge n={p.evidenceNumber} />
+                      {p.kind === 'video' ? (
+                        <>
+                          <Text style={styles.reportageCap}>{`Vidéo${p.caption ? ` — ${p.caption}` : ''}`}</Text>
+                          <Text style={styles.reportageDate}>{p.capturedAtLabel}</Text>
+                        </>
+                      ) : (
+                        p.caption ? <Text style={styles.reportageCap}>{p.caption}</Text> : null
+                      )}
                     </View>
-                  ) : (
-                    // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image
-                    <Image src={p.url as string} style={styles.reportagePhoto} />
-                  )}
-                  <NumberBadge n={p.evidenceNumber} />
-                  {p.kind === 'video' ? (
-                    <>
-                      <Text style={styles.reportageCap}>{`Vidéo${p.caption ? ` — ${p.caption}` : ''}`}</Text>
-                      <Text style={styles.reportageDate}>{p.capturedAtLabel}</Text>
-                    </>
-                  ) : (
-                    p.caption ? <Text style={styles.reportageCap}>{p.caption}</Text> : null
-                  )}
+                  ))}
                 </View>
               ))}
             </View>
