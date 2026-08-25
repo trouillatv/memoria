@@ -2064,7 +2064,7 @@ export interface VisitCrDoc {
    *  partagée avec `positions` et `reportagePhotos` : la même capture porte
    *  toujours le même numéro, carte et reportage confondus. Jamais recalculé
    *  localement (pas de `i + 1` de secours) — vient de `evidenceNumberById`. */
-  photoItems: Array<{ url: string; caption: string | null; evidenceNumber: number }>
+  photoItems: Array<{ id: string | null; url: string; caption: string | null; evidenceNumber: number }>
   /** Reportage (Tier 2, P0 mémoire/reportage 2026-08-17, étendu vidéo Lot 4
    *  2026-08-24) : le complément des Photos clés — rien n'est perdu. `isMemoire`
    *  distingue une décision humaine explicite (`memoire`) d'une capture jamais
@@ -2074,6 +2074,7 @@ export interface VisitCrDoc {
    *  affiche alors une carte de preuve statique (icône + légende + date),
    *  jamais la vidéo jouée (aucune lecture vidéo dans le PDF). */
   reportagePhotos: Array<{
+    id: string | null
     url: string | null
     caption: string | null
     isMemoire: boolean
@@ -2420,13 +2421,17 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     .map((c) => previews[c.id]?.url)
     .filter((u): u is string => !!u)
   // Photos AVEC légende (commentaire de la capture) — pour un CR lisible sans l'app.
+  // `id` (Lot 3 UX, 2026-08-26) : relie la vignette à sa fiche observation
+  // (/m/observation/[captureId]) — null pour une visite importée (pas de
+  // visit_capture, la preuve vient de document_extraction_evidence).
   const photoItems = selectedPhotos
     .map((c) => ({
+      id: c.id,
       url: previews[c.id]?.url,
       caption: c.body?.trim() || null,
       evidenceNumber: evidenceNumberById.get(c.id) ?? 0,
     }))
-    .filter((p): p is { url: string; caption: string | null; evidenceNumber: number } => !!p.url)
+    .filter((p): p is { id: string; url: string; caption: string | null; evidenceNumber: number } => !!p.url)
 
   // Reportage photographique (Tier 2) : complément des Photos clés — priorité
   // memoire (décision explicite) puis null (jamais qualifiée), jamais tronqué.
@@ -2447,6 +2452,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   })
   const reportagePhotos = reportageCaptures
     .map((c) => ({
+      id: c.id,
       url: c.kind === 'video' ? null : reportagePreviews[c.id]?.url ?? null,
       caption: c.body?.trim() || null,
       isMemoire: c.triage_intent === 'memoire',
@@ -2568,7 +2574,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     reserves: ctx.capturedReserves,
     actions: ctx.capturedActions,
     photos: isImportedVisit ? importedPhotoItems.map((p) => p.url) : photos,
-    photoItems: isImportedVisit ? importedPhotoItems : photoItems,
+    photoItems: isImportedVisit ? importedPhotoItems.map((p) => ({ id: null, ...p })) : photoItems,
     reportagePhotos,
     reportagePhotosOverflow,
     evolutions,

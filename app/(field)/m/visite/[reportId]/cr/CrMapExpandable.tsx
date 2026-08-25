@@ -1,30 +1,57 @@
 'use client'
 
-// Agrandir la carte du CR (Lot 3, sous-point Vincent 2026-08-26) : simple
-// réutilisation de CaptureMap en plein écran, STRICTEMENT scopée à la visite
-// courante (mêmes `captures` que la petite carte, aucune agrégation
-// multi-visite) — pas la future Mémoire spatiale du chantier.
+// Carte du CR en plein écran (Lot 3, sous-point Vincent 2026-08-26) : simple
+// réutilisation de CaptureMap, STRICTEMENT scopée à la visite courante (mêmes
+// `captures` que la petite carte, aucune agrégation multi-visite) — pas la
+// future Mémoire spatiale du chantier.
+//
+// Déclencheur déplacé hors de la zone Leaflet (Vincent, 2026-08-26) : un bug
+// de peinture/compositing Chromium residuel fait que le bouton flottant
+// posé sur la carte n'est parfois pas peint au premier rendu (voir
+// audit-lot3-cr-map-agrandir-paint-bug.md, GELÉ, non corrigé). Plutôt que de
+// contourner ce bug, le déclencheur est sorti de la zone qui chevauche
+// Leaflet : il vit dans la ligne de titre de la Section (CrMapExploreButton),
+// et le contexte partagé (CrMapExpandProvider) relie ce bouton à la carte
+// rendue plus bas dans le même arbre React.
 
-import { useState } from 'react'
-import { Maximize2, X } from 'lucide-react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
+import { ArrowUpRight, X } from 'lucide-react'
 import { CaptureMap, type MapCapture } from '@/components/CaptureMap'
 
-export function CrMapExpandable({ siteId, captures }: { siteId: string; captures: MapCapture[] }) {
+const CrMapExpandContext = createContext<{ expanded: boolean; setExpanded: (v: boolean) => void } | null>(null)
+
+export function CrMapExpandProvider({ children }: { children: ReactNode }) {
   const [expanded, setExpanded] = useState(false)
+  return (
+    <CrMapExpandContext.Provider value={{ expanded, setExpanded }}>
+      {children}
+    </CrMapExpandContext.Provider>
+  )
+}
+
+export function CrMapExploreButton() {
+  const ctx = useContext(CrMapExpandContext)
+  if (!ctx) return null
+  return (
+    <button
+      type="button"
+      onClick={() => ctx.setExpanded(true)}
+      aria-label="Explorer la carte en plein écran"
+      className="shrink-0 rounded-full p-1.5 text-muted-foreground active:opacity-70 hover:bg-muted"
+    >
+      <ArrowUpRight className="h-4 w-4" />
+    </button>
+  )
+}
+
+export function CrMapExpandable({ siteId, captures }: { siteId: string; captures: MapCapture[] }) {
+  const ctx = useContext(CrMapExpandContext)
+  const expanded = ctx?.expanded ?? false
+  const setExpanded = ctx?.setExpanded ?? (() => {})
 
   return (
     <>
-      <div className="relative">
-        <CaptureMap siteId={siteId} captures={captures} heightClass="h-60" />
-        <button
-          type="button"
-          onClick={() => setExpanded(true)}
-          aria-label="Agrandir la carte"
-          className="absolute right-2 top-2 z-[10] inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1.5 text-xs font-medium text-foreground shadow active:opacity-70 dark:bg-black/80"
-        >
-          <Maximize2 className="h-3.5 w-3.5" /> Agrandir
-        </button>
-      </div>
+      <CaptureMap siteId={siteId} captures={captures} heightClass="h-60" />
 
       {expanded && (
         <div className="fixed inset-0 z-[80] flex flex-col bg-black">

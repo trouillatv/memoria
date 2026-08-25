@@ -11,7 +11,7 @@ import { getVisit, buildVisitCrDoc, selectCrPhotos } from '@/lib/db/visits'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
 import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
 import { isMappableVisualCapture, formatEvidenceNumberLabel } from '@/lib/visits/geo'
-import { CrMapExpandable } from './CrMapExpandable'
+import { CrMapExpandable, CrMapExpandProvider, CrMapExploreButton } from './CrMapExpandable'
 import { CrMapSnapshotTrigger } from './CrMapSnapshotTrigger'
 import { MemoriaRetained } from './MemoriaRetained'
 import { CrDocumentSections, type CrPhotoCandidate } from './CrDocumentSections'
@@ -168,7 +168,9 @@ export default async function VisitCrPreviewPage({
   const decMore = decisions.length - decisionTitres.length
 
   // Photos clés = un aperçu (3 vignettes), pas une galerie. « +N » si davantage.
-  const thumbs = doc.photoCount > 3 ? doc.photos.slice(0, 2) : doc.photos.slice(0, 3)
+  // `doc.photoItems` (pas `doc.photos`) pour porter l'id de capture jusqu'à la
+  // vignette — accès direct à la fiche observation (Lot 3 UX, 2026-08-26).
+  const thumbs = doc.photoCount > 3 ? doc.photoItems.slice(0, 2) : doc.photoItems.slice(0, 3)
   const photosMore = doc.photoCount - thumbs.length
 
   // Carte des observations : les captures géolocalisées, sur le plan interactif.
@@ -362,7 +364,14 @@ export default async function VisitCrPreviewPage({
           la carte dit combien de preuves retenues au CR sont localisées et
           lesquelles ne le sont pas — jamais un vide silencieux si des preuves
           existent sans position. */}
-      <Section Icon={MapPin} cls="text-sky-600" ring="bg-sky-100 dark:bg-sky-950/40" title="Localisation des observations">
+      <CrMapExpandProvider>
+      <Section
+        Icon={MapPin}
+        cls="text-sky-600"
+        ring="bg-sky-100 dark:bg-sky-950/40"
+        title="Localisation des observations"
+        action={mapCaptures.length > 0 ? <CrMapExploreButton /> : undefined}
+      >
         {mapCaptures.length > 0 ? (
           <div className="overflow-hidden rounded-xl border">
             <CrMapExpandable siteId={visit.site_id} captures={mapCaptures} />
@@ -393,17 +402,32 @@ export default async function VisitCrPreviewPage({
           </p>
         )}
       </Section>
+      </CrMapExpandProvider>
 
       {/* Photos clés — aperçu visuel (3 vignettes), pas une galerie. */}
       {thumbs.length > 0 && (
         <Section Icon={Camera} cls="text-emerald-600" ring="bg-emerald-100 dark:bg-emerald-950/40" title="Photos clés">
           <div className="grid grid-cols-3 gap-2">
-            {thumbs.map((url, i) => (
-              <div key={i} className="relative aspect-square overflow-hidden rounded-lg border bg-muted">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt="" className="h-full w-full object-cover" />
-              </div>
-            ))}
+            {thumbs.map((p, i) => {
+              const thumb = (
+                <div className="relative aspect-square overflow-hidden rounded-lg border bg-muted">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.url} alt="" className="h-full w-full object-cover" />
+                  {p.id && (
+                    <span className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/50 text-white">
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </span>
+                  )}
+                </div>
+              )
+              return p.id ? (
+                <Link key={i} href={`/m/observation/${p.id}`} aria-label="Voir la fiche observation">
+                  {thumb}
+                </Link>
+              ) : (
+                <div key={i}>{thumb}</div>
+              )
+            })}
             {photosMore > 0 && (
               <div className="flex aspect-square items-center justify-center rounded-lg border bg-muted/40 text-sm font-semibold text-muted-foreground">
                 +{photosMore}
@@ -518,7 +542,7 @@ export default async function VisitCrPreviewPage({
 }
 
 function Section({
-  Icon, cls, ring, title, badge, compact, children,
+  Icon, cls, ring, title, badge, compact, action, children,
 }: {
   Icon: typeof FileText
   cls: string
@@ -526,6 +550,7 @@ function Section({
   title: string
   badge?: number
   compact?: boolean
+  action?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
@@ -538,6 +563,7 @@ function Section({
         {badge != null && (
           <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">{badge}</span>
         )}
+        {action}
       </div>
       {children}
     </section>
