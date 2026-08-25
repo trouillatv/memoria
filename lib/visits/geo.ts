@@ -77,3 +77,33 @@ export function selectCrVisualEvidence<T extends CrVisualEvidenceLike>(captures:
 export function buildEvidenceNumberMap<T extends { id: string }>(orderedCaptures: T[]): Map<string, number> {
   return new Map(orderedCaptures.map((c, i) => [c.id, i + 1]))
 }
+
+/**
+ * Étiquette compacte pour un repère regroupant plusieurs preuves (Lot 4.1,
+ * 2026-08-25) — plages contiguës en « a–b », numéros isolés listés à la
+ * virgule. Ex. [1,2,3] → « 1–3 » ; [1,3,5,6] → « 1, 3, 5–6 ». Remplace un
+ * simple compte de points (« 5 ») : Vincent, en recette, ne pouvait pas relier
+ * une photo précise à un repère qui n'affichait que le NOMBRE de preuves
+ * groupées, jamais LESQUELLES. Partagée par les trois rendus de carte (schéma
+ * PDF, instantané baké, carte live) — jamais reformulée localement.
+ */
+export function formatEvidenceNumberLabel(numbers: number[]): string {
+  const sorted = [...numbers].sort((a, b) => a - b)
+  if (sorted.length === 0) return ''
+  const parts: string[] = []
+  let start = sorted[0]
+  let prev = sorted[0]
+  for (let i = 1; i <= sorted.length; i++) {
+    const n = sorted[i]
+    if (n === prev + 1) {
+      prev = n
+      continue
+    }
+    parts.push(start === prev ? String(start) : `${start}–${prev}`)
+    if (i < sorted.length) {
+      start = n
+      prev = n
+    }
+  }
+  return parts.join(', ')
+}

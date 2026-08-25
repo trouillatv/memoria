@@ -16,6 +16,7 @@ import type { VisitCrDoc } from '@/lib/db/visits'
 import type { VisitSummary, SummarySection, SummaryItem, HistoricalIntervenant } from '@/lib/knowledge/visit-summary'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
 import { clusterMarkersByPixel, MARKER_CLUSTER_RADIUS_PX } from '@/lib/visits/marker-cluster'
+import { formatEvidenceNumberLabel } from '@/lib/visits/geo'
 
 const COLORS = {
   text: '#0f172a',
@@ -280,17 +281,29 @@ function ObservationMap({ positions }: { positions: VisitCrDoc['positions'] }) {
         {clusters.map((c, i) => {
           const single = c.points.length === 1 ? c.points[0].p : null
           const color = single ? (KIND_COLOR[single.kind] ?? '#6b7280') : COLORS.slate
-          const label = single ? String(single.number) : String(c.points.length)
+          // Un repère groupé affiche les NUMÉROS des preuves qu'il contient
+          // (ex. « 1–5 »), jamais un simple compte (Lot 4.1, Vincent) — sur
+          // le papier, un repère ne se tape pas : l'étiquette doit dire à
+          // elle seule QUELLES preuves il regroupe.
+          const label = single ? String(single.number) : formatEvidenceNumberLabel(c.points.map((pt) => pt.p.number))
+          const isWide = label.length > 2
+          const w = isWide ? Math.max(30, label.length * 6 + 12) : 16
           return (
-            <View key={i} style={[styles.marker, { left: c.x - 8, top: c.y - 8, backgroundColor: color }]}>
-              <Text style={styles.markerText}>{label}</Text>
+            <View
+              key={i}
+              style={[
+                styles.marker,
+                { left: c.x - w / 2, top: c.y - 8, width: w, borderRadius: 8, backgroundColor: color },
+              ]}
+            >
+              <Text style={[styles.markerText, isWide ? { fontSize: 6 } : {}]}>{label}</Text>
             </View>
           )
         })}
       </View>
       <MapLegend
         positions={positions}
-        caption={`Emplacements relatifs des observations sur le chantier (${positions.length} point${positions.length > 1 ? 's' : ''}${hasGroups ? ' — un chiffre isolé identifie une preuve, un chiffre sur un repère groupé compte les preuves proches' : ''}).`}
+        caption={`Emplacements relatifs des observations sur le chantier (${positions.length} point${positions.length > 1 ? 's' : ''}${hasGroups ? ' — un repère qui regroupe plusieurs preuves affiche leurs numéros (ex. « 1–3 »)' : ''}).`}
       />
     </View>
   )
@@ -544,6 +557,12 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
   const reservesTitle = isPremiere ? 'Premières réserves' : isAo ? 'Points de vigilance observés' : 'Réserves'
   const actionsTitle = isPremiere ? 'Premières actions' : 'Actions à réaliser'
   const photosBase = isPremiere ? 'Photos de référence' : 'Photos clés'
+  // Vidéos déjà montrées dans le Reportage (carte de preuve statique) : la
+  // note « Autres médias » ne doit annoncer que ce qui n'est PAS déjà visible
+  // plus haut dans le document — sinon une vidéo unique semble exister en
+  // double (Vincent, recette Lot 4.1, 2026-08-25).
+  const videosShownInReportage = doc.reportagePhotos.filter((p) => p.kind === 'video').length
+  const otherVideoCount = doc.videoCount - videosShownInReportage
   // Titre du DOCUMENT PDF : Chrome (Android surtout) l'affiche comme titre d'onglet
   // à l'ouverture « inline » — sans la DATE, toutes les visites d'un même chantier
   // portent le même titre et donnent l'impression d'ouvrir le même fichier.
@@ -824,15 +843,18 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
           </View>
         )}
 
-        {/* Reportage photographique — le complément des Photos clés : rien n'est
-            perdu (Vincent, 2026-08-17). Priorité memoire (décision humaine
-            explicite) puis null (jamais qualifiée) — jamais présentées comme si
-            elles portaient une classification qu'elles n'ont pas. Galerie DENSE,
-            jamais mise en avant comme les Photos clés. */}
+        {/* Reportage visuel — le complément des Photos clés : rien n'est perdu
+            (Vincent, 2026-08-17). Titre « visuel » et non « photographique »
+            (Lot 4.1) : une vidéo retenue peut être son SEUL élément, et
+            l'ancien titre laissait croire à une galerie de photos absente.
+            Priorité memoire (décision humaine explicite) puis null (jamais
+            qualifiée) — jamais présentées comme si elles portaient une
+            classification qu'elles n'ont pas. Galerie DENSE, jamais mise en
+            avant comme les Photos clés. */}
         {doc.reportagePhotos.length > 0 && (
           <View style={styles.section}>
             <SectionTitle
-              text="Reportage photographique"
+              text="Reportage visuel"
               color={COLORS.slate}
               sub={`${doc.reportagePhotos.length}`}
             />
@@ -890,11 +912,11 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
           </View>
         )}
 
-        {(doc.videoCount > 0 || doc.vocalCount > 0) && (
+        {(otherVideoCount > 0 || doc.vocalCount > 0) && (
           <Text style={styles.mediaNote}>
             Autres médias :{' '}
             {[
-              doc.videoCount > 0 ? `${doc.videoCount} vidéo${doc.videoCount > 1 ? 's' : ''}` : null,
+              otherVideoCount > 0 ? `${otherVideoCount} vidéo${otherVideoCount > 1 ? 's' : ''}` : null,
               doc.vocalCount > 0 ? `${doc.vocalCount} ${doc.vocalCount > 1 ? 'mémos vocaux' : 'mémo vocal'}` : null,
             ].filter(Boolean).join(' · ')}{' '}
             — consultables dans la visite.

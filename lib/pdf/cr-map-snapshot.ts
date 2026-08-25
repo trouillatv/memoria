@@ -1,7 +1,7 @@
 import 'server-only'
 import { Resvg } from '@resvg/resvg-js'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { resolveEffectivePosition, selectCrVisualEvidence, buildEvidenceNumberMap } from '@/lib/visits/geo'
+import { resolveEffectivePosition, selectCrVisualEvidence, buildEvidenceNumberMap, formatEvidenceNumberLabel } from '@/lib/visits/geo'
 import { clusterMarkersByPixel, MARKER_CLUSTER_RADIUS_PX } from '@/lib/visits/marker-cluster'
 
 // « Instantané carte » du compte-rendu. Le PDF ne fabrique JAMAIS la carte : cette
@@ -84,14 +84,30 @@ function buildSvg(
   const imgs = tiles
     .map((t) => `<image x="${t.left.toFixed(1)}" y="${t.top.toFixed(1)}" width="${TILE}" height="${TILE}" xlink:href="data:image/png;base64,${t.b64}"/>`)
     .join('')
-  // Rayon 15 (vs 10 avant Lot 4) : assez grand pour accueillir un chiffre à deux
-  // chiffres lisible. `loadSystemFonts` est requis pour que le <text> soit bien
-  // rendu par Resvg (vérifié : sans lui, le texte disparaît silencieusement).
+  // Rayon 15 : assez grand pour un chiffre à deux chiffres lisible. Un repère
+  // groupé (Lot 4.1, 2026-08-25) affiche les NUMÉROS des preuves qu'il
+  // contient (ex. « 1–5 »), jamais un simple compte — sur le papier, un
+  // repère ne se tape pas, l'étiquette doit donc être auto-suffisante. Au-delà
+  // de 2 caractères, le cercle devient une pilule assez large pour l'accueillir.
+  // `loadSystemFonts` est requis pour que le <text> soit bien rendu par Resvg
+  // (vérifié : sans lui, le texte disparaît silencieusement).
   const dots = markers
-    .map((m) => (
-      `<circle cx="${m.cx.toFixed(1)}" cy="${m.cy.toFixed(1)}" r="15" fill="${escapeXml(m.color)}" stroke="#ffffff" stroke-width="3"/>` +
-      `<text x="${m.cx.toFixed(1)}" y="${(m.cy + 5).toFixed(1)}" font-size="15" font-family="Helvetica, Arial, sans-serif" font-weight="bold" fill="#ffffff" text-anchor="middle">${escapeXml(m.label)}</text>`
-    ))
+    .map((m) => {
+      if (m.label.length <= 2) {
+        return (
+          `<circle cx="${m.cx.toFixed(1)}" cy="${m.cy.toFixed(1)}" r="15" fill="${escapeXml(m.color)}" stroke="#ffffff" stroke-width="3"/>` +
+          `<text x="${m.cx.toFixed(1)}" y="${(m.cy + 5).toFixed(1)}" font-size="15" font-family="Helvetica, Arial, sans-serif" font-weight="bold" fill="#ffffff" text-anchor="middle">${escapeXml(m.label)}</text>`
+        )
+      }
+      const w = Math.max(36, m.label.length * 10 + 14)
+      const h = 30
+      const x = m.cx - w / 2
+      const y = m.cy - h / 2
+      return (
+        `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h}" rx="${h / 2}" fill="${escapeXml(m.color)}" stroke="#ffffff" stroke-width="3"/>` +
+        `<text x="${m.cx.toFixed(1)}" y="${(m.cy + 4.5).toFixed(1)}" font-size="13" font-family="Helvetica, Arial, sans-serif" font-weight="bold" fill="#ffffff" text-anchor="middle">${escapeXml(m.label)}</text>`
+      )
+    })
     .join('')
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><rect width="${W}" height="${H}" fill="#e5e7eb"/>${imgs}${dots}</svg>`
 }
@@ -179,7 +195,7 @@ export async function ensureCrMapSnapshot(reportId: string): Promise<string | nu
       cx: c.x,
       cy: c.y,
       color: single ? (KIND_COLOR[single.kind] ?? '#6b7280') : '#334155',
-      label: single ? String(single.number) : String(c.points.length),
+      label: single ? String(single.number) : formatEvidenceNumberLabel(c.points.map((p) => p.number)),
     }
   })
 

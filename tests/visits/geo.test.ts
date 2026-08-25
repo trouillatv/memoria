@@ -8,6 +8,7 @@ import {
   isMappableVisualCapture,
   selectCrVisualEvidence,
   buildEvidenceNumberMap,
+  formatEvidenceNumberLabel,
 } from '@/lib/visits/geo'
 
 describe('distanceMeters', () => {
@@ -124,5 +125,33 @@ describe('buildEvidenceNumberMap — identité de preuve unique, jamais recalcul
 
   it('ensemble vide → map vide', () => {
     expect(buildEvidenceNumberMap([]).size).toBe(0)
+  })
+})
+
+describe('formatEvidenceNumberLabel — étiquette de repère groupé (Vincent, Lot 4.1, 2026-08-25)', () => {
+  it('numéro isolé → le chiffre seul', () => {
+    expect(formatEvidenceNumberLabel([7])).toBe('7')
+  })
+
+  it('suite contiguë → plage « a–b »', () => {
+    expect(formatEvidenceNumberLabel([1, 2, 3])).toBe('1–3')
+  })
+
+  it('deux contigus → plage « a–b », pas une liste', () => {
+    expect(formatEvidenceNumberLabel([4, 5])).toBe('4–5')
+  })
+
+  it('numéros dispersés → liste à la virgule', () => {
+    expect(formatEvidenceNumberLabel([1, 5])).toBe('1, 5')
+  })
+
+  it('mélange plages et isolés, dans le désordre en entrée → trié puis groupé', () => {
+    expect(formatEvidenceNumberLabel([6, 1, 3, 5])).toBe('1, 3, 5–6')
+  })
+
+  it('jamais un simple compte (« 5 ») qui masquerait quelles preuves sont groupées', () => {
+    const label = formatEvidenceNumberLabel([2, 3, 4, 9, 12])
+    expect(label).not.toBe('5')
+    expect(label).toBe('2–4, 9, 12')
   })
 })

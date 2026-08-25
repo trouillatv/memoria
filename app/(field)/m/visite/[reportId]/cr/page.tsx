@@ -172,9 +172,14 @@ export default async function VisitCrPreviewPage({
   const photosMore = doc.photoCount - thumbs.length
 
   // Carte des observations : les captures géolocalisées, sur le plan interactif.
+  // `number`/`thumbnailUrl` (Lot 4.1) : identité de preuve partagée avec les
+  // Photos clés/Reportage et la vignette du cluster — jamais recalculées côté
+  // carte. Seule CETTE carte (celle du CR) les fournit ; les autres appels de
+  // CaptureMap (Journal, Patrimoine, AO) restent sur le rendu d'origine.
   const mapCaptures = doc.positions.map((p) => ({
     id: p.id, kind: p.kind, lat: p.lat, lng: p.lng,
     created_at: p.capturedAt, body: p.body, reportId, subjectName: null,
+    number: p.number, thumbnailUrl: previewUrls[p.id]?.url ?? null,
   }))
 
   return (
