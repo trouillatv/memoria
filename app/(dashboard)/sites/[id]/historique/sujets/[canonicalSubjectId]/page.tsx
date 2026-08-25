@@ -1006,7 +1006,7 @@ function CboEvolutionCard({ entry, evolution }: { entry: CanonicalBusinessObject
             <p className="font-medium leading-snug">{entry.label}</p>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span className={cn('rounded-full px-1.5 py-0.5 font-medium', CBO_STATE_COLORS[evolution.computedState])}>
-                État actuel : {CBO_STATE_LABELS[evolution.computedState]}
+                {CBO_STATE_LABELS[evolution.computedState]}
               </span>
               <span>{evolution.occurrenceCount} occurrence{evolution.occurrenceCount > 1 ? 's' : ''}</span>
               {evolution.lastMeaningfulEvolutionAt && (
@@ -1026,18 +1026,21 @@ function CboEvolutionCard({ entry, evolution }: { entry: CanonicalBusinessObject
           <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Trajectoire chronologique
           </p>
-          <ul className="ml-3 space-y-1 border-l-2 border-muted pl-4">
+          <ul className="ml-3 space-y-2.5 border-l-2 border-muted pl-4">
             {evolution.trajectory.map((t, i) => (
-              <li key={`${t.entityId}-${i}`} className="text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">{t.occurrenceDate ? frDate(t.occurrenceDate) : 'Date inconnue'}</span>
-                {' '}
-                <span className={cn('rounded-full px-1.5 py-0.5 font-medium', SIGNAL_COLORS[t.finalSignal])}>
-                  {SIGNAL_LABELS[t.finalSignal]}
-                </span>
-                {t.reasoning && <>{' — '}{t.reasoning}</>}
-                <span className="ml-1 text-muted-foreground/60">
-                  ({t.source === 'llm' ? 'IA' : 'statut document'})
-                </span>
+              <li key={`${t.entityId}-${i}`} className="text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-foreground">{t.occurrenceDate ? frDate(t.occurrenceDate) : 'Date inconnue'}</span>
+                  <span className={cn('rounded-full px-1.5 py-0.5 font-medium', SIGNAL_COLORS[t.finalSignal])}>
+                    {SIGNAL_LABELS[t.finalSignal]}
+                  </span>
+                </div>
+                {t.reasoning && (
+                  <p className="mt-0.5 text-muted-foreground">
+                    {t.reasoning}
+                    <span className="ml-1 text-muted-foreground/60">({t.source === 'llm' ? 'IA' : 'statut document'})</span>
+                  </p>
+                )}
               </li>
             ))}
           </ul>
