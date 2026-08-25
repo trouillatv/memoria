@@ -29,7 +29,7 @@ import { visitIntentLabel } from '@/lib/field/visit-intents'
 import { listSubjectsBySite } from '@/lib/db/subjects'
 import { getOrganizationsMeta } from '@/lib/db/organisations'
 import { listSiteConcernedCompanies } from '@/lib/db/site-intervenants'
-import { resolveEffectivePosition, isMappableVisualCapture, selectCrVisualEvidence, buildEvidenceNumberMap } from '@/lib/visits/geo'
+import { resolveEffectivePosition, isMappableVisualCapture, selectCrVisualEvidence, buildEvidenceNumberMap, buildEvidenceCoverage } from '@/lib/visits/geo'
 // Le chantier est à Nouméa, le serveur tourne en UTC. Toute date de visite
 // rendue sans fuseau recule d'un jour dès que la visite a commencé avant 11 h
 // locale — c'est-à-dire presque toujours. Cf. `lib/time/local-date.ts`.
@@ -2095,6 +2095,10 @@ export interface VisitCrDoc {
    *  de preuve que `photoItems`/`reportagePhotos` pour la même capture (Lot 4,
    *  2026-08-24) : carte et reportage montrent toujours le même numéro. */
   positions: Array<{ id: string; kind: string; lat: number; lng: number; body: string | null; capturedAt: string; number: number }>
+  /** Couverture GPS des preuves visuelles retenues au CR (Vincent, correction
+   *  Lot 4) : total/positioned/missingNumbers — la carte doit dire ce qu'elle
+   *  couvre, jamais laisser croire que l'absence de point = absence de preuve. */
+  mapCoverage: { total: number; positioned: number; missingNumbers: number[] }
   /** Nombre TOTAL de photos captées (MemorIA les garde toutes) — pour dire
    *  « N photos clés sur M dans MemorIA ». */
   photoCount: number
@@ -2458,6 +2462,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     ...p,
     number: evidenceNumberById.get(p.id) ?? 0,
   }))
+  const mapCoverage = buildEvidenceCoverage(crVisualCaptures, evidenceNumberById)
 
   // Comptes par type + éléments marqués (richesse de la visite, bloc « En bref »).
   const noteCount = captures.filter((c) => c.kind === 'note').length
@@ -2568,6 +2573,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     reportagePhotosOverflow,
     evolutions,
     positions,
+    mapCoverage,
     photoCount: isImportedVisit ? importedPhotoCount : photoCaptures.length,
     videoCount,
     vocalCount,

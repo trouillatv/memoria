@@ -10,7 +10,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisit, buildVisitCrDoc, selectCrPhotos } from '@/lib/db/visits'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
 import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
-import { isMappableVisualCapture } from '@/lib/visits/geo'
+import { isMappableVisualCapture, formatEvidenceNumberLabel } from '@/lib/visits/geo'
 import { CaptureMap } from '@/components/CaptureMap'
 import { CrMapSnapshotTrigger } from './CrMapSnapshotTrigger'
 import { MemoriaRetained } from './MemoriaRetained'
@@ -358,13 +358,24 @@ export default async function VisitCrPreviewPage({
 
       {/* Localisation des observations — le « où », entre les constats et les
           preuves. La carte fait le lien entre ce qui a été constaté et les photos.
-          Si aucune capture n'est géolocalisée : un encart pédagogique, pas du vide. */}
+          Couverture honnête (Vincent, correction Lot Cartographie CR, 2026-08-26) :
+          la carte dit combien de preuves retenues au CR sont localisées et
+          lesquelles ne le sont pas — jamais un vide silencieux si des preuves
+          existent sans position. */}
       <Section Icon={MapPin} cls="text-sky-600" ring="bg-sky-100 dark:bg-sky-950/40" title="Localisation des observations">
         {mapCaptures.length > 0 ? (
           <div className="overflow-hidden rounded-xl border">
             <CaptureMap siteId={visit.site_id} captures={mapCaptures} heightClass="h-60" />
             {/* Produit en fond l'instantané carte que le PDF réutilisera. */}
             <CrMapSnapshotTrigger reportId={reportId} />
+          </div>
+        ) : doc.mapCoverage.total > 0 ? (
+          <div className="rounded-xl border border-dashed bg-muted/30 px-4 py-6 text-center">
+            <MapPin className="mx-auto h-6 w-6 text-muted-foreground/40" />
+            <p className="mt-2 text-sm font-medium">Aucune des preuves retenues n’est localisée</p>
+            <p className="mx-auto mt-1 max-w-xs text-[13px] leading-relaxed text-muted-foreground">
+              Activez la localisation des observations lors d’une prochaine visite pour retrouver automatiquement les photos et vidéos sur le plan.
+            </p>
           </div>
         ) : (
           <div className="rounded-xl border border-dashed bg-muted/30 px-4 py-6 text-center">
@@ -374,6 +385,12 @@ export default async function VisitCrPreviewPage({
               Activez la localisation des observations lors d’une prochaine visite pour retrouver automatiquement les photos et vidéos sur le plan.
             </p>
           </div>
+        )}
+        {doc.mapCoverage.total > 0 && (
+          <p className="mt-2 text-[12px] italic text-muted-foreground">
+            {doc.mapCoverage.positioned}/{doc.mapCoverage.total} preuve{doc.mapCoverage.total > 1 ? 's' : ''} localisée{doc.mapCoverage.positioned > 1 ? 's' : ''}
+            {doc.mapCoverage.missingNumbers.length > 0 ? ` — Sans position : ${formatEvidenceNumberLabel(doc.mapCoverage.missingNumbers)}` : ''}
+          </p>
         )}
       </Section>
 

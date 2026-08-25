@@ -360,6 +360,20 @@ function ObservationMapSnapshot({ src, positions }: { src: string; positions: Vi
   )
 }
 
+// Couverture honnête (Vincent, correction Lot Cartographie CR, 2026-08-26) :
+// la carte doit dire ce qu'elle couvre — combien de preuves retenues au CR
+// sont localisées, et lesquelles ne le sont pas — jamais laisser croire que
+// l'absence de point = absence de preuve.
+function MapCoverageNote({ coverage }: { coverage: VisitCrDoc['mapCoverage'] }) {
+  const missingLabel = formatEvidenceNumberLabel(coverage.missingNumbers)
+  return (
+    <Text style={styles.caption}>
+      {`${coverage.positioned}/${coverage.total} preuve${coverage.total > 1 ? 's' : ''} localisée${coverage.positioned > 1 ? 's' : ''}`}
+      {missingLabel ? ` — Sans position : ${missingLabel}` : ''}
+    </Text>
+  )
+}
+
 /** Une section n'existe que si elle a quelque chose à dire — validé OU proposé. */
 /** L'ORDRE DE L'ÉDITEUR, pas un autre. Ce que Guillaume lit de haut en bas à
  *  l'écran, il doit le retrouver dans le même ordre sur le papier. */
@@ -829,13 +843,17 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
           </View>
         )}
 
-        {/* Localisation — le « où » AVANT les preuves. Uniquement si des GPS existent. */}
-        {doc.positions.length > 0 && (
+        {/* Localisation — le « où » AVANT les preuves. Affichée dès qu'il existe
+            des preuves visuelles retenues au CR, même sans aucune position :
+            la couverture (X/Y localisées + Sans position) doit être lisible
+            plutôt que la section disparaisse silencieusement (Vincent). */}
+        {doc.mapCoverage.total > 0 && (
           <View style={styles.section}>
             <SectionTitle text="Localisation des observations" color="#0284c7" />
-            {mapImage
+            {doc.positions.length > 0 && (mapImage
               ? <ObservationMapSnapshot src={mapImage} positions={doc.positions} />
-              : <ObservationMap positions={doc.positions} />}
+              : <ObservationMap positions={doc.positions} />)}
+            <MapCoverageNote coverage={doc.mapCoverage} />
           </View>
         )}
 

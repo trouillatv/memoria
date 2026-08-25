@@ -133,6 +133,43 @@ export function groupByProximity<T extends ProximityPoint>(
   return groups
 }
 
+export interface EvidenceCoverageLike {
+  id: string
+  lat: number | null
+  lng: number | null
+  corrected_lat: number | null
+  corrected_lng: number | null
+}
+
+export interface EvidenceCoverage {
+  total: number
+  positioned: number
+  /** Numéros (identité de preuve partagée) des preuves retenues au CR mais
+   *  sans position — jamais une position inventée, jamais silencieux. */
+  missingNumbers: number[]
+}
+
+/**
+ * Couverture GPS des preuves visuelles retenues au CR (Vincent, correction
+ * Lot 4 : « la carte devrait dire 4/8 preuves localisées, puis Sans
+ * position : ① ② ⑤ ⑥ »). PARTAGÉE entre carte web et PDF — jamais un compte
+ * recalculé localement à partir des seules positions présentes, qui ne dit
+ * rien du nombre de preuves absentes de la carte.
+ */
+export function buildEvidenceCoverage<T extends EvidenceCoverageLike>(
+  orderedEvidence: T[],
+  evidenceNumberById: Map<string, number>,
+): EvidenceCoverage {
+  let positioned = 0
+  const missingNumbers: number[] = []
+  for (const c of orderedEvidence) {
+    const pos = resolveEffectivePosition({ lat: c.lat, lng: c.lng, correctedLat: c.corrected_lat, correctedLng: c.corrected_lng })
+    if (pos) positioned++
+    else missingNumbers.push(evidenceNumberById.get(c.id) ?? 0)
+  }
+  return { total: orderedEvidence.length, positioned, missingNumbers }
+}
+
 export function formatEvidenceNumberLabel(numbers: number[]): string {
   const sorted = [...numbers].sort((a, b) => a - b)
   if (sorted.length === 0) return ''
