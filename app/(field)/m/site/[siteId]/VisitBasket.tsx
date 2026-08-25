@@ -29,6 +29,7 @@ import type { DbVisitWatchlistItem, WatchlistItemState } from '@/types/db'
 import { computeWatchlistCoverage } from '@/lib/visits/watchlist-coverage'
 import { compressImageFile } from '@/lib/field/image-compress'
 import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
+import { mapGeolocationError, PANEL_LABEL, CAMERA_BANNER_LABEL, type GeoStatus } from '@/lib/field/geoloc-status'
 
 // La vidéo est conservée localement puis montée en direct vers Supabase (URL
 // signée) par le drain, bornée par la limite du bucket (mig 181). Au-delà :
@@ -52,8 +53,10 @@ function downloadCaptureToPhone(url: string, filename: string) {
   a.click()
   a.remove()
 }
-// Préférence géoloc mémorisée sur l'appareil : 'always' = ne plus demander.
-const GEO_PREF_KEY = 'memoria.geoloc.captures'
+// Préférence géoloc mémorisée sur l'appareil : présence de la clé = désactivée
+// volontairement. Remplace l'ancienne clé d'opt-in 'memoria.geoloc.captures'
+// (devenue inerte — son seul état utile, « always », est désormais le défaut).
+const GEO_DISABLED_KEY = 'memoria.geoloc.disabled'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
 
 // Mémoire LITE d'un point suivi (read-only), surfacée pendant la vérification :
@@ -150,38 +153,62 @@ export function VisitBasket({
   const chunksRef = useRef<Blob[]>([])
 
   // Géoloc des OBSERVATIONS (jamais de la personne) : position PONCTUELLE par
-  // capture, best-effort, jamais bloquante, jamais de trace continue. Le choix se
-  // fait UNE fois (prompt), et « Toujours oui » est mémorisé sur l'appareil — on
-  // ne repose plus la question. Cf. [[ouverture-contextuelle-gps]].
-  const [geoTag, setGeoTag] = useState(false)
-  const [geoDecided, setGeoDecided] = useState(false)
+  // capture, best-effort, jamais bloquante, jamais de trace continue. Tentée PAR
+  // DÉFAUT à chaque visite (sous réserve de la permission système) — 25 % des
+  // visites terrain avec photos n'avaient aucune position tant que c'était un
+  // opt-in désactivé par défaut. Seule action possible : désactiver, mémorisé
+  // sur l'appareil. Un échec (permission refusée, position indisponible/timeout)
+  // n'est plus jamais avalé en silence : `geoStatus` reste visible en permanence.
+  const [geoEnabled, setGeoEnabled] = useState(true)
+  const [geoStatus, setGeoStatus] = useState<GeoStatus>('idle')
   useEffect(() => {
     try {
-      if (typeof window !== 'undefined' && window.localStorage.getItem(GEO_PREF_KEY) === 'always') {
-        setGeoTag(true)
-        setGeoDecided(true)
+      if (typeof window !== 'undefined' && window.localStorage.getItem(GEO_DISABLED_KEY) === '1') {
+        setGeoEnabled(false)
+        setGeoStatus('user-disabled')
       }
-    } catch { /* localStorage indisponible → on demandera cette visite */ }
+    } catch { /* localStorage indisponible → géoloc tentée par défaut cette visite */ }
   }, [])
-  function chooseGeo(mode: 'session' | 'always' | 'no') {
-    if (mode === 'always') {
-      try { window.localStorage.setItem(GEO_PREF_KEY, 'always') } catch { /* ignore */ }
-      setGeoTag(true)
-    } else {
-      setGeoTag(mode === 'session')
+  function toggleGeoEnabled() {
+    const next = !geoEnabled
+    try {
+      if (next) window.localStorage.removeItem(GEO_DISABLED_KEY)
+      else window.localStorage.setItem(GEO_DISABLED_KEY, '1')
+    } catch { /* ignore */ }
+    setGeoEnabled(next)
+    setGeoStatus(next ? 'idle' : 'user-disabled')
+  }
+  // Optimisation OPPORTUNISTE uniquement : si l'API Permissions répond 'denied',
+  // on s'épargne l'appel getCurrentPosition. Jamais une source de vérité — le
+  // support est inégal sur Safari/iOS/PWA, donc toute absence ou erreur ici
+  // retombe silencieusement sur le comportement normal (Vincent, revue du lot).
+  async function isPermissionKnownDenied(): Promise<boolean> {
+    try {
+      if (typeof navigator === 'undefined' || !navigator.permissions?.query) return false
+      const status = await navigator.permissions.query({ name: 'geolocation' as PermissionName })
+      return status.state === 'denied'
+    } catch {
+      return false
     }
-    setGeoDecided(true)
   }
-  function disableGeo() {
-    try { window.localStorage.removeItem(GEO_PREF_KEY) } catch { /* ignore */ }
-    setGeoTag(false)
-  }
-  function getOneShotPosition(): Promise<{ lat: number; lng: number; accuracy: number | null } | null> {
-    if (!geoTag || typeof navigator === 'undefined' || !navigator.geolocation) return Promise.resolve(null)
+  async function getOneShotPosition(): Promise<{ lat: number; lng: number; accuracy: number | null } | null> {
+    if (!geoEnabled) { setGeoStatus('user-disabled'); return null }
+    if (typeof navigator === 'undefined' || !navigator.geolocation) { setGeoStatus('unavailable'); return null }
+    setGeoStatus('locating')
+    if (await isPermissionKnownDenied()) {
+      setGeoStatus('permission-denied')
+      return null
+    }
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
-        (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy ?? null }),
-        () => resolve(null),
+        (p) => {
+          setGeoStatus('success')
+          resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy ?? null })
+        },
+        (err) => {
+          setGeoStatus(mapGeolocationError(err.code))
+          resolve(null)
+        },
         { enableHighAccuracy: true, timeout: 6000, maximumAge: 30000 },
       )
     })
@@ -396,7 +423,7 @@ export function VisitBasket({
   async function saveAnnotation(file: File, replaceOriginal: boolean) {
     if (!annotate) return
     try {
-      const pos = geoTag ? await getOneShotPosition() : null
+      const pos = await getOneShotPosition()
       const fd = new FormData()
       fd.set('report_id', reportId)
       fd.set('kind', 'photo')
@@ -540,15 +567,18 @@ export function VisitBasket({
   }
 
   // ── Position ───────────────────────────────────────────────────────────────
+  // Action MANUELLE et explicite (bouton dédié) — distincte de la tentative
+  // automatique par capture ci-dessus. Reste indépendante de `geoEnabled` :
+  // demander sa position soi-même n'est pas soumis au réglage « désactiver ».
   function capturePosition() {
-    if (!navigator.geolocation) { toast.error('Position indisponible'); return }
+    if (!navigator.geolocation) { toast.error(PANEL_LABEL.unavailable.text); return }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         // Le GPS marche sans réseau : la position part dans la file locale.
         enqueueLight('position', { lat: pos.coords.latitude, lng: pos.coords.longitude })
         toast.success('Position enregistrée', { duration: 1200 })
       },
-      () => toast.error('Position refusée'),
+      (err) => toast.error(PANEL_LABEL[mapGeolocationError(err.code)].text),
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 },
     )
   }
@@ -793,39 +823,17 @@ export function VisitBasket({
       >
         <MapPin className="h-3.5 w-3.5" /> Enregistrer ma position (facultatif)
       </button>
-      {/* Géoloc des OBSERVATIONS : demandée UNE fois, « Toujours oui » mémorisé.
-          On localise l'observation, jamais la personne, jamais en continu. */}
-      {!geoDecided ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
-          <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-900 dark:text-emerald-200">
-            <MapPin className="h-4 w-4 shrink-0" /> Localiser les observations ?
-          </p>
-          <p className="mt-1 text-[12px] leading-snug text-emerald-900/80 dark:text-emerald-200/80">
-            Les photos, vidéos et notes pourront être replacées sur le plan du chantier.
-          </p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">La position des observations est enregistrée, jamais vos déplacements.</p>
-          <div className="mt-2.5 flex flex-wrap gap-2">
-            <button type="button" onClick={() => chooseGeo('session')} className="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-800 active:scale-95 dark:border-emerald-800 dark:text-emerald-200">
-              Oui, pour cette visite
-            </button>
-            <button type="button" onClick={() => chooseGeo('always')} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white active:scale-95">
-              Toujours oui sur cet appareil
-            </button>
-          </div>
-          <button type="button" onClick={() => chooseGeo('no')} className="mt-1.5 text-[11px] text-muted-foreground underline underline-offset-2">
-            Pas maintenant
-          </button>
-        </div>
-      ) : geoTag ? (
-        <p className="flex items-center justify-center gap-1.5 px-1 text-[11px] text-emerald-800/80 dark:text-emerald-300/80">
-          <MapPin className="h-3.5 w-3.5" /> Observations géolocalisées ·
-          <button type="button" onClick={disableGeo} className="underline underline-offset-2">Désactiver</button>
-        </p>
-      ) : (
-        <button type="button" onClick={() => setGeoDecided(false)} className="flex w-full items-center justify-center gap-1.5 px-1 py-1 text-[11px] text-muted-foreground">
-          <MapPin className="h-3.5 w-3.5" /> Localiser les observations
+      {/* Géoloc des OBSERVATIONS : tentée par défaut, jamais bloquante, jamais
+          silencieuse — ligne d'état PERMANENTE, visible avant même la prise. */}
+      <p className="flex items-center justify-center gap-1.5 px-1 text-[11px] text-emerald-800/80 dark:text-emerald-300/80">
+        <MapPin className="h-3.5 w-3.5" /> {PANEL_LABEL[geoStatus].text} ·
+        {PANEL_LABEL[geoStatus].retry && (
+          <button type="button" onClick={() => { void getOneShotPosition() }} className="underline underline-offset-2">Réessayer</button>
+        )}
+        <button type="button" onClick={toggleGeoEnabled} className="underline underline-offset-2">
+          {geoEnabled ? 'Désactiver' : 'Activer'}
         </button>
-      )}
+      </p>
 
       <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhotoFile} className="hidden" />
       <input ref={videoRef} type="file" accept="video/*" capture="environment" onChange={onVideoFile} className="hidden" />
@@ -1150,6 +1158,7 @@ export function VisitBasket({
         <GhostCamera
           ghostUrl={ghost.url}
           label={ghost.label}
+          geoBannerLabel={CAMERA_BANNER_LABEL[geoStatus]}
           onCapture={(file) => {
             enqueueMedia(file, 'photo', ghost.anchorId)
             // La série grandit — dire à l'utilisateur qu'il CONSTRUIT quelque chose.
@@ -1173,6 +1182,7 @@ export function VisitBasket({
           in-app est indisponible. */}
       {videoRecorderOpen && (
         <VideoRecorder
+          geoBannerLabel={CAMERA_BANNER_LABEL[geoStatus]}
           onClip={(file) => uploadVideoFile(file)}
           onClose={() => setVideoRecorderOpen(false)}
           onFallbackNative={() => {

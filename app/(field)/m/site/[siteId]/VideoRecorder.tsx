@@ -63,10 +63,13 @@ function fmt(seconds: number): string {
 type Phase = 'loading' | 'ready' | 'recording' | 'error'
 
 export function VideoRecorder({
+  geoBannerLabel,
   onClip,
   onClose,
   onFallbackNative,
 }: {
+  /** État géoloc de la visite (parent) — affichage seul, aucun appel géoloc ici. */
+  geoBannerLabel?: { text: string; retry: boolean } | null
   /** Reçoit chaque séquence filmée — le parent la téléverse en direct. */
   onClip: (file: File) => void
   onClose: () => void
@@ -239,6 +242,11 @@ export function VideoRecorder({
           <X className="h-5 w-5" />
         </button>
       </div>
+
+      {/* État géoloc — affiché pendant la prise, jamais silencieux. */}
+      {geoBannerLabel && (
+        <p className="px-4 pb-2 text-center text-[11px] text-white/70">{geoBannerLabel.text}</p>
+      )}
 
       {/* Flux caméra. */}
       <div className="relative min-h-0 flex-1 overflow-hidden">

@@ -17,6 +17,7 @@ const OPACITIES = [0.35, 0.6, 0] as const
 export function GhostCamera({
   ghostUrl,
   label,
+  geoBannerLabel,
   onCapture,
   onClose,
   onFallbackNative,
@@ -25,6 +26,8 @@ export function GhostCamera({
   ghostUrl: string
   /** Nom du point de repère (« Porte d'entrée »), ou null. */
   label: string | null
+  /** État géoloc de la visite (parent) — affichage seul, aucun appel géoloc ici. */
+  geoBannerLabel?: { text: string; retry: boolean } | null
   /** Reçoit le fichier JPEG capturé — le parent l'enfile comme une photo normale. */
   onCapture: (file: File) => void
   onClose: () => void
@@ -101,6 +104,11 @@ export function GhostCamera({
           <X className="h-5 w-5" />
         </button>
       </div>
+
+      {/* État géoloc — affiché pendant la prise, jamais silencieux. */}
+      {geoBannerLabel && (
+        <p className="px-4 pb-2 text-center text-[11px] text-white/70">{geoBannerLabel.text}</p>
+      )}
 
       {/* Flux caméra + fantôme superposé. */}
       <div className="relative min-h-0 flex-1 overflow-hidden">
