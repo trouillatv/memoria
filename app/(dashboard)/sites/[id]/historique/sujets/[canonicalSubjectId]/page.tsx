@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { AlertTriangle, ArrowLeft, ArrowRight, Building2, Calendar, Check, FileText, GitMerge, Link2, LayoutList, Trash2, User, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, Building2, Calendar, Check, FileText, GitMerge, Link2, LayoutList, Trash2, TrendingUp, User, X } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getCanonicalSubjectLife, listSubjectsForPicker } from '@/lib/db/canonical-subject-life'
@@ -9,6 +9,9 @@ import { buildCanonicalSubjectIntelligence } from '@/lib/knowledge/build-canonic
 import type { CanonicalSubjectIntelligence } from '@/lib/knowledge/build-canonical-subject-intelligence'
 import { projectCanonicalBusinessObjects } from '@/lib/knowledge/canonical-business-object-projection'
 import type { CanonicalBusinessObjectEntry } from '@/lib/knowledge/canonical-business-object-projection'
+import { loadCboEvolutions } from '@/lib/knowledge/canonical-business-object-evolution'
+import type { CboComputedState, CboEvolution } from '@/lib/knowledge/canonical-business-object-evolution'
+import type { ObjectStateSignal } from '@/lib/ai/classify-occurrence-state-signal'
 import { buildSubjectNarrative } from '@/services/ai/subject-narrative'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
@@ -107,6 +110,42 @@ const ENTITY_STATUS_LABELS: Record<string, string> = {
   // deadlines
   to_plan:    'À planifier',
   superseded: 'Remplacée',
+}
+
+const CBO_STATE_LABELS: Record<CboComputedState, string> = {
+  OPEN:         'Ouvert',
+  PROGRESSING:  'En cours',
+  DONE:         'Terminé',
+  REOPENED:     'Réouvert',
+  CONTRADICTED: 'Signaux contradictoires',
+  NO_SIGNAL:    'Aucun signal exploitable',
+}
+
+const CBO_STATE_COLORS: Record<CboComputedState, string> = {
+  OPEN:         'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
+  PROGRESSING:  'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+  DONE:         'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  REOPENED:     'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+  CONTRADICTED: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+  NO_SIGNAL:    'bg-muted text-muted-foreground',
+}
+
+const SIGNAL_LABELS: Record<ObjectStateSignal, string> = {
+  OPENED:          'Ouvert',
+  STILL_OPEN:      'Toujours ouvert',
+  PROGRESS:        'En cours',
+  COMPLETED:       'Terminé',
+  REOPENED:        'Réouvert',
+  NO_STATE_SIGNAL: 'Sans signal',
+}
+
+const SIGNAL_COLORS: Record<ObjectStateSignal, string> = {
+  OPENED:          'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
+  STILL_OPEN:      'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
+  PROGRESS:        'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+  COMPLETED:       'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  REOPENED:        'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+  NO_STATE_SIGNAL: 'bg-muted text-muted-foreground',
 }
 
 const LINK_LABELS: Record<string, { out: string; in: string }> = {
@@ -865,6 +904,80 @@ function MaterializedEventsSection({ entries }: { entries: CanonicalBusinessObje
   )
 }
 
+function CboEvolutionCard({ entry, evolution }: { entry: CanonicalBusinessObjectEntry; evolution: CboEvolution }) {
+  const meta = ENTITY_TYPE_META[entry.entityType]
+
+  return (
+    <li className="rounded-lg border text-sm">
+      <details className="group/evo">
+        <summary className="flex cursor-pointer list-none items-start gap-2.5 px-3 py-2.5 select-none hover:bg-muted/40">
+          <span className={cn('mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold', meta.color)}>
+            {meta.label}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-medium leading-snug">{entry.label}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span className={cn('rounded-full px-1.5 py-0.5 font-medium', CBO_STATE_COLORS[evolution.computedState])}>
+                État actuel : {CBO_STATE_LABELS[evolution.computedState]}
+              </span>
+              <span>{evolution.occurrenceCount} occurrence{evolution.occurrenceCount > 1 ? 's' : ''}</span>
+              {evolution.lastMeaningfulEvolutionAt && (
+                <span>dernière évolution le {frDateShort(evolution.lastMeaningfulEvolutionAt)}</span>
+              )}
+              {evolution.structuredStatusDesync && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                  <AlertTriangle className="h-3 w-3" />
+                  statut structuré non synchronisé
+                </span>
+              )}
+            </div>
+          </div>
+          <span className="mt-0.5 shrink-0 text-muted-foreground transition-transform group-open/evo:rotate-90">▸</span>
+        </summary>
+        <div className="border-t px-3 py-2.5">
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Trajectoire chronologique
+          </p>
+          <ul className="ml-3 space-y-1 border-l-2 border-muted pl-4">
+            {evolution.trajectory.map((t, i) => (
+              <li key={`${t.entityId}-${i}`} className="text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{t.occurrenceDate ? frDate(t.occurrenceDate) : 'Date inconnue'}</span>
+                {' '}
+                <span className={cn('rounded-full px-1.5 py-0.5 font-medium', SIGNAL_COLORS[t.finalSignal])}>
+                  {SIGNAL_LABELS[t.finalSignal]}
+                </span>
+                {t.reasoning && <>{' — '}{t.reasoning}</>}
+                <span className="ml-1 text-muted-foreground/60">
+                  ({t.source === 'llm' ? 'IA' : 'statut document'})
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </details>
+    </li>
+  )
+}
+
+function CboEvolutionSection({
+  entries,
+  evolutions,
+}: {
+  entries: CanonicalBusinessObjectEntry[]
+  evolutions: Map<string, CboEvolution>
+}) {
+  const withEvolution = entries.filter((e) => e.isGrouped && (evolutions.get(e.key)?.occurrenceCount ?? 0) > 0)
+  if (withEvolution.length === 0) return null
+
+  return (
+    <ul className="space-y-1.5">
+      {withEvolution.map((entry) => (
+        <CboEvolutionCard key={entry.key} entry={entry} evolution={evolutions.get(entry.key)!} />
+      ))}
+    </ul>
+  )
+}
+
 function RelationsSection({
   links,
   siteId,
@@ -1083,6 +1196,10 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
   const intel = await buildCanonicalSubjectIntelligence(canonicalSubjectId, life)
   const narrativeResult = await buildSubjectNarrative(life, intel, user.id).catch(() => null)
   const businessObjectEntries = await projectCanonicalBusinessObjects(life.materializedEvents)
+  const cboEvolutions = await loadCboEvolutions(businessObjectEntries)
+  const hasCboEvolution = businessObjectEntries.some(
+    (e) => e.isGrouped && (cboEvolutions.get(e.key)?.occurrenceCount ?? 0) > 0,
+  )
 
   const realOccurrences = life.occurrences.filter((o) => !o.isGap)
   const confirmedLinks = life.links.filter((l) => l.status === 'confirmed')
@@ -1213,6 +1330,18 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
               Objets métier ({businessObjectEntries.length})
             </h2>
             <MaterializedEventsSection entries={businessObjectEntries} />
+          </section>
+        )}
+
+        {/* Évolution des objets métier — trajectoire de signal (H2-B.4UI), lecture pure des
+            lignes déjà persistées dans object_state_occurrence_signal, aucun appel IA ici. */}
+        {hasCboEvolution && (
+          <section id="evolution-objets-metier" className="rounded-[18px] border bg-card px-5 py-4 space-y-3">
+            <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <TrendingUp className="h-3.5 w-3.5" />
+              Évolution des objets métier
+            </h2>
+            <CboEvolutionSection entries={businessObjectEntries} evolutions={cboEvolutions} />
           </section>
         )}
 
