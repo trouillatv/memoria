@@ -29,6 +29,7 @@ import { visitIntentLabel } from '@/lib/field/visit-intents'
 import { listSubjectsBySite } from '@/lib/db/subjects'
 import { getOrganizationsMeta } from '@/lib/db/organisations'
 import { listSiteConcernedCompanies } from '@/lib/db/site-intervenants'
+import { resolveEffectivePosition, isMappableVisualCapture, selectCrVisualEvidence, buildEvidenceNumberMap } from '@/lib/visits/geo'
 // Le chantier est à Nouméa, le serveur tourne en UTC. Toute date de visite
 // rendue sans fuseau recule d'un jour dès que la visite a commencé avant 11 h
 // locale — c'est-à-dire presque toujours. Cf. `lib/time/local-date.ts`.
@@ -2058,13 +2059,28 @@ export interface VisitCrDoc {
   /** URLs signées des photos SÉLECTIONNÉES pour le CR (par tag + photo clé,
    *  plafonnées) — embarquées dans le PDF. Le CR est un document de communication. */
   photos: string[]
-  /** Photos sélectionnées AVEC leur légende (commentaire de la capture). */
-  photoItems: Array<{ url: string; caption: string | null }>
-  /** Reportage photographique (Tier 2, P0 mémoire/reportage 2026-08-17) : le
-   *  complément des Photos clés — rien n'est perdu. `isMemoire` distingue une
-   *  décision humaine explicite (`memoire`) d'une capture jamais qualifiée
-   *  (`null`) : les deux restent visibles, mais ne sont jamais confondues. */
-  reportagePhotos: Array<{ url: string; caption: string | null; isMemoire: boolean }>
+  /** Photos sélectionnées AVEC leur légende (commentaire de la capture).
+   *  `evidenceNumber` (Lot 4, 2026-08-24) — l'identité de preuve UNIQUE,
+   *  partagée avec `positions` et `reportagePhotos` : la même capture porte
+   *  toujours le même numéro, carte et reportage confondus. Jamais recalculé
+   *  localement (pas de `i + 1` de secours) — vient de `evidenceNumberById`. */
+  photoItems: Array<{ url: string; caption: string | null; evidenceNumber: number }>
+  /** Reportage (Tier 2, P0 mémoire/reportage 2026-08-17, étendu vidéo Lot 4
+   *  2026-08-24) : le complément des Photos clés — rien n'est perdu. `isMemoire`
+   *  distingue une décision humaine explicite (`memoire`) d'une capture jamais
+   *  qualifiée (`null`) : les deux restent visibles, mais ne sont jamais
+   *  confondues. Une vidéo retenue au CR y apparaît comme les photos (même
+   *  mécanique d'inclusion) mais SANS `url` exploitable en image — le renderer
+   *  affiche alors une carte de preuve statique (icône + légende + date),
+   *  jamais la vidéo jouée (aucune lecture vidéo dans le PDF). */
+  reportagePhotos: Array<{
+    url: string | null
+    caption: string | null
+    isMemoire: boolean
+    kind: 'photo' | 'video'
+    evidenceNumber: number
+    capturedAtLabel: string
+  }>
   /** Combien de photos au-delà de CR_REPORTAGE_PHOTO_CAP ont été omises du PDF
    *  (jamais silencieusement) — pour « +N autres photos disponibles dans MemorIA ». */
   reportagePhotosOverflow: number
@@ -2073,9 +2089,12 @@ export interface VisitCrDoc {
    *  premier jour → aujourd'hui). Le client reçoit la transformation dans le CR,
    *  sans ouvrir MemorIA. */
   evolutions: Array<{ label: string | null; items: Array<{ url: string; dateLabel: string }> }>
-  /** Positions GPS des captures — pour la carte des observations (schéma PDF +
-   *  carte interactive sur l'écran). Enrichi de quoi construire un MapCapture. */
-  positions: Array<{ id: string; kind: string; lat: number; lng: number; body: string | null; capturedAt: string }>
+  /** Positions GPS des preuves visuelles RETENUES au CR (photo/vidéo,
+   *  `included_in_cr`) — pour la carte des observations (schéma PDF + carte
+   *  interactive sur l'écran) et l'instantané carte. `number` = même identité
+   *  de preuve que `photoItems`/`reportagePhotos` pour la même capture (Lot 4,
+   *  2026-08-24) : carte et reportage montrent toujours le même numéro. */
+  positions: Array<{ id: string; kind: string; lat: number; lng: number; body: string | null; capturedAt: string; number: number }>
   /** Nombre TOTAL de photos captées (MemorIA les garde toutes) — pour dire
    *  « N photos clés sur M dans MemorIA ». */
   photoCount: number
@@ -2228,6 +2247,34 @@ export function selectReportagePhotos<T extends CrPhotoLike & { id: string }>(
   return { photos: sorted, overflow: 0 }
 }
 
+type CrPositionLike = {
+  id: string
+  kind: string
+  lat: number | null
+  lng: number | null
+  corrected_lat: number | null
+  corrected_lng: number | null
+  body: string | null
+  captured_at: string | null
+  created_at: string
+}
+
+/** Positions GPS des captures → carte des observations (le « où »). Seules
+ *  photo/vidéo sont des preuves visuelles vérifiables : un point de carte sur
+ *  un vocal ou une note n'a rien à montrer une fois cliqué. Position corrigée
+ *  (Lot 1) prioritaire sur la mesure GPS brute. */
+export function buildCrPositions<T extends CrPositionLike>(
+  captures: T[],
+): Array<{ id: string; kind: string; lat: number; lng: number; body: string | null; capturedAt: string }> {
+  return captures
+    .filter((c) => isMappableVisualCapture(c.kind))
+    .flatMap((c) => {
+      const pos = resolveEffectivePosition({ lat: c.lat, lng: c.lng, correctedLat: c.corrected_lat, correctedLng: c.corrected_lng })
+      if (!pos) return []
+      return [{ id: c.id, kind: c.kind, lat: pos.lat, lng: pos.lng, body: c.body?.trim() || null, capturedAt: c.captured_at ?? c.created_at }]
+    })
+}
+
 /**
  * Combien de photos seront incluses au CR vs total capté — pour l'écran de
  * confirmation « X photos seront incluses ». Léger (pas d'IA, pas d'URL signée).
@@ -2314,7 +2361,13 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   // DISTINCTE de triage_intent. `photoCount` (plus bas) reste basé sur
   // `photoCaptures` NON filtré : MemorIA garde toutes les photos captées, que
   // le CR les montre ou non.
-  const crPhotoCaptures = photoCaptures.filter((c) => c.included_in_cr)
+  // Identité de preuve unique (Vincent) : une seule séquence de numérotation,
+  // photo ET vidéo confondues, partagée entre carte, Photos clés et Reportage.
+  // `selectCrVisualEvidence`/`buildEvidenceNumberMap` sont PARTAGÉS avec
+  // `ensureCrMapSnapshot` (cr-map-snapshot.ts) — jamais réimplémentés ici.
+  const crVisualCaptures = selectCrVisualEvidence(captures)
+  const evidenceNumberById = buildEvidenceNumberMap(crVisualCaptures)
+  const crPhotoCaptures = crVisualCaptures.filter((c) => c.kind === 'photo')
   const videoCount = captures.filter((c) => c.kind === 'video').length
   const vocalCount = captures.filter((c) => c.kind === 'vocal').length
   const isImportedVisit = visit.origin === 'import'
@@ -2323,7 +2376,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   // on charge les preuves visuelles épinglées depuis l'extraction avec leurs URLs signées.
   // Règle de priorité : image native > snapshot par page (cohérence avec la revue).
   let importedPhotoCount = 0
-  let importedPhotoItems: Array<{ url: string; caption: string | null }> = []
+  let importedPhotoItems: Array<{ url: string; caption: string | null; evidenceNumber: number }> = []
   if (isImportedVisit && visit.extraction_run_id) {
     const { data: pinnedEvidence } = await supabase
       .from('document_extraction_evidence')
@@ -2346,7 +2399,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
         if (signed) {
           const pathToUrl = new Map(signed.filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]))
           importedPhotoItems = deduped
-            .map((e) => ({ url: pathToUrl.get(e.storage_path ?? '') ?? '', caption: (e.caption as string | null) ?? null }))
+            .map((e, i) => ({ url: pathToUrl.get(e.storage_path ?? '') ?? '', caption: (e.caption as string | null) ?? null, evidenceNumber: i + 1 }))
             .filter((p) => p.url)
         }
       }
@@ -2364,31 +2417,47 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     .filter((u): u is string => !!u)
   // Photos AVEC légende (commentaire de la capture) — pour un CR lisible sans l'app.
   const photoItems = selectedPhotos
-    .map((c) => ({ url: previews[c.id]?.url, caption: c.body?.trim() || null }))
-    .filter((p): p is { url: string; caption: string | null } => !!p.url)
+    .map((c) => ({
+      url: previews[c.id]?.url,
+      caption: c.body?.trim() || null,
+      evidenceNumber: evidenceNumberById.get(c.id) ?? 0,
+    }))
+    .filter((p): p is { url: string; caption: string | null; evidenceNumber: number } => !!p.url)
 
   // Reportage photographique (Tier 2) : complément des Photos clés — priorité
   // memoire (décision explicite) puis null (jamais qualifiée), jamais tronqué.
-  // `selectCrPhotos` reste inchangé ; ceci lit son résultat.
+  // `selectCrPhotos` reste inchangé ; ceci lit son résultat. Étendu à la vidéo
+  // (Vincent) : une vidéo retenue devient une carte de preuve statique, jamais
+  // une image — voir branchement `kind` ci-dessous.
   const { photos: reportageCaptures, overflow: reportagePhotosOverflow } =
-    selectReportagePhotos(crPhotoCaptures, selectedPhotos)
+    selectReportagePhotos(crVisualCaptures, selectedPhotos)
   const reportagePreviews: Record<string, { url: string; mime: string | null }> =
-    await getVisitCapturePreviewUrls(reportageCaptures).catch(() => ({}))
+    await getVisitCapturePreviewUrls(reportageCaptures.filter((c) => c.kind === 'photo')).catch(() => ({}))
+  const capturedAtFormatter = new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: NOUMEA_TZ,
+  })
   const reportagePhotos = reportageCaptures
     .map((c) => ({
-      url: reportagePreviews[c.id]?.url,
+      url: c.kind === 'video' ? null : reportagePreviews[c.id]?.url ?? null,
       caption: c.body?.trim() || null,
       isMemoire: c.triage_intent === 'memoire',
+      kind: c.kind as 'photo' | 'video',
+      evidenceNumber: evidenceNumberById.get(c.id) ?? 0,
+      capturedAtLabel: capturedAtFormatter.format(new Date(c.captured_at ?? c.created_at)),
     }))
-    .filter((p): p is { url: string; caption: string | null; isMemoire: boolean } => !!p.url)
+    .filter((p) => p.kind === 'video' || !!p.url)
 
-  // Positions GPS des captures → carte des observations (le « où »).
-  const positions = captures
-    .filter((c) => c.lat != null && c.lng != null)
-    .map((c) => ({
-      id: c.id, kind: c.kind, lat: c.lat as number, lng: c.lng as number,
-      body: c.body?.trim() || null, capturedAt: c.captured_at ?? c.created_at,
-    }))
+  // Positions GPS des captures → carte des observations (le « où ») ; les
+  // numéros partagent la même identité que Photos clés / Reportage.
+  const positions = buildCrPositions(crVisualCaptures).map((p) => ({
+    ...p,
+    number: evidenceNumberById.get(p.id) ?? 0,
+  }))
 
   // Comptes par type + éléments marqués (richesse de la visite, bloc « En bref »).
   const noteCount = captures.filter((c) => c.kind === 'note').length

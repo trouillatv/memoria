@@ -25,7 +25,7 @@
 // Un bouton qui ne restaurerait rien — ou qui ramènerait au vide — mentirait.
 
 import { useState } from 'react'
-import { Pencil, RotateCcw, Check, X, Loader2, Lock, Plus, Circle, Star } from 'lucide-react'
+import { Pencil, RotateCcw, Check, X, Loader2, Lock, Plus, Circle, Star, Video } from 'lucide-react'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
 import type { CaptureTriageIntent } from '@/lib/db/visit-captures'
 import {
@@ -51,6 +51,12 @@ export type ConcretisationSummary = Record<string, { created: number; pending: n
  *
  * `tier` est la valeur RÉSOLUE (choix humain explicite ou poids automatique) —
  * calculée côté page par `selectCrPhotos`, jamais recalculée ici.
+ *
+ * `kind` (Lot 4, 2026-08-24) — une preuve visuelle retenue au CR peut être une
+ * vidéo, pas seulement une photo (même mécanique d'inclusion). Une vidéo n'a
+ * pas de vignette : elle s'affiche comme une carte de preuve statique, jamais
+ * jouée dans cet écran ni dans le PDF. Elle ne peut jamais devenir « clé » —
+ * `tier` reste toujours `'reportage'` pour une vidéo (résolu côté page).
  */
 export interface CrPhotoCandidate {
   id: string
@@ -59,6 +65,7 @@ export interface CrPhotoCandidate {
   includedInCr: boolean
   triageIntent: CaptureTriageIntent
   tier: 'key' | 'reportage'
+  kind: 'photo' | 'video'
 }
 
 export function CrDocumentSections({
@@ -240,6 +247,11 @@ const STATUS_STYLE: Record<PhotoStatus, string> = {
 
 /** Le cycle, dans un seul sens : Hors CR → Reportage → Clé → Hors CR. */
 const NEXT_STATUS: Record<PhotoStatus, PhotoStatus> = { out: 'reportage', reportage: 'key', key: 'out' }
+/** Une vidéo n'a pas de vignette « clé » (pas de granularité Photos clés pour
+ *  ce lot) : son cycle saute directement de Reportage à Hors CR. */
+const NEXT_STATUS_VIDEO: Record<PhotoStatus, PhotoStatus> = { out: 'reportage', reportage: 'out', key: 'out' }
+const nextStatusFor = (photo: CrPhotoCandidate, current: PhotoStatus): PhotoStatus =>
+  (photo.kind === 'video' ? NEXT_STATUS_VIDEO : NEXT_STATUS)[current]
 
 function PhotoSelectionSection({
   reportId,
@@ -297,7 +309,7 @@ function PhotoSelectionSection({
   const cycleStatus = async (photo: CrPhotoCandidate) => {
     if (!editable || pendingIds.has(photo.id)) return
     const current = statusOf(photo.id)
-    const next = NEXT_STATUS[current]
+    const next = nextStatusFor(photo, current)
     const prevIncluded = included[photo.id]
     const prevTier = tier[photo.id]
 
@@ -412,15 +424,21 @@ function PhotoSelectionSection({
                   type="button"
                   onClick={() => openViewer(photo)}
                   className="absolute inset-0"
-                  aria-label="Voir la photo"
+                  aria-label={photo.kind === 'video' ? 'Voir la vidéo' : 'Voir la photo'}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photo.url}
-                    alt={caption ?? ''}
-                    className={`h-full w-full object-cover ${status === 'out' ? 'opacity-40' : ''}`}
-                    loading="lazy"
-                  />
+                  {photo.kind === 'video' ? (
+                    <div className={`flex h-full w-full items-center justify-center bg-violet-600 ${status === 'out' ? 'opacity-40' : ''}`}>
+                      <Video className="h-6 w-6 text-white" aria-hidden />
+                    </div>
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={photo.url}
+                      alt={caption ?? ''}
+                      className={`h-full w-full object-cover ${status === 'out' ? 'opacity-40' : ''}`}
+                      loading="lazy"
+                    />
+                  )}
                 </button>
                 {badge && (
                   <span className="pointer-events-none absolute bottom-1 left-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
@@ -483,8 +501,15 @@ function PhotoSelectionSection({
             </button>
           </div>
           <div className="flex flex-1 items-center justify-center overflow-hidden px-2" onClick={(e) => e.stopPropagation()}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={viewing.url} alt={captions[viewing.id] ?? ''} className="max-h-full max-w-full rounded object-contain" />
+            {viewing.kind === 'video' ? (
+              <div className="flex flex-col items-center gap-2 text-white/80">
+                <Video className="h-16 w-16" aria-hidden />
+                <p className="text-sm">Vidéo — lecture non disponible dans cet aperçu</p>
+              </div>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={viewing.url} alt={captions[viewing.id] ?? ''} className="max-h-full max-w-full rounded object-contain" />
+            )}
           </div>
           <div className="shrink-0 px-4 py-4" onClick={(e) => e.stopPropagation()}>
             {editable && editingCaption ? (

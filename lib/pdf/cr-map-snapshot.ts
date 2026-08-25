@@ -1,6 +1,8 @@
 import 'server-only'
 import { Resvg } from '@resvg/resvg-js'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveEffectivePosition, selectCrVisualEvidence, buildEvidenceNumberMap } from '@/lib/visits/geo'
+import { clusterMarkersByPixel, MARKER_CLUSTER_RADIUS_PX } from '@/lib/visits/marker-cluster'
 
 // « Instantané carte » du compte-rendu. Le PDF ne fabrique JAMAIS la carte : cette
 // image est produite UNE SEULE FOIS (à l'ouverture de l'aperçu), stockée sur le
@@ -21,12 +23,18 @@ const PICK_MAX_ZOOM = 18 // niveau rue ; au-delà, un point seul serait sur-zoom
 const MAX_TILES = 30 // garde-fou : jamais un déluge de requêtes OSM
 const TILE_TIMEOUT_MS = 4000
 const OSM_UA = 'MemorIA/1.0 (compte-rendu de visite; +https://memoria.app)'
+// Instantané rendu à 2× la boîte carte du PDF (W/H = 2 × 515/200) : le rayon de
+// regroupement doit suivre la même échelle pour représenter le même seuil
+// visuel de chevauchement que le schéma live (Lot 4) — sinon les deux
+// renderers grouperaient différemment pour un même jeu de points.
+const SNAPSHOT_SCALE = 2
+const CLUSTER_RADIUS_PX = MARKER_CLUSTER_RADIUS_PX * SNAPSHOT_SCALE
 
 const KIND_COLOR: Record<string, string> = {
-  photo: '#0284c7', video: '#7c3aed', vocal: '#d97706', note: '#475569', verification: '#059669', position: '#6b7280',
+  photo: '#0284c7', video: '#7c3aed',
 }
 
-interface Pos { lat: number; lng: number; kind: string }
+interface Pos { id: string; lat: number; lng: number; kind: string; number: number }
 
 // Projection Web Mercator → pixels monde (tuiles de 256 px) au zoom z.
 function project(lat: number, lng: number, z: number): { x: number; y: number } {
@@ -71,13 +79,19 @@ function escapeXml(s: string): string {
 
 function buildSvg(
   tiles: Array<{ left: number; top: number; b64: string }>,
-  markers: Array<{ cx: number; cy: number; color: string }>,
+  markers: Array<{ cx: number; cy: number; color: string; label: string }>,
 ): string {
   const imgs = tiles
     .map((t) => `<image x="${t.left.toFixed(1)}" y="${t.top.toFixed(1)}" width="${TILE}" height="${TILE}" xlink:href="data:image/png;base64,${t.b64}"/>`)
     .join('')
+  // Rayon 15 (vs 10 avant Lot 4) : assez grand pour accueillir un chiffre à deux
+  // chiffres lisible. `loadSystemFonts` est requis pour que le <text> soit bien
+  // rendu par Resvg (vérifié : sans lui, le texte disparaît silencieusement).
   const dots = markers
-    .map((m) => `<circle cx="${m.cx.toFixed(1)}" cy="${m.cy.toFixed(1)}" r="10" fill="${escapeXml(m.color)}" stroke="#ffffff" stroke-width="3"/>`)
+    .map((m) => (
+      `<circle cx="${m.cx.toFixed(1)}" cy="${m.cy.toFixed(1)}" r="15" fill="${escapeXml(m.color)}" stroke="#ffffff" stroke-width="3"/>` +
+      `<text x="${m.cx.toFixed(1)}" y="${(m.cy + 5).toFixed(1)}" font-size="15" font-family="Helvetica, Arial, sans-serif" font-weight="bold" fill="#ffffff" text-anchor="middle">${escapeXml(m.label)}</text>`
+    ))
     .join('')
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><rect width="${W}" height="${H}" fill="#e5e7eb"/>${imgs}${dots}</svg>`
 }
@@ -99,14 +113,30 @@ export async function ensureCrMapSnapshot(reportId: string): Promise<string | nu
   const existing = (report as { cr_map_snapshot_path: string | null }).cr_map_snapshot_path
   if (existing) return existing // déjà produit → cache, aucune requête OSM
 
+  // Même filtrage ET même ordre que listVisitCaptures() (lib/db/visit-captures.ts)
+  // — buildVisitCrDoc() y numérote ses preuves dans cet ordre précis. L'instantané
+  // DOIT reproduire exactement ce tri, sinon un même média porterait deux numéros
+  // différents selon qu'on le lit sur la carte ou dans le reportage (Lot 4).
+  // `included_in_cr` manquait ici avant Lot 4 : une capture non retenue au CR
+  // pouvait apparaître sur la carte alors qu'absente du reportage — corrigé.
   const { data: caps } = await supabase
     .from('visit_capture')
-    .select('lat, lng, kind')
+    .select('id, lat, lng, corrected_lat, corrected_lng, kind, status, included_in_cr, captured_at, created_at')
     .eq('report_id', reportId)
+    .is('hidden_at', null)
     .not('lat', 'is', null)
     .not('lng', 'is', null)
-  const positions: Pos[] = ((caps ?? []) as Array<{ lat: number | null; lng: number | null; kind: string }>)
-    .filter((c): c is Pos => c.lat != null && c.lng != null)
+    .order('captured_at', { ascending: true, nullsFirst: true })
+    .order('created_at', { ascending: true })
+  const eligible = selectCrVisualEvidence((caps ?? []) as Array<{
+    id: string; lat: number | null; lng: number | null; corrected_lat: number | null; corrected_lng: number | null
+    kind: string; status: string; included_in_cr: boolean; captured_at: string | null; created_at: string
+  }>)
+  const evidenceNumberById = buildEvidenceNumberMap(eligible)
+  const positions: Pos[] = eligible.flatMap((c) => {
+    const pos = resolveEffectivePosition({ lat: c.lat, lng: c.lng, correctedLat: c.corrected_lat, correctedLng: c.corrected_lng })
+    return pos ? [{ id: c.id, lat: pos.lat, lng: pos.lng, kind: c.kind, number: evidenceNumberById.get(c.id) ?? 0 }] : []
+  })
   if (positions.length === 0) return null
 
   const lats = positions.map((p) => p.lat)
@@ -136,14 +166,29 @@ export async function ensureCrMapSnapshot(reportId: string): Promise<string | nu
   const tiles = fetched.filter((t): t is NonNullable<typeof t> => t != null)
   if (tiles.length === 0) return null // réseau / OSM indisponible → fallback schéma
 
-  const markers = positions.map((p) => {
+  // Regroupement déterministe des marqueurs proches (Lot 4) — même algorithme et
+  // même rayon (mis à l'échelle 2×) que le schéma live (ObservationMap).
+  const rawMarkers = positions.map((p) => {
     const w = project(p.lat, p.lng, z)
-    return { cx: w.x - originX, cy: w.y - originY, color: KIND_COLOR[p.kind] ?? '#6b7280' }
+    return { id: p.id, x: w.x - originX, y: w.y - originY, kind: p.kind, number: p.number }
+  })
+  const clusters = clusterMarkersByPixel(rawMarkers, CLUSTER_RADIUS_PX)
+  const markers = clusters.map((c) => {
+    const single = c.points.length === 1 ? c.points[0] : null
+    return {
+      cx: c.x,
+      cy: c.y,
+      color: single ? (KIND_COLOR[single.kind] ?? '#6b7280') : '#334155',
+      label: single ? String(single.number) : String(c.points.length),
+    }
   })
 
   let png: Buffer
   try {
-    png = Buffer.from(new Resvg(buildSvg(tiles, markers)).render().asPng())
+    // `loadSystemFonts` requis pour que les numéros bakés (<text>) soient rendus
+    // par Resvg — sans lui, le texte disparaît silencieusement (Lot 4, vérifié
+    // via _resvg_text_test.mjs).
+    png = Buffer.from(new Resvg(buildSvg(tiles, markers), { font: { loadSystemFonts: true } }).render().asPng())
   } catch {
     return null
   }

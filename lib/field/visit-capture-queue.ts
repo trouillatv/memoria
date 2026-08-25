@@ -65,6 +65,9 @@ export interface QueuedVisitCapture {
   /** Position ponctuelle OPT-IN de l'observation (jamais une trace). */
   lat?: number | null
   lng?: number | null
+  /** coords.accuracy du navigateur (mètres) au moment de la capture — même
+   *  appel GPS que lat/lng, jamais une seconde requête. */
+  accuracy?: number | null
   takenAt: number // epoch ms
   attempts: number
   lastAttemptAt?: number // epoch ms — pour la disponibilité au retry (backoff)

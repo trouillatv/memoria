@@ -176,11 +176,11 @@ export function VisitBasket({
     try { window.localStorage.removeItem(GEO_PREF_KEY) } catch { /* ignore */ }
     setGeoTag(false)
   }
-  function getOneShotPosition(): Promise<{ lat: number; lng: number } | null> {
+  function getOneShotPosition(): Promise<{ lat: number; lng: number; accuracy: number | null } | null> {
     if (!geoTag || typeof navigator === 'undefined' || !navigator.geolocation) return Promise.resolve(null)
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
-        (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+        (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy ?? null }),
         () => resolve(null),
         { enableHighAccuracy: true, timeout: 6000, maximumAge: 30000 },
       )
@@ -327,6 +327,7 @@ export function VisitBasket({
         mimeType: blob.type || (kind === 'photo' ? 'image/jpeg' : kind === 'video' ? 'video/mp4' : 'audio/webm'),
         lat: pos?.lat ?? null,
         lng: pos?.lng ?? null,
+        accuracy: pos?.accuracy ?? null,
         viewpointOf,
       })
       void syncNow()
@@ -409,7 +410,7 @@ export function VisitBasket({
         starred: true,
         // « Remplacer l'affichage » → archive l'original (jamais supprimé).
         ...(replaceOriginal ? { replaces_capture_id: annotate.id } : {}),
-        lat: pos?.lat, lng: pos?.lng,
+        lat: pos?.lat, lng: pos?.lng, accuracy: pos?.accuracy ?? undefined,
       })
       if (!cap.ok) { toast.error(cap.error); return }
       setAnnotate(null)
@@ -473,6 +474,7 @@ export function VisitBasket({
         subjectId: payload.subjectId,
         lat: payload.lat ?? pos?.lat ?? null,
         lng: payload.lng ?? pos?.lng ?? null,
+        accuracy: pos?.accuracy ?? null,
       })
       void syncNow()
     })().catch(() => {

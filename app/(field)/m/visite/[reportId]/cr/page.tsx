@@ -10,6 +10,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisit, buildVisitCrDoc, selectCrPhotos } from '@/lib/db/visits'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
 import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
+import { isMappableVisualCapture } from '@/lib/visits/geo'
 import { CaptureMap } from '@/components/CaptureMap'
 import { CrMapSnapshotTrigger } from './CrMapSnapshotTrigger'
 import { MemoriaRetained } from './MemoriaRetained'
@@ -76,18 +77,24 @@ export default async function VisitCrPreviewPage({
   }
   const concretisation = { actions: summarize('action'), decisions: summarize('decision') }
 
-  // Sélection éditoriale du CR (Vincent, 2026-08-17) : les photos candidates au
-  // document — même panier que buildVisitCrDoc (status non écarté), avec l'URL
-  // de prévisualisation déjà résolue. Sans URL, une photo n'est pas proposable.
+  // Sélection éditoriale du CR (Vincent, 2026-08-17, étendue vidéo 2026-08-24) :
+  // les preuves visuelles (photo + vidéo) candidates au document — même panier
+  // que buildVisitCrDoc (status non écarté), avec l'URL de prévisualisation
+  // déjà résolue. Sans URL, une capture n'est pas proposable.
   const rawCaptures = await listVisitCaptures(reportId).catch(() => [])
-  const photoRows = rawCaptures.filter((c) => c.status !== 'discarded' && c.kind === 'photo')
-  const previewUrls = await getVisitCapturePreviewUrls(photoRows)
+  const visualRows = rawCaptures.filter((c) => c.status !== 'discarded' && isMappableVisualCapture(c.kind))
+  const previewUrls = await getVisitCapturePreviewUrls(visualRows)
   // Tier RÉSOLU (Vincent, 2026-08-18) : même calcul que buildVisitCrDoc — une
   // photo explicitement 'key'/'reportage' garde son choix, une photo non
   // tranchée hérite du poids automatique. C'est ce que l'écran affiche comme
-  // état courant du bouton de statut, jamais un second calcul divergent.
-  const keyIds = new Set(selectCrPhotos(photoRows.filter((c) => c.included_in_cr)).map((c) => c.id))
-  const crPhotoCandidates: CrPhotoCandidate[] = photoRows
+  // état courant du bouton de statut, jamais un second calcul divergent. Une
+  // vidéo n'entre jamais dans ce calcul (photo uniquement) : elle reste
+  // toujours 'reportage', jamais 'key' (pas de granularité Photos clés vidéo
+  // pour ce lot).
+  const keyIds = new Set(
+    selectCrPhotos(visualRows.filter((c) => c.kind === 'photo' && c.included_in_cr)).map((c) => c.id),
+  )
+  const crPhotoCandidates: CrPhotoCandidate[] = visualRows
     .map((c) => ({
       id: c.id,
       url: previewUrls[c.id]?.url,
@@ -95,6 +102,7 @@ export default async function VisitCrPreviewPage({
       includedInCr: c.included_in_cr,
       triageIntent: c.triage_intent,
       tier: keyIds.has(c.id) ? ('key' as const) : ('reportage' as const),
+      kind: c.kind as 'photo' | 'video',
     }))
     .filter((p): p is CrPhotoCandidate => !!p.url)
 
@@ -358,7 +366,7 @@ export default async function VisitCrPreviewPage({
             <MapPin className="mx-auto h-6 w-6 text-muted-foreground/40" />
             <p className="mt-2 text-sm font-medium">Aucune observation géolocalisée</p>
             <p className="mx-auto mt-1 max-w-xs text-[13px] leading-relaxed text-muted-foreground">
-              Activez la localisation des observations lors d’une prochaine visite pour retrouver automatiquement les photos, notes et vocaux sur le plan.
+              Activez la localisation des observations lors d’une prochaine visite pour retrouver automatiquement les photos et vidéos sur le plan.
             </p>
           </div>
         )}

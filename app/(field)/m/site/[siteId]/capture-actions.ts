@@ -38,6 +38,8 @@ const MAX_AUDIO_BYTES = 25 * 1024 * 1024
 const coords = {
   lat: z.coerce.number().min(-90).max(90).optional(),
   lng: z.coerce.number().min(-180).max(180).optional(),
+  // coords.accuracy du navigateur (mètres) — même appel GPS que lat/lng.
+  accuracy: z.coerce.number().min(0).optional(),
 }
 
 // Les gestes légers (note / vérification / position) passent par la file
@@ -80,6 +82,7 @@ export async function addPhotoCaptureAction(
       annotatedOriginalId: parsed.data.replaces_capture_id ?? null,
       lat: parsed.data.lat ?? null,
       lng: parsed.data.lng ?? null,
+      gpsAccuracyM: parsed.data.accuracy ?? null,
       createdBy: auth.userId,
     })
     // « Remplacer l'affichage » : on ARCHIVE l'original (masqué, jamais supprimé).
@@ -121,6 +124,7 @@ export async function addVideoCaptureAction(
       attachmentId: parsed.data.attachment_id,
       lat: parsed.data.lat ?? null,
       lng: parsed.data.lng ?? null,
+      gpsAccuracyM: parsed.data.accuracy ?? null,
       createdBy: auth.userId,
     })
     return { ok: true, id }
@@ -179,10 +183,11 @@ export async function addVocalCaptureAction(
     // fait par la route worker, que le client DÉCLENCHE juste après. La vérité de
     // l'avancement est en base ; si le déclenchement échoue, le cron rattrape.
     // Position ponctuelle optionnelle (opt-in), best-effort : jamais bloquante.
-    const latRaw = formData.get('lat'); const lngRaw = formData.get('lng')
+    const latRaw = formData.get('lat'); const lngRaw = formData.get('lng'); const accRaw = formData.get('accuracy')
     const geo = z.object(coords).safeParse({
       lat: typeof latRaw === 'string' && latRaw ? latRaw : undefined,
       lng: typeof lngRaw === 'string' && lngRaw ? lngRaw : undefined,
+      accuracy: typeof accRaw === 'string' && accRaw ? accRaw : undefined,
     })
     const id = await addVisitCapture({
       reportId: report.id,
@@ -192,6 +197,7 @@ export async function addVocalCaptureAction(
       transcriptStatus: 'pending',
       lat: geo.success ? geo.data.lat ?? null : null,
       lng: geo.success ? geo.data.lng ?? null : null,
+      gpsAccuracyM: geo.success ? geo.data.accuracy ?? null : null,
       createdBy: auth.userId,
     })
     return { ok: true, id }
@@ -236,13 +242,15 @@ export async function drainVisitCaptureAction(
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: 'Fichier manquant', drop: true }
 
   // Position ponctuelle (opt-in), best-effort.
-  const latRaw = formData.get('lat'); const lngRaw = formData.get('lng')
+  const latRaw = formData.get('lat'); const lngRaw = formData.get('lng'); const accRaw = formData.get('accuracy')
   const geo = z.object(coords).safeParse({
     lat: typeof latRaw === 'string' && latRaw ? latRaw : undefined,
     lng: typeof lngRaw === 'string' && lngRaw ? lngRaw : undefined,
+    accuracy: typeof accRaw === 'string' && accRaw ? accRaw : undefined,
   })
   const lat = geo.success ? geo.data.lat ?? null : null
   const lng = geo.success ? geo.data.lng ?? null : null
+  const accuracy = geo.success ? geo.data.accuracy ?? null : null
   // Reprise d'un point de repère (mig 195) — best-effort, jamais bloquant.
   const vpRaw = formData.get('viewpoint_of')
   const viewpointOf = typeof vpRaw === 'string' && z.string().uuid().safeParse(vpRaw).success ? vpRaw : null
@@ -272,6 +280,7 @@ export async function drainVisitCaptureAction(
         reportId, siteId, kind,
         attachmentId: up.attachmentId,
         clientUuid, lat, lng,
+        gpsAccuracyM: accuracy,
         viewpointOf,
         createdBy: auth.userId,
       })
@@ -303,6 +312,7 @@ export async function drainVisitCaptureAction(
       attachmentId,
       transcriptStatus: 'pending',
       clientUuid, lat, lng,
+      gpsAccuracyM: accuracy,
       createdBy: auth.userId,
     })
     return { ok: true, captureId, kind }
@@ -390,6 +400,7 @@ export async function drainLightCaptureAction(
       clientUuid: d.client_uuid,
       lat: d.lat ?? null,
       lng: d.lng ?? null,
+      gpsAccuracyM: d.accuracy ?? null,
       createdBy: auth.userId,
     })
     return { ok: true, captureId, kind: d.kind }
@@ -489,6 +500,7 @@ export async function registerVisitVideoAction(
       clientUuid: d.client_uuid,
       lat: d.lat ?? null,
       lng: d.lng ?? null,
+      gpsAccuracyM: d.accuracy ?? null,
       createdBy: auth.userId,
     })
     return { ok: true, captureId }

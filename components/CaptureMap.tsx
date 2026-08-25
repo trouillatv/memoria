@@ -10,13 +10,16 @@ import type { Map as LeafletMap } from 'leaflet'
 // Markers vectoriels (circleMarker, zéro asset), tuiles OSM gratuites. Leaflet
 // importé DANS l'effet (jamais au SSR : il touche window/document).
 
+// Preuve visuelle uniquement (cf. lib/visits/geo.ts isMappableVisualCapture) :
+// les captures fournies à ce composant ne sont plus jamais que photo/vidéo,
+// mais on garde ces tables larges car la fiche observation isolée (kind seul,
+// hors carte) et le popup d'un point réutilisent KIND_LABEL pour tous les types.
 const KIND_COLOR: Record<string, string> = {
   photo: '#0284c7', video: '#7c3aed', vocal: '#d97706', note: '#475569', verification: '#059669', position: '#6b7280',
 }
 const KIND_LABEL: Record<string, string> = {
   photo: 'Photo', video: 'Vidéo', vocal: 'Vocal', note: 'Note', verification: 'Vérification', position: 'Position',
 }
-const LEGEND = ['photo', 'video', 'vocal', 'note', 'verification', 'position'] as const
 
 export interface MapCapture {
   id: string
@@ -89,14 +92,19 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
     return () => { cancelled = true; mapRef.current?.remove(); mapRef.current = null }
   }, [captures, siteId, linkPopups])
 
+  // Types réellement présents : la légende ne montre jamais un type absent de
+  // cette carte (plus de « Vocal »/« Note » morts depuis le filtrage preuve
+  // visuelle en amont — cf. lib/visits/geo.ts isMappableVisualCapture).
+  const kindsPresent = [...new Set(captures.map((c) => c.kind))]
+
   return (
     <div className="space-y-2">
       <div ref={ref} className={`${heightClass} w-full overflow-hidden rounded-xl border border-border`} />
       <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
-        {LEGEND.map((k) => (
+        {kindsPresent.map((k) => (
           <span key={k} className="inline-flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: KIND_COLOR[k] }} aria-hidden />
-            {KIND_LABEL[k]}
+            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: KIND_COLOR[k] ?? '#6b7280' }} aria-hidden />
+            {KIND_LABEL[k] ?? k}
           </span>
         ))}
       </div>

@@ -12,6 +12,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOrganizationMembership } from '@/lib/auth/memberships'
+import { resolveEffectivePosition, isMappableVisualCapture } from '@/lib/visits/geo'
 
 export type VisitCaptureKind = 'photo' | 'vocal' | 'note' | 'verification' | 'position' | 'video'
 export type VisitCaptureStatus = 'captured' | 'kept' | 'discarded' | 'processed'
@@ -69,6 +70,15 @@ export interface VisitCaptureRow {
   client_uuid: string | null
   lat: number | null
   lng: number | null
+  /** Précision du GPS navigateur (coords.accuracy, mètres) au moment de la
+   *  capture (mig 351). NULL pour les captures historiques et quand le
+   *  navigateur ne fournit pas de valeur exploitable. */
+  gps_accuracy_m: number | null
+  /** Correction manuelle de la position (mig 351, Lot 3). NULL = pas de
+   *  correction ; la position effective reste lat/lng. Ne modifie jamais
+   *  lat/lng — cf. resolveEffectivePosition (lib/visits/geo.ts). */
+  corrected_lat: number | null
+  corrected_lng: number | null
   /** Instant RÉEL de la capture (mig 184) — EXIF/horodatage export. NULL en direct
    *  (created_at fait foi). La timeline s'ordonne sur coalesce(captured_at, created_at). */
   captured_at: string | null
@@ -106,6 +116,8 @@ export interface AddVisitCaptureInput {
   clientUuid?: string | null
   lat?: number | null
   lng?: number | null
+  /** coords.accuracy du navigateur (mètres) au moment de la capture (mig 351). */
+  gpsAccuracyM?: number | null
   /** Instant réel (mig 184) — posé à l'IMPORT pour reconstruire la chronologie.
    *  Laissé null en direct : created_at fait foi. */
   capturedAt?: string | null
@@ -168,6 +180,7 @@ export async function addVisitCapture(input: AddVisitCaptureInput): Promise<stri
       client_uuid: input.clientUuid ?? null,
       lat: input.lat ?? null,
       lng: input.lng ?? null,
+      gps_accuracy_m: input.gpsAccuracyM ?? null,
       captured_at: input.capturedAt ?? null,
       captured_at_source: input.capturedAtSource ?? null,
       viewpoint_of: input.viewpointOf ?? null,
@@ -212,7 +225,7 @@ export async function listVisitCaptures(reportId: string): Promise<VisitCaptureR
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('report_id', reportId)
     .is('hidden_at', null) // masque un original ARCHIVÉ (remplacé par sa version annotée, mig 185)
     .order('captured_at', { ascending: true, nullsFirst: true })
@@ -226,7 +239,7 @@ export async function listVisitCapturesBySubject(subjectId: string): Promise<Vis
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('subject_id', subjectId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -242,7 +255,7 @@ export async function listVisitCapturesBySite(siteId: string, limit = 300): Prom
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('site_id', siteId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -260,7 +273,7 @@ export async function listVisitCapturesByDossier(dossierId: string, limit = 300)
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('dossier_id', dossierId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -277,8 +290,12 @@ export async function listVisitCapturesByDossier(dossierId: string, limit = 300)
 export interface GeoCapture {
   id: string
   kind: VisitCaptureKind
+  /** Position EFFECTIVE (corrected_lat/lng si posée, sinon lat/lng brut) —
+   *  résolue par resolveEffectivePosition, jamais recalculée par le consommateur. */
   lat: number
   lng: number
+  positionSource: 'gps' | 'manual'
+  gpsAccuracyM: number | null
   created_at: string
   body: string | null
   report_id: string
@@ -289,27 +306,35 @@ export async function listGeolocatedCapturesBySite(siteId: string, limit = 1000)
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('visit_capture')
-    .select('id, kind, lat, lng, created_at, body, report_id, subject_id')
+    .select('id, kind, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, created_at, body, report_id, subject_id')
     .eq('site_id', siteId)
     .neq('status', 'discarded')
     .not('lat', 'is', null)
     .not('lng', 'is', null)
     .order('created_at', { ascending: false })
     .limit(limit)
-  const rows = (data ?? []) as Array<{
-    id: string; kind: VisitCaptureKind; lat: number; lng: number; created_at: string
-    body: string | null; report_id: string; subject_id: string | null
-  }>
+  const rows = ((data ?? []) as Array<{
+    id: string; kind: VisitCaptureKind; lat: number | null; lng: number | null
+    gps_accuracy_m: number | null; corrected_lat: number | null; corrected_lng: number | null
+    created_at: string; body: string | null; report_id: string; subject_id: string | null
+  }>).filter((r) => isMappableVisualCapture(r.kind))
   const subjectIds = [...new Set(rows.map((r) => r.subject_id).filter((x): x is string => !!x))]
   const nameById = new Map<string, string>()
   if (subjectIds.length > 0) {
     const { data: subs } = await supabase.from('subjects').select('id, name').in('id', subjectIds)
     for (const s of (subs ?? []) as Array<{ id: string; name: string }>) nameById.set(s.id, s.name)
   }
-  return rows.map((r) => ({
-    id: r.id, kind: r.kind, lat: r.lat, lng: r.lng, created_at: r.created_at, body: r.body,
-    report_id: r.report_id, subject_name: r.subject_id ? nameById.get(r.subject_id) ?? null : null,
-  }))
+  return rows.flatMap((r) => {
+    const pos = resolveEffectivePosition({
+      lat: r.lat, lng: r.lng, correctedLat: r.corrected_lat, correctedLng: r.corrected_lng,
+    })
+    if (!pos) return []
+    return [{
+      id: r.id, kind: r.kind, lat: pos.lat, lng: pos.lng, positionSource: pos.source,
+      gpsAccuracyM: r.gps_accuracy_m, created_at: r.created_at, body: r.body,
+      report_id: r.report_id, subject_name: r.subject_id ? nameById.get(r.subject_id) ?? null : null,
+    }]
+  })
 }
 
 /**
@@ -337,7 +362,7 @@ export async function listSiteViewpointRows(siteId: string): Promise<VisitCaptur
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('site_id', siteId)
     .eq('kind', 'photo')
     .neq('status', 'discarded')
@@ -355,7 +380,7 @@ export async function listSitePhotoCaptures(siteId: string, limit = 500): Promis
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('site_id', siteId)
     .eq('kind', 'photo')
     .neq('status', 'discarded')
@@ -406,8 +431,11 @@ export async function getVisitCapturePreviewUrls(
 export interface SiteMapCapture {
   id: string
   kind: string
+  /** Position EFFECTIVE (corrected_lat/lng si posée, sinon lat/lng brut). */
   lat: number
   lng: number
+  positionSource: 'gps' | 'manual'
+  gpsAccuracyM: number | null
   created_at: string
   body: string | null
   reportId: string
@@ -423,19 +451,29 @@ export async function listSiteMapCaptures(siteId: string): Promise<SiteMapCaptur
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('visit_capture')
-    .select('id, kind, lat, lng, body, captured_at, created_at, report_id')
+    .select('id, kind, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, body, captured_at, created_at, report_id')
     .eq('site_id', siteId)
     .not('lat', 'is', null)
     .not('lng', 'is', null)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
     .limit(500)
-  return ((data ?? []) as Array<{ id: string; kind: string; lat: number; lng: number; body: string | null; captured_at: string | null; created_at: string; report_id: string }>)
-    .map((c) => ({
-      id: c.id, kind: c.kind, lat: c.lat, lng: c.lng,
+  return ((data ?? []) as Array<{
+    id: string; kind: string; lat: number | null; lng: number | null
+    gps_accuracy_m: number | null; corrected_lat: number | null; corrected_lng: number | null
+    body: string | null; captured_at: string | null; created_at: string; report_id: string
+  }>).filter((c) => isMappableVisualCapture(c.kind)).flatMap((c) => {
+    const pos = resolveEffectivePosition({
+      lat: c.lat, lng: c.lng, correctedLat: c.corrected_lat, correctedLng: c.corrected_lng,
+    })
+    if (!pos) return []
+    return [{
+      id: c.id, kind: c.kind, lat: pos.lat, lng: pos.lng, positionSource: pos.source,
+      gpsAccuracyM: c.gps_accuracy_m,
       created_at: c.captured_at ?? c.created_at, body: c.body?.trim() || null,
       reportId: c.report_id, subjectName: null,
-    }))
+    }]
+  })
 }
 
 /** Combien de captures non écartées dans le panier (badge « N éléments »). */

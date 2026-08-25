@@ -10,7 +10,8 @@
 // le filtrage à la main au lieu de tester le pipeline sur son entrée réelle.
 
 import { describe, expect, it } from 'vitest'
-import { CR_PHOTO_CAP, CR_REPORTAGE_PHOTO_CAP, selectCrPhotos, selectReportagePhotos } from '@/lib/db/visits'
+import { CR_PHOTO_CAP, CR_REPORTAGE_PHOTO_CAP, selectCrPhotos, selectReportagePhotos, buildCrPositions } from '@/lib/db/visits'
+import { selectCrVisualEvidence, buildEvidenceNumberMap } from '@/lib/visits/geo'
 import type { VisitCaptureRow } from '@/lib/db/visit-captures'
 
 let seq = 0
@@ -33,6 +34,9 @@ function cap(over: Partial<VisitCaptureRow> = {}): VisitCaptureRow {
     client_uuid: null,
     lat: null,
     lng: null,
+    gps_accuracy_m: null,
+    corrected_lat: null,
+    corrected_lng: null,
     captured_at: ts,
     is_viewpoint: false,
     viewpoint_of: null,
@@ -219,5 +223,76 @@ describe('cr_tier — statut éditorial explicite Photo clé / Reportage (Vincen
     const photos = visiblePhotosFrom([explicitKey, untagged])
     const selected = selectCrPhotos(photos)
     expect(selected.map((c) => c.id)).toEqual([explicitKey.id])
+  })
+})
+
+describe('buildCrPositions — carte CR = preuves visuelles uniquement (Lot 2, 2026-08-24)', () => {
+  it('vocal/note/verification/position géolocalisés : exclus de la carte, seuls photo/video y figurent', () => {
+    const photo = cap({ kind: 'photo', lat: -22.27, lng: 166.45 })
+    const video = cap({ kind: 'video', lat: -22.28, lng: 166.46 })
+    const vocal = cap({ kind: 'vocal', lat: -22.29, lng: 166.47 })
+    const note = cap({ kind: 'note', lat: -22.30, lng: 166.48 })
+    const verification = cap({ kind: 'verification', lat: -22.31, lng: 166.49 })
+    const position = cap({ kind: 'position', lat: -22.32, lng: 166.50 })
+    const positions = buildCrPositions([photo, video, vocal, note, verification, position])
+    expect(positions.map((p) => p.id).sort()).toEqual([photo.id, video.id].sort())
+  })
+
+  it('correction humaine posée (mig GPS) : la carte affiche la position corrigée, jamais le GPS brut original', () => {
+    const corrected = cap({ kind: 'photo', lat: -22.27, lng: 166.45, corrected_lat: -22.29, corrected_lng: 166.47 })
+    const [p] = buildCrPositions([corrected])
+    expect(p).toMatchObject({ lat: -22.29, lng: 166.47 })
+  })
+
+  it('ni GPS ni correction : la capture est absente de la carte (jamais un point à (0,0))', () => {
+    const noPos = cap({ kind: 'photo', lat: null, lng: null })
+    expect(buildCrPositions([noPos])).toHaveLength(0)
+  })
+
+  it('body vide (chaîne blanche) → null, pas une chaîne vide affichée sur le point', () => {
+    const blank = cap({ kind: 'photo', lat: -22.27, lng: 166.45, body: '   ' })
+    const [p] = buildCrPositions([blank])
+    expect(p.body).toBeNull()
+  })
+
+  it('captured_at absent → repli sur created_at (jamais une date manquante)', () => {
+    const noCapturedAt = cap({ kind: 'photo', lat: -22.27, lng: 166.45, captured_at: null })
+    const [p] = buildCrPositions([noCapturedAt])
+    expect(p.capturedAt).toBe(noCapturedAt.created_at)
+  })
+})
+
+describe('Identité de preuve unique — photo ET vidéo partagent une seule séquence (Lot 4, 2026-08-25)', () => {
+  it('une vidéo retenue au CR ne peut jamais devenir Photo clé, même avec cr_tier "key"', () => {
+    const video = cap({ kind: 'video', cr_tier: 'key' })
+    const photo = cap({ kind: 'photo', triage_intent: 'action' })
+    const crVisual = selectCrVisualEvidence([video, photo])
+    // Réplique exactement le branchement de buildVisitCrDoc : seul le sous-ensemble
+    // photo de crVisualCaptures alimente selectCrPhotos.
+    const crPhotoCaptures = crVisual.filter((c) => c.kind === 'photo')
+    const selected = selectCrPhotos(crPhotoCaptures)
+    expect(selected.map((c) => c.id)).toEqual([photo.id])
+    expect(selected.map((c) => c.id)).not.toContain(video.id)
+  })
+
+  it('la vidéo retenue (non "key") atterrit toujours dans le reportage', () => {
+    const video = cap({ kind: 'video' })
+    const photo = cap({ kind: 'photo', triage_intent: 'action' })
+    const crVisual = selectCrVisualEvidence([video, photo])
+    const crPhotoCaptures = crVisual.filter((c) => c.kind === 'photo')
+    const selected = selectCrPhotos(crPhotoCaptures)
+    const { photos: reportage } = selectReportagePhotos(crVisual, selected)
+    expect(reportage.map((c) => c.id)).toContain(video.id)
+  })
+
+  it('numérotation partagée : Photos clés et Reportage puisent dans la même map, sans collision ni trou', () => {
+    const video = cap({ kind: 'video' })
+    const photoKey = cap({ kind: 'photo', triage_intent: 'action' })
+    const photoReportage = cap({ kind: 'photo', triage_intent: 'memoire' })
+    const crVisual = selectCrVisualEvidence([video, photoKey, photoReportage])
+    const evidenceNumberById = buildEvidenceNumberMap(crVisual)
+    const numbers = crVisual.map((c) => evidenceNumberById.get(c.id))
+    expect(numbers).toEqual([1, 2, 3])
+    expect(new Set(numbers).size).toBe(3)
   })
 })

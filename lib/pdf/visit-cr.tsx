@@ -15,6 +15,7 @@ import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/render
 import type { VisitCrDoc } from '@/lib/db/visits'
 import type { VisitSummary, SummarySection, SummaryItem, HistoricalIntervenant } from '@/lib/knowledge/visit-summary'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
+import { clusterMarkersByPixel, MARKER_CLUSTER_RADIUS_PX } from '@/lib/visits/marker-cluster'
 
 const COLORS = {
   text: '#0f172a',
@@ -27,12 +28,13 @@ const COLORS = {
   accentBorder: '#a7f3d0',
 }
 
-// Couleurs par type de capture — alignées sur la carte mobile (CaptureMap).
+// Couleurs par type de capture — doc.positions ne contient plus que des
+// preuves visuelles (cf. lib/visits/geo.ts isMappableVisualCapture).
 const KIND_COLOR: Record<string, string> = {
-  photo: '#0284c7', video: '#7c3aed', vocal: '#d97706', note: '#475569', verification: '#059669', position: '#6b7280',
+  photo: '#0284c7', video: '#7c3aed',
 }
 const KIND_LABEL: Record<string, string> = {
-  photo: 'Photo', video: 'Vidéo', vocal: 'Vocal', note: 'Note', verification: 'Vérification', position: 'Position',
+  photo: 'Photo', video: 'Vidéo',
 }
 
 const MAP_W = 515
@@ -115,11 +117,20 @@ const styles = StyleSheet.create({
 
   // Photos.
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  photoCell: { width: 235, marginRight: 12, marginBottom: 8 },
+  photoCell: { width: 235, marginRight: 12, marginBottom: 8, position: 'relative' },
   photo: { width: 235, height: 150, objectFit: 'cover', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3 },
   photoCap: { fontSize: 9, marginTop: 3 },
   photoCapStrong: { fontFamily: 'Helvetica-Bold' },
   mediaNote: { fontSize: 9, color: COLORS.muted, marginTop: 2 },
+
+  // Identité de preuve unique (Lot 4, 2026-08-25) : badge numéroté partagé par
+  // Photos clés, Reportage et carte — jamais recalculé localement.
+  numberBadge: {
+    position: 'absolute', top: 4, left: 4, width: 18, height: 18, borderRadius: 9,
+    backgroundColor: COLORS.accent, borderWidth: 1, borderColor: '#ffffff',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  numberBadgeText: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#ffffff' },
 
   // Évolution — même point de vue (mig 195) : une bande par série, ≤4 jalons.
   evoBlock: { marginBottom: 8 },
@@ -133,14 +144,32 @@ const styles = StyleSheet.create({
   // même gabarit que la bande « Évolution » — une galerie dense, jamais une preuve
   // mise en avant comme les Photos clés.
   reportageGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  reportageCell: { width: 120, marginRight: 8, marginBottom: 8 },
+  reportageCell: { width: 120, marginRight: 8, marginBottom: 8, position: 'relative' },
   reportagePhoto: { width: 120, height: 80, objectFit: 'cover', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3 },
   reportageCap: { fontSize: 7.5, color: COLORS.muted, marginTop: 2 },
+  reportageDate: { fontSize: 7, color: COLORS.faint, marginTop: 1 },
+
+  // Vidéo retenue au CR (Lot 4, 2026-08-25) : jamais jouée dans le PDF — une
+  // carte de preuve statique (icône + légende + date), même gabarit que la
+  // Reportage photographique pour rester dans la même grille.
+  videoCard: { width: 120, marginRight: 8, marginBottom: 8, position: 'relative' },
+  videoIconBox: {
+    width: 120, height: 80, backgroundColor: '#ede9fe', borderWidth: 0.5, borderColor: COLORS.border,
+    borderRadius: 3, alignItems: 'center', justifyContent: 'center',
+  },
+  videoPlayTriangle: {
+    width: 0, height: 0, borderTopWidth: 10, borderBottomWidth: 10, borderLeftWidth: 16,
+    borderTopColor: 'transparent', borderBottomColor: 'transparent', borderLeftColor: '#7c3aed',
+  },
 
   // Carte des observations (schéma).
   map: { width: MAP_W, height: MAP_H, backgroundColor: '#f1f5f9', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 5, position: 'relative' },
   mapImage: { width: MAP_W, height: MAP_H, borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 5, objectFit: 'cover' },
-  marker: { position: 'absolute', width: 12, height: 12, borderRadius: 6, borderWidth: 1.5, borderColor: '#ffffff' },
+  marker: {
+    position: 'absolute', width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#ffffff',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  markerText: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#ffffff' },
   legend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 5 },
   legendItem: { flexDirection: 'row', alignItems: 'center', marginRight: 12 },
   legendDot: { width: 7, height: 7, borderRadius: 3.5, marginRight: 4 },
@@ -172,6 +201,16 @@ const styles = StyleSheet.create({
 function orgInitials(label: string | null): string {
   if (!label) return '?'
   return label.split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('')
+}
+
+// Identité de preuve unique (Lot 4) : même badge, même numéro, sur la carte,
+// les Photos clés et le Reportage — jamais un `i + 1` recalculé localement.
+function NumberBadge({ n }: { n: number }) {
+  return (
+    <View style={styles.numberBadge}>
+      <Text style={styles.numberBadgeText}>{n}</Text>
+    </View>
+  )
 }
 
 function SectionTitle({ text, color, important, sub }: { text: string; color: string; important?: boolean; sub?: string }) {
@@ -223,18 +262,36 @@ function ObservationMap({ positions }: { positions: VisitCrDoc['positions'] }) {
   const scaleX = (MAP_W / 2) * (1 - PAD) / Math.max(halfW, MIN_HALF_M)
   const scaleY = (MAP_H / 2) * (1 - PAD) / Math.max(halfH, MIN_HALF_M)
   const scale = Math.min(scaleX, scaleY) // même échelle X/Y → géométrie vraie
-  const kindsPresent = [...new Set(positions.map((p) => p.kind))]
+
+  // Regroupement déterministe des marqueurs qui se chevauchent visuellement
+  // (Lot 4) — même algorithme/rayon que l'instantané baké (cr-map-snapshot.ts).
+  const points = offsets.map((o) => ({
+    id: o.p.id,
+    x: MAP_W / 2 + o.dx * scale,
+    y: MAP_H / 2 - o.dy * scale,
+    p: o.p,
+  }))
+  const clusters = clusterMarkersByPixel(points, MARKER_CLUSTER_RADIUS_PX)
+  const hasGroups = clusters.some((c) => c.points.length > 1)
 
   return (
     <View wrap={false}>
       <View style={styles.map}>
-        {offsets.map((o, i) => {
-          const left = MAP_W / 2 + o.dx * scale - 6
-          const top = MAP_H / 2 - o.dy * scale - 6
-          return <View key={i} style={[styles.marker, { left, top, backgroundColor: KIND_COLOR[o.p.kind] ?? '#6b7280' }]} />
+        {clusters.map((c, i) => {
+          const single = c.points.length === 1 ? c.points[0].p : null
+          const color = single ? (KIND_COLOR[single.kind] ?? '#6b7280') : COLORS.slate
+          const label = single ? String(single.number) : String(c.points.length)
+          return (
+            <View key={i} style={[styles.marker, { left: c.x - 8, top: c.y - 8, backgroundColor: color }]}>
+              <Text style={styles.markerText}>{label}</Text>
+            </View>
+          )
         })}
       </View>
-      <MapLegend positions={positions} caption={`Emplacements relatifs des observations sur le chantier (${positions.length} point${positions.length > 1 ? 's' : ''}).`} />
+      <MapLegend
+        positions={positions}
+        caption={`Emplacements relatifs des observations sur le chantier (${positions.length} point${positions.length > 1 ? 's' : ''}${hasGroups ? ' — un chiffre isolé identifie une preuve, un chiffre sur un repère groupé compte les preuves proches' : ''}).`}
+      />
     </View>
   )
 }
@@ -756,8 +813,9 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
                 <View key={i} style={styles.photoCell} wrap={false}>
                   {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
                   <Image src={p.url} style={styles.photo} />
+                  <NumberBadge n={p.evidenceNumber} />
                   <Text style={styles.photoCap}>
-                    <Text style={styles.photoCapStrong}>Photo {i + 1}</Text>
+                    <Text style={styles.photoCapStrong}>Photo {p.evidenceNumber}</Text>
                     {p.caption ? ` — ${p.caption}` : ''}
                   </Text>
                 </View>
@@ -780,10 +838,24 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
             />
             <View style={styles.reportageGrid}>
               {doc.reportagePhotos.map((p, i) => (
-                <View key={i} style={styles.reportageCell} wrap={false}>
-                  {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
-                  <Image src={p.url} style={styles.reportagePhoto} />
-                  {p.caption ? <Text style={styles.reportageCap}>{p.caption}</Text> : null}
+                <View key={i} style={p.kind === 'video' ? styles.videoCard : styles.reportageCell} wrap={false}>
+                  {p.kind === 'video' ? (
+                    <View style={styles.videoIconBox}>
+                      <View style={styles.videoPlayTriangle} />
+                    </View>
+                  ) : (
+                    // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image
+                    <Image src={p.url as string} style={styles.reportagePhoto} />
+                  )}
+                  <NumberBadge n={p.evidenceNumber} />
+                  {p.kind === 'video' ? (
+                    <>
+                      <Text style={styles.reportageCap}>{`Vidéo${p.caption ? ` — ${p.caption}` : ''}`}</Text>
+                      <Text style={styles.reportageDate}>{p.capturedAtLabel}</Text>
+                    </>
+                  ) : (
+                    p.caption ? <Text style={styles.reportageCap}>{p.caption}</Text> : null
+                  )}
                 </View>
               ))}
             </View>

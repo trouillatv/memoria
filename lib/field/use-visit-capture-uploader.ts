@@ -58,6 +58,7 @@ async function drainVideoDirect(item: QueuedVisitCapture): Promise<DrainResult> 
     size_bytes: item.blob?.size,
     lat: item.lat ?? undefined,
     lng: item.lng ?? undefined,
+    accuracy: item.accuracy ?? undefined,
   })
   return reg.ok ? { ok: true, captureId: reg.captureId, kind: 'video' } : { ok: false, error: reg.error }
 }
@@ -130,6 +131,7 @@ export function useVisitCaptureUploader(opts?: {
               subject_id: item.subjectId,
               lat: item.lat ?? undefined,
               lng: item.lng ?? undefined,
+              accuracy: item.accuracy ?? undefined,
             })
           } else if (item.kind === 'video') {
             // Vidéo : entry sans blob = corrompue (ne se réparera jamais) → on la lâche.
@@ -148,6 +150,7 @@ export function useVisitCaptureUploader(opts?: {
             fd.set('file', new File([item.blob], item.filename, { type: item.mimeType }))
             if (item.lat != null) fd.set('lat', String(item.lat))
             if (item.lng != null) fd.set('lng', String(item.lng))
+            if (item.accuracy != null) fd.set('accuracy', String(item.accuracy))
             if (item.viewpointOf) fd.set('viewpoint_of', item.viewpointOf)
             r = await drainVisitCaptureAction(fd)
           }
