@@ -3,6 +3,14 @@ import 'server-only'
 // P1-C2B.2 — branchement live du resolver CBO (canonical-business-object-resolve.ts)
 // sur les 3 writers métier + le chemin d'import historique.
 //
+// P1-C2B H2-B.3 (Vincent, 2026-08-25) — chaque tentative de rattachement CBO de ce
+// module est immédiatement suivie d'un appel à produceObjectStateOccurrenceSignal
+// (cb67eedb, lib/db/object-state-occurrence-signal.ts, aucune seconde implémentation),
+// via produceSignalBestEffort. Ordre strict : objet créé → sujet canonique résolu →
+// CBO rattaché (ou tentative épuisée) → signal produit. Best-effort, jamais avant que
+// le CBO soit connu (id réel ou null explicitement — jamais si la résolution du sujet
+// canonique lui-même a échoué, auquel cas la production du signal est différée).
+//
 // Doctrine (Vincent, 2026-08-24) :
 //   - Scope strict par canonical_subject_id — jamais de rapprochement entre deux
 //     sujets canoniques différents (getCanonicalSubjectEntities filtre déjà par sujet).
@@ -25,6 +33,7 @@ import {
   type ResolvableEntity,
   type ResolverDecision,
 } from '@/lib/db/canonical-business-object-resolve'
+import { produceObjectStateOccurrenceSignal } from '@/lib/db/object-state-occurrence-signal'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -44,6 +53,26 @@ function log(msg: string) {
 }
 function logError(msg: string, err: unknown) {
   console.error(`[cbo-attach] ${msg}`, err)
+}
+
+/**
+ * P1-C2B H2-B.3 — branchement live du producteur de signal d'occurrence
+ * (cb67eedb, lib/db/object-state-occurrence-signal.ts), réutilisé tel quel.
+ *
+ * Appelée uniquement après une tentative de rattachement CBO (jamais avant) :
+ * à ce stade le CBO est « connu » (un id, ou null si l'objet n'en a pas encore).
+ * produceObjectStateOccurrenceSignal relit lui-même canonical_business_object_member,
+ * donc null ici est valide et sera corrigé automatiquement par le trigger
+ * trg_sync_occurrence_signal_cbo (mig 349) si un CBO est rattaché plus tard.
+ *
+ * Best-effort strict : une panne Gemini/DB ne doit jamais remonter à l'appelant.
+ */
+async function produceSignalBestEffort(entityType: CanonicalBusinessObjectEntityType, entityId: string): Promise<void> {
+  try {
+    await produceObjectStateOccurrenceSignal({ entityType, entityId })
+  } catch (e) {
+    logError(`production signal d'occurrence non bloquante entity=${entityId} type=${entityType}`, e)
+  }
 }
 
 /**
@@ -257,10 +286,13 @@ async function createGroupCbo(
 }
 
 /**
- * Orchestrateur best-effort appelé depuis les 3 writers (createSiteAction,
- * createSiteReserve, createSiteDeadline) juste après l'insertion : résout le
- * sujet canonique depuis le libellé (même resolver que l'existant, mig 346),
- * pose la colonne directe si trouvée, puis tente le rattachement CBO.
+ * Orchestrateur best-effort appelé depuis les writers métier (createSiteAction,
+ * createSiteReserve, createSiteDeadline, et le writer de confirmation d'action
+ * confirmSiteAction qui partage ce même chemin) juste après l'insertion : résout
+ * le sujet canonique depuis le libellé (même resolver que l'existant, mig 346),
+ * pose la colonne directe si trouvée, tente le rattachement CBO, puis (H2-B.3)
+ * produit le signal d'occurrence — dans cet ordre strict, seulement si le sujet
+ * canonique a pu être résolu (sinon la production du signal est différée).
  *
  * Fire-and-forget par construction (jamais attendu par l'appelant) — capte
  * toute erreur, ne relance jamais. À invoquer via `void resolveSubjectAndAttachCanonicalBusinessObject(...)`.
@@ -281,6 +313,7 @@ export async function resolveSubjectAndAttachCanonicalBusinessObject(params: {
     await sb.from(TARGET_TABLE[entityType]).update({ canonical_subject_id: res.candidate.id }).eq('id', entityId)
 
     await attachToCanonicalBusinessObject({ siteId, canonicalSubjectId: res.candidate.id, entityType, entityId, label, date })
+    await produceSignalBestEffort(entityType, entityId)
   } catch (e) {
     logError(`résolution sujet+CBO non bloquante entity=${entityId} type=${entityType}`, e)
   }
@@ -348,6 +381,7 @@ export async function attachHistoricalEntityToCanonicalBusinessObject(params: {
       label,
       date,
     })
+    await produceSignalBestEffort(entityType, entityId)
   } catch (e) {
     logError(`rattachement historique non bloquant entity=${entityId} type=${entityType}`, e)
   }
@@ -364,6 +398,10 @@ export async function attachHistoricalEntityToCanonicalBusinessObject(params: {
  * site_reserve n'étant couvert par aucune projection amont, chaque réserve du
  * rapport est résolue ici via `attachHistoricalEntityToCanonicalBusinessObject`
  * (chaîne document_proposal_materialization → subject_thread_identity).
+ *
+ * H2-B.3 : chaque tentative de rattachement CBO (directe ici, ou via
+ * `attachHistoricalEntityToCanonicalBusinessObject` pour les réserves) est
+ * immédiatement suivie de la production du signal d'occurrence.
  *
  * Ne lève jamais : un rattachement CBO manqué ne doit jamais faire échouer
  * l'import d'un PV historique, déjà terminé et répondu au client à cet instant.
@@ -392,6 +430,7 @@ export async function attachHistoricalReportEntitiesToCanonicalBusinessObjects(p
         label: row.title,
         date: row.due_date,
       })
+      await produceSignalBestEffort('site_action', row.id)
     }
 
     for (const row of (deadlines ?? []) as Array<{ id: string; title: string; due_date: string | null; canonical_subject_id: string | null }>) {
@@ -404,6 +443,7 @@ export async function attachHistoricalReportEntitiesToCanonicalBusinessObjects(p
         label: row.title,
         date: row.due_date,
       })
+      await produceSignalBestEffort('site_deadline', row.id)
     }
 
     for (const row of (reserves ?? []) as Array<{ id: string; label: string; issued_on: string | null; canonical_subject_id: string | null }>) {
@@ -416,6 +456,7 @@ export async function attachHistoricalReportEntitiesToCanonicalBusinessObjects(p
           label: row.label,
           date: row.issued_on,
         })
+        await produceSignalBestEffort('site_reserve', row.id)
       } else {
         await attachHistoricalEntityToCanonicalBusinessObject({
           siteId,

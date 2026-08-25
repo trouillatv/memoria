@@ -12,8 +12,12 @@ import 'server-only'
 // HORS PÉRIMÈTRE de ce lot (mandat explicite) :
 //   - Aucun calcul/persistance d'état courant du CBO (step2_signal + garde-fou R1/R2) —
 //     final_signal est un simple pass-through de step1_signal côté LLM.
-//   - Aucun appel depuis createSiteAction/createSiteReserve/createSiteDeadline ou
-//     l'import PV historique — le branchement live est H2-B.3, HARD STOP avant.
+//
+// Branchement live (P1-C2B H2-B.3, 2026-08-25) : appelée depuis
+// lib/db/canonical-business-object-attach.ts (produceSignalBestEffort), juste après
+// chaque tentative de rattachement CBO — couvre les 3 writers métier, le 4ᵉ writer
+// partageant le même orchestrateur (confirmSiteAction), et l'import PV historique.
+// Cette fonction elle-même reste inchangée : aucune seconde implémentation.
 //
 // Doctrine texte source (Vincent) : le texte analysé est TOUJOURS celui de l'entité
 // elle-même (jamais le canonical_subject entier, jamais le texte de la proposition
@@ -152,8 +156,7 @@ async function lookupCanonicalBusinessObjectId(
  * LLM gaspillé). Une ligne `unresolved` (panne technique antérieure) est retentée.
  * Respecte UNIQUE(entity_type, entity_id) via upsert sur ce couple.
  *
- * N'est appelée par AUCUN writer de production dans ce lot (H2-B.2) — branchement
- * live = H2-B.3, HARD STOP avant.
+ * Appelée en production depuis lib/db/canonical-business-object-attach.ts (H2-B.3).
  */
 export async function produceObjectStateOccurrenceSignal(params: {
   entityType: CanonicalBusinessObjectEntityType
