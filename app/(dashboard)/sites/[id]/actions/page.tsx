@@ -122,11 +122,14 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
 
   return (
     <div className="max-w-3xl space-y-6 py-6">
+      <DynamicCrumb segmentId={id} label={identity.name} />
       <DynamicCrumb segmentId="actions" label="Sujets d'action" />
-      <BreadcrumbPrefix crumbs={[
-        { href: '/sites', label: 'Sites' },
-        { href: `/sites/${id}`, label: identity.name },
-      ]} />
+      {identity.clientName && (
+        <BreadcrumbPrefix crumbs={[
+          { href: '/sites', label: 'Chantiers' },
+          { href: '/sites', label: identity.clientName },
+        ]} />
+      )}
 
       {/* Navigation chantier */}
       <div className="space-y-3">

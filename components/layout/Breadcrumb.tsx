@@ -46,12 +46,17 @@ function buildCrumbs(
   let accum = ''
   for (const seg of segments) {
     accum += '/' + seg
+    // Un label dynamique (DynamicCrumb) prime toujours, UUID ou pas — c'est le
+    // seul moyen d'afficher un libellé humain pour un segment de route fixe
+    // comme "actions" ou "historique" (sinon LABELS[seg] ?? seg renvoie le
+    // slug brut, jamais consulté auparavant pour les segments non-UUID).
+    const dyn = dynamicLabels.get(seg)
+    if (dyn && dyn.trim().length > 0) {
+      out.push({ href: accum, label: dyn })
+      continue
+    }
     if (UUID_RE.test(seg)) {
-      // Si un label dynamique a été enregistré pour cet UUID, on l'affiche.
-      const dyn = dynamicLabels.get(seg)
-      if (dyn && dyn.trim().length > 0) {
-        out.push({ href: accum, label: dyn })
-      }
+      // UUID sans label enregistré : on l'omet plutôt que d'afficher un id brut.
       continue
     }
     const label = LABELS[seg] ?? seg

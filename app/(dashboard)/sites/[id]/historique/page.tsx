@@ -191,8 +191,14 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
 
   return (
     <>
-      <BreadcrumbPrefix crumbs={[{ href: '/sites', label: 'Sites' }, { href: `/sites/${siteId}`, label: site.name }]} />
+      <DynamicCrumb segmentId={siteId} label={site.name} />
       <DynamicCrumb segmentId="historique" label="Histoire" />
+      {site.clientName && (
+        <BreadcrumbPrefix crumbs={[
+          { href: '/sites', label: 'Chantiers' },
+          { href: '/sites', label: site.clientName },
+        ]} />
+      )}
 
       <main className="mx-auto max-w-5xl space-y-4 px-4 py-6">
         {/* Nav principale du chantier — Histoire est l'onglet actif */}
