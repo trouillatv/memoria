@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { AlertTriangle, ArrowLeft, ArrowRight, Building2, Calendar, Check, FileText, GitMerge, Link2, LayoutList, Trash2, TrendingUp, User, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, Building2, Calendar, Check, FileText, GitMerge, Link2, LayoutList, Trash2, User, X } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getCanonicalSubjectLife, listSubjectsForPicker } from '@/lib/db/canonical-subject-life'
@@ -148,6 +148,44 @@ const SIGNAL_COLORS: Record<ObjectStateSignal, string> = {
   NO_STATE_SIGNAL: 'bg-muted text-muted-foreground',
 }
 
+const CBO_STATE_ORDER: CboComputedState[] = ['OPEN', 'REOPENED', 'PROGRESSING', 'DONE', 'CONTRADICTED', 'NO_SIGNAL']
+
+function formatCboStateCount(state: CboComputedState, count: number): string {
+  const base = CBO_STATE_LABELS[state].toLowerCase()
+  const pluralizable = state === 'OPEN' || state === 'DONE' || state === 'REOPENED'
+  return `${count} ${pluralizable && count > 1 ? `${base}s` : base}`
+}
+
+interface CboStateSummary {
+  total: number
+  byState: Partial<Record<CboComputedState, number>>
+  totalOccurrences: number
+  lastEvolutionAt: string | null
+}
+
+/** Résumé déterministe des états CBO — lecture pure de loadCboEvolutions(), 0 appel IA. */
+function summarizeCboStates(
+  entries: CanonicalBusinessObjectEntry[],
+  evolutions: Map<string, CboEvolution>,
+): CboStateSummary | null {
+  const byState: Partial<Record<CboComputedState, number>> = {}
+  let total = 0
+  let totalOccurrences = 0
+  let lastEvolutionAt: string | null = null
+  for (const entry of entries) {
+    if (!entry.isGrouped) continue
+    const evolution = evolutions.get(entry.key)
+    if (!evolution || evolution.occurrenceCount === 0) continue
+    total++
+    byState[evolution.computedState] = (byState[evolution.computedState] ?? 0) + 1
+    totalOccurrences += evolution.occurrenceCount
+    if (evolution.lastMeaningfulEvolutionAt && (!lastEvolutionAt || evolution.lastMeaningfulEvolutionAt > lastEvolutionAt)) {
+      lastEvolutionAt = evolution.lastMeaningfulEvolutionAt
+    }
+  }
+  return total > 0 ? { total, byState, totalOccurrences, lastEvolutionAt } : null
+}
+
 const LINK_LABELS: Record<string, { out: string; in: string }> = {
   requires:   { out: 'nécessite',     in: 'est requis par' },
   enables:    { out: 'permet',        in: 'est rendu possible par' },
@@ -186,9 +224,11 @@ function SubjectNarrativeSection({ narrative }: { narrative: string | null }) {
 function SubjectIntelligenceCard({
   intel,
   lastSeenAt,
+  cboSummary,
 }: {
   intel: CanonicalSubjectIntelligence
   lastSeenAt: string | null
+  cboSummary: CboStateSummary | null
 }) {
   const showStagnation = intel.isStagnant
   const showLastChange =
@@ -197,9 +237,11 @@ function SubjectIntelligenceCard({
   const showActor = !!intel.actor
   const abo = intel.activeBusinessObjects
   const totalOpen = abo ? abo.actions + abo.reserves + abo.deadlines : 0
-  const showBlockers = totalOpen > 0
+  // Le résumé CBO déterministe (états réels par trajectoire) remplace l'ancien
+  // décompte actions/réserves/échéances quand il est disponible — plus précis.
+  const showBlockers = !cboSummary && totalOpen > 0
 
-  if (!showStagnation && !showLastChange && !showActor && !showBlockers) return null
+  if (!showStagnation && !showLastChange && !showActor && !showBlockers && !cboSummary) return null
 
   const nMentions = intel.consecutiveMentionsWithoutChange + 1
 
@@ -285,6 +327,27 @@ function SubjectIntelligenceCard({
           <span className="text-xs text-muted-foreground">
             {intel.actor!.role === 'person' ? '— personne identifiée' : '— entreprise intervenante'}
           </span>
+        </div>
+      )}
+
+      {cboSummary && (
+        <div className="flex items-start gap-2 text-sm">
+          <LayoutList className="h-3.5 w-3.5 shrink-0 text-muted-foreground mt-0.5" />
+          <div className="flex flex-col gap-0.5">
+            <a href="#objets-metier" className="font-medium hover:underline underline-offset-2">
+              {cboSummary.total} objet{cboSummary.total > 1 ? 's' : ''} métier suivi{cboSummary.total > 1 ? 's' : ''}
+            </a>
+            <span className="text-xs text-muted-foreground">
+              {CBO_STATE_ORDER
+                .filter((s) => (cboSummary.byState[s] ?? 0) > 0)
+                .map((s) => formatCboStateCount(s, cboSummary.byState[s]!))
+                .join(' · ')}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {cboSummary.totalOccurrences} occurrence{cboSummary.totalOccurrences > 1 ? 's' : ''} observée{cboSummary.totalOccurrences > 1 ? 's' : ''} dans les PV
+              {cboSummary.lastEvolutionAt && ` · dernière évolution le ${frDateShort(cboSummary.lastEvolutionAt)}`}
+            </span>
+          </div>
         </div>
       )}
 
@@ -753,9 +816,22 @@ function OccurrenceCard({ occ, siteId }: { occ: SubjectOccurrenceMerged; siteId:
 
       {occ.additionalLabels.length > 0 && (
         <div className="mt-1.5 space-y-0.5">
-          {occ.additionalLabels.map((l, i) => (
+          {occ.additionalLabels.slice(0, 2).map((l, i) => (
             <p key={i} className="text-xs text-muted-foreground italic">+ {l}</p>
           ))}
+          {occ.additionalLabels.length > 2 && (
+            <details className="group/more">
+              <summary className="cursor-pointer list-none select-none text-xs text-muted-foreground/70 hover:text-muted-foreground">
+                <span className="inline-block transition-transform group-open/more:rotate-90">▸</span>
+                {' '}{occ.additionalLabels.length - 2} autre{occ.additionalLabels.length - 2 > 1 ? 's' : ''} élément{occ.additionalLabels.length - 2 > 1 ? 's' : ''} du PV
+              </summary>
+              <div className="mt-0.5 space-y-0.5">
+                {occ.additionalLabels.slice(2).map((l, i) => (
+                  <p key={i} className="text-xs text-muted-foreground italic">+ {l}</p>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
       )}
 
@@ -800,7 +876,13 @@ function OccurrenceCard({ occ, siteId }: { occ: SubjectOccurrenceMerged; siteId:
   )
 }
 
-function MaterializedEventsSection({ entries }: { entries: CanonicalBusinessObjectEntry[] }) {
+function MaterializedEventsSection({
+  entries,
+  evolutions,
+}: {
+  entries: CanonicalBusinessObjectEntry[]
+  evolutions: Map<string, CboEvolution>
+}) {
   const ORDER: MaterializedEntityType[] = ['site_reserve', 'site_action', 'site_decision', 'site_deadline']
   const byType = new Map<MaterializedEntityType, CanonicalBusinessObjectEntry[]>()
   for (const e of entries) {
@@ -821,6 +903,12 @@ function MaterializedEventsSection({ entries }: { entries: CanonicalBusinessObje
             </p>
             <ul className="space-y-1.5">
               {items.map((entry) => {
+                const evolution = evolutions.get(entry.key)
+                const hasEvolution = entry.isGrouped && !!evolution && evolution.occurrenceCount > 0
+                if (hasEvolution) {
+                  return <CboEvolutionCard key={entry.key} entry={entry} evolution={evolution!} />
+                }
+
                 const primary = entry.members[0]
                 const isMultiOccurrence = entry.isGrouped && entry.members.length > 1
 
@@ -956,25 +1044,6 @@ function CboEvolutionCard({ entry, evolution }: { entry: CanonicalBusinessObject
         </div>
       </details>
     </li>
-  )
-}
-
-function CboEvolutionSection({
-  entries,
-  evolutions,
-}: {
-  entries: CanonicalBusinessObjectEntry[]
-  evolutions: Map<string, CboEvolution>
-}) {
-  const withEvolution = entries.filter((e) => e.isGrouped && (evolutions.get(e.key)?.occurrenceCount ?? 0) > 0)
-  if (withEvolution.length === 0) return null
-
-  return (
-    <ul className="space-y-1.5">
-      {withEvolution.map((entry) => (
-        <CboEvolutionCard key={entry.key} entry={entry} evolution={evolutions.get(entry.key)!} />
-      ))}
-    </ul>
   )
 }
 
@@ -1194,12 +1263,13 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
   }
 
   const intel = await buildCanonicalSubjectIntelligence(canonicalSubjectId, life)
-  const narrativeResult = await buildSubjectNarrative(life, intel, user.id).catch(() => null)
   const businessObjectEntries = await projectCanonicalBusinessObjects(life.materializedEvents)
   const cboEvolutions = await loadCboEvolutions(businessObjectEntries)
-  const hasCboEvolution = businessObjectEntries.some(
-    (e) => e.isGrouped && (cboEvolutions.get(e.key)?.occurrenceCount ?? 0) > 0,
-  )
+  const cboSummary = summarizeCboStates(businessObjectEntries, cboEvolutions)
+  // Le résumé CBO déterministe couvre déjà "l'état actuel" quand il est disponible ;
+  // la synthèse narrative IA (sans connaissance des CBO) ne servirait alors qu'à se
+  // contredire ("aucune information disponible" à côté d'états connus).
+  const narrativeResult = cboSummary ? null : await buildSubjectNarrative(life, intel, user.id).catch(() => null)
 
   const realOccurrences = life.occurrences.filter((o) => !o.isGap)
   const confirmedLinks = life.links.filter((l) => l.status === 'confirmed')
@@ -1304,7 +1374,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
         <SubjectNarrativeSection narrative={narrativeResult?.narrative ?? null} />
 
         {/* Intelligence proactive */}
-        <SubjectIntelligenceCard intel={intel} lastSeenAt={life.lastSeenAt} />
+        <SubjectIntelligenceCard intel={intel} lastSeenAt={life.lastSeenAt} cboSummary={cboSummary} />
 
         {/* Pourquoi ce sujet compte */}
         <WhyThisSubjectSection links={life.links} siteId={siteId} />
@@ -1322,26 +1392,15 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
           </section>
         )}
 
-        {/* Objets métier — identités durables (CBO-aware), preuves physiques en second plan */}
+        {/* Objets métier — identités durables (CBO-aware) ; toute trajectoire connue
+            (object_state_occurrence_signal, lecture pure, aucun appel IA) est dépliable ici. */}
         {businessObjectEntries.length > 0 && (
           <section id="objets-metier" className="rounded-[18px] border bg-card px-5 py-4 space-y-3">
             <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <LayoutList className="h-3.5 w-3.5" />
               Objets métier ({businessObjectEntries.length})
             </h2>
-            <MaterializedEventsSection entries={businessObjectEntries} />
-          </section>
-        )}
-
-        {/* Évolution des objets métier — trajectoire de signal (H2-B.4UI), lecture pure des
-            lignes déjà persistées dans object_state_occurrence_signal, aucun appel IA ici. */}
-        {hasCboEvolution && (
-          <section id="evolution-objets-metier" className="rounded-[18px] border bg-card px-5 py-4 space-y-3">
-            <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <TrendingUp className="h-3.5 w-3.5" />
-              Évolution des objets métier
-            </h2>
-            <CboEvolutionSection entries={businessObjectEntries} evolutions={cboEvolutions} />
+            <MaterializedEventsSection entries={businessObjectEntries} evolutions={cboEvolutions} />
           </section>
         )}
 
