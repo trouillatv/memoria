@@ -18,6 +18,9 @@ export const SITE_TABS = [
   // Route dédiée (/historique) → href calculé spécifiquement dans SiteTabsNav.
   { key: 'histoire',         label: 'Histoire',   pathSuffix: '/historique' },
   { key: 'planning',         label: 'Planning' },
+  // « Réserves » (Points à lever) : route dédiée existante (/reserves), simplement
+  // absente de la barre — n'était accessible que par le lien du hub d'aperçu.
+  { key: 'reserves',         label: 'Réserves',  pathSuffix: '/reserves' },
   { key: 'documents-preuves', label: 'Documents' },
   // « Intervenants » (cadrage + maquette validés 2026-07-18).
   { key: 'intervenants',     label: 'Intervenants' },

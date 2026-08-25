@@ -8,6 +8,7 @@ import { listSiteActionsByReserve } from '@/lib/db/site-actions'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { getSignedPhotoUrl } from '@/lib/storage/intervention-photos'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
+import { SiteTabsNav } from '../SiteTabsNav'
 import { ReserveForm } from './ReserveForm'
 import { ReservesView, type ReserveWithPhotos } from './ReservesView'
 
@@ -73,6 +74,10 @@ export default async function SiteReservesPage({ params }: PageProps) {
       >
         ← {identity.name}
       </Link>
+
+      <div className="rounded-[18px] border bg-card px-4 pb-0 pt-4 shadow-sm">
+        <SiteTabsNav active="reserves" siteId={id} />
+      </div>
 
       <header className="space-y-1">
         <div className="flex items-center justify-between gap-4 flex-wrap">
