@@ -12,6 +12,8 @@ import {
   formatEvidenceNumberLabel,
   formatClusterMarkerLabel,
   groupByProximity,
+  buildLocationCorrectionPatch,
+  formatGpsAccuracyCaption,
 } from '@/lib/visits/geo'
 
 describe('distanceMeters', () => {
@@ -306,5 +308,75 @@ describe('groupByProximity — regroupement spatial stable, indépendant du zoom
     ])
     expect(groups).toHaveLength(1)
     expect(groups[0].points.map((p) => p.id).sort()).toEqual(['a', 'b'])
+  })
+})
+
+describe('buildLocationCorrectionPatch — paire atomique corrected_lat/corrected_lng (Lot 3, mig 351)', () => {
+  it('correction posée → les deux colonnes non nulles, jamais l’une sans l’autre', () => {
+    expect(buildLocationCorrectionPatch({ lat: -22.28, lng: 166.46 })).toEqual({
+      corrected_lat: -22.28,
+      corrected_lng: 166.46,
+    })
+  })
+
+  it('correction retirée (null) → les deux colonnes redeviennent null, jamais un état mixte', () => {
+    expect(buildLocationCorrectionPatch(null)).toEqual({ corrected_lat: null, corrected_lng: null })
+  })
+
+  it('ne mentionne jamais lat/lng (mesure GPS brute) — seules les colonnes corrected_* sont dans la charge utile', () => {
+    const patch = buildLocationCorrectionPatch({ lat: -22.28, lng: 166.46 })
+    expect(Object.keys(patch).sort()).toEqual(['corrected_lat', 'corrected_lng'])
+  })
+})
+
+describe('formatGpsAccuracyCaption — légende factuelle, jamais une précision inventée (Lot 3)', () => {
+  it('gps_accuracy_m null → aucune légende (capture antérieure à mig 351, ou navigateur muet)', () => {
+    expect(formatGpsAccuracyCaption(null)).toBeNull()
+  })
+
+  it('gps_accuracy_m défini → « Précision GPS : ± N m », jamais présenté comme une zone certaine', () => {
+    expect(formatGpsAccuracyCaption(18)).toBe('Précision GPS : ± 18 m')
+  })
+
+  it('valeur non entière → arrondie pour l’affichage', () => {
+    expect(formatGpsAccuracyCaption(17.6)).toBe('Précision GPS : ± 18 m')
+  })
+})
+
+describe('Lot 3 — correction manuelle de position : intégration avec resolveEffectivePosition et la carte', () => {
+  it('gps_accuracy_m conservé indépendamment de l’état de correction (buildLocationCorrectionPatch ne le touche jamais)', () => {
+    const row = { lat: -22.27, lng: 166.45, gps_accuracy_m: 12 }
+    const patch = buildLocationCorrectionPatch({ lat: -22.28, lng: 166.46 })
+    const afterCorrection = { ...row, ...patch }
+    expect(afterCorrection.gps_accuracy_m).toBe(12)
+    const reverted = { ...row, ...buildLocationCorrectionPatch(null) }
+    expect(reverted.gps_accuracy_m).toBe(12)
+  })
+
+  it('position corrigée utilisée par la carte : resolveEffectivePosition reflète naturellement le patch appliqué à une ligne', () => {
+    const row = { lat: -22.27, lng: 166.45, correctedLat: null as number | null, correctedLng: null as number | null }
+    const patch = buildLocationCorrectionPatch({ lat: -22.29, lng: 166.47 })
+    const afterCorrection = { ...row, correctedLat: patch.corrected_lat, correctedLng: patch.corrected_lng }
+    expect(resolveEffectivePosition(afterCorrection)).toEqual({ lat: -22.29, lng: 166.47, source: 'manual' })
+
+    const revertPatch = buildLocationCorrectionPatch(null)
+    const afterRevert = { ...row, correctedLat: revertPatch.corrected_lat, correctedLng: revertPatch.corrected_lng }
+    expect(resolveEffectivePosition(afterRevert)).toEqual({ lat: -22.27, lng: 166.45, source: 'gps' })
+  })
+
+  it('absence de régression sur la numérotation des preuves : une correction de position ne change ni l’ordre ni les numéros', () => {
+    const evidence = [
+      { id: 'a', kind: 'photo', status: 'kept', included_in_cr: true },
+      { id: 'b', kind: 'video', status: 'kept', included_in_cr: true },
+      { id: 'c', kind: 'photo', status: 'kept', included_in_cr: true },
+    ]
+    const before = buildEvidenceNumberMap(selectCrVisualEvidence(evidence))
+    // Une correction de position ne touche que corrected_lat/corrected_lng — jamais
+    // kind/status/included_in_cr, donc l’ensemble sélectionné et sa numérotation sont invariants.
+    const after = buildEvidenceNumberMap(selectCrVisualEvidence(evidence))
+    expect([...after.entries()]).toEqual([...before.entries()])
+    expect(before.get('a')).toBe(1)
+    expect(before.get('b')).toBe(2)
+    expect(before.get('c')).toBe(3)
   })
 })

@@ -219,6 +219,19 @@ export async function ensureCrMapSnapshot(reportId: string): Promise<string | nu
   return path
 }
 
+/**
+ * Invalide l'instantané carte figé d'un CR (Lot 3, correction manuelle de
+ * position) : `ensureCrMapSnapshot` est idempotent par conception (jamais
+ * refabriqué tant qu'un chemin existe) — une correction de position posée
+ * APRÈS la première génération du PDF resterait donc invisible sans ce reset
+ * explicite. Ne supprime pas le fichier storage existant (inutile, `upsert`
+ * l'écrasera à la prochaine génération), seulement la référence en base.
+ */
+export async function invalidateCrMapSnapshot(reportId: string): Promise<void> {
+  const supabase = createAdminClient()
+  await supabase.from('site_reports').update({ cr_map_snapshot_path: null }).eq('id', reportId)
+}
+
 /** Charge l'instantané carte (data URI PNG) pour l'embarquer dans le PDF. */
 export async function loadCrMapSnapshotDataUri(reportId: string): Promise<string | null> {
   const supabase = createAdminClient()

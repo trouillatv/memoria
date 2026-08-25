@@ -12,7 +12,8 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOrganizationMembership } from '@/lib/auth/memberships'
-import { resolveEffectivePosition, isMappableVisualCapture } from '@/lib/visits/geo'
+import { resolveEffectivePosition, isMappableVisualCapture, buildLocationCorrectionPatch } from '@/lib/visits/geo'
+import { invalidateCrMapSnapshot } from '@/lib/pdf/cr-map-snapshot'
 
 export type VisitCaptureKind = 'photo' | 'vocal' | 'note' | 'verification' | 'position' | 'video'
 export type VisitCaptureStatus = 'captured' | 'kept' | 'discarded' | 'processed'
@@ -658,6 +659,36 @@ export async function setCaptureCrTier(captureId: string, tier: CaptureCrTier): 
     .update({ cr_tier: tier, updated_at: new Date().toISOString() })
     .eq('id', captureId)
   if (error) throw error
+}
+
+/**
+ * Correction manuelle de position (mig 351, Lot 3) : pose ou retire
+ * corrected_lat/corrected_lng en PAIRE atomique. `lat`/`lng` (mesure GPS
+ * brute d'origine) ne sont JAMAIS touchées ici — resolveEffectivePosition()
+ * (lib/visits/geo.ts) reste l'unique primitive de lecture de la position
+ * effective, jamais réimplémentée. `correction: null` = retire la correction
+ * et restaure la position GPS d'origine comme position effective.
+ */
+export async function setCaptureLocationCorrection(
+  captureId: string,
+  correction: { lat: number; lng: number } | null,
+): Promise<void> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('visit_capture')
+    .update({
+      ...buildLocationCorrectionPatch(correction),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', captureId)
+    .select('report_id')
+    .single()
+  if (error) throw error
+  // Instantané carte PDF figé au premier rendu (cf. ensureCrMapSnapshot) : une
+  // correction posée après coup doit invalider le cache, sinon le PDF garde
+  // l'ancienne position pour toujours.
+  const reportId = (data as { report_id: string } | null)?.report_id
+  if (reportId) await invalidateCrMapSnapshot(reportId)
 }
 
 /**

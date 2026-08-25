@@ -24,6 +24,7 @@ import {
   removeCaptureWhileCollecting,
   setCaptureStarred,
   setCaptureViewpoint,
+  setCaptureLocationCorrection,
   type VisitCaptureRow,
 } from '@/lib/db/visit-captures'
 import { uploadReportAttachmentAction } from './report-actions'
@@ -587,6 +588,49 @@ export async function setCaptureStarAction(
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
   try {
     await setCaptureStarred(parsed.data.capture_id, parsed.data.starred)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
+  }
+}
+
+// ── Correction manuelle de position (mig 351, Lot 3) ──────────────────────────
+// « GPS capturé = mesure originale immuable. Correction humaine = position
+// effective distincte. » lat/lng ne sont jamais écrites ici — voir
+// setCaptureLocationCorrection (lib/db/visit-captures.ts).
+
+const locationCorrectionSchema = z.object({
+  capture_id: z.string().uuid(),
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+})
+
+export async function correctCaptureLocationAction(
+  input: z.input<typeof locationCorrectionSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = locationCorrectionSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    await setCaptureLocationCorrection(parsed.data.capture_id, { lat: parsed.data.lat, lng: parsed.data.lng })
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
+  }
+}
+
+const revertLocationSchema = z.object({ capture_id: z.string().uuid() })
+
+export async function revertCaptureLocationAction(
+  input: z.input<typeof revertLocationSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = revertLocationSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    await setCaptureLocationCorrection(parsed.data.capture_id, null)
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec' }

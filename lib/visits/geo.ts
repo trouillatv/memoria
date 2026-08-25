@@ -44,6 +44,34 @@ export function resolveEffectivePosition(c: EffectivePositionInput): EffectivePo
   return null
 }
 
+export interface LocationCorrectionPatch {
+  corrected_lat: number | null
+  corrected_lng: number | null
+}
+
+/**
+ * Charge utile d'une correction manuelle de position (Lot 3, mig 351) : PAIRE
+ * atomique — les deux colonnes sont toujours écrites ensemble, jamais l'une
+ * sans l'autre (contrainte DB `visit_capture_corrected_pair_check`).
+ * `correction: null` retire la correction et restaure la mesure GPS comme
+ * position effective (via `resolveEffectivePosition`) — `lat`/`lng` ne sont
+ * JAMAIS dans cette charge utile, jamais réécrites par une correction.
+ */
+export function buildLocationCorrectionPatch(correction: { lat: number; lng: number } | null): LocationCorrectionPatch {
+  return { corrected_lat: correction?.lat ?? null, corrected_lng: correction?.lng ?? null }
+}
+
+/**
+ * Légende factuelle de la précision GPS (Lot 3) : `null` → aucune précision
+ * inventée (captures antérieures à mig 351, ou navigateur n'ayant rien
+ * fourni). Jamais présentée comme une zone certaine — cf. doctrine
+ * « ± N m », pas « ici exactement ».
+ */
+export function formatGpsAccuracyCaption(gpsAccuracyM: number | null): string | null {
+  if (gpsAccuracyM == null) return null
+  return `Précision GPS : ± ${Math.round(gpsAccuracyM)} m`
+}
+
 /** Une capture n'a sa place sur la carte que si elle est une preuve visuelle
  *  vérifiable sur place (photo/vidéo) : un point de carte sur un vocal ou une
  *  note n'a rien à montrer une fois cliqué — seuls photo/vidéo qualifient. */

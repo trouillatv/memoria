@@ -11,7 +11,7 @@ import { getVisit, buildVisitCrDoc, selectCrPhotos } from '@/lib/db/visits'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
 import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
 import { isMappableVisualCapture, formatEvidenceNumberLabel } from '@/lib/visits/geo'
-import { CaptureMap } from '@/components/CaptureMap'
+import { CrMapExpandable } from './CrMapExpandable'
 import { CrMapSnapshotTrigger } from './CrMapSnapshotTrigger'
 import { MemoriaRetained } from './MemoriaRetained'
 import { CrDocumentSections, type CrPhotoCandidate } from './CrDocumentSections'
@@ -365,7 +365,7 @@ export default async function VisitCrPreviewPage({
       <Section Icon={MapPin} cls="text-sky-600" ring="bg-sky-100 dark:bg-sky-950/40" title="Localisation des observations">
         {mapCaptures.length > 0 ? (
           <div className="overflow-hidden rounded-xl border">
-            <CaptureMap siteId={visit.site_id} captures={mapCaptures} heightClass="h-60" />
+            <CrMapExpandable siteId={visit.site_id} captures={mapCaptures} />
             {/* Produit en fond l'instantané carte que le PDF réutilisera. */}
             <CrMapSnapshotTrigger reportId={reportId} />
           </div>

@@ -5,7 +5,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisitCapturePreviewUrls, type VisitCaptureRow } from '@/lib/db/visit-captures'
 import { distanceMeters, SAME_SPOT_RADIUS_M } from '@/lib/visits/geo'
-import { CaptureMap } from '@/components/CaptureMap'
+import { LocationSection } from './LocationSection'
 
 /**
  * FICHE D'OBSERVATION — la destination d'un point de carte (revue 2026-07-12).
@@ -128,22 +128,22 @@ export default async function ObservationPage({
         </section>
       )}
 
-      {/* Localisation — la même carte que partout, réduite à ce point. */}
+      {/* Localisation — la même carte que partout, réduite à ce point. Position
+          EFFECTIVE (corrigée si elle existe) — jamais la mesure GPS brute
+          affichée telle quelle une fois une correction posée. */}
       {capture.lat !== null && capture.lng !== null && (
-        <CaptureMap
+        <LocationSection
+          captureId={capture.id}
           siteId={site.id}
-          heightClass="h-52"
-          linkPopups={false}
-          captures={[{
-            id: capture.id,
-            kind: capture.kind,
-            lat: capture.lat,
-            lng: capture.lng,
-            created_at: takenIso,
-            body: capture.body,
-            reportId: capture.report_id,
-            subjectName: null,
-          }]}
+          kind={capture.kind}
+          lat={capture.lat}
+          lng={capture.lng}
+          correctedLat={capture.corrected_lat}
+          correctedLng={capture.corrected_lng}
+          gpsAccuracyM={capture.gps_accuracy_m}
+          createdAt={takenIso}
+          body={capture.body}
+          reportId={capture.report_id}
         />
       )}
 
