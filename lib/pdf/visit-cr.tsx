@@ -15,7 +15,7 @@ import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/render
 import type { VisitCrDoc } from '@/lib/db/visits'
 import type { VisitSummary, SummarySection, SummaryItem, HistoricalIntervenant } from '@/lib/knowledge/visit-summary'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
-import { formatEvidenceNumberLabel, groupByProximity } from '@/lib/visits/geo'
+import { formatEvidenceNumberLabel, formatClusterMarkerLabel, groupByProximity } from '@/lib/visits/geo'
 
 const COLORS = {
   text: '#0f172a',
@@ -187,11 +187,14 @@ const styles = StyleSheet.create({
   // Carte des observations (schéma).
   map: { width: MAP_W, height: MAP_H, backgroundColor: '#f1f5f9', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 5, position: 'relative' },
   mapImage: { width: MAP_W, height: MAP_H, borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 5, objectFit: 'cover' },
+  // Même lisibilité que numberBadge (Photos clés/Reportage) — Vincent, retouche
+  // présentation 2026-08-26 : « c'est la carte qui doit s'aligner sur cette
+  // grammaire, pas l'inverse ». 16px/7pt → 18px/8pt, taille identique au badge.
   marker: {
-    position: 'absolute', width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#ffffff',
+    position: 'absolute', width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: '#ffffff',
     alignItems: 'center', justifyContent: 'center',
   },
-  markerText: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#ffffff' },
+  markerText: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#ffffff' },
   legend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 5 },
   legendItem: { flexDirection: 'row', alignItems: 'center', marginRight: 12 },
   legendDot: { width: 7, height: 7, borderRadius: 3.5, marginRight: 4 },
@@ -300,31 +303,33 @@ function ObservationMap({ positions }: { positions: VisitCrDoc['positions'] }) {
           const y = MAP_H / 2 - (g.lat - cLat) * M_PER_DEG * scale
           const single = g.points.length === 1 ? g.points[0] : null
           const color = single ? (KIND_COLOR[single.kind] ?? '#6b7280') : COLORS.slate
-          // Un repère groupé affiche les NUMÉROS des preuves qu'il contient
-          // (ex. « 1–5 »), jamais un simple compte (Lot 4.1, Vincent) — sur
-          // le papier, un repère ne se tape pas : l'étiquette doit dire à
-          // elle seule QUELLES preuves il regroupe.
-          const label = single ? String(single.number) : formatEvidenceNumberLabel(g.points.map((pt) => pt.number))
+          // Un repère groupé affiche les NUMÉROS des preuves qu'il contient,
+          // séparés par « · » (ex. « 3 · 4 »), jamais un simple compte
+          // (Lot 4.1, Vincent) ni une plage « a–b » qui se lit comme un
+          // intervalle (retouche présentation, 2026-08-26) — sur le papier, un
+          // repère ne se tape pas : l'étiquette doit dire à elle seule
+          // QUELLES preuves il regroupe.
+          const label = single ? String(single.number) : formatClusterMarkerLabel(g.points.map((pt) => pt.number))
           const isWide = label.length > 2
-          // Largeur proche du marqueur simple (16px) — pas de pastille
+          // Largeur proche du marqueur simple (18px) — pas de pastille
           // surdimensionnée : ajustée au strict nécessaire pour l'étiquette.
-          const w = isWide ? Math.max(16, label.length * 5 + 10) : 16
+          const w = isWide ? Math.max(18, label.length * 6 + 10) : 18
           return (
             <View
               key={i}
               style={[
                 styles.marker,
-                { left: x - w / 2, top: y - 8, width: w, borderRadius: 8, backgroundColor: color },
+                { left: x - w / 2, top: y - 9, width: w, borderRadius: 9, backgroundColor: color },
               ]}
             >
-              <Text style={[styles.markerText, isWide ? { fontSize: 6 } : {}]}>{label}</Text>
+              <Text style={[styles.markerText, isWide ? { fontSize: 7 } : {}]}>{label}</Text>
             </View>
           )
         })}
       </View>
       <MapLegend
         positions={positions}
-        caption={`Emplacements relatifs des observations sur le chantier (${positions.length} point${positions.length > 1 ? 's' : ''}${hasGroups ? ' — un repère qui regroupe plusieurs preuves affiche leurs numéros (ex. « 1–3 »)' : ''}).`}
+        caption={`Emplacements relatifs des observations sur le chantier (${positions.length} point${positions.length > 1 ? 's' : ''}${hasGroups ? ' — un repère qui regroupe plusieurs preuves affiche leurs numéros (ex. « 3 · 4 »)' : ''}).`}
       />
     </View>
   )

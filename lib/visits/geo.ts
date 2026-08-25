@@ -190,3 +190,25 @@ export function formatEvidenceNumberLabel(numbers: number[]): string {
   }
   return parts.join(', ')
 }
+
+/**
+ * Étiquette d'un REPÈRE GROUPÉ sur la carte (Vincent, retouche présentation
+ * Lot Cartographie CR, 2026-08-26) : chaque preuve listée individuellement,
+ * séparée par « · », jamais une plage « a–b » — un tiret entre deux numéros
+ * de preuves distinctes se lit comme un intervalle (« de 3 à 4 »), pas comme
+ * deux preuves. `formatEvidenceNumberLabel` (ranges compressées) reste
+ * réservé aux listes textuelles (ex. « Sans position : 2, 4, 6, 8 »), jamais
+ * à un repère cliquable. Au-delà de `maxVisible`, le reste est résumé par un
+ * compte plutôt que d'allonger indéfiniment la capsule. PARTAGÉE par les
+ * trois rendus (carte live, instantané PDF baké, schéma PDF de repli) — la
+ * même paire de preuves porte toujours le même texte, où qu'elle apparaisse.
+ * Ex. [3,4,7,8] → « 3 · 4 · 7 · 8 » ; [3,4,7,8,9,10] (maxVisible=4)
+ * → « 3 · 4 · 7 · 8 +2 ».
+ */
+export function formatClusterMarkerLabel(numbers: number[], maxVisible = 4): string {
+  const sorted = [...numbers].sort((a, b) => a - b)
+  if (sorted.length <= maxVisible) return sorted.join(' · ')
+  const shown = sorted.slice(0, maxVisible)
+  const hidden = sorted.length - maxVisible
+  return `${shown.join(' · ')} +${hidden}`
+}

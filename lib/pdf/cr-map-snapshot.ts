@@ -1,7 +1,7 @@
 import 'server-only'
 import { Resvg } from '@resvg/resvg-js'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { resolveEffectivePosition, selectCrVisualEvidence, buildEvidenceNumberMap, formatEvidenceNumberLabel, groupByProximity } from '@/lib/visits/geo'
+import { resolveEffectivePosition, selectCrVisualEvidence, buildEvidenceNumberMap, formatClusterMarkerLabel, groupByProximity } from '@/lib/visits/geo'
 
 // « Instantané carte » du compte-rendu. Le PDF ne fabrique JAMAIS la carte : cette
 // image est produite UNE SEULE FOIS (à l'ouverture de l'aperçu), stockée sur le
@@ -77,31 +77,35 @@ function buildSvg(
   const imgs = tiles
     .map((t) => `<image x="${t.left.toFixed(1)}" y="${t.top.toFixed(1)}" width="${TILE}" height="${TILE}" xlink:href="data:image/png;base64,${t.b64}"/>`)
     .join('')
-  // Rayon 15 : assez grand pour un chiffre à deux chiffres lisible. Un repère
-  // groupé (Lot 4.1, 2026-08-25) affiche les NUMÉROS des preuves qu'il
-  // contient (ex. « 1–5 »), jamais un simple compte — sur le papier, un
-  // repère ne se tape pas, l'étiquette doit donc être auto-suffisante. Au-delà
-  // de 2 caractères, le cercle devient une pilule assez large pour l'accueillir.
+  // Taille alignée sur `NumberBadge` (Photos clés/Reportage, 18pt/8pt final) —
+  // Vincent, retouche présentation 2026-08-26 : « c'est la carte qui doit
+  // s'aligner sur cette grammaire, pas l'inverse ». Ce SVG est baké à 2× la
+  // boîte finale du PDF (W/H ci-dessus = 2 × 515×200), donc r=19/font-size=19
+  // ≈ 19pt de diamètre final, au moins aussi net que le badge des Photos clés.
+  // Un repère groupé (Lot 4.1, 2026-08-25) affiche les NUMÉROS des preuves
+  // qu'il contient, séparés par « · » (ex. « 3 · 4 »), jamais un simple compte
+  // ni une plage « a–b » qui se lit comme un intervalle — sur le papier, un
+  // repère ne se tape pas, l'étiquette doit donc être auto-suffisante.
   // `loadSystemFonts` est requis pour que le <text> soit bien rendu par Resvg
   // (vérifié : sans lui, le texte disparaît silencieusement).
   const dots = markers
     .map((m) => {
       if (m.label.length <= 2) {
         return (
-          `<circle cx="${m.cx.toFixed(1)}" cy="${m.cy.toFixed(1)}" r="15" fill="${escapeXml(m.color)}" stroke="#ffffff" stroke-width="3"/>` +
-          `<text x="${m.cx.toFixed(1)}" y="${(m.cy + 5).toFixed(1)}" font-size="15" font-family="Helvetica, Arial, sans-serif" font-weight="bold" fill="#ffffff" text-anchor="middle">${escapeXml(m.label)}</text>`
+          `<circle cx="${m.cx.toFixed(1)}" cy="${m.cy.toFixed(1)}" r="19" fill="${escapeXml(m.color)}" stroke="#ffffff" stroke-width="3"/>` +
+          `<text x="${m.cx.toFixed(1)}" y="${(m.cy + 6.5).toFixed(1)}" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="bold" fill="#ffffff" text-anchor="middle">${escapeXml(m.label)}</text>`
         )
       }
-      // Pastille proche de la taille du marqueur simple (r=15, soit un
-      // diamètre de 30) — pas de surdimensionnement (Vincent, Lot Cartographie
-      // CR, 2026-08-26) : même hauteur, largeur ajustée au strict nécessaire.
-      const w = Math.max(30, m.label.length * 8 + 12)
-      const h = 30
+      // Pastille proche de la taille du marqueur simple (r=19, soit un
+      // diamètre de 38) — pas de surdimensionnement : même hauteur, largeur
+      // ajustée au strict nécessaire pour l'étiquette à points séparateurs.
+      const w = Math.max(38, m.label.length * 10 + 16)
+      const h = 38
       const x = m.cx - w / 2
       const y = m.cy - h / 2
       return (
         `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h}" rx="${h / 2}" fill="${escapeXml(m.color)}" stroke="#ffffff" stroke-width="3"/>` +
-        `<text x="${m.cx.toFixed(1)}" y="${(m.cy + 4.5).toFixed(1)}" font-size="13" font-family="Helvetica, Arial, sans-serif" font-weight="bold" fill="#ffffff" text-anchor="middle">${escapeXml(m.label)}</text>`
+        `<text x="${m.cx.toFixed(1)}" y="${(m.cy + 5.5).toFixed(1)}" font-size="16" font-family="Helvetica, Arial, sans-serif" font-weight="bold" fill="#ffffff" text-anchor="middle">${escapeXml(m.label)}</text>`
       )
     })
     .join('')
@@ -191,7 +195,7 @@ export async function ensureCrMapSnapshot(reportId: string): Promise<string | nu
       cx: w.x - originX,
       cy: w.y - originY,
       color: single ? (KIND_COLOR[single.kind] ?? '#6b7280') : '#334155',
-      label: single ? String(single.number) : formatEvidenceNumberLabel(g.points.map((p) => p.number)),
+      label: single ? String(single.number) : formatClusterMarkerLabel(g.points.map((p) => p.number)),
     }
   })
 

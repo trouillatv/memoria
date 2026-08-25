@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 import 'leaflet/dist/leaflet.css'
 import type { Map as LeafletMap } from 'leaflet'
-import { formatEvidenceNumberLabel } from '@/lib/visits/geo'
+import { formatClusterMarkerLabel } from '@/lib/visits/geo'
 import { clusterMarkersByPixel, MARKER_CLUSTER_RADIUS_PX } from '@/lib/visits/marker-cluster'
 
 // Carte des CAPTURES géolocalisées — une LECTURE (pas un module) : on l'embarque
@@ -130,7 +130,7 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
       // Carte du CR (Lot Cartographie CR, correction 2026-08-26, Vincent) :
       // chaque point isolé affiche son numéro ; plusieurs preuves qui se
       // chevauchent VISUELLEMENT à l'écran forment UN SEUL repère qui affiche
-      // leurs numéros (ex. « 1–5 »), jamais un point sans identité. Le
+      // leurs numéros (ex. « 3 · 4 »), jamais un point sans identité. Le
       // regroupement se décide en PIXELS, au zoom courant : deux preuves à
       // 20-30 m restent un seul marqueur à faible zoom, mais finissent par se
       // distinguer en zoomant (rejeté en recette : un regroupement figé en
@@ -177,14 +177,16 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
             layers.push(m)
           } else {
             const numbers = cluster.points.map((pt) => pt.c.number ?? 0)
-            const rangeLabel = formatEvidenceNumberLabel(numbers)
-            // Pastille proche de la taille d'un marqueur simple (26px) — pas le
-            // gros ovale surdimensionné rejeté en recette : largeur ajustée au
-            // strict nécessaire pour l'étiquette, hauteur identique au marqueur seul.
-            const w = Math.max(26, rangeLabel.length * 6 + 16)
+            const clusterLabel = formatClusterMarkerLabel(numbers)
+            // Capsule noire horizontale (Vincent, retouche présentation
+            // 2026-08-26) : numéros séparés par « · », jamais une plage « a–b »
+            // qui se lit comme un intervalle. `white-space:nowrap` garantit
+            // qu'elle reste une seule ligne même si l'estimation de largeur
+            // sous-évalue le rendu réel des glyphes.
+            const w = Math.max(26, clusterLabel.length * 6 + 16)
             const icon = L.divIcon({
               className: '',
-              html: `<div style="min-width:${w}px;height:26px;padding:0 6px;border-radius:13px;background:#334155;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">${escapeHtml(rangeLabel)}</div>`,
+              html: `<div style="min-width:${w}px;height:26px;padding:0 6px;border-radius:13px;background:#334155;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;white-space:nowrap">${escapeHtml(clusterLabel)}</div>`,
               iconSize: [w, 26],
               iconAnchor: [w / 2, 13],
             })

@@ -10,6 +10,7 @@ import {
   buildEvidenceNumberMap,
   buildEvidenceCoverage,
   formatEvidenceNumberLabel,
+  formatClusterMarkerLabel,
   groupByProximity,
 } from '@/lib/visits/geo'
 
@@ -155,6 +156,33 @@ describe('formatEvidenceNumberLabel — étiquette de repère groupé (Vincent, 
     const label = formatEvidenceNumberLabel([2, 3, 4, 9, 12])
     expect(label).not.toBe('5')
     expect(label).toBe('2–4, 9, 12')
+  })
+})
+
+describe('formatClusterMarkerLabel — étiquette de REPÈRE GROUPÉ, jamais une plage (Vincent, retouche présentation Lot Cartographie CR, 2026-08-26)', () => {
+  it('numéros contigus → listés individuellement, séparés par « · », jamais une plage « a–b »', () => {
+    expect(formatClusterMarkerLabel([3, 4])).toBe('3 · 4')
+    expect(formatClusterMarkerLabel([1, 2, 3])).toBe('1 · 2 · 3')
+  })
+
+  it('numéros dispersés, dans le désordre en entrée → triés puis listés', () => {
+    expect(formatClusterMarkerLabel([8, 3, 7, 4])).toBe('3 · 4 · 7 · 8')
+  })
+
+  it('au-delà de maxVisible (défaut 4) → les premiers puis « +N » plutôt qu’une capsule sans fin', () => {
+    expect(formatClusterMarkerLabel([3, 4, 7, 8, 9, 10])).toBe('3 · 4 · 7 · 8 +2')
+  })
+
+  it('exactement maxVisible → aucun « +N »', () => {
+    expect(formatClusterMarkerLabel([1, 2, 3, 4], 4)).toBe('1 · 2 · 3 · 4')
+  })
+
+  it('maxVisible personnalisé', () => {
+    expect(formatClusterMarkerLabel([1, 2, 3, 4, 5], 2)).toBe('1 · 2 +3')
+  })
+
+  it('numéro isolé → le chiffre seul, sans séparateur', () => {
+    expect(formatClusterMarkerLabel([7])).toBe('7')
   })
 })
 
