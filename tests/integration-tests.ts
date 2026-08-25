@@ -79,4 +79,5 @@ export const INTEGRATION_TESTS: string[] = [
   'tests/lib/subject-suggestion-rpcs.test.ts',
   'tests/lib/db/canonical-business-object-merge-reroute.test.ts',
   'tests/lib/db/object-state-occurrence-signal-constraints.test.ts',
+  'tests/lib/db/object-state-occurrence-signal-producer-integration.test.ts',
 ]
