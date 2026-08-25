@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import Link from 'next/link'
-import { Camera, ChevronDown, FileText, History, Loader2, Mic, Video } from 'lucide-react'
+import { Camera, CheckCircle2, ChevronDown, ClipboardCheck, FileText, History, Loader2, Mic, Video } from 'lucide-react'
 import { importSiteEvidenceAction, uploadSiteDocumentAction } from './site-add-actions'
 import { HistoricalPvUploadForm } from './HistoricalPvUploadForm'
+import { createQuickActionAction } from '@/app/(dashboard)/actions/actions'
+import { createReserveAction } from './reserves/actions'
 
-type DialogKind = 'document' | 'evidence' | 'historical_pv' | null
+type DialogKind = 'document' | 'evidence' | 'historical_pv' | 'action' | 'reserve' | null
 
 export function SiteAddMenu({ siteId }: { siteId: string }) {
   const [open, setOpen] = useState(false)
@@ -65,20 +66,8 @@ export function SiteAddMenu({ siteId }: { siteId: string }) {
           <MenuButton icon={<FileText className="h-4 w-4" />} label="Document PDF" onClick={() => openDialog('document')} />
           <MenuButton icon={<Camera className="h-4 w-4" />} label="Photos, vidéos, vocaux" onClick={() => openDialog('evidence')} />
           <MenuButton icon={<History className="h-4 w-4" />} label="PV historique — analyser" onClick={() => openDialog('historical_pv')} />
-          <Link
-            href={`/sites/${siteId}/actions`}
-            onClick={() => setOpen(false)}
-            className="block rounded-lg px-2.5 py-2 text-sm hover:bg-muted"
-          >
-            Créer une action
-          </Link>
-          <Link
-            href={`/sites/${siteId}/reserves`}
-            onClick={() => setOpen(false)}
-            className="block rounded-lg px-2.5 py-2 text-sm hover:bg-muted"
-          >
-            Créer une réserve
-          </Link>
+          <MenuButton icon={<CheckCircle2 className="h-4 w-4" />} label="Créer une action" onClick={() => openDialog('action')} />
+          <MenuButton icon={<ClipboardCheck className="h-4 w-4" />} label="Créer une réserve" onClick={() => openDialog('reserve')} />
         </div>
       )}
 
@@ -100,6 +89,22 @@ export function SiteAddMenu({ siteId }: { siteId: string }) {
       )}
       {dialog === 'historical_pv' && (
         <SiteHistoricalPvDialog
+          siteId={siteId}
+          message={message}
+          setMessage={setMessage}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === 'action' && (
+        <SiteCreateActionDialog
+          siteId={siteId}
+          message={message}
+          setMessage={setMessage}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === 'reserve' && (
+        <SiteCreateReserveDialog
           siteId={siteId}
           message={message}
           setMessage={setMessage}
@@ -252,6 +257,139 @@ function SiteHistoricalPvDialog({
   return (
     <Modal title="Importer un PV historique" onClose={onClose}>
       <HistoricalPvUploadForm siteId={siteId} onClose={onClose} />
+    </Modal>
+  )
+}
+
+function SiteCreateActionDialog({
+  siteId,
+  message,
+  setMessage,
+  onClose,
+}: {
+  siteId: string
+  message: string | null
+  setMessage: (message: string | null) => void
+  onClose: () => void
+}) {
+  const formRef = useRef<HTMLFormElement>(null)
+  const [pending, startTransition] = useTransition()
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = formRef.current
+    if (!form) return
+    const fd = new FormData(form)
+    fd.set('site_id', siteId)
+    fd.set('created_from', 'desktop_site')
+    startTransition(async () => {
+      try {
+        const result = await createQuickActionAction(fd)
+        if (!result.ok) {
+          setMessage(result.error)
+          return
+        }
+        setMessage('Action créée.')
+        form.reset()
+      } catch (e) {
+        console.error('[SiteCreateActionDialog]', e)
+        setMessage('Erreur réseau — veuillez réessayer.')
+      }
+    })
+  }
+
+  return (
+    <Modal title="Créer une action" onClose={onClose}>
+      <form ref={formRef} className="space-y-4" onSubmit={submit}>
+        <label className="block space-y-2">
+          <span className="text-sm font-medium">Titre</span>
+          <input name="title" type="text" required maxLength={200} placeholder="Ex : Reprendre la réservation plomberie cuisine" className="block w-full rounded-lg border p-2 text-sm" />
+        </label>
+        <label className="block space-y-2">
+          <span className="text-sm font-medium">Échéance <span className="text-muted-foreground font-normal">(optionnelle)</span></span>
+          <input name="due_date" type="date" className="block w-full rounded-lg border p-2 text-sm" />
+        </label>
+        {message && <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">{message}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">Fermer</button>
+          <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
+            {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+            Créer
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+function SiteCreateReserveDialog({
+  siteId,
+  message,
+  setMessage,
+  onClose,
+}: {
+  siteId: string
+  message: string | null
+  setMessage: (message: string | null) => void
+  onClose: () => void
+}) {
+  const formRef = useRef<HTMLFormElement>(null)
+  const [pending, startTransition] = useTransition()
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = formRef.current
+    if (!form) return
+    const fd = new FormData(form)
+    fd.set('siteId', siteId)
+    startTransition(async () => {
+      try {
+        const result = await createReserveAction(fd)
+        if ('error' in result) {
+          setMessage(result.error)
+          return
+        }
+        setMessage('Réserve créée.')
+        form.reset()
+      } catch (e) {
+        console.error('[SiteCreateReserveDialog]', e)
+        setMessage('Erreur réseau — veuillez réessayer.')
+      }
+    })
+  }
+
+  return (
+    <Modal title="Créer une réserve" onClose={onClose}>
+      <form ref={formRef} className="space-y-4" onSubmit={submit}>
+        <label className="block space-y-2">
+          <span className="text-sm font-medium">Libellé</span>
+          <input name="label" type="text" required maxLength={280} placeholder="Ex : Largeur non conforme" className="block w-full rounded-lg border p-2 text-sm" />
+        </label>
+        <label className="block space-y-2">
+          <span className="text-sm font-medium">Localisation <span className="text-muted-foreground font-normal">(optionnelle)</span></span>
+          <input name="location" type="text" maxLength={140} className="block w-full rounded-lg border p-2 text-sm" />
+        </label>
+        <label className="block space-y-2">
+          <span className="text-sm font-medium">Signalée par <span className="text-muted-foreground font-normal">(optionnel)</span></span>
+          <input name="issuedBy" type="text" maxLength={140} className="block w-full rounded-lg border p-2 text-sm" />
+        </label>
+        <label className="block space-y-2">
+          <span className="text-sm font-medium">Date <span className="text-muted-foreground font-normal">(optionnelle)</span></span>
+          <input name="issuedOn" type="date" className="block w-full rounded-lg border p-2 text-sm" />
+        </label>
+        <label className="block space-y-2">
+          <span className="text-sm font-medium">Photo de constat <span className="text-muted-foreground font-normal">(optionnelle)</span></span>
+          <input name="photoBefore" type="file" accept="image/*" className="block w-full rounded-lg border p-2 text-sm" />
+        </label>
+        {message && <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">{message}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">Fermer</button>
+          <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
+            {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+            Créer
+          </button>
+        </div>
+      </form>
     </Modal>
   )
 }

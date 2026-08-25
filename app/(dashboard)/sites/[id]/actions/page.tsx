@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { ArrowLeft, Info, ListTodo } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
+import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { readSiteActionSummaries, groupActionsByThread, readReportMeta, classifyProvenance } from '@/lib/knowledge/repository'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { SiteTabsNav } from '../SiteTabsNav'
@@ -121,6 +122,12 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
 
   return (
     <div className="max-w-3xl space-y-6 py-6">
+      <DynamicCrumb segmentId="actions" label="Sujets d'action" />
+      <BreadcrumbPrefix crumbs={[
+        { href: '/sites', label: 'Sites' },
+        { href: `/sites/${id}`, label: identity.name },
+      ]} />
+
       {/* Navigation chantier */}
       <div className="space-y-3">
         <Link
@@ -129,7 +136,7 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
         >
           <ArrowLeft className="h-4 w-4" /> {identity.name}
         </Link>
-        <SiteTabsNav active="apercu" siteId={id} />
+        <SiteTabsNav active="actions" siteId={id} />
       </div>
 
       <header className="space-y-3">

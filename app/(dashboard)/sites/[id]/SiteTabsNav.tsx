@@ -21,6 +21,8 @@ export const SITE_TABS = [
   // « Réserves » (Points à lever) : route dédiée existante (/reserves), simplement
   // absente de la barre — n'était accessible que par le lien du hub d'aperçu.
   { key: 'reserves',         label: 'Réserves',  pathSuffix: '/reserves' },
+  // « Actions » : route dédiée existante (/actions), même traitement que Réserves.
+  { key: 'actions',          label: 'Actions',   pathSuffix: '/actions' },
   { key: 'documents-preuves', label: 'Documents' },
   // « Intervenants » (cadrage + maquette validés 2026-07-18).
   { key: 'intervenants',     label: 'Intervenants' },
