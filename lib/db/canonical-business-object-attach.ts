@@ -11,6 +11,16 @@ import 'server-only'
 // le CBO soit connu (id réel ou null explicitement — jamais si la résolution du sujet
 // canonique lui-même a échoué, auquel cas la production du signal est différée).
 //
+// P1/H2 MANUAL-OBJECT-CANONICAL-BOOTSTRAP (Vincent, 2026-08-25) —
+// resolveSubjectAndAttachCanonicalBusinessObject() ne s'arrête plus silencieusement
+// sur NO_MATCH pour site_action/site_reserve : elle appelle
+// resolveOrCreateSingleObjectSubject() (lib/db/canonical-subject-source-reconcile.ts),
+// le même moteur de clustering/création d'orphelin que reconcileSourceToCanonicalSubjects(),
+// réutilisé sur un seul objet plutôt que dupliqué. site_deadline reste attach-only
+// (aucune création automatique de sujet durable, sémantique des échéances récurrentes
+// non tranchée) mais trace désormais explicitement ATTACH_EXISTING / CREATE_NEW /
+// UNCERTAIN / NO_DURABLE_SUBJECT / ERROR au lieu de sortir en silence.
+//
 // Doctrine (Vincent, 2026-08-24) :
 //   - Scope strict par canonical_subject_id — jamais de rapprochement entre deux
 //     sujets canoniques différents (getCanonicalSubjectEntities filtre déjà par sujet).
@@ -33,6 +43,7 @@ import {
   type ResolvableEntity,
   type ResolverDecision,
 } from '@/lib/db/canonical-business-object-resolve'
+import { resolveOrCreateSingleObjectSubject } from '@/lib/db/canonical-subject-source-reconcile'
 import { produceObjectStateOccurrenceSignal } from '@/lib/db/object-state-occurrence-signal'
 
 type AdminClient = ReturnType<typeof createAdminClient>
@@ -286,13 +297,60 @@ async function createGroupCbo(
 }
 
 /**
+ * P1/H2 MANUAL-OBJECT-CANONICAL-BOOTSTRAP (Vincent, 2026-08-25) — résout le
+ * canonical_subject_id à poser sur un objet créé directement dans l'UI, et trace
+ * explicitement le résultat (jamais de sortie silencieuse sur NO_MATCH).
+ *
+ * site_action / site_reserve : sur 'not_found', bootstrap via le moteur de
+ * création d'orphelin déjà utilisé par reconcileSourceToCanonicalSubjects()
+ * (resolveOrCreateSingleObjectSubject) — un objet confirmé par l'utilisateur
+ * dans l'UI est déjà un fait métier réel, son identité canonique naît dans le
+ * même cycle plutôt que d'attendre une réconciliation ultérieure.
+ *
+ * site_deadline : frontière conservée — ne crée jamais de sujet durable tant que
+ * la sémantique des échéances récurrentes n'est pas tranchée. 'not_found' →
+ * NO_DURABLE_SUBJECT (hors périmètre de création, pas une question de confiance).
+ */
+async function resolveManualObjectCanonicalSubjectId(
+  siteId: string,
+  entityType: CanonicalBusinessObjectEntityType,
+  entityId: string,
+  label: string,
+): Promise<string | null> {
+  const res = await resolveCanonicalSubjectReference(siteId, label)
+  if (res.kind === 'resolved') {
+    log(`ATTACH_EXISTING entity=${entityId} type=${entityType} subject=${res.candidate.id}`)
+    return res.candidate.id
+  }
+  if (res.kind === 'ambiguous') {
+    log(`UNCERTAIN entity=${entityId} type=${entityType} — ${res.candidates.length} candidats existants ambigus, aucune décision automatique`)
+    return null
+  }
+
+  // res.kind === 'not_found'
+  if (entityType === 'site_deadline') {
+    log(`NO_DURABLE_SUBJECT entity=${entityId} type=${entityType} — hors périmètre de création automatique (échéance)`)
+    return null
+  }
+
+  const bootstrap = await resolveOrCreateSingleObjectSubject(siteId, label)
+  if (bootstrap.outcome === 'ATTACH_EXISTING' || bootstrap.outcome === 'CREATE_NEW') {
+    log(`${bootstrap.outcome} entity=${entityId} type=${entityType} subject=${bootstrap.canonicalSubjectId} (bootstrap)`)
+    return bootstrap.canonicalSubjectId
+  }
+  log(`${bootstrap.outcome} entity=${entityId} type=${entityType} (bootstrap)`)
+  return null
+}
+
+/**
  * Orchestrateur best-effort appelé depuis les writers métier (createSiteAction,
  * createSiteReserve, createSiteDeadline, et le writer de confirmation d'action
  * confirmSiteAction qui partage ce même chemin) juste après l'insertion : résout
- * le sujet canonique depuis le libellé (même resolver que l'existant, mig 346),
- * pose la colonne directe si trouvée, tente le rattachement CBO, puis (H2-B.3)
- * produit le signal d'occurrence — dans cet ordre strict, seulement si le sujet
- * canonique a pu être résolu (sinon la production du signal est différée).
+ * le sujet canonique depuis le libellé (résolution + bootstrap H2, cf.
+ * resolveManualObjectCanonicalSubjectId), pose la colonne directe si trouvée,
+ * tente le rattachement CBO, puis (H2-B.3) produit le signal d'occurrence — dans
+ * cet ordre strict, seulement si le sujet canonique a pu être résolu (sinon la
+ * production du signal est différée).
  *
  * Fire-and-forget par construction (jamais attendu par l'appelant) — capte
  * toute erreur, ne relance jamais. À invoquer via `void resolveSubjectAndAttachCanonicalBusinessObject(...)`.
@@ -306,13 +364,13 @@ export async function resolveSubjectAndAttachCanonicalBusinessObject(params: {
 }): Promise<void> {
   const { siteId, entityType, entityId, label, date } = params
   try {
-    const res = await resolveCanonicalSubjectReference(siteId, label)
-    if (res.kind !== 'resolved') return
+    const canonicalSubjectId = await resolveManualObjectCanonicalSubjectId(siteId, entityType, entityId, label)
+    if (!canonicalSubjectId) return
 
     const sb = createAdminClient()
-    await sb.from(TARGET_TABLE[entityType]).update({ canonical_subject_id: res.candidate.id }).eq('id', entityId)
+    await sb.from(TARGET_TABLE[entityType]).update({ canonical_subject_id: canonicalSubjectId }).eq('id', entityId)
 
-    await attachToCanonicalBusinessObject({ siteId, canonicalSubjectId: res.candidate.id, entityType, entityId, label, date })
+    await attachToCanonicalBusinessObject({ siteId, canonicalSubjectId, entityType, entityId, label, date })
     await produceSignalBestEffort(entityType, entityId)
   } catch (e) {
     logError(`résolution sujet+CBO non bloquante entity=${entityId} type=${entityType}`, e)
@@ -326,12 +384,14 @@ export async function resolveSubjectAndAttachCanonicalBusinessObject(params: {
  * libellé — le fil thématique fait foi), pose la colonne directe si elle est
  * encore vide (jamais d'écrasement), puis tente le rattachement CBO.
  *
- * Pour site_action/site_deadline, `projectCanonicalSubjectOnObjects()`
- * (lib/db/canonical-subject-project.ts, P0-J.3) est le mécanisme AUTORITATIF —
- * il résout aussi les chaînes de fusion et la piste de promotion terrain, que
+ * `projectCanonicalSubjectOnObjects()` (lib/db/canonical-subject-project.ts,
+ * P0-J.3, site_reserve ajouté H2 2026-08-25) est le mécanisme AUTORITATIF — il
+ * résout aussi les chaînes de fusion et la piste de promotion terrain, que
  * cette fonction ignore volontairement pour ne pas construire un second moteur
- * de résolution de sujet. Cette fonction reste le seul chemin pour site_reserve,
- * non couvert par cette projection (ProjectableObjectType ne liste pas 'site_reserve').
+ * de résolution de sujet. Cette fonction reste le filet de repli pour toute
+ * entité que la projection amont n'a pas résolue (`canonical_subject_id` encore
+ * null au moment de cet appel) : même lecture matérialisation → thread, en
+ * relecture directe plutôt qu'en balayage de lot.
  */
 export async function attachHistoricalEntityToCanonicalBusinessObject(params: {
   siteId: string
@@ -391,12 +451,14 @@ export async function attachHistoricalEntityToCanonicalBusinessObject(params: {
  * Orchestrateur déclenché après l'import d'un PV historique (createHistoricalVisitAction,
  * via `after()` — non bloquant pour la réponse HTTP), une fois que
  * `projectCanonicalSubjectSafely()` a déjà écrit `canonical_subject_id` sur les
- * actions/échéances du rapport. Relit l'état final en base (plutôt que de faire
- * transiter le rapport de projection à travers la fermeture `after()`) et tente
- * le rattachement CBO pour chaque entité déjà rattachée à un sujet canonique.
+ * actions/échéances/réserves du rapport (site_reserve couvert depuis H2,
+ * 2026-08-25). Relit l'état final en base (plutôt que de faire transiter le
+ * rapport de projection à travers la fermeture `after()`) et tente le
+ * rattachement CBO pour chaque entité déjà rattachée à un sujet canonique.
  *
- * site_reserve n'étant couvert par aucune projection amont, chaque réserve du
- * rapport est résolue ici via `attachHistoricalEntityToCanonicalBusinessObject`
+ * Filet de repli : toute réserve que la projection amont n'a pas résolue
+ * (`canonical_subject_id` encore null) est retentée ici via
+ * `attachHistoricalEntityToCanonicalBusinessObject`
  * (chaîne document_proposal_materialization → subject_thread_identity).
  *
  * H2-B.3 : chaque tentative de rattachement CBO (directe ici, ou via

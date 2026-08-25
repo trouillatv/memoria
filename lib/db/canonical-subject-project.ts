@@ -32,8 +32,16 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 export type Sb = ReturnType<typeof createAdminClient>
 
-/** Type d'objet métier portant une FK canonique (mig 346). */
-export type ProjectableObjectType = 'site_action' | 'site_deadline'
+/** Type d'objet métier portant une FK canonique (mig 346).
+ *  site_reserve ajouté H2 (Vincent, 2026-08-25) — même mécanisme de
+ *  rattrapage que site_action/site_deadline, sans colonne subject_thread_id. */
+export type ProjectableObjectType = 'site_action' | 'site_deadline' | 'site_reserve'
+
+const TARGET_TABLE: Record<ProjectableObjectType, 'site_actions' | 'site_deadlines' | 'site_reserve'> = {
+  site_action: 'site_actions',
+  site_deadline: 'site_deadlines',
+  site_reserve: 'site_reserve',
+}
 
 /** Preuve structurelle ayant permis d'atteindre le sujet. Jamais lexicale. */
 export type BridgePath = 'thread' | 'materialization' | 'promotion'
@@ -87,7 +95,7 @@ export interface ProjectionReport {
  */
 export type ProjectionScope =
   | { kind: 'report'; reportId: string }
-  | { kind: 'objects'; actionIds?: string[]; deadlineIds?: string[] }
+  | { kind: 'objects'; actionIds?: string[]; deadlineIds?: string[]; reserveIds?: string[] }
   | { kind: 'site' }
 
 export interface ProjectCanonicalSubjectParams {
@@ -120,13 +128,14 @@ export async function projectCanonicalSubjectOnObjects(
   const sb = createAdminClient()
   const report: ProjectionReport = { projected: [], skipped: [], dryRun }
 
-  const [actions, deadlines] = await Promise.all([
+  const [actions, deadlines, reserves] = await Promise.all([
     loadObjects(sb, 'site_actions', siteId, scope),
     loadObjects(sb, 'site_deadlines', siteId, scope),
+    loadObjects(sb, 'site_reserve', siteId, scope),
   ])
-  if (actions.length === 0 && deadlines.length === 0) return report
+  if (actions.length === 0 && deadlines.length === 0 && reserves.length === 0) return report
 
-  const objectIds = [...actions.map((a) => a.id), ...deadlines.map((d) => d.id)]
+  const objectIds = [...actions.map((a) => a.id), ...deadlines.map((d) => d.id), ...reserves.map((r) => r.id)]
 
   const [materializationTargets, promotionTargets, threadIndex, subjects] = await Promise.all([
     loadMaterializationBridge(sb, objectIds),
@@ -140,6 +149,7 @@ export async function projectCanonicalSubjectOnObjects(
   for (const [objectType, rows] of [
     ['site_action', actions],
     ['site_deadline', deadlines],
+    ['site_reserve', reserves],
   ] as const) {
     for (const row of rows) {
       // ── Preuves brutes ─────────────────────────────────────────────────────
@@ -230,7 +240,7 @@ export async function projectCanonicalSubjectOnObjects(
         // `.is('canonical_subject_id', null)` : une écriture concurrente arrivée
         // entre la lecture et ici gagne — on ne l'écrase pas non plus.
         const { error } = await sb
-          .from(objectType === 'site_action' ? 'site_actions' : 'site_deadlines')
+          .from(TARGET_TABLE[objectType])
           .update({ canonical_subject_id: winnerId })
           .eq('id', row.id)
           .is('canonical_subject_id', null)
@@ -250,7 +260,7 @@ export async function projectCanonicalSubjectOnObjects(
 
 async function loadObjects(
   sb: Sb,
-  table: 'site_actions' | 'site_deadlines',
+  table: 'site_actions' | 'site_deadlines' | 'site_reserve',
   siteId: string,
   scope: ProjectionScope,
 ): Promise<ObjectRow[]> {
@@ -264,7 +274,7 @@ async function loadObjects(
   if (scope.kind === 'report') {
     query = query.eq('report_id', scope.reportId)
   } else if (scope.kind === 'objects') {
-    const ids = table === 'site_actions' ? scope.actionIds : scope.deadlineIds
+    const ids = table === 'site_actions' ? scope.actionIds : table === 'site_deadlines' ? scope.deadlineIds : scope.reserveIds
     if (!ids || ids.length === 0) return []
     query = query.in('id', ids)
   } else {

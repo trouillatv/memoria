@@ -8,10 +8,13 @@
 // orchestrateurs directement (même chemin que les writers de production, sans le
 // fire-and-forget `void` qui rendrait le test non déterministe).
 //
-// Deux appels Gemini distincts partagent la même URL/modèle (resolveCanonicalBusinessObjectGroups
-// et classifyOccurrenceStateSignal) — on discrimine par le contenu du corps de requête :
-// le schéma du resolver CBO contient "groups", celui du classificateur de signal contient
-// "evidence_text" (cf. lib/db/canonical-business-object-resolve.ts et
+// Trois appels Gemini distincts partagent la même URL/modèle (resolveCanonicalBusinessObjectGroups,
+// classifyOccurrenceStateSignal, et depuis H2 clusterOrphansWithGemini) — on discrimine par le
+// contenu du corps de requête : le prompt de clustering contient "isDurableSubject" (littéral dans
+// SYSTEM_PROMPT_CLUSTERING, unique à ce schéma — vérifié avant "groups" pour éviter la collision,
+// le schéma clustering contenant aussi la clé "groups"), le schéma du resolver CBO contient "groups"
+// (sans "isDurableSubject"), celui du classificateur de signal contient "evidence_text" (cf.
+// lib/db/canonical-subject-source-reconcile.ts, lib/db/canonical-business-object-resolve.ts et
 // lib/ai/classify-occurrence-state-signal.ts).
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
@@ -51,6 +54,11 @@ let groupMode: 'distinct' | 'merge' = 'distinct'
 // signalMode contrôle la réponse du classificateur de signal ("evidence_text") :
 // une valeur ObjectStateSignal pour un succès, 'FAIL' pour simuler une panne HTTP 500.
 let signalMode: string = 'PROGRESS'
+// clusterMode contrôle la réponse de clusterOrphansWithGemini (bootstrap H2, NO_MATCH) :
+// 'durable' = isDurableSubject=true confiance haute (→ CREATE_NEW), 'not_durable' =
+// isDurableSubject=false (→ NO_DURABLE_SUBJECT), 'low_confidence' = durable mais sous le
+// seuil CREATE_THRESHOLD (→ UNCERTAIN).
+let clusterMode: 'durable' | 'not_durable' | 'low_confidence' = 'durable'
 
 function stubGeminiFetch() {
   vi.stubGlobal('fetch', vi.fn(async (url: unknown, init?: RequestInit) => {
@@ -58,6 +66,15 @@ function stubGeminiFetch() {
     if (!urlStr.includes('generativelanguage.googleapis.com')) return realFetch(url as never, init)
 
     const bodyStr = String(init?.body ?? '')
+
+    // Vérifié AVANT le check générique "groups" : le schéma clustering contient aussi "groups".
+    if (bodyStr.includes('isDurableSubject')) {
+      const isDurableSubject = clusterMode !== 'not_durable'
+      const confidence = clusterMode === 'low_confidence' ? 0.4 : 0.92
+      return geminiTextResponse(JSON.stringify({
+        groups: [{ proposalIds: ['single'], suggestedLabel: 'Sujet bootstrap test', confidence, isDurableSubject }],
+      }))
+    }
 
     if (bodyStr.includes('"groups"')) {
       const entities = parseGeminiEntities(init)
@@ -128,6 +145,7 @@ beforeEach(() => {
   vi.stubEnv('AI_MODEL_LIGHT', 'gemini-2.5-flash')
   groupMode = 'distinct'
   signalMode = 'PROGRESS'
+  clusterMode = 'durable'
   stubGeminiFetch()
 })
 
@@ -374,5 +392,131 @@ describe('H2-B.3 — branchement live du signal d’occurrence après rattacheme
     expect(signal1?.canonical_business_object_id).toBe(cboId1)
     expect(signal2?.canonical_business_object_id).toBe(cboId2)
     expect(signal1?.canonical_business_object_id).not.toBe(signal2?.canonical_business_object_id)
+  })
+})
+
+// ─── P1/H2 MANUAL-OBJECT-CANONICAL-BOOTSTRAP (Vincent, 2026-08-25) ────────────
+// resolveSubjectAndAttachCanonicalBusinessObject() ne s'arrête plus silencieusement sur
+// NO_MATCH pour site_action/site_reserve : elle bootstrap via resolveOrCreateSingleObjectSubject
+// (même moteur clusterOrphansWithGemini que reconcileSourceToCanonicalSubjects(), réutilisé sur un
+// seul objet). Cas obligatoires : les deux objets réels de Vincent ("Transmettre le rapport G3",
+// "Largeur non conforme") doivent aboutir à un sujet canonique posé (CREATE_NEW), et un
+// contre-exemple doit rester NO_DURABLE_SUBJECT sans jamais créer de sujet ni de rattachement.
+describe('P1/H2 — bootstrap NO_MATCH n’est plus silencieux (site_action/site_reserve)', () => {
+  // Chantier dédié : resolveCanonicalSubjectReference matche par Jaccard sur TOUS les
+  // canonical_subject du chantier, et le TAG partagé (tokenisé par mot après normalisation)
+  // ferait remonter les sujets déjà seedés par les tests ci-dessus comme candidats ambigus.
+  let bootstrapSiteId: string
+
+  beforeAll(async () => {
+    const db = createAdminClient()
+    const { data: site, error } = await db
+      .from('sites')
+      .insert({ name: `${TAG}bootstrap_site`, client_id: clientId, organization_id: orgId })
+      .select('id').single()
+    if (error) throw error
+    bootstrapSiteId = (site as { id: string }).id
+  })
+
+  afterAll(async () => {
+    const db = createAdminClient()
+    await db.from('canonical_business_object_member').delete().in(
+      'member_entity_id',
+      (await db.from('site_actions').select('id').eq('site_id', bootstrapSiteId)).data?.map((r: { id: string }) => r.id) ?? [],
+    )
+    await db.from('canonical_business_object').delete().eq('site_id', bootstrapSiteId)
+    await db.from('object_state_occurrence_signal').delete().eq('site_id', bootstrapSiteId)
+    await db.from('site_actions').delete().eq('site_id', bootstrapSiteId)
+    await db.from('site_reserve').delete().eq('site_id', bootstrapSiteId)
+    await db.from('site_deadlines').delete().eq('site_id', bootstrapSiteId)
+    await db.from('canonical_subject').delete().eq('site_id', bootstrapSiteId)
+    await db.from('sites').delete().eq('id', bootstrapSiteId)
+  })
+
+  it('"Transmettre le rapport G3" (action, aucun CS existant) → CREATE_NEW puis CBO → signal', async () => {
+    const db = createAdminClient()
+    const label = 'Transmettre le rapport G3'
+
+    const { data: action, error } = await db.from('site_actions').insert({ site_id: bootstrapSiteId, title: label }).select('id').single()
+    if (error) throw error
+    const entityId = (action as { id: string }).id
+
+    clusterMode = 'durable'
+    signalMode = 'OPENED'
+    await resolveSubjectAndAttachCanonicalBusinessObject({ siteId: bootstrapSiteId, entityType: 'site_action', entityId, label, date: null })
+
+    const { data: updated } = await db.from('site_actions').select('canonical_subject_id').eq('id', entityId).single()
+    const canonicalSubjectId = (updated as { canonical_subject_id: string | null }).canonical_subject_id
+    expect(canonicalSubjectId).not.toBeNull()
+
+    const { data: cs } = await db.from('canonical_subject').select('creation_source').eq('id', canonicalSubjectId as string).single()
+    expect((cs as { creation_source: string }).creation_source).toBe('manual')
+
+    const cboId = await readMembership('site_action', entityId)
+    expect(cboId).not.toBeNull()
+
+    const signal = await readSignal('site_action', entityId)
+    expect(signal).toMatchObject({ status: 'resolved', final_signal: 'OPENED', canonical_business_object_id: cboId })
+  })
+
+  it('"Largeur non conforme" (réserve, aucun CS existant) → CREATE_NEW puis CBO → signal', async () => {
+    const db = createAdminClient()
+    const label = 'Largeur non conforme'
+
+    const { data: reserve, error } = await db.from('site_reserve').insert({ site_id: bootstrapSiteId, label }).select('id').single()
+    if (error) throw error
+    const entityId = (reserve as { id: string }).id
+
+    clusterMode = 'durable'
+    signalMode = 'STILL_OPEN'
+    await resolveSubjectAndAttachCanonicalBusinessObject({ siteId: bootstrapSiteId, entityType: 'site_reserve', entityId, label, date: null })
+
+    const { data: updated } = await db.from('site_reserve').select('canonical_subject_id').eq('id', entityId).single()
+    const canonicalSubjectId = (updated as { canonical_subject_id: string | null }).canonical_subject_id
+    expect(canonicalSubjectId).not.toBeNull()
+
+    const cboId = await readMembership('site_reserve', entityId)
+    expect(cboId).not.toBeNull()
+
+    const signal = await readSignal('site_reserve', entityId)
+    expect(signal).toMatchObject({ status: 'resolved', final_signal: 'STILL_OPEN', canonical_business_object_id: cboId })
+  })
+
+  it('contre-exemple non durable → NO_DURABLE_SUBJECT, aucun sujet créé, aucun CBO, aucun signal', async () => {
+    const db = createAdminClient()
+    const label = 'Nettoyage rapide du hall'
+
+    const { data: action, error } = await db.from('site_actions').insert({ site_id: bootstrapSiteId, title: label }).select('id').single()
+    if (error) throw error
+    const entityId = (action as { id: string }).id
+
+    clusterMode = 'not_durable'
+    await resolveSubjectAndAttachCanonicalBusinessObject({ siteId: bootstrapSiteId, entityType: 'site_action', entityId, label, date: null })
+
+    const { data: updated } = await db.from('site_actions').select('canonical_subject_id').eq('id', entityId).single()
+    expect((updated as { canonical_subject_id: string | null }).canonical_subject_id).toBeNull()
+
+    const cboId = await readMembership('site_action', entityId)
+    expect(cboId).toBeNull()
+
+    const signal = await readSignal('site_action', entityId)
+    expect(signal).toBeNull()
+  })
+
+  it('échéance sur NO_MATCH → NO_DURABLE_SUBJECT explicite (jamais de création automatique)', async () => {
+    const db = createAdminClient()
+    const label = 'Échéance sans CS existant'
+
+    const { data: deadline, error } = await db.from('site_deadlines').insert({ site_id: bootstrapSiteId, title: label }).select('id').single()
+    if (error) throw error
+    const entityId = (deadline as { id: string }).id
+
+    await resolveSubjectAndAttachCanonicalBusinessObject({ siteId: bootstrapSiteId, entityType: 'site_deadline', entityId, label, date: null })
+
+    const { data: updated } = await db.from('site_deadlines').select('canonical_subject_id').eq('id', entityId).single()
+    expect((updated as { canonical_subject_id: string | null }).canonical_subject_id).toBeNull()
+
+    const cboId = await readMembership('site_deadline', entityId)
+    expect(cboId).toBeNull()
   })
 })

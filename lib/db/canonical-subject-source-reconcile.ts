@@ -397,6 +397,66 @@ export async function clusterOrphansWithGemini(
   }
 }
 
+// ─── Bootstrap sujet canonique pour un objet unique (hors lot proposals) ──────
+
+export type SingleObjectSubjectResolution =
+  | { outcome: 'ATTACH_EXISTING'; canonicalSubjectId: string }
+  | { outcome: 'CREATE_NEW'; canonicalSubjectId: string }
+  | { outcome: 'UNCERTAIN' }
+  | { outcome: 'NO_DURABLE_SUBJECT' }
+  | { outcome: 'ERROR' }
+
+/**
+ * P1/H2 MANUAL-OBJECT-CANONICAL-BOOTSTRAP (Vincent, 2026-08-25) — réutilise le
+ * même moteur que reconcileSourceToCanonicalSubjects() (Phase 1 déterministe puis
+ * Phase 2a clustering Gemini) pour un seul objet métier créé directement dans
+ * l'UI (site_action, site_reserve), au moment de sa création plutôt qu'en
+ * attendant une réconciliation par lot ultérieure. Aucune seconde logique LLM :
+ * clusterOrphansWithGemini est appelé avec une liste à un seul élément.
+ *
+ * 'ambiguous' (plusieurs candidats existants) ne tranche jamais automatiquement,
+ * exactement comme dans le flux par lot → UNCERTAIN, jamais de décision forcée.
+ */
+export async function resolveOrCreateSingleObjectSubject(
+  siteId: string,
+  label: string,
+): Promise<SingleObjectSubjectResolution> {
+  const res = await resolveCanonicalSubjectReference(siteId, label)
+  if (res.kind === 'resolved') {
+    return { outcome: 'ATTACH_EXISTING', canonicalSubjectId: res.candidate.id }
+  }
+  if (res.kind === 'ambiguous') {
+    return { outcome: 'UNCERTAIN' }
+  }
+
+  const groups = await clusterOrphansWithGemini([{ id: 'single', title: label, body: null }])
+  if (!groups || groups.length === 0) return { outcome: 'ERROR' }
+
+  const group = groups.find((g) => g.proposalIds.includes('single')) ?? groups[0]
+  if (!group.isDurableSubject) return { outcome: 'NO_DURABLE_SUBJECT' }
+  if (group.confidence < CREATE_THRESHOLD || !group.suggestedLabel) return { outcome: 'UNCERTAIN' }
+
+  const sb = createAdminClient()
+  const { data: newCs, error: csErr } = await sb
+    .from('canonical_subject')
+    .insert({ site_id: siteId, label: group.suggestedLabel, status: 'active', creation_source: 'manual' })
+    .select('id')
+    .single()
+
+  if (csErr || !newCs) {
+    // Course de création (index unique mig 323) : se rattacher au gagnant plutôt
+    // que d'orpheliner l'objet — même reprise qu'en Phase 2a.
+    const recovered = isUniqueLabelViolation(csErr)
+      ? await findActiveSubjectByNormalizedLabel(sb, siteId, group.suggestedLabel)
+      : null
+    if (recovered) return { outcome: 'ATTACH_EXISTING', canonicalSubjectId: recovered }
+    console.error('[reconcile-source] resolveOrCreateSingleObjectSubject erreur création CS:', csErr?.code, csErr?.message)
+    return { outcome: 'ERROR' }
+  }
+
+  return { outcome: 'CREATE_NEW', canonicalSubjectId: newCs.id }
+}
+
 // ─── Réconciliation principale ────────────────────────────────────────────────
 
 /**
