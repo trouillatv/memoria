@@ -274,6 +274,7 @@ function SiteCreateActionDialog({
 }) {
   const formRef = useRef<HTMLFormElement>(null)
   const [pending, startTransition] = useTransition()
+  const [created, setCreated] = useState(false)
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -290,6 +291,7 @@ function SiteCreateActionDialog({
           return
         }
         setMessage('Action créée.')
+        setCreated(true)
         form.reset()
       } catch (e) {
         console.error('[SiteCreateActionDialog]', e)
@@ -300,7 +302,7 @@ function SiteCreateActionDialog({
 
   return (
     <Modal title="Créer une action" onClose={onClose}>
-      <form ref={formRef} className="space-y-4" onSubmit={submit}>
+      <form ref={formRef} className="space-y-4" onSubmit={submit} onChange={() => { if (created) setCreated(false) }}>
         <label className="block space-y-2">
           <span className="text-sm font-medium">Titre</span>
           <input name="title" type="text" required maxLength={200} placeholder="Ex : Reprendre la réservation plomberie cuisine" className="block w-full rounded-lg border p-2 text-sm" />
@@ -312,7 +314,7 @@ function SiteCreateActionDialog({
         {message && <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">{message}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">Fermer</button>
-          <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
+          <button type="submit" disabled={pending || created} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
             {pending && <Loader2 className="h-4 w-4 animate-spin" />}
             Créer
           </button>
@@ -335,6 +337,7 @@ function SiteCreateReserveDialog({
 }) {
   const formRef = useRef<HTMLFormElement>(null)
   const [pending, startTransition] = useTransition()
+  const [created, setCreated] = useState(false)
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -350,6 +353,7 @@ function SiteCreateReserveDialog({
           return
         }
         setMessage('Réserve créée.')
+        setCreated(true)
         form.reset()
       } catch (e) {
         console.error('[SiteCreateReserveDialog]', e)
@@ -360,7 +364,7 @@ function SiteCreateReserveDialog({
 
   return (
     <Modal title="Créer une réserve" onClose={onClose}>
-      <form ref={formRef} className="space-y-4" onSubmit={submit}>
+      <form ref={formRef} className="space-y-4" onSubmit={submit} onChange={() => { if (created) setCreated(false) }}>
         <label className="block space-y-2">
           <span className="text-sm font-medium">Libellé</span>
           <input name="label" type="text" required maxLength={280} placeholder="Ex : Largeur non conforme" className="block w-full rounded-lg border p-2 text-sm" />
@@ -384,7 +388,7 @@ function SiteCreateReserveDialog({
         {message && <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">{message}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">Fermer</button>
-          <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
+          <button type="submit" disabled={pending || created} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
             {pending && <Loader2 className="h-4 w-4 animate-spin" />}
             Créer
           </button>
