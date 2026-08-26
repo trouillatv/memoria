@@ -33,4 +33,21 @@ describe('mergeCaption', () => {
     const afterTriage = mergeCaption(afterPostShutter, 'chambre 2')
     expect(afterTriage).toBe('Fissure au plafond chambre 2')
   })
+
+  it('dictée strictement identique à la légende déjà attachée → pas de doublon (bug terrain 2026-08-26)', () => {
+    expect(mergeCaption("Il s'agit d'une chaise.", "Il s'agit d'une chaise.")).toBe("Il s'agit d'une chaise.")
+    expect(mergeCaption("il s'agit d'une chaise", "Il s'agit d'une chaise.")).toBe("il s'agit d'une chaise")
+  })
+
+  it('dictée identique à la dernière phrase déjà présente → pas de doublon', () => {
+    expect(mergeCaption("Fissure au plafond. Il s'agit d'une chaise.", "Il s'agit d'une chaise.")).toBe(
+      "Fissure au plafond. Il s'agit d'une chaise.",
+    )
+  })
+
+  it('dictée réellement différente, même si elle recoupe un mot en fin de légende → toujours ajoutée', () => {
+    expect(mergeCaption("Il s'agit d'une chaise.", 'Chaise en bois cassée')).toBe(
+      "Il s'agit d'une chaise. Chaise en bois cassée",
+    )
+  })
 })

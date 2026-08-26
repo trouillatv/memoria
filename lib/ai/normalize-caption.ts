@@ -44,7 +44,9 @@ Tu ne connais PAS la photo. Tu ne dois JAMAIS ajouter, déduire ou interpréter 
 soit qui n'est pas explicitement dans le texte dicté.
 
 AUTORISÉ (nettoyage éditorial de la FORME uniquement) :
-- retirer les hésitations et répétitions ("euh", "donc euh", "alors", un mot répété) ;
+- retirer les hésitations et répétitions ("euh", "donc euh", "alors", un mot répété,
+  UNE PHRASE ENTIÈRE redite deux fois de suite avec le même sens — ne garder
+  qu'une seule occurrence) ;
 - ajouter la ponctuation et une syntaxe française naturelle ;
 - retirer les amorces sans contenu ("alors voilà", "donc je dirais que", "en fait") ;
 - produire une phrase courte adaptée à une légende terrain.

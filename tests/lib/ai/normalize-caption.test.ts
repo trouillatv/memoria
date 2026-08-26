@@ -98,6 +98,27 @@ describe('normalizeCaptionWithLLM — nettoyage de forme, jamais de fond', () =>
     expect(prompt).toMatch(/nombre/i)
     expect(prompt).toMatch(/interdit/i)
   })
+
+  it('« il s\'agit d\'une chaise il s\'agit d\'une chaise » → une seule occurrence (bug terrain 2026-08-26)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => geminiCaptionResponse("Il s'agit d'une chaise.")))
+
+    const result = await normalizeCaptionWithLLM("il s'agit d'une chaise il s'agit d'une chaise")
+
+    expect(result).toEqual({ ok: true, caption: "Il s'agit d'une chaise." })
+  })
+
+  it('le prompt instruit explicitement de dédupliquer une phrase entière redite, pas seulement un mot', async () => {
+    let sentBody: string | undefined
+    vi.stubGlobal('fetch', vi.fn(async (_url: unknown, init?: RequestInit) => {
+      sentBody = String(init?.body ?? '')
+      return geminiCaptionResponse('Peu importe.')
+    }))
+
+    await normalizeCaptionWithLLM('un texte quelconque')
+
+    const prompt = JSON.parse(sentBody as string).systemInstruction.parts[0].text as string
+    expect(prompt).toMatch(/phrase entière redite/i)
+  })
 })
 
 describe('normalizeCaptionWithLLM — texte vide (rien à nettoyer)', () => {
