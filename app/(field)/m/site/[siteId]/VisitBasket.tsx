@@ -10,6 +10,7 @@ import { endVisitAction } from './visit-actions'
 import { deleteVisitAction } from '@/app/(field)/m/visite/[reportId]/debrief-actions'
 import {
   removeCaptureAction,
+  removeCaptureByClientUuidAction,
   setCaptureStarAction,
   setCaptureViewpointAction,
   addQuestionCaptureAction,
@@ -22,8 +23,8 @@ import { uploadReportAttachmentAction } from './report-actions'
 import { PhotoAnnotator } from './PhotoAnnotator'
 import { GhostCamera } from './GhostCamera'
 import { VideoRecorder } from './VideoRecorder'
-import { PostShutterDictation } from './PostShutterDictation'
-import { queueVisitCapture, listQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
+import { PostShutterDictation, type PostShutterGpsInfo } from './PostShutterDictation'
+import { queueVisitCapture, listQueuedVisitCapturesByReport, removeQueuedVisitCapture } from '@/lib/field/visit-capture-queue'
 import { setWatchlistItemStateAction, addWatchlistItemAction, getWatchlistContextAction } from './watchlist-actions'
 import type { WatchContext } from '@/lib/visits/watchlist-context'
 import type { DbVisitWatchlistItem, WatchlistItemState } from '@/types/db'
@@ -140,6 +141,10 @@ export function VisitBasket({
   // Micro post-shutter : écran optionnel juste après une vraie prise photo
   // (retour de l'appareil natif). null = aucun écran affiché.
   const [postShutter, setPostShutter] = useState<{ clientUuid: string; previewUrl: string | null } | null>(null)
+  // Résultat GPS/altitude par clientUuid, pour la puce de l'écran post-shutter
+  // — la position se résout en fond (voir enqueueMedia) après l'ouverture de
+  // l'écran, jamais avant : absence d'entrée = « en cours » (statut 'locating').
+  const [capturePositions, setCapturePositions] = useState<Map<string, PostShutterGpsInfo>>(new Map())
   // Repli natif de la caméra fantôme : la prochaine photo native sera chaînée
   // à ce point de repère (sans fantôme, mais la série reste continue).
   const nextPhotoViewpointRef = useRef<string | null>(null)
@@ -168,11 +173,19 @@ export function VisitBasket({
   // n'est plus jamais avalé en silence : `geoStatus` reste visible en permanence.
   const [geoEnabled, setGeoEnabled] = useState(true)
   const [geoStatus, setGeoStatus] = useState<GeoStatus>('idle')
+  // Miroir synchrone de `geoStatus` : `setState` n'est pas immédiat, alors que
+  // la puce GPS post-shutter doit lire le statut résultant d'UNE tentative
+  // précise juste après son `await` (cf. capturePositions plus bas).
+  const geoStatusRef = useRef<GeoStatus>('idle')
+  function applyGeoStatus(status: GeoStatus) {
+    geoStatusRef.current = status
+    setGeoStatus(status)
+  }
   useEffect(() => {
     try {
       if (typeof window !== 'undefined' && window.localStorage.getItem(GEO_DISABLED_KEY) === '1') {
         setGeoEnabled(false)
-        setGeoStatus('user-disabled')
+        applyGeoStatus('user-disabled')
       }
     } catch { /* localStorage indisponible → géoloc tentée par défaut cette visite */ }
   }, [])
@@ -183,7 +196,7 @@ export function VisitBasket({
       else window.localStorage.setItem(GEO_DISABLED_KEY, '1')
     } catch { /* ignore */ }
     setGeoEnabled(next)
-    setGeoStatus(next ? 'idle' : 'user-disabled')
+    applyGeoStatus(next ? 'idle' : 'user-disabled')
   }
   // Optimisation OPPORTUNISTE uniquement : si l'API Permissions répond 'denied',
   // on s'épargne l'appel getCurrentPosition. Jamais une source de vérité — le
@@ -199,17 +212,17 @@ export function VisitBasket({
     }
   }
   async function getOneShotPosition(): Promise<{ lat: number; lng: number; accuracy: number | null; altitude: number | null; altitudeAccuracy: number | null } | null> {
-    if (!geoEnabled) { setGeoStatus('user-disabled'); return null }
-    if (typeof navigator === 'undefined' || !navigator.geolocation) { setGeoStatus('unavailable'); return null }
-    setGeoStatus('locating')
+    if (!geoEnabled) { applyGeoStatus('user-disabled'); return null }
+    if (typeof navigator === 'undefined' || !navigator.geolocation) { applyGeoStatus('unavailable'); return null }
+    applyGeoStatus('locating')
     if (await isPermissionKnownDenied()) {
-      setGeoStatus('permission-denied')
+      applyGeoStatus('permission-denied')
       return null
     }
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
         (p) => {
-          setGeoStatus('success')
+          applyGeoStatus('success')
           resolve({
             lat: p.coords.latitude,
             lng: p.coords.longitude,
@@ -219,7 +232,7 @@ export function VisitBasket({
           })
         },
         (err) => {
-          setGeoStatus(mapGeolocationError(err.code))
+          applyGeoStatus(mapGeolocationError(err.code))
           resolve(null)
         },
         { enableHighAccuracy: true, timeout: 6000, maximumAge: 30000 },
@@ -371,6 +384,14 @@ export function VisitBasket({
     // 2) Persistance locale + position (opt-in) en tâche de fond — jamais bloquant.
     ;(async () => {
       const pos = await getOneShotPosition()
+      // Puce GPS/altitude post-shutter (lit geoStatusRef, pas geoStatus : cette
+      // tentative précise vient de se résoudre juste au-dessus, le state React
+      // n'a peut-être pas encore re-rendu ce composant).
+      setCapturePositions((prev) => {
+        const next = new Map(prev)
+        next.set(clientUuid, { status: geoStatusRef.current, lat: pos?.lat ?? null, lng: pos?.lng ?? null, accuracyM: pos?.accuracy ?? null, altitudeM: pos?.altitude ?? null })
+        return next
+      })
       // Photo : compression/redimensionnement AVANT la file (50 photos plein
       // format satureraient IndexedDB + upload + PDF). Non bloquant, non destructif.
       const blob = kind === 'photo' ? await compressImageFile(file) : file
@@ -410,6 +431,33 @@ export function VisitBasket({
     // reprise de référence ou non — la reprise ne doit plus court-circuiter la
     // dictée (repli natif d'une reprise de point de référence inclus).
     setPostShutter({ clientUuid, previewUrl })
+  }
+
+  // ── Reprendre (↶) ──────────────────────────────────────────────────────────
+  // Annule la photo qui vient d'être prise puis rouvre directement l'appareil
+  // natif — jamais un second pas manuel pour reprendre le cadrage. La capture
+  // n'a le plus souvent pas encore de capture_id serveur (upload en fond) : on
+  // retire d'abord la file locale (avant tout réseau, cas courant) ; le filet
+  // removeCaptureByClientUuidAction couvre la course où l'upload a déjà confirmé
+  // côté serveur pendant que l'agent décidait de reprendre.
+  async function retakeCapture(clientUuid: string, previewUrl: string | null) {
+    setPending((prev) => prev.filter((p) => p.clientUuid !== clientUuid))
+    setCapturePositions((prev) => {
+      if (!prev.has(clientUuid)) return prev
+      const next = new Map(prev)
+      next.delete(clientUuid)
+      return next
+    })
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setPostShutter(null)
+
+    const queuedEntry = queued.find((q) => q.clientUuid === clientUuid)
+    if (queuedEntry) await removeQueuedVisitCapture(queuedEntry.tempId).catch(() => {})
+    const r = await removeCaptureByClientUuidAction({ client_uuid: clientUuid }).catch(() => null)
+    if (r && !r.ok) toast.error(r.error)
+    else void refresh()
+
+    fileRef.current?.click()
   }
 
   // ── Vidéo ──────────────────────────────────────────────────────────────────
@@ -1248,6 +1296,8 @@ export function VisitBasket({
           siteId={siteId}
           clientUuid={postShutter.clientUuid}
           previewUrl={postShutter.previewUrl}
+          gpsInfo={capturePositions.get(postShutter.clientUuid)}
+          onRetake={retakeCapture}
           onDone={() => setPostShutter(null)}
         />
       )}

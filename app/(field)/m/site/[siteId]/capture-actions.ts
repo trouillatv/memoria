@@ -14,6 +14,7 @@ import { revalidatePath } from 'next/cache'
 import { requireFieldAgent } from '@/lib/field/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { mimeToExt, transcribeAudio } from '@/lib/ai/transcribe'
+import { normalizeCaptionWithLLM } from '@/lib/ai/normalize-caption'
 import { getSiteReport, addReportAttachment } from '@/lib/db/site-reports'
 import { addCapturedKnowledge } from '@/lib/db/captured-knowledge'
 import {
@@ -229,9 +230,12 @@ export async function addVocalCaptureAction(
 // deux points d'entrée (juste après la prise, dans le triage) écrivent tous
 // les deux dans body via appendCaptureCaption (fusion, jamais d'écrasement).
 
-// Transcription seule — aucun upload, aucune ligne visit_capture créée ici.
-// Partagée par les deux points d'entrée ; réutilise le même moteur STT que le
-// mémo vocal (Gemini → Whisper → vide), pas un nouveau pipeline.
+// Transcription + nettoyage éditorial — aucun upload, aucune ligne visit_capture créée
+// ici. Partagée par les deux points d'entrée ; réutilise le même moteur STT que le
+// mémo vocal (Gemini → Whisper → vide), pas un nouveau pipeline. Le nettoyage LLM
+// (normalizeCaptionWithLLM) est une SEULE étape supplémentaire bornée sur le même
+// texte — pas un second appel IA parallèle. Un échec du nettoyage retombe sur le
+// transcript STT brut : la dictée n'est jamais perdue pour un incident de nettoyage.
 export async function transcribeDictationAction(
   formData: FormData,
 ): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
@@ -247,12 +251,15 @@ export async function transcribeDictationAction(
   if (audio.size > MAX_AUDIO_BYTES) return { ok: false, error: 'Dictée trop longue' }
 
   const mime = audio.type || 'audio/webm'
+  let raw: string
   try {
-    const text = await transcribeAudio(await audio.arrayBuffer(), mime, mimeToExt(mime), siteId)
-    return { ok: true, text: text.trim() }
+    raw = (await transcribeAudio(await audio.arrayBuffer(), mime, mimeToExt(mime), siteId)).trim()
   } catch {
     return { ok: false, error: 'Transcription indisponible' }
   }
+
+  const normalized = await normalizeCaptionWithLLM(raw)
+  return { ok: true, text: normalized.ok && normalized.caption ? normalized.caption : raw }
 }
 
 const appendByClientUuidSchema = z.object({
@@ -744,6 +751,51 @@ export async function revertCaptureLocationAction(
   }
 }
 
+const locationCorrectionByClientUuidSchema = z.object({
+  client_uuid: z.string().uuid(),
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+})
+
+// Puce GPS post-shutter : la capture vient d'être déposée localement (mêmes
+// raisons que appendCaptionByClientUuidAction) — pas encore forcément de
+// capture_id serveur au moment où l'agent tape sur la puce.
+export async function correctCaptureLocationByClientUuidAction(
+  input: z.input<typeof locationCorrectionByClientUuidSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = locationCorrectionByClientUuidSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    const captureId = await findVisitCaptureIdByClientUuid(parsed.data.client_uuid)
+    if (!captureId) return { ok: false, error: 'Photo pas encore confirmée — réessaie dans un instant' }
+    await setCaptureLocationCorrection(captureId, { lat: parsed.data.lat, lng: parsed.data.lng })
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
+  }
+}
+
+const revertLocationByClientUuidSchema = z.object({ client_uuid: z.string().uuid() })
+
+export async function revertCaptureLocationByClientUuidAction(
+  input: z.input<typeof revertLocationByClientUuidSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = revertLocationByClientUuidSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    const captureId = await findVisitCaptureIdByClientUuid(parsed.data.client_uuid)
+    if (!captureId) return { ok: false, error: 'Photo pas encore confirmée — réessaie dans un instant' }
+    await setCaptureLocationCorrection(captureId, null)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
+  }
+}
+
 const removeSchema = z.object({ capture_id: z.string().uuid() })
 
 export async function removeCaptureAction(
@@ -755,6 +807,31 @@ export async function removeCaptureAction(
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
   try {
     await removeCaptureWhileCollecting(parsed.data.capture_id)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
+  }
+}
+
+const removeByClientUuidSchema = z.object({ client_uuid: z.string().uuid() })
+
+// Reprendre (↶) sur l'écran post-shutter : la photo qu'on annule vient d'être
+// prise, elle n'a peut-être pas encore de capture_id serveur (upload en fond).
+// Filet de sécurité pour la course upload/annulation — le retrait de la file
+// locale (avant tout réseau) reste géré côté client (retakeCapture, VisitBasket.tsx).
+// « Rien à confirmer côté serveur » n'est pas une erreur : c'est le cas normal
+// d'une photo annulée avant même d'avoir atteint le serveur.
+export async function removeCaptureByClientUuidAction(
+  input: z.input<typeof removeByClientUuidSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = removeByClientUuidSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    const captureId = await findVisitCaptureIdByClientUuid(parsed.data.client_uuid)
+    if (!captureId) return { ok: true }
+    await removeCaptureWhileCollecting(captureId)
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec' }

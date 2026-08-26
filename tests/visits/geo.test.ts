@@ -16,6 +16,7 @@ import {
   formatGpsAccuracyCaption,
   formatCompactGpsAccuracy,
   formatAltitudeCaption,
+  formatPostShutterGpsChip,
   POOR_GPS_ACCURACY_M,
   LARGE_CORRECTION_MOVE_M,
 } from '@/lib/visits/geo'
@@ -378,6 +379,31 @@ describe('formatAltitudeCaption — légende discrète, jamais une cote topograp
   it('altitude connue → « altitude ~N m », sans précision (écran de tri, pas de métrologie)', () => {
     expect(formatAltitudeCaption(24)).toBe('altitude ~24 m')
     expect(formatAltitudeCaption(24.4)).toBe('altitude ~24 m')
+  })
+})
+
+describe('formatPostShutterGpsChip — puce post-shutter, jamais deux « ± » sur la même ligne (Vincent, 2026-08-26)', () => {
+  it('succès avec altitude → « 📍 GPS ±N m · Alt. ~N m »', () => {
+    expect(formatPostShutterGpsChip('success', 11, 24)).toBe('📍 GPS ±11 m · Alt. ~24 m')
+  })
+
+  it('succès sans altitude → altitude omise, jamais une valeur inventée', () => {
+    expect(formatPostShutterGpsChip('success', 11, null)).toBe('📍 GPS ±11 m')
+  })
+
+  it('permission refusée → libellé prouvable dédié', () => {
+    expect(formatPostShutterGpsChip('permission-denied', null, null)).toBe('📍 Localisation non autorisée')
+  })
+
+  it('en cours de localisation → état transitoire, pas un échec', () => {
+    expect(formatPostShutterGpsChip('locating', null, null)).toBe('📍 Localisation…')
+    expect(formatPostShutterGpsChip('idle', null, null)).toBe('📍 Localisation…')
+  })
+
+  it('position indisponible, désactivée ou sans précision exploitable → un seul libellé générique', () => {
+    expect(formatPostShutterGpsChip('unavailable', null, null)).toBe('📍 Localisation indisponible')
+    expect(formatPostShutterGpsChip('user-disabled', null, null)).toBe('📍 Localisation indisponible')
+    expect(formatPostShutterGpsChip('success', null, 24)).toBe('📍 Localisation indisponible')
   })
 })
 

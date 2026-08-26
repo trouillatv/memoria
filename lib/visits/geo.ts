@@ -115,6 +115,30 @@ export function formatAltitudeCaption(altitudeM: number | null): string | null {
   return `altitude ~${Math.round(altitudeM)} m`
 }
 
+/**
+ * Texte de la puce GPS/altitude de l'écran post-shutter (Vincent, lot rework
+ * post-shutter 2026-08-26) : jamais deux « ± » sur la même ligne (« GPS ±11 m
+ * · Alt. ~24 m ±8 m » explicitement rejeté en revue — la précision d'altitude
+ * reste une métadonnée technique secondaire, réservée au second niveau de
+ * détail au tap sur la puce). `status` distingue seulement ce qui est
+ * prouvable côté navigateur (cf. lib/field/geoloc-status.ts) : un refus de
+ * permission a son propre libellé, tout le reste (position indisponible,
+ * désactivée par l'utilisateur, précision manquante) retombe sur un unique
+ * « Localisation indisponible », jamais une cause inventée.
+ */
+export function formatPostShutterGpsChip(
+  status: 'idle' | 'locating' | 'success' | 'user-disabled' | 'permission-denied' | 'unavailable',
+  gpsAccuracyM: number | null,
+  altitudeM: number | null,
+): string {
+  if (status === 'permission-denied') return '📍 Localisation non autorisée'
+  if (status === 'locating' || status === 'idle') return '📍 Localisation…'
+  const accuracy = formatCompactGpsAccuracy(gpsAccuracyM)
+  if (status !== 'success' || !accuracy) return '📍 Localisation indisponible'
+  const altitudePart = altitudeM == null ? '' : ` · Alt. ~${Math.round(altitudeM)} m`
+  return `📍 GPS ${accuracy}${altitudePart}`
+}
+
 /** Une capture n'a sa place sur la carte que si elle est une preuve visuelle
  *  vérifiable sur place (photo/vidéo) : un point de carte sur un vocal ou une
  *  note n'a rien à montrer une fois cliqué — seuls photo/vidéo qualifient. */

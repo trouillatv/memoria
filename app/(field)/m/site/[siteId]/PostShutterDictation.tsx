@@ -2,7 +2,10 @@
 
 // Micro juste après le shutter — la photo vient d'être prise, l'agent peut soit
 // repartir immédiatement (✓ Continuer), soit dicter tant que le contexte est
-// encore frais (🎙 Décrire). Optionnel, jamais un pas obligatoire de plus.
+// encore frais (🎙 Décrire), soit reprendre le cadrage (↶ Reprendre). Écran
+// UNIQUE, jamais un pas modal forcé (Vincent, rework post-shutter 2026-08-26) :
+// la photo reste affichée en permanence, le contrôle micro change simplement
+// d'état sur place (idle → Écoute… → Je prépare la légende… → légende visible).
 //
 // La dictée n'est PAS un vocal autonome : elle alimente body de LA capture qui
 // vient d'être prise (par client_uuid), exactement le même champ que la légende
@@ -11,11 +14,28 @@
 // continuer la visite — la transcription + l'attachement se terminent en fond,
 // avec quelques tentatives, sans jamais perdre la photo ni bloquer l'agent.
 
-import { useRef, useState } from 'react'
-import { Mic, Square, Loader2, Check } from 'lucide-react'
+import { useState } from 'react'
+import { Mic, Square, Loader2, Check, X, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCaptionDictation } from '@/lib/field/use-caption-dictation'
-import { appendCaptionByClientUuidAction } from './capture-actions'
+import type { GeoStatus } from '@/lib/field/geoloc-status'
+import { formatPostShutterGpsChip } from '@/lib/visits/geo'
+import { appendCaptionByClientUuidAction, correctCaptureLocationByClientUuidAction, revertCaptureLocationByClientUuidAction } from './capture-actions'
+import { LocationCorrectionMap } from '@/components/LocationCorrectionMap'
+
+// Position résolue en fond par VisitBasket (cf. formatPostShutterGpsChip,
+// lib/visits/geo.ts) pour la puce GPS/altitude de cet écran — absence
+// d'entrée pour un client_uuid = tentative encore en cours ('locating').
+// lat/lng : mesure GPS brute d'origine, nécessaire pour ouvrir
+// LocationCorrectionMap au tap sur la puce (repère fixe non modifiable) — null
+// tant que status !== 'success'.
+export interface PostShutterGpsInfo {
+  status: GeoStatus
+  lat: number | null
+  lng: number | null
+  accuracyM: number | null
+  altitudeM: number | null
+}
 
 const MAX_ATTACH_ATTEMPTS = 3
 
@@ -34,111 +54,163 @@ async function attachWithRetry(clientUuid: string, text: string): Promise<{ ok: 
   return { ok: false, error: lastError }
 }
 
-type Stage = 'choice' | 'recording' | 'transcribing'
-
 export function PostShutterDictation({
   siteId,
   clientUuid,
   previewUrl,
+  gpsInfo,
+  onRetake,
   onDone,
 }: {
   siteId: string
   clientUuid: string
   previewUrl: string | null
+  /** Undefined tant que VisitBasket n'a pas encore posé d'entrée pour ce client_uuid (course normale, cf. enqueueMedia). */
+  gpsInfo: PostShutterGpsInfo | undefined
+  onRetake: (clientUuid: string, previewUrl: string | null) => void
   onDone: () => void
 }) {
-  const [stage, setStage] = useState<Stage>('choice')
   const dictation = useCaptionDictation(siteId)
-  const doneRef = useRef(false)
+  // État local, pas `dictation.state` : le contrôle micro de cet écran doit
+  // rester prévisible même si l'arrêt vient du silence détecté (callback async
+  // du hook) plutôt que d'un tap — un seul point de vérité pour les 3 phases
+  // visibles (Décrire / Écoute… / Je prépare la légende…).
+  const [phase, setPhase] = useState<'idle' | 'recording' | 'transcribing'>('idle')
+  const [caption, setCaption] = useState<string | null>(null)
+  const [showLocationMap, setShowLocationMap] = useState(false)
+  // Reflète une correction validée pendant cette session d'écran — la capture
+  // vient d'être prise, elle n'a jamais de correction préexistante au montage.
+  const [correction, setCorrection] = useState<{ lat: number; lng: number } | null>(null)
 
-  const leave = () => {
-    if (doneRef.current) return
-    doneRef.current = true
-    onDone()
-  }
+  const gps = gpsInfo ?? { status: 'locating' as const, lat: null, lng: null, accuracyM: null, altitudeM: null }
+  const gpsChipText = formatPostShutterGpsChip(gps.status, gps.accuracyM, gps.altitudeM)
+  const gpsChipTappable = gps.status === 'success' && gps.lat != null && gps.lng != null
 
-  async function handleDescribe() {
-    setStage('recording')
-    await dictation.start()
-  }
-
-  // Arrête l'enregistrement puis lance la transcription + l'attachement en
-  // fond : la promesse continue même si l'agent quitte cet écran tout de suite
-  // après (le texte capté ne doit jamais se perdre pour une histoire de réseau).
-  function handleStop() {
-    setStage('transcribing')
-    dictation.stop().then((text) => {
-      if (!text) return
-      void attachWithRetry(clientUuid, text).then((res) => {
-        if (!res.ok) toast.error(`Légende non enregistrée — ${res.error}`)
-      })
+  function handleAttachResult(text: string | null) {
+    if (!text) return
+    void attachWithRetry(clientUuid, text).then((res) => {
+      if (res.ok) setCaption(res.body)
+      else toast.error(`Légende non enregistrée — ${res.error}`)
     })
   }
 
-  function handleCancelRecording() {
-    dictation.cancel()
-    leave()
+  // Arrêt automatique sur silence : invoqué par le hook lui-même, jamais par
+  // un tap — doit ramener l'écran en phase idle exactement comme un arrêt
+  // manuel, sans jamais dupliquer l'attache (une seule résolution possible).
+  function handleAutoStop(text: string | null) {
+    setPhase('idle')
+    handleAttachResult(text)
   }
 
+  async function handleMicTap() {
+    if (phase === 'recording') {
+      setPhase('transcribing')
+      const text = await dictation.stop()
+      setPhase('idle')
+      handleAttachResult(text)
+      return
+    }
+    if (phase === 'transcribing') return
+    setPhase('recording')
+    const started = await dictation.start(handleAutoStop)
+    if (!started) setPhase('idle')
+  }
+
+  function leave() {
+    if (phase === 'recording') dictation.stop().then(handleAttachResult)
+    onDone()
+  }
+
+  function handleRetake() {
+    if (phase === 'recording') dictation.cancel()
+    onRetake(clientUuid, previewUrl)
+  }
+
+  const micLabel = phase === 'recording' ? 'Écoute…' : phase === 'transcribing' ? 'Je prépare la légende…' : 'Décrire'
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-5 bg-background/98 p-6 text-center">
-      {previewUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={previewUrl} alt="" className="h-40 w-40 rounded-2xl border border-emerald-500/30 object-cover shadow-sm" />
-      )}
+    <div className="fixed inset-0 z-50 flex flex-col bg-background/98">
+      <div className="flex items-center justify-between gap-2 p-3">
+        <button
+          type="button" onClick={leave} aria-label="Fermer"
+          className="rounded-full bg-black/10 p-2 text-foreground/70 active:scale-95 dark:bg-white/10"
+        >
+          <X className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => gpsChipTappable && setShowLocationMap(true)}
+          disabled={!gpsChipTappable}
+          className="rounded-full bg-black/10 px-3 py-1.5 text-[11px] font-medium text-foreground/70 disabled:opacity-70 dark:bg-white/10"
+        >
+          {gpsChipText}
+        </button>
+      </div>
 
-      {stage === 'choice' && (
-        <>
-          <p className="text-sm font-medium text-foreground">Photo enregistrée</p>
-          <div className="flex w-full max-w-xs flex-col gap-2">
-            <button
-              type="button" onClick={handleDescribe}
-              className="flex items-center justify-center gap-2 rounded-xl border border-emerald-600 bg-emerald-50 py-3 text-sm font-semibold text-emerald-800 active:scale-[0.98] dark:bg-emerald-950/30 dark:text-emerald-200"
-            >
-              <Mic className="h-4 w-4" /> Décrire
-            </button>
-            <button
-              type="button" onClick={leave}
-              className="flex items-center justify-center gap-2 rounded-xl bg-emerald-700 py-3 text-sm font-semibold text-white active:scale-[0.98]"
-            >
-              <Check className="h-4 w-4" /> Continuer
-            </button>
-          </div>
-        </>
-      )}
+      <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
+        {previewUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={previewUrl} alt="" className="h-56 w-56 rounded-2xl border border-emerald-500/30 object-cover shadow-sm" />
+        )}
 
-      {stage === 'recording' && (
-        <>
-          <p className="inline-flex items-center gap-2 text-sm font-medium text-emerald-800 dark:text-emerald-200">
-            <Mic className="h-4 w-4 animate-pulse" /> Écoute…
-          </p>
-          <div className="flex w-full max-w-xs flex-col gap-2">
-            <button
-              type="button" onClick={handleStop}
-              className="flex items-center justify-center gap-2 rounded-xl bg-emerald-700 py-3 text-sm font-semibold text-white active:scale-[0.98]"
-            >
-              <Square className="h-4 w-4" /> Terminer
-            </button>
-            <button type="button" onClick={handleCancelRecording} className="py-2 text-xs text-muted-foreground underline underline-offset-2">
-              Passer
-            </button>
-          </div>
-        </>
-      )}
+        {caption && phase === 'idle' && (
+          <p className="max-w-xs text-xs text-muted-foreground">{caption}</p>
+        )}
+        {dictation.error && phase === 'idle' && (
+          <p className="max-w-xs text-xs text-destructive">{dictation.error}</p>
+        )}
 
-      {stage === 'transcribing' && (
-        <>
-          <p className="inline-flex items-center gap-2 text-sm font-medium text-emerald-800 dark:text-emerald-200">
-            <Loader2 className="h-4 w-4 animate-spin" /> Transcription…
-          </p>
+        <div className="grid w-full max-w-xs grid-cols-3 items-start gap-2">
+          <button
+            type="button" onClick={handleRetake}
+            className="flex flex-col items-center gap-1 rounded-xl border border-border/60 py-3 text-[11px] font-medium text-muted-foreground active:scale-[0.98]"
+          >
+            <RotateCcw className="h-4 w-4" /> Reprendre
+          </button>
           <button
             type="button" onClick={leave}
-            className="flex w-full max-w-xs items-center justify-center gap-2 rounded-xl bg-emerald-700 py-3 text-sm font-semibold text-white active:scale-[0.98]"
+            className="flex flex-col items-center gap-1 rounded-xl bg-emerald-700 py-3 text-[11px] font-semibold text-white active:scale-[0.98]"
           >
             <Check className="h-4 w-4" /> Continuer
           </button>
-          <p className="text-[11px] text-muted-foreground">La légende s&apos;attache en arrière-plan, même après ton départ de cet écran.</p>
-        </>
+          <button
+            type="button" onClick={handleMicTap}
+            disabled={phase === 'transcribing'}
+            className="flex flex-col items-center gap-1 rounded-xl border border-emerald-600 bg-emerald-50 py-3 text-[11px] font-semibold text-emerald-800 active:scale-[0.98] disabled:opacity-70 dark:bg-emerald-950/30 dark:text-emerald-200"
+          >
+            {phase === 'recording' ? (
+              <Square className="h-4 w-4" />
+            ) : phase === 'transcribing' ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Mic className="h-4 w-4" />
+            )}
+            {micLabel}
+          </button>
+        </div>
+      </div>
+
+      {showLocationMap && gps.lat != null && gps.lng != null && (
+        <LocationCorrectionMap
+          lat={gps.lat}
+          lng={gps.lng}
+          correctedLat={correction?.lat ?? null}
+          correctedLng={correction?.lng ?? null}
+          gpsAccuracyM={gps.accuracyM}
+          onCancel={() => setShowLocationMap(false)}
+          onValidate={async (nextLat, nextLng) => {
+            const r = await correctCaptureLocationByClientUuidAction({ client_uuid: clientUuid, lat: nextLat, lng: nextLng })
+            if (!r.ok) { toast.error(r.error); return }
+            setCorrection({ lat: nextLat, lng: nextLng })
+            setShowLocationMap(false)
+          }}
+          onRevert={async () => {
+            const r = await revertCaptureLocationByClientUuidAction({ client_uuid: clientUuid })
+            if (!r.ok) { toast.error(r.error); return }
+            setCorrection(null)
+            setShowLocationMap(false)
+          }}
+        />
       )}
     </div>
   )
