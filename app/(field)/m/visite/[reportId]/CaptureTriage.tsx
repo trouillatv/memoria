@@ -11,14 +11,16 @@
 // capture reste consultable. Cf. [[visite-trois-temps]].
 
 import { useRef, useState } from 'react'
-import { X, BookMarked, Eye, AlertTriangle, Check, Wrench, Trash2, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
+import { X, BookMarked, Eye, AlertTriangle, Check, Wrench, Trash2, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Pencil, MapPin } from 'lucide-react'
 import { toast } from 'sonner'
 import type { TriageDecision } from './debrief-actions'
 import type { VisitCaptureRow } from '@/lib/db/visit-captures'
 import type { CapturePreview } from './DebriefExpress'
 import { PhotoAnnotator } from '@/app/(field)/m/site/[siteId]/PhotoAnnotator'
 import { uploadReportAttachmentAction } from '@/app/(field)/m/site/[siteId]/report-actions'
-import { addPhotoCaptureAction } from '@/app/(field)/m/site/[siteId]/capture-actions'
+import { addPhotoCaptureAction, correctCaptureLocationAction, revertCaptureLocationAction } from '@/app/(field)/m/site/[siteId]/capture-actions'
+import { LocationCorrectionMap } from '@/components/LocationCorrectionMap'
+import { isMappableVisualCapture, resolveEffectivePosition, formatCompactGpsAccuracy, formatAltitudeCaption, POOR_GPS_ACCURACY_M } from '@/lib/visits/geo'
 
 // État actuel d'une capture → décision (pour surligner le tag déjà choisi).
 function currentDecision(c: VisitCaptureRow): TriageDecision | null {
@@ -74,6 +76,7 @@ export function CaptureTriage({
   onUndo,
   onClose,
   onAnnotated,
+  onLocationCorrected,
 }: {
   captures: VisitCaptureRow[]
   previews: Record<string, CapturePreview>
@@ -85,6 +88,9 @@ export function CaptureTriage({
   /** Rappel après ajout d'une photo ANNOTÉE (nouvelle capture) — le parent
    *  recharge la liste + les aperçus pour la faire apparaître. */
   onAnnotated?: () => void | Promise<void>
+  /** Rappel après correction/retour d'un emplacement — le parent recharge la
+   *  liste pour que `capture.corrected_lat/lng` reflète le nouvel état. */
+  onLocationCorrected?: () => void | Promise<void>
 }) {
   const total = captures.length
   const [index, setIndex] = useState(Math.min(Math.max(0, startIndex), Math.max(0, total - 1)))
@@ -94,6 +100,8 @@ export function CaptureTriage({
   const commentRef = useRef<HTMLInputElement>(null)
   // Annotation ouverte (url de la photo à annoter), null = fermée.
   const [annotate, setAnnotate] = useState<string | null>(null)
+  // Correction d'emplacement ouverte — carte plein écran par-dessus le triage.
+  const [correctingLocation, setCorrectingLocation] = useState(false)
 
   const capture = captures[index]
   if (!capture) { onClose(); return null }
@@ -102,6 +110,20 @@ export function CaptureTriage({
   const canComment = capture.kind === 'photo' || capture.kind === 'video'
   const canAnnotate = capture.kind === 'photo' && !!preview
   const chosen = currentDecision(capture)
+
+  // Ligne d'état GPS (Lot 3, redirection UX 2026-08-26) : correction rapprochée
+  // du moment de capture plutôt que reléguée à la fiche observation. Le GPS
+  // original doit exister (marqueur de référence fixe de LocationCorrectionMap) ;
+  // une correction déjà posée reste modifiable depuis ici.
+  const hasGps = isMappableVisualCapture(capture.kind) && capture.lat != null && capture.lng != null
+  const capturePosition = hasGps
+    ? resolveEffectivePosition({ lat: capture.lat, lng: capture.lng, correctedLat: capture.corrected_lat, correctedLng: capture.corrected_lng })
+    : null
+  const poorAccuracy = capturePosition?.source === 'gps' && capture.gps_accuracy_m != null && capture.gps_accuracy_m > POOR_GPS_ACCURACY_M
+  const compactAccuracy = capturePosition?.source === 'gps' ? formatCompactGpsAccuracy(capture.gps_accuracy_m) : null
+  // Altitude brute du navigateur (mig 352) — jamais recalculée par une correction
+  // 2D, donc affichée dès que la capture a un GPS d'origine, corrigé ou non.
+  const altitudeCaption = hasGps ? formatAltitudeCaption(capture.altitude_m, capture.altitude_accuracy_m) : null
 
   // Quand la capture est taguée « Action » / « Réserve », le commentaire N'EST PLUS
   // facultatif : il devient le TITRE de la suite. On le rend explicite et bien
@@ -257,6 +279,28 @@ export function CaptureTriage({
 
       {/* Décision — « Cette capture montre… » + 4 tags métier + supprimer. */}
       <div className="space-y-3 border-t p-4 safe-bottom">
+        {hasGps && capturePosition && (
+          <button
+            type="button"
+            onClick={() => setCorrectingLocation(true)}
+            className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-xs ${
+              poorAccuracy
+                ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300'
+                : 'border-input bg-background text-muted-foreground'
+            }`}
+          >
+            <span className="inline-flex min-w-0 items-center gap-1.5 font-medium">
+              {poorAccuracy ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> : <MapPin className="h-3.5 w-3.5 shrink-0" />}
+              <span className="truncate">
+                {poorAccuracy ? 'Position à vérifier' : capturePosition.source === 'manual' ? 'Emplacement corrigé' : 'Emplacement GPS'}
+                {compactAccuracy && <span className="font-normal opacity-80"> · {compactAccuracy}</span>}
+                {altitudeCaption && <span className="font-normal opacity-80"> · {altitudeCaption}</span>}
+              </span>
+            </span>
+            <span className="shrink-0 opacity-70">{poorAccuracy ? 'Voir sur la carte' : 'Voir / corriger'}</span>
+          </button>
+        )}
+
         <p className="text-sm font-medium text-muted-foreground">Cette capture montre…</p>
 
         {canComment && (
@@ -341,6 +385,32 @@ export function CaptureTriage({
           imageUrl={annotate}
           onCancel={() => setAnnotate(null)}
           onSave={saveAnnotation}
+        />
+      )}
+
+      {/* Correction d'emplacement plein écran — rapprochée du moment de capture
+          (Lot 3, redirection UX 2026-08-26). Retour direct au triage, MÊME
+          photo, sans perdre la progression. */}
+      {correctingLocation && hasGps && capture.lat != null && capture.lng != null && (
+        <LocationCorrectionMap
+          lat={capture.lat}
+          lng={capture.lng}
+          correctedLat={capture.corrected_lat}
+          correctedLng={capture.corrected_lng}
+          gpsAccuracyM={capture.gps_accuracy_m}
+          onCancel={() => setCorrectingLocation(false)}
+          onValidate={async (nextLat, nextLng) => {
+            const r = await correctCaptureLocationAction({ capture_id: capture.id, lat: nextLat, lng: nextLng })
+            if (!r.ok) { toast.error(r.error); return }
+            setCorrectingLocation(false)
+            await onLocationCorrected?.()
+          }}
+          onRevert={async () => {
+            const r = await revertCaptureLocationAction({ capture_id: capture.id })
+            if (!r.ok) { toast.error(r.error); return }
+            setCorrectingLocation(false)
+            await onLocationCorrected?.()
+          }}
         />
       )}
     </div>

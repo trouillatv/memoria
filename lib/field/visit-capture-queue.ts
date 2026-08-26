@@ -68,6 +68,10 @@ export interface QueuedVisitCapture {
   /** coords.accuracy du navigateur (mètres) au moment de la capture — même
    *  appel GPS que lat/lng, jamais une seconde requête. */
   accuracy?: number | null
+  /** coords.altitude / coords.altitudeAccuracy — même appel GPS, souvent
+   *  absents (null) selon l'appareil : jamais une valeur inventée. */
+  altitude?: number | null
+  altitudeAccuracy?: number | null
   takenAt: number // epoch ms
   attempts: number
   lastAttemptAt?: number // epoch ms — pour la disponibilité au retry (backoff)

@@ -129,9 +129,10 @@ export function DebriefExpress({
     return () => clearInterval(id)
   }, [hasPendingTranscript, reportId])
 
-  // Après ajout d'une photo annotée : recharge captures + aperçus pour la faire
-  // apparaître (nouvelle capture photo, non triée — le conducteur la taguera).
-  async function refreshAfterAnnotation() {
+  // Recharge captures + aperçus depuis le serveur — après ajout d'une photo
+  // annotée (nouvelle capture photo, non triée) ou après une correction/retour
+  // d'emplacement (corrected_lat/lng à jour).
+  async function refreshCaptures() {
     try {
       const [fresh, freshPreviews] = await Promise.all([
         refreshDebriefCapturesAction(reportId),
@@ -379,7 +380,8 @@ export function DebriefExpress({
           onDecide={(c, d, comment) => decide(c, d, comment)}
           onUndo={(c) => undo(c)}
           onClose={() => setTriageStart(null)}
-          onAnnotated={refreshAfterAnnotation}
+          onAnnotated={refreshCaptures}
+          onLocationCorrected={refreshCaptures}
         />
       )}
     </div>

@@ -7,12 +7,21 @@
 // (glisser ne sauvegarde rien : « Valider cet emplacement » commit explicite).
 // « GPS capturé = mesure originale immuable. Correction humaine = position
 // effective distincte. » — lat/lng ne sont jamais réécrites depuis ce composant.
+//
+// Redirection UX (Vincent, 2026-08-26) : UNE seule carte, jamais deux superposées
+// — le GPS d'origine reste une référence secondaire discrète (petit encart en
+// coin d'écran, visible seulement une fois qu'il y a quelque chose à comparer),
+// jamais un second repère flottant qui concurrence visuellement le marqueur
+// bleu déplaçable. Feedback « Déplacé de N m » calculé en direct par
+// distanceMeters (purement géométrique, jamais d'IA) ; au-delà de
+// LARGE_CORRECTION_MOVE_M, avertissement discret et NON bloquant — la
+// validation reste toujours possible.
 
 import { useEffect, useRef, useState } from 'react'
 import 'leaflet/dist/leaflet.css'
 import type { Map as LeafletMap, Marker } from 'leaflet'
-import { X, Check, Loader2, RotateCcw } from 'lucide-react'
-import { formatGpsAccuracyCaption } from '@/lib/visits/geo'
+import { X, Check, Loader2, RotateCcw, AlertTriangle } from 'lucide-react'
+import { formatGpsAccuracyCaption, formatCompactGpsAccuracy, distanceMeters, LARGE_CORRECTION_MOVE_M } from '@/lib/visits/geo'
 
 export function LocationCorrectionMap({
   lat,
@@ -44,6 +53,10 @@ export function LocationCorrectionMap({
   })
   const [saving, setSaving] = useState<'validate' | 'revert' | null>(null)
   const moved = draft.lat !== lat || draft.lng !== lng
+  // Feedback géométrique EN DIRECT, pur (haversine) — jamais d'IA, jamais bloquant
+  // (Vincent, redirection UX 2026-08-26) : « Déplacé de 42 m par rapport au GPS ».
+  const movedDistanceM = moved ? distanceMeters(lat, lng, draft.lat, draft.lng) : 0
+  const largeMove = moved && movedDistanceM > LARGE_CORRECTION_MOVE_M
 
   useEffect(() => {
     let cancelled = false
@@ -122,36 +135,59 @@ export function LocationCorrectionMap({
 
       <div className="relative flex-1 overflow-hidden">
         <div ref={ref} className="h-full w-full" />
-      </div>
 
-      <div className="space-y-2 border-t border-white/10 p-3 safe-bottom">
-        <p className="text-center text-[11px] text-white/70">
-          {formatGpsAccuracyCaption(gpsAccuracyM)
-            ? `${formatGpsAccuracyCaption(gpsAccuracyM)} — glissez le repère bleu, puis validez.`
-            : 'Glissez le repère bleu jusqu’au bon emplacement, puis validez.'}
-        </p>
-        <div className="flex items-center gap-2">
-          {(hasExistingCorrection || moved) && (
+        {/* Encart discret, coin de l'écran — le GPS d'origine reste une référence
+            secondaire, jamais un second repère flottant au centre qui concurrence
+            le marqueur bleu (Vincent, redirection UX 2026-08-26). N'apparaît que
+            s'il y a quelque chose à comparer/annuler. */}
+        {moved && (
+          <div className="absolute right-2.5 top-2.5 z-[1000] max-w-[180px] rounded-lg bg-black/70 px-2.5 py-2 text-white backdrop-blur">
+            <p className="flex items-center gap-1 text-[11px] font-medium">
+              <span className="inline-block h-2 w-2 shrink-0 rounded-full border border-white/70 bg-slate-400" aria-hidden />
+              Position GPS d&apos;origine
+            </p>
+            {formatCompactGpsAccuracy(gpsAccuracyM) && (
+              <p className="mt-0.5 text-[11px] text-white/70">{formatCompactGpsAccuracy(gpsAccuracyM)}</p>
+            )}
             <button
               type="button"
               onClick={hasExistingCorrection ? handleRevert : resetDraftToGps}
               disabled={saving !== null}
-              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-white/10 px-3 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+              className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-sky-300 disabled:opacity-50"
             >
-              {saving === 'revert' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-              Revenir à la position GPS
+              {saving === 'revert' ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+              Revenir ici
             </button>
-          )}
-          <button
-            type="button"
-            onClick={handleValidate}
-            disabled={saving !== null}
-            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            {saving === 'validate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            Valider cet emplacement
-          </button>
-        </div>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2 border-t border-white/10 p-3 safe-bottom">
+        {!moved ? (
+          <p className="text-center text-[11px] text-white/70">
+            {formatGpsAccuracyCaption(gpsAccuracyM)
+              ? `${formatGpsAccuracyCaption(gpsAccuracyM)} — glissez le repère bleu, puis validez.`
+              : 'Glissez le repère bleu jusqu’au bon emplacement, puis validez.'}
+          </p>
+        ) : (
+          <div className="text-center">
+            <p className="text-[11px] text-white/70">Déplacé de {Math.round(movedDistanceM)} m par rapport au GPS</p>
+            {largeMove && (
+              <p className="mt-0.5 flex items-center justify-center gap-1 text-[11px] text-amber-300">
+                <AlertTriangle className="h-3 w-3" /> Déplacement important par rapport à la mesure GPS
+              </p>
+            )}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={handleValidate}
+          disabled={saving !== null}
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {saving === 'validate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          Valider cet emplacement
+        </button>
       </div>
     </div>
   )

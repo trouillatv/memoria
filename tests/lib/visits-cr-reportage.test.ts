@@ -35,6 +35,8 @@ function cap(over: Partial<VisitCaptureRow> = {}): VisitCaptureRow {
     lat: null,
     lng: null,
     gps_accuracy_m: null,
+    altitude_m: null,
+    altitude_accuracy_m: null,
     corrected_lat: null,
     corrected_lng: null,
     captured_at: ts,

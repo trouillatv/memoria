@@ -191,7 +191,7 @@ export function VisitBasket({
       return false
     }
   }
-  async function getOneShotPosition(): Promise<{ lat: number; lng: number; accuracy: number | null } | null> {
+  async function getOneShotPosition(): Promise<{ lat: number; lng: number; accuracy: number | null; altitude: number | null; altitudeAccuracy: number | null } | null> {
     if (!geoEnabled) { setGeoStatus('user-disabled'); return null }
     if (typeof navigator === 'undefined' || !navigator.geolocation) { setGeoStatus('unavailable'); return null }
     setGeoStatus('locating')
@@ -203,7 +203,13 @@ export function VisitBasket({
       navigator.geolocation.getCurrentPosition(
         (p) => {
           setGeoStatus('success')
-          resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy ?? null })
+          resolve({
+            lat: p.coords.latitude,
+            lng: p.coords.longitude,
+            accuracy: p.coords.accuracy ?? null,
+            altitude: p.coords.altitude ?? null,
+            altitudeAccuracy: p.coords.altitudeAccuracy ?? null,
+          })
         },
         (err) => {
           setGeoStatus(mapGeolocationError(err.code))
@@ -355,6 +361,8 @@ export function VisitBasket({
         lat: pos?.lat ?? null,
         lng: pos?.lng ?? null,
         accuracy: pos?.accuracy ?? null,
+        altitude: pos?.altitude ?? null,
+        altitudeAccuracy: pos?.altitudeAccuracy ?? null,
         viewpointOf,
       })
       void syncNow()
@@ -438,6 +446,7 @@ export function VisitBasket({
         // « Remplacer l'affichage » → archive l'original (jamais supprimé).
         ...(replaceOriginal ? { replaces_capture_id: annotate.id } : {}),
         lat: pos?.lat, lng: pos?.lng, accuracy: pos?.accuracy ?? undefined,
+        altitude: pos?.altitude ?? undefined, altitudeAccuracy: pos?.altitudeAccuracy ?? undefined,
       })
       if (!cap.ok) { toast.error(cap.error); return }
       setAnnotate(null)
@@ -502,6 +511,8 @@ export function VisitBasket({
         lat: payload.lat ?? pos?.lat ?? null,
         lng: payload.lng ?? pos?.lng ?? null,
         accuracy: pos?.accuracy ?? null,
+        altitude: pos?.altitude ?? null,
+        altitudeAccuracy: pos?.altitudeAccuracy ?? null,
       })
       void syncNow()
     })().catch(() => {

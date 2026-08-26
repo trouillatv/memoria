@@ -75,9 +75,17 @@ export interface VisitCaptureRow {
    *  capture (mig 351). NULL pour les captures historiques et quand le
    *  navigateur ne fournit pas de valeur exploitable. */
   gps_accuracy_m: number | null
+  /** Altitude GPS brute (coords.altitude, mètres) au moment de la capture
+   *  (mig 352). NULL quand le navigateur ne fournit pas de valeur exploitable
+   *  — jamais une valeur inventée. Pas une cote topographique de géomètre. */
+  altitude_m: number | null
+  /** Précision de altitude_m (coords.altitudeAccuracy, mètres, mig 352). */
+  altitude_accuracy_m: number | null
   /** Correction manuelle de la position (mig 351, Lot 3). NULL = pas de
    *  correction ; la position effective reste lat/lng. Ne modifie jamais
-   *  lat/lng — cf. resolveEffectivePosition (lib/visits/geo.ts). */
+   *  lat/lng — cf. resolveEffectivePosition (lib/visits/geo.ts). Pas de
+   *  corrected_altitude_m : corriger une altitude en glissant un point sur
+   *  une carte 2D n'a pas de sens (revisiter seulement avec un MNT). */
   corrected_lat: number | null
   corrected_lng: number | null
   /** Instant RÉEL de la capture (mig 184) — EXIF/horodatage export. NULL en direct
@@ -119,6 +127,10 @@ export interface AddVisitCaptureInput {
   lng?: number | null
   /** coords.accuracy du navigateur (mètres) au moment de la capture (mig 351). */
   gpsAccuracyM?: number | null
+  /** coords.altitude du navigateur (mètres) au moment de la capture (mig 352). NULL si absent — jamais inventée. */
+  altitudeM?: number | null
+  /** coords.altitudeAccuracy du navigateur (mètres, mig 352). */
+  altitudeAccuracyM?: number | null
   /** Instant réel (mig 184) — posé à l'IMPORT pour reconstruire la chronologie.
    *  Laissé null en direct : created_at fait foi. */
   capturedAt?: string | null
@@ -182,6 +194,8 @@ export async function addVisitCapture(input: AddVisitCaptureInput): Promise<stri
       lat: input.lat ?? null,
       lng: input.lng ?? null,
       gps_accuracy_m: input.gpsAccuracyM ?? null,
+      altitude_m: input.altitudeM ?? null,
+      altitude_accuracy_m: input.altitudeAccuracyM ?? null,
       captured_at: input.capturedAt ?? null,
       captured_at_source: input.capturedAtSource ?? null,
       viewpoint_of: input.viewpointOf ?? null,
@@ -226,7 +240,7 @@ export async function listVisitCaptures(reportId: string): Promise<VisitCaptureR
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('report_id', reportId)
     .is('hidden_at', null) // masque un original ARCHIVÉ (remplacé par sa version annotée, mig 185)
     .order('captured_at', { ascending: true, nullsFirst: true })
@@ -240,7 +254,7 @@ export async function listVisitCapturesBySubject(subjectId: string): Promise<Vis
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('subject_id', subjectId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -256,7 +270,7 @@ export async function listVisitCapturesBySite(siteId: string, limit = 300): Prom
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('site_id', siteId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -274,7 +288,7 @@ export async function listVisitCapturesByDossier(dossierId: string, limit = 300)
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('dossier_id', dossierId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -363,7 +377,7 @@ export async function listSiteViewpointRows(siteId: string): Promise<VisitCaptur
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('site_id', siteId)
     .eq('kind', 'photo')
     .neq('status', 'discarded')
@@ -381,7 +395,7 @@ export async function listSitePhotoCaptures(siteId: string, limit = 500): Promis
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('site_id', siteId)
     .eq('kind', 'photo')
     .neq('status', 'discarded')

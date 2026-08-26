@@ -14,6 +14,10 @@ import {
   groupByProximity,
   buildLocationCorrectionPatch,
   formatGpsAccuracyCaption,
+  formatCompactGpsAccuracy,
+  formatAltitudeCaption,
+  POOR_GPS_ACCURACY_M,
+  LARGE_CORRECTION_MOVE_M,
 } from '@/lib/visits/geo'
 
 describe('distanceMeters', () => {
@@ -340,6 +344,44 @@ describe('formatGpsAccuracyCaption — légende factuelle, jamais une précision
 
   it('valeur non entière → arrondie pour l’affichage', () => {
     expect(formatGpsAccuracyCaption(17.6)).toBe('Précision GPS : ± 18 m')
+  })
+})
+
+describe('formatCompactGpsAccuracy — puce compacte pour ligne d’état (Lot 3, redirection UX 2026-08-26)', () => {
+  it('null → aucune puce', () => {
+    expect(formatCompactGpsAccuracy(null)).toBeNull()
+  })
+
+  it('valeur définie → « ±N m », arrondie', () => {
+    expect(formatCompactGpsAccuracy(11)).toBe('±11 m')
+    expect(formatCompactGpsAccuracy(17.6)).toBe('±18 m')
+  })
+})
+
+describe('POOR_GPS_ACCURACY_M / LARGE_CORRECTION_MOVE_M — seuils déterministes, jamais de blocage (Lot 3, redirection UX 2026-08-26)', () => {
+  it('seuils positifs et non nuls', () => {
+    expect(POOR_GPS_ACCURACY_M).toBeGreaterThan(0)
+    expect(LARGE_CORRECTION_MOVE_M).toBeGreaterThan(0)
+  })
+
+  it('un déplacement de correction au-delà du seuil est détectable par distanceMeters seul (aucune dépendance IA)', () => {
+    const d = distanceMeters(-22.2758, 166.458, -22.2758, 166.508)
+    expect(d).toBeGreaterThan(LARGE_CORRECTION_MOVE_M)
+  })
+})
+
+describe('formatAltitudeCaption — légende discrète, jamais une cote topographique (Vincent, 2026-08-26)', () => {
+  it('altitude null → rien à afficher, jamais une valeur inventée', () => {
+    expect(formatAltitudeCaption(null, null)).toBeNull()
+    expect(formatAltitudeCaption(null, 5)).toBeNull()
+  })
+
+  it('altitude connue sans précision → « altitude ~N m »', () => {
+    expect(formatAltitudeCaption(24, null)).toBe('altitude ~24 m')
+  })
+
+  it('altitude connue avec précision → précision entre parenthèses, jamais une certitude', () => {
+    expect(formatAltitudeCaption(24.4, 18)).toBe('altitude ~24 m (±18 m)')
   })
 })
 

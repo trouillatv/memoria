@@ -72,6 +72,50 @@ export function formatGpsAccuracyCaption(gpsAccuracyM: number | null): string | 
   return `Précision GPS : ± ${Math.round(gpsAccuracyM)} m`
 }
 
+/** Variante compacte de `formatGpsAccuracyCaption`, pour une puce/ligne d'état
+ *  (ex. « ±11 m ») plutôt qu'une phrase complète — même arrondi, même
+ *  `null` si aucune précision connue. */
+export function formatCompactGpsAccuracy(gpsAccuracyM: number | null): string | null {
+  if (gpsAccuracyM == null) return null
+  return `±${Math.round(gpsAccuracyM)} m`
+}
+
+/**
+ * Seuil « précision GPS à vérifier » (Lot 3, redirection UX 2026-08-26) :
+ * au-delà, la ligne d'état GPS de l'écran de triage passe d'un ton neutre
+ * (« Emplacement GPS ») à un ton d'alerte discret (« Position à vérifier »).
+ * Repère terrain, pas une preuve d'erreur : 30 m correspond à une mesure GPS
+ * dégradée (couvert forestier, encaissement, multi-trajet) plutôt qu'à la
+ * précision courante en extérieur dégagé (~10-25 m, cf. SAME_SPOT_RADIUS_M).
+ */
+export const POOR_GPS_ACCURACY_M = 30
+
+/**
+ * Seuil « déplacement important » lors d'une correction manuelle (Lot 3,
+ * redirection UX 2026-08-26) : au-delà, un avertissement discret et NON
+ * bloquant s'affiche pendant le glisser-déposer du repère de correction
+ * (ex. déplacement d'un point vers un autre chantier voisin par erreur de
+ * geste). Calcul purement géométrique (distanceMeters) — jamais une
+ * heuristique IA, jamais un blocage de la validation.
+ */
+export const LARGE_CORRECTION_MOVE_M = 300
+
+/**
+ * Légende discrète de l'altitude d'une capture (Vincent, 2026-08-26) :
+ * métadonnée SECONDAIRE, jamais présentée comme une cote topographique de
+ * géomètre — c'est une lecture brute du GPS téléphone, nettement moins fiable
+ * que lat/lng. `altitudeM: null` → rien à afficher (navigateur n'ayant rien
+ * fourni), jamais une valeur inventée. Quand la précision d'altitude est
+ * connue, elle est toujours donnée entre parenthèses pour ne jamais laisser
+ * lire « altitude ~24 m » comme un fait certain.
+ */
+export function formatAltitudeCaption(altitudeM: number | null, altitudeAccuracyM: number | null): string | null {
+  if (altitudeM == null) return null
+  const value = `altitude ~${Math.round(altitudeM)} m`
+  if (altitudeAccuracyM == null) return value
+  return `${value} (±${Math.round(altitudeAccuracyM)} m)`
+}
+
 /** Une capture n'a sa place sur la carte que si elle est une preuve visuelle
  *  vérifiable sur place (photo/vidéo) : un point de carte sur un vocal ou une
  *  note n'a rien à montrer une fois cliqué — seuls photo/vidéo qualifient. */
