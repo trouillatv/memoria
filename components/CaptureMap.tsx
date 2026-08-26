@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import 'leaflet/dist/leaflet.css'
-import type { Map as LeafletMap } from 'leaflet'
+import type Leaflet from 'leaflet'
+import type { Map as LeafletMap, TileLayer } from 'leaflet'
 import { formatClusterMarkerLabel } from '@/lib/visits/geo'
 import { clusterMarkersByPixel, MARKER_CLUSTER_RADIUS_PX } from '@/lib/visits/marker-cluster'
 import { PLAN_BASE_LAYER, type MapBaseLayerConfig } from '@/lib/field/map-base-layers'
@@ -117,6 +118,9 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const mapRef = useRef<LeafletMap | null>(null)
+  const leafletRef = useRef<typeof Leaflet | null>(null)
+  const tileLayerRef = useRef<TileLayer | null>(null)
+  const [mapReady, setMapReady] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -133,7 +137,12 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
       if (cancelled || !ref.current || mapRef.current) return
       const map = L.map(ref.current)
       mapRef.current = map
-      L.tileLayer(baseLayer.tileUrl, { attribution: baseLayer.attribution, maxZoom: baseLayer.maxZoom }).addTo(map)
+      leafletRef.current = L
+      // Le fond de carte (Plan/Satellite) est posé par l'effet séparé ci-dessous
+      // (déclenché par ce `setMapReady(true)`), jamais ici : un changement de
+      // fond ne doit jamais recréer cette carte ni ses marqueurs (Vincent,
+      // 2026-08-26 — même pattern que LocationCorrectionMap.tsx).
+      setMapReady(true)
 
       // Un point isolé — utilisé tel quel (branche simple) ou comme rendu d'un
       // cluster à une seule preuve (branche Terrain) : même popup/tooltip, sauf
@@ -299,8 +308,30 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
       map.on('zoomend', render)
     })
 
-    return () => { cancelled = true; mapRef.current?.off('zoomend'); mapRef.current?.remove(); mapRef.current = null }
-  }, [captures, siteId, linkPopups, baseLayer, clusterByZoom, linkContext, onOpenSingle, onOpenCluster])
+    return () => {
+      cancelled = true
+      mapRef.current?.off('zoomend')
+      mapRef.current?.remove()
+      mapRef.current = null
+      leafletRef.current = null
+      tileLayerRef.current = null
+      setMapReady(false)
+    }
+  }, [captures, siteId, linkPopups, clusterByZoom, linkContext, onOpenSingle, onOpenCluster])
+
+  // Fond de carte (Plan/Satellite) : effet SÉPARÉ du montage — ne remplace que
+  // la couche de tuiles, ne touche jamais aux marqueurs ni à la vue (même
+  // pattern que LocationCorrectionMap.tsx, Vincent 2026-08-26).
+  useEffect(() => {
+    const L = leafletRef.current
+    const map = mapRef.current
+    if (!L || !map || !mapReady) return
+    const layer = L.tileLayer(baseLayer.tileUrl, { attribution: baseLayer.attribution, maxZoom: baseLayer.maxZoom })
+    layer.addTo(map)
+    const previous = tileLayerRef.current
+    tileLayerRef.current = layer
+    if (previous) map.removeLayer(previous)
+  }, [baseLayer, mapReady])
 
   // Types réellement présents : la légende ne montre jamais un type absent de
   // cette carte (plus de « Vocal »/« Note » morts depuis le filtrage preuve

@@ -79,6 +79,7 @@ export function CaptureTriage({
   onAnnotated,
   onLocationCorrected,
   viewpointLabels = {},
+  mapboxToken = null,
 }: {
   captures: VisitCaptureRow[]
   previews: Record<string, CapturePreview>
@@ -96,6 +97,9 @@ export function CaptureTriage({
   /** Libellés des points de référence (mig 195) du chantier, par ancre —
    *  lecture seule, pour afficher « Reprise de : […] » / « Point de référence ». */
   viewpointLabels?: Record<string, string>
+  /** Résolu côté serveur depuis MAPBOX_TOKEN — même contrat que Terrain/CR,
+   *  cf. use-map-base-layer.ts. */
+  mapboxToken?: string | null
 }) {
   const total = captures.length
   const [index, setIndex] = useState(Math.min(Math.max(0, startIndex), Math.max(0, total - 1)))
@@ -489,6 +493,7 @@ export function CaptureTriage({
           correctedLat={capture.corrected_lat}
           correctedLng={capture.corrected_lng}
           gpsAccuracyM={capture.gps_accuracy_m}
+          mapboxToken={mapboxToken}
           onCancel={() => setCorrectingLocation(false)}
           onValidate={async (nextLat, nextLng) => {
             const r = await correctCaptureLocationAction({ capture_id: capture.id, lat: nextLat, lng: nextLng })

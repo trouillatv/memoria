@@ -11,14 +11,13 @@
 // rencontrés ») : une visite ou toutes, photos et/ou vidéos. La période et les
 // objets métier spatialisés sont explicitement hors périmètre V1.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { MapPin } from 'lucide-react'
 import { CaptureMap, type MapCapture } from '@/components/CaptureMap'
 import { CaptureClusterGallery } from '@/components/CaptureClusterGallery'
-import { PLAN_BASE_LAYER, resolveBaseLayer, isSatelliteAvailable, type MapBaseLayerId } from '@/lib/field/map-base-layers'
-
-const BASE_LAYER_STORAGE_KEY = 'memoria.map.baseLayer'
+import { MapBaseLayerToggle } from '@/components/MapBaseLayerToggle'
+import { useMapBaseLayer } from '@/lib/field/use-map-base-layer'
 
 export interface TerrainVisitOption {
   id: string
@@ -36,12 +35,11 @@ export function TerrainMap({ siteId, captures, visits, mapboxToken }: {
   mapboxToken: string | null
 }) {
   const router = useRouter()
-  const satelliteAvailable = isSatelliteAvailable(mapboxToken)
+  const { baseLayer, baseLayerId, satelliteAvailable, setBaseLayerId } = useMapBaseLayer(mapboxToken)
 
   const [selectedVisitId, setSelectedVisitId] = useState<string>('all')
   const [showPhotos, setShowPhotos] = useState(true)
   const [showVideos, setShowVideos] = useState(true)
-  const [baseLayerId, setBaseLayerId] = useState<MapBaseLayerId>('plan')
   // Lot correctif Terrain (Vincent, 2026-08-26) : plus de popup Leaflet — un
   // marqueur seul navigue direct, un cluster ouvre cette galerie plein écran.
   // useCallback : CaptureMap réinitialise sa carte (perd zoom/position) si ces
@@ -50,25 +48,12 @@ export function TerrainMap({ siteId, captures, visits, mapboxToken }: {
   const openSingle = useCallback((c: MapCapture) => router.push(`/m/observation/${c.id}?from=terrain`), [router])
   const openCluster = useCallback((cs: MapCapture[]) => setGalleryCaptures(cs), [])
 
-  useEffect(() => {
-    const stored = window.localStorage.getItem(BASE_LAYER_STORAGE_KEY)
-    if (stored === 'satellite' && satelliteAvailable) setBaseLayerId('satellite')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const setBaseLayer = (id: MapBaseLayerId) => {
-    setBaseLayerId(id)
-    window.localStorage.setItem(BASE_LAYER_STORAGE_KEY, id)
-  }
-
   const filtered = useMemo(() => captures.filter((c) => {
     if (selectedVisitId !== 'all' && c.reportId !== selectedVisitId) return false
     if (c.kind === 'photo' && !showPhotos) return false
     if (c.kind === 'video' && !showVideos) return false
     return true
   }), [captures, selectedVisitId, showPhotos, showVideos])
-
-  const baseLayer = satelliteAvailable ? resolveBaseLayer(baseLayerId, mapboxToken) : PLAN_BASE_LAYER
 
   if (captures.length === 0) {
     return (
@@ -116,24 +101,7 @@ export function TerrainMap({ siteId, captures, visits, mapboxToken }: {
         </div>
 
         {satelliteAvailable && (
-          <div className="flex items-center gap-1 rounded-full border border-border bg-card p-0.5">
-            <button
-              type="button"
-              onClick={() => setBaseLayer('plan')}
-              aria-pressed={baseLayerId === 'plan'}
-              className={`rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors ${baseLayerId === 'plan' ? 'bg-foreground text-background' : 'text-muted-foreground'}`}
-            >
-              Plan
-            </button>
-            <button
-              type="button"
-              onClick={() => setBaseLayer('satellite')}
-              aria-pressed={baseLayerId === 'satellite'}
-              className={`rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors ${baseLayerId === 'satellite' ? 'bg-foreground text-background' : 'text-muted-foreground'}`}
-            >
-              Satellite
-            </button>
-          </div>
+          <MapBaseLayerToggle baseLayerId={baseLayerId} onChange={setBaseLayerId} variant="card" />
         )}
       </div>
 

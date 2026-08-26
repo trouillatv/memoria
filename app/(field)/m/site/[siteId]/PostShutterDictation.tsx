@@ -59,6 +59,7 @@ export function PostShutterDictation({
   clientUuid,
   previewUrl,
   gpsInfo,
+  mapboxToken = null,
   onRetake,
   onDone,
 }: {
@@ -67,6 +68,9 @@ export function PostShutterDictation({
   previewUrl: string | null
   /** Undefined tant que VisitBasket n'a pas encore posé d'entrée pour ce client_uuid (course normale, cf. enqueueMedia). */
   gpsInfo: PostShutterGpsInfo | undefined
+  /** Résolu côté serveur depuis MAPBOX_TOKEN — même contrat que Terrain/CR,
+   *  cf. use-map-base-layer.ts. */
+  mapboxToken?: string | null
   onRetake: (clientUuid: string, previewUrl: string | null) => void
   onDone: () => void
 }) {
@@ -197,6 +201,7 @@ export function PostShutterDictation({
           correctedLat={correction?.lat ?? null}
           correctedLng={correction?.lng ?? null}
           gpsAccuracyM={gps.accuracyM}
+          mapboxToken={mapboxToken}
           onCancel={() => setShowLocationMap(false)}
           onValidate={async (nextLat, nextLng) => {
             const r = await correctCaptureLocationByClientUuidAction({ client_uuid: clientUuid, lat: nextLat, lng: nextLng })

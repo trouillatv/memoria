@@ -38,6 +38,7 @@ export function DebriefExpress({
   initialSuites,
   watchlist = [],
   viewpointLabels = {},
+  mapboxToken = null,
 }: {
   reportId: string
   siteId: string
@@ -62,6 +63,10 @@ export function DebriefExpress({
   /** Libellés des points de référence (mig 195) du chantier, par ancre — lecture
    *  seule, pour indiquer « Reprise de : […] » dans le triage. */
   viewpointLabels?: Record<string, string>
+  /** Résolu côté serveur depuis MAPBOX_TOKEN — même contrat que Terrain/CR,
+   *  cf. use-map-base-layer.ts. Transmis à CaptureTriage pour son
+   *  LocationCorrectionMap plein écran. */
+  mapboxToken?: string | null
 }) {
   const router = useRouter()
   // Arrivée depuis « Clôturer » du Journal : on surligne le geste de fin —
@@ -387,6 +392,7 @@ export function DebriefExpress({
           onAnnotated={refreshCaptures}
           onLocationCorrected={refreshCaptures}
           viewpointLabels={viewpointLabels}
+          mapboxToken={mapboxToken}
         />
       )}
     </div>

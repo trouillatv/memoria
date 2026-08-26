@@ -19,9 +19,12 @@
 
 import { useEffect, useRef, useState } from 'react'
 import 'leaflet/dist/leaflet.css'
-import type { Map as LeafletMap, Marker } from 'leaflet'
+import type Leaflet from 'leaflet'
+import type { Map as LeafletMap, Marker, TileLayer } from 'leaflet'
 import { X, Check, Loader2, RotateCcw, AlertTriangle } from 'lucide-react'
 import { formatGpsAccuracyCaption, formatCompactGpsAccuracy, distanceMeters, LARGE_CORRECTION_MOVE_M } from '@/lib/visits/geo'
+import { MapBaseLayerToggle } from '@/components/MapBaseLayerToggle'
+import { useMapBaseLayer } from '@/lib/field/use-map-base-layer'
 
 export function LocationCorrectionMap({
   lat,
@@ -29,6 +32,7 @@ export function LocationCorrectionMap({
   correctedLat,
   correctedLng,
   gpsAccuracyM,
+  mapboxToken,
   onCancel,
   onValidate,
   onRevert,
@@ -39,6 +43,9 @@ export function LocationCorrectionMap({
   correctedLat: number | null
   correctedLng: number | null
   gpsAccuracyM: number | null
+  /** Résolu côté serveur depuis MAPBOX_TOKEN — même contrat que Terrain/CR,
+   *  cf. use-map-base-layer.ts (Vincent, lot baseLayer unifié 2026-08-26). */
+  mapboxToken: string | null
   onCancel: () => void
   onValidate: (lat: number, lng: number) => Promise<void>
   onRevert: () => Promise<void>
@@ -46,6 +53,10 @@ export function LocationCorrectionMap({
   const ref = useRef<HTMLDivElement>(null)
   const mapRef = useRef<LeafletMap | null>(null)
   const draggableRef = useRef<Marker | null>(null)
+  const leafletRef = useRef<typeof Leaflet | null>(null)
+  const tileLayerRef = useRef<TileLayer | null>(null)
+  const [mapReady, setMapReady] = useState(false)
+  const { baseLayer, baseLayerId, satelliteAvailable, setBaseLayerId } = useMapBaseLayer(mapboxToken)
   const hasExistingCorrection = correctedLat != null && correctedLng != null
   const [draft, setDraft] = useState<{ lat: number; lng: number }>({
     lat: correctedLat ?? lat,
@@ -65,7 +76,7 @@ export function LocationCorrectionMap({
       if (cancelled || !ref.current || mapRef.current) return
       const map = L.map(ref.current, { zoomControl: true })
       mapRef.current = map
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(map)
+      leafletRef.current = L
 
       // Repère GPS d'origine — fixe, jamais déplaçable : la mesure brute reste visible
       // pour comparer, même une fois une correction posée.
@@ -94,12 +105,35 @@ export function LocationCorrectionMap({
       const bounds = L.latLngBounds([[lat, lng], [draft.lat, draft.lng]])
       if (lat === draft.lat && lng === draft.lng) map.setView([lat, lng], 18)
       else map.fitBounds(bounds.pad(0.6), { maxZoom: 19 })
+
+      setMapReady(true)
     })
-    return () => { cancelled = true; mapRef.current?.remove(); mapRef.current = null; draggableRef.current = null }
+    return () => {
+      cancelled = true
+      mapRef.current?.remove()
+      mapRef.current = null
+      draggableRef.current = null
+      leafletRef.current = null
+    }
     // Un seul montage : le marqueur se déplace ensuite via Leaflet directement
     // (dragend), jamais en reconstruisant la carte à chaque changement de `draft`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Fond de carte (Plan/Satellite, mêmes tuiles que Terrain/CR) : effet SÉPARÉ
+  // du montage — ne fait que remplacer la couche de tuiles, ne touche jamais au
+  // marqueur, au zoom ni à la vue (préserve l'invariant « un seul montage »
+  // ci-dessus).
+  useEffect(() => {
+    const L = leafletRef.current
+    const map = mapRef.current
+    if (!L || !map || !mapReady) return
+    const layer = L.tileLayer(baseLayer.tileUrl, { attribution: baseLayer.attribution, maxZoom: baseLayer.maxZoom })
+    layer.addTo(map)
+    const previous = tileLayerRef.current
+    tileLayerRef.current = layer
+    if (previous) map.removeLayer(previous)
+  }, [baseLayer, mapReady])
 
   const resetDraftToGps = () => {
     setDraft({ lat, lng })
@@ -130,7 +164,11 @@ export function LocationCorrectionMap({
       <div className="flex items-center justify-between px-3 py-2 text-white">
         <button type="button" onClick={onCancel} aria-label="Annuler" className="rounded-full bg-white/10 p-2"><X className="h-5 w-5" /></button>
         <span className="text-sm font-medium">Corriger l&apos;emplacement</span>
-        <span className="w-9" aria-hidden />
+        {satelliteAvailable ? (
+          <MapBaseLayerToggle baseLayerId={baseLayerId} onChange={setBaseLayerId} variant="overlay" />
+        ) : (
+          <span className="w-9" aria-hidden />
+        )}
       </div>
 
       <div className="relative flex-1 overflow-hidden">

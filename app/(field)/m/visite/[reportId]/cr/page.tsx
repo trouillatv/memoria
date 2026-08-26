@@ -374,7 +374,7 @@ export default async function VisitCrPreviewPage({
       >
         {mapCaptures.length > 0 ? (
           <div className="overflow-hidden rounded-xl border">
-            <CrMapExpandable siteId={visit.site_id} captures={mapCaptures} />
+            <CrMapExpandable siteId={visit.site_id} captures={mapCaptures} mapboxToken={process.env.MAPBOX_TOKEN ?? null} />
             {/* Produit en fond l'instantané carte que le PDF réutilisera. */}
             <CrMapSnapshotTrigger reportId={reportId} />
           </div>

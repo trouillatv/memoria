@@ -31,7 +31,11 @@ export const PLAN_BASE_LAYER: MapBaseLayerConfig = {
   maxZoom: 19,
 }
 
-function satelliteBaseLayer(token: string): MapBaseLayerConfig {
+// Exportée (Lot Carte PDF Plan/Satellite, 2026-08-26) : cr-map-snapshot.ts en a
+// besoin côté serveur pour fabriquer l'instantané PDF avec EXACTEMENT le même
+// contrat fournisseur que les cartes interactives — jamais une seconde
+// configuration Mapbox.
+export function satelliteBaseLayer(token: string): MapBaseLayerConfig {
   return {
     id: 'satellite',
     label: 'Satellite',

@@ -289,6 +289,7 @@ export default async function FieldSitePage({
             initialCaptures={visitCaptures}
             viewpoints={visitViewpoints}
             watchlist={visitWatchlist}
+            mapboxToken={process.env.MAPBOX_TOKEN ?? null}
           />
         </div>
       ) : (

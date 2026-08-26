@@ -179,6 +179,7 @@ export default async function ObservationPage({
           createdAt={takenIso}
           body={capture.body}
           reportId={capture.report_id}
+          mapboxToken={process.env.MAPBOX_TOKEN ?? null}
         />
       )}
 

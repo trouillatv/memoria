@@ -104,6 +104,7 @@ export default async function VisitDebriefPage({
       impact={impact}
       initialSuites={suites}
       watchlist={watchlist}
+      mapboxToken={process.env.MAPBOX_TOKEN ?? null}
     />
   )
 }

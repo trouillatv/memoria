@@ -30,6 +30,8 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { ArrowUpRight, X } from 'lucide-react'
 import { CaptureMap, type MapCapture } from '@/components/CaptureMap'
 import { CaptureClusterGallery } from '@/components/CaptureClusterGallery'
+import { MapBaseLayerToggle } from '@/components/MapBaseLayerToggle'
+import { useMapBaseLayer } from '@/lib/field/use-map-base-layer'
 
 const CrMapExpandContext = createContext<{ expanded: boolean; setExpanded: (v: boolean) => void } | null>(null)
 
@@ -57,10 +59,17 @@ export function CrMapExploreButton() {
   )
 }
 
-export function CrMapExpandable({ siteId, captures }: { siteId: string; captures: MapCapture[] }) {
+export function CrMapExpandable({ siteId, captures, mapboxToken }: {
+  siteId: string
+  captures: MapCapture[]
+  /** Résolu côté serveur (page CR) depuis MAPBOX_TOKEN — même contrat que
+   *  TerrainMap, cf. use-map-base-layer.ts. */
+  mapboxToken: string | null
+}) {
   const ctx = useContext(CrMapExpandContext)
   const expanded = ctx?.expanded ?? false
   const setExpanded = ctx?.setExpanded ?? (() => {})
+  const { baseLayer, baseLayerId, satelliteAvailable, setBaseLayerId } = useMapBaseLayer(mapboxToken)
 
   // Lot correctif Observation (Vincent, 2026-08-26) : le cluster n'ouvre plus
   // le popup Leaflet volumineux (débordement à 11+ preuves) — même galerie
@@ -80,7 +89,7 @@ export function CrMapExpandable({ siteId, captures }: { siteId: string; captures
   return (
     <>
       {!expanded && (
-        <CaptureMap siteId={siteId} captures={captures} heightClass="h-60" linkContext="cr" onOpenCluster={openCluster} />
+        <CaptureMap siteId={siteId} captures={captures} heightClass="h-60" linkContext="cr" baseLayer={baseLayer} onOpenCluster={openCluster} />
       )}
 
       {expanded && (
@@ -90,10 +99,14 @@ export function CrMapExpandable({ siteId, captures }: { siteId: string; captures
               <X className="h-5 w-5" />
             </button>
             <span className="text-sm font-medium">Localisation des observations</span>
-            <span className="w-9" aria-hidden />
+            {satelliteAvailable ? (
+              <MapBaseLayerToggle baseLayerId={baseLayerId} onChange={setBaseLayerId} variant="overlay" />
+            ) : (
+              <span className="w-9" aria-hidden />
+            )}
           </div>
           <div className="flex-1 overflow-hidden p-2 safe-bottom">
-            <CaptureMap siteId={siteId} captures={captures} heightClass="h-full" linkContext="cr" onOpenCluster={openCluster} />
+            <CaptureMap siteId={siteId} captures={captures} heightClass="h-full" linkContext="cr" baseLayer={baseLayer} onOpenCluster={openCluster} />
           </div>
         </div>
       )}

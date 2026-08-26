@@ -105,6 +105,7 @@ export function VisitBasket({
   initialCaptures,
   viewpoints = [],
   watchlist = [],
+  mapboxToken = null,
 }: {
   reportId: string
   siteId: string
@@ -120,6 +121,10 @@ export function VisitBasket({
   viewpoints?: Array<{ anchorId: string; label: string | null; lastUrl: string | null; shots: number }>
   /** Liste « À vérifier » de CETTE visite (mig 196) — figée au démarrage. */
   watchlist?: DbVisitWatchlistItem[]
+  /** Résolu côté serveur depuis MAPBOX_TOKEN — même contrat que Terrain/CR,
+   *  cf. use-map-base-layer.ts. Transmis à PostShutterDictation pour son
+   *  LocationCorrectionMap plein écran. */
+  mapboxToken?: string | null
 }) {
   const router = useRouter()
   const [captures, setCaptures] = useState<VisitCaptureRow[]>(initialCaptures)
@@ -1297,6 +1302,7 @@ export function VisitBasket({
           clientUuid={postShutter.clientUuid}
           previewUrl={postShutter.previewUrl}
           gpsInfo={capturePositions.get(postShutter.clientUuid)}
+          mapboxToken={mapboxToken}
           onRetake={retakeCapture}
           onDone={() => setPostShutter(null)}
         />

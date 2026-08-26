@@ -25,7 +25,7 @@ function renderHarness() {
   return render(
     <CrMapExpandProvider>
       <CrMapExploreButton />
-      <CrMapExpandable siteId="site-1" captures={[]} />
+      <CrMapExpandable siteId="site-1" captures={[]} mapboxToken={null} />
     </CrMapExpandProvider>
   )
 }

@@ -10,6 +10,7 @@ import { useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { CaptureMap } from '@/components/CaptureMap'
 import { LocationCorrectionMap } from '@/components/LocationCorrectionMap'
+import { useMapBaseLayer } from '@/lib/field/use-map-base-layer'
 import { resolveEffectivePosition, isMappableVisualCapture, formatObservationLocationLine } from '@/lib/visits/geo'
 import { correctCaptureLocationAction, revertCaptureLocationAction } from '@/app/(field)/m/site/[siteId]/capture-actions'
 
@@ -26,6 +27,7 @@ export function LocationSection({
   createdAt,
   body,
   reportId,
+  mapboxToken,
 }: {
   captureId: string
   siteId: string
@@ -41,9 +43,15 @@ export function LocationSection({
   createdAt: string
   body: string | null
   reportId: string
+  /** Résolu côté serveur depuis MAPBOX_TOKEN — même contrat que Terrain/CR,
+   *  cf. use-map-base-layer.ts. Carte inline sans switch visible : elle
+   *  respecte seulement la préférence déjà choisie ailleurs (Vincent, lot
+   *  baseLayer unifié 2026-08-26). */
+  mapboxToken: string | null
 }) {
   const router = useRouter()
   const [correcting, setCorrecting] = useState(false)
+  const { baseLayer } = useMapBaseLayer(mapboxToken)
   const position = resolveEffectivePosition({ lat, lng, correctedLat, correctedLng })
   if (!position) return null
 
@@ -56,6 +64,7 @@ export function LocationSection({
           siteId={siteId}
           heightClass="h-52"
           linkPopups={false}
+          baseLayer={baseLayer}
           captures={[{
             id: captureId,
             kind,
@@ -90,6 +99,7 @@ export function LocationSection({
           correctedLat={correctedLat}
           correctedLng={correctedLng}
           gpsAccuracyM={gpsAccuracyM}
+          mapboxToken={mapboxToken}
           onCancel={() => setCorrecting(false)}
           onValidate={async (nextLat, nextLng) => {
             const r = await correctCaptureLocationAction({ capture_id: captureId, lat: nextLat, lng: nextLng })
