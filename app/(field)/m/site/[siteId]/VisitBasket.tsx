@@ -22,6 +22,7 @@ import { uploadReportAttachmentAction } from './report-actions'
 import { PhotoAnnotator } from './PhotoAnnotator'
 import { GhostCamera } from './GhostCamera'
 import { VideoRecorder } from './VideoRecorder'
+import { PostShutterDictation } from './PostShutterDictation'
 import { queueVisitCapture, listQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
 import { setWatchlistItemStateAction, addWatchlistItemAction, getWatchlistContextAction } from './watchlist-actions'
 import type { WatchContext } from '@/lib/visits/watchlist-context'
@@ -133,6 +134,9 @@ export function VisitBasket({
   const [ghost, setGhost] = useState<{ anchorId: string; url: string; label: string | null } | null>(null)
   // Caméra vidéo intégrée (MOB-VID2a) — filmer dans l'app, clips de 20 s.
   const [videoRecorderOpen, setVideoRecorderOpen] = useState(false)
+  // Micro post-shutter : écran optionnel juste après une vraie prise photo
+  // (retour de l'appareil natif). null = aucun écran affiché.
+  const [postShutter, setPostShutter] = useState<{ clientUuid: string; previewUrl: string | null } | null>(null)
   // Repli natif de la caméra fantôme : la prochaine photo native sera chaînée
   // à ce point de repère (sans fantôme, mais la série reste continue).
   const nextPhotoViewpointRef = useRef<string | null>(null)
@@ -341,7 +345,7 @@ export function VisitBasket({
   // Règle d'or du Lot B : on affiche la capture immédiatement (optimiste), on la
   // pousse dans la file IndexedDB, et le drain de fond la monte avec retry réseau.
   // Aucun `await` réseau dans le geste : on rend la main tout de suite.
-  function enqueueMedia(file: File, kind: 'photo' | 'video' | 'vocal', viewpointOf?: string) {
+  function enqueueMedia(file: File, kind: 'photo' | 'video' | 'vocal', viewpointOf?: string): { clientUuid: string; previewUrl: string | null } {
     const clientUuid = crypto.randomUUID()
     const previewUrl = kind === 'vocal' ? null : URL.createObjectURL(file)
     // 1) Optimiste, SYNCHRONE : la vignette apparaît dans la timeline sur-le-champ.
@@ -372,6 +376,7 @@ export function VisitBasket({
       if (previewUrl) URL.revokeObjectURL(previewUrl)
       toast.error('Échec de l’enregistrement local')
     })
+    return { clientUuid, previewUrl }
   }
 
   // ── Photo ──────────────────────────────────────────────────────────────────
@@ -382,7 +387,11 @@ export function VisitBasket({
     // Repli natif d'une reprise de point de repère : la photo reste chaînée.
     const viewpointOf = nextPhotoViewpointRef.current ?? undefined
     nextPhotoViewpointRef.current = null
-    enqueueMedia(file, 'photo', viewpointOf)
+    const { clientUuid, previewUrl } = enqueueMedia(file, 'photo', viewpointOf)
+    // Micro post-shutter : uniquement pour une vraie prise au retour de
+    // l'appareil natif (le seul écran caméra hors contrôle app) — pas pour une
+    // reprise de point de repère (déjà cadrée par le fantôme, série continue).
+    if (!viewpointOf) setPostShutter({ clientUuid, previewUrl })
   }
 
   // ── Vidéo ──────────────────────────────────────────────────────────────────
@@ -1200,6 +1209,19 @@ export function VisitBasket({
             setVideoRecorderOpen(false)
             videoRef.current?.click()
           }}
+        />
+      )}
+
+      {/* Micro post-shutter : facultatif, jamais un pas de plus imposé — soit on
+          repart tout de suite (✓ Continuer), soit on dicte pendant que le
+          contexte est encore frais. Sans dictée ici, la légende reste possible
+          plus tard dans le triage (même champ, cf. capture-actions.ts). */}
+      {postShutter && (
+        <PostShutterDictation
+          siteId={siteId}
+          clientUuid={postShutter.clientUuid}
+          previewUrl={postShutter.previewUrl}
+          onDone={() => setPostShutter(null)}
         />
       )}
 

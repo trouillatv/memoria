@@ -14,6 +14,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { resolveEffectivePosition, isMappableVisualCapture, buildLocationCorrectionPatch } from '@/lib/visits/geo'
 import { invalidateCrMapSnapshot } from '@/lib/pdf/cr-map-snapshot'
+import { mergeCaption } from '@/lib/visits/caption-dictation'
 
 export type VisitCaptureKind = 'photo' | 'vocal' | 'note' | 'verification' | 'position' | 'video'
 export type VisitCaptureStatus = 'captured' | 'kept' | 'discarded' | 'processed'
@@ -602,6 +603,31 @@ export async function setCaptureTranscript(
   if (result.status === 'done') patch.body = result.text
   const { error } = await supabase.from('visit_capture').update(patch).eq('id', captureId)
   if (error) throw error
+}
+
+/**
+ * Ajoute un texte dicté (micro post-shutter ou micro du triage) à la légende
+ * d'une capture — jamais d'écrasement : la légende existante est conservée et
+ * complétée. Les deux points d'entrée écrivent dans LA MÊME `body`, il n'y a
+ * qu'une seule légende par capture (cf. [[reportage-photo-cr-editorial-valide]]).
+ * Retourne le texte final pour que l'appelant reflète l'état réel (garde
+ * contre une course entre deux dictées concurrentes sur la même capture).
+ */
+export async function appendCaptureCaption(captureId: string, text: string): Promise<string> {
+  const supabase = createAdminClient()
+  const { data: current, error: readError } = await supabase
+    .from('visit_capture')
+    .select('body')
+    .eq('id', captureId)
+    .single()
+  if (readError) throw readError
+  const merged = mergeCaption((current as { body: string | null } | null)?.body, text)
+  const { error } = await supabase
+    .from('visit_capture')
+    .update({ body: merged, updated_at: new Date().toISOString() })
+    .eq('id', captureId)
+  if (error) throw error
+  return merged
 }
 
 /**

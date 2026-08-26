@@ -10,17 +10,18 @@
 // Le tri ne supprime jamais : « Ne pas retenir » écarte du compte-rendu, la
 // capture reste consultable. Cf. [[visite-trois-temps]].
 
-import { useRef, useState } from 'react'
-import { X, BookMarked, Eye, AlertTriangle, Check, Wrench, Trash2, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Pencil, MapPin } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { X, BookMarked, Eye, AlertTriangle, Check, Wrench, Trash2, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Pencil, MapPin, Mic, Square, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { TriageDecision } from './debrief-actions'
 import type { VisitCaptureRow } from '@/lib/db/visit-captures'
 import type { CapturePreview } from './DebriefExpress'
 import { PhotoAnnotator } from '@/app/(field)/m/site/[siteId]/PhotoAnnotator'
 import { uploadReportAttachmentAction } from '@/app/(field)/m/site/[siteId]/report-actions'
-import { addPhotoCaptureAction, correctCaptureLocationAction, revertCaptureLocationAction } from '@/app/(field)/m/site/[siteId]/capture-actions'
+import { addPhotoCaptureAction, correctCaptureLocationAction, revertCaptureLocationAction, appendCaptionByCaptureIdAction } from '@/app/(field)/m/site/[siteId]/capture-actions'
 import { LocationCorrectionMap } from '@/components/LocationCorrectionMap'
 import { isMappableVisualCapture, resolveEffectivePosition, formatCompactGpsAccuracy, formatAltitudeCaption, POOR_GPS_ACCURACY_M } from '@/lib/visits/geo'
+import { useCaptionDictation } from '@/lib/field/use-caption-dictation'
 
 // État actuel d'une capture → décision (pour surligner le tag déjà choisi).
 function currentDecision(c: VisitCaptureRow): TriageDecision | null {
@@ -104,6 +105,20 @@ export function CaptureTriage({
   const [correctingLocation, setCorrectingLocation] = useState(false)
 
   const capture = captures[index]
+
+  // Dictée de légende dans le triage — même modalité, même champ `body` que la
+  // dictée post-shutter (cf. PostShutterDictation.tsx) : ici on cible par
+  // capture_id, jamais par client_uuid. `currentCaptureIdRef` reste à jour
+  // pendant l'attente réseau pour que le résultat ne s'applique QUE si l'agent
+  // n'a pas navigué vers une autre capture entre-temps (garde anti-fuite).
+  // Hooks appelés inconditionnellement (avant le `if (!capture)` plus bas) —
+  // `capture` peut être transitoirement absent (liste vidée) sans casser
+  // l'ordre des hooks entre deux rendus.
+  const [dictationStage, setDictationStage] = useState<'idle' | 'recording' | 'transcribing'>('idle')
+  const dictation = useCaptionDictation(capture?.site_id ?? '')
+  const currentCaptureIdRef = useRef(capture?.id ?? null)
+  useEffect(() => { currentCaptureIdRef.current = capture?.id ?? null }, [capture?.id])
+
   if (!capture) { onClose(); return null }
 
   const preview = previews[capture.id]
@@ -184,7 +199,42 @@ export function CaptureTriage({
   // seul — la fermeture est un geste volontaire (croix). On peut donc revenir
   // corriger une mauvaise manipulation autant qu'on veut.
   function go(delta: number) {
+    // Un enregistrement en cours n'a pas de sens sur une autre photo : on
+    // l'annule (pas de transcription) plutôt que de le laisser filer.
+    // Une transcription déjà lancée, elle, continue — son résultat se
+    // rattache quand même à la bonne capture, ciblée par id (test #4/#12).
+    if (dictationStage === 'recording') {
+      dictation.cancel()
+      setDictationStage('idle')
+    }
     setIndex((i) => (i + delta + total) % total)
+  }
+
+  // Micro du triage — enchaîne sur EXACTEMENT la même légende que la dictée
+  // post-shutter (append, jamais d'écrasement silencieux — test #6). La cible
+  // (capture_id) est figée au moment où l'enregistrement s'arrête ; si l'agent
+  // a depuis navigué vers une autre capture, le texte transcrit s'attache
+  // quand même à LA BONNE capture en base, mais ne touche plus l'input visible
+  // à l'écran (test #4/#12, pas de fuite entre captures).
+  async function handleMicTap() {
+    if (dictationStage === 'transcribing') return // double-tap guard
+    if (dictationStage === 'idle') {
+      const started = await dictation.start()
+      if (started) setDictationStage('recording')
+      return
+    }
+    if (dictationStage === 'recording') {
+      const targetCaptureId = capture.id
+      setDictationStage('transcribing')
+      const text = await dictation.stop()
+      setDictationStage('idle')
+      if (!text) return
+      const res = await appendCaptionByCaptureIdAction({ capture_id: targetCaptureId, text })
+      if (!res.ok) { toast.error(res.error); return }
+      if (currentCaptureIdRef.current === targetCaptureId && commentRef.current) {
+        commentRef.current.value = res.body
+      }
+    }
   }
 
   // Un TAP sur un tag enregistre la décision mais NE PASSE PAS à la suivante :
@@ -308,17 +358,41 @@ export function CaptureTriage({
             {commentLabel && (
               <p className={`text-[13px] font-medium ${needsTitle ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground'}`}>{commentLabel}</p>
             )}
-            <input
-              key={capture.id}
-              ref={commentRef}
-              defaultValue={capture.body ?? ''}
-              placeholder={commentPlaceholder}
-              onBlur={saveCommentIfTagged}
-              className={`w-full rounded-lg bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${
-                needsTitle ? 'border-2 border-emerald-400' : 'border border-input'
-              }`}
-              maxLength={500}
-            />
+            <div className="flex items-center gap-2">
+              <input
+                key={capture.id}
+                ref={commentRef}
+                defaultValue={capture.body ?? ''}
+                placeholder={commentPlaceholder}
+                onBlur={saveCommentIfTagged}
+                className={`w-full rounded-lg bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${
+                  needsTitle ? 'border-2 border-emerald-400' : 'border border-input'
+                }`}
+                maxLength={500}
+              />
+              {/* Même légende que la dictée post-shutter — ajoute à ce qui existe
+                  déjà, n'écrase jamais (test #6). Un texte tapé juste avant reste
+                  en place le temps de l'enregistrement (input non contrôlé). */}
+              <button
+                type="button"
+                onClick={handleMicTap}
+                aria-label={dictationStage === 'recording' ? 'Arrêter la dictée' : 'Dicter la légende'}
+                disabled={dictationStage === 'transcribing'}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition active:scale-95 ${
+                  dictationStage === 'recording'
+                    ? 'border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300'
+                    : 'border-input text-muted-foreground'
+                }`}
+              >
+                {dictationStage === 'recording' ? (
+                  <Square className="h-4 w-4 animate-pulse" />
+                ) : dictationStage === 'transcribing' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Mic className="h-4 w-4" />
+                )}
+              </button>
+            </div>
           </div>
         )}
 

@@ -13,7 +13,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { requireFieldAgent } from '@/lib/field/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { mimeToExt } from '@/lib/ai/transcribe'
+import { mimeToExt, transcribeAudio } from '@/lib/ai/transcribe'
 import { getSiteReport, addReportAttachment } from '@/lib/db/site-reports'
 import { addCapturedKnowledge } from '@/lib/db/captured-knowledge'
 import {
@@ -25,6 +25,7 @@ import {
   setCaptureStarred,
   setCaptureViewpoint,
   setCaptureLocationCorrection,
+  appendCaptureCaption,
   type VisitCaptureRow,
 } from '@/lib/db/visit-captures'
 import { uploadReportAttachmentAction } from './report-actions'
@@ -219,6 +220,85 @@ export async function addVocalCaptureAction(
   } catch {
     await supabase.storage.from(BUCKET).remove([storagePath]).catch(() => {})
     return { ok: false, error: 'Échec de la capture vocale' }
+  }
+}
+
+// ── Dictée de légende photo (post-shutter + triage) ──────────────────────────
+// La dictée est une MODALITÉ de saisie de la légende de LA capture courante —
+// jamais une nouvelle capture, jamais une déduction de « quelle photo ». Les
+// deux points d'entrée (juste après la prise, dans le triage) écrivent tous
+// les deux dans body via appendCaptureCaption (fusion, jamais d'écrasement).
+
+// Transcription seule — aucun upload, aucune ligne visit_capture créée ici.
+// Partagée par les deux points d'entrée ; réutilise le même moteur STT que le
+// mémo vocal (Gemini → Whisper → vide), pas un nouveau pipeline.
+export async function transcribeDictationAction(
+  formData: FormData,
+): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+
+  const siteId = formData.get('site_id')
+  if (typeof siteId !== 'string' || !z.string().uuid().safeParse(siteId).success) {
+    return { ok: false, error: 'Site invalide' }
+  }
+  const audio = formData.get('audio')
+  if (!(audio instanceof File) || audio.size === 0) return { ok: false, error: 'Audio manquant' }
+  if (audio.size > MAX_AUDIO_BYTES) return { ok: false, error: 'Dictée trop longue' }
+
+  const mime = audio.type || 'audio/webm'
+  try {
+    const text = await transcribeAudio(await audio.arrayBuffer(), mime, mimeToExt(mime), siteId)
+    return { ok: true, text: text.trim() }
+  } catch {
+    return { ok: false, error: 'Transcription indisponible' }
+  }
+}
+
+const appendByClientUuidSchema = z.object({
+  client_uuid: z.string().uuid(),
+  text: z.string().min(1),
+})
+
+// Post-shutter : la capture vient d'être déposée localement, on ne connaît que
+// son client_uuid (pas encore forcément confirmée côté serveur).
+export async function appendCaptionByClientUuidAction(
+  input: z.input<typeof appendByClientUuidSchema>,
+): Promise<{ ok: true; captureId: string; body: string } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = appendByClientUuidSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Requête invalide' }
+
+  try {
+    const captureId = await findVisitCaptureIdByClientUuid(parsed.data.client_uuid)
+    if (!captureId) return { ok: false, error: 'Photo pas encore confirmée — réessaie dans un instant' }
+    const body = await appendCaptureCaption(captureId, parsed.data.text)
+    return { ok: true, captureId, body }
+  } catch {
+    return { ok: false, error: 'Échec de l’enregistrement de la légende' }
+  }
+}
+
+const appendByCaptureIdSchema = z.object({
+  capture_id: z.string().uuid(),
+  text: z.string().min(1),
+})
+
+// Triage : la capture est déjà chargée avec un id serveur connu.
+export async function appendCaptionByCaptureIdAction(
+  input: z.input<typeof appendByCaptureIdSchema>,
+): Promise<{ ok: true; body: string } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = appendByCaptureIdSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Requête invalide' }
+
+  try {
+    const body = await appendCaptureCaption(parsed.data.capture_id, parsed.data.text)
+    return { ok: true, body }
+  } catch {
+    return { ok: false, error: 'Échec de l’enregistrement de la légende' }
   }
 }
 
