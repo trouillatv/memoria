@@ -181,3 +181,22 @@ describe('CrMapExpandable — rapport jamais réglé (explicit=false) : on fige 
     expect(window.localStorage.getItem(BASE_LAYER_STORAGE_KEY)).toBe('satellite')
   })
 })
+
+describe('CrMapExpandable — séparation stricte navigation/document (Vincent, 2026-08-27)', () => {
+  it('un tap Plan/Satellite dans le CR persiste cr_map_base_layer sans jamais toucher le hint ambiant Terrain', async () => {
+    window.localStorage.setItem(BASE_LAYER_STORAGE_KEY, 'plan')
+    setCrMapBaseLayerAction.mockResolvedValue(statusFor('satellite'))
+    renderHarness({
+      mapboxToken: 'tok',
+      initialStatus: { chosen: 'plan', explicit: true, satelliteAvailable: true },
+    })
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Satellite' })[0])
+
+    await waitFor(() => expect(setCrMapBaseLayerAction).toHaveBeenCalledWith('report-1', 'satellite'))
+    // Le choix documentaire de CE rapport ne doit jamais devenir la
+    // préférence de navigation ambiante — le contrôle « Carte du rapport »
+    // ne pilote que site_reports.cr_map_base_layer.
+    expect(window.localStorage.getItem(BASE_LAYER_STORAGE_KEY)).toBe('plan')
+  })
+})

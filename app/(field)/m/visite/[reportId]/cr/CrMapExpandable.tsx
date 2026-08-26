@@ -78,7 +78,7 @@ export function CrMapExpandable({ siteId, captures, mapboxToken, reportId, initi
   const ctx = useContext(CrMapExpandContext)
   const expanded = ctx?.expanded ?? false
   const setExpanded = ctx?.setExpanded ?? (() => {})
-  const { baseLayer, baseLayerId, satelliteAvailable, setBaseLayerId, setBaseLayerIdLocal } = useMapBaseLayer(mapboxToken)
+  const { baseLayer, baseLayerId, satelliteAvailable, setBaseLayerIdLocal } = useMapBaseLayer(mapboxToken)
 
   // Persistance PDF (site_reports.cr_map_base_layer) — état séparé de la
   // carte affichée (pilotée par baseLayerId ci-dessus), mais déclenché par le
@@ -120,8 +120,14 @@ export function CrMapExpandable({ siteId, captures, mapboxToken, reportId, initi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Séparation stricte des deux notions (Vincent, 2026-08-27) : ce contrôle
+  // s'appelle « Carte du rapport » — le choix qu'il porte est documentaire,
+  // propre à CE rapport, jamais une préférence de navigation. Il ne doit donc
+  // jamais écrire le hint ambiant `memoria.map.baseLayer` (Terrain,
+  // Observation, Correction GPS) : `setBaseLayerIdLocal` met à jour l'état
+  // React affiché sans toucher au localStorage partagé.
   const handleLayerChange = (layer: MapBaseLayerId) => {
-    setBaseLayerId(layer)
+    setBaseLayerIdLocal(layer)
     startTransition(async () => {
       const next = await setCrMapBaseLayerAction(reportId, layer)
       setStatus(next)
