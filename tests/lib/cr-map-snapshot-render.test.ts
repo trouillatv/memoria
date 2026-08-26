@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { Resvg } from '@resvg/resvg-js'
-import { buildSvg, renderMapPng, renderMapPixelsForTest, FONT_FAMILY } from '@/lib/pdf/cr-map-snapshot'
+import { buildSvg, renderMapPng, renderMapPixelsForTest, FONT_FAMILY, isCrMapSnapshotFresh, CURRENT_CR_MAP_RENDER_VERSION } from '@/lib/pdf/cr-map-snapshot'
 
 /** Compte les pixels quasi blancs (le fill du texte, #ffffff) dans une petite
  *  fenêtre centrée sur (cx, cy) — assez large pour couvrir un chiffre à
@@ -74,6 +74,28 @@ describe('cr-map-snapshot — le PNG réellement rendu affiche le chiffre (pas s
     expect(png.length).toBeGreaterThan(0)
     // Signature PNG (89 50 4E 47 0D 0A 1A 0A).
     expect(png.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+  })
+})
+
+describe('cr-map-snapshot — isCrMapSnapshotFresh() invalide par version du moteur, pas seulement par fond', () => {
+  it('même fond, version courante : réutilisable', () => {
+    expect(isCrMapSnapshotFresh({ path: 'x.png', baseLayer: 'plan', renderVersion: CURRENT_CR_MAP_RENDER_VERSION }, 'plan')).toBe(true)
+  })
+
+  it('même fond, version absente (NULL — cas réel du snapshot DIMENC-Sireis pré-ddcccbfb) : régénéré malgré un fond inchangé', () => {
+    expect(isCrMapSnapshotFresh({ path: 'x.png', baseLayer: 'plan', renderVersion: null }, 'plan')).toBe(false)
+  })
+
+  it('même fond, version antérieure à la version courante : régénéré', () => {
+    expect(isCrMapSnapshotFresh({ path: 'x.png', baseLayer: 'plan', renderVersion: CURRENT_CR_MAP_RENDER_VERSION - 1 }, 'plan')).toBe(false)
+  })
+
+  it('fond différent, même si version courante : régénéré (comportement existant préservé)', () => {
+    expect(isCrMapSnapshotFresh({ path: 'x.png', baseLayer: 'plan', renderVersion: CURRENT_CR_MAP_RENDER_VERSION }, 'satellite')).toBe(false)
+  })
+
+  it('aucun instantané stocké : régénéré', () => {
+    expect(isCrMapSnapshotFresh({ path: null, baseLayer: null, renderVersion: null }, 'plan')).toBe(false)
   })
 })
 

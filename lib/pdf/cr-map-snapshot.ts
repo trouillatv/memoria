@@ -14,6 +14,32 @@ import { satelliteBaseLayer, isSatelliteAvailable, type MapBaseLayerId } from '@
 const FONT_PATH = path.join(process.cwd(), 'lib/pdf/assets/fonts/LiberationSans-Bold.ttf')
 export const FONT_FAMILY = 'Liberation Sans'
 
+// Version du moteur de rendu carte (Vincent, correction durable Bug A,
+// 2026-08-27) — À INCRÉMENTER à chaque changement du rendu produit
+// (typographie, clustering, couleurs, tuilage...), jamais seulement documenté
+// en commentaire : `ensureCrMapSnapshot` régénère tout snapshot dont
+// `cr_map_snapshot_render_version` diffère de cette constante, même si le
+// fond Plan/Satellite n'a pas changé. Remplace une invalidation ponctuelle
+// par date de commit (non réutilisable pour un futur changement de moteur).
+export const CURRENT_CR_MAP_RENDER_VERSION = 1
+
+/**
+ * Un instantané stocké ne peut être réutilisé QUE s'il a été produit avec le
+ * fond actuellement choisi ET avec la version courante du moteur de rendu —
+ * les deux critères sont indépendants (Vincent, 2026-08-27). Extrait en
+ * fonction pure pour être testable sans base de données ni réseau.
+ */
+export function isCrMapSnapshotFresh(
+  snapshot: { path: string | null; baseLayer: MapBaseLayerId | null; renderVersion: number | null },
+  chosen: MapBaseLayerId,
+): boolean {
+  return (
+    snapshot.path != null &&
+    snapshot.baseLayer === chosen &&
+    snapshot.renderVersion === CURRENT_CR_MAP_RENDER_VERSION
+  )
+}
+
 // « Instantané carte » du compte-rendu. Le PDF ne fabrique JAMAIS la carte : cette
 // image est produite UNE SEULE FOIS (à l'ouverture de l'aperçu), stockée sur le
 // compte-rendu, puis réutilisée. Les tuiles OpenStreetMap sont assemblées ICI,
@@ -179,7 +205,7 @@ export async function ensureCrMapSnapshot(reportId: string): Promise<string | nu
   const supabase = createAdminClient()
   const { data: report } = await supabase
     .from('site_reports')
-    .select('id, tenant_id, cr_map_snapshot_path, cr_map_base_layer, cr_map_snapshot_base_layer')
+    .select('id, tenant_id, cr_map_snapshot_path, cr_map_base_layer, cr_map_snapshot_base_layer, cr_map_snapshot_render_version')
     .eq('id', reportId)
     .maybeSingle()
   if (!report) return null
@@ -188,9 +214,14 @@ export async function ensureCrMapSnapshot(reportId: string): Promise<string | nu
     cr_map_snapshot_path: string | null
     cr_map_base_layer: string | null
     cr_map_snapshot_base_layer: string | null
+    cr_map_snapshot_render_version: number | null
   }
   const chosen: MapBaseLayerId = row.cr_map_base_layer === 'satellite' ? 'satellite' : 'plan'
-  if (row.cr_map_snapshot_path && row.cr_map_snapshot_base_layer === chosen) return row.cr_map_snapshot_path // déjà produit avec CE fond → cache
+  const snapshotLayer: MapBaseLayerId | null =
+    row.cr_map_snapshot_base_layer === 'satellite' ? 'satellite' : row.cr_map_snapshot_base_layer === 'plan' ? 'plan' : null
+  if (isCrMapSnapshotFresh({ path: row.cr_map_snapshot_path, baseLayer: snapshotLayer, renderVersion: row.cr_map_snapshot_render_version }, chosen)) {
+    return row.cr_map_snapshot_path // déjà produit avec CE fond ET la version courante du moteur → cache
+  }
 
   const mapboxToken = process.env.MAPBOX_TOKEN ?? null
   if (chosen === 'satellite' && !isSatelliteAvailable(mapboxToken)) return null
@@ -289,7 +320,7 @@ export async function ensureCrMapSnapshot(reportId: string): Promise<string | nu
   if (upErr) return null
   await supabase
     .from('site_reports')
-    .update({ cr_map_snapshot_path: path, cr_map_snapshot_base_layer: chosen })
+    .update({ cr_map_snapshot_path: path, cr_map_snapshot_base_layer: chosen, cr_map_snapshot_render_version: CURRENT_CR_MAP_RENDER_VERSION })
     .eq('id', reportId)
   return path
 }
@@ -306,7 +337,7 @@ export async function invalidateCrMapSnapshot(reportId: string): Promise<void> {
   const supabase = createAdminClient()
   await supabase
     .from('site_reports')
-    .update({ cr_map_snapshot_path: null, cr_map_snapshot_base_layer: null })
+    .update({ cr_map_snapshot_path: null, cr_map_snapshot_base_layer: null, cr_map_snapshot_render_version: null })
     .eq('id', reportId)
 }
 
