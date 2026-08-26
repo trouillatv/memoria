@@ -8,13 +8,13 @@
 // localStorage/résolution — sinon deux implémentations peuvent diverger sur
 // l'URL de tuile, l'attribution ou le zoom max (Vincent, 2026-08-26).
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { PLAN_BASE_LAYER, resolveBaseLayer, isSatelliteAvailable, type MapBaseLayerId, type MapBaseLayerConfig } from './map-base-layers'
 
-// Exportée (Lot Carte PDF Plan/Satellite, 2026-08-26) : CrMapLayerControl.tsx
-// lit cette même clé pour proposer une valeur initiale au contrôle PDF quand
-// le rapport n'a jamais reçu de choix explicite — jamais une seconde clé qui
-// pourrait diverger.
+// Exportée (Lot Carte PDF Plan/Satellite, 2026-08-26) : toute surface qui a
+// besoin de connaître la préférence persistée (ex. CrMapExpandable.tsx pour
+// le contrôle Plan/Satellite du CR) lit cette même clé — jamais une seconde
+// clé qui pourrait diverger.
 export const BASE_LAYER_STORAGE_KEY = 'memoria.map.baseLayer'
 
 export function useMapBaseLayer(mapboxToken: string | null): {
@@ -37,6 +37,14 @@ export function useMapBaseLayer(mapboxToken: string | null): {
     window.localStorage.setItem(BASE_LAYER_STORAGE_KEY, id)
   }
 
-  const baseLayer = satelliteAvailable ? resolveBaseLayer(baseLayerId, mapboxToken) : PLAN_BASE_LAYER
+  // Mémoïsé : resolveBaseLayer() fabrique un nouvel objet à chaque appel côté
+  // Satellite — sans ce useMemo, chaque re-rendu (même sans changement de
+  // fond) recrée la référence, ce qui refait tourner l'effet de swap de
+  // tuiles dans CaptureMap.tsx et interrompt le chargement des tuiles Mapbox
+  // en cours (carte Satellite blanche, bug remonté par Vincent 2026-08-26).
+  const baseLayer = useMemo(
+    () => (satelliteAvailable ? resolveBaseLayer(baseLayerId, mapboxToken) : PLAN_BASE_LAYER),
+    [satelliteAvailable, baseLayerId, mapboxToken],
+  )
   return { baseLayer, baseLayerId, satelliteAvailable, setBaseLayerId }
 }

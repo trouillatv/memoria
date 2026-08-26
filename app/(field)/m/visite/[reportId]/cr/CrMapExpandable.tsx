@@ -26,12 +26,15 @@
 // plus d'une <CaptureMap> montée à la fois (rendu mutuellement exclusif) +
 // verrou de scroll du fond pendant l'overlay, en défense en profondeur.
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
-import { ArrowUpRight, X } from 'lucide-react'
+import { createContext, useCallback, useContext, useEffect, useState, useTransition, type ReactNode } from 'react'
+import { ArrowUpRight, Loader2, AlertTriangle, X } from 'lucide-react'
 import { CaptureMap, type MapCapture } from '@/components/CaptureMap'
 import { CaptureClusterGallery } from '@/components/CaptureClusterGallery'
 import { MapBaseLayerToggle } from '@/components/MapBaseLayerToggle'
 import { useMapBaseLayer } from '@/lib/field/use-map-base-layer'
+import type { MapBaseLayerId } from '@/lib/field/map-base-layers'
+import type { CrMapBaseLayerStatus } from '@/lib/pdf/cr-map-snapshot'
+import { setCrMapBaseLayerAction } from './map-snapshot-actions'
 
 const CrMapExpandContext = createContext<{ expanded: boolean; setExpanded: (v: boolean) => void } | null>(null)
 
@@ -59,17 +62,51 @@ export function CrMapExploreButton() {
   )
 }
 
-export function CrMapExpandable({ siteId, captures, mapboxToken }: {
+export function CrMapExpandable({ siteId, captures, mapboxToken, reportId, initialStatus }: {
   siteId: string
   captures: MapCapture[]
   /** Résolu côté serveur (page CR) depuis MAPBOX_TOKEN — même contrat que
    *  TerrainMap, cf. use-map-base-layer.ts. */
   mapboxToken: string | null
+  /** Persistance du fond choisi pour ce rapport (PDF) — même geste que celui
+   *  qui pilote la carte affichée (correctif Observation, 2026-08-26) :
+   *  Vincent avait deux contrôles Plan/Satellite déconnectés, l'un ne
+   *  changeait jamais la carte visible. UN SEUL contrôle fait les deux. */
+  reportId: string
+  initialStatus: CrMapBaseLayerStatus
 }) {
   const ctx = useContext(CrMapExpandContext)
   const expanded = ctx?.expanded ?? false
   const setExpanded = ctx?.setExpanded ?? (() => {})
   const { baseLayer, baseLayerId, satelliteAvailable, setBaseLayerId } = useMapBaseLayer(mapboxToken)
+
+  // Le choix explicite du rapport prime toujours sur le simple hint
+  // localStorage lu par useMapBaseLayer au montage (même doctrine que
+  // l'ancien CrMapLayerControl.tsx, absorbé ici). Effet déclaré APRÈS
+  // useMapBaseLayer(...) : React exécute les effets dans l'ordre de
+  // déclaration, celui-ci s'applique donc en second et a le dernier mot.
+  useEffect(() => {
+    if (initialStatus.explicit) setBaseLayerId(initialStatus.chosen)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Persistance PDF (site_reports.cr_map_base_layer) — état séparé de la
+  // carte affichée (pilotée par baseLayerId ci-dessus), mais déclenché par le
+  // MÊME tap : cf. handleLayerChange.
+  const [status, setStatus] = useState(initialStatus)
+  const [pending, startTransition] = useTransition()
+  const stale = status.explicit && status.snapshotLayer != null && status.snapshotLayer !== status.chosen
+  const staleLabel = stale
+    ? `${status.chosen === 'satellite' ? 'Satellite' : 'Plan'} demandé — carte du rapport non mise à jour`
+    : null
+
+  const handleLayerChange = (layer: MapBaseLayerId) => {
+    setBaseLayerId(layer)
+    startTransition(async () => {
+      const next = await setCrMapBaseLayerAction(reportId, layer)
+      setStatus(next)
+    })
+  }
 
   // Lot correctif Observation (Vincent, 2026-08-26) : le cluster n'ouvre plus
   // le popup Leaflet volumineux (débordement à 11+ preuves) — même galerie
@@ -89,7 +126,28 @@ export function CrMapExpandable({ siteId, captures, mapboxToken }: {
   return (
     <>
       {!expanded && (
-        <CaptureMap siteId={siteId} captures={captures} heightClass="h-60" linkContext="cr" baseLayer={baseLayer} onOpenCluster={openCluster} />
+        <>
+          {(satelliteAvailable || status.chosen === 'satellite') && (
+            <div className="mb-2 flex flex-col items-end gap-1 px-3 pt-3">
+              <div className="flex w-full items-center justify-between gap-2">
+                <span className="text-[12px] font-medium text-muted-foreground">Carte du rapport</span>
+                <div className="flex items-center gap-1.5">
+                  {pending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Génération de l’instantané" />}
+                  {!pending && stale && <AlertTriangle className="h-3.5 w-3.5 text-amber-500" aria-hidden="true" />}
+                  {satelliteAvailable ? (
+                    <MapBaseLayerToggle baseLayerId={baseLayerId} onChange={handleLayerChange} variant="card" />
+                  ) : (
+                    <span className="text-[12px] text-muted-foreground">Satellite indisponible — carte en Plan</span>
+                  )}
+                </div>
+              </div>
+              {!pending && staleLabel && (
+                <span className="text-[11px] font-medium text-amber-600">{staleLabel}</span>
+              )}
+            </div>
+          )}
+          <CaptureMap siteId={siteId} captures={captures} heightClass="h-60" linkContext="cr" baseLayer={baseLayer} onOpenCluster={openCluster} />
+        </>
       )}
 
       {expanded && (
@@ -100,7 +158,7 @@ export function CrMapExpandable({ siteId, captures, mapboxToken }: {
             </button>
             <span className="text-sm font-medium">Localisation des observations</span>
             {satelliteAvailable ? (
-              <MapBaseLayerToggle baseLayerId={baseLayerId} onChange={setBaseLayerId} variant="overlay" />
+              <MapBaseLayerToggle baseLayerId={baseLayerId} onChange={handleLayerChange} variant="overlay" />
             ) : (
               <span className="w-9" aria-hidden />
             )}

@@ -13,7 +13,6 @@ import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-ca
 import { isMappableVisualCapture, formatEvidenceNumberLabel } from '@/lib/visits/geo'
 import { CrMapExpandable, CrMapExpandProvider, CrMapExploreButton } from './CrMapExpandable'
 import { CrMapSnapshotTrigger } from './CrMapSnapshotTrigger'
-import { CrMapLayerControl } from './CrMapLayerControl'
 import { getCrMapBaseLayerStatus } from '@/lib/pdf/cr-map-snapshot'
 import { MemoriaRetained } from './MemoriaRetained'
 import { CrDocumentSections, type CrPhotoCandidate } from './CrDocumentSections'
@@ -380,10 +379,13 @@ export default async function VisitCrPreviewPage({
       >
         {mapCaptures.length > 0 ? (
           <div className="overflow-hidden rounded-xl border">
-            <div className="px-3 pt-3">
-              <CrMapLayerControl reportId={reportId} initialStatus={crMapLayerStatus} />
-            </div>
-            <CrMapExpandable siteId={visit.site_id} captures={mapCaptures} mapboxToken={process.env.MAPBOX_TOKEN ?? null} />
+            <CrMapExpandable
+              siteId={visit.site_id}
+              captures={mapCaptures}
+              mapboxToken={process.env.MAPBOX_TOKEN ?? null}
+              reportId={reportId}
+              initialStatus={crMapLayerStatus}
+            />
             {/* Produit en fond l'instantané carte que le PDF réutilisera. */}
             <CrMapSnapshotTrigger reportId={reportId} />
           </div>
