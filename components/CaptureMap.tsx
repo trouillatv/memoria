@@ -212,9 +212,17 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
   // visuelle en amont — cf. lib/visits/geo.ts isMappableVisualCapture).
   const kindsPresent = [...new Set(captures.map((c) => c.kind))]
 
+  // `heightClass="h-full"` (carte CR plein écran) a besoin d'un ancêtre à
+  // hauteur déterminée : un simple `space-y-2` (bloc, hauteur auto) casse la
+  // chaîne de pourcentage et le conteneur Leaflet s'initialise à hauteur ~0
+  // (bug observé par Vincent : « petite carte flottant au milieu » d'un fond
+  // noir). Le wrapper est donc lui-même flex/h-full — sans ancêtre à hauteur
+  // déterminée (les autres appelants, tous en `h-[..]`/`h-NN` fixes), `h-full`
+  // se résout en `auto` et ne change rien à leur mise en page.
+  const isFillHeight = heightClass === 'h-full'
   return (
-    <div className="space-y-2">
-      <div ref={ref} className={`${heightClass} w-full overflow-hidden rounded-xl border border-border`} />
+    <div className={isFillHeight ? 'flex h-full flex-col gap-2' : 'space-y-2'}>
+      <div ref={ref} className={`${isFillHeight ? 'flex-1' : heightClass} w-full overflow-hidden rounded-xl border border-border`} />
       <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
         {kindsPresent.map((k) => (
           <span key={k} className="inline-flex items-center gap-1.5">

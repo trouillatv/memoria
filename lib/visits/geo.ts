@@ -105,15 +105,14 @@ export const LARGE_CORRECTION_MOVE_M = 300
  * métadonnée SECONDAIRE, jamais présentée comme une cote topographique de
  * géomètre — c'est une lecture brute du GPS téléphone, nettement moins fiable
  * que lat/lng. `altitudeM: null` → rien à afficher (navigateur n'ayant rien
- * fourni), jamais une valeur inventée. Quand la précision d'altitude est
- * connue, elle est toujours donnée entre parenthèses pour ne jamais laisser
- * lire « altitude ~24 m » comme un fait certain.
+ * fourni), jamais une valeur inventée. Pas de précision affichée ici (Vincent,
+ * 2026-08-26, revu suite retour terrain) : cet écran sert à trier une
+ * observation, pas à faire de la métrologie — `altitude_accuracy_m` reste
+ * stocké en base comme métadonnée technique complète.
  */
-export function formatAltitudeCaption(altitudeM: number | null, altitudeAccuracyM: number | null): string | null {
+export function formatAltitudeCaption(altitudeM: number | null): string | null {
   if (altitudeM == null) return null
-  const value = `altitude ~${Math.round(altitudeM)} m`
-  if (altitudeAccuracyM == null) return value
-  return `${value} (±${Math.round(altitudeAccuracyM)} m)`
+  return `altitude ~${Math.round(altitudeM)} m`
 }
 
 /** Une capture n'a sa place sur la carte que si elle est une preuve visuelle

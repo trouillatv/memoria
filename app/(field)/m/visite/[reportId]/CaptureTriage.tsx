@@ -123,7 +123,7 @@ export function CaptureTriage({
   const compactAccuracy = capturePosition?.source === 'gps' ? formatCompactGpsAccuracy(capture.gps_accuracy_m) : null
   // Altitude brute du navigateur (mig 352) — jamais recalculée par une correction
   // 2D, donc affichée dès que la capture a un GPS d'origine, corrigé ou non.
-  const altitudeCaption = hasGps ? formatAltitudeCaption(capture.altitude_m, capture.altitude_accuracy_m) : null
+  const altitudeCaption = hasGps ? formatAltitudeCaption(capture.altitude_m) : null
 
   // Quand la capture est taguée « Action » / « Réserve », le commentaire N'EST PLUS
   // facultatif : il devient le TITRE de la suite. On le rend explicite et bien

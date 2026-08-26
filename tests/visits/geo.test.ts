@@ -372,16 +372,12 @@ describe('POOR_GPS_ACCURACY_M / LARGE_CORRECTION_MOVE_M — seuils déterministe
 
 describe('formatAltitudeCaption — légende discrète, jamais une cote topographique (Vincent, 2026-08-26)', () => {
   it('altitude null → rien à afficher, jamais une valeur inventée', () => {
-    expect(formatAltitudeCaption(null, null)).toBeNull()
-    expect(formatAltitudeCaption(null, 5)).toBeNull()
+    expect(formatAltitudeCaption(null)).toBeNull()
   })
 
-  it('altitude connue sans précision → « altitude ~N m »', () => {
-    expect(formatAltitudeCaption(24, null)).toBe('altitude ~24 m')
-  })
-
-  it('altitude connue avec précision → précision entre parenthèses, jamais une certitude', () => {
-    expect(formatAltitudeCaption(24.4, 18)).toBe('altitude ~24 m (±18 m)')
+  it('altitude connue → « altitude ~N m », sans précision (écran de tri, pas de métrologie)', () => {
+    expect(formatAltitudeCaption(24)).toBe('altitude ~24 m')
+    expect(formatAltitudeCaption(24.4)).toBe('altitude ~24 m')
   })
 })
 
