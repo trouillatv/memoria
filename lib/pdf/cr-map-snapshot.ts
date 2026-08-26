@@ -2,6 +2,7 @@ import 'server-only'
 import { Resvg } from '@resvg/resvg-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveEffectivePosition, selectCrVisualEvidence, buildEvidenceNumberMap, formatClusterMarkerLabel, groupByProximity } from '@/lib/visits/geo'
+import { satelliteBaseLayer, isSatelliteAvailable, type MapBaseLayerId } from '@/lib/field/map-base-layers'
 
 // « Instantané carte » du compte-rendu. Le PDF ne fabrique JAMAIS la carte : cette
 // image est produite UNE SEULE FOIS (à l'ouverture de l'aperçu), stockée sur le
@@ -49,12 +50,26 @@ function pickZoom(minLat: number, maxLat: number, minLng: number, maxLng: number
   return 1
 }
 
-async function fetchTile(z: number, x: number, y: number): Promise<Buffer | null> {
+// Plan → moteur OSM inchangé. Satellite → même contrat fournisseur que les
+// cartes interactives (satelliteBaseLayer(), map-base-layers.ts), tuiles
+// substituées ici côté serveur — aucune nouvelle clé, aucune nouvelle config
+// Mapbox (Vincent, Lot Carte PDF Plan/Satellite, 2026-08-26).
+function tileUrl(layer: MapBaseLayerId, z: number, x: number, y: number, mapboxToken: string | null): string {
+  if (layer === 'satellite' && mapboxToken) {
+    return satelliteBaseLayer(mapboxToken).tileUrl
+      .replace('{z}', String(z))
+      .replace('{x}', String(x))
+      .replace('{y}', String(y))
+  }
+  return `https://tile.openstreetmap.org/${z}/${x}/${y}.png`
+}
+
+async function fetchTile(z: number, x: number, y: number, layer: MapBaseLayerId, mapboxToken: string | null): Promise<Buffer | null> {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), TILE_TIMEOUT_MS)
   try {
-    const res = await fetch(`https://tile.openstreetmap.org/${z}/${x}/${y}.png`, {
-      headers: { 'User-Agent': OSM_UA, Referer: 'https://memoria.app' },
+    const res = await fetch(tileUrl(layer, z, x, y, mapboxToken), {
+      headers: layer === 'satellite' ? {} : { 'User-Agent': OSM_UA, Referer: 'https://memoria.app' },
       signal: ctrl.signal,
     })
     if (!res.ok) return null
@@ -113,21 +128,36 @@ function buildSvg(
 }
 
 /**
- * Produit (une seule fois) et stocke l'instantané carte du CR. Renvoie le chemin
- * storage, ou null si rien à cartographier / tuiles indisponibles (→ le PDF
- * retombera sur le schéma métrique). Idempotent : si l'instantané existe déjà,
- * on ne le refabrique jamais.
+ * Produit et stocke l'instantané carte du CR. Renvoie le chemin storage, ou
+ * null si rien à cartographier / tuiles indisponibles (→ le PDF retombera sur
+ * le schéma métrique). Idempotent PAR FOND : un instantané existant ne sert
+ * que s'il a été produit avec le fond ACTUELLEMENT choisi pour ce rapport
+ * (`cr_map_base_layer`) — jamais un Plan réutilisé sous couvert de Satellite,
+ * ni l'inverse (Vincent, Lot Carte PDF Plan/Satellite, 2026-08-26). Si
+ * Satellite est choisi mais Mapbox indisponible (pas de jeton), on ne
+ * fabrique JAMAIS un Plan de repli à sa place : on renvoie null et on
+ * conserve tel quel le dernier instantané valide en base, quel que soit son
+ * fond — au contrôle appelant d'exposer l'état explicite.
  */
 export async function ensureCrMapSnapshot(reportId: string): Promise<string | null> {
   const supabase = createAdminClient()
   const { data: report } = await supabase
     .from('site_reports')
-    .select('id, tenant_id, cr_map_snapshot_path')
+    .select('id, tenant_id, cr_map_snapshot_path, cr_map_base_layer, cr_map_snapshot_base_layer')
     .eq('id', reportId)
     .maybeSingle()
   if (!report) return null
-  const existing = (report as { cr_map_snapshot_path: string | null }).cr_map_snapshot_path
-  if (existing) return existing // déjà produit → cache, aucune requête OSM
+  const row = report as {
+    tenant_id: string
+    cr_map_snapshot_path: string | null
+    cr_map_base_layer: string | null
+    cr_map_snapshot_base_layer: string | null
+  }
+  const chosen: MapBaseLayerId = row.cr_map_base_layer === 'satellite' ? 'satellite' : 'plan'
+  if (row.cr_map_snapshot_path && row.cr_map_snapshot_base_layer === chosen) return row.cr_map_snapshot_path // déjà produit avec CE fond → cache
+
+  const mapboxToken = process.env.MAPBOX_TOKEN ?? null
+  if (chosen === 'satellite' && !isSatelliteAvailable(mapboxToken)) return null
 
   // Même filtrage ET même ordre que listVisitCaptures() (lib/db/visit-captures.ts)
   // — buildVisitCrDoc() y numérote ses preuves dans cet ordre précis. L'instantané
@@ -175,7 +205,7 @@ export async function ensureCrMapSnapshot(reportId: string): Promise<string | nu
 
   const fetched = await Promise.all(
     coords.map(async (c) => {
-      const buf = await fetchTile(z, c.wx, c.ty)
+      const buf = await fetchTile(z, c.wx, c.ty, chosen, mapboxToken)
       return buf ? { left: c.tx * TILE - originX, top: c.ty * TILE - originY, b64: buf.toString('base64') } : null
     }),
   )
@@ -209,13 +239,20 @@ export async function ensureCrMapSnapshot(reportId: string): Promise<string | nu
     return null
   }
 
-  const path = `${(report as { tenant_id: string }).tenant_id}/${reportId}/cr-map.png`
+  // Chemin PAR FOND (Vincent, correction doctrine snapshot, 2026-08-26) : sans
+  // ça, une régénération réussie du fond X écraserait physiquement le dernier
+  // PNG valide du fond Y via `upsert`, même si le pointeur DB de Y n'est
+  // jamais touché — les deux instantanés doivent pouvoir coexister en storage.
+  const path = `${row.tenant_id}/${reportId}/cr-map-${chosen}.png`
   const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, png, {
     contentType: 'image/png',
     upsert: true,
   })
   if (upErr) return null
-  await supabase.from('site_reports').update({ cr_map_snapshot_path: path }).eq('id', reportId)
+  await supabase
+    .from('site_reports')
+    .update({ cr_map_snapshot_path: path, cr_map_snapshot_base_layer: chosen })
+    .eq('id', reportId)
   return path
 }
 
@@ -229,19 +266,103 @@ export async function ensureCrMapSnapshot(reportId: string): Promise<string | nu
  */
 export async function invalidateCrMapSnapshot(reportId: string): Promise<void> {
   const supabase = createAdminClient()
-  await supabase.from('site_reports').update({ cr_map_snapshot_path: null }).eq('id', reportId)
+  await supabase
+    .from('site_reports')
+    .update({ cr_map_snapshot_path: null, cr_map_snapshot_base_layer: null })
+    .eq('id', reportId)
 }
 
-/** Charge l'instantané carte (data URI PNG) pour l'embarquer dans le PDF. */
+export interface CrMapBaseLayerStatus {
+  /** Fond effectif pour ce rapport — 'plan' par défaut tant qu'aucun choix explicite. */
+  chosen: MapBaseLayerId
+  /** true seulement si cr_map_base_layer a été écrit explicitement au moins une fois. */
+  explicit: boolean
+  /** Fond du PNG actuellement stocké, ou null si aucun instantané n'existe encore. */
+  snapshotLayer: MapBaseLayerId | null
+  snapshotPath: string | null
+  satelliteAvailable: boolean
+}
+
+/**
+ * État de lecture pur (aucune écriture) pour le contrôle "Carte du rapport" :
+ * permet à l'UI de détecter un instantané périmé (Satellite choisi mais
+ * dernier PNG encore en Plan, ou inversement) sans jamais l'inférer côté
+ * client (Vincent, Lot Carte PDF Plan/Satellite, 2026-08-26).
+ */
+export async function getCrMapBaseLayerStatus(reportId: string): Promise<CrMapBaseLayerStatus> {
+  const supabase = createAdminClient()
+  const { data: report } = await supabase
+    .from('site_reports')
+    .select('cr_map_base_layer, cr_map_snapshot_path, cr_map_snapshot_base_layer')
+    .eq('id', reportId)
+    .maybeSingle()
+  const row = report as {
+    cr_map_base_layer: string | null
+    cr_map_snapshot_path: string | null
+    cr_map_snapshot_base_layer: string | null
+  } | null
+  return {
+    chosen: row?.cr_map_base_layer === 'satellite' ? 'satellite' : 'plan',
+    explicit: row?.cr_map_base_layer === 'plan' || row?.cr_map_base_layer === 'satellite',
+    snapshotLayer:
+      row?.cr_map_snapshot_base_layer === 'satellite' ? 'satellite' : row?.cr_map_snapshot_base_layer === 'plan' ? 'plan' : null,
+    snapshotPath: row?.cr_map_snapshot_path ?? null,
+    satelliteAvailable: isSatelliteAvailable(process.env.MAPBOX_TOKEN ?? null),
+  }
+}
+
+/**
+ * Enregistre le choix explicite du fond de carte POUR CE RAPPORT — et
+ * SEULEMENT le choix. N'écrit jamais `cr_map_snapshot_path` ni
+ * `cr_map_snapshot_base_layer` : le dernier instantané valide reste
+ * référencé tel quel, physiquement intact, tant qu'`ensureCrMapSnapshot()`
+ * n'a pas produit et uploadé avec succès le rendu du nouveau fond. Choisir
+ * Satellite puis échouer à le générer ne doit jamais faire disparaître le
+ * Plan déjà disponible — la divergence `snapshotLayer !== chosen` est
+ * détectée naturellement par `ensureCrMapSnapshot()` et par
+ * `getCrMapBaseLayerStatus()`, jamais provoquée ici en avance de phase
+ * (Vincent, correction doctrine snapshot, 2026-08-26).
+ */
+export async function setCrMapBaseLayer(reportId: string, layer: MapBaseLayerId): Promise<{ changed: boolean }> {
+  const supabase = createAdminClient()
+  const { data: report } = await supabase
+    .from('site_reports')
+    .select('cr_map_base_layer')
+    .eq('id', reportId)
+    .maybeSingle()
+  if (!report) return { changed: false }
+  const previous: MapBaseLayerId = (report as { cr_map_base_layer: string | null }).cr_map_base_layer === 'satellite' ? 'satellite' : 'plan'
+  const changed = previous !== layer
+  await supabase.from('site_reports').update({ cr_map_base_layer: layer }).eq('id', reportId)
+  return { changed }
+}
+
+/**
+ * Charge l'instantané carte (data URI PNG) pour l'embarquer dans le PDF.
+ * Refuse tout instantané dont le fond ne correspond plus au choix courant du
+ * rapport (`snapshotLayer !== chosen`) : le PDF ne doit JAMAIS présenter un
+ * Plan périmé comme s'il s'agissait du Satellite demandé, ni l'inverse. Dans
+ * ce cas — comme en l'absence totale d'instantané — l'appelant retombe sur le
+ * schéma métrique, jamais sur une substitution silencieuse (Vincent,
+ * correction doctrine snapshot, 2026-08-26).
+ */
 export async function loadCrMapSnapshotDataUri(reportId: string): Promise<string | null> {
   const supabase = createAdminClient()
   const { data: report } = await supabase
     .from('site_reports')
-    .select('cr_map_snapshot_path')
+    .select('cr_map_snapshot_path, cr_map_base_layer, cr_map_snapshot_base_layer')
     .eq('id', reportId)
     .maybeSingle()
-  const path = (report as { cr_map_snapshot_path: string | null } | null)?.cr_map_snapshot_path
+  const row = report as {
+    cr_map_snapshot_path: string | null
+    cr_map_base_layer: string | null
+    cr_map_snapshot_base_layer: string | null
+  } | null
+  const path = row?.cr_map_snapshot_path
   if (!path) return null
+  const chosen: MapBaseLayerId = row?.cr_map_base_layer === 'satellite' ? 'satellite' : 'plan'
+  const snapshotLayer: MapBaseLayerId = row?.cr_map_snapshot_base_layer === 'satellite' ? 'satellite' : 'plan'
+  if (snapshotLayer !== chosen) return null
   const { data, error } = await supabase.storage.from(BUCKET).download(path)
   if (error || !data) return null
   const buf = Buffer.from(await data.arrayBuffer())

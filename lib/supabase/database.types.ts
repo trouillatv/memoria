@@ -6303,6 +6303,8 @@ export type Database = {
           audio_mime: string | null
           audio_path: string | null
           contract_id: string | null
+          cr_map_base_layer: string | null
+          cr_map_snapshot_base_layer: string | null
           cr_map_snapshot_path: string | null
           created_at: string
           created_by: string | null
@@ -6347,6 +6349,8 @@ export type Database = {
           audio_mime?: string | null
           audio_path?: string | null
           contract_id?: string | null
+          cr_map_base_layer?: string | null
+          cr_map_snapshot_base_layer?: string | null
           cr_map_snapshot_path?: string | null
           created_at?: string
           created_by?: string | null
@@ -6391,6 +6395,8 @@ export type Database = {
           audio_mime?: string | null
           audio_path?: string | null
           contract_id?: string | null
+          cr_map_base_layer?: string | null
+          cr_map_snapshot_base_layer?: string | null
           cr_map_snapshot_path?: string | null
           created_at?: string
           created_by?: string | null

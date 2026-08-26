@@ -13,6 +13,8 @@ import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-ca
 import { isMappableVisualCapture, formatEvidenceNumberLabel } from '@/lib/visits/geo'
 import { CrMapExpandable, CrMapExpandProvider, CrMapExploreButton } from './CrMapExpandable'
 import { CrMapSnapshotTrigger } from './CrMapSnapshotTrigger'
+import { CrMapLayerControl } from './CrMapLayerControl'
+import { getCrMapBaseLayerStatus } from '@/lib/pdf/cr-map-snapshot'
 import { MemoriaRetained } from './MemoriaRetained'
 import { CrDocumentSections, type CrPhotoCandidate } from './CrDocumentSections'
 import { CrConcretisation } from './CrConcretisation'
@@ -52,7 +54,7 @@ export default async function VisitCrPreviewPage({
     notFound()
   }
 
-  const [doc, decisions, crDocument, proposals] = await Promise.all([
+  const [doc, decisions, crDocument, proposals, crMapLayerStatus] = await Promise.all([
     buildVisitCrDoc(reportId, user.id),
     listDecisionsByReport(reportId).catch(() => []),
     // Le CR éditable. `null` = pas encore d'analyse (le débrief se lance à
@@ -62,6 +64,10 @@ export default async function VisitCrPreviewPage({
     // Propositions de la visite : pour relier une section narrative à ce qui a
     // été RÉELLEMENT créé dans le chantier (« ✓ 2 actions créées »).
     listProposalsByReport(reportId).catch(() => []),
+    // Fond de carte choisi pour CE rapport (Plan/Satellite) — état séparé de la
+    // préférence interactive, lu ici pour donner un état initial cohérent au
+    // contrôle sans flash côté client.
+    getCrMapBaseLayerStatus(reportId),
   ])
   if (!doc) notFound()
 
@@ -374,6 +380,9 @@ export default async function VisitCrPreviewPage({
       >
         {mapCaptures.length > 0 ? (
           <div className="overflow-hidden rounded-xl border">
+            <div className="px-3 pt-3">
+              <CrMapLayerControl reportId={reportId} initialStatus={crMapLayerStatus} />
+            </div>
             <CrMapExpandable siteId={visit.site_id} captures={mapCaptures} mapboxToken={process.env.MAPBOX_TOKEN ?? null} />
             {/* Produit en fond l'instantané carte que le PDF réutilisera. */}
             <CrMapSnapshotTrigger reportId={reportId} />
