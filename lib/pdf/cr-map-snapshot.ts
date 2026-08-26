@@ -4,6 +4,7 @@ import { Resvg } from '@resvg/resvg-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveEffectivePosition, selectCrVisualEvidence, buildEvidenceNumberMap, formatClusterMarkerLabel, groupByProximity } from '@/lib/visits/geo'
 import { satelliteBaseLayer, isSatelliteAvailable, type MapBaseLayerId } from '@/lib/field/map-base-layers'
+import { resolveLabelCollisions, type CrMapPlacedLabelMarker } from '@/lib/pdf/cr-map-label-collision'
 
 // Police embarquée dans le repo (copie de pdfjs-dist/standard_fonts, licence
 // SIL OFL) — nécessaire car `loadSystemFonts` échoue SILENCIEUSEMENT en
@@ -25,7 +26,12 @@ export const FONT_FAMILY = 'Liberation Sans'
 // forcent plus `image/png`, chaque tuile transporte son type réel (Satellite
 // Mapbox = JPEG). Les snapshots Satellite v1 étaient rendus avec un fond gris
 // (tuiles JPEG injectées sous MIME PNG, non décodées par Resvg).
-export const CURRENT_CR_MAP_RENDER_VERSION = 2
+// v3 (2026-08-27) : résolution déterministe des collisions entre pastilles
+// après projection écran (lib/pdf/cr-map-label-collision.ts, recette
+// DIMENC-Sireis) — deux groupes géographiquement proches ne produisent plus
+// deux rectangles qui se chevauchent. Regroupement, numéros et centres de
+// groupe inchangés, seul le placement écran de l'étiquette est corrigé.
+export const CURRENT_CR_MAP_RENDER_VERSION = 3
 
 /**
  * Un instantané stocké ne peut être réutilisé QUE s'il a été produit avec le
@@ -153,7 +159,7 @@ function escapeXml(s: string): string {
 
 export function buildSvg(
   tiles: Array<{ left: number; top: number; b64: string; mimeType: string }>,
-  markers: Array<{ cx: number; cy: number; color: string; label: string }>,
+  markers: Array<{ cx: number; cy: number; color: string; label: string; ox?: number; oy?: number }>,
 ): string {
   const imgs = tiles
     .map((t) => `<image x="${t.left.toFixed(1)}" y="${t.top.toFixed(1)}" width="${TILE}" height="${TILE}" xlink:href="data:${t.mimeType};base64,${t.b64}"/>`)
@@ -172,8 +178,19 @@ export function buildSvg(
   // aucun repli automatique vers une police non chargée.
   const dots = markers
     .map((m) => {
+      // Trait de rappel discret (Vincent, résolution collision pastilles,
+      // 2026-08-27) : uniquement quand la position d'origine (`ox`/`oy`,
+      // fournie par resolveLabelCollisions) diffère réellement du rendu final
+      // — les appels historiques sans ox/oy (tests, marqueurs jamais
+      // déplacés) ne dessinent rien de plus.
+      const leader =
+        m.ox != null && m.oy != null && (Math.abs(m.ox - m.cx) > 0.5 || Math.abs(m.oy - m.cy) > 0.5)
+          ? `<line x1="${m.ox.toFixed(1)}" y1="${m.oy.toFixed(1)}" x2="${m.cx.toFixed(1)}" y2="${m.cy.toFixed(1)}" stroke="#334155" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.55"/>` +
+            `<circle cx="${m.ox.toFixed(1)}" cy="${m.oy.toFixed(1)}" r="3" fill="#334155" opacity="0.7"/>`
+          : ''
       if (m.label.length <= 2) {
         return (
+          leader +
           `<circle cx="${m.cx.toFixed(1)}" cy="${m.cy.toFixed(1)}" r="19" fill="${escapeXml(m.color)}" stroke="#ffffff" stroke-width="3"/>` +
           `<text x="${m.cx.toFixed(1)}" y="${(m.cy + 6.5).toFixed(1)}" font-size="19" font-family="${FONT_FAMILY}" font-weight="bold" fill="#ffffff" text-anchor="middle">${escapeXml(m.label)}</text>`
         )
@@ -181,11 +198,14 @@ export function buildSvg(
       // Pastille proche de la taille du marqueur simple (r=19, soit un
       // diamètre de 38) — pas de surdimensionnement : même hauteur, largeur
       // ajustée au strict nécessaire pour l'étiquette à points séparateurs.
+      // Même formule que `labelBoxSize()` (cr-map-label-collision.ts) : la
+      // détection de collision doit voir EXACTEMENT la boîte peinte ici.
       const w = Math.max(38, m.label.length * 10 + 16)
       const h = 38
       const x = m.cx - w / 2
       const y = m.cy - h / 2
       return (
+        leader +
         `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h}" rx="${h / 2}" fill="${escapeXml(m.color)}" stroke="#ffffff" stroke-width="3"/>` +
         `<text x="${m.cx.toFixed(1)}" y="${(m.cy + 5.5).toFixed(1)}" font-size="16" font-family="${FONT_FAMILY}" font-weight="bold" fill="#ffffff" text-anchor="middle">${escapeXml(m.label)}</text>`
       )
@@ -327,6 +347,10 @@ export async function ensureCrMapSnapshot(reportId: string): Promise<string | nu
       label: single ? String(single.number) : formatClusterMarkerLabel(g.points.map((p) => p.number)),
     }
   })
+  // Résolution collision (Vincent, recette DIMENC-Sireis, 2026-08-27) :
+  // uniquement le placement écran des pastilles, APRÈS ce calcul métier —
+  // regroupement, numéros et centres de groupe ci-dessus restent inchangés.
+  const placedMarkers: CrMapPlacedLabelMarker[] = resolveLabelCollisions(markers, { width: W, height: H })
 
   let png: Buffer
   try {
@@ -335,7 +359,7 @@ export async function ensureCrMapSnapshot(reportId: string): Promise<string | nu
     // sans erreur (preuve : _resvg_text_test_nofonts.png). `renderMapPng`
     // charge donc une police embarquée explicitement (`fontFiles`) et coupe
     // la recherche système, pour un rendu identique en local et en production.
-    png = renderMapPng(buildSvg(tiles, markers))
+    png = renderMapPng(buildSvg(tiles, placedMarkers))
   } catch {
     return null
   }
