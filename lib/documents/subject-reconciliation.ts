@@ -270,15 +270,48 @@ function computeBestCandidate(newProp: ProposalStub, priors: ProposalStub[]): Sc
 }
 
 /**
+ * M1 (2026-08-27, audit fragmentation FT OCEF) — même objet métier au sein d'UN
+ * run. Deux propositions du même run qui décrivent le même objet doivent
+ * converger vers un seul thread AVANT qu'un thread neuf soit créé. Le prédicat
+ * est volontairement PLUS STRICT que le matching cross-run (`computeBestCandidate`) :
+ * exact-après-strip OU containment fort, JAMAIS le Jaccard seul. Raison prouvée :
+ * « Fournir Plan de détail du dégrilleur » vs « … du débitmètre » atteignent
+ * Jaccard 0.6 (tokens génériques partagés) alors qu'ils portent DEUX équipements
+ * distincts — les fusionner violerait la doctrine « similarité sémantique ≠
+ * identité métier ». Le containment fort exige au contraire que les tokens
+ * discriminants soient partagés : « FT débourbeur déshuileur à retransmettre »
+ * et « Retransmettre la FT débourbeur déshuileur » convergent (mêmes tokens),
+ * dégrilleur et débitmètre restent séparés. Frontière `proposal_family` conservée.
+ */
+export function sameRunBusinessObject(a: ProposalStub, b: ProposalStub): boolean {
+  if (a.proposal_family !== b.proposal_family) return false
+  if (isPersonLike(a.proposal_family)) {
+    return normalizeLabel(a.label) === normalizeLabel(b.label)
+  }
+  // Containment fort sur les labels BRUTS. strongContainmentMatch fait déjà, en
+  // interne, l'égalité exacte après strip symétrique (Étape 0) — inutile de
+  // re-stripper ici. Surtout : NE PAS strip avant containment. Le dry-run OCEF a
+  // prouvé qu'un pré-strip retire des préfixes DISCRIMINANTS de localisation
+  // (« Busage entre la plateforme et le lagunage : … » vs « Zone déshuileur : … »)
+  // et sur-fusionne deux non-conformités distinctes réduites à « largeur non
+  // conforme ». En brut, « déshuileur » absent de l'autre label empêche cette
+  // fusion — la doctrine « objets distincts restent distincts » est préservée.
+  return strongContainmentMatch(a.label, b.label)
+}
+
+/**
  * Résout les matches 1:1 entre nouvelles propositions et threads précédents.
  * Retourne un map propId → subject_thread_id à écrire en DB.
  *
  * Algorithme glouton par score décroissant :
  * - On calcule le meilleur candidat pour chaque nouvelle proposition.
- * - On trie par score décroissant (exact > containment > Jaccard).
+ * - On trie par score décroissant (exact > containment > Jaccard), départage
+ *   déterministe par id de proposition (M1 : indépendance à l'ordre d'entrée).
  * - On assigne en priorité les meilleurs couples.
  * - Un thread précédent déjà consommé ne peut être attribué à une autre proposition.
- * - Une proposition sans match ou en conflit reçoit un nouveau UUID.
+ * - Une proposition sans match reçoit un thread neuf, MAIS deux orphelines du
+ *   même run décrivant le même objet (sameRunBusinessObject) partagent ce thread
+ *   neuf — regroupement par composantes connexes, indépendant de l'ordre (M1).
  *
  * Exporté pour les tests unitaires. Le `generateUUID` est injectable pour rendre
  * les tests déterministes.
@@ -294,7 +327,9 @@ export function resolveMatches1to1(
     if (cand) candidates.push(cand)
   }
 
-  candidates.sort((a, b) => b.score - a.score)
+  // Départage par id à score égal : sans lui, le tri stable rendrait le résultat
+  // dépendant de l'ordre des propositions en entrée (exigence M1 de déterminisme).
+  candidates.sort((a, b) => (b.score - a.score) || a.propId.localeCompare(b.propId))
 
   const claimedThreads = new Set<string>()
   const assignedProps = new Set<string>()
@@ -308,10 +343,43 @@ export function resolveMatches1to1(
     }
   }
 
-  for (const p of newProposals) {
-    if (!result.has(p.id)) {
-      result.set(p.id, generateUUID())
+  // ── M1 : réconciliation intra-run des orphelines avant création de threads ──
+  const orphans = newProposals.filter((p) => !result.has(p.id))
+
+  // Union-Find sur les orphelines. La racine d'une composante est toujours le
+  // plus petit id (union orientée) → partition et allocation d'UUID déterministes,
+  // indépendantes de l'ordre d'entrée.
+  const parent = new Map<string, string>(orphans.map((p) => [p.id, p.id]))
+  const find = (x: string): string => {
+    let r = x
+    while (parent.get(r) !== r) r = parent.get(r)!
+    let c = x
+    while (parent.get(c) !== r) { const n = parent.get(c)!; parent.set(c, r); c = n }
+    return r
+  }
+  const union = (x: string, y: string) => {
+    const rx = find(x), ry = find(y)
+    if (rx === ry) return
+    const [lo, hi] = rx < ry ? [rx, ry] : [ry, rx]
+    parent.set(hi, lo)
+  }
+  for (let i = 0; i < orphans.length; i++) {
+    for (let j = i + 1; j < orphans.length; j++) {
+      if (sameRunBusinessObject(orphans[i], orphans[j])) union(orphans[i].id, orphans[j].id)
     }
+  }
+
+  const compMembers = new Map<string, string[]>()
+  for (const p of orphans) {
+    const root = find(p.id)
+    const arr = compMembers.get(root) ?? []
+    arr.push(p.id)
+    compMembers.set(root, arr)
+  }
+  // Allocation d'un UUID par composante, dans l'ordre des racines (plus petit id).
+  for (const root of [...compMembers.keys()].sort((a, b) => a.localeCompare(b))) {
+    const uuid = generateUUID()
+    for (const pid of compMembers.get(root)!) result.set(pid, uuid)
   }
 
   return result

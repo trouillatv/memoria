@@ -570,6 +570,117 @@ describe('resolveMatches1to1 — P1-C1.1 : Purge/Purge complémentaire séparés
   })
 })
 
+// ── M1 — réconciliation intra-run des orphelines (audit fragmentation FT OCEF) ─
+//
+// Défaut prouvé (audit 2026-08-27) : deux formulations jumelles d'un même objet
+// métier, présentes dans le MÊME run, ne se voyaient jamais entre elles à
+// l'Étage A (resolveMatches1to1 ne comparait chaque nouvelle proposition qu'aux
+// runs antérieurs) → deux threads distincts → deux canonical_subject. M1 regroupe
+// les orphelines du même run par composantes connexes, avec un prédicat STRICT
+// (exact-après-strip OU containment fort, jamais Jaccard seul) pour ne pas
+// sur-fusionner deux équipements distincts (dégrilleur ≠ débitmètre).
+
+describe('resolveMatches1to1 — M1 : réconciliation intra-run des orphelines', () => {
+  it('CASE 1 OCEF : deux formulations jumelles de la FT débourbeur déshuileur dans le même run → même thread', () => {
+    const news = [
+      stub('n1', 'FT Débourbeur déshuileur à retransmettre', null, null, 'action'),
+      stub('n2', 'Retransmettre la FT débourbeur déshuileur', null, null, 'action'),
+    ]
+    let n = 0
+    const map = resolveMatches1to1(news, [], () => `uuid-${++n}`)
+    expect(map.get('n1')).toBe(map.get('n2'))
+    expect(map.get('n1')).toBe('uuid-1') // une seule composante → un seul UUID alloué
+  })
+
+  it('anti-sur-fusion PROUVÉE (dry-run OCEF, run 6b684311) : "Busage… : largeur non conforme" ≠ "Zone déshuileur : largeur non conforme"', () => {
+    // Deux non-conformités distinctes (busage vs déshuileur) partageant "largeur
+    // non conforme". Le containment brut les sépare car "déshuileur" est absent
+    // de l'autre label ; un pré-strip du préfixe les aurait sur-fusionnées.
+    const news = [
+      stub('n1', 'Busage entre la plateforme et le lagunage : Zone de largeur non conforme', null, 'test_control', 'reservation'),
+      stub('n2', 'Zone déshuileur : largeur non conforme', null, 'test_control', 'reservation'),
+    ]
+    let n = 0
+    const map = resolveMatches1to1(news, [], () => `uuid-${++n}`)
+    expect(map.get('n1')).not.toBe(map.get('n2'))
+  })
+
+  it('anti-sur-fusion : dégrilleur ≠ débitmètre dans le même run → deux threads distincts', () => {
+    const news = [
+      stub('n1', 'Fournir le plan de détail du dégrilleur', null, null, 'action'),
+      stub('n2', 'Fournir le plan de détail du débitmètre', null, null, 'action'),
+    ]
+    let n = 0
+    const map = resolveMatches1to1(news, [], () => `uuid-${++n}`)
+    expect(map.get('n1')).not.toBe(map.get('n2'))
+  })
+
+  it('anti-sur-fusion : familles différentes ne fusionnent jamais, même labels quasi-identiques', () => {
+    const news = [
+      stub('n1', 'FT Débourbeur déshuileur à retransmettre', null, null, 'action'),
+      stub('n2', 'FT Débourbeur déshuileur à retransmettre', null, null, 'reservation'),
+    ]
+    let n = 0
+    const map = resolveMatches1to1(news, [], () => `uuid-${++n}`)
+    expect(map.get('n1')).not.toBe(map.get('n2'))
+  })
+
+  it('indépendance à l’ordre : le même lot rejoué dans plusieurs ordres produit une identité identique', () => {
+    const a = stub('a', 'FT Débourbeur déshuileur à retransmettre', null, null, 'action')
+    const b = stub('b', 'Retransmettre la FT débourbeur déshuileur', null, null, 'action')
+    const c = stub('c', 'Fournir le plan de détail du débitmètre', null, null, 'action')
+    const run = (news: ProposalStub[]) => {
+      let n = 0
+      return resolveMatches1to1(news, [], () => `uuid-${++n}`)
+    }
+    const m1 = run([a, b, c])
+    const m2 = run([c, b, a])
+    const m3 = run([b, a, c])
+    for (const id of ['a', 'b', 'c']) {
+      expect(m2.get(id)).toBe(m1.get(id))
+      expect(m3.get(id)).toBe(m1.get(id))
+    }
+    // Partition attendue : a~b (jumeaux FT débourbeur), c distinct (débitmètre)
+    expect(m1.get('a')).toBe(m1.get('b'))
+    expect(m1.get('c')).not.toBe(m1.get('a'))
+  })
+
+  it('proposition isolée : comportement inchangé (un thread neuf)', () => {
+    const map = resolveMatches1to1(
+      [stub('n1', 'Pose de fondation béton armé', null, null, 'action')],
+      [],
+      () => 'uuid-1',
+    )
+    expect(map.get('n1')).toBe('uuid-1')
+  })
+
+  it('rattachement historique préservé : une orpheline jumelle ne détourne pas une proposition qui matche un thread antérieur', () => {
+    const priors = [stub('p1', 'Transmettre les fiches techniques des matériaux et équipements', 'thread-ft', null, 'action')]
+    const news = [
+      stub('n1', 'Transmettre les fiches techniques des matériaux et équipements', null, null, 'action'), // matche le prior
+      stub('n2', 'FT Débourbeur déshuileur à retransmettre', null, null, 'action'),                        // orpheline distincte
+    ]
+    let n = 0
+    const map = resolveMatches1to1(news, priors, () => `uuid-${++n}`)
+    expect(map.get('n1')).toBe('thread-ft')
+    expect(map.get('n2')).not.toBe('thread-ft')
+    expect(map.get('n2')).toMatch(/^uuid-/)
+  })
+
+  it('trois orphelines dont deux jumelles : composantes correctes (2 threads pour 3 propositions)', () => {
+    const news = [
+      stub('n1', 'FT Débourbeur déshuileur à retransmettre', null, null, 'action'),
+      stub('n2', 'Retransmettre la FT débourbeur déshuileur', null, null, 'action'),
+      stub('n3', 'Fournir le plan de détail du débitmètre', null, null, 'action'),
+    ]
+    let n = 0
+    const map = resolveMatches1to1(news, [], () => `uuid-${++n}`)
+    expect(map.get('n1')).toBe(map.get('n2'))
+    expect(map.get('n3')).not.toBe(map.get('n1'))
+    expect(new Set([map.get('n1'), map.get('n2'), map.get('n3')]).size).toBe(2)
+  })
+})
+
 // ── mapDocumentStatus ─────────────────────────────────────────────────────────
 
 describe('mapDocumentStatus', () => {
