@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css'
 import type { Map as LeafletMap } from 'leaflet'
 import { formatClusterMarkerLabel } from '@/lib/visits/geo'
 import { clusterMarkersByPixel, MARKER_CLUSTER_RADIUS_PX } from '@/lib/visits/marker-cluster'
+import { PLAN_BASE_LAYER, type MapBaseLayerConfig } from '@/lib/field/map-base-layers'
 
 // Carte des CAPTURES géolocalisées — une LECTURE (pas un module) : on l'embarque
 // dans le Journal et dans la lecture AO. Répond à « où ET quoi » : le marqueur
@@ -61,11 +62,16 @@ function clusterPopupHtml(items: MapCapture[], linkPopups: boolean): string {
   const sorted = [...items].sort((a, b) => (a.number ?? 0) - (b.number ?? 0))
   const rows = sorted
     .map((c) => {
-      const label = escapeHtml(`${KIND_LABEL[c.kind] ?? c.kind} ${c.number ?? ''}`.trim())
+      const label = escapeHtml(c.number != null ? `${KIND_LABEL[c.kind] ?? c.kind} ${c.number}` : captureWhat(c))
       const thumb = c.kind === 'photo' && c.thumbnailUrl
         ? `<img src="${escapeHtml(c.thumbnailUrl)}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;flex:none" />`
         : `<div style="width:36px;height:36px;border-radius:4px;flex:none;background:${KIND_COLOR[c.kind] ?? '#6b7280'}22;display:flex;align-items:center;justify-content:center;color:${KIND_COLOR[c.kind] ?? '#6b7280'};font-size:10px;font-weight:600">${c.kind === 'video' ? '▶' : ''}</div>`
-      const inner = `<div style="display:flex;align-items:center;gap:8px"><span style="display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:9px;background:#334155;color:#fff;font-size:10px;font-weight:700;flex:none">${c.number ?? ''}</span>${thumb}<span style="font-size:12px">${label}</span></div>`
+      // Badge numéroté uniquement quand la CR fournit un numéro — un cluster
+      // Terrain (multi-visites, jamais numéroté) n'affiche pas de pastille vide.
+      const badge = c.number != null
+        ? `<span style="display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:9px;background:#334155;color:#fff;font-size:10px;font-weight:700;flex:none">${c.number}</span>`
+        : ''
+      const inner = `<div style="display:flex;align-items:center;gap:8px">${badge}${thumb}<span style="font-size:12px">${label}</span></div>`
       return linkPopups
         ? `<a href="/m/observation/${c.id}" style="display:block;padding:4px 0;color:inherit;text-decoration:none">${inner}</a>`
         : `<div style="padding:4px 0">${inner}</div>`
@@ -74,13 +80,20 @@ function clusterPopupHtml(items: MapCapture[], linkPopups: boolean): string {
   return `<div style="max-height:240px;overflow-auto;min-width:170px"><strong>${items.length} preuves à cet endroit</strong><div style="margin-top:4px">${rows}</div></div>`
 }
 
-export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPopups = true }: {
+export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPopups = true, baseLayer = PLAN_BASE_LAYER, clusterByZoom = false }: {
   siteId: string
   captures: MapCapture[]
   heightClass?: string
   /** false = carte INFORMATIVE (fiche observation : elle répond à « où ? »,
    *  sans lien — un point ne doit pas rouvrir sa propre fiche). */
   linkPopups?: boolean
+  /** Fond de carte (Plan/Satellite) — défaut Plan/OSM, inchangé pour tous les
+   *  appelants existants (lot Terrain, 2026-08-26). */
+  baseLayer?: MapBaseLayerConfig
+  /** Regroupement par pixel dépendant du zoom SANS numérotation CR (carte
+   *  Terrain multi-visites) — mutuellement exclusif avec la numérotation CR,
+   *  qui reste prioritaire si `captures` la porte. */
+  clusterByZoom?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const mapRef = useRef<LeafletMap | null>(null)
@@ -91,39 +104,87 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
     // fournie porte un numéro — sinon (Journal, Patrimoine, AO...) on garde le
     // rendu d'origine, point par point, sans regroupement.
     const hasEvidenceNumbers = captures.length > 0 && captures.every((c) => c.number != null)
+    // Regroupement Terrain (multi-visites) : jamais en même temps que la
+    // numérotation CR, qui a priorité si elle est fournie.
+    const useZoomClustering = clusterByZoom && !hasEvidenceNumbers
 
     void import('leaflet').then((mod) => {
       const L = mod.default
       if (cancelled || !ref.current || mapRef.current) return
       const map = L.map(ref.current)
       mapRef.current = map
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(map)
+      L.tileLayer(baseLayer.tileUrl, { attribution: baseLayer.attribution, maxZoom: baseLayer.maxZoom }).addTo(map)
 
-      if (!hasEvidenceNumbers) {
-        const markers = captures.map((c) => {
-          const color = KIND_COLOR[c.kind] ?? '#6b7280'
-          const m = L.circleMarker([c.lat, c.lng], { radius: 7, color, fillColor: color, fillOpacity: 0.85, weight: 2 })
-          const date = new Date(c.created_at).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
-          const what = escapeHtml(captureWhat(c))
-          const excerpt = c.body && !c.subjectName ? '' : (c.body ? `<div style="margin-top:4px">${escapeHtml(c.body.slice(0, 140))}</div>` : '')
-          m.bindPopup(
-            `<strong>${what}</strong>` +
-            `<div style="color:#666;font-size:11px">${KIND_LABEL[c.kind] ?? c.kind} · ${date}</div>${excerpt}` +
-            // Le point de carte ouvre L'OBSERVATION elle-même (média + contexte),
-            // qui mène ensuite à la visite complète. Le Débrief est un outil de
-            // production — jamais la destination d'un clic de consultation.
-            (linkPopups
-              ? `<a href="/m/observation/${c.id}" style="display:inline-block;margin-top:6px;color:#2563eb">Voir cette observation →</a>`
-              : ''),
-          )
-          // Étiquette « quoi » visible au survol (desktop) ; le tap ouvre le popup (mobile).
-          m.bindTooltip(what, { direction: 'top', opacity: 0.9 })
-          m.addTo(map)
-          return m
-        })
+      // Un point isolé — utilisé tel quel (branche simple) ou comme rendu d'un
+      // cluster à une seule preuve (branche Terrain) : même popup/tooltip.
+      const addPointMarker = (c: MapCapture, at: import('leaflet').LatLngExpression) => {
+        const color = KIND_COLOR[c.kind] ?? '#6b7280'
+        const m = L.circleMarker(at, { radius: 7, color, fillColor: color, fillOpacity: 0.85, weight: 2 })
+        const date = new Date(c.created_at).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+        const what = escapeHtml(captureWhat(c))
+        const excerpt = c.body && !c.subjectName ? '' : (c.body ? `<div style="margin-top:4px">${escapeHtml(c.body.slice(0, 140))}</div>` : '')
+        m.bindPopup(
+          `<strong>${what}</strong>` +
+          `<div style="color:#666;font-size:11px">${KIND_LABEL[c.kind] ?? c.kind} · ${date}</div>${excerpt}` +
+          // Le point de carte ouvre L'OBSERVATION elle-même (média + contexte),
+          // qui mène ensuite à la visite complète. Le Débrief est un outil de
+          // production — jamais la destination d'un clic de consultation.
+          (linkPopups
+            ? `<a href="/m/observation/${c.id}" style="display:inline-block;margin-top:6px;color:#2563eb">Voir cette observation →</a>`
+            : ''),
+        )
+        // Étiquette « quoi » visible au survol (desktop) ; le tap ouvre le popup (mobile).
+        m.bindTooltip(what, { direction: 'top', opacity: 0.9 })
+        m.addTo(map)
+        return m
+      }
 
+      if (!hasEvidenceNumbers && !useZoomClustering) {
+        const markers = captures.map((c) => addPointMarker(c, [c.lat, c.lng]))
         if (markers.length > 0) map.fitBounds(L.featureGroup(markers).getBounds().pad(0.2))
         else map.setView([0, 0], 2)
+        return
+      }
+
+      if (useZoomClustering) {
+        // Même mécanique de regroupement en PIXELS que la carte CR (cf. doctrine
+        // ci-dessous), mais SANS numérotation séquentielle : Terrain traverse
+        // plusieurs visites/CR, une numérotation globale n'aurait pas de sens
+        // métier (elle reste strictement scopée au CR d'une visite).
+        const initialBounds = L.latLngBounds(captures.map((c) => [c.lat, c.lng] as [number, number]))
+        if (captures.length > 0) map.fitBounds(initialBounds.pad(0.2))
+        else map.setView([0, 0], 2)
+
+        let layers: import('leaflet').Layer[] = []
+        const render = () => {
+          layers.forEach((l) => map.removeLayer(l))
+          layers = []
+          const pts = captures.map((c) => {
+            const p = map.latLngToLayerPoint([c.lat, c.lng])
+            return { id: c.id, x: p.x, y: p.y, c }
+          })
+          const clusters = clusterMarkersByPixel(pts, MARKER_CLUSTER_RADIUS_PX)
+          for (const cluster of clusters) {
+            const center = map.layerPointToLatLng(L.point(cluster.x, cluster.y))
+            if (cluster.points.length === 1) {
+              layers.push(addPointMarker(cluster.points[0].c, center))
+            } else {
+              const count = cluster.points.length
+              const icon = L.divIcon({
+                className: '',
+                html: `<div style="width:26px;height:26px;border-radius:13px;background:#334155;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700">${count}</div>`,
+                iconSize: [26, 26],
+                iconAnchor: [13, 13],
+              })
+              const m = L.marker(center, { icon })
+              m.bindPopup(clusterPopupHtml(cluster.points.map((pt) => pt.c), linkPopups))
+              m.addTo(map)
+              layers.push(m)
+            }
+          }
+        }
+        render()
+        map.on('zoomend', render)
         return
       }
 
@@ -205,7 +266,7 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
     })
 
     return () => { cancelled = true; mapRef.current?.off('zoomend'); mapRef.current?.remove(); mapRef.current = null }
-  }, [captures, siteId, linkPopups])
+  }, [captures, siteId, linkPopups, baseLayer, clusterByZoom])
 
   // Types réellement présents : la légende ne montre jamais un type absent de
   // cette carte (plus de « Vocal »/« Note » morts depuis le filtrage preuve
