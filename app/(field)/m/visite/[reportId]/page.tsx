@@ -3,7 +3,8 @@ import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisit, buildVisitImpact, gatherVisitSuites, gatherVisitTextSuites } from '@/lib/db/visits'
 import { listWatchlist } from '@/lib/db/visit-watchlist'
-import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
+import { listVisitCaptures, getVisitCapturePreviewUrls, listSiteViewpointRows } from '@/lib/db/visit-captures'
+import { groupViewpointChains } from '@/lib/visits/viewpoints'
 import { DebriefExpress } from './DebriefExpress'
 
 export const dynamic = 'force-dynamic'
@@ -56,7 +57,7 @@ export default async function VisitDebriefPage({
     if (phase === 'prospect' || phase === 'en_ao') previsiteDossierId = visit.dossier_id
   }
 
-  const [{ count: questionsCount }, previews, impact] = await Promise.all([
+  const [{ count: questionsCount }, previews, impact, viewpointRows] = await Promise.all([
     // ❓ « à vérifier » posées pendant la visite (captured_knowledge) — comptées
     // pour le récap de fin, à côté des captures.
     supabase
@@ -69,7 +70,14 @@ export default async function VisitDebriefPage({
     getVisitCapturePreviewUrls(captures).catch(() => ({})),
     // Impact sur la mémoire du chantier — « ce que cette visite change ».
     buildVisitImpact(reportId).catch(() => null),
+    // Points de référence (mig 195) du chantier — l'ancre d'une reprise faite
+    // pendant CETTE visite peut avoir été prise à une visite antérieure, donc
+    // hors de `captures` : on relit le chantier entier pour résoudre son libellé.
+    listSiteViewpointRows(visit.site_id).catch(() => []),
   ])
+  const viewpointLabels: Record<string, string> = Object.fromEntries(
+    groupViewpointChains(viewpointRows).map((chain) => [chain.anchorId, chain.label ?? 'Photo de référence']),
+  )
 
   // Suites proposées : les tags Action/Réserve (déterministe) + ce que MemorIA a
   // COMPRIS des vocaux/notes (IA, texte seul, gatée). MemorIA propose, l'humain
@@ -92,6 +100,7 @@ export default async function VisitDebriefPage({
       initialObjective={visit.objective}
       initialCaptures={captures}
       previews={previews}
+      viewpointLabels={viewpointLabels}
       impact={impact}
       initialSuites={suites}
       watchlist={watchlist}

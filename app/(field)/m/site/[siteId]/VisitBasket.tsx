@@ -58,6 +58,9 @@ function downloadCaptureToPhone(url: string, filename: string) {
 // volontairement. Remplace l'ancienne clé d'opt-in 'memoria.geoloc.captures'
 // (devenue inerte — son seul état utile, « always », est désormais le défaut).
 const GEO_DISABLED_KEY = 'memoria.geoloc.disabled'
+// Aide courte « Définir comme point de référence » — affichée une seule fois
+// (sur cette visite si jamais vue avant), jamais aux visites suivantes.
+const VIEWPOINT_HINT_SEEN_KEY = 'memoria.viewpoint.hintSeen'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
 
 // Mémoire LITE d'un point suivi (read-only), surfacée pendant la vérification :
@@ -233,6 +236,21 @@ export function VisitBasket({
     vocal: kept.filter((c) => c.kind === 'vocal').length,
     note: kept.filter((c) => c.kind === 'note').length,
   }
+  // Amorçage découvrable (📌) : la première photo pas encore épinglée porte
+  // l'aide courte, une seule fois — jamais une icône mystérieuse isolée.
+  const firstUnpinnedPhotoId = kept.find((c) => c.kind === 'photo' && !c.is_viewpoint)?.id ?? null
+  const [viewpointHintSeen, setViewpointHintSeen] = useState(false)
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return
+      if (window.localStorage.getItem(VIEWPOINT_HINT_SEEN_KEY) === '1') {
+        setViewpointHintSeen(true)
+      } else if (firstUnpinnedPhotoId) {
+        // Reste visible pour CETTE visite ; ne réapparaît plus aux suivantes.
+        window.localStorage.setItem(VIEWPOINT_HINT_SEEN_KEY, '1')
+      }
+    } catch { /* localStorage indisponible → aide affichée sans gravité */ }
+  }, [firstUnpinnedPhotoId])
   // Dé-doublonnage optimiste : une capture en attente disparaît dès que sa vraie
   // ligne (même client_uuid) revient du serveur.
   const serverUuids = new Set(kept.map((c) => c.client_uuid).filter((u): u is string => !!u))
@@ -388,10 +406,10 @@ export function VisitBasket({
     const viewpointOf = nextPhotoViewpointRef.current ?? undefined
     nextPhotoViewpointRef.current = null
     const { clientUuid, previewUrl } = enqueueMedia(file, 'photo', viewpointOf)
-    // Micro post-shutter : uniquement pour une vraie prise au retour de
-    // l'appareil natif (le seul écran caméra hors contrôle app) — pas pour une
-    // reprise de point de repère (déjà cadrée par le fantôme, série continue).
-    if (!viewpointOf) setPostShutter({ clientUuid, previewUrl })
+    // Micro post-shutter : le même parcours Continuer/Décrire pour TOUTE photo,
+    // reprise de référence ou non — la reprise ne doit plus court-circuiter la
+    // dictée (repli natif d'une reprise de point de référence inclus).
+    setPostShutter({ clientUuid, previewUrl })
   }
 
   // ── Vidéo ──────────────────────────────────────────────────────────────────
@@ -616,7 +634,7 @@ export function VisitBasket({
   function toggleViewpoint(c: VisitCaptureRow) {
     const next = !c.is_viewpoint
     setCaptures((prev) => prev.map((x) => (x.id === c.id ? { ...x, is_viewpoint: next } : x)))
-    if (next) toast.success('Photo de référence — MemorIA vous proposera de la refaire à chaque visite', { duration: 2000 })
+    if (next) toast.success('Point de référence ✓ — MemorIA vous aidera à reprendre exactement ce cadrage lors des prochaines visites.', { duration: 2500 })
     setCaptureViewpointAction({ capture_id: c.id, is_viewpoint: next })
       .then((r) => { if (!r.ok) { toast.error(r.error); refresh() } })
       .catch(() => refresh())
@@ -744,6 +762,12 @@ export function VisitBasket({
       return null
     }
     if (c.kind === 'verification') return 'point suivi vérifié'
+    if (c.kind === 'photo') {
+      if (c.is_viewpoint) return 'Point de référence ✓'
+      if (!viewpointHintSeen && c.id === firstUnpinnedPhotoId) {
+        return 'MemorIA pourra vous aider à reprendre exactement ce cadrage lors des prochaines visites.'
+      }
+    }
     return null
   }
   function hhmm(iso: string): string {
@@ -930,8 +954,8 @@ export function VisitBasket({
                   {c.kind === 'photo' && (
                     <button
                       type="button" onClick={() => toggleViewpoint(c)}
-                      aria-label={c.is_viewpoint ? 'Ne plus refaire cette photo' : 'Photo de référence — la refaire à chaque visite'}
-                      title={c.is_viewpoint ? 'Photo de référence' : 'Refaire cette photo à chaque visite'}
+                      aria-label={c.is_viewpoint ? 'Point de référence — ne plus la refaire' : 'Définir comme point de référence'}
+                      title={c.is_viewpoint ? 'Point de référence ✓' : 'Définir comme point de référence'}
                       className="shrink-0 pt-0.5"
                     >
                       <Pin className={`h-3.5 w-3.5 ${c.is_viewpoint ? 'fill-emerald-500 text-emerald-600' : 'text-muted-foreground/40 hover:text-emerald-600'}`} />
@@ -1180,13 +1204,16 @@ export function VisitBasket({
           label={ghost.label}
           geoBannerLabel={CAMERA_BANNER_LABEL[geoStatus]}
           onCapture={(file) => {
-            enqueueMedia(file, 'photo', ghost.anchorId)
+            const { clientUuid, previewUrl } = enqueueMedia(file, 'photo', ghost.anchorId)
             // La série grandit — dire à l'utilisateur qu'il CONSTRUIT quelque chose.
             const serie = viewpoints.find((v) => v.anchorId === ghost.anchorId)
             toast.success(
               `Même point de vue repris — « ${ghost.label ?? 'Photo de référence'} » : ${(serie?.shots ?? 1) + 1} photos`,
               { duration: 2000 },
             )
+            // Même parcours post-shutter qu'une photo normale — la reprise ne
+            // court-circuite plus la dictée.
+            setPostShutter({ clientUuid, previewUrl })
           }}
           onClose={() => setGhost(null)}
           onFallbackNative={() => {

@@ -37,6 +37,7 @@ export function DebriefExpress({
   impact,
   initialSuites,
   watchlist = [],
+  viewpointLabels = {},
 }: {
   reportId: string
   siteId: string
@@ -58,6 +59,9 @@ export function DebriefExpress({
   initialSuites: VisitSuiteProposal[]
   /** Liste « À vérifier » de la visite (mig 196) — réconciliée ici. */
   watchlist?: DbVisitWatchlistItem[]
+  /** Libellés des points de référence (mig 195) du chantier, par ancre — lecture
+   *  seule, pour indiquer « Reprise de : […] » dans le triage. */
+  viewpointLabels?: Record<string, string>
 }) {
   const router = useRouter()
   // Arrivée depuis « Clôturer » du Journal : on surligne le geste de fin —
@@ -382,6 +386,7 @@ export function DebriefExpress({
           onClose={() => setTriageStart(null)}
           onAnnotated={refreshCaptures}
           onLocationCorrected={refreshCaptures}
+          viewpointLabels={viewpointLabels}
         />
       )}
     </div>

@@ -11,7 +11,7 @@
 // capture reste consultable. Cf. [[visite-trois-temps]].
 
 import { useEffect, useRef, useState } from 'react'
-import { X, BookMarked, Eye, AlertTriangle, Check, Wrench, Trash2, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Pencil, MapPin, Mic, Square, Loader2 } from 'lucide-react'
+import { X, BookMarked, Eye, AlertTriangle, Check, Wrench, Trash2, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Pencil, MapPin, Mic, Square, Loader2, Pin } from 'lucide-react'
 import { toast } from 'sonner'
 import type { TriageDecision } from './debrief-actions'
 import type { VisitCaptureRow } from '@/lib/db/visit-captures'
@@ -78,6 +78,7 @@ export function CaptureTriage({
   onClose,
   onAnnotated,
   onLocationCorrected,
+  viewpointLabels = {},
 }: {
   captures: VisitCaptureRow[]
   previews: Record<string, CapturePreview>
@@ -92,6 +93,9 @@ export function CaptureTriage({
   /** Rappel après correction/retour d'un emplacement — le parent recharge la
    *  liste pour que `capture.corrected_lat/lng` reflète le nouvel état. */
   onLocationCorrected?: () => void | Promise<void>
+  /** Libellés des points de référence (mig 195) du chantier, par ancre —
+   *  lecture seule, pour afficher « Reprise de : […] » / « Point de référence ». */
+  viewpointLabels?: Record<string, string>
 }) {
   const total = captures.length
   const [index, setIndex] = useState(Math.min(Math.max(0, startIndex), Math.max(0, total - 1)))
@@ -139,6 +143,14 @@ export function CaptureTriage({
   // Altitude brute du navigateur (mig 352) — jamais recalculée par une correction
   // 2D, donc affichée dès que la capture a un GPS d'origine, corrigé ou non.
   const altitudeCaption = hasGps ? formatAltitudeCaption(capture.altitude_m) : null
+
+  // Indication reprise/ancre (mig 195) — lecture seule, aucune nouvelle logique
+  // métier : `is_viewpoint`/`viewpoint_of` existent déjà, on les affiche juste.
+  const viewpointBadge = capture.is_viewpoint
+    ? 'Point de référence'
+    : capture.viewpoint_of
+      ? `Reprise de : ${viewpointLabels[capture.viewpoint_of] ?? 'un point de référence'}`
+      : null
 
   // Quand la capture est taguée « Action » / « Réserve », le commentaire N'EST PLUS
   // facultatif : il devient le TITRE de la suite. On le rend explicite et bien
@@ -311,6 +323,11 @@ export function CaptureTriage({
           >
             <Pencil className="h-3.5 w-3.5" /> Annoter
           </button>
+        )}
+        {viewpointBadge && (
+          <span className="absolute left-4 top-4 z-10 inline-flex max-w-[70%] items-center gap-1.5 truncate rounded-full bg-black/60 px-3 py-1.5 text-xs font-medium text-white backdrop-blur">
+            <Pin className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{viewpointBadge}</span>
+          </span>
         )}
         {capture.kind === 'photo' && preview ? (
           // eslint-disable-next-line @next/next/no-img-element

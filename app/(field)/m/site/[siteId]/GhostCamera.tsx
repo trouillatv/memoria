@@ -98,7 +98,7 @@ export function GhostCamera({
       {/* En-tête : quoi reprendre + fermer. */}
       <div className="flex items-center justify-between gap-2 px-4 py-3 text-white">
         <span className="min-w-0 truncate text-sm font-medium">
-          {label ?? 'Photo de référence'} — alignez sur le fantôme
+          {label ?? 'Photo de référence'} — alignez sur la référence
         </span>
         <button type="button" onClick={onClose} aria-label="Fermer" className="shrink-0 rounded-full bg-white/10 p-2">
           <X className="h-5 w-5" />
@@ -138,7 +138,7 @@ export function GhostCamera({
           className="rounded-full bg-white/10 px-3 py-2 text-xs font-medium text-white"
         >
           <Zap className="mr-1 inline h-3.5 w-3.5" />
-          {ghostOpacity === 0 ? 'Fantôme masqué' : `Fantôme ${Math.round(ghostOpacity * 100)} %`}
+          {ghostOpacity === 0 ? 'Référence masquée' : `Référence ${Math.round(ghostOpacity * 100)} %`}
         </button>
         <button
           type="button"
