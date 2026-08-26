@@ -9,6 +9,10 @@
 // partagé entre surfaces — et ce montage ne doit jamais réécrire ce hint
 // partagé (sinon il écraserait une préférence d'appareil posée ailleurs, ex.
 // Terrain).
+//
+// Reconfirmé le même jour après recette (Vincent) : Plan par défaut sur
+// TOUTES les visites, sans exception — un rapport jamais réglé ne doit
+// JAMAIS hériter la préférence ambiante Satellite d'un autre écran.
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
@@ -143,18 +147,18 @@ describe('CrMapExpandable — rapport déjà figé (explicit=true) : la carte su
   })
 })
 
-describe('CrMapExpandable — rapport jamais réglé (explicit=false) : on fige UNE FOIS la préférence courante', () => {
-  it('hérite et fige Satellite quand la préférence d appareil courante est Satellite', async () => {
+describe('CrMapExpandable — rapport jamais réglé (explicit=false) : on fige TOUJOURS Plan une seule fois', () => {
+  it('fige Plan même quand la préférence d appareil courante est Satellite (Vincent, 2026-08-27)', async () => {
     window.localStorage.setItem(BASE_LAYER_STORAGE_KEY, 'satellite')
     renderHarness({
       mapboxToken: 'tok',
       initialStatus: { chosen: 'plan', explicit: false, satelliteAvailable: true },
     })
-    // La carte affiche déjà la préférence ambiante, sans attendre la persistance…
+    // La carte affiche Plan immédiatement, sans attendre la persistance…
     const [map] = screen.getAllByTestId('capture-map')
-    expect(map).toHaveAttribute('data-base-layer', 'satellite')
-    // …et cette même valeur est figée en base pour ce rapport.
-    await waitFor(() => expect(setCrMapBaseLayerAction).toHaveBeenCalledWith('report-1', 'satellite'))
+    expect(map).toHaveAttribute('data-base-layer', 'plan')
+    // …et cette même valeur est figée en base pour ce rapport, jamais héritée.
+    await waitFor(() => expect(setCrMapBaseLayerAction).toHaveBeenCalledWith('report-1', 'plan'))
   })
 
   it('fige Plan quand aucune préférence Satellite n est posée', async () => {
