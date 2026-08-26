@@ -1,8 +1,18 @@
 import 'server-only'
+import path from 'node:path'
 import { Resvg } from '@resvg/resvg-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveEffectivePosition, selectCrVisualEvidence, buildEvidenceNumberMap, formatClusterMarkerLabel, groupByProximity } from '@/lib/visits/geo'
 import { satelliteBaseLayer, isSatelliteAvailable, type MapBaseLayerId } from '@/lib/field/map-base-layers'
+
+// Police embarquée dans le repo (copie de pdfjs-dist/standard_fonts, licence
+// SIL OFL) — nécessaire car `loadSystemFonts` échoue SILENCIEUSEMENT en
+// production (Vercel serverless n'a aucune police système installée) : les
+// numéros de repère disparaissaient du PNG sans erreur, alors qu'ils
+// s'affichaient en local (poste de dev = polices système présentes). Preuve
+// visuelle : _resvg_text_test_nofonts.png (Lot correctif carte PDF, 2026-08-27).
+const FONT_PATH = path.join(process.cwd(), 'lib/pdf/assets/fonts/LiberationSans-Bold.ttf')
+export const FONT_FAMILY = 'Liberation Sans'
 
 // « Instantané carte » du compte-rendu. Le PDF ne fabrique JAMAIS la carte : cette
 // image est produite UNE SEULE FOIS (à l'ouverture de l'aperçu), stockée sur le
@@ -85,7 +95,7 @@ function escapeXml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] ?? c))
 }
 
-function buildSvg(
+export function buildSvg(
   tiles: Array<{ left: number; top: number; b64: string }>,
   markers: Array<{ cx: number; cy: number; color: string; label: string }>,
 ): string {
@@ -101,14 +111,15 @@ function buildSvg(
   // qu'il contient, séparés par « · » (ex. « 3 · 4 »), jamais un simple compte
   // ni une plage « a–b » qui se lit comme un intervalle — sur le papier, un
   // repère ne se tape pas, l'étiquette doit donc être auto-suffisante.
-  // `loadSystemFonts` est requis pour que le <text> soit bien rendu par Resvg
-  // (vérifié : sans lui, le texte disparaît silencieusement).
+  // `font-family` DOIT correspondre à `FONT_FAMILY` (police embarquée
+  // explicitement via `fontFiles`, cf. ensureCrMapSnapshot) — Resvg ne fait
+  // aucun repli automatique vers une police non chargée.
   const dots = markers
     .map((m) => {
       if (m.label.length <= 2) {
         return (
           `<circle cx="${m.cx.toFixed(1)}" cy="${m.cy.toFixed(1)}" r="19" fill="${escapeXml(m.color)}" stroke="#ffffff" stroke-width="3"/>` +
-          `<text x="${m.cx.toFixed(1)}" y="${(m.cy + 6.5).toFixed(1)}" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="bold" fill="#ffffff" text-anchor="middle">${escapeXml(m.label)}</text>`
+          `<text x="${m.cx.toFixed(1)}" y="${(m.cy + 6.5).toFixed(1)}" font-size="19" font-family="${FONT_FAMILY}" font-weight="bold" fill="#ffffff" text-anchor="middle">${escapeXml(m.label)}</text>`
         )
       }
       // Pastille proche de la taille du marqueur simple (r=19, soit un
@@ -120,11 +131,36 @@ function buildSvg(
       const y = m.cy - h / 2
       return (
         `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h}" rx="${h / 2}" fill="${escapeXml(m.color)}" stroke="#ffffff" stroke-width="3"/>` +
-        `<text x="${m.cx.toFixed(1)}" y="${(m.cy + 5.5).toFixed(1)}" font-size="16" font-family="Helvetica, Arial, sans-serif" font-weight="bold" fill="#ffffff" text-anchor="middle">${escapeXml(m.label)}</text>`
+        `<text x="${m.cx.toFixed(1)}" y="${(m.cy + 5.5).toFixed(1)}" font-size="16" font-family="${FONT_FAMILY}" font-weight="bold" fill="#ffffff" text-anchor="middle">${escapeXml(m.label)}</text>`
       )
     })
     .join('')
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><rect width="${W}" height="${H}" fill="#e5e7eb"/>${imgs}${dots}</svg>`
+}
+
+/**
+ * Rasterise le SVG carte avec EXACTEMENT la config Resvg de production (police
+ * embarquée, jamais de recherche système) — extrait pour que le test de
+ * non-régression (tests/lib/cr-map-snapshot-render.test.ts) exerce le même
+ * chemin de code que `ensureCrMapSnapshot`, au lieu de dupliquer ces options.
+ */
+function rasterize(svg: string) {
+  return new Resvg(svg, { font: { loadSystemFonts: false, fontFiles: [FONT_PATH], defaultFontFamily: FONT_FAMILY } }).render()
+}
+
+export function renderMapPng(svg: string): Buffer {
+  return Buffer.from(rasterize(svg).asPng())
+}
+
+/**
+ * Pixels RGBA bruts du rendu (pas le PNG encodé) — exposé uniquement pour le
+ * test de non-régression, qui doit inspecter l'artefact réellement produit
+ * (présence de pixels blancs dans la zone du chiffre) et pas seulement le
+ * balisage `<text>` d'entrée.
+ */
+export function renderMapPixelsForTest(svg: string): { pixels: Buffer; width: number; height: number } {
+  const rendered = rasterize(svg)
+  return { pixels: rendered.pixels, width: rendered.width, height: rendered.height }
 }
 
 /**
@@ -231,10 +267,12 @@ export async function ensureCrMapSnapshot(reportId: string): Promise<string | nu
 
   let png: Buffer
   try {
-    // `loadSystemFonts` requis pour que les numéros bakés (<text>) soient rendus
-    // par Resvg — sans lui, le texte disparaît silencieusement (Lot 4, vérifié
-    // via _resvg_text_test.mjs).
-    png = Buffer.from(new Resvg(buildSvg(tiles, markers), { font: { loadSystemFonts: true } }).render().asPng())
+    // `loadSystemFonts: true` échouait SILENCIEUSEMENT en production (Vercel
+    // serverless = zéro police système) : les numéros disparaissaient du PNG
+    // sans erreur (preuve : _resvg_text_test_nofonts.png). `renderMapPng`
+    // charge donc une police embarquée explicitement (`fontFiles`) et coupe
+    // la recherche système, pour un rendu identique en local et en production.
+    png = renderMapPng(buildSvg(tiles, markers))
   } catch {
     return null
   }
