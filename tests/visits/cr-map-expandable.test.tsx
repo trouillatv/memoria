@@ -2,15 +2,26 @@
 // (bug recette terrain 2026-08-26, cf. commentaire en tête de CrMapExpandable.tsx).
 // CaptureMap est mockée : on ne teste pas Leaflet ici, seulement le rendu mutuellement
 // exclusif petite carte / carte plein écran piloté par le contexte d'expansion.
+//
+// Depuis 2026-08-27, couvre aussi la divergence carte visible / instantané PDF
+// remontée par Vincent : la carte affichée doit toujours démarrer sur le fond
+// propre au rapport (`initialStatus.chosen`), jamais sur le hint localStorage
+// partagé entre surfaces — et ce montage ne doit jamais réécrire ce hint
+// partagé (sinon il écraserait une préférence d'appareil posée ailleurs, ex.
+// Terrain).
 
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import { afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 
 vi.mock('@/components/CaptureMap', () => ({
-  CaptureMap: ({ heightClass }: { heightClass: string }) => (
-    <div data-testid="capture-map" data-height-class={heightClass} />
+  CaptureMap: ({ heightClass, baseLayer }: { heightClass: string; baseLayer?: { id: string } }) => (
+    <div data-testid="capture-map" data-height-class={heightClass} data-base-layer={baseLayer?.id} />
   ),
+}))
+
+const setCrMapBaseLayerAction = vi.fn()
+vi.mock('../../app/(field)/m/visite/[reportId]/cr/map-snapshot-actions', () => ({
+  setCrMapBaseLayerAction: (...args: unknown[]) => setCrMapBaseLayerAction(...args),
 }))
 
 import {
@@ -18,19 +29,47 @@ import {
   CrMapExploreButton,
   CrMapExpandable,
 } from '@/app/(field)/m/visite/[reportId]/cr/CrMapExpandable'
+import { BASE_LAYER_STORAGE_KEY } from '@/lib/field/use-map-base-layer'
+import type { CrMapBaseLayerStatus } from '@/lib/pdf/cr-map-snapshot'
 
-afterEach(() => cleanup())
+beforeEach(() => {
+  setCrMapBaseLayerAction.mockResolvedValue(statusFor('plan'))
+})
 
-function renderHarness() {
+afterEach(() => {
+  cleanup()
+  window.localStorage.clear()
+  setCrMapBaseLayerAction.mockReset()
+})
+
+function statusFor(chosen: 'plan' | 'satellite'): CrMapBaseLayerStatus {
+  return {
+    chosen,
+    explicit: true,
+    snapshotLayer: chosen,
+    snapshotPath: `/snapshots/${chosen}.png`,
+    satelliteAvailable: true,
+  }
+}
+
+function renderHarness(overrides?: { mapboxToken?: string | null; initialStatus?: Partial<CrMapBaseLayerStatus> }) {
+  const initialStatus: CrMapBaseLayerStatus = {
+    chosen: 'plan',
+    explicit: false,
+    snapshotLayer: null,
+    snapshotPath: null,
+    satelliteAvailable: false,
+    ...overrides?.initialStatus,
+  }
   return render(
     <CrMapExpandProvider>
       <CrMapExploreButton />
       <CrMapExpandable
         siteId="site-1"
         captures={[]}
-        mapboxToken={null}
+        mapboxToken={overrides?.mapboxToken ?? null}
         reportId="report-1"
-        initialStatus={{ chosen: 'plan', explicit: false, snapshotLayer: null, snapshotPath: null, satelliteAvailable: false }}
+        initialStatus={initialStatus}
       />
     </CrMapExpandProvider>
   )
@@ -72,5 +111,69 @@ describe('CrMapExpandable — mutuelle exclusion des instances CaptureMap', () =
 
     fireEvent.click(screen.getByLabelText('Fermer'))
     expect(document.body.style.overflow).not.toBe('hidden')
+  })
+})
+
+describe('CrMapExpandable — rapport déjà figé (explicit=true) : la carte suit STRICTEMENT le rapport', () => {
+  it('affiche Satellite quand le rapport le choisit, même sans hint localStorage', () => {
+    renderHarness({
+      mapboxToken: 'tok',
+      initialStatus: { chosen: 'satellite', explicit: true, satelliteAvailable: true },
+    })
+    const [map] = screen.getAllByTestId('capture-map')
+    expect(map).toHaveAttribute('data-base-layer', 'satellite')
+  })
+
+  it('affiche Plan quand le rapport le choisit, même si l appareil a une préférence Satellite ailleurs (Terrain)', () => {
+    window.localStorage.setItem(BASE_LAYER_STORAGE_KEY, 'satellite')
+    renderHarness({
+      mapboxToken: 'tok',
+      initialStatus: { chosen: 'plan', explicit: true, satelliteAvailable: true },
+    })
+    const [map] = screen.getAllByTestId('capture-map')
+    expect(map).toHaveAttribute('data-base-layer', 'plan')
+  })
+
+  it('ne rappelle jamais l action de persistance pour un rapport déjà figé', () => {
+    renderHarness({
+      mapboxToken: 'tok',
+      initialStatus: { chosen: 'satellite', explicit: true, satelliteAvailable: true },
+    })
+    expect(setCrMapBaseLayerAction).not.toHaveBeenCalled()
+  })
+})
+
+describe('CrMapExpandable — rapport jamais réglé (explicit=false) : on fige UNE FOIS la préférence courante', () => {
+  it('hérite et fige Satellite quand la préférence d appareil courante est Satellite', async () => {
+    window.localStorage.setItem(BASE_LAYER_STORAGE_KEY, 'satellite')
+    renderHarness({
+      mapboxToken: 'tok',
+      initialStatus: { chosen: 'plan', explicit: false, satelliteAvailable: true },
+    })
+    // La carte affiche déjà la préférence ambiante, sans attendre la persistance…
+    const [map] = screen.getAllByTestId('capture-map')
+    expect(map).toHaveAttribute('data-base-layer', 'satellite')
+    // …et cette même valeur est figée en base pour ce rapport.
+    await waitFor(() => expect(setCrMapBaseLayerAction).toHaveBeenCalledWith('report-1', 'satellite'))
+  })
+
+  it('fige Plan quand aucune préférence Satellite n est posée', async () => {
+    renderHarness({
+      mapboxToken: 'tok',
+      initialStatus: { chosen: 'plan', explicit: false, satelliteAvailable: true },
+    })
+    await waitFor(() => expect(setCrMapBaseLayerAction).toHaveBeenCalledWith('report-1', 'plan'))
+  })
+
+  it('ne réécrit jamais le hint localStorage partagé au montage (préférence d appareil intacte)', async () => {
+    window.localStorage.setItem(BASE_LAYER_STORAGE_KEY, 'satellite')
+    renderHarness({
+      mapboxToken: 'tok',
+      initialStatus: { chosen: 'plan', explicit: false, satelliteAvailable: true },
+    })
+    await waitFor(() => expect(setCrMapBaseLayerAction).toHaveBeenCalled())
+    // La préférence d'appareil posée ailleurs (Terrain) reste intacte — le gel
+    // écrit en base, jamais dans le hint local partagé.
+    expect(window.localStorage.getItem(BASE_LAYER_STORAGE_KEY)).toBe('satellite')
   })
 })

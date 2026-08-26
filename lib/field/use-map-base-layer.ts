@@ -22,6 +22,7 @@ export function useMapBaseLayer(mapboxToken: string | null): {
   baseLayerId: MapBaseLayerId
   satelliteAvailable: boolean
   setBaseLayerId: (id: MapBaseLayerId) => void
+  setBaseLayerIdLocal: (id: MapBaseLayerId) => void
 } {
   const satelliteAvailable = isSatelliteAvailable(mapboxToken)
   const [baseLayerId, setBaseLayerIdState] = useState<MapBaseLayerId>('plan')
@@ -37,6 +38,17 @@ export function useMapBaseLayer(mapboxToken: string | null): {
     window.localStorage.setItem(BASE_LAYER_STORAGE_KEY, id)
   }
 
+  // État local SEULEMENT — n'écrit jamais le hint localStorage partagé entre
+  // surfaces. Réservé à la synchronisation d'une carte sur une préférence
+  // propre à SON contexte (ex. CrMapExpandable synchronisé sur
+  // cr_map_base_layer) : la version complète `setBaseLayerId` propagerait par
+  // erreur ce choix contextuel comme préférence d'appareil, écrasant celle
+  // que l'utilisateur a réellement posée ailleurs (ex. Terrain) — correctif
+  // divergence carte CR/PDF, 2026-08-27.
+  const setBaseLayerIdLocal = (id: MapBaseLayerId) => {
+    setBaseLayerIdState(id)
+  }
+
   // Mémoïsé : resolveBaseLayer() fabrique un nouvel objet à chaque appel côté
   // Satellite — sans ce useMemo, chaque re-rendu (même sans changement de
   // fond) recrée la référence, ce qui refait tourner l'effet de swap de
@@ -46,5 +58,5 @@ export function useMapBaseLayer(mapboxToken: string | null): {
     () => (satelliteAvailable ? resolveBaseLayer(baseLayerId, mapboxToken) : PLAN_BASE_LAYER),
     [satelliteAvailable, baseLayerId, mapboxToken],
   )
-  return { baseLayer, baseLayerId, satelliteAvailable, setBaseLayerId }
+  return { baseLayer, baseLayerId, satelliteAvailable, setBaseLayerId, setBaseLayerIdLocal }
 }

@@ -31,7 +31,7 @@ import { ArrowUpRight, Loader2, AlertTriangle, X } from 'lucide-react'
 import { CaptureMap, type MapCapture } from '@/components/CaptureMap'
 import { CaptureClusterGallery } from '@/components/CaptureClusterGallery'
 import { MapBaseLayerToggle } from '@/components/MapBaseLayerToggle'
-import { useMapBaseLayer } from '@/lib/field/use-map-base-layer'
+import { useMapBaseLayer, BASE_LAYER_STORAGE_KEY } from '@/lib/field/use-map-base-layer'
 import type { MapBaseLayerId } from '@/lib/field/map-base-layers'
 import type { CrMapBaseLayerStatus } from '@/lib/pdf/cr-map-snapshot'
 import { setCrMapBaseLayerAction } from './map-snapshot-actions'
@@ -78,17 +78,7 @@ export function CrMapExpandable({ siteId, captures, mapboxToken, reportId, initi
   const ctx = useContext(CrMapExpandContext)
   const expanded = ctx?.expanded ?? false
   const setExpanded = ctx?.setExpanded ?? (() => {})
-  const { baseLayer, baseLayerId, satelliteAvailable, setBaseLayerId } = useMapBaseLayer(mapboxToken)
-
-  // Le choix explicite du rapport prime toujours sur le simple hint
-  // localStorage lu par useMapBaseLayer au montage (même doctrine que
-  // l'ancien CrMapLayerControl.tsx, absorbé ici). Effet déclaré APRÈS
-  // useMapBaseLayer(...) : React exécute les effets dans l'ordre de
-  // déclaration, celui-ci s'applique donc en second et a le dernier mot.
-  useEffect(() => {
-    if (initialStatus.explicit) setBaseLayerId(initialStatus.chosen)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const { baseLayer, baseLayerId, satelliteAvailable, setBaseLayerId, setBaseLayerIdLocal } = useMapBaseLayer(mapboxToken)
 
   // Persistance PDF (site_reports.cr_map_base_layer) — état séparé de la
   // carte affichée (pilotée par baseLayerId ci-dessus), mais déclenché par le
@@ -99,6 +89,39 @@ export function CrMapExpandable({ siteId, captures, mapboxToken, reportId, initi
   const staleLabel = stale
     ? `${status.chosen === 'satellite' ? 'Satellite' : 'Plan'} demandé — carte du rapport non mise à jour`
     : null
+
+  // Doctrine fond CR (Vincent, 2026-08-27) : `memoria.map.baseLayer` (hint
+  // localStorage partagé) est la préférence interactive COURANTE de
+  // l'utilisateur, pas la préférence du rapport. `cr_map_base_layer` est le
+  // choix FIGÉ propre à ce rapport, qui ne doit plus jamais varier avec la
+  // préférence globale une fois posé (visite en Satellite hier, passage en
+  // Plan aujourd'hui sur un autre chantier → le CR d'hier reste Satellite).
+  //
+  // - Rapport déjà explicite (`initialStatus.explicit`) : la carte affichée
+  //   suit STRICTEMENT ce choix figé, jamais le hint ambiant —
+  //   `setBaseLayerIdLocal` (état local seul, n'écrit jamais localStorage)
+  //   pour ne pas écraser la préférence d'appareil réelle posée ailleurs
+  //   (ex. Terrain) avec la valeur figée de CE rapport.
+  // - Rapport jamais réglé : on fige UNE SEULE FOIS, à cette première
+  //   ouverture, la préférence interactive courante — la carte l'affiche déjà
+  //   nativement (effet interne de useMapBaseLayer lit ce même hint), il ne
+  //   reste qu'à la persister en base et déclencher l'instantané PDF
+  //   correspondant, pour que la carte visible et le PDF ne divergent jamais.
+  //   Cette branche ne s'exécute plus au prochain montage : une fois figé,
+  //   `explicit` devient vrai côté serveur.
+  useEffect(() => {
+    if (initialStatus.explicit) {
+      setBaseLayerIdLocal(initialStatus.chosen)
+      return
+    }
+    const stored = window.localStorage.getItem(BASE_LAYER_STORAGE_KEY)
+    const initial: MapBaseLayerId = stored === 'satellite' && satelliteAvailable ? 'satellite' : 'plan'
+    startTransition(async () => {
+      const next = await setCrMapBaseLayerAction(reportId, initial)
+      setStatus(next)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleLayerChange = (layer: MapBaseLayerId) => {
     setBaseLayerId(layer)

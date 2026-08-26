@@ -48,6 +48,21 @@ export function TerrainMap({ siteId, captures, visits, mapboxToken }: {
   const openSingle = useCallback((c: MapCapture) => router.push(`/m/observation/${c.id}?from=terrain`), [router])
   const openCluster = useCallback((cs: MapCapture[]) => setGalleryCaptures(cs), [])
 
+  // Correctif Terrain (Vincent, 2026-08-27) : la carte reste montée SANS
+  // CONDITION derrière la galerie plein écran d'un cluster — même bug de fond
+  // que CrMapExpandable (cf. son commentaire d'en-tête), ici avec le tuilage
+  // Satellite qui traverse le fond noir semi-transparent de la galerie. La
+  // carte doit être réellement démontée pendant la galerie (jamais un simple
+  // z-index/opacity) ; `lastView` mémorise centre/zoom pour que le retour ne
+  // fasse pas dériver la vue vers un nouveau fitBounds. État (pas un ref) : un
+  // ref ne peut pas être lu pendant le rendu (règle react-hooks/refs) — sans
+  // risque de recréer la carte pour autant, `initialView`/`onViewChange` ne
+  // sont pas dans les deps de l'effet de création de CaptureMap.
+  const [lastView, setLastView] = useState<{ center: [number, number]; zoom: number } | null>(null)
+  const handleViewChange = useCallback((v: { center: [number, number]; zoom: number }) => {
+    setLastView(v)
+  }, [])
+
   const filtered = useMemo(() => captures.filter((c) => {
     if (selectedVisitId !== 'all' && c.reportId !== selectedVisitId) return false
     if (c.kind === 'photo' && !showPhotos) return false
@@ -105,24 +120,28 @@ export function TerrainMap({ siteId, captures, visits, mapboxToken }: {
         )}
       </div>
 
-      <div className="relative min-h-0 flex-1">
-        <CaptureMap
-          siteId={siteId}
-          captures={filtered}
-          heightClass="h-full"
-          baseLayer={baseLayer}
-          clusterByZoom
-          onOpenSingle={openSingle}
-          onOpenCluster={openCluster}
-        />
-        {filtered.length === 0 && (
-          <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center">
-            <span className="rounded-full bg-background/90 px-3 py-1.5 text-[12px] font-medium text-muted-foreground shadow">
-              Aucune preuve pour ce filtre
-            </span>
-          </div>
-        )}
-      </div>
+      {!galleryCaptures && (
+        <div className="relative min-h-0 flex-1">
+          <CaptureMap
+            siteId={siteId}
+            captures={filtered}
+            heightClass="h-full"
+            baseLayer={baseLayer}
+            clusterByZoom
+            onOpenSingle={openSingle}
+            onOpenCluster={openCluster}
+            initialView={lastView}
+            onViewChange={handleViewChange}
+          />
+          {filtered.length === 0 && (
+            <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center">
+              <span className="rounded-full bg-background/90 px-3 py-1.5 text-[12px] font-medium text-muted-foreground shadow">
+                Aucune preuve pour ce filtre
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {galleryCaptures && (
         <CaptureClusterGallery captures={galleryCaptures} onClose={() => setGalleryCaptures(null)} linkContext="terrain" />

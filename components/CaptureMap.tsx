@@ -89,7 +89,7 @@ function clusterPopupHtml(items: MapCapture[], linkPopups: boolean, linkContext?
   return `<div style="max-height:240px;overflow-auto;min-width:170px"><strong>${items.length} preuves à cet endroit</strong><div style="margin-top:4px">${rows}</div></div>`
 }
 
-export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPopups = true, baseLayer = PLAN_BASE_LAYER, clusterByZoom = false, linkContext, onOpenSingle, onOpenCluster }: {
+export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPopups = true, baseLayer = PLAN_BASE_LAYER, clusterByZoom = false, linkContext, onOpenSingle, onOpenCluster, initialView, onViewChange }: {
   siteId: string
   captures: MapCapture[]
   heightClass?: string
@@ -115,12 +115,27 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
   /** Idem pour un cluster : plus de popup Leaflet volumineux, l'appelant
    *  ouvre son propre écran/overlay plein écran avec la liste des preuves. */
   onOpenCluster?: (captures: MapCapture[]) => void
+  /** Vue de départ explicite (centre + zoom), consommée UNE SEULE fois au
+   *  montage puis ignorée pour les recréations suivantes (changement de
+   *  filtre) — permet à un appelant qui démonte/remonte réellement cette
+   *  carte (ex. Terrain, galerie plein écran d'un cluster) de restaurer
+   *  exactement la position quittée, sans quoi chaque remontage referait un
+   *  fitBounds et ferait dériver le zoom/centre (correctif Terrain, 2026-08-27). */
+  initialView?: { center: [number, number]; zoom: number } | null
+  /** Notifié à chaque déplacement/zoom stabilisé — l'appelant mémorise la
+   *  dernière vue pour la repasser en `initialView` au prochain montage. */
+  onViewChange?: (view: { center: [number, number]; zoom: number }) => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const mapRef = useRef<LeafletMap | null>(null)
   const leafletRef = useRef<typeof Leaflet | null>(null)
   const tileLayerRef = useRef<TileLayer | null>(null)
   const [mapReady, setMapReady] = useState(false)
+  const initialViewRef = useRef(initialView)
+  const onViewChangeRef = useRef(onViewChange)
+  useEffect(() => {
+    onViewChangeRef.current = onViewChange
+  }, [onViewChange])
 
   useEffect(() => {
     let cancelled = false
@@ -143,6 +158,20 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
       // fond ne doit jamais recréer cette carte ni ses marqueurs (Vincent,
       // 2026-08-26 — même pattern que LocationCorrectionMap.tsx).
       setMapReady(true)
+
+      // Vue restaurée : consommée une seule fois (voir doctrine `initialView`
+      // ci-dessus) — une recréation ultérieure de cette même instance
+      // (changement de filtre) retombe sur le fitBounds normal ci-dessous.
+      const restoredView = initialViewRef.current
+      if (restoredView) {
+        map.setView(restoredView.center, restoredView.zoom)
+        initialViewRef.current = null
+      }
+      map.on('moveend zoomend', () => {
+        if (!onViewChangeRef.current) return
+        const c = map.getCenter()
+        onViewChangeRef.current({ center: [c.lat, c.lng], zoom: map.getZoom() })
+      })
 
       // Un point isolé — utilisé tel quel (branche simple) ou comme rendu d'un
       // cluster à une seule preuve (branche Terrain) : même popup/tooltip, sauf
@@ -176,8 +205,10 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
 
       if (!hasEvidenceNumbers && !useZoomClustering) {
         const markers = captures.map((c) => addPointMarker(c, [c.lat, c.lng]))
-        if (markers.length > 0) map.fitBounds(L.featureGroup(markers).getBounds().pad(0.2))
-        else map.setView([0, 0], 2)
+        if (!restoredView) {
+          if (markers.length > 0) map.fitBounds(L.featureGroup(markers).getBounds().pad(0.2))
+          else map.setView([0, 0], 2)
+        }
         return
       }
 
@@ -187,8 +218,10 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
         // plusieurs visites/CR, une numérotation globale n'aurait pas de sens
         // métier (elle reste strictement scopée au CR d'une visite).
         const initialBounds = L.latLngBounds(captures.map((c) => [c.lat, c.lng] as [number, number]))
-        if (captures.length > 0) map.fitBounds(initialBounds.pad(0.2))
-        else map.setView([0, 0], 2)
+        if (!restoredView) {
+          if (captures.length > 0) map.fitBounds(initialBounds.pad(0.2))
+          else map.setView([0, 0], 2)
+        }
 
         let layers: import('leaflet').Layer[] = []
         const render = () => {
@@ -238,8 +271,10 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
       // n'est pas honnête sur la distance réelle »). Le PDF statique (jamais
       // zoomable) garde `groupByProximity`, un regroupement fixe en mètres.
       const initialBounds = L.latLngBounds(captures.map((c) => [c.lat, c.lng] as [number, number]))
-      if (captures.length > 0) map.fitBounds(initialBounds.pad(0.2))
-      else map.setView([0, 0], 2)
+      if (!restoredView) {
+        if (captures.length > 0) map.fitBounds(initialBounds.pad(0.2))
+        else map.setView([0, 0], 2)
+      }
 
       let layers: import('leaflet').Layer[] = []
       const render = () => {
