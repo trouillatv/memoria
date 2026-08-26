@@ -11,9 +11,11 @@
 // rencontrés ») : une visite ou toutes, photos et/ou vidéos. La période et les
 // objets métier spatialisés sont explicitement hors périmètre V1.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { MapPin } from 'lucide-react'
 import { CaptureMap, type MapCapture } from '@/components/CaptureMap'
+import { CaptureClusterGallery } from '@/components/CaptureClusterGallery'
 import { PLAN_BASE_LAYER, resolveBaseLayer, isSatelliteAvailable, type MapBaseLayerId } from '@/lib/field/map-base-layers'
 
 const BASE_LAYER_STORAGE_KEY = 'memoria.map.baseLayer'
@@ -33,12 +35,20 @@ export function TerrainMap({ siteId, captures, visits, mapboxToken }: {
    *  par cette prop. */
   mapboxToken: string | null
 }) {
+  const router = useRouter()
   const satelliteAvailable = isSatelliteAvailable(mapboxToken)
 
   const [selectedVisitId, setSelectedVisitId] = useState<string>('all')
   const [showPhotos, setShowPhotos] = useState(true)
   const [showVideos, setShowVideos] = useState(true)
   const [baseLayerId, setBaseLayerId] = useState<MapBaseLayerId>('plan')
+  // Lot correctif Terrain (Vincent, 2026-08-26) : plus de popup Leaflet — un
+  // marqueur seul navigue direct, un cluster ouvre cette galerie plein écran.
+  // useCallback : CaptureMap réinitialise sa carte (perd zoom/position) si ces
+  // callbacks changent d'identité à chaque rendu — cf. useEffect deps.
+  const [galleryCaptures, setGalleryCaptures] = useState<MapCapture[] | null>(null)
+  const openSingle = useCallback((c: MapCapture) => router.push(`/m/observation/${c.id}?from=terrain`), [router])
+  const openCluster = useCallback((cs: MapCapture[]) => setGalleryCaptures(cs), [])
 
   useEffect(() => {
     const stored = window.localStorage.getItem(BASE_LAYER_STORAGE_KEY)
@@ -128,7 +138,15 @@ export function TerrainMap({ siteId, captures, visits, mapboxToken }: {
       </div>
 
       <div className="relative min-h-0 flex-1">
-        <CaptureMap siteId={siteId} captures={filtered} heightClass="h-full" baseLayer={baseLayer} clusterByZoom />
+        <CaptureMap
+          siteId={siteId}
+          captures={filtered}
+          heightClass="h-full"
+          baseLayer={baseLayer}
+          clusterByZoom
+          onOpenSingle={openSingle}
+          onOpenCluster={openCluster}
+        />
         {filtered.length === 0 && (
           <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center">
             <span className="rounded-full bg-background/90 px-3 py-1.5 text-[12px] font-medium text-muted-foreground shadow">
@@ -137,6 +155,10 @@ export function TerrainMap({ siteId, captures, visits, mapboxToken }: {
           </div>
         )}
       </div>
+
+      {galleryCaptures && (
+        <CaptureClusterGallery captures={galleryCaptures} onClose={() => setGalleryCaptures(null)} />
+      )}
     </div>
   )
 }

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Camera, Video, Mic, Pencil, HelpCircle, MapPin, ChevronRight } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { requireOwned } from '@/lib/auth/ownership'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisitCapturePreviewUrls, type VisitCaptureRow } from '@/lib/db/visit-captures'
 import { distanceMeters, SAME_SPOT_RADIUS_M } from '@/lib/visits/geo'
@@ -42,14 +43,23 @@ export default async function ObservationPage({
   const capture = data as VisitCaptureRow | null
   if (!capture) notFound()
 
-  // Portée organisation : l'observation appartient à un chantier de l'org.
+  // Portée organisation : même garde d'appartenance que la page Terrain
+  // (requireSiteAccess → requireOwned, ensemble des memberships ACTIFS de
+  // l'appelant) — jamais une comparaison au seul organization_id primaire.
+  // Bug 2026-08-26 (Vincent, recette Terrain) : un utilisateur membre actif
+  // d'une org qui n'est pas son org primaire voyait le chantier sur Terrain
+  // mais recevait "Page introuvable" sur la fiche Observation d'une capture
+  // du même chantier — prouvé en base (capture existante, accès refusé à
+  // tort par la comparaison naïve).
+  const access = await requireOwned(user.role, 'sites', capture.site_id, user)
+  if (!access.allowed) notFound()
   const { data: siteRow } = await supabase
     .from('sites')
     .select('id, name, organization_id')
     .eq('id', capture.site_id)
     .maybeSingle()
   const site = siteRow as { id: string; name: string; organization_id: string | null } | null
-  if (!site || (user.organization_id && site.organization_id !== user.organization_id)) notFound()
+  if (!site) notFound()
 
   // Provenance : la visite (ou réunion) qui a produit l'observation.
   const { data: reportRow } = await supabase

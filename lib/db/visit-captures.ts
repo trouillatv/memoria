@@ -409,7 +409,7 @@ export async function listSitePhotoCaptures(siteId: string, limit = 500): Promis
 }
 
 export async function getVisitCapturePreviewUrls(
-  captures: VisitCaptureRow[],
+  captures: Array<Pick<VisitCaptureRow, 'id' | 'attachment_id'>>,
 ): Promise<Record<string, { url: string; mime: string | null }>> {
   const withAtt = captures.filter((c) => c.attachment_id)
   if (withAtt.length === 0) return {}
@@ -456,6 +456,9 @@ export interface SiteMapCapture {
   body: string | null
   reportId: string
   subjectName: string | null
+  /** Miniature signée (site-reports), même résolution que la galerie CR
+   *  (getVisitCapturePreviewUrls) — null si pas de pièce jointe résolvable. */
+  thumbnailUrl: string | null
 }
 
 /**
@@ -467,18 +470,22 @@ export async function listSiteMapCaptures(siteId: string): Promise<SiteMapCaptur
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('visit_capture')
-    .select('id, kind, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, body, captured_at, created_at, report_id')
+    .select('id, kind, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, body, captured_at, created_at, report_id, attachment_id')
     .eq('site_id', siteId)
     .not('lat', 'is', null)
     .not('lng', 'is', null)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
     .limit(500)
-  return ((data ?? []) as Array<{
+  const rows = (data ?? []) as Array<{
     id: string; kind: string; lat: number | null; lng: number | null
     gps_accuracy_m: number | null; corrected_lat: number | null; corrected_lng: number | null
     body: string | null; captured_at: string | null; created_at: string; report_id: string
-  }>).filter((c) => isMappableVisualCapture(c.kind)).flatMap((c) => {
+    attachment_id: string | null
+  }>
+  const mappable = rows.filter((c) => isMappableVisualCapture(c.kind))
+  const previewUrls = await getVisitCapturePreviewUrls(mappable)
+  return mappable.flatMap((c) => {
     const pos = resolveEffectivePosition({
       lat: c.lat, lng: c.lng, correctedLat: c.corrected_lat, correctedLng: c.corrected_lng,
     })
@@ -488,6 +495,7 @@ export async function listSiteMapCaptures(siteId: string): Promise<SiteMapCaptur
       gpsAccuracyM: c.gps_accuracy_m,
       created_at: c.captured_at ?? c.created_at, body: c.body?.trim() || null,
       reportId: c.report_id, subjectName: null,
+      thumbnailUrl: previewUrls[c.id]?.url ?? null,
     }]
   })
 }
