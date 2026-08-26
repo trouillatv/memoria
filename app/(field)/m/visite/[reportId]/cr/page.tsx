@@ -421,7 +421,7 @@ export default async function VisitCrPreviewPage({
                 </div>
               )
               return p.id ? (
-                <Link key={i} href={`/m/observation/${p.id}`} aria-label="Voir la fiche observation">
+                <Link key={i} href={`/m/observation/${p.id}?from=cr`} aria-label="Voir la fiche observation">
                   {thumb}
                 </Link>
               ) : (

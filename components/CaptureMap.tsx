@@ -48,6 +48,14 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] ?? ch))
 }
 
+/** Provenance du clic (Lot correctif Observation, 2026-08-26) : propagée en
+ *  query string pour que la fiche observation sache où revenir. Absente pour
+ *  les appelants qui n'ont pas encore ce contrat (dashboard desktop) — la
+ *  fiche retombe alors sur son fallback sûr via report_id. */
+function captureHref(id: string, linkContext?: 'cr' | 'terrain'): string {
+  return linkContext ? `/m/observation/${id}?from=${linkContext}` : `/m/observation/${id}`
+}
+
 /** Le « quoi » du marqueur : le point suivi, sinon un extrait (note/vocal), sinon le type. */
 function captureWhat(c: MapCapture): string {
   if (c.subjectName) return c.subjectName
@@ -58,7 +66,7 @@ function captureWhat(c: MapCapture): string {
 /** Liste des preuves d'un repère groupé — thumbnail (photo) ou icône (vidéo)
  *  + « Photo N »/« Vidéo N » (Lot 4.1, requis 3 : taper un cluster doit
  *  montrer CE QU'IL CONTIENT, pas juste combien). */
-function clusterPopupHtml(items: MapCapture[], linkPopups: boolean): string {
+function clusterPopupHtml(items: MapCapture[], linkPopups: boolean, linkContext?: 'cr' | 'terrain'): string {
   const sorted = [...items].sort((a, b) => (a.number ?? 0) - (b.number ?? 0))
   const rows = sorted
     .map((c) => {
@@ -73,14 +81,14 @@ function clusterPopupHtml(items: MapCapture[], linkPopups: boolean): string {
         : ''
       const inner = `<div style="display:flex;align-items:center;gap:8px">${badge}${thumb}<span style="font-size:12px">${label}</span></div>`
       return linkPopups
-        ? `<a href="/m/observation/${c.id}" style="display:block;padding:4px 0;color:inherit;text-decoration:none">${inner}</a>`
+        ? `<a href="${captureHref(c.id, linkContext)}" style="display:block;padding:4px 0;color:inherit;text-decoration:none">${inner}</a>`
         : `<div style="padding:4px 0">${inner}</div>`
     })
     .join('')
   return `<div style="max-height:240px;overflow-auto;min-width:170px"><strong>${items.length} preuves à cet endroit</strong><div style="margin-top:4px">${rows}</div></div>`
 }
 
-export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPopups = true, baseLayer = PLAN_BASE_LAYER, clusterByZoom = false, onOpenSingle, onOpenCluster }: {
+export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPopups = true, baseLayer = PLAN_BASE_LAYER, clusterByZoom = false, linkContext, onOpenSingle, onOpenCluster }: {
   siteId: string
   captures: MapCapture[]
   heightClass?: string
@@ -94,6 +102,10 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
    *  Terrain multi-visites) — mutuellement exclusif avec la numérotation CR,
    *  qui reste prioritaire si `captures` la porte. */
   clusterByZoom?: boolean
+  /** Provenance propagée sur les liens du popup vers la fiche observation
+   *  (Lot correctif Observation, 2026-08-26) — cf. captureHref(). Absente =
+   *  comportement d'origine (dashboard desktop, fallback report_id). */
+  linkContext?: 'cr' | 'terrain'
   /** Lot correctif Terrain (2026-08-26) : un marqueur SEUL ouvre directement
    *  la preuve, sans popup intermédiaire — scopé à `clusterByZoom` (Terrain) ;
    *  absent = comportement d'origine (popup Leaflet) pour tous les autres
@@ -145,7 +157,7 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
             // qui mène ensuite à la visite complète. Le Débrief est un outil de
             // production — jamais la destination d'un clic de consultation.
             (linkPopups
-              ? `<a href="/m/observation/${c.id}" style="display:inline-block;margin-top:6px;color:#2563eb">Voir cette observation →</a>`
+              ? `<a href="${captureHref(c.id, linkContext)}" style="display:inline-block;margin-top:6px;color:#2563eb">Voir cette observation →</a>`
               : ''),
           )
         }
@@ -194,7 +206,7 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
               if (onOpenCluster) {
                 m.on('click', () => onOpenCluster(cluster.points.map((pt) => pt.c)))
               } else {
-                m.bindPopup(clusterPopupHtml(cluster.points.map((pt) => pt.c), linkPopups))
+                m.bindPopup(clusterPopupHtml(cluster.points.map((pt) => pt.c), linkPopups, linkContext))
               }
               m.addTo(map)
               layers.push(m)
@@ -248,7 +260,7 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
               `<strong>${label}</strong>` +
               `<div style="color:#666;font-size:11px">${date}</div>${excerpt}` +
               (linkPopups
-                ? `<a href="/m/observation/${c.id}" style="display:inline-block;margin-top:6px;color:#2563eb">Voir cette observation →</a>`
+                ? `<a href="${captureHref(c.id, linkContext)}" style="display:inline-block;margin-top:6px;color:#2563eb">Voir cette observation →</a>`
                 : ''),
             )
             m.bindTooltip(label, { direction: 'top', opacity: 0.9 })
@@ -270,7 +282,7 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
               iconAnchor: [w / 2, 13],
             })
             const m = L.marker(center, { icon })
-            m.bindPopup(clusterPopupHtml(cluster.points.map((pt) => pt.c), linkPopups))
+            m.bindPopup(clusterPopupHtml(cluster.points.map((pt) => pt.c), linkPopups, linkContext))
             m.addTo(map)
             layers.push(m)
           }
@@ -284,7 +296,7 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
     })
 
     return () => { cancelled = true; mapRef.current?.off('zoomend'); mapRef.current?.remove(); mapRef.current = null }
-  }, [captures, siteId, linkPopups, baseLayer, clusterByZoom, onOpenSingle, onOpenCluster])
+  }, [captures, siteId, linkPopups, baseLayer, clusterByZoom, linkContext, onOpenSingle, onOpenCluster])
 
   // Types réellement présents : la légende ne montre jamais un type absent de
   // cette carte (plus de « Vocal »/« Note » morts depuis le filtrage preuve

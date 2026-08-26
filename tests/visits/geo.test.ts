@@ -17,6 +17,7 @@ import {
   formatCompactGpsAccuracy,
   formatAltitudeCaption,
   formatPostShutterGpsChip,
+  formatObservationLocationLine,
   POOR_GPS_ACCURACY_M,
   LARGE_CORRECTION_MOVE_M,
 } from '@/lib/visits/geo'
@@ -404,6 +405,34 @@ describe('formatPostShutterGpsChip — puce post-shutter, jamais deux « ± » s
     expect(formatPostShutterGpsChip('unavailable', null, null)).toBe('📍 Localisation indisponible')
     expect(formatPostShutterGpsChip('user-disabled', null, null)).toBe('📍 Localisation indisponible')
     expect(formatPostShutterGpsChip('success', null, 24)).toBe('📍 Localisation indisponible')
+  })
+})
+
+describe('formatObservationLocationLine — ligne de localisation de la fiche Observation (Lot correctif Observation, Vincent 2026-08-26)', () => {
+  it('GPS + précision + altitude', () => {
+    expect(formatObservationLocationLine('gps', 15, 100)).toBe('Position GPS · ±15 m · Alt. ~100 m')
+  })
+
+  it('position corrigée manuellement — le libellé porte sur la position, jamais sur l’altitude', () => {
+    expect(formatObservationLocationLine('manual', 15, 100)).toBe('Position corrigée · ±15 m · Alt. ~100 m')
+  })
+
+  it('sans précision connue → segment omis, jamais un texte générique', () => {
+    expect(formatObservationLocationLine('gps', null, 100)).toBe('Position GPS · Alt. ~100 m')
+  })
+
+  it('sans altitude connue → segment omis', () => {
+    expect(formatObservationLocationLine('gps', 15, null)).toBe('Position GPS · ±15 m')
+  })
+
+  it('aucune métadonnée → seul le libellé de base, comportement d’origine inchangé', () => {
+    expect(formatObservationLocationLine('gps', null, null)).toBe('Position GPS')
+    expect(formatObservationLocationLine('manual', null, null)).toBe('Position corrigée')
+  })
+
+  it('jamais deux « ± » sur la même ligne (altitude_accuracy_m volontairement absent de la signature)', () => {
+    const line = formatObservationLocationLine('gps', 15, 100)
+    expect(line.match(/±/g)?.length).toBe(1)
   })
 })
 

@@ -10,7 +10,7 @@ import { useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { CaptureMap } from '@/components/CaptureMap'
 import { LocationCorrectionMap } from '@/components/LocationCorrectionMap'
-import { resolveEffectivePosition, isMappableVisualCapture } from '@/lib/visits/geo'
+import { resolveEffectivePosition, isMappableVisualCapture, formatObservationLocationLine } from '@/lib/visits/geo'
 import { correctCaptureLocationAction, revertCaptureLocationAction } from '@/app/(field)/m/site/[siteId]/capture-actions'
 
 export function LocationSection({
@@ -22,6 +22,7 @@ export function LocationSection({
   correctedLat,
   correctedLng,
   gpsAccuracyM,
+  altitudeM,
   createdAt,
   body,
   reportId,
@@ -34,6 +35,9 @@ export function LocationSection({
   correctedLat: number | null
   correctedLng: number | null
   gpsAccuracyM: number | null
+  /** Mesurée au moment de la capture — une correction lat/lng ne la change
+   *  jamais (cf. formatObservationLocationLine). */
+  altitudeM: number | null
   createdAt: string
   body: string | null
   reportId: string
@@ -64,7 +68,7 @@ export function LocationSection({
       />
       <div className="flex items-center justify-between px-0.5">
         <span className="text-xs text-muted-foreground">
-          {position.source === 'manual' ? 'Position corrigée' : 'Position GPS'}
+          {formatObservationLocationLine(position.source, gpsAccuracyM, altitudeM)}
         </span>
         {canCorrect && (
           <button

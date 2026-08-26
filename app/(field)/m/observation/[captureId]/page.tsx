@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Camera, Video, Mic, Pencil, HelpCircle, MapPin, ChevronRight } from 'lucide-react'
+import { Camera, Video, Mic, Pencil, HelpCircle, MapPin, ChevronRight, ChevronLeft } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { requireOwned } from '@/lib/auth/ownership'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -27,10 +27,13 @@ const KIND_META: Record<string, { label: string; Icon: typeof Camera }> = {
 
 export default async function ObservationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ captureId: string }>
+  searchParams: Promise<{ from?: string }>
 }) {
   const { captureId } = await params
+  const { from } = await searchParams
   const user = await getCurrentUserWithProfile()
   if (!user) return null
 
@@ -69,6 +72,20 @@ export default async function ObservationPage({
     .maybeSingle()
   const report = reportRow as { id: string; origin: string | null; created_at: string } | null
 
+  // Retour contextuel (Lot correctif Observation, Vincent 2026-08-26) : la
+  // provenance du clic (CR, Terrain) est propagée en query string par les
+  // pages qui pointent ici (cf. captureHref() dans CaptureMap.tsx et le lien
+  // de la grille CR) ; sans elle (lien direct, notification, onglet ouvert
+  // à part), fallback sûr via report_id vers la visite, jamais un
+  // router.back() aveugle qui casserait sur une arrivée directe.
+  const backHref = from === 'cr' && report
+    ? `/m/visite/${report.id}/cr`
+    : from === 'terrain'
+      ? `/m/site/${site.id}/terrain`
+      : report
+        ? `/m/visite/${report.id}/recap`
+        : `/m/site/${site.id}`
+
   // « PRIS AU MÊME ENDROIT » (Vincent 2026-07-12) : les autres captures de la
   // même visite à portée de quelques pas (rayon GPS) — une position nue prend
   // sens quand on voit la photo ou la vidéo prises là. Déterministe.
@@ -106,6 +123,13 @@ export default async function ObservationPage({
 
   return (
     <div className="max-w-md space-y-4 pb-24">
+      <Link
+        href={backHref}
+        aria-label="Retour"
+        className="-ml-1.5 inline-flex items-center gap-1 rounded-full py-1 pl-1.5 pr-2.5 text-sm font-medium text-muted-foreground active:opacity-70"
+      >
+        <ChevronLeft className="h-4 w-4" /> Retour
+      </Link>
       <header className="space-y-0.5 pt-1">
         <p className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           <meta.Icon className="h-4 w-4" /> {meta.label}
@@ -151,6 +175,7 @@ export default async function ObservationPage({
           correctedLat={capture.corrected_lat}
           correctedLng={capture.corrected_lng}
           gpsAccuracyM={capture.gps_accuracy_m}
+          altitudeM={capture.altitude_m}
           createdAt={takenIso}
           body={capture.body}
           reportId={capture.report_id}
@@ -171,7 +196,7 @@ export default async function ObservationPage({
               return (
                 <Link
                   key={s.id}
-                  href={`/m/observation/${s.id}`}
+                  href={from ? `/m/observation/${s.id}?from=${from}` : `/m/observation/${s.id}`}
                   className="group relative aspect-square overflow-hidden rounded-xl border bg-muted/40 active:opacity-70"
                   aria-label={m.label}
                 >

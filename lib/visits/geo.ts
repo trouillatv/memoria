@@ -139,6 +139,29 @@ export function formatPostShutterGpsChip(
   return `📍 GPS ${accuracy}${altitudePart}`
 }
 
+/**
+ * Ligne de localisation compacte de la fiche d'observation (Lot correctif
+ * Observation, Vincent 2026-08-26) : « Position GPS · ±15 m · Alt. ~100 m »
+ * (ou « Position corrigée · … » si `source === 'manual'`). Une correction
+ * lat/lng ne dit rien de l'altitude, mesurée au moment de la capture — le
+ * libellé ne porte que sur la position, jamais sur l'altitude. Jamais de
+ * valeur inventée : un segment manquant (précision ou altitude) est omis,
+ * jamais remplacé par un texte générique. `altitude_accuracy_m` volontairement
+ * absent : même doctrine que `formatPostShutterGpsChip`, jamais deux « ± »
+ * sur la même ligne.
+ */
+export function formatObservationLocationLine(
+  source: 'gps' | 'manual',
+  gpsAccuracyM: number | null,
+  altitudeM: number | null,
+): string {
+  const label = source === 'manual' ? 'Position corrigée' : 'Position GPS'
+  const accuracy = formatCompactGpsAccuracy(gpsAccuracyM)
+  const accuracyPart = accuracy ? ` · ${accuracy}` : ''
+  const altitudePart = altitudeM == null ? '' : ` · Alt. ~${Math.round(altitudeM)} m`
+  return `${label}${accuracyPart}${altitudePart}`
+}
+
 /** Une capture n'a sa place sur la carte que si elle est une preuve visuelle
  *  vérifiable sur place (photo/vidéo) : un point de carte sur un vocal ou une
  *  note n'a rien à montrer une fois cliqué — seuls photo/vidéo qualifient. */

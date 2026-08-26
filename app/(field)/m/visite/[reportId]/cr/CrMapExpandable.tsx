@@ -13,8 +13,20 @@
 // Leaflet : il vit dans la ligne de titre de la Section (CrMapExploreButton),
 // et le contexte partagé (CrMapExpandProvider) relie ce bouton à la carte
 // rendue plus bas dans le même arbre React.
+//
+// Bug distinct corrigé (Vincent, recette terrain 2026-08-26) : deux surfaces
+// Leaflet visibles simultanément après « Agrandir » — deux jeux de contrôles
+// zoom, deux attributions, la carte peinte deux fois verticalement. Cause
+// racine : la petite carte (h-60) restait montée SANS CONDITION pendant que
+// l'overlay plein écran montait sa propre <CaptureMap>, donnant deux
+// instances Leaflet vivantes en même temps — l'overlay `fixed inset-0` ne
+// suffit pas à lui seul à garantir qu'une seule est visible (le fond restait
+// scrollable, un défaut connu de dérive de position:fixed sur mobile quand
+// la page sous l'overlay peut encore défiler). Invariant rétabli : jamais
+// plus d'une <CaptureMap> montée à la fois (rendu mutuellement exclusif) +
+// verrou de scroll du fond pendant l'overlay, en défense en profondeur.
 
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { ArrowUpRight, X } from 'lucide-react'
 import { CaptureMap, type MapCapture } from '@/components/CaptureMap'
 
@@ -49,9 +61,18 @@ export function CrMapExpandable({ siteId, captures }: { siteId: string; captures
   const expanded = ctx?.expanded ?? false
   const setExpanded = ctx?.setExpanded ?? (() => {})
 
+  useEffect(() => {
+    if (!expanded) return
+    const { overflow } = document.body.style
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = overflow
+    }
+  }, [expanded])
+
   return (
     <>
-      <CaptureMap siteId={siteId} captures={captures} heightClass="h-60" />
+      {!expanded && <CaptureMap siteId={siteId} captures={captures} heightClass="h-60" linkContext="cr" />}
 
       {expanded && (
         <div className="fixed inset-0 z-[80] flex flex-col bg-black">
@@ -63,7 +84,7 @@ export function CrMapExpandable({ siteId, captures }: { siteId: string; captures
             <span className="w-9" aria-hidden />
           </div>
           <div className="flex-1 overflow-hidden p-2 safe-bottom">
-            <CaptureMap siteId={siteId} captures={captures} heightClass="h-full" />
+            <CaptureMap siteId={siteId} captures={captures} heightClass="h-full" linkContext="cr" />
           </div>
         </div>
       )}
