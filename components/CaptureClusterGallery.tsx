@@ -7,20 +7,25 @@
 
 import Link from 'next/link'
 import { X, Video, Mic, Pencil, HelpCircle } from 'lucide-react'
-import { KIND_LABEL, type MapCapture } from '@/components/CaptureMap'
+import { KIND_LABEL, captureHref, type MapCapture } from '@/components/CaptureMap'
 
 const KIND_ICON: Record<string, typeof Video> = {
   video: Video, vocal: Mic, note: Pencil, verification: HelpCircle,
 }
 
-export function CaptureClusterGallery({ captures, onClose }: {
+export function CaptureClusterGallery({ captures, onClose, linkContext }: {
   captures: MapCapture[]
   onClose: () => void
+  /** Provenance des liens vers la fiche observation (cf. captureHref) — même
+   *  composant réutilisé par Terrain et CR, jamais de variante dédiée. */
+  linkContext?: 'cr' | 'terrain'
 }) {
   const sorted = [...captures].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black/95">
+    // z-[90] : ce panneau peut s'ouvrir par-dessus l'overlay plein écran du CR
+    // (z-[80], cf. CrMapExpandable.tsx) — même convention que PhotoAnnotator.
+    <div className="fixed inset-0 z-[90] flex flex-col bg-black/95">
       <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
         <span className="text-[14px] font-medium text-white">
           {captures.length} preuve{captures.length > 1 ? 's' : ''} à cet endroit
@@ -45,7 +50,7 @@ export function CaptureClusterGallery({ captures, onClose }: {
             return (
               <Link
                 key={c.id}
-                href={`/m/observation/${c.id}?from=terrain`}
+                href={captureHref(c.id, linkContext)}
                 className="overflow-hidden rounded-xl border border-white/10 bg-white/5 active:bg-white/10"
               >
                 <div className="relative aspect-[4/3] w-full bg-white/10">

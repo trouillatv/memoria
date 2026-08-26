@@ -52,7 +52,7 @@ function escapeHtml(s: string): string {
  *  query string pour que la fiche observation sache où revenir. Absente pour
  *  les appelants qui n'ont pas encore ce contrat (dashboard desktop) — la
  *  fiche retombe alors sur son fallback sûr via report_id. */
-function captureHref(id: string, linkContext?: 'cr' | 'terrain'): string {
+export function captureHref(id: string, linkContext?: 'cr' | 'terrain'): string {
   return linkContext ? `/m/observation/${id}?from=${linkContext}` : `/m/observation/${id}`
 }
 
@@ -282,7 +282,11 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPop
               iconAnchor: [w / 2, 13],
             })
             const m = L.marker(center, { icon })
-            m.bindPopup(clusterPopupHtml(cluster.points.map((pt) => pt.c), linkPopups, linkContext))
+            if (onOpenCluster) {
+              m.on('click', () => onOpenCluster(cluster.points.map((pt) => pt.c)))
+            } else {
+              m.bindPopup(clusterPopupHtml(cluster.points.map((pt) => pt.c), linkPopups, linkContext))
+            }
             m.addTo(map)
             layers.push(m)
           }

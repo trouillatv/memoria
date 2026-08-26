@@ -26,9 +26,10 @@
 // plus d'une <CaptureMap> montée à la fois (rendu mutuellement exclusif) +
 // verrou de scroll du fond pendant l'overlay, en défense en profondeur.
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { ArrowUpRight, X } from 'lucide-react'
 import { CaptureMap, type MapCapture } from '@/components/CaptureMap'
+import { CaptureClusterGallery } from '@/components/CaptureClusterGallery'
 
 const CrMapExpandContext = createContext<{ expanded: boolean; setExpanded: (v: boolean) => void } | null>(null)
 
@@ -61,6 +62,12 @@ export function CrMapExpandable({ siteId, captures }: { siteId: string; captures
   const expanded = ctx?.expanded ?? false
   const setExpanded = ctx?.setExpanded ?? (() => {})
 
+  // Lot correctif Observation (Vincent, 2026-08-26) : le cluster n'ouvre plus
+  // le popup Leaflet volumineux (débordement à 11+ preuves) — même galerie
+  // plein écran que Terrain, aucune variante dédiée.
+  const [galleryCaptures, setGalleryCaptures] = useState<MapCapture[] | null>(null)
+  const openCluster = useCallback((cs: MapCapture[]) => setGalleryCaptures(cs), [])
+
   useEffect(() => {
     if (!expanded) return
     const { overflow } = document.body.style
@@ -72,7 +79,9 @@ export function CrMapExpandable({ siteId, captures }: { siteId: string; captures
 
   return (
     <>
-      {!expanded && <CaptureMap siteId={siteId} captures={captures} heightClass="h-60" linkContext="cr" />}
+      {!expanded && (
+        <CaptureMap siteId={siteId} captures={captures} heightClass="h-60" linkContext="cr" onOpenCluster={openCluster} />
+      )}
 
       {expanded && (
         <div className="fixed inset-0 z-[80] flex flex-col bg-black">
@@ -84,9 +93,13 @@ export function CrMapExpandable({ siteId, captures }: { siteId: string; captures
             <span className="w-9" aria-hidden />
           </div>
           <div className="flex-1 overflow-hidden p-2 safe-bottom">
-            <CaptureMap siteId={siteId} captures={captures} heightClass="h-full" linkContext="cr" />
+            <CaptureMap siteId={siteId} captures={captures} heightClass="h-full" linkContext="cr" onOpenCluster={openCluster} />
           </div>
         </div>
+      )}
+
+      {galleryCaptures && (
+        <CaptureClusterGallery captures={galleryCaptures} onClose={() => setGalleryCaptures(null)} linkContext="cr" />
       )}
     </>
   )

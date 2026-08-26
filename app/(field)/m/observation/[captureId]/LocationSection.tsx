@@ -51,21 +51,23 @@ export function LocationSection({
 
   return (
     <section className="space-y-1.5">
-      <CaptureMap
-        siteId={siteId}
-        heightClass="h-52"
-        linkPopups={false}
-        captures={[{
-          id: captureId,
-          kind,
-          lat: position.lat,
-          lng: position.lng,
-          created_at: createdAt,
-          body,
-          reportId,
-          subjectName: null,
-        }]}
-      />
+      {!correcting && (
+        <CaptureMap
+          siteId={siteId}
+          heightClass="h-52"
+          linkPopups={false}
+          captures={[{
+            id: captureId,
+            kind,
+            lat: position.lat,
+            lng: position.lng,
+            created_at: createdAt,
+            body,
+            reportId,
+            subjectName: null,
+          }]}
+        />
+      )}
       <div className="flex items-center justify-between px-0.5">
         <span className="text-xs text-muted-foreground">
           {formatObservationLocationLine(position.source, gpsAccuracyM, altitudeM)}

@@ -157,7 +157,7 @@ export function TerrainMap({ siteId, captures, visits, mapboxToken }: {
       </div>
 
       {galleryCaptures && (
-        <CaptureClusterGallery captures={galleryCaptures} onClose={() => setGalleryCaptures(null)} />
+        <CaptureClusterGallery captures={galleryCaptures} onClose={() => setGalleryCaptures(null)} linkContext="terrain" />
       )}
     </div>
   )
