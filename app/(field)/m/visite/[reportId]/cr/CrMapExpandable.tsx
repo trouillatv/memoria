@@ -31,7 +31,7 @@ import { ArrowUpRight, Loader2, AlertTriangle, X } from 'lucide-react'
 import { CaptureMap, type MapCapture } from '@/components/CaptureMap'
 import { CaptureClusterGallery } from '@/components/CaptureClusterGallery'
 import { MapBaseLayerToggle } from '@/components/MapBaseLayerToggle'
-import { useMapBaseLayer, BASE_LAYER_STORAGE_KEY } from '@/lib/field/use-map-base-layer'
+import { useMapBaseLayer } from '@/lib/field/use-map-base-layer'
 import type { MapBaseLayerId } from '@/lib/field/map-base-layers'
 import type { CrMapBaseLayerStatus } from '@/lib/pdf/cr-map-snapshot'
 import { setCrMapBaseLayerAction } from './map-snapshot-actions'
@@ -109,15 +109,24 @@ export function CrMapExpandable({ siteId, captures, mapboxToken, reportId, initi
   //   correspondant, pour que la carte visible et le PDF ne divergent jamais.
   //   Cette branche ne s'exécute plus au prochain montage : une fois figé,
   //   `explicit` devient vrai côté serveur.
+  //
+  // Toujours Plan au premier figeage (Vincent, 2026-08-27) : la préférence
+  // ambiante `memoria.map.baseLayer` reflète l'écran précédent (souvent
+  // Terrain) et n'a aucun rapport avec CE rapport — l'hériter faisait
+  // atterrir certains CR en Satellite sans que personne ne l'ait choisi pour
+  // eux, hors du contrôle exposé (MapBaseLayerToggle) sur cette page.
+  // `setBaseLayerIdLocal('plan')` écrase ici l'effet propre de
+  // `useMapBaseLayer` (qui lit ce même hint ambiant à son propre montage) :
+  // sans cet appel, la carte affichée aurait pu partir en Satellite pendant
+  // que le PDF se figeait en Plan, provoquant l'état « périmé » dès l'ouverture.
   useEffect(() => {
     if (initialStatus.explicit) {
       setBaseLayerIdLocal(initialStatus.chosen)
       return
     }
-    const stored = window.localStorage.getItem(BASE_LAYER_STORAGE_KEY)
-    const initial: MapBaseLayerId = stored === 'satellite' && satelliteAvailable ? 'satellite' : 'plan'
+    setBaseLayerIdLocal('plan')
     startTransition(async () => {
-      const next = await setCrMapBaseLayerAction(reportId, initial)
+      const next = await setCrMapBaseLayerAction(reportId, 'plan')
       setStatus(next)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps

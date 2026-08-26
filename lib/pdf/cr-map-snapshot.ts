@@ -108,9 +108,18 @@ async function fetchTile(z: number, x: number, y: number, layer: MapBaseLayerId,
       headers: layer === 'satellite' ? {} : { 'User-Agent': OSM_UA, Referer: 'https://memoria.app' },
       signal: ctrl.signal,
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      // Carte PDF Satellite grise en production (Vincent, 2026-08-27) —
+      // cause encore non prouvée (jeton, restriction Referer côté Mapbox,
+      // timeout...). Log minimal (statut HTTP, sans le jeton) pour lire la
+      // cause exacte dans les logs runtime Vercel avant de corriger, plutôt
+      // que de deviner (doctrine : reproduire avant de corriger).
+      if (layer === 'satellite') console.error(`[cr-map-snapshot] tuile satellite ${z}/${x}/${y} refusée : HTTP ${res.status}`)
+      return null
+    }
     return Buffer.from(await res.arrayBuffer())
-  } catch {
+  } catch (e) {
+    if (layer === 'satellite') console.error(`[cr-map-snapshot] tuile satellite ${z}/${x}/${y} en échec :`, e instanceof Error ? e.message : e)
     return null
   } finally {
     clearTimeout(timer)
