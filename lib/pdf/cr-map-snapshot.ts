@@ -21,7 +21,11 @@ export const FONT_FAMILY = 'Liberation Sans'
 // `cr_map_snapshot_render_version` diffère de cette constante, même si le
 // fond Plan/Satellite n'a pas changé. Remplace une invalidation ponctuelle
 // par date de commit (non réutilisable pour un futur changement de moteur).
-export const CURRENT_CR_MAP_RENDER_VERSION = 1
+// v2 (2026-08-27) : correction MIME tuiles — fetchTile()/buildSvg() ne
+// forcent plus `image/png`, chaque tuile transporte son type réel (Satellite
+// Mapbox = JPEG). Les snapshots Satellite v1 étaient rendus avec un fond gris
+// (tuiles JPEG injectées sous MIME PNG, non décodées par Resvg).
+export const CURRENT_CR_MAP_RENDER_VERSION = 2
 
 /**
  * Un instantané stocké ne peut être réutilisé QUE s'il a été produit avec le
@@ -100,7 +104,18 @@ function tileUrl(layer: MapBaseLayerId, z: number, x: number, y: number, mapboxT
   return `https://tile.openstreetmap.org/${z}/${x}/${y}.png`
 }
 
-async function fetchTile(z: number, x: number, y: number, layer: MapBaseLayerId, mapboxToken: string | null): Promise<Buffer | null> {
+export interface TileData {
+  buffer: Buffer
+  mimeType: string
+}
+
+// OSM (Plan) sert du PNG, Mapbox Satellite sert du JPEG — jamais le même
+// type. Repli utilisé quand le Content-Type HTTP est absent ou inexploitable.
+function defaultTileMimeType(layer: MapBaseLayerId): string {
+  return layer === 'satellite' ? 'image/jpeg' : 'image/png'
+}
+
+async function fetchTile(z: number, x: number, y: number, layer: MapBaseLayerId, mapboxToken: string | null): Promise<TileData | null> {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), TILE_TIMEOUT_MS)
   try {
@@ -110,14 +125,20 @@ async function fetchTile(z: number, x: number, y: number, layer: MapBaseLayerId,
     })
     if (!res.ok) {
       // Carte PDF Satellite grise en production (Vincent, 2026-08-27) —
-      // cause encore non prouvée (jeton, restriction Referer côté Mapbox,
-      // timeout...). Log minimal (statut HTTP, sans le jeton) pour lire la
-      // cause exacte dans les logs runtime Vercel avant de corriger, plutôt
-      // que de deviner (doctrine : reproduire avant de corriger).
+      // cause racine PROUVÉE (voir defaultTileMimeType/buildSvg) : les tuiles
+      // JPEG de Mapbox étaient injectées sous un data URI `image/png` forcé,
+      // que Resvg ne décode pas — le fond gris du SVG restait visible.
       if (layer === 'satellite') console.error(`[cr-map-snapshot] tuile satellite ${z}/${x}/${y} refusée : HTTP ${res.status}`)
       return null
     }
-    return Buffer.from(await res.arrayBuffer())
+    const buffer = Buffer.from(await res.arrayBuffer())
+    // Content-Type HTTP réel si exploitable (Vincent : vérifier sans bloquer
+    // sur une valeur trop stricte type charset) ; sinon repli par fond. Chaque
+    // tuile transporte désormais son type réel jusqu'à buildSvg() — plus de
+    // MIME forcé à image/png.
+    const contentType = res.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() ?? null
+    const mimeType = contentType === 'image/png' || contentType === 'image/jpeg' || contentType === 'image/jpg' ? contentType : defaultTileMimeType(layer)
+    return { buffer, mimeType }
   } catch (e) {
     if (layer === 'satellite') console.error(`[cr-map-snapshot] tuile satellite ${z}/${x}/${y} en échec :`, e instanceof Error ? e.message : e)
     return null
@@ -131,11 +152,11 @@ function escapeXml(s: string): string {
 }
 
 export function buildSvg(
-  tiles: Array<{ left: number; top: number; b64: string }>,
+  tiles: Array<{ left: number; top: number; b64: string; mimeType: string }>,
   markers: Array<{ cx: number; cy: number; color: string; label: string }>,
 ): string {
   const imgs = tiles
-    .map((t) => `<image x="${t.left.toFixed(1)}" y="${t.top.toFixed(1)}" width="${TILE}" height="${TILE}" xlink:href="data:image/png;base64,${t.b64}"/>`)
+    .map((t) => `<image x="${t.left.toFixed(1)}" y="${t.top.toFixed(1)}" width="${TILE}" height="${TILE}" xlink:href="data:${t.mimeType};base64,${t.b64}"/>`)
     .join('')
   // Taille alignée sur `NumberBadge` (Photos clés/Reportage, 18pt/8pt final) —
   // Vincent, retouche présentation 2026-08-26 : « c'est la carte qui doit
@@ -281,8 +302,10 @@ export async function ensureCrMapSnapshot(reportId: string): Promise<string | nu
 
   const fetched = await Promise.all(
     coords.map(async (c) => {
-      const buf = await fetchTile(z, c.wx, c.ty, chosen, mapboxToken)
-      return buf ? { left: c.tx * TILE - originX, top: c.ty * TILE - originY, b64: buf.toString('base64') } : null
+      const tile = await fetchTile(z, c.wx, c.ty, chosen, mapboxToken)
+      return tile
+        ? { left: c.tx * TILE - originX, top: c.ty * TILE - originY, b64: tile.buffer.toString('base64'), mimeType: tile.mimeType }
+        : null
     }),
   )
   const tiles = fetched.filter((t): t is NonNullable<typeof t> => t != null)

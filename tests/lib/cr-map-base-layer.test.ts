@@ -74,7 +74,10 @@ beforeEach(() => {
   mocks.storageUpload.mockResolvedValue({ error: null })
   mocks.storageDownload.mockReset()
   delete process.env.MAPBOX_TOKEN
-  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(4) })))
+  // `headers.get('content-type')` : ajouté pour le correctif MIME
+  // (fetchTile/buildSvg, 2026-08-27) — un vrai `fetch()` fournit toujours
+  // `Response.headers`, ce mock doit en faire autant.
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, headers: new Headers(), arrayBuffer: async () => new ArrayBuffer(4) })))
 })
 
 afterEach(() => {
