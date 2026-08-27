@@ -63,6 +63,32 @@ export function aggregatePvState(statuses: (string | null)[]): PvState {
   return result
 }
 
+/**
+ * P0-1 — État d'un sujet dans UN document pour la tension : 'resolved' UNIQUEMENT si TOUS ses états y
+ * sont prouvés résolus ; sinon 'open' (mentionné sans preuve de résolution = concern ouvert).
+ */
+export function runTensionState(stateStatuses: (string | null)[]): 'open' | 'resolved' {
+  return stateStatuses.length > 0 && stateStatuses.every((s) => s === 'resolved') ? 'resolved' : 'open'
+}
+
+/**
+ * P0-1 — Trajectoire de tension d'un sujet : pour chaque document (dans l'ordre chronologique), le sujet
+ * est-il ACTIF ? Doctrine non-mention ≠ résolu : le dernier état PROUVÉ est REPORTÉ (carry-forward) ; une
+ * non-mention (`null`) ne change rien. La tension ne baisse donc QUE sur une résolution prouvée.
+ * `isNew` = première apparition active. `perRun[i]` = 'open' | 'resolved' | null (null = non mentionné).
+ */
+export function tensionTrajectory(perRun: ('open' | 'resolved' | null)[]): { active: boolean; isNew: boolean }[] {
+  let carried: 'open' | 'resolved' | null = null
+  return perRun.map((rs) => {
+    let isNew = false
+    if (rs !== null) {
+      if (carried === null && rs === 'open') isNew = true
+      carried = rs
+    }
+    return { active: carried === 'open', isNew }
+  })
+}
+
 /** Raison du tri-state d'une occurrence : état univoque, absence d'information, ou conflit interne. */
 export type StateStatusReason = 'univocal' | 'missing' | 'conflict'
 

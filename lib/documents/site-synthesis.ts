@@ -9,6 +9,7 @@ import {
   computeCanonicalCellState,
 } from './canonical-transitions'
 import type { CanonicalCellState, CanonicalDelta, CanonicalDeltaItem } from './canonical-transitions'
+import { runTensionState, tensionTrajectory } from './subject-state'
 
 // Re-export pour compatibilité avec pv-evolution.ts et les vues
 export type ActivityCellState = CanonicalCellState
@@ -640,72 +641,63 @@ export async function getSiteHealthTimeline(siteId: string): Promise<SiteHealthT
     effectiveDate: runEffectiveDate(r),
     pvNumber: i + 1,
   }))
-  const runIds = sortedRuns.map((r) => r.id)
 
-  const { data: stiRows } = await supabase
-    .from('subject_thread_identity')
-    .select('subject_thread_id, canonical_subject_id')
+  // R-1 / P0-1 : la tension se lit depuis les OCCURRENCES (state_status), pas les propositions.
+  // Doctrine non-mention ≠ résolu : un sujet reste ACTIF tant que son dernier état PROUVÉ est ouvert.
+  // Mentionné dans un PV = concern actif SAUF si TOUT y est prouvé résolu ; non-mention = REPORT du
+  // dernier état prouvé (carry-forward). La courbe ne baisse donc QUE sur une résolution prouvée.
+  const { data: occRows } = await supabase
+    .from('canonical_subject_occurrence')
+    .select('canonical_subject_id, source_ref_id, state_key, state_status')
     .eq('site_id', siteId)
+    .eq('source_kind', 'historical_pdf')
+    .not('validation_status', 'in', '("rejected","source_superseded")')
+  type OccRow = { canonical_subject_id: string; source_ref_id: string; state_key: string; state_status: string | null }
+  const occAll = (occRows ?? []) as OccRow[]
 
-  type StiRow = { subject_thread_id: string; canonical_subject_id: string }
-  const threadToCs = new Map(((stiRows ?? []) as StiRow[]).map((r) => [r.subject_thread_id, r.canonical_subject_id]))
-  const threadSet  = new Set(threadToCs.keys())
-
-  type PropRow = {
-    extraction_run_id: string
-    subject_thread_id: string
-    document_status: string | null
-    proposal_family: string
-  }
-  const PROP_BATCH = 10
-  const propBatches = await Promise.all(
-    Array.from({ length: Math.ceil(runIds.length / PROP_BATCH) }, (_, i) =>
-      supabase
-        .from('document_extraction_proposal')
-        .select('extraction_run_id, subject_thread_id, document_status, proposal_family')
-        .in('extraction_run_id', runIds.slice(i * PROP_BATCH, (i + 1) * PROP_BATCH)),
-    ),
-  )
-
-  // (csId → runId → worst_status) + families
-  const csRunStatus = new Map<string, Map<string, string>>()
-  const csFamilies  = new Map<string, Set<string>>()
-
-  for (const { data } of propBatches) {
-    for (const p of (data ?? []) as PropRow[]) {
-      if (!threadSet.has(p.subject_thread_id)) continue
-      const csId = threadToCs.get(p.subject_thread_id)!
-      if (!csFamilies.has(csId))  csFamilies.set(csId, new Set())
-      if (!csRunStatus.has(csId)) csRunStatus.set(csId, new Map())
-      csFamilies.get(csId)!.add(p.proposal_family)
-      const incoming    = p.document_status ?? 'open'
-      const runStatuses = csRunStatus.get(csId)!
-      const current     = runStatuses.get(p.extraction_run_id)
-      if (!current || (STATUS_RANK[incoming] ?? 99) < (STATUS_RANK[current] ?? 99)) {
-        runStatuses.set(p.extraction_run_id, incoming)
-      }
+  // report (source_ref_id) → run
+  const repIds = [...new Set(occAll.map((o) => o.source_ref_id))]
+  const repToRun = new Map<string, string>()
+  if (repIds.length > 0) {
+    const { data: reps } = await supabase.from('site_reports').select('id, extraction_run_id').in('id', repIds)
+    for (const r of (reps ?? []) as Array<{ id: string; extraction_run_id: string | null }>) {
+      if (r.extraction_run_id) repToRun.set(r.id, r.extraction_run_id)
     }
+  }
+
+  // csId → runId → états du run ; runState = 'resolved' UNIQUEMENT si TOUT est prouvé résolu, sinon 'open'
+  // (mentionné sans preuve de résolution = concern ouvert). + familles pour l'exclusion opérationnelle.
+  const csRunStates = new Map<string, Map<string, string[]>>()
+  const csFamilies  = new Map<string, Set<string>>()
+  for (const o of occAll) {
+    const run = repToRun.get(o.source_ref_id)
+    if (!run) continue
+    const cs = o.canonical_subject_id
+    if (!csFamilies.has(cs)) csFamilies.set(cs, new Set())
+    csFamilies.get(cs)!.add(o.state_key)
+    if (!csRunStates.has(cs)) csRunStates.set(cs, new Map())
+    const m = csRunStates.get(cs)!
+    const list = m.get(run) ?? []
+    list.push(o.state_status ?? 'unknown')
+    m.set(run, list)
   }
 
   const activeCounts = new Array<number>(sortedRuns.length).fill(0)
   const newCounts    = new Array<number>(sortedRuns.length).fill(0)
 
-  for (const [csId, runStatuses] of csRunStatus.entries()) {
+  for (const [csId, runStates] of csRunStates.entries()) {
     const families = csFamilies.get(csId) ?? new Set()
     if (families.size > 0 && [...families].every((f) => OPERATIONAL_EXCLUDED_FAMILIES.has(f))) continue
 
-    let prevStatus: string | null = null
-    for (let i = 0; i < sortedRuns.length; i++) {
-      const status = runStatuses.get(sortedRuns[i].id) ?? null
-      if (status !== null) {
-        const cellState = computeCanonicalCellState(prevStatus, status)
-        const isActive  = cellState === 'first' || cellState === 'open' || cellState === 'non_compliant' || cellState === 'reopened'
-        if (isActive) {
-          activeCounts[i]++
-          if (cellState === 'first') newCounts[i]++
-        }
-        prevStatus = status
-      }
+    // Par PV : 'open'|'resolved' si mentionné, null sinon → trajectoire à report du dernier état prouvé.
+    const perRun = sortedRuns.map((r) => {
+      const states = runStates.get(r.id)
+      return states && states.length > 0 ? runTensionState(states) : null
+    })
+    const traj = tensionTrajectory(perRun)
+    for (let i = 0; i < traj.length; i++) {
+      if (traj[i].active) activeCounts[i]++
+      if (traj[i].isNew) newCounts[i]++
     }
   }
 
