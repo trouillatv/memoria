@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildSemanticFeedPairs,
+  decideSemanticFeedMode,
   SEMANTIC_FEED_MAX_PAIRS,
+  SEMANTIC_FEED_AUTO_BUDGET,
 } from '@/lib/subjects/semantic-feed-candidates'
 import { normalizePairKey } from '@/lib/subjects/similarity-candidates'
 import { shouldPersistSemanticSuggestion } from '@/lib/subjects/similarity-analyze'
@@ -99,6 +101,27 @@ describe('buildSemanticFeedPairs — sélection incrémentale des paires', () =>
     const plan = buildSemanticFeedPairs({ sourceIds: ['s'], targetIds: ['s', ...targetIds] })
     // 1 source × (SEMANTIC_FEED_MAX_PAIRS+5) cibles = trop → skip
     expect(plan.capped).toBe(true)
+  })
+})
+
+describe('decideSemanticFeedMode — cadence hybride (P-UI-R2d)', () => {
+  it('0 paire → none', () => {
+    expect(decideSemanticFeedMode(0, false)).toBe('none')
+  })
+  it('≤ budget et non capped → auto', () => {
+    expect(decideSemanticFeedMode(1, false)).toBe('auto')
+    expect(decideSemanticFeedMode(SEMANTIC_FEED_AUTO_BUDGET, false)).toBe('auto')
+  })
+  it('> budget → defer (proposition explicite, aucun appel auto)', () => {
+    expect(decideSemanticFeedMode(SEMANTIC_FEED_AUTO_BUDGET + 1, false)).toBe('defer')
+    expect(decideSemanticFeedMode(178, false)).toBe('defer')
+  })
+  it('capped (au-delà du plafond dur) → defer, jamais auto', () => {
+    expect(decideSemanticFeedMode(5, true)).toBe('defer')
+    expect(decideSemanticFeedMode(400, true)).toBe('defer')
+  })
+  it('budget < plafond dur (auto strictement plus prudent que le plafond manuel)', () => {
+    expect(SEMANTIC_FEED_AUTO_BUDGET).toBeLessThan(SEMANTIC_FEED_MAX_PAIRS)
   })
 })
 

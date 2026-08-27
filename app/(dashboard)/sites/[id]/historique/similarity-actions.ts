@@ -11,7 +11,9 @@ import {
   type PersistedSuggestion,
   type SubjectInput,
 } from '@/lib/subjects/similarity-analyze'
-import { detectTypeHint, fusionBlockReason as computeFusionBlock, fusionWarningReason as computeFusionWarning } from '@/lib/subjects/similarity-candidates'
+import { detectTypeHint, fusionBlockReason as computeFusionBlock, fusionWarningReason as computeFusionWarning, normalizePairKey } from '@/lib/subjects/similarity-candidates'
+import { loadSimilarityContextSubjects } from '@/lib/subjects/similarity-context'
+import { runSemanticFeed } from '@/lib/subjects/semantic-feed-run'
 import { mergeCanonicalSubjectsAction, createLinkFromMatrixAction } from './merge-actions'
 
 // ── Chargement des suggestions pour l'UI ──────────────────────────────────────
@@ -112,6 +114,61 @@ export async function getOrAnalyzeSubjectPairAction(
     // Relire la suggestion persistée
     const persisted = await getSuggestionForPair(supabase, subjectAId, subjectBId)
     return { suggestion: persisted ?? undefined, fresh: true }
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
+}
+
+// ── Recherche approfondie (voie sémantique manuelle, P-UI-R2d) ────────────────
+
+/**
+ * Lance la voie sémantique bornée à la demande de l'humain (jamais silencieuse). Deux portées :
+ *  - reportId fourni → sources = sujets touchés par CET import (CTA résultat d'import) ;
+ *  - reportId absent → sources = tous les sujets métier actifs (CTA Ligne de vie, balayage site).
+ * Persistance inchangée : uniquement shouldPersistSemanticSuggestion (same_subject | related+SOH).
+ * Toutes les protections R2c restent (rejet mémorisé, pending non dupliqué, paire normalisée,
+ * acteurs exclus, fusion existante exclue, cap dur, idempotence).
+ */
+export async function runSemanticDeepSearchAction(
+  siteId: string,
+  reportId?: string | null,
+): Promise<{ created?: number; evaluated?: number; capped?: boolean; error?: string }> {
+  const user = await getCurrentUserWithProfile().catch(() => null)
+  const supabase = createAdminClient()
+  try {
+    const subjects = await loadSimilarityContextSubjects(siteId)
+    if (subjects.length < 2) return { created: 0, evaluated: 0, capped: false }
+
+    // Sources selon la portée.
+    let touchedSubjectIds: string[]
+    if (reportId) {
+      const { data: occ } = await supabase
+        .from('canonical_subject_occurrence')
+        .select('canonical_subject_id')
+        .eq('source_ref_id', reportId)
+      touchedSubjectIds = [...new Set((occ ?? []).map((o) => o.canonical_subject_id as string))]
+    } else {
+      touchedSubjectIds = subjects.map((s) => s.forCandidates.id)
+    }
+    if (touchedSubjectIds.length === 0) return { created: 0, evaluated: 0, capped: false }
+
+    const { data: rejected } = await supabase
+      .from('canonical_subject_similarity_suggestion')
+      .select('subject_a_id, subject_b_id')
+      .eq('site_id', siteId)
+      .eq('status', 'rejected')
+    const rejectedPairs = new Set((rejected ?? []).map((r) => normalizePairKey(r.subject_a_id, r.subject_b_id)))
+
+    const summary = await runSemanticFeed(subjects, {
+      siteId,
+      touchedSubjectIds,
+      rejectedPairs,
+      dryRun: false,
+      userId: user?.id ?? null,
+    })
+
+    revalidatePath(`/sites/${siteId}/historique`)
+    return { created: summary.persistedCount, evaluated: summary.evaluatedPairCount, capped: summary.capped }
   } catch (e) {
     return { error: (e as Error).message }
   }

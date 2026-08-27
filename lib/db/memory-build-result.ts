@@ -25,6 +25,9 @@ import {
   type SimilarityLinkType,
   type SimilarityDirection,
 } from '@/lib/subjects/similarity-analyze'
+import { loadSimilarityContextSubjects } from '@/lib/subjects/similarity-context'
+import { buildSemanticFeedPlan } from '@/lib/subjects/semantic-feed-run'
+import { decideSemanticFeedMode, SEMANTIC_FEED_AUTO_BUDGET } from '@/lib/subjects/semantic-feed-candidates'
 
 const ELIGIBLE_FAMILIES = ['action', 'vigilance', 'decision', 'knowledge_fact', 'deadline', 'reservation']
 
@@ -128,6 +131,13 @@ export interface MemoryBuildResult {
   mergedCount: number
   linkedCount: number
   distinctCount: number
+  /**
+   * P-UI-R2d — recherche approfondie de rapprochements DIFFÉRÉE (coût > budget automatique).
+   * null si le feed sémantique a déjà tourné automatiquement (coût borné) ou s'il n'y a rien à
+   * comparer. Dérivé (idempotent) : une fois la recherche lancée, les paires deviennent
+   * pending/rejetées → le compteur retombe → plus de proposition inutile.
+   */
+  semanticDeepSearch: { candidateCount: number; autoBudget: number } | null
 }
 
 const EMPTY_RESULT = (siteId: string, siteReportId: string): MemoryBuildResult => ({
@@ -146,6 +156,7 @@ const EMPTY_RESULT = (siteId: string, siteReportId: string): MemoryBuildResult =
   mergedCount: 0,
   linkedCount: 0,
   distinctCount: 0,
+  semanticDeepSearch: null,
 })
 
 /** Sélectionne le meilleur extrait exact + page pour un groupe de propositions de CE PV. */
@@ -384,6 +395,25 @@ export async function getMemoryBuildResult(
     }
   }
 
+  // P-UI-R2d — la recherche approfondie est-elle DIFFÉRÉE (coût > budget auto) ? Calcul GRATUIT
+  // (aucun LLM) : on compte les paires sémantiques restantes pour les sujets touchés par ce PV.
+  // Si le feed automatique a déjà tout absorbé (coût borné) ou s'il ne reste rien, → null.
+  let semanticDeepSearch: MemoryBuildResult['semanticDeepSearch'] = null
+  if (resolvedIds.length > 0) {
+    try {
+      const contextSubjects = await loadSimilarityContextSubjects(siteId)
+      if (contextSubjects.length >= 2) {
+        const { plan } = await buildSemanticFeedPlan(contextSubjects, { siteId, touchedSubjectIds: resolvedIds })
+        if (decideSemanticFeedMode(plan.evaluatedPairCount, plan.capped) === 'defer') {
+          semanticDeepSearch = { candidateCount: plan.evaluatedPairCount, autoBudget: SEMANTIC_FEED_AUTO_BUDGET }
+        }
+      }
+    } catch {
+      // Availability best-effort : ne jamais casser l'affichage du résultat d'import.
+      semanticDeepSearch = null
+    }
+  }
+
   return {
     siteId,
     siteReportId,
@@ -400,5 +430,6 @@ export async function getMemoryBuildResult(
     mergedCount: resolvedRows.filter((r) => r.status === 'accepted_merge').length,
     linkedCount: resolvedRows.filter((r) => r.status === 'accepted_link').length,
     distinctCount: resolvedRows.filter((r) => r.status === 'rejected').length,
+    semanticDeepSearch,
   }
 }

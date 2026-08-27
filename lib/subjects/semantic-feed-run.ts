@@ -1,6 +1,6 @@
 import 'server-only'
 
-// P-UI-R2c — Orchestrateur de la VOIE SÉMANTIQUE vers canonical_subject_similarity_suggestion.
+// P-UI-R2c/R2d — Orchestrateur de la VOIE SÉMANTIQUE vers canonical_subject_similarity_suggestion.
 //
 // Complète le workflow humain de rapprochement pour les paires que la voie
 // lexicale (generateCandidates) ne produit pas. Réutilise le MÊME juge
@@ -8,9 +8,10 @@ import 'server-only'
 // que le cœur P-UI-R2b (shouldPersistSemanticSuggestion) — aucun second moteur,
 // aucune nouvelle table, aucune nouvelle UI.
 //
-// Sélection des paires = buildSemanticFeedPairs (pur) : sources touchées × cibles
-// actives, exclusions strictes, cap dur. Ici on ajoute le coût réel : contexte
-// d'occurrence + appels LLM bornés + persistance gatée.
+// R2d — séparation en deux temps pour la stratégie hybride :
+//   1. buildSemanticFeedPlan  : GRATUIT (aucun LLM) — compte les paires candidates.
+//      → permet de décider auto (coût borné) vs recherche approfondie explicite.
+//   2. executeSemanticFeedPlan : coûteux (LLM + persistance gatée).
 //
 // Ne fusionne rien, ne crée aucune relation. dryRun=true → aucune écriture.
 
@@ -30,7 +31,11 @@ import {
 } from './similarity-analyze'
 import type { SimilarityContextSubject } from './similarity-context'
 import { loadOccurrenceContextMap } from './occurrence-context'
-import { buildSemanticFeedPairs, SEMANTIC_FEED_MAX_PAIRS } from './semantic-feed-candidates'
+import {
+  buildSemanticFeedPairs,
+  SEMANTIC_FEED_MAX_PAIRS,
+  type SemanticFeedPlan,
+} from './semantic-feed-candidates'
 
 export interface SemanticFeedOptions {
   siteId: string
@@ -78,44 +83,40 @@ export interface SemanticFeedSummary {
   persistable: SemanticFeedPersistable[]
 }
 
-export async function runSemanticFeed(
+// ── Plan (GRATUIT — aucun appel LLM) ────────────────────────────────────────────
+
+export interface SemanticFeedPlanResult {
+  plan: SemanticFeedPlan
+  sourceIds: string[]
+  targetIds: string[]
+  cap: number
+}
+
+/**
+ * Construit le plan de paires candidates de la voie sémantique SANS aucun appel LLM.
+ * Sert à décider la cadence (auto vs recherche approfondie) et à afficher le compteur UI.
+ */
+export async function buildSemanticFeedPlan(
   subjects: SimilarityContextSubject[],
-  opts: SemanticFeedOptions,
-): Promise<SemanticFeedSummary> {
-  const supabase = createAdminClient()
+  opts: Pick<SemanticFeedOptions, 'siteId' | 'touchedSubjectIds' | 'rejectedPairs' | 'cap'>,
+): Promise<SemanticFeedPlanResult> {
   const cap = opts.cap ?? SEMANTIC_FEED_MAX_PAIRS
   const rejectedPairs = opts.rejectedPairs ?? new Set<string>()
-
   const byId = new Map(subjects.map((s) => [s.forCandidates.id, s]))
   const targetIds = subjects.map((s) => s.forCandidates.id)
-  const sourceSet = new Set(opts.touchedSubjectIds.filter((id) => byId.has(id)))
-  const sourceIds = [...sourceSet]
+  const sourceIds = [...new Set(opts.touchedSubjectIds.filter((id) => byId.has(id)))]
 
-  const emptySummary = (evaluatedPairCount: number, capped: boolean): SemanticFeedSummary => ({
-    sourceCount: sourceIds.length,
-    targetCount: targetIds.length,
-    evaluatedPairCount,
-    capped,
-    cap,
-    llmCallCount: 0,
-    persistableCount: 0,
-    persistedCount: 0,
-    errorCount: 0,
-    perSource: sourceIds.map((id) => ({ subjectId: id, label: byId.get(id)!.forCandidates.label, evaluated: 0, llmCalls: 0, persistable: 0 })),
-    persistable: [],
-  })
+  if (sourceIds.length === 0 || targetIds.length < 2) {
+    return { plan: { pairs: [], evaluatedPairCount: 0, capped: false }, sourceIds, targetIds, cap }
+  }
 
-  if (sourceIds.length === 0 || targetIds.length < 2) return emptySummary(0, false)
-
-  // ── Exclusions : lexical-couvert ∪ rejeté ∪ pending ∪ accepté ────────────────
   const excludedPairKeys = new Set<string>(rejectedPairs)
-
   // Paires déjà produites par la voie lexicale : elles suivent leur propre chemin.
   for (const c of generateCandidates(subjects.map((s) => s.forCandidates), rejectedPairs)) {
     excludedPairKeys.add(normalizePairKey(c.a.id, c.b.id))
   }
-
   // Paires déjà pending / acceptées / rejetées en base : ni doublon, ni re-analyse coûteuse.
+  const supabase = createAdminClient()
   const { data: existing } = await supabase
     .from('canonical_subject_similarity_suggestion')
     .select('subject_a_id, subject_b_id, status')
@@ -125,15 +126,49 @@ export async function runSemanticFeed(
     excludedPairKeys.add(normalizePairKey(r.subject_a_id, r.subject_b_id))
   }
 
-  // ── Plan de paires (pur) ─────────────────────────────────────────────────────
   const plan = buildSemanticFeedPairs({ sourceIds, targetIds, excludedPairKeys, cap })
-  if (plan.capped) {
-    console.log(`[semantic-feed] site=${opts.siteId} SKIP capped : ${plan.evaluatedPairCount} paires > cap ${cap}`)
-    return emptySummary(plan.evaluatedPairCount, true)
-  }
-  if (plan.pairs.length === 0) return emptySummary(0, false)
+  return { plan, sourceIds, targetIds, cap }
+}
 
-  // ── Contexte d'occurrence (compact) pour les extrémités réellement candidates ─
+// ── Exécution (coûteuse — LLM + persistance gatée) ──────────────────────────────
+
+function emptySummary(planResult: SemanticFeedPlanResult, byId: Map<string, SimilarityContextSubject>): SemanticFeedSummary {
+  return {
+    sourceCount: planResult.sourceIds.length,
+    targetCount: planResult.targetIds.length,
+    evaluatedPairCount: planResult.plan.evaluatedPairCount,
+    capped: planResult.plan.capped,
+    cap: planResult.cap,
+    llmCallCount: 0,
+    persistableCount: 0,
+    persistedCount: 0,
+    errorCount: 0,
+    perSource: planResult.sourceIds.map((id) => ({ subjectId: id, label: byId.get(id)!.forCandidates.label, evaluated: 0, llmCalls: 0, persistable: 0 })),
+    persistable: [],
+  }
+}
+
+/**
+ * Exécute un plan déjà calculé : contexte d'occurrence → juge → persistance UNIQUEMENT via
+ * shouldPersistSemanticSuggestion. Acteurs déjà exclus (contexte business-only). dryRun sûr.
+ */
+export async function executeSemanticFeedPlan(
+  subjects: SimilarityContextSubject[],
+  planResult: SemanticFeedPlanResult,
+  opts: SemanticFeedOptions,
+): Promise<SemanticFeedSummary> {
+  const supabase = createAdminClient()
+  const byId = new Map(subjects.map((s) => [s.forCandidates.id, s]))
+  const { plan, sourceIds } = planResult
+  const sourceSet = new Set(sourceIds)
+
+  if (plan.capped) {
+    console.log(`[semantic-feed] site=${opts.siteId} SKIP capped : ${plan.evaluatedPairCount} paires > cap ${planResult.cap}`)
+    return emptySummary(planResult, byId)
+  }
+  if (plan.pairs.length === 0) return emptySummary(planResult, byId)
+
+  // Contexte d'occurrence (compact) pour les extrémités réellement candidates.
   const neededIds = new Set<string>()
   for (const [a, b] of plan.pairs) { neededIds.add(a); neededIds.add(b) }
   const occContext = await loadOccurrenceContextMap([...neededIds])
@@ -204,10 +239,10 @@ export async function runSemanticFeed(
 
   return {
     sourceCount: sourceIds.length,
-    targetCount: targetIds.length,
+    targetCount: planResult.targetIds.length,
     evaluatedPairCount: plan.evaluatedPairCount,
     capped: false,
-    cap,
+    cap: planResult.cap,
     llmCallCount,
     persistableCount,
     persistedCount,
@@ -215,4 +250,13 @@ export async function runSemanticFeed(
     perSource: [...perSource.values()],
     persistable,
   }
+}
+
+/** Convenience : plan puis exécution (dry-run script, action manuelle). */
+export async function runSemanticFeed(
+  subjects: SimilarityContextSubject[],
+  opts: SemanticFeedOptions,
+): Promise<SemanticFeedSummary> {
+  const planResult = await buildSemanticFeedPlan(subjects, opts)
+  return executeSemanticFeedPlan(subjects, planResult, opts)
 }

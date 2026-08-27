@@ -17,6 +17,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { getMemoryBuildResult } from '@/lib/db/memory-build-result'
 import { ImportResultSuggestions } from './ImportResultSuggestions'
+import { SemanticDeepSearchCta } from './SemanticDeepSearchCta'
 
 export const dynamic = 'force-dynamic'
 
@@ -109,6 +110,14 @@ export default async function ResultatImportPage({ params }: { params: Promise<{
               <ImportResultSuggestions siteId={id} initialSuggestions={result.pendingSuggestions} />
             </div>
           </section>
+        )}
+
+        {result.semanticDeepSearch && (
+          <SemanticDeepSearchCta
+            siteId={id}
+            reportId={result.siteReportId}
+            candidateCount={result.semanticDeepSearch.candidateCount}
+          />
         )}
 
         {result.enrichedSubjectCount > 0 && (

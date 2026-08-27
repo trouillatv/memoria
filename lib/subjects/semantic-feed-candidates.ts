@@ -27,8 +27,40 @@
 
 import { normalizePairKey, normalizedPair } from './similarity-candidates'
 
-/** Cap dur par défaut sur le nombre de paires candidates soumises au juge en un import. */
-export const SEMANTIC_FEED_MAX_PAIRS = 60
+/**
+ * Cap dur (plafond absolu) sur le nombre de paires candidates soumises au juge en UN passage.
+ * Garde ultime contre l'avalanche, y compris pour la recherche approfondie manuelle : au-delà,
+ * skip total + log. Dimensionné pour laisser passer un chantier moyen (Bella 2025 = 178 paires).
+ */
+export const SEMANTIC_FEED_MAX_PAIRS = 300
+
+/**
+ * Budget AUTOMATIQUE (P-UI-R2d) : seuil sous lequel la voie sémantique tourne toute seule après
+ * un import (coût borné, non bloquant). Au-delà, aucun appel LLM automatique — l'humain se voit
+ * proposer une « recherche approfondie » explicite (jamais de fonctionnement silencieux).
+ * Volontairement bas ; explicite et journalisé pour être ajusté après observation terrain.
+ */
+export const SEMANTIC_FEED_AUTO_BUDGET = 40
+
+/** Décision de cadence de la voie sémantique après calcul GRATUIT du nombre de paires. */
+export type SemanticFeedMode = 'auto' | 'defer' | 'none'
+
+/**
+ * - `none`  : rien à faire (0 paire candidate après exclusions).
+ * - `auto`  : coût borné (≤ budget) → lancer automatiquement.
+ * - `defer` : coût trop élevé (> budget) → ne rien lancer, proposer la recherche approfondie.
+ * `capped` (au-delà du plafond dur) reste `defer` : on propose, et l'exécution manuelle appliquera
+ * elle-même le plafond (skip + message si vraiment trop volumineux).
+ */
+export function decideSemanticFeedMode(
+  evaluatedPairCount: number,
+  capped: boolean,
+  autoBudget: number = SEMANTIC_FEED_AUTO_BUDGET,
+): SemanticFeedMode {
+  if (evaluatedPairCount === 0) return 'none'
+  if (!capped && evaluatedPairCount <= autoBudget) return 'auto'
+  return 'defer'
+}
 
 export interface SemanticFeedInput {
   /** Sujets métier touchés par l'import courant (les seules sources autorisées). */

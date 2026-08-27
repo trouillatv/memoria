@@ -12,7 +12,7 @@ import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import type { SiteSubjectMatrix, SubjectMatrixRow, MatrixCell } from '@/lib/documents/pv-history'
 import { mergeCanonicalSubjectsAction, moveSubjectToTopicAction, createLinkFromMatrixAction, analyzeSubjectSimilarityAction } from './merge-actions'
 import type { SubjectSimilarity } from './merge-actions'
-import { getSiteSimilaritySuggestionsAction, getOrAnalyzeSubjectPairAction, acceptSuggestionAsMergeAction, acceptSuggestionAsLinkAction, rejectSuggestionAction } from './similarity-actions'
+import { getSiteSimilaritySuggestionsAction, getOrAnalyzeSubjectPairAction, acceptSuggestionAsMergeAction, acceptSuggestionAsLinkAction, rejectSuggestionAction, runSemanticDeepSearchAction } from './similarity-actions'
 import type { PersistedSuggestion } from '@/lib/subjects/similarity-analyze'
 import { detectTypeHint, fusionWarningReason as computeFusionWarning } from '@/lib/subjects/similarity-candidates'
 
@@ -405,6 +405,17 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
     const result = await getSiteSimilaritySuggestionsAction(siteId)
     setSuggestionsLoading(false)
     if (result.suggestions) setSuggestions(result.suggestions)
+  }
+
+  // P-UI-R2d — recherche approfondie (voie sémantique) déclenchée par l'humain, portée site.
+  const [deepSearchState, setDeepSearchState] = useState<'idle' | 'running' | 'done'>('idle')
+  const [deepSearchCreated, setDeepSearchCreated] = useState<number | null>(null)
+  async function runDeepSearch() {
+    setDeepSearchState('running')
+    const result = await runSemanticDeepSearchAction(siteId)
+    setDeepSearchCreated(result.created ?? 0)
+    setDeepSearchState('done')
+    await loadSuggestions()
   }
 
   async function toggleSuggestionMode() {
@@ -1033,6 +1044,22 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
         <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
           L&apos;analyse se relance automatiquement après chaque import de PV historique.
         </p>
+        {deepSearchState === 'done' ? (
+          <p className="mt-3 text-xs font-medium text-violet-600 dark:text-violet-400">
+            {deepSearchCreated && deepSearchCreated > 0
+              ? `${deepSearchCreated} rapprochement${deepSearchCreated > 1 ? 's' : ''} trouvé${deepSearchCreated > 1 ? 's' : ''}.`
+              : 'Aucune continuité supplémentaire trouvée.'}
+          </p>
+        ) : (
+          <button
+            type="button"
+            disabled={deepSearchState === 'running'}
+            onClick={runDeepSearch}
+            className="mt-3 w-full rounded-lg border border-violet-200 bg-violet-50/60 px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-100 disabled:opacity-50 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300"
+          >
+            {deepSearchState === 'running' ? 'Recherche approfondie…' : 'Recherche approfondie des rapprochements'}
+          </button>
+        )}
       </div>
     )}
 
