@@ -64,6 +64,32 @@ export async function verifyProposalOwnership(
 
 // ─── Actions de revue ─────────────────────────────────────────────────────────
 
+/**
+ * P0-B : applique la date détectée dans le document comme date de référence
+ * (documents.effective_date), après confirmation humaine à la revue. Jamais de
+ * substitution silencieuse — cette action n'est déclenchée que par un clic explicite
+ * « Utiliser la date détectée ». La matérialisation (createHistoricalVisitAction) lit
+ * ensuite cette date ; les occurrences en héritent. Ne ré-extrait rien.
+ */
+export async function setImportDocumentDateAction(fd: FormData): Promise<ActionResult> {
+  const documentId = fd.get('document_id')?.toString()
+  const iso = fd.get('effective_date')?.toString()
+  if (!documentId || !iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return { ok: false, error: 'Paramètres invalides' }
+
+  const access = await verifyReviewAccess(documentId)
+  if (!access.ok) return access
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('documents')
+    .update({ effective_date: iso, updated_at: new Date().toISOString() })
+    .eq('id', documentId)
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath(`/documents/${documentId}`)
+  return { ok: true }
+}
+
 export async function acceptProposalAction(fd: FormData): Promise<ActionResult> {
   const proposalId = fd.get('proposal_id')?.toString()
   const documentId = fd.get('document_id')?.toString()

@@ -11,6 +11,8 @@ import { computeReviewSummary } from '@/lib/documents/effective-proposal'
 import { getExistingMaterializedVisit } from '@/lib/db/historical-visit-materialization'
 import { listSuggestionsForReview } from '@/lib/db/subject-suggestions'
 import { ExtractionReviewClient } from './ExtractionReviewClient'
+import { ImportDateBanner } from './ImportDateBanner'
+import { detectDocumentDate } from '@/lib/documents/detect-document-date'
 
 const SIGNED_URL_TTL = 300
 
@@ -166,6 +168,11 @@ export default async function ExtractionReviewPage({
   const allProposals = proposalsWithEvidence.map((p) => p.proposal)
   const summary = computeReviewSummary(allProposals)
 
+  // P0-B — détection générique de la date du document depuis le texte extrait, pour
+  // la comparer à la date saisie à l'upload (jamais de substitution silencieuse).
+  const { data: docText } = await admin.from('documents').select('extracted_text').eq('id', documentId).maybeSingle()
+  const dateDetection = detectDocumentDate((docText as { extracted_text: string | null } | null)?.extracted_text ?? '')
+
   return (
     <div className="space-y-6 w-full">
       <Link
@@ -188,6 +195,16 @@ export default async function ExtractionReviewPage({
           </p>
         </div>
       </header>
+
+      {/* P0-B — comparaison date saisie / date détectée dans le document (générique). */}
+      {dateDetection.best || dateDetection.ambiguous ? (
+        <ImportDateBanner
+          documentId={documentId}
+          enteredDate={doc.effective_date ?? null}
+          detected={dateDetection.best ? { iso: dateDetection.best.iso, semantics: dateDetection.best.semantics, evidence: dateDetection.best.evidence } : null}
+          ambiguous={dateDetection.ambiguous}
+        />
+      ) : null}
 
       {/* Corps */}
       <ExtractionReviewClient
