@@ -569,7 +569,9 @@ export async function extractHistoricalPv(
             // Créer le canonical_subject
             const { data: newCs, error: csErr } = await supabase
               .from('canonical_subject')
-              .insert({ site_id: siteIdForReconciliation, label: orphan.label, status: 'active' })
+              // P1-C1a : sujet ACTEUR (provenance person/company) — marqué kind='actor'
+              // pour être exclu du pool de résolution des faits métier.
+              .insert({ site_id: siteIdForReconciliation, label: orphan.label, status: 'active', kind: 'actor' })
               .select('id')
               .single()
 

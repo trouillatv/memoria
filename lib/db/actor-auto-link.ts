@@ -224,6 +224,7 @@ export async function ensureActorCanonicalSubject(
       site_id: siteId,
       label,
       status: 'active',
+      kind: 'actor', // P1-C1a : identité acteur explicite → exclue du pool des faits métier
       ...(contactId
         ? { contact_id: contactId, actor_link_source: 'auto', actor_link_confidence: 1.000 }
         : { company_id: companyId, actor_link_source: 'auto', actor_link_confidence: 1.000 }),

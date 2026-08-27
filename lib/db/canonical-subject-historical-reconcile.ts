@@ -189,7 +189,12 @@ export async function reconcileHistoricalPvCanonicalSubjects(params: {
   // 4. Phase 1 — matching déterministe (même moteur, même seuils que field_visit/meeting).
   const stillPending: ThreadGroup[] = []
   for (const g of pending) {
-    const resolution = await resolveCanonicalSubjectReference(siteId, g.queryText)
+    // P1-C1a : tous les threads traités ici sont métier (FAMILY_TO_KIND exclut
+    // person/company) → on retire les sujets acteurs du pool de résolution pour
+    // qu'un fait citant son acteur ne soit jamais canonicalisé SUR l'acteur.
+    const resolution = await resolveCanonicalSubjectReference(siteId, g.queryText, {
+      excludeActorSubjects: true,
+    })
     if (resolution.kind === 'resolved') {
       await attachThread(sb, g.threadId, siteId, resolution.candidate.id)
       touchedCanonicalSubjectIds.add(resolution.candidate.id)
@@ -204,11 +209,15 @@ export async function reconcileHistoricalPvCanonicalSubjects(params: {
   if (stillPending.length === 0) return finish(threadGroups.length)
 
   // 5. Phase 1.5 — matching LLM liste fermée, tous kinds (ne crée jamais).
+  //    P1-C1a : le pool candidat exclut les sujets acteurs — le LLM ne peut plus
+  //    proposer de rattacher un fait métier à un acteur (ex. « Récupération huiles »
+  //    → « Velayoudon »). S'applique aussi à la Phase 1.6 (même pool existingCs).
   const { data: rawCs } = await sb
     .from('canonical_subject')
     .select('id, label')
     .eq('site_id', siteId)
     .eq('status', 'active')
+    .neq('kind', 'actor')
   const existingCs = (rawCs ?? []) as Array<{ id: string; label: string }>
 
   const afterLlmMatch: ThreadGroup[] = []
@@ -311,7 +320,7 @@ export async function reconcileHistoricalPvCanonicalSubjects(params: {
 
     const { data: newCs, error: csErr } = await sb
       .from('canonical_subject')
-      .insert({ site_id: siteId, label: group.suggestedLabel, status: 'active', creation_source: 'historical_pv' })
+      .insert({ site_id: siteId, label: group.suggestedLabel, status: 'active', creation_source: 'historical_pv', kind: 'business_subject' })
       .select('id')
       .single()
 

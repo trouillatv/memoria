@@ -87,6 +87,16 @@ export function findLexicalAnchorMatches(
     .map((s) => ({ id: s.id, label: s.label }))
 }
 
+/**
+ * P1-C1a — retire les sujets acteurs (kind='actor') d'un pool de candidats.
+ * Un fait métier ne doit jamais se résoudre sur un sujet représentant un acteur :
+ * l'acteur cité reste une entité LIÉE au sujet, jamais le sujet lui-même.
+ * Pure, exportée pour les tests. Les lignes sans kind (héritage) sont conservées.
+ */
+export function excludeActorSubjectsFromPool<T extends { kind?: string | null }>(subjects: T[]): T[] {
+  return subjects.filter((s) => s.kind !== 'actor')
+}
+
 // Réactive un canonical_subject auto_archived → active.
 // Guard WHERE status='auto_archived' : idempotent, ne touche jamais merged/split.
 async function reactivateCanonicalSubject(
@@ -236,19 +246,26 @@ export function matchCanonicalSubjects(
 export async function resolveCanonicalSubjectReference(
   siteId: string,
   queryText: string,
+  // P1-C1a : quand la référence à résoudre est un FAIT MÉTIER (action, décision,
+  // knowledge_fact, observation…), on retire du pool les sujets kind='actor' pour
+  // qu'un fait citant son acteur (« Nettoyage… par KFT ») ne soit jamais canonicalisé
+  // SUR l'acteur. Défaut false : le comportement live/copilote reste inchangé.
+  opts: { excludeActorSubjects?: boolean } = {},
 ): Promise<SubjectResolutionResult> {
   const supabase = createAdminClient()
 
   const { data: subjects } = await supabase
     .from('canonical_subject')
-    .select('id, label, aliases, status')
+    .select('id, label, aliases, status, kind')
     .eq('site_id', siteId)
     .in('status', ['active', 'auto_archived'])
 
   if (!subjects || subjects.length === 0) return { kind: 'not_found' }
 
-  const activeSubjects = subjects.filter((s) => s.status === 'active')
-  const archivedSubjects = subjects.filter((s) => s.status === 'auto_archived')
+  const pool = opts.excludeActorSubjects ? excludeActorSubjectsFromPool(subjects) : subjects
+
+  const activeSubjects = pool.filter((s) => s.status === 'active')
+  const archivedSubjects = pool.filter((s) => s.status === 'auto_archived')
 
   // ── Niveau 1 : résolution courante, sujets actifs uniquement ──────────────────
   const activeResult = matchCanonicalSubjects(queryText, activeSubjects)
