@@ -19,6 +19,7 @@ import { makeWinnerResolver, type SubjectRow } from '@/lib/db/canonical-subject-
 import { detectActorRelations, type ActorSubject } from '@/lib/db/actor-citation'
 import { deriveStateKey } from '@/lib/db/occurrence-state-key'
 import { extractEventDate } from '@/lib/documents/event-date'
+import { deriveOccurrenceStateStatus } from '@/lib/documents/subject-state'
 
 // Familles qui portent PAR NATURE un état/événement daté d'un sujet durable (toujours éligibles).
 // (vigilance/reservation conservés par compatibilité — ce sont des noms de kind jamais émis comme
@@ -86,6 +87,7 @@ interface ProposalRow {
   description: string | null
   source_excerpt: string | null
   subject_thread_id: string | null
+  document_status: string | null
 }
 
 interface OccurrenceToCreate {
@@ -117,7 +119,7 @@ export async function ensureHistoricalPdfOccurrences(params: {
   // 1. Charger les propositions éligibles du run avec leur subject_thread_id
   const { data: proposals, error: propErr } = await supabase
     .from('document_extraction_proposal')
-    .select('id, proposal_family, label, description, source_excerpt, subject_thread_id')
+    .select('id, proposal_family, label, description, source_excerpt, subject_thread_id, document_status')
     .eq('extraction_run_id', runId)
     // P3-B1 : on récupère aussi les observations ; le garde de signification tranche ensuite.
     .in('proposal_family', [...STATE_BEARING_FAMILIES, 'observation'])
@@ -255,6 +257,15 @@ export async function ensureHistoricalPdfOccurrences(params: {
       ? null
       : extractEventDate(group.proposals.flatMap((p) => [p.label, p.description, p.source_excerpt])).iso
 
+    // R-1 : tri-state longitudinal établi AU NIVEAU DU GROUPE state_key (pas du PV). Conflit interne
+    // (resolved ET open) → 'unknown', jamais masqué. On instrumente les conflits pour diagnostic.
+    const { status: stateStatus, reason: stateReason } =
+      deriveOccurrenceStateStatus(group.proposals.map((p) => p.document_status))
+    if (stateReason === 'conflict') {
+      console.warn(`[historical-occ] CONFLIT statut → unknown | run=${runId} cs=${group.canonical_subject_id} `
+        + `state_key=${group.state_key} statuts=[${group.proposals.map((p) => p.document_status ?? 'null').join(',')}]`)
+    }
+
     const occData = {
       canonical_subject_id: group.canonical_subject_id,
       site_id: group.site_id,
@@ -268,6 +279,7 @@ export async function ensureHistoricalPdfOccurrences(params: {
       evidence_count: group.proposals.length,  // preuves du même état poolées
       effective_date: group.effective_date,    // date documentaire (PV) — inchangée
       event_date: eventDate,                    // P3-D2 : date propre du fait (ou null)
+      state_status: stateStatus,                // R-1 : tri-state du groupe (resolved|open|unknown)
       created_by: null,
       validation_status: 'observed' as const,
       entity_ids: [],

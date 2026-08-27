@@ -63,6 +63,40 @@ export function aggregatePvState(statuses: (string | null)[]): PvState {
   return result
 }
 
+/** Raison du tri-state d'une occurrence : état univoque, absence d'information, ou conflit interne. */
+export type StateStatusReason = 'univocal' | 'missing' | 'conflict'
+
+/**
+ * R-1 — statut tri-state d'UNE occurrence atomique (un groupe state_key = un état).
+ *
+ * Contraste volontaire avec `aggregatePvState` : ici, le conflit n'est PAS masqué. Si les
+ * propositions poolées dans l'occurrence portent à la fois du resolved ET du open, le système
+ * REFUSE de trancher → `unknown` (reason `conflict`), jamais une priorité open>resolved ni
+ * resolved>open qui transformerait une ambiguïté en certitude (contamination LMCA/attention/récit).
+ *
+ * - resolved seul (aucun open)              → resolved (univocal)
+ * - open seul (aucun resolved)              → open (univocal)
+ * - resolved ET open dans le même groupe    → unknown (conflict) — observable, jamais fabriqué
+ * - aucun signal exploitable (tout null)    → unknown (missing)
+ *
+ * `reason` distingue `missing` de `conflict` pour le diagnostic (logs/audits), sans colonne dédiée.
+ */
+export function deriveOccurrenceStateStatus(
+  statuses: (string | null)[],
+): { status: PvState; reason: StateStatusReason } {
+  let hasResolved = false
+  let hasOpen = false
+  for (const s of statuses) {
+    const st = documentStatusToPvState(s)
+    if (st === 'resolved') hasResolved = true
+    else if (st === 'open') hasOpen = true
+  }
+  if (hasResolved && hasOpen) return { status: 'unknown', reason: 'conflict' }
+  if (hasResolved) return { status: 'resolved', reason: 'univocal' }
+  if (hasOpen) return { status: 'open', reason: 'univocal' }
+  return { status: 'unknown', reason: 'missing' }
+}
+
 /**
  * Moteur de transition longitudinal unifié.
  *
