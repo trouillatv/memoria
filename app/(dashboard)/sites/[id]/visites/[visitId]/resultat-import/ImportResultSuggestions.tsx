@@ -49,7 +49,9 @@ const LINK_TYPE_LABEL: Record<string, string> = {
 const frDate = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
 
 function relationDisplay(s: MemoryBuildSuggestion): { label: string; arrow: string } {
-  if (s.recommendation === 'merge') return { label: 'Fusion possible', arrow: '↔' }
+  // « Même sujet ? » couvre merge ET related+hypothèse de même objet (P-UI-R2b) — sans
+  // prétendre que le juge a recommandé merge : recommendation reste ce qu'il a dit.
+  if (s.askSameSubject) return { label: 'Même sujet ?', arrow: '↔' }
   if (s.recommendation === 'link' && s.suggestedLinkType) {
     return { label: LINK_TYPE_LABEL[s.suggestedLinkType] ?? s.suggestedLinkType, arrow: s.suggestedDirection === 'b_to_a' ? '←' : '→' }
   }
@@ -182,7 +184,7 @@ export function ImportResultSuggestions({
             {errorState?.id === s.id && <p className="mt-1.5 text-[13px] text-destructive">{errorState.message}</p>}
 
             <div className="mt-3 flex flex-wrap justify-end gap-2">
-              {s.recommendation === 'merge' && (
+              {s.askSameSubject && (
                 <>
                   <button
                     type="button"
@@ -190,7 +192,7 @@ export function ImportResultSuggestions({
                     onClick={() => handleMerge(s)}
                     className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
                   >
-                    {busy ? 'Fusion…' : 'Fusionner les sujets'}
+                    {busy ? 'Fusion…' : 'Même sujet'}
                   </button>
                   <button
                     type="button"
@@ -202,7 +204,7 @@ export function ImportResultSuggestions({
                   </button>
                 </>
               )}
-              {s.recommendation === 'link' && (
+              {!s.askSameSubject && s.recommendation === 'link' && (
                 <>
                   <button
                     type="button"
@@ -222,7 +224,7 @@ export function ImportResultSuggestions({
                   </button>
                 </>
               )}
-              {s.recommendation === 'none' && (
+              {!s.askSameSubject && s.recommendation === 'none' && (
                 <>
                   <button
                     type="button"

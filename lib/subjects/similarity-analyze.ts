@@ -74,6 +74,32 @@ export interface PersistedSuggestion {
   status: SuggestionStatus
   reviewed_at: string | null
   reviewed_by: string | null
+  same_object_hypothesis: boolean
+}
+
+// ── Gate : quand présenter une question « Même sujet ? » à l'humain ────────────
+//
+// P-UI-R2b : on NE falsifie PAS recommendation='merge'. La carte « Même sujet ? » s'affiche si
+// le juge a recommandé merge, OU s'il a conclu related mais avec une hypothèse de même objet.
+// Les trois notions (verdict, recommendation, same_object_hypothesis) restent distinctes en base.
+
+/** true → l'UI présente la question de fusion « Ces deux éléments désignent-ils le même sujet ? ». */
+export function isSameSubjectQuestion(s: {
+  verdict: string
+  recommendation: string
+  same_object_hypothesis: boolean
+}): boolean {
+  return s.recommendation === 'merge' || (s.verdict === 'related' && s.same_object_hypothesis === true)
+}
+
+/**
+ * Gate de PERSISTANCE d'une suggestion issue de la voie sémantique (paires que le préfiltre
+ * lexical ne produit pas). On ne persiste que ce qui mérite une intervention humaine :
+ * same_subject (non auto-attaché en amont) ou related + hypothèse de même objet. Jamais
+ * related+false / distinct / uncertain (évite de faire de l'UI la poubelle des hésitations).
+ */
+export function shouldPersistSemanticSuggestion(verdict: string, sameObjectHypothesis: boolean): boolean {
+  return verdict === 'same_subject' || (verdict === 'related' && sameObjectHypothesis === true)
 }
 
 // ── Prompt système ─────────────────────────────────────────────────────────────
@@ -318,6 +344,7 @@ export async function upsertSuggestion(
     status: 'pending',
     reviewed_at: null,
     reviewed_by: null,
+    same_object_hypothesis: result.same_object_hypothesis,
   }
 
   if (existing) {

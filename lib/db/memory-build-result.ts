@@ -19,6 +19,7 @@ import 'server-only'
 import { SupabaseClient } from '@supabase/supabase-js'
 import {
   getSiteSuggestions,
+  isSameSubjectQuestion,
   type SimilarityVerdict,
   type SimilarityRecommendation,
   type SimilarityLinkType,
@@ -81,6 +82,10 @@ export interface MemoryBuildSuggestion {
   suggestedDirection: SimilarityDirection | null
   suggestedLabel: string | null
   reason: string
+  /** Hypothèse « même objet » (significative si verdict=related) — trace fidèle du juge. */
+  sameObjectHypothesis: boolean
+  /** Dérivé serveur : présenter la question « Même sujet ? » (merge OU related+hypothèse). */
+  askSameSubject: boolean
   sideA: MemoryBuildSuggestionSide
   sideB: MemoryBuildSuggestionSide
   /** Les deux sujets sont mentionnés par CE PV — libellé neutre côté UI. */
@@ -344,6 +349,8 @@ export async function getMemoryBuildResult(
       suggestedDirection: s.suggested_direction,
       suggestedLabel: s.suggested_label,
       reason: s.reason,
+      sameObjectHypothesis: s.same_object_hypothesis,
+      askSameSubject: isSameSubjectQuestion(s),
       sideA,
       sideB,
       bothTouchedByThisPv: sideA.touchedByThisPv && sideB.touchedByThisPv,

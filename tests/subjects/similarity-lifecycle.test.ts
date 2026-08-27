@@ -22,6 +22,7 @@ function s(id: string, aId: string, bId: string, overrides: Partial<PersistedSug
     status: 'pending',
     reviewed_at: null,
     reviewed_by: null,
+    same_object_hypothesis: false,
     ...overrides,
   }
 }
