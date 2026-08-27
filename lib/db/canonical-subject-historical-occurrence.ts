@@ -18,6 +18,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { makeWinnerResolver, type SubjectRow } from '@/lib/db/canonical-subject-project'
 import { detectActorRelations, type ActorSubject } from '@/lib/db/actor-citation'
 import { deriveStateKey } from '@/lib/db/occurrence-state-key'
+import { extractEventDate } from '@/lib/documents/event-date'
 
 // Familles qui portent PAR NATURE un état/événement daté d'un sujet durable (toujours éligibles).
 // (vigilance/reservation conservés par compatibilité — ce sont des noms de kind jamais émis comme
@@ -83,6 +84,7 @@ interface ProposalRow {
   proposal_family: string
   label: string
   description: string | null
+  source_excerpt: string | null
   subject_thread_id: string | null
 }
 
@@ -115,7 +117,7 @@ export async function ensureHistoricalPdfOccurrences(params: {
   // 1. Charger les propositions éligibles du run avec leur subject_thread_id
   const { data: proposals, error: propErr } = await supabase
     .from('document_extraction_proposal')
-    .select('id, proposal_family, label, description, subject_thread_id')
+    .select('id, proposal_family, label, description, source_excerpt, subject_thread_id')
     .eq('extraction_run_id', runId)
     // P3-B1 : on récupère aussi les observations ; le garde de signification tranche ensuite.
     .in('proposal_family', [...STATE_BEARING_FAMILIES, 'observation'])
@@ -246,6 +248,13 @@ export async function ensureHistoricalPdfOccurrences(params: {
     const bestLabel = selectBestText(allLabels) ?? group.canonical_label
     const bestNote  = selectBestText(allDescriptions) ?? null
 
+    // P3-D2 : date propre de l'événement (déterministe, brique event-date) — null si aucune date
+    // fiable ; jamais la date du PV. Sur tous les textes de l'état (label/description/extrait).
+    // Un état `deadline` porte une ÉCHÉANCE (due_date), pas un event_date → jamais d'event_date.
+    const eventDate = group.state_key === 'deadline'
+      ? null
+      : extractEventDate(group.proposals.flatMap((p) => [p.label, p.description, p.source_excerpt])).iso
+
     const occData = {
       canonical_subject_id: group.canonical_subject_id,
       site_id: group.site_id,
@@ -257,7 +266,8 @@ export async function ensureHistoricalPdfOccurrences(params: {
       label: bestLabel,
       note: bestNote,
       evidence_count: group.proposals.length,  // preuves du même état poolées
-      effective_date: group.effective_date,
+      effective_date: group.effective_date,    // date documentaire (PV) — inchangée
+      event_date: eventDate,                    // P3-D2 : date propre du fait (ou null)
       created_by: null,
       validation_status: 'observed' as const,
       entity_ids: [],

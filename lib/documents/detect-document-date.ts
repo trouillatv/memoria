@@ -146,6 +146,17 @@ function classify(text: string, hit: RawHit): { semantics: DateSemantics; confid
   if (/(fait|realise|realisee|controle|controlee|effectue|effectuee|intervention|contro?le)\s*(le|en|:)?\s*$/.test(before)) {
     return { semantics: 'event_date', confidence: 0.8, evidence }
   }
+  // 5b. Verbe de réalisation/contrôle PUIS acteur intercalé PUIS « … le <date> » (ex.
+  //     « contrôlées par Bureau Veritas le 22/03/2024 ») — le verbe n'est pas collé à « le ».
+  //     Exclut les FORMULATIONS PRÉVISIONNELLES (« prochain contrôle prévu le … ») = échéance,
+  //     pas un fait passé.
+  if (
+    /\b(fait|realise|realisee|realisees|controle|controlee|controlees|effectue|effectuee|verifie|verifiee|intervention)\b/.test(before)
+    && /\b(le|en)\s*$/.test(before)
+    && !/\b(prochain|prevu|prevue|prevoir|prevision|a\s+prevoir|programme|planifie)\b/.test(before)
+  ) {
+    return { semantics: 'event_date', confidence: 0.75, evidence }
+  }
   if (/^\s*(?:par\s+)?[A-ZÉÈ][A-ZÉÈ]{2,}\b/.test(afterRaw) || /^\s*(?:par\s+)?Bureau\s+[A-ZÉ]/.test(afterRaw)) {
     return { semantics: 'event_date', confidence: 0.7, evidence } // « <date> MIES/KFT/… » ou « <date> Bureau V… »
   }
