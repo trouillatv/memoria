@@ -118,7 +118,7 @@ const GEMINI_RESPONSE_SCHEMA = {
 
 // ─── Prompt système ───────────────────────────────────────────────────────────
 
-function buildExtractionPrompt(text: string, pageCount: number, siteContext?: string): string {
+export function buildExtractionPrompt(text: string, pageCount: number, siteContext?: string): string {
   return `Tu es un assistant d'analyse de PV de visite technique pour un conducteur de travaux.
 
 Ce document comporte ${pageCount} page(s). Le texte est balisé avec [[page N]] pour indiquer les changements de page.
@@ -190,6 +190,44 @@ Pour chaque information retenue après la sélection :
 8. Pour une action : ne citer que les actions explicitement attribuées (responsable nommé ou délai mentionné).
 9. Une photo sans description textuelle adjacente → evidence uniquement (page_snapshot), pas de proposition.
 10. Un chiffre ou mesure sans contexte clair → observation, pas action.
+
+---
+
+## Atomicité — une proposition = un sujet métier durable
+
+INVARIANT : chaque proposition doit se rattacher SANS PERTE à UNE SEULE identité métier durable — un
+sujet dont on pourra suivre l'évolution dans le temps. Cela ne veut PAS dire « un équipement », ni « un
+nom », ni « un élément d'une liste ».
+
+**Éclatement — quand une phrase source affirme un MÊME état sur PLUSIEURS sujets qui pourront ensuite
+évoluer INDÉPENDAMMENT, produis PLUSIEURS propositions**, une par sujet suivi. Exemple :
+« Contrôle électrique + éclairage + appareils de cuisson : à refaire » →
+- « Contrôle des installations électriques — à refaire »
+- « Contrôle de l'éclairage de sécurité — à refaire »
+- « Contrôle des appareils de cuisson — à refaire »
+Les propositions issues d'une même phrase partagent la MÊME page (sourcePage), le MÊME extrait
+(sourceExcerpt) et les MÊMES preuves (evidenceKeys identiques), la même date, la même priorité si
+justifiée, et le même acteur (linkedActorTemporaryKey) UNIQUEMENT si le texte l'attribue réellement à
+chacun. **Ne jamais inventer une preuve, un extrait ou une page différents pour justifier l'éclatement.**
+
+**Contre-test OBLIGATOIRE avant d'éclater — les DEUX questions doivent être OUI :**
+1. Ces éléments peuvent-ils réellement prendre des ÉTATS FUTURS INDÉPENDANTS dans le suivi métier ?
+   (ex. électrique réalisé / éclairage encore à refaire / cuisson non applicable)
+2. Serais-tu capable de RETROUVER chacun de ces sujets INDIVIDUELLEMENT dans un prochain CR ?
+Si l'une des réponses est NON, ou en cas de DOUTE → **UNE SEULE proposition**. L'atomicité sert la
+mémoire longitudinale, pas la granularité maximale : ne fabrique pas de micro-sujets artificiels.
+
+**Ne JAMAIS éclater par simple présence de « et », « / », « + », de virgules ou d'une liste.** Conserver
+en UNE proposition (composants, attributs, relation, ou énumération d'un seul sujet) — cas obligatoires :
+- conduits d'extraction d'air vicié / de buée / de graisse → UN système de conduits suivi ;
+- tableau + câblage d'une installation électrique → UNE installation électrique ;
+- portes CF d'un niveau → UN sujet collectif si aucune porte n'est identifiée/suivie individuellement ;
+- SSI avec CMSI / détecteurs / diffuseurs → UN sujet SSI si le document ne les traite pas en sujets
+  indépendants ;
+- coordination entre LOT01 et LOT02 → UNE proposition (la coordination entre les lots EST le sujet).
+
+En cas d'hésitation, **conserve la proposition composite** : un sous-découpage est récupérable plus tard,
+un sur-découpage fragmente la mémoire de façon irréversible.
 
 ---
 
