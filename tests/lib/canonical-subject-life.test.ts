@@ -15,13 +15,15 @@ describe('canonical-subject-life — Lot 4 : entity resolution', () => {
     expect(codeOf(SRC)).toContain('resolvedLabel: string | null')
   })
 
-  it('entity_ids est inclus dans les trois selects CSO', () => {
+  it('entity_ids est inclus dans les selects CSO qui résolvent des labels', () => {
     const src = codeOf(SRC)
     const selects = [...src.matchAll(/\.select\(['"]([\s\S]*?)['"]\)/g)].map((m) => m[1])
-    const csoSelects = selects.filter((s) => s.includes('source_ref_id'))
-    expect(csoSelects.length, 'attendu 3 selects CSO (native, fallback, main)').toBeGreaterThanOrEqual(3)
-    for (const s of csoSelects) {
-      expect(s, `select sans entity_ids : "${s.slice(0, 60)}..."`).toContain('entity_ids')
+    // Seuls les selects CSO porteurs de `label` alimentent applyEntitySubstitution → doivent inclure
+    // entity_ids. Les selects CSO de présence/état (R-1 grille : pas de label, pas de résolution) sont exempts.
+    const csoLabelSelects = selects.filter((s) => s.includes('source_ref_id') && s.includes('label'))
+    expect(csoLabelSelects.length, 'attendu ≥3 selects CSO à label (native, fallback, historique)').toBeGreaterThanOrEqual(3)
+    for (const s of csoLabelSelects) {
+      expect(s, `select à label sans entity_ids : "${s.slice(0, 60)}..."`).toContain('entity_ids')
     }
   })
 

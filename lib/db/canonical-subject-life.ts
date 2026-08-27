@@ -771,11 +771,13 @@ export async function getCanonicalSubjectLife(
   const lastSeenAt = presenceDates.length ? presenceDates.reduce((a, b) => (a > b ? a : b)) : null
   const pvCountHistorical = historicalPresenceRunIds.size
 
-  // Statut courant = état de la dernière occurrence DOCUMENTAIRE connue (max effective_date parmi les
-  // états) : tri-state pour l'historique (state_status), visitStatus pour le terrain.
-  const lastStateDate = realOccurrences.length ? realOccurrences.map((o) => o.effectiveDate).reduce((a, b) => (a > b ? a : b)) : null
-  const lastDocOcc = lastStateDate ? realOccurrences.filter((o) => o.effectiveDate === lastStateDate).slice(-1)[0] : undefined
-  const currentStatus = lastDocOcc?.stateStatus ?? lastDocOcc?.visitStatus ?? lastDocOcc?.documentStatus ?? null
+  // Statut courant = dernier état SIGNIFICATIF (non-unknown) en chronologie documentaire — même
+  // définition que la grille (deriveCurrentResolvedState), pour que Ligne de vie et grille racontent le
+  // même état (critère de clôture R-1). Exprimé en statut brut-équivalent (done/open/null).
+  const byDateStates = [...realOccurrences].sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))
+  const currentResolved = deriveCurrentResolvedState(byDateStates.map((o) =>
+    o.stateStatus ?? (o.visitStatus !== null ? visitStatusToPvState(o.visitStatus) : documentStatusToPvState(o.documentStatus))))
+  const currentStatus = currentResolved === null ? null : (currentResolved ? 'done' : 'open')
   const primaryFamily = realOccurrences[0]?.proposalFamily ?? null
 
   // Primitive stagnation V1B — signature combinée : statut + objets métier liés (création + changement d'état)
@@ -1379,11 +1381,16 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     }
   }
 
-  // 8. Timeline fusionnée par CS (une occurrence par CS×run, proposition dominante)
+  // 8. R-1 : timeline par CS depuis les OCCURRENCES (états longitudinaux, multiplicité conservée).
+  //    Repli propositions uniquement pour les sujets SANS occurrence (acteurs). La présence documentaire
+  //    (firstSeen/lastSeen/pvCount) se calcule séparément sur l'axe des runs (§9), indépendamment des états.
   const FAMILY_RANK = ['reservation', 'action', 'decision', 'deadline', 'observation', 'knowledge_fact', 'person', 'company']
-  type OccEntry = { effectiveDate: string; status: string | null; proposalFamily: string | null; matSig: string }
+  // position (event_date ?? effective_date) pour l'ordre/LMCA ; effectiveDate = date documentaire du PV.
+  // rawStatus = statut brut-équivalent (tri-state → done/open/null) pour préserver EXACTEMENT navSortPriority.
+  type OccEntry = { position: string; effectiveDate: string; pvState: PvState; rawStatus: string | null; family: string | null; matSig: string }
+  const rawEquiv = (s: PvState): string | null => (s === 'resolved' ? 'done' : s === 'open' ? 'open' : null)
 
-  // csId → runId → {status, family} — proposition la plus sémantiquement forte
+  // csId → runId → proposition dominante (repli acteurs + présence documentaire)
   const bestByCsRun = new Map<string, Map<string, { status: string | null; family: string }>>()
   for (const prop of props) {
     const csId = threadToCsId.get(prop.subject_thread_id)
@@ -1398,36 +1405,71 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     }
   }
 
-  const occsByCsId = new Map<string, OccEntry[]>()
+  // Occurrences historiques du chantier (tous sujets) — source des états.
+  const { data: histOccRows } = await supabase
+    .from('canonical_subject_occurrence')
+    .select('canonical_subject_id, source_ref_id, state_key, state_status, effective_date, event_date')
+    .eq('site_id', siteId).eq('source_kind', 'historical_pdf')
+    .not('validation_status', 'in', '("rejected","source_superseded")')
+  type HistLite = { canonical_subject_id: string; source_ref_id: string; state_key: string; state_status: PvState | null; effective_date: string; event_date: string | null }
+  const histLite = (histOccRows ?? []) as HistLite[]
+  const navReportIds = [...new Set(histLite.map((o) => o.source_ref_id))]
+  const navReportToRun = new Map<string, string>()
+  if (navReportIds.length > 0) {
+    const { data } = await supabase.from('site_reports').select('id, extraction_run_id').in('id', navReportIds)
+    for (const r of (data ?? []) as Array<{ id: string; extraction_run_id: string | null }>) if (r.extraction_run_id) navReportToRun.set(r.id, r.extraction_run_id)
+  }
+  // cs → run → occurrences
+  const occByCsRun = new Map<string, Map<string, HistLite[]>>()
+  for (const o of histLite) {
+    if (!csById.has(o.canonical_subject_id)) continue
+    const run = navReportToRun.get(o.source_ref_id); if (!run) continue
+    let rm = occByCsRun.get(o.canonical_subject_id); if (!rm) { rm = new Map(); occByCsRun.set(o.canonical_subject_id, rm) }
+    const list = rm.get(run) ?? []; list.push(o); rm.set(run, list)
+  }
+  // Présence documentaire par cs = runs où le sujet a une occurrence OU une proposition.
+  const presenceRunsByCs = new Map<string, Set<string>>()
+  for (const [cs, rm] of occByCsRun) presenceRunsByCs.set(cs, new Set(rm.keys()))
+  for (const [cs, rm] of bestByCsRun) {
+    const set = presenceRunsByCs.get(cs) ?? new Set<string>()
+    for (const run of rm.keys()) set.add(run)
+    presenceRunsByCs.set(cs, set)
+  }
 
-  // Ajouter les occurrences PV dans l'ordre chronologique des runs
-  for (const [csId, runMap] of bestByCsRun.entries()) {
-    const occs: OccEntry[] = []
-    for (const run of allRuns) {
-      const entry = runMap.get(run.id)
-      if (entry) {
-        occs.push({
-          effectiveDate: runEffDate.get(run.id) ?? '',
-          status: entry.status,
-          proposalFamily: entry.family,
-          matSig: matByCsRun.get(csId)?.get(run.id) ?? '',
-        })
+  const occsByCsId = new Map<string, OccEntry[]>()
+  for (const csId of csById.keys()) {
+    const entries: OccEntry[] = []
+    const occRuns = occByCsRun.get(csId)
+    if (occRuns && occRuns.size > 0) {
+      // Occurrence-backed : un OccEntry par état atomique.
+      for (const [run, occs] of occRuns) {
+        const rd = runEffDate.get(run) ?? ''
+        for (const o of occs) {
+          const st: PvState = o.state_status ?? 'unknown'
+          entries.push({ position: o.event_date ?? o.effective_date, effectiveDate: rd, pvState: st, rawStatus: rawEquiv(st), family: o.state_key, matSig: matByCsRun.get(csId)?.get(run) ?? '' })
+        }
+      }
+    } else {
+      // Repli propositions (acteurs / sujets sans occurrence) : 1 état/run, dominante de famille.
+      const runMap = bestByCsRun.get(csId)
+      if (runMap) for (const run of allRuns) {
+        const e = runMap.get(run.id); if (!e) continue
+        const rd = runEffDate.get(run.id) ?? ''
+        entries.push({ position: rd, effectiveDate: rd, pvState: documentStatusToPvState(e.status), rawStatus: e.status, family: e.family, matSig: matByCsRun.get(csId)?.get(run.id) ?? '' })
       }
     }
-    occsByCsId.set(csId, occs)
+    occsByCsId.set(csId, entries)
   }
-
-  // Ajouter les occurrences natives (déjà triées par date asc depuis la DB)
+  // Occurrences natives (terrain / réunion).
   for (const o of nativeOccs) {
     if (!csById.has(o.canonical_subject_id)) continue
-    const existing = occsByCsId.get(o.canonical_subject_id) ?? []
-    existing.push({ effectiveDate: o.effective_date, status: o.visit_status, proposalFamily: null, matSig: '' })
-    occsByCsId.set(o.canonical_subject_id, existing)
+    const list = occsByCsId.get(o.canonical_subject_id) ?? []
+    list.push({ position: o.effective_date, effectiveDate: o.effective_date, pvState: visitStatusToPvState(o.visit_status), rawStatus: o.visit_status, family: null, matSig: '' })
+    occsByCsId.set(o.canonical_subject_id, list)
   }
-
-  // Tri final par date (nécessaire après ajout des natifs)
+  // Tri par position (event_date ?? effective_date), puis date documentaire.
   for (const [csId, occs] of occsByCsId.entries()) {
-    occs.sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))
+    occs.sort((a, b) => a.position.localeCompare(b.position) || a.effectiveDate.localeCompare(b.effectiveDate))
     occsByCsId.set(csId, occs)
   }
 
@@ -1438,19 +1480,25 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     const occs = occsByCsId.get(csId) ?? []
     if (occs.length === 0) continue
 
-    const firstSeenAt = occs[0].effectiveDate
-    const lastSeenAt = occs[occs.length - 1].effectiveDate
-    const currentStatus = occs[occs.length - 1].status ?? null
-    const kind = occs.find((o) => o.proposalFamily)?.proposalFamily ?? null
+    // Présence documentaire : firstSeen/lastSeen/pvCount depuis l'AXE DES RUNS (+ natif), pas les états.
+    const presenceRuns = presenceRunsByCs.get(csId) ?? new Set<string>()
+    const presenceDates = [...presenceRuns].map((r) => runEffDate.get(r) ?? '').filter(Boolean)
+    const nativeDatesCs = occs.filter((o) => o.family === null).map((o) => o.effectiveDate)
+    const presenceAll = [...presenceDates, ...nativeDatesCs]
+    const firstSeenAt = presenceAll.length ? presenceAll.reduce((a, b) => (a < b ? a : b)) : occs[0].effectiveDate
+    const lastSeenAt = presenceAll.length ? presenceAll.reduce((a, b) => (a > b ? a : b)) : occs[occs.length - 1].effectiveDate
+    const pvCountHist = presenceRuns.size
 
-    // LMCA P1-4A — moteur tri-state unifié (remplace signature brute V1B)
-    const lmcaOccsB: LmcaOccurrence[] = occs.map((occ) => ({
-      effectiveDate: occ.effectiveDate,
-      pvState: occ.proposalFamily !== null
-        ? documentStatusToPvState(occ.status)
-        : visitStatusToPvState(occ.status),
-      objectSig: occ.matSig,
-    }))
+    // Statut courant = dernier état DOCUMENTAIRE (max effectiveDate). rawStatus préserve navSortPriority.
+    const lastByDate = [...occs].sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate)).slice(-1)[0]
+    const currentStatus = lastByDate?.rawStatus ?? null
+    const kind = occs.find((o) => o.family)?.family ?? null
+
+    // LMCA P1-4A — moteur tri-state unifié, sur la POSITION temporelle (event_date ?? effective_date),
+    // effondré par date pour ne pas fabriquer de changement intra-document (multiplicité D1).
+    const lmcaOccsB = collapseLmcaOccurrencesByDate(occs.map((occ) => ({
+      effectiveDate: occ.position, pvState: occ.pvState, objectSig: occ.matSig,
+    })))
     let { lastMeaningfulChangeAt, consecutiveMentionsWithoutChange } = computeLmcaFromOccurrences(lmcaOccsB)
 
     // Tri-state courant — dernière occurrence non-unknown (open | resolved | unknown)
@@ -1485,7 +1533,7 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
       firstSeenAt,
       lastSeenAt,
       lastMeaningfulChangeAt,
-      pvCount: bestByCsRun.get(csId)?.size ?? 0,
+      pvCount: pvCountHist,
       threadCount: threadCountByCsId.get(csId) ?? 0,
       nativeOccurrenceCount: nativeCountByCsId.get(csId) ?? 0,
       activeObjects: (() => {
