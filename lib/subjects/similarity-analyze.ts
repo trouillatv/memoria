@@ -31,6 +31,13 @@ export interface SimilarityResult {
   model: string
   /** Avertissement structurel soft (pas un blocage dur) — à afficher dans l'UI */
   warning_reason: string | null
+  /**
+   * P-UI-R2 : uniquement significatif quand verdict='related'. true = les deux sujets pourraient
+   * désigner le MÊME objet métier durable malgré une confiance insuffisante pour same_subject
+   * (→ à soumettre à l'humain « Même sujet ? »). false = objets distincts, éventuellement liés
+   * (→ pas de proposition de fusion). Défaut prudent : false.
+   */
+  same_object_hypothesis: boolean
 }
 
 export interface SubjectInput {
@@ -71,7 +78,8 @@ export interface PersistedSuggestion {
 
 // ── Prompt système ─────────────────────────────────────────────────────────────
 
-const BASE_SYSTEM_PROMPT = `Tu es un expert en management de chantier BTP.
+// Exporté pour un test de non-régression du contrat same_object_hypothesis (P-UI-R2).
+export const BASE_SYSTEM_PROMPT = `Tu es un expert en management de chantier BTP.
 On te donne deux sujets canoniques extraits de procès-verbaux de chantier.
 Chaque sujet comporte un libellé principal, des alias (formulations alternatives), et des données contextuelles.
 
@@ -99,8 +107,16 @@ Réponds UNIQUEMENT en JSON valide, aucun autre texte :
   "suggested_link_type": null | "requires" | "enables" | "causes" | "validates" | "replaces" | "relates_to",
   "suggested_direction": null | "a_to_b" | "b_to_a",
   "suggested_label": null | "libellé canonique proposé si fusion",
-  "reason": "phrase courte ≤ 15 mots"
+  "reason": "phrase courte ≤ 15 mots",
+  "same_object_hypothesis": true | false
 }
+
+Champ "same_object_hypothesis" — PERTINENT UNIQUEMENT quand verdict = "related".
+Il répond à : « même si je ne peux pas conclure same_subject, ces deux sujets pourraient-ils désigner le MÊME objet métier durable (même équipement, même lieu, même opération), formulé autrement ? » — et NON « sont-ils liés ? ».
+- true  : formulations différentes pouvant désigner le même objet réel, mais preuves insuffisantes pour auto-fusionner (ex. une issue de secours / un dégagement physique probablement identiques).
+- false : objets réellement DISTINCTS ayant une relation métier/documentaire/fonctionnelle.
+Contre-exemples false : « Registre électrique » vs « Contrôle électrique » ; « Rapport SSI » vs « Contrôle SSI » ; « Réserve porte CF » vs « la porte CF elle-même » ; un document vs l'équipement qu'il concerne.
+En cas de doute → false (prudence, on préfère ne pas proposer une fusion). Pour verdict ≠ "related", mets false.
 
 Règles générales :
 - score ≥ 90 → verdict doit être "same_subject", recommendation "merge"
@@ -215,6 +231,7 @@ export async function analyzeSubjectPair(
     suggested_direction?: string | null
     suggested_label?: string | null
     reason?: string
+    same_object_hypothesis?: boolean
   }
 
   const score = Math.max(0, Math.min(100, Number(parsed.score ?? 0)))
@@ -251,6 +268,9 @@ export async function analyzeSubjectPair(
     reason: parsed.reason ?? '',
     model: output.model ?? provider.name,
     warning_reason: fusionWarning ?? null,
+    // Significatif seulement pour 'related' ; prudence par défaut (false). same_subject est
+    // déjà « même objet », distinct/uncertain ne sont pas des hypothèses de fusion.
+    same_object_hypothesis: verdict === 'related' && parsed.same_object_hypothesis === true,
   }
 }
 
