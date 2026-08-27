@@ -18,7 +18,38 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { makeWinnerResolver, type SubjectRow } from '@/lib/db/canonical-subject-project'
 import { detectActorRelations, type ActorSubject } from '@/lib/db/actor-citation'
 
-const ELIGIBLE_FAMILIES = new Set(['action', 'vigilance', 'decision', 'knowledge_fact', 'deadline', 'reservation'])
+// Familles qui portent PAR NATURE un état/événement daté d'un sujet durable (toujours éligibles).
+// (vigilance/reservation conservés par compatibilité — ce sont des noms de kind jamais émis comme
+// famille ; inertes mais sans effet de bord.)
+const STATE_BEARING_FAMILIES = new Set(['action', 'vigilance', 'decision', 'knowledge_fact', 'deadline', 'reservation'])
+
+/**
+ * P3-B1 — Éligibilité d'une proposition à devenir une occurrence de mémoire longitudinale.
+ *
+ * Doctrine (P3-A §8) : une occurrence représente un ÉTAT/ÉVÉNEMENT daté SIGNIFICATIF d'un sujet
+ * durable, PAS un type de proposition. On déplace la décision du contenant (famille) vers le
+ * contenu :
+ *  - les familles à état (action/decision/knowledge_fact/deadline…) sont éligibles par nature ;
+ *  - `observation` — la famille ambiguë, jusqu'ici exclue par un bug de nommage (la whitelist
+ *    listait le kind `vigilance` au lieu de la famille `observation`) — devient éligible SI son
+ *    texte est SIGNIFICATIF, via le même garde générique que les relations (`selectBestText` /
+ *    `isInformativeText`) : rejette le transitoire/éphémère (« à voir », « demain », < 15 car.),
+ *    garde l'état daté substantiel (« Registre non renseigné », « Largeur réduite »).
+ *
+ * Pas de whitelist élargie aveugle, pas de nouveau moteur LLM. Limite connue : `isInformativeText`
+ * ne filtre pas une observation SUBSTANTIELLE mais transitoire (« il pleuvait ce jour ») ; ce
+ * résidu sémantique est instrumenté (log) et traité ultérieurement seulement si le terrain le montre.
+ */
+export function isProposalOccurrenceEligible(
+  family: string,
+  label: string | null,
+  description: string | null,
+): boolean {
+  if (family === 'observation') {
+    return selectBestText([label ?? '', description ?? '']) !== null
+  }
+  return STATE_BEARING_FAMILIES.has(family)
+}
 
 // Même doctrine que isInformativeText dans produce-relations-from-occurrences.ts
 const TEMPORAL_START_RE =
@@ -84,7 +115,8 @@ export async function ensureHistoricalPdfOccurrences(params: {
     .from('document_extraction_proposal')
     .select('id, proposal_family, label, description, subject_thread_id')
     .eq('extraction_run_id', runId)
-    .in('proposal_family', [...ELIGIBLE_FAMILIES])
+    // P3-B1 : on récupère aussi les observations ; le garde de signification tranche ensuite.
+    .in('proposal_family', [...STATE_BEARING_FAMILIES, 'observation'])
     .not('subject_thread_id', 'is', null)
 
   if (propErr) {
@@ -93,7 +125,15 @@ export async function ensureHistoricalPdfOccurrences(params: {
   }
   if (!proposals || proposals.length === 0) return { created: 0, skipped: 0, errors: 0 }
 
-  const eligible = proposals as ProposalRow[]
+  // P3-B1 : filtre par signification du contenu (état daté d'un sujet durable), pas par famille.
+  const fetched = proposals as ProposalRow[]
+  const eligible = fetched.filter((p) => isProposalOccurrenceEligible(p.proposal_family, p.label, p.description))
+  const obsTotal = fetched.filter((p) => p.proposal_family === 'observation').length
+  const obsKept = eligible.filter((p) => p.proposal_family === 'observation').length
+  if (obsTotal > 0) {
+    // Instrumentation (visibilité d'un afflux type Géant) : combien d'observations franchissent le garde.
+    console.log(`[historical-occ] run=${runId} observations éligibles ${obsKept}/${obsTotal} (garde de signification)`)
+  }
   const threadIds = [...new Set(eligible.map(p => p.subject_thread_id as string))]
 
   // 2. Résoudre thread_id → canonical_subject_id via subject_thread_identity
