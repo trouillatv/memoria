@@ -45,6 +45,9 @@ export interface SubjectInput {
   currentStatus?: string | null
   isStagnant?: boolean
   activeObjects?: { actionsOpen: number; reservesOpen: number; decisionsOpen: number; deadlinesActive: number }
+  /** P1-C2 : contexte métier compact tiré des occurrences (labels/notes) — permet au juge
+   *  de conclure sur l'OBJET réel, pas seulement le libellé (ex. Mall vs food court). */
+  occurrenceContext?: string | null
 }
 
 export interface PersistedSuggestion {
@@ -176,6 +179,7 @@ export async function analyzeSubjectPair(
       statut: subjectA.currentStatus,
       stagnant: subjectA.isStagnant ?? false,
       objets_actifs: subjectA.activeObjects ?? null,
+      contexte_occurrences: subjectA.occurrenceContext ?? null,
     },
     sujet_B: {
       label: subjectB.label,
@@ -188,6 +192,7 @@ export async function analyzeSubjectPair(
       statut: subjectB.currentStatus,
       stagnant: subjectB.isStagnant ?? false,
       objets_actifs: subjectB.activeObjects ?? null,
+      contexte_occurrences: subjectB.occurrenceContext ?? null,
     },
   }, null, 2)
 

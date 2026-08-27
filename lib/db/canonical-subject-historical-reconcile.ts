@@ -41,6 +41,12 @@ import { jaccardSimilarity } from '@/lib/documents/subject-reconciliation'
 import { normalizeForMatching, P01_NORMALIZED_JACCARD_THRESHOLD } from '@/lib/subjects/normalize-for-matching'
 import { analyzeSubjectPair } from '@/lib/subjects/similarity-analyze'
 import type { SubjectInput } from '@/lib/subjects/similarity-analyze'
+import {
+  resolveSemanticFallback,
+  buildSubjectSemanticContext,
+  SEMANTIC_POOL_CAP,
+  type SemanticCandidate,
+} from '@/lib/db/canonical-subject-semantic-fallback'
 import type { DocumentProposalFamily } from '@/types/db'
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>
@@ -281,10 +287,50 @@ export async function reconcileHistoricalPvCanonicalSubjects(params: {
   }
   if (afterP01.length === 0) return finish(threadGroups.length)
 
+  // 5.7. Phase sémantique — DERNIER RECOURS, pool borné (P1-C2). Réutilise analyzeSubjectPair
+  //      (juge existant) avec le contexte d'occurrence des candidats. Ne s'exécute que pour les
+  //      kinds créateurs et ne rattache que sur un same_subject unique et fiable ; ambiguïté ou
+  //      objet distinct → rien (le sujet sera créé en Phase 2). Aucun embedding.
+  const afterSemantic: ThreadGroup[] = []
+  const semanticCreators = afterP01.filter((g) => CAN_CREATE_SUBJECT_KINDS.has(g.kind))
+  if (semanticCreators.length > 0 && existingCs.length > 0 && existingCs.length <= SEMANTIC_POOL_CAP) {
+    const candCtx = await loadCandidateContexts(sb, siteId, existingCs.map((c) => c.id))
+    for (const g of afterP01) {
+      if (!CAN_CREATE_SUBJECT_KINDS.has(g.kind)) { afterSemantic.push(g); continue }
+      const source: SemanticCandidate = {
+        id: g.threadId,
+        label: g.queryText,
+        occurrenceContext: buildSubjectSemanticContext([g.queryText], [g.description]),
+      }
+      const candidates: SemanticCandidate[] = existingCs.map((cs) => ({
+        id: cs.id,
+        label: cs.label,
+        aliases: candCtx.get(cs.id)?.aliases ?? [],
+        occurrenceContext: candCtx.get(cs.id)?.context ?? null,
+      }))
+      try {
+        const res = await resolveSemanticFallback(source, candidates)
+        if (res.matchId) {
+          await attachThread(sb, g.threadId, siteId, res.matchId)
+          touchedCanonicalSubjectIds.add(res.matchId)
+          statFor(g.family).matchedExisting++
+        } else {
+          afterSemantic.push(g)
+        }
+      } catch (err) {
+        console.error('[historical-reconcile] semantic fallback error:', String(err).slice(0, 200))
+        afterSemantic.push(g)
+      }
+    }
+  } else {
+    afterSemantic.push(...afterP01)
+  }
+  if (afterSemantic.length === 0) return finish(threadGroups.length)
+
   // 6. Séparer selon la capacité de création — deadline ne crée jamais (doctrine identique
   //    à CAN_CREATE_SUBJECT_KINDS côté field_visit/meeting).
-  const forClustering = afterP01.filter((g) => CAN_CREATE_SUBJECT_KINDS.has(g.kind))
-  const matchOnly = afterP01.filter((g) => !CAN_CREATE_SUBJECT_KINDS.has(g.kind))
+  const forClustering = afterSemantic.filter((g) => CAN_CREATE_SUBJECT_KINDS.has(g.kind))
+  const matchOnly = afterSemantic.filter((g) => !CAN_CREATE_SUBJECT_KINDS.has(g.kind))
   for (const g of matchOnly) statFor(g.family).unresolved++
   if (forClustering.length === 0) return finish(threadGroups.length)
 
@@ -350,6 +396,42 @@ export async function reconcileHistoricalPvCanonicalSubjects(params: {
   }
 
   return finish(threadGroups.length)
+}
+
+/**
+ * Charge le contexte métier compact (aliases + labels/notes d'occurrences) de chaque candidat,
+ * pour nourrir le juge sémantique. Borné par l'appelant (existingCs ≤ SEMANTIC_POOL_CAP).
+ */
+async function loadCandidateContexts(
+  sb: SupabaseAdmin,
+  siteId: string,
+  csIds: string[],
+): Promise<Map<string, { aliases: string[]; context: string }>> {
+  const out = new Map<string, { aliases: string[]; context: string }>()
+  if (csIds.length === 0) return out
+  const { data: subs } = await sb.from('canonical_subject').select('id, aliases').in('id', csIds)
+  const { data: occs } = await sb
+    .from('canonical_subject_occurrence')
+    .select('canonical_subject_id, label, note')
+    .eq('site_id', siteId)
+    .in('canonical_subject_id', csIds)
+  const byCs = new Map<string, { labels: string[]; notes: string[] }>()
+  for (const o of occs ?? []) {
+    const k = o.canonical_subject_id as string
+    const e = byCs.get(k) ?? { labels: [], notes: [] }
+    if (o.label) e.labels.push(o.label as string)
+    if (o.note) e.notes.push(o.note as string)
+    byCs.set(k, e)
+  }
+  for (const s of subs ?? []) {
+    const id = s.id as string
+    const e = byCs.get(id) ?? { labels: [], notes: [] }
+    out.set(id, {
+      aliases: (s.aliases as string[] | null) ?? [],
+      context: buildSubjectSemanticContext(e.labels, e.notes),
+    })
+  }
+  return out
 }
 
 /**
