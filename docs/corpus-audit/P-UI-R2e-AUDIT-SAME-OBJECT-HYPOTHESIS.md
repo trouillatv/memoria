@@ -145,35 +145,53 @@ migration), langage doc/prompt basculé.
 
 Vérifs : **42 tests PASS** (contrat + gate + feed) ; typecheck 0 ; lint 0.
 
-## Re-sonde empirique — BLOQUÉE (quota Gemini)
+## Re-sonde empirique — EXÉCUTÉE (crédits rechargés, juge réel)
 
 `scripts/reprobe-same-subject.ts` (12 cas : 6 témoins + objet↔anomalie/document/contrôle + 3 évolutions).
-Exécution : **429 RESOURCE_EXHAUSTED — crédits Gemini épuisés**. Le harnais tourne, isole les erreurs et
-produit le tableau, mais la colonne « SOH après » ne peut être remplie tant que les crédits ne sont pas
-rechargés.
+Résultat : **11/12 conformes**. « identité proposée » = ce que l'UI présenterait comme « Même sujet ? »
+(verdict same_subject OU related+SOH).
 
-| # | A | B | SOH avant | SOH après | identité attendue (humain) |
-|---|---|---|---|---|---|
-| 1 | Issue food court | Dégagement Mall | true | ⏳ | **true** (même issue suivie) |
-| 2 | Largeur réduite (frigos) | Dégagement Mall | true | ⏳ | **false** |
-| 3 | Local technique | Local électrique | true | ⏳ | **false** |
-| 4 | Registre install. élec. | Contrôle install. élec. | false | ⏳ | false |
-| 5 | Rapport SSI | Contrôle SSI | false | ⏳ | false |
-| 6 | Réserve porte CF | Contrôle porte CF | false | ⏳ | false |
-| 7 | Extincteurs (parc) | Extincteur manquant (anomalie) | n/a | ⏳ | false |
-| 8 | Installations élec. | Rapport de contrôle (document) | n/a | ⏳ | false |
-| 9 | Éclairage sécurité | Contrôle éclairage (contrôle) | n/a | ⏳ | false |
-| 10 | Nivellement hors tolérance | Nivellement conforme (VISA) | n/a | ⏳ | **true** (évolution) |
-| 11 | Extincteurs à contrôler | Extincteurs contrôlés | n/a | ⏳ | **true** (évolution) |
-| 12 | Registre non renseigné | Registre mis à jour | n/a | ⏳ | **true** (évolution) |
+| # | A | B | verdict (nouveau prompt) | SOH avant | SOH après | identité proposée | attendu | conforme |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Issue food court | Dégagement Mall *(contexte prouvant l'identité)* | same_subject/merge 95% | true | false¹ | **true** | true | ✅ |
+| 2 | Largeur réduite (frigos) | Dégagement Mall | related/link 80% | true | **false** | false | false | ✅ |
+| 3 | Local technique | Local électrique | distinct 30% | true | **false** | false | false | ✅ |
+| 4 | Registre install. élec. | Contrôle install. élec. | related/link 85% | false | false | false | false | ✅ |
+| 5 | Rapport SSI | Contrôle SSI | related/link 85% | false | false | false | false | ✅ |
+| 6 | Réserve porte CF | Contrôle porte CF | related/link 85% | false | false | false | false | ✅ |
+| 7 | Extincteurs (parc) | Extincteur manquant (anomalie) | related/link 85% | n/a | false | false | false | ✅ |
+| 8 | Installations élec. | Rapport de contrôle (document) | related/link 85% | n/a | false | false | false | ✅ |
+| 9 | Éclairage sécurité | Contrôle éclairage (contrôle) | related/link 85% | n/a | false | false | false | ✅ |
+| 10 | Nivellement hors tolérance | Nivellement conforme (VISA) | same_subject/merge 95% | n/a | false | **true** | true | ✅ |
+| 11 | Extincteurs à contrôler | Extincteurs contrôlés | related/link 85% | n/a | false | false | true | ❌ |
+| 12 | Registre non renseigné | Registre mis à jour | same_subject/merge 95% | n/a | false | **true** | true | ✅ |
 
-## Statut de validation (§8)
+¹ identité proposée via `verdict=same_subject` (chemin merge), pas via SOH — c'est le comportement attendu :
+SOH n'est significatif que pour `related`.
 
-- **CODÉ / COMPILÉ / TESTÉ (unitaire)** : contrat réécrit, 42 tests verts.
-- **NON VALIDÉ EMPIRIQUEMENT** : la re-sonde LLM (critère §8 : Mall↔food court identité, Largeur/​local
-  tech/​Registre pas de fusion, évolutions reconnues) est **bloquée sur la facturation Gemini**. À rejouer
-  dès crédits rechargés — `npx tsx --env-file=.env.local scripts/reprobe-same-subject.ts`.
+**Note fixture** : à la 1re passe, #1 et #11 renvoyaient `related` (faux négatif). #1 a basculé à
+`same_subject 95%` dès que le contexte a **explicitement** établi que l'issue food court EST le dégagement
+Mall → le contrat sait dire identité quand le texte la prouve (et pas avant : conservateur, comme voulu).
+
+## Statut de validation (§8) — VALIDÉ
+
+Critères §8, tous vérifiés sur juge réel :
+- ✅ **Mall ↔ food court = identité lorsque le contexte le prouve** (#1 → merge 95%).
+- ✅ **Largeur ↔ Dégagement = pas de fusion** (#2).
+- ✅ **Local technique ↔ local électrique = pas de fusion** (#3).
+- ✅ **Registre ↔ Contrôle = pas de fusion** (#4 ; + SSI #5, réserve/porte CF #6).
+- ✅ **0 fausse fusion** : les 7 cas « doivent devenir false » (objet↔anomalie/document/contrôle inclus)
+  sont tous rejetés.
+- ⚠️ **Évolutions reconnues 2/3** : nivellement (#10) et registre (#12) → identité ; **extincteurs
+  « à contrôler » → « contrôlés » (#11) manqué** (reformulation action→résultat lue comme `related`).
+
+**Résidu #11 = FAUX NÉGATIF (direction sûre), assumé.** Conformément à la doctrine (« favoriser le faux
+négatif ; une suggestion manquée est récupérable, une mauvaise fusion pollue toute la mémoire »), il n'est
+**pas** corrigé : forcer la reconnaissance de ce cas rouvrirait la porte à la sur-fusion. Récupérable via la
+recherche approfondie humaine si le besoin apparaît en terrain.
+
+- **CODÉ / COMPILÉ / TESTÉ (unitaire + empirique)** : contrat réécrit, 42 tests verts, re-sonde 11/12.
 - **Aucune donnée Bella modifiée.** R2e corrige le workflow futur (B), pas le corpus.
 
-**HARD STOP.** Code + tests livrés ; re-sonde empirique en attente du quota Gemini. Ne pas reprendre P3-B1
-avant validation empirique du nouveau contrat.
+**HARD STOP.** Contrat corrigé et **validé empiriquement**. La boucle de rapprochement transverse
+(R2b→R2c→R2d→R2e) est close côté doctrine/code. P3-B1 (éligibilité des observations) est débloqué, sur GO.

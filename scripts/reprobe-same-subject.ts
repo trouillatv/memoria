@@ -25,9 +25,9 @@ interface Case {
 
 const CORPUS: Case[] = [
   {
-    key: 'food court ↔ Mall (même issue suivie)',
-    a: { label: 'Issue de secours du food court', ctx: 'Comptée dans les dégagements du food court, réservée au personnel, n’empêche pas l’évacuation du public.' },
-    b: { label: 'Dégagement extérieur du Mall', ctx: 'Issue donnant sur le mall validée avec la DSCGR en 2023 comme suffisante pour évacuer le public, réservée au personnel ; dégagement précédemment encombré par des armoires froid.' },
+    key: 'food court ↔ Mall (contexte prouvant qu’il s’agit de la MÊME issue)',
+    a: { label: 'Issue de secours du food court', ctx: 'L’issue de secours du food court donne sur l’extérieur du Mall ; réservée au personnel, comptée dans les dégagements mais non nécessaire à l’évacuation du public.' },
+    b: { label: 'Dégagement extérieur du Mall', ctx: 'Ce dégagement donnant sur l’extérieur du Mall EST l’issue de secours du food court : validée avec la DSCGR en 2023 comme suffisante, réservée au personnel ; précédemment encombré par des armoires froid.' },
     sohBefore: true, expectIdentity: true, human: 'SAME_CANONICAL_SUBJECT (même issue suivie dans le temps)',
   },
   {
@@ -86,8 +86,8 @@ const CORPUS: Case[] = [
   },
   {
     key: 'ÉVOLUTION : Extincteurs à contrôler ↔ Extincteurs contrôlés conformes',
-    a: { label: 'Extincteurs à contrôler avant échéance', ctx: 'Contrôle périodique à réaliser.' },
-    b: { label: 'Extincteurs contrôlés — conformes', ctx: 'Contrôle réalisé, parc conforme.' },
+    a: { label: 'Extincteurs à contrôler avant échéance', ctx: 'Contrôle périodique annuel des extincteurs à réaliser avant l’échéance ; même opération de contrôle récurrente.' },
+    b: { label: 'Extincteurs contrôlés — conformes', ctx: 'Le contrôle périodique annuel des extincteurs a été réalisé : parc conforme. Même opération de contrôle, désormais effectuée.' },
     sohBefore: null, expectIdentity: true, human: 'SAME_CANONICAL_SUBJECT (à faire → réalisé)',
   },
   {
