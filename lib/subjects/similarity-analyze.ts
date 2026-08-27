@@ -32,10 +32,12 @@ export interface SimilarityResult {
   /** Avertissement structurel soft (pas un blocage dur) — à afficher dans l'UI */
   warning_reason: string | null
   /**
-   * P-UI-R2 : uniquement significatif quand verdict='related'. true = les deux sujets pourraient
-   * désigner le MÊME objet métier durable malgré une confiance insuffisante pour same_subject
-   * (→ à soumettre à l'humain « Même sujet ? »). false = objets distincts, éventuellement liés
-   * (→ pas de proposition de fusion). Défaut prudent : false.
+   * P-UI-R2 / R2e : uniquement significatif quand verdict='related'. Nom technique conservé
+   * (colonne mig 357) mais le CONCEPT est « même sujet canonique / même préoccupation
+   * longitudinale », PAS « même objet physique ». true = les deux devraient partager UNE SEULE
+   * identité métier durable et UNE SEULE ligne de vie chronologique, sans perte ni contamination
+   * (→ question humaine « Même sujet ? »). Même lieu / même équipement / relation objet↔anomalie
+   * (…) ne suffisent JAMAIS : ils justifient 'related', pas l'identité canonique. Défaut : false.
    */
   same_object_hypothesis: boolean
 }
@@ -138,11 +140,46 @@ Réponds UNIQUEMENT en JSON valide, aucun autre texte :
 }
 
 Champ "same_object_hypothesis" — PERTINENT UNIQUEMENT quand verdict = "related".
-Il répond à : « même si je ne peux pas conclure same_subject, ces deux sujets pourraient-ils désigner le MÊME objet métier durable (même équipement, même lieu, même opération), formulé autrement ? » — et NON « sont-ils liés ? ».
-- true  : formulations différentes pouvant désigner le même objet réel, mais preuves insuffisantes pour auto-fusionner (ex. une issue de secours / un dégagement physique probablement identiques).
-- false : objets réellement DISTINCTS ayant une relation métier/documentaire/fonctionnelle.
-Contre-exemples false : « Registre électrique » vs « Contrôle électrique » ; « Rapport SSI » vs « Contrôle SSI » ; « Réserve porte CF » vs « la porte CF elle-même » ; un document vs l'équipement qu'il concerne.
-En cas de doute → false (prudence, on préfère ne pas proposer une fusion). Pour verdict ≠ "related", mets false.
+Ce champ ne demande PAS « est-ce potentiellement le même objet ou le même lieu ? ». Il demande :
+« Ces deux sujets doivent-ils partager la MÊME IDENTITÉ métier durable, et donc UNE SEULE ligne de vie
+chronologique, sans perte ni contamination sémantique ? »
+Autrement dit : si on les fusionne, les événements des deux côtés forment-ils naturellement l'histoire
+d'un SEUL sujet suivi dans le temps ?
+
+Ne suffisent JAMAIS, à eux seuls, à produire true (ils peuvent justifier "related", pas l'identité canonique) :
+- même lieu ; même équipement physique ; même entreprise/intervenant ; même domaine réglementaire ;
+  même système technique ; relation objet↔anomalie ; objet↔document ; objet↔contrôle ; objet↔réserve ; objet↔action.
+
+Test de fusion — AVANT de mettre true, demande-toi :
+- les deux libellés peuvent-ils être portés par un même sujet durable SANS perdre une distinction métier importante ?
+- les occurrences racontent-elles une trajectoire cohérente d'un seul sujet ?
+- un état de A peut-il naturellement devenir l'état suivant de B ?
+- la fusion mélange-t-elle objet / anomalie / document / contrôle / décision / action qui devraient rester suivis séparément ?
+Si une distinction métier utile disparaît → false.
+
+ATTENTION — « même ligne de vie » ≠ « mêmes états ». Une ligne de vie ACCEPTE les changements d'état du
+MÊME sujet (« à faire → réalisé → à refaire », « non conforme → corrigé → conforme »). Ce qui doit rester
+séparé, ce sont les PRÉOCCUPATIONS métier distinctes, pas les états successifs d'un même sujet.
+
+- true  : même sujet suivi, reformulé (ex. « Issue de secours du food court » et « Dégagement extérieur du
+  Mall » UNIQUEMENT quand le contexte établit qu'il s'agit de la même issue suivie au fil du temps).
+- false : objet/lieu potentiellement communs mais PRÉOCCUPATIONS distinctes.
+Contre-exemples false (à respecter) :
+- « Largeur de passage réduite (par frigos) » vs « Dégagement extérieur du Mall » — même zone possible, mais
+  anomalie/condition ponctuelle ≠ identité de l'issue.
+- « Local technique » vs « Local électrique » — une co-localisation ne suffit pas.
+- « Registre installations électriques » vs « Contrôle installations électriques ».
+- « Rapport SSI » vs « Contrôle SSI ».
+- « Réserve porte CF » vs « Porte CF » / « Contrôle porte CF ».
+Un même objet physique (ex. une porte CF) porte plusieurs préoccupations longitudinales distinctes (degré
+coupe-feu, fermeture, encombrement, signalétique, maintenance) : même objet ≠ même sujet.
+
+Prudence supplémentaire (signal, PAS règle absolue) : si un côté est une observation isolée sans histoire,
+sois plus conservateur — mais une observation isolée PEUT être la première manifestation d'un vrai sujet
+durable ; ne l'exclus donc pas mécaniquement.
+
+En cas de doute → false : on préfère rater une suggestion (récupérable plus tard) que polluer la mémoire
+longitudinale par une mauvaise fusion. Pour verdict ≠ "related", mets false.
 
 Règles générales :
 - score ≥ 90 → verdict doit être "same_subject", recommendation "merge"
@@ -294,8 +331,8 @@ export async function analyzeSubjectPair(
     reason: parsed.reason ?? '',
     model: output.model ?? provider.name,
     warning_reason: fusionWarning ?? null,
-    // Significatif seulement pour 'related' ; prudence par défaut (false). same_subject est
-    // déjà « même objet », distinct/uncertain ne sont pas des hypothèses de fusion.
+    // Significatif seulement pour 'related' ; prudence par défaut (false). same_subject est déjà
+    // « même sujet canonique » ; distinct/uncertain ne sont pas des hypothèses d'identité partagée.
     same_object_hypothesis: verdict === 'related' && parsed.same_object_hypothesis === true,
   }
 }
