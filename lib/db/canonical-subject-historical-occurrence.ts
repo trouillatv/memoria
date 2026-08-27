@@ -16,6 +16,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { makeWinnerResolver, type SubjectRow } from '@/lib/db/canonical-subject-project'
+import { detectActorRelations, type ActorSubject } from '@/lib/db/actor-citation'
 
 const ELIGIBLE_FAMILIES = new Set(['action', 'vigilance', 'decision', 'knowledge_fact', 'deadline', 'reservation'])
 
@@ -136,6 +137,36 @@ export async function ensureHistoricalPdfOccurrences(params: {
     .in('id', winnerIds)
   const csLabelMap = new Map((winnerRows ?? []).map(c => [c.id as string, c.label as string]))
 
+  // 3b. Acteurs DU DOCUMENT (kind=actor) — ceux réellement extraits/canonicalisés de CE run
+  //     (propositions person/company → thread → canonical_subject), pas tous les acteurs du
+  //     site. Sert à lier l'acteur cité dans le texte d'un fait à l'occurrence, avec un rôle.
+  //     L'acteur reste une entité LIÉE au fait, jamais le sujet.
+  const { data: actorProps } = await supabase
+    .from('document_extraction_proposal')
+    .select('subject_thread_id')
+    .eq('extraction_run_id', runId)
+    .in('proposal_family', ['person', 'company'])
+    .not('subject_thread_id', 'is', null)
+  const actorThreadIds = [...new Set((actorProps ?? []).map(p => p.subject_thread_id as string))]
+  let actorList: ActorSubject[] = []
+  if (actorThreadIds.length > 0) {
+    const { data: actorSti } = await supabase
+      .from('subject_thread_identity')
+      .select('canonical_subject_id')
+      .eq('site_id', siteId)
+      .in('subject_thread_id', actorThreadIds)
+    const actorCsIds = [...new Set((actorSti ?? []).map(s => s.canonical_subject_id as string))]
+    if (actorCsIds.length > 0) {
+      const { data: actorRows } = await supabase
+        .from('canonical_subject')
+        .select('id, label, aliases')
+        .in('id', actorCsIds)
+        .eq('kind', 'actor')
+        .eq('status', 'active')
+      actorList = (actorRows ?? []).map(r => ({ id: r.id as string, label: r.label as string, aliases: (r.aliases as string[] | null) ?? [] }))
+    }
+  }
+
   // 4. Grouper les propositions par winner résolu (jamais le canonical_subject_id brut)
   const groups = new Map<string, OccurrenceToCreate>()
   for (const p of eligible) {
@@ -185,21 +216,54 @@ export async function ensureHistoricalPdfOccurrences(params: {
       entity_ids: [],
     }
 
-    // INSERT ... ON CONFLICT DO NOTHING : l'index cso_historical_pdf_uniq gère l'idempotence
-    const { error: insertErr, status } = await supabase
+    // INSERT ... ON CONFLICT DO NOTHING : l'index cso_historical_pdf_uniq gère l'idempotence.
+    // On récupère l'id (créé OU existant) pour (re)poser les liens acteurs de façon idempotente.
+    let occurrenceId: string | null = null
+    const { data: ins, error: insertErr } = await supabase
       .from('canonical_subject_occurrence')
       .insert(occData)
+      .select('id')
+      .maybeSingle()
 
     if (insertErr) {
-      // Code 23505 = unique_violation → occurrence déjà présente (idempotent)
       if (insertErr.code === '23505') {
         skipped++
+        const { data: existing } = await supabase
+          .from('canonical_subject_occurrence')
+          .select('id')
+          .eq('canonical_subject_id', group.canonical_subject_id)
+          .eq('source_ref_id', group.source_ref_id)
+          .eq('source_kind', 'historical_pdf')
+          .maybeSingle()
+        occurrenceId = (existing as { id: string } | null)?.id ?? null
       } else {
         console.error('[historical-occ] insert failed:', group.canonical_subject_id, insertErr.code, insertErr.message)
         errors++
       }
-    } else if (status === 201 || status === 200) {
+    } else {
       created++
+      occurrenceId = (ins as { id: string } | null)?.id ?? null
+    }
+
+    // Liens ACTEUR ↔ OCCURRENCE (rôle dans le fait daté). Acteurs cités dans TOUT le texte du
+    // fait, restreints aux acteurs du document. Idempotent (unique occ+actor+relation).
+    if (occurrenceId && actorList.length > 0) {
+      const relations = detectActorRelations([...allLabels, ...allDescriptions], actorList)
+      if (relations.length > 0) {
+        const { error: linkErr } = await supabase
+          .from('canonical_subject_occurrence_actor_link')
+          .upsert(
+            relations.map(r => ({
+              occurrence_id: occurrenceId,
+              actor_subject_id: r.actorId,
+              relation_type: r.relationType,
+              source: 'auto_historical' as const,
+              evidence_cue: r.evidenceCue,
+            })),
+            { onConflict: 'occurrence_id,actor_subject_id,relation_type', ignoreDuplicates: true },
+          )
+        if (linkErr) console.error('[historical-occ] actor link failed:', occurrenceId, linkErr.message)
+      }
     }
   }
 

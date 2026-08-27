@@ -40,15 +40,32 @@ function makeAdmin(tables: Tables) {
       then: (resolve: (x: { data: Row[]; error: null }) => void) => resolve({ data: run(), error: null }),
       insert: (p: Row) => {
         const rows = tables[table] ?? (tables[table] = [])
+        let dupErr: { code: string; message: string } | null = null
         if (table === 'canonical_subject_occurrence') {
           const dup = rows.find(
             (r) => r.canonical_subject_id === p.canonical_subject_id && r.source_ref_id === p.source_ref_id,
           )
-          if (dup) return Promise.resolve({ error: { code: '23505', message: 'duplicate' }, status: 409 })
+          if (dup) dupErr = { code: '23505', message: 'duplicate' }
         }
-        rows.push({ id: `row-${rows.length}`, ...p })
-        return Promise.resolve({ error: null, status: 201 })
+        let inserted: Row | null = null
+        if (!dupErr) {
+          inserted = { id: `row-${rows.length}`, ...p }
+          rows.push(inserted)
+        }
+        const result = dupErr
+          ? { data: null, error: dupErr, status: 409 }
+          : { data: inserted, error: null, status: 201 }
+        // Chaînable (.select().maybeSingle()) ET awaitable (.then).
+        return {
+          select: () => ({
+            maybeSingle: () => Promise.resolve({ data: result.data, error: result.error }),
+            single: () => Promise.resolve({ data: result.data, error: result.error }),
+          }),
+          then: (resolve: (x: typeof result) => void) => resolve(result),
+        }
       },
+      // Liens acteur : upsert idempotent — no-op suffisant pour ces tests.
+      upsert: (_p: Row | Row[], _opts?: unknown) => Promise.resolve({ error: null }),
     }
     return api
   }
