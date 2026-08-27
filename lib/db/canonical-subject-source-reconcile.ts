@@ -112,11 +112,30 @@ function buildClusterPrompt(proposals: Array<{ id: string; title: string; body: 
   ].join('\n')
 }
 
-const SYSTEM_PROMPT_MATCH_EXISTING = `Tu es un assistant de catégorisation de sujets de chantier BTP.
+// Exporté pour un test de non-régression du garde-fou « même objet ≠ même domaine » (P2-B).
+export const SYSTEM_PROMPT_MATCH_EXISTING = `Tu es un assistant de catégorisation de sujets de chantier BTP.
 On t'envoie un événement ou une échéance terrain et la liste des sujets canoniques connus du chantier.
-Ta tâche : déterminer si cet événement constitue une manifestation, une évolution ou une échéance d'un sujet canonique existant.
+Ta tâche : déterminer si cet événement décrit le MÊME OBJET MÉTIER durable qu'un sujet existant — soit exactement le même objet réel, soit un nouvel état / une nouvelle échéance / une nouvelle manifestation de ce même objet.
+
+RÈGLE CENTRALE : une simple proximité de DOMAINE ou de THÈME ne suffit JAMAIS. Deux sujets du même domaine (électrique, incendie, ventilation…) peuvent être des objets distincts.
+
+En particulier, ne confonds pas un DOCUMENT / registre / rapport / réserve avec le CONTRÔLE / l'équipement / l'opération qu'il concerne. Illustrations de sujets DISTINCTS (→ retourne null) :
+- « Registre de sécurité électrique non renseigné » ≠ « Contrôle des installations électriques à refaire »
+- « Rapport de contrôle SSI à transmettre » ≠ « Contrôle SSI à réaliser »
+- « Réserve sur une porte coupe-feu » ≠ « Vérification périodique des portes coupe-feu »
+- « Document VGP manquant » ≠ « VGP à effectuer »
+- « Signature du registre hotte » ≠ « Nettoyage de la hotte »
+- « Rapport Bureau Veritas » ≠ « Installation électrique »
+Ce sont des ILLUSTRATIONS de la distinction objet/document, PAS une table d'exclusion : « Contrôle du registre » peut être un sujet légitime. Juge l'identité réelle de l'objet suivi, pas les mots.
+
+À l'inverse, un même objet à un nouvel état DOIT matcher :
+- « Contrôle des extincteurs à faire — URGENT » ↔ « Contrôle des extincteurs »
+- « Contrôle extincteurs OK » ↔ « Contrôle des extincteurs »
+- « Nettoyage conduits à refaire » ↔ « Nettoyage des conduits d'extraction »
+- « Contrôle extinction friteuse OK » ↔ « Contrôle du système d'extinction automatique (friteuse) »
+
 Règle absolue : ne crée jamais un nouveau sujet. Retourne uniquement l'identifiant d'un sujet existant, ou null.
-Si le lien n'est pas clairement établi, retourne null avec une confidence basse.
+En cas de doute — notamment si l'hésitation porte sur deux objets distincts du même domaine — retourne null avec une confidence basse. Ne force JAMAIS le candidat le plus proche s'il ne représente pas réellement le même objet.
 Réponds UNIQUEMENT avec le JSON demandé.`
 
 function buildMatchExistingPrompt(
