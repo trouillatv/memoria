@@ -160,6 +160,38 @@ export interface LmcaOccurrence {
 }
 
 /**
+ * P3-D1 — Effondre une timeline d'occurrences par DATE avant le calcul LMCA.
+ *
+ * Avec la multiplicité atomique (plusieurs occurrences/états d'un sujet dans un même document, même
+ * effective_date), le calcul LMCA doit voir UN point par document — sinon deux états du même PV
+ * (ex. « réalisé » + « à refaire ») fabriqueraient un changement intra-document, et l'ordre non
+ * déterministe des ex-æquo rendrait le résultat instable.
+ *
+ * Effondrement déterministe et commutatif : pvState agrégé (resolved>open>unknown, indépendant de
+ * l'ordre) ; objectSig = union triée. NO-OP pour les données mono-occurrence existantes (une seule
+ * occurrence par date → renvoyée telle quelle). event_date distincte = hors D1 (traité en D2).
+ */
+export function collapseLmcaOccurrencesByDate(occs: LmcaOccurrence[]): LmcaOccurrence[] {
+  // Agrégation de PvState DÉJÀ projetés (pas des statuts bruts) : resolved > open > unknown.
+  // Cette hiérarchie reproduit le comportement de l'ancien modèle poolé (aggregatePvState court-
+  // circuitait sur resolved) → D1 ne change PAS la sémantique LMCA, il la rend seulement stable
+  // sous multiplicité. La distinction temporelle réalisé→à refaire relève de D2 (event_date).
+  const rank = (s: PvState): number => (s === 'resolved' ? 2 : s === 'open' ? 1 : 0)
+  const byDate = new Map<string, { state: PvState; sigs: Set<string> }>()
+  const order: string[] = []
+  for (const o of occs) {
+    if (!byDate.has(o.effectiveDate)) { byDate.set(o.effectiveDate, { state: 'unknown', sigs: new Set() }); order.push(o.effectiveDate) }
+    const e = byDate.get(o.effectiveDate)!
+    if (rank(o.pvState) > rank(e.state)) e.state = o.pvState
+    if (o.objectSig !== '') e.sigs.add(o.objectSig)
+  }
+  return order.map((date) => {
+    const e = byDate.get(date)!
+    return { effectiveDate: date, pvState: e.state, objectSig: [...e.sigs].sort().join('|') }
+  })
+}
+
+/**
  * Calcule lastMeaningfulChangeAt depuis une timeline d'occurrences pré-projetées.
  *
  * Niveau 1 — transitions P1-3 (RESOLVED/REOPEN uniquement) :

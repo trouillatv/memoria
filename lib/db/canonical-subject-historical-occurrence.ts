@@ -17,6 +17,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { makeWinnerResolver, type SubjectRow } from '@/lib/db/canonical-subject-project'
 import { detectActorRelations, type ActorSubject } from '@/lib/db/actor-citation'
+import { deriveStateKey } from '@/lib/db/occurrence-state-key'
 
 // Familles qui portent PAR NATURE un état/événement daté d'un sujet durable (toujours éligibles).
 // (vigilance/reservation conservés par compatibilité — ce sont des noms de kind jamais émis comme
@@ -88,6 +89,7 @@ interface ProposalRow {
 interface OccurrenceToCreate {
   canonical_subject_id: string
   canonical_label: string  // fallback si pool non informatif
+  state_key: string        // P3-D1 : discriminateur d'état (une occurrence par état distinct)
   site_id: string
   source_ref_id: string    // site_reports.id
   effective_date: string
@@ -207,24 +209,28 @@ export async function ensureHistoricalPdfOccurrences(params: {
     }
   }
 
-  // 4. Grouper les propositions par winner résolu (jamais le canonical_subject_id brut)
+  // 4. Grouper les propositions par (winner résolu, ÉTAT). P3-D1 : un état distinct = une occurrence ;
+  //    les propositions de même état (même famille) sont dédupliquées dans l'unique occurrence.
   const groups = new Map<string, OccurrenceToCreate>()
   for (const p of eligible) {
     const rawCsId = threadToCs.get(p.subject_thread_id as string)
     if (!rawCsId) continue  // thread non encore promu en canonical_subject — skip silencieux
     const csId = winnerByRawId.get(rawCsId)
     if (!csId) continue  // chaîne de fusion cyclique/incomplète — skip silencieux
-    if (!groups.has(csId)) {
-      groups.set(csId, {
+    const stateKey = deriveStateKey(p.proposal_family)
+    const gkey = `${csId}::${stateKey}`
+    if (!groups.has(gkey)) {
+      groups.set(gkey, {
         canonical_subject_id: csId,
         canonical_label: csLabelMap.get(csId) ?? p.label,
+        state_key: stateKey,
         site_id: siteId,
         source_ref_id: siteReportId,
         effective_date: visitDate,
         proposals: [],
       })
     }
-    groups.get(csId)!.proposals.push(p)
+    groups.get(gkey)!.proposals.push(p)
   }
 
   // 5. Créer les occurrences — une par groupe (cs, rapport)
@@ -247,9 +253,10 @@ export async function ensureHistoricalPdfOccurrences(params: {
       source_ref_id: group.source_ref_id,
       source_proposal_id: null,
       visit_status: null,
+      state_key: group.state_key,  // P3-D1 : partie de la clé d'unicité (un état = une occurrence)
       label: bestLabel,
       note: bestNote,
-      evidence_count: group.proposals.length,  // multiplicité
+      evidence_count: group.proposals.length,  // preuves du même état poolées
       effective_date: group.effective_date,
       created_by: null,
       validation_status: 'observed' as const,
@@ -274,6 +281,7 @@ export async function ensureHistoricalPdfOccurrences(params: {
           .eq('canonical_subject_id', group.canonical_subject_id)
           .eq('source_ref_id', group.source_ref_id)
           .eq('source_kind', 'historical_pdf')
+          .eq('state_key', group.state_key)  // P3-D1 : identité d'occurrence = (sujet, rapport, état)
           .maybeSingle()
         occurrenceId = (existing as { id: string } | null)?.id ?? null
       } else {

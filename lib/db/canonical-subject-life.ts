@@ -9,7 +9,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { canonicalRunsForSite, runEffectiveDate, computeHistoryTransition } from '@/lib/documents/pv-history'
-import { documentStatusToPvState, visitStatusToPvState, computeLmcaFromOccurrences, deriveCurrentResolvedState, type LmcaOccurrence, type PvState } from '@/lib/documents/subject-state'
+import { documentStatusToPvState, visitStatusToPvState, computeLmcaFromOccurrences, collapseLmcaOccurrencesByDate, deriveCurrentResolvedState, type LmcaOccurrence, type PvState } from '@/lib/documents/subject-state'
 import type { HistoryTransition } from '@/lib/documents/pv-history'
 import type { SubjectLinkType, SubjectLinkStatus, SubjectLinkSource } from '@/lib/db/subject-thread-links'
 import { isOperationalSubject } from '@/lib/subjects/kind'
@@ -718,7 +718,9 @@ export async function getCanonicalSubjectLife(
     objectSig: occ.runId ? (matSigByRun.get(occ.runId) ?? '') : '',
   }))
   const terrainObjects = await fetchTerrainObjectsByCs(supabase, canonicalSubjectId)
-  const lmcaBase = computeLmcaFromOccurrences(lmcaOccsA)
+  // P3-D1 : effondrer par date avant LMCA — la multiplicité atomique (N états/document) ne doit pas
+  // fabriquer de changement intra-document ni dépendre de l'ordre des ex-æquo. NO-OP mono-occurrence.
+  const lmcaBase = computeLmcaFromOccurrences(collapseLmcaOccurrencesByDate(lmcaOccsA))
   const { lastMeaningfulChangeAt, consecutiveMentionsWithoutChange } = applyTerrainLevel2(
     terrainObjects, firstSeenAt, lmcaBase.lastMeaningfulChangeAt, lmcaBase.consecutiveMentionsWithoutChange,
   )
