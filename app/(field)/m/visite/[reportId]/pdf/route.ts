@@ -13,7 +13,7 @@ import { loadOrRunVisitDebrief } from '@/lib/visits/debrief-analysis'
 import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { VisitCrPdf } from '@/lib/pdf/visit-cr'
 import { getVisitSummary, getHistoricalVisitIntervenants } from '@/lib/knowledge/visit-summary'
-import { loadCrMapSnapshotDataUri } from '@/lib/pdf/cr-map-snapshot'
+import { resolveCrMapSnapshotForPdf } from '@/lib/pdf/cr-map-snapshot'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -95,10 +95,14 @@ export async function GET(req: Request, ctx: RouteCtx) {
     timeZone: 'Pacific/Noumea',
   })
 
-  // Le PDF CONSOMME l'instantané carte déjà produit — il ne le fabrique jamais
-  // (aucune requête réseau ici). Absent → VisitCrPdf retombe sur le schéma métrique.
+  // Le PDF garantit d'abord un instantané FRAIS correspondant au fond choisi
+  // (resolveCrMapSnapshotForPdf → ensureCrMapSnapshot, idempotent : cache-hit si
+  // déjà frais, régénération si le fond vient de changer ou si la version est
+  // périmée), puis charge l'image via le garde anti-substitution inchangé. Ferme
+  // le trou « bascule de fond → export PDF immédiat » (Vincent, 2026-08-27).
+  // Échec de régénération → null → VisitCrPdf retombe sur le schéma métrique.
   const mapImage = doc.positions.length > 0
-    ? await loadCrMapSnapshotDataUri(reportId).catch(() => null)
+    ? await resolveCrMapSnapshotForPdf(reportId).catch(() => null)
     : null
 
   let pdfBuffer: Buffer

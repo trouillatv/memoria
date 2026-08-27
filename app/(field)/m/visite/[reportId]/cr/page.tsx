@@ -127,9 +127,16 @@ export default async function VisitCrPreviewPage({
   // navigateur voit une adresse neuve, pas une relecture — et dans le nom du
   // fichier, pour que le téléphone ne confonde plus deux versions.
   const analysis = (visit.debrief_analysis ?? null) as { analysis_version?: number; generated_at?: string } | null
-  const pdfVersion = analysis?.generated_at
+  // Le fond de carte du CR (Plan/Satellite) change le PDF SANS toucher à la synthèse :
+  // basculer Satellite régénère l'instantané carte mais ne bouge ni analysis_version ni
+  // generated_at. Sans l'inclure ici, l'URL de « Voir le PDF » reste identique et le
+  // viewer in-app (Android) rouvre l'aperçu SCHÉMATIQUE mis en cache, alors que le
+  // téléchargement (no-store + attachment) obtient bien le neuf — écart constaté par
+  // Vincent (2026-08-27). On ajoute donc l'empreinte du fond à la signature de version.
+  const mapSig = `${crMapLayerStatus.chosen}-${crMapLayerStatus.snapshotLayer ?? 'none'}`
+  const pdfVersion = (analysis?.generated_at
     ? `v${analysis.analysis_version ?? 1}-${Date.parse(analysis.generated_at) || 0}`
-    : `v0-${Date.parse(visit.updated_at ?? '') || 0}`
+    : `v0-${Date.parse(visit.updated_at ?? '') || 0}`) + `-${mapSig}`
   const pdfHref = `/m/visite/${reportId}/pdf?v=${encodeURIComponent(pdfVersion)}`
   // ?download=1 → attachment (le téléphone enregistre le fichier).
   const pdfDownloadHref = `${pdfHref}&download=1`

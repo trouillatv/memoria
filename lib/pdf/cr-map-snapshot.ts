@@ -493,3 +493,36 @@ export async function loadCrMapSnapshotDataUri(reportId: string): Promise<string
   const buf = Buffer.from(await data.arrayBuffer())
   return `data:image/png;base64,${buf.toString('base64')}`
 }
+
+/**
+ * Point d'entrée du PDF : garantit qu'un instantané FRAIS correspondant au fond
+ * actuellement choisi (`cr_map_base_layer`) existe AVANT de charger l'image, puis
+ * applique le garde anti-substitution INCHANGÉ. Ferme le trou « bascule de fond →
+ * export PDF immédiat » (Vincent, 2026-08-27) : sans cet appel, un rapport dont le
+ * fond vient de passer à Satellite alors que le dernier snapshot est encore Plan
+ * tombait sur le schéma métrique tant que le CR n'avait pas été rouvert.
+ *
+ * `ensureCrMapSnapshot` est idempotent PAR FOND ET PAR VERSION : snapshot déjà
+ * frais → cache-hit sans régénération ; fond changé ou version périmée →
+ * régénération du bon snapshot ; échec de régénération → renvoie null, le dernier
+ * snapshot valide reste référencé physiquement, et le garde de
+ * `loadCrMapSnapshotDataUri` refuse quand même de l'utiliser s'il ne correspond
+ * pas au fond choisi (repli schéma métrique). Ne modifie NI setCrMapBaseLayer,
+ * NI le garde anti-substitution, NI le renderer.
+ *
+ * `deps` injectables pour les tests unitaires (aucun accès DB requis).
+ */
+export async function resolveCrMapSnapshotForPdf(
+  reportId: string,
+  deps: {
+    ensure?: (id: string) => Promise<string | null>
+    load?: (id: string) => Promise<string | null>
+  } = {},
+): Promise<string | null> {
+  const ensure = deps.ensure ?? ensureCrMapSnapshot
+  const load = deps.load ?? loadCrMapSnapshotDataUri
+  // La régénération ne doit jamais faire échouer l'export PDF : un échec conserve
+  // le dernier snapshot valide, que le garde de `load` filtrera si le fond diverge.
+  await ensure(reportId).catch(() => null)
+  return load(reportId).catch(() => null)
+}
