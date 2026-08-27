@@ -47,6 +47,9 @@ const STATUS_LABELS: Record<string, string> = {
   awaiting_validation: 'En attente de validation',
   cancelled: 'Annulé',
   informational: 'Informatif',
+  // R-1 : tri-state longitudinal de l'occurrence historique (state_status)
+  resolved: 'Résolu',
+  unknown: 'Indéterminé',
   // statuts visites terrain
   field_checked:   'Vérifié sur le terrain',
   still_open:      'Toujours ouvert',
@@ -64,6 +67,9 @@ const STATUS_COLORS: Record<string, string> = {
   awaiting_validation:'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
   cancelled:          'bg-muted text-muted-foreground',
   informational:      'bg-muted text-muted-foreground',
+  // R-1 : tri-state longitudinal (state_status)
+  resolved:           'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  unknown:            'bg-muted text-muted-foreground',
   // statuts visites terrain
   field_checked:      'bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300',
   still_open:         'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
@@ -782,12 +788,12 @@ function OccurrenceCard({ occ, siteId }: { occ: SubjectOccurrenceMerged; siteId:
               Réunion
             </span>
           )}
-          {occ.documentStatus && (
+          {(occ.documentStatus ?? occ.stateStatus) && (
             <span className={cn(
               'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-              STATUS_COLORS[occ.documentStatus] ?? 'bg-muted text-muted-foreground',
+              STATUS_COLORS[(occ.documentStatus ?? occ.stateStatus)!] ?? 'bg-muted text-muted-foreground',
             )}>
-              {STATUS_LABELS[occ.documentStatus] ?? occ.documentStatus}
+              {STATUS_LABELS[(occ.documentStatus ?? occ.stateStatus)!] ?? (occ.documentStatus ?? occ.stateStatus)}
             </span>
           )}
           {occ.visitStatus && (

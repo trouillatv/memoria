@@ -27,12 +27,18 @@ export interface SubjectOccurrenceMerged {
   /** ID du rapport de visite terrain (null pour historical_pdf). */
   reportId: string | null
   effectiveDate: string
+  /** R-1 : date propre du fait (event_date), distincte de effectiveDate (date du PV). Null si absente.
+   *  Position longitudinale = eventDate ?? effectiveDate ; lastSeen reste fondé sur effectiveDate. */
+  eventDate: string | null
   /** Identifiant de la proposition principale (null pour les gaps). */
   proposalId: string | null
   threadId: string | null
   label: string | null
   description: string | null
   documentStatus: string | null
+  /** R-1 : tri-state longitudinal de l'occurrence historique (resolved|open|unknown). Null pour les
+   *  gaps et les occurrences terrain (qui portent visitStatus). Remplace la dérivation document_status. */
+  stateStatus: PvState | null
   /** Statut constaté terrain (field_checked / still_open / not_applicable). Null pour les PDF. */
   visitStatus: string | null
   proposalFamily: string | null
@@ -309,9 +315,9 @@ export async function getCanonicalSubjectLife(
     const nativeOccs: SubjectOccurrenceMerged[] = nativeRows.map((row) => ({
       sourceKind: row.source_kind,
       runId: null, documentId: null, reportId: row.source_ref_id,
-      effectiveDate: row.effective_date, proposalId: row.source_proposal_id,
+      effectiveDate: row.effective_date, eventDate: null, proposalId: row.source_proposal_id,
       threadId: null, label: row.label, description: row.note,
-      documentStatus: null, visitStatus: row.visit_status,
+      documentStatus: null, stateStatus: null, visitStatus: row.visit_status,
       proposalFamily: null, thematicCategory: null, sourcePage: null,
       transition: null, isGap: false, evidenceCount: row.evidence_count, additionalLabels: [],
       resolvedLabel: applyEntitySubstitution(row.label, row.entity_ids, nativeEntityMap),
@@ -368,8 +374,8 @@ export async function getCanonicalSubjectLife(
     const fallbackEntityMap = await buildEntityResolutionMap(supabase, fallbackEntityIds)
     const fallbackOccs: SubjectOccurrenceMerged[] = fallbackRows.map((row) => ({
       sourceKind: row.source_kind, runId: null, documentId: null, reportId: row.source_ref_id,
-      effectiveDate: row.effective_date, proposalId: row.source_proposal_id, threadId: null,
-      label: row.label, description: row.note, documentStatus: null, visitStatus: row.visit_status,
+      effectiveDate: row.effective_date, eventDate: null, proposalId: row.source_proposal_id, threadId: null,
+      label: row.label, description: row.note, documentStatus: null, stateStatus: null, visitStatus: row.visit_status,
       proposalFamily: null, thematicCategory: null, sourcePage: null, transition: null,
       isGap: false, evidenceCount: row.evidence_count, additionalLabels: [],
       resolvedLabel: applyEntitySubstitution(row.label, row.entity_ids, fallbackEntityMap),
@@ -399,44 +405,67 @@ export async function getCanonicalSubjectLife(
     }
   }
 
-  // 4. Propositions des threads sur les runs canoniques + décompte evidence
-  const [propsResult, evidResult] = await Promise.all([
-    supabase
-      .from('document_extraction_proposal')
-      .select('id, extraction_run_id, subject_thread_id, proposal_family, thematic_category, label, description, document_status, source_page')
-      .in('subject_thread_id', threadIds)
-      .in('extraction_run_id', canonicalRunIds),
-    supabase
-      .from('document_proposal_evidence')
-      .select('proposal_id'),
-  ])
+  // 4. R-1 : la timeline historique se lit depuis canonical_subject_occurrence (source de vérité),
+  //    plus depuis les propositions. Les propositions restent l'artefact d'extraction/preuve et servent
+  //    uniquement à reconstruire le lien matérialisations (relation existante, section 6).
+  const { data: histOccRaw } = await supabase
+    .from('canonical_subject_occurrence')
+    .select('id, source_ref_id, state_key, state_status, label, note, evidence_count, effective_date, event_date, source_page, thematic_category, entity_ids')
+    .eq('canonical_subject_id', canonicalSubjectId)
+    .eq('source_kind', 'historical_pdf')
+    .not('validation_status', 'in', '("rejected","source_superseded")')
+  type HistOccRow = {
+    id: string; source_ref_id: string; state_key: string; state_status: PvState | null
+    label: string; note: string | null; evidence_count: number; effective_date: string
+    event_date: string | null; source_page: number | null; thematic_category: string | null
+    entity_ids: string[] | null
+  }
+  const histOcc = (histOccRaw ?? []) as HistOccRow[]
 
-  const props = (propsResult.data ?? []) as ProposalRow[]
-
-  // Map locale — aucun fetch supplémentaire
-  const proposalToRun = new Map<string, string>(props.map((p) => [p.id, p.extraction_run_id]))
-
-  // Compteur de preuves par proposition (toutes propositions du chantier — on filtrera)
-  const proposalIds = props.map((p) => p.id)
-  const evidenceByProposal = new Map<string, number>()
-  if (proposalIds.length > 0) {
-    const { data: evidRows } = await supabase
-      .from('document_proposal_evidence')
-      .select('proposal_id')
-      .in('proposal_id', proposalIds)
-    for (const ev of (evidRows ?? []) as Array<{ proposal_id: string }>) {
-      evidenceByProposal.set(ev.proposal_id, (evidenceByProposal.get(ev.proposal_id) ?? 0) + 1)
+  // report (source_ref_id) → run : replace les occurrences sur l'axe documentaire (gaps, provenance PV).
+  const histReportIds = [...new Set(histOcc.map((o) => o.source_ref_id))]
+  const reportToRun = new Map<string, string>()
+  if (histReportIds.length > 0) {
+    const { data: repRows } = await supabase
+      .from('site_reports').select('id, extraction_run_id').in('id', histReportIds)
+    for (const r of (repRows ?? []) as Array<{ id: string; extraction_run_id: string | null }>) {
+      if (r.extraction_run_id) reportToRun.set(r.id, r.extraction_run_id)
     }
   }
 
-  // 5. Construire la timeline fusionnée (une entrée par run, depuis la première occurrence)
+  // Propositions COMPLÈTES — lien matérialisations (section 6) ET timeline de REPLI pour les sujets
+  // SANS occurrence historique (acteurs person/company, ou sujets dont toutes les propositions sont
+  // inéligibles). Ces sujets ne sont pas des sujets d'occurrence → comportement historique préservé.
+  const { data: propsRaw } = await supabase
+    .from('document_extraction_proposal')
+    .select('id, extraction_run_id, subject_thread_id, proposal_family, thematic_category, label, description, document_status, source_page')
+    .in('subject_thread_id', threadIds)
+    .in('extraction_run_id', canonicalRunIds)
+  const props = (propsRaw ?? []) as ProposalRow[]
+  const proposalToRun = new Map<string, string>(props.map((p) => [p.id, p.extraction_run_id]))
+  const proposalIds = props.map((p) => p.id)
+
+  // Résolution d'alias (entity_ids) — parité avec l'ancien chemin terrain.
+  const histEntityIds = [...new Set(histOcc.flatMap((o) => o.entity_ids ?? []))]
+  const histEntityMap = await buildEntityResolutionMap(supabase, histEntityIds)
+
+  const occurrenceBacked = histOcc.length > 0
+
+  // Index par run (occurrences ET propositions).
+  const occByRun = new Map<string, HistOccRow[]>()
+  for (const o of histOcc) {
+    const runId = reportToRun.get(o.source_ref_id)
+    if (!runId) continue
+    if (!occByRun.has(runId)) occByRun.set(runId, [])
+    occByRun.get(runId)!.push(o)
+  }
   const propsByRun = new Map<string, ProposalRow[]>()
   for (const p of props) {
-    const existing = propsByRun.get(p.extraction_run_id) ?? []
-    propsByRun.set(p.extraction_run_id, [...existing, p])
+    const list = propsByRun.get(p.extraction_run_id) ?? []
+    list.push(p); propsByRun.set(p.extraction_run_id, list)
   }
 
-  const firstRunIndex = allRuns.findIndex((r) => propsByRun.has(r.id))
+  const firstRunIndex = allRuns.findIndex((r) => (occurrenceBacked ? occByRun.has(r.id) : propsByRun.has(r.id)))
   if (firstRunIndex < 0) {
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
@@ -449,83 +478,113 @@ export async function getCanonicalSubjectLife(
     }
   }
 
+  // Ordre longitudinal intra-PV : position (event_date ?? effective_date), puis famille, puis label.
+  const FAMILY_ORDER = ['reservation', 'action', 'decision', 'deadline', 'observation', 'knowledge_fact', 'person', 'company']
+  const famRank = (f: string) => { const i = FAMILY_ORDER.indexOf(f); return i < 0 ? FAMILY_ORDER.length : i }
+  // Tri-state → pseudo-statut brut pour réutiliser computeHistoryTransition sans la modifier.
+  // Divergence attendue : le tri-state ne distingue pas cancelled/non_compliant/planned → pas de
+  // transition annulé/aggravé/progressé (le modèle occurrence porte le tri-state, pas le statut brut).
+  const stateToPseudoStatus = (s: PvState | null): string | null => s === 'resolved' ? 'done' : s === 'open' ? 'open' : null
+
   const relevantRuns = allRuns.slice(firstRunIndex)
   const occurrences: SubjectOccurrenceMerged[] = []
-  let prevProp: ProposalRow | null = null
   let gapSinceLastOccurrence = false
-  let prevResolvedState: boolean | null = null  // dernier état non-unknown avant ce PV
+  let prevResolvedState: boolean | null = null
 
-  for (const run of relevantRuns) {
-    const runProps = propsByRun.get(run.id) ?? []
-    const effectiveDate = runEffectiveDate(run)
+  if (occurrenceBacked) {
+    // ── Timeline depuis les occurrences : multiplicité conservée (N états/PV), gaps dérivés de l'axe.
+    //    Gap 'non mentionné' UNIQUEMENT si le sujet est absent du PV (ni occurrence ni proposition).
+    //    Présent sans état éligible (proposition présente, occurrence absente) → aucun état à montrer,
+    //    on n'insère pas de faux gap (le PV compte quand même pour lastSeen via l'axe documentaire).
+    for (const run of relevantRuns) {
+      const runOccs = occByRun.get(run.id)
+      const effectiveDate = runEffectiveDate(run)
 
-    if (runProps.length === 0) {
-      occurrences.push({
-        sourceKind: 'historical_pdf',
-        runId: run.id,
-        documentId: run.document_id,
-        reportId: null,
-        effectiveDate,
-        proposalId: null,
-        threadId: null,
-        label: null,
-        description: null,
-        documentStatus: null,
-        visitStatus: null,
-        proposalFamily: null,
-        thematicCategory: null,
-        sourcePage: null,
-        transition: 'non_mentionné',
-        isGap: true,
-        evidenceCount: 0,
-        additionalLabels: [],
-        resolvedLabel: null,
+      if (!runOccs || runOccs.length === 0) {
+        if (propsByRun.has(run.id)) continue  // présent mais aucun état éligible → pas de gap
+        occurrences.push({
+          sourceKind: 'historical_pdf', runId: run.id, documentId: run.document_id, reportId: null,
+          effectiveDate, eventDate: null, proposalId: null, threadId: null, label: null, description: null,
+          documentStatus: null, stateStatus: null, visitStatus: null, proposalFamily: null,
+          thematicCategory: null, sourcePage: null, transition: 'non_mentionné', isGap: true,
+          evidenceCount: 0, additionalLabels: [], resolvedLabel: null,
+        })
+        gapSinceLastOccurrence = true
+        continue
+      }
+
+      const sorted = [...runOccs].sort((a, b) => {
+        const pa = a.event_date ?? a.effective_date, pb = b.event_date ?? b.effective_date
+        if (pa !== pb) return pa.localeCompare(pb)
+        const fr = famRank(a.state_key) - famRank(b.state_key)
+        if (fr !== 0) return fr
+        return (a.label ?? '').localeCompare(b.label ?? '')
       })
-      gapSinceLastOccurrence = true
-    } else {
-      // Proposition principale : priorité aux familles sémantiques (réserve, action, décision)
-      const sorted = [...runProps].sort((a, b) => {
-        const rank = (f: string) =>
-          ['reservation', 'action', 'decision', 'deadline', 'observation', 'knowledge_fact', 'person', 'company'].indexOf(f)
-        return rank(a.proposal_family) - rank(b.proposal_family)
+      const primaryIdx = sorted.reduce((best, o, i) => (famRank(o.state_key) < famRank(sorted[best].state_key) ? i : best), 0)
+      const primary = sorted[primaryIdx]
+      const runResolved = deriveCurrentResolvedState(sorted.map((o) => o.state_status ?? 'unknown'))
+      const isFirst = occurrences.filter((o) => !o.isGap).length === 0
+      const runTransition: HistoryTransition | null = isFirst
+        ? null
+        : computeHistoryTransition(primary.state_key, prevResolvedState, null, stateToPseudoStatus(primary.state_status), gapSinceLastOccurrence)
+
+      sorted.forEach((o, i) => {
+        occurrences.push({
+          sourceKind: 'historical_pdf', runId: run.id, documentId: run.document_id, reportId: null,
+          effectiveDate, eventDate: o.event_date, proposalId: null, threadId: null,
+          label: o.label, description: o.note, documentStatus: null, stateStatus: o.state_status,
+          visitStatus: null, proposalFamily: o.state_key, thematicCategory: o.thematic_category,
+          sourcePage: o.source_page, transition: i === primaryIdx ? runTransition : null, isGap: false,
+          evidenceCount: o.evidence_count, additionalLabels: [],
+          resolvedLabel: applyEntitySubstitution(o.label, o.entity_ids, histEntityMap),
+        })
       })
+      if (runResolved === true) prevResolvedState = true
+      else if (runResolved === false) prevResolvedState = false
+      gapSinceLastOccurrence = false
+    }
+  } else {
+    // ── Repli propositions : sujets SANS occurrence (acteurs). Comportement historique inchangé.
+    const evidenceByProposal = new Map<string, number>()
+    if (proposalIds.length > 0) {
+      const { data: evidRows } = await supabase
+        .from('document_proposal_evidence').select('proposal_id').in('proposal_id', proposalIds)
+      for (const ev of (evidRows ?? []) as Array<{ proposal_id: string }>) {
+        evidenceByProposal.set(ev.proposal_id, (evidenceByProposal.get(ev.proposal_id) ?? 0) + 1)
+      }
+    }
+    let prevProp: ProposalRow | null = null
+    for (const run of relevantRuns) {
+      const runProps = propsByRun.get(run.id) ?? []
+      const effectiveDate = runEffectiveDate(run)
+      if (runProps.length === 0) {
+        occurrences.push({
+          sourceKind: 'historical_pdf', runId: run.id, documentId: run.document_id, reportId: null,
+          effectiveDate, eventDate: null, proposalId: null, threadId: null, label: null, description: null,
+          documentStatus: null, stateStatus: null, visitStatus: null, proposalFamily: null,
+          thematicCategory: null, sourcePage: null, transition: 'non_mentionné', isGap: true,
+          evidenceCount: 0, additionalLabels: [], resolvedLabel: null,
+        })
+        gapSinceLastOccurrence = true
+        continue
+      }
+      const sorted = [...runProps].sort((a, b) => famRank(a.proposal_family) - famRank(b.proposal_family))
       const primary = sorted[0]
       const secondaries = sorted.slice(1)
-
       const isFirst = occurrences.filter((o) => !o.isGap).length === 0
       const transition: HistoryTransition | null = isFirst
         ? null
-        : computeHistoryTransition(
-            primary.proposal_family,
-            prevResolvedState,
-            prevProp?.document_status ?? null,
-            primary.document_status,
-            gapSinceLastOccurrence,
-          )
-
+        : computeHistoryTransition(primary.proposal_family, prevResolvedState, prevProp?.document_status ?? null, primary.document_status, gapSinceLastOccurrence)
       occurrences.push({
-        sourceKind: 'historical_pdf',
-        runId: run.id,
-        documentId: run.document_id,
-        reportId: null,
-        effectiveDate,
-        proposalId: primary.id,
-        threadId: primary.subject_thread_id,
-        label: primary.label,
-        description: primary.description ?? null,
-        documentStatus: primary.document_status ?? null,
-        visitStatus: null,
-        proposalFamily: primary.proposal_family,
-        thematicCategory: primary.thematic_category ?? null,
-        sourcePage: primary.source_page ?? null,
-        transition,
-        isGap: false,
-        evidenceCount: evidenceByProposal.get(primary.id) ?? 0,
-        additionalLabels: secondaries.map((p) => p.label),
-        resolvedLabel: null,
+        sourceKind: 'historical_pdf', runId: run.id, documentId: run.document_id, reportId: null,
+        effectiveDate, eventDate: null, proposalId: primary.id, threadId: primary.subject_thread_id,
+        label: primary.label, description: primary.description ?? null, documentStatus: primary.document_status ?? null,
+        stateStatus: null, visitStatus: null, proposalFamily: primary.proposal_family,
+        thematicCategory: primary.thematic_category ?? null, sourcePage: primary.source_page ?? null,
+        transition, isGap: false, evidenceCount: evidenceByProposal.get(primary.id) ?? 0,
+        additionalLabels: secondaries.map((p) => p.label), resolvedLabel: null,
       })
       prevProp = primary
-      // Mettre à jour prevResolvedState ; unknown ne réinitialise pas l'état antérieur
       const pvState = documentStatusToPvState(primary.document_status ?? null)
       if (pvState === 'resolved') prevResolvedState = true
       else if (pvState === 'open') prevResolvedState = false
@@ -667,11 +726,13 @@ export async function getCanonicalSubjectLife(
       documentId: null,
       reportId: row.source_ref_id,
       effectiveDate: row.effective_date,
+      eventDate: null,
       proposalId: row.source_proposal_id,
       threadId: null,
       label: row.label,
       description: row.note,
       documentStatus: null,
+      stateStatus: null,
       visitStatus: row.visit_status,
       proposalFamily: null,
       thematicCategory: null,
@@ -684,16 +745,37 @@ export async function getCanonicalSubjectLife(
     })
   }
 
-  // Re-trier la timeline fusionnée par date (PDF + terrain)
-  occurrences.sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))
+  // R-1 : ordre longitudinal = position (event_date ?? effective_date). Un fait 2024 rappelé dans un PV
+  // 2025 se place en 2024 dans l'ordre. lastSeenAt/firstSeenAt restent fondés sur effective_date (date
+  // documentaire) — le même rappel compte donc pour lastSeen 2025.
+  const positionOf = (o: SubjectOccurrenceMerged) => o.eventDate ?? o.effectiveDate
+  occurrences.sort((a, b) => {
+    const pa = positionOf(a), pb = positionOf(b)
+    if (pa !== pb) return pa.localeCompare(pb)
+    return a.effectiveDate.localeCompare(b.effectiveDate)
+  })
 
-  // Stats — calculées sur la timeline fusionnée complète
   const realOccurrences = occurrences.filter((o) => !o.isGap)
-  const firstSeenAt = realOccurrences[0]?.effectiveDate ?? null
-  const lastSeenAt = realOccurrences[realOccurrences.length - 1]?.effectiveDate ?? null
-  const currentStatus = realOccurrences[realOccurrences.length - 1]?.documentStatus
-    ?? realOccurrences[realOccurrences.length - 1]?.visitStatus
-    ?? null
+
+  // Stats de PRÉSENCE — firstSeen/lastSeen/pvCount se lisent sur l'AXE DOCUMENTAIRE (runs où le sujet
+  // apparaît, occurrence OU proposition), pas sur les seuls états éligibles : un sujet présent dans un
+  // PV sans y produire d'état atomique compte quand même pour lastSeen. + occurrences terrain.
+  const runById = new Map(allRuns.map((r) => [r.id, r]))
+  const historicalPresenceRunIds = new Set<string>([...occByRun.keys(), ...propsByRun.keys()])
+  const historicalPresenceDates = [...historicalPresenceRunIds]
+    .map((rid) => runById.get(rid)).filter((r): r is NonNullable<typeof r> => !!r).map((r) => runEffectiveDate(r))
+  const fieldDates = realOccurrences
+    .filter((o) => o.sourceKind === 'field_visit' || o.sourceKind === 'meeting').map((o) => o.effectiveDate)
+  const presenceDates = [...historicalPresenceDates, ...fieldDates]
+  const firstSeenAt = presenceDates.length ? presenceDates.reduce((a, b) => (a < b ? a : b)) : null
+  const lastSeenAt = presenceDates.length ? presenceDates.reduce((a, b) => (a > b ? a : b)) : null
+  const pvCountHistorical = historicalPresenceRunIds.size
+
+  // Statut courant = état de la dernière occurrence DOCUMENTAIRE connue (max effective_date parmi les
+  // états) : tri-state pour l'historique (state_status), visitStatus pour le terrain.
+  const lastStateDate = realOccurrences.length ? realOccurrences.map((o) => o.effectiveDate).reduce((a, b) => (a > b ? a : b)) : null
+  const lastDocOcc = lastStateDate ? realOccurrences.filter((o) => o.effectiveDate === lastStateDate).slice(-1)[0] : undefined
+  const currentStatus = lastDocOcc?.stateStatus ?? lastDocOcc?.visitStatus ?? lastDocOcc?.documentStatus ?? null
   const primaryFamily = realOccurrences[0]?.proposalFamily ?? null
 
   // Primitive stagnation V1B — signature combinée : statut + objets métier liés (création + changement d'état)
@@ -711,10 +793,9 @@ export async function getCanonicalSubjectLife(
 
   // LMCA P1-4A — moteur tri-state unifié (remplace signature brute V1B)
   const lmcaOccsA: LmcaOccurrence[] = realOccurrences.map((occ) => ({
-    effectiveDate: occ.effectiveDate,
-    pvState: occ.visitStatus !== null
-      ? visitStatusToPvState(occ.visitStatus)
-      : documentStatusToPvState(occ.documentStatus),
+    effectiveDate: occ.eventDate ?? occ.effectiveDate,  // R-1 : LMCA raisonne sur la position temporelle
+    pvState: occ.stateStatus
+      ?? (occ.visitStatus !== null ? visitStatusToPvState(occ.visitStatus) : documentStatusToPvState(occ.documentStatus)),
     objectSig: occ.runId ? (matSigByRun.get(occ.runId) ?? '') : '',
   }))
   const terrainObjects = await fetchTerrainObjectsByCs(supabase, canonicalSubjectId)
@@ -854,7 +935,7 @@ export async function getCanonicalSubjectLife(
     currentStatus,
     primaryFamily,
     threadIds,
-    pvCount: realOccurrences.filter((o) => o.sourceKind === 'historical_pdf').length,
+    pvCount: pvCountHistorical,
     fieldVisitCount: new Set(realOccurrences.filter((o) => o.sourceKind === 'field_visit' || o.sourceKind === 'meeting').map((o) => `${o.sourceKind}-${o.effectiveDate}`)).size,
     runs: allRuns.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) })),
     occurrences,

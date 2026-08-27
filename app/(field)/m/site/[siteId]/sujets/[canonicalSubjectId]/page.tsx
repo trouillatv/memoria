@@ -88,6 +88,8 @@ const STATUS_LABELS: Record<string, string> = {
   awaiting_validation:'En attente',
   cancelled:          'Annulé',
   informational:      'Informatif',
+  resolved:           'Résolu',
+  unknown:            'Indéterminé',
   field_checked:      'Vérifié terrain',
   still_open:         'Toujours ouvert',
   not_applicable:     'Sans objet',
@@ -103,6 +105,8 @@ const STATUS_COLORS: Record<string, string> = {
   awaiting_validation:'bg-amber-100 text-amber-700',
   cancelled:          'bg-muted text-muted-foreground',
   informational:      'bg-muted text-muted-foreground',
+  resolved:           'bg-emerald-100 text-emerald-800',
+  unknown:            'bg-muted text-muted-foreground',
   field_checked:      'bg-teal-100 text-teal-700',
   still_open:         'bg-orange-100 text-orange-700',
   not_applicable:     'bg-muted text-muted-foreground',
@@ -185,7 +189,7 @@ function OccurrenceRow({ occ, index, total }: { occ: SubjectOccurrenceMerged; in
         ? `/m/reunion/${occ.reportId}`
         : null
 
-  const statusKey = occ.visitStatus ?? occ.documentStatus
+  const statusKey = occ.visitStatus ?? occ.documentStatus ?? occ.stateStatus
   const statusLabel = statusKey ? (STATUS_LABELS[statusKey] ?? statusKey) : null
   const statusColor = statusKey ? (STATUS_COLORS[statusKey] ?? 'bg-muted text-muted-foreground') : null
 
