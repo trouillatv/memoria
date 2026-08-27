@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { deriveStateKey, groupPropositionsByState } from '@/lib/db/occurrence-state-key'
+import { deriveStateKey, groupPropositionsByState, deriveGroupThematicCategory } from '@/lib/db/occurrence-state-key'
 
 // P3-D1 — un même sujet peut avoir N occurrences dans un rapport, MAIS seulement pour des états
 // distincts. Cross-family → états distincts (N groupes). Same-family → même état (1 groupe, dédup).
@@ -76,5 +76,29 @@ describe('groupPropositionsByState — mélange réaliste', () => {
     expect(g.size).toBe(2)
     expect(g.get('knowledge_fact')).toHaveLength(2)
     expect(g.get('observation')).toHaveLength(1)
+  })
+})
+
+describe('deriveGroupThematicCategory — R-1 (catégorie = classification du fait)', () => {
+  it('catégorie unique → univocal', () => {
+    expect(deriveGroupThematicCategory(['test_control'])).toEqual({ category: 'test_control', reason: 'univocal', distinct: ['test_control'] })
+    expect(deriveGroupThematicCategory(['progress', 'progress'])).toEqual({ category: 'progress', reason: 'univocal', distinct: ['progress'] })
+  })
+  it('null/vides ignorés, un seul signal réel → univocal', () => {
+    expect(deriveGroupThematicCategory([null, 'administrative', ''])).toEqual({ category: 'administrative', reason: 'univocal', distinct: ['administrative'] })
+  })
+  it('aucune catégorie (tout null/vide) → none, category null', () => {
+    expect(deriveGroupThematicCategory([null, '', '  '])).toEqual({ category: null, reason: 'none', distinct: [] })
+  })
+  it('plusieurs catégories → null (conflict), jamais une dominante arbitraire ; distinct conservé', () => {
+    const r = deriveGroupThematicCategory(['progress', 'progress', 'forecast'])
+    expect(r.category).toBeNull()
+    expect(r.reason).toBe('conflict')
+    expect(r.distinct).toEqual(['forecast', 'progress'])
+  })
+  it('conflit → null quel que soit l\'ordre (rejeu stable, jamais de choix fabriqué)', () => {
+    expect(deriveGroupThematicCategory(['test_control', 'administrative']).category).toBeNull()
+    expect(deriveGroupThematicCategory(['administrative', 'test_control']).category).toBeNull()
+    expect(deriveGroupThematicCategory(['administrative', 'test_control']).reason).toBe('conflict')
   })
 })

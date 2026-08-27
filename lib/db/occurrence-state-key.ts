@@ -51,3 +51,30 @@ export function groupPropositionsByState<T extends { proposal_family: string }>(
   }
   return byState
 }
+
+/**
+ * R-1 — catégorie thématique d'UNE occurrence (groupe state_key). thematic_category classe le FAIT
+ * (prouvé instable au niveau sujet : 34/134 sujets multi-catégories), donc portée par l'occurrence.
+ *
+ * Doctrine identique à `deriveOccurrenceStateStatus` : quand le modèle ne peut pas choisir sans
+ * inventer, il n'invente pas. thematic_category ne pilote NI le tri-state NI la trajectoire (attribut
+ * de restitution avec fallback `?? family`), donc aucun intérêt à fabriquer une catégorie arbitraire.
+ *
+ * - une seule catégorie non vide          → cette catégorie (univocal) ;
+ * - plusieurs catégories dans le groupe    → null (conflict) — jamais une dominante arbitraire ;
+ *   `distinct` conservé pour l'instrumentation (le conflit n'est jamais silencieux) ;
+ * - aucune catégorie                       → null (none).
+ */
+export function deriveGroupThematicCategory(
+  categories: (string | null)[],
+): { category: string | null; reason: 'none' | 'univocal' | 'conflict'; distinct: string[] } {
+  const counts = new Map<string, number>()
+  for (const c of categories) {
+    const t = (c ?? '').trim()
+    if (t) counts.set(t, (counts.get(t) ?? 0) + 1)
+  }
+  const distinct = [...counts.keys()].sort()
+  if (distinct.length === 0) return { category: null, reason: 'none', distinct: [] }
+  if (distinct.length === 1) return { category: distinct[0], reason: 'univocal', distinct }
+  return { category: null, reason: 'conflict', distinct }
+}

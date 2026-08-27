@@ -17,7 +17,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { makeWinnerResolver, type SubjectRow } from '@/lib/db/canonical-subject-project'
 import { detectActorRelations, type ActorSubject } from '@/lib/db/actor-citation'
-import { deriveStateKey } from '@/lib/db/occurrence-state-key'
+import { deriveStateKey, deriveGroupThematicCategory } from '@/lib/db/occurrence-state-key'
 import { extractEventDate } from '@/lib/documents/event-date'
 import { deriveOccurrenceStateStatus } from '@/lib/documents/subject-state'
 
@@ -88,6 +88,8 @@ interface ProposalRow {
   source_excerpt: string | null
   subject_thread_id: string | null
   document_status: string | null
+  source_page: number | null
+  thematic_category: string | null
 }
 
 interface OccurrenceToCreate {
@@ -119,7 +121,7 @@ export async function ensureHistoricalPdfOccurrences(params: {
   // 1. Charger les propositions éligibles du run avec leur subject_thread_id
   const { data: proposals, error: propErr } = await supabase
     .from('document_extraction_proposal')
-    .select('id, proposal_family, label, description, source_excerpt, subject_thread_id, document_status')
+    .select('id, proposal_family, label, description, source_excerpt, subject_thread_id, document_status, source_page, thematic_category')
     .eq('extraction_run_id', runId)
     // P3-B1 : on récupère aussi les observations ; le garde de signification tranche ensuite.
     .in('proposal_family', [...STATE_BEARING_FAMILIES, 'observation'])
@@ -266,6 +268,20 @@ export async function ensureHistoricalPdfOccurrences(params: {
         + `state_key=${group.state_key} statuts=[${group.proposals.map((p) => p.document_status ?? 'null').join(',')}]`)
     }
 
+    // R-1 : thematic_category classe le FAIT (instable au niveau sujet) → portée par l'occurrence.
+    // Catégorie du groupe : univoque → valeur ; plusieurs → dominante déterministe + conflit journalisé.
+    const { category: thematicCategory, reason: catReason, distinct: catDistinct } =
+      deriveGroupThematicCategory(group.proposals.map((p) => p.thematic_category))
+    if (catReason === 'conflict') {
+      console.warn(`[historical-occ] CONFLIT catégorie → null | run=${runId} `
+        + `cs=${group.canonical_subject_id} state_key=${group.state_key} catégories=[${catDistinct.join(',')}]`)
+    }
+    // source_page : provenance du fait ; groupe poolé → plus petite page (première mention).
+    const sourcePage = group.proposals
+      .map((p) => p.source_page)
+      .filter((n): n is number => typeof n === 'number')
+      .sort((a, b) => a - b)[0] ?? null
+
     const occData = {
       canonical_subject_id: group.canonical_subject_id,
       site_id: group.site_id,
@@ -280,6 +296,8 @@ export async function ensureHistoricalPdfOccurrences(params: {
       effective_date: group.effective_date,    // date documentaire (PV) — inchangée
       event_date: eventDate,                    // P3-D2 : date propre du fait (ou null)
       state_status: stateStatus,                // R-1 : tri-state du groupe (resolved|open|unknown)
+      source_page: sourcePage,                  // R-1 : provenance du fait (page du PV)
+      thematic_category: thematicCategory,      // R-1 : classification du fait (dominante du groupe)
       created_by: null,
       validation_status: 'observed' as const,
       entity_ids: [],
