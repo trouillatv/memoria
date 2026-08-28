@@ -81,6 +81,7 @@ function makeOverview(overrides: Partial<SiteOverview> = {}): SiteOverview {
     history: [],
     pvAttention: [],
     pvLastDelta: null,
+    pvActivity: null,
     pvToVerify: [],
     ...overrides,
   }

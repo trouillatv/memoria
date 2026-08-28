@@ -17,7 +17,6 @@ import {
   emptySiteOverview,
   type ActionUrgency,
   type SiteOverview,
-  type PvLastDelta,
 } from '@/lib/knowledge/site-overview'
 import { sourceLabels, pendingLabel, visitDateLabel, durationLabel } from '@/lib/chantier/overview-labels'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
@@ -38,7 +37,7 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
   const overview = await getSiteOverview(siteId).catch(() => emptySiteOverview(siteId))
   const {
     actions, nextEvent, reserves, blockages, activity, synthesis,
-    pvLastDelta,
+    pvActivity,
   } = overview
   // La synthèse de la dernière visite est l'endroit où l'on confirme les propositions.
   const synthesisHref = activity.lastVisit
@@ -172,9 +171,9 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
         </section>
       )}
 
-      {/* Depuis le dernier PV — signal compact, pas une liste */}
-      {pvLastDelta && (
-        <PvDeltaBanner delta={pvLastDelta} siteId={siteId} />
+      {/* Depuis le dernier PV — ACTIVITÉ réelle du chantier (#230), pas un compteur */}
+      {pvActivity && pvActivity.totalChanges + pvActivity.synthetic.maintenus + pvActivity.synthetic.nonMentionnes > 0 && (
+        <PvActivitySection activity={pvActivity} />
       )}
 
       <div className="grid items-start gap-4 xl:grid-cols-2">
@@ -267,34 +266,66 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
 
 // ── Composants PV ────────────────────────────────────────────────────────────
 
-/** Banner compact delta PV — signal uniquement, lien vers Histoire. */
-function PvDeltaBanner({ delta, siteId }: { delta: PvLastDelta; siteId: string }) {
-  const fmtDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+// #230 — « Depuis le dernier PV » = activité réelle catégorisée (occurrence-first), pas un compteur.
+// Chaque sujet listé est navigable vers sa fiche (preuve). maintenus/non-mentionnés = compteurs seuls.
+type PvActivity = NonNullable<SiteOverview['pvActivity']>
 
-  const parts: string[] = []
-  if (delta.nouveaux > 0) parts.push(`${delta.nouveaux} apparu${delta.nouveaux > 1 ? 's' : ''}`)
-  if (delta.aggravésRéouverts > 0) parts.push(`${delta.aggravésRéouverts} aggravé${delta.aggravésRéouverts > 1 ? 's' : ''}`)
-  if (delta.réalisésLevés > 0) parts.push(`${delta.réalisésLevés} traité${delta.réalisésLevés > 1 ? 's' : ''}`)
+const ACTIVITY_CAT: Record<string, { label: (n: number) => string; cls: string }> = {
+  réouvert: { label: (n) => `${n} réouvert${n > 1 ? 's' : ''}`,  cls: 'text-amber-700 dark:text-amber-300' },
+  aggravé:  { label: (n) => `${n} aggravé${n > 1 ? 's' : ''}`,   cls: 'text-red-700 dark:text-red-300' },
+  nouveau:  { label: (n) => `${n} nouveau${n > 1 ? 'x' : ''}`,   cls: 'text-sky-700 dark:text-sky-300' },
+  réapparu: { label: (n) => `${n} réapparu${n > 1 ? 's' : ''}`,  cls: 'text-indigo-700 dark:text-indigo-300' },
+  résolu:   { label: (n) => `${n} résolu${n > 1 ? 's' : ''}`,    cls: 'text-emerald-700 dark:text-emerald-300' },
+  autre:    { label: (n) => `${n} modifié${n > 1 ? 's' : ''}`,   cls: 'text-muted-foreground' },
+}
+
+function PvActivitySection({ activity }: { activity: PvActivity }) {
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+  const { maintenus, nonMentionnes } = activity.synthetic
+  const syntheticParts = [
+    maintenus > 0 ? `${maintenus} maintenu${maintenus > 1 ? 's' : ''}` : null,
+    nonMentionnes > 0 ? `${nonMentionnes} non mentionné${nonMentionnes > 1 ? 's' : ''}` : null,
+  ].filter(Boolean)
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[14px] border bg-card px-4 py-2.5 shadow-sm">
-      <span className="text-[13px] font-medium text-muted-foreground">
-        Du PV du {fmtDate(delta.fromDate)} au PV du {fmtDate(delta.toDate)}
-      </span>
-      <span className="text-muted-foreground/40">·</span>
-      {parts.length > 0 ? (
-        <span className="text-[13px] text-foreground/80">{parts.join(' · ')}</span>
-      ) : (
-        <span className="text-[13px] text-muted-foreground">Aucune transition notable</span>
+    <section className="rounded-[18px] border bg-card p-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Depuis le dernier PV</h2>
+        <span className="text-xs text-muted-foreground">{fmtDate(activity.fromDate)} → {fmtDate(activity.toDate)}</span>
+      </div>
+
+      <div className="mt-3 space-y-3">
+        {activity.groups.map((g) => (
+          <div key={g.category}>
+            <p className={`text-[13px] font-semibold ${ACTIVITY_CAT[g.category]?.cls ?? ''}`}>
+              {(ACTIVITY_CAT[g.category]?.label ?? ((n: number) => `${n}`))(g.total)}
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {g.displayed.map((it) => (
+                <li key={it.canonicalSubjectId}>
+                  <Link href={it.href} className="flex flex-wrap items-baseline gap-x-2 rounded px-1 -mx-1 py-0.5 hover:bg-muted/50">
+                    <span className="text-sm text-foreground/90">{it.label}</span>
+                    {it.trajectory && <span className="text-xs text-muted-foreground">— {it.trajectory}</span>}
+                  </Link>
+                </li>
+              ))}
+              {g.hiddenCount > 0 && (
+                <li className="pl-1 text-xs text-muted-foreground">+{g.hiddenCount} autre{g.hiddenCount > 1 ? 's' : ''}</li>
+              )}
+            </ul>
+          </div>
+        ))}
+      </div>
+
+      {syntheticParts.length > 0 && (
+        <p className="mt-3 text-xs text-muted-foreground">{syntheticParts.join(' · ')}</p>
       )}
-      <Link
-        href={`/sites/${siteId}/historique?view=synthese`}
-        className="ml-auto shrink-0 text-[13px] font-medium text-primary hover:underline"
-      >
-        Voir les détails →
+
+      <Link href={activity.seeAllHref} className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-primary hover:underline">
+        Voir tous les changements <ChevronRight className="h-3.5 w-3.5" />
       </Link>
-    </div>
+    </section>
   )
 }
 

@@ -15,6 +15,7 @@ import 'server-only'
 // (mobile), pour que SiteOverview ne grossisse pas pour un seul écran.
 
 import { getSiteProjection, emptySiteProjection, type ProposalProjection } from '@/lib/knowledge/projection'
+import { buildActivitySinceLastPv, type SiteActivity } from '@/lib/knowledge/site-activity'
 import {
   readSiteActionSummaries,
   deduplicateByThread,
@@ -248,8 +249,10 @@ export interface SiteOverview {
   history: HistoryItem[]
   /** Sujets canoniques qui demandent de l'attention (non-conformes, aggravés, stagnants). */
   pvAttention: PvAttentionItem[]
-  /** Signal compact du dernier intervalle inter-PV (null si < 2 PVs). */
+  /** Signal compact du dernier intervalle inter-PV (null si < 2 PVs). LEGACY — remplacé à l'affichage par pvActivity. */
   pvLastDelta: PvLastDelta | null
+  /** #230 — Activité réelle « Depuis le dernier PV » (occurrence-first, catégorisée, cappée). Null si < 2 PV. */
+  pvActivity: SiteActivity | null
   /** Sujets canoniques à vérifier en priorité (score + signaux forts + suggestions). */
   pvToVerify: PvVerifyItem[]
 }
@@ -448,6 +451,7 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
     history: [],
     pvAttention: [],
     pvLastDelta: null,
+    pvActivity: null,
     pvToVerify: [],
   }
 }
@@ -541,7 +545,7 @@ async function fetchPvSignalData(siteId: string): Promise<{
  * a son repli, et la forme est toujours complète (aucun `undefined`).
  */
 export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
-  const [proj, actionRows, aSavoir, intervenants, recent, identity, synth, blocages, statusSummary, memorySignals, currentState, activity, deadlineRows, watchpointRows, knowledgeRows, decisionRows, pvSignal, scheduledEvents] = await Promise.all([
+  const [proj, actionRows, aSavoir, intervenants, recent, identity, synth, blocages, statusSummary, memorySignals, currentState, activity, deadlineRows, watchpointRows, knowledgeRows, decisionRows, pvSignal, scheduledEvents, pvActivity] = await Promise.all([
     getSiteProjection(siteId).catch(() => emptySiteProjection()),
     readSiteActionSummaries(siteId).catch(() => [] as ActionSummaryRow[]),
     listSiteASavoirActive(siteId).catch(() => []),
@@ -566,6 +570,8 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     fetchPvSignalData(siteId).catch(() => null),
     // Moments prévus (visites, réunions) — convergence 3D.
     listScheduledEvents(siteId, { from: new Date().toISOString() }).catch(() => [] as ScheduledEvent[]),
+    // #230 — Activité « Depuis le dernier PV » (occurrence-first).
+    buildActivitySinceLastPv(siteId).catch(() => null),
   ])
 
   // ── Actions : proposé (projection) + validé (site_actions actives) ──
@@ -774,6 +780,7 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     })),
     pvAttention:  pvSignal?.pvAttention  ?? [],
     pvLastDelta:  pvSignal?.pvLastDelta  ?? null,
+    pvActivity,
     pvToVerify:   pvSignal?.pvToVerify   ?? [],
   }
 }
