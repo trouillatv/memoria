@@ -13,6 +13,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getNavigableSubjectsForSite, type NavigableSubjectSummary } from '@/lib/db/canonical-subject-life'
 import { listConfirmedLinksForSite } from '@/lib/db/subject-thread-links'
 import { getSiteSubjectMatrix } from '@/lib/documents/pv-history'
+import { buildSiteSubjectCells, cellDeltaTransition } from '@/lib/documents/site-occurrence-timeline'
 import { computeWatchlist } from '@/lib/documents/pv-watchlist'
 import { describeOverdueAction } from '@/lib/knowledge/overdue-action'
 
@@ -83,6 +84,47 @@ const OPEN_STATUS = new Set([
   'open', 'in_progress', 'still_open', 'non_compliant',
   'planned', 'awaiting_validation', 'field_checked',
 ])
+
+function fmtPvDate(iso: string | null): string {
+  if (!iso) return ''
+  try { return ` du ${new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}` }
+  catch { return '' }
+}
+
+/**
+ * #229 Lot A — narration de la TRAJECTOIRE réelle d'un sujet dans l'Attention, dérivée de la MÊME
+ * transition Chronologie (cellDeltaTransition sur la dernière cellule) que la fiche et la Chronologie.
+ * Aucune sélection ici : ce texte n'entre pas dans le score. « Toujours ouvert » n'est autorisé QUE pour
+ * une vraie continuité (maintenu/open) — jamais comme fallback quand une transition plus précise existe.
+ * `transition` = valeur de cellDeltaTransition (réouvert | aggravé | nouveau | réapparu | non_mentionné |
+ * maintenu | levé | réalisé | progressé | changé | annulé) ; undefined si le sujet n'a pas d'occurrence.
+ */
+export function narrateTrajectory(
+  transition: string | undefined,
+  currentStatus: string | null,
+  isOpen: boolean,
+  lastPvDate: string | null,
+): string | null {
+  // Non-conformité constatée = statut, prime sur la trajectoire.
+  if (currentStatus === 'non_compliant') return 'Non-conformité signalée dans le dernier PV'
+  const since = fmtPvDate(lastPvDate)
+  switch (transition) {
+    case 'réouvert':      return `Réouvert · résolu précédemment, à refaire depuis le PV${since}`
+    case 'aggravé':       return 'Aggravé au dernier PV'
+    case 'nouveau':
+    case 'réapparu':      return `Apparu au PV${since}`
+    case 'non_mentionné': return 'Non mentionné dans le dernier PV · état précédent conservé'
+    // Continuité réelle (mention sans nouvel événement d'état) : « toujours ouvert » LÉGITIME ici.
+    case 'maintenu':      return isOpen ? 'Toujours ouvert lors de la dernière visite' : null
+    // levé/réalisé/annulé → sujet clos (pas d'attention ouverte à narrer ici).
+    case 'levé':
+    case 'réalisé':
+    case 'annulé':        return null
+    // progressé/changé ou absence de transition connue : ne raconter « ouvert » que si vraiment ouvert,
+    // jamais inventer une évolution.
+    default:              return isOpen ? 'Toujours ouvert lors de la dernière visite' : null
+  }
+}
 
 // ── Moteur ────────────────────────────────────────────────────────────────────
 
@@ -174,6 +216,20 @@ export async function deriveCanonicalAttentionItems(
     }
     if (link.toCanonicalSubjectId) {
       linkCountByCsId.set(link.toCanonicalSubjectId, (linkCountByCsId.get(link.toCanonicalSubjectId) ?? 0) + 1)
+    }
+  }
+
+  // ── 3bis. Trajectoire réelle par canonical (occurrence-first) — MÊME primitive que fiche & Chronologie.
+  // Sert UNIQUEMENT à la narration (ligne « trajectoire »), jamais au score/sélection (#229 Lot A).
+  const cellsView = await buildSiteSubjectCells(siteId).catch(() => null)
+  const lastPvDate = cellsView?.runs.at(-1)?.effectiveDate ?? null
+  const transitionByCs = new Map<string, string>()
+  if (cellsView) {
+    for (const row of cellsView.rows) {
+      const firstIdx = row.cells.findIndex((c) => c !== null)
+      let lastIdx = -1
+      for (let i = row.cells.length - 1; i >= 0; i--) { if (row.cells[i]) { lastIdx = i; break } }
+      if (lastIdx >= 0) transitionByCs.set(row.canonicalSubjectId, cellDeltaTransition(row.cells[lastIdx]!, lastIdx === firstIdx))
     }
   }
 
@@ -309,19 +365,16 @@ export async function deriveCanonicalAttentionItems(
       reasons.push([mentionPart, stagnPart].filter(Boolean).join(' · '))
     }
 
-    // Ligne 2 : statut lors de la dernière visite
-    const isOpen = OPEN_STATUS.has(s.currentStatus ?? '')
-    if (pv && pv.reason !== 'sans_évolution') {
-      const pvLine =
-        pv.reason === 'non_conforme' ? 'Non-conformité signalée dans le dernier PV' :
-        pv.reason === 'aggravé'      ? 'Aggravé au dernier PV' :
-                                       'Réouvert au dernier PV'
-      reasons.push(pvLine)
-    } else if (pv?.reason === 'sans_évolution') {
-      reasons.push(`Sans évolution sur ${pv.pvCount} PV`)
-    } else if (isOpen) {
-      reasons.push('Toujours ouvert lors de la dernière visite')
-    }
+    // Ligne 2 : TRAJECTOIRE réelle (occurrence-first — MÊME source que fiche & Chronologie, aucun
+    // nouveau calcul longitudinal). #229 Lot A : on corrige le RÉCIT, pas la sélection. Le fallback
+    // générique « Toujours ouvert » n'est utilisé QUE pour une continuité réelle (maintenu/open).
+    const trajLine = narrateTrajectory(
+      transitionByCs.get(csId),
+      s.currentStatus,
+      OPEN_STATUS.has(s.currentStatus ?? ''),
+      lastPvDate,
+    )
+    if (trajLine) reasons.push(trajLine)
 
     // Ligne 3 : action en retard, à vérifier, ou objets actifs
     if (overdue) {
