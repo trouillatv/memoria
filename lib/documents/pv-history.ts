@@ -17,6 +17,8 @@ import 'server-only'
 
 import type { DeltaTransition } from './pv-comparison'
 import { documentStatusToPvState } from './subject-state'
+import type { PvState } from './subject-state'
+import { buildDocumentPresenceCells, type RunOccurrence } from './site-occurrence-timeline'
 
 export type HistoryTransition = DeltaTransition | 'réapparu'
 
@@ -604,6 +606,52 @@ export async function getSiteSubjectMatrix(siteId: string): Promise<SiteSubjectM
   }
 
   rows = [...mergedRows, ...ungrouped]
+
+  // P0-2b — Convergence occurrence-first : pour les sujets occurrence-backed, l'ÉTAT des cellules vient
+  // des occurrences (state_status), jamais des propositions. Les propositions ne servent qu'à la
+  // PRÉSENCE documentaire (quelles cellules existent). Une cellule présente sans occurrence éligible =
+  // « présent, état porté conservé » (isGap=false, sans transition), jamais une non-mention ni une
+  // nouvelle preuve d'ouverture. Les lignes SANS aucune occurrence conservent leur chemin legacy ci-dessus.
+  const { data: occRows } = await supabase
+    .from('canonical_subject_occurrence')
+    .select('canonical_subject_id, source_ref_id, state_key, state_status, label, event_date, source_page, evidence_count')
+    .eq('site_id', siteId).eq('source_kind', 'historical_pdf')
+    .not('validation_status', 'in', '("rejected","source_superseded")')
+  type ORow = { canonical_subject_id: string; source_ref_id: string; state_key: string; state_status: string | null; label: string; event_date: string | null; source_page: number | null; evidence_count: number }
+  const occAll = (occRows ?? []) as ORow[]
+  if (occAll.length > 0) {
+    const repIds = [...new Set(occAll.map((o) => o.source_ref_id))]
+    const repToRun = new Map<string, string>()
+    const { data: reps } = await supabase.from('site_reports').select('id, extraction_run_id').in('id', repIds)
+    for (const r of (reps ?? []) as Array<{ id: string; extraction_run_id: string | null }>) if (r.extraction_run_id) repToRun.set(r.id, r.extraction_run_id)
+    const occByCsRun = new Map<string, Map<string, RunOccurrence[]>>()
+    for (const o of occAll) {
+      const run = repToRun.get(o.source_ref_id); if (!run) continue
+      if (!occByCsRun.has(o.canonical_subject_id)) occByCsRun.set(o.canonical_subject_id, new Map())
+      const rm = occByCsRun.get(o.canonical_subject_id)!
+      const list = rm.get(run) ?? []
+      list.push({ stateStatus: (o.state_status ?? 'unknown') as PvState, stateKey: o.state_key, label: o.label, note: null, eventDate: o.event_date, sourcePage: o.source_page, evidenceCount: o.evidence_count ?? 0 })
+      rm.set(run, list)
+    }
+    const rawEquiv = (t: string | null): string | null => (t === 'resolved' ? 'done' : t === 'open' ? 'open' : null)
+    for (const row of rows) {
+      const cs = row.canonicalSubjectId
+      if (!cs || !occByCsRun.has(cs)) continue // non occurrence-backed → legacy conservé
+      const rm = occByCsRun.get(cs)!
+      const perRun = runs.map((r, i) => ({
+        runId: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r),
+        isPresent: !!(row.cells[i] && !row.cells[i]!.isGap), // présence = ancienne cellule proposition réelle
+        occs: rm.get(r.id) ?? [],
+      }))
+      const occCells = buildDocumentPresenceCells(perRun)
+      row.cells = occCells.map((c) => (c === null ? null : {
+        status: c.observedTriState === null ? null : rawEquiv(c.observedTriState),
+        transition: c.transition, isGap: c.isGap, proposalId: null, label: c.label ?? row.canonicalLabel,
+      }))
+      const lastCell = [...occCells].reverse().find((c) => c !== null)
+      row.currentStatus = lastCell ? rawEquiv(lastCell.currentProvenState) : null
+    }
+  }
 
   // Attacher les canonical_topic aux lignes canonical
   const canonicalIdsForTopics = rows

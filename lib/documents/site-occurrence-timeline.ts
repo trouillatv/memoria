@@ -113,6 +113,82 @@ export function buildOccurrenceCells(
   return cells
 }
 
+/**
+ * P0-2b — Projection MATRICE : combine PRÉSENCE documentaire et ÉTAT occurrence, sans jamais utiliser
+ * de proposition pour l'état. Trois natures de cellule :
+ *   - occurrence présente        → cellule d'état (observedTriState, transition, report mis à jour) ;
+ *   - présent sans occurrence     → « présent, état porté conservé » : isGap=false, isMentioned=true,
+ *     observedTriState=null, transition=null, currentProvenState reporté (ni preuve open, ni non-mention) ;
+ *   - absent du document          → gap « non mentionné » (isGap=true, isMentioned=false).
+ * `isPresent` (présence documentaire) est fourni PAR L'APPELANT — la primitive ne lit aucune proposition.
+ * La ligne démarre à la première PRÉSENCE documentaire ; la transition « première » se règle sur la
+ * première OCCURRENCE (pas la première présence).
+ */
+export function buildDocumentPresenceCells(
+  runs: Array<{ runId: string; documentId: string; effectiveDate: string; isPresent: boolean; occs: RunOccurrence[] }>,
+): Array<OccTimelineCell | null> {
+  const firstPresent = runs.findIndex((r) => r.isPresent || r.occs.length > 0)
+  if (firstPresent < 0) return runs.map(() => null)
+
+  const cells: Array<OccTimelineCell | null> = []
+  let carried: boolean | null = null
+  let gapSince = false
+  let hasOccurrenceBefore = false
+
+  for (let i = 0; i < runs.length; i++) {
+    const r = runs[i]
+    if (i < firstPresent) { cells.push(null); continue }
+    const prevProven = toProven(carried)
+
+    if (r.occs.length === 0) {
+      if (r.isPresent) {
+        // Présent sans occurrence éligible : présence documentaire, état porté conservé.
+        cells.push({
+          runId: r.runId, documentId: r.documentId, effectiveDate: r.effectiveDate,
+          isMentioned: true, observedTriState: null, eventDate: null,
+          previousProvenState: prevProven, currentProvenState: prevProven,
+          transition: null, label: null, stateKey: null, sourcePage: null, evidenceCount: 0, isGap: false,
+        })
+        // pas un gap : ne modifie pas gapSince
+      } else {
+        // Absent du document : gap.
+        cells.push({
+          runId: r.runId, documentId: r.documentId, effectiveDate: r.effectiveDate,
+          isMentioned: false, observedTriState: null, eventDate: null,
+          previousProvenState: prevProven, currentProvenState: prevProven,
+          transition: 'non_mentionné', label: null, stateKey: null, sourcePage: null, evidenceCount: 0, isGap: true,
+        })
+        gapSince = true
+      }
+      continue
+    }
+
+    const obsResolved = deriveCurrentResolvedState(r.occs.map((o) => o.stateStatus))
+    const observedTriState: PvState = obsResolved === null ? 'unknown' : obsResolved ? 'resolved' : 'open'
+    const primary = [...r.occs].sort((a, b) => famRank(a.stateKey) - famRank(b.stateKey))[0]
+    const transition: HistoryTransition | null = !hasOccurrenceBefore
+      ? null
+      : computeHistoryTransition(primary.stateKey, carried, null, stateToPseudo(observedTriState), gapSince)
+
+    let next: boolean | null = carried
+    if (observedTriState === 'resolved') next = true
+    else if (observedTriState === 'open') next = false
+
+    const evs = r.occs.map((o) => o.eventDate).filter((x): x is string => !!x).sort()
+    cells.push({
+      runId: r.runId, documentId: r.documentId, effectiveDate: r.effectiveDate,
+      isMentioned: true, observedTriState, eventDate: evs[0] ?? null,
+      previousProvenState: prevProven, currentProvenState: toProven(next),
+      transition, label: primary.label, stateKey: primary.stateKey, sourcePage: primary.sourcePage,
+      evidenceCount: r.occs.reduce((s, o) => s + o.evidenceCount, 0), isGap: false,
+    })
+    carried = next
+    gapSince = false
+    hasOccurrenceBefore = true
+  }
+  return cells
+}
+
 export interface OccTimelineSubject {
   canonicalSubjectId: string
   label: string
