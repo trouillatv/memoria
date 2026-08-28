@@ -4,14 +4,13 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { SiteTabsNav } from '../SiteTabsNav'
 import { getSiteHistoricalTimeline, getSiteSubjectMatrix } from '@/lib/documents/pv-history'
-import { getCanonicalDelta } from '@/lib/documents/canonical-transitions'
+import { buildOccurrencePvSummary, type OccurrencePvSummary } from '@/lib/documents/occurrence-pv-summary'
 import { getSuggestedLinkCountsBySite } from '@/lib/db/subject-thread-links'
 import { getSiteNativeOccurrencesBySubject, getCanonicalSubjectLabelsByIds, buildNativeEvolutionData } from '@/lib/db/canonical-subject-life'
 import {
   getRunsMeta,
   computeWatchlist,
   computeProgressByCategory,
-  computeDeltaSummary,
   getImportantSubjects,
   getActivityMap,
   getSiteHealthTimeline,
@@ -144,15 +143,15 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
     reportId: null,
   })))
 
-  // Delta entre les deux derniers PV (si ≥ 2)
-  let deltaData: { summary: ReturnType<typeof computeDeltaSummary>; fromIdx: number; toIdx: number } | null = null
+  // Delta entre les deux derniers PV (si ≥ 2) — P0 : occurrence-first (même vérité que
+  // l'Aperçu #230 / Chronologie / Lignes de vie), catégories séparées, knowledge_fact gardé.
+  let deltaData: { summary: OccurrencePvSummary; fromIdx: number; toIdx: number } | null = null
   if (timeline.snapshots.length >= 2) {
     const fromSnap = timeline.snapshots[timeline.snapshots.length - 2]
     const toSnap   = timeline.snapshots[timeline.snapshots.length - 1]
     try {
-      const delta = await getCanonicalDelta(fromSnap.runId, toSnap.runId)
       deltaData = {
-        summary: computeDeltaSummary(delta),
+        summary: await buildOccurrencePvSummary(siteId, fromSnap.runId, toSnap.runId),
         fromIdx: timeline.snapshots.length - 2,
         toIdx:   timeline.snapshots.length - 1,
       }

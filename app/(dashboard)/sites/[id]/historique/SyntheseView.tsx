@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { AlertTriangle, Clock, TrendingUp, CheckCircle2, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { WatchlistEntry, WatchReason, CategoryProgress, DeltaSummary, RunMeta, ImportantSubject } from '@/lib/documents/site-synthesis'
+import type { WatchlistEntry, WatchReason, CategoryProgress, RunMeta, ImportantSubject } from '@/lib/documents/site-synthesis'
+import type { OccurrencePvSummary } from '@/lib/documents/occurrence-pv-summary'
 import type { SiteHistoricalTimeline } from '@/lib/documents/pv-history'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -20,20 +21,25 @@ function plural(n: number, singular: string, pluralStr?: string): string {
 
 // ── Bloc 1 — Depuis le dernier PV ────────────────────────────────────────────
 
+// P0 — catégories OCCURRENCE-FIRST, SÉPARÉES (jamais aggravé/réouvert fusionnés,
+// nouveau ≠ réapparu, non-mention ≠ résolution ; knowledge_fact JAMAIS exclu).
 const DELTA_ROWS: Array<{
-  key: keyof DeltaSummary
+  key: keyof OccurrencePvSummary
   label: string
   icon: string
   color: string
   hideIfEmpty?: boolean
 }> = [
-  { key: 'aggravésRéouverts', label: 'Aggravés / réouverts', icon: '!', color: 'text-red-600 dark:text-red-400' },
-  { key: 'réalisésLevés',     label: 'Réalisés / levés',    icon: '✓', color: 'text-emerald-600 dark:text-emerald-400' },
-  { key: 'progressés',        label: 'En progression',       icon: '↑', color: 'text-blue-500 dark:text-blue-300' },
-  { key: 'nouveaux',          label: 'sujets apparus',       icon: '+', color: 'text-blue-600 dark:text-blue-400' },
-  { key: 'toujoursOuverts',   label: 'Toujours ouverts',    icon: '→', color: 'text-muted-foreground' },
-  { key: 'nonMentionnés',     label: 'Non mentionnés',      icon: '○', color: 'text-muted-foreground', hideIfEmpty: true },
-  { key: 'annulés',           label: 'Annulés',             icon: '×', color: 'text-muted-foreground', hideIfEmpty: true },
+  { key: 'réouvert',     label: 'Réouverts',          icon: '↩', color: 'text-orange-600 dark:text-orange-400' },
+  { key: 'aggravé',      label: 'Aggravés',           icon: '!', color: 'text-red-600 dark:text-red-400', hideIfEmpty: true },
+  { key: 'nouveau',      label: 'Nouveaux',           icon: '+', color: 'text-blue-600 dark:text-blue-400' },
+  { key: 'réapparu',     label: 'Réapparus',          icon: '↗', color: 'text-purple-600 dark:text-purple-400', hideIfEmpty: true },
+  { key: 'résolu',       label: 'Résolus / levés',    icon: '✓', color: 'text-emerald-600 dark:text-emerald-400' },
+  { key: 'progressé',    label: 'En progression',     icon: '↑', color: 'text-blue-500 dark:text-blue-300', hideIfEmpty: true },
+  { key: 'maintenu',     label: 'Maintenus',          icon: '→', color: 'text-muted-foreground', hideIfEmpty: true },
+  { key: 'nonMentionné', label: 'Non mentionnés',     icon: '○', color: 'text-muted-foreground', hideIfEmpty: true },
+  { key: 'annulé',       label: 'Annulés',            icon: '×', color: 'text-muted-foreground', hideIfEmpty: true },
+  { key: 'changé',       label: 'Autres changements', icon: '~', color: 'text-muted-foreground', hideIfEmpty: true },
 ]
 
 function DeltaBloc({
@@ -43,13 +49,13 @@ function DeltaBloc({
   toMeta,
   pvNumbers,
 }: {
-  summary: DeltaSummary
+  summary: OccurrencePvSummary
   siteId: string
   fromMeta: RunMeta
   toMeta: RunMeta
   pvNumbers: { from: number; to: number }
 }) {
-  const hasCritical = summary.aggravésRéouverts.length > 0
+  const hasCritical = summary.aggravé.length > 0 || summary.réouvert.length > 0
 
   return (
     <section className="rounded-[18px] border bg-card p-5 shadow-sm">
@@ -472,7 +478,7 @@ export interface SyntheseViewProps {
   timeline: SiteHistoricalTimeline
   watchlist: WatchlistEntry[]
   categories: CategoryProgress[]
-  delta: { summary: DeltaSummary; fromIdx: number; toIdx: number } | null
+  delta: { summary: OccurrencePvSummary; fromIdx: number; toIdx: number } | null
   totalSubjects: number
   importantSubjects: ImportantSubject[]
 }
