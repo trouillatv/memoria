@@ -223,6 +223,58 @@ export interface SiteOccurrenceTimeline {
   subjects: OccTimelineSubject[]
 }
 
+/**
+ * P0-2d — FETCH PARTAGÉ UNIQUE des occurrences historiques d'un chantier, par (canonical_subject, run).
+ * Source de vérité commune consommée par : buildSiteOccurrenceTimeline, buildSiteSubjectCells (Lignes de
+ * vie / Chronologie) ET getSiteHealthTimeline (Tension). Chaque consommateur applique ENSUITE sa propre
+ * agrégation métier (runTensionState pour la Tension, deriveCurrentResolvedState pour l'état de la fiche) :
+ * source unique ≠ agrégation unique.
+ */
+export async function fetchSiteHistoricalOccurrences(siteId: string): Promise<{
+  runs: Array<{ id: string; documentId: string; effectiveDate: string }>
+  byCsRun: Map<string, Map<string, RunOccurrence[]>>
+  familiesByCs: Map<string, Set<string>>
+}> {
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+
+  const rawRuns = await canonicalRunsForSite(siteId)
+  const runs = rawRuns.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) }))
+  if (runs.length === 0) return { runs: [], byCsRun: new Map(), familiesByCs: new Map() }
+
+  const { data: occRows } = await supabase
+    .from('canonical_subject_occurrence')
+    .select('canonical_subject_id, source_ref_id, state_key, state_status, label, note, event_date, source_page, evidence_count')
+    .eq('site_id', siteId)
+    .eq('source_kind', 'historical_pdf')
+    .not('validation_status', 'in', '("rejected","source_superseded")')
+  type O = { canonical_subject_id: string; source_ref_id: string; state_key: string; state_status: string | null; label: string; note: string | null; event_date: string | null; source_page: number | null; evidence_count: number }
+  const occAll = (occRows ?? []) as O[]
+
+  const repIds = [...new Set(occAll.map((o) => o.source_ref_id))]
+  const repToRun = new Map<string, string>()
+  if (repIds.length > 0) {
+    const { data: reps } = await supabase.from('site_reports').select('id, extraction_run_id').in('id', repIds)
+    for (const r of (reps ?? []) as Array<{ id: string; extraction_run_id: string | null }>) if (r.extraction_run_id) repToRun.set(r.id, r.extraction_run_id)
+  }
+
+  const byCsRun = new Map<string, Map<string, RunOccurrence[]>>()
+  const familiesByCs = new Map<string, Set<string>>()
+  for (const o of occAll) {
+    const run = repToRun.get(o.source_ref_id)
+    if (!run) continue
+    const cs = o.canonical_subject_id
+    if (!byCsRun.has(cs)) byCsRun.set(cs, new Map())
+    if (!familiesByCs.has(cs)) familiesByCs.set(cs, new Set())
+    familiesByCs.get(cs)!.add(o.state_key)
+    const rm = byCsRun.get(cs)!
+    const list = rm.get(run) ?? []
+    list.push({ stateStatus: (o.state_status ?? 'unknown') as PvState, stateKey: o.state_key, label: o.label, note: o.note, eventDate: o.event_date, sourcePage: o.source_page, evidenceCount: o.evidence_count ?? 0 })
+    rm.set(run, list)
+  }
+  return { runs, byCsRun, familiesByCs }
+}
+
 export interface SiteSubjectCellsRow {
   canonicalSubjectId: string
   label: string
@@ -246,8 +298,8 @@ export async function buildSiteSubjectCells(siteId: string): Promise<SiteSubject
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabase = createAdminClient()
 
-  const rawRuns = await canonicalRunsForSite(siteId)
-  const runs = rawRuns.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) }))
+  // État : fetch partagé unique des occurrences (même source que la Tension et la primitive).
+  const { runs, byCsRun: occByCsRun } = await fetchSiteHistoricalOccurrences(siteId)
   if (runs.length === 0) return { siteId, runs: [], rows: [] }
   const runIds = runs.map((r) => r.id)
 
@@ -272,30 +324,6 @@ export async function buildSiteSubjectCells(siteId: string): Promise<SiteSubject
     if (!presentByCsRun.has(cs)) presentByCsRun.set(cs, new Set())
     presentByCsRun.get(cs)!.add(p.extraction_run_id)
     if (!csMeta.has(cs)) csMeta.set(cs, { family: p.proposal_family, thematic: p.thematic_category, label: p.label })
-  }
-
-  // État : occurrences par (canonical, run).
-  const { data: occRows } = await supabase
-    .from('canonical_subject_occurrence')
-    .select('canonical_subject_id, source_ref_id, state_key, state_status, label, event_date, source_page, evidence_count')
-    .eq('site_id', siteId).eq('source_kind', 'historical_pdf')
-    .not('validation_status', 'in', '("rejected","source_superseded")')
-  type O = { canonical_subject_id: string; source_ref_id: string; state_key: string; state_status: string | null; label: string; event_date: string | null; source_page: number | null; evidence_count: number }
-  const occAll = (occRows ?? []) as O[]
-  const repIds = [...new Set(occAll.map((o) => o.source_ref_id))]
-  const repToRun = new Map<string, string>()
-  if (repIds.length > 0) {
-    const { data: reps } = await supabase.from('site_reports').select('id, extraction_run_id').in('id', repIds)
-    for (const r of (reps ?? []) as Array<{ id: string; extraction_run_id: string | null }>) if (r.extraction_run_id) repToRun.set(r.id, r.extraction_run_id)
-  }
-  const occByCsRun = new Map<string, Map<string, RunOccurrence[]>>()
-  for (const o of occAll) {
-    const run = repToRun.get(o.source_ref_id); if (!run) continue
-    if (!occByCsRun.has(o.canonical_subject_id)) occByCsRun.set(o.canonical_subject_id, new Map())
-    const rm = occByCsRun.get(o.canonical_subject_id)!
-    const list = rm.get(run) ?? []
-    list.push({ stateStatus: (o.state_status ?? 'unknown') as PvState, stateKey: o.state_key, label: o.label, note: null, eventDate: o.event_date, sourcePage: o.source_page, evidenceCount: o.evidence_count ?? 0 })
-    rm.set(run, list)
   }
 
   // Union des canonicals (présence proposition ∪ occurrences).
@@ -337,51 +365,8 @@ export async function buildSiteOccurrenceTimeline(siteId: string): Promise<SiteO
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabase = createAdminClient()
 
-  const rawRuns = await canonicalRunsForSite(siteId)
-  const runs = rawRuns.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) }))
+  const { runs, byCsRun, familiesByCs: csKeys } = await fetchSiteHistoricalOccurrences(siteId)
   if (runs.length === 0) return { siteId, runs: [], subjects: [] }
-
-  const { data: occRows } = await supabase
-    .from('canonical_subject_occurrence')
-    .select('canonical_subject_id, source_ref_id, state_key, state_status, label, note, event_date, source_page, evidence_count')
-    .eq('site_id', siteId)
-    .eq('source_kind', 'historical_pdf')
-    .not('validation_status', 'in', '("rejected","source_superseded")')
-  type OccRow = {
-    canonical_subject_id: string; source_ref_id: string; state_key: string; state_status: string | null
-    label: string; note: string | null; event_date: string | null; source_page: number | null; evidence_count: number
-  }
-  const occAll = (occRows ?? []) as OccRow[]
-
-  // report (source_ref_id) → run
-  const repIds = [...new Set(occAll.map((o) => o.source_ref_id))]
-  const repToRun = new Map<string, string>()
-  if (repIds.length > 0) {
-    const { data: reps } = await supabase.from('site_reports').select('id, extraction_run_id').in('id', repIds)
-    for (const r of (reps ?? []) as Array<{ id: string; extraction_run_id: string | null }>) {
-      if (r.extraction_run_id) repToRun.set(r.id, r.extraction_run_id)
-    }
-  }
-
-  // cs → run → occurrences
-  const byCsRun = new Map<string, Map<string, RunOccurrence[]>>()
-  const csKeys = new Map<string, Set<string>>()
-  for (const o of occAll) {
-    const run = repToRun.get(o.source_ref_id)
-    if (!run) continue
-    const cs = o.canonical_subject_id
-    if (!byCsRun.has(cs)) byCsRun.set(cs, new Map())
-    if (!csKeys.has(cs)) csKeys.set(cs, new Set())
-    csKeys.get(cs)!.add(o.state_key)
-    const rm = byCsRun.get(cs)!
-    const list = rm.get(run) ?? []
-    list.push({
-      stateStatus: (o.state_status ?? 'unknown') as PvState, stateKey: o.state_key,
-      label: o.label, note: o.note, eventDate: o.event_date, sourcePage: o.source_page,
-      evidenceCount: o.evidence_count ?? 0,
-    })
-    rm.set(run, list)
-  }
 
   // labels
   const csIds = [...byCsRun.keys()]

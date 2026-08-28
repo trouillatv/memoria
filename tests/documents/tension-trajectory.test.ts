@@ -50,3 +50,23 @@ describe('tensionTrajectory — carry-forward', () => {
     expect(t.map((x) => x.isNew)).toEqual([true, false, false])
   })
 })
+
+// P0-2d — sentinelle run MIXTE resolved + open : après dédup du fetch (fetchSiteHistoricalOccurrences
+// alimente désormais Tension avec les mêmes occurrences brutes que la primitive partagée), la RÈGLE
+// Tension doit rester STRICTEMENT inchangée. Un PV où le sujet est prouvé résolu sur un état ET encore
+// ouvert sur un autre reste un concern ACTIF (before=open, after=open) — jamais une fausse résolution.
+describe('P0-2d — run mixte resolved+open reste un concern (règle Tension inchangée)', () => {
+  it("un PV mêlant une occurrence résolue et une ouverte → runTensionState = 'open'", () => {
+    // c.-à-d. exactement ce que produit occs.map((o) => o.stateStatus) sur un run mixte
+    expect(runTensionState(['resolved', 'open'])).toBe('open')
+    expect(runTensionState(['open', 'resolved', 'resolved'])).toBe('open')
+  })
+  it('trajectoire ouvert → PV mixte → reste actif (aucune baisse, pas de régression non-mention)', () => {
+    const t = tensionTrajectory([
+      runTensionState(['open']),                 // PV1 : ouvert
+      runTensionState(['resolved', 'open']),     // PV2 : mixte → open
+    ])
+    expect(t.map((x) => x.active)).toEqual([true, true])
+    expect(t.map((x) => x.isNew)).toEqual([true, false])
+  })
+})

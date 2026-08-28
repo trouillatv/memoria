@@ -630,9 +630,6 @@ export interface SiteHealthTimeline {
  * Pas de requête d'entités : uniquement runs + propositions.
  */
 export async function getSiteHealthTimeline(siteId: string): Promise<SiteHealthTimeline> {
-  const { createAdminClient } = await import('@/lib/supabase/admin')
-  const supabase = createAdminClient()
-
   const rawRuns = await canonicalRunsForSite(siteId)
   if (rawRuns.length === 0) return { siteId, points: [], peakActive: 0 }
 
@@ -642,57 +639,29 @@ export async function getSiteHealthTimeline(siteId: string): Promise<SiteHealthT
     pvNumber: i + 1,
   }))
 
-  // R-1 / P0-1 : la tension se lit depuis les OCCURRENCES (state_status), pas les propositions.
+  // R-1 / P0-1 / P0-2d : la tension se lit depuis les OCCURRENCES (state_status), pas les propositions,
+  // via la primitive PARTAGÉE fetchSiteHistoricalOccurrences — UNE seule source d'occurrences pour tous
+  // les read-models (Tension / Chronologie / Lignes de vie). Le fetch est dédupliqué ; la RÈGLE Tension
+  // (runTensionState + tensionTrajectory) reste STRICTEMENT inchangée.
   // Doctrine non-mention ≠ résolu : un sujet reste ACTIF tant que son dernier état PROUVÉ est ouvert.
   // Mentionné dans un PV = concern actif SAUF si TOUT y est prouvé résolu ; non-mention = REPORT du
   // dernier état prouvé (carry-forward). La courbe ne baisse donc QUE sur une résolution prouvée.
-  const { data: occRows } = await supabase
-    .from('canonical_subject_occurrence')
-    .select('canonical_subject_id, source_ref_id, state_key, state_status')
-    .eq('site_id', siteId)
-    .eq('source_kind', 'historical_pdf')
-    .not('validation_status', 'in', '("rejected","source_superseded")')
-  type OccRow = { canonical_subject_id: string; source_ref_id: string; state_key: string; state_status: string | null }
-  const occAll = (occRows ?? []) as OccRow[]
-
-  // report (source_ref_id) → run
-  const repIds = [...new Set(occAll.map((o) => o.source_ref_id))]
-  const repToRun = new Map<string, string>()
-  if (repIds.length > 0) {
-    const { data: reps } = await supabase.from('site_reports').select('id, extraction_run_id').in('id', repIds)
-    for (const r of (reps ?? []) as Array<{ id: string; extraction_run_id: string | null }>) {
-      if (r.extraction_run_id) repToRun.set(r.id, r.extraction_run_id)
-    }
-  }
-
-  // csId → runId → états du run ; runState = 'resolved' UNIQUEMENT si TOUT est prouvé résolu, sinon 'open'
-  // (mentionné sans preuve de résolution = concern ouvert). + familles pour l'exclusion opérationnelle.
-  const csRunStates = new Map<string, Map<string, string[]>>()
-  const csFamilies  = new Map<string, Set<string>>()
-  for (const o of occAll) {
-    const run = repToRun.get(o.source_ref_id)
-    if (!run) continue
-    const cs = o.canonical_subject_id
-    if (!csFamilies.has(cs)) csFamilies.set(cs, new Set())
-    csFamilies.get(cs)!.add(o.state_key)
-    if (!csRunStates.has(cs)) csRunStates.set(cs, new Map())
-    const m = csRunStates.get(cs)!
-    const list = m.get(run) ?? []
-    list.push(o.state_status ?? 'unknown')
-    m.set(run, list)
-  }
+  const { fetchSiteHistoricalOccurrences } = await import('./site-occurrence-timeline')
+  const { byCsRun, familiesByCs } = await fetchSiteHistoricalOccurrences(siteId)
 
   const activeCounts = new Array<number>(sortedRuns.length).fill(0)
   const newCounts    = new Array<number>(sortedRuns.length).fill(0)
 
-  for (const [csId, runStates] of csRunStates.entries()) {
-    const families = csFamilies.get(csId) ?? new Set()
+  for (const [csId, runStates] of byCsRun.entries()) {
+    const families = familiesByCs.get(csId) ?? new Set()
     if (families.size > 0 && [...families].every((f) => OPERATIONAL_EXCLUDED_FAMILIES.has(f))) continue
 
     // Par PV : 'open'|'resolved' si mentionné, null sinon → trajectoire à report du dernier état prouvé.
+    // runState = 'resolved' UNIQUEMENT si TOUT est prouvé résolu, sinon 'open' (mention sans preuve de
+    // résolution = concern ouvert).
     const perRun = sortedRuns.map((r) => {
-      const states = runStates.get(r.id)
-      return states && states.length > 0 ? runTensionState(states) : null
+      const occs = runStates.get(r.id)
+      return occs && occs.length > 0 ? runTensionState(occs.map((o) => o.stateStatus)) : null
     })
     const traj = tensionTrajectory(perRun)
     for (let i = 0; i < traj.length; i++) {
