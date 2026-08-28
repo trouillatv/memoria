@@ -170,6 +170,7 @@ b) Choisis le TYPE en distinguant sans les confondre :
 c) RÈGLE ANTI-INVERSION (impérative) : si la preuve décrit B comme un DÉFAUT / une NON-CONFORMITÉ / un problème, et A comme l'ACTION qui le corrige/le lève, alors la relation est « B requires A » (le défaut exige l'action corrective) — JAMAIS « A causes B ». Ne déduis « causes » que lorsque la preuve nomme A comme l'ORIGINE du défaut B.
 d) La SOURCE (from) d'un lien dépend du type : pour requires, la source est le sujet DÉPENDANT ; pour causes/enables/validates, la source est la CAUSE / ce qui permet / ce qui valide. Choisis la direction (A_to_B / B_to_A) en conséquence.
 e) Si la DIRECTION ou le TYPE restent ambigus après lecture de la preuve → réponds no_relation. Une dépendance INVERSÉE ou MAL TYPÉE est aussi nuisible qu'un faux positif.
+f) PREUVE ENTRE LES DEUX SUJETS (impératif) : la preuve doit contenir une proposition qui affirme EXPLICITEMENT que A dépend de B / permet B / cause B / valide B / remplace B. Le seul fait que A et B apparaissent dans le même paragraphe, renvoient au même plan, au même VISA, à la même zone, au même intervenant, à la même date, ou partagent un document/contexte NE CONSTITUE JAMAIS, à lui seul, une preuve de requires/enables/causes/validates/replaces. Pose-toi la question : « Quelle proposition de la preuve affirme que A dépend de / permet / cause / valide / remplace B ? » Si aucune proposition n'y répond explicitement → no_relation. NE RECONSTRUIS JAMAIS une causalité en combinant deux phrases indépendantes qui ne parlent pas l'une de l'autre.
 
 CONTRE-EXEMPLES DE RÉFÉRENCE (imite exactement le sens ET la direction) :
 1. « Une reprise du nivellement est nécessaire car la zone est hors tolérance. »
@@ -181,7 +182,15 @@ CONTRE-EXEMPLES DE RÉFÉRENCE (imite exactement le sens ET la direction) :
 4. « La non-conformité est causée par un défaut de compactage. »
    → « Défaut de compactage » causes « Non-conformité »  (source = l'origine réelle du défaut).
 5. « Le contrôle valide la conformité. »
-   → « Contrôle » validates « Conformité ».`
+   → « Contrôle » validates « Conformité ».
+
+CONTEXTE PARTAGÉ ≠ DÉPENDANCE (chacun de ces cas, seul, impose no_relation) :
+- Même plan → no_relation.   - Même VISA → no_relation.   - Même zone → no_relation.
+- Même entreprise/intervenant → no_relation.   - Même échéance/date → no_relation.   - Même document → no_relation.
+Cas négatif de référence : « Reprise du nivellement » et « Raccordement AEP » renvoient tous deux au « plan annexé au
+VISA », mais AUCUNE proposition n'affirme que l'un nécessite/permet/cause/valide/remplace l'autre → no_relation.
+(À l'inverse, « Non-conformité de la zone » requires « Reprise du nivellement » RESTE valide : la preuve dit que la
+reprise est nécessaire PARCE QUE la zone est hors tolérance — la dépendance est affirmée entre les deux sujets.)`
 }
 
 // ── Appel Gemini ──────────────────────────────────────────────────────────────
