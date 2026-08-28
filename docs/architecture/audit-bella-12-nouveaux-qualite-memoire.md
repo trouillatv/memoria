@@ -47,15 +47,32 @@ extincteurs, cuisson, nettoyage, extraction, issue de secours, dégagement mall,
 sécurité, séparation flux, extinction friteuse) — domaines distincts. Occurrences uniquement
 au PV 2025 → « nouveaux » authentiques (le PV 2024 ne portait pas ces points).
 
-## 2. Témoin obligatoire — « BELLA NAPOLI »
+## 2. Témoin obligatoire — « BELLA NAPOLI » : chaîne de naissance complète
 
-Trace : `canonical_subject` **d911ab4e**, `kind=actor`, **0 occurrence**, `creation_source=null`,
-aucun lien company/contact. **Le nom du site N'EST PAS devenu un `business_subject`** : c'est un
-nœud **acteur vide et inerte**. Conséquence : exclu du pool métier (#228) ET sans occurrence →
-**invisible dans l'Aperçu, l'attention et l'activité #230**. Il n'a jamais pollué les compteurs.
-Nature : contexte (nom d'établissement) promu au rang d'acteur — catégorie D exprimée comme
-acteur vide. Impact réel = nul aujourd'hui (0 occurrence, actor-exclu). Premier endroit où le
-système aurait pu ne pas le créer : la passe d'identification d'acteurs. **Aucun correctif.**
+Trace `scripts/audit-bella-napoli-chain.ts` (READ-ONLY) :
+
+```
+PDF (PV Bella 2025)
+  → extraction classe « BELLA NAPOLI » avec family = company (le nom d'établissement)
+  → AUCUNE document_extraction_proposal métier « bella » (0 match) — jamais proposé
+     comme business_subject / knowledge_fact : il n'entre PAS dans le pipeline de faits
+  → orphelin acteur (pas de match company unique en base)
+  → extract-historical-pv.ts:557-574 : INSERT canonical_subject { kind:'actor' }, sans
+     creation_source (→ null) + subject_thread_identity (acffde06), le 2026-08-27T01:30
+  → 0 occurrence (un acteur ne reçoit pas d'occurrence métier)
+  → #228 (actor-exclu) + 0 occurrence ⇒ INVISIBLE dans Aperçu / attention / activité #230
+```
+
+`canonical_subject` **d911ab4e** : `kind=actor`, **0 occurrence**, `creation_source=null`,
+aucun lien company/contact/actor_link. **Le nom du site N'EST JAMAIS devenu `business_subject`,
+ni même une proposition métier** — c'est un **nœud acteur vide et inerte**, né de la passe
+d'orphelins-acteurs (famille company). **Premier endroit où le système avait de quoi ne pas le
+créer** : `extract-historical-pv.ts:574`, où `orphan.label` égale le nom propre du chantier
+(`sites.name = « BELLA NAPOLI »`) — un garde « ne pas créer d'acteur dont le label = le nom de
+l'établissement du site » l'aurait évité. **Illustration parfaite de la propriété testée** :
+l'information est vraie (l'établissement existe) mais ne méritait **aucune identité canonique** ;
+le système l'a quand même créée, mais l'invariant #228 + l'absence d'occurrence rendent le
+dommage **nul**. Catégorie D exprimée comme acteur vide. **Aucun correctif (HARD STOP).**
 
 ## 3. Transversalité (READ-ONLY) — OCEF / PETRO
 
