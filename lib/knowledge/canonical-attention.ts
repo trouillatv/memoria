@@ -132,7 +132,11 @@ export async function deriveCanonicalAttentionItems(
   siteId: string,
   opts: { limit?: number; today?: string } = {},
 ): Promise<CanonicalAttentionItem[]> {
-  const limit = opts.limit ?? 5
+  // #231 : `limit` absent = population COMPLÈTE (aucun cap). Le compteur « N autres
+  // sujets » de l'Aperçu doit connaître le total réel AVANT le cap d'affichage —
+  // capper ici puis re-trancher à 3 produisait « 2 autres » pour 14 réels. Les
+  // appelants qui ne veulent que le sommet passent un `limit` explicite.
+  const limit = opts.limit
   const today = opts.today ?? todayIso()
   const admin = createAdminClient()
   const subjectHref = (csId: string) => `/sites/${siteId}/historique/sujets/${csId}`
@@ -419,5 +423,5 @@ export async function deriveCanonicalAttentionItems(
     return a.title.localeCompare(b.title)
   })
 
-  return items.slice(0, limit)
+  return limit === undefined ? items : items.slice(0, limit)
 }

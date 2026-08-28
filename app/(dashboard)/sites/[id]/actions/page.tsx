@@ -1,10 +1,11 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Info, ListTodo } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Info, ListTodo, Sparkles } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { readSiteActionSummaries, groupActionsByThread, readReportMeta, classifyProvenance } from '@/lib/knowledge/repository'
+import { getSitePendingActionProposals } from '@/lib/knowledge/site-pending-proposals'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { SiteTabsNav } from '../SiteTabsNav'
 import { ActionsListClient, type ActionGroupDisplay } from './ActionsListClient'
@@ -31,9 +32,12 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const [identity, actionRows] = await Promise.all([
+  const [identity, actionRows, pendingProposals] = await Promise.all([
     getSiteIdentity(id),
     readSiteActionSummaries(id),
+    // #231 — population AGRÉGÉE des propositions d'action en attente (toutes visites).
+    // C'est la destination du compteur « N proposées » de l'Aperçu.
+    getSitePendingActionProposals(id).catch(() => []),
   ])
   if (!identity) notFound()
 
@@ -193,6 +197,48 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
           Une ligne représente un sujet à organiser ou traiter, même s&apos;il a été mentionné plusieurs fois dans des documents différents.
         </span>
       </div>
+
+      {/* ── PROPOSITIONS À CONFIRMER (#231) ───────────────────────────────────
+          Destination du compteur « N proposées » de l'Aperçu : la population
+          AGRÉGÉE du chantier, toutes visites/imports confondus. Chaque ligne
+          renvoie à la page de SON report pour l'arbitrage. « IA propose, humain
+          confirme » — distinct des sujets d'action déjà validés ci-dessous. */}
+      {pendingProposals.length > 0 && (
+        <section id="propositions" className="scroll-mt-4 rounded-xl border border-sky-200 bg-sky-50/50 p-4 shadow-sm dark:border-sky-900/40 dark:bg-sky-950/20">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-sky-600" aria-hidden />
+            <h2 className="text-sm font-semibold text-sky-900 dark:text-sky-200">
+              {pendingProposals.length} proposition{pendingProposals.length > 1 ? 's' : ''} à confirmer
+            </h2>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Détectées par MemorIA, en attente de votre décision. Ouvrez la visite d&apos;origine pour arbitrer.
+          </p>
+          <ul className="mt-3 divide-y">
+            {pendingProposals.map((p) => {
+              const meta = [p.provenanceLabel, p.provenanceDate].filter(Boolean).join(' · ')
+              const inner = (
+                <span className="flex items-start justify-between gap-3">
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-foreground/90">{p.title}</span>
+                    {meta && <span className="mt-0.5 block text-[11.5px] text-muted-foreground">{meta}</span>}
+                  </span>
+                  {p.reportHref && <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
+                </span>
+              )
+              return (
+                <li key={p.id} className="py-2">
+                  {p.reportHref ? (
+                    <Link href={p.reportHref} className="block rounded-lg px-1 -mx-1 hover:bg-muted/50">{inner}</Link>
+                  ) : (
+                    <div className="px-1">{inner}</div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
 
       {/* Liste interactive */}
       {groups.length > 0 ? (

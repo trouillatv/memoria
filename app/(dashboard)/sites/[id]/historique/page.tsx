@@ -20,6 +20,8 @@ import {
 import { buildEvolutionReadModel, generateEvolutionNarrative } from '@/lib/documents/pv-evolution'
 import { isEvolutionV2Enabled, classifySubjectEvolutionV2 } from '@/lib/knowledge/evolution-v2'
 import type { V2SubjectResult } from '@/lib/knowledge/evolution-v2'
+import { deriveCanonicalAttentionItems } from '@/lib/knowledge/canonical-attention'
+import { CanonicalAttentionRow } from '@/components/site/CanonicalAttentionRow'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
 import { SubjectLifelineGrid } from './SubjectLifelineGrid'
@@ -30,7 +32,7 @@ import { DependencyGraphView } from './DependencyGraphView'
 
 export const dynamic = 'force-dynamic'
 
-type ViewKey = 'synthese' | 'lifelines' | 'heatmap' | 'evolution' | 'deps'
+type ViewKey = 'synthese' | 'lifelines' | 'heatmap' | 'evolution' | 'deps' | 'attention'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -53,7 +55,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
 
   const { id: siteId } = await params
   const sp = await searchParams
-  const VALID_VIEWS: ViewKey[] = ['synthese', 'lifelines', 'heatmap', 'evolution', 'deps']
+  const VALID_VIEWS: ViewKey[] = ['synthese', 'lifelines', 'heatmap', 'evolution', 'deps', 'attention']
   const view: ViewKey = (VALID_VIEWS.includes(sp.view as ViewKey) ? sp.view as ViewKey : 'synthese')
   const initialThread = sp.thread ?? null
   const initialTheme = sp.theme ?? null
@@ -73,6 +75,13 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   const depsGraph = view === 'deps'
     ? await getSiteDependencyGraph(siteId).catch(() => null)
     : null
+
+  // #231 — vue Attention : EXACTEMENT la population du moteur d'Aperçu (même
+  // read-model, aucun recalcul), population complète (aucun cap). Destination du
+  // « +N autres sujets · Voir les X » de l'Aperçu.
+  const attentionItems = view === 'attention'
+    ? await deriveCanonicalAttentionItems(siteId).catch(() => [])
+    : []
 
   // nativeOccurrences chargé pour tous les onglets (header + lifelines + évolution)
   const nativeOccurrences = await getSiteNativeOccurrencesBySubject(siteId).catch(() => ({}))
@@ -231,6 +240,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
           <nav className="mt-4 flex gap-1 rounded-xl bg-muted/40 p-1">
             {([
               { key: 'synthese',   label: 'Synthèse' },
+              { key: 'attention',  label: 'Attention' },
               { key: 'lifelines',  label: 'Lignes de vie' },
               { key: 'heatmap',    label: 'Historique PV' },
               { key: 'evolution',  label: 'Évolution' },
@@ -262,6 +272,30 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
             totalSubjects={totalSubjects}
             importantSubjects={importantSubjects}
           />
+        )}
+
+        {/* Attention — population complète des sujets qui demandent une action (#231) */}
+        {view === 'attention' && (
+          attentionItems.length > 0 ? (
+            <section className="space-y-3">
+              <p className="px-1 text-sm text-muted-foreground">
+                {attentionItems.length} sujet{attentionItems.length > 1 ? 's' : ''} demandant votre attention,
+                classé{attentionItems.length > 1 ? 's' : ''} par sévérité. L&apos;Aperçu n&apos;en montre que les premiers.
+              </p>
+              <div className="space-y-2">
+                {attentionItems.map((item, i) => (
+                  <CanonicalAttentionRow key={i} item={item} />
+                ))}
+              </div>
+            </section>
+          ) : (
+            <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
+              <p className="font-medium">Aucun sujet ne demande d&apos;attention particulière.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Aucune alerte active (non-conformité, réouverture, stagnation, retard) sur les sujets de ce chantier.
+              </p>
+            </section>
+          )
         )}
 
         {/* Lignes de vie */}

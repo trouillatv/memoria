@@ -18,6 +18,7 @@ import {
   type ActionUrgency,
   type SiteOverview,
 } from '@/lib/knowledge/site-overview'
+import { exactRemainder } from '@/lib/knowledge/overview-counter'
 import { sourceLabels, pendingLabel, visitDateLabel, durationLabel } from '@/lib/chantier/overview-labels'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { SiteBriefButton } from '../../SiteBriefButton'
@@ -68,6 +69,7 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
             detail={reserves.open > 0 ? 'À lever' : 'Aucune réserve ouverte'}
           />
           <StateCard
+            href={`/sites/${siteId}/reserves`}
             icon={ShieldAlert}
             tone={blockages.open > 0 ? 'red' : 'green'}
             value={blockages.open}
@@ -163,11 +165,17 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
               </li>
             ))}
           </ul>
-          {synthesisHref && (
-            <Link href={synthesisHref} className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-sky-700 hover:underline dark:text-sky-300">
-              Voir la synthèse et confirmer <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
+          {/* #231 — troncature explicite : « +N autres » arithmétiquement exact
+              (compteur − affichés), et destination = la MÊME population chantier
+              (toutes visites), pas la dernière visite. */}
+          {exactRemainder(actions.summary.proposed, actions.proposed.length) > 0 && (
+            <p className="mt-1 pl-3 text-xs text-muted-foreground">
+              +{exactRemainder(actions.summary.proposed, actions.proposed.length)} autre{exactRemainder(actions.summary.proposed, actions.proposed.length) > 1 ? 's' : ''}
+            </p>
           )}
+          <Link href={`/sites/${siteId}/actions#propositions`} className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-sky-700 hover:underline dark:text-sky-300">
+            Voir les {actions.summary.proposed} proposition{actions.summary.proposed > 1 ? 's' : ''} <ChevronRight className="h-3.5 w-3.5" />
+          </Link>
         </section>
       )}
 
