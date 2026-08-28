@@ -1,13 +1,13 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, ChevronRight, Info, ListTodo, Sparkles } from 'lucide-react'
+import { ChevronRight, Info, ListTodo, Sparkles } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { readSiteActionSummaries, groupActionsByThread, readReportMeta, classifyProvenance } from '@/lib/knowledge/repository'
 import { getSitePendingActionProposals } from '@/lib/knowledge/site-pending-proposals'
 import { todayLocalIso } from '@/lib/time/local-date'
-import { SiteTabsNav } from '../SiteTabsNav'
+import { SiteChantierNav } from '../SiteChantierNav'
 import { ActionsListClient, type ActionGroupDisplay } from './ActionsListClient'
 
 export const dynamic = 'force-dynamic'
@@ -135,16 +135,8 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
         ]} />
       )}
 
-      {/* Navigation chantier */}
-      <div className="space-y-3">
-        <Link
-          href={`/sites/${id}`}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" /> {identity.name}
-        </Link>
-        <SiteTabsNav active="actions" siteId={id} />
-      </div>
+      {/* Navigation chantier PARTAGÉE (sticky compact) — identité persistante. */}
+      <SiteChantierNav siteId={id} siteName={identity.name} clientName={identity.clientName} activeTab="actions" />
 
       <header className="space-y-3">
         <h1 className="inline-flex items-center gap-2 text-2xl font-bold">

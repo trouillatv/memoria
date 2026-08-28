@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { SiteTabsNav } from '../SiteTabsNav'
+import { SiteChantierNav } from '../SiteChantierNav'
 import { getSiteHistoricalTimeline, getSiteSubjectMatrix } from '@/lib/documents/pv-history'
 import { buildOccurrencePvSummary, type OccurrencePvSummary } from '@/lib/documents/occurrence-pv-summary'
 import { getSuggestedLinkCountsBySite } from '@/lib/db/subject-thread-links'
@@ -211,10 +211,8 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
       )}
 
       <main className="mx-auto max-w-5xl space-y-4 px-4 py-6">
-        {/* Nav principale du chantier — Histoire est l'onglet actif */}
-        <div className="rounded-[18px] border bg-card px-4 pb-0 pt-4 shadow-sm">
-          <SiteTabsNav active="histoire" siteId={siteId} />
-        </div>
+        {/* Nav chantier PARTAGÉE (sticky compact) — identité persistante « Suivi ». */}
+        <SiteChantierNav siteId={siteId} siteName={site.name} clientName={site.clientName} activeTab="histoire" />
 
         <section className="rounded-[22px] border bg-card p-5 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

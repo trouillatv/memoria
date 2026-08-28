@@ -68,7 +68,8 @@ import { listClients } from '@/lib/db/sites'
 import { SiteBriefButton } from './SiteBriefButton'
 import { SiteAddMenu } from './SiteAddMenu'
 import { SiteMemoryQuery } from './SiteMemoryQuery'
-import { SiteTabsNav, resolveSiteTab, type SiteTabKey } from './SiteTabsNav'
+import { resolveSiteTab, type SiteTabKey } from './SiteTabsNav'
+import { SiteChantierNav } from './SiteChantierNav'
 import { TogglePanel } from './TogglePanel'
 import { DocumentsWorkspace, type DocumentsQrState, type SiteMediaSummary } from './views/documents/DocumentsWorkspace'
 import { WorkWorkspace } from './views/work/WorkWorkspace'
@@ -190,10 +191,12 @@ export default async function SitePage({ params, searchParams }: PageProps) {
             </div>
           </div>
 
-          <div className="mt-5">
-            <SiteTabsNav active={tab} siteId={id} />
-          </div>
         </div>
+
+        {/* Navigation chantier PARTAGÉE (sticky compact) — identité persistante +
+            onglets N2, identiques à toutes les routes chantier. Le hero ci-dessus
+            reste non sticky. */}
+        <SiteChantierNav siteId={id} siteName={identity.name} clientName={identity.clientName} activeTab={tab} />
 
         {/* ÉTAPE 2 — l'en-tête et les onglets ci-dessus ne dépendent que de
             l'identité : ils sortent AVANT les données de l'onglet, qui arrivent

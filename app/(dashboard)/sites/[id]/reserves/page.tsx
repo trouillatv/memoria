@@ -1,5 +1,4 @@
 import { redirect, notFound } from 'next/navigation'
-import Link from 'next/link'
 import { ClipboardCheck, MapPin } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
@@ -8,7 +7,7 @@ import { listSiteActionsByReserve } from '@/lib/db/site-actions'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { getSignedPhotoUrl } from '@/lib/storage/intervention-photos'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
-import { SiteTabsNav } from '../SiteTabsNav'
+import { SiteChantierNav } from '../SiteChantierNav'
 import { ReserveForm } from './ReserveForm'
 import { ReservesView, type ReserveWithPhotos } from './ReservesView'
 
@@ -71,16 +70,7 @@ export default async function SiteReservesPage({ params }: PageProps) {
         ]} />
       )}
 
-      <Link
-        href={`/sites/${id}`}
-        className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
-      >
-        ← {identity.name}
-      </Link>
-
-      <div className="rounded-[18px] border bg-card px-4 pb-0 pt-4 shadow-sm">
-        <SiteTabsNav active="reserves" siteId={id} />
-      </div>
+      <SiteChantierNav siteId={id} siteName={identity.name} clientName={identity.clientName} activeTab="reserves" />
 
       <header className="space-y-1">
         <div className="flex items-center justify-between gap-4 flex-wrap">
