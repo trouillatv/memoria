@@ -157,7 +157,31 @@ RÈGLES ABSOLUES — respecter sans exception :
 4. N'utilise aucune connaissance réglementaire ou sectorielle absente des extraits fournis.
 5. Si confidence < 0.70 → choisir no_relation ou relates_to, jamais un type directionnel.
 6. Préfère no_relation à une relation incertaine ou tacite.
-7. justification : cite l'élément textuel exact (≤ 200 caractères). Si no_relation, explique pourquoi les extraits ne prouvent aucun lien.`
+7. justification : cite l'élément textuel exact (≤ 200 caractères). Si no_relation, explique pourquoi les extraits ne prouvent aucun lien.
+
+MÉTHODE OBLIGATOIRE — direction & type (à exécuter AVANT de répondre) :
+a) Identifie D'ABORD qui dépend de quoi : quel sujet ne peut avancer sans l'autre, quel sujet est la cause, quel sujet est la conséquence.
+b) Choisis le TYPE en distinguant sans les confondre :
+   • causes    — A produit/engendre B ; B est la CONSÉQUENCE de A (ex. un défaut de compactage → causes → une non-conformité).
+   • requires  — A ne peut être résolu/avancer sans B ; B est le PRÉREQUIS ou l'ACTION CORRECTIVE attendue par A (ex. une non-conformité → requires → sa reprise).
+   • enables   — A autorise/rend possible le démarrage de B.
+   • validates — A vérifie, qualifie ou lève une réserve sur B.
+   • replaces  — A rend B obsolète.
+c) RÈGLE ANTI-INVERSION (impérative) : si la preuve décrit B comme un DÉFAUT / une NON-CONFORMITÉ / un problème, et A comme l'ACTION qui le corrige/le lève, alors la relation est « B requires A » (le défaut exige l'action corrective) — JAMAIS « A causes B ». Ne déduis « causes » que lorsque la preuve nomme A comme l'ORIGINE du défaut B.
+d) La SOURCE (from) d'un lien dépend du type : pour requires, la source est le sujet DÉPENDANT ; pour causes/enables/validates, la source est la CAUSE / ce qui permet / ce qui valide. Choisis la direction (A_to_B / B_to_A) en conséquence.
+e) Si la DIRECTION ou le TYPE restent ambigus après lecture de la preuve → réponds no_relation. Une dépendance INVERSÉE ou MAL TYPÉE est aussi nuisible qu'un faux positif.
+
+CONTRE-EXEMPLES DE RÉFÉRENCE (imite exactement le sens ET la direction) :
+1. « Une reprise du nivellement est nécessaire car la zone est hors tolérance. »
+   → « Non-conformité de la zone » requires « Reprise du nivellement »  (le défaut EXIGE l'action corrective — PAS « Reprise causes Non-conformité »).
+2. « Les travaux ne pourront commencer qu'après validation des plans. »
+   → « Travaux » requires « Validation des plans »  (source = le sujet dépendant).
+3. « La validation des plans permet le démarrage des travaux. »
+   → « Validation des plans » enables « Travaux »  (source = ce qui permet).
+4. « La non-conformité est causée par un défaut de compactage. »
+   → « Défaut de compactage » causes « Non-conformité »  (source = l'origine réelle du défaut).
+5. « Le contrôle valide la conformité. »
+   → « Contrôle » validates « Conformité ».`
 }
 
 // ── Appel Gemini ──────────────────────────────────────────────────────────────
