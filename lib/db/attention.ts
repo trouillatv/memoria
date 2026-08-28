@@ -10,6 +10,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { TERRAIN_VISIT_ORIGINS } from '@/lib/field/visit-origins'
 import { OrganisationAmbigueError } from '@/lib/auth/organisation-ambigue'
 import { listOpenSiteActions, actionHealth, type SiteActionRow } from '@/lib/db/site-actions'
 import { describeOverdueAction } from '@/lib/knowledge/overdue-action'
@@ -298,7 +299,7 @@ async function listPendingDebriefs(siteIds: string[]): Promise<PendingDebrief[]>
     .from('site_reports')
     .select('id, site_id, ended_at')
     .in('site_id', siteIds)
-    .not('origin', 'is', null) // une visite (une réunion a origin null)
+    .in('origin', TERRAIN_VISIT_ORIGINS) // visite TERRAIN (réunion=null et import exclus) — P0.5-Vérité
     .not('ended_at', 'is', null)
     .is('deleted_at', null)
     .order('ended_at', { ascending: false })

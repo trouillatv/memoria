@@ -1,4 +1,5 @@
 import 'server-only'
+import { TERRAIN_VISIT_ORIGINS } from '@/lib/field/visit-origins'
 
 // ── KNOWLEDGE REPOSITORY ─────────────────────────────────────────────────────
 // SEUL endroit qui connaît Supabase et les tables de la connaissance. Il renvoie
@@ -246,7 +247,7 @@ export async function readLatestVisitSynthesis(siteId: string): Promise<LatestVi
     .from('site_reports')
     .select('id, started_at, ended_at, debrief_analysis, debrief_generating_at, debrief_projection_error')
     .eq('site_id', siteId)
-    .not('origin', 'is', null)
+    .in('origin', TERRAIN_VISIT_ORIGINS)
     .is('deleted_at', null)
     .not('ended_at', 'is', null)
     .order('ended_at', { ascending: false })
@@ -460,13 +461,50 @@ export async function readFirstVisitId(siteId: string): Promise<string | null> {
     .from('site_reports')
     .select('id')
     .eq('site_id', siteId)
-    .not('origin', 'is', null)
+    .in('origin', TERRAIN_VISIT_ORIGINS)
     .not('ended_at', 'is', null)
     .is('deleted_at', null)
     .order('ended_at', { ascending: true })
     .limit(1)
     .maybeSingle()
   return (data as { id: string } | null)?.id ?? null
+}
+
+/**
+ * Date DOCUMENTAIRE métier des reports importés (origin='import') :
+ * `documents.effective_date` via `source_document_id`. P0.5-Vérité — c'est la SEULE
+ * source de date d'un import ; jamais started_at/created_at/date de run. Absente →
+ * `null` explicite (pas de date fabriquée). Map<reportId, effective_date|null> pour
+ * les seuls reports import de la liste (les autres reports ne sont pas retournés).
+ */
+export async function readImportDocumentDates(reportIds: string[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>()
+  if (!reportIds.length) return out
+  const db = createAdminClient()
+  const { data: reps } = await db
+    .from('site_reports')
+    .select('id, source_document_id')
+    .in('id', reportIds)
+    .eq('origin', 'import')
+  const rows = (reps ?? []) as Array<{ id: string; source_document_id: string | null }>
+  const docToReports = new Map<string, string[]>()
+  for (const r of rows) {
+    out.set(r.id, null) // par défaut : date documentaire inconnue (jamais une date technique)
+    if (r.source_document_id) {
+      const list = docToReports.get(r.source_document_id) ?? []
+      list.push(r.id)
+      docToReports.set(r.source_document_id, list)
+    }
+  }
+  const docIds = [...docToReports.keys()]
+  if (docIds.length > 0) {
+    const { data: docs } = await db.from('documents').select('id, effective_date').in('id', docIds)
+    for (const d of (docs ?? []) as Array<{ id: string; effective_date: string | null }>) {
+      if (!d.effective_date) continue
+      for (const rid of docToReports.get(d.id) ?? []) out.set(rid, d.effective_date)
+    }
+  }
+  return out
 }
 
 /** Les noms des auteurs d'une validation — pour dire « Guillaume confirme ». */

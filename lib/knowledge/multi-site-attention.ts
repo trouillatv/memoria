@@ -9,6 +9,7 @@
 // Zéro LLM. Zéro score affiché à l'utilisateur.
 
 import 'server-only'
+import { TERRAIN_VISIT_ORIGINS } from '@/lib/field/visit-origins'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSites } from '@/lib/db/sites'
@@ -113,7 +114,8 @@ export async function deriveMultiSiteAttention(
       .from('site_reports')
       .select('id, site_id, started_at')
       .in('site_id', siteIds)
-      .not('origin', 'is', null)
+      // Dernière VISITE TERRAIN par site : un import historique ne prouve pas une visite (P0.5-Vérité).
+      .in('origin', TERRAIN_VISIT_ORIGINS)
       .not('ended_at', 'is', null)
       .is('deleted_at', null)
       .order('started_at', { ascending: false })

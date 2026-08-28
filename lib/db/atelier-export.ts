@@ -17,6 +17,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { TERRAIN_VISIT_ORIGINS } from '@/lib/field/visit-origins'
 import type {
   DbTenderChatMessage,
   DbTenderChatAttachment,
@@ -324,7 +325,7 @@ async function aggregateForces(
       .from('site_reports')
       .select('id, ended_at')
       .in('site_id', siteIds)
-      .not('origin', 'is', null)
+      .in('origin', TERRAIN_VISIT_ORIGINS)
       .is('deleted_at', null)
     const reportIds = ((reps ?? []) as Array<{ id: string; ended_at: string | null }>).map((r) => r.id)
     visitesDocumentees = ((reps ?? []) as Array<{ ended_at: string | null }>).filter((r) => r.ended_at).length

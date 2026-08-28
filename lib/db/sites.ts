@@ -1,6 +1,7 @@
 import { resolveResourceAccess } from '@/lib/auth/resource-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { TERRAIN_VISIT_ORIGINS } from '@/lib/field/visit-origins'
 import { getOrgIdsOfUser, requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
 import { todayLocalIso } from '@/lib/time/local-date'
@@ -117,7 +118,7 @@ export async function listSitesForMatching(): Promise<SiteForMatching[]> {
   if (orgIds.length === 0) return []
 
   // Tente d'abord avec les nouvelles colonnes (post-migration 062)
-  let baseQ = supabase
+  const baseQ = supabase
     .from('sites')
     .select('id, name, normalized_name, canonical_site_key, client_id, client:clients(name)')
     .is('deleted_at', null)
@@ -318,14 +319,14 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
       .select('site_id, deleted_at')
       .in('site_id', siteIds)
       .is('deleted_at', null),
-    // LES VISITES — voir plus bas pourquoi elles manquaient.
-    // `origin` non nul = visite terrain ; nul = réunion. Les mêler ferait dire
-    // « 5 visites » là où il y a eu trois visites et deux réunions.
+    // LES VISITES — compteur « N visites » de la liste chantiers. P0.5-Vérité :
+    // visite = TERRAIN uniquement (planned/spontaneous/qr/gps). Un import historique
+    // (origin='import') n'est pas une visite ; une réunion a origin nul.
     supabase
       .from('site_reports')
       .select('site_id, started_at, created_at, origin')
       .in('site_id', siteIds)
-      .not('origin', 'is', null),
+      .in('origin', TERRAIN_VISIT_ORIGINS),
   ])
   if (missionsRes.error) throw missionsRes.error
   if (notesRes.error) throw notesRes.error

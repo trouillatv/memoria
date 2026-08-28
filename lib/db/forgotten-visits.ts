@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
+import { TERRAIN_VISIT_ORIGINS } from '@/lib/field/visit-origins'
 
 // ── CANDIDATS « VISITES OUBLIÉES » ───────────────────────────────────────────
 // Deux notions, une même famille pour le cockpit (label « À anticiper » / « Visite
@@ -66,12 +67,13 @@ export async function getForgottenVisitCandidates(orgIds: string[]): Promise<For
       .eq('status', 'planned')
       .gte('scheduled_for', windowStart)
       .lt('scheduled_for', today),
-    // Dernière visite terrain terminée par site (origin non nul = visite, pas réunion).
+    // Dernière VISITE TERRAIN terminée par site. P0.5-Vérité : un PV/CR importé
+    // (origin='import') n'est JAMAIS une preuve que quelqu'un est allé sur le chantier.
     supabase
       .from('site_reports')
       .select('site_id, ended_at')
       .in('site_id', siteIds)
-      .not('origin', 'is', null)
+      .in('origin', TERRAIN_VISIT_ORIGINS)
       .not('ended_at', 'is', null)
       .is('deleted_at', null)
       .order('ended_at', { ascending: false }),

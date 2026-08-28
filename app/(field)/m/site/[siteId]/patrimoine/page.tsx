@@ -81,8 +81,9 @@ export default async function SitePatrimoinePage({
   const subjectsByFreq = [...subjects].sort((a, b) => subjectFreq(b) - subjectFreq(a) || a.name.localeCompare(b.name))
   const suggestions = subjectsByFreq.slice(0, 8).map((s) => s.name)
 
-  // Ce chantier apprend — n'a de sens que si le chantier a une histoire.
-  const learns = patrimoine && (patrimoine.visits + patrimoine.meetings + patrimoine.photos + patrimoine.actions + patrimoine.reserves) > 0
+  // Ce chantier apprend — n'a de sens que si le chantier a une histoire (visites
+  // terrain OU mémoire documentaire importée OU autres traces).
+  const learns = patrimoine && (patrimoine.visits + patrimoine.importedDocs + patrimoine.meetings + patrimoine.photos + patrimoine.actions + patrimoine.reserves) > 0
 
   // Meilleures ressources — la dernière de chaque type (lien direct).
   const resources = (['visit', 'meeting', 'intervention'] as const)
@@ -150,14 +151,27 @@ export default async function SitePatrimoinePage({
         <section className="space-y-2">
           <SectionTitle>Ce chantier apprend</SectionTitle>
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
-            {patrimoine.firstVisitLabel && (
+            {/* P0.5-Vérité : la « première visite » est TERRAIN. Sans visite terrain,
+                on parle de mémoire documentaire (PV/CR importés), datée par la vraie
+                date métier du document — jamais la date technique d'import. */}
+            {patrimoine.firstVisitLabel ? (
               <p className="flex items-center gap-2 text-[13px] text-emerald-900/80 dark:text-emerald-200/80">
                 <Brain className="h-4 w-4 shrink-0 text-emerald-600" /> Depuis la première visite ({patrimoine.firstVisitLabel})
               </p>
-            )}
+            ) : patrimoine.importedDocs > 0 ? (
+              // Date = premier DOCUMENT historique connu (documents.effective_date), pas
+              // « le début du chantier » : « Mémoire documentée depuis <date> » ne sur-promet pas.
+              <p className="flex items-center gap-2 text-[13px] text-emerald-900/80 dark:text-emerald-200/80">
+                <Brain className="h-4 w-4 shrink-0 text-emerald-600" />
+                Mémoire documentée{patrimoine.firstDocDateLabel ? ` depuis ${patrimoine.firstDocDateLabel}` : ''}
+              </p>
+            ) : null}
             <div className="mt-3 grid grid-cols-3 gap-x-2 gap-y-3 text-center">
               <Stat n={patrimoine.photos} label={patrimoine.photos > 1 ? 'photos' : 'photo'} />
-              <Stat n={patrimoine.visits} label={patrimoine.visits > 1 ? 'visites' : 'visite'} />
+              <Stat n={patrimoine.visits} label={patrimoine.visits > 1 ? 'visites terrain' : 'visite terrain'} />
+              {patrimoine.importedDocs > 0 && (
+                <Stat n={patrimoine.importedDocs} label={patrimoine.importedDocs > 1 ? 'PV/CR historiques' : 'PV/CR historique'} />
+              )}
               <Stat n={patrimoine.meetings} label={patrimoine.meetings > 1 ? 'réunions' : 'réunion'} />
               <Stat n={patrimoine.actions} label={patrimoine.actions > 1 ? 'actions' : 'action'} />
               <Stat n={patrimoine.reserves} label={patrimoine.reserves > 1 ? 'réserves' : 'réserve'} />

@@ -9,6 +9,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { TERRAIN_VISIT_ORIGINS } from '@/lib/field/visit-origins'
 import { localDateOf, todayLocalIso } from '@/lib/time/local-date'
 
 export interface TerrainTestSnapshot {
@@ -49,7 +50,7 @@ export async function getTerrainTestSnapshot(days = 7): Promise<TerrainTestSnaps
     // ── Visites (site_reports avec origin) ──
     const { data: visitRows } = await supabase
       .from('site_reports').select('ended_at').eq('organization_id', orgId)
-      .not('origin', 'is', null).gte('created_at', since)
+      .in('origin', TERRAIN_VISIT_ORIGINS).gte('created_at', since)
     const visits = { started: 0, ongoing: 0, ended: 0 }
     for (const v of (visitRows ?? []) as Array<{ ended_at: string | null }>) {
       visits.started++

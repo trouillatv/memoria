@@ -42,6 +42,7 @@ import type {
   VisitResolution,
 } from '@/types/db'
 import { VISIT_PROOF_MOTIVES } from '@/types/db'
+import { TERRAIN_VISIT_ORIGINS, isTerrainVisitOrigin, isImportedDocumentOrigin } from '@/lib/field/visit-origins'
 
 /** Un motif « preuve » routera vers le rail intervention (signature) — cran 2. */
 export function isProofMotive(motive: VisitMotive): boolean {
@@ -49,11 +50,12 @@ export function isProofMotive(motive: VisitMotive): boolean {
 }
 
 /**
- * Origines considérées comme des visites terrain réelles.
- * Liste blanche explicite : toute valeur ajoutée demain (ex. 'import') ne
- * devient pas accidentellement une visite terrain dans les vues UI.
+ * Origines considérées comme des visites terrain réelles. Alias LOCAL de la
+ * primitive partagée `lib/field/visit-origins` (source unique de vérité) : un
+ * import (`origin='import'`) n'est jamais une visite terrain (P0.5-Vérité).
  */
-export const TERRAIN_ORIGINS = ['planned', 'spontaneous', 'qr', 'gps'] as const
+export const TERRAIN_ORIGINS = TERRAIN_VISIT_ORIGINS
+export { isTerrainVisitOrigin }
 
 // ── Démarrage (zéro question) ────────────────────────────────────────────────
 
@@ -323,7 +325,7 @@ export async function getStartedVisitById(reportId: string, siteId: string): Pro
     .select('*')
     .eq('id', reportId)
     .eq('site_id', siteId)
-    .not('origin', 'is', null)
+    .in('origin', TERRAIN_ORIGINS)
     .is('ended_at', null)
     .limit(1)
     .maybeSingle()
@@ -376,7 +378,7 @@ export async function listActiveVisitsForUser(userId: string, limit = 5): Promis
     .from('site_reports')
     .select('id, site_id, started_at')
     .eq('created_by', userId)
-    .not('origin', 'is', null)
+    .in('origin', TERRAIN_ORIGINS)
     .is('deleted_at', null)
     .is('ended_at', null)
     .not('site_id', 'is', null)
@@ -684,7 +686,7 @@ export async function buildVisitEvolution(reportId: string, siteId: string): Pro
     .from('site_reports')
     .select('id, started_at, ended_at, created_at')
     .eq('site_id', siteId)
-    .not('origin', 'is', null)
+    .in('origin', TERRAIN_ORIGINS)
     .not('ended_at', 'is', null)
     .neq('id', reportId)
     .lt('ended_at', curStart)
@@ -711,37 +713,65 @@ export async function buildVisitEvolution(reportId: string, siteId: string): Pro
 }
 
 export interface SitePatrimoine {
+  /** Première VISITE TERRAIN (jamais un import). Null si aucune visite terrain. */
   firstVisitLabel: string | null
+  /** Plus ancienne date DOCUMENTAIRE prouvée (documents.effective_date des imports).
+   *  C'est « depuis quand MemorIA connaît le chantier » — indépendant des visites. */
+  firstDocDateLabel: string | null
   photos: number
+  /** Visites TERRAIN uniquement (planned/spontaneous/qr/gps). */
   visits: number
+  /** PV/CR historiques importés (origin='import') — mémoire documentaire, PAS des visites. */
+  importedDocs: number
   meetings: number
   actions: number
   reserves: number
   subjects: number
 }
 
-/** Le PATRIMOINE du chantier — « depuis la première visite : N photos · N visites
- *  · N réunions · N actions · N réserves · N sujets ». Présenté comme un patrimoine
- *  accumulé (« ce chantier apprend »), pas des KPI. Comptes RÉELS, déterministes —
- *  on n'affiche que ce qui a une source propre (entreprises/personnes = participants
- *  JSON, zones sensibles = non captées : volontairement absents). */
+/** Le PATRIMOINE du chantier. Comptes RÉELS, déterministes. P0.5-Vérité : les visites
+ *  terrain et les PV/CR importés sont comptés SÉPARÉMENT — un import n'est jamais une
+ *  visite. La « première visite » est terrain ; la mémoire documentaire porte sa propre
+ *  date (date métier du document, jamais la date technique d'import). */
 export async function buildSitePatrimoine(siteId: string): Promise<SitePatrimoine> {
   const supabase = createAdminClient()
-  const [visitsRes, meetingsRes, photosRes, actionsRes, reservesRes, subjectsRes, firstRes] = await Promise.all([
-    supabase.from('site_reports').select('id', { count: 'exact', head: true }).eq('site_id', siteId).not('origin', 'is', null),
+  const [visitsRes, importsRes, meetingsRes, photosRes, actionsRes, reservesRes, subjectsRes, firstVisitRes, importDocsRes] = await Promise.all([
+    supabase.from('site_reports').select('id', { count: 'exact', head: true }).eq('site_id', siteId).in('origin', TERRAIN_ORIGINS),
+    supabase.from('site_reports').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('origin', 'import'),
     supabase.from('site_reports').select('id', { count: 'exact', head: true }).eq('site_id', siteId).is('origin', null).neq('status', 'draft'),
     supabase.from('visit_capture').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('kind', 'photo').neq('status', 'discarded'),
     supabase.from('site_actions').select('id', { count: 'exact', head: true }).eq('site_id', siteId),
     supabase.from('site_reserve').select('id', { count: 'exact', head: true }).eq('site_id', siteId),
     supabase.from('canonical_subject').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('status', 'active'),
-    supabase.from('site_reports').select('started_at, created_at').eq('site_id', siteId).not('origin', 'is', null).order('started_at', { ascending: true, nullsFirst: false }).limit(1).maybeSingle(),
+    // Première visite TERRAIN : started_at réel d'une visite (jamais un import).
+    supabase.from('site_reports').select('started_at').eq('site_id', siteId).in('origin', TERRAIN_ORIGINS).not('started_at', 'is', null).order('started_at', { ascending: true }).limit(1).maybeSingle(),
+    // Documents source des imports → plus ancienne date documentaire PROUVÉE.
+    supabase.from('site_reports').select('source_document_id').eq('site_id', siteId).eq('origin', 'import').not('source_document_id', 'is', null),
   ])
-  const first = firstRes.data as { started_at: string | null; created_at: string } | null
-  const firstIso = first?.started_at ?? first?.created_at ?? null
+
+  const firstVisit = firstVisitRes.data as { started_at: string | null } | null
+  const firstVisitIso = firstVisit?.started_at ?? null
+
+  // Date documentaire la plus ancienne = MIN(documents.effective_date) des imports.
+  // JAMAIS de repli sur started_at/created_at/run : une date métier non prouvée reste absente.
+  let firstDocIso: string | null = null
+  const docIds = [...new Set(((importDocsRes.data ?? []) as Array<{ source_document_id: string | null }>)
+    .map((r) => r.source_document_id).filter((x): x is string => !!x))]
+  if (docIds.length > 0) {
+    const { data: docs } = await supabase
+      .from('documents').select('effective_date')
+      .in('id', docIds).not('effective_date', 'is', null)
+      .order('effective_date', { ascending: true }).limit(1)
+    firstDocIso = ((docs ?? [])[0] as { effective_date: string } | undefined)?.effective_date ?? null
+  }
+
+  const frLong = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'long', year: 'numeric' })
   return {
-    firstVisitLabel: firstIso ? new Date(firstIso).toLocaleDateString('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'long', year: 'numeric' }) : null,
+    firstVisitLabel: firstVisitIso ? frLong(firstVisitIso) : null,
+    firstDocDateLabel: firstDocIso ? frLong(firstDocIso) : null,
     photos: photosRes.count ?? 0,
     visits: visitsRes.count ?? 0,
+    importedDocs: importsRes.count ?? 0,
     meetings: meetingsRes.count ?? 0,
     actions: actionsRes.count ?? 0,
     reserves: reservesRes.count ?? 0,
@@ -965,7 +995,7 @@ export async function getRecentActivityForUser(userId: string): Promise<RecentAc
   const supabase = createAdminClient()
   const [visitRes, crRes] = await Promise.all([
     supabase.from('site_reports').select('id, site_id, started_at, ended_at, created_at')
-      .eq('created_by', userId).not('origin', 'is', null).not('site_id', 'is', null)
+      .eq('created_by', userId).in('origin', TERRAIN_ORIGINS).not('site_id', 'is', null)
       .order('created_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('site_reports').select('id, site_id, title, created_at')
       .eq('created_by', userId).is('origin', null).neq('status', 'draft').not('site_id', 'is', null)
@@ -1025,8 +1055,11 @@ export async function getSiteRecentActivity(siteId: string, limit = 6): Promise<
 
   const items: SiteActivityItem[] = []
   for (const r of (repsRes.data ?? []) as Array<{ id: string; title: string | null; origin: string | null; started_at: string | null; ended_at: string | null; created_at: string }>) {
+    // Un PV/CR importé n'est ni une visite ni une réunion : il appartient aux
+    // surfaces documentaires (Frise/Documents), pas aux « meilleures ressources ».
+    if (isImportedDocumentOrigin(r.origin)) continue
     const at = r.ended_at ?? r.started_at ?? r.created_at
-    items.push(r.origin
+    items.push(isTerrainVisitOrigin(r.origin)
       ? { kind: 'visit', label: 'Visite', dateLabel: relativeDayLabel(at), at, href: `/m/visite/${r.id}/recap`, reportId: r.id, detail: null }
       : { kind: 'meeting', label: r.title?.trim() || 'Réunion', dateLabel: relativeDayLabel(at), at, href: `/m/reunion/${r.id}`, reportId: r.id, detail: null })
   }
@@ -1093,7 +1126,9 @@ export async function listSiteVisitsForMobile(siteId: string, limit = 50): Promi
       .from('site_reports')
       .select('id, origin, visit_motive, objective, started_at, ended_at, created_at, created_by')
       .eq('site_id', siteId)
-      .not('origin', 'is', null)
+      // Visites TERRAIN uniquement : les PV/CR importés (origin='import') ne sont
+      // pas des visites et vivent dans les surfaces documentaires (P0.5-Vérité).
+      .in('origin', TERRAIN_ORIGINS)
       .is('deleted_at', null)
       .order('started_at', { ascending: false, nullsFirst: false })
       .limit(limit),
@@ -1301,7 +1336,7 @@ export async function buildSinceLastVisitSummary(siteId: string, userId: string 
       .select('ended_at')
       .eq('site_id', siteId)
       .eq('created_by', userId)
-      .not('origin', 'is', null)
+      .in('origin', TERRAIN_ORIGINS)
       .not('ended_at', 'is', null)
       .is('deleted_at', null)
       .order('ended_at', { ascending: false })
@@ -1315,7 +1350,7 @@ export async function buildSinceLastVisitSummary(siteId: string, userId: string 
       .from('site_reports')
       .select('ended_at')
       .eq('site_id', siteId)
-      .not('origin', 'is', null)
+      .in('origin', TERRAIN_ORIGINS)
       .not('ended_at', 'is', null)
       .order('ended_at', { ascending: false })
       .limit(1)
@@ -1416,7 +1451,7 @@ export async function buildSinceLastVisitDelta(siteId: string, userId: string | 
       .select('ended_at')
       .eq('site_id', siteId)
       .eq('created_by', userId)
-      .not('origin', 'is', null)
+      .in('origin', TERRAIN_ORIGINS)
       .not('ended_at', 'is', null)
       .is('deleted_at', null)
       .order('ended_at', { ascending: false })
@@ -1430,7 +1465,7 @@ export async function buildSinceLastVisitDelta(siteId: string, userId: string | 
       .from('site_reports')
       .select('ended_at')
       .eq('site_id', siteId)
-      .not('origin', 'is', null)
+      .in('origin', TERRAIN_ORIGINS)
       .not('ended_at', 'is', null)
       .order('ended_at', { ascending: false })
       .limit(1)
@@ -1505,11 +1540,11 @@ export interface SiteMemorySnapshot {
 export async function getSiteMemorySnapshot(siteId: string): Promise<SiteMemorySnapshot> {
   const supabase = createAdminClient()
   const [visitsRes, capPhotosRes, actionsRes, reservesRes, firstRes, missionsRes] = await Promise.all([
-    supabase.from('site_reports').select('id', { count: 'exact', head: true }).eq('site_id', siteId).not('origin', 'is', null).neq('status', 'draft'),
+    supabase.from('site_reports').select('id', { count: 'exact', head: true }).eq('site_id', siteId).in('origin', TERRAIN_ORIGINS).neq('status', 'draft'),
     supabase.from('visit_capture').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('kind', 'photo').is('hidden_at', null),
     supabase.from('site_actions').select('id', { count: 'exact', head: true }).eq('site_id', siteId),
     supabase.from('site_reserve').select('id', { count: 'exact', head: true }).eq('site_id', siteId),
-    supabase.from('site_reports').select('started_at, created_at').eq('site_id', siteId).not('origin', 'is', null).neq('status', 'draft').order('started_at', { ascending: true, nullsFirst: false }).limit(1).maybeSingle(),
+    supabase.from('site_reports').select('started_at, created_at').eq('site_id', siteId).in('origin', TERRAIN_ORIGINS).neq('status', 'draft').order('started_at', { ascending: true, nullsFirst: false }).limit(1).maybeSingle(),
     supabase.from('missions').select('id').eq('site_id', siteId).is('deleted_at', null),
   ])
 
@@ -1622,7 +1657,7 @@ export async function listPendingTriageForUser(userId: string, limit = 8): Promi
     .from('site_reports')
     .select('id, site_id, ended_at')
     .eq('created_by', userId)
-    .not('origin', 'is', null)
+    .in('origin', TERRAIN_ORIGINS)
     .is('deleted_at', null)
     .not('ended_at', 'is', null)
     .not('site_id', 'is', null)
@@ -1840,7 +1875,7 @@ export async function gatherSiteHistory(siteId: string, excludeReportId: string)
 
   const [meetings, visits, openActions, reserves, decisions, obligations, subjects] = await Promise.all([
     supabase.from('site_reports').select('title, created_at').eq('site_id', siteId).is('origin', null).order('created_at', { ascending: false }).limit(3),
-    supabase.from('site_reports').select('objective, outcome, started_at, created_at').eq('site_id', siteId).not('origin', 'is', null).neq('id', excludeReportId).order('started_at', { ascending: false }).limit(5),
+    supabase.from('site_reports').select('objective, outcome, started_at, created_at').eq('site_id', siteId).in('origin', TERRAIN_ORIGINS).neq('id', excludeReportId).order('started_at', { ascending: false }).limit(5),
     listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
     supabase.from('site_reserve').select('label, created_at').eq('site_id', siteId).eq('status', 'open').order('created_at', { ascending: true }).limit(20),
     supabase.from('site_decisions').select('titre, created_at').eq('site_id', siteId).order('created_at', { ascending: false }).limit(5),

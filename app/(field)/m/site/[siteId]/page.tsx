@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireSiteAccess as requireFieldSiteAccess } from '@/lib/field/site-access'
+import { TERRAIN_VISIT_ORIGINS } from '@/lib/field/visit-origins'
 import { requireSiteAccess } from '@/lib/auth/resource-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
@@ -70,7 +71,7 @@ async function countDistinctVisitDays(userId: string, siteId: string): Promise<n
     .select('ended_at')
     .eq('site_id', siteId)
     .eq('created_by', userId)
-    .not('origin', 'is', null)
+    .in('origin', TERRAIN_VISIT_ORIGINS)
     .not('ended_at', 'is', null)
     .is('deleted_at', null)
   const distinctDays = new Set(

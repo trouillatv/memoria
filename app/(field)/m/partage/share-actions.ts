@@ -25,6 +25,7 @@
 // Aucun second moteur : les photos passent par `ingestBatch` (le même que
 // l'import ZIP), les sources de réunion par `addReportAttachment` (le même que
 import { NOUMEA_TZ } from '@/lib/time/local-date'
+import { TERRAIN_VISIT_ORIGINS } from '@/lib/field/visit-origins'
 // l'audio capté dans l'app).
 
 import { randomUUID, createHash } from 'node:crypto'
@@ -445,7 +446,7 @@ export async function listRecentVisitsAction(siteId: string): Promise<ShareTarge
     .from('site_reports')
     .select('id, title, objective, visit_motive, started_at, ended_at, created_at')
     .eq('site_id', siteId)
-    .not('origin', 'is', null) // une VISITE (une réunion a origin null)
+    .in('origin', TERRAIN_VISIT_ORIGINS) // partage vers une VISITE TERRAIN (import/réunion exclus) — P0.5-Vérité
     .is('deleted_at', null)
     .order('started_at', { ascending: false, nullsFirst: false })
     .limit(10)

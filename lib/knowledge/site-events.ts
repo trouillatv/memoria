@@ -19,7 +19,7 @@ import 'server-only'
 import { getSiteOverview, type KnowledgeItem, type SynthesisStatus } from '@/lib/knowledge/site-overview'
 import {
   readEvents, readVisitCaptureCounts, readFirstVisitId, readUserNames, readSiteOrganizations,
-  readReportOrigins, readMaterializedCountsByReport, readPendingProposalCountsByReport,
+  readReportOrigins, readMaterializedCountsByReport, readPendingProposalCountsByReport, readImportDocumentDates,
   type SiteEventRow, type MaterializedCounts,
 } from '@/lib/knowledge/repository'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
@@ -47,6 +47,9 @@ export interface HistoryVisit {
   isFirst: boolean
   /** Vrai pour les PV historiques (origin='import') : label et comportement différents. */
   isImport: boolean
+  /** Import sans date documentaire prouvée : l'affichage doit dire « Date non
+   *  déterminée » plutôt qu'une date technique d'ingestion (P0.5-Vérité). */
+  dateUnknown: boolean
   /** Le geste terrain : durée réelle et captures. « 38 min · 4 photos · 2 mémos »
    *  dit que quelqu'un y est allé — ce qu'aucun compte de propositions ne dit. */
   durationMin: number | null
@@ -250,11 +253,12 @@ export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promi
   // Deux chemins vers la base = deux vérités possibles, et plus personne ne croit
   // ni l'une ni l'autre.
   const reportIds = [...byReport.keys()]
-  const [captureRows, firstReportId, reportOrigins, pendingMap] = await Promise.all([
+  const [captureRows, firstReportId, reportOrigins, pendingMap, importDocDates] = await Promise.all([
     readVisitCaptureCounts(reportIds),
     readFirstVisitId(siteId),
     readReportOrigins(reportIds),
     readPendingProposalCountsByReport(reportIds),
+    readImportDocumentDates(reportIds),
   ])
   // Les visites historiques (origin='import') ont leurs objets matérialisés
   // DIRECTEMENT dans les tables métier — elles ne passent pas par les propositions.
@@ -272,10 +276,14 @@ export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promi
     const proposalEvents = list.filter((r) => r.kind === 'proposal_created')
     const cap = captures.get(reportId)
     const mat = materializedByReport.get(reportId)
-    // Pour les imports, ended_at = date de matérialisation (pas la date métier).
-    // On positionne la carte à started_at = date réelle du PV.
+    // P0.5-Vérité : la date d'un import est sa DATE DOCUMENTAIRE prouvée
+    // (documents.effective_date), jamais started_at/ended_at (dates techniques
+    // d'ingestion). Inconnue → on ne fabrique PAS : dateUnknown=true (l'affichage
+    // dira « Date non déterminée »), et visit.at ne sert alors QUE de clé de tri.
     const isImport = reportOrigins.get(reportId) === 'import'
-    const displayAt = isImport && visit.started_at ? visit.started_at : visit.at
+    const metierDate = isImport ? (importDocDates.get(reportId) ?? null) : null
+    const dateUnknown = isImport && !metierDate
+    const displayAt = isImport ? (metierDate ?? visit.at) : visit.at
     entries.push({
       kind: 'visit',
       id: `visit-${reportId}`,
@@ -283,6 +291,7 @@ export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promi
       reportId,
       isFirst: reportId === firstReportId,
       isImport,
+      dateUnknown,
       durationMin: durationMin(visit.started_at ?? null, visit.at),
       photos: cap?.photos ?? 0,
       vocals: cap?.vocals ?? 0,

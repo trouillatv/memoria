@@ -17,6 +17,7 @@
 // (J-7 → J+7) : le Passé profond (justification lointaine) est différé.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { TERRAIN_VISIT_ORIGINS } from '@/lib/field/visit-origins'
 import { listActiveTeamIdsForUser } from '@/lib/db/teams'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { PONCTUEL_MISSION_NAME } from '@/lib/db/system-missions'
@@ -149,7 +150,7 @@ export async function buildFieldPlanning(
       .from('site_reports')
       .select('site_id, started_at')
       .in('site_id', siteIds)
-      .not('origin', 'is', null)
+      .in('origin', TERRAIN_VISIT_ORIGINS)
       .not('ended_at', 'is', null)
       .is('deleted_at', null)
       .order('started_at', { ascending: false })
@@ -243,7 +244,7 @@ export async function buildFieldPlanning(
       .from('site_reports')
       .select('id, site_id, started_at, ended_at, created_at, objective')
       .in('site_id', siteIds)
-      .not('origin', 'is', null)
+      .in('origin', TERRAIN_VISIT_ORIGINS)
       .is('deleted_at', null)
       .gte('started_at', tsLow)
       .lt('started_at', tsHigh)

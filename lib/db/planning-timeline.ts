@@ -1,4 +1,5 @@
 import 'server-only'
+import { TERRAIN_VISIT_ORIGINS } from '@/lib/field/visit-origins'
 
 // ── LE PLANNING EST UNE CHRONOLOGIE, PAS UNE GRILLE D'INTERVENTIONS ──────────
 // Un conducteur ne demande pas « quelles interventions ai-je ? » mais « que se
@@ -117,7 +118,7 @@ export async function getPlanningTimeline(
     .from('site_reports')
     .select('id, site_id, started_at, ended_at, objective, origin')
     .in('site_id', siteIds)
-    .not('origin', 'is', null)
+    .in('origin', TERRAIN_VISIT_ORIGINS)
     .is('deleted_at', null)
     .gte('started_at', from)
     .lte('started_at', to)

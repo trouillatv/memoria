@@ -102,7 +102,9 @@ export default async function SiteFriseMobilePage({
                     <span className="min-w-0 truncate">{site.name}</span>
                   </p>
                   <p className="mt-1 font-medium">
-                    {frDayMonthLocal(entry.at)} — {entry.isFirst ? 'Première visite' : entry.isImport ? 'Visite historique' : 'Visite terrain'}
+                    {/* P0.5-Vérité : un import porte sa date DOCUMENTAIRE (ou « Date non
+                        déterminée » si non prouvée), jamais « Première visite » ni « visite ». */}
+                    {entry.dateUnknown ? 'Date non déterminée' : frDayMonthLocal(entry.at)} — {entry.isImport ? 'PV/CR importé' : entry.isFirst ? 'Première visite' : 'Visite terrain'}
                   </p>
                   {/* Le geste terrain : la preuve que quelqu'un y est allé. */}
                   <p className="mt-0.5 text-[12px] text-muted-foreground">
@@ -112,7 +114,7 @@ export default async function SiteFriseMobilePage({
                       entry.vocals > 0 ? `${entry.vocals} mémo${entry.vocals > 1 ? 's' : ''}` : null,
                     ]
                       .filter(Boolean)
-                      .join(' · ') || friseHeure.format(new Date(entry.at))}
+                      .join(' · ') || (entry.isImport ? 'Document historique importé' : friseHeure.format(new Date(entry.at)))}
                   </p>
                   {producedLines(entry.produced).length > 0 ? (
                     <>

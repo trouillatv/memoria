@@ -111,7 +111,7 @@ export default async function VisitRecapPage({
     // omettait (d'où l'onglet vide). La visite du jour y sera mise en évidence.
     buildSiteTimeline(visit.site_id).catch(() => []),
     buildSiteMemorySignals(visit.site_id).catch(() => []),
-    buildSitePatrimoine(visit.site_id).catch(() => ({ firstVisitLabel: null, photos: 0, visits: 0, meetings: 0, actions: 0, reserves: 0, subjects: 0 })),
+    buildSitePatrimoine(visit.site_id).catch(() => ({ firstVisitLabel: null, firstDocDateLabel: null, photos: 0, visits: 0, importedDocs: 0, meetings: 0, actions: 0, reserves: 0, subjects: 0 })),
   ])
 
   const visitTypeLabel = visitIntentLabel(visit.visit_motive) ?? ORIGIN_FR[visit.origin ?? ''] ?? 'Visite'

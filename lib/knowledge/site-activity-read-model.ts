@@ -1,4 +1,5 @@
 import 'server-only'
+import { TERRAIN_VISIT_ORIGINS } from '@/lib/field/visit-origins'
 
 // Read-model D10 — activités parallèles réelles d'un chantier
 //
@@ -217,7 +218,8 @@ export async function buildSiteActivityReadModel(
       .select('id, started_at, ended_at, debrief_analysis')
       .eq('site_id', siteId)
       .is('deleted_at', null)
-      .not('origin', 'is', null)
+      // Débriefs de VISITES TERRAIN (les imports historiques ne sont pas des visites) — P0.5-Vérité.
+      .in('origin', TERRAIN_VISIT_ORIGINS)
       .gte('started_at', windowStart)
       .order('started_at', { ascending: false })
       .limit(12),
