@@ -21,6 +21,7 @@ export interface SiteCopilotDelta {
   fromDate: string | null  // date du PV précédent (référence)
   toDate: string | null    // date du PV analysé (le plus récent)
   nouveaux: number
+  réouverts: number        // P0 convergence : réouvert ≠ aggravé (jamais fusionnés)
   aggravés: number
   traités: number
 }
@@ -144,11 +145,12 @@ export function buildSiteCopilotContext(
   // Invariant : ces chiffres DOIVENT correspondre exactement à pvLastDelta.
   const delta: SiteCopilotDelta | null = overview.pvLastDelta
     ? {
-        fromDate: overview.pvLastDelta.fromDate,
-        toDate:   overview.pvLastDelta.toDate,
-        nouveaux: overview.pvLastDelta.nouveaux,
-        aggravés: overview.pvLastDelta.aggravésRéouverts,
-        traités: overview.pvLastDelta.réalisésLevés,
+        fromDate:  overview.pvLastDelta.fromDate,
+        toDate:    overview.pvLastDelta.toDate,
+        nouveaux:  overview.pvLastDelta.nouveaux,
+        réouverts: overview.pvLastDelta.réouverts,
+        aggravés:  overview.pvLastDelta.aggravés,
+        traités:   overview.pvLastDelta.résolus,
       }
     : null
 
@@ -210,6 +212,7 @@ export function buildFallbackText(
       : 'Entre les deux derniers PV'
     const parts: string[] = []
     if (delta.nouveaux > 0)  parts.push(`${delta.nouveaux} nouveau${delta.nouveaux > 1 ? 'x point' : ' point'}`)
+    if (delta.réouverts > 0) parts.push(`${delta.réouverts} rouvert${delta.réouverts > 1 ? 's' : ''}`)
     if (delta.aggravés > 0)  parts.push(`${delta.aggravés} aggravé${delta.aggravés > 1 ? 's' : ''}`)
     if (delta.traités > 0)   parts.push(`${delta.traités} traité${delta.traités > 1 ? 's' : ''}`)
     if (parts.length === 0) return `${range} : aucun changement notable.`

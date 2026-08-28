@@ -23,17 +23,21 @@ type SelectionMap = Map<string, string> // stable_key → prep item id
 
 // ── Depuis le dernier PV ─────────────────────────────────────────────────────
 
+// P0 convergence : même vérité occurrence-first que l'Aperçu #230 / Synthèse.
+// réouvert ≠ aggravé (jamais fusionnés), acteurs exclus, knowledge_fact gardé.
 export interface PvLastDeltaProps {
   fromDate: string
   toDate: string
   nouveaux: number
-  aggravésRéouverts: number
-  réalisésLevés: number
+  réouverts: number
+  aggravés: number
+  résolus: number
 }
 
 export function DeltaBlock({ delta }: { delta: PvLastDeltaProps }) {
   const from = new Date(delta.fromDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
   const to   = new Date(delta.toDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+  const rien = delta.nouveaux === 0 && delta.réouverts === 0 && delta.aggravés === 0 && delta.résolus === 0
 
   return (
     <section className="space-y-2">
@@ -46,17 +50,22 @@ export function DeltaBlock({ delta }: { delta: PvLastDeltaProps }) {
             <span className="text-rose-600 font-bold">{delta.nouveaux}</span> nouveau{delta.nouveaux > 1 ? 'x' : ''}
           </span>
         )}
-        {delta.aggravésRéouverts > 0 && (
+        {delta.réouverts > 0 && (
           <span className="text-foreground font-medium">
-            <span className="text-amber-600 font-bold">{delta.aggravésRéouverts}</span> aggravé{delta.aggravésRéouverts > 1 ? 's' : ''}
+            <span className="text-amber-600 font-bold">{delta.réouverts}</span> rouvert{delta.réouverts > 1 ? 's' : ''}
           </span>
         )}
-        {delta.réalisésLevés > 0 && (
+        {delta.aggravés > 0 && (
           <span className="text-foreground font-medium">
-            <span className="text-emerald-600 font-bold">{delta.réalisésLevés}</span> traité{delta.réalisésLevés > 1 ? 's' : ''}
+            <span className="text-amber-600 font-bold">{delta.aggravés}</span> aggravé{delta.aggravés > 1 ? 's' : ''}
           </span>
         )}
-        {delta.nouveaux === 0 && delta.aggravésRéouverts === 0 && delta.réalisésLevés === 0 && (
+        {delta.résolus > 0 && (
+          <span className="text-foreground font-medium">
+            <span className="text-emerald-600 font-bold">{delta.résolus}</span> traité{delta.résolus > 1 ? 's' : ''}
+          </span>
+        )}
+        {rien && (
           <span className="text-muted-foreground">Aucun changement</span>
         )}
       </div>

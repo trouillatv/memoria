@@ -59,11 +59,10 @@ import {
 } from '@/lib/documents/pv-history'
 import { computeWatchlist, type WatchlistEntry } from '@/lib/documents/pv-watchlist'
 import {
-  computeDeltaSummary,
   getImportantSubjects,
   type ImportantSubject,
 } from '@/lib/documents/site-synthesis'
-import { getCanonicalDelta } from '@/lib/documents/canonical-transitions'
+import { buildOccurrencePvSummary } from '@/lib/documents/occurrence-pv-summary'
 import { getSuggestedLinkCountsBySite } from '@/lib/db/subject-thread-links'
 
 const TOP = 3
@@ -85,13 +84,17 @@ export interface PvAttentionItem {
   href: string
 }
 
-/** Signal compact du dernier delta inter-PV. */
+/** Signal compact du dernier delta inter-PV.
+ *  P0 convergence : occurrence-first (buildOccurrencePvSummary), même vérité que
+ *  Aperçu #230 / Synthèse / Chronologie. reopened ≠ aggravated (catégories séparées),
+ *  acteurs exclus via la projection partagée #228, knowledge_fact gardé. */
 export interface PvLastDelta {
   fromDate: string
   toDate: string
   nouveaux: number
-  aggravésRéouverts: number
-  réalisésLevés: number
+  réouverts: number
+  aggravés: number
+  résolus: number
 }
 
 /** Un sujet canonique à vérifier, avec les signaux forts qui le qualifient. */
@@ -498,19 +501,22 @@ async function fetchPvSignalData(siteId: string): Promise<{
   })
 
   // Bloc 2 — Depuis le dernier PV
+  // P0 convergence : occurrence-first (buildOccurrencePvSummary), catégories séparées
+  // réouvert/aggravé, acteurs exclus (projection partagée), knowledge_fact gardé —
+  // même vérité que l'Aperçu #230 / Synthèse / Chronologie / Lignes de vie.
   let pvLastDelta: PvLastDelta | null = null
   if (runs.length >= 2) {
     const fromRun = runs[runs.length - 2]
     const toRun   = runs[runs.length - 1]
-    const delta   = await getCanonicalDelta(fromRun.id, toRun.id).catch(() => null)
-    if (delta) {
-      const summary = computeDeltaSummary(delta)
+    const summary = await buildOccurrencePvSummary(siteId, fromRun.id, toRun.id).catch(() => null)
+    if (summary) {
       pvLastDelta = {
-        fromDate:          runEffectiveDate(fromRun),
-        toDate:            runEffectiveDate(toRun),
-        nouveaux:          summary.nouveaux.length,
-        aggravésRéouverts: summary.aggravésRéouverts.length,
-        réalisésLevés:     summary.réalisésLevés.length,
+        fromDate:  runEffectiveDate(fromRun),
+        toDate:    runEffectiveDate(toRun),
+        nouveaux:  summary.nouveau.length,
+        réouverts: summary.réouvert.length,
+        aggravés:  summary.aggravé.length,
+        résolus:   summary.résolu.length,
       }
     }
   }

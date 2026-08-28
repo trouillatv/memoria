@@ -141,20 +141,22 @@ describe('buildSiteCopilotContext', () => {
     expect(item.facts.some((f) => f.includes('suggérée'))).toBe(false)
   })
 
-  it('delta.nouveaux/aggravés/traités correspond exactement à pvLastDelta', () => {
+  it('delta.nouveaux/réouverts/aggravés/traités correspond exactement à pvLastDelta', () => {
     const pvLastDelta: PvLastDelta = {
       fromDate: '2026-06-01',
       toDate: '2026-07-01',
       nouveaux: 3,
-      aggravésRéouverts: 2,
-      réalisésLevés: 5,
+      réouverts: 2,
+      aggravés: 1,
+      résolus: 5,
     }
     const overview = makeOverview({ pvLastDelta })
     const ctx = buildSiteCopilotContext('site-1', 'Test', overview, [])
     expect(ctx.delta).not.toBeNull()
-    expect(ctx.delta!.nouveaux).toBe(3)   // même valeur que Histoire
-    expect(ctx.delta!.aggravés).toBe(2)   // même valeur que Histoire
-    expect(ctx.delta!.traités).toBe(5)    // même valeur que Histoire
+    expect(ctx.delta!.nouveaux).toBe(3)    // même valeur que Histoire
+    expect(ctx.delta!.réouverts).toBe(2)   // réouvert ≠ aggravé (P0 convergence)
+    expect(ctx.delta!.aggravés).toBe(1)    // même valeur que Histoire
+    expect(ctx.delta!.traités).toBe(5)     // même valeur que Histoire
   })
 
   it('PV8 02/07 + PV9 16/07 → delta.fromDate = PV précédent, delta.toDate = PV analysé', () => {
@@ -164,8 +166,9 @@ describe('buildSiteCopilotContext', () => {
       fromDate: '2026-07-02',
       toDate: '2026-07-16',
       nouveaux: 6,
-      aggravésRéouverts: 0,
-      réalisésLevés: 1,
+      réouverts: 0,
+      aggravés: 0,
+      résolus: 1,
     }
     const overview = makeOverview({ pvLastDelta })
     const ctx = buildSiteCopilotContext('site-1', 'OCEF', overview, [])
@@ -279,7 +282,7 @@ describe('filterContextForIntent', () => {
   it('changes ne retourne prepItems que pour next_visit', () => {
     const prepItems = [{ label: 'Point plan', stableKey: 'manual:x' }]
     const ctx = buildSiteCopilotContext('site-1', 'Test', makeOverview({
-      pvLastDelta: { fromDate: '2026-06-01', toDate: '2026-07-01', nouveaux: 1, aggravésRéouverts: 0, réalisésLevés: 0 },
+      pvLastDelta: { fromDate: '2026-06-01', toDate: '2026-07-01', nouveaux: 1, réouverts: 0, aggravés: 0, résolus: 0 },
     }), prepItems)
     const { prepItems: filtered } = filterContextForIntent(ctx, 'changes')
     expect(filtered).toHaveLength(0)
@@ -299,10 +302,11 @@ describe('buildFallbackText', () => {
     expect(text).not.toBe('')
   })
 
-  it('changes avec delta → reprend les chiffres et les deux bornes de date', () => {
-    const delta = { fromDate: '2026-07-02', toDate: '2026-07-16', nouveaux: 3, aggravés: 1, traités: 4 }
+  it('changes avec delta → reprend les chiffres (réouvert ≠ aggravé) et les deux bornes de date', () => {
+    const delta = { fromDate: '2026-07-02', toDate: '2026-07-16', nouveaux: 3, réouverts: 2, aggravés: 1, traités: 4 }
     const text = buildFallbackText([], 'changes', delta, [])
     expect(text).toContain('3')
+    expect(text).toContain('2 rouvert')
     expect(text).toContain('1 aggravé')
     expect(text).toContain('4 traité')
     // Les deux bornes doivent apparaître — fromDate est le PV de référence, pas le dernier

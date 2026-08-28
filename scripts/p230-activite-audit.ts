@@ -39,7 +39,7 @@ async function auditSite(siteId: string, name: string) {
 
   const ov = await getSiteOverview(siteId)
   console.log(`\n### ${name}  (PV ${from.id.slice(0, 8)} → ${to.id.slice(0, 8)})`)
-  console.log(`   pvLastDelta ACTUEL : ${JSON.stringify(ov.pvLastDelta && { nouveaux: ov.pvLastDelta.nouveaux, aggravésRéouverts: ov.pvLastDelta.aggravésRéouverts, réalisésLevés: ov.pvLastDelta.réalisésLevés })}`)
+  console.log(`   pvLastDelta ACTUEL : ${JSON.stringify(ov.pvLastDelta && { nouveaux: ov.pvLastDelta.nouveaux, réouverts: ov.pvLastDelta.réouverts, aggravés: ov.pvLastDelta.aggravés, résolus: ov.pvLastDelta.résolus })}`)
   console.log(`   getPvDelta occurrence-first (${delta.items.length} sujets) :`)
   console.log(`     réouvert=${n('réouvert')}  aggravé=${n('aggravé')}  nouveau=${n('nouveau')}  réapparu=${n('réapparu')}  résolu=${n('résolu')}  maintenu=${n('maintenu')}  non_mentionné=${n('non_mentionné')}  progressé=${n('progressé')}  changé=${n('changé')}  annulé=${n('annulé')}`)
   // Lignes « changement réel » (hors maintenu/non_mentionné qui sont volumineux et peu informatifs)
