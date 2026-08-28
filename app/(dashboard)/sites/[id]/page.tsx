@@ -31,6 +31,7 @@ import {
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { getLatestRunsForSite } from '@/lib/db/document-extractions'
 import { getPvDelta } from '@/lib/documents/pv-comparison'
+import { getActorCanonicalIds } from '@/lib/documents/occurrence-population'
 import { generateSincePvSummary } from '@/lib/documents/pv-narrator'
 import type { PvDelta } from '@/lib/documents/pv-comparison'
 import type { SincePvSummary } from '@/lib/documents/pv-narrator'
@@ -428,7 +429,12 @@ async function ChronologieView({ siteId }: { siteId: string }) {
   try {
     const runs = await getLatestRunsForSite(siteId, 2)
     if (runs.length === 2) {
-      const delta = await getPvDelta(runs[0].id, runs[1].id)
+      // P0 Phase 2B — Chronologie : projection PARTAGÉE, acteurs exclus (#228). getPvDelta est le
+      // delta BRUT des occurrences ; l'exclusion des acteurs fait partie du contrat de projection,
+      // pas de l'UI (sinon Chronologie comptait les intervenants : 19 nouveaux au lieu de 12).
+      const rawDelta = await getPvDelta(runs[0].id, runs[1].id)
+      const actorCs = await getActorCanonicalIds(siteId)
+      const delta: PvDelta = { ...rawDelta, items: rawDelta.items.filter((i) => !actorCs.has(i.subjectThreadId)) }
       const summary = await generateSincePvSummary(delta)
       pvData = {
         delta,

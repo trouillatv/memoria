@@ -30,29 +30,36 @@ function computePhase(
 
   const a = period.appeared.length
   const g = period.aggravated.length
+  const ro = period.reopened.length
+  const neg = g + ro // mouvements négatifs : aggravations + réouvertures (P0 : distincts en données)
   const r = period.resolved.length
 
-  if (opts.isFirst && a > 0 && g === 0)
+  // Libellé des mouvements négatifs, réouvertures et aggravations NOMMÉES séparément.
+  const negLabel = [
+    ro > 0 ? `${ro} réouverture${ro > 1 ? 's' : ''}` : null,
+    g > 0 ? `${g} aggravation${g > 1 ? 's' : ''}` : null,
+  ].filter(Boolean).join(', ')
+
+  if (opts.isFirst && a > 0 && neg === 0)
     return { type: 'start', label: 'Démarrage', punchline: a === 1 ? 'Premier sujet entre dans le suivi' : `${a} sujets entrent dans le suivi` }
 
   if (opts.prevWasSilence && (r > 0 || a > 0)) {
-    const pts = [a > 0 ? `${a} nouveau${a > 1 ? 'x' : ''} sujet${a > 1 ? 's' : ''}` : null, r > 0 ? `${r} traitement${r > 1 ? 's' : ''}` : null].filter(Boolean)
+    const pts = [a > 0 ? `${a} nouveau${a > 1 ? 'x' : ''} sujet${a > 1 ? 's' : ''}` : null, ro > 0 ? `${ro} réouverture${ro > 1 ? 's' : ''}` : null, r > 0 ? `${r} traitement${r > 1 ? 's' : ''}` : null].filter(Boolean)
     return { type: 'recovery', label: 'Reprise', punchline: pts.join(', ') }
   }
 
-  if (a >= 4 && g >= 1) return { type: 'critical', label: 'Montée des difficultés', punchline: `${a} nouveaux sujets${g > 1 ? `, ${g} aggravations` : ', 1 aggravation'}` }
-  if (a >= 3 && g === 0) return { type: 'neutral', label: 'Expansion du suivi', punchline: `${a} nouveaux sujets entrent dans le suivi` }
-  if (g >= 2 && r === 0) return { type: 'critical', label: 'Phase critique', punchline: `${g} sujets s'aggravent ou rouvrent` }
-  if (g >= 1 && r === 0 && a === 0) return { type: 'critical', label: 'Tensions', punchline: `${g} sujet${g > 1 ? 's aggravés' : ' aggravé'}, aucune résolution` }
-  if (r >= 3 && g === 0 && a <= 1) return { type: 'resolution', label: 'Phase de résolution', punchline: `${r} sujets traités${a > 0 ? `, ${a} nouveau` : ''}` }
-  if (r > 0 && g === 0 && a === 0) return { type: 'resolution', label: 'Avancement', punchline: `${r} sujet${r > 1 ? 's traités' : ' traité'}, pas de nouvelle difficulté` }
-  if (a > 0 && r > 0 && g === 0) return { type: 'neutral', label: 'Évolution mixte', punchline: `${a} apparu${a > 1 ? 's' : ''}, ${r} traité${r > 1 ? 's' : ''}` }
-  if (a === 0 && g === 0 && r === 0) return { type: 'stable', label: 'Stabilité', punchline: 'Aucune transition — sujets en cours' }
+  if (a >= 4 && neg >= 1) return { type: 'critical', label: 'Montée des difficultés', punchline: `${a} nouveaux sujets, ${negLabel}` }
+  if (a >= 3 && neg === 0) return { type: 'neutral', label: 'Expansion du suivi', punchline: `${a} nouveaux sujets entrent dans le suivi` }
+  if (neg >= 2 && r === 0) return { type: 'critical', label: 'Phase critique', punchline: negLabel }
+  if (neg >= 1 && r === 0 && a === 0) return { type: 'critical', label: 'Tensions', punchline: `${negLabel}, aucune résolution` }
+  if (r >= 3 && neg === 0 && a <= 1) return { type: 'resolution', label: 'Phase de résolution', punchline: `${r} sujets traités${a > 0 ? `, ${a} nouveau` : ''}` }
+  if (r > 0 && neg === 0 && a === 0) return { type: 'resolution', label: 'Avancement', punchline: `${r} sujet${r > 1 ? 's traités' : ' traité'}, pas de nouvelle difficulté` }
+  if (a === 0 && neg === 0 && r === 0) return { type: 'stable', label: 'Stabilité', punchline: 'Aucune transition — sujets en cours' }
 
   return {
     type: 'neutral',
     label: 'Évolution',
-    punchline: [a > 0 ? `${a} apparu${a > 1 ? 's' : ''}` : null, g > 0 ? `${g} aggravé${g > 1 ? 's' : ''}` : null, r > 0 ? `${r} traité${r > 1 ? 's' : ''}` : null].filter(Boolean).join(', ') || 'Sujets en cours',
+    punchline: [a > 0 ? `${a} apparu${a > 1 ? 's' : ''}` : null, negLabel || null, r > 0 ? `${r} traité${r > 1 ? 's' : ''}` : null].filter(Boolean).join(', ') || 'Sujets en cours',
   }
 }
 
@@ -186,7 +193,8 @@ function TensionCurve({ timeline }: { timeline: SiteHealthTimeline }) {
 
 const FACT_CONFIG = {
   appeared:   { label: 'Entrent dans le suivi', linkColor: 'text-foreground/90 hover:text-foreground' },
-  aggravated: { label: 'S\'aggravent ou rouvrent', linkColor: 'text-red-700 dark:text-red-400 hover:underline' },
+  reopened:   { label: 'Rouvrent',              linkColor: 'text-orange-700 dark:text-orange-400 hover:underline' },
+  aggravated: { label: 'S\'aggravent',          linkColor: 'text-red-700 dark:text-red-400 hover:underline' },
   resolved:   { label: 'Sont traités',           linkColor: 'text-emerald-700 dark:text-emerald-400 hover:underline' },
   stillOpen:  { label: 'Restent actifs',          linkColor: 'text-muted-foreground hover:text-foreground' },
 } as const
@@ -275,17 +283,17 @@ function CharnièreCard({
       </p>
 
       {/* Sujets clés : compact */}
-      {!period.isSilence && (period.appeared.length > 0 || period.aggravated.length > 0 || period.resolved.length > 0) && (
+      {!period.isSilence && (period.appeared.length > 0 || period.reopened.length > 0 || period.aggravated.length > 0 || period.resolved.length > 0) && (
         <div className="mt-2.5 flex flex-wrap gap-1">
-          {[...period.appeared, ...period.aggravated, ...period.resolved].slice(0, 4).map((fact) => (
+          {[...period.reopened, ...period.appeared, ...period.aggravated, ...period.resolved].slice(0, 4).map((fact) => (
             <Link key={fact.canonicalSubjectId}
               href={`/sites/${siteId}/historique/sujets/${fact.canonicalSubjectId}`}
               className="inline-flex max-w-[160px] truncate rounded-full bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground">
               {fact.label}
             </Link>
           ))}
-          {(period.appeared.length + period.aggravated.length + period.resolved.length) > 4 && (
-            <span className="text-[11px] text-muted-foreground">+ {(period.appeared.length + period.aggravated.length + period.resolved.length) - 4}</span>
+          {(period.appeared.length + period.reopened.length + period.aggravated.length + period.resolved.length) > 4 && (
+            <span className="text-[11px] text-muted-foreground">+ {(period.appeared.length + period.reopened.length + period.aggravated.length + period.resolved.length) - 4}</span>
           )}
         </div>
       )}
@@ -364,9 +372,10 @@ function PeriodCard({ period, phase, styles, narrativeText, siteId, subjectLabel
         <p className="mt-3 border-t border-border pt-3 text-sm text-muted-foreground italic">{narrativeText}</p>
       )}
 
-      {(period.appeared.length > 0 || period.aggravated.length > 0 || period.resolved.length > 0 || period.stillOpen.length > 0) && (
+      {(period.appeared.length > 0 || period.reopened.length > 0 || period.aggravated.length > 0 || period.resolved.length > 0 || period.stillOpen.length > 0) && (
         <div className={cn('mt-3 space-y-3 border-t border-border pt-3', narrativeText && 'mt-3')}>
           <SubjectList kind="appeared"   facts={period.appeared}   siteId={siteId} subjectLabelMap={subjectLabelMap} />
+          <SubjectList kind="reopened"   facts={period.reopened}   siteId={siteId} subjectLabelMap={subjectLabelMap} />
           <SubjectList kind="aggravated" facts={period.aggravated} siteId={siteId} subjectLabelMap={subjectLabelMap} />
           <SubjectList kind="resolved"   facts={period.resolved}   siteId={siteId} subjectLabelMap={subjectLabelMap} />
           <SubjectList kind="stillOpen"  facts={period.stillOpen}  siteId={siteId} subjectLabelMap={subjectLabelMap} />
@@ -614,9 +623,9 @@ export function EvolutionView({ siteId, readModel, narrative, healthTimeline, na
         return (
           <section className="rounded-[22px] border bg-card p-5 shadow-sm">
             <div className="flex items-start justify-between gap-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tension du chantier</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sujets opérationnels ouverts</p>
               <p className="shrink-0 text-right text-xs text-muted-foreground">
-                Pic : <span className="font-medium text-foreground">{peak}</span> sujets au PV{peakPv}
+                Pic : <span className="font-medium text-foreground">{peak}</span> au PV{peakPv}
                 {' · '}Au dernier PV : <span className="font-medium text-foreground">{current}</span>
                 {' · '}{deltaText}
               </p>

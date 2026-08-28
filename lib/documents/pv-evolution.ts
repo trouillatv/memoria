@@ -1,6 +1,6 @@
 import 'server-only'
 import { z } from 'zod'
-import { getActivityMap } from './site-synthesis'
+import { buildOccurrenceActivityMap } from './occurrence-population'
 import type { ActivityMap, ActivityCellState } from './site-synthesis'
 
 // ── Types publics ─────────────────────────────────────────────────────────────
@@ -25,9 +25,10 @@ export interface EvolutionPeriod {
   isSilence: boolean
   silenceDays?: number          // nb de jours de silence documentaire
 
-  // Événements pendant la période (transitions)
+  // Événements pendant la période (transitions) — P0 : réouvert ≠ aggravé (jamais fusionnés).
   appeared: EvolutionSubjectFact[]    // première apparition dans ce chantier
-  aggravated: EvolutionSubjectFact[]  // aggravé ou réouvert (non-conforme, réouverture)
+  reopened: EvolutionSubjectFact[]    // résolu précédemment → rouvert
+  aggravated: EvolutionSubjectFact[]  // aggravé (non-conforme) — distinct d'une réouverture
   resolved: EvolutionSubjectFact[]    // traité/clos pour la première fois dans cette période
 
   // État en fin de période (distinct des transitions)
@@ -203,6 +204,7 @@ function computePeriodFacts(
       isSilence: true,
       silenceDays: group.silenceDays,
       appeared:  [],
+      reopened:  [],
       aggravated: [],
       resolved:  [],
       stillOpen,
@@ -215,6 +217,7 @@ function computePeriodFacts(
   const firstPeriodIdx = periodIdxs[0] ?? 0
 
   const appeared:  EvolutionSubjectFact[] = []
+  const reopened:  EvolutionSubjectFact[] = []
   const aggravated: EvolutionSubjectFact[] = []
   const resolved:  EvolutionSubjectFact[] = []
   const stillOpen: EvolutionSubjectFact[] = []
@@ -225,12 +228,14 @@ function computePeriodFacts(
     if (periodCells.every((s) => s === 'absent')) continue
 
     const isFirst = periodCells.includes('first')
-    const isAggr  = periodCells.some((s) => s === 'non_compliant' || s === 'reopened')
+    // P0 : réouvert ≠ aggravé. Réouverture prioritaire sur non-conformité.
+    const isReopened = periodCells.some((s) => s === 'reopened')
+    const isAggr  = periodCells.some((s) => s === 'non_compliant')
 
     // État juste avant la période (pour détecter les "nouvellement résolus")
     const preState = firstPeriodIdx > 0 ? lastKnownCellState(rawCells, firstPeriodIdx - 1) : 'absent'
     // Un sujet est "nouvellement résolu" s'il était ouvert avant la période et passe à done
-    const isDone = !isFirst && !isAggr && periodCells.includes('done') && preState !== 'done'
+    const isDone = !isFirst && !isReopened && !isAggr && periodCells.includes('done') && preState !== 'done'
 
     // État en fin de période
     const lastState = lastKnownCellState(rawCells, lastKnownIdx)
@@ -247,17 +252,19 @@ function computePeriodFacts(
       openReserves: row.openReserves,
     }
 
-    if (isFirst)    appeared.push(fact)
-    else if (isAggr) aggravated.push(fact)
-    else if (isDone) resolved.push(fact)
+    if (isFirst)         appeared.push(fact)
+    else if (isReopened) reopened.push(fact)
+    else if (isAggr)     aggravated.push(fact)
+    else if (isDone)     resolved.push(fact)
 
     // Reste ouvert : aucune transition notable et encore ouvert en fin de période
-    if (!isFirst && !isAggr && !isDone && isOpenEnd) stillOpen.push(fact)
+    if (!isFirst && !isReopened && !isAggr && !isDone && isOpenEnd) stillOpen.push(fact)
   }
 
   // Score d'importance de la période
   const importanceScore =
     appeared.length  * 8 +
+    reopened.length  * 6 +
     aggravated.length * 6 +
     resolved.length  * 3 +
     stillOpen.length * 1
@@ -270,6 +277,7 @@ function computePeriodFacts(
     runIds:    group.runs.map((r) => r.id),
     isSilence: false,
     appeared,
+    reopened,
     aggravated,
     resolved,
     stillOpen,
@@ -280,7 +288,7 @@ function computePeriodFacts(
 // ── Fonction serveur principale ───────────────────────────────────────────────
 
 export async function buildEvolutionReadModel(siteId: string): Promise<EvolutionReadModel> {
-  const activityMap = await getActivityMap(siteId)
+  const activityMap = await buildOccurrenceActivityMap(siteId)
 
   if (activityMap.runs.length === 0) {
     return { siteId, totalRuns: 0, dateRange: null, periods: [] }
@@ -333,9 +341,13 @@ function buildDeterministicText(period: EvolutionPeriod): string {
     const more  = period.appeared.length > 3 ? ` et ${period.appeared.length - 3} autre(s)` : ''
     parts.push(`${period.appeared.length} sujet(s) apparu(s) : ${names}${more}.`)
   }
+  if (period.reopened.length > 0) {
+    const names = period.reopened.slice(0, 2).map((s) => s.label).join(', ')
+    parts.push(`${period.reopened.length} sujet(s) rouvert(s) : ${names}.`)
+  }
   if (period.aggravated.length > 0) {
     const names = period.aggravated.slice(0, 2).map((s) => s.label).join(', ')
-    parts.push(`${period.aggravated.length} aggravé(s)/réouvert(s) : ${names}.`)
+    parts.push(`${period.aggravated.length} aggravé(s) : ${names}.`)
   }
   if (period.resolved.length > 0) {
     parts.push(`${period.resolved.length} sujet(s) traité(s).`)

@@ -12,10 +12,10 @@ import {
   computeWatchlist,
   computeProgressByCategory,
   getImportantSubjects,
-  getActivityMap,
   getSiteHealthTimeline,
   getSiteDependencyGraph,
 } from '@/lib/documents/site-synthesis'
+import { buildOccurrenceActivityMap } from '@/lib/documents/occurrence-population'
 import { buildEvolutionReadModel, generateEvolutionNarrative } from '@/lib/documents/pv-evolution'
 import { isEvolutionV2Enabled, classifySubjectEvolutionV2 } from '@/lib/knowledge/evolution-v2'
 import type { V2SubjectResult } from '@/lib/knowledge/evolution-v2'
@@ -67,8 +67,10 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
     getImportantSubjects(siteId).catch(() => []),
   ])
 
+  // P0 Phase 2B — Historique PV occurrence-first (projection partagée, acteurs exclus #228,
+  // knowledge_fact gardé) : un sujet apparaît PARCE QU'IL A DES OCCURRENCES, sans score/seuil.
   const activityMap = view === 'heatmap'
-    ? await getActivityMap(siteId).catch(() => null)
+    ? await buildOccurrenceActivityMap(siteId).catch(() => null)
     : null
 
   const depsGraph = view === 'deps'
