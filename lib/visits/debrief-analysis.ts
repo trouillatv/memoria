@@ -481,6 +481,23 @@ export async function runCanonicalReconciliation(params: {
     const { projectCanonicalSubjectSafely } = await import('@/lib/db/canonical-subject-project')
     await projectCanonicalSubjectSafely({ siteId, scope: { kind: 'report', reportId } })
 
+    // ── V2 — conservation de la preuve relationnelle (best-effort) ─────────────
+    // APRÈS matérialisation des occurrences ET réconciliation proposition→canonical.
+    // NE crée AUCUNE relation : conserve seulement la phrase source rattachée aux sujets
+    // qu'elle mentionne (subject_relational_evidence). Occurrences INCHANGÉES. Idempotent.
+    try {
+      const { data: skRow } = await sb.from('canonical_subject_occurrence')
+        .select('source_kind').eq('source_ref_id', reportId).limit(1).maybeSingle()
+      const sourceKind = ((skRow as { source_kind?: string } | null)?.source_kind === 'meeting' ? 'meeting' : 'field_visit') as 'field_visit' | 'meeting'
+      const { captureRelationalEvidenceForReport } = await import('@/lib/db/subject-relational-evidence')
+      const rel = await captureRelationalEvidenceForReport({ admin: sb, siteId, reportId, sourceKind })
+      if (rel.candidates > 0) {
+        console.log(`[rel-evidence] report=${reportId.slice(0, 8)} candidats=${rel.candidates} persistées=${rel.persisted} doublons=${rel.duplicatesIgnored} moy_sujets=${rel.avgSubjectsPerEvidence} err=${rel.errors}`)
+      }
+    } catch (err) {
+      console.error('[rel-evidence] capture (non-bloquant):', err instanceof Error ? err.message : String(err))
+    }
+
     await sb
       .from('site_reports')
       .update({
