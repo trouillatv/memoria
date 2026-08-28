@@ -563,9 +563,31 @@ export async function extractHistoricalPv(
       if (actorOrphans.length > 0) {
         try {
           const { tryActorAutoLink } = await import('@/lib/db/actor-auto-link')
-          const stats = { linked: 0, skipped: 0, no_match: 0, ambiguous: 0, conflict: 0, error: 0 }
+          const { isSiteEstablishmentLabel } = await import('@/lib/db/site-identity-guard')
+          const stats = { linked: 0, skipped: 0, no_match: 0, ambiguous: 0, conflict: 0, error: 0, establishment_skipped: 0 }
+
+          // #232 — GARDE D'INTÉGRITÉ : le nom propre / établissement du site ne doit jamais
+          // devenir une identité canonique acteur (défaut prouvé récurrent). Alias fiables =
+          // sites.name + sites.normalized_name. Barrière au gate, sans toucher l'extracteur.
+          const { data: siteRow } = await supabase
+            .from('sites')
+            .select('name, normalized_name')
+            .eq('id', siteIdForReconciliation)
+            .maybeSingle()
+          const siteAliases = [
+            (siteRow as { name?: string | null } | null)?.name,
+            (siteRow as { normalized_name?: string | null } | null)?.normalized_name,
+          ]
 
           for (const orphan of actorOrphans) {
+            // Le site lui-même n'est pas un acteur : on ne crée aucune identité pour lui.
+            // La proposition reste extraite (info non détruite), mais sans canonical_subject.
+            if (isSiteEstablishmentLabel(orphan.label, siteAliases)) {
+              stats.establishment_skipped++
+              log('actor_orphan_is_site_establishment', documentId, { threadId: orphan.threadId, label: orphan.label })
+              continue
+            }
+
             // Créer le canonical_subject
             const { data: newCs, error: csErr } = await supabase
               .from('canonical_subject')
