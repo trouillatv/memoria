@@ -88,13 +88,62 @@ une vraie visite vocale future. Non traité ici.
 - **Coût/taille** : négligeable (~91 car., quelques phrases/visite).
 - **Ce que V3 consommerait** : lignes `subject_relational_evidence` (evidence_text + ≥2 subject_ids) → candidat cooc=1 → juge existant.
 
-## Recommandation & décision
-**FIGER le design (Option C), NE PAS coder V2 maintenant.** Raison : conserver la preuve est correct, mais le
-corpus visite n'exprime pas encore de dépendances **sujet↔sujet** — les brancher produirait 0. Le blocage réel
-est **en amont** (nature de ce que David exprime en visite) et **hors périmètre** (une dépendance sujet→action /
-sujet→événement est un autre modèle que `canonical_subject_links` sujet↔sujet). Trois voies possibles pour toi :
-1. **Design gelé + attente** : garder cette spec, re-lancer `audit-v2-reconstruction` après quelques vraies visites terrain ; coder V2 dès que le rendement paire-preuve devient non nul.
-2. **Élargir le modèle** (hors périmètre actuel) : capturer aussi sujet→action/événement — décision produit majeure, pas une extension V2.
-3. **Laisser PV/CR nourrir** `canonical_subject_links` (déjà actif) ; la visite reste un canal futur.
+## 8. Complément — mesure PHRASE-LEVEL + témoins (`scripts/audit-v2-temoins.ts`)
+Recadrage (ta doctrine) : V2 conserve la **phrase** rattachée aux sujets qu'elle mentionne — SANS exiger que
+les DEUX bouts soient des canonical_subjects (V3 tranchera plus tard). Mesure au niveau phrase :
 
-**HARD STOP après spec + dry-run. Aucun code d'écriture.** Moteur PV/CR actif et prompt validé non touchés.
+| Mesure | Valeur |
+|---|---|
+| Phrases relationnelles rattachables (≥1 sujet mentionné) | 21 |
+| **Conservées dans une note aujourd'hui (AVANT)** | **2 (10 %)** |
+| **V2 Option C — conservées (APRÈS)** | **21 (100 %)** ✅ cible >90 % atteinte |
+| Duplication moyenne (sujets / preuve) | 1,19 |
+| Phrases > 2 sujets | 1 |
+| **Risque mis-attribution** (phrase logée dans la note d'un sujet NON mentionné) | **1** → Option C l'élimine (subject_ids explicites) |
+
+**Témoins tracés (lignée réelle) :**
+- *« nettoyage carrelage remplacé par panneaux isothermes »* (report 22b3f95e, proposition `decision`) : mentionne
+  **1** sujet canonique (« Nettoyage panneaux isothermes ») ; **non conservée** dans une occurrence aujourd'hui ;
+  V2 Option C : `subject_relational_evidence{ source_ref, subject_ids:[nettoyage panneaux], evidence_text }`,
+  **occurrences inchangées (atomiques)** → V3 pourra présenter la phrase au juge sans reconstruire le contexte.
+- *« si les produits sont repris, cela empêcherait la revégétalisation »* (report 8255fcbf, `vigilance`) : mentionne
+  **0** sujet canonique (ni « produits décharges » ni « revégétalisation » n'existent comme sujets sur ce site) ;
+  V2 la conserve en preuve **niveau report** (subject_ids=[]) → utile seulement si/quand ces sujets existent.
+- *« cadenas … avant le démarrage »* : cadenas = sujet, « démarrage » = événement (pas un sujet).
+
+**Les 3 invariants demandés sont démontrés** : (1) les sujets restent atomiques (occurrences inchangées) ;
+(2) la phrase survit après matérialisation (10 %→100 %) ; (3) V3 lira la phrase + subject_ids sans reconstruire.
+
+---
+
+## Recommandation & décision
+**Option C VALIDÉE par le dry-run.** La cible « conserver >90 % sans casser l'atomicité » est **atteinte
+(10 %→100 %)**, la duplication est faible (1,19), les cas >2 sujets rares (1), et Option C **élimine** le seul
+cas de mis-attribution observé. C'est exactement l'objectif de ce pas : **arrêter de perdre une information que
+MemorIA avait déjà correctement comprise**, sans toucher au juge ni aux seuils.
+
+**Réserve honnête (n'empêche pas V2, cadre V3)** : beaucoup de phrases visite ne mentionnent que 0–1 sujet
+canonique (l'autre bout est un terme non-sujet : « carrelage », « démarrage », « revégétalisation »). V2 conserve
+tout de même la preuve ; mais le **rendement immédiat de V3** (relation sujet↔sujet) restera faible tant que les
+deux bouts ne sont pas des sujets durables. V2 ne perd rien à être fait maintenant ; il rend simplement V3 possible
+dès que la matière s'y prête.
+
+**Migration proposée (NON appliquée)** :
+```sql
+create table public.subject_relational_evidence (
+  id            uuid primary key default gen_random_uuid(),
+  site_id       uuid not null references public.sites(id) on delete cascade,
+  source_kind   text not null,                    -- field_visit | meeting | historical_pdf
+  source_ref_id uuid not null,                    -- report/run
+  evidence_text text not null,                    -- verbatim source, borné, SANS reformulation LLM
+  subject_ids   uuid[] not null default '{}',     -- canonical_subjects mentionnés (0..N)
+  source_proposal_id uuid,                         -- provenance fine si dispo
+  created_at    timestamptz not null default now(),
+  unique (source_ref_id, md5(lower(evidence_text)))  -- idempotence : rejouer ne duplique pas
+);
+```
+Additif, non destructif, aucun backfill. **Ce que V3 consommera** : lignes à `array_length(subject_ids,1) >= 2`
+→ candidat immédiat (cooc=1) → juge relationnel existant → `canonical_subject_links` suggested.
+
+**HARD STOP après spec + dry-run. Aucun code d'écriture, aucune migration appliquée, aucun branchement visite.**
+Moteur PV/CR actif et prompt validé non touchés. Prêt à coder Option C sur ton GO.
