@@ -15,7 +15,7 @@ export interface ActionGroupDisplay {
   due_date: string | null
   assignedTo: string | null
   corpsEtat: string | null
-  urgency: 'late' | 'today' | 'week' | 'later' | 'undated'
+  urgency: 'late' | 'late_unconfirmed' | 'today' | 'week' | 'later' | 'undated'
   actionHref: string
   /** Fiche du sujet canonique — présent uniquement si l'action porte déjà la FK.
    *  `null` = la carte reste strictement inchangée. */
@@ -31,6 +31,13 @@ function UrgencyBadge({ urgency, dueDate }: { urgency: ActionGroupDisplay['urgen
     return (
       <span className="inline-flex items-center gap-1 rounded border border-rose-300 bg-rose-50 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-rose-900 shrink-0 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-300">
         En retard
+      </span>
+    )
+  }
+  if (urgency === 'late_unconfirmed') {
+    return (
+      <span title="Échéance dépassée mais non confirmée — pas nécessairement en retard" className="inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-amber-900 shrink-0 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300">
+        Échéance dépassée
       </span>
     )
   }
@@ -150,7 +157,8 @@ export function ActionsListClient({
     ? groups.filter((g) => g.title.toLowerCase().includes(query.toLowerCase()))
     : groups
 
-  const late    = filtered.filter((g) => g.urgency === 'late')
+  const late            = filtered.filter((g) => g.urgency === 'late')
+  const lateUnconfirmed = filtered.filter((g) => g.urgency === 'late_unconfirmed')
   const today_  = filtered.filter((g) => g.urgency === 'today')
   const week    = filtered.filter((g) => g.urgency === 'week')
   const undated = filtered.filter((g) => g.urgency === 'undated' || g.urgency === 'later')
@@ -179,6 +187,16 @@ export function ActionsListClient({
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-rose-600">En retard ({late.length})</h2>
           <div className="space-y-2">{late.map((g) => <ActionRow key={g.id} group={g} />)}</div>
+        </section>
+      )}
+
+      {/* Échéance dépassée · non confirmée — la date (déduite IA) est passée mais
+          n'a pas été confirmée : jamais « en retard » au sens fort (règle canonique
+          partagée avec l'Aperçu). Catégorie calme, distincte du rouge. */}
+      {lateUnconfirmed.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold text-amber-700 dark:text-amber-400">Échéance dépassée · à confirmer ({lateUnconfirmed.length})</h2>
+          <div className="space-y-2">{lateUnconfirmed.map((g) => <ActionRow key={g.id} group={g} />)}</div>
         </section>
       )}
 

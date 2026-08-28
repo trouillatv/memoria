@@ -31,3 +31,27 @@ export function describeOverdueAction(
     : `Prévu le ${dueDate} · réalisation non confirmée`
   return { confirmed, overdueDays, reason }
 }
+
+// ── Urgence d'une action — SOURCE UNIQUE partagée Aperçu + écran Actions ────────
+// Une seule définition de « en retard » pour que les surfaces ne divergent jamais
+// (P0.5-Vérité). Une échéance dépassée mais NON confirmée (due_date_status !=
+// 'explicit') n'est jamais « en retard » : elle est 'late_unconfirmed'. Un 'planned'
+// a une prise en charge explicite → jamais compté « en retard ».
+
+export type ActionUrgency = 'late' | 'late_unconfirmed' | 'today' | 'week' | 'later' | 'undated'
+
+/** Urgence métier selon l'échéance ET la confirmation de la date (pur, testé). */
+export function classifyActionUrgency(dueDate: string | null, dueDateStatus: DueDateStatus, todayIso: string): ActionUrgency {
+  if (!dueDate) return 'undated'
+  const due = dueDate.slice(0, 10)
+  if (due < todayIso) return dueDateStatus === 'explicit' ? 'late' : 'late_unconfirmed'
+  if (due === todayIso) return 'today'
+  const days = Math.floor((Date.parse(`${due}T00:00:00.000Z`) - Date.parse(`${todayIso}T00:00:00.000Z`)) / 86_400_000)
+  return days <= 7 ? 'week' : 'later'
+}
+
+/** « En retard » au sens CANONIQUE : action ouverte + échéance explicite dépassée.
+ *  (planned exclu ; date non confirmée exclue.) Utilisé pour les COMPTEURS. */
+export function isActionOverdue(status: string | null, dueDate: string | null, dueDateStatus: DueDateStatus, todayIso: string): boolean {
+  return status === 'open' && classifyActionUrgency(dueDate, dueDateStatus, todayIso) === 'late'
+}

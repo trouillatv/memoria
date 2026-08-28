@@ -7,6 +7,7 @@ import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbPr
 import { readSiteActionSummaries, groupActionsByThread, readReportMeta, classifyProvenance } from '@/lib/knowledge/repository'
 import { getSitePendingActionProposals } from '@/lib/knowledge/site-pending-proposals'
 import { todayLocalIso } from '@/lib/time/local-date'
+import { classifyActionUrgency, isActionOverdue } from '@/lib/knowledge/overdue-action'
 import { SiteChantierNav } from '../SiteChantierNav'
 import { ActionsListClient, type ActionGroupDisplay } from './ActionsListClient'
 
@@ -18,13 +19,9 @@ function addDays(iso: string, days: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-function urgencyOf(dueDate: string | null, today: string, weekEnd: string): ActionGroupDisplay['urgency'] {
-  if (!dueDate) return 'undated'
-  if (dueDate < today) return 'late'
-  if (dueDate === today) return 'today'
-  if (dueDate <= weekEnd) return 'week'
-  return 'later'
-}
+// « En retard »/urgence : plus de définition locale. On converge sur le prédicat
+// canonique partagé (overdue-action.ts), identique à l'Aperçu (P0.5). Une date
+// dépassée non confirmée n'est pas « en retard » (→ 'late_unconfirmed').
 
 export default async function SiteActionsHub({ params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUserWithProfile()
@@ -54,7 +51,7 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
   const reportMeta = await readReportMeta(allReportIds)
 
   // KPI counts
-  const lateCount    = groups.filter((g) => g.representative.due_date && g.representative.due_date < today).length
+  const lateCount    = groups.filter((g) => isActionOverdue(g.representative.status, g.representative.due_date, g.representative.due_date_status, today)).length
   const todayCount   = groups.filter((g) => g.representative.due_date === today).length
   const weekCount    = groups.filter((g) => {
     const d = g.representative.due_date
@@ -103,7 +100,7 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
       due_date: rep.due_date,
       assignedTo: rep.assigned_to ?? null,
       corpsEtat: rep.corps_etat ?? null,
-      urgency: urgencyOf(rep.due_date, today, weekEnd),
+      urgency: classifyActionUrgency(rep.due_date, rep.due_date_status, today),
       actionHref: `/sites/${id}/action/${rep.id}`,
       // Mémoire longitudinale du sujet, quand le lien existe DÉJÀ en base (mig 346).
       // Aucun rapprochement n'est calculé ici : pas de FK, pas de lien.

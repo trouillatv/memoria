@@ -1,4 +1,6 @@
 import 'server-only'
+import { classifyActionUrgency } from './overdue-action'
+import type { ActionUrgency } from './overdue-action'
 
 // ── READ MODEL : SiteOverview ────────────────────────────────────────────────
 // LE CONTRAT PUBLIC de la connaissance d'un chantier pour l'écran « Aperçu » (fiche
@@ -131,7 +133,7 @@ export interface AttentionReason {
  *  'late_unconfirmed' : échéance dépassée mais non confirmée (due_date_status
  *  != 'explicit') — jamais qualifiable de « en retard » (retour Guillaume
  *  2026-08-14, LOT4 — même règle que overdue-action.ts). */
-export type ActionUrgency = 'late' | 'late_unconfirmed' | 'today' | 'week' | 'later' | 'undated'
+export type { ActionUrgency }
 export interface PriorityAction {
   id: string
   title: string
@@ -274,14 +276,9 @@ function proposedAndConfirmed(p: ProposalProjection, confirmed: KnowledgeItem[],
   }
 }
 
-/** Urgence métier d'une action — même règle que le libellé d'échéance. */
+/** Urgence métier — délègue au classifieur canonique partagé (overdue-action). */
 function urgencyOf(dueDate: string | null, dueDateStatus: 'explicit' | 'estimated' | null, todayIso: string): ActionUrgency {
-  if (!dueDate) return 'undated'
-  const due = dueDate.slice(0, 10)
-  if (due < todayIso) return dueDateStatus === 'explicit' ? 'late' : 'late_unconfirmed'
-  if (due === todayIso) return 'today'
-  const days = Math.floor((Date.parse(`${due}T00:00:00.000Z`) - Date.parse(`${todayIso}T00:00:00.000Z`)) / 86_400_000)
-  return days <= 7 ? 'week' : 'later'
+  return classifyActionUrgency(dueDate, dueDateStatus, todayIso)
 }
 
 /** Un blocage est un fait DÉCLARÉ : lui seul rend le chantier « urgent ». */
