@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { AlertTriangle, ArrowLeft, ArrowRight, Building2, Calendar, Check, FileText, GitMerge, Link2, LayoutList, Trash2, User, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, Building2, Calendar, Check, FileText, GitMerge, Link2, LayoutList, MoreHorizontal, Plus, Trash2, User, X } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getCanonicalSubjectLife, listSubjectsForPicker } from '@/lib/db/canonical-subject-life'
@@ -1104,31 +1104,44 @@ function RelationsSection({
   return (
     <div className="space-y-2">
       {confirmed.length === 0 && suggested.length === 0 && (
-        <p className="text-sm text-muted-foreground">Aucune relation définie avec d'autres sujets.</p>
+        <p className="text-sm text-muted-foreground">Aucun lien détecté.</p>
       )}
 
-      {confirmed.map((l) => (
-        <div key={l.id} className={cn(
-          'flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm',
-          l.linkType === 'relates_to' ? 'border-dashed' : '',
-        )}>
-          <LinkRow link={l} />
-          {l.source === 'human' && (
-            <form action={deleteCanonicalLinkAction}>
-              <input type="hidden" name="linkId" value={l.id} />
-              <input type="hidden" name="siteId" value={siteId} />
-              <input type="hidden" name="canonicalSubjectId" value={canonicalSubjectId} />
-              <button
-                type="submit"
-                title="Supprimer ce lien"
-                className="mt-0.5 shrink-0 rounded-md p-1 text-muted-foreground/50 hover:text-destructive hover:bg-muted transition-colors"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </form>
-          )}
-        </div>
-      ))}
+      {confirmed.map((l) => {
+        const provenance = l.source === 'human' ? 'Ajouté manuellement' : 'Détecté par MemorIA'
+        return (
+          <div key={l.id} className={cn(
+            'flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm',
+            l.linkType === 'relates_to' ? 'border-dashed' : '',
+          )}>
+            <LinkRow link={l} />
+            <div className="flex shrink-0 items-start gap-2">
+              <span className="mt-0.5 whitespace-nowrap text-[11px] text-muted-foreground/60">{provenance}</span>
+              {l.source === 'human' && (
+                <details className="group/menu relative">
+                  <summary className="flex cursor-pointer list-none items-center rounded-md p-1 text-muted-foreground/50 hover:bg-muted hover:text-foreground transition-colors select-none" title="Options">
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </summary>
+                  <div className="absolute right-0 z-10 mt-1 w-44 rounded-lg border bg-popover p-1 shadow-md">
+                    <form action={deleteCanonicalLinkAction}>
+                      <input type="hidden" name="linkId" value={l.id} />
+                      <input type="hidden" name="siteId" value={siteId} />
+                      <input type="hidden" name="canonicalSubjectId" value={canonicalSubjectId} />
+                      <button
+                        type="submit"
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-destructive hover:bg-destructive/10 transition-colors"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Supprimer ce lien
+                      </button>
+                    </form>
+                  </div>
+                </details>
+              )}
+            </div>
+          </div>
+        )
+      })}
 
       {suggested.length > 0 && (
         <>
@@ -1171,7 +1184,13 @@ function RelationsSection({
       )}
 
       {pickerItems.length > 0 && (
-        <CreateLinkForm siteId={siteId} canonicalSubjectId={canonicalSubjectId} pickerItems={pickerItems} />
+        <details className="group/add pt-0.5">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors select-none">
+            <Plus className="h-3.5 w-3.5" />
+            Ajouter un lien
+          </summary>
+          <CreateLinkForm siteId={siteId} canonicalSubjectId={canonicalSubjectId} pickerItems={pickerItems} />
+        </details>
       )}
     </div>
   )
@@ -1222,7 +1241,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
         <BreadcrumbPrefix crumbs={[
           { href: '/sites', label: 'Sites' },
           { href: `/sites/${siteId}`, label: site.name },
-          { href: `/sites/${siteId}/historique`, label: 'Historique' },
+          { href: `/sites/${siteId}/historique`, label: 'Suivi' },
         ]} />
         <DynamicCrumb segmentId="canonicalSubjectId" label={life.label} />
 
@@ -1233,7 +1252,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
               className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              Retour à l'historique
+              Retour au suivi
             </Link>
           </div>
 
@@ -1319,7 +1338,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
       <BreadcrumbPrefix crumbs={[
         { href: '/sites', label: 'Sites' },
         { href: `/sites/${siteId}`, label: site.name },
-        { href: `/sites/${siteId}/historique`, label: 'Historique' },
+        { href: `/sites/${siteId}/historique`, label: 'Suivi' },
       ]} />
       <DynamicCrumb segmentId="canonicalSubjectId" label={life.label} />
 
@@ -1331,7 +1350,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            Retour à l'historique
+            Retour au suivi
           </Link>
         </div>
 

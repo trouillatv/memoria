@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { listDocumentsForTarget } from '@/lib/db/documents'
+import { ScrollActiveRail } from '@/components/ui/ScrollActiveRail'
 
 /**
  * Onglets intra-chantier — sur les sous-vues de la fiche (Visites / Réunions /
@@ -42,7 +43,7 @@ export async function SiteTabs({
   ]
 
   return (
-    <nav className="scrollbar-hide -mx-3 overflow-x-auto px-3">
+    <ScrollActiveRail activeKey={active} ariaLabel="Onglets du chantier" className="scrollbar-hide -mx-3 overflow-x-auto px-3">
       <ul className="flex w-max gap-1.5">
         {tabs.map((t) => {
           const isActive = t.key === active
@@ -63,6 +64,6 @@ export async function SiteTabs({
           )
         })}
       </ul>
-    </nav>
+    </ScrollActiveRail>
   )
 }

@@ -124,6 +124,15 @@ export default async function SitePage({ params, searchParams }: PageProps) {
       )}
 
       <ChantierShell>
+        {/* Navigation chantier PARTAGÉE (sticky compact) — N1 UNIFORME : identité
+            persistante + onglets, identiques à TOUTES les vues chantier (Aperçu,
+            Visites, Chronologie, Suivi, Planning, Réserves, Actions, Documents…),
+            placée en tête sur chaque vue (même hauteur, même position, même sticky). */}
+        <SiteChantierNav siteId={id} siteName={identity.name} clientName={identity.clientName} activeTab={tab} />
+
+        {/* La grande carte identité est du CONTENU d'Aperçu, pas un header
+            alternatif : elle ne s'affiche que sur l'Aperçu, sous le N1. */}
+        {tab === 'apercu' && (
         <div className="rounded-[22px] border bg-card/90 p-4 shadow-sm md:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex min-w-0 items-start gap-4">
@@ -192,11 +201,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           </div>
 
         </div>
-
-        {/* Navigation chantier PARTAGÉE (sticky compact) — identité persistante +
-            onglets N2, identiques à toutes les routes chantier. Le hero ci-dessus
-            reste non sticky. */}
-        <SiteChantierNav siteId={id} siteName={identity.name} clientName={identity.clientName} activeTab={tab} />
+        )}
 
         {/* ÉTAPE 2 — l'en-tête et les onglets ci-dessus ne dépendent que de
             l'identité : ils sortent AVANT les données de l'onglet, qui arrivent

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { ScrollActiveRail } from '@/components/ui/ScrollActiveRail'
 
 export const SITE_TABS = [
   { key: 'apercu',           label: 'Aperçu' },
@@ -53,14 +54,18 @@ function tabHref(t: typeof SITE_TABS[number], siteId: string): string {
 
 export function SiteTabsNav({ active, siteId }: { active: SiteTabKey; siteId: string }) {
   return (
-    <nav
-      aria-label="Vues du chantier"
+    <ScrollActiveRail
+      ariaLabel="Vues du chantier"
+      activeKey={active}
       className="flex items-center gap-7 overflow-x-auto border-b border-border/80"
     >
       {SITE_TABS.map((t) => (
         <Link
           key={t.key}
-          scroll={'pathSuffix' in t ? true : false}
+          aria-current={active === t.key ? 'page' : undefined}
+          // Changement de vue chantier → retour en haut (scroll par défaut de Next).
+          // Auparavant les onglets ?tab= gardaient la position (scroll={false}), ce
+          // qui donnait l'impression d'arriver « au milieu » de la nouvelle vue.
           href={tabHref(t, siteId)}
           className={cn(
             'shrink-0 border-b-2 px-0 py-3 text-sm font-medium transition-colors',
@@ -72,6 +77,6 @@ export function SiteTabsNav({ active, siteId }: { active: SiteTabKey; siteId: st
           {t.label}
         </Link>
       ))}
-    </nav>
+    </ScrollActiveRail>
   )
 }

@@ -142,6 +142,10 @@ export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: 
     byGroup.get(c.group)!.push(c)
   }
   const PREVIEW = 3
+  // « … et N autres » DOIT être consultable : dépliage par groupe, sur place, sans
+  // nouvelle page ; « Réduire » referme (P0.5 — contenu masqué toujours atteignable).
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const toggle = (g: string) => setExpanded((s) => { const n = new Set(s); if (n.has(g)) n.delete(g); else n.add(g); return n })
 
   return (
     <section className="space-y-4">
@@ -155,8 +159,9 @@ export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: 
       ) : (
         groups.map((g) => {
           const items = byGroup.get(g)!
-          const visible = items.slice(0, PREVIEW)
-          const hidden = items.length - visible.length
+          const isOpen = expanded.has(g)
+          const shown = isOpen ? items : items.slice(0, PREVIEW)
+          const hidden = items.length - PREVIEW
           return (
             <div key={g}>
               <div className="flex items-center gap-2">
@@ -164,7 +169,7 @@ export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: 
                 <span className="text-[12px] font-semibold tabular-nums text-muted-foreground">{items.length}</span>
               </div>
               <ul className="mt-1.5 space-y-1">
-                {visible.map((c) => (
+                {shown.map((c) => (
                   <li key={c.id} className="flex items-start gap-2 text-[13px] text-foreground/90">
                     <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
                     <span className="min-w-0">
@@ -181,9 +186,13 @@ export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: 
                 ))}
               </ul>
               {hidden > 0 && (
-                <p className="mt-1.5 text-[12px] text-muted-foreground">
-                  ... et {hidden} autre{hidden > 1 ? 's' : ''}
-                </p>
+                <button
+                  type="button"
+                  onClick={() => toggle(g)}
+                  className="mt-1.5 text-[12px] font-medium text-primary underline-offset-2 hover:underline"
+                >
+                  {isOpen ? 'Réduire' : `Voir ${hidden} de plus`}
+                </button>
               )}
             </div>
           )
