@@ -494,8 +494,18 @@ export async function runCanonicalReconciliation(params: {
       if (rel.candidates > 0) {
         console.log(`[rel-evidence] report=${reportId.slice(0, 8)} candidats=${rel.candidates} persistées=${rel.persisted} doublons=${rel.duplicatesIgnored} moy_sujets=${rel.avgSubjectsPerEvidence} err=${rel.errors}`)
       }
+
+      // ── V3 — voie explicite (best-effort) : preuves ≥2 sujets → juge durci → suggested ──
+      // 2e voie d'acquisition, COMPLÉMENTAIRE de PV/CR. NE change aucun seuil de cooccurrence.
+      // Même juge, même whitelist, acteurs exclus, preuve obligatoire, ≥2 canonical_subjects réels,
+      // relates_to jamais persisté, status='suggested' jamais 'confirmed', idempotent, coût borné.
+      const { produceRelationsFromExplicitEvidence } = await import('@/lib/ai/produce-relations-from-evidence')
+      const v3 = await produceRelationsFromExplicitEvidence({ admin: sb, siteId, reportId })
+      if (v3.pairs > 0 || v3.written > 0) {
+        console.log(`[rel-v3] report=${reportId.slice(0, 8)} preuves=${v3.evidences} ≥2sujets=${v3.evidencesMultiSubject} paires=${v3.pairs} existantes=${v3.pairsExisting} llm=${v3.llmCalls} noRel=${v3.noRelation} relates_to=${v3.relatesToRejected} suggested=${v3.written} doublons=${v3.duplicates} err=${v3.errors}`)
+      }
     } catch (err) {
-      console.error('[rel-evidence] capture (non-bloquant):', err instanceof Error ? err.message : String(err))
+      console.error('[rel-evidence] capture/v3 (non-bloquant):', err instanceof Error ? err.message : String(err))
     }
 
     await sb
