@@ -21,6 +21,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { RELATION_CANDIDATE_CONFIG as CFG } from './relation-producer-config'
 import { qualifyLinkCandidate } from './qualify-link-candidates'
 import type { CandidatePair, PairEvidence } from './qualify-link-candidates'
+import { getActorCanonicalIds } from '@/lib/documents/occurrence-population'
 
 // ── Whitelist serveur ─────────────────────────────────────────────────────────
 
@@ -242,18 +243,20 @@ export async function produceRelationsFromOccurrences(opts: {
     .eq('site_id', siteId).eq('status', 'active')
   const csLabel = new Map((canonicals ?? []).map(c => [c.id as string, c.label as string]))
 
-  // 2. Occurrences canoniques : terrain, réunion et PV historiques (P0-B2)
-  let occurrencesQuery = admin
+  // 1bis. EXCLUSION ACTEURS (doctrine #228, kind durable mig 355) — un acteur
+  // (entreprise/personne) ne participe JAMAIS au générateur statistique de relations
+  // inter-sujets. La relation acteur↔sujet relève du modèle acteur, pas d'ici.
+  const actorCs = await getActorCanonicalIds(siteId)
+
+  // 2. Occurrences canoniques : terrain, réunion et PV historiques (P0-B2).
+  // On charge TOUJOURS tout l'historique du site (la co-occurrence a besoin de N runs).
+  // Le filtrage incrémental « run courant » se fait plus bas, sur les CANDIDATS
+  // (subjectsInTriggerVisit), jamais sur le fetch — sinon N=1 et 0 relation possible.
+  const { data: occurrences } = await admin
     .from('canonical_subject_occurrence')
     .select('id, canonical_subject_id, source_ref_id, source_kind, label, note, effective_date, source_proposal_id')
     .eq('site_id', siteId)
     .in('source_kind', ['field_visit', 'meeting', 'historical_pdf'])
-
-  if (triggerVisitId) {
-    occurrencesQuery = occurrencesQuery.eq('source_ref_id', triggerVisitId)
-  }
-
-  const { data: occurrences } = await occurrencesQuery
   if (!occurrences || occurrences.length === 0) return result
 
   // 3. Index : visit_id → csId → TOUTES les OccurrenceData (pas seulement la première)
@@ -263,6 +266,8 @@ export async function produceRelationsFromOccurrences(opts: {
   for (const occ of occurrences) {
     const visitId = occ.source_ref_id as string
     const csId    = occ.canonical_subject_id as string
+
+    if (actorCs.has(csId)) continue  // acteur exclu du pool statistique
 
     if (!visitToCS.has(visitId)) visitToCS.set(visitId, new Map())
     const visitMap = visitToCS.get(visitId)!
