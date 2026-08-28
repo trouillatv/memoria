@@ -13,6 +13,7 @@ import { documentStatusToPvState, visitStatusToPvState, computeLmcaFromOccurrenc
 import type { HistoryTransition } from '@/lib/documents/pv-history'
 import type { SubjectLinkType, SubjectLinkStatus, SubjectLinkSource } from '@/lib/db/subject-thread-links'
 import { isOperationalSubject } from '@/lib/subjects/kind'
+import { isStagnationEligible, isOpenOperationalObjectStatus } from '@/lib/subjects/stagnation'
 import { computeNativeChangeMetrics } from '@/lib/knowledge/evolution-metrics'
 
 export type { HistoryTransition }
@@ -276,7 +277,7 @@ export async function getCanonicalSubjectLife(
   // 1. Canonical subject
   const { data: cs } = await supabase
     .from('canonical_subject')
-    .select('id, site_id, label, aliases, status, merged_into')
+    .select('id, site_id, label, aliases, status, merged_into, kind')
     .eq('id', canonicalSubjectId)
     .maybeSingle()
   if (!cs) return null
@@ -286,6 +287,8 @@ export async function getCanonicalSubjectLife(
   const csAliases: string[] = (cs as { aliases: string[] }).aliases ?? []
   const csStatus: string = (cs as { status: string }).status
   const csMergedInto: string | null = (cs as { merged_into: string | null }).merged_into ?? null
+  // #228 : nature durable (actor|business_subject) — base de l'éligibilité opérationnelle ET stagnation.
+  const csKind: string | null = (cs as { kind: string | null }).kind ?? null
 
   // 2. Tous les threads rattachés à ce sujet
   const { data: stiRows } = await supabase
@@ -345,7 +348,9 @@ export async function getCanonicalSubjectLife(
       lastMeaningfulChangeAt: nativeLmca,
       stagnationDays: nativeStagDays,
       consecutiveMentionsWithoutChange: nativeCwc,
-      isStagnant: nativeStagDays >= 30 && nativeCwc >= 2,
+      // #228 Lot B — attente d'évolution prouvée : objet terrain ouvert (aucune trajectoire PV → pas de reopened).
+      isStagnant: isStagnationEligible(csKind, terrainObjects.some((t) => isOpenOperationalObjectStatus(t.entityType, t.status)), false)
+        && nativeStagDays >= 30 && nativeCwc >= 2,
     }
   }
 
@@ -401,7 +406,9 @@ export async function getCanonicalSubjectLife(
       lastMeaningfulChangeAt: fallbackLmca,
       stagnationDays: fallbackStagDays,
       consecutiveMentionsWithoutChange: fallbackCwc,
-      isStagnant: fallbackStagDays >= 30 && fallbackCwc >= 2,
+      // #228 Lot B — attente d'évolution prouvée : objet terrain ouvert (aucune trajectoire PV → pas de reopened).
+      isStagnant: isStagnationEligible(csKind, terrainObjects.some((t) => isOpenOperationalObjectStatus(t.entityType, t.status)), false)
+        && fallbackStagDays >= 30 && fallbackCwc >= 2,
     }
   }
 
@@ -811,7 +818,27 @@ export async function getCanonicalSubjectLife(
   const stagnationDays = (lastMeaningfulChangeAt && lastSeenAt && lastMeaningfulChangeAt !== lastSeenAt)
     ? Math.floor((new Date(lastSeenAt).getTime() - new Date(lastMeaningfulChangeAt).getTime()) / 86_400_000)
     : 0
-  const isStagnant = !STAGNATION_INELIGIBLE.has(primaryFamily ?? '') && stagnationDays >= 30 && consecutiveMentionsWithoutChange >= 2
+  // #228 Lot B — stagnant SEULEMENT si une évolution était ATTENDUE (objet opérationnel ouvert OU
+  // réouverture) sur un sujet métier durable (actor exclu). Même règle et même primitive « réouvert »
+  // (buildSiteSubjectCells) que la grille → fiche et grille racontent la même histoire. Seuils inchangés.
+  const hasOpenOperationalObject =
+    terrainObjects.some((t) => isOpenOperationalObjectStatus(t.entityType, t.status)) ||
+    materializedEvents.some((e) => isOpenOperationalObjectStatus(e.entityType, e.status))
+  let isReopened = false
+  {
+    const { buildSiteSubjectCells, cellDeltaTransition } = await import('@/lib/documents/site-occurrence-timeline')
+    const view = await buildSiteSubjectCells(siteId)
+    const row = view.rows.find((r) => r.canonicalSubjectId === canonicalSubjectId)
+    if (row) {
+      const firstIdx = row.cells.findIndex((c) => c !== null)
+      let lastIdx = -1
+      for (let i = row.cells.length - 1; i >= 0; i--) { if (row.cells[i]) { lastIdx = i; break } }
+      if (lastIdx >= 0 && cellDeltaTransition(row.cells[lastIdx]!, lastIdx === firstIdx) === 'réouvert') isReopened = true
+    }
+  }
+  const isStagnant = isStagnationEligible(csKind, hasOpenOperationalObject, isReopened)
+    && !CLOSED_NAV_STATUSES.has(currentStatus ?? '')
+    && stagnationDays >= 30 && consecutiveMentionsWithoutChange >= 2
 
   // 8. Liens inter-threads (confirmed + suggested, pas rejected)
   const [outLinksRes, inLinksRes] = await Promise.all([
@@ -1088,12 +1115,10 @@ export async function getCanonicalSubjectLifeForSite(
   return life
 }
 
-// Familles dont le sujet ne peut pas "stagner" par nature.
-// deadline est exclu provisoirement : les échéances récurrentes (réunion mensuelle, situations)
-// changent de statut cycliquement — leur statut stable est un artefact de répétition,
-// pas un vrai blocage. Limite V1 : une vraie échéance unique dépassée devra être traitée
-// explicitement (via champ is_recurring ou type distinct) pour réintégrer ce signal.
-const STAGNATION_INELIGIBLE = new Set(['person', 'company', 'knowledge_fact', 'deadline'])
+// #228 Lot B — STAGNATION_INELIGIBLE (family-based) SUPPRIMÉE : l'éligibilité à la stagnation ne dépend
+// plus de la famille d'occurrence mais d'un signal concret d'attente d'évolution (objet opérationnel
+// ouvert OU réouverture), via isStagnationEligible (lib/subjects/stagnation.ts). Voir l'audit
+// docs/architecture/stagnation-eligibility-audit.md.
 
 // ── Vue liste chantier ────────────────────────────────────────────────────────
 
@@ -1480,6 +1505,21 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
   // 9. Read-model par CS
   const results: NavigableSubjectSummary[] = []
 
+  // #228 Lot B — réouverture par sujet = transition Chronologie 'réouvert' sur la dernière cellule.
+  // MÊME primitive partagée (buildSiteSubjectCells + cellDeltaTransition) que la Chronologie et la
+  // simulation p228b → l'éligibilité stagnation « attente d'évolution prouvée » est cohérente partout.
+  const reopenedByCs = new Set<string>()
+  {
+    const { buildSiteSubjectCells, cellDeltaTransition } = await import('@/lib/documents/site-occurrence-timeline')
+    const view = await buildSiteSubjectCells(siteId)
+    for (const row of view.rows) {
+      const firstIdx = row.cells.findIndex((c) => c !== null)
+      let lastIdx = -1
+      for (let i = row.cells.length - 1; i >= 0; i--) { if (row.cells[i]) { lastIdx = i; break } }
+      if (lastIdx >= 0 && cellDeltaTransition(row.cells[lastIdx]!, lastIdx === firstIdx) === 'réouvert') reopenedByCs.add(row.canonicalSubjectId)
+    }
+  }
+
   for (const [csId, cs] of csById.entries()) {
     const occs = occsByCsId.get(csId) ?? []
     if (occs.length === 0) continue
@@ -1523,9 +1563,16 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     const stagnationDays = (lastMeaningfulChangeAt && lastSeenAt && lastMeaningfulChangeAt !== lastSeenAt)
       ? Math.floor((new Date(lastSeenAt).getTime() - new Date(lastMeaningfulChangeAt).getTime()) / 86_400_000)
       : 0
-    // Veto absolu : un sujet clôturé ne peut jamais être stagnant, quelle que soit son historique.
-    // #228 : STAGNATION_INELIGIBLE reste family-based (INCHANGÉE ce lot ; révision = Lot B dédié).
-    const isStagnant = !STAGNATION_INELIGIBLE.has(dominantFamily ?? '')
+    // #228 Lot B — stagnant SEULEMENT si une évolution était ATTENDUE (objet opérationnel ouvert OU
+    // réouverture) sur un sujet métier durable (actor exclu). L'état `open` seul ne suffit pas ; la
+    // famille ne décide plus. Conditions temporelles INCHANGÉES (!closed && 30 j && 2 mentions).
+    const emStag = csEntityIds.get(csId)
+    const hasOpenObject =
+      [...(emStag?.get('site_action')   ?? [])].some((id) => OPEN_ACTION_STATUS.has(actionStatusById.get(id) ?? '')) ||
+      [...(emStag?.get('site_reserve')  ?? [])].some((id) => OPEN_RESERVE_STATUS.has(reserveStatusById.get(id) ?? '')) ||
+      [...(emStag?.get('site_deadline') ?? [])].some((id) => OPEN_DEADLINE_STATUS.has(deadlineStatusById.get(id) ?? '')) ||
+      [...(emStag?.get('site_decision') ?? [])].some((id) => OPEN_DECISION_STATUT.has(decisionStatutById.get(id) ?? ''))
+    const isStagnant = isStagnationEligible(cs.kind, hasOpenObject, reopenedByCs.has(csId))
       && !CLOSED_NAV_STATUSES.has(currentStatus ?? '')
       && stagnationDays >= 30
       && consecutiveMentionsWithoutChange >= 2
