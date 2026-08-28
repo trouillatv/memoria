@@ -1136,20 +1136,11 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
         // Non bloquant
       }
 
-      // ── Relations suggérées inter-sujets (best-effort) ──────────────────────
-      try {
-        const { produceRelationsForRun } = await import('@/lib/ai/produce-relations-for-run')
-        const relResult = await produceRelationsForRun({ runId, siteId, admin })
-        if (relResult.written > 0 || relResult.sameSubjectDetected > 0) {
-          console.log(
-            `[relations] run=${runId} eval=${relResult.candidatesEvaluated}` +
-            ` same=${relResult.sameSubjectDetected} written=${relResult.written}` +
-            ` relates_to=${relResult.relatesTo} directional=${relResult.directional}`
-          )
-        }
-      } catch {
-        // Non bloquant : les relations sont best-effort
-      }
+      // ── Relations inter-sujets ──────────────────────────────────────────────
+      // Acquisition DÉPLACÉE dans runHistoricalMemoryBuildPipeline (after occurrences),
+      // via produceRelationsFromOccurrences → canonical_subject_links (occurrence-first,
+      // terrain-first). L'ancien produceRelationsForRun (proposals → subject_thread_links
+      // legacy) tournait ici AVANT que les occurrences n'existent : retiré.
     }
   } catch {
     // Non bloquant : la visite est créée, le pipeline knowledge est best-effort

@@ -50,4 +50,29 @@ export async function runHistoricalMemoryBuildPipeline(
     touchedSubjectIds: touchedCanonicalSubjectIds,
     siteReportId,
   })
+
+  // ── Relations inter-sujets suggérées (occurrence-first, terrain-first) ──────
+  // SEUL point d'acquisition automatique des relations : APRÈS matérialisation des
+  // occurrences (ensureHistoricalPdfOccurrences) et réconciliation d'identité. Le
+  // legacy produceRelationsForRun (proposals → subject_thread_links) a été retiré.
+  //
+  // Écrit canonical_subject_links status='suggested' UNIQUEMENT : preuve obligatoire
+  // (evidence_text), whitelist serveur (relates_to rejeté), acteurs exclus, idempotent
+  // (paires existantes exclues + contrainte unique). Une relation suggérée n'est JAMAIS
+  // une vérité confirmée — l'UI doit toujours distinguer « Détecté par MemorIA » de
+  // « Confirmé ». Best-effort : ne bloque jamais le pipeline. Filtre incrémental sur
+  // les sujets touchés par ce run (triggerVisitId = siteReportId).
+  try {
+    const { produceRelationsFromOccurrences } = await import('@/lib/ai/produce-relations-from-occurrences')
+    const rel = await produceRelationsFromOccurrences({ siteId, admin: supabase, triggerVisitId: siteReportId })
+    if (rel.written > 0 || rel.sameSubjectDetected > 0 || rel.relatesTo > 0) {
+      console.log(
+        `[relations/occ] report=${siteReportId.slice(0, 8)} eval=${rel.candidatesEvaluated}` +
+        ` written=${rel.written} noRel=${rel.noRelation} relates_to_rejetés=${rel.relatesTo}` +
+        ` same=${rel.sameSubjectDetected} directional=${rel.directional}`,
+      )
+    }
+  } catch (err) {
+    console.error('[memory-build-pipeline] relations (non-bloquant):', err instanceof Error ? err.message : String(err))
+  }
 }
