@@ -102,6 +102,33 @@ reconciliés plus récemment (06c62e48 : 17→25 août) présentent un split act
   derrière une porte Gemini `isDurableSubject`) reste probabiliste ; une preuve définitive de
   non-récurrence demanderait un replay ciblé d'un PV riche en personnes (hors périmètre, HARD STOP).
 
+### 4bis. Replay ciblé du témoin BELLA NAPOLI — verdict de récurrence (READ-ONLY)
+
+Question unique (Vincent) : *avec le code actuel, BELLA NAPOLI serait-il encore créé comme
+identité ?* Vérifié par preuve, sans réécriture (sondes `audit-bella-napoli-chain.ts`,
+`audit-bn-repro2.ts` ; `git log`) :
+
+1. **Extraction courante** (run canonique **79a735e1**, PV 2025, 2026-08-27) émet
+   **« BELLA NAPOLI » comme `proposal_family=company`, `review_status=materialized`** — le nom
+   d'établissement EST encore classé comme entreprise par l'extraction actuelle.
+2. **Porte de création d'identité** (`extract-historical-pv.ts:557-574`, HEAD) : crée un
+   `canonical_subject { kind:'actor' }` pour **tout** orphelin `person|company`, **sans aucun
+   garde** « label == nom d'établissement du site ». Dernier changement du fichier (`0e370308`,
+   2026-08-27 15:06) = « un fait ne se canonicalise plus sur un acteur » — n'ajoute PAS ce garde.
+
+**VERDICT : RÉCURRENT — défaut du workflow ACTUEL, pas dette historique.** Le troisième PV Bella
+recréerait l'identité établissement-acteur. Ce n'est PAS un problème de rapprochement sémantique,
+de canonicalisation entre sujets ni d'Aperçu : c'est un **défaut de gate de création d'identité**.
+Impact fonctionnel actuel **quasi nul** (protections AVAL : #228 actor-exclu + 0 occurrence), mais
+la **création elle-même reste conceptuellement incorrecte** — une info vraie (l'établissement)
+promue à une identité canonique qu'elle ne méritait pas.
+
+**Correctif recommandé (sur GO — touche extraction/canonicalisation, hors périmètre READ-ONLY)** :
+garde GÉNÉRIQUE au gate d'identité — ne pas créer d'acteur canonique quand `orphan.label`
+correspond au nom propre / établissement du site (`sites.name` + alias), **avant le 3ᵉ PV Bella**.
+Jamais une règle spéciale BELLA NAPOLI. Nettoyage de l'identité parasite existante = avec les
+autres dettes de corpus, après le garde. **HARD STOP — aucun code moteur écrit dans cet audit.**
+
 ## 5. Synthèse
 
 **12 nouveaux Bella = 11 durables + 1 mauvais libellé + 0 fact-not-subject + 0 contexte +
