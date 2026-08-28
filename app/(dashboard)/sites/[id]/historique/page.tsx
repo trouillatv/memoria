@@ -202,7 +202,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   return (
     <>
       <DynamicCrumb segmentId={siteId} label={site.name} />
-      <DynamicCrumb segmentId="historique" label="Histoire" />
+      <DynamicCrumb segmentId="historique" label="Suivi" />
       {site.clientName && (
         <BreadcrumbPrefix crumbs={[
           { href: '/sites', label: 'Chantiers' },
@@ -242,9 +242,9 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
             {([
               { key: 'synthese',   label: 'Synthèse' },
               { key: 'attention',  label: 'Attention' },
-              { key: 'lifelines',  label: 'Lignes de vie' },
-              { key: 'heatmap',    label: 'Historique PV' },
               { key: 'evolution',  label: 'Évolution' },
+              { key: 'lifelines',  label: 'Lignes de vie' },
+              { key: 'heatmap',    label: 'PV' },
               { key: 'deps',       label: 'Dépendances' },
             ] as const).map(({ key, label }) => (
               <Link

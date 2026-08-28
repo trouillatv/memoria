@@ -16,7 +16,7 @@ export const SITE_TABS = [
   //   Chronologie = qu'est-ce qui s'est passé, événement après événement ?
   //   Histoire = qu'est-ce qui a évolué dans le temps et comment en est-on arrivé là ?
   // Route dédiée (/historique) → href calculé spécifiquement dans SiteTabsNav.
-  { key: 'histoire',         label: 'Histoire',   pathSuffix: '/historique' },
+  { key: 'histoire',         label: 'Suivi',      pathSuffix: '/historique' },
   { key: 'planning',         label: 'Planning' },
   // « Réserves » (Points à lever) : route dédiée existante (/reserves), simplement
   // absente de la barre — n'était accessible que par le lien du hub d'aperçu.
