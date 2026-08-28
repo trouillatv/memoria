@@ -1101,8 +1101,12 @@ export interface NavigableSubjectSummary {
   canonicalSubjectId: string
   title: string
   aliases: string[]
-  /** Famille dominante (reservation / action / decision / …). */
-  kind: string | null
+  /** Nature DURABLE du sujet (canonical_subject.kind, mig 355) : actor | business_subject. Seule base
+   *  légitime de l'éligibilité opérationnelle (#228). NULL legacy traité comme business (opérationnel). */
+  durableKind: 'actor' | 'business_subject' | null
+  /** Famille de la 1re occurrence (reservation / action / knowledge_fact / …). INFO DESCRIPTIVE
+   *  uniquement — ne décide JAMAIS de l'éligibilité opérationnelle. Anciennement `kind` (#228). */
+  dominantFamily: string | null
   currentStatus: string | null
   firstSeenAt: string | null
   lastSeenAt: string | null
@@ -1134,8 +1138,8 @@ const OPEN_NAV_STATUSES = new Set([
 const CLOSED_NAV_STATUSES = new Set(['done', 'cancelled', 'not_applicable'])
 
 function navSortPriority(s: NavigableSubjectSummary): 0 | 1 | 2 | 3 {
-  // person/company/knowledge_fact : jamais dans les buckets opérationnels
-  if (!isOperationalSubject(s.kind)) return 2
+  // #228 : éligibilité opérationnelle = nature DURABLE (actor exclu), plus la famille de la 1re occurrence.
+  if (!isOperationalSubject(s.durableKind)) return 2
   const isOpen = OPEN_NAV_STATUSES.has(s.currentStatus ?? '')
   if (s.isStagnant && isOpen) return 0    // à surveiller
   if (!s.isStagnant && isOpen) return 1   // en évolution active
@@ -1361,10 +1365,10 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
   if (allCsIds.length === 0) return []
 
   // 6. Métadonnées CS (actifs uniquement)
-  type CsRow = { id: string; label: string; aliases: string[]; status: string }
+  type CsRow = { id: string; label: string; aliases: string[]; status: string; kind: string | null }
   const { data: csRaw } = await supabase
     .from('canonical_subject')
-    .select('id, label, aliases, status')
+    .select('id, label, aliases, status, kind')
     .in('id', allCsIds)
     .eq('status', 'active')
   const csById = new Map<string, CsRow>(((csRaw ?? []) as CsRow[]).map((cs) => [cs.id, cs]))
@@ -1492,7 +1496,8 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     // Statut courant = dernier état DOCUMENTAIRE (max effectiveDate). rawStatus préserve navSortPriority.
     const lastByDate = [...occs].sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate)).slice(-1)[0]
     const currentStatus = lastByDate?.rawStatus ?? null
-    const kind = occs.find((o) => o.family)?.family ?? null
+    // #228 : famille de la 1re occurrence — INFO descriptive uniquement, ne décide plus de l'opérationnel.
+    const dominantFamily = occs.find((o) => o.family)?.family ?? null
 
     // LMCA P1-4A — moteur tri-state unifié, sur la POSITION temporelle (event_date ?? effective_date),
     // effondré par date pour ne pas fabriquer de changement intra-document (multiplicité D1).
@@ -1519,7 +1524,8 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
       ? Math.floor((new Date(lastSeenAt).getTime() - new Date(lastMeaningfulChangeAt).getTime()) / 86_400_000)
       : 0
     // Veto absolu : un sujet clôturé ne peut jamais être stagnant, quelle que soit son historique.
-    const isStagnant = !STAGNATION_INELIGIBLE.has(kind ?? '')
+    // #228 : STAGNATION_INELIGIBLE reste family-based (INCHANGÉE ce lot ; révision = Lot B dédié).
+    const isStagnant = !STAGNATION_INELIGIBLE.has(dominantFamily ?? '')
       && !CLOSED_NAV_STATUSES.has(currentStatus ?? '')
       && stagnationDays >= 30
       && consecutiveMentionsWithoutChange >= 2
@@ -1528,7 +1534,8 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
       canonicalSubjectId: csId,
       title: cs.label,
       aliases: cs.aliases ?? [],
-      kind,
+      durableKind: (cs.kind as 'actor' | 'business_subject' | null) ?? null,
+      dominantFamily,
       currentStatus,
       firstSeenAt,
       lastSeenAt,

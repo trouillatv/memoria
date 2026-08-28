@@ -71,22 +71,21 @@ function getBucket(s: NavigableSubjectSummary, nowMs: number): Bucket {
 
 // ── Radar premier PV ─────────────────────────────────────────────────────────
 
-const NON_OPERATIONAL_KINDS = new Set(['person', 'company', 'knowledge_fact'])
-
 function youngSiteRadarPriority(s: NavigableSubjectSummary): number {
-  if (NON_OPERATIONAL_KINDS.has(s.kind ?? ''))          return 99
+  // #228 : éligibilité opérationnelle = nature durable (actor exclu). L'ordre fin reste sur la famille.
+  if (s.durableKind === 'actor')                        return 99
   if (CLOSED_STATUSES.has(s.currentStatus ?? ''))       return 99
   if (s.activeObjects.total > 0)                        return 0
   if (s.currentStatus === 'non_compliant')              return 1
-  if (s.kind === 'reservation')                         return 2
+  if (s.dominantFamily === 'reservation')               return 2
   if (s.currentStatus === 'awaiting_validation')        return 3
-  if (s.kind === 'decision')                            return 4
-  if (s.kind === 'deadline')                            return 5
+  if (s.dominantFamily === 'decision')                  return 4
+  if (s.dominantFamily === 'deadline')                  return 5
   if (s.currentStatus === 'in_progress')                return 6
-  if (s.kind === 'action')                              return 7
+  if (s.dominantFamily === 'action')                    return 7
   if (s.currentStatus === 'open')                       return 8
   if (s.currentStatus === 'planned')                    return 9
-  if (s.kind === 'observation')                         return 10
+  if (s.dominantFamily === 'observation')               return 10
   if (s.currentStatus === 'mentioned')                  return 11
   return 99
 }
@@ -95,13 +94,11 @@ function youngSiteRadarPriority(s: NavigableSubjectSummary): number {
 
 type KindGroup = 'operational' | 'knowledge' | 'deadline' | 'actor'
 
-const ACTOR_KIND    = new Set(['person', 'company'])
-const DEADLINE_KIND = new Set(['deadline'])
-
 function getKindGroup(s: NavigableSubjectSummary): KindGroup {
-  if (ACTOR_KIND.has(s.kind ?? ''))    return 'actor'
-  if (DEADLINE_KIND.has(s.kind ?? '')) return 'deadline'
-  if (s.kind === 'knowledge_fact')     return 'knowledge'
+  // #228 : acteur = nature durable ; deadline/knowledge = famille descriptive de la 1re occurrence.
+  if (s.durableKind === 'actor')          return 'actor'
+  if (s.dominantFamily === 'deadline')    return 'deadline'
+  if (s.dominantFamily === 'knowledge_fact') return 'knowledge'
   return 'operational'
 }
 

@@ -240,7 +240,8 @@ export async function generateSiteStory(
     getSiteKnowledgeGraph(siteId).catch((): { siteId: string; nodes: unknown[]; edges: unknown[] } => ({ siteId, nodes: [], edges: [] })),
   ])
 
-  const operational = subjects.filter((s) => s.kind !== 'person' && s.kind !== 'company' && s.kind !== 'knowledge_fact')
+  // #228 : opérationnel = nature durable (actor exclu), plus la famille de la 1re occurrence.
+  const operational = subjects.filter((s) => s.durableKind !== 'actor')
   if (operational.length === 0) return emptyResult('none', provider.name)
 
   // Requête séparée pour distinguer 'confirmed' vs 'observed' dans canonical_subject_occurrence.

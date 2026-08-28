@@ -10,7 +10,10 @@
 //  - En attente → awaiting
 //  - Stagnant → stagnant
 //  - Combinaisons : stagnant + objets actifs → les deux raisons
-//  - knowledge_fact → isOperational=false, aucun signal
+//  - #228 : éligibilité opérationnelle = nature DURABLE (durableKind), plus la famille d'occurrence.
+//    · business_subject (même dominantFamily=knowledge_fact) → opérationnel ;
+//    · actor (même dominantFamily=action) → non opérationnel ;
+//    · éligible ≠ mérite attention : un business open sans objet reste calme.
 //  - Deadline → STAGNATION_INELIGIBLE, donc jamais stagnant côté serveur
 //              mais si isStagnant=true (ancien bug), le veto closed protège
 
@@ -23,7 +26,8 @@ function makeSubject(overrides: Partial<NavigableSubjectSummary>): NavigableSubj
     canonicalSubjectId: 'cs-test',
     title: 'Sujet test',
     aliases: [],
-    kind: 'action',
+    durableKind: 'business_subject',
+    dominantFamily: 'action',
     currentStatus: null,
     firstSeenAt: '2026-01-01',
     lastSeenAt: '2026-07-01',
@@ -78,27 +82,38 @@ describe('Veto clôturé', () => {
 
 // ── Veto non opérationnel ─────────────────────────────────────────────────────
 
-describe('Veto non opérationnel', () => {
-  it('knowledge_fact → isOperational=false, aucun signal', () => {
-    const s = makeSubject({ kind: 'knowledge_fact', currentStatus: 'in_progress', pvCount: 5 })
+describe('#228 — éligibilité opérationnelle = nature durable, pas la famille', () => {
+  it('actor → non opérationnel, aucun signal (même avec objets/famille opérationnelle)', () => {
+    const s = makeSubject({ durableKind: 'actor', dominantFamily: 'action', currentStatus: 'in_progress',
+      activeObjects: { actionsOpen: 3, reservesOpen: 0, deadlinesActive: 0, decisionsOpen: 0, total: 3 } })
     const sig = computeAttentionSignals(s)
     expect(sig.isClosed).toBe(false)
     expect(sig.isOperational).toBe(false)
-    expect(sig.attentionReasons).toEqual([])
+    expect(sig.attentionReasons).toEqual([]) // durable actor prime sur la famille/objets
   })
 
-  it('person → aucun signal', () => {
-    const s = makeSubject({ kind: 'person' })
+  it('business_subject avec dominantFamily=knowledge_fact PORTANT un objet ouvert → opérationnel + open_objects', () => {
+    // Témoins Bella A électrique / C nettoyage : business, 1re occ knowledge_fact, action ouverte.
+    const s = makeSubject({ durableKind: 'business_subject', dominantFamily: 'knowledge_fact', currentStatus: 'open',
+      currentTriState: 'open', activeObjects: { actionsOpen: 1, reservesOpen: 0, deadlinesActive: 0, decisionsOpen: 0, total: 1 } })
     const sig = computeAttentionSignals(s)
-    expect(sig.isOperational).toBe(false)
-    expect(sig.attentionReasons).toEqual([])
+    expect(sig.isOperational).toBe(true)
+    expect(sig.attentionReasons).toContain('open_objects')
   })
 
-  it('company → aucun signal', () => {
-    const s = makeSubject({ kind: 'company' })
+  it('business_subject knowledge_fact OUVERT mais SANS objet → opérationnel mais CALME (0 raison)', () => {
+    // Témoins Bella B cuisson / E éclairage : éligible ≠ mérite attention.
+    const s = makeSubject({ durableKind: 'business_subject', dominantFamily: 'knowledge_fact', currentStatus: 'open',
+      currentTriState: 'open', activeObjects: { actionsOpen: 0, reservesOpen: 0, deadlinesActive: 0, decisionsOpen: 0, total: 0 }, isStagnant: false })
     const sig = computeAttentionSignals(s)
-    expect(sig.isOperational).toBe(false)
-    expect(sig.attentionReasons).toEqual([])
+    expect(sig.isOperational).toBe(true)      // navigable comme sujet métier
+    expect(sig.attentionReasons).toEqual([])  // mais AUCUNE alerte artificielle
+  })
+
+  it('durableKind=null (legacy) → opérationnel (business-like)', () => {
+    const s = makeSubject({ durableKind: null, dominantFamily: 'observation', currentStatus: null })
+    const sig = computeAttentionSignals(s)
+    expect(sig.isOperational).toBe(true)
   })
 })
 
@@ -126,15 +141,15 @@ describe('Signal non_conformity', () => {
   })
 })
 
-describe('Signal reservation', () => {
-  it('kind=reservation (null status) → reservation', () => {
-    const s = makeSubject({ kind: 'reservation', currentStatus: null })
+describe('Signal reservation (dépend de la FAMILLE dominantFamily, pas du durableKind)', () => {
+  it('dominantFamily=reservation (null status) → reservation', () => {
+    const s = makeSubject({ dominantFamily: 'reservation', currentStatus: null })
     const sig = computeAttentionSignals(s)
     expect(sig.attentionReasons).toContain('reservation')
   })
 
-  it('kind=reservation + done → isClosed, pas de reservation', () => {
-    const s = makeSubject({ kind: 'reservation', currentStatus: 'done' })
+  it('dominantFamily=reservation + done → isClosed, pas de reservation', () => {
+    const s = makeSubject({ dominantFamily: 'reservation', currentStatus: 'done' })
     const sig = computeAttentionSignals(s)
     expect(sig.isClosed).toBe(true)
     expect(sig.attentionReasons).toEqual([])
@@ -180,16 +195,16 @@ describe('Combinaisons', () => {
   })
 
   it('réserve non conforme → non_conformity + reservation', () => {
-    const s = makeSubject({ kind: 'reservation', currentStatus: 'non_compliant' })
+    const s = makeSubject({ dominantFamily: 'reservation', currentStatus: 'non_compliant' })
     const sig = computeAttentionSignals(s)
     expect(sig.attentionReasons).toContain('non_conformity')
     expect(sig.attentionReasons).toContain('reservation')
   })
 
-  it('sujet null status, null kind, no objects → aucun signal', () => {
-    const s = makeSubject({ kind: null, currentStatus: null, activeObjects: { actionsOpen: 0, reservesOpen: 0, deadlinesActive: 0, decisionsOpen: 0, total: 0 }, isStagnant: false })
+  it('sujet null status, dominantFamily null, no objects → aucun signal', () => {
+    const s = makeSubject({ dominantFamily: null, currentStatus: null, activeObjects: { actionsOpen: 0, reservesOpen: 0, deadlinesActive: 0, decisionsOpen: 0, total: 0 }, isStagnant: false })
     const sig = computeAttentionSignals(s)
-    // kind=null → opérationnel par défaut, mais aucun signal d'attention actif
+    // business_subject par défaut → opérationnel, mais aucun signal d'attention actif
     expect(sig.isOperational).toBe(true)
     expect(sig.attentionReasons).toEqual([])
   })

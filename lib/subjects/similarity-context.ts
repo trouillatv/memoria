@@ -25,7 +25,7 @@ export interface SimilarityContextSubject {
  */
 export async function loadSimilarityContextSubjects(siteId: string): Promise<SimilarityContextSubject[]> {
   const navigable = await getNavigableSubjectsForSite(siteId)
-  const businessSubjects = navigable.filter((s) => !isActorKind(s.kind))
+  const businessSubjects = navigable.filter((s) => !isActorKind(s.durableKind))
   if (businessSubjects.length === 0) return []
 
   const supabase = createAdminClient()

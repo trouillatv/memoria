@@ -495,7 +495,8 @@ export async function deriveSiteAttentionItems(
     // des items qui n'en avaient pas, sous peine de réordonner l'Aperçu).
     item.metadata = {
       currentStatus: s.currentStatus,
-      kind: s.kind,
+      kind: s.dominantFamily, // #228 : métadonnée descriptive = famille (dominantFamily), pas la nature durable
+      durableKind: s.durableKind,
       activeObjects: s.activeObjects,
       consecutiveMentionsWithoutChange: s.consecutiveMentionsWithoutChange,
       lastMeaningfulChangeAt: s.lastMeaningfulChangeAt,

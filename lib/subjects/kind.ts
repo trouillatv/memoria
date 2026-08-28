@@ -11,19 +11,24 @@
  *  - SujetsList.tsx (bucketing client)
  */
 
-const NON_OPERATIONAL_KINDS = new Set(['person', 'company', 'knowledge_fact'])
-
 /**
- * Retourne true si le sujet peut figurer dans les buckets opérationnels
- * (À surveiller, En mouvement, En attente).
- * kind=null est traité comme opérationnel (sujet dont le type n'est pas encore déterminé).
+ * #228 — L'éligibilité opérationnelle se décide sur la NATURE DURABLE du sujet
+ * (canonical_subject.kind = actor | business_subject, mig 355), JAMAIS sur la
+ * famille de ses occurrences. Un business_subject reste opérationnel même si sa
+ * 1re occurrence est un knowledge_fact ; seul un `actor` est non opérationnel.
+ *
+ * durableKind=null (legacy sans nature explicite) → opérationnel (business-like).
+ *
+ * Utilisé par :
+ *  - getNavigableSubjectsForSite() (tri serveur, via navSortPriority)
+ *  - computeAttentionSignals() (gate opérationnel)
+ *  - SujetsList.tsx (bucketing client)
  */
-export function isOperationalSubject(kind: string | null | undefined): boolean {
-  if (kind == null) return true
-  return !NON_OPERATIONAL_KINDS.has(kind)
+export function isOperationalSubject(durableKind: string | null | undefined): boolean {
+  return durableKind !== 'actor'
 }
 
-/** Retourne true pour person et company uniquement (acteurs humains/entreprises). */
-export function isActorKind(kind: string | null | undefined): boolean {
-  return kind === 'person' || kind === 'company'
+/** Retourne true pour la nature durable acteur (canonical_subject.kind='actor', mig 355). */
+export function isActorKind(durableKind: string | null | undefined): boolean {
+  return durableKind === 'actor'
 }

@@ -40,7 +40,8 @@ export interface SubjectAttentionSignals {
  */
 export function computeAttentionSignals(s: NavigableSubjectSummary): SubjectAttentionSignals {
   const isClosed = CLOSED_STATUSES.has(s.currentStatus ?? '')
-  const isOperational = isOperationalSubject(s.kind)
+  // #228 : gate opérationnel sur la nature durable (actor exclu), pas sur la famille d'occurrence.
+  const isOperational = isOperationalSubject(s.durableKind)
 
   if (isClosed || !isOperational) {
     return { isClosed, isOperational, attentionReasons: [] }
@@ -51,7 +52,8 @@ export function computeAttentionSignals(s: NavigableSubjectSummary): SubjectAtte
   // Conséquence métier — signal le plus fort
   if (s.activeObjects.total > 0)               reasons.push('open_objects')
   if (s.currentStatus === 'non_compliant')      reasons.push('non_conformity')
-  if (s.kind === 'reservation')                 reasons.push('reservation')
+  // #228 : le signal `reservation` dépend de la FAMILLE (dominantFamily), pas de la nature durable.
+  if (s.dominantFamily === 'reservation')       reasons.push('reservation')
 
   // État
   if (s.currentStatus === 'awaiting_validation') reasons.push('awaiting')
