@@ -86,53 +86,40 @@ export function computeTransition(
  * Un run sans reconciliation donnera un delta vide (pas d'erreur).
  */
 export async function getPvDelta(fromRunId: string, toRunId: string): Promise<PvDelta> {
+  // P0-2c — occurrence-first : le delta entre deux PV se projette depuis la vue canonical unifiée
+  // (état = occurrences, présence = propositions), au niveau CANONICAL (dédup des threads). Un sujet
+  // présent au PV `to` sans occurrence d'état → 'maintenu' (mention sans nouvel événement) ; gap →
+  // 'non_mentionné' ; 1re présence au `to` → 'nouveau'. Aucune proposition ne détermine l'état.
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabase = createAdminClient()
+  const { buildSiteSubjectCells, cellDeltaTransition } = await import('./site-occurrence-timeline')
 
-  const [{ data: fromRaw, error: fromErr }, { data: toRaw, error: toErr }] = await Promise.all([
-    supabase
-      .from('document_extraction_proposal')
-      .select('id, subject_thread_id, proposal_family, thematic_category, label, document_status')
-      .eq('extraction_run_id', fromRunId)
-      .not('subject_thread_id', 'is', null),
-    supabase
-      .from('document_extraction_proposal')
-      .select('id, subject_thread_id, proposal_family, thematic_category, label, document_status')
-      .eq('extraction_run_id', toRunId)
-      .not('subject_thread_id', 'is', null),
-  ])
+  const { data: runRow } = await supabase.from('document_extraction_run').select('target_site_id').eq('id', toRunId).maybeSingle()
+  const siteId = (runRow as { target_site_id: string | null } | null)?.target_site_id ?? null
+  if (!siteId) return { fromRunId, toRunId, items: [] }
 
-  if (fromErr) throw new Error(fromErr.message)
-  if (toErr) throw new Error(toErr.message)
+  const view = await buildSiteSubjectCells(siteId)
+  const fromIdx = view.runs.findIndex((r) => r.id === fromRunId)
+  const toIdx = view.runs.findIndex((r) => r.id === toRunId)
+  if (toIdx < 0) return { fromRunId, toRunId, items: [] }
 
-  const fromByThread = new Map<string, ProposalRow>()
-  for (const p of (fromRaw ?? []) as ProposalRow[]) {
-    fromByThread.set(p.subject_thread_id, p)
-  }
-
-  const toByThread = new Map<string, ProposalRow>()
-  for (const p of (toRaw ?? []) as ProposalRow[]) {
-    toByThread.set(p.subject_thread_id, p)
-  }
-
-  const allThreadIds = new Set([...fromByThread.keys(), ...toByThread.keys()])
+  const rawEquiv = (s: string | null): string | null => (s === 'resolved' ? 'done' : s === 'open' ? 'open' : null)
   const items: DeltaItem[] = []
-
-  for (const threadId of allThreadIds) {
-    const from = fromByThread.get(threadId) ?? null
-    const to = toByThread.get(threadId) ?? null
-    const ref = to ?? from!
-
+  for (const row of view.rows) {
+    const toCell = row.cells[toIdx]
+    if (!toCell) continue // pas encore apparu au PV `to`
+    const fromCell = fromIdx >= 0 ? row.cells[fromIdx] : null
+    const t = cellDeltaTransition(toCell, fromCell === null) as DeltaTransition
     items.push({
-      subjectThreadId: threadId,
-      family: ref.proposal_family,
-      thematicCategory: ref.thematic_category,
-      label: to?.label ?? from!.label,
-      fromStatus: from?.document_status ?? null,
-      toStatus: to?.document_status ?? null,
-      transition: computeTransition(from, to),
-      fromProposalId: from?.id ?? null,
-      toProposalId: to?.id ?? null,
+      subjectThreadId: row.canonicalSubjectId,
+      family: row.family,
+      thematicCategory: row.thematicCategory,
+      label: toCell.label ?? row.label,
+      fromStatus: rawEquiv(fromCell?.currentProvenState ?? null),
+      toStatus: toCell.observedTriState ? rawEquiv(toCell.observedTriState) : rawEquiv(toCell.currentProvenState),
+      transition: t,
+      fromProposalId: null,
+      toProposalId: null,
     })
   }
 

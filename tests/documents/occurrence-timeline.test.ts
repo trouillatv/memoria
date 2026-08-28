@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildOccurrenceCells, buildDocumentPresenceCells, type RunOccurrence } from '@/lib/documents/site-occurrence-timeline'
+import { buildOccurrenceCells, buildDocumentPresenceCells, cellDeltaTransition, type RunOccurrence } from '@/lib/documents/site-occurrence-timeline'
 
 // P0-2 — primitive neutre. Invariant : la non-mention reporte le dernier état PROUVÉ (jamais
 // open→unknown→unknown→resolved) ; isMentioned distingue « état porté » de « preuve observée ».
@@ -103,5 +103,25 @@ describe('buildDocumentPresenceCells — présence ≠ état', () => {
     expect(cells[0]!.observedTriState).toBeNull()
     expect(cells[1]!.observedTriState).toBe('open')
     expect(cells[1]!.transition).toBeNull() // première OCCURRENCE
+  })
+})
+
+describe('cellDeltaTransition — présence vs événement d\'état (Chronologie)', () => {
+  it('SENTINELLE : PV mentionne le sujet SANS occurrence d\'état → maintenu (aucun événement)', () => {
+    const cells = buildDocumentPresenceCells([prun('1', true, [occ('open')]), prun('2', true, [])])
+    // run 2 : présent, aucune occurrence → maintenu, PAS réalisé/réouvert/nouveau
+    expect(cellDeltaTransition(cells[1]!, false)).toBe('maintenu')
+  })
+  it('gap (absent) → non_mentionné', () => {
+    const cells = buildDocumentPresenceCells([prun('1', true, [occ('open')]), prun('2', false, [])])
+    expect(cellDeltaTransition(cells[1]!, false)).toBe('non_mentionné')
+  })
+  it('première apparition → nouveau', () => {
+    const cells = buildDocumentPresenceCells([prun('1', true, [occ('open')])])
+    expect(cellDeltaTransition(cells[0]!, true)).toBe('nouveau')
+  })
+  it('occurrence de résolution → réalisé (événement d\'état réel)', () => {
+    const cells = buildDocumentPresenceCells([prun('1', true, [occ('open')]), prun('2', true, [occ('resolved', 'knowledge_fact')])])
+    expect(cellDeltaTransition(cells[1]!, false)).toBe('réalisé')
   })
 })

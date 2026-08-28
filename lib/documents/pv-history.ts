@@ -322,73 +322,25 @@ export async function getSubjectTimeline(subjectThreadId: string): Promise<Subje
  * 2 requêtes DB — toutes les propositions chargées en mémoire pour comparaison séquentielle.
  */
 export async function getSiteHistoricalTimeline(siteId: string): Promise<SiteHistoricalTimeline> {
-  const { createAdminClient } = await import('@/lib/supabase/admin')
-  const supabase = createAdminClient()
+  // P0-2c — occurrence-first : les transitions par PV se projettent depuis la vue canonical unifiée
+  // (état = occurrences, présence = propositions). Un sujet présent sans occurrence d'état compte comme
+  // 'maintenu' (mention sans nouvel événement) ; un gap = 'non_mentionné' ; une 1re apparition = 'nouveau'.
+  const { buildSiteSubjectCells, cellDeltaTransition } = await import('./site-occurrence-timeline')
+  const view = await buildSiteSubjectCells(siteId)
+  if (view.runs.length === 0) return { siteId, snapshots: [] }
 
-  const runs = await canonicalRunsForSite(siteId)
-  if (runs.length === 0) return { siteId, snapshots: [] }
+  const firstIdxByRow = view.rows.map((row) => row.cells.findIndex((c) => c !== null))
 
-  const runIds = runs.map((r) => r.id)
-
-  type SitePropRow = {
-    id: string
-    extraction_run_id: string
-    proposal_family: string
-    document_status: string | null
-    subject_thread_id: string
-  }
-
-  const { data: propsRaw, error: propsErr } = await supabase
-    .from('document_extraction_proposal')
-    .select('id, extraction_run_id, proposal_family, document_status, subject_thread_id')
-    .in('extraction_run_id', runIds)
-    .not('subject_thread_id', 'is', null)
-  if (propsErr) throw new Error(propsErr.message)
-
-  const props = (propsRaw ?? []) as SitePropRow[]
-
-  // Grouper par run → par subject_thread_id
-  const byRun = new Map<string, Map<string, SitePropRow>>()
-  for (const run of runs) byRun.set(run.id, new Map())
-  for (const p of props) byRun.get(p.extraction_run_id)?.set(p.subject_thread_id, p)
-
-  const snapshots: SiteRunSnapshot[] = []
-
-  for (let i = 0; i < runs.length; i++) {
-    const run = runs[i]
-    const prevRun = i > 0 ? runs[i - 1] : null
-    const curr = byRun.get(run.id)!
-    const prev = prevRun ? (byRun.get(prevRun.id) ?? new Map<string, SitePropRow>()) : new Map<string, SitePropRow>()
-
+  const snapshots: SiteRunSnapshot[] = view.runs.map((run, i) => {
     const counts: Partial<Record<HistoryTransition, number>> = {}
-    const allThreads = new Set([...curr.keys(), ...prev.keys()])
-
-    for (const threadId of allThreads) {
-      const fromProp = prev.get(threadId) ?? null
-      const toProp = curr.get(threadId) ?? null
-
-      let t: HistoryTransition
-      if (!fromProp) {
-        t = 'nouveau'
-      } else if (!toProp) {
-        t = 'non_mentionné'
-      } else {
-        // Runs consécutifs → hasGap = false (les gaps ne s'appliquent qu'à la chronologie par sujet)
-        const fromPvState = documentStatusToPvState(fromProp.document_status)
-        const fromResolved = fromPvState === 'resolved' ? true : fromPvState === 'open' ? false : null
-        t = computeHistoryTransition(toProp.proposal_family, fromResolved, fromProp.document_status, toProp.document_status, false)
-      }
+    view.rows.forEach((row, ri) => {
+      const cell = row.cells[i]
+      if (!cell) return
+      const t = cellDeltaTransition(cell, i === firstIdxByRow[ri])
       counts[t] = (counts[t] ?? 0) + 1
-    }
-
-    snapshots.push({
-      runId: run.id,
-      documentId: run.document_id,
-      effectiveDate: runEffectiveDate(run),
-      isFirstRun: i === 0,
-      transitionCounts: counts,
     })
-  }
+    return { runId: run.id, documentId: run.documentId, effectiveDate: run.effectiveDate, isFirstRun: i === 0, transitionCounts: counts }
+  })
 
   return { siteId, snapshots }
 }

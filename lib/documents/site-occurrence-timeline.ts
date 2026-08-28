@@ -189,6 +189,27 @@ export function buildDocumentPresenceCells(
   return cells
 }
 
+/**
+ * P0-2c — Projection CHRONOLOGIE : classe une cellule en transition de delta (DeltaTransition),
+ * en préservant la distinction présence / événement d'état / gap.
+ *   - gap (absent)                       → 'non_mentionné' ;
+ *   - première apparition documentaire   → 'nouveau' ;
+ *   - présent SANS occurrence d'état     → 'maintenu' (mentionné, aucun nouvel événement d'état) ;
+ *   - occurrence d'état                  → la transition observée (réalisé/réouvert/…), 'maintenu' si null.
+ * `isFirstAppearance` : cette cellule est la 1re présence documentaire du sujet (relatif au delta).
+ */
+export function cellDeltaTransition(
+  cell: OccTimelineCell,
+  isFirstAppearance: boolean,
+): 'nouveau' | 'non_mentionné' | 'maintenu' | 'réalisé' | 'levé' | 'réouvert' | 'aggravé' | 'progressé' | 'annulé' | 'changé' {
+  if (cell.isGap) return 'non_mentionné'
+  if (isFirstAppearance) return 'nouveau'
+  if (cell.observedTriState === null) return 'maintenu' // présent, aucun événement d'état
+  const t = cell.transition
+  if (t === null || t === 'réapparu') return t === 'réapparu' ? 'nouveau' : 'maintenu'
+  return t
+}
+
 export interface OccTimelineSubject {
   canonicalSubjectId: string
   label: string
@@ -200,6 +221,112 @@ export interface SiteOccurrenceTimeline {
   siteId: string
   runs: Array<{ id: string; documentId: string; effectiveDate: string }>
   subjects: OccTimelineSubject[]
+}
+
+export interface SiteSubjectCellsRow {
+  canonicalSubjectId: string
+  label: string
+  family: string           // famille dominante (state_key des occurrences, sinon famille de proposition)
+  thematicCategory: string | null
+  cells: Array<OccTimelineCell | null>
+}
+export interface SiteSubjectCells {
+  siteId: string
+  runs: Array<{ id: string; documentId: string; effectiveDate: string }>
+  rows: SiteSubjectCellsRow[]
+}
+
+/**
+ * P0-2c — Vue canonical-level UNIFIÉE pour la Chronologie : par canonical_subject (occurrence-backed ET
+ * acteurs sans occurrence), cellules construites via buildDocumentPresenceCells — ÉTAT depuis les
+ * occurrences (state_status), PRÉSENCE depuis les propositions. Un acteur (aucune occurrence) n'a que
+ * des cellules de présence (jamais d'événement d'état). Aucune proposition ne détermine l'état.
+ */
+export async function buildSiteSubjectCells(siteId: string): Promise<SiteSubjectCells> {
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+
+  const rawRuns = await canonicalRunsForSite(siteId)
+  const runs = rawRuns.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) }))
+  if (runs.length === 0) return { siteId, runs: [], rows: [] }
+  const runIds = runs.map((r) => r.id)
+
+  // Présence documentaire : propositions par (thread, run) → canonical via STI.
+  const { data: propsRaw } = await supabase
+    .from('document_extraction_proposal')
+    .select('extraction_run_id, subject_thread_id, proposal_family, thematic_category, label')
+    .in('extraction_run_id', runIds)
+    .not('subject_thread_id', 'is', null)
+  type P = { extraction_run_id: string; subject_thread_id: string; proposal_family: string; thematic_category: string | null; label: string }
+  const props = (propsRaw ?? []) as P[]
+  const threadIds = [...new Set(props.map((p) => p.subject_thread_id))]
+  const t2c = new Map<string, string>()
+  for (let i = 0; i < threadIds.length; i += 200) {
+    const { data } = await supabase.from('subject_thread_identity').select('subject_thread_id, canonical_subject_id').in('subject_thread_id', threadIds.slice(i, i + 200))
+    for (const s of (data ?? []) as Array<{ subject_thread_id: string; canonical_subject_id: string }>) t2c.set(s.subject_thread_id, s.canonical_subject_id)
+  }
+  const presentByCsRun = new Map<string, Set<string>>()      // cs → runs présents (proposition)
+  const csMeta = new Map<string, { family: string; thematic: string | null; label: string }>()
+  for (const p of props) {
+    const cs = t2c.get(p.subject_thread_id); if (!cs) continue
+    if (!presentByCsRun.has(cs)) presentByCsRun.set(cs, new Set())
+    presentByCsRun.get(cs)!.add(p.extraction_run_id)
+    if (!csMeta.has(cs)) csMeta.set(cs, { family: p.proposal_family, thematic: p.thematic_category, label: p.label })
+  }
+
+  // État : occurrences par (canonical, run).
+  const { data: occRows } = await supabase
+    .from('canonical_subject_occurrence')
+    .select('canonical_subject_id, source_ref_id, state_key, state_status, label, event_date, source_page, evidence_count')
+    .eq('site_id', siteId).eq('source_kind', 'historical_pdf')
+    .not('validation_status', 'in', '("rejected","source_superseded")')
+  type O = { canonical_subject_id: string; source_ref_id: string; state_key: string; state_status: string | null; label: string; event_date: string | null; source_page: number | null; evidence_count: number }
+  const occAll = (occRows ?? []) as O[]
+  const repIds = [...new Set(occAll.map((o) => o.source_ref_id))]
+  const repToRun = new Map<string, string>()
+  if (repIds.length > 0) {
+    const { data: reps } = await supabase.from('site_reports').select('id, extraction_run_id').in('id', repIds)
+    for (const r of (reps ?? []) as Array<{ id: string; extraction_run_id: string | null }>) if (r.extraction_run_id) repToRun.set(r.id, r.extraction_run_id)
+  }
+  const occByCsRun = new Map<string, Map<string, RunOccurrence[]>>()
+  for (const o of occAll) {
+    const run = repToRun.get(o.source_ref_id); if (!run) continue
+    if (!occByCsRun.has(o.canonical_subject_id)) occByCsRun.set(o.canonical_subject_id, new Map())
+    const rm = occByCsRun.get(o.canonical_subject_id)!
+    const list = rm.get(run) ?? []
+    list.push({ stateStatus: (o.state_status ?? 'unknown') as PvState, stateKey: o.state_key, label: o.label, note: null, eventDate: o.event_date, sourcePage: o.source_page, evidenceCount: o.evidence_count ?? 0 })
+    rm.set(run, list)
+  }
+
+  // Union des canonicals (présence proposition ∪ occurrences).
+  const allCs = new Set<string>([...presentByCsRun.keys(), ...occByCsRun.keys()])
+  const csLabel = new Map<string, string>()
+  const csIds = [...allCs]
+  for (let i = 0; i < csIds.length; i += 200) {
+    const { data } = await supabase.from('canonical_subject').select('id, label').in('id', csIds.slice(i, i + 200))
+    for (const c of (data ?? []) as Array<{ id: string; label: string }>) csLabel.set(c.id, c.label)
+  }
+
+  const rows: SiteSubjectCellsRow[] = csIds.map((cs) => {
+    const rm = occByCsRun.get(cs)
+    const present = presentByCsRun.get(cs) ?? new Set<string>()
+    const perRun = runs.map((r) => ({
+      runId: r.id, documentId: r.documentId, effectiveDate: r.effectiveDate,
+      isPresent: present.has(r.id), occs: rm?.get(r.id) ?? [],
+    }))
+    const cells = buildDocumentPresenceCells(perRun)
+    const domKey = [...cells].reverse().find((c) => c && !c.isGap && c.stateKey)?.stateKey
+    const meta = csMeta.get(cs)
+    return {
+      canonicalSubjectId: cs,
+      label: csLabel.get(cs) ?? meta?.label ?? cs,
+      family: domKey ?? meta?.family ?? 'unknown',
+      thematicCategory: meta?.thematic ?? null,
+      cells,
+    }
+  })
+
+  return { siteId, runs, rows }
 }
 
 /**
