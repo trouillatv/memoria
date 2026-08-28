@@ -237,7 +237,12 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
             )}
           </div>
 
-          {/* Sous-onglets Histoire */}
+          {/* Sous-onglets Histoire.
+              « Dépendances » MASQUÉ (Relations P0, 2026-08-29) : corpus réel de relations
+              quasi nul (Bella 0, OCEF prod 0, PETRO 1 test) → onglet vide trompeur. Les liens
+              vivent sur la fiche du sujet (vide-safe). La vue globale reviendra quand un graphe
+              réel existera. La route ?view=deps reste fonctionnelle (deep-link), non discoverable.
+              Voir docs/architecture/relations-p0-convergence.md. */}
           <nav className="mt-4 flex gap-1 rounded-xl bg-muted/40 p-1">
             {([
               { key: 'synthese',   label: 'Synthèse' },
@@ -245,7 +250,6 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
               { key: 'evolution',  label: 'Évolution' },
               { key: 'lifelines',  label: 'Lignes de vie' },
               { key: 'heatmap',    label: 'PV' },
-              { key: 'deps',       label: 'Dépendances' },
             ] as const).map(({ key, label }) => (
               <Link
                 key={key}
