@@ -6572,6 +6572,106 @@ export type Database = {
           },
         ]
       }
+      site_planning_items: {
+        Row: {
+          canonical_subject_id: string | null
+          created_at: string
+          created_by: string | null
+          date_basis: string
+          id: string
+          kind: string
+          organization_id: string
+          planned_end: string | null
+          planned_start: string | null
+          site_id: string
+          source_proposal_id: string | null
+          status: string
+          supersedes_id: string | null
+          temporal_precision: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          canonical_subject_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          date_basis?: string
+          id?: string
+          kind: string
+          organization_id: string
+          planned_end?: string | null
+          planned_start?: string | null
+          site_id: string
+          source_proposal_id?: string | null
+          status?: string
+          supersedes_id?: string | null
+          temporal_precision?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          canonical_subject_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          date_basis?: string
+          id?: string
+          kind?: string
+          organization_id?: string
+          planned_end?: string | null
+          planned_start?: string | null
+          site_id?: string
+          source_proposal_id?: string | null
+          status?: string
+          supersedes_id?: string | null
+          temporal_precision?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_planning_items_canonical_subject_id_fkey"
+            columns: ["canonical_subject_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_subject"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_planning_items_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_planning_items_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_planning_items_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_planning_items_source_proposal_id_fkey"
+            columns: ["source_proposal_id"]
+            isOneToOne: false
+            referencedRelation: "document_extraction_proposal"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "site_planning_items_supersedes_id_fkey"
+            columns: ["supersedes_id"]
+            isOneToOne: false
+            referencedRelation: "site_planning_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       site_scheduled_events: {
         Row: {
           cancel_reason: string | null
