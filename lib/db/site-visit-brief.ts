@@ -11,6 +11,7 @@
 // Doctrine : une ligne = un objet réel avec un contexte temporel lisible.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { OPERATIONAL_DEADLINE_SOURCE_FILTER } from '@/lib/db/deadline-projection'
 
 export type BriefItemKind = 'action_overdue' | 'reserve_aging' | 'deadline_soon'
 
@@ -80,6 +81,7 @@ export async function buildVisitBrief(siteId: string, maxItems = 4): Promise<Vis
       .from('site_deadlines')
       .select('id, title, due_date')
       .eq('site_id', siteId)
+      .or(OPERATIONAL_DEADLINE_SOURCE_FILTER)
       .in('status', ['to_plan', 'planned'])
       .not('due_date', 'is', null)
       .gte('due_date', today)

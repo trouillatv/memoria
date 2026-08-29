@@ -18,6 +18,7 @@ import { listPendingSuggestionsForSite } from '@/lib/db/subject-suggestions'
 import { getSiteSubjectMatrix } from '@/lib/documents/pv-history'
 import { computeWatchlist, type WatchReason } from '@/lib/documents/pv-watchlist'
 import { describeOverdueAction } from '@/lib/knowledge/overdue-action'
+import { OPERATIONAL_DEADLINE_SOURCE_FILTER } from '@/lib/db/deadline-projection'
 
 export type AttentionSignal =
   | 'subject_stagnant'
@@ -155,6 +156,7 @@ export async function deriveSiteAttentionItems(
       .from('site_deadlines')
       .select('id, title, due_date')
       .eq('site_id', siteId)
+      .or(OPERATIONAL_DEADLINE_SOURCE_FILTER)
       .in('status', ['to_plan', 'planned'])
       .not('due_date', 'is', null)
       .lt('due_date', today)

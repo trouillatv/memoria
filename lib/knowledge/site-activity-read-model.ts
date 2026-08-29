@@ -19,6 +19,7 @@ import { TERRAIN_VISIT_ORIGINS } from '@/lib/field/visit-origins'
 //  - aucune migration, aucune persistance, lecture seule.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { OPERATIONAL_DEADLINE_SOURCE_FILTER } from '@/lib/db/deadline-projection'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -232,6 +233,7 @@ export async function buildSiteActivityReadModel(
       .from('site_deadlines')
       .select('id, title, created_at')
       .eq('site_id', siteId)
+      .or(OPERATIONAL_DEADLINE_SOURCE_FILTER)
       .in('status', ['to_plan', 'planned']),
   ])
 

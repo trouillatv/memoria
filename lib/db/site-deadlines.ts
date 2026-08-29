@@ -11,6 +11,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import { resolveSubjectAndAttachCanonicalBusinessObject } from '@/lib/db/canonical-business-object-attach'
+import { OPERATIONAL_DEADLINE_SOURCE_FILTER } from '@/lib/db/deadline-projection'
 
 export type DeadlineStatus = 'to_plan' | 'planned' | 'done' | 'cancelled' | 'superseded'
 
@@ -126,7 +127,7 @@ export async function listSiteDeadlines(
     .is('deleted_at', null)
     .in('status', ['to_plan', 'planned'])
   if (!includeHistorical) {
-    query = query.neq('created_from', 'historical_import')
+    query = query.or(OPERATIONAL_DEADLINE_SOURCE_FILTER)
   }
   const { data, error } = await query
     // Les non datées en dernier : `nullsFirst: false` — « à planifier » n'est pas

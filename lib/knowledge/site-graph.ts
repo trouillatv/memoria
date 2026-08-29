@@ -21,6 +21,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getVisitCapturePreviewUrls, type VisitCaptureRow } from '@/lib/db/visit-captures'
 import { listSiteIntervenants } from '@/lib/db/site-intervenants'
+import { OPERATIONAL_DEADLINE_SOURCE_FILTER } from '@/lib/db/deadline-projection'
 
 export type GraphNodeType =
   | 'site' | 'visite' | 'photo' | 'memo'
@@ -100,7 +101,9 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
       .eq('site_id', siteId)
       .order('created_at', { ascending: false }).limit(CAP.actions),
     db.from('site_deadlines').select('id, title, status, due_date, constraint_text, report_id, created_at')
-      .eq('site_id', siteId).order('created_at', { ascending: false }).limit(CAP.deadlines),
+      .eq('site_id', siteId).or(OPERATIONAL_DEADLINE_SOURCE_FILTER)
+      .in('status', ['to_plan', 'planned'])
+      .order('created_at', { ascending: false }).limit(CAP.deadlines),
     db.from('site_decisions').select('id, titre, report_id, date_decision, created_at').eq('site_id', siteId)
       .order('created_at', { ascending: false }).limit(CAP.decisions),
     db.from('site_watchpoints').select('id, title, report_id, confirmed_at').eq('site_id', siteId)

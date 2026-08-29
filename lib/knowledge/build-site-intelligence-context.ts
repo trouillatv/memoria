@@ -14,6 +14,7 @@ import { listConfirmedLinksForSite, type SubjectLinkType } from '@/lib/db/subjec
 import { getSiteIntervenantsView } from '@/lib/knowledge/site-intervenants-view'
 import { listBlocagesBySite, type SiteBlocage } from '@/lib/db/site-blocages'
 import { isProvenOpen, type PvState } from '@/lib/documents/subject-state'
+import { OPERATIONAL_DEADLINE_SOURCE_FILTER } from '@/lib/db/deadline-projection'
 
 // ── Types d'entrée ────────────────────────────────────────────────────────────
 
@@ -270,6 +271,7 @@ export async function buildSiteIntelligenceContext(
           .from('site_deadlines')
           .select('id, title, due_date')
           .eq('site_id', siteId)
+          .or(OPERATIONAL_DEADLINE_SOURCE_FILTER)
           .in('status', ['to_plan', 'planned'])
           .not('due_date', 'is', null)
           .lt('due_date', today)
