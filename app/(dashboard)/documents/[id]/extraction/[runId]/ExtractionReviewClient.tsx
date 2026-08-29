@@ -85,6 +85,8 @@ const URL_TO_FAMILY: Record<string, FamilyFilter> = {
   person: 'person', company: 'company', photos: 'photos',
 }
 
+// Conservé pour les libellés de relation lors de la reprise de la carte de preuve.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const RELATION_LABEL: Record<string, string> = {
   supports: 'Preuve', illustrates: 'Illustration', source: 'Source', candidate: 'À confirmer',
 }
@@ -597,14 +599,25 @@ export function ExtractionReviewClient({
   const companyCount = proposals.filter((p) => p.proposal.proposal_family === 'company').length
   const snapshotCount = visiblePhotos.length
 
-  const familyCounts = useMemo(() => {
-    const m = new Map<string, number>()
+  // Compteurs par famille scindés fort/faible, pour que les pastilles reflètent
+  // le même univers que les sections (qui filtrent les propositions faibles selon
+  // `showWeak`). Sans cela, une pastille « Mémoire 14 » côtoie une section « (13) ».
+  const { familyStrong, familyWeak } = useMemo(() => {
+    const strong = new Map<string, number>()
+    const weak = new Map<string, number>()
     for (const p of proposals) {
       const fam = p.proposal.proposal_family
-      m.set(fam, (m.get(fam) ?? 0) + 1)
+      if (getRelevanceScore(p.proposal) === 'weak') weak.set(fam, (weak.get(fam) ?? 0) + 1)
+      else strong.set(fam, (strong.get(fam) ?? 0) + 1)
     }
-    return m
+    return { familyStrong: strong, familyWeak: weak }
   }, [proposals])
+
+  // Nombre visible d'une famille selon l'état showWeak (identique à ce que la
+  // section correspondante affichera) + nombre de faibles masqués le cas échéant.
+  const visibleFamilyCount = (key: string) =>
+    (familyStrong.get(key) ?? 0) + (showWeak ? (familyWeak.get(key) ?? 0) : 0)
+  const hiddenWeakCount = (key: string) => (showWeak ? 0 : (familyWeak.get(key) ?? 0))
 
   const filtered = proposals
     .filter((p) => filter === 'all' || p.proposal.review_status === filter)
@@ -703,12 +716,17 @@ export function ExtractionReviewClient({
           .filter(({ key }) => {
             if (key === 'all') return true
             if (key === 'photos') return visiblePhotos.length > 0
-            return (familyCounts.get(key) ?? 0) > 0
+            // Pastille visible tant qu'il reste au moins une proposition de cette
+            // famille (fort ou faible) — sinon elle disparaîtrait selon showWeak.
+            return (familyStrong.get(key) ?? 0) + (familyWeak.get(key) ?? 0) > 0
           })
           .map(({ key, label }) => {
-            const count = key === 'all' ? proposals.length
+            const count = key === 'all' ? (showWeak ? proposals.length : proposals.length - weakCount)
               : key === 'photos' ? visiblePhotos.length
-              : (familyCounts.get(key) ?? 0)
+              : visibleFamilyCount(key)
+            const hiddenWeak = key === 'all' ? (showWeak ? 0 : weakCount)
+              : key === 'photos' ? 0
+              : hiddenWeakCount(key)
             return (
               <button
                 key={key}
@@ -721,6 +739,14 @@ export function ExtractionReviewClient({
                 }`}
               >
                 {label} <span className="opacity-70">{count}</span>
+                {hiddenWeak > 0 && (
+                  <span
+                    className="ml-0.5 opacity-40"
+                    title={`${hiddenWeak} proposition${hiddenWeak > 1 ? 's' : ''} faible${hiddenWeak > 1 ? 's' : ''} masquée${hiddenWeak > 1 ? 's' : ''}`}
+                  >
+                    +{hiddenWeak}
+                  </span>
+                )}
               </button>
             )
           })}
