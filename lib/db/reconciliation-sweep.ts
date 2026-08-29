@@ -23,11 +23,7 @@ import 'server-only'
 // Modèle : app/api/cron/sweep-stuck-tenders/route.ts, même doctrine de filet.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import {
-  decideReconcileLock,
-  acquireReconcileLock,
-  RECONCILE_LOCK_TTL_MS,
-} from '@/lib/db/canonical-subject-source-reconcile'
+import { RECONCILE_LOCK_TTL_MS } from '@/lib/db/canonical-subject-source-reconcile'
 
 /**
  * Âge minimal d'une projection avant de la considérer abandonnée.
@@ -51,13 +47,21 @@ export interface StuckReconciliation {
 
 /** Ce qu'une visite non réconciliée doit vérifier pour être reprise. Pur et testé. */
 export function isSweepable(
-  row: { debrief_projected_at: string | null; canonical_reconciled_at: string | null },
+  row: {
+    debrief_projected_at: string | null
+    canonical_reconciled_at: string | null
+    extraction_run_id?: string | null
+    created_at?: string | null
+  },
   nowMs: number,
   thresholdMs: number = SWEEP_THRESHOLD_MS,
 ): boolean {
-  if (!row.debrief_projected_at) return false // jamais projetée : rien à réconcilier
-  if (row.canonical_reconciled_at) return false // déjà faite
-  return nowMs - Date.parse(row.debrief_projected_at) >= thresholdMs
+  if (row.canonical_reconciled_at) return false
+  // Les imports historiques n'ont pas nécessairement debrief_projected_at :
+  // leur created_at est alors le point de départ sûr du délai de reprise.
+  const eligibleAt = row.debrief_projected_at ?? (row.extraction_run_id ? row.created_at : null)
+  if (!eligibleAt) return false
+  return nowMs - Date.parse(eligibleAt) >= thresholdMs
 }
 
 /** Les visites projetées mais jamais canonicalisées, au-delà du seuil. */
@@ -68,10 +72,9 @@ export async function findStuckReconciliations(
   const { data, error } = await createAdminClient()
     .from('site_reports')
     .select(
-      'id, site_id, extraction_run_id, debrief_projected_at, ' +
+      'id, site_id, extraction_run_id, debrief_projected_at, created_at, ' +
         'canonical_reconciled_at, canonical_reconcile_started_at, canonical_reconcile_error',
     )
-    .not('debrief_projected_at', 'is', null)
     .is('canonical_reconciled_at', null)
   if (error) throw error
 
@@ -83,6 +86,7 @@ export async function findStuckReconciliations(
     canonical_reconciled_at: string | null
     canonical_reconcile_started_at: string | null
     canonical_reconcile_error: string | null
+    created_at: string | null
   }
 
   return ((data ?? []) as unknown as Row[])
@@ -91,7 +95,7 @@ export async function findStuckReconciliations(
       reportId: r.id,
       siteId: r.site_id,
       extractionRunId: r.extraction_run_id,
-      projectedAt: r.debrief_projected_at!,
+      projectedAt: r.debrief_projected_at ?? r.created_at!,
       lockStartedAt: r.canonical_reconcile_started_at,
       error: r.canonical_reconcile_error,
     }))
@@ -127,52 +131,32 @@ export async function replayReconciliation(item: StuckReconciliation): Promise<S
     return await runCanonicalReconciliation({ reportId: item.reportId, siteId: item.siteId })
   }
 
-  // ── Chemin import de PV historique ────────────────────────────────────────
-  const sb = createAdminClient()
-  const now = new Date().toISOString()
-  const { data: reportStatus } = await sb
-    .from('site_reports')
-    .select('canonical_reconciled_at, canonical_reconcile_started_at')
-    .eq('id', item.reportId)
+  const sharedClient = createAdminClient()
+  const { data: run } = await sharedClient
+    .from('document_extraction_run')
+    .select('document_id')
+    .eq('id', item.extractionRunId)
     .maybeSingle()
+  const documentId = (run as { document_id: string | null } | null)?.document_id
+  if (!documentId) return 'failed'
+  const { data: doc } = await sharedClient
+    .from('documents')
+    .select('effective_date')
+    .eq('id', documentId)
+    .maybeSingle()
+  const visitDate = (doc as { effective_date: string | null } | null)?.effective_date
+  if (!visitDate) return 'failed'
 
-  const decision = decideReconcileLock(reportStatus, Date.now())
-  if (decision === 'done') return 'already_done'
-  if (decision === 'concurrent') return 'concurrent'
-
-  const priorStartedAt = (reportStatus as { canonical_reconcile_started_at?: string | null } | null)
-    ?.canonical_reconcile_started_at
-  const locked = await acquireReconcileLock(sb, item.reportId, priorStartedAt, now)
-  if (!locked) return 'lock_lost'
-
-  try {
-    const { reconcileHistoricalCorpusForSite, getMaterializedRunIdsForSite } = await import(
-      '@/lib/db/canonical-subject-historical-corpus-reconcile'
-    )
-    const siteRunIds = await getMaterializedRunIdsForSite(sb, item.siteId)
-    const corpusResult = await reconcileHistoricalCorpusForSite({ siteId: item.siteId, runIds: siteRunIds })
-    if (!corpusResult.reachedFixedPoint) {
-      throw new Error(`Convergence canonique non atteinte après ${corpusResult.passes} passages (site ${item.siteId})`)
-    }
-    await sb
-      .from('site_reports')
-      .update({
-        canonical_reconciled_at: new Date().toISOString(),
-        canonical_reconcile_error: null,
-        canonical_reconcile_started_at: null,
-      })
-      .eq('id', item.reportId)
-    return 'reconciled'
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err)
-    console.error('[sweep-reconciliation] rejeu import en échec', item.reportId, ':', reason)
-    await sb
-      .from('site_reports')
-      .update({ canonical_reconcile_error: reason, canonical_reconcile_started_at: null })
-      .eq('id', item.reportId)
-      .then(undefined, () => {})
-    return 'failed'
-  }
+  const { runHistoricalImportPostProcessing } = await import('@/lib/subjects/historical-import-post-processing')
+  const outcome = await runHistoricalImportPostProcessing({
+    runId: item.extractionRunId,
+    siteId: item.siteId,
+    siteReportId: item.reportId,
+    visitDate,
+  })
+  if (outcome === 'completed') return 'reconciled'
+  if (outcome === 'already_completed') return 'already_done'
+  return outcome
 }
 
 export interface ReconciliationHealth {
@@ -196,14 +180,18 @@ export interface ReconciliationHealth {
 export async function getReconciliationHealth(nowMs: number = Date.now()): Promise<ReconciliationHealth> {
   const { data, error } = await createAdminClient()
     .from('site_reports')
-    .select('debrief_projected_at, canonical_reconcile_error')
-    .not('debrief_projected_at', 'is', null)
+    .select('debrief_projected_at, extraction_run_id, created_at, canonical_reconcile_error')
     .is('canonical_reconciled_at', null)
   if (error) throw error
 
-  const rows = (data ?? []) as Array<{ debrief_projected_at: string | null; canonical_reconcile_error: string | null }>
+  const rows = ((data ?? []) as Array<{
+    debrief_projected_at: string | null
+    extraction_run_id: string | null
+    created_at: string | null
+    canonical_reconcile_error: string | null
+  }>).filter((row) => row.debrief_projected_at || (row.extraction_run_id && row.created_at))
   const ages = rows
-    .map((r) => (r.debrief_projected_at ? nowMs - Date.parse(r.debrief_projected_at) : 0))
+    .map((r) => nowMs - Date.parse((r.debrief_projected_at ?? r.created_at)!))
     .sort((a, b) => b - a)
 
   return {

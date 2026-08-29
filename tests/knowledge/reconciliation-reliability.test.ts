@@ -86,6 +86,15 @@ describe('RECONCILIATION-RELIABILITY — le sweep ne touche jamais un run vivant
   it('une visite jamais projetée n’est pas du ressort du sweep', () => {
     expect(isSweepable({ debrief_projected_at: null, canonical_reconciled_at: null }, T0)).toBe(false)
   })
+
+  it('un import historique sans projection devient rejouable depuis sa date de création', () => {
+    expect(isSweepable({
+      debrief_projected_at: null,
+      canonical_reconciled_at: null,
+      extraction_run_id: 'run-1',
+      created_at: ago(31 * MIN),
+    }, T0)).toBe(true)
+  })
 })
 
 // ─── 3. Doctrine : chemins d'exécution ───────────────────────────────────────
@@ -111,10 +120,12 @@ describe('RECONCILIATION-RELIABILITY — doctrine des chemins d’exécution', (
   it('le sweep rejoue par ce même point d’entrée, pas par une variante appauvrie', () => {
     const sweep = read('lib/db/reconciliation-sweep.ts')
     expect(sweep).toMatch(/runCanonicalReconciliation/)
-    // Et le chemin import passe par le verrou PARTAGÉ, jamais un CAS recopié.
-    expect(sweep).toMatch(/decideReconcileLock/)
-    expect(sweep).toMatch(/acquireReconcileLock\(/)
-    expect(sweep).toMatch(/canonical_reconcile_started_at: null/) // verrou relâché même en erreur
+    // Le chemin import réutilise l'orchestrateur complet, qui porte le verrou partagé.
+    expect(sweep).toMatch(/runHistoricalImportPostProcessing/)
+    const historical = read('lib/subjects/historical-import-post-processing.ts')
+    expect(historical).toMatch(/decideReconcileLock/)
+    expect(historical).toMatch(/acquireReconcileLock\(/)
+    expect(historical).toMatch(/canonical_reconcile_started_at: null/)
   })
 
   it('le cron rejoue, il ne se contente pas d’alerter', () => {

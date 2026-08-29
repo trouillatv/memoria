@@ -41,7 +41,7 @@ const SRC_MIG_323 = readFileSync(
   join(process.cwd(), 'supabase/migrations/323_canonical_reconcile_lock.sql'), 'utf8',
 )
 const SRC_RECONCILE_ACTIONS = readFileSync(
-  join(process.cwd(), 'app/(dashboard)/documents/[id]/extraction/[runId]/review-actions.ts'), 'utf8',
+  join(process.cwd(), 'lib/subjects/historical-import-post-processing.ts'), 'utf8',
 )
 
 // ─── Cas 1-3 : doctrine acteur ≠ sujet ───────────────────────────────────────

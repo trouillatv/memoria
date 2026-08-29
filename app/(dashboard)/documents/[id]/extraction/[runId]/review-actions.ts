@@ -8,14 +8,7 @@ import { getUserRoleById } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { reviewProposal, linkProposalEvidence } from '@/lib/db/document-extractions'
 import { materializeHistoricalVisit } from '@/lib/db/historical-visit-materialization'
-import {
-  reconcileHistoricalCorpusForSite,
-  getMaterializedRunIdsForSite,
-} from '@/lib/db/canonical-subject-historical-corpus-reconcile'
-import { decideReconcileLock, acquireReconcileLock } from '@/lib/db/canonical-subject-source-reconcile'
-import { projectCanonicalSubjectSafely } from '@/lib/db/canonical-subject-project'
-import { attachHistoricalReportEntitiesToCanonicalBusinessObjects } from '@/lib/db/canonical-business-object-attach'
-import { runHistoricalMemoryBuildPipeline } from '@/lib/subjects/memory-build-pipeline'
+import { runHistoricalImportPostProcessing } from '@/lib/subjects/historical-import-post-processing'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType } from '@/types/db'
 
 type ActionResult = { ok: boolean; error?: string }
@@ -472,6 +465,7 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
   ok: boolean
   siteReportId?: string
   siteId?: string
+  message?: string
   error?: string
 }> {
   const runId = fd.get('run_id')?.toString()
@@ -521,110 +515,6 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Erreur lors de la matérialisation' }
   }
-
-  // ── P0-J.1/P0-J.3 : canonicalisation des threads métier (synchrone, avant P0-B2) ──
-  // Pose l'identité canonique (canonical_subject + subject_thread_identity) des
-  // threads action/decision/knowledge_fact/deadline/observation/reservation.
-  // Doit compléter AVANT ensureHistoricalPdfOccurrences() : celui-ci résout
-  // thread → canonical_subject_id via subject_thread_identity et saute
-  // silencieusement tout thread encore sans identité (cf. P0-B2, ligne ~123).
-  // Verrou soft (P0-2, même colonnes que le chemin field_visit) : idempotent,
-  // protège contre un double-clic sur "Créer visite historique".
-  //
-  // P0-J.3 (GO Vincent 2026-08-24) : ce workflow importe les PV un par un, sans
-  // notion de « fin de batch » — chaque invocation EST l'unité de travail. Le
-  // point d'ancrage sûr est donc de reconverger tout le corpus déjà matérialisé
-  // du chantier (runIds sourcés depuis site_reports.extraction_run_id, jamais
-  // depuis is_canonical=true seul — cf. découverte Guillaume) à chaque import,
-  // pas seulement le run qui vient d'être créé. reconcileHistoricalCorpusForSite
-  // est idempotent et rejoue ce point fixe en 1 passage à écriture nulle pour
-  // tout run déjà résolu : reconverger tout le corpus à chaque PV ne recrée
-  // jamais N fois le même travail, ça le confirme.
-  let touchedCanonicalSubjectIds: string[] = []
-  {
-    const sb = createAdminClient()
-    const now = new Date().toISOString()
-    const { data: reportStatus } = await sb
-      .from('site_reports')
-      .select('canonical_reconciled_at, canonical_reconcile_started_at')
-      .eq('id', siteReportId)
-      .maybeSingle()
-
-    const decision = decideReconcileLock(reportStatus, Date.now())
-    if (decision === 'acquire') {
-      const priorStartedAt = (reportStatus as { canonical_reconcile_started_at?: string | null } | null)
-        ?.canonical_reconcile_started_at
-      const locked = await acquireReconcileLock(sb, siteReportId, priorStartedAt, now)
-
-      if (locked) {
-        try {
-          const siteRunIds = await getMaterializedRunIdsForSite(sb, siteId)
-
-          const corpusResult = await reconcileHistoricalCorpusForSite({ siteId, runIds: siteRunIds })
-          if (!corpusResult.reachedFixedPoint) {
-            throw new Error(
-              `Convergence canonique non atteinte après ${corpusResult.passes} passages (site ${siteId})`,
-            )
-          }
-          touchedCanonicalSubjectIds = corpusResult.touchedCanonicalSubjectIds
-
-          // ── Projection déterministe de la FK canonique (point d'appel 1/4) ──
-          // Le RPC materialize_historical_visit pose report_id sur les actions et
-          // les échéances, mais ni subject_thread_id ni canonical_subject_id : à
-          // l'instant de l'INSERT, subject_thread_identity n'existe pas encore.
-          // Ici elle existe. La variante `Safely` ne lève jamais : une projection
-          // ratée n'est pas un échec de canonicalisation et ne doit donc pas
-          // renseigner canonical_reconcile_error via le catch ci-dessous.
-          await projectCanonicalSubjectSafely({
-            siteId,
-            scope: { kind: 'report', reportId: siteReportId },
-          })
-
-          await sb
-            .from('site_reports')
-            .update({
-              canonical_reconciled_at: new Date().toISOString(),
-              canonical_reconcile_error: null,
-              canonical_reconcile_started_at: null,
-            })
-            .eq('id', siteReportId)
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err)
-          console.error('[review-actions] historical canonicalization failed:', reason)
-          await sb
-            .from('site_reports')
-            .update({ canonical_reconcile_error: reason, canonical_reconcile_started_at: null })
-            .eq('id', siteReportId)
-            .then(undefined, () => {})
-        }
-      }
-    }
-  }
-
-  // ── P0-B2 + P1-A : construction de la mémoire (arrière-plan garanti) ──────
-  // Alimente canonical_subject_occurrence avec source_kind='historical_pdf' pour
-  // que le moteur de relations puisse exploiter l'historique des PV importés,
-  // puis déclenche l'analyse de similarité incrémentale — sujets touchés par ce
-  // PV × sujets actifs du chantier. Suggestions uniquement, jamais de fusion
-  // automatique. after() garantit l'exécution complète après la réponse HTTP
-  // (sans lui, Vercel peut tuer la fonction avant la fin du .then()).
-  //
-  // Écriture synchrone de similarity_analysis_started_at : le client redirige
-  // immédiatement vers la page de la visite (handleCreateVisit), qui doit déjà
-  // voir "en cours" sans dépendre du timing de after() sur la requête précédente.
-  await admin
-    .from('site_reports')
-    .update({ similarity_analysis_started_at: new Date().toISOString() })
-    .eq('id', siteReportId)
-
-  after(() =>
-    runHistoricalMemoryBuildPipeline({ runId, siteId, siteReportId, visitDate, touchedCanonicalSubjectIds }),
-  )
-
-  // P1-C2B.2 : rattachement canonical_business_object des actions/réserves/échéances
-  // de ce PV, une fois que projectCanonicalSubjectSafely() (ci-dessus) a posé leur
-  // canonical_subject_id. Non bloquant, différé — ne retarde jamais la réponse au client.
-  after(() => attachHistoricalReportEntitiesToCanonicalBusinessObjects({ siteId, siteReportId }))
 
   // ── Pipeline post-RPC : knowledge_fact → site_knowledge_entries ──────────
   // Le RPC SQL exclut délibérément ces familles (trop riches pour du PL/pgSQL pur).
@@ -1146,14 +1036,22 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
     // Non bloquant : la visite est créée, le pipeline knowledge est best-effort
   }
 
-  return { ok: true, siteReportId, siteId }
+  // Le succès utilisateur s'arrête ici : la visite, les captures et les objets
+  // métier sont persistés. Le reste est rejouable et ne retient plus la réponse.
+  after(() => runHistoricalImportPostProcessing({ runId, siteId, siteReportId, visitDate }))
+
+  return {
+    ok: true,
+    siteReportId,
+    siteId,
+    message: 'Visite créée. La mise à jour de la mémoire se poursuit.',
+  }
 }
 
 // ─── Construction de la mémoire — réessai manuel ──────────────────────────────
 // Widget "MemorIA construit la mémoire du chantier" (P1-A, lot UI final) :
-// permet de relancer le pipeline occurrences + similarité après un échec,
-// sans redemander la canonicalisation des threads (déjà posée à la création
-// de la visite — subject_thread_identity existe déjà).
+// permet de reprendre l'orchestrateur complet après une interruption. Le verrou
+// à bail et chaque étape aval rendent ce rejeu idempotent.
 
 export async function retryMemoryBuildAction(fd: FormData): Promise<ActionResult> {
   const siteReportId = fd.get('site_report_id')?.toString()
@@ -1191,39 +1089,8 @@ export async function retryMemoryBuildAction(fd: FormData): Promise<ActionResult
   const visitDate = (doc as { effective_date: string | null } | null)?.effective_date
   if (!visitDate) return { ok: false, error: "Date du PV introuvable" }
 
-  // Sujets canoniques touchés par ce run — recalculés via subject_thread_identity,
-  // déjà posée lors de la création de la visite (pas besoin de refaire la canonicalisation).
-  const { data: propsRaw } = await admin
-    .from('document_extraction_proposal')
-    .select('subject_thread_id')
-    .eq('extraction_run_id', runId)
-    .not('subject_thread_id', 'is', null)
-  const threadIds = [...new Set((propsRaw ?? []).map((p) => (p as { subject_thread_id: string }).subject_thread_id))]
-
-  let touchedCanonicalSubjectIds: string[] = []
-  if (threadIds.length > 0) {
-    const { data: stiRows } = await admin
-      .from('subject_thread_identity')
-      .select('canonical_subject_id')
-      .eq('site_id', siteId)
-      .in('subject_thread_id', threadIds)
-    touchedCanonicalSubjectIds = [...new Set((stiRows ?? []).map((r) => (r as { canonical_subject_id: string }).canonical_subject_id))]
-  }
-
-  // Écriture synchrone de l'état "démarré" : la lecture qui suit la soumission
-  // du formulaire (revalidatePath) doit déjà voir "en cours", sans attendre after().
-  await admin
-    .from('site_reports')
-    .update({ similarity_analysis_started_at: new Date().toISOString(), similarity_analysis_error: null })
-    .eq('id', siteReportId)
-
-  after(() =>
-    runHistoricalMemoryBuildPipeline({ runId, siteId, siteReportId, visitDate, touchedCanonicalSubjectIds }),
-  )
-
-  // P1-C2B.2 : idempotent — un réessai ne crée jamais de second membership
-  // (contrainte UNIQUE mig 302), donc rejouable sans risque au même titre que le reste.
-  after(() => attachHistoricalReportEntitiesToCanonicalBusinessObjects({ siteId, siteReportId }))
+  // Le même point d'entrée sert au chemin normal, au retry manuel et au sweep.
+  after(() => runHistoricalImportPostProcessing({ runId, siteId, siteReportId, visitDate }))
 
   revalidatePath(`/sites/${siteId}/visites/${siteReportId}`)
   return { ok: true }
