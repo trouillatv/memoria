@@ -165,6 +165,46 @@ une ambiguïté d'identité par du wording.
 
 ---
 
+## 8. Micro-lot import photo historique BELLA (CR26-U103) — constats reportés P1
+
+Issus de l'audit READ-ONLY du pipeline photo historique (BELLA NAPOLI,
+CR CAPSE NC 26-U103, 22/07/2026). La correction extraction des photos (filtre
+`extract-images.ts`) et les compteurs filtrés sont traités dans le micro-lot ;
+les deux constats ci-dessous en sont **explicitement exclus** et reportés P1.
+
+### P1.24 — Présence documentaire d'un intervenant ≠ présence inférée
+**Cas témoin : Yann PAPIN.** Une personne **nommée/citée** dans un PV/CR historique
+est aujourd'hui restituée comme **présente** sur site, alors que le document ne le
+prouve pas. Le prompt d'extraction (`lib/documents/historical-visit-extractor.ts`,
+bloc présence ~L254-269) **infère** un statut « présent », ce qui viole la doctrine
+zéro-inférence.
+
+**Attendu** — Ne présenter « présent » que lorsque le document l'établit
+explicitement ; sinon restituer « mentionné/cité » sans statut de présence.
+Auditer le prompt et les données avant tout wording ; ne pas fabriquer une présence
+à partir d'une simple mention. Vérifier des cas comparables (mention d'un
+destinataire, d'un bureau de contrôle, d'un signataire) pour distinguer présence
+constatée / mention documentaire.
+
+### P1.25 — Synthèse/reprise ≠ nouvelle action (sur-segmentation)
+L'extraction historique produit des propositions d'action à la fois pour une **ligne
+de synthèse** et pour ses **parties constitutives**, sans dédoublonnage entre les
+deux niveaux. Résultat : sur-segmentation et impression de recréer des actions déjà
+couvertes par la synthèse.
+
+**Attendu** — Dédoublonner synthèse vs parties au moment de la restitution
+(hiérarchie synthèse → détails), sans dégrader l'extraction ni rouvrir le moteur
+longitudinal. Articuler avec P1.18 (workflow « À confirmer ») et P1.20 (chaîne
+VISITE → ACTION → PREUVE).
+
+### Note — Échéances historiques (déjà sécurisé, aucune action)
+Les échéances issues d'un import historique n'apparaissent pas comme échéances
+opérationnelles vivantes : `listSiteDeadlines` exclut `created_from='historical_import'`.
+Constat vérifié pendant l'audit, **aucune modification requise** — conservé ici comme
+critère de non-régression.
+
+---
+
 ## Reclassement après la fermeture P0.5 (déjà livrés — non redéveloppés en P1)
 - P1.1 — pilule/onglet actif visible ;
 - P1.2 — contenus « +N autres » dépliables ;
