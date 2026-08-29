@@ -1,4 +1,5 @@
 import 'server-only'
+import { shouldKeepEmbeddedImage, MIN_NATIVE_PX } from './photo-filter'
 
 // Extrait les objets image embarqués dans une page PDF via mupdf WASM.
 // Approche native : pas de vision — on lit directement la structure PDF.
@@ -20,12 +21,9 @@ export interface ExtractPageResult {
   pageBounds: [number, number, number, number]  // mediabox PDF [x0, y0, x1, y1] en points
 }
 
-// Filtre principal : surface de la bbox >= MIN_PAGE_COVERAGE de la surface de la page.
-// Cela élimine les logos, bandeaux, icônes et cadres décoratifs (souvent < 5 % de la page)
-// sans dépendre des dimensions natives (qui peuvent être trompeuses).
-const MIN_PAGE_COVERAGE = 0.05  // 5 % de la page
-// Garde-fou secondaire : évite les images anormalement petites en pixels natifs
-const MIN_NATIVE_PX = 80
+// Décision « garder / rejeter » externalisée dans `photo-filter.ts` (module pur,
+// testable) : conservée si photographique par résolution native OU figure/scan
+// couvrant substantiellement la page. Voir ce module pour la justification des seuils.
 
 export async function extractPageImages(
   pdfBuffer: Buffer,
@@ -58,13 +56,11 @@ export async function extractPageImages(
         const w = img.getWidth() as number
         const h = img.getHeight() as number
 
-        // Filtre 1 : la bbox doit couvrir au moins MIN_PAGE_COVERAGE de la page
-        // → élimine logos, bandeaux, cadres (logo BECIB = 2.4 %, photo = 19.9 %)
+        // Filtre : conservée si photographique par résolution native (ex. vignette
+        // de planche photo, 640×850 px couvrant 3 % de la page) OU figure/scan
+        // couvrant substantiellement la page. Rejette logos, bandeaux, icônes.
         const bboxArea = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
-        if (pageArea > 0 && bboxArea / pageArea < MIN_PAGE_COVERAGE) return
-
-        // Filtre 2 : garde-fou sur les dimensions natives minimales
-        if (w < MIN_NATIVE_PX || h < MIN_NATIVE_PX) return
+        if (!shouldKeepEmbeddedImage({ nativeWidth: w, nativeHeight: h, bboxArea, pageArea })) return
 
         try {
           let pixmap = img.toPixmap()
