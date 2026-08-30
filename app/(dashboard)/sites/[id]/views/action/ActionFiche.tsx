@@ -15,6 +15,7 @@ import { FICHE_TITLE_MOTION, FICHE_BODY_MOTION } from '@/components/knowledge/fi
 import { cn } from '@/lib/utils'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { describeAssignedActionDate } from '@/lib/knowledge/assigned-actions'
+import { ActionFicheCta } from './ActionFicheCta'
 import type { ActionFicheData } from '@/lib/knowledge/action-fiche'
 import type { SiteActionStatus } from '@/types/db'
 
@@ -137,6 +138,9 @@ export function ActionFicheBody({ action, back, animateContent = false, variant 
                 </li>
               ))}
             </ul>
+            <div className="mt-2.5">
+              <ActionFicheCta actionId={a.id} siteId={a.siteId} status={a.status} />
+            </div>
           </section>
 
           {/* ── 5. RESPONSABLE ── */}

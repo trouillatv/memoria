@@ -49,7 +49,9 @@ export async function getSitePendingActionProposals(siteId: string): Promise<Pen
       title: r.title,
       provenanceLabel: PROV_LABEL[prov],
       provenanceDate: date,
-      reportHref: r.report_id ? `/sites/${siteId}/visites/${r.report_id}` : null,
+      // Destination = la page d'arbitrage réelle (PanneauArbitrage, confirmer/écarter),
+      // pas la visite générique qui n'a aucun CTA sur ces propositions.
+      reportHref: r.report_id ? `/sites/${siteId}/visites/${r.report_id}/compte-rendu` : null,
       createdAt: r.created_at,
     }
   }).sort((a, b) =>
