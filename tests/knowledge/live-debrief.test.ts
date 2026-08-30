@@ -17,6 +17,12 @@
 // 14. Canonical subject seul (aucun objet ouvert) → jamais to_handle
 // 15. First visit (aucune visite terrain terminée)
 // 16. Activité récente regroupée par visite (pass-through de getSiteRecentActivity)
+//
+// D3 — persistance "Vu" (§2/§3/§7) :
+// 17. signalKey dans seenSignalKeys → ack seen, recently_handled (sans appel markSeen)
+// 18. signalKey absent (développement matériellement nouveau) → reste unseen malgré un ack antérieur sur l'ancienne clé
+// 19. markLiveDebriefSignalSeen appelle markAttentionSignalSeen(signalKey correct) puis invalidateSiteProjection
+// 20. buildLiveDebrief(siteId, userId) route les acks lus (getAttentionSignalAcks) jusqu'à informationalItems
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
@@ -49,6 +55,18 @@ vi.mock('@/lib/knowledge/canonical-attention', () => ({
   deriveCanonicalAttentionItems: (...args: unknown[]) => canonicalItemsMock(...args),
 }))
 
+const markAttentionSignalSeenMock = vi.fn()
+const getAttentionSignalAcksMock = vi.fn()
+const invalidateSiteProjectionMock = vi.fn()
+
+vi.mock('@/lib/db/attention-signal-acknowledgements', () => ({
+  markAttentionSignalSeen: (...args: unknown[]) => markAttentionSignalSeenMock(...args),
+  getAttentionSignalAcks: (...args: unknown[]) => getAttentionSignalAcksMock(...args),
+}))
+vi.mock('@/lib/knowledge/invalidate', () => ({
+  invalidateSiteProjection: (...args: unknown[]) => invalidateSiteProjectionMock(...args),
+}))
+
 type TableData = Record<string, unknown[]>
 let adminTables: TableData = {}
 
@@ -69,7 +87,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 }))
 
 // Import après les mocks (convention vitest).
-const { buildLiveDebrief, actionToItem, deadlineToItem, reserveToItem, informationalItems } = await import('@/lib/knowledge/live-debrief')
+const { buildLiveDebrief, actionToItem, deadlineToItem, reserveToItem, informationalItems, buildDebriefSignalKey, markLiveDebriefSignalSeen } = await import('@/lib/knowledge/live-debrief')
 
 function baseOverview(overrides: Partial<{
   active: number; overdue: number; toPlan: number; planned: number; reservesOpen: number
@@ -119,6 +137,9 @@ beforeEach(() => {
   sinceDeltaMock.mockReset().mockResolvedValue(null)
   recentActivityMock.mockReset().mockResolvedValue([])
   canonicalItemsMock.mockReset().mockResolvedValue([])
+  markAttentionSignalSeenMock.mockReset().mockResolvedValue(undefined)
+  getAttentionSignalAcksMock.mockReset().mockResolvedValue(new Set())
+  invalidateSiteProjectionMock.mockReset()
 })
 
 // ── Items purs (1-9, 13) ──────────────────────────────────────────────────────
@@ -128,6 +149,11 @@ describe('actionToItem', () => {
     const item = actionToItem({ id: 'a1', title: 'Reprise enrobé', status: 'open', due_date: null, done_at: null, canonical_subject_id: null, report_id: null }, TODAY, 'site-1')
     expect(item.disposition).toBe('to_handle')
     expect(debriefBlockForDisposition(item.disposition)).toBe('to_handle')
+  })
+
+  it('href = fiche canonique de l’action (D3 §4, pas la liste)', () => {
+    const item = actionToItem({ id: 'a1', title: 'Reprise enrobé', status: 'open', due_date: null, done_at: null, canonical_subject_id: null, report_id: null }, TODAY, 'site-1')
+    expect(item.href).toBe('/sites/site-1/action/a1')
   })
 
   it('planned → to_watch', () => {
@@ -160,6 +186,11 @@ describe('deadlineToItem', () => {
     expect(item.disposition).toBe('to_handle')
   })
 
+  it('href = onglet Planning / sous-onglet Échéances (D3 §5, pas de route par item — même destination que DeadlineHistoryItem.tsx)', () => {
+    const item = deadlineToItem({ id: 'd1', title: 'Réception G3', status: 'to_plan', due_date: null, completed_at: null, cancelled_at: null, canonical_subject_id: null, report_id: null }, TODAY, 'site-1')
+    expect(item.href).toBe('/sites/site-1?tab=planning&plantab=echeances')
+  })
+
   it('planned → to_watch', () => {
     const item = deadlineToItem({ id: 'd2', title: 'Livraison matériaux', status: 'planned', due_date: '2026-09-10', completed_at: null, cancelled_at: null, canonical_subject_id: null, report_id: null }, TODAY, 'site-1')
     expect(item.disposition).toBe('to_watch')
@@ -182,6 +213,11 @@ describe('reserveToItem', () => {
   it('open → to_handle', () => {
     const item = reserveToItem({ id: 'r1', label: 'Fissure façade', status: 'open', issued_on: '2026-08-01', lifted_at: null, canonical_subject_id: null, report_id: null }, TODAY, 'site-1')
     expect(item.disposition).toBe('to_handle')
+  })
+
+  it('href = fiche canonique de la réserve (D3 §6, pas la liste)', () => {
+    const item = reserveToItem({ id: 'r1', label: 'Fissure façade', status: 'open', issued_on: '2026-08-01', lifted_at: null, canonical_subject_id: null, report_id: null }, TODAY, 'site-1')
+    expect(item.href).toBe('/sites/site-1/reserve/r1')
   })
 
   it('lifted récent → recently_handled avec lifted_at', () => {
@@ -235,6 +271,78 @@ describe('informationalItems', () => {
       new Set(),
     )
     expect(items.every((i) => i.disposition !== 'to_handle')).toBe(true)
+  })
+
+  // D3 §3/§2 — persistance "Vu" lue via seenSignalKeys, sans passer par markSeen.
+  it('signalKey présent dans seenSignalKeys → ack seen, recently_handled (sans markSeen)', () => {
+    const canonicalItem = makeCanonicalItem({ canonicalSubjectId: 'cs-1', signals: ['stagnant'] })
+    const key = buildDebriefSignalKey(canonicalItem)
+    const items = informationalItems([canonicalItem], new Set(), new Set([key]))
+    expect(items).toHaveLength(1)
+    expect(items[0].ack).toBe('seen')
+    expect(items[0].disposition).toBe('recently_handled')
+  })
+
+  it('développement matériellement nouveau (nouvelle clé) → reste unseen malgré un ack sur l’ancienne clé', () => {
+    const previouslySeenKey = buildDebriefSignalKey(makeCanonicalItem({ canonicalSubjectId: 'cs-1', signals: ['stagnant'] }))
+    const worsened = makeCanonicalItem({ canonicalSubjectId: 'cs-1', signals: ['stagnant', 'pv_aggrave'] })
+    const items = informationalItems([worsened], new Set(), new Set([previouslySeenKey]))
+    expect(items).toHaveLength(1)
+    expect(items[0].ack).toBe('unseen')
+    expect(items[0].disposition).toBe('to_watch')
+  })
+})
+
+// ── markLiveDebriefSignalSeen (D3 §3 — seul point d'entrée de mutation) ────────
+
+describe('markLiveDebriefSignalSeen', () => {
+  it('appelle markAttentionSignalSeen avec le signalKey de l’item puis invalidateSiteProjection', async () => {
+    const canonicalItem = makeCanonicalItem({ canonicalSubjectId: 'cs-1', signals: ['stagnant'] })
+    const [item] = informationalItems([canonicalItem], new Set())
+
+    await markLiveDebriefSignalSeen(item, 'site-1', 'user-1')
+
+    expect(markAttentionSignalSeenMock).toHaveBeenCalledWith({
+      siteId: 'site-1',
+      userId: 'user-1',
+      signalKey: item.signalKey,
+    })
+    expect(invalidateSiteProjectionMock).toHaveBeenCalledWith('site-1')
+  })
+
+  it('refuse à la COMPILATION un item Action/Deadline/Reserve — pas une convention UI, une impossibilité de type', () => {
+    const action = actionToItem({ id: 'a1', title: 'Action', status: 'open', due_date: null, done_at: null, canonical_subject_id: null, report_id: null }, TODAY, 'site-1')
+    const deadline = deadlineToItem({ id: 'd1', title: 'Échéance', status: 'to_plan', due_date: null, completed_at: null, cancelled_at: null, canonical_subject_id: null, report_id: null }, TODAY, 'site-1')
+    const reserve = reserveToItem({ id: 'r1', label: 'Réserve', status: 'open', issued_on: null, lifted_at: null, canonical_subject_id: null, report_id: null }, TODAY, 'site-1')
+
+    // @ts-expect-error — LiveDebriefObjectItem (kind: 'action') n'est pas assignable à LiveDebriefInformationalItem (pas de signalKey/ack)
+    markLiveDebriefSignalSeen(action, 'site-1', 'user-1')
+    // @ts-expect-error — idem pour kind: 'deadline'
+    markLiveDebriefSignalSeen(deadline, 'site-1', 'user-1')
+    // @ts-expect-error — idem pour kind: 'reserve'
+    markLiveDebriefSignalSeen(reserve, 'site-1', 'user-1')
+  })
+})
+
+// ── buildDebriefSignalKey (D3 §2 — identité stable du signal) ───────────────────
+
+describe('buildDebriefSignalKey', () => {
+  it('même sujet + mêmes signaux (ordre différent) → même clé', () => {
+    const a = buildDebriefSignalKey(makeCanonicalItem({ canonicalSubjectId: 'cs-1', signals: ['stagnant', 'pv_aggrave'] }))
+    const b = buildDebriefSignalKey(makeCanonicalItem({ canonicalSubjectId: 'cs-1', signals: ['pv_aggrave', 'stagnant'] }))
+    expect(a).toBe(b)
+  })
+
+  it('même sujet + développement matériellement nouveau (signal supplémentaire) → clé différente', () => {
+    const seen = buildDebriefSignalKey(makeCanonicalItem({ canonicalSubjectId: 'cs-1', signals: ['stagnant'] }))
+    const worsened = buildDebriefSignalKey(makeCanonicalItem({ canonicalSubjectId: 'cs-1', signals: ['stagnant', 'pv_aggrave'] }))
+    expect(seen).not.toBe(worsened)
+  })
+
+  it('sujets différents + mêmes signaux → clés différentes', () => {
+    const a = buildDebriefSignalKey(makeCanonicalItem({ canonicalSubjectId: 'cs-1', signals: ['stagnant'] }))
+    const b = buildDebriefSignalKey(makeCanonicalItem({ canonicalSubjectId: 'cs-2', signals: ['stagnant'] }))
+    expect(a).not.toBe(b)
   })
 })
 
@@ -313,5 +421,31 @@ describe('buildLiveDebrief', () => {
       reservesOpen: 5,
       nextEvent: null,
     })
+  })
+
+  // D3 §3/§7 — la persistance "Vu" (getAttentionSignalAcks) alimente réellement
+  // la classification, jusqu'au bout du read-model.
+  it('avec un userId, un signal déjà acquitté (getAttentionSignalAcks) ressort en recently_handled, pas to_watch', async () => {
+    adminTables = { site_actions: [], site_deadlines: [], site_reserve: [] }
+    const canonicalItem = makeCanonicalItem({ canonicalSubjectId: 'cs-1', signals: ['stagnant'] })
+    canonicalItemsMock.mockResolvedValue([canonicalItem])
+    const key = `cs-1:stagnant`
+    getAttentionSignalAcksMock.mockResolvedValue(new Set([key]))
+
+    const result = await buildLiveDebrief('site-1', 'user-1')
+
+    expect(getAttentionSignalAcksMock).toHaveBeenCalledWith('site-1', 'user-1')
+    expect(result.toWatch.some((i) => i.kind === 'informational_signal')).toBe(false)
+    expect(result.recentlyHandled.some((i) => i.kind === 'informational_signal' && i.canonicalSubjectId === 'cs-1')).toBe(true)
+  })
+
+  it('sans userId, getAttentionSignalAcks n’est pas appelé et le signal reste unseen/to_watch', async () => {
+    adminTables = { site_actions: [], site_deadlines: [], site_reserve: [] }
+    canonicalItemsMock.mockResolvedValue([makeCanonicalItem({ canonicalSubjectId: 'cs-1', signals: ['stagnant'] })])
+
+    const result = await buildLiveDebrief('site-1')
+
+    expect(getAttentionSignalAcksMock).not.toHaveBeenCalled()
+    expect(result.toWatch.some((i) => i.kind === 'informational_signal')).toBe(true)
   })
 })

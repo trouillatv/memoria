@@ -25,6 +25,8 @@ import {
 import { getSiteOverview } from '@/lib/knowledge/site-overview'
 import { buildSinceLastVisitDelta, getSiteRecentActivity, type SinceLastVisitDelta, type SiteActivityItem } from '@/lib/db/visits'
 import { deriveCanonicalAttentionItems, type CanonicalAttentionItem, type CanonicalSignal } from '@/lib/knowledge/canonical-attention'
+import { markAttentionSignalSeen, getAttentionSignalAcks } from '@/lib/db/attention-signal-acknowledgements'
+import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 
 const RECENT_ACTIVITY_LIMIT = 6
 
@@ -53,6 +55,8 @@ export interface LiveDebriefObjectItem {
 export interface LiveDebriefInformationalItem {
   kind: 'informational_signal'
   canonicalSubjectId: string
+  /** Identité stable (D3 §2) — cf. `buildDebriefSignalKey`. Seule clé valide pour `markLiveDebriefSignalSeen`. */
+  signalKey: string
   title: string
   disposition: DebriefDisposition
   ack: DebriefSignalAck
@@ -94,6 +98,13 @@ export interface LiveDebrief {
   toHandle: LiveDebriefItem[]
   toWatch: LiveDebriefItem[]
   recentlyHandled: LiveDebriefItem[]
+  /** Pass-through de `getSiteRecentActivity` (lib/db/visits.ts) — non
+   *  dédupliqué en amont (D3 §10, tracé pour D6) : cette fonction fusionne
+   *  `site_reports` et `interventions` par de simples `push` sans détection
+   *  de même événement réel (lib/db/visits.ts:1057-1068). Un report et une
+   *  intervention datés du même jour pour le même passage terrain peuvent
+   *  donc apparaître deux fois. Ne pas corriger ici : source hors périmètre
+   *  D3, correction à faire dans `getSiteRecentActivity` lui-même. */
   recentActivity: SiteActivityItem[]
 }
 
@@ -173,7 +184,7 @@ export function actionToItem(row: RawActionRow, today: string, siteId: string): 
     date: c.disposition === 'recently_handled' ? row.done_at : row.due_date,
     canonicalSubjectId: row.canonical_subject_id,
     reportId: row.report_id,
-    href: `/sites/${siteId}/actions`,
+    href: `/sites/${siteId}/action/${row.id}`,
   }
 }
 
@@ -189,7 +200,9 @@ export function deadlineToItem(row: RawDeadlineRow, today: string, siteId: strin
     date: c.disposition === 'recently_handled' ? resolvedAt : row.due_date,
     canonicalSubjectId: row.canonical_subject_id,
     reportId: row.report_id,
-    href: `/sites/${siteId}/planning`,
+    // Pas de route par item pour une échéance (contrairement à Action/Réserve) :
+    // même destination que DeadlineHistoryItem.tsx (onglet Planning → sous-onglet Échéances).
+    href: `/sites/${siteId}?tab=planning&plantab=echeances`,
   }
 }
 
@@ -204,7 +217,7 @@ export function reserveToItem(row: RawReserveRow, today: string, siteId: string)
     date: c.disposition === 'recently_handled' ? row.lifted_at : row.issued_on,
     canonicalSubjectId: row.canonical_subject_id,
     reportId: row.report_id,
-    href: `/sites/${siteId}/reserves`,
+    href: `/sites/${siteId}/reserve/${row.id}`,
   }
 }
 
@@ -221,25 +234,41 @@ function isPurelyOperational(item: CanonicalAttentionItem): boolean {
 }
 
 /**
- * NOTE (gap de données, D2 §12-G) : aucune persistance d'accusé de lecture
- * n'existe aujourd'hui pour les signaux informationnels — `ack` est donc
- * toujours `'unseen'` dans cette version. `markSeen` (D1) reste prêt à être
- * branché dès qu'un mécanisme de stockage existera ; ce n'est pas un blocage
- * pour le read-model principal (aucune migration requise ici).
+ * Identité stable d'un signal informationnel (D3 §2). `canonicalSubjectId` seul
+ * ne suffit pas : un sujet déjà vu peut recevoir un développement matériellement
+ * nouveau (ex. `stagnant` devient `stagnant` + `pv_aggrave`) — ce cas doit
+ * ressurgir comme non-vu plutôt que rester silencieusement acquitté. La clé
+ * combine donc le sujet et l'ensemble trié de ses signaux ; jamais le texte
+ * généré (`title`/`reasons`), qui peut varier sans changement de fond.
+ */
+export function buildDebriefSignalKey(item: Pick<CanonicalAttentionItem, 'canonicalSubjectId' | 'signals'>): string {
+  const sortedSignals = [...item.signals].sort()
+  return `${item.canonicalSubjectId}:${sortedSignals.join(',')}`
+}
+
+/**
+ * `seenSignalKeys` : clés déjà acquittées par CET utilisateur sur CE chantier
+ * (D3 §1/§3, `getAttentionSignalAcks`). Un signal dont l'ensemble de signaux
+ * change matériellement produit une nouvelle clé (D3 §2) et redevient donc
+ * `unseen` même si l'ancienne version avait été vue.
  */
 export function informationalItems(
   canonicalItems: CanonicalAttentionItem[],
   openCanonicalSubjectIds: Set<string>,
+  seenSignalKeys: Set<string> = new Set(),
 ): LiveDebriefInformationalItem[] {
   const items: LiveDebriefInformationalItem[] = []
   for (const item of canonicalItems) {
     if (isPurelyOperational(item)) continue
     const hasOpenLinkedObject = openCanonicalSubjectIds.has(item.canonicalSubjectId)
-    const c = classifyInformationalSignalForDebrief({ hasOpenLinkedObject, ack: 'unseen' })
+    const signalKey = buildDebriefSignalKey(item)
+    const ack: DebriefSignalAck = seenSignalKeys.has(signalKey) ? 'seen' : 'unseen'
+    const c = classifyInformationalSignalForDebrief({ hasOpenLinkedObject, ack })
     if (c.disposition === 'not_relevant') continue
     items.push({
       kind: 'informational_signal',
       canonicalSubjectId: item.canonicalSubjectId,
+      signalKey,
       title: item.title,
       disposition: c.disposition,
       ack: c.ack,
@@ -248,6 +277,25 @@ export function informationalItems(
     })
   }
   return items
+}
+
+/**
+ * Le SEUL point d'entrée pour persister « Vu » sur un signal informationnel du
+ * Débrief vivant (D3 §3). Type-locked comme `markSeen` (D1, debrief-contract.ts) :
+ * le paramètre est typé exclusivement en `LiveDebriefInformationalItem` — passer
+ * un item Action/Échéance/Réserve/Planning est un échec de compilation, pas une
+ * règle conventionnelle. Idempotent (upsert), scoped site+user (org dérivé du
+ * site, mig 373). Ne modifie jamais canonical_subject ni un objet métier —
+ * invalide seulement la projection pour que `buildLiveDebrief` relise l'état à
+ * jour au prochain rendu (doctrine « c'est la mutation qui invalide »).
+ */
+export async function markLiveDebriefSignalSeen(
+  item: LiveDebriefInformationalItem,
+  siteId: string,
+  userId: string,
+): Promise<void> {
+  await markAttentionSignalSeen({ siteId, userId, signalKey: item.signalKey })
+  invalidateSiteProjection(siteId)
 }
 
 function place(item: LiveDebriefItem, toHandle: LiveDebriefItem[], toWatch: LiveDebriefItem[], recentlyHandled: LiveDebriefItem[]): void {
@@ -268,12 +316,13 @@ function place(item: LiveDebriefItem, toHandle: LiveDebriefItem[], toWatch: Live
 export async function buildLiveDebrief(siteId: string, userId: string | null = null): Promise<LiveDebrief> {
   const today = new Date().toISOString().slice(0, 10)
 
-  const [{ actions, deadlines, reserves }, overview, sinceDelta, recentActivity, canonicalItems] = await Promise.all([
+  const [{ actions, deadlines, reserves }, overview, sinceDelta, recentActivity, canonicalItems, seenSignalKeys] = await Promise.all([
     fetchLiveObjects(siteId).catch(() => ({ actions: [] as RawActionRow[], deadlines: [] as RawDeadlineRow[], reserves: [] as RawReserveRow[] })),
     getSiteOverview(siteId),
     buildSinceLastVisitDelta(siteId, userId).catch(() => null),
     getSiteRecentActivity(siteId, RECENT_ACTIVITY_LIMIT).catch(() => [] as SiteActivityItem[]),
     deriveCanonicalAttentionItems(siteId).catch(() => [] as CanonicalAttentionItem[]),
+    userId ? getAttentionSignalAcks(siteId, userId).catch(() => new Set<string>()) : Promise.resolve(new Set<string>()),
   ])
 
   // confirmed_today : mêmes compteurs que l'Aperçu (getSiteOverview), jamais une
@@ -311,7 +360,7 @@ export async function buildLiveDebrief(siteId: string, userId: string | null = n
   for (const row of actions) place(actionToItem(row, today, siteId), toHandle, toWatch, recentlyHandled)
   for (const row of deadlines) place(deadlineToItem(row, today, siteId), toHandle, toWatch, recentlyHandled)
   for (const row of reserves) place(reserveToItem(row, today, siteId), toHandle, toWatch, recentlyHandled)
-  for (const item of informationalItems(canonicalItems, openCanonicalSubjectIds)) place(item, toHandle, toWatch, recentlyHandled)
+  for (const item of informationalItems(canonicalItems, openCanonicalSubjectIds, seenSignalKeys)) place(item, toHandle, toWatch, recentlyHandled)
 
   return {
     siteId,
