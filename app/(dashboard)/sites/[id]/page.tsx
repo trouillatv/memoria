@@ -77,13 +77,18 @@ import { SandboxResetButton } from './SandboxResetButton'
 import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
 import { ChronologyWorkspace } from './views/chronology/ChronologyWorkspace'
 import { PlanningWorkspace } from './views/planning/PlanningWorkspace'
+import { PlanningSubTabs, type PlanningSubTab } from './views/planning/PlanningSubTabs'
+import { TravauxSubView } from './views/planning/TravauxSubView'
+import { EcheancesSubView } from './views/planning/EcheancesSubView'
+import { PlanningOverviewSubView } from './views/planning/PlanningOverviewSubView'
+import { listSitePlanningItems, getPlanningItemSourceDocuments } from '@/lib/db/site-planning-items'
 import { getPlanningTimeline } from '@/lib/db/planning-timeline'
 import type { PlanningTimelineEvent } from '@/lib/planning/timeline-contract'
 import { SiteOverviewTab } from './views/apercu/SiteOverviewTab'
 
 interface PageProps {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ tab?: string; person?: string; action?: string; decision?: string; memtab?: string }>
+  searchParams: Promise<{ tab?: string; person?: string; action?: string; decision?: string; memtab?: string; plantab?: string }>
 }
 
 type ChantierViewKey = SiteTabKey
@@ -100,9 +105,10 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const { tab: rawTab, person: personId, action: actionId, decision: decisionId, memtab: rawMemtab } = await searchParams
+  const { tab: rawTab, person: personId, action: actionId, decision: decisionId, memtab: rawMemtab, plantab: rawPlantab } = await searchParams
   const memtab: MemoireSubTab = rawMemtab === 'confirmer' ? 'confirmer' : rawMemtab === 'synthese' ? 'synthese' : 'pourquoi'
   const tab: ChantierViewKey = resolveSiteTab(rawTab)
+  const plantab: PlanningSubTab = rawPlantab === 'travaux' ? 'travaux' : rawPlantab === 'agenda' ? 'agenda' : rawPlantab === 'echeances' ? 'echeances' : 'apercu'
 
   // ── ÉTAPE 1 « Réactivité perçue » ──────────────────────────────────────────
   // Il n'y a PLUS de chargement global. Auparavant, 13 requêtes partaient avant
@@ -218,7 +224,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           ) : tab === 'chronologie' ? (
             <ChronologieView siteId={id} />
           ) : tab === 'planning' ? (
-            <PlanningView siteId={id} />
+            <PlanningView siteId={id} plantab={plantab} />
           ) : tab === 'documents-preuves' ? (
             <DocumentsPreuvesView siteId={id} canExport={user.role === 'admin' || user.role === 'manager'} />
           ) : tab === 'intervenants' ? (
@@ -473,7 +479,7 @@ async function ChronologieView({ siteId }: { siteId: string }) {
   )
 }
 
-async function PlanningView({ siteId }: { siteId: string }) {
+async function PlanningView({ siteId, plantab }: { siteId: string; plantab: PlanningSubTab }) {
   // La vie datée du chantier — visites, réunions, échéances, interventions. On
   // charge la semaine courante, pour que la grille et les compteurs lisent la
   // même chose.
@@ -482,7 +488,7 @@ async function PlanningView({ siteId }: { siteId: string }) {
   const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate() + 6)
   const iso = (d: Date) => d.toISOString().slice(0, 10)
 
-  const [currentState, interventions, missions, blocages, cycles, deadlines, deadlineHistory, maskedProposals, teams, timeline, scheduledEvents] = await Promise.all([
+  const [currentState, interventions, missions, blocages, cycles, deadlines, deadlineHistory, maskedProposals, teams, timeline, scheduledEvents, planningItems] = await Promise.all([
     getSiteCurrentState(siteId).catch(() => null),
     listInterventionsSupervisor({ siteId, dateRange: 'all', limit: 80 }).catch((e) => { console.error('[sites/[id]] interventions', e); return { items: [], total: 0 } }),
     listMissionsBySite(siteId).catch(() => []),
@@ -494,6 +500,7 @@ async function PlanningView({ siteId }: { siteId: string }) {
     listTeams().catch(() => []),
     getPlanningTimeline({ from: iso(lundi), to: iso(dimanche) }, { siteIds: [siteId] }).catch((): PlanningTimelineEvent[] => []),
     listScheduledEvents(siteId, { from: new Date().toISOString() }).catch((): ScheduledEvent[] => []),
+    listSitePlanningItems(siteId).catch(() => []),
   ])
   const linkedDeadlines = deadlines
     .filter((d) => !!d.canonical_subject_id && !!d.due_date)
@@ -502,22 +509,41 @@ async function PlanningView({ siteId }: { siteId: string }) {
     linkedDeadlines.length > 0
       ? await getDeadlineFieldEvidenceBatch(linkedDeadlines).catch(() => new Map<string, DeadlineFieldEvidence>())
       : new Map<string, DeadlineFieldEvidence>()
+  const nextEvent = selectNextEvent(toOverviewEvents(currentState, siteId, scheduledEvents), new Date().toISOString())
 
   return (
-    <PlanningWorkspace
-      siteId={siteId}
-      nextEvent={selectNextEvent(toOverviewEvents(currentState, siteId, scheduledEvents), new Date().toISOString())}
-      interventions={interventions.items}
-      missions={missions}
-      blocages={blocages.filter((b) => b.dateEnd === null)}
-      cycles={cycles}
-      deadlines={deadlines}
-      deadlineHistory={deadlineHistory}
-      maskedProposals={maskedProposals}
-      deadlineEvidence={deadlineEvidence}
-      teams={teams}
-      timeline={timeline}
-    />
+    <div className="space-y-4">
+      <PlanningSubTabs active={plantab} deadlinesCount={deadlines.length} />
+      {plantab === 'travaux' ? (
+        <TravauxSubView
+          items={planningItems}
+          sourceDocuments={await getPlanningItemSourceDocuments(
+            planningItems.map((i) => i.sourceProposalId).filter((pid): pid is string => Boolean(pid)),
+          )}
+        />
+      ) : plantab === 'agenda' ? (
+        <PlanningWorkspace
+          siteId={siteId}
+          nextEvent={nextEvent}
+          interventions={interventions.items}
+          missions={missions}
+          blocages={blocages.filter((b) => b.dateEnd === null)}
+          cycles={cycles}
+          teams={teams}
+          timeline={timeline}
+        />
+      ) : plantab === 'echeances' ? (
+        <EcheancesSubView
+          siteId={siteId}
+          deadlines={deadlines}
+          deadlineHistory={deadlineHistory}
+          maskedProposals={maskedProposals}
+          deadlineEvidence={deadlineEvidence}
+        />
+      ) : (
+        <PlanningOverviewSubView siteId={siteId} planningItems={planningItems} nextEvent={nextEvent} deadlines={deadlines} />
+      )}
+    </div>
   )
 }
 

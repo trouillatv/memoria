@@ -158,3 +158,32 @@ export async function cancelPlanningItem(id: string): Promise<void> {
     .eq('status', 'planned')
   if (error) throw new Error(error.message)
 }
+
+export interface PlanningItemSourceDocument {
+  documentId: string
+  filename: string
+}
+
+/**
+ * Résout `sourceProposalId → document_extraction_proposal.document_id →
+ * documents.filename` pour un lot d'items. C'est un résolveur dédié, distinct
+ * de `getProvenance`/`WhyButton` (pipeline visite/mémo) : les planning items
+ * viennent de `document_extraction_proposal`, pas de `site_knowledge_proposals`.
+ */
+export async function getPlanningItemSourceDocuments(
+  proposalIds: string[],
+): Promise<Map<string, PlanningItemSourceDocument>> {
+  const ids = [...new Set(proposalIds)]
+  if (ids.length === 0) return new Map()
+  const { data, error } = await createAdminClient()
+    .from('document_extraction_proposal')
+    .select('id, document_id, documents(filename)')
+    .in('id', ids)
+  if (error) throw new Error(error.message)
+  const map = new Map<string, PlanningItemSourceDocument>()
+  for (const row of (data ?? []) as unknown as Array<{ id: string; document_id: string; documents: { filename: string } | null }>) {
+    if (!row.documents) continue
+    map.set(row.id, { documentId: row.document_id, filename: row.documents.filename })
+  }
+  return map
+}

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { WorkWorkspace } from '@/app/(dashboard)/sites/[id]/views/work/WorkWorkspace'
 import { ChronologyWorkspace } from '@/app/(dashboard)/sites/[id]/views/chronology/ChronologyWorkspace'
 import { PlanningWorkspace } from '@/app/(dashboard)/sites/[id]/views/planning/PlanningWorkspace'
+import { EcheancesSubView } from '@/app/(dashboard)/sites/[id]/views/planning/EcheancesSubView'
 import type { SiteActionRow } from '@/lib/db/site-actions'
 import type { SiteBlocage } from '@/lib/db/site-blocages'
 import type { SiteDeadline } from '@/lib/db/site-deadlines'
@@ -173,7 +174,6 @@ describe('site operational workspaces', () => {
         missions={[missionFixture({ assigned_team_id: 'team-1' })]}
         teams={[teamFixture()]}
         blocages={[]}
-        deadlines={[]}
         cycles={[{
           id: 'cycle-1',
           siteId: 'site-1',
@@ -190,7 +190,7 @@ describe('site operational workspaces', () => {
       />,
     )
 
-    expect(screen.getByRole('heading', { name: 'Planning' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Agenda' })).toBeInTheDocument()
     expect(screen.getByText('Lun.')).toBeInTheDocument()
     expect(screen.getByText('Dim.')).toBeInTheDocument()
     expect(screen.getByText('Roulements disponibles')).toBeInTheDocument()
@@ -204,14 +204,8 @@ describe('site operational workspaces', () => {
   // dans les mots du débrief, jamais une date déduite.
   it('montre les échéances : à planifier d’un côté, datées de l’autre', () => {
     render(
-      <PlanningWorkspace
+      <EcheancesSubView
         siteId="site-1"
-        nextEvent={null}
-        interventions={[]}
-        missions={[]}
-        teams={[]}
-        blocages={[]}
-        cycles={[]}
         deadlines={[
           deadlineFixture({ id: 'd-1', title: 'Programmer la visite PAVE', constraint_text: 'Avant le démarrage' }),
           deadlineFixture({ id: 'd-2', title: 'Poser le coffret', due_date: '2026-07-28', status: 'planned' }),
@@ -227,14 +221,10 @@ describe('site operational workspaces', () => {
     expect(screen.getByText('28 juillet')).toBeInTheDocument()
   })
 
-  it('se tait quand le chantier n’a aucune échéance', () => {
-    render(
-      <PlanningWorkspace
-        siteId="site-1" nextEvent={null} interventions={[]} missions={[]}
-        teams={[]} blocages={[]} cycles={[]} deadlines={[]}
-      />,
-    )
+  it('montre un état vide quand le chantier n’a aucune échéance', () => {
+    render(<EcheancesSubView siteId="site-1" deadlines={[]} />)
     expect(screen.queryByText(/À planifier/)).not.toBeInTheDocument()
+    expect(screen.getByText('Aucune échéance documentée pour ce chantier.')).toBeInTheDocument()
   })
 })
 

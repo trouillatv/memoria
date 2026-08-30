@@ -1,21 +1,14 @@
 ﻿import Link from 'next/link'
-import type { ReactNode } from 'react'
-import { CalendarClock, CalendarDays, Clock, Layers3, ListOrdered, Route, ShieldAlert, Users } from 'lucide-react'
+import { CalendarDays, Layers3, ListOrdered, Route, ShieldAlert, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { cycleStatusLabel } from '@/lib/chantier/labels'
 import type { SiteBlocage } from '@/lib/db/site-blocages'
 import type { PlanningTimelineEvent } from '@/lib/planning/timeline-contract'
 import type { SupervisorInterventionRow } from '@/lib/db/interventions'
 import type { CycleSlot, PlanningCycle } from '@/lib/db/planning-cycles'
-import { CANCEL_REASON_LABEL, type SiteDeadline, type SiteDeadlineHistory } from '@/lib/db/site-deadlines'
-import { type DeadlineFieldEvidence } from '@/lib/db/deadline-field-evidence'
-import type { DbKnowledgeProposal } from '@/lib/db/knowledge-proposals'
-import { WhyButton } from '@/components/provenance/WhyButton'
-import { DeadlineActions } from './DeadlineActions'
-import { MaskedProposals } from './MaskedProposals'
-import { echeanceDateLabel } from '@/lib/visits/echeance-labels'
 import type { OverviewEventInput } from '@/lib/chantier/overview-projections'
 import type { DbMission, DbTeam } from '@/types/db'
+import { SectionTitle, Empty } from './PlanningUI'
 
 interface PlanningWorkspaceProps {
   siteId: string
@@ -25,14 +18,6 @@ interface PlanningWorkspaceProps {
   blocages: SiteBlocage[]
   cycles: PlanningCycle[]
   teams: DbTeam[]
-  /** Les échéances ACTIVES du chantier : datées ET à planifier. */
-  deadlines: SiteDeadline[]
-  /** Échéances sorties du planning actif (réalisées / annulées / remplacées). */
-  deadlineHistory?: SiteDeadlineHistory[]
-  /** Propositions masquées par le filtre de suppression — « Masquées — à vérifier ». */
-  maskedProposals?: DbKnowledgeProposal[]
-  /** Confrontation échéances ↔ terrain. Clé = deadline id. Lecture seule, pas de mutation de statut. */
-  deadlineEvidence?: Map<string, DeadlineFieldEvidence>
   /** TOUT ce qui est daté sur ce chantier — visites, réunions, échéances,
    *  interventions. Le compteur « Visites » disait `nextEvent?.kind === 'visit'`
    *  : il ne comptait rien, il regardait si le PROCHAIN événement était une
@@ -60,22 +45,8 @@ export function PlanningWorkspace({
   blocages,
   cycles,
   teams,
-  deadlines,
-  deadlineHistory,
-  maskedProposals,
-  deadlineEvidence,
   timeline,
 }: PlanningWorkspaceProps) {
-  // Une échéance sans date n'est pas incomplète : elle attend une décision. Elle a
-  // donc sa place à elle — pas une ligne grise en bas d'un calendrier.
-  const toPlan = deadlines.filter((d) => !d.due_date)
-  const dated = deadlines.filter((d) => d.due_date)
-  const history = deadlineHistory ?? []
-  // « En retard » est un état CALCULÉ (planned + date dépassée), jamais un statut
-  // stocké : une échéance encore due ne disparaît pas parce que sa date est passée.
-  const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Noumea', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
-  // Autres échéances actives — proposées comme « remplacement » lors d'une annulation.
-  const replacementOptions = deadlines.map((d) => ({ id: d.id, title: d.title }))
   const week = getCurrentWeek()
   const interventionsThisWeek = interventions.filter((intervention) => {
     const date = intervention.scheduled_for ?? isoDate(intervention.scheduled_at)
@@ -103,9 +74,9 @@ export function PlanningWorkspace({
       <section className="rounded-[22px] border bg-card px-5 py-4 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight">Planning</h1>
+            <h1 className="text-xl font-semibold tracking-tight">Agenda</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Ici, je peux organiser les engagements et les ressources dans le temps.
+              Visites, réunions, roulements — tout ce qui est daté sur ce chantier.
             </p>
           </div>
           <div className="flex flex-wrap gap-2 text-sm">
@@ -118,89 +89,6 @@ export function PlanningWorkspace({
           </div>
         </div>
       </section>
-
-      {/* ── LES ÉCHÉANCES DU CHANTIER ──────────────────────────────────────
-          Ce que MemorIA a entendu et que le conducteur a confirmé. Deux temps,
-          jamais mélangés : ce qui est daté vit dans le calendrier ; ce qui attend
-          une décision a sa propre section — visible, pas enfoui. Une échéance sans
-          date n'est pas une erreur : c'est du travail réel qui attend un jour. */}
-      {deadlines.length > 0 && (
-        <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-          <SectionTitle icon={CalendarClock} title="Échéances" detail="Ce qui doit arriver, et quand on le sait." />
-
-          {toPlan.length > 0 && (
-            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
-              <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-                À planifier ({toPlan.length})
-              </h3>
-              <ul className="mt-2 space-y-2">
-                {toPlan.map((d) => (
-                  <li key={d.id}>
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="min-w-0 text-sm font-medium text-foreground">{d.title}</p>
-                      <DeadlineActions deadlineId={d.id} hasDate={false} currentDueDate={null} otherDeadlines={replacementOptions.filter((o) => o.id !== d.id)} />
-                    </div>
-                    {/* La contrainte, avec les mots du débrief : elle dit POURQUOI
-                        cette échéance attend, et personne n'a inventé de date. */}
-                    {d.constraint_text && (
-                      <p className="text-[12px] text-muted-foreground">{d.constraint_text}</p>
-                    )}
-                    {/* Le raccourci transversal du moteur d'explication : la
-                        chaîne remontée jusqu'au mémo qui a dicté cette échéance.
-                        Rendu seulement quand la provenance existe. */}
-                    {d.report_id && (
-                      <div className="mt-1">
-                        <WhyButton objectType="deadline" objectId={d.id} />
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {dated.length > 0 && (
-            <ul className="mt-4 space-y-2">
-              {dated.map((d) => {
-                const overdue = d.due_date! < todayIso
-                const evidence = overdue ? deadlineEvidence?.get(d.id) : undefined
-                return (
-                  <li key={d.id}>
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="min-w-0 text-sm text-foreground">{d.title}</span>
-                      <span className="flex shrink-0 items-center gap-2">
-                        {overdue && (
-                          <span className="rounded-md bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-300">En retard</span>
-                        )}
-                        <span className={cn('text-xs font-medium tabular-nums', overdue ? 'text-red-700 dark:text-red-300' : 'text-muted-foreground')}>
-                          {echeanceDateLabel(d.due_date!)}
-                        </span>
-                        <DeadlineActions deadlineId={d.id} hasDate currentDueDate={d.due_date} otherDeadlines={replacementOptions.filter((o) => o.id !== d.id)} />
-                      </span>
-                    </div>
-                    {d.report_id && (
-                      <div className="mt-0.5">
-                        <WhyButton objectType="deadline" objectId={d.id} />
-                      </div>
-                    )}
-                    {evidence && (
-                      <div className="mt-0.5">
-                        <DeadlineEvidenceTag evidence={evidence} />
-                      </div>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-
-          {/* HISTORIQUE — réalisées / annulées / remplacées : hors du planning
-              actif, mais conservées pour la traçabilité (le « Pourquoi ? » y dit
-              qui a annulé, quand et pourquoi). */}
-          {history.length > 0 && <DeadlineHistory items={history} siteId={siteId} />}
-          {maskedProposals && maskedProposals.length > 0 && <MaskedProposals items={maskedProposals} />}
-        </section>
-      )}
 
       <section className="grid gap-4 xl:grid-cols-[1fr_320px]">
         <div className="space-y-4">
@@ -372,8 +260,6 @@ export function PlanningWorkspace({
   )
 }
 
-const historyDateFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long', year: 'numeric' })
-
 // Extrait la date Noumea d'un `start` qui peut être une date nue (yyyy-mm-dd) ou
 // un timestamptz. `slice(0,10)` donne la date UTC : 2026-08-07T22:00Z → « 7 »
 // alors qu'en Noumea (UTC+11) c'est le 8. On convertit explicitement.
@@ -383,116 +269,6 @@ const nomeaDayFmt = new Intl.DateTimeFormat('en-CA', {
 function eventDay(start: string): string {
   if (start.length <= 10) return start
   return nomeaDayFmt.format(new Date(start))
-}
-
-const evidenceDateFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'long' })
-function fmtEvidenceDate(iso: string) {
-  return evidenceDateFmt.format(new Date(iso + 'T00:00:00Z'))
-}
-
-/**
- * Tag de confrontation terrain pour une échéance en retard avec identité canonique.
- *
- * Sémantique stricte :
- * - OVERDUE_WITHOUT_PROGRESS_EVIDENCE / NO_POST_DUE_EVIDENCE = MemorIA ne sait pas, pas «rien n'a été fait»
- * - FIELD_COMPLETION_EVIDENCE = signal terrain, pas une clôture automatique
- */
-function DeadlineEvidenceTag({ evidence }: { evidence: DeadlineFieldEvidence }) {
-  switch (evidence.classification) {
-    case 'FIELD_COMPLETION_EVIDENCE':
-      return (
-        <p className="text-[11px] leading-tight text-emerald-700 dark:text-emerald-400">
-          ✓ Réalisation constatée{evidence.lastEvidenceDate ? ` le ${fmtEvidenceDate(evidence.lastEvidenceDate)}` : ''}
-          {evidence.validationStatus !== 'confirmed' && ' — à confirmer'}
-        </p>
-      )
-    case 'FIELD_PROGRESS_OBSERVED':
-      return (
-        <p className="text-[11px] leading-tight text-amber-700 dark:text-amber-400">
-          ↻ Activité terrain{evidence.lastEvidenceDate ? ` le ${fmtEvidenceDate(evidence.lastEvidenceDate)}` : ''}
-        </p>
-      )
-    case 'OVERDUE_WITHOUT_PROGRESS_EVIDENCE':
-      return (
-        <p className="text-[11px] leading-tight text-muted-foreground">
-          Aucune progression documentée depuis l'échéance
-        </p>
-      )
-    case 'NO_POST_DUE_EVIDENCE':
-      return (
-        <p className="text-[11px] leading-tight text-muted-foreground">
-          Aucune observation récente{evidence.lastEvidenceDate ? ` (dernière : ${fmtEvidenceDate(evidence.lastEvidenceDate)})` : ''}
-        </p>
-      )
-  }
-}
-
-/** Historique des échéances (repliable) : réalisées / annulées / remplacées.
- *  Chaque ligne raconte ce qui s'est passé, avec l'acteur et la raison. */
-function DeadlineHistory({ items, siteId }: { items: SiteDeadlineHistory[]; siteId: string }) {
-  return (
-    <details className="mt-4 rounded-2xl border bg-muted/10">
-      <summary className="cursor-pointer list-none px-4 py-2.5 text-sm font-semibold text-muted-foreground marker:content-none">
-        Historique ({items.length}) — réalisées, annulées, remplacées
-      </summary>
-      <ul className="space-y-3 px-4 pb-4 pt-2">
-        {items.map((d) => {
-          const when = d.cancelled_at ?? d.completed_at
-          const whenLabel = when ? historyDateFmt.format(new Date(when)) : null
-          return (
-            <li key={d.id} className="border-t pt-3 first:border-t-0 first:pt-0">
-              <p className="text-sm text-foreground/80">{d.title}</p>
-
-              {d.status === 'done' && (
-                <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-emerald-700 dark:text-emerald-400">
-                  <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-                  Réalisée{whenLabel ? ` le ${whenLabel}` : ''}{d.actor_name ? ` par ${d.actor_name}` : ''}
-                </p>
-              )}
-
-              {d.status === 'cancelled' && (
-                <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-red-700 dark:text-red-400">
-                  <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
-                  Annulée{whenLabel ? ` le ${whenLabel}` : ''}
-                  {d.cancel_reason ? ` · ${CANCEL_REASON_LABEL[d.cancel_reason]}` : ''}
-                  {d.actor_name ? ` · par ${d.actor_name}` : ''}
-                </p>
-              )}
-
-              {d.status === 'superseded' && (
-                <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted-foreground">
-                  <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
-                  Remplacée{whenLabel ? ` le ${whenLabel}` : ''}
-                  {d.replacement_title ? (
-                    <>
-                      {' '}par{' '}
-                      <Link
-                        href={`/sites/${siteId}?tab=planning`}
-                        className="font-medium text-foreground/80 underline decoration-dotted underline-offset-2 hover:text-foreground"
-                      >
-                        « {d.replacement_title} »
-                      </Link>
-                    </>
-                  ) : null}
-                  {d.actor_name ? ` · par ${d.actor_name}` : ''}
-                </p>
-              )}
-
-              {d.cancel_comment && (
-                <p className="mt-0.5 pl-3 text-[11.5px] italic text-muted-foreground">«&nbsp;{d.cancel_comment}&nbsp;»</p>
-              )}
-
-              {d.report_id && (
-                <div className="mt-1">
-                  <WhyButton objectType="deadline" objectId={d.id} />
-                </div>
-              )}
-            </li>
-          )
-        })}
-      </ul>
-    </details>
-  )
 }
 
 /** Traduit les cases d'un cycle en jours et heures lisibles.
@@ -530,20 +306,6 @@ function isContiguous(values: number[]): boolean {
   return values.every((value, index) => index === 0 || value === values[index - 1] + 1)
 }
 
-function SectionTitle({ icon: Icon, title, detail }: { icon: typeof Clock; title: string; detail: string }) {
-  return (
-    <div className="flex items-start gap-3">
-      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-sky-700 ring-1 ring-sky-100 dark:bg-sky-950/30 dark:text-sky-300 dark:ring-sky-900">
-        <Icon className="h-5 w-5" />
-      </span>
-      <div>
-        <h2 className="font-semibold">{title}</h2>
-        <p className="mt-0.5 text-sm text-muted-foreground">{detail}</p>
-      </div>
-    </div>
-  )
-}
-
 function SummaryCard({ title, rows }: { title: string; rows: Array<[string, string]> }) {
   return (
     <section className="rounded-[22px] border bg-card p-5 shadow-sm">
@@ -574,10 +336,6 @@ function LooseItem({ label, value, href }: { label: string; value: number; href:
       <span className={cn('text-lg font-semibold tabular-nums', pending ? 'text-orange-600 dark:text-orange-300' : 'text-emerald-600 dark:text-emerald-400')}>{value}</span>
     </Link>
   )
-}
-
-function Empty({ children }: { children: ReactNode }) {
-  return <p className="rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">{children}</p>
 }
 
 function teamsUsedThisWeek(interventions: SupervisorInterventionRow[], teamById: Map<string, DbTeam>) {
