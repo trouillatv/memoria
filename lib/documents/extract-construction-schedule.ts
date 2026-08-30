@@ -21,8 +21,13 @@ import type { DocumentProposalFamily } from '@/types/db'
  * - normalizedDate est calculé côté serveur à partir de l'ancre d'année du document.
  * - dueDate est physiquement absent du schéma LLM planning.
  *
- * Texte hors table : HARD STOP — canal secondaire non activé tant que le besoin
- * n'est pas démontré (jalons hors tableau à traiter dans un lot séparé).
+ * Bloc final du même tableau (réceptions/financier) : capturé géométriquement par
+ * extractStructuredTableContext (context.tailItems), sans second canal LLM.
+ * Seules les lignes rowKind='milestone' (réceptions) deviennent des propositions
+ * planning ci-dessous. Les lignes rowKind='financial' (retenue de garantie,
+ * règlements) restent dans context.tailItems mais ne sont jamais matérialisées :
+ * aucun modèle financier n'existe encore côté site_planning_item/site_deadline/
+ * site_action.
  */
 export async function extractConstructionSchedule(
   documentId: string,
@@ -106,6 +111,34 @@ export async function extractConstructionSchedule(
     }
   })
 
-  await insertExtractionProposals(runId, inputs)
+  // 7. Jalons du bloc final (réceptions) — géométrie déjà prouvée dans context.tailItems.
+  //    Les lignes financières (rowKind='financial') sont volontairement exclues ici.
+  const milestoneInputs = context.tailItems
+    .filter((t) => t.rowKind === 'milestone' && t.explicitDate)
+    .map((t) => ({
+      organization_id: doc.organization_id,
+      document_id: documentId,
+      proposal_family: 'planning' as DocumentProposalFamily,
+      stable_key: t.rowKey,
+      label: t.description,
+      description: null,
+      source_page: t.page,
+      source_excerpt: t.description,
+      source_payload: {
+        rowKey: t.rowKey,
+        kind: 'milestone',
+        temporalRole: 'planned',
+        rawDateText: t.rawDateText,
+        rawWeekText: null,
+        normalizedDate: t.explicitDate,
+        normalizedEndDate: null,
+        temporalPrecision: 'day',
+        normalizationSource: t.dateBasis,
+      } as Record<string, unknown>,
+      thematic_category: null,
+      document_status: 'planned',
+    }))
+
+  await insertExtractionProposals(runId, [...inputs, ...milestoneInputs])
   await updateExtractionRunStatus(runId, 'ready_for_review')
 }
