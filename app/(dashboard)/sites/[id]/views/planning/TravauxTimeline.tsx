@@ -88,7 +88,7 @@ export function TravauxTimeline({ weeks, milestones, todayIso, selectedWeek, onS
           ))}
 
           {weeks.map((week, index) => (
-            <div key={week.key} className="relative flex justify-center border-t px-1 pt-2">
+            <div key={week.key} className={`relative flex justify-center border-t px-1 ${todayMarkerIndex !== -1 ? 'pt-10' : 'pt-2'}`}>
               {index === todayMarkerIndex && <TodayFlag />}
               <button
                 ref={(el) => {
@@ -134,9 +134,16 @@ export function TravauxTimeline({ weeks, milestones, todayIso, selectedWeek, onS
   )
 }
 
+// Positionné SOUS la ligne de séparation (border-t du parent), jamais
+// au-dessus : les libellés de mois occupent leur propre ligne au-dessus de
+// cette séparation, "Aujourd'hui" occupe une zone réservée en dessous — les
+// deux ne peuvent jamais se chevaucher, y compris aux frontières de mois.
+// Le décalage est uniquement vertical (top-3) ; la position horizontale
+// (left-0 -translate-x-1/2, alignée sur le bord de la colonne = la vraie
+// date) ne doit jamais bouger pour "éviter" le texte.
 function TodayFlag() {
   return (
-    <div className="pointer-events-none absolute -top-4 left-0 flex -translate-x-1/2 flex-col items-center" aria-hidden>
+    <div className="pointer-events-none absolute left-0 top-3 flex -translate-x-1/2 flex-col items-center" aria-hidden>
       <span className="whitespace-nowrap text-[9px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">Aujourd&apos;hui</span>
       <span className="mt-0.5 h-3 w-px bg-sky-400" />
     </div>
