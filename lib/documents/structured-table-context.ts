@@ -230,3 +230,56 @@ export function formatStructuredTableContext(context: StructuredTableContext): s
   if (!context.detected || context.rows.length === 0) return ''
   return context.rows.map((r) => `[page ${r.page}] ${r.dateText ?? ''} | ${r.weekText ?? ''} | ${r.description}`).join('\n')
 }
+
+// ─── Contrat V1-B : groupes atomiques immuables ───────────────────────────────
+
+export interface PlanningRow {
+  rowKey: string
+  description: string
+  sourceBbox: [number, number, number, number]
+}
+
+export interface PlanningGroup {
+  groupKey: string
+  rawDateText: string | null
+  rawWeekText: string | null
+  rows: PlanningRow[]
+}
+
+/**
+ * Transforme le résultat du parseur géométrique en groupes atomiques immuables.
+ * Chaque groupe correspond à une cellule fusionnée Date/Semaine.
+ * groupKey et rowKey sont déterministes et stables pour un même document/run.
+ */
+export function buildPlanningGroups(context: StructuredTableContext): PlanningGroup[] {
+  const groups: PlanningGroup[] = []
+  let currentGroup: PlanningGroup | null = null
+  let groupIndex = 0
+
+  for (const row of context.rows) {
+    const isNewGroup =
+      !currentGroup ||
+      currentGroup.rawDateText !== row.dateText ||
+      currentGroup.rawWeekText !== row.weekText
+
+    if (isNewGroup) {
+      groupIndex++
+      currentGroup = {
+        groupKey: `p${row.page}-g${groupIndex}`,
+        rawDateText: row.dateText,
+        rawWeekText: row.weekText,
+        rows: [],
+      }
+      groups.push(currentGroup)
+    }
+
+    const rowIndex = currentGroup!.rows.length + 1
+    currentGroup!.rows.push({
+      rowKey: `${currentGroup!.groupKey}-r${rowIndex}`,
+      description: row.description,
+      sourceBbox: row.bbox,
+    })
+  }
+
+  return groups
+}
