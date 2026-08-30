@@ -15,11 +15,15 @@ interface PlanningOverviewSubViewProps {
 
 const dayFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'long' })
 const dayYearFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })
+const dayFullYearFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' })
 function fmtDay(iso: string): string {
   return dayFmt.format(new Date(iso + 'T00:00:00Z'))
 }
 function fmtDayYear(iso: string): string {
   return dayYearFmt.format(new Date(iso + 'T00:00:00Z'))
+}
+function fmtDayFullYear(iso: string): string {
+  return dayFullYearFmt.format(new Date(iso + 'T00:00:00Z'))
 }
 
 /**
@@ -33,7 +37,8 @@ export function PlanningOverviewSubView({ siteId, planningItems, nextEvent, dead
   const milestones = planningItems.filter((i) => i.kind === 'milestone')
   const nextTask = upcoming(tasks, todayIso)
   const nextMilestone = upcoming(milestones, todayIso)
-  const period = coveredPeriod(planningItems)
+  const period = coveredPeriod(tasks)
+  const lastMilestone = [...milestones].filter((m) => m.plannedStart).sort((a, b) => b.plannedStart!.localeCompare(a.plannedStart!))[0] ?? null
   const activeDeadlines = deadlines.length
 
   return (
@@ -41,9 +46,10 @@ export function PlanningOverviewSubView({ siteId, planningItems, nextEvent, dead
       <section className="grid gap-4 md:grid-cols-2">
         <OverviewCard icon={HardHat} title="Prochaine étape">
           {nextTask ? (
-            <p className="text-sm text-foreground">
-              <span className="font-medium tabular-nums">{fmtDay(nextTask.plannedStart!)}</span> — {nextTask.title}
-            </p>
+            <div>
+              <p className="text-sm font-medium text-foreground">{nextTask.title}</p>
+              <p className="text-sm text-muted-foreground tabular-nums">{fmtDayFullYear(nextTask.plannedStart!)}</p>
+            </div>
           ) : (
             <Empty>Aucune étape à venir documentée.</Empty>
           )}
@@ -51,11 +57,17 @@ export function PlanningOverviewSubView({ siteId, planningItems, nextEvent, dead
 
         <OverviewCard icon={HardHat} title="Planning travaux">
           {planningItems.length > 0 ? (
-            <div>
+            <div className="space-y-1">
               <p className="text-sm text-foreground">
-                {tasks.length} tâche{tasks.length > 1 ? 's' : ''} · {milestones.length} jalon{milestones.length > 1 ? 's' : ''}
-                {period && ` · ${fmtDayYear(period.start)} → ${fmtDayYear(period.end)}`}
+                {tasks.length} tâche{tasks.length > 1 ? 's' : ''}
+                {period && ` · ${fmtDay(period.start)} → ${fmtDayFullYear(period.end)}`}
               </p>
+              {milestones.length > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {milestones.length} jalon{milestones.length > 1 ? 's' : ''}
+                  {lastMilestone && ` · dernier : ${lastMilestone.title.charAt(0).toLowerCase()}${lastMilestone.title.slice(1)} ${fmtDayYear(lastMilestone.plannedStart!)}`}
+                </p>
+              )}
               <Link href={`/sites/${siteId}?tab=planning&plantab=travaux`} className="mt-1 inline-block text-sm underline decoration-dotted underline-offset-2 hover:text-foreground">
                 Voir le détail
               </Link>
@@ -67,9 +79,10 @@ export function PlanningOverviewSubView({ siteId, planningItems, nextEvent, dead
 
         <OverviewCard icon={Flag} title="Prochain jalon">
           {nextMilestone ? (
-            <p className="text-sm text-foreground">
-              <span className="font-medium tabular-nums">{fmtDay(nextMilestone.plannedStart!)}</span> — {nextMilestone.title}
-            </p>
+            <div>
+              <p className="text-sm font-medium text-foreground">{nextMilestone.title}</p>
+              <p className="text-sm text-muted-foreground tabular-nums">{fmtDayFullYear(nextMilestone.plannedStart!)}</p>
+            </div>
           ) : (
             <Empty>Aucun jalon à venir documenté.</Empty>
           )}

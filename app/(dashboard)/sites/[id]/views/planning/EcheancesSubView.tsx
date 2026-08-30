@@ -1,11 +1,11 @@
-import Link from 'next/link'
 import { CalendarClock } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { CANCEL_REASON_LABEL, type SiteDeadline, type SiteDeadlineHistory } from '@/lib/db/site-deadlines'
+import type { SiteDeadline, SiteDeadlineHistory } from '@/lib/db/site-deadlines'
 import { type DeadlineFieldEvidence } from '@/lib/db/deadline-field-evidence'
 import type { DbKnowledgeProposal } from '@/lib/db/knowledge-proposals'
 import { WhyButton } from '@/components/provenance/WhyButton'
 import { DeadlineActions } from './DeadlineActions'
+import { DeadlineHistoryItem } from './DeadlineHistoryItem'
 import { MaskedProposals } from './MaskedProposals'
 import { echeanceDateLabel } from '@/lib/visits/echeance-labels'
 import { SectionTitle, Empty } from './PlanningUI'
@@ -132,7 +132,6 @@ export function EcheancesSubView({ siteId, deadlines, deadlineHistory, maskedPro
   )
 }
 
-const historyDateFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long', year: 'numeric' })
 const evidenceDateFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'long' })
 function fmtEvidenceDate(iso: string) {
   return evidenceDateFmt.format(new Date(iso + 'T00:00:00Z'))
@@ -176,7 +175,8 @@ function DeadlineEvidenceTag({ evidence }: { evidence: DeadlineFieldEvidence }) 
 }
 
 /** Historique des échéances (repliable) : réalisées / annulées / remplacées.
- *  Chaque ligne raconte ce qui s'est passé, avec l'acteur et la raison. */
+ *  Une ligne compacte par élément ; le détail n'apparaît qu'au clic sur
+ *  « Pourquoi ? » (voir DeadlineHistoryItem) — pas de double affichage. */
 function DeadlineHistory({ items, siteId }: { items: SiteDeadlineHistory[]; siteId: string }) {
   return (
     <details className="mt-4 rounded-2xl border bg-muted/10">
@@ -184,60 +184,9 @@ function DeadlineHistory({ items, siteId }: { items: SiteDeadlineHistory[]; site
         Historique ({items.length}) — réalisées, annulées, remplacées
       </summary>
       <ul className="space-y-3 px-4 pb-4 pt-2">
-        {items.map((d) => {
-          const when = d.cancelled_at ?? d.completed_at
-          const whenLabel = when ? historyDateFmt.format(new Date(when)) : null
-          return (
-            <li key={d.id} className="border-t pt-3 first:border-t-0 first:pt-0">
-              <p className="text-sm text-foreground/80">{d.title}</p>
-
-              {d.status === 'done' && (
-                <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-emerald-700 dark:text-emerald-400">
-                  <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-                  Réalisée{whenLabel ? ` le ${whenLabel}` : ''}{d.actor_name ? ` par ${d.actor_name}` : ''}
-                </p>
-              )}
-
-              {d.status === 'cancelled' && (
-                <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-red-700 dark:text-red-400">
-                  <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
-                  Annulée{whenLabel ? ` le ${whenLabel}` : ''}
-                  {d.cancel_reason ? ` · ${CANCEL_REASON_LABEL[d.cancel_reason]}` : ''}
-                  {d.actor_name ? ` · par ${d.actor_name}` : ''}
-                </p>
-              )}
-
-              {d.status === 'superseded' && (
-                <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-muted-foreground">
-                  <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
-                  Remplacée{whenLabel ? ` le ${whenLabel}` : ''}
-                  {d.replacement_title ? (
-                    <>
-                      {' '}par{' '}
-                      <Link
-                        href={`/sites/${siteId}?tab=planning&plantab=echeances`}
-                        className="font-medium text-foreground/80 underline decoration-dotted underline-offset-2 hover:text-foreground"
-                      >
-                        « {d.replacement_title} »
-                      </Link>
-                    </>
-                  ) : null}
-                  {d.actor_name ? ` · par ${d.actor_name}` : ''}
-                </p>
-              )}
-
-              {d.cancel_comment && (
-                <p className="mt-0.5 pl-3 text-[11.5px] italic text-muted-foreground">«&nbsp;{d.cancel_comment}&nbsp;»</p>
-              )}
-
-              {d.report_id && (
-                <div className="mt-1">
-                  <WhyButton objectType="deadline" objectId={d.id} />
-                </div>
-              )}
-            </li>
-          )
-        })}
+        {items.map((d) => (
+          <DeadlineHistoryItem key={d.id} item={d} siteId={siteId} />
+        ))}
       </ul>
     </details>
   )

@@ -68,6 +68,18 @@ export function PlanningWorkspace({
   const unpublishedCycles = cycles.filter((cycle) => cycle.status !== 'published')
   const activeBlocages = blocages.filter((blocage) => blocage.dateEnd === null)
   const listEvents = [...inWeek].sort((a, b) => a.start.localeCompare(b.start))
+  const teamsThisWeek = teamsUsedThisWeek(interventionsThisWeek, teamById)
+
+  // « Organisation » (équipes/roulements/contraintes) n'a rien à raconter sur
+  // un chantier qui n'a pas encore d'affectations — le montrer vide n'est pas
+  // neutre, c'est du bruit. On ne l'affiche que si elle porte une information.
+  const hasUnassigned = unassignedInterventions.length > 0 || unteamedMissions.length > 0 || unpublishedCycles.length > 0
+  const summaryRows: Array<[string, string]> = [
+    ['Interventions', String(interventionsThisWeek.length)],
+    ['Visites', String(visitesThisWeek.length)],
+    ['Réunions', String(reunionsThisWeek.length)],
+    ['Équipes prévues', String(teamsThisWeek.length)],
+  ].filter(([, value]) => value !== '0') as Array<[string, string]>
 
   return (
     <main className="space-y-4">
@@ -156,106 +168,108 @@ export function PlanningWorkspace({
         </div>
 
         <aside className="space-y-4">
-          <SummaryCard
-            title="Cette semaine"
-            rows={[
-              ['Interventions', String(interventionsThisWeek.length)],
-              ['Visites', String(visitesThisWeek.length)],
-              ['Réunions', String(reunionsThisWeek.length)],
-              ['Équipes prévues', String(new Set(interventionsThisWeek.map((i) => i.assigned_team_id).filter(Boolean)).size)],
-            ]}
-          />
+          {summaryRows.length > 0 && <SummaryCard title="Cette semaine" rows={summaryRows} />}
 
-          <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-            <SectionTitle icon={Layers3} title="Éléments non affectés" detail="Ce qui doit encore être placé." />
-            <div className="mt-4 space-y-2">
-              <LooseItem label="Interventions sans équipe" value={unassignedInterventions.length} href={`/semaine?site=${siteId}`} />
-              <LooseItem label="Missions sans équipe" value={unteamedMissions.length} href={`/sites/${siteId}?tab=organisation`} />
-              <LooseItem label="Roulements à publier" value={unpublishedCycles.length} href={`/sites/${siteId}/roulements`} />
-            </div>
-          </section>
+          {hasUnassigned && (
+            <section className="rounded-[22px] border bg-card p-5 shadow-sm">
+              <SectionTitle icon={Layers3} title="Éléments non affectés" detail="Ce qui doit encore être placé." />
+              <div className="mt-4 space-y-2">
+                {unassignedInterventions.length > 0 && (
+                  <LooseItem label="Interventions sans équipe" value={unassignedInterventions.length} href={`/semaine?site=${siteId}`} />
+                )}
+                {unteamedMissions.length > 0 && (
+                  <LooseItem label="Missions sans équipe" value={unteamedMissions.length} href={`/sites/${siteId}?tab=organisation`} />
+                )}
+                {unpublishedCycles.length > 0 && (
+                  <LooseItem label="Roulements à publier" value={unpublishedCycles.length} href={`/sites/${siteId}/roulements`} />
+                )}
+              </div>
+            </section>
+          )}
 
-          <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-            <SectionTitle icon={Users} title="Équipes" detail="Affectations visibles cette semaine." />
-            <div className="mt-4 space-y-2">
-              {teamsUsedThisWeek(interventionsThisWeek, teamById).length > 0 ? teamsUsedThisWeek(interventionsThisWeek, teamById).map((team) => (
-                <div key={team.id} className="flex items-center justify-between gap-3 rounded-2xl border p-3">
-                  <p className="font-medium">{team.name}</p>
-                  <p className="shrink-0 text-sm text-muted-foreground">{team.count} intervention{team.count > 1 ? 's' : ''}</p>
-                </div>
-              )) : (
-                <Empty>Aucune équipe affectée cette semaine.</Empty>
-              )}
-            </div>
-          </section>
+          {teamsThisWeek.length > 0 && (
+            <section className="rounded-[22px] border bg-card p-5 shadow-sm">
+              <SectionTitle icon={Users} title="Équipes" detail="Affectations visibles cette semaine." />
+              <div className="mt-4 space-y-2">
+                {teamsThisWeek.map((team) => (
+                  <div key={team.id} className="flex items-center justify-between gap-3 rounded-2xl border p-3">
+                    <p className="font-medium">{team.name}</p>
+                    <p className="shrink-0 text-sm text-muted-foreground">{team.count} intervention{team.count > 1 ? 's' : ''}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
         </aside>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-2">
-        <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-          <SectionTitle icon={Route} title="Roulements disponibles" detail="Cycles publiés ou préparés pour ce chantier." />
-          <div className="mt-4 space-y-2">
-            {cycles.length > 0 ? cycles.map((cycle) => {
-              const mission = missions.find((item) => item.id === cycle.missionId)
-              const workedSlots = cycle.slots.filter((slot) => slot.state === 'work')
-              const cycleTeams = [...new Set(workedSlots.map((slot) => slot.teamId))]
-                .map((teamId) => teamById.get(teamId)?.name)
-                .filter((name): name is string => Boolean(name))
+      {(cycles.length > 0 || activeBlocages.length > 0) && (
+        <section className={cn('grid gap-4', cycles.length > 0 && activeBlocages.length > 0 ? 'xl:grid-cols-2' : '')}>
+          {cycles.length > 0 && (
+            <section className="rounded-[22px] border bg-card p-5 shadow-sm">
+              <SectionTitle icon={Route} title="Roulements disponibles" detail="Cycles publiés ou préparés pour ce chantier." />
+              <div className="mt-4 space-y-2">
+                {cycles.map((cycle) => {
+                  const mission = missions.find((item) => item.id === cycle.missionId)
+                  const workedSlots = cycle.slots.filter((slot) => slot.state === 'work')
+                  const cycleTeams = [...new Set(workedSlots.map((slot) => slot.teamId))]
+                    .map((teamId) => teamById.get(teamId)?.name)
+                    .filter((name): name is string => Boolean(name))
 
-              return (
-                <div key={cycle.id} className="rounded-2xl border bg-sky-50/40 p-4 dark:bg-sky-950/15">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold">{cycle.name}</p>
-                      <p className="mt-0.5 text-sm text-muted-foreground">{mission?.name ?? 'Mission non renseignée'}</p>
+                  return (
+                    <div key={cycle.id} className="rounded-2xl border bg-sky-50/40 p-4 dark:bg-sky-950/15">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold">{cycle.name}</p>
+                          <p className="mt-0.5 text-sm text-muted-foreground">{mission?.name ?? 'Mission non renseignée'}</p>
+                        </div>
+                        <span className={cn(
+                          'shrink-0 rounded-full px-2 py-0.5 text-xs font-medium',
+                          cycle.status === 'published'
+                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'
+                            : 'bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-300',
+                        )}>
+                          {cycleStatusLabel(cycle.status)}
+                        </span>
+                      </div>
+
+                      {/* « 2 cases travaillées » ne veut rien dire sur un chantier :
+                          Guillaume a besoin des jours et des heures réels. */}
+                      <p className="mt-3 text-sm">{describeSlots(workedSlots)}</p>
+                      {cycleTeams.length > 0 && (
+                        <p className="mt-1 text-sm text-muted-foreground">Équipe : {cycleTeams.join(', ')}</p>
+                      )}
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Link href={`/sites/${siteId}/roulements/${cycle.id}`} className="rounded-lg border bg-background px-3 py-2 text-sm font-medium hover:bg-muted">
+                          Ouvrir
+                        </Link>
+                        <Link href={`/semaine?site=${siteId}`} className="rounded-lg border bg-background px-3 py-2 text-sm font-medium hover:bg-muted">
+                          Utiliser pour planifier
+                        </Link>
+                      </div>
                     </div>
-                    <span className={cn(
-                      'shrink-0 rounded-full px-2 py-0.5 text-xs font-medium',
-                      cycle.status === 'published'
-                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'
-                        : 'bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-300',
-                    )}>
-                      {cycleStatusLabel(cycle.status)}
-                    </span>
-                  </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
 
-                  {/* « 2 cases travaillées » ne veut rien dire sur un chantier :
-                      Guillaume a besoin des jours et des heures réels. */}
-                  <p className="mt-3 text-sm">{describeSlots(workedSlots)}</p>
-                  {cycleTeams.length > 0 && (
-                    <p className="mt-1 text-sm text-muted-foreground">Équipe : {cycleTeams.join(', ')}</p>
-                  )}
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Link href={`/sites/${siteId}/roulements/${cycle.id}`} className="rounded-lg border bg-background px-3 py-2 text-sm font-medium hover:bg-muted">
-                      Ouvrir
-                    </Link>
-                    <Link href={`/semaine?site=${siteId}`} className="rounded-lg border bg-background px-3 py-2 text-sm font-medium hover:bg-muted">
-                      Utiliser pour planifier
-                    </Link>
-                  </div>
-                </div>
-              )
-            }) : (
-              <Empty>Aucun roulement configuré.</Empty>
-            )}
-          </div>
+          {activeBlocages.length > 0 && (
+            <section className="rounded-[22px] border bg-card p-5 shadow-sm">
+              <SectionTitle icon={ShieldAlert} title="Contraintes" detail="Ce qui peut empêcher d'exécuter le planning." />
+              <div className="mt-4 space-y-2">
+                {activeBlocages.map((blocage) => (
+                  <Link key={blocage.id} href={`/sites/${siteId}/reserves`} className="block rounded-2xl border bg-rose-50/50 p-4 hover:bg-rose-50 dark:bg-rose-950/15 dark:hover:bg-rose-950/25">
+                    <p className="font-semibold">{blocage.title}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{blocage.impact ?? blocage.description ?? 'Impact non renseigné'}</p>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
         </section>
-
-        <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-          <SectionTitle icon={ShieldAlert} title="Contraintes" detail="Ce qui peut empêcher d'exécuter le planning." />
-          <div className="mt-4 space-y-2">
-            {activeBlocages.length > 0 ? activeBlocages.map((blocage) => (
-              <Link key={blocage.id} href={`/sites/${siteId}/reserves`} className="block rounded-2xl border bg-rose-50/50 p-4 hover:bg-rose-50 dark:bg-rose-950/15 dark:hover:bg-rose-950/25">
-                <p className="font-semibold">{blocage.title}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{blocage.impact ?? blocage.description ?? 'Impact non renseigné'}</p>
-              </Link>
-            )) : (
-              <Empty>Aucune contrainte ouverte.</Empty>
-            )}
-          </div>
-        </section>
-      </section>
+      )}
     </main>
   )
 }
