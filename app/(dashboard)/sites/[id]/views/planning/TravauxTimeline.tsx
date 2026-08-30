@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
+import { useEffect, useRef } from 'react'
 import type { SitePlanningItem, PlanningItemSourceDocument } from '@/lib/db/site-planning-items'
-import { weekOf, weekSources, type WeekGroup } from './travaux-week-grouping'
+import { weekOf, weekSourceExcerpts, type WeekGroup } from './travaux-week-grouping'
+import { SourceExcerpt } from './PlanningUI'
 
 const dayLongFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'long' })
 const monthYearFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', month: 'long', year: 'numeric' })
@@ -18,23 +18,41 @@ function fmtMonthYear(iso: string): string {
 interface TravauxTimelineProps {
   weeks: WeekGroup[]
   milestones: SitePlanningItem[]
-  sourceDocuments: Map<string, PlanningItemSourceDocument>
   todayIso: string
+  selectedWeek: string | null
+  onSelectWeek: (weekStart: string) => void
 }
 
 /**
  * Frise horizontale = vue d'ensemble de la trajectoire PRÉVUE (planning
  * documentaire), pas un état d'avancement : aucune couleur de statut, aucun
- * pourcentage. La liste hebdomadaire ci-dessous reste la lecture de détail —
- * la frise ne la remplace pas, elle répond à une autre question (« où en
- * sommes-nous dans l'histoire prévue du chantier ? »).
+ * pourcentage. La sélection (fiche + liste des autres semaines) est pilotée
+ * par le parent — cette frise ne fait que montrer le temps et remonter les
+ * clics, elle ne duplique jamais le contenu détaillé d'une semaine.
+ *
+ * Fenêtre temporelle défilante, pas six cases fixes : au montage, la semaine
+ * la plus proche d'aujourd'hui se centre dans le viewport ; au clic, la
+ * semaine choisie s'y recentre en douceur.
  *
  * Géométrie en grille (une colonne par semaine) pensée pour qu'une future
  * ligne « Constaté » (visites/PV/CR) puisse s'aligner dessous sur le même
  * axe semaine sans refonte — cette ligne n'existe pas encore ici.
  */
-export function TravauxTimeline({ weeks, milestones, sourceDocuments, todayIso }: TravauxTimelineProps) {
-  const [openWeek, setOpenWeek] = useState<string | null>(null)
+export function TravauxTimeline({ weeks, milestones, todayIso, selectedWeek, onSelectWeek }: TravauxTimelineProps) {
+  const weekRefs = useRef(new Map<string, HTMLButtonElement>())
+  const todayMarkerIndex = weeks.findIndex((w) => w.weekStart > todayIso)
+
+  // Centre la semaine la plus proche d'aujourd'hui au montage — pas de scroll
+  // fluide ici (behavior: 'auto'), c'est un positionnement initial, pas une
+  // navigation. Ne se redéclenche jamais sur les re-rendus de sélection.
+  useEffect(() => {
+    const centerIndex = todayMarkerIndex !== -1 ? todayMarkerIndex : weeks.length - 1
+    const centerWeek = weeks[centerIndex]
+    const el = centerWeek ? weekRefs.current.get(centerWeek.weekStart) : undefined
+    el?.scrollIntoView({ inline: 'center', block: 'nearest' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   if (weeks.length === 0) return null
 
   const nearMilestones = new Map<string, SitePlanningItem[]>()
@@ -51,10 +69,8 @@ export function TravauxTimeline({ weeks, milestones, sourceDocuments, todayIso }
     }
   }
 
-  const todayMarkerIndex = weeks.findIndex((w) => w.weekStart > todayIso)
   const todayAfterAll = todayMarkerIndex === -1
   const bands = monthBands(weeks)
-  const active = weeks.find((w) => w.weekStart === openWeek) ?? null
   const columns = `repeat(${weeks.length}, minmax(96px, 1fr))`
 
   return (
@@ -75,10 +91,17 @@ export function TravauxTimeline({ weeks, milestones, sourceDocuments, todayIso }
             <div key={week.key} className="relative flex justify-center border-t px-1 pt-2">
               {index === todayMarkerIndex && <TodayFlag />}
               <button
+                ref={(el) => {
+                  if (el) weekRefs.current.set(week.weekStart, el)
+                  else weekRefs.current.delete(week.weekStart)
+                }}
                 type="button"
-                onClick={() => setOpenWeek((v) => (v === week.weekStart ? null : week.weekStart))}
-                className={`w-full rounded-lg px-1 py-1.5 text-center transition-colors hover:bg-muted/40 ${openWeek === week.weekStart ? 'bg-muted/60' : ''}`}
-                aria-expanded={openWeek === week.weekStart}
+                onClick={(e) => {
+                  onSelectWeek(week.weekStart)
+                  e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+                }}
+                className={`w-full rounded-lg px-1 py-1.5 text-center transition-colors hover:bg-muted/40 ${selectedWeek === week.weekStart ? 'bg-muted/60' : ''}`}
+                aria-expanded={selectedWeek === week.weekStart}
               >
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">S{week.weekNumber}</p>
                 <p className="mt-1 text-[11px] tabular-nums text-foreground">{week.items.length} trav.</p>
@@ -107,8 +130,6 @@ export function TravauxTimeline({ weeks, milestones, sourceDocuments, todayIso }
           ))}
         </div>
       )}
-
-      {active && <WeekDetail week={active} sourceDocuments={sourceDocuments} onClose={() => setOpenWeek(null)} />}
     </div>
   )
 }
@@ -122,8 +143,10 @@ function TodayFlag() {
   )
 }
 
-function WeekDetail({ week, sourceDocuments, onClose }: { week: WeekGroup; sourceDocuments: Map<string, PlanningItemSourceDocument>; onClose: () => void }) {
-  const sources = weekSources(week.items, sourceDocuments)
+/** Fiche de détail d'une semaine — rendue une seule fois par le parent
+ *  (sous la frise quand sélectionnée), jamais dupliquée dans la liste. */
+export function WeekDetail({ week, sourceDocuments, onClose }: { week: WeekGroup; sourceDocuments: Map<string, PlanningItemSourceDocument>; onClose: () => void }) {
+  const excerpts = weekSourceExcerpts(week.items, sourceDocuments)
   return (
     <div className="mt-3 rounded-xl border bg-muted/20 p-3">
       <div className="flex items-start justify-between gap-2">
@@ -139,15 +162,10 @@ function WeekDetail({ week, sourceDocuments, onClose }: { week: WeekGroup; sourc
           <li key={item.id} className="text-sm text-foreground">{item.title}</li>
         ))}
       </ul>
-      {sources.length > 0 && (
-        <div className="mt-2 space-y-0.5 border-t pt-2">
-          {sources.map((doc) => (
-            <p key={doc.documentId} className="text-[12px] text-muted-foreground">
-              Source : {doc.filename}{' · '}
-              <Link href={`/documents/${doc.documentId}`} className="underline decoration-dotted underline-offset-2 hover:text-foreground">
-                Voir la source
-              </Link>
-            </p>
+      {excerpts.length > 0 && (
+        <div className="mt-2 space-y-2 border-t pt-2">
+          {excerpts.map((e) => (
+            <SourceExcerpt key={e.key} documentId={e.documentId} filename={e.filename} excerpt={e.excerpt} />
           ))}
         </div>
       )}

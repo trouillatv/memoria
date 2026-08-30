@@ -1,20 +1,13 @@
-import Link from 'next/link'
-import { Fragment } from 'react'
 import { Flag, HardHat } from 'lucide-react'
 import type { SitePlanningItem, PlanningItemSourceDocument } from '@/lib/db/site-planning-items'
-import { SectionTitle, Empty } from './PlanningUI'
-import { TravauxTimeline } from './TravauxTimeline'
-import { groupByWeek, weekSources, type WeekGroup } from './travaux-week-grouping'
+import { SectionTitle, Empty, SourceExcerpt } from './PlanningUI'
+import { TravauxWeeksBoard } from './TravauxWeeksBoard'
+import { groupByWeek } from './travaux-week-grouping'
 import { splitDatedTitle } from './dated-title'
 
 interface TravauxSubViewProps {
   items: SitePlanningItem[]
   sourceDocuments: Map<string, PlanningItemSourceDocument>
-}
-
-const weekDayFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'long' })
-function fmtDay(iso: string): string {
-  return weekDayFmt.format(new Date(iso + 'T00:00:00Z'))
 }
 
 // Planification DOCUMENTAIRE, pas une todo-list : jamais de statut « À faire »
@@ -39,37 +32,13 @@ export function TravauxSubView({ items, sourceDocuments }: TravauxSubViewProps) 
   const undated = tasks.filter((t) => !t.plannedStart)
   const weeks = groupByWeek(dated)
   const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Noumea', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
-  const todayMarkerIndex = weeks.findIndex((week) => week.weekStart > todayIso)
 
   return (
     <main className="space-y-4">
       <section className="rounded-[22px] border bg-card p-5 shadow-sm">
         <SectionTitle icon={HardHat} title="Travaux" detail="La planification documentaire du chantier." />
 
-        <div className="mt-4">
-          <TravauxTimeline weeks={weeks} milestones={milestones} sourceDocuments={sourceDocuments} todayIso={todayIso} />
-        </div>
-
-        <div className="mt-4 space-y-3">
-          {weeks.map((week, index) => (
-            <Fragment key={week.key}>
-              {index === todayMarkerIndex && <TodayMarker todayIso={todayIso} />}
-              <WeekBlock week={week} sourceDocuments={sourceDocuments} />
-            </Fragment>
-          ))}
-          {todayMarkerIndex === -1 && weeks.length > 0 && <TodayMarker todayIso={todayIso} />}
-
-          {undated.length > 0 && (
-            <div className="rounded-2xl border p-4">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Dates à préciser</h3>
-              <ul className="mt-2 space-y-1.5">
-                {undated.map((item) => (
-                  <li key={item.id} className="text-sm text-foreground">{item.title}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
+        <TravauxWeeksBoard weeks={weeks} milestones={milestones} sourceDocuments={sourceDocuments} todayIso={todayIso} undated={undated} />
       </section>
 
       {milestones.length > 0 && (
@@ -104,54 +73,12 @@ export function TravauxSubView({ items, sourceDocuments }: TravauxSubViewProps) 
   )
 }
 
-function WeekBlock({ week, sourceDocuments }: { week: WeekGroup; sourceDocuments: Map<string, PlanningItemSourceDocument> }) {
-  const sources = weekSources(week.items, sourceDocuments)
-  return (
-    <div className="rounded-2xl border p-4">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Semaine {week.weekNumber}</h3>
-      <p className="text-sm font-medium text-foreground">{fmtDay(week.weekStart)} → {fmtDay(week.weekEnd)}</p>
-      <ul className="mt-3 space-y-1.5">
-        {week.items.map((item) => (
-          <li key={item.id} className="text-sm text-foreground">{item.title}</li>
-        ))}
-      </ul>
-      {sources.length > 0 && (
-        <div className="mt-3 space-y-0.5 border-t pt-2">
-          {sources.map((doc) => (
-            <p key={doc.documentId} className="text-[12px] text-muted-foreground">
-              Source : {doc.filename}{' · '}
-              <Link href={`/documents/${doc.documentId}`} className="underline decoration-dotted underline-offset-2 hover:text-foreground">
-                Voir la source
-              </Link>
-            </p>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function TodayMarker({ todayIso }: { todayIso: string }) {
-  return (
-    <div className="flex items-center gap-3 px-1" role="separator" aria-label={`Aujourd'hui · ${fmtDay(todayIso)}`}>
-      <span className="h-px flex-1 bg-border" />
-      <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        Aujourd'hui · {fmtDay(todayIso)}
-      </span>
-      <span className="h-px flex-1 bg-border" />
-    </div>
-  )
-}
-
 function SourceLine({ item, sourceDocuments }: { item: SitePlanningItem; sourceDocuments: Map<string, PlanningItemSourceDocument> }) {
   const doc = item.sourceProposalId ? sourceDocuments.get(item.sourceProposalId) : undefined
   if (!doc) return null
   return (
-    <p className="mt-0.5 text-[12px] text-muted-foreground">
-      Source : {doc.filename}{' · '}
-      <Link href={`/documents/${doc.documentId}`} className="underline decoration-dotted underline-offset-2 hover:text-foreground">
-        Voir la source
-      </Link>
-    </p>
+    <div className="mt-1">
+      <SourceExcerpt documentId={doc.documentId} filename={doc.filename} excerpt={doc.sourceExcerpt} />
+    </div>
   )
 }
