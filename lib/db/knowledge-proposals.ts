@@ -22,7 +22,7 @@ import { createKnowledgeEntry, createWatchpoint, isChoosableKnowledgeKind } from
 import { openSiteIntervenant } from '@/lib/db/site-intervenants'
 import { findOrCreateCompanyByName, findOrCreateCompanyContact, findOrCreateOrgContact, ensureActiveAffiliation } from '@/lib/db/companies'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
-import { findInLedger, recordPromotionInLedger } from '@/lib/db/concretisation-ledger'
+import { findInLedger, recordPromotionInLedger, ledgerSignatures } from '@/lib/db/concretisation-ledger'
 // Le pont de vocabulaire entre les deux portes : « deadline » (proposition) et
 // « echeance » (compte-rendu) désignent la même famille, et doivent porter la
 // même signature — sans quoi le rapprochement échouerait silencieusement.
@@ -201,6 +201,10 @@ export interface ProjectResult {
   skipped: number
   /** Propositions d'une lecture antérieure que la synthèse ne dit plus. */
   obsolete: number
+  /** Propositions nées (ou refermées) directement en 'fulfilled' parce que le
+   *  journal de concrétisation portait déjà l'objet pour cette visite — jamais
+   *  arbitrées, jamais montrées comme « à confirmer ». Cf. P0-C1-D. */
+  fulfilledByLedger: number
 }
 
 /**
@@ -220,7 +224,7 @@ export async function projectDebriefToProposals(params: {
 }): Promise<ProjectResult> {
   const { reportId, siteId, organizationId, analysis } = params
   const desired = buildDesiredProposals(analysis, siteId)
-  if (desired.length === 0) return { inserted: 0, refreshed: 0, skipped: 0, obsolete: 0 }
+  if (desired.length === 0) return { inserted: 0, refreshed: 0, skipped: 0, obsolete: 0, fulfilledByLedger: 0 }
 
   const supabase = createAdminClient()
   const version = analysis.analysis_version ?? 1
@@ -243,13 +247,54 @@ export async function projectDebriefToProposals(params: {
     ? await listExtractionSuppressions(siteId, 'deadline').catch(() => [])
     : []
 
+  // ── LE JOURNAL AVANT LA PROPOSITION (P0-C1-D) ───────────────────────────────
+  // La même chose a pu déjà naître par l'AUTRE porte — la concrétisation du
+  // compte-rendu (`createFromCrAction`) — avant que cette synthèse ne (re)passe.
+  // `promoteProposal` consultait déjà le journal AVANT de créer ; la projection
+  // ne le consultait jamais avant d'INSÉRER. C'est exactement l'écart qui a
+  // laissé une proposition 'proposed' pour un objet déjà réel (témoin Guillaume,
+  // cadenas). Un seul index, lu une fois pour toute la synthèse — jamais un
+  // rapprochement lexical hors-visite : le journal ne connaît que CE report_id.
+  const ledgerIndex = await ledgerSignatures(reportId)
+  const ledgerMatchFor = (d: DesiredProposal) => {
+    const family = canonicalFamily(d.kind)
+    if (!family) return null // une vigilance ne se concrétise pas : elle raconte, elle ne matche jamais.
+    return ledgerIndex.get(signatureOf({ kind: family, label: d.title })) ?? null
+  }
+
   const toInsert: Array<Record<string, unknown>> = []
   let refreshed = 0
   let skipped = 0
+  let fulfilledByLedger = 0
 
   for (const d of desired) {
     const ex = byKey.get(d.dedupe_key)
+    const ledgerMatch = ledgerMatchFor(d)
+
     if (!ex) {
+      if (ledgerMatch) {
+        // Naît satisfaite : jamais montrée comme « à confirmer » pour un objet
+        // qui existe déjà. `reviewed_by` reste null — personne n'a jugé CETTE
+        // proposition, même doctrine que `fulfillProposalsFromConcretisation`.
+        toInsert.push({
+          organization_id: organizationId,
+          site_id: siteId,
+          report_id: reportId,
+          analysis_version: version,
+          kind: d.kind,
+          status: 'fulfilled',
+          title: d.title,
+          body: d.body,
+          payload: d.payload,
+          dedupe_key: d.dedupe_key,
+          entity_ids: d.entity_ids,
+          masked_by_suppression_id: null,
+          promoted_object_type: ledgerMatch.entity_type,
+          promoted_object_id: ledgerMatch.entity_id,
+        })
+        fulfilledByLedger++
+        continue
+      }
       // Filtre de suppression : uniquement pour les nouvelles propositions d'échéances.
       // Masquée = visible dans « Masquées — à vérifier », jamais supprimée silencieusement.
       let status: ProposalStatus = 'proposed'
@@ -277,6 +322,19 @@ export async function projectDebriefToProposals(params: {
       continue
     }
     if (ex.status === 'proposed') {
+      if (ledgerMatch) {
+        // La concrétisation a eu lieu APRÈS cette proposition (l'autre porte,
+        // même report_id, même signature) : on referme, on ne rafraîchit pas un
+        // texte pour un travail qui n'en est plus.
+        const { error: fulErr } = await supabase
+          .from('site_knowledge_proposals')
+          .update({ status: 'fulfilled', promoted_object_type: ledgerMatch.entity_type, promoted_object_id: ledgerMatch.entity_id, updated_at: now })
+          .eq('id', ex.id)
+          .eq('status', 'proposed') // garde anti-concurrence, même précaution que fulfillProposalsFromConcretisation
+        if (fulErr) throw fulErr
+        fulfilledByLedger++
+        continue
+      }
       const { error: updErr } = await supabase
         .from('site_knowledge_proposals')
         .update({ title: d.title, body: d.body, payload: d.payload, entity_ids: d.entity_ids, analysis_version: version, updated_at: now })
@@ -318,11 +376,12 @@ export async function projectDebriefToProposals(params: {
 
   const obsolete = await markObsoleteProposals(reportId, version, new Set(keys), now)
 
-  // De nouvelles propositions (ou des textes rafraîchis) → la connaissance « à
-  // confirmer » du chantier change : la mutation invalide la projection.
-  if (toInsert.length > 0 || refreshed > 0 || obsolete > 0) invalidateSiteProjection(siteId)
+  // De nouvelles propositions (ou des textes rafraîchis, ou une proposition que
+  // le journal vient de refermer) → la connaissance « à confirmer » du chantier
+  // change : la mutation invalide la projection.
+  if (toInsert.length > 0 || refreshed > 0 || obsolete > 0 || fulfilledByLedger > 0) invalidateSiteProjection(siteId)
 
-  return { inserted: toInsert.length, refreshed, skipped, obsolete }
+  return { inserted: toInsert.length, refreshed, skipped, obsolete, fulfilledByLedger }
 }
 
 // ── Obsolescence ────────────────────────────────────────────────

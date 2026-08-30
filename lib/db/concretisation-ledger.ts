@@ -23,6 +23,26 @@ import type { SectionConcretisation } from '@/types/db'
  *  d'aucune ligne du compte-rendu : le dire plutôt que d'en inventer une. */
 const PROPOSAL_SECTION = 'propositions'
 
+/** Tout le journal d'une visite, indexé par signature (famille canonique +
+ *  libellé normalisé) — pour un appelant qui doit vérifier PLUSIEURS identités
+ *  d'un coup (projeter une synthèse entière) sans relire le document à chaque
+ *  élément. Premier gagne à signature égale : même règle que
+ *  `fulfillProposalsFromConcretisation`. */
+export async function ledgerSignatures(reportId: string): Promise<Map<string, SectionConcretisation>> {
+  const doc = await getVisitCrDocument(reportId).catch(() => null)
+  const map = new Map<string, SectionConcretisation>()
+  if (!doc) return map
+  for (const section of doc.sections) {
+    for (const entry of section.concretisations ?? []) {
+      const f = canonicalFamily(entry.entity_type)
+      if (!f) continue
+      const sig = signatureOf({ kind: f, label: entry.source_text })
+      if (!map.has(sig)) map.set(sig, entry)
+    }
+  }
+  return map
+}
+
 /** Un objet déjà inscrit au journal porte-t-il cette identité ? */
 export async function findInLedger(
   reportId: string,
@@ -31,16 +51,8 @@ export async function findInLedger(
 ): Promise<SectionConcretisation | null> {
   const family = canonicalFamily(kind)
   if (!family) return null
-  const doc = await getVisitCrDocument(reportId).catch(() => null)
-  if (!doc) return null
-  const wanted = signatureOf({ kind: family, label })
-  for (const section of doc.sections) {
-    for (const entry of section.concretisations ?? []) {
-      const f = canonicalFamily(entry.entity_type)
-      if (f && signatureOf({ kind: f, label: entry.source_text }) === wanted) return entry
-    }
-  }
-  return null
+  const index = await ledgerSignatures(reportId)
+  return index.get(signatureOf({ kind: family, label })) ?? null
 }
 
 /**
