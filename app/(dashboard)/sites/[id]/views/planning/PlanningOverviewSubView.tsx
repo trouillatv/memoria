@@ -5,6 +5,7 @@ import type { SitePlanningItem } from '@/lib/db/site-planning-items'
 import type { SiteDeadline } from '@/lib/db/site-deadlines'
 import type { OverviewEventInput } from '@/lib/chantier/overview-projections'
 import { SectionTitle, Empty } from './PlanningUI'
+import { splitDatedTitle } from './dated-title'
 
 interface PlanningOverviewSubViewProps {
   siteId: string
@@ -14,13 +15,9 @@ interface PlanningOverviewSubViewProps {
 }
 
 const dayFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'long' })
-const dayYearFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })
 const dayFullYearFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' })
 function fmtDay(iso: string): string {
   return dayFmt.format(new Date(iso + 'T00:00:00Z'))
-}
-function fmtDayYear(iso: string): string {
-  return dayYearFmt.format(new Date(iso + 'T00:00:00Z'))
 }
 function fmtDayFullYear(iso: string): string {
   return dayFullYearFmt.format(new Date(iso + 'T00:00:00Z'))
@@ -63,10 +60,18 @@ export function PlanningOverviewSubView({ siteId, planningItems, nextEvent, dead
                 {period && ` · ${fmtDay(period.start)} → ${fmtDayFullYear(period.end)}`}
               </p>
               {milestones.length > 0 && (
-                <p className="text-sm text-muted-foreground">
-                  {milestones.length} jalon{milestones.length > 1 ? 's' : ''}
-                  {lastMilestone && ` · dernier : ${lastMilestone.title.charAt(0).toLowerCase()}${lastMilestone.title.slice(1)} ${fmtDayYear(lastMilestone.plannedStart!)}`}
-                </p>
+                <div className="text-sm text-muted-foreground">
+                  <p>{milestones.length} jalon{milestones.length > 1 ? 's' : ''}</p>
+                  {lastMilestone && lastMilestone.plannedStart && (() => {
+                    const { title, date } = splitDatedTitle(lastMilestone.title, lastMilestone.plannedStart)
+                    return (
+                      <>
+                        <p>Dernier · {title}</p>
+                        <p className="tabular-nums">{date}</p>
+                      </>
+                    )
+                  })()}
+                </div>
               )}
               <Link href={`/sites/${siteId}?tab=planning&plantab=travaux`} className="mt-1 inline-block text-sm underline decoration-dotted underline-offset-2 hover:text-foreground">
                 Voir le détail
@@ -78,12 +83,15 @@ export function PlanningOverviewSubView({ siteId, planningItems, nextEvent, dead
         </OverviewCard>
 
         <OverviewCard icon={Flag} title="Prochain jalon">
-          {nextMilestone ? (
-            <div>
-              <p className="text-sm font-medium text-foreground">{nextMilestone.title}</p>
-              <p className="text-sm text-muted-foreground tabular-nums">{fmtDayFullYear(nextMilestone.plannedStart!)}</p>
-            </div>
-          ) : (
+          {nextMilestone && nextMilestone.plannedStart ? (() => {
+            const { title, date } = splitDatedTitle(nextMilestone.title, nextMilestone.plannedStart!)
+            return (
+              <div>
+                <p className="text-sm font-medium text-foreground">{title}</p>
+                <p className="text-sm text-muted-foreground tabular-nums">{date}</p>
+              </div>
+            )
+          })() : (
             <Empty>Aucun jalon à venir documenté.</Empty>
           )}
         </OverviewCard>

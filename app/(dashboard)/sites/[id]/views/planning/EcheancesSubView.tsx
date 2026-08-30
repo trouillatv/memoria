@@ -22,6 +22,19 @@ interface EcheancesSubViewProps {
   deadlineEvidence?: Map<string, DeadlineFieldEvidence>
 }
 
+// « date passée de N jours » est un calcul temporel déterministe (aujourd'hui
+// - échéance), jamais une conclusion métier — contrairement à « En retard »
+// qu'il remplace ici : un fait, pas un jugement.
+function relativeDayLabel(dueIso: string, todayIso: string): string {
+  const due = Date.parse(`${dueIso}T00:00:00Z`)
+  const today = Date.parse(`${todayIso}T00:00:00Z`)
+  const diffDays = Math.round((due - today) / 86_400_000)
+  if (diffDays === 0) return "aujourd'hui"
+  if (diffDays > 0) return `dans ${diffDays} jour${diffDays > 1 ? 's' : ''}`
+  const passed = Math.abs(diffDays)
+  return `date passée de ${passed} jour${passed > 1 ? 's' : ''}`
+}
+
 // Planning = prévu / Échéance = dû (doctrine cycle de vie de l'information).
 // Ce sous-onglet lit exclusivement site_deadlines — jamais site_planning_items.
 export function EcheancesSubView({ siteId, deadlines, deadlineHistory, maskedProposals, deadlineEvidence }: EcheancesSubViewProps) {
@@ -93,11 +106,8 @@ export function EcheancesSubView({ siteId, deadlines, deadlineHistory, maskedPro
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="min-w-0 text-sm text-foreground">{d.title}</span>
                     <span className="flex shrink-0 items-center gap-2">
-                      {overdue && (
-                        <span className="rounded-md bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-300">En retard</span>
-                      )}
                       <span className={cn('text-xs font-medium tabular-nums', overdue ? 'text-red-700 dark:text-red-300' : 'text-muted-foreground')}>
-                        {echeanceDateLabel(d.due_date!)}
+                        {echeanceDateLabel(d.due_date!)} · {relativeDayLabel(d.due_date!, todayIso)}
                       </span>
                       <DeadlineActions deadlineId={d.id} hasDate currentDueDate={d.due_date} otherDeadlines={replacementOptions.filter((o) => o.id !== d.id)} />
                     </span>

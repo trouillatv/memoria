@@ -5,6 +5,7 @@ import type { SitePlanningItem, PlanningItemSourceDocument } from '@/lib/db/site
 import { SectionTitle, Empty } from './PlanningUI'
 import { TravauxTimeline } from './TravauxTimeline'
 import { groupByWeek, weekSources, type WeekGroup } from './travaux-week-grouping'
+import { splitDatedTitle } from './dated-title'
 
 interface TravauxSubViewProps {
   items: SitePlanningItem[]
@@ -12,12 +13,8 @@ interface TravauxSubViewProps {
 }
 
 const weekDayFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'long' })
-const milestoneDateFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' })
 function fmtDay(iso: string): string {
   return weekDayFmt.format(new Date(iso + 'T00:00:00Z'))
-}
-function fmtMilestoneDate(iso: string): string {
-  return milestoneDateFmt.format(new Date(iso + 'T00:00:00Z'))
 }
 
 // Planification DOCUMENTAIRE, pas une todo-list : jamais de statut « À faire »
@@ -83,9 +80,18 @@ export function TravauxSubView({ items, sourceDocuments }: TravauxSubViewProps) 
               <li key={item.id} className="flex items-start gap-2">
                 <span className="mt-1.5 inline-block h-2 w-2 shrink-0 rotate-45 bg-foreground" aria-hidden />
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground">{item.title}</p>
-                  {item.plannedStart && (
-                    <p className="text-sm text-muted-foreground tabular-nums">{fmtMilestoneDate(item.plannedStart)}</p>
+                  {item.plannedStart ? (
+                    (() => {
+                      const { title, date } = splitDatedTitle(item.title, item.plannedStart)
+                      return (
+                        <>
+                          <p className="text-sm font-medium text-foreground">{title}</p>
+                          <p className="text-sm text-muted-foreground tabular-nums">{date}</p>
+                        </>
+                      )
+                    })()
+                  ) : (
+                    <p className="text-sm font-medium text-foreground">{item.title}</p>
                   )}
                   <SourceLine item={item} sourceDocuments={sourceDocuments} />
                 </div>
