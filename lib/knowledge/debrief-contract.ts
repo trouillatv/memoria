@@ -128,16 +128,16 @@ export function classifyActionForDebrief(action: DebriefActionInput, today: stri
 // ── Échéance ──────────────────────────────────────────────────────────────────
 // to_plan → à traiter (« reste à planifier »). planned → à surveiller.
 //
-// TIMESTAMP AUDITÉ (lib/db/site-deadlines.ts) : AUCUN champ de clôture n'existe
-// aujourd'hui (pas de `done_at`/`resolved_at` — vérifié, absent de l'interface et
-// des mutations). `resolvedAt` est donc toujours `null` tant qu'aucune migration
-// additive ne l'ajoute : ce classifieur route systématiquement une échéance
-// terminale vers `handled_without_reliable_date`, jamais vers `recently_handled`
-// avec une date fabriquée. Zéro nouveau champ DB dans D1 — la migration reste à D2.
+// TIMESTAMP AUDITÉ (lib/db/site-deadlines.ts) : `completed_at` (posé avec
+// `status='done'` dans completeSiteDeadline()) et `cancelled_at` (posé avec
+// `status='cancelled'`/`'superseded'` dans cancelSiteDeadline()) sont les
+// timestamps terminaux fiables. `resolvedAt` = `completed_at ?? cancelled_at`
+// (résolu côté appelant, cf. lib/knowledge/live-debrief.ts). Une échéance
+// terminale peut donc légitimement atteindre `recently_handled`.
 
 export interface DebriefDeadlineInput {
   status: 'to_plan' | 'planned' | 'done' | 'cancelled' | 'superseded'
-  /** N'existe dans aucune table aujourd'hui — toujours `null` tant que D2 n'ajoute pas la colonne. */
+  /** `completed_at ?? cancelled_at` (site_deadlines) — `null` seulement si aucun des deux n'est renseigné. */
   resolvedAt: string | null
 }
 
