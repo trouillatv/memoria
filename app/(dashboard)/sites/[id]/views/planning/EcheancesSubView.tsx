@@ -1,6 +1,6 @@
 import { CalendarClock } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { SiteDeadline, SiteDeadlineHistory } from '@/lib/db/site-deadlines'
+import { CANCEL_REASON_LABEL, type SiteDeadline, type SiteDeadlineHistory } from '@/lib/db/site-deadlines'
 import { type DeadlineFieldEvidence } from '@/lib/db/deadline-field-evidence'
 import type { DbKnowledgeProposal } from '@/lib/db/knowledge-proposals'
 import { WhyButton } from '@/components/provenance/WhyButton'
@@ -185,7 +185,12 @@ function DeadlineHistory({ items, siteId }: { items: SiteDeadlineHistory[]; site
       </summary>
       <ul className="space-y-3 px-4 pb-4 pt-2">
         {items.map((d) => (
-          <DeadlineHistoryItem key={d.id} item={d} siteId={siteId} />
+          <DeadlineHistoryItem
+            key={d.id}
+            item={d}
+            siteId={siteId}
+            reasonLabel={d.status === 'cancelled' && d.cancel_reason ? CANCEL_REASON_LABEL[d.cancel_reason] : null}
+          />
         ))}
       </ul>
     </details>

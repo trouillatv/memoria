@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import { CANCEL_REASON_LABEL, type SiteDeadlineHistory } from '@/lib/db/site-deadlines'
+import type { SiteDeadlineHistory } from '@/lib/db/site-deadlines'
 import { WhyButton } from '@/components/provenance/WhyButton'
 
 const historyDateFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long', year: 'numeric' })
@@ -23,11 +23,10 @@ const STATUS_META: Record<SiteDeadlineHistory['status'], { label: string; color:
 // qu'au clic sur « Pourquoi ? ». Avant ce composant, la ligne compacte ET le
 // panneau détaillé s'affichaient tous les deux par défaut — du bruit répété
 // sur chaque élément de l'historique.
-export function DeadlineHistoryItem({ item: d, siteId }: { item: SiteDeadlineHistory; siteId: string }) {
+export function DeadlineHistoryItem({ item: d, siteId, reasonLabel }: { item: SiteDeadlineHistory; siteId: string; reasonLabel: string | null }) {
   const [open, setOpen] = useState(false)
   const when = d.cancelled_at ?? d.completed_at
   const whenLabel = when ? historyDateFmt.format(new Date(when)) : null
-  const reasonLabel = d.status === 'cancelled' && d.cancel_reason ? CANCEL_REASON_LABEL[d.cancel_reason] : null
   const hasDetail = Boolean(whenLabel || d.actor_name || d.cancel_comment || d.report_id || (d.status === 'superseded' && d.replacement_title))
   const meta = STATUS_META[d.status]
 
