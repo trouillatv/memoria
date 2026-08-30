@@ -2,8 +2,9 @@ import Link from 'next/link'
 import { Fragment } from 'react'
 import { Flag, HardHat } from 'lucide-react'
 import type { SitePlanningItem, PlanningItemSourceDocument } from '@/lib/db/site-planning-items'
-import { getWeekRange } from '@/lib/week-planning-helpers'
 import { SectionTitle, Empty } from './PlanningUI'
+import { TravauxTimeline } from './TravauxTimeline'
+import { groupByWeek, weekSources, type WeekGroup } from './travaux-week-grouping'
 
 interface TravauxSubViewProps {
   items: SitePlanningItem[]
@@ -47,6 +48,10 @@ export function TravauxSubView({ items, sourceDocuments }: TravauxSubViewProps) 
     <main className="space-y-4">
       <section className="rounded-[22px] border bg-card p-5 shadow-sm">
         <SectionTitle icon={HardHat} title="Travaux" detail="La planification documentaire du chantier." />
+
+        <div className="mt-4">
+          <TravauxTimeline weeks={weeks} milestones={milestones} sourceDocuments={sourceDocuments} todayIso={todayIso} />
+        </div>
 
         <div className="mt-4 space-y-3">
           {weeks.map((week, index) => (
@@ -143,32 +148,4 @@ function SourceLine({ item, sourceDocuments }: { item: SitePlanningItem; sourceD
       </Link>
     </p>
   )
-}
-
-interface WeekGroup {
-  key: string
-  weekNumber: number
-  weekStart: string
-  weekEnd: string
-  items: SitePlanningItem[]
-}
-
-function groupByWeek(items: SitePlanningItem[]): WeekGroup[] {
-  const groups = new Map<string, WeekGroup>()
-  for (const item of items) {
-    const range = getWeekRange(item.plannedStart as string)
-    const key = `${range.year}-W${range.weekNumber}`
-    if (!groups.has(key)) groups.set(key, { key, weekNumber: range.weekNumber, weekStart: range.weekStart, weekEnd: range.weekEnd, items: [] })
-    groups.get(key)!.items.push(item)
-  }
-  return [...groups.values()].sort((a, b) => a.weekStart.localeCompare(b.weekStart))
-}
-
-function weekSources(items: SitePlanningItem[], sourceDocuments: Map<string, PlanningItemSourceDocument>): PlanningItemSourceDocument[] {
-  const seen = new Map<string, PlanningItemSourceDocument>()
-  for (const item of items) {
-    const doc = item.sourceProposalId ? sourceDocuments.get(item.sourceProposalId) : undefined
-    if (doc) seen.set(doc.documentId, doc)
-  }
-  return [...seen.values()]
 }
