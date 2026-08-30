@@ -12,6 +12,48 @@ export interface StructuredTableContext {
   detected: boolean
   confidence: number
   rows: StructuredTableRow[]
+  tailItems: PlanningTailItem[]
+}
+
+// ─── Bloc final du même tableau : réceptions / financier ─────────────────────
+// Lignes qui suivent le dernier groupe Date/Semaine mais appartiennent au même
+// tableau structuré (même en-tête Date|Semaine|Description|Avancement|Règlements
+// montants). Elles n'ont pas de cellule Date/Semaine propre : leur date, quand
+// elle existe, est imprimée explicitement dans le texte de description.
+
+export type PlanningTailItemKind = 'milestone' | 'financial'
+
+export interface PlanningTailItem {
+  rowKey: string
+  rowKind: PlanningTailItemKind
+  page: number
+  description: string
+  rawDateText: string | null
+  explicitDate: string | null
+  dateBasis: 'explicit_document' | null
+  percentText: string | null
+  amountText: string | null
+  bbox: [number, number, number, number]
+}
+
+const MONTHS_FR: Record<string, string> = {
+  janvier: '01', février: '02', fevrier: '02', mars: '03', avril: '04', mai: '05',
+  juin: '06', juillet: '07', août: '08', aout: '08', septembre: '09',
+  octobre: '10', novembre: '11', décembre: '12', decembre: '12',
+}
+const FULL_DATE_RE = /(\d{1,2})\s*(janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[ée]cembre)\s+(\d{4})/i
+
+function parseExplicitDate(text: string): string | null {
+  const m = text.match(FULL_DATE_RE)
+  if (!m) return null
+  const day = m[1].padStart(2, '0')
+  const month = MONTHS_FR[m[2].toLowerCase()]
+  if (!month) return null
+  return `${m[3]}-${month}-${day}`
+}
+
+function classifyTailRowKind(text: string): PlanningTailItemKind {
+  return /r[ée]ception/i.test(text) ? 'milestone' : 'financial'
 }
 
 const DATE_RE = /\b\d{1,2}[\s-]*(?:janv(?:ier)?|f[eé]vr(?:ier)?|mars|avr(?:il)?|mai|juin|juil(?:let)?|ao[uû]t|sept(?:embre)?|oct(?:obre)?|nov(?:embre)?|d[eé]c(?:embre)?)[a-z]*\b/i
@@ -73,9 +115,11 @@ export async function extractStructuredTableContext(buffer: Buffer): Promise<Str
     const mu = (await import('mupdf')) as any
     const doc = mu.Document.openDocument(new Uint8Array(buffer), 'application/pdf')
     const allRows: StructuredTableRow[] = []
+    const allTailItems: PlanningTailItem[] = []
     const pages: number = typeof doc.countPages === 'function' ? doc.countPages() : 0
     let totalDescRows = 0
     let totalClaimedRows = 0
+    let tailIndex = 0
 
     for (let pageIndex = 0; pageIndex < pages; pageIndex++) {
       const page = doc.loadPage(pageIndex)
@@ -112,6 +156,10 @@ export async function extractStructuredTableContext(buffer: Buffer): Promise<Str
       if (!dateHeader || !weekHeader || !descHeader) continue
 
       const headerY = dateHeader.y
+      // Ancrées sur la ligne d'en-tête elle-même : évite un faux positif sur
+      // le titre du document (« PLANNING DES TRAVAUX ET REGLEMENTS »).
+      const avancementHeader = lines.find(l => Math.abs(l.y - headerY) < 5 && /avancement/i.test(l.text))
+      const reglementsHeader = lines.find(l => Math.abs(l.y - headerY) < 5 && /r[eéè]glements?/i.test(l.text))
 
       // ── Définir les plages X des colonnes depuis l'en-tête ───────────────
       // Colonne Date   : x < (x_semaine - marge)
@@ -208,21 +256,61 @@ export async function extractStructuredTableContext(buffer: Buffer): Promise<Str
       }
 
       totalClaimedRows += claimedYs.size
+
+      // ── Bloc final du même tableau ────────────────────────────────────────
+      // Lignes de description jamais réclamées par un groupe Date/Semaine :
+      // elles suivent le dernier groupe, dans les mêmes colonnes du même
+      // tableau (réceptions, retenue de garantie, tranches de règlement).
+      // Géométrie uniquement — aucun appel LLM, aucun rattachement au contrat
+      // rowKey des 21 lignes travaux.
+      const tailRows = descRows.filter(r => !claimedYs.has(r.y)).sort((a, b) => a.y - b.y)
+      for (const t of tailRows) {
+        const percentText = avancementHeader
+          ? content.find(l =>
+              Math.abs(l.y - t.y) <= TOLERANCE
+              && l.x >= avancementHeader.x - 10
+              && (!reglementsHeader || l.x < reglementsHeader.x - 10)
+              && /^\d{1,3}%$/.test(l.text),
+            )?.text ?? null
+          : null
+        const amountText = reglementsHeader
+          ? content.find(l =>
+              Math.abs(l.y - t.y) <= TOLERANCE
+              && l.x >= reglementsHeader.x - 15
+              && /^\d[\d\s]{2,}$/.test(l.text),
+            )?.text ?? null
+          : null
+        const explicitDate = parseExplicitDate(t.text)
+
+        tailIndex++
+        allTailItems.push({
+          rowKey: `p${pageIndex + 1}-tail${tailIndex}`,
+          rowKind: classifyTailRowKind(t.text),
+          page: pageIndex + 1,
+          description: t.text,
+          rawDateText: explicitDate ? (t.text.match(FULL_DATE_RE)?.[0] ?? null) : null,
+          explicitDate,
+          dateBasis: explicitDate ? 'explicit_document' : null,
+          percentText,
+          amountText,
+          bbox: [t.x, t.y, t.x + t.w, t.y + t.h],
+        })
+      }
     }
 
     doc.destroy()
 
-    if (allRows.length === 0) return { detected: false, confidence: 0, rows: [] }
+    if (allRows.length === 0) return { detected: false, confidence: 0, rows: [], tailItems: [] }
 
     // Confidence = couverture réelle : lignes de description réclamées sur la
     // totalité des lignes description présentes dans les pages à entête planning.
     const confidence = totalDescRows > 0
       ? Math.round((totalClaimedRows / totalDescRows) * 100) / 100
       : 1.0
-    return { detected: true, confidence, rows: allRows }
+    return { detected: true, confidence, rows: allRows, tailItems: allTailItems }
 
   } catch {
-    return { detected: false, confidence: 0, rows: [] }
+    return { detected: false, confidence: 0, rows: [], tailItems: [] }
   }
 }
 
