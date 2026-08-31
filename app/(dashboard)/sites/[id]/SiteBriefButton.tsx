@@ -33,6 +33,7 @@ import {
   Sparkles,
   Layers,
   ChevronRight,
+  Pencil,
 } from 'lucide-react'
 import { getSiteBriefAction, logBriefOpenAction, generateDiscussionPointsAction, type SiteBrief, type SiteBriefFactLine, type DiscussionPoint } from './site-brief-actions'
 import { VISIT_INTENTS, type VisitIntent } from '@/lib/field/visit-intents'
@@ -40,7 +41,7 @@ import { selectNarrativeHighlights } from '@/lib/knowledge/visit-preparation'
 import type { LiveDebrief, LiveDebriefItem, LiveDebriefObjectItem } from '@/lib/knowledge/live-debrief'
 import { LiveDebriefVuButton } from './LiveDebriefVuButton'
 import { completeDeadlineAction, rescheduleDeadlineAction } from './views/planning/deadline-actions'
-import { closeActionAction } from '@/app/(dashboard)/actions/actions'
+import { closeActionAction, updateActionDetailsAction } from '@/app/(dashboard)/actions/actions'
 import { liftReserveAction } from './reserves/actions'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
@@ -600,6 +601,7 @@ function LiveDebriefItemRow({
   const [actionClosing, setActionClosing] = useState(false)
   const [reserveLifting, setReserveLifting] = useState(false)
   const [planningDeadline, setPlanningDeadline] = useState(false)
+  const [modifying, setModifying] = useState(false)
   const [completing, startCompleting] = useTransition()
 
   if (item.kind === 'informational_signal') {
@@ -619,8 +621,9 @@ function LiveDebriefItemRow({
   const canLift = item.kind === 'reserve' && item.status === 'open' && canLiftReserve
   const canPlan = item.kind === 'deadline' && item.status === 'to_plan'
   const canReplan = item.kind === 'deadline' && item.status === 'planned'
-  const hasMenu = canClose || canLift || canPlan || canReplan
-  const expanded = actionClosing || reserveLifting || planningDeadline
+  const canModify = item.kind === 'action' && (item.status === 'open' || item.status === 'planned')
+  const hasMenu = canClose || canLift || canPlan || canReplan || canModify
+  const expanded = actionClosing || reserveLifting || planningDeadline || modifying
   const objectId = item.id
 
   function markDeadlineDone() {
@@ -669,6 +672,11 @@ function LiveDebriefItemRow({
                     <CheckCircle2 className="h-3.5 w-3.5" /> Lever la réserve
                   </DropdownMenuItem>
                 )}
+                {canModify && (
+                  <DropdownMenuItem onClick={() => setModifying(true)}>
+                    <Pencil className="h-3.5 w-3.5" /> Modifier
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={() => { window.location.href = item.href }}>
                   <ChevronRight className="h-3.5 w-3.5" /> Ouvrir la fiche
                 </DropdownMenuItem>
@@ -703,6 +711,14 @@ function LiveDebriefItemRow({
           siteId={siteId}
           onCancel={() => setReserveLifting(false)}
           onDone={onDebriefChange}
+        />
+      )}
+      {modifying && item.kind === 'action' && (
+        <LiveDebriefActionDetailsForm
+          item={item}
+          siteId={siteId}
+          onCancel={() => setModifying(false)}
+          onDone={() => { setModifying(false); onDebriefChange() }}
         />
       )}
     </li>
@@ -783,6 +799,81 @@ function LiveDebriefActionCloseForm({
             {pending ? '…' : 'Clôturer'}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// Modifier — édition inline titre + description d'une Action, ouverte depuis le
+// menu de la pilule. Réutilise strictement updateActionDetailsAction (P0-1B,
+// même contrat que DetailsForm dans ActionFicheCta.tsx) : pas de deuxième
+// primitive d'édition. Seedée avec item.body pour ne jamais écraser une
+// description existante avec une valeur vide.
+function LiveDebriefActionDetailsForm({
+  item,
+  siteId,
+  onCancel,
+  onDone,
+}: {
+  item: LiveDebriefObjectItem
+  siteId: string
+  onCancel: () => void
+  onDone: () => void
+}) {
+  const [title, setTitle] = useState(item.title)
+  const [body, setBody] = useState(item.body ?? '')
+  const [pending, startTransition] = useTransition()
+
+  function submit() {
+    if (!title.trim()) {
+      toast.error('Le titre est requis.')
+      return
+    }
+    const fd = new FormData()
+    fd.set('id', item.id)
+    fd.set('site_id', siteId)
+    fd.set('title', title.trim())
+    fd.set('body', body)
+    startTransition(async () => {
+      const result = await updateActionDetailsAction(fd)
+      if (result.ok) { toast.success('Action modifiée'); onDone() }
+      else toast.error(result.error)
+    })
+  }
+
+  return (
+    <div className="rounded-md border bg-muted/20 p-2.5 space-y-2">
+      <input
+        type="text"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        maxLength={200}
+        autoFocus
+        disabled={pending}
+        placeholder="Titre de l'action"
+        className="w-full rounded-md border bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <textarea
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        rows={3}
+        maxLength={2000}
+        disabled={pending}
+        placeholder="Description (optionnel)"
+        className="w-full rounded-md border bg-background px-2.5 py-1.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <div className="flex items-center justify-end gap-2">
+        <button type="button" onClick={onCancel} disabled={pending} className="text-xs text-muted-foreground hover:text-foreground">
+          Annuler
+        </button>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={pending || !title.trim()}
+          className="rounded border border-sky-300 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100 disabled:opacity-50"
+        >
+          {pending ? '…' : 'Enregistrer'}
+        </button>
       </div>
     </div>
   )

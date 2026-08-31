@@ -48,6 +48,8 @@ export interface LiveDebriefObjectItem {
   canonicalSubjectId: string | null
   reportId: string | null
   href: string
+  /** Description longue — projetée uniquement pour kind==='action' (formulaire Modifier). */
+  body?: string | null
 }
 
 /** Un signal informationnel canonical (trajectoire PV) sans objet métier ouvert
@@ -123,6 +125,7 @@ export interface RawActionRow {
   done_at: string | null
   canonical_subject_id: string | null
   report_id: string | null
+  body?: string | null
 }
 
 export interface RawDeadlineRow {
@@ -154,7 +157,7 @@ async function fetchLiveObjects(siteId: string): Promise<{
   const sb = createAdminClient()
   const [actionsRes, deadlinesRes, reservesRes] = await Promise.all([
     sb.from('site_actions')
-      .select('id, title, status, due_date, done_at, canonical_subject_id, report_id')
+      .select('id, title, status, due_date, done_at, canonical_subject_id, report_id, body')
       .eq('site_id', siteId),
     sb.from('site_deadlines')
       .select('id, title, status, due_date, completed_at, cancelled_at, canonical_subject_id, report_id')
@@ -185,6 +188,7 @@ export function actionToItem(row: RawActionRow, today: string, siteId: string): 
     canonicalSubjectId: row.canonical_subject_id,
     reportId: row.report_id,
     href: `/sites/${siteId}/action/${row.id}`,
+    body: row.body ?? null,
   }
 }
 
