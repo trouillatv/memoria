@@ -1,16 +1,12 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import type { SitePlanningItem, PlanningItemSourceDocument } from '@/lib/db/site-planning-items'
-import { weekOf, weekSourceExcerpts, type WeekGroup } from './travaux-week-grouping'
-import { SourceExcerpt } from './PlanningUI'
+import { formatWeekRangeLabel, weekOf, weekSourceExcerpts, type WeekGroup } from './travaux-week-grouping'
+import { WeekProofsToggle } from './PlanningUI'
 
-const dayLongFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric', month: 'long' })
 const monthYearFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', month: 'long', year: 'numeric' })
 const monthBandFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', month: 'long' })
-function fmtDayLong(iso: string): string {
-  return dayLongFmt.format(new Date(iso + 'T00:00:00Z'))
-}
 function fmtMonthYear(iso: string): string {
   return monthYearFmt.format(new Date(iso + 'T00:00:00Z'))
 }
@@ -42,11 +38,22 @@ export function TravauxTimeline({ weeks, milestones, todayIso, selectedWeek, onS
   const weekRefs = useRef(new Map<string, HTMLButtonElement>())
   const todayMarkerIndex = weeks.findIndex((w) => w.weekStart > todayIso)
 
-  // Centre la semaine la plus proche d'aujourd'hui au montage — pas de scroll
-  // fluide ici (behavior: 'auto'), c'est un positionnement initial, pas une
-  // navigation. Ne se redéclenche jamais sur les re-rendus de sélection.
-  useEffect(() => {
-    const centerIndex = todayMarkerIndex !== -1 ? todayMarkerIndex : weeks.length - 1
+  // Centre la semaine d'aujourd'hui au montage — pas de scroll fluide ici
+  // (behavior par défaut 'auto'), c'est un positionnement initial, pas une
+  // navigation. useLayoutEffect (pas useEffect) : le recentrage est commis
+  // avant la peinture du navigateur, jamais un flash de la position de
+  // début de liste suivi d'un saut visible. Ne se redéclenche jamais sur les
+  // re-rendus de sélection.
+  //
+  // todayMarkerIndex (= 1re semaine dont weekStart > todayIso) sert au
+  // marqueur visuel de frontière, mais quand aujourd'hui tombe À L'INTÉRIEUR
+  // d'une semaine qui a des travaux, cette semaine-là doit être la semaine
+  // centrée — pas la semaine suivante. Sans cette distinction, le centrage
+  // était systématiquement décalé d'une colonne vers le futur dès qu'un
+  // chantier avait des travaux prévus la semaine en cours.
+  useLayoutEffect(() => {
+    const containingIndex = weeks.findIndex((w) => w.weekStart <= todayIso && todayIso <= w.weekEnd)
+    const centerIndex = containingIndex !== -1 ? containingIndex : todayMarkerIndex !== -1 ? todayMarkerIndex : weeks.length - 1
     const centerWeek = weeks[centerIndex]
     const el = centerWeek ? weekRefs.current.get(centerWeek.weekStart) : undefined
     el?.scrollIntoView({ inline: 'center', block: 'nearest' })
@@ -158,7 +165,7 @@ export function WeekDetail({ week, sourceDocuments, onClose }: { week: WeekGroup
     <div className="mt-3 rounded-xl border bg-muted/20 p-3">
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Semaine {week.weekNumber} · {fmtDayLong(week.weekStart)} → {fmtDayLong(week.weekEnd)}
+          Semaine {week.weekNumber} · {formatWeekRangeLabel(week.weekStart, week.weekEnd)}
         </p>
         <button type="button" onClick={onClose} className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="Fermer le détail de la semaine">
           ×
@@ -169,13 +176,7 @@ export function WeekDetail({ week, sourceDocuments, onClose }: { week: WeekGroup
           <li key={item.id} className="text-sm text-foreground">{item.title}</li>
         ))}
       </ul>
-      {excerpts.length > 0 && (
-        <div className="mt-2 space-y-2 border-t pt-2">
-          {excerpts.map((e) => (
-            <SourceExcerpt key={e.key} documentId={e.documentId} filename={e.filename} excerpt={e.excerpt} />
-          ))}
-        </div>
-      )}
+      <WeekProofsToggle itemCount={week.items.length} excerpts={excerpts} />
     </div>
   )
 }

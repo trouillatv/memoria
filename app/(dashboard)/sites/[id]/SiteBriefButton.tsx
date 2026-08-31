@@ -913,6 +913,12 @@ function LiveDebriefDeadlineCta({ item, onDone }: { item: LiveDebriefObjectItem;
 
 // Conditionnellement rendu (masqué si vide) — pas de bloc vide pour « À traiter »
 // / « À surveiller » / « Traité récemment » quand le chantier n'a rien de ce type.
+//
+// `initialLimit` (D7 §2, « Traité récemment » uniquement) : n'affiche que les
+// N éléments les plus récents au premier rendu — l'ordre vient de LiveDebrief,
+// jamais retrié ici — avec un dépli local (« Voir les N éléments »), sans
+// action métier ajoutée et sans persistance : se referme à la fermeture du
+// panneau, ne retient rien au-delà de la fenêtre déjà appliquée par D1.
 function LiveDebriefBlock({
   title,
   icon,
@@ -921,6 +927,7 @@ function LiveDebriefBlock({
   variant,
   canLiftReserve,
   onDebriefChange,
+  initialLimit,
 }: {
   title: string
   icon: React.ReactNode
@@ -929,13 +936,17 @@ function LiveDebriefBlock({
   variant: 'mobile' | 'desktop'
   canLiftReserve: boolean
   onDebriefChange: () => void
+  initialLimit?: number
 }) {
+  const [expanded, setExpanded] = useState(false)
   if (items.length === 0) return null
+  const capped = initialLimit != null && !expanded && items.length > initialLimit
+  const visibleItems = capped ? items.slice(0, initialLimit) : items
   return (
     <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
       <SectionTitle icon={icon} count={items.length}>{title}</SectionTitle>
       <ul className="space-y-1.5">
-        {items.map((item) => (
+        {visibleItems.map((item) => (
           <LiveDebriefItemRow
             key={`${item.kind}-${item.kind === 'informational_signal' ? item.signalKey : item.id}`}
             item={item}
@@ -946,6 +957,15 @@ function LiveDebriefBlock({
           />
         ))}
       </ul>
+      {capped && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="text-xs font-medium text-sky-700 hover:underline"
+        >
+          Voir les {items.length} éléments
+        </button>
+      )}
     </section>
   )
 }
@@ -1324,33 +1344,6 @@ function BriefBody({
       </section>
 
       <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
-        <SectionTitle icon={<Brain className="h-3.5 w-3.5 text-sky-600" />}>Ce que je dois retenir aujourd&apos;hui</SectionTitle>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">État confirmé aujourd&apos;hui</p>
-        <ConfirmedTodayChips confirmedToday={liveDebrief.confirmedToday} />
-        <div className="flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 text-[11px] text-muted-foreground">
-          <span>Indice de phase (objets ouverts) : <strong className="font-semibold text-foreground">{estimatedPhase}</strong><span className="ml-1 text-muted-foreground/70">— déduit, non confirmé sur site</span></span>
-          {/* « Mémoire : il y a 3 jours » ne disait ni de quoi il s'agissait ni depuis
-              quand. C'est le started_at de la dernière activité rapportée : on nomme
-              sa nature et sa date, le délai relatif ne reste qu'en appoint. */}
-          <span>
-            {freshnessKind === 'meeting' ? 'Dernière réunion' : activities[0]?.status === 'in_progress' ? 'Activité terrain en cours' : 'Dernière visite consolidée'} :{' '}
-            <strong className={freshness.level === 'stale' ? 'font-semibold text-amber-700' : 'font-semibold text-foreground'}>
-              {formatDay(freshness.at?.slice(0, 10)) ?? freshness.label}
-            </strong>
-            {freshness.at ? <span className="ml-1 text-muted-foreground/70">({freshness.label})</span> : null}
-          </span>
-        </div>
-        <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dernier état rapporté</p>
-        <FactLines items={rememberToday.filter((item) => item.sourceType !== 'deadline')} empty="Aucun fait consolidé à retenir pour le moment." />
-        {rememberToday.some((item) => item.sourceType === 'deadline') && (
-          <>
-            <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">À organiser</p>
-            <FactLines items={rememberToday.filter((item) => item.sourceType === 'deadline')} />
-          </>
-        )}
-      </section>
-
-      <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
         <SectionTitle icon={<History className="h-3.5 w-3.5 text-sky-600" />}>Depuis votre dernière venue</SectionTitle>
         {liveDebrief.sinceLastVisit.kind === 'first_visit' ? (
           <p className="text-sm italic text-muted-foreground">Première visite : aucune venue antérieure identifiée sur ce chantier.</p>
@@ -1383,6 +1376,17 @@ function BriefBody({
         )}
       </section>
 
+      {/* D7 §1 — synthèse compacte, dérivée EXCLUSIVEMENT des trois blocs
+          LiveDebrief ci-dessous (aucun nouveau comptage) : elle annonce ce que
+          la page contient avant de le détailler, jamais un chiffre inventé.
+          Absente si les trois blocs sont vides — la page se vide naturellement,
+          jamais de synthèse d'un vide. */}
+      {(liveDebrief.toHandle.length > 0 || liveDebrief.toWatch.length > 0 || liveDebrief.recentlyHandled.length > 0) && (
+        <p className="px-1 text-xs font-medium text-muted-foreground">
+          {liveDebrief.recentlyHandled.length} traité{liveDebrief.recentlyHandled.length > 1 ? 's' : ''} · {liveDebrief.toHandle.length} à traiter · {liveDebrief.toWatch.length} à surveiller
+        </p>
+      )}
+
       <LiveDebriefBlock
         title="À traiter"
         icon={<ListTodo className="h-3.5 w-3.5 text-rose-600" />}
@@ -1401,6 +1405,10 @@ function BriefBody({
         canLiftReserve={canLiftReserve}
         onDebriefChange={onDebriefChange}
       />
+      {/* D7 §2 — bloc volontairement secondaire : peu d'éléments visibles
+          d'emblée, dépli local pour le reste. Pas d'action métier ici (déjà
+          garanti par LiveDebriefItemRow — un item recently_handled n'expose
+          jamais de CTA), pas de bouton « Vu ». */}
       <LiveDebriefBlock
         title="Traité récemment"
         icon={<CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
@@ -1409,7 +1417,29 @@ function BriefBody({
         variant={variant}
         canLiftReserve={canLiftReserve}
         onDebriefChange={onDebriefChange}
+        initialLimit={3}
       />
+
+      <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
+        <SectionTitle icon={<Brain className="h-3.5 w-3.5 text-sky-600" />}>Ce que je dois retenir aujourd&apos;hui</SectionTitle>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">État confirmé aujourd&apos;hui</p>
+        <ConfirmedTodayChips confirmedToday={liveDebrief.confirmedToday} />
+        <div className="flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 text-[11px] text-muted-foreground">
+          <span>Indice de phase (objets ouverts) : <strong className="font-semibold text-foreground">{estimatedPhase}</strong><span className="ml-1 text-muted-foreground/70">— déduit, non confirmé sur site</span></span>
+          {/* « Mémoire : il y a 3 jours » ne disait ni de quoi il s'agissait ni depuis
+              quand. C'est le started_at de la dernière activité rapportée : on nomme
+              sa nature et sa date, le délai relatif ne reste qu'en appoint. */}
+          <span>
+            {freshnessKind === 'meeting' ? 'Dernière réunion' : activities[0]?.status === 'in_progress' ? 'Activité terrain en cours' : 'Dernière visite consolidée'} :{' '}
+            <strong className={freshness.level === 'stale' ? 'font-semibold text-amber-700' : 'font-semibold text-foreground'}>
+              {formatDay(freshness.at?.slice(0, 10)) ?? freshness.label}
+            </strong>
+            {freshness.at ? <span className="ml-1 text-muted-foreground/70">({freshness.label})</span> : null}
+          </span>
+        </div>
+        <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dernier état rapporté</p>
+        <FactLines items={rememberToday} empty="Aucun fait consolidé à retenir pour le moment." />
+      </section>
 
       {/* D10 — Modèle B : activités parallèles constatées. Jamais une phase unique.
           Ne s'affiche que si le read-model a détecté une intervention ou des activités.

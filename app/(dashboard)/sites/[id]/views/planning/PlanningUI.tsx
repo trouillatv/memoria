@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Clock } from 'lucide-react'
 import Link from 'next/link'
+import type { WeekSourceExcerpt } from './travaux-week-grouping'
 
 // Petits blocs visuels partagés par les sous-vues Planning (Vue d'ensemble,
 // Travaux, Agenda, Échéances) — évite de dupliquer le même titre de section
@@ -44,5 +45,32 @@ export function SourceExcerpt({ documentId, filename, excerpt }: { documentId: s
         {filename}
       </Link>
     </div>
+  )
+}
+
+/**
+ * D7 — « Qu'est-ce qui était prévu ? » mène, la preuve documentaire suit.
+ * Repliée par défaut derrière un compte (« N éléments · N source(s) ») pour
+ * ne pas faire concurrence à la liste de tâches ; jamais un simple lien
+ * « Voir le PDF » — l'extrait exact reste visible une fois dépliée.
+ */
+export function WeekProofsToggle({ itemCount, excerpts }: { itemCount: number; excerpts: WeekSourceExcerpt[] }) {
+  if (excerpts.length === 0) return null
+  return (
+    <details className="group mt-3 border-t pt-2">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-[11px] text-muted-foreground/80">
+        <span>
+          {itemCount} élément{itemCount > 1 ? 's' : ''} · {excerpts.length} source{excerpts.length > 1 ? 's' : ''}
+        </span>
+        <span className="font-medium text-sky-700 group-open:hidden">Voir les preuves</span>
+        <span className="hidden font-medium text-sky-700 group-open:inline">Masquer les preuves</span>
+      </summary>
+      <div className="mt-2 space-y-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">Sources et extraits</p>
+        {excerpts.map((e) => (
+          <SourceExcerpt key={e.key} documentId={e.documentId} filename={e.filename} excerpt={e.excerpt} />
+        ))}
+      </div>
+    </details>
   )
 }

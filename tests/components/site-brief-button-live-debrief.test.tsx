@@ -511,3 +511,39 @@ describe('SiteBriefButton — Débrief vivant D5 — Traité récemment reste le
     expect(within(section).queryByRole('button', { name: 'Lever' })).not.toBeInTheDocument()
   })
 })
+
+// D7 §2 — « Traité récemment » reste court par défaut : au-delà de 3 éléments,
+// seuls les 3 plus récents (ordre déjà fourni par LiveDebrief, jamais retrié
+// ici) sont visibles, avec un dépli local sans action métier ni persistance.
+describe('SiteBriefButton — Débrief vivant D7 §2 — Traité récemment plafonné', () => {
+  const manyRecentlyHandled: LiveDebriefItem[] = [
+    actionDoneRecent,
+    signalSeen,
+    { ...actionDoneRecent, id: 'act-done-2', title: 'Ranger le dépôt matériel' },
+    { ...actionDoneRecent, id: 'act-done-3', title: 'Baliser la zone Sud' },
+  ]
+
+  it('D7-2a. > 3 éléments → seuls les 3 premiers rendus, avec « Voir les 4 éléments »', async () => {
+    await openBrief(makeLiveDebrief({ recentlyHandled: manyRecentlyHandled }))
+    const section = sectionByHeading('Traité récemment')
+    expect(within(section).getByText('Nettoyer la base vie')).toBeInTheDocument()
+    expect(within(section).getByText('Fuite réseau EU — stagnante')).toBeInTheDocument()
+    expect(within(section).getByText('Ranger le dépôt matériel')).toBeInTheDocument()
+    expect(within(section).queryByText('Baliser la zone Sud')).not.toBeInTheDocument()
+    expect(within(section).getByRole('button', { name: 'Voir les 4 éléments' })).toBeInTheDocument()
+  })
+
+  it("D7-2b. clic sur « Voir les 4 éléments » → tous les éléments rendus, bouton disparaît", async () => {
+    await openBrief(makeLiveDebrief({ recentlyHandled: manyRecentlyHandled }))
+    const section = sectionByHeading('Traité récemment')
+    fireEvent.click(within(section).getByRole('button', { name: 'Voir les 4 éléments' }))
+    expect(within(section).getByText('Baliser la zone Sud')).toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: /voir les/i })).not.toBeInTheDocument()
+  })
+
+  it('D7-2c. ≤ 3 éléments (défaut) → jamais de bouton « Voir les N éléments »', async () => {
+    await openBrief()
+    const section = sectionByHeading('Traité récemment')
+    expect(within(section).queryByRole('button', { name: /voir les/i })).not.toBeInTheDocument()
+  })
+})

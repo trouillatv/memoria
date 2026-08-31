@@ -825,13 +825,9 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       status: source.status === 'validated' ? 'unconfirmed' as const : 'in_progress' as const,
     }
   })
-  for (const item of [
-    ...deadlineItems.filter((deadline) => deadline.status === 'to_plan').map((deadline) => ({ text: `${deadline.title} reste à planifier`, sourceType: 'deadline' as const, sourceId: deadline.id, sourceHref: `/sites/${siteId}/planning`, status: 'validated' as const })),
-    ...openReserves.map((reserve) => ({ text: `${reserve.label} reste à lever`, sourceType: 'reserve' as const, sourceId: reserve.id, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' as const })),
-  ]) {
-    if (rememberToday.length >= 5 || rememberToday.some((existing) => existing.text === item.text)) continue
-    rememberToday.push(item)
-  }
+  // D7 §7 — les échéances « à planifier » et réserves ouvertes ne sont plus
+  // dupliquées ici : elles sont déjà portées par `liveDebrief.toHandle`
+  // (bloc « À traiter »), seule source affichée pour ces objets métier.
 
   const changedActivityFacts: SiteBriefFactLine[] = narratives
     .filter((narrative) => sinceLastVenue && narrative.occurredAt > sinceLastVenue.at)

@@ -56,3 +56,20 @@ export function weekSourceExcerpts(items: SitePlanningItem[], sourceDocuments: M
 export function weekOf(iso: string): string {
   return getWeekRange(iso).weekStart
 }
+
+const weekRangeDayFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', day: 'numeric' })
+const weekRangeMonthFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC', month: 'long' })
+
+/** « 17 → 23 AOÛT » (même mois) ou « 28 AOÛT → 3 SEPTEMBRE » (à cheval) — le
+ *  mois n'est répété que quand il change, jamais sur les deux bornes. */
+export function formatWeekRangeLabel(weekStart: string, weekEnd: string): string {
+  const start = new Date(weekStart + 'T00:00:00Z')
+  const end = new Date(weekEnd + 'T00:00:00Z')
+  const startMonth = weekRangeMonthFmt.format(start).toUpperCase()
+  const endMonth = weekRangeMonthFmt.format(end).toUpperCase()
+  const startDay = weekRangeDayFmt.format(start)
+  const endDay = weekRangeDayFmt.format(end)
+  return startMonth === endMonth
+    ? `${startDay} → ${endDay} ${endMonth}`
+    : `${startDay} ${startMonth} → ${endDay} ${endMonth}`
+}

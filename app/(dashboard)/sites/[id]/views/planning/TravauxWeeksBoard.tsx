@@ -3,8 +3,8 @@
 import { Fragment, useState } from 'react'
 import type { SitePlanningItem, PlanningItemSourceDocument } from '@/lib/db/site-planning-items'
 import { TravauxTimeline, WeekDetail } from './TravauxTimeline'
-import { weekSourceExcerpts, type WeekGroup } from './travaux-week-grouping'
-import { SourceExcerpt } from './PlanningUI'
+import { formatWeekRangeLabel, weekSourceExcerpts, type WeekGroup } from './travaux-week-grouping'
+import { WeekProofsToggle } from './PlanningUI'
 
 interface TravauxWeeksBoardProps {
   weeks: WeekGroup[]
@@ -71,20 +71,15 @@ function WeekBlock({ week, sourceDocuments }: { week: WeekGroup; sourceDocuments
   const excerpts = weekSourceExcerpts(week.items, sourceDocuments)
   return (
     <div className="rounded-2xl border p-4">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Semaine {week.weekNumber}</h3>
-      <p className="text-sm font-medium text-foreground">{fmtDay(week.weekStart)} → {fmtDay(week.weekEnd)}</p>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Semaine {week.weekNumber} · {formatWeekRangeLabel(week.weekStart, week.weekEnd)}
+      </h3>
       <ul className="mt-3 space-y-1.5">
         {week.items.map((item) => (
           <li key={item.id} className="text-sm text-foreground">{item.title}</li>
         ))}
       </ul>
-      {excerpts.length > 0 && (
-        <div className="mt-3 space-y-2 border-t pt-2">
-          {excerpts.map((e) => (
-            <SourceExcerpt key={e.key} documentId={e.documentId} filename={e.filename} excerpt={e.excerpt} />
-          ))}
-        </div>
-      )}
+      <WeekProofsToggle itemCount={week.items.length} excerpts={excerpts} />
     </div>
   )
 }
