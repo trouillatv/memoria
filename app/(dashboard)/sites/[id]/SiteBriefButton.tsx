@@ -42,6 +42,7 @@ import { LiveDebriefVuButton } from './LiveDebriefVuButton'
 import { completeDeadlineAction, rescheduleDeadlineAction } from './views/planning/deadline-actions'
 import { closeActionAction } from '@/app/(dashboard)/actions/actions'
 import { liftReserveAction } from './reserves/actions'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 interface Props {
   /** Site fixé par le contexte (fiche site / mobile site). */
@@ -587,7 +588,6 @@ function ConfirmedTodayChips({ confirmedToday }: { confirmedToday: LiveDebrief['
 function LiveDebriefItemRow({
   item,
   siteId,
-  variant,
   canLiftReserve,
   onDebriefChange,
 }: {
@@ -599,6 +599,8 @@ function LiveDebriefItemRow({
 }) {
   const [actionClosing, setActionClosing] = useState(false)
   const [reserveLifting, setReserveLifting] = useState(false)
+  const [planningDeadline, setPlanningDeadline] = useState(false)
+  const [completing, startCompleting] = useTransition()
 
   if (item.kind === 'informational_signal') {
     return (
@@ -613,43 +615,80 @@ function LiveDebriefItemRow({
   }
   const kindLabel = item.kind === 'action' ? 'Action' : item.kind === 'deadline' ? 'Échéance' : 'Réserve'
   const dateLabel = formatDate(item.date)
-  const canCloseAction = item.kind === 'action' && item.status === 'open' && variant === 'desktop'
-  const canLift = item.kind === 'reserve' && item.status === 'open' && variant === 'desktop' && canLiftReserve
-  const expanded = actionClosing || reserveLifting
+  const canClose = item.kind === 'action' && item.status === 'open'
+  const canLift = item.kind === 'reserve' && item.status === 'open' && canLiftReserve
+  const canPlan = item.kind === 'deadline' && item.status === 'to_plan'
+  const canReplan = item.kind === 'deadline' && item.status === 'planned'
+  const hasMenu = canClose || canLift || canPlan || canReplan
+  const expanded = actionClosing || reserveLifting || planningDeadline
+  const objectId = item.id
+
+  function markDeadlineDone() {
+    startCompleting(async () => {
+      const result = await completeDeadlineAction(objectId)
+      if (result.ok) onDebriefChange()
+      else toast.error(result.error ?? 'Échec')
+    })
+  }
+
   return (
     <li className="rounded-lg border bg-background px-3 py-2 space-y-2">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <a href={item.href} className="text-sm font-medium hover:underline">{item.title}</a>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">{kindLabel}</p>
+          {hasMenu ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    type="button"
+                    className="mt-0.5 inline-flex items-center gap-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                  />
+                }
+              >
+                {kindLabel} <span aria-hidden>›</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {canReplan && (
+                  <DropdownMenuItem onClick={markDeadlineDone} disabled={completing}>
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Marquer réalisée
+                  </DropdownMenuItem>
+                )}
+                {(canPlan || canReplan) && (
+                  <DropdownMenuItem onClick={() => setPlanningDeadline(true)}>
+                    <CalendarClock className="h-3.5 w-3.5" /> {canReplan ? 'Replanifier' : 'Planifier'}
+                  </DropdownMenuItem>
+                )}
+                {canClose && (
+                  <DropdownMenuItem onClick={() => setActionClosing(true)}>
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Clôturer
+                  </DropdownMenuItem>
+                )}
+                {canLift && (
+                  <DropdownMenuItem onClick={() => setReserveLifting(true)}>
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Lever la réserve
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => { window.location.href = item.href }}>
+                  <ChevronRight className="h-3.5 w-3.5" /> Ouvrir la fiche
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <p className="mt-0.5 text-[11px] text-muted-foreground">{kindLabel}</p>
+          )}
         </div>
-        {!expanded && (
-          <div className="flex shrink-0 items-center gap-2">
-            {dateLabel && <span className="text-[11px] text-muted-foreground whitespace-nowrap">{dateLabel}</span>}
-            {item.kind === 'deadline' && (item.status === 'to_plan' || item.status === 'planned') && (
-              <LiveDebriefDeadlineCta item={item} onDone={onDebriefChange} />
-            )}
-            {canCloseAction && (
-              <button
-                type="button"
-                onClick={() => setActionClosing(true)}
-                className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
-              >
-                Clôturer
-              </button>
-            )}
-            {canLift && (
-              <button
-                type="button"
-                onClick={() => setReserveLifting(true)}
-                className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
-              >
-                Lever
-              </button>
-            )}
-          </div>
+        {!expanded && dateLabel && (
+          <span className="shrink-0 text-[11px] text-muted-foreground whitespace-nowrap">{dateLabel}</span>
         )}
       </div>
+      {planningDeadline && item.kind === 'deadline' && (
+        <LiveDebriefDeadlineForm
+          item={item}
+          onCancel={() => setPlanningDeadline(false)}
+          onDone={onDebriefChange}
+        />
+      )}
       {actionClosing && item.kind === 'action' && (
         <LiveDebriefActionCloseForm
           actionId={item.id}
@@ -832,82 +871,59 @@ function LiveDebriefReserveLiftForm({
   )
 }
 
-// D5 lot 1 — CTA inline pour une échéance (to_plan → Planifier, planned →
-// Marquer réalisée), réutilisant strictement rescheduleDeadlineAction/
-// completeDeadlineAction. Édition dans l'item, jamais de modale empilée.
-function LiveDebriefDeadlineCta({ item, onDone }: { item: LiveDebriefObjectItem; onDone: () => void }) {
+// D5 lot 1 — planification/replanification inline d'une échéance, ouverte
+// depuis le menu de la pilule (jamais depuis un bouton logé dans l'entête :
+// le formulaire s'affiche toujours pleine largeur SOUS le titre, jamais à
+// côté — cf. correctif layout Vincent 2026-08-31). Réutilise strictement
+// rescheduleDeadlineAction.
+function LiveDebriefDeadlineForm({
+  item,
+  onCancel,
+  onDone,
+}: {
+  item: LiveDebriefObjectItem
+  onCancel: () => void
+  onDone: () => void
+}) {
   const [pending, startTransition] = useTransition()
-  const [planning, setPlanning] = useState(false)
   const [dueDate, setDueDate] = useState('')
 
-  if (item.status === 'planned') {
-    return (
-      <button
-        type="button"
-        onClick={() =>
-          startTransition(async () => {
-            const result = await completeDeadlineAction(item.id)
-            if (result.ok) onDone()
-            else toast.error(result.error ?? 'Échec')
-          })
-        }
-        disabled={pending}
-        className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
-      >
-        {pending ? '…' : 'Marquer réalisée'}
-      </button>
-    )
-  }
-
-  if (!planning) {
-    return (
-      <button
-        type="button"
-        onClick={() => setPlanning(true)}
-        className="shrink-0 rounded border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100"
-      >
-        Planifier
-      </button>
-    )
+  function submit() {
+    if (!dueDate) return
+    startTransition(async () => {
+      const result = await rescheduleDeadlineAction({ deadlineId: item.id, dueDate })
+      if (result.ok) onDone()
+      else toast.error(result.error ?? 'Échec')
+    })
   }
 
   return (
-    <form
-      className="flex shrink-0 items-center gap-1.5"
-      onSubmit={(e) => {
-        e.preventDefault()
-        if (!dueDate) return
-        startTransition(async () => {
-          const result = await rescheduleDeadlineAction({ deadlineId: item.id, dueDate })
-          if (result.ok) onDone()
-          else toast.error(result.error ?? 'Échec')
-        })
-      }}
-    >
+    <div className="rounded-md border bg-muted/20 p-2.5 space-y-2">
+      <p className="text-xs font-medium">
+        {item.status === 'planned' ? 'Replanifier cette échéance' : 'Planifier cette échéance'}
+      </p>
       <input
         type="date"
         value={dueDate}
         onChange={(e) => setDueDate(e.target.value)}
         disabled={pending}
         autoFocus
-        className="h-7 rounded border px-1.5 text-xs"
+        className="h-9 w-full rounded border px-2 text-sm"
       />
-      <button
-        type="submit"
-        disabled={pending || !dueDate}
-        className="rounded border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100 disabled:opacity-50"
-      >
-        {pending ? '…' : 'OK'}
-      </button>
-      <button
-        type="button"
-        onClick={() => setPlanning(false)}
-        disabled={pending}
-        className="rounded border px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted"
-      >
-        Annuler
-      </button>
-    </form>
+      <div className="flex items-center justify-end gap-2">
+        <button type="button" onClick={onCancel} disabled={pending} className="text-xs text-muted-foreground hover:text-foreground">
+          Annuler
+        </button>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={pending || !dueDate}
+          className="rounded border border-sky-300 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100 disabled:opacity-50"
+        >
+          {pending ? '…' : 'Enregistrer'}
+        </button>
+      </div>
+    </div>
   )
 }
 

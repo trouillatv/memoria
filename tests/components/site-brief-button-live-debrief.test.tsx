@@ -374,11 +374,16 @@ describe('SiteBriefButton — Débrief vivant D5 — Échéance inline', () => {
     )
     const aTraiter = sectionByHeading('À traiter')
     const row = within(aTraiter).getByText('Envoyer le DOE').closest('li')!
-    fireEvent.click(within(row).getByRole('button', { name: 'Planifier' }))
+    await act(async () => {
+      fireEvent.click(within(row).getByRole('button', { name: 'Échéance' }))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Planifier' }))
+    })
     const dateInput = row.querySelector('input[type="date"]') as HTMLInputElement
     fireEvent.change(dateInput, { target: { value: '2026-09-15' } })
     await act(async () => {
-      fireEvent.click(within(row).getByRole('button', { name: 'OK' }))
+      fireEvent.click(within(row).getByRole('button', { name: 'Enregistrer' }))
     })
     expect(mockRescheduleDeadline).toHaveBeenCalledWith({ deadlineId: 'dl-1', dueDate: '2026-09-15' })
     await waitFor(() => {
@@ -399,7 +404,10 @@ describe('SiteBriefButton — Débrief vivant D5 — Échéance inline', () => {
     const aSurveiller = sectionByHeading('À surveiller')
     const row = within(aSurveiller).getByText('Livrer le plan de récolement').closest('li')!
     await act(async () => {
-      fireEvent.click(within(row).getByRole('button', { name: 'Marquer réalisée' }))
+      fireEvent.click(within(row).getByRole('button', { name: 'Échéance' }))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Marquer réalisée' }))
     })
     expect(mockCompleteDeadline).toHaveBeenCalledWith('dl-2')
     await waitFor(() => {
@@ -410,8 +418,8 @@ describe('SiteBriefButton — Débrief vivant D5 — Échéance inline', () => {
   })
 })
 
-describe('SiteBriefButton — Débrief vivant D5 — Action inline (desktop)', () => {
-  it('D5-3. open → Clôturer (desktop) → rejoint « Traité récemment »', async () => {
+describe('SiteBriefButton — Débrief vivant D5 — Action inline', () => {
+  it('D5-3. open → Clôturer → rejoint « Traité récemment »', async () => {
     const actionClosed: LiveDebriefItem = { ...actionOpen, status: 'done', disposition: 'recently_handled' }
     await openBriefSeq(
       [
@@ -422,7 +430,12 @@ describe('SiteBriefButton — Débrief vivant D5 — Action inline (desktop)', (
     )
     const aTraiter = sectionByHeading('À traiter')
     const row = within(aTraiter).getByText('Réparer la clôture Nord').closest('li')!
-    fireEvent.click(within(row).getByRole('button', { name: 'Clôturer' }))
+    await act(async () => {
+      fireEvent.click(within(row).getByRole('button', { name: 'Action' }))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Clôturer' }))
+    })
     const textarea = row.querySelector('textarea') as HTMLTextAreaElement
     fireEvent.change(textarea, { target: { value: 'Clôture réparée et vérifiée.' } })
     await act(async () => {
@@ -435,8 +448,8 @@ describe('SiteBriefButton — Débrief vivant D5 — Action inline (desktop)', (
   })
 })
 
-describe('SiteBriefButton — Débrief vivant D5 — Réserve inline (desktop, rôle autorisé)', () => {
-  it('D5-4. open → Lever (desktop, canLiftReserve) → rejoint « Traité récemment »', async () => {
+describe('SiteBriefButton — Débrief vivant D5 — Réserve inline (rôle autorisé)', () => {
+  it('D5-4. open → Lever (canLiftReserve) → rejoint « Traité récemment »', async () => {
     const reserveLifted: LiveDebriefItem = { ...reserveOpen, status: 'lifted', disposition: 'recently_handled' }
     await openBriefSeq(
       [
@@ -447,7 +460,12 @@ describe('SiteBriefButton — Débrief vivant D5 — Réserve inline (desktop, r
     )
     const aTraiter = sectionByHeading('À traiter')
     const row = within(aTraiter).getByText('Rejointoyer le carrelage hall').closest('li')!
-    fireEvent.click(within(row).getByRole('button', { name: 'Lever' }))
+    await act(async () => {
+      fireEvent.click(within(row).getByRole('button', { name: 'Réserve' }))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Lever la réserve' }))
+    })
     await act(async () => {
       fireEvent.click(within(row).getByRole('button', { name: 'Lever' }))
     })
@@ -489,7 +507,12 @@ describe('SiteBriefButton — Débrief vivant D5 — Réserve inline (desktop, r
     )
     const aTraiter = sectionByHeading('À traiter')
     const row = within(aTraiter).getByText('Rejointoyer le carrelage hall').closest('li')!
-    fireEvent.click(within(row).getByRole('button', { name: 'Lever' }))
+    await act(async () => {
+      fireEvent.click(within(row).getByRole('button', { name: 'Réserve' }))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Lever la réserve' }))
+    })
     await act(async () => {
       fireEvent.click(within(row).getByRole('button', { name: 'Lever' }))
     })
