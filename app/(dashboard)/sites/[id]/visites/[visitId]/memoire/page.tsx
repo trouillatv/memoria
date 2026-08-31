@@ -58,7 +58,7 @@ export default async function VisitMemoirePage({ params }: { params: Promise<{ i
         <h1 className="text-2xl font-semibold tracking-tight">Historique des propositions</h1>
         <p className="mt-1 text-[13.5px] text-muted-foreground">
           Le journal d&apos;audit des propositions de cette visite : anciennes (remplacées) et écartées.
-          Les propositions actives se consultent et se traitent dans le compte-rendu de la visite.
+          Les propositions actives se consultent et se traitent depuis la visite et leur espace métier.
         </p>
         <p className="mt-2 text-[12.5px] text-muted-foreground">
           {archived.length} proposition{archived.length > 1 ? 's' : ''} archivée{archived.length > 1 ? 's' : ''}

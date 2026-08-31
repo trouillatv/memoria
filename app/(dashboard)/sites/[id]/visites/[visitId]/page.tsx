@@ -279,16 +279,13 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
     vigilance:   ['vigilance', 'vigilances'],
     stakeholder: ['intervenant', 'intervenants'],
   }
-  const ledgerTotal = allProposals.length
-  const ledgerPending   = allProposals.filter((p) => p.status === 'proposed').length
-  const ledgerRetained  = allProposals.filter((p) => p.status === 'confirmed' || p.status === 'fulfilled').length
-  const ledgerSuperseded = allProposals.filter((p) => p.status === 'superseded').length
-  const ledgerDismissed = allProposals.filter((p) => p.status === 'dismissed').length
-  const ledgerStatusParts: string[] = []
-  if (ledgerPending > 0)    ledgerStatusParts.push(`${ledgerPending} à arbitrer`)
-  if (ledgerRetained > 0)   ledgerStatusParts.push(`${ledgerRetained} ${ledgerRetained > 1 ? 'retenus' : 'retenu'}`)
-  if (ledgerSuperseded > 0) ledgerStatusParts.push(`${ledgerSuperseded} ancienne${ledgerSuperseded > 1 ? 's' : ''} proposition${ledgerSuperseded > 1 ? 's' : ''}`)
-  if (ledgerDismissed > 0)  ledgerStatusParts.push(`${ledgerDismissed} écarté${ledgerDismissed > 1 ? 's' : ''}`)
+  // Seule métrique conservée sur la page visite : existe-t-il des propositions
+  // ARCHIVÉES (remplacées / écartées) ? Si oui, un accès SECONDAIRE à l'historique.
+  // Le résumé actif « Ce que MemorIA a retenu » (N détectés / N à arbitrer /
+  // N retenus) est retiré : les objets produits sont déjà listés, et l'arbitrage
+  // vit dans « Arbitrages ». L'archive n'est pas une seconde vérité opérationnelle.
+  const ledgerArchived =
+    allProposals.filter((p) => p.status === 'superseded' || p.status === 'dismissed').length
 
   // Résumé ventilé pour les visites historiques importées
   const importResumeText = (() => {
@@ -604,37 +601,6 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
             </section>
           )}
 
-          {/* ── FAIT LEDGER — point d'entrée (toutes sources, tous statuts) ──
-              Réservé aux visites importées : VisitDesk montre déjà, inline,
-              ce que la visite a produit / ce qui attend un arbitrage / ce qui
-              n'a pas été retenu pour les visites saisies en direct (Vincent,
-              P0-2 : fermer le parcours côté Visite). */}
-          {isImport && ledgerTotal > 0 && (
-            <section className="rounded-xl border bg-card p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="text-[15px] font-semibold">Ce que MemorIA a retenu</h2>
-                  <p className="mt-1 text-[13px] font-medium tabular-nums">
-                    {ledgerTotal} élément{ledgerTotal > 1 ? 's' : ''} détectés
-                  </p>
-                  {ledgerStatusParts.length > 0 && (
-                    <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-                      {ledgerStatusParts.join(' · ')}
-                    </p>
-                  )}
-                </div>
-                {/* Accès SECONDAIRE à l'archive d'audit — pas une seconde vérité
-                    opérationnelle. Démoté en lien discret, vocabulaire honnête. */}
-                <Link
-                  href={`/sites/${id}/visites/${visitId}/memoire`}
-                  className="shrink-0 text-[12.5px] font-medium text-muted-foreground hover:text-foreground hover:underline"
-                >
-                  Voir l’historique des propositions →
-                </Link>
-              </div>
-            </section>
-          )}
-
           {/* Ordre de lecture (Vincent, 2026-08-17) : ce que ça change → ce qui
               reste à décider → les preuves photo (aperçu) → le déroulé terrain.
               Les preuves terrain, reprises au bureau — même modèle et mêmes
@@ -650,6 +616,18 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
               changes={changes}
               photosSlot={<VisitPhotosSection siteId={id} reportId={visitId} photos={photosVisite} />}
             />
+          )}
+
+          {/* Tout en bas, très secondaire : l'ARCHIVE d'audit (propositions
+              remplacées / écartées), seulement si elle existe. Jamais un résumé
+              actif — juste une porte vers l'historique. */}
+          {ledgerArchived > 0 && (
+            <Link
+              href={`/sites/${id}/visites/${visitId}/memoire`}
+              className="inline-flex items-center gap-1 text-[12.5px] font-medium text-muted-foreground hover:text-foreground hover:underline"
+            >
+              Voir l’historique des propositions →
+            </Link>
           )}
         </div>
 

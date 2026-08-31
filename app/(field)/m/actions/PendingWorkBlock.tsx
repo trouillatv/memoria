@@ -113,7 +113,7 @@ function PendingCard({ item, hideSite = false, onDone }: { item: PendingItem; hi
       {/* La provenance : sans elle, le conducteur croirait MemorIA sur parole. */}
       {item.reportId && (
         <a
-          href={`/m/visite/${item.reportId}/cr`}
+          href={`/m/visite/${item.reportId}`}
           className="mt-1 inline-flex items-center gap-1 text-[12px] text-muted-foreground active:text-foreground"
         >
           <MapPin className="h-3 w-3 shrink-0" /> Voir la visite <ChevronRight className="h-3 w-3 shrink-0" />

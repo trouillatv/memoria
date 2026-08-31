@@ -72,9 +72,10 @@ export function mobileSourceHref(
   ids: { siteId: string; reportId: string | null },
 ): string | null {
   switch (type) {
-    // Report connu → la PREUVE précise (compte-rendu), jamais un récap intermédiaire.
+    // « Voir la visite/réunion » → la PAGE PRINCIPALE de la visite (l'objet), pas
+    // son sous-espace d'édition (/cr) : depuis là on va au CR, aux photos, etc.
     case 'reunion': return ids.reportId ? `/m/reunion/${ids.reportId}` : null
-    case 'visite': return ids.reportId ? `/m/visite/${ids.reportId}/cr` : null
+    case 'visite': return ids.reportId ? `/m/visite/${ids.reportId}` : null
     case 'reserve': return `/m/site/${ids.siteId}/reserves`
     case 'pv': return null   // pas de vue document /m fiable → libellé seul
     case 'sujet': return null // subjects.id ≠ canonicalSubjectId : pas de route /m

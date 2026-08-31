@@ -63,7 +63,10 @@ export async function getSitePendingActionProposals(siteId: string): Promise<Pen
       canonicalSubjectLabel: r.canonical_subject_id ? subjectLabels.get(r.canonical_subject_id) ?? null : null,
       provenanceLabel: PROV_LABEL[prov],
       provenanceDate: date,
-      reportHref: r.report_id ? `/sites/${siteId}/visites/${r.report_id}/compte-rendu` : null,
+      // « Voir la visite source » → la PAGE PRINCIPALE de la visite (l'objet),
+      // pas /compte-rendu (sous-espace d'édition du CR). Depuis la visite, on
+      // accède ensuite au CR, aux photos, aux objets produits, à l'archive.
+      reportHref: r.report_id ? `/sites/${siteId}/visites/${r.report_id}` : null,
       createdAt: r.created_at,
     }
   }).sort((a, b) =>

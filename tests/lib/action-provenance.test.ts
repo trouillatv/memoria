@@ -43,7 +43,7 @@ describe('mobileSourceHref — jamais de route desktop', () => {
     expect(mobileSourceHref('reunion', { siteId: 's1', reportId: 'r1' })).toBe('/m/reunion/r1')
   })
   it('visite → /m/visite/<id>', () => {
-    expect(mobileSourceHref('visite', { siteId: 's1', reportId: 'r1' })).toBe('/m/visite/r1/cr')
+    expect(mobileSourceHref('visite', { siteId: 's1', reportId: 'r1' })).toBe('/m/visite/r1')
   })
   it('réserve → liste réserves /m du chantier', () => {
     expect(mobileSourceHref('reserve', { siteId: 's1', reportId: null })).toBe('/m/site/s1/reserves')
