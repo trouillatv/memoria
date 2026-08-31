@@ -1,5 +1,7 @@
 /** Pure rules shared by the visit-preparation read model and its UI. */
 
+import { isImportedDocumentOrigin, isTerrainVisitOrigin } from '@/lib/field/visit-origins'
+
 export type VisitPreparationPhase = 'first_visit' | 'follow_up' | 'previsit_ao' | 'history'
 
 export interface VisitPreparationFacts {
@@ -71,6 +73,64 @@ export function classifyVisitPreparationActivity(
   const ended = new Date(facts.endedAt).getTime()
   if (!Number.isFinite(now) || !Number.isFinite(ended)) return 'validated'
   return now - ended < 86_400_000 ? 'very_recent' : 'validated'
+}
+
+export interface PreparationActivityReportFacts {
+  id: string
+  origin: string | null
+  status: string | null
+  title: string | null
+  startedAt: string | null
+  endedAt: string | null
+  createdAt: string | null
+  narrative: string | null
+  photoCount: number
+  memoCount: number
+}
+
+export interface PreparationActivity {
+  id: string
+  kind: 'visit' | 'meeting'
+  title: string
+  startedAt: string | null
+  endedAt: string | null
+  status: VisitPreparationActivityStatus
+  href: string
+  photoCount: number
+  memoCount: number
+  narrative: string | null
+}
+
+/**
+ * `site_reports` bruts → activités de préparation, converge avec la doctrine
+ * P0.5-Vérité (isTerrainVisitOrigin/isImportedDocumentOrigin) : un PV/CR
+ * historique importé (origin='import') n'est jamais une activité récente du
+ * chantier — seulement une source documentaire — et ne devient donc jamais
+ * kind:'visit', quelle que soit sa date d'import.
+ */
+export function buildPreparationActivities(
+  siteId: string,
+  reports: PreparationActivityReportFacts[],
+): PreparationActivity[] {
+  return reports
+    .filter((r) => !isImportedDocumentOrigin(r.origin) && (r.origin != null || r.status === 'draft'))
+    .map((r) => {
+      const isVisit = isTerrainVisitOrigin(r.origin)
+      const title = r.title?.trim() ? r.title : isVisit ? 'Visite terrain' : 'Réunion de chantier'
+      return {
+        id: r.id,
+        kind: isVisit ? ('visit' as const) : ('meeting' as const),
+        title,
+        startedAt: r.startedAt ?? r.createdAt,
+        endedAt: r.endedAt,
+        status: classifyVisitPreparationActivity({ startedAt: r.startedAt, endedAt: r.endedAt }),
+        href: isVisit ? `/sites/${siteId}/visites/${r.id}` : `/sites/${siteId}?reprendre=${r.id}`,
+        photoCount: r.photoCount,
+        memoCount: r.memoCount,
+        narrative: r.narrative,
+      }
+    })
+    .sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''))
 }
 
 export function resolveVisitPreparationPhase(facts: VisitPreparationFacts): VisitPreparationPhase {

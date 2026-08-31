@@ -48,7 +48,7 @@ import {
   buildVisitPreparationSummary,
   resolveVisitPreparationPhase,
   type VisitPreparationPhase,
-  classifyVisitPreparationActivity,
+  buildPreparationActivities,
   selectPreparationReminders,
   type PreparationReminder,
   selectPreparationObjective,
@@ -442,35 +442,29 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     }
   }
 
-  const preparationActivities: SiteBriefActivity[] = preparationReports
-    .filter((r) => r.origin != null || r.status === 'draft')
-    .map((r) => {
+  const preparationActivities: SiteBriefActivity[] = buildPreparationActivities(
+    siteId,
+    preparationReports.map((r) => {
       const id = String(r.id)
       const counts = captureCounts.get(id) ?? { photos: 0, memos: 0 }
       const analysis = (r.debrief_analysis as { summary?: unknown } | null) ?? null
       const narrative = typeof analysis?.summary === 'string' && analysis.summary.trim()
         ? analysis.summary.trim()
         : null
-      const isVisit = r.origin != null
       return {
         id,
-        kind: isVisit ? ('visit' as const) : ('meeting' as const),
-        title: typeof r.title === 'string' && r.title.trim()
-          ? r.title
-          : isVisit ? 'Visite terrain' : 'Réunion de chantier',
-        startedAt: (r.started_at as string | null) ?? (r.created_at as string | null) ?? null,
+        origin: (r.origin as string | null) ?? null,
+        status: (r.status as string | null) ?? null,
+        title: typeof r.title === 'string' && r.title.trim() ? r.title : null,
+        startedAt: (r.started_at as string | null) ?? null,
         endedAt: (r.ended_at as string | null) ?? null,
-        status: classifyVisitPreparationActivity({
-          startedAt: (r.started_at as string | null) ?? null,
-          endedAt: (r.ended_at as string | null) ?? null,
-        }),
-        href: isVisit ? `/sites/${siteId}/visites/${id}` : `/sites/${siteId}?reprendre=${id}`,
+        createdAt: (r.created_at as string | null) ?? null,
+        narrative,
         photoCount: counts.photos,
         memoCount: counts.memos,
-        narrative,
       }
-    })
-    .sort((a, b) => (b.startedAt ?? '').localeCompare(a.startedAt ?? ''))
+    }),
+  )
 
   const openActivityItems: SiteBriefOpenActivity[] = groupOpenActivityProposals(
     preparationActivities.map((activity) => ({

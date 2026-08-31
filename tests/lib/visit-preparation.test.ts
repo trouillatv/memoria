@@ -11,7 +11,9 @@ import {
   estimatePreparationPhase,
   resolveVisitPreparationPhase,
   groupOpenActivityProposals,
+  buildPreparationActivities,
   type VisitPreparationFacts,
+  type PreparationActivityReportFacts,
 } from '@/lib/knowledge/visit-preparation'
 
 describe('visit preparation read model', () => {
@@ -136,5 +138,69 @@ describe('visit preparation read model', () => {
     expect(estimatePreparationPhase({ actionTitles: ['Dépose des hottes'], deadlineTitles: [], openReserveCount: 0 })).toBe('Dépose')
     expect(estimatePreparationPhase({ actionTitles: [], deadlineTitles: ['Planifier la visite'], openReserveCount: 0 })).toBe('Préparation')
     expect(estimatePreparationPhase({ actionTitles: [], deadlineTitles: [], openReserveCount: 2 })).toBe('Levée des réserves')
+  })
+})
+
+// D6 — un PV/CR historique importé n'est jamais une « activité récente » du
+// chantier. Doctrine P0.5-Vérité : origin='import' est une source documentaire,
+// jamais un événement terrain, quelle que soit sa date d'import.
+describe('buildPreparationActivities (D6 — convergence P0.5-Vérité)', () => {
+  const baseReport = (overrides: Partial<PreparationActivityReportFacts>): PreparationActivityReportFacts => ({
+    id: 'r1',
+    origin: null,
+    status: 'curated',
+    title: null,
+    startedAt: null,
+    endedAt: null,
+    createdAt: '2026-08-27T09:00:00Z',
+    narrative: null,
+    photoCount: 0,
+    memoCount: 0,
+    ...overrides,
+  })
+
+  it('exclut un PV historique importé (origin=import), quelle que soit sa date d’import', () => {
+    const imported = baseReport({
+      id: 'cr24-s002',
+      origin: 'import',
+      startedAt: null,
+      createdAt: '2026-08-27T09:00:00Z', // importé le 27/08…
+      narrative: 'Résumé du 17 juillet 2025', // …mais le contenu parle du 17/07/2025
+    })
+    expect(buildPreparationActivities('site-1', [imported])).toEqual([])
+  })
+
+  it('garde une vraie visite terrain, classée kind:visit', () => {
+    const visit = baseReport({ id: 'v1', origin: 'planned', startedAt: '2026-08-30T08:00:00Z', endedAt: '2026-08-30T11:00:00Z' })
+    const result = buildPreparationActivities('site-1', [visit])
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ id: 'v1', kind: 'visit', title: 'Visite terrain' })
+  })
+
+  it('la date affichée d’une vraie visite est la date métier du passage, jamais une date technique d’import', () => {
+    const visit = baseReport({ id: 'v1', origin: 'spontaneous', startedAt: '2026-07-17T08:00:00Z', createdAt: '2026-08-27T09:00:00Z' })
+    const [activity] = buildPreparationActivities('site-1', [visit])
+    // startedAt (date métier du passage) prime sur createdAt (date technique) —
+    // et un import n'a de toute façon plus voix au chapitre : il est exclu avant.
+    expect(activity.startedAt).toBe('2026-07-17T08:00:00Z')
+  })
+
+  it('un CR sans origin (réunion) reste présent, classé kind:meeting', () => {
+    const meeting = baseReport({ id: 'm1', origin: null, status: 'draft', startedAt: '2026-08-20T14:00:00Z' })
+    const result = buildPreparationActivities('site-1', [meeting])
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ id: 'm1', kind: 'meeting', title: 'Réunion de chantier' })
+  })
+
+  it('reproduit le cas BELLA : 3 imports historiques disparaissent, la vraie visite du 30 août reste seule', () => {
+    const rows: PreparationActivityReportFacts[] = [
+      baseReport({ id: 'visit-30-aout', origin: 'planned', startedAt: '2026-08-30T08:00:00Z', photoCount: 16 }),
+      baseReport({ id: 'cr24-s002', origin: 'import', createdAt: '2026-08-27T10:00:00Z', narrative: 'Note du 10 juillet 2024' }),
+      baseReport({ id: 'cr25-t102', origin: 'import', createdAt: '2026-08-27T10:05:00Z', narrative: 'Résumé du 17 juillet 2025' }),
+      baseReport({ id: 'cr26-u103', origin: 'import', createdAt: '2026-08-27T10:10:00Z' }),
+    ]
+    const result = buildPreparationActivities('site-bella', rows)
+    expect(result.map((a) => a.id)).toEqual(['visit-30-aout'])
+    expect(result[0].kind).toBe('visit')
   })
 })
