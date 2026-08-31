@@ -37,6 +37,8 @@ import {
 import { getSiteBriefAction, logBriefOpenAction, generateDiscussionPointsAction, type SiteBrief, type SiteBriefFactLine, type DiscussionPoint } from './site-brief-actions'
 import { VISIT_INTENTS, type VisitIntent } from '@/lib/field/visit-intents'
 import { selectNarrativeHighlights } from '@/lib/knowledge/visit-preparation'
+import type { LiveDebrief, LiveDebriefItem } from '@/lib/knowledge/live-debrief'
+import { LiveDebriefVuButton } from './LiveDebriefVuButton'
 
 interface Props {
   /** Site fixé par le contexte (fiche site / mobile site). */
@@ -159,6 +161,19 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
   function openPanel() {
     setOpen(true)
     if (siteId) loadBrief(siteId) // site fixe → charge direct ; sinon on attend la sélection
+  }
+
+  // D4 — après un « Vu » sur un signal du Débrief vivant : `brief` est un état
+  // client, pas une page server-rendue, donc `router.refresh()` (pattern D3 dev)
+  // ne s'applique pas ici. On recharge explicitement en contournant la garde
+  // « déjà chargé » de `loadBrief`.
+  function refetchBrief() {
+    if (!loadedSite) return
+    startTransition(async () => {
+      const r = await getSiteBriefAction(loadedSite)
+      if (r.ok) setBrief(r.brief)
+      else toast.error(r.error)
+    })
   }
 
   function pickSite(sid: string) {
@@ -383,7 +398,9 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
                 </section>
               )}
 
-              {brief && <BriefBody brief={brief} mode={mode} motive={motive} />}
+              {brief && loadedSite && (
+                <BriefBody brief={brief} mode={mode} motive={motive} siteId={loadedSite} onSignalSeen={refetchBrief} />
+              )}
 
               {needsSitePick && !selectedSite && !pending && (
                 <p className="py-6 text-center text-sm italic text-muted-foreground">
@@ -510,7 +527,131 @@ function tiersForVisit(motive: VisitIntent): Tier[] {
 const tiersFor = (mode: 'visit' | 'meeting', motive: VisitIntent): Tier[] =>
   mode === 'meeting' ? TIERS_MEETING : tiersForVisit(motive)
 
-function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 'meeting'; motive: VisitIntent }) {
+// D4 — bandeau compact d'état confirmé (Action/Échéance/Réserve), source unique
+// = liveDebrief.confirmedToday (mêmes compteurs que l'Aperçu, cf. D2 §8). Des
+// compteurs en ligne, jamais une carte : la doctrine D4 interdit de refaire une
+// grosse carte ici.
+function ConfirmedTodayChips({ confirmedToday }: { confirmedToday: LiveDebrief['confirmedToday'] }) {
+  const { actionsActive, actionsOverdue, deadlinesToPlan, deadlinesPlanned, reservesOpen, nextEvent } = confirmedToday
+  const hasAny = actionsActive > 0 || actionsOverdue > 0 || deadlinesToPlan > 0 || deadlinesPlanned > 0 || reservesOpen > 0 || nextEvent
+  if (!hasAny) return <p className="text-sm italic text-muted-foreground">Rien d&apos;actif confirmé pour le moment.</p>
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+      {actionsActive > 0 && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 text-sky-700 px-2.5 py-1 font-medium">
+          <ListTodo className="h-3.5 w-3.5" />
+          {actionsActive} action{actionsActive > 1 ? 's' : ''} active{actionsActive > 1 ? 's' : ''}
+        </span>
+      )}
+      {actionsOverdue > 0 && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 text-rose-700 px-2.5 py-1 font-medium">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          {actionsOverdue} en retard
+        </span>
+      )}
+      {deadlinesToPlan > 0 && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-800 px-2.5 py-1 font-medium">
+          <CalendarClock className="h-3.5 w-3.5" />
+          {deadlinesToPlan} échéance{deadlinesToPlan > 1 ? 's' : ''} à planifier
+        </span>
+      )}
+      {deadlinesPlanned > 0 && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 font-medium">
+          <CalendarClock className="h-3.5 w-3.5" />
+          {deadlinesPlanned} échéance{deadlinesPlanned > 1 ? 's' : ''} planifiée{deadlinesPlanned > 1 ? 's' : ''}
+        </span>
+      )}
+      {reservesOpen > 0 && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 text-rose-700 px-2.5 py-1 font-medium">
+          <Flag className="h-3.5 w-3.5" />
+          {reservesOpen} réserve{reservesOpen > 1 ? 's' : ''} ouverte{reservesOpen > 1 ? 's' : ''}
+        </span>
+      )}
+      {nextEvent && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 font-medium">
+          <CalendarClock className="h-3.5 w-3.5" />
+          Prochain : {formatDate(nextEvent.startsAt) ?? nextEvent.title}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// D4 — rendu unique d'un item du Débrief vivant (Action/Échéance/Réserve ou
+// signal informationnel). « Vu » n'apparaît jamais sur un objet métier — la
+// discrimination par `kind` type-locke ça au niveau TypeScript, pas seulement
+// visuel (cf. LiveDebriefVuButton, type-locked à LiveDebriefInformationalItem).
+function LiveDebriefItemRow({ item, siteId, onSignalSeen }: { item: LiveDebriefItem; siteId: string; onSignalSeen: () => void }) {
+  if (item.kind === 'informational_signal') {
+    return (
+      <li className="flex items-start justify-between gap-3 rounded-lg border bg-background px-3 py-2">
+        <div className="min-w-0">
+          <a href={item.href} className="text-sm font-medium hover:underline">{item.title}</a>
+          {item.reasons.length > 0 && <p className="mt-0.5 text-[11px] text-muted-foreground">{item.reasons.join(' · ')}</p>}
+        </div>
+        {item.disposition === 'to_watch' && <LiveDebriefVuButton item={item} siteId={siteId} onSeen={onSignalSeen} />}
+      </li>
+    )
+  }
+  const kindLabel = item.kind === 'action' ? 'Action' : item.kind === 'deadline' ? 'Échéance' : 'Réserve'
+  const dateLabel = formatDate(item.date)
+  return (
+    <li className="flex items-start justify-between gap-3 rounded-lg border bg-background px-3 py-2">
+      <div className="min-w-0">
+        <a href={item.href} className="text-sm font-medium hover:underline">{item.title}</a>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">{kindLabel}</p>
+      </div>
+      {dateLabel && <span className="shrink-0 text-[11px] text-muted-foreground whitespace-nowrap">{dateLabel}</span>}
+    </li>
+  )
+}
+
+// Conditionnellement rendu (masqué si vide) — pas de bloc vide pour « À traiter »
+// / « À surveiller » / « Traité récemment » quand le chantier n'a rien de ce type.
+function LiveDebriefBlock({
+  title,
+  icon,
+  items,
+  siteId,
+  onSignalSeen,
+}: {
+  title: string
+  icon: React.ReactNode
+  items: LiveDebriefItem[]
+  siteId: string
+  onSignalSeen: () => void
+}) {
+  if (items.length === 0) return null
+  return (
+    <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
+      <SectionTitle icon={icon} count={items.length}>{title}</SectionTitle>
+      <ul className="space-y-1.5">
+        {items.map((item) => (
+          <LiveDebriefItemRow
+            key={`${item.kind}-${item.kind === 'informational_signal' ? item.signalKey : item.id}`}
+            item={item}
+            siteId={siteId}
+            onSignalSeen={onSignalSeen}
+          />
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function BriefBody({
+  brief,
+  mode,
+  motive,
+  siteId,
+  onSignalSeen,
+}: {
+  brief: SiteBrief
+  mode: 'visit' | 'meeting'
+  motive: VisitIntent
+  siteId: string
+  onSignalSeen: () => void
+}) {
   const {
     situation,
     vigilance,
@@ -534,8 +675,6 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
     lastPresence,
     activities,
     persistedNarrative,
-    sinceLastVenue,
-    changedSinceVenue,
     beforeLeaving,
     verificationQuestions,
     deadlines,
@@ -543,16 +682,14 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
     narratives,
     proofs,
     objective,
-    confirmedFacts,
     estimatedPhase,
     freshness,
     freshnessKind,
     coherenceInsights,
     rememberToday,
-    completedSinceVenue,
-    atRiskOfForgetting,
     unknowns,
     activityReadModel,
+    liveDebrief,
   } = brief
 
   const nextLabel = formatDate(situation.nextScheduledAt)
@@ -875,7 +1012,7 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
       <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
         <SectionTitle icon={<Brain className="h-3.5 w-3.5 text-sky-600" />}>Ce que je dois retenir aujourd&apos;hui</SectionTitle>
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">État confirmé aujourd&apos;hui</p>
-        <FactLines items={confirmedFacts} />
+        <ConfirmedTodayChips confirmedToday={liveDebrief.confirmedToday} />
         <div className="flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 text-[11px] text-muted-foreground">
           <span>Indice de phase (objets ouverts) : <strong className="font-semibold text-foreground">{estimatedPhase}</strong><span className="ml-1 text-muted-foreground/70">— déduit, non confirmé sur site</span></span>
           {/* « Mémoire : il y a 3 jours » ne disait ni de quoi il s'agissait ni depuis
@@ -900,16 +1037,59 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
       </section>
 
       <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
-          <SectionTitle icon={<History className="h-3.5 w-3.5 text-sky-600" />}>Ce qui a changé depuis votre venue</SectionTitle>
-          <p className="text-xs text-muted-foreground">
-            {sinceLastVenue
-              ? `Depuis votre dernière venue personnelle du ${formatDateTime(sinceLastVenue.at) ?? sinceLastVenue.dateLabel}`
-              : activities[0]?.startedAt
-                ? `Aucune présence personnelle antérieure identifiée. Comparaison depuis la dernière activité connue du chantier (${formatDateTime(activities[0].startedAt)}).`
-                : 'Aucune présence personnelle antérieure identifiée.'}
-          </p>
-          <FactLines items={changedSinceVenue} empty="Aucun changement enregistré depuis cette venue." />
+        <SectionTitle icon={<History className="h-3.5 w-3.5 text-sky-600" />}>Depuis votre dernière venue</SectionTitle>
+        {liveDebrief.sinceLastVisit.kind === 'first_visit' ? (
+          <p className="text-sm italic text-muted-foreground">Première visite : aucune venue antérieure identifiée sur ce chantier.</p>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground">
+              Depuis votre dernière venue {liveDebrief.sinceLastVisit.personal ? 'personnelle' : 'connue'} du{' '}
+              {formatDateTime(liveDebrief.sinceLastVisit.at) ?? liveDebrief.sinceLastVisit.visitDateLabel}
+              {typeof liveDebrief.sinceLastVisit.daysAgo === 'number' ? ` (il y a ${liveDebrief.sinceLastVisit.daysAgo} j)` : ''}
+            </p>
+            {liveDebrief.sinceLastVisit.items.length === 0 ? (
+              <p className="text-sm italic text-muted-foreground">Aucun changement enregistré depuis cette venue.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {liveDebrief.sinceLastVisit.items.map((it, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm">
+                    <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-500" aria-hidden />
+                    <span className="min-w-0 flex-1">{it.label}</span>
+                    {formatDate(it.at) && <span className="shrink-0 text-[11px] text-muted-foreground whitespace-nowrap">{formatDate(it.at)}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {liveDebrief.sinceLastVisit.overflow > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                + {liveDebrief.sinceLastVisit.overflow} autre{liveDebrief.sinceLastVisit.overflow > 1 ? 's' : ''} changement{liveDebrief.sinceLastVisit.overflow > 1 ? 's' : ''}
+              </p>
+            )}
+          </>
+        )}
       </section>
+
+      <LiveDebriefBlock
+        title="À traiter"
+        icon={<ListTodo className="h-3.5 w-3.5 text-rose-600" />}
+        items={liveDebrief.toHandle}
+        siteId={siteId}
+        onSignalSeen={onSignalSeen}
+      />
+      <LiveDebriefBlock
+        title="À surveiller"
+        icon={<BellRing className="h-3.5 w-3.5 text-amber-600" />}
+        items={liveDebrief.toWatch}
+        siteId={siteId}
+        onSignalSeen={onSignalSeen}
+      />
+      <LiveDebriefBlock
+        title="Traité récemment"
+        icon={<CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
+        items={liveDebrief.recentlyHandled}
+        siteId={siteId}
+        onSignalSeen={onSignalSeen}
+      />
 
       {/* D10 — Modèle B : activités parallèles constatées. Jamais une phase unique.
           Ne s'affiche que si le read-model a détecté une intervention ou des activités.
@@ -952,20 +1132,6 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
         <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-3.5 space-y-2.5">
           <SectionTitle icon={<AlertTriangle className="h-3.5 w-3.5 text-amber-700" />}>Ce qui n&apos;est plus cohérent</SectionTitle>
           <FactLines items={coherenceInsights} />
-        </section>
-      )}
-
-      {completedSinceVenue.length > 0 && (
-        <section className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3.5 space-y-2.5">
-          <SectionTitle icon={<CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" />}>Ce qui semble terminé</SectionTitle>
-          <FactLines items={completedSinceVenue} />
-        </section>
-      )}
-
-      {atRiskOfForgetting.length > 0 && (
-        <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-3.5 space-y-2.5">
-          <SectionTitle icon={<BellRing className="h-3.5 w-3.5 text-amber-700" />}>Ce que je risque d&apos;oublier</SectionTitle>
-          <FactLines items={atRiskOfForgetting} defaultDotClass="bg-amber-400" />
         </section>
       )}
 

@@ -63,6 +63,7 @@ import {
   type VisitPreparationActivityStatus,
 } from '@/lib/knowledge/visit-preparation'
 import { buildSiteActivityReadModel, type SiteActivityReadModel } from '@/lib/knowledge/site-activity-read-model'
+import { buildLiveDebrief, type LiveDebrief } from '@/lib/knowledge/live-debrief'
 
 const IdSchema = z.string().uuid()
 
@@ -295,19 +296,23 @@ export interface SiteBrief {
   narratives: SiteBriefNarrative[]
   proofs: SiteBriefProof[]
   objective: PreparationObjective | null
-  confirmedFacts: SiteBriefFactLine[]
   estimatedPhase: string
   freshness: PreparationFreshness
   /** Nature de l'activité qui date `freshness` — visite terrain ou réunion. */
   freshnessKind: 'visit' | 'meeting' | null
   coherenceInsights: SiteBriefFactLine[]
   rememberToday: SiteBriefFactLine[]
+  /** Conservé pour `generateDiscussionPointsAction` (LLM) — la restitution primaire
+   *  de ces deux blocs vient désormais de `liveDebrief` (D4). */
   completedSinceVenue: SiteBriefFactLine[]
-  atRiskOfForgetting: SiteBriefFactLine[]
   unknowns: SiteBriefFactLine[]
   openActivityItems: SiteBriefOpenActivity[]
   /** D10 — activités parallèles réelles (read-model, projection de lecture). */
   activityReadModel: SiteActivityReadModel
+  /** D2/D4 — projection unique de vérité opérationnelle (Action/Échéance/Réserve/
+   *  signaux) pour « À savoir avant d'y aller ». Remplace confirmedFacts et
+   *  atRiskOfForgetting ; source de sinceLastVenue pour la restitution primaire. */
+  liveDebrief: LiveDebrief
 }
 
 export type SiteBriefResult =
@@ -374,6 +379,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     sitePhotos,
     siteDocuments,
     proposedRows,
+    liveDebrief,
   ] = await Promise.all([
     getSiteIdentity(siteId).catch(() => null),
     getSiteCurrentState(siteId).catch(() => null),
@@ -414,6 +420,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     listSitePhotos(siteId).catch(() => []),
     listDocumentsForTarget('site', siteId).catch(() => []),
     listProposalsBySite(siteId, { status: ['proposed'] }).catch(() => [] as DbKnowledgeProposal[]),
+    buildLiveDebrief(siteId, auth.userId),
   ])
 
   const reportIds = preparationReports.map((r) => String(r.id)).filter(Boolean)
@@ -782,48 +789,6 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
   // (`openReserves` = 6 max, `deadlineItems` = 8 max). Un chantier à 10 réserves
   // ouvertes annonçait donc « 6 réserves ouvertes ». On compte désormais sur la
   // collection complète, déjà en mémoire : aucune requête n'est ajoutée.
-  const allOpenReserves = reserves.filter((r) => r.status === 'open')
-  const allDeadlinesToPlan = deadlineRows.filter((deadline) => deadline.status === 'to_plan')
-  // Combien d'objets on sérialise derrière un compteur. Au-delà, la liste renvoie
-  // vers la surface dédiée — et le reste est annoncé, jamais tu.
-  const DRILLDOWN_MAX = 12
-  const drilldown = <T>(rows: T[], map: (row: T) => SiteBriefFactItem) => ({
-    items: rows.slice(0, DRILLDOWN_MAX).map(map),
-    itemsHiddenCount: Math.max(0, rows.length - DRILLDOWN_MAX),
-  })
-
-  const confirmedFacts: SiteBriefFactLine[] = [
-    {
-      text: `${openActionRows.length} action${openActionRows.length > 1 ? 's' : ''} ouverte${openActionRows.length > 1 ? 's' : ''}`,
-      sourceType: 'action', sourceId: null, sourceHref: `/sites/${siteId}?tab=travail`, status: 'validated',
-      itemsDefinition: 'Actions du chantier dont le statut n’est ni « fait » ni « annulé ».',
-      ...drilldown(openActionRows, (action) => ({
-        id: action.id,
-        label: action.title,
-        href: `/sites/${siteId}?action=${action.id}`,
-      })),
-    },
-    ...(allDeadlinesToPlan.length > 0 ? [{
-      text: `${allDeadlinesToPlan.length} échéance${allDeadlinesToPlan.length > 1 ? 's' : ''} à planifier`,
-      sourceType: 'deadline' as const, sourceId: null, sourceHref: `/sites/${siteId}/planning`, status: 'validated' as const,
-      itemsDefinition: 'Échéances au statut « à planifier » — ni datées, ni clôturées.',
-      ...drilldown(allDeadlinesToPlan, (deadline) => ({
-        id: deadline.id,
-        label: deadline.due_date ? `${deadline.title} — échéance ${deadline.due_date}` : deadline.title,
-        href: `/sites/${siteId}/planning`,
-      })),
-    }] : []),
-    {
-      text: allOpenReserves.length === 0 ? 'Aucune réserve ouverte' : `${allOpenReserves.length} réserve${allOpenReserves.length > 1 ? 's' : ''} ouverte${allOpenReserves.length > 1 ? 's' : ''}`,
-      sourceType: 'reserve', sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated',
-      itemsDefinition: 'Réserves du chantier encore au statut « ouverte », non levées.',
-      ...drilldown(allOpenReserves, (reserve) => ({
-        id: reserve.id,
-        label: reserve.location ? `${reserve.label} — ${reserve.location}` : reserve.label,
-        href: `/sites/${siteId}/reserves`,
-      })),
-    },
-  ]
   const freshness = getPreparationFreshness(preparationActivities[0]?.startedAt ?? null)
   // La preuve la plus récente n'est pas toujours une visite : `preparationActivities`
   // mêle visites (origin != null) et réunions. La surface doit nommer la NATURE
@@ -908,29 +873,6 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     ...(sinceLastVenue?.liftedReserves ? [{ text: `${sinceLastVenue.liftedReserves} réserve${sinceLastVenue.liftedReserves > 1 ? 's' : ''} levée${sinceLastVenue.liftedReserves > 1 ? 's' : ''}`, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/reserves`, status: 'validated' as const }] : []),
   ]
 
-  // Signal "à revalider" : activité terrain récente depuis la dernière venue,
-  // mais l'action ancienne n'a pas été clôturée → l'état réel est incertain.
-  // Pas de fermeture auto : status='interpretation' est une nuance d'affichage,
-  // jamais une transition d'état sur l'objet métier.
-  const hasRecentTerrainActivity = changedActivityFacts.length > 0
-  const REVALIDATION_AGE_DAYS = 21
-  const atRiskOfForgetting: SiteBriefFactLine[] = [
-    ...vigilance.filter((item) => item.overdue || item.ageDays >= 7).slice(0, 3).map((item) => {
-      const needsRevalidation = hasRecentTerrainActivity && item.ageDays >= REVALIDATION_AGE_DAYS
-      return {
-        text: needsRevalidation
-          ? `${item.title} — ouverte depuis ${item.ageDays} j, activité terrain récente, à reconfirmer sur site`
-          : `${item.title} — ouverte depuis ${item.ageDays} j`,
-        sourceType: 'action' as const,
-        sourceId: item.id,
-        sourceHref: `/sites/${siteId}?action=${item.id}`,
-        status: (needsRevalidation ? 'interpretation' : 'validated') as 'interpretation' | 'validated',
-      }
-    }),
-    ...openActionRows.filter((action) => !vigilance.some((item) => item.id === action.id)).slice(0, 3).map((action) => ({ text: `${action.title} — ouverte depuis ${Math.max(0, Math.floor((now - new Date(action.created_at).getTime()) / 86_400_000))} j`, sourceType: 'action' as const, sourceId: action.id, sourceHref: `/sites/${siteId}?action=${action.id}`, status: 'validated' as const })),
-    ...deadlineItems.filter((item) => item.status === 'to_plan').slice(0, 2).map((item) => ({ text: `${item.title} — encore à planifier`, sourceType: 'deadline' as const, sourceId: item.id, sourceHref: `/sites/${siteId}/planning`, status: 'validated' as const })),
-  ].slice(0, 5)
-
   const unknowns: SiteBriefFactLine[] = [
     ...(sinceLastVenue?.doubts ?? []).map((text) => ({ text, sourceType: 'chronology' as const, sourceId: null, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const })),
     ...followedPoints.filter((point) => point.openQuestion).map((point) => ({ text: point.openQuestion!, sourceType: 'watchpoint' as const, sourceId: point.id, sourceHref: `/sites/${siteId}/chronologie`, status: 'validated' as const })),
@@ -1007,17 +949,16 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       narratives,
       proofs,
       objective,
-      confirmedFacts,
       estimatedPhase,
       freshness,
       freshnessKind,
       coherenceInsights,
       rememberToday,
       completedSinceVenue,
-      atRiskOfForgetting,
       unknowns,
       openActivityItems,
       activityReadModel,
+      liveDebrief,
     },
   }
 }
