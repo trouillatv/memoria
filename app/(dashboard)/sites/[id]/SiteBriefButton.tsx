@@ -9,7 +9,7 @@
 // Doctrine : descriptif et calme. Les humains (équipes) n'apparaissent que comme
 // contexte, jamais avec un score. Aucun appel LLM — pure agrégation côté serveur.
 
-import { useState, useTransition } from 'react'
+import { useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import {
   Brain,
@@ -37,8 +37,11 @@ import {
 import { getSiteBriefAction, logBriefOpenAction, generateDiscussionPointsAction, type SiteBrief, type SiteBriefFactLine, type DiscussionPoint } from './site-brief-actions'
 import { VISIT_INTENTS, type VisitIntent } from '@/lib/field/visit-intents'
 import { selectNarrativeHighlights } from '@/lib/knowledge/visit-preparation'
-import type { LiveDebrief, LiveDebriefItem } from '@/lib/knowledge/live-debrief'
+import type { LiveDebrief, LiveDebriefItem, LiveDebriefObjectItem } from '@/lib/knowledge/live-debrief'
 import { LiveDebriefVuButton } from './LiveDebriefVuButton'
+import { completeDeadlineAction, rescheduleDeadlineAction } from './views/planning/deadline-actions'
+import { closeActionAction } from '@/app/(dashboard)/actions/actions'
+import { liftReserveAction } from './reserves/actions'
 
 interface Props {
   /** Site fixé par le contexte (fiche site / mobile site). */
@@ -399,7 +402,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
               )}
 
               {brief && loadedSite && (
-                <BriefBody brief={brief} mode={mode} motive={motive} siteId={loadedSite} onSignalSeen={refetchBrief} />
+                <BriefBody brief={brief} mode={mode} motive={motive} siteId={loadedSite} variant={variant} onDebriefChange={refetchBrief} />
               )}
 
               {needsSitePick && !selectedSite && !pending && (
@@ -581,7 +584,22 @@ function ConfirmedTodayChips({ confirmedToday }: { confirmedToday: LiveDebrief['
 // signal informationnel). « Vu » n'apparaît jamais sur un objet métier — la
 // discrimination par `kind` type-locke ça au niveau TypeScript, pas seulement
 // visuel (cf. LiveDebriefVuButton, type-locked à LiveDebriefInformationalItem).
-function LiveDebriefItemRow({ item, siteId, onSignalSeen }: { item: LiveDebriefItem; siteId: string; onSignalSeen: () => void }) {
+function LiveDebriefItemRow({
+  item,
+  siteId,
+  variant,
+  canLiftReserve,
+  onDebriefChange,
+}: {
+  item: LiveDebriefItem
+  siteId: string
+  variant: 'mobile' | 'desktop'
+  canLiftReserve: boolean
+  onDebriefChange: () => void
+}) {
+  const [actionClosing, setActionClosing] = useState(false)
+  const [reserveLifting, setReserveLifting] = useState(false)
+
   if (item.kind === 'informational_signal') {
     return (
       <li className="flex items-start justify-between gap-3 rounded-lg border bg-background px-3 py-2">
@@ -589,20 +607,300 @@ function LiveDebriefItemRow({ item, siteId, onSignalSeen }: { item: LiveDebriefI
           <a href={item.href} className="text-sm font-medium hover:underline">{item.title}</a>
           {item.reasons.length > 0 && <p className="mt-0.5 text-[11px] text-muted-foreground">{item.reasons.join(' · ')}</p>}
         </div>
-        {item.disposition === 'to_watch' && <LiveDebriefVuButton item={item} siteId={siteId} onSeen={onSignalSeen} />}
+        {item.disposition === 'to_watch' && <LiveDebriefVuButton item={item} siteId={siteId} onSeen={onDebriefChange} />}
       </li>
     )
   }
   const kindLabel = item.kind === 'action' ? 'Action' : item.kind === 'deadline' ? 'Échéance' : 'Réserve'
   const dateLabel = formatDate(item.date)
+  const canCloseAction = item.kind === 'action' && item.status === 'open' && variant === 'desktop'
+  const canLift = item.kind === 'reserve' && item.status === 'open' && variant === 'desktop' && canLiftReserve
+  const expanded = actionClosing || reserveLifting
   return (
-    <li className="flex items-start justify-between gap-3 rounded-lg border bg-background px-3 py-2">
-      <div className="min-w-0">
-        <a href={item.href} className="text-sm font-medium hover:underline">{item.title}</a>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">{kindLabel}</p>
+    <li className="rounded-lg border bg-background px-3 py-2 space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <a href={item.href} className="text-sm font-medium hover:underline">{item.title}</a>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">{kindLabel}</p>
+        </div>
+        {!expanded && (
+          <div className="flex shrink-0 items-center gap-2">
+            {dateLabel && <span className="text-[11px] text-muted-foreground whitespace-nowrap">{dateLabel}</span>}
+            {item.kind === 'deadline' && (item.status === 'to_plan' || item.status === 'planned') && (
+              <LiveDebriefDeadlineCta item={item} onDone={onDebriefChange} />
+            )}
+            {canCloseAction && (
+              <button
+                type="button"
+                onClick={() => setActionClosing(true)}
+                className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+              >
+                Clôturer
+              </button>
+            )}
+            {canLift && (
+              <button
+                type="button"
+                onClick={() => setReserveLifting(true)}
+                className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+              >
+                Lever
+              </button>
+            )}
+          </div>
+        )}
       </div>
-      {dateLabel && <span className="shrink-0 text-[11px] text-muted-foreground whitespace-nowrap">{dateLabel}</span>}
+      {actionClosing && item.kind === 'action' && (
+        <LiveDebriefActionCloseForm
+          actionId={item.id}
+          siteId={siteId}
+          onCancel={() => setActionClosing(false)}
+          onDone={onDebriefChange}
+        />
+      )}
+      {reserveLifting && item.kind === 'reserve' && (
+        <LiveDebriefReserveLiftForm
+          reserveId={item.id}
+          siteId={siteId}
+          onCancel={() => setReserveLifting(false)}
+          onDone={onDebriefChange}
+        />
+      )}
     </li>
+  )
+}
+
+// D5 lot 2 — clôture inline d'une Action `open`, desktop uniquement. Réutilise
+// strictement closeActionAction (même contrat que ActionFicheCta.tsx : commentaire
+// requis, photo optionnelle — même champ FormData `file`).
+function LiveDebriefActionCloseForm({
+  actionId,
+  siteId,
+  onCancel,
+  onDone,
+}: {
+  actionId: string
+  siteId: string
+  onCancel: () => void
+  onDone: () => void
+}) {
+  const [comment, setComment] = useState('')
+  const [photoName, setPhotoName] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [pending, startTransition] = useTransition()
+
+  function submit() {
+    if (!comment.trim()) {
+      toast.error('Ajoutez un commentaire de clôture.')
+      return
+    }
+    const fd = new FormData()
+    fd.set('id', actionId)
+    fd.set('site_id', siteId)
+    fd.set('comment', comment.trim())
+    const f = fileRef.current?.files?.[0]
+    if (f) fd.set('file', f)
+    startTransition(async () => {
+      const result = await closeActionAction(fd)
+      if (result.ok) onDone()
+      else toast.error(result.error)
+    })
+  }
+
+  return (
+    <div className="rounded-md border bg-muted/20 p-2 space-y-1.5">
+      <textarea
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        rows={2}
+        autoFocus
+        maxLength={1000}
+        placeholder="Ex : joints repris et vérifiés — plus rien à suivre."
+        className="w-full rounded-md border bg-background px-2.5 py-1.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <label className="inline-flex items-center gap-1.5 rounded-md border border-dashed px-2 py-1 text-[11px] text-muted-foreground cursor-pointer hover:text-foreground hover:border-foreground/40">
+          <Camera className="h-3.5 w-3.5" />
+          {photoName ? 'Photo ajoutée' : 'Photo (optionnel)'}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="sr-only"
+            onChange={(e) => setPhotoName(e.target.files?.[0]?.name ?? null)}
+          />
+        </label>
+        <div className="flex items-center gap-2 ml-auto">
+          <button type="button" onClick={onCancel} disabled={pending} className="text-xs text-muted-foreground hover:text-foreground">
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={pending || !comment.trim()}
+            className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+          >
+            {pending ? '…' : 'Clôturer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// D5 lot 3 — levée inline d'une Réserve `open`, desktop + rôle managerOrAdmin
+// uniquement (canLiftReserve, calculé côté serveur). Réutilise strictement
+// liftReserveAction ; note + photo optionnelles (champ FormData `photoAfter`,
+// distinct du `file` de closeActionAction — contrat serveur existant).
+function LiveDebriefReserveLiftForm({
+  reserveId,
+  siteId,
+  onCancel,
+  onDone,
+}: {
+  reserveId: string
+  siteId: string
+  onCancel: () => void
+  onDone: () => void
+}) {
+  const [liftNote, setLiftNote] = useState('')
+  const [photoName, setPhotoName] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [pending, startTransition] = useTransition()
+
+  function submit() {
+    const fd = new FormData()
+    fd.set('id', reserveId)
+    fd.set('siteId', siteId)
+    if (liftNote.trim()) fd.set('liftNote', liftNote.trim())
+    const f = fileRef.current?.files?.[0]
+    if (f) fd.set('photoAfter', f)
+    startTransition(async () => {
+      const result = await liftReserveAction(fd)
+      if ('error' in result) toast.error(result.error)
+      else onDone()
+    })
+  }
+
+  return (
+    <div className="rounded-md border bg-muted/20 p-2 space-y-1.5">
+      <textarea
+        value={liftNote}
+        onChange={(e) => setLiftNote(e.target.value)}
+        rows={2}
+        autoFocus
+        maxLength={280}
+        placeholder="Note de levée (optionnel)"
+        className="w-full rounded-md border bg-background px-2.5 py-1.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <label className="inline-flex items-center gap-1.5 rounded-md border border-dashed px-2 py-1 text-[11px] text-muted-foreground cursor-pointer hover:text-foreground hover:border-foreground/40">
+          <Camera className="h-3.5 w-3.5" />
+          {photoName ? 'Photo ajoutée' : 'Photo (optionnel)'}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="sr-only"
+            onChange={(e) => setPhotoName(e.target.files?.[0]?.name ?? null)}
+          />
+        </label>
+        <div className="flex items-center gap-2 ml-auto">
+          <button type="button" onClick={onCancel} disabled={pending} className="text-xs text-muted-foreground hover:text-foreground">
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={pending}
+            className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+          >
+            {pending ? '…' : 'Lever'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// D5 lot 1 — CTA inline pour une échéance (to_plan → Planifier, planned →
+// Marquer réalisée), réutilisant strictement rescheduleDeadlineAction/
+// completeDeadlineAction. Édition dans l'item, jamais de modale empilée.
+function LiveDebriefDeadlineCta({ item, onDone }: { item: LiveDebriefObjectItem; onDone: () => void }) {
+  const [pending, startTransition] = useTransition()
+  const [planning, setPlanning] = useState(false)
+  const [dueDate, setDueDate] = useState('')
+
+  if (item.status === 'planned') {
+    return (
+      <button
+        type="button"
+        onClick={() =>
+          startTransition(async () => {
+            const result = await completeDeadlineAction(item.id)
+            if (result.ok) onDone()
+            else toast.error(result.error ?? 'Échec')
+          })
+        }
+        disabled={pending}
+        className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+      >
+        {pending ? '…' : 'Marquer réalisée'}
+      </button>
+    )
+  }
+
+  if (!planning) {
+    return (
+      <button
+        type="button"
+        onClick={() => setPlanning(true)}
+        className="shrink-0 rounded border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100"
+      >
+        Planifier
+      </button>
+    )
+  }
+
+  return (
+    <form
+      className="flex shrink-0 items-center gap-1.5"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (!dueDate) return
+        startTransition(async () => {
+          const result = await rescheduleDeadlineAction({ deadlineId: item.id, dueDate })
+          if (result.ok) onDone()
+          else toast.error(result.error ?? 'Échec')
+        })
+      }}
+    >
+      <input
+        type="date"
+        value={dueDate}
+        onChange={(e) => setDueDate(e.target.value)}
+        disabled={pending}
+        autoFocus
+        className="h-7 rounded border px-1.5 text-xs"
+      />
+      <button
+        type="submit"
+        disabled={pending || !dueDate}
+        className="rounded border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100 disabled:opacity-50"
+      >
+        {pending ? '…' : 'OK'}
+      </button>
+      <button
+        type="button"
+        onClick={() => setPlanning(false)}
+        disabled={pending}
+        className="rounded border px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted"
+      >
+        Annuler
+      </button>
+    </form>
   )
 }
 
@@ -613,13 +911,17 @@ function LiveDebriefBlock({
   icon,
   items,
   siteId,
-  onSignalSeen,
+  variant,
+  canLiftReserve,
+  onDebriefChange,
 }: {
   title: string
   icon: React.ReactNode
   items: LiveDebriefItem[]
   siteId: string
-  onSignalSeen: () => void
+  variant: 'mobile' | 'desktop'
+  canLiftReserve: boolean
+  onDebriefChange: () => void
 }) {
   if (items.length === 0) return null
   return (
@@ -631,7 +933,9 @@ function LiveDebriefBlock({
             key={`${item.kind}-${item.kind === 'informational_signal' ? item.signalKey : item.id}`}
             item={item}
             siteId={siteId}
-            onSignalSeen={onSignalSeen}
+            variant={variant}
+            canLiftReserve={canLiftReserve}
+            onDebriefChange={onDebriefChange}
           />
         ))}
       </ul>
@@ -644,13 +948,15 @@ function BriefBody({
   mode,
   motive,
   siteId,
-  onSignalSeen,
+  variant,
+  onDebriefChange,
 }: {
   brief: SiteBrief
   mode: 'visit' | 'meeting'
   motive: VisitIntent
   siteId: string
-  onSignalSeen: () => void
+  variant: 'mobile' | 'desktop'
+  onDebriefChange: () => void
 }) {
   const {
     situation,
@@ -690,6 +996,7 @@ function BriefBody({
     unknowns,
     activityReadModel,
     liveDebrief,
+    canLiftReserve,
   } = brief
 
   const nextLabel = formatDate(situation.nextScheduledAt)
@@ -1074,21 +1381,27 @@ function BriefBody({
         icon={<ListTodo className="h-3.5 w-3.5 text-rose-600" />}
         items={liveDebrief.toHandle}
         siteId={siteId}
-        onSignalSeen={onSignalSeen}
+        variant={variant}
+        canLiftReserve={canLiftReserve}
+        onDebriefChange={onDebriefChange}
       />
       <LiveDebriefBlock
         title="À surveiller"
         icon={<BellRing className="h-3.5 w-3.5 text-amber-600" />}
         items={liveDebrief.toWatch}
         siteId={siteId}
-        onSignalSeen={onSignalSeen}
+        variant={variant}
+        canLiftReserve={canLiftReserve}
+        onDebriefChange={onDebriefChange}
       />
       <LiveDebriefBlock
         title="Traité récemment"
         icon={<CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
         items={liveDebrief.recentlyHandled}
         siteId={siteId}
-        onSignalSeen={onSignalSeen}
+        variant={variant}
+        canLiftReserve={canLiftReserve}
+        onDebriefChange={onDebriefChange}
       />
 
       {/* D10 — Modèle B : activités parallèles constatées. Jamais une phase unique.

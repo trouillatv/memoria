@@ -313,6 +313,10 @@ export interface SiteBrief {
    *  signaux) pour « À savoir avant d'y aller ». Remplace confirmedFacts et
    *  atRiskOfForgetting ; source de sinceLastVenue pour la restitution primaire. */
   liveDebrief: LiveDebrief
+  /** D5 lot 3 — rôle courant autorisé à lever une réserve inline (policy
+   *  managerOrAdmin, cf. lib/auth/site-write-access.ts). chef_equipe → false,
+   *  la fiche réserve garde « Ouvrir ». */
+  canLiftReserve: boolean
 }
 
 export type SiteBriefResult =
@@ -321,13 +325,13 @@ export type SiteBriefResult =
 
 // ── Auth (miroir de requireOperator dans actions/actions.ts) ────────────────
 
-async function requireOperator(): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
+async function requireOperator(): Promise<{ ok: true; userId: string; role: string } | { ok: false; error: string }> {
   const user = await getCurrentUserWithProfile()
   if (!user) return { ok: false, error: 'Non authentifié' }
   if (user.role !== 'admin' && user.role !== 'manager' && user.role !== 'chef_equipe') {
     return { ok: false, error: 'Accès refusé' }
   }
-  return { ok: true, userId: user.id }
+  return { ok: true, userId: user.id, role: user.role }
 }
 
 /**
@@ -959,6 +963,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       openActivityItems,
       activityReadModel,
       liveDebrief,
+      canLiftReserve: auth.role === 'admin' || auth.role === 'manager',
     },
   }
 }

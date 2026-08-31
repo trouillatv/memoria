@@ -11,16 +11,27 @@
 // régénération propriétaires — cf. CLAUDE.md / GO D4).
 
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, within, act } from '@testing-library/react'
+import { render, screen, fireEvent, within, act, waitFor } from '@testing-library/react'
 import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
 import type { SiteBrief } from '@/app/(dashboard)/sites/[id]/site-brief-actions'
 import type { LiveDebrief, LiveDebriefItem } from '@/lib/knowledge/live-debrief'
 
 const SITE_ID = '33333333-3333-3333-3333-333333333333'
 
-const { mockGetSiteBriefAction, mockMarkSeen } = vi.hoisted(() => ({
+const {
+  mockGetSiteBriefAction,
+  mockMarkSeen,
+  mockCompleteDeadline,
+  mockRescheduleDeadline,
+  mockCloseAction,
+  mockLiftReserve,
+} = vi.hoisted(() => ({
   mockGetSiteBriefAction: vi.fn(),
   mockMarkSeen: vi.fn(async () => ({ ok: true as const })),
+  mockCompleteDeadline: vi.fn(async () => ({ ok: true as const })),
+  mockRescheduleDeadline: vi.fn(async () => ({ ok: true as const })),
+  mockCloseAction: vi.fn(async () => ({ ok: true as const })),
+  mockLiftReserve: vi.fn(async () => ({ ok: true as const })),
 }))
 
 vi.mock('@/app/(dashboard)/sites/[id]/site-brief-actions', () => ({
@@ -31,6 +42,19 @@ vi.mock('@/app/(dashboard)/sites/[id]/site-brief-actions', () => ({
 
 vi.mock('@/app/(dashboard)/sites/[id]/live-debrief-signal-actions', () => ({
   markLiveDebriefSignalSeenAction: mockMarkSeen,
+}))
+
+vi.mock('@/app/(dashboard)/sites/[id]/views/planning/deadline-actions', () => ({
+  completeDeadlineAction: mockCompleteDeadline,
+  rescheduleDeadlineAction: mockRescheduleDeadline,
+}))
+
+vi.mock('@/app/(dashboard)/actions/actions', () => ({
+  closeActionAction: mockCloseAction,
+}))
+
+vi.mock('@/app/(dashboard)/sites/[id]/reserves/actions', () => ({
+  liftReserveAction: mockLiftReserve,
 }))
 
 vi.mock('sonner', () => ({
@@ -87,6 +111,18 @@ const reserveOpen: LiveDebriefItem = {
   href: `/sites/${SITE_ID}/reserve/res-1`,
 }
 
+const deadlinePlanned: LiveDebriefItem = {
+  kind: 'deadline',
+  id: 'dl-2',
+  title: 'Livrer le plan de récolement',
+  status: 'planned',
+  disposition: 'to_watch',
+  date: '2026-09-15',
+  canonicalSubjectId: null,
+  reportId: null,
+  href: `/sites/${SITE_ID}?tab=planning&plantab=echeances`,
+}
+
 const signalUnseen: LiveDebriefItem = {
   kind: 'informational_signal',
   canonicalSubjectId: 'cs-1',
@@ -137,7 +173,7 @@ function makeLiveDebrief(overrides: Partial<LiveDebrief> = {}): LiveDebrief {
   }
 }
 
-function makeBrief(liveDebrief: LiveDebrief): SiteBrief {
+function makeBrief(liveDebrief: LiveDebrief, canLiftReserve = true): SiteBrief {
   return {
     siteName: 'Chantier Test',
     contractName: null,
@@ -190,6 +226,7 @@ function makeBrief(liveDebrief: LiveDebrief): SiteBrief {
       toReconfirm: [],
     },
     liveDebrief,
+    canLiftReserve,
   }
 }
 
@@ -207,6 +244,19 @@ async function openBrief(liveDebrief: LiveDebrief = makeLiveDebrief()) {
     fireEvent.click(screen.getByRole('button', { name: /préparer ma visite/i }))
   })
   await screen.findByText('À traiter')
+}
+
+// D5 — variante qui distingue le brief initial du brief renvoyé par le
+// refetchBrief() déclenché après une mutation inline (Planifier/Marquer
+// réalisée/Clôturer/Lever), pour prouver le changement de bloc immédiat.
+async function openBriefSeq(responses: { ok: true; brief: SiteBrief }[], waitForText: string) {
+  mockGetSiteBriefAction.mockReset()
+  responses.forEach((r) => mockGetSiteBriefAction.mockResolvedValueOnce(r))
+  render(<SiteBriefButton siteId={SITE_ID} mode="visit" />)
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: /préparer ma visite/i }))
+  })
+  await screen.findByText(waitForText)
 }
 
 describe('SiteBriefButton — Débrief vivant — À traiter', () => {
@@ -303,5 +353,136 @@ describe('SiteBriefButton — Débrief vivant — pas de Régénérer propriéta
     // distincte hors périmètre D4) doit rester présent et fonctionnel ailleurs.
     expect(screen.getByText(/recommandations memoria/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Générer' })).toBeInTheDocument()
+  })
+})
+
+// ── D5 — Débrief vivant : CTA inline (Échéances, Action, Réserve) ─────────────
+// GO Vincent D5 : « le geste de planification doit faire changer de bloc
+// immédiatement » — ces tests prouvent le changement de bloc après mutation
+// (refetchBrief), pas seulement l'appel de la server action. Réutilise
+// strictement complete/rescheduleDeadlineAction, closeActionAction,
+// liftReserveAction (mockées) ; aucune nouvelle mutation métier.
+
+describe('SiteBriefButton — Débrief vivant D5 — Échéance inline', () => {
+  it('D5-1. to_plan → Planifier → quitte « À traiter », rejoint « À surveiller »', async () => {
+    await openBriefSeq(
+      [
+        { ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [deadlineToPlan], toWatch: [], recentlyHandled: [] })) },
+        { ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [], toWatch: [deadlinePlanned], recentlyHandled: [] })) },
+      ],
+      'Envoyer le DOE',
+    )
+    const aTraiter = sectionByHeading('À traiter')
+    const row = within(aTraiter).getByText('Envoyer le DOE').closest('li')!
+    fireEvent.click(within(row).getByRole('button', { name: 'Planifier' }))
+    const dateInput = row.querySelector('input[type="date"]') as HTMLInputElement
+    fireEvent.change(dateInput, { target: { value: '2026-09-15' } })
+    await act(async () => {
+      fireEvent.click(within(row).getByRole('button', { name: 'OK' }))
+    })
+    expect(mockRescheduleDeadline).toHaveBeenCalledWith({ deadlineId: 'dl-1', dueDate: '2026-09-15' })
+    await waitFor(() => {
+      expect(screen.queryByText('Envoyer le DOE')).not.toBeInTheDocument()
+    })
+    expect(within(sectionByHeading('À surveiller')).getByText('Livrer le plan de récolement')).toBeInTheDocument()
+  })
+
+  it('D5-2. planned → Marquer réalisée → quitte « À surveiller », rejoint « Traité récemment »', async () => {
+    const deadlineDone: LiveDebriefItem = { ...deadlinePlanned, status: 'done', disposition: 'recently_handled' }
+    await openBriefSeq(
+      [
+        { ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [], toWatch: [deadlinePlanned], recentlyHandled: [] })) },
+        { ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [], toWatch: [], recentlyHandled: [deadlineDone] })) },
+      ],
+      'Livrer le plan de récolement',
+    )
+    const aSurveiller = sectionByHeading('À surveiller')
+    const row = within(aSurveiller).getByText('Livrer le plan de récolement').closest('li')!
+    await act(async () => {
+      fireEvent.click(within(row).getByRole('button', { name: 'Marquer réalisée' }))
+    })
+    expect(mockCompleteDeadline).toHaveBeenCalledWith('dl-2')
+    await waitFor(() => {
+      expect(within(sectionByHeading('Traité récemment')).getByText('Livrer le plan de récolement')).toBeInTheDocument()
+    })
+    // Bloc « À surveiller » vidé par la mutation → section entière masquée (pas de bloc vide).
+    expect(screen.queryByText('À surveiller')).not.toBeInTheDocument()
+  })
+})
+
+describe('SiteBriefButton — Débrief vivant D5 — Action inline (desktop)', () => {
+  it('D5-3. open → Clôturer (desktop) → rejoint « Traité récemment »', async () => {
+    const actionClosed: LiveDebriefItem = { ...actionOpen, status: 'done', disposition: 'recently_handled' }
+    await openBriefSeq(
+      [
+        { ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [actionOpen], toWatch: [], recentlyHandled: [] })) },
+        { ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [], toWatch: [], recentlyHandled: [actionClosed] })) },
+      ],
+      'Réparer la clôture Nord',
+    )
+    const aTraiter = sectionByHeading('À traiter')
+    const row = within(aTraiter).getByText('Réparer la clôture Nord').closest('li')!
+    fireEvent.click(within(row).getByRole('button', { name: 'Clôturer' }))
+    const textarea = row.querySelector('textarea') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: 'Clôture réparée et vérifiée.' } })
+    await act(async () => {
+      fireEvent.click(within(row).getByRole('button', { name: 'Clôturer' }))
+    })
+    expect(mockCloseAction).toHaveBeenCalled()
+    await waitFor(() => {
+      expect(within(sectionByHeading('Traité récemment')).getByText('Réparer la clôture Nord')).toBeInTheDocument()
+    })
+  })
+})
+
+describe('SiteBriefButton — Débrief vivant D5 — Réserve inline (desktop, rôle autorisé)', () => {
+  it('D5-4. open → Lever (desktop, canLiftReserve) → rejoint « Traité récemment »', async () => {
+    const reserveLifted: LiveDebriefItem = { ...reserveOpen, status: 'lifted', disposition: 'recently_handled' }
+    await openBriefSeq(
+      [
+        { ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [reserveOpen], toWatch: [], recentlyHandled: [] })) },
+        { ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [], toWatch: [], recentlyHandled: [reserveLifted] })) },
+      ],
+      'Rejointoyer le carrelage hall',
+    )
+    const aTraiter = sectionByHeading('À traiter')
+    const row = within(aTraiter).getByText('Rejointoyer le carrelage hall').closest('li')!
+    fireEvent.click(within(row).getByRole('button', { name: 'Lever' }))
+    await act(async () => {
+      fireEvent.click(within(row).getByRole('button', { name: 'Lever' }))
+    })
+    expect(mockLiftReserve).toHaveBeenCalled()
+    await waitFor(() => {
+      expect(within(sectionByHeading('Traité récemment')).getByText('Rejointoyer le carrelage hall')).toBeInTheDocument()
+    })
+  })
+
+  it("D5-5. open, rôle non autorisé (canLiftReserve=false) → pas de bouton Lever, lien vers la fiche conservé (« Ouvrir »)", async () => {
+    await openBriefSeq(
+      [
+        {
+          ok: true,
+          brief: makeBrief(makeLiveDebrief({ toHandle: [reserveOpen], toWatch: [], recentlyHandled: [] }), false),
+        },
+      ],
+      'Rejointoyer le carrelage hall',
+    )
+    const section = sectionByHeading('À traiter')
+    expect(within(section).queryByRole('button', { name: 'Lever' })).not.toBeInTheDocument()
+    expect(within(section).getByRole('link', { name: 'Rejointoyer le carrelage hall' })).toHaveAttribute(
+      'href',
+      `/sites/${SITE_ID}/reserve/res-1`,
+    )
+  })
+})
+
+describe('SiteBriefButton — Débrief vivant D5 — Traité récemment reste lecture seule', () => {
+  it('D5-6. Aucun CTA (Planifier/Marquer réalisée/Clôturer/Lever) sur un item déjà traité', async () => {
+    await openBrief()
+    const section = sectionByHeading('Traité récemment')
+    expect(within(section).queryByRole('button', { name: 'Planifier' })).not.toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: 'Marquer réalisée' })).not.toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: 'Clôturer' })).not.toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: 'Lever' })).not.toBeInTheDocument()
   })
 })
