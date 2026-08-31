@@ -13,7 +13,7 @@ import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { requireSiteWriteAccess, requireSiteActionWriteAccess } from '@/lib/auth/site-write-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logUsageEvent } from '@/lib/db/usage-events'
-import { createSiteAction, markSiteActionDone, markSiteActionProgress, setSiteActionSnooze, cancelSiteAction, markSiteActionPlanned } from '@/lib/db/site-actions'
+import { createSiteAction, updateSiteAction, markSiteActionDone, markSiteActionProgress, setSiteActionSnooze, cancelSiteAction, markSiteActionPlanned } from '@/lib/db/site-actions'
 import { listMissionsBySite, createMission } from '@/lib/db/missions'
 import { createIntervention } from '@/lib/db/interventions'
 import { findOrCreateSubjectByName, attachToSubject } from '@/lib/db/subjects'
@@ -454,6 +454,8 @@ export async function createQuickActionAction(
       site_id: siteId,
       title: tParsed.data,
       due_date: dueDate,
+      // Date saisie à la main par un humain = confirmée d'origine (overdue-action.ts).
+      due_date_status: dueDate ? 'explicit' : null,
       created_by: access.userId,
       created_from: createdFrom,
     })
@@ -548,5 +550,103 @@ export async function dismissActionProposalAction(
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec' }
+  }
+}
+
+// ── P0-1B — administrer une action depuis sa fiche (titre/description, échéance) ──
+// Mêmes gestes que /meetings (pv-actions.ts editActionAction) et le resolver PV
+// action_echeance, mais depuis la fiche Action elle-même : Actions doit être le
+// lieu canonique d'administration, pas seulement de lecture.
+
+const DetailsSchema = z.object({
+  id: z.string().uuid(),
+  site_id: z.string().uuid().optional(),
+  title: TitleSchema,
+  body: z.string().trim().max(2000).nullable(),
+})
+
+/** Modifie titre et description d'une action (fiche Action). */
+export async function updateActionDetailsAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const rawBody = formData.get('body')
+  const parsed = DetailsSchema.safeParse({
+    id: formData.get('id'),
+    site_id: (formData.get('site_id') as string | null) || undefined,
+    title: formData.get('title'),
+    body: typeof rawBody === 'string' ? rawBody.trim() || null : null,
+  })
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Saisie invalide' }
+  const { id, site_id, title, body } = parsed.data
+  const access = await requireSiteActionWriteAccess(id)
+  if (!access.ok) return access
+  try {
+    await updateSiteAction(id, { title, body }, access.userId)
+    revalidateActionSurfaces(site_id)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec de la modification' }
+  }
+}
+
+const ConfirmDueDateSchema = z.object({
+  id: z.string().uuid(),
+  site_id: z.string().uuid().optional(),
+})
+
+/**
+ * Confirme l'échéance déjà posée (estimée / non confirmée), SANS la changer —
+ * lève le badge « à confirmer » (doctrine due_date_status, overdue-action.ts).
+ * Patch partiel : ne touche pas `due_date`.
+ */
+export async function confirmActionDueDateAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = ConfirmDueDateSchema.safeParse({
+    id: formData.get('id'),
+    site_id: (formData.get('site_id') as string | null) || undefined,
+  })
+  if (!parsed.success) return { ok: false, error: 'Action invalide' }
+  const { id, site_id } = parsed.data
+  const access = await requireSiteActionWriteAccess(id)
+  if (!access.ok) return access
+  try {
+    await updateSiteAction(id, { due_date_status: 'explicit' }, access.userId)
+    revalidateActionSurfaces(site_id)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec de la confirmation' }
+  }
+}
+
+const SetDueDateSchema = z.object({
+  id: z.string().uuid(),
+  site_id: z.string().uuid().optional(),
+  due_date: DateSchema,
+})
+
+/**
+ * Planifie (action sans date) ou replanifie (date erronée) une échéance.
+ * Toujours posée en 'explicit' : une date choisie à la main par un humain est
+ * confirmée d'origine (même doctrine que la création manuelle).
+ */
+export async function setActionDueDateAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = SetDueDateSchema.safeParse({
+    id: formData.get('id'),
+    site_id: (formData.get('site_id') as string | null) || undefined,
+    due_date: formData.get('due_date'),
+  })
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Date invalide' }
+  const { id, site_id, due_date } = parsed.data
+  const access = await requireSiteActionWriteAccess(id)
+  if (!access.ok) return access
+  try {
+    await updateSiteAction(id, { due_date, due_date_status: 'explicit' }, access.userId)
+    revalidateActionSurfaces(site_id)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec de la planification' }
   }
 }

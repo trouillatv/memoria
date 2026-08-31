@@ -87,13 +87,15 @@ export async function createSiteAction(input: {
 
 /**
  * Édition d'une action (curation desktop). Tous les champs optionnels ;
- * seuls ceux fournis sont modifiés. Mettre `due_date_status` à null retire le
- * badge « à confirmer » (= l'humain a confirmé/figé l'échéance).
+ * seuls ceux fournis sont modifiés. Doctrine due_date_status (overdue-action.ts) :
+ * 'explicit' = date confirmée par un humain (lève le badge « à confirmer ») ;
+ * 'estimated'/null = date déduite ou non confirmée.
  */
 export async function updateSiteAction(
   id: string,
   patch: {
     title?: string
+    body?: string | null
     assigned_to?: string | null
     assigned_contact_id?: string | null
     assigned_company_id?: string | null
@@ -114,6 +116,7 @@ export async function updateSiteAction(
   // à l'identique et émet l'événement dans la MÊME transaction que la mutation.
   const p_patch: Record<string, unknown> = {}
   if (patch.title !== undefined) p_patch.title = patch.title
+  if (patch.body !== undefined) p_patch.body = patch.body
   if (patch.assigned_to !== undefined) p_patch.assigned_to = patch.assigned_to
   if (patch.assigned_contact_id !== undefined) p_patch.assigned_contact_id = patch.assigned_contact_id
   if (patch.assigned_company_id !== undefined) p_patch.assigned_company_id = patch.assigned_company_id

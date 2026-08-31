@@ -1,9 +1,18 @@
 'use client'
 
+// ── HUB ACTIONS — P0-1B : gestes rapides depuis les buckets ─────────────────
+// Réutilise STRICTEMENT les Server Actions de app/(dashboard)/actions/actions.ts
+// (mêmes primitives que la fiche Action / OpenActionsList) : aucun nouveau
+// chemin d'écriture. Confirmer/Planifier/Clôturer directement depuis le hub,
+// sans passer par une visite. router.refresh() après mutation.
+
 import Link from 'next/link'
-import { Search, FileText, History, ChevronDown, ListTodo, CalendarDays, UserSquare } from 'lucide-react'
-import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Search, FileText, History, ChevronDown, ListTodo, CalendarDays, UserSquare, Check, Pencil, X, Loader2 } from 'lucide-react'
+import { useState, useTransition } from 'react'
 import type { ReactNode } from 'react'
+import { toast } from 'sonner'
+import { closeActionAction, confirmActionDueDateAction, setActionDueDateAction } from '@/app/(dashboard)/actions/actions'
 
 export interface ActionGroupDisplay {
   id: string
@@ -62,7 +71,177 @@ function Expandable({ children }: { children: ReactNode }) {
   return <div className="space-y-2.5 border-t pt-2.5 mt-1">{children}</div>
 }
 
-function ActionRow({ group }: { group: ActionGroupDisplay }) {
+function DateForm({
+  actionId,
+  siteId,
+  initial,
+  onCancel,
+  onDone,
+}: {
+  actionId: string
+  siteId: string
+  initial: string | null
+  onCancel: () => void
+  onDone: () => void
+}) {
+  const [value, setValue] = useState(initial ?? '')
+  const [pending, startTransition] = useTransition()
+
+  function submit() {
+    if (!value) {
+      toast.error('Choisissez une date.')
+      return
+    }
+    const fd = new FormData()
+    fd.set('id', actionId)
+    fd.set('site_id', siteId)
+    fd.set('due_date', value)
+    startTransition(async () => {
+      const r = await setActionDueDateAction(fd)
+      if (!r.ok) toast.error(r.error)
+      else {
+        toast.success('Échéance mise à jour')
+        onDone()
+      }
+    })
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        autoFocus
+        className="rounded-md border bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <button type="button" onClick={submit} disabled={pending || !value}
+        className="inline-flex items-center gap-1.5 rounded-md border-2 border-emerald-600 bg-emerald-600 text-white px-2.5 py-1.5 text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 active:scale-[0.98]">
+        {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+        Enregistrer
+      </button>
+      <button type="button" onClick={onCancel} disabled={pending} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+        <X className="h-3.5 w-3.5" />Annuler
+      </button>
+    </div>
+  )
+}
+
+function CloseForm({
+  actionId,
+  siteId,
+  onCancel,
+  onDone,
+}: {
+  actionId: string
+  siteId: string
+  onCancel: () => void
+  onDone: () => void
+}) {
+  const [comment, setComment] = useState('')
+  const [pending, startTransition] = useTransition()
+
+  function submit() {
+    if (!comment.trim()) {
+      toast.error('Ajoutez un commentaire de clôture.')
+      return
+    }
+    const fd = new FormData()
+    fd.set('id', actionId)
+    fd.set('site_id', siteId)
+    fd.set('comment', comment.trim())
+    startTransition(async () => {
+      const r = await closeActionAction(fd)
+      if (!r.ok) toast.error(r.error)
+      else {
+        toast.success('Action traitée')
+        onDone()
+      }
+    })
+  }
+
+  return (
+    <div className="space-y-2">
+      <textarea
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        rows={2}
+        autoFocus
+        maxLength={1000}
+        placeholder="Ex : joints repris et vérifiés — plus rien à suivre."
+        className="w-full rounded-md border bg-background px-2.5 py-1.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <div className="flex items-center justify-end gap-2">
+        <button type="button" onClick={onCancel} disabled={pending} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+          <X className="h-3.5 w-3.5" />Annuler
+        </button>
+        <button type="button" onClick={submit} disabled={pending || !comment.trim()}
+          className="inline-flex items-center gap-1.5 rounded-md border-2 border-emerald-600 bg-emerald-600 text-white px-3 py-1.5 text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 active:scale-[0.98]">
+          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          Définitivement traitée
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function QuickGestures({ group, siteId, onDone }: { group: ActionGroupDisplay; siteId: string; onDone: () => void }) {
+  const router = useRouter()
+  const [mode, setMode] = useState<'date' | 'close' | null>(null)
+  const [confirming, startConfirm] = useTransition()
+
+  if (mode === 'date') {
+    return <DateForm actionId={group.id} siteId={siteId} initial={group.due_date} onCancel={() => setMode(null)} onDone={() => { setMode(null); onDone() }} />
+  }
+  if (mode === 'close') {
+    return <CloseForm actionId={group.id} siteId={siteId} onCancel={() => setMode(null)} onDone={() => { setMode(null); onDone() }} />
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {group.urgency === 'late_unconfirmed' && (
+        <button
+          type="button"
+          disabled={confirming}
+          onClick={() =>
+            startConfirm(async () => {
+              const fd = new FormData()
+              fd.set('id', group.id)
+              fd.set('site_id', siteId)
+              const r = await confirmActionDueDateAction(fd)
+              if (r.ok) {
+                toast.success('Échéance confirmée')
+                router.refresh()
+              } else {
+                toast.error(r.error)
+              }
+            })
+          }
+          className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50 disabled:opacity-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+        >
+          {confirming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}Confirmer
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => setMode('date')}
+        className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+      >
+        <Pencil className="h-3.5 w-3.5" />{group.due_date ? 'Replanifier' : 'Planifier'}
+      </button>
+      <button
+        type="button"
+        onClick={() => setMode('close')}
+        className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold text-muted-foreground hover:border-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-400"
+      >
+        <Check className="h-3.5 w-3.5" />Clôturer
+      </button>
+    </div>
+  )
+}
+
+function ActionRow({ group, siteId }: { group: ActionGroupDisplay; siteId: string }) {
+  const router = useRouter()
   const [expanded, setExpanded] = useState(false)
   const provenanceBadge = [group.provenanceLabel, group.provenanceDate].filter(Boolean).join(' · ')
   const mentionLabel = group.count > 1 ? `${group.count} mentions` : null
@@ -129,6 +308,8 @@ function ActionRow({ group }: { group: ActionGroupDisplay }) {
 
           {/* Mémoire du sujet. La carte dit QUOI faire ; ce lien dit POURQUOI et
               DEPUIS QUAND. L'action reste un objet distinct : rien n'est fusionné. */}
+          <QuickGestures group={group} siteId={siteId} onDone={() => router.refresh()} />
+
           {group.subjectHref && (
             <Link
               href={group.subjectHref}
@@ -186,7 +367,7 @@ export function ActionsListClient({
       {late.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-rose-600">En retard ({late.length})</h2>
-          <div className="space-y-2">{late.map((g) => <ActionRow key={g.id} group={g} />)}</div>
+          <div className="space-y-2">{late.map((g) => <ActionRow key={g.id} group={g} siteId={siteId} />)}</div>
         </section>
       )}
 
@@ -196,7 +377,7 @@ export function ActionsListClient({
       {lateUnconfirmed.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-amber-700 dark:text-amber-400">Échéance dépassée · à confirmer ({lateUnconfirmed.length})</h2>
-          <div className="space-y-2">{lateUnconfirmed.map((g) => <ActionRow key={g.id} group={g} />)}</div>
+          <div className="space-y-2">{lateUnconfirmed.map((g) => <ActionRow key={g.id} group={g} siteId={siteId} />)}</div>
         </section>
       )}
 
@@ -204,7 +385,7 @@ export function ActionsListClient({
       {today_.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-amber-600">Aujourd&apos;hui ({today_.length})</h2>
-          <div className="space-y-2">{today_.map((g) => <ActionRow key={g.id} group={g} />)}</div>
+          <div className="space-y-2">{today_.map((g) => <ActionRow key={g.id} group={g} siteId={siteId} />)}</div>
         </section>
       )}
 
@@ -212,7 +393,7 @@ export function ActionsListClient({
       {week.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-blue-600">Cette semaine ({week.length})</h2>
-          <div className="space-y-2">{week.map((g) => <ActionRow key={g.id} group={g} />)}</div>
+          <div className="space-y-2">{week.map((g) => <ActionRow key={g.id} group={g} siteId={siteId} />)}</div>
         </section>
       )}
 
@@ -222,7 +403,7 @@ export function ActionsListClient({
           <h2 className="text-sm font-semibold text-muted-foreground">
             Sans date · À planifier ({undated.length})
           </h2>
-          <div className="space-y-2">{undated.map((g) => <ActionRow key={g.id} group={g} />)}</div>
+          <div className="space-y-2">{undated.map((g) => <ActionRow key={g.id} group={g} siteId={siteId} />)}</div>
         </section>
       )}
 

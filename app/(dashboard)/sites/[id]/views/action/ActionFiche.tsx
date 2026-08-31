@@ -15,7 +15,7 @@ import { FICHE_TITLE_MOTION, FICHE_BODY_MOTION } from '@/components/knowledge/fi
 import { cn } from '@/lib/utils'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { describeAssignedActionDate } from '@/lib/knowledge/assigned-actions'
-import { ActionFicheCta } from './ActionFicheCta'
+import { ActionFicheCta, ActionFicheDetailsCta, ActionFicheDueDateCta } from './ActionFicheCta'
 import type { ActionFicheData } from '@/lib/knowledge/action-fiche'
 import type { SiteActionStatus } from '@/types/db'
 
@@ -84,7 +84,10 @@ export function ActionFicheBody({ action, back, animateContent = false, variant 
         </SheetHeader>
 
         <div className={cn('space-y-5 px-4 pb-6', animateContent && FICHE_BODY_MOTION)}>
-          {a.body && <p className="text-[13.5px]">{a.body}</p>}
+          <div className="space-y-1.5">
+            {a.body && <p className="text-[13.5px]">{a.body}</p>}
+            <ActionFicheDetailsCta actionId={a.id} siteId={a.siteId} title={a.title} body={a.body} />
+          </div>
 
           {/* ── 1. CE QUI A ÉTÉ OBSERVÉ — en tête : ça dit tout de suite POURQUOI ── */}
           {a.observed && (
@@ -159,14 +162,20 @@ export function ActionFicheBody({ action, back, animateContent = false, variant 
             )}
           </section>
 
-          {date.label && (
-            <section>
-              <h4 className={H4}>Échéance</h4>
-              <p className={cn('mt-1 text-[13.5px]', date.kind === 'late' && 'text-rose-600 dark:text-rose-400')}>
-                {date.label}
-              </p>
-            </section>
-          )}
+          <section>
+            <h4 className={H4}>Échéance</h4>
+            <div className="mt-1">
+              <ActionFicheDueDateCta
+                actionId={a.id}
+                siteId={a.siteId}
+                status={a.status}
+                dueDate={a.dueDate}
+                dueDateStatus={a.dueDateStatus}
+                label={date.label}
+                isLate={date.kind === 'late'}
+              />
+            </div>
+          </section>
 
           {a.proofs && (
             <section>

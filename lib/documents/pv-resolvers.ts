@@ -29,14 +29,14 @@ export const PV_RESOLVERS: Record<string, PvResolver> = {
       await updateSiteAction(refId, { assigned_to: v })
     },
   },
-  // Échéance d'une action → site_actions.due_date + due_date_status null
+  // Échéance d'une action → site_actions.due_date + due_date_status 'explicit'
   // (= échéance figée/confirmée par l'humain ; lève le badge « à confirmer »).
   action_echeance: {
     label: "Échéance de l'action",
     async apply(refId, value) {
       const v = value.trim()
       if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Date attendue au format AAAA-MM-JJ.')
-      await updateSiteAction(refId, { due_date: v, due_date_status: null })
+      await updateSiteAction(refId, { due_date: v, due_date_status: 'explicit' })
     },
   },
   // N° DNS du chantier → sites.dns (refId = site_id). Propre au chantier (tous ses CR).
