@@ -8,7 +8,8 @@ import { getVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { visitIntentLabel } from '@/lib/field/visit-intents'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getVisit, buildVisitProduction, buildSitePatrimoine } from '@/lib/db/visits'
+import { getVisit, buildSitePatrimoine } from '@/lib/db/visits'
+import { buildVisitObjects } from '@/lib/db/visit-objects'
 import { buildSiteTimeline } from '@/lib/db/site-timeline'
 import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
 import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureRow, type VisitCaptureKind } from '@/lib/db/visit-captures'
@@ -103,10 +104,11 @@ export default async function VisitRecapPage({
 
   // Données des onglets Évolution / Histoire / Mémoire (déterministe, réutilise la
   // mémoire du chantier). L'écran de FIN de visite, lui, reste inchangé et rapide.
-  const [production, timeline, memory, patrimoine] = await Promise.all([
-    // Évolution = ce que CETTE visite a produit (jamais vide) — l'histoire de la
-    // valeur créée, pas un dump de compteurs.
-    buildVisitProduction(reportId, visit.visit_motive === 'previsite_ao').catch(() => null),
+  const [objects, timeline, memory, patrimoine] = await Promise.all([
+    // Impact = les objets métier RÉELLEMENT produits par cette visite (actions,
+    // réserves, échéances, connaissances retenues), liés structurellement au
+    // report. Les objets eux-mêmes, jamais des compteurs (point 6).
+    buildVisitObjects(reportId, visit.site_id).catch(() => null),
     // Histoire = la VRAIE frise (visites incluses), pas l'ancien narratif qui les
     // omettait (d'où l'onglet vide). La visite du jour y sera mise en évidence.
     buildSiteTimeline(visit.site_id).catch(() => []),
@@ -133,7 +135,7 @@ export default async function VisitRecapPage({
       siteId={visit.site_id}
       siteName={siteName}
       visitTypeLabel={visitTypeLabel}
-      production={production}
+      objects={objects}
       timeline={timeline}
       currentReportId={reportId}
       memory={memory}

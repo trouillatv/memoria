@@ -18,7 +18,8 @@ import {
   CalendarDays, ListTodo, Footprints, Users, Wrench, ClipboardList, CheckSquare,
   Compass, Trophy, Star, ArrowLeft, ChevronRight, FileText,
 } from 'lucide-react'
-import type { VisitProduction, SitePatrimoine } from '@/lib/db/visits'
+import type { SitePatrimoine } from '@/lib/db/visits'
+import type { VisitObjects, VisitObjectItem } from '@/lib/db/visit-objects'
 import type { TimelineEvent, TimelineKind } from '@/lib/db/site-timeline'
 import type { MemorySignal } from '@/lib/db/site-memory-signals'
 
@@ -68,7 +69,7 @@ export function VisitMemoryTabs({
   siteId,
   siteName,
   visitTypeLabel,
-  production,
+  objects,
   timeline,
   currentReportId,
   memory,
@@ -78,7 +79,7 @@ export function VisitMemoryTabs({
   siteId: string
   siteName: string
   visitTypeLabel: string
-  production: VisitProduction | null
+  objects: VisitObjects | null
   timeline: TimelineEvent[]
   currentReportId: string
   memory: MemorySignal[]
@@ -109,7 +110,7 @@ export function VisitMemoryTabs({
       {/* Contenu de l'onglet. */}
       <div>
         {tab === 'visite' && children}
-        {tab === 'evolution' && <EvolutionPanel p={production} />}
+        {tab === 'evolution' && <VisitObjectsPanel objects={objects} />}
         {tab === 'histoire' && <HistoirePanel timeline={timeline} currentReportId={currentReportId} />}
         {tab === 'memoire' && <MemoirePanel memory={memory} patrimoine={patrimoine} />}
       </div>
@@ -184,68 +185,56 @@ function Conclusion({ Icon, text }: { Icon: typeof BookOpen; text: string }) {
   )
 }
 
-// ── Onglet 2 — Évolution (ce que CETTE visite a apporté au chantier) ──────────
-// On raconte une HISTOIRE, pas des compteurs : chaque bloc ne s'affiche que s'il
-// porte une information réelle. « Le moteur reste identique, seul le récit change. »
+// ── Onglet 2 — Impact : les OBJETS issus de cette visite (point 6) ────────────
+// « Qu'a réellement produit cette visite dans le chantier ? » — les objets
+// métier matérialisés (liés structurellement au report), PAS des compteurs. On
+// montre les objets eux-mêmes ; si une population est longue, « Voir plus »
+// révèle les objets restants (jamais un total qui obligerait à rouvrir).
 
-function plural(n: number, one: string, many = `${one}s`): string {
-  return n > 1 ? many : one
-}
+const OBJECT_INITIAL = 4
 
-function EvolutionPanel({ p }: { p: VisitProduction | null }) {
-  if (!p || p.totalCaptures === 0) {
+export function VisitObjectsPanel({ objects }: { objects: VisitObjects | null }) {
+  if (!objects || objects.isEmpty) {
     return (
       <div className="rounded-2xl border bg-muted/30 p-4">
         <p className="text-sm font-medium">Cette visite a été enregistrée.</p>
         <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
-          Elle fait désormais partie de l’historique du chantier et pourra être retrouvée lors des prochaines visites et réunions.
+          Elle n’a pas encore produit d’objet dans le chantier. Dès qu’une action, une réserve, une échéance ou une connaissance en découlera, elle apparaîtra ici.
         </p>
       </div>
     )
   }
 
-  // Bloc — Nouvelles preuves (médias captés, présence relevée).
-  const proofBullets: string[] = []
-  if (p.photos > 0) proofBullets.push(`${p.photos} ${plural(p.photos, 'photo')}`)
-  if (p.vocals > 0) proofBullets.push(`${p.vocals} ${plural(p.vocals, 'note vocale', 'notes vocales')}`)
-  if (p.videos > 0) proofBullets.push(`${p.videos} ${plural(p.videos, 'vidéo')}`)
-  if (p.notes > 0) proofBullets.push(`${p.notes} ${plural(p.notes, 'note écrite', 'notes écrites')}`)
-  if (p.positions > 0) proofBullets.push(`${p.positions} ${plural(p.positions, 'position GPS', 'positions GPS')}`)
-
-  // Bloc — Nouveaux constats (ce qui interroge / ce qui est vérifié).
-  const findingBullets: string[] = []
-  if (p.reservesCreated > 0) findingBullets.push(`${p.reservesCreated} ${plural(p.reservesCreated, 'réserve')} ${plural(p.reservesCreated, 'créée')}`)
-  if (p.verifications > 0) findingBullets.push(`${p.verifications} ${plural(p.verifications, 'point vérifié', 'points vérifiés')}`)
-
-  // Bloc — Impact sur le chantier (ce qui va faire avancer).
-  const impactBullets: string[] = []
-  if (p.actionsCreated > 0) impactBullets.push(`${p.actionsCreated} ${plural(p.actionsCreated, 'action ouverte', 'actions ouvertes')}`)
+  // Seules les populations réellement présentes sont rendues (jamais de section vide).
+  const groups = [
+    { title: 'Actions', Icon: ListTodo, cls: 'text-violet-600', ring: 'bg-violet-100 dark:bg-violet-950/40', items: objects.actions },
+    { title: 'Réserves', Icon: ClipboardList, cls: 'text-amber-600', ring: 'bg-amber-100 dark:bg-amber-950/40', items: objects.reserves },
+    { title: 'Échéances', Icon: CalendarDays, cls: 'text-sky-600', ring: 'bg-sky-100 dark:bg-sky-950/40', items: objects.deadlines },
+    { title: 'Connaissances', Icon: Brain, cls: 'text-emerald-600', ring: 'bg-emerald-100 dark:bg-emerald-950/40', items: objects.knowledge },
+  ].filter((g) => g.items.length > 0)
 
   return (
     <div className="space-y-2.5">
-      {proofBullets.length > 0 && (
-        <EvoBlock Icon={Camera} cls="text-sky-600" ring="bg-sky-100 dark:bg-sky-950/40" title="Nouvelles preuves" bullets={proofBullets} note="Toutes intégrées au dossier du chantier." />
-      )}
-      {findingBullets.length > 0 && (
-        <EvoBlock Icon={AlertTriangle} cls="text-amber-600" ring="bg-amber-100 dark:bg-amber-950/40" title="Nouveaux constats" bullets={findingBullets} />
-      )}
-      {impactBullets.length > 0 && (
-        <EvoBlock Icon={ListTodo} cls="text-violet-600" ring="bg-violet-100 dark:bg-violet-950/40" title="Impact sur le chantier" bullets={impactBullets} />
-      )}
+      <p className="text-[13px] font-medium text-muted-foreground">Objets issus de cette visite</p>
+      {groups.map((g) => (
+        <ObjectGroup key={g.title} Icon={g.Icon} cls={g.cls} ring={g.ring} title={g.title} items={g.items} />
+      ))}
     </div>
   )
 }
 
-function EvoBlock({
-  Icon, cls, ring, title, bullets, note,
+function ObjectGroup({
+  Icon, cls, ring, title, items,
 }: {
   Icon: typeof Camera
   cls: string
   ring: string
   title: string
-  bullets: string[]
-  note?: string
+  items: VisitObjectItem[]
 }) {
+  const [expanded, setExpanded] = useState(false)
+  const shown = expanded ? items : items.slice(0, OBJECT_INITIAL)
+  const rest = items.length - shown.length
   return (
     <div className="rounded-2xl border bg-background p-3.5 shadow-sm">
       <div className="flex items-center gap-2.5">
@@ -254,12 +243,28 @@ function EvoBlock({
         </span>
         <p className="text-sm font-semibold">{title}</p>
       </div>
-      <ul className="mt-2 space-y-1 pl-[42px]">
-        {bullets.map((b, i) => (
-          <li key={i} className="text-[13px] leading-snug text-foreground/90">{b}</li>
+      <ul className="mt-2 space-y-1">
+        {shown.map((it) => (
+          <li key={it.id}>
+            <Link href={it.href} className="block rounded-lg px-1.5 py-1.5 active:bg-accent">
+              <p className="text-[13px] font-medium leading-snug">{it.label}</p>
+              <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                {it.statusLabel && <span>{it.statusLabel}</span>}
+                {/* CTA honnête : « Voir la fiche » (précis) vs « Voir les réserves »
+                    (espace/liste) — jamais « Ouvrir » quand la cible est une liste. */}
+                <span className="ml-auto inline-flex items-center gap-0.5 text-primary">
+                  {it.ctaLabel} <ChevronRight className="h-3 w-3" />
+                </span>
+              </p>
+            </Link>
+          </li>
         ))}
       </ul>
-      {note && <p className="mt-1.5 pl-[42px] text-[12px] italic text-muted-foreground">{note}</p>}
+      {!expanded && rest > 0 && (
+        <button type="button" onClick={() => setExpanded(true)} className="mt-1.5 pl-1.5 text-[12px] font-medium text-primary active:opacity-70">
+          Voir plus ({rest})
+        </button>
+      )}
     </div>
   )
 }
