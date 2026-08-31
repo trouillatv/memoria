@@ -9,7 +9,8 @@ import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { visitIntentLabel } from '@/lib/field/visit-intents'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisit, buildSitePatrimoine } from '@/lib/db/visits'
-import { buildVisitObjects } from '@/lib/db/visit-objects'
+import { buildVisitChanges } from '@/lib/db/visit-narrative'
+import { projectVisitObjects } from '@/lib/db/visit-objects'
 import { buildSiteTimeline } from '@/lib/db/site-timeline'
 import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
 import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureRow, type VisitCaptureKind } from '@/lib/db/visit-captures'
@@ -104,17 +105,20 @@ export default async function VisitRecapPage({
 
   // Données des onglets Évolution / Histoire / Mémoire (déterministe, réutilise la
   // mémoire du chantier). L'écran de FIN de visite, lui, reste inchangé et rapide.
-  const [objects, timeline, memory, patrimoine] = await Promise.all([
-    // Impact = les objets métier RÉELLEMENT produits par cette visite (actions,
-    // réserves, échéances, connaissances retenues), liés structurellement au
-    // report. Les objets eux-mêmes, jamais des compteurs (point 6).
-    buildVisitObjects(reportId, visit.site_id).catch(() => null),
+  const [changes, timeline, memory, patrimoine] = await Promise.all([
+    // Impact = les objets métier RÉELLEMENT produits par cette visite, lus depuis
+    // l'UNIQUE read-model partagé desktop/mobile (buildVisitChanges). Le mobile en
+    // est une PROJECTION (projectVisitObjects) : même vérité, rendu différent.
+    buildVisitChanges(reportId).catch(() => []),
     // Histoire = la VRAIE frise (visites incluses), pas l'ancien narratif qui les
     // omettait (d'où l'onglet vide). La visite du jour y sera mise en évidence.
     buildSiteTimeline(visit.site_id).catch(() => []),
     buildSiteMemorySignals(visit.site_id).catch(() => []),
     buildSitePatrimoine(visit.site_id).catch(() => ({ firstVisitLabel: null, firstDocDateLabel: null, photos: 0, visits: 0, importedDocs: 0, meetings: 0, actions: 0, reserves: 0, subjects: 0 })),
   ])
+
+  // Projection mobile du read-model partagé — mêmes objets que le desktop VisitDesk.
+  const objects = projectVisitObjects(changes, visit.site_id)
 
   const visitTypeLabel = visitIntentLabel(visit.visit_motive) ?? ORIGIN_FR[visit.origin ?? ''] ?? 'Visite'
   // Une visite TERMINÉE est figée : on la consulte et on la partage, on ne la

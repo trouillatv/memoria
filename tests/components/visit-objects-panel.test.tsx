@@ -18,11 +18,19 @@ function action(id: string, label: string): VisitObjectItem {
   return { id, label, statusLabel: 'Ouverte', href: `/m/site/site-1/action/${id}`, precise: true, ctaLabel: 'Voir la fiche' }
 }
 function reserve(id: string, label: string): VisitObjectItem {
-  return { id, label, statusLabel: 'Ouverte', href: '/m/site/site-1/reserves', precise: false, ctaLabel: 'Voir les réserves' }
+  return { id, label, statusLabel: null, href: '/m/site/site-1/reserves', precise: false, ctaLabel: 'Voir les réserves' }
+}
+/** Décision SANS sujet canonique → aucune destination précise : affichée sans lien. */
+function decisionNoLink(id: string, label: string): VisitObjectItem {
+  return { id, label, statusLabel: null, href: null, precise: false, ctaLabel: null }
 }
 function objects(over: Partial<VisitObjects> = {}): VisitObjects {
-  const base = { actions: [], reserves: [], deadlines: [], knowledge: [], isEmpty: false, ...over }
-  base.isEmpty = base.actions.length + base.reserves.length + base.deadlines.length + base.knowledge.length === 0
+  const base: VisitObjects = {
+    actions: [], reserves: [], deadlines: [], decisions: [], stakeholders: [], watchpoints: [], knowledge: [], isEmpty: false,
+    ...over,
+  }
+  base.isEmpty = base.actions.length + base.reserves.length + base.deadlines.length
+    + base.decisions.length + base.stakeholders.length + base.watchpoints.length + base.knowledge.length === 0
   return base
 }
 
@@ -73,5 +81,13 @@ describe('VisitObjectsPanel — objets réels, jamais des compteurs', () => {
     expect(within(reserveLink).getByText('Voir les réserves')).toBeInTheDocument()
     // Jamais « Ouvrir » quand la cible est une liste.
     expect(within(reserveLink).queryByText('Ouvrir')).not.toBeInTheDocument()
+  })
+
+  it('objet sans destination précise (décision hors sujet) : affiché SANS lien ni CTA', () => {
+    render(<VisitObjectsPanel objects={objects({ decisions: [decisionNoLink('d1', 'Valider le choix du carrelage')] })} />)
+    const label = screen.getByText('Valider le choix du carrelage')
+    expect(label).toBeInTheDocument()
+    expect(label.closest('a')).toBeNull() // pas de lien
+    expect(screen.queryByText('Voir le sujet')).not.toBeInTheDocument()
   })
 })

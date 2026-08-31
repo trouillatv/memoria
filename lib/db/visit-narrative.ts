@@ -167,7 +167,10 @@ export interface VisitChangeGroup {
   subjectLabel: string | null
   actions: Array<{ id: string; title: string; status: string | null; priority: string | null }>
   deadlines: Array<{ id: string; title: string; dueDate: string | null }>
-  facts: Array<{ id: string; title: string; kind: string }>
+  /** Connaissances RETENUES (site_knowledge_entries, status='active') — la mémoire
+   *  durable du chantier, PAS un fait simplement capté (captured_knowledge, qui
+   *  reste une donnée d'extraction, jamais un « objet produit »). */
+  knowledge: Array<{ id: string; title: string; kind: string }>
   watchpoints: Array<{ id: string; title: string }>
   decisions: Array<{ id: string; title: string }>
   reserves: Array<{ id: string; label: string }>
@@ -178,7 +181,7 @@ export interface VisitChangeGroup {
 // Types internes pour groupVisitChanges — canonical_subject déjà résolu en amont
 type RAction = { id: string; title: string; status: string | null; priority: string | null; canonicalSubjectId: string | null; subjectLabel: string | null }
 type RDeadline = { id: string; title: string; dueDate: string | null; canonicalSubjectId: string | null; subjectLabel: string | null }
-type RFact = { id: string; title: string; kind: string; canonicalSubjectId: string | null; subjectLabel: string | null }
+type RKnowledge = { id: string; title: string; kind: string; canonicalSubjectId: string | null; subjectLabel: string | null }
 type RWatchpoint = { id: string; title: string; canonicalSubjectId: string | null; subjectLabel: string | null }
 type RDecision = { id: string; title: string; canonicalSubjectId: string | null; subjectLabel: string | null }
 type RReserve = { id: string; label: string; canonicalSubjectId: string | null; subjectLabel: string | null }
@@ -187,7 +190,7 @@ type RStakeholder = { id: string; role: string; label: string; canonicalSubjectI
 interface VisitChangesInput {
   actions: RAction[]
   deadlines: RDeadline[]
-  facts: RFact[]
+  knowledge: RKnowledge[]
   watchpoints: RWatchpoint[]
   decisions: RDecision[]
   reserves: RReserve[]
@@ -201,7 +204,7 @@ export function groupVisitChanges(input: VisitChangesInput): VisitChangeGroup[] 
   function getOrCreate(csId: string | null, label: string | null): VisitChangeGroup {
     const key = csId ?? '__unclassified__'
     if (!groups.has(key)) {
-      groups.set(key, { canonicalSubjectId: csId, subjectLabel: label, actions: [], deadlines: [], facts: [], watchpoints: [], decisions: [], reserves: [], stakeholders: [], sourceCount: 0 })
+      groups.set(key, { canonicalSubjectId: csId, subjectLabel: label, actions: [], deadlines: [], knowledge: [], watchpoints: [], decisions: [], reserves: [], stakeholders: [], sourceCount: 0 })
     }
     return groups.get(key)!
   }
@@ -216,9 +219,9 @@ export function groupVisitChanges(input: VisitChangesInput): VisitChangeGroup[] 
     g.deadlines.push({ id: d.id, title: d.title, dueDate: d.dueDate })
     g.sourceCount++
   }
-  for (const f of input.facts) {
+  for (const f of input.knowledge) {
     const g = getOrCreate(f.canonicalSubjectId, f.subjectLabel)
-    g.facts.push({ id: f.id, title: f.title, kind: f.kind })
+    g.knowledge.push({ id: f.id, title: f.title, kind: f.kind })
     g.sourceCount++
   }
   for (const w of input.watchpoints) {
@@ -269,8 +272,15 @@ export function groupVisitChanges(input: VisitChangesInput): VisitChangeGroup[] 
 export async function buildVisitChanges(reportId: string): Promise<VisitChangeGroup[]> {
   const db = createAdminClient()
 
-  // ── FETCH ACTIONS + PROPOSALS EN PARALLÈLE ───────────────────────────────
-  const [actionsRes, proposalsRes] = await Promise.all([
+  // ── ACTIONS : DEUX relations démontrées vers la visite, unies + dédupliquées.
+  //    (1) report_id direct ; (2) source_capture_id → visit_capture de ce report.
+  //    Une action née d'une capture de la visite EST issue de la visite, même si
+  //    son report_id direct est nul. Tous statuts (une action clôturée reste
+  //    historiquement produite par cette visite). ──
+  const { data: capRows } = await db.from('visit_capture').select('id').eq('report_id', reportId)
+  const captureIds = ((capRows ?? []) as Array<{ id: string }>).map((c) => c.id)
+
+  const [actionsDirectRes, proposalsRes, actionsCaptureRes] = await Promise.all([
     db.from('site_actions')
       .select('id, title, status, priority, subject_thread_id')
       .eq('report_id', reportId)
@@ -282,9 +292,15 @@ export async function buildVisitChanges(reportId: string): Promise<VisitChangeGr
       .neq('status', 'superseded')
       .not('promoted_object_id', 'is', null)
       .neq('kind', 'action'),
+    captureIds.length > 0
+      ? db.from('site_actions').select('id, title, status, priority, subject_thread_id').in('source_capture_id', captureIds).is('deleted_at', null)
+      : Promise.resolve({ data: [] as Array<{ id: string; title: string; status: string | null; priority: string | null; subject_thread_id: string | null }> }),
   ])
 
-  const actions = (actionsRes.data ?? []) as Array<{ id: string; title: string; status: string | null; priority: string | null; subject_thread_id: string | null }>
+  const actionsById = new Map<string, { id: string; title: string; status: string | null; priority: string | null; subject_thread_id: string | null }>()
+  for (const a of (actionsDirectRes.data ?? []) as Array<{ id: string; title: string; status: string | null; priority: string | null; subject_thread_id: string | null }>) actionsById.set(a.id, a)
+  for (const a of (actionsCaptureRes.data ?? []) as Array<{ id: string; title: string; status: string | null; priority: string | null; subject_thread_id: string | null }>) actionsById.set(a.id, a)
+  const actions = [...actionsById.values()]
   const proposals = (proposalsRes.data ?? []) as Array<{ id: string; kind: string; promoted_object_id: string; promoted_object_type: string | null; canonical_subject_id: string | null }>
 
   // ── PATH 1 : STI pour les actions ────────────────────────────────────────
@@ -318,11 +334,13 @@ export async function buildVisitChanges(reportId: string): Promise<VisitChangeGr
   }
 
   // ── FETCH DES OBJETS LIÉS À CETTE VISITE ─────────────────────────────────
-  const [reservesRes, deadlinesRes, decisionsRes, factsRes, watchpointsRes, intervenantsRes] = await Promise.all([
+  const [reservesRes, deadlinesRes, decisionsRes, knowledgeRes, watchpointsRes, intervenantsRes] = await Promise.all([
     db.from('site_reserve').select('id, label').eq('report_id', reportId),
     db.from('site_deadlines').select('id, title, due_date').eq('report_id', reportId).is('deleted_at', null),
     db.from('site_decisions').select('id, titre').eq('report_id', reportId),
-    db.from('captured_knowledge').select('id, title, kind').eq('source_id', reportId),
+    // Connaissances RETENUES uniquement (mémoire durable), jamais captured_knowledge
+    // (donnée d'extraction) : un fait capté non retenu n'est pas un « objet produit ».
+    db.from('site_knowledge_entries').select('id, title, kind').eq('source_report_id', reportId).eq('status', 'active').is('deleted_at', null),
     db.from('site_watchpoints').select('id, title').eq('report_id', reportId).is('deleted_at', null),
     db.from('site_intervenants').select('id, role, company_id, main_contact_id').eq('source_report_id', reportId),
   ])
@@ -349,7 +367,7 @@ export async function buildVisitChanges(reportId: string): Promise<VisitChangeGr
       return { id: a.id, title: a.title, status: a.status, priority: a.priority, canonicalSubjectId: csId, subjectLabel: csId ? (csLabels.get(csId) ?? null) : null }
     }),
     deadlines: ((deadlinesRes.data ?? []) as Array<{ id: string; title: string; due_date: string | null }>).map(d => ({ id: d.id, title: d.title, dueDate: d.due_date ?? null, ...resolve(d.id) })),
-    facts: ((factsRes.data ?? []) as Array<{ id: string; title: string; kind: string }>).map(f => ({ id: f.id, title: f.title, kind: f.kind, ...resolve(f.id) })),
+    knowledge: ((knowledgeRes.data ?? []) as Array<{ id: string; title: string; kind: string }>).map(f => ({ id: f.id, title: f.title, kind: f.kind, ...resolve(f.id) })),
     watchpoints: ((watchpointsRes.data ?? []) as Array<{ id: string; title: string }>).map(w => ({ id: w.id, title: w.title, ...resolve(w.id) })),
     decisions: ((decisionsRes.data ?? []) as Array<{ id: string; titre: string }>).map(d => ({ id: d.id, title: d.titre, ...resolve(d.id) })),
     reserves: ((reservesRes.data ?? []) as Array<{ id: string; label: string }>).map(r => ({ id: r.id, label: r.label, ...resolve(r.id) })),

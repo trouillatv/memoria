@@ -31,7 +31,7 @@ function stakeholder(id: string, csId: string | null, label: string | null = csI
   return { id, role: 'entreprise', label: `stakeholder-${id}`, canonicalSubjectId: csId, subjectLabel: label }
 }
 
-const empty = { actions: [], deadlines: [], facts: [], watchpoints: [], decisions: [], reserves: [], stakeholders: [] }
+const empty = { actions: [], deadlines: [], knowledge: [], watchpoints: [], decisions: [], reserves: [], stakeholders: [] }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -55,7 +55,7 @@ describe('groupVisitChanges', () => {
     const result = groupVisitChanges({
       actions: [action('a1', 'cs1', 'Réseau')],
       deadlines: [deadline('d1', 'cs1', 'Réseau')],
-      facts: [],
+      knowledge: [],
       watchpoints: [],
       decisions: [decision('dec1', 'cs1', 'Réseau')],
       reserves: [],
@@ -127,7 +127,7 @@ describe('groupVisitChanges', () => {
     const result = groupVisitChanges({
       actions: [action('a1', 'cs1', 'S')],
       deadlines: [deadline('d1', 'cs1', 'S')],
-      facts: [fact('f1', 'cs1', 'S')],
+      knowledge: [fact('f1', 'cs1', 'S')],
       watchpoints: [watchpoint('w1', 'cs1', 'S')],
       decisions: [decision('dec1', 'cs1', 'S')],
       reserves: [reserve('r1', 'cs1', 'S')],
@@ -137,7 +137,7 @@ describe('groupVisitChanges', () => {
     expect(result[0].sourceCount).toBe(7)
     expect(result[0].actions).toHaveLength(1)
     expect(result[0].deadlines).toHaveLength(1)
-    expect(result[0].facts).toHaveLength(1)
+    expect(result[0].knowledge).toHaveLength(1)
     expect(result[0].watchpoints).toHaveLength(1)
     expect(result[0].decisions).toHaveLength(1)
     expect(result[0].reserves).toHaveLength(1)

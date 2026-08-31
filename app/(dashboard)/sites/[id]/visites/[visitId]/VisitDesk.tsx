@@ -318,7 +318,7 @@ function VisitChanges({ changes, siteId }: { changes: VisitChangeGroup[]; siteId
                   <span className="leading-snug">{w.title}</span>
                 </li>
               ))}
-              {group.facts.map(f => (
+              {group.knowledge.map(f => (
                 <li key={`f-${f.id}`} className="flex items-start gap-2 text-[13.5px]">
                   <ChangeBadge kind="fact" />
                   <span className="leading-snug">{f.title}</span>

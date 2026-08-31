@@ -210,6 +210,9 @@ export function VisitObjectsPanel({ objects }: { objects: VisitObjects | null })
     { title: 'Actions', Icon: ListTodo, cls: 'text-violet-600', ring: 'bg-violet-100 dark:bg-violet-950/40', items: objects.actions },
     { title: 'Réserves', Icon: ClipboardList, cls: 'text-amber-600', ring: 'bg-amber-100 dark:bg-amber-950/40', items: objects.reserves },
     { title: 'Échéances', Icon: CalendarDays, cls: 'text-sky-600', ring: 'bg-sky-100 dark:bg-sky-950/40', items: objects.deadlines },
+    { title: 'Décisions', Icon: CheckSquare, cls: 'text-indigo-600', ring: 'bg-indigo-100 dark:bg-indigo-950/40', items: objects.decisions },
+    { title: 'Intervenants', Icon: Users, cls: 'text-teal-600', ring: 'bg-teal-100 dark:bg-teal-950/40', items: objects.stakeholders },
+    { title: 'Points de vigilance', Icon: Eye, cls: 'text-rose-600', ring: 'bg-rose-100 dark:bg-rose-950/40', items: objects.watchpoints },
     { title: 'Connaissances', Icon: Brain, cls: 'text-emerald-600', ring: 'bg-emerald-100 dark:bg-emerald-950/40', items: objects.knowledge },
   ].filter((g) => g.items.length > 0)
 
@@ -244,21 +247,36 @@ function ObjectGroup({
         <p className="text-sm font-semibold">{title}</p>
       </div>
       <ul className="mt-2 space-y-1">
-        {shown.map((it) => (
-          <li key={it.id}>
-            <Link href={it.href} className="block rounded-lg px-1.5 py-1.5 active:bg-accent">
-              <p className="text-[13px] font-medium leading-snug">{it.label}</p>
-              <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                {it.statusLabel && <span>{it.statusLabel}</span>}
-                {/* CTA honnête : « Voir la fiche » (précis) vs « Voir les réserves »
-                    (espace/liste) — jamais « Ouvrir » quand la cible est une liste. */}
+        {shown.map((it) => {
+          // Ligne d'état + CTA HONNÊTE : « Voir la fiche » (précis) vs « Voir les
+          // réserves »/« Voir le sujet » (espace) — jamais « Ouvrir » vers une
+          // liste. Sans destination /m fiable, l'objet s'affiche SANS lien.
+          const meta = (it.statusLabel || it.ctaLabel) ? (
+            <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              {it.statusLabel && <span>{it.statusLabel}</span>}
+              {it.ctaLabel && (
                 <span className="ml-auto inline-flex items-center gap-0.5 text-primary">
                   {it.ctaLabel} <ChevronRight className="h-3 w-3" />
                 </span>
-              </p>
-            </Link>
-          </li>
-        ))}
+              )}
+            </p>
+          ) : null
+          return (
+            <li key={it.id}>
+              {it.href ? (
+                <Link href={it.href} className="block rounded-lg px-1.5 py-1.5 active:bg-accent">
+                  <p className="text-[13px] font-medium leading-snug">{it.label}</p>
+                  {meta}
+                </Link>
+              ) : (
+                <div className="rounded-lg px-1.5 py-1.5">
+                  <p className="text-[13px] font-medium leading-snug">{it.label}</p>
+                  {meta}
+                </div>
+              )}
+            </li>
+          )
+        })}
       </ul>
       {!expanded && rest > 0 && (
         <button type="button" onClick={() => setExpanded(true)} className="mt-1.5 pl-1.5 text-[12px] font-medium text-primary active:opacity-70">
