@@ -16,6 +16,11 @@
 export const TERRAIN_VISIT_ORIGINS = ['planned', 'spontaneous', 'qr', 'gps'] as const
 export type TerrainVisitOrigin = (typeof TERRAIN_VISIT_ORIGINS)[number]
 
+/** Origine d'un PV/CR historique importé — définition UNIQUE (jamais un magic
+ *  string dupliqué : un filtre `.eq('origin', IMPORTED_DOCUMENT_ORIGIN)` et le
+ *  prédicat ci-dessous partagent la même vérité). */
+export const IMPORTED_DOCUMENT_ORIGIN = 'import' as const
+
 /** Vrai si l'origine désigne une VISITE TERRAIN (jamais un import, jamais une réunion). */
 export function isTerrainVisitOrigin(origin: string | null | undefined): boolean {
   return origin != null && (TERRAIN_VISIT_ORIGINS as readonly string[]).includes(origin)
@@ -23,5 +28,5 @@ export function isTerrainVisitOrigin(origin: string | null | undefined): boolean
 
 /** Vrai si l'origine désigne un PV/CR historique importé (source documentaire, pas une visite). */
 export function isImportedDocumentOrigin(origin: string | null | undefined): boolean {
-  return origin === 'import'
+  return origin === IMPORTED_DOCUMENT_ORIGIN
 }

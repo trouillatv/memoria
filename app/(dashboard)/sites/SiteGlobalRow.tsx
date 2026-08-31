@@ -3,7 +3,7 @@
 // Ligne d'un site dans la vue globale /sites.
 // Modes : lecture (avec contrat lié + compteurs), édition inline, delete protégé.
 
-import { useState, useTransition } from 'react'
+import { Fragment, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Pencil, Trash2, X, Building2 } from 'lucide-react'
@@ -210,6 +210,30 @@ export function SiteGlobalRow({ site, inactive }: Props) {
 
   const hasFields = hasAnySiteField(site)
 
+  // Métadonnée de chantier : ce qu'il CONTIENT réellement, dans le vocabulaire du
+  // modèle ACTUEL (visites terrain · actions · PV importés · dernière visite).
+  // Objets réels comptés sans heuristique — jamais de KPI/agrégat. Chaque métrique
+  // n'apparaît que si elle est > 0 (pas de « rangée de zéros »). Les compteurs de
+  // maintenance (mission/intervention/note) restent en base pour la protection de
+  // suppression, mais ne décrivent plus le chantier sur cette ligne.
+  const metaParts: React.ReactNode[] = []
+  if (site.visites_count > 0) {
+    metaParts.push(
+      <span className="font-medium text-foreground">
+        {site.visites_count} visite{site.visites_count > 1 ? 's' : ''}
+      </span>,
+    )
+  }
+  if (site.actions_count > 0) {
+    metaParts.push(<span>{site.actions_count} action{site.actions_count > 1 ? 's' : ''}</span>)
+  }
+  if (site.pv_imported_count > 0) {
+    metaParts.push(<span>{site.pv_imported_count} PV importé{site.pv_imported_count > 1 ? 's' : ''}</span>)
+  }
+  if (site.visites_count > 0) {
+    metaParts.push(<span>Dernière visite {formatLastDate(site.last_visit_at)}</span>)
+  }
+
   return (
     <li className={`rounded-lg border bg-card overflow-hidden transition-[transform,box-shadow,border-color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] hover:border-brand-300 hover:shadow-md hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${muted}`}>
       {/* Cluster A — Identification primaire : nom + badges + actions */}
@@ -280,44 +304,17 @@ export function SiteGlobalRow({ site, inactive }: Props) {
         </div>
       )}
 
-      {/* Cluster C — Méta-données : counts + dernière intervention */}
-      <div className="border-t px-4 py-2 text-[11px] text-muted-foreground tabular-nums flex items-center gap-3 flex-wrap">
-        {/* LES VISITES D'ABORD, ET EN ÉVIDENCE (Vincent, 2026-07-22).
-            Cette ligne annonçait « 0 mission · 0 intervention · 0 note ·
-            Dernière interv. jamais » sur un chantier qui portait trois visites
-            et treize captures. Aucun de ces zéros n'était faux — ils comptent
-            les dépendances qui décident si un site est supprimable, le
-            vocabulaire du contrat de maintenance. Mais quatre zéros de suite ne
-            se lisent pas « rien à supprimer » : ils se lisent « chantier mort ».
-            Le compteur de l'usage réel passe donc devant, et en couleur. */}
-        {site.visites_count > 0 && (
-          <>
-            <span className="font-medium text-foreground">
-              {site.visites_count} visite{site.visites_count > 1 ? 's' : ''}
-            </span>
-            <span aria-hidden>·</span>
-            <span>Dernière visite {formatLastDate(site.last_visit_at)}</span>
-            <span aria-hidden>·</span>
-          </>
-        )}
-        <span>{site.missions_count} mission{site.missions_count > 1 ? 's' : ''}</span>
-        <span aria-hidden>·</span>
-        <span>
-          {site.interventions_count} intervention
-          {site.interventions_count > 1 ? 's' : ''}
-        </span>
-        <span aria-hidden>·</span>
-        <span>{site.site_notes_count} note{site.site_notes_count > 1 ? 's' : ''}</span>
-        {/* « Dernière interv. » n'a de sens que s'il y a des interventions.
-            Sur un chantier suivi par des visites, « jamais » était vrai et
-            inutile — il annonçait l'absence de ce qu'on n'y fait pas. */}
-        {site.interventions_count > 0 && (
-          <>
-            <span aria-hidden>·</span>
-            <span>Dernière interv. {formatLastDate(site.last_intervention_at)}</span>
-          </>
-        )}
-      </div>
+      {/* Cluster C — Métadonnée : ce que le chantier contient (modèle actuel). */}
+      {metaParts.length > 0 && (
+        <div className="border-t px-4 py-2 text-[11px] text-muted-foreground tabular-nums flex items-center gap-3 flex-wrap">
+          {metaParts.map((part, i) => (
+            <Fragment key={i}>
+              {i > 0 && <span aria-hidden>·</span>}
+              {part}
+            </Fragment>
+          ))}
+        </div>
+      )}
     </li>
   )
 }

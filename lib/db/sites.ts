@@ -1,7 +1,7 @@
 import { resolveResourceAccess } from '@/lib/auth/resource-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
-import { TERRAIN_VISIT_ORIGINS } from '@/lib/field/visit-origins'
+import { TERRAIN_VISIT_ORIGINS, IMPORTED_DOCUMENT_ORIGIN } from '@/lib/field/visit-origins'
 import { getOrgIdsOfUser, requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
 import { todayLocalIso } from '@/lib/time/local-date'
@@ -273,6 +273,12 @@ export interface SiteWithStats extends DbSite {
   visites_count: number
   /** La plus récente, par sa date de CHANTIER (`started_at`). */
   last_visit_at: string | null
+  /** TOTAL des actions du chantier (tous statuts, non supprimées) — le libellé
+   *  dit « X actions », pas « X actions ouvertes ». Définition = lignes site_actions. */
+  actions_count: number
+  /** PV/CR historiques importés (`site_reports.origin = 'import'`) — même
+   *  définition fiabilisée que `isImportedDocumentOrigin`, jamais une visite. */
+  pv_imported_count: number
 }
 
 /** Liste tous les sites actifs du tenant, enrichis pour l'affichage global. */
@@ -308,7 +314,7 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
 
   // Charge en parallèle : missions par site (1 query), interventions exécutées
   // par site (via missions), site_notes par site.
-  const [missionsRes, notesRes, visitesRes] = await Promise.all([
+  const [missionsRes, notesRes, visitesRes, actionsRes, pvImportedRes] = await Promise.all([
     supabase
       .from('missions')
       .select('id, site_id, deleted_at')
@@ -327,10 +333,26 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
       .select('site_id, started_at, created_at, origin')
       .in('site_id', siteIds)
       .in('origin', TERRAIN_VISIT_ORIGINS),
+    // LES ACTIONS — total du chantier, TOUS statuts (le libellé dit « X actions »).
+    // Non supprimées uniquement : une action soft-deleted n'est plus une action.
+    supabase
+      .from('site_actions')
+      .select('site_id')
+      .in('site_id', siteIds)
+      .is('deleted_at', null),
+    // LES PV IMPORTÉS — site_reports historiques (origin='import'), même
+    // définition fiabilisée que la provenance, jamais comptés comme visite.
+    supabase
+      .from('site_reports')
+      .select('site_id')
+      .in('site_id', siteIds)
+      .eq('origin', IMPORTED_DOCUMENT_ORIGIN),
   ])
   if (missionsRes.error) throw missionsRes.error
   if (notesRes.error) throw notesRes.error
   if (visitesRes.error) throw visitesRes.error
+  if (actionsRes.error) throw actionsRes.error
+  if (pvImportedRes.error) throw pvImportedRes.error
 
   const missionsBySite = new Map<string, string[]>()
   for (const m of (missionsRes.data ?? []) as Array<{ id: string; site_id: string }>) {
@@ -396,6 +418,15 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
     if (quand && (!prec || quand > prec)) derniereVisiteBySite.set(v.site_id, quand)
   }
 
+  const actionsBySite = new Map<string, number>()
+  for (const a of (actionsRes.data ?? []) as Array<{ site_id: string }>) {
+    actionsBySite.set(a.site_id, (actionsBySite.get(a.site_id) ?? 0) + 1)
+  }
+  const pvImportedBySite = new Map<string, number>()
+  for (const p of (pvImportedRes.data ?? []) as Array<{ site_id: string }>) {
+    pvImportedBySite.set(p.site_id, (pvImportedBySite.get(p.site_id) ?? 0) + 1)
+  }
+
   return rows.map((s) => {
     const c = Array.isArray(s.contract) ? s.contract[0] ?? null : s.contract
     const cl = Array.isArray(s.client) ? s.client[0] ?? null : s.client
@@ -427,6 +458,8 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
       site_notes_count: notesBySite.get(s.id) ?? 0,
       visites_count: visitesBySite.get(s.id) ?? 0,
       last_visit_at: derniereVisiteBySite.get(s.id) ?? null,
+      actions_count: actionsBySite.get(s.id) ?? 0,
+      pv_imported_count: pvImportedBySite.get(s.id) ?? 0,
     }
   })
 }
