@@ -16,7 +16,7 @@ vi.mock('@/lib/db/users', () => ({
   getCurrentUserWithProfile: (...a: unknown[]) => mockGetCurrentUser(...a),
 }))
 
-const mockGetSiteHeaderName = vi.fn(async () => 'Chantier A')
+const mockGetSiteHeaderName = vi.fn<(...a: unknown[]) => Promise<string>>(() => Promise.resolve('Chantier A'))
 vi.mock('@/lib/field/site-header', () => ({
   getSiteHeaderName: (...a: unknown[]) => mockGetSiteHeaderName(...a),
 }))
