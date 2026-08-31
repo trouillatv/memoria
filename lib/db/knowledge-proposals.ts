@@ -761,6 +761,11 @@ export interface PromotionInput {
    *  et « vraie durablement » ne se rangent pas au même endroit, et l'IA n'a pas
    *  à trancher. */
   knowledgeKind?: 'current_information' | 'durable_knowledge'
+  /** Titre corrigé par l'humain avant confirmation (geste « Modifier puis
+   *  confirmer », P0-1). Remplace p.title tel quel — jamais fusionné. */
+  titleOverride?: string
+  /** Corps corrigé par l'humain avant confirmation. Même règle que titleOverride. */
+  bodyOverride?: string
 }
 
 export async function promoteProposal(params: {
@@ -826,8 +831,8 @@ export async function promoteProposal(params: {
     const id = await createSiteAction({
       site_id: p.site_id,
       report_id: p.report_id ?? null,
-      title: p.title,
-      body: p.body,
+      title: params.input?.titleOverride?.trim() || p.title,
+      body: params.input?.bodyOverride?.trim() || p.body,
       assigned_to: payload.owner || null,
       created_by: params.userId,
       created_from: 'visit_debrief_ai',

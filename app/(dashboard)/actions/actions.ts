@@ -7,6 +7,7 @@
 // (action → intervention) reste un geste séparé.
 
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { z } from 'zod'
 import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { requireSiteWriteAccess, requireSiteActionWriteAccess } from '@/lib/auth/site-write-access'
@@ -16,6 +17,8 @@ import { createSiteAction, markSiteActionDone, markSiteActionProgress, setSiteAc
 import { listMissionsBySite, createMission } from '@/lib/db/missions'
 import { createIntervention } from '@/lib/db/interventions'
 import { findOrCreateSubjectByName, attachToSubject } from '@/lib/db/subjects'
+import { promoteProposal, dismissProposal } from '@/lib/db/knowledge-proposals'
+import { trackAiOutcome } from '@/lib/db/ai-outcome-events'
 
 const IdSchema = z.string().uuid()
 const CommentSchema = z.string().trim().min(1, 'Un commentaire est requis').max(1000)
@@ -38,6 +41,7 @@ function revalidateActionSurfaces(siteId?: string) {
   revalidatePath('/m/actions')
   if (siteId) {
     revalidatePath(`/sites/${siteId}`)
+    revalidatePath(`/sites/${siteId}/actions`)
     revalidatePath(`/m/site/${siteId}`)
   }
 }
@@ -459,5 +463,90 @@ export async function createQuickActionAction(
     return { ok: true, id }
   } catch {
     return { ok: false, error: 'Échec de la création' }
+  }
+}
+
+// ── Propositions d'action (P0-1 — « Adoption opérationnelle ») ──────────────
+// Doctrine : « L'objet métier se gère là où il vit. Sa source explique pourquoi
+// il existe, mais n'est jamais un passage obligé pour le gérer. » Une
+// proposition d'action se confirme, se corrige puis confirme, ou s'écarte
+// DIRECTEMENT depuis /sites/[id]/actions — la visite source reste un accès
+// secondaire (la preuve), jamais le chemin obligé de la décision.
+
+const ConfirmProposalSchema = z.object({
+  proposalId: z.string().uuid(),
+  siteId: z.string().uuid(),
+  // Présents uniquement pour le geste « Modifier puis confirmer ». Un override
+  // vide ('') n'est jamais confondu avec une absence : le trim + fallback sur
+  // le texte proposé se fait au niveau de promoteProposal.
+  titleOverride: z.string().trim().max(200).optional(),
+  bodyOverride: z.string().trim().max(2000).optional(),
+})
+
+/** Confirme (ou corrige puis confirme) une proposition d'action → site_action. */
+export async function confirmActionProposalAction(
+  input: z.input<typeof ConfirmProposalSchema>,
+): Promise<{ ok: true; objectId: string } | { ok: false; error: string }> {
+  const parsed = ConfirmProposalSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const { proposalId, siteId, titleOverride, bodyOverride } = parsed.data
+  const access = await requireSiteWriteAccess(siteId)
+  if (!access.ok) return access
+  try {
+    const res = await promoteProposal({
+      id: proposalId,
+      userId: access.userId,
+      organizationId: access.organizationId,
+      input: { titleOverride, bodyOverride },
+    })
+    if (res.status !== 'promoted') return { ok: false, error: 'Confirmation impossible' }
+    // TÉLÉMÉTRIE DE VALEUR — même capacité que la promotion mobile (c'est le
+    // même événement métier, seule la surface change) ; `edited` distingue une
+    // correction humaine d'une simple acceptation.
+    after(() =>
+      trackAiOutcome({
+        capability: 'visit_action_proposal',
+        outcome: titleOverride || bodyOverride ? 'edited' : 'acted_on',
+        artifactType: 'action_proposal',
+        artifactId: proposalId,
+        dedupeKey: `${proposalId}:acted_on`,
+      }),
+    )
+    revalidateActionSurfaces(siteId)
+    return { ok: true, objectId: res.objectId }
+  } catch {
+    return { ok: false, error: 'Échec de la confirmation' }
+  }
+}
+
+const DismissProposalSchema = z.object({
+  proposalId: z.string().uuid(),
+  siteId: z.string().uuid(),
+})
+
+/** Écarte une proposition d'action — décision humaine, jamais ressuscitée. */
+export async function dismissActionProposalAction(
+  input: z.input<typeof DismissProposalSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = DismissProposalSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const { proposalId, siteId } = parsed.data
+  const access = await requireSiteWriteAccess(siteId)
+  if (!access.ok) return access
+  try {
+    await dismissProposal(proposalId, access.userId, undefined, access.organizationId)
+    after(() =>
+      trackAiOutcome({
+        capability: 'visit_action_proposal',
+        outcome: 'rejected',
+        artifactType: 'action_proposal',
+        artifactId: proposalId,
+        dedupeKey: `${proposalId}:rejected`,
+      }),
+    )
+    revalidateActionSurfaces(siteId)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
   }
 }

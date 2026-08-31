@@ -9,7 +9,7 @@ import 'server-only'
 // lit EXACTEMENT la même population que `getSiteProjection().actions.proposed`
 // (site_knowledge_proposals, kind=action, status=proposed), avec la provenance.
 
-import { listProposalsBySite } from '@/lib/db/knowledge-proposals'
+import { listProposalsBySite, getCanonicalSubjectLabels } from '@/lib/db/knowledge-proposals'
 import { readReportMeta, classifyProvenance, type ProvenanceType } from '@/lib/knowledge/repository'
 
 const PROV_LABEL: Record<ProvenanceType, string> = {
@@ -19,10 +19,15 @@ const PROV_LABEL: Record<ProvenanceType, string> = {
 export interface PendingActionProposal {
   id: string
   title: string
+  body: string | null
+  owner: string | null
+  canonicalSubjectId: string | null
+  canonicalSubjectLabel: string | null
   /** Provenance lisible : « PV · avr. 2026 », « Visite · juin 2026 »… */
   provenanceLabel: string
   provenanceDate: string | null
-  /** Page d'arbitrage du report d'origine (là où on confirme cette proposition). */
+  /** Preuve : la visite/PV d'origine (accès SECONDAIRE — P0-1, l'objet se
+   *  gère depuis Actions, la source explique seulement pourquoi il existe). */
   reportHref: string | null
   createdAt: string
 }
@@ -36,7 +41,11 @@ export async function getSitePendingActionProposals(siteId: string): Promise<Pen
   if (rows.length === 0) return []
 
   const reportIds = [...new Set(rows.map((r) => r.report_id).filter((x): x is string => !!x))]
-  const meta = await readReportMeta(reportIds)
+  const subjectIds = [...new Set(rows.map((r) => r.canonical_subject_id).filter((x): x is string => !!x))]
+  const [meta, subjectLabels] = await Promise.all([
+    readReportMeta(reportIds),
+    getCanonicalSubjectLabels(subjectIds),
+  ])
 
   return rows.map((r) => {
     const m = r.report_id ? meta.get(r.report_id) : undefined
@@ -44,13 +53,16 @@ export async function getSitePendingActionProposals(siteId: string): Promise<Pen
     const date = m?.started_at
       ? new Date(m.started_at).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })
       : null
+    const payload = (r.payload ?? {}) as { owner?: string | null }
     return {
       id: r.id,
       title: r.title,
+      body: r.body,
+      owner: payload.owner ?? null,
+      canonicalSubjectId: r.canonical_subject_id ?? null,
+      canonicalSubjectLabel: r.canonical_subject_id ? subjectLabels.get(r.canonical_subject_id) ?? null : null,
       provenanceLabel: PROV_LABEL[prov],
       provenanceDate: date,
-      // Destination = la page d'arbitrage réelle (PanneauArbitrage, confirmer/écarter),
-      // pas la visite générique qui n'a aucun CTA sur ces propositions.
       reportHref: r.report_id ? `/sites/${siteId}/visites/${r.report_id}/compte-rendu` : null,
       createdAt: r.created_at,
     }
