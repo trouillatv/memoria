@@ -30,6 +30,7 @@ import {
   getSignedPhotoUrlsThumb,
 } from '@/lib/storage/intervention-photos'
 import { getSignedLogoUrls } from '@/lib/storage/entity-logos'
+import { readImportDocumentDates } from '@/lib/knowledge/repository'
 
 // =============================================================================
 // Types
@@ -1401,12 +1402,24 @@ export async function getSiteRecentRhythm(
     }
     const [actsRes, repsRes] = await Promise.all([
       supabase.from('site_actions').select('created_at').eq('site_id', siteId).gte('created_at', sinceIso),
-      supabase.from('site_reports').select('created_at, origin').eq('site_id', siteId).gte('created_at', sinceIso),
+      supabase.from('site_reports').select('id, created_at, origin').eq('site_id', siteId).gte('created_at', sinceIso),
     ])
     // Date civile NOUMÉA (timestamptz UTC → jour NC), même raison que ci-dessus.
     for (const a of (actsRes.data ?? []) as Array<{ created_at: string }>) bump(localDateOf(new Date(a.created_at)), 'Action créée')
-    for (const r of (repsRes.data ?? []) as Array<{ created_at: string; origin: string | null }>) {
-      bump(localDateOf(new Date(r.created_at)), r.origin === 'import' ? 'PV/CR importé' : r.origin ? 'Visite terrain' : 'Compte-rendu')
+    const repRows = (repsRes.data ?? []) as Array<{ id: string; created_at: string; origin: string | null }>
+    const importReportIds = repRows.filter((r) => r.origin === 'import').map((r) => r.id)
+    // P0-temporel : un PV importé traité aujourd'hui ne « s'est pas passé »
+    // aujourd'hui — sa date d'ingestion (created_at) ne doit jamais le positionner
+    // sur ce carnet de bord. Positionné à sa date documentaire prouvée, sinon
+    // absent de ce jour plutôt que positionné à une date fabriquée.
+    const importDates = importReportIds.length > 0 ? await readImportDocumentDates(importReportIds) : new Map<string, string | null>()
+    for (const r of repRows) {
+      if (r.origin === 'import') {
+        const effectiveDate = importDates.get(r.id)
+        if (effectiveDate) bump(effectiveDate.slice(0, 10), 'PV/CR importé')
+        continue
+      }
+      bump(localDateOf(new Date(r.created_at)), r.origin ? 'Visite terrain' : 'Compte-rendu')
     }
   }
 

@@ -392,7 +392,11 @@ export async function getVisitImpact(): Promise<VisitImpact> {
   const orgIds = await getOrgIdsOfUser() // M3 : agrégé sur les orgs de l'utilisateur
   const now = new Date()
   const from = new Date(now.getTime() - LOOKBACK_DAYS * 86_400_000).toISOString()
-  const rows = await readEvents(from, now.toISOString(), orgIds).catch(() => [] as SiteEventRow[])
+  // P0.5-Vérité : un import n'est jamais « votre dernière visite ». readEvents émet
+  // désormais aussi les PV historiques (positionnés par effective_date) pour nourrir
+  // l'Historique général — l'accueil doit les ignorer, sous peine de dire « depuis
+  // votre visite » d'un PV importé il y a des mois.
+  const rows = (await readEvents(from, now.toISOString(), orgIds).catch(() => [] as SiteEventRow[])).filter((r) => !r.is_import)
   if (rows.length === 0) return emptyVisitImpact()
 
   const bySite = new Map<string, SiteEventRow[]>()

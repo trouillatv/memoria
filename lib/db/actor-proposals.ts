@@ -16,6 +16,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import { splitPersonCompany, looksLikePerson } from '@/lib/knowledge/person-name'
+import { readImportDocumentDates } from '@/lib/knowledge/repository'
 
 export interface ActorProposalSource {
   siteId: string
@@ -122,6 +123,10 @@ export async function getUnconfirmedActorProposals(orgIds: string[]): Promise<Ac
 
   const siteName = new Map(((siteRes.data ?? []) as Array<{ id: string; name: string }>).map((s) => [s.id, s.name]))
   const reportById = new Map(((reportRes.data ?? []) as Array<{ id: string; started_at: string | null; created_at: string; title: string | null; origin: string | null }>).map((r) => [r.id, r]))
+  // P0-temporel : la date d'un PV importé n'est jamais started_at/created_at
+  // (dates techniques) — seule documents.effective_date fait foi (P0.5-Vérité).
+  const importReportIds = [...reportById.values()].filter((r) => r.origin === 'import').map((r) => r.id)
+  const importDates = importReportIds.length > 0 ? await readImportDocumentDates(importReportIds) : new Map<string, string | null>()
   const captureBody = new Map<string, string>()
   for (const c of (captureRes.data ?? []) as Array<{ id: string; body: string | null }>) if (c.body) captureBody.set(c.id, c.body)
 
@@ -137,7 +142,11 @@ export async function getUnconfirmedActorProposals(orgIds: string[]): Promise<Ac
     let excerpt: string | null = null
     for (const cid of r.source_capture_ids ?? []) { const b = captureBody.get(cid); if (b) { excerpt = truncate(b, 160); break } }
     const rep = r.report_id ? reportById.get(r.report_id) ?? null : null
-    const reportDate = rep ? rep.started_at ?? rep.created_at : null
+    const reportDate = rep
+      ? rep.origin === 'import'
+        ? importDates.get(rep.id) ?? null
+        : rep.started_at ?? rep.created_at
+      : null
     const reportKind: 'visit' | 'meeting' | null = rep ? (rep.origin ? 'visit' : 'meeting') : null
 
     return {

@@ -337,6 +337,11 @@ export interface SiteEventRow {
   reviewed_by?: string | null
   /** Début de la visite — sert à dire sa durée réelle. */
   started_at?: string | null
+  /** Vrai pour un `visit_ended` issu d'un PV historique importé (origin='import').
+   *  P0-temporel : un import n'est jamais une visite terrain — les consommateurs
+   *  qui répondent « depuis votre dernière visite » doivent l'exclure (P0.5-Vérité),
+   *  ceux qui racontent l'historique général doivent au contraire l'inclure. */
+  is_import?: boolean
 }
 
 /**
@@ -374,9 +379,12 @@ export async function readEvents(
   }
   const out: SiteEventRow[] = []
 
+  // Visites terrain et réunions (origin != 'import') : doctrine native inchangée,
+  // datées par `ended_at`. Les imports sont traités à part ci-dessous — leur
+  // présence ne peut jamais dépendre de `ended_at` (souvent NULL).
   let rq = db
     .from('site_reports')
-    .select('id, site_id, started_at, ended_at, debrief_analysis')
+    .select('id, site_id, started_at, ended_at, debrief_analysis, origin')
     .not('site_id', 'is', null)
     .is('deleted_at', null)
     .not('ended_at', 'is', null)
@@ -385,12 +393,55 @@ export async function readEvents(
   if (orgId) rq = Array.isArray(orgId) ? rq.in('organization_id', orgId) : rq.eq('organization_id', orgId)
   if (siteId) rq = rq.eq('site_id', siteId)
   const { data: reports } = await rq
-  for (const r of (reports ?? []) as Array<{ id: string; site_id: string; started_at: string | null; ended_at: string; debrief_analysis: { generated_at?: string } | null }>) {
+  for (const r of (reports ?? []) as Array<{ id: string; site_id: string; started_at: string | null; ended_at: string; debrief_analysis: { generated_at?: string } | null; origin: string | null }>) {
+    if (r.origin === 'import') continue // émis par le bloc import ci-dessous
     out.push({ site_id: r.site_id, at: r.ended_at, kind: 'visit_ended', report_id: r.id, started_at: r.started_at })
     const generatedAt = r.debrief_analysis?.generated_at
     // La synthèse n'est un fait que si elle a réellement été écrite DANS la période.
     if (generatedAt && withinRange(generatedAt)) {
       out.push({ site_id: r.site_id, at: generatedAt, kind: 'synthesis_created', report_id: r.id })
+    }
+  }
+
+  // PV historiques importés (origin='import') : P0-temporel — leur présence dans le
+  // flux ne dépend JAMAIS de started_at/ended_at (souvent NULL, cf. P0.5-Vérité).
+  // Seule `documents.effective_date` fait foi ; sans elle on n'exclut pas le PV (on
+  // ne le fait pas disparaître) mais on ne fabrique pas non plus sa position : il est
+  // trié sur un repère technique, et le consommateur (getSiteHistory) affiche
+  // « Date non déterminée » plutôt que cette date.
+  let iq = db
+    .from('site_reports')
+    .select('id, site_id, started_at, ended_at, created_at, source_document_id')
+    .not('site_id', 'is', null)
+    .is('deleted_at', null)
+    .eq('origin', 'import')
+  if (orgId) iq = Array.isArray(orgId) ? iq.in('organization_id', orgId) : iq.eq('organization_id', orgId)
+  if (siteId) iq = iq.eq('site_id', siteId)
+  const { data: imports } = await iq
+  const importRows = (imports ?? []) as Array<{
+    id: string
+    site_id: string
+    started_at: string | null
+    ended_at: string | null
+    created_at: string
+    source_document_id: string | null
+  }>
+  if (importRows.length > 0) {
+    const docIds = [...new Set(importRows.map((r) => r.source_document_id).filter((x): x is string => !!x))]
+    const effectiveByDoc = new Map<string, string | null>()
+    if (docIds.length > 0) {
+      const { data: docs } = await db.from('documents').select('id, effective_date').in('id', docIds)
+      for (const d of (docs ?? []) as Array<{ id: string; effective_date: string | null }>) {
+        effectiveByDoc.set(d.id, d.effective_date)
+      }
+    }
+    for (const r of importRows) {
+      const effectiveDate = r.source_document_id ? effectiveByDoc.get(r.source_document_id) ?? null : null
+      // Date documentaire connue → elle seule décide de la présence dans la fenêtre
+      // [from, to]. Inconnue → on n'exclut pas le PV sur un champ technique absent.
+      if (effectiveDate && !withinRange(effectiveDate)) continue
+      const at = effectiveDate ?? r.ended_at ?? r.started_at ?? r.created_at
+      out.push({ site_id: r.site_id, at, kind: 'visit_ended', report_id: r.id, started_at: r.started_at, is_import: true })
     }
   }
 
