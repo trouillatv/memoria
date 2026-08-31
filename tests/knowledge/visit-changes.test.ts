@@ -27,7 +27,11 @@ function fact(id: string, csId: string | null, label: string | null = csId) {
   return { id, title: `fact-${id}`, kind: 'durable', canonicalSubjectId: csId, subjectLabel: label }
 }
 
-const empty = { actions: [], deadlines: [], facts: [], watchpoints: [], decisions: [], reserves: [] }
+function stakeholder(id: string, csId: string | null, label: string | null = csId) {
+  return { id, role: 'entreprise', label: `stakeholder-${id}`, canonicalSubjectId: csId, subjectLabel: label }
+}
+
+const empty = { actions: [], deadlines: [], facts: [], watchpoints: [], decisions: [], reserves: [], stakeholders: [] }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -55,6 +59,7 @@ describe('groupVisitChanges', () => {
       watchpoints: [],
       decisions: [decision('dec1', 'cs1', 'Réseau')],
       reserves: [],
+      stakeholders: [],
     })
     expect(result).toHaveLength(1)
     expect(result[0].actions).toHaveLength(1)
@@ -126,14 +131,27 @@ describe('groupVisitChanges', () => {
       watchpoints: [watchpoint('w1', 'cs1', 'S')],
       decisions: [decision('dec1', 'cs1', 'S')],
       reserves: [reserve('r1', 'cs1', 'S')],
+      stakeholders: [stakeholder('s1', 'cs1', 'S')],
     })
     expect(result).toHaveLength(1)
-    expect(result[0].sourceCount).toBe(6)
+    expect(result[0].sourceCount).toBe(7)
     expect(result[0].actions).toHaveLength(1)
     expect(result[0].deadlines).toHaveLength(1)
     expect(result[0].facts).toHaveLength(1)
     expect(result[0].watchpoints).toHaveLength(1)
     expect(result[0].decisions).toHaveLength(1)
     expect(result[0].reserves).toHaveLength(1)
+    expect(result[0].stakeholders).toHaveLength(1)
+  })
+
+  it('un intervenant ouvert par la visite entre dans le groupe de son sujet', () => {
+    const result = groupVisitChanges({
+      ...empty,
+      stakeholders: [stakeholder('s1', 'cs1', 'Sous-traitant électricité')],
+    })
+    expect(result).toHaveLength(1)
+    expect(result[0].canonicalSubjectId).toBe('cs1')
+    expect(result[0].stakeholders).toHaveLength(1)
+    expect(result[0].stakeholders[0]).toEqual({ id: 's1', role: 'entreprise', label: 'stakeholder-s1' })
   })
 })

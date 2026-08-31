@@ -604,8 +604,12 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
             </section>
           )}
 
-          {/* ── FAIT LEDGER — point d'entrée (toutes sources, tous statuts) ── */}
-          {ledgerTotal > 0 && (
+          {/* ── FAIT LEDGER — point d'entrée (toutes sources, tous statuts) ──
+              Réservé aux visites importées : VisitDesk montre déjà, inline,
+              ce que la visite a produit / ce qui attend un arbitrage / ce qui
+              n'a pas été retenu pour les visites saisies en direct (Vincent,
+              P0-2 : fermer le parcours côté Visite). */}
+          {isImport && ledgerTotal > 0 && (
             <section className="rounded-xl border bg-card p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -636,6 +640,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
               entre les arbitrages et la chronologie, pas avant elles. */}
           {!isImport && (
             <VisitDesk
+              siteId={id}
               narrative={narrative}
               media={media}
               canPromote={doc?.status === 'draft'}

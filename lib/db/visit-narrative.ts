@@ -171,6 +171,7 @@ export interface VisitChangeGroup {
   watchpoints: Array<{ id: string; title: string }>
   decisions: Array<{ id: string; title: string }>
   reserves: Array<{ id: string; label: string }>
+  stakeholders: Array<{ id: string; role: string; label: string }>
   sourceCount: number
 }
 
@@ -181,6 +182,7 @@ type RFact = { id: string; title: string; kind: string; canonicalSubjectId: stri
 type RWatchpoint = { id: string; title: string; canonicalSubjectId: string | null; subjectLabel: string | null }
 type RDecision = { id: string; title: string; canonicalSubjectId: string | null; subjectLabel: string | null }
 type RReserve = { id: string; label: string; canonicalSubjectId: string | null; subjectLabel: string | null }
+type RStakeholder = { id: string; role: string; label: string; canonicalSubjectId: string | null; subjectLabel: string | null }
 
 interface VisitChangesInput {
   actions: RAction[]
@@ -189,6 +191,7 @@ interface VisitChangesInput {
   watchpoints: RWatchpoint[]
   decisions: RDecision[]
   reserves: RReserve[]
+  stakeholders: RStakeholder[]
 }
 
 /** Pur — testable sans base. */
@@ -198,7 +201,7 @@ export function groupVisitChanges(input: VisitChangesInput): VisitChangeGroup[] 
   function getOrCreate(csId: string | null, label: string | null): VisitChangeGroup {
     const key = csId ?? '__unclassified__'
     if (!groups.has(key)) {
-      groups.set(key, { canonicalSubjectId: csId, subjectLabel: label, actions: [], deadlines: [], facts: [], watchpoints: [], decisions: [], reserves: [], sourceCount: 0 })
+      groups.set(key, { canonicalSubjectId: csId, subjectLabel: label, actions: [], deadlines: [], facts: [], watchpoints: [], decisions: [], reserves: [], stakeholders: [], sourceCount: 0 })
     }
     return groups.get(key)!
   }
@@ -231,6 +234,11 @@ export function groupVisitChanges(input: VisitChangesInput): VisitChangeGroup[] 
   for (const r of input.reserves) {
     const g = getOrCreate(r.canonicalSubjectId, r.subjectLabel)
     g.reserves.push({ id: r.id, label: r.label })
+    g.sourceCount++
+  }
+  for (const s of input.stakeholders) {
+    const g = getOrCreate(s.canonicalSubjectId, s.subjectLabel)
+    g.stakeholders.push({ id: s.id, role: s.role, label: s.label })
     g.sourceCount++
   }
 
@@ -310,18 +318,30 @@ export async function buildVisitChanges(reportId: string): Promise<VisitChangeGr
   }
 
   // ── FETCH DES OBJETS LIÉS À CETTE VISITE ─────────────────────────────────
-  const [reservesRes, deadlinesRes, decisionsRes, factsRes, watchpointsRes] = await Promise.all([
+  const [reservesRes, deadlinesRes, decisionsRes, factsRes, watchpointsRes, intervenantsRes] = await Promise.all([
     db.from('site_reserve').select('id, label').eq('report_id', reportId),
     db.from('site_deadlines').select('id, title, due_date').eq('report_id', reportId).is('deleted_at', null),
     db.from('site_decisions').select('id, titre').eq('report_id', reportId),
     db.from('captured_knowledge').select('id, title, kind').eq('source_id', reportId),
     db.from('site_watchpoints').select('id, title').eq('report_id', reportId).is('deleted_at', null),
+    db.from('site_intervenants').select('id, role, company_id, main_contact_id').eq('source_report_id', reportId),
   ])
 
   const resolve = (id: string) => {
     const s = objToSubject.get(id)
     return { canonicalSubjectId: s?.csId ?? null, subjectLabel: s?.label ?? null }
   }
+
+  // ── LABELS DES INTERVENANTS OUVERTS PAR CETTE VISITE ─────────────────────
+  const intervenants = (intervenantsRes.data ?? []) as Array<{ id: string; role: string; company_id: string | null; main_contact_id: string | null }>
+  const companyIds = [...new Set(intervenants.map((i) => i.company_id).filter((x): x is string => !!x))]
+  const contactIds = [...new Set(intervenants.map((i) => i.main_contact_id).filter((x): x is string => !!x))]
+  const [companiesRes, contactsRes] = await Promise.all([
+    companyIds.length > 0 ? db.from('companies').select('id, name, short_name').in('id', companyIds) : Promise.resolve({ data: [] }),
+    contactIds.length > 0 ? db.from('company_contacts').select('id, full_name').in('id', contactIds) : Promise.resolve({ data: [] }),
+  ])
+  const companyById = new Map(((companiesRes.data ?? []) as Array<{ id: string; name: string; short_name: string | null }>).map((c) => [c.id, c]))
+  const contactById = new Map(((contactsRes.data ?? []) as Array<{ id: string; full_name: string | null }>).map((c) => [c.id, c]))
 
   return groupVisitChanges({
     actions: actions.map(a => {
@@ -333,6 +353,12 @@ export async function buildVisitChanges(reportId: string): Promise<VisitChangeGr
     watchpoints: ((watchpointsRes.data ?? []) as Array<{ id: string; title: string }>).map(w => ({ id: w.id, title: w.title, ...resolve(w.id) })),
     decisions: ((decisionsRes.data ?? []) as Array<{ id: string; titre: string }>).map(d => ({ id: d.id, title: d.titre, ...resolve(d.id) })),
     reserves: ((reservesRes.data ?? []) as Array<{ id: string; label: string }>).map(r => ({ id: r.id, label: r.label, ...resolve(r.id) })),
+    stakeholders: intervenants.map((i) => {
+      const c = i.company_id ? companyById.get(i.company_id) : undefined
+      const ct = i.main_contact_id ? contactById.get(i.main_contact_id) : undefined
+      const label = c?.short_name || c?.name || ct?.full_name || 'non identifié'
+      return { id: i.id, role: i.role, label, ...resolve(i.id) }
+    }),
   })
 }
 

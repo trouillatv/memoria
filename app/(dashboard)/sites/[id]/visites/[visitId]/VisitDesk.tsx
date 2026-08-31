@@ -52,6 +52,7 @@ const FAMILLES: Famille[] = [
 const famille = (cle: string) => FAMILLES.find((f) => f.cle === cle)
 
 export function VisitDesk({
+  siteId,
   narrative,
   media,
   canPromote,
@@ -59,6 +60,7 @@ export function VisitDesk({
   changes,
   photosSlot,
 }: {
+  siteId: string
   narrative: VisitNarrative
   media: CaptureMedia
   canPromote: boolean
@@ -91,7 +93,7 @@ export function VisitDesk({
     <div className="space-y-4">
       {/* Voilà ce que ça change → voilà ce que tu dois décider → voilà les
           preuves et le déroulé (Vincent, 2026-08-17). */}
-      <VisitChanges changes={changes} />
+      <VisitChanges changes={changes} siteId={siteId} />
       <EnAttente propositions={enAttente} crHref={crHref} />
       {photosSlot}
       <Chronologie captures={terrain} media={media} onOuvrir={setPreuve} />
@@ -230,12 +232,13 @@ function Moment({
 // ── CE QUE CETTE VISITE CHANGE — regroupement par sujet canonique ────────────
 
 const CHANGE_KIND_BADGE: Record<string, { label: string; cls: string }> = {
-  action:    { label: 'Action',    cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' },
-  reserve:   { label: 'Réserve',   cls: 'bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300' },
-  deadline:  { label: 'Échéance',  cls: 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300' },
-  decision:  { label: 'Décision',  cls: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300' },
-  watchpoint:{ label: 'Vigilance', cls: 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300' },
-  fact:      { label: 'À savoir',  cls: 'bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300' },
+  action:      { label: 'Action',      cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' },
+  reserve:     { label: 'Réserve',     cls: 'bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300' },
+  deadline:    { label: 'Échéance',    cls: 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300' },
+  decision:    { label: 'Décision',    cls: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300' },
+  watchpoint:  { label: 'Vigilance',   cls: 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300' },
+  fact:        { label: 'À savoir',    cls: 'bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300' },
+  stakeholder: { label: 'Intervenant', cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' },
 }
 
 function ChangeBadge({ kind }: { kind: string }) {
@@ -247,7 +250,7 @@ function ChangeBadge({ kind }: { kind: string }) {
   )
 }
 
-function VisitChanges({ changes }: { changes: VisitChangeGroup[] }) {
+function VisitChanges({ changes, siteId }: { changes: VisitChangeGroup[]; siteId: string }) {
   if (changes.length === 0) {
     return (
       <section className="rounded-xl border bg-card px-4 py-3">
@@ -269,20 +272,29 @@ function VisitChanges({ changes }: { changes: VisitChangeGroup[] }) {
       <div className="space-y-5">
         {changes.map((group, i) => (
           <div key={group.canonicalSubjectId ?? `__u${i}`}>
-            <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {group.subjectLabel ?? 'Sans sujet identifié'}
-            </p>
+            {group.canonicalSubjectId ? (
+              <Link
+                href={`/sites/${siteId}/historique/sujets/${group.canonicalSubjectId}`}
+                className="mb-1.5 inline-block text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground hover:text-primary hover:underline"
+              >
+                {group.subjectLabel ?? 'Sujet'}
+              </Link>
+            ) : (
+              <p className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Sans sujet identifié
+              </p>
+            )}
             <ul className="space-y-1.5">
               {group.actions.map(a => (
                 <li key={`a-${a.id}`} className="flex items-start gap-2 text-[13.5px]">
                   <ChangeBadge kind="action" />
-                  <span className="leading-snug">{a.title}</span>
+                  <Link href={`/sites/${siteId}/action/${a.id}`} className="leading-snug hover:text-primary hover:underline">{a.title}</Link>
                 </li>
               ))}
               {group.reserves.map(r => (
                 <li key={`r-${r.id}`} className="flex items-start gap-2 text-[13.5px]">
                   <ChangeBadge kind="reserve" />
-                  <span className="leading-snug">{r.label}</span>
+                  <Link href={`/sites/${siteId}/reserve/${r.id}`} className="leading-snug hover:text-primary hover:underline">{r.label}</Link>
                 </li>
               ))}
               {group.deadlines.map(d => (
@@ -297,7 +309,7 @@ function VisitChanges({ changes }: { changes: VisitChangeGroup[] }) {
               {group.decisions.map(d => (
                 <li key={`dec-${d.id}`} className="flex items-start gap-2 text-[13.5px]">
                   <ChangeBadge kind="decision" />
-                  <span className="leading-snug">{d.title}</span>
+                  <Link href={`/sites/${siteId}/decision/${d.id}`} className="leading-snug hover:text-primary hover:underline">{d.title}</Link>
                 </li>
               ))}
               {group.watchpoints.map(w => (
@@ -310,6 +322,14 @@ function VisitChanges({ changes }: { changes: VisitChangeGroup[] }) {
                 <li key={`f-${f.id}`} className="flex items-start gap-2 text-[13.5px]">
                   <ChangeBadge kind="fact" />
                   <span className="leading-snug">{f.title}</span>
+                </li>
+              ))}
+              {group.stakeholders.map(s => (
+                <li key={`s-${s.id}`} className="flex items-start gap-2 text-[13.5px]">
+                  <ChangeBadge kind="stakeholder" />
+                  <Link href={`/sites/${siteId}/intervenant/${s.id}`} className="leading-snug hover:text-primary hover:underline">
+                    {s.role}{s.label && s.label !== 'non identifié' ? ` — ${s.label}` : ''}
+                  </Link>
                 </li>
               ))}
             </ul>

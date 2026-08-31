@@ -90,12 +90,12 @@ const peuple = (): VisitNarrative => ({
 
 describe('l’ordre est celui de la lecture, pas celui du pipeline', () => {
   it('ouvre sur ce qui s’est passé', () => {
-    render(<VisitDesk narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
     expect(screen.getByText(/Ce qui s’est passé pendant cette visite/)).toBeInTheDocument()
   })
 
   it('met l’audit en bas, et replié', () => {
-    render(<VisitDesk narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
     expect(screen.getByRole('button', { name: /Historique de l/ })).toHaveAttribute(
       'aria-expanded',
       'false',
@@ -105,7 +105,7 @@ describe('l’ordre est celui de la lecture, pas celui du pipeline', () => {
 
 describe('ce qui demande une décision est le vrai travail', () => {
   it('liste les propositions en attente, jamais les tranchées', () => {
-    render(<VisitDesk narrative={peuple()} media={{}} canPromote crHref="/m/visite/visit-1/cr" changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={peuple()} media={{}} canPromote crHref="/m/visite/visit-1/cr" changes={[]} />)
     const bloc = screen.getByText('Décisions en attente d’arbitrage').closest('section')!
     expect(bloc).toHaveTextContent('Communiquer le code d’accès')
     // « Retard dans l'avancement » est confirmée : elle n'attend plus rien.
@@ -113,19 +113,19 @@ describe('ce qui demande une décision est le vrai travail', () => {
   })
 
   it('dit sur combien de preuves la lecture s’appuie', () => {
-    render(<VisitDesk narrative={peuple()} media={{}} canPromote crHref="/m/visite/visit-1/cr" changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={peuple()} media={{}} canPromote crHref="/m/visite/visit-1/cr" changes={[]} />)
     expect(screen.getAllByText(/Sources : 2 éléments/).length).toBeGreaterThan(0)
   })
 
   it('n’offre le geste que là où il existe vraiment', () => {
-    render(<VisitDesk narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
     expect(screen.queryByRole('link', { name: 'Arbitrer' })).not.toBeInTheDocument()
   })
 })
 
 describe('rien n’est affiché que la base ne démontre', () => {
   it('les étiquettes de la frise viennent du tri, pas du graphisme', () => {
-    render(<VisitDesk narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
     expect(screen.getByText('Réserve')).toBeInTheDocument()
     for (const invente of ['Organisation', 'Point de vigilance', 'À confirmer']) {
       expect(screen.queryByText(invente)).not.toBeInTheDocument()
@@ -133,38 +133,38 @@ describe('rien n’est affiché que la base ne démontre', () => {
   })
 
   it('une pièce versée après coup dit d’où vient sa date ET quand elle est entrée', () => {
-    render(<VisitDesk narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
     expect(screen.getByText(/date du fichier/i)).toBeInTheDocument()
     expect(screen.getByText(/versée au dossier le/i)).toBeInTheDocument()
   })
 
   it('affiche le message vide quand aucun objet n’a été produit', () => {
-    render(<VisitDesk narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
     expect(screen.getByText(/Cette visite n’a encore rien produit/i)).toBeInTheDocument()
   })
 
   it('rappelle la règle en pied de page', () => {
-    render(<VisitDesk narrative={vide} media={{}} canPromote={false} crHref={null} changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={vide} media={{}} canPromote={false} crHref={null} changes={[]} />)
     expect(screen.getByText(/Aucune interprétation n’est créée sans preuve/i)).toBeInTheDocument()
   })
 })
 
 describe('explorer une preuve sans quitter la page', () => {
   it('ouvre le panneau avec la transcription', async () => {
-    render(<VisitDesk narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
     fireEvent.click(screen.getByRole('button', { name: /La dépose du faux plafond/ }))
     expect(await screen.findByText('Transcription')).toBeInTheDocument()
   })
 
   it('ne propose de citer que le résumé et « à savoir »', async () => {
-    render(<VisitDesk narrative={peuple()} media={{}} canPromote crHref="/m/visite/visit-1/cr" changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={peuple()} media={{}} canPromote crHref="/m/visite/visit-1/cr" changes={[]} />)
     fireEvent.click(screen.getByRole('button', { name: /La dépose du faux plafond/ }))
     expect(await screen.findAllByRole('button', { name: 'Résumé' })).not.toHaveLength(0)
     expect(screen.getAllByRole('button', { name: 'À savoir' })).not.toHaveLength(0)
   })
 
   it('refuse la citation quand le compte-rendu est figé', async () => {
-    render(<VisitDesk narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={peuple()} media={{}} canPromote={false} crHref={null} changes={[]} />)
     fireEvent.click(screen.getByRole('button', { name: /La dépose du faux plafond/ }))
     expect(await screen.findByText(/rouvrez-le pour y citer une preuve/i)).toBeInTheDocument()
   })
@@ -172,12 +172,12 @@ describe('explorer une preuve sans quitter la page', () => {
 
 describe('les états vides parlent', () => {
   it('dit qu’il ne s’est rien passé sans en faire un reproche', () => {
-    render(<VisitDesk narrative={vide} media={{}} canPromote={false} crHref={null} changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={vide} media={{}} canPromote={false} crHref={null} changes={[]} />)
     expect(screen.getByText(/c’est un fait, pas un manque/i)).toBeInTheDocument()
   })
 
   it('ne réclame aucun arbitrage quand tout est tranché', () => {
-    render(<VisitDesk narrative={vide} media={{}} canPromote={false} crHref={null} changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={vide} media={{}} canPromote={false} crHref={null} changes={[]} />)
     expect(screen.getByText(/Rien n’attend votre arbitrage/i)).toBeInTheDocument()
   })
 })

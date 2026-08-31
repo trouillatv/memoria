@@ -108,7 +108,7 @@ function ouvrirHistorique() {
 
 describe('SupersededItemRow — resolution canonicalSubjectId → DOM', () => {
   it('affiche Meme sujet pour les 8 cas univoques', () => {
-    render(<VisitDesk narrative={narrative} media={{}} canPromote={false} crHref={null} changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={narrative} media={{}} canPromote={false} crHref={null} changes={[]} />)
     ouvrirHistorique()
     // Chaque univoque doit afficher "Meme sujet" + le titre de l'active
     for (let i = 0; i < 8; i++) {
@@ -120,7 +120,7 @@ describe('SupersededItemRow — resolution canonicalSubjectId → DOM', () => {
   })
 
   it('affiche le compteur N formulations pour les 5 cas ambigus', () => {
-    render(<VisitDesk narrative={narrative} media={{}} canPromote={false} crHref={null} changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={narrative} media={{}} canPromote={false} crHref={null} changes={[]} />)
     ouvrirHistorique()
     // cs-multi-0 : 3 actives → "Même sujet · 3 formulations actives"
     const multi0buttons = screen.getAllByText(/3 formulations actives/)
@@ -131,7 +131,7 @@ describe('SupersededItemRow — resolution canonicalSubjectId → DOM', () => {
   })
 
   it("n affiche aucune annotation pour les 5 orphelins", () => {
-    render(<VisitDesk narrative={narrative} media={{}} canPromote={false} crHref={null} changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={narrative} media={{}} canPromote={false} crHref={null} changes={[]} />)
     ouvrirHistorique()
     // Titres des orphelins presents
     expect(screen.getByText('Intervenant A (stakeholder)')).toBeInTheDocument()
@@ -150,7 +150,7 @@ describe('SupersededItemRow — resolution canonicalSubjectId → DOM', () => {
       ...narrative,
       understood: [],  // simulate le bug : select() sans canonical_subject_id -> tout null -> map vide
     }
-    render(<VisitDesk narrative={narrativeSansUnderstood} media={{}} canPromote={false} crHref={null} changes={[]} />)
+    render(<VisitDesk siteId="site-1" narrative={narrativeSansUnderstood} media={{}} canPromote={false} crHref={null} changes={[]} />)
     ouvrirHistorique()
     // Sans understood, aucun hint ne doit apparaitre
     expect(screen.queryAllByText(/Même sujet/).length).toBe(0)
