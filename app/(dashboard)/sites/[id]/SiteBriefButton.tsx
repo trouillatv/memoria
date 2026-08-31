@@ -767,9 +767,11 @@ function LiveDebriefReserveLiftForm({
   const [liftNote, setLiftNote] = useState('')
   const [photoName, setPhotoName] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
   function submit() {
+    setError(null)
     const fd = new FormData()
     fd.set('id', reserveId)
     fd.set('siteId', siteId)
@@ -778,8 +780,12 @@ function LiveDebriefReserveLiftForm({
     if (f) fd.set('photoAfter', f)
     startTransition(async () => {
       const result = await liftReserveAction(fd)
-      if ('error' in result) toast.error(result.error)
-      else onDone()
+      if ('error' in result) {
+        setError(result.error)
+        toast.error(result.error)
+      } else {
+        onDone()
+      }
     })
   }
 
@@ -794,6 +800,7 @@ function LiveDebriefReserveLiftForm({
         placeholder="Note de levée (optionnel)"
         className="w-full rounded-md border bg-background px-2.5 py-1.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
       />
+      {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <label className="inline-flex items-center gap-1.5 rounded-md border border-dashed px-2 py-1 text-[11px] text-muted-foreground cursor-pointer hover:text-foreground hover:border-foreground/40">
           <Camera className="h-3.5 w-3.5" />

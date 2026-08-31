@@ -23,7 +23,7 @@ import { addDocumentLink } from '@/lib/db/documents'
 /** La réserve désignée appartient-elle bien à ce chantier ? Fail-closed. */
 async function reserveOnSite(reserveId: string, siteId: string): Promise<boolean> {
   const { data } = await createAdminClient()
-    .from('site_reserves').select('site_id').eq('id', reserveId).maybeSingle()
+    .from('site_reserve').select('site_id').eq('id', reserveId).maybeSingle()
   return (data as { site_id: string } | null)?.site_id === siteId
 }
 

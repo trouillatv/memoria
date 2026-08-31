@@ -31,7 +31,7 @@ const {
   mockCompleteDeadline: vi.fn(async () => ({ ok: true as const })),
   mockRescheduleDeadline: vi.fn(async () => ({ ok: true as const })),
   mockCloseAction: vi.fn(async () => ({ ok: true as const })),
-  mockLiftReserve: vi.fn(async () => ({ ok: true as const })),
+  mockLiftReserve: vi.fn(async (): Promise<{ ok: true } | { error: string }> => ({ ok: true })),
 }))
 
 vi.mock('@/app/(dashboard)/sites/[id]/site-brief-actions', () => ({
@@ -473,6 +473,31 @@ describe('SiteBriefButton — Débrief vivant D5 — Réserve inline (desktop, r
       'href',
       `/sites/${SITE_ID}/reserve/res-1`,
     )
+  })
+
+  // Bug réel signalé par Vincent : au clic sur Lever, « aucun changement observable ».
+  // Cause racine identifiée = reserveOnSite() interrogeait la mauvaise table
+  // (site_reserves au lieu de site_reserve), donc liftReserveAction échouait
+  // TOUJOURS avant d'écrire quoi que ce soit. Ce test verrouille le contrat côté
+  // UI : un échec de mutation doit rester visible dans le formulaire, pas
+  // silencieux, et ne doit ni faire disparaître la réserve ni appeler refetchBrief.
+  it('D5-6. échec de la mutation (Réserve introuvable) → erreur visible inline, réserve reste dans « À traiter »', async () => {
+    mockLiftReserve.mockResolvedValueOnce({ error: 'Réserve introuvable' })
+    await openBriefSeq(
+      [{ ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [reserveOpen], toWatch: [], recentlyHandled: [] })) }],
+      'Rejointoyer le carrelage hall',
+    )
+    const aTraiter = sectionByHeading('À traiter')
+    const row = within(aTraiter).getByText('Rejointoyer le carrelage hall').closest('li')!
+    fireEvent.click(within(row).getByRole('button', { name: 'Lever' }))
+    await act(async () => {
+      fireEvent.click(within(row).getByRole('button', { name: 'Lever' }))
+    })
+    expect(mockLiftReserve).toHaveBeenCalled()
+    expect(await within(row).findByRole('alert')).toHaveTextContent('Réserve introuvable')
+    // Un seul appel getSiteBriefAction (l'ouverture) : la mutation en échec n'a pas déclenché refetchBrief.
+    expect(mockGetSiteBriefAction).toHaveBeenCalledTimes(1)
+    expect(within(aTraiter).getByText('Rejointoyer le carrelage hall')).toBeInTheDocument()
   })
 })
 

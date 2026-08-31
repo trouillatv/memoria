@@ -41,4 +41,18 @@ describe('intégrité : la ressource désignée appartient bien à ce chantier',
     expect(corps).toMatch(/organization_id.*!==.*access\.organizationId|access\.organizationId/)
     expect(corps).toMatch(/from\('documents'\)/)
   })
+
+  // Régression : reserveOnSite() interrogeait 'site_reserves' (pluriel), une
+  // table qui n'existe pas (la table réelle est 'site_reserve', singulier —
+  // migration 110_site_reserve.sql, cohérent avec lib/db/site-reserve.ts et
+  // lib/knowledge/live-debrief.ts). Conséquence : reserveOnSite renvoyait
+  // TOUJOURS false, donc liftReserveAction/addCorrectiveActionAction/
+  // linkDocumentToReserveAction échouaient systématiquement avec « Réserve
+  // introuvable », avant même d'atteindre la mutation réelle.
+  it("reserveOnSite interroge bien la table singulière 'site_reserve'", () => {
+    const i = src.indexOf('async function reserveOnSite')
+    const corps = src.slice(i, i + 300)
+    expect(corps).toMatch(/from\('site_reserve'\)/)
+    expect(corps).not.toMatch(/from\('site_reserves'\)/)
+  })
 })
