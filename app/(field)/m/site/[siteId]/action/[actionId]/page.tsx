@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { requireSiteAccess } from '@/lib/field/site-access'
 import { getSiteActionFiche } from '@/lib/knowledge/action-fiche'
 import { MobileActionView } from './MobileActionView'
 
@@ -12,10 +12,10 @@ export default async function MobileActionPage({
   params: Promise<{ siteId: string; actionId: string }>
   searchParams: Promise<{ from?: string }>
 }) {
-  const user = await getCurrentUserWithProfile()
-  if (!user) return null
-
   const { siteId, actionId } = await params
+  // Garde d'appartenance (doctrine : chaque page de chantier), en plus du contrôle
+  // d'org interne à getSiteActionFiche.
+  await requireSiteAccess(siteId)
   const { from } = await searchParams
   const action = await getSiteActionFiche(siteId, actionId).catch(() => null)
   if (!action) notFound()

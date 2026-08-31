@@ -1,10 +1,8 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, ClipboardCheck } from 'lucide-react'
+import { ClipboardCheck } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSiteReserves, summarizeReserves, statusLabel } from '@/lib/db/site-reserve'
-import { SiteTabs } from '../SiteTabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +12,7 @@ export default async function ReservesPage({
   params: Promise<{ siteId: string }>
 }) {
   const { siteId } = await params
-  const { user } = await requireSiteAccess(siteId)
+  await requireSiteAccess(siteId)
 
   const supabase = createAdminClient()
   const [siteRow, reserves] = await Promise.all([
@@ -34,26 +32,14 @@ export default async function ReservesPage({
 
   return (
     <div className="flex max-w-md flex-col gap-4 pb-16">
-      <header className="space-y-2">
-        <Link
-          href={`/m/site/${siteId}`}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground active:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          {siteRow.name}
-        </Link>
-
-        <div>
-          <h1 className="text-xl font-semibold inline-flex items-center gap-2">
-            <ClipboardCheck className="h-5 w-5 text-muted-foreground" />
-            Points à lever
-          </h1>
-          <p className="text-[13px] text-muted-foreground">
-            {summary.open} ouvert{summary.open > 1 ? 's' : ''} · {summary.lifted} levé{summary.lifted > 1 ? 's' : ''}
-          </p>
-        </div>
-
-        <SiteTabs siteId={siteId} active="reserves" userRole={user.role} />
+      <header>
+        <h1 className="text-xl font-semibold inline-flex items-center gap-2">
+          <ClipboardCheck className="h-5 w-5 text-muted-foreground" />
+          Points à lever
+        </h1>
+        <p className="text-[13px] text-muted-foreground">
+          {summary.open} ouvert{summary.open > 1 ? 's' : ''} · {summary.lifted} levé{summary.lifted > 1 ? 's' : ''}
+        </p>
       </header>
 
       {ordered.length === 0 ? (

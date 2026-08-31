@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getMemoryReview } from '@/lib/knowledge/memory-review'
-import { MemoryReviewPanel } from '../../MemoryReviewPanel'
+import { MemoryReviewPanel } from '../../../MemoryReviewPanel'
 
 export const dynamic = 'force-dynamic'
 

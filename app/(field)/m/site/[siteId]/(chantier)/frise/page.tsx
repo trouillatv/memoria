@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
-  ArrowLeft, ChevronRight, Footprints, Users, Wrench,
+  ChevronRight, Footprints, Users, Wrench,
   ClipboardList, CheckCircle2, CheckSquare, Compass, Trophy, Star,
   MapPin, CalendarClock, AlertTriangle, Info, Check,
 } from 'lucide-react'
@@ -10,8 +10,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { buildSiteTimeline, type TimelineKind } from '@/lib/db/site-timeline'
 import { getSiteHistory } from '@/lib/knowledge/site-events'
 import { NOUMEA_TZ, frDayMonthLocal } from '@/lib/time/local-date'
-import { SiteTabs } from '../SiteTabs'
-import { VisitLauncher } from '../VisitLauncher'
+import { VisitLauncher } from '../../VisitLauncher'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,7 +43,7 @@ export default async function SiteFriseMobilePage({
   const { siteId } = await params
   // Un chantier d'une autre organisation doit être indiscernable d'un chantier
   // inexistant : la garde rend 404, jamais « accès refusé ».
-  const { user } = await requireSiteAccess(siteId)
+  await requireSiteAccess(siteId)
 
   const supabase = createAdminClient()
   const { data: site } = await supabase
@@ -68,16 +67,9 @@ export default async function SiteFriseMobilePage({
 
   return (
     <div className="max-w-md space-y-4 pb-16">
-      <header className="space-y-2">
-        <Link
-          href={`/m/site/${siteId}`}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground active:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" /> {site.name}
-        </Link>
+      <header>
         <h1 className="text-xl font-semibold">Frise du chantier</h1>
         <p className="text-sm text-muted-foreground">L&apos;histoire du chantier, du plus récent au plus ancien.</p>
-        <SiteTabs siteId={siteId} active="frise" userRole={user.role} />
       </header>
 
       {/* ── CE QUE MEMORIA A APPRIS ────────────────────────────────────────

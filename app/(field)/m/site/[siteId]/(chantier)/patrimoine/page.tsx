@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
-  ArrowLeft, ChevronRight, Brain, Footprints, Users, Wrench, MapPin, Star, Gavel, ClipboardCheck,
+  ChevronRight, Brain, Footprints, Users, Wrench, MapPin, Star, Gavel, ClipboardCheck,
 } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -9,10 +9,9 @@ import { buildSiteStatusSummary, buildSitePatrimoine, getSiteRecentActivity, bui
 import { getMemoryReview } from '@/lib/knowledge/memory-review'
 import { listSiteMapCaptures } from '@/lib/db/visit-captures'
 import { listSubjectsBySite } from '@/lib/db/subjects'
-import { SiteTabs } from '../SiteTabs'
-import { SiteStatusCard } from '../SiteStatusCard'
-import { SitePatrimoineSearch } from '../SitePatrimoineSearch'
-import { MemoryReviewPanel } from '../MemoryReviewPanel'
+import { SiteStatusCard } from '../../SiteStatusCard'
+import { SitePatrimoineSearch } from '../../SitePatrimoineSearch'
+import { MemoryReviewPanel } from '../../MemoryReviewPanel'
 import { CaptureMap } from '@/components/CaptureMap'
 
 export const dynamic = 'force-dynamic'
@@ -46,7 +45,7 @@ export default async function SitePatrimoinePage({
   const { siteId } = await params
   // Un chantier d'une autre organisation doit être indiscernable d'un chantier
   // inexistant : la garde rend 404, jamais « accès refusé ».
-  const { user } = await requireSiteAccess(siteId)
+  await requireSiteAccess(siteId)
 
   const supabase = createAdminClient()
   const { data: site } = await supabase.from('sites').select('id, name').eq('id', siteId).is('deleted_at', null).maybeSingle()
@@ -92,15 +91,9 @@ export default async function SitePatrimoinePage({
 
   return (
     <div className="max-w-md space-y-5 pb-16">
-      <header className="space-y-2">
-        <Link href={`/m/site/${siteId}`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground active:text-foreground">
-          <ArrowLeft className="h-4 w-4" /> {site.name}
-        </Link>
-        <div>
-          <h1 className="text-xl font-semibold">Patrimoine</h1>
-          <p className="text-[13px] text-muted-foreground">Qu'est-ce que ce chantier sait aujourd'hui ?</p>
-        </div>
-        <SiteTabs siteId={siteId} active="patrimoine" userRole={user.role} />
+      <header>
+        <h1 className="text-xl font-semibold">Patrimoine</h1>
+        <p className="text-[13px] text-muted-foreground">Qu'est-ce que ce chantier sait aujourd'hui ?</p>
       </header>
 
       {/* LA recherche — la porte d'entrée de toute la connaissance du chantier. */}

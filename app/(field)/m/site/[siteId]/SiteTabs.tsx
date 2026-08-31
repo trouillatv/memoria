@@ -1,46 +1,54 @@
-import Link from 'next/link'
-import { listDocumentsForTarget } from '@/lib/db/documents'
-import { ScrollActiveRail } from '@/components/ui/ScrollActiveRail'
+'use client'
 
 /**
- * Onglets intra-chantier — sur les sous-vues de la fiche (Visites / Réunions /
- * Frise / Documents), pour passer de l'une à l'autre SANS revenir à la fiche à
- * chaque fois. « Synthèse » ramène au cockpit ; « Patrimoine » ouvre la
- * connaissance accumulée du chantier (recherche + blocs). Documents n'apparaît que pour le
- * conducteur (admin/manager) ET s'il existe de vrais documents liés — jamais un
- * onglet vide. Barre défilante horizontalement (aucun retour arrière requis).
+ * Onglets intra-chantier — rendus par le LAYOUT partagé `(chantier)/layout.tsx`,
+ * donc montés UNE fois et persistants : passer d'une pill à l'autre ne recharge
+ * que le contenu sous les pills, jamais l'en-tête ni la barre.
+ *
+ * Composant CLIENT : l'onglet actif est dérivé de `usePathname()` (le layout ne
+ * se réexécute pas à la navigation ; l'actif doit donc se recalculer côté client).
+ * La décision d'afficher « Documents » (conducteur + docs réels) est calculée
+ * côté serveur dans le layout et passée en `showDocuments`.
+ *
+ * « Actions » pointe vers `/m/site/[siteId]/actions` — même moteur unifié que
+ * `/m/actions?site=…`, mais SOUS le layout chantier (fluidité des pills).
  */
-export type SiteTab = 'vue' | 'sujets' | 'carte' | 'terrain' | 'explorer' | 'reserves' | 'actions' | 'visites' | 'photos' | 'reunions' | 'frise' | 'documents' | 'patrimoine'
 
-export async function SiteTabs({
-  siteId,
-  active,
-  userRole,
-}: {
-  siteId: string
-  active: SiteTab
-  userRole: string
-}) {
-  const showDocuments =
-    (userRole === 'admin' || userRole === 'manager') &&
-    (await listDocumentsForTarget('site', siteId).catch(() => [])).length > 0
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { ScrollActiveRail } from '@/components/ui/ScrollActiveRail'
 
+export type SiteTab =
+  | 'vue' | 'sujets' | 'carte' | 'terrain' | 'explorer' | 'reserves'
+  | 'actions' | 'visites' | 'photos' | 'reunions' | 'frise' | 'documents' | 'patrimoine'
+
+// `seg` = segment d'URL après la base ('' = Synthèse/hub).
+const TABS: Array<{ key: SiteTab; label: string; seg: string }> = [
+  { key: 'vue',        label: 'Synthèse',   seg: '' },
+  { key: 'sujets',     label: 'Sujets',     seg: 'sujets' },
+  { key: 'carte',      label: 'Carte',      seg: 'carte' },
+  { key: 'terrain',    label: 'Terrain',    seg: 'terrain' },
+  { key: 'explorer',   label: 'Explorer',   seg: 'explorer' },
+  { key: 'reserves',   label: 'Réserves',   seg: 'reserves' },
+  { key: 'actions',    label: 'Actions',    seg: 'actions' },
+  { key: 'visites',    label: 'Visites',    seg: 'visites' },
+  { key: 'photos',     label: 'Photos',     seg: 'photos' },
+  { key: 'reunions',   label: 'Réunions',   seg: 'reunions' },
+  { key: 'frise',      label: 'Frise',      seg: 'frise' },
+  { key: 'documents',  label: 'Documents',  seg: 'documents' },
+  { key: 'patrimoine', label: 'Patrimoine', seg: 'patrimoine' },
+]
+
+export function SiteTabs({ siteId, showDocuments }: { siteId: string; showDocuments: boolean }) {
+  const pathname = usePathname()
   const base = `/m/site/${siteId}`
-  const tabs: { key: SiteTab; label: string; href: string }[] = [
-    { key: 'vue', label: 'Synthèse', href: base },
-    { key: 'sujets', label: 'Sujets', href: `${base}/sujets` },
-    { key: 'carte',    label: 'Carte',    href: `${base}/carte` },
-    { key: 'terrain',  label: 'Terrain',  href: `${base}/terrain` },
-    { key: 'explorer', label: 'Explorer', href: `${base}/explorer` },
-    { key: 'reserves', label: 'Réserves', href: `${base}/reserves` },
-    { key: 'actions', label: 'Actions', href: `/m/actions?site=${siteId}` },
-    { key: 'visites', label: 'Visites', href: `${base}/visites` },
-    { key: 'photos',  label: 'Photos',  href: `${base}/photos` },
-    { key: 'reunions', label: 'Réunions', href: `${base}/reunions` },
-    { key: 'frise', label: 'Frise', href: `${base}/frise` },
-    ...(showDocuments ? [{ key: 'documents' as const, label: 'Documents', href: `${base}/documents` }] : []),
-    { key: 'patrimoine', label: 'Patrimoine', href: `${base}/patrimoine` },
-  ]
+  const rest = pathname.startsWith(base) ? pathname.slice(base.length).replace(/^\//, '') : ''
+  const activeSeg = rest.split('/')[0]
+  const active: SiteTab = TABS.find((t) => t.seg === activeSeg)?.key ?? 'vue'
+
+  const tabs = TABS
+    .filter((t) => t.key !== 'documents' || showDocuments)
+    .map((t) => ({ key: t.key, label: t.label, href: t.seg ? `${base}/${t.seg}` : base }))
 
   return (
     <ScrollActiveRail activeKey={active} ariaLabel="Onglets du chantier" className="scrollbar-hide -mx-3 overflow-x-auto px-3">

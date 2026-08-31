@@ -1,10 +1,9 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { ArrowLeft, FileText, FileImage, File as FileIcon, ExternalLink } from 'lucide-react'
+import { FileText, FileImage, File as FileIcon, ExternalLink } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listDocumentsForTarget } from '@/lib/db/documents'
-import { SiteTabs } from '../SiteTabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,15 +56,8 @@ export default async function SiteDocumentsMobilePage({
 
   return (
     <div className="max-w-md space-y-4 pb-16">
-      <header className="space-y-2">
-        <Link
-          href={`/m/site/${siteId}`}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground active:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" /> {site.name}
-        </Link>
+      <header>
         <h1 className="text-xl font-semibold">Documents</h1>
-        <SiteTabs siteId={siteId} active="documents" userRole={user.role} />
       </header>
 
       {signed.length === 0 ? (

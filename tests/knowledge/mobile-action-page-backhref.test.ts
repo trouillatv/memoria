@@ -8,9 +8,9 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const mockGetCurrentUser = vi.fn()
-vi.mock('@/lib/db/users', () => ({
-  getCurrentUserWithProfile: (...a: unknown[]) => mockGetCurrentUser(...a),
+const mockRequireAccess = vi.fn()
+vi.mock('@/lib/field/site-access', () => ({
+  requireSiteAccess: (...a: unknown[]) => mockRequireAccess(...a),
 }))
 
 const mockGetFiche = vi.fn()
@@ -42,7 +42,7 @@ async function backHrefFor(from?: string): Promise<string> {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockGetCurrentUser.mockResolvedValue({ id: 'u1' })
+  mockRequireAccess.mockResolvedValue({ siteId: 'site-1', user: { id: 'u1', role: 'admin' } })
   mockGetFiche.mockResolvedValue({ id: 'a1', siteId: 'site-1', title: 'Action', siteName: 'Chantier A' })
 })
 

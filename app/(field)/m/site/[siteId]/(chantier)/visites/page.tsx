@@ -1,11 +1,10 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, CalendarClock, ChevronRight, Footprints } from 'lucide-react'
+import { CalendarClock, ChevronRight, Footprints } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteVisitsForMobile } from '@/lib/db/visits'
-import { SiteTabs } from '../SiteTabs'
-import { VisitLauncher } from '../VisitLauncher'
+import { VisitLauncher } from '../../VisitLauncher'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +22,7 @@ export default async function SiteVisitsMobilePage({
   const { siteId } = await params
   // Un chantier d'une autre organisation doit être indiscernable d'un chantier
   // inexistant : la garde rend 404, jamais « accès refusé ».
-  const { user } = await requireSiteAccess(siteId)
+  await requireSiteAccess(siteId)
 
   const supabase = createAdminClient()
   const { data: site } = await supabase
@@ -38,15 +37,8 @@ export default async function SiteVisitsMobilePage({
 
   return (
     <div className="max-w-md space-y-4 pb-16">
-      <header className="space-y-2">
-        <Link
-          href={`/m/site/${siteId}`}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground active:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" /> {site.name}
-        </Link>
+      <header>
         <h1 className="text-xl font-semibold">Visites</h1>
-        <SiteTabs siteId={siteId} active="visites" userRole={user.role} />
       </header>
 
       {visits.length === 0 ? (

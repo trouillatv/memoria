@@ -15,10 +15,17 @@ import 'server-only'
 // Seul le panneau Mémoire était vide — parce qu'il filtrait par org. Il avait
 // raison tout seul ; c'est la page qui était nue.
 //
-// POURQUOI PAS UN LAYOUT : un layout ne se réexécute pas à chaque navigation
-// (Next.js déconseille explicitement d'y placer une autorisation). La garde vit
-// donc dans CHAQUE page, et un test de doctrine vérifie qu'aucune n'y échappe.
+// POURQUOI PAS UN LAYOUT POUR LA SÉCURITÉ : un layout ne se réexécute pas à chaque
+// navigation (Next.js déconseille explicitement d'y placer une autorisation). La
+// garde vit donc dans CHAQUE page, et un test de doctrine vérifie qu'aucune n'y
+// échappe. Le groupe `(chantier)` a bien un `layout.tsx`, mais il ne porte que le
+// CHROME persistant (nom du chantier + pills) ; il appelle aussi cette garde, sans
+// jamais la remplacer dans les pages.
+//
+// `cache()` déduplique l'appel dans un même rendu (layout + page = 1 seul contrôle)
+// SANS cache durable : chaque requête réévalue l'autorisation.
 
+import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import { requireOwned } from '@/lib/auth/ownership'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -38,10 +45,10 @@ export interface SiteAccess {
  * Retourne l'utilisateur : les pages en ont besoin de toute façon, et ça évite
  * de le relire — la garde ne coûte donc presque rien à poser.
  */
-export async function requireSiteAccess(siteId: string): Promise<SiteAccess> {
+export const requireSiteAccess = cache(async (siteId: string): Promise<SiteAccess> => {
   const user = await getCurrentUserWithProfile()
   if (!user) notFound()
   const owned = await requireOwned(user.role, 'sites', siteId)
   if (!owned.allowed) notFound()
   return { siteId, user }
-}
+})

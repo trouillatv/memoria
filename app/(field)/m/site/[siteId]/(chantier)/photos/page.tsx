@@ -1,10 +1,7 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSitePhotoCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
-import { SiteTabs } from '../SiteTabs'
 import { PhotoGallery, type PhotoGroup } from './PhotoGallery'
 
 export const dynamic = 'force-dynamic'
@@ -15,7 +12,7 @@ export default async function SitePhotosMobilePage({
   params: Promise<{ siteId: string }>
 }) {
   const { siteId } = await params
-  const { user } = await requireSiteAccess(siteId)
+  await requireSiteAccess(siteId)
 
   const supabase = createAdminClient()
   const { data: site } = await supabase
@@ -70,20 +67,13 @@ export default async function SitePhotosMobilePage({
 
   return (
     <div className="max-w-md space-y-4 pb-16">
-      <header className="space-y-2">
-        <Link
-          href={`/m/site/${siteId}`}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground active:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" /> {site.name}
-        </Link>
+      <header>
         <div className="flex items-baseline gap-2">
           <h1 className="text-xl font-semibold">Photos</h1>
           {total > 0 && (
             <span className="text-sm text-muted-foreground">{total}</span>
           )}
         </div>
-        <SiteTabs siteId={siteId} active="photos" userRole={user.role} />
       </header>
 
       {groups.length === 0 ? (
