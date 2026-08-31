@@ -33,7 +33,7 @@ export async function SiteTabs({
     { key: 'terrain',  label: 'Terrain',  href: `${base}/terrain` },
     { key: 'explorer', label: 'Explorer', href: `${base}/explorer` },
     { key: 'reserves', label: 'Réserves', href: `${base}/reserves` },
-    { key: 'actions', label: 'Actions', href: `${base}/actions` },
+    { key: 'actions', label: 'Actions', href: `/m/actions?site=${siteId}` },
     { key: 'visites', label: 'Visites', href: `${base}/visites` },
     { key: 'photos',  label: 'Photos',  href: `${base}/photos` },
     { key: 'reunions', label: 'Réunions', href: `${base}/reunions` },

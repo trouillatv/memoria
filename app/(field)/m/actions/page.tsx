@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ArrowLeft, ListTodo } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { requireSiteAccess } from '@/lib/field/site-access'
 import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { FieldActionsList } from '@/components/actions/FieldActionsList'
@@ -18,17 +19,21 @@ export default async function FieldActionsPage({
 }: {
   searchParams: Promise<{ site?: string }>
 }) {
-  const user = await getCurrentUserWithProfile()
-  if (!user) return null
-
   const { site: siteId } = await searchParams
   const scoped = typeof siteId === 'string' && siteId.length > 0
 
+  // Le scope chantier EST une frontière d'accès : `listOpenSiteActions({siteIds})`
+  // fait confiance à l'appelant pour avoir vérifié l'accès en amont (M3-D). Sans
+  // ce garde, `?site=<id d'un autre chantier>` fuiterait des actions hors-org.
   let siteName: string | null = null
   if (scoped) {
+    await requireSiteAccess(siteId!)
     const supabase = createAdminClient()
     const { data } = await supabase.from('sites').select('name').eq('id', siteId).maybeSingle()
     siteName = (data as { name?: string } | null)?.name ?? null
+  } else {
+    const user = await getCurrentUserWithProfile()
+    if (!user) return null
   }
 
   // DEUX BLOCS, jamais mélangés. Une proposition est du travail humain restant
@@ -68,7 +73,7 @@ export default async function FieldActionsPage({
       <PendingWorkBlock work={pending} />
 
       {/* Ce qui attend une EXÉCUTION — des engagements pris. */}
-      <FieldActionsList actions={actions} />
+      <FieldActionsList actions={actions} scopedSiteId={scoped ? siteId : undefined} />
     </div>
   )
 }

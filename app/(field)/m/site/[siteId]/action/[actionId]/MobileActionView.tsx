@@ -1,5 +1,17 @@
+'use client'
+
+import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Check, Circle, UserCheck } from 'lucide-react'
+import { ArrowLeft, Check, Circle, UserCheck, RotateCcw, Camera, X, Loader2, MoreHorizontal, Pencil, CalendarClock } from 'lucide-react'
+import { toast } from 'sonner'
+import {
+  closeActionAction,
+  reopenActionAction,
+  updateActionDetailsAction,
+  setActionDueDateAction,
+} from '@/app/(dashboard)/actions/actions'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type { ActionFicheData } from '@/lib/knowledge/action-fiche'
 import { cn } from '@/lib/utils'
 
@@ -10,12 +22,12 @@ const STATUS_CLS: Record<string, string> = {
   cancelled: 'bg-muted text-muted-foreground ring-1 ring-border',
 }
 
-export function MobileActionView({ action, siteId }: { action: ActionFicheData; siteId: string }) {
+export function MobileActionView({ action, siteId, backHref }: { action: ActionFicheData; siteId: string; backHref?: string }) {
   const a = action
   return (
     <div className="mx-auto min-h-dvh max-w-md space-y-3.5 px-4 pb-16 pt-5">
       <Link
-        href={`/m/site/${siteId}`}
+        href={backHref ?? `/m/site/${siteId}`}
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground"
       >
         <ArrowLeft className="h-4 w-4" /> {a.siteName}
@@ -53,6 +65,9 @@ export function MobileActionView({ action, siteId }: { action: ActionFicheData; 
           )}
         </div>
       )}
+
+      {/* Gestes — mêmes primitives que la fiche desktop (ActionFicheCta). */}
+      <ActionMobileCta action={a} />
 
       {/* Origine / provenance */}
       {a.source && (
@@ -157,6 +172,207 @@ export function MobileActionView({ action, siteId }: { action: ActionFicheData; 
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Gestes — mêmes primitives que ActionFicheCta (desktop), portées ici pour
+// que la fiche mobile ne soit plus lecture seule (audit convergence Actions). ──
+function ActionMobileCta({ action }: { action: ActionFicheData }) {
+  const router = useRouter()
+  const [closing, setClosing] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [planning, setPlanning] = useState(false)
+  const [reopening, startReopen] = useTransition()
+
+  if (action.status === 'cancelled') return null
+
+  if (action.status === 'done') {
+    return (
+      <button
+        type="button"
+        onClick={() =>
+          startReopen(async () => {
+            const fd = new FormData()
+            fd.set('id', action.id)
+            fd.set('site_id', action.siteId)
+            const r = await reopenActionAction(fd)
+            if (r.ok) { toast.success('Action rouverte'); router.refresh() }
+            else toast.error(r.error)
+          })
+        }
+        disabled={reopening}
+        className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[13px] font-semibold text-muted-foreground disabled:opacity-50 active:scale-[0.98] transition-transform"
+      >
+        {reopening ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+        Rouvrir cette action
+      </button>
+    )
+  }
+
+  if (closing) {
+    return <MobileCloseForm action={action} onCancel={() => setClosing(false)} onDone={() => { setClosing(false); router.refresh() }} />
+  }
+  if (editing) {
+    return <MobileDetailsForm action={action} onCancel={() => setEditing(false)} onDone={() => { setEditing(false); router.refresh() }} />
+  }
+  if (planning) {
+    return <MobileDueDateForm action={action} onCancel={() => setPlanning(false)} onDone={() => { setPlanning(false); router.refresh() }} />
+  }
+
+  const editable = action.status === 'open' || action.status === 'planned'
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setClosing(true)}
+        className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border-2 border-emerald-600 bg-emerald-600 px-3 py-2.5 text-[13px] font-semibold text-white active:scale-[0.98] transition-transform"
+      >
+        <Check className="h-4 w-4" />Clôturer
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <button
+              type="button"
+              aria-label="Plus d'actions"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-muted-foreground active:scale-95"
+            />
+          }
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => setEditing(true)}>
+            <Pencil className="h-3.5 w-3.5" /> Modifier
+          </DropdownMenuItem>
+          {editable && (
+            <DropdownMenuItem onClick={() => setPlanning(true)}>
+              <CalendarClock className="h-3.5 w-3.5" /> {action.dueDate ? 'Replanifier' : 'Planifier une échéance'}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
+
+function MobileCloseForm({ action, onCancel, onDone }: { action: ActionFicheData; onCancel: () => void; onDone: () => void }) {
+  const [comment, setComment] = useState('')
+  const [photoName, setPhotoName] = useState<string | null>(null)
+  const [pending, startTransition] = useTransition()
+
+  function submit() {
+    if (!comment.trim()) { toast.error('Ajoute un commentaire de clôture.'); return }
+    const fd = new FormData()
+    fd.set('id', action.id); fd.set('site_id', action.siteId); fd.set('comment', comment.trim())
+    startTransition(async () => {
+      const r = await closeActionAction(fd)
+      if (!r.ok) toast.error(r.error)
+      else { toast.success('Action traitée'); onDone() }
+    })
+  }
+
+  return (
+    <div className="rounded-xl border bg-muted/20 px-3 py-2.5 space-y-2.5">
+      <p className="text-[13px] font-semibold">Comment sais-tu qu&apos;elle est terminée&nbsp;?</p>
+      <textarea
+        value={comment} onChange={(e) => setComment(e.target.value)} rows={3} autoFocus maxLength={1000}
+        placeholder="Ex : joints repris et vérifiés — plus rien à suivre."
+        className="w-full rounded-lg border bg-background px-2.5 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <label className="flex items-center justify-center gap-2 rounded-lg border border-dashed px-2.5 py-2 text-[12.5px] text-muted-foreground cursor-pointer hover:text-foreground hover:border-foreground/40">
+        <Camera className="h-4 w-4" />{photoName ? 'Photo ajoutée' : 'Ajouter une photo (facultatif)'}
+        <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => setPhotoName(e.target.files?.[0]?.name ?? null)} />
+      </label>
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onCancel} disabled={pending}
+          className="flex-1 rounded-lg border bg-background px-3 py-2 text-[13px] font-medium text-muted-foreground active:scale-[0.98] transition-transform">
+          <span className="inline-flex items-center gap-1.5"><X className="h-4 w-4" />Annuler</span>
+        </button>
+        <button type="button" onClick={submit} disabled={pending || !comment.trim()}
+          className="inline-flex flex-[1.4] items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-[13px] font-semibold text-white disabled:opacity-50 active:scale-[0.98] transition-transform">
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Confirmer
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function MobileDetailsForm({ action, onCancel, onDone }: { action: ActionFicheData; onCancel: () => void; onDone: () => void }) {
+  const [title, setTitle] = useState(action.title)
+  const [body, setBody] = useState(action.body ?? '')
+  const [pending, startTransition] = useTransition()
+
+  function submit() {
+    if (!title.trim()) { toast.error('Le titre est requis.'); return }
+    const fd = new FormData()
+    fd.set('id', action.id); fd.set('site_id', action.siteId); fd.set('title', title.trim()); fd.set('body', body)
+    startTransition(async () => {
+      const r = await updateActionDetailsAction(fd)
+      if (!r.ok) toast.error(r.error)
+      else { toast.success('Action modifiée'); onDone() }
+    })
+  }
+
+  return (
+    <div className="rounded-xl border bg-muted/20 px-3 py-2.5 space-y-2.5">
+      <input
+        value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} autoFocus
+        placeholder="Titre"
+        className="w-full rounded-lg border bg-background px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <textarea
+        value={body} onChange={(e) => setBody(e.target.value)} rows={3} maxLength={2000}
+        placeholder="Description (optionnel)"
+        className="w-full rounded-lg border bg-background px-2.5 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onCancel} disabled={pending}
+          className="flex-1 rounded-lg border bg-background px-3 py-2 text-[13px] font-medium text-muted-foreground active:scale-[0.98] transition-transform">
+          <span className="inline-flex items-center gap-1.5"><X className="h-4 w-4" />Annuler</span>
+        </button>
+        <button type="button" onClick={submit} disabled={pending || !title.trim()}
+          className="inline-flex flex-[1.4] items-center justify-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-[13px] font-semibold text-background disabled:opacity-50 active:scale-[0.98] transition-transform">
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Enregistrer
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function MobileDueDateForm({ action, onCancel, onDone }: { action: ActionFicheData; onCancel: () => void; onDone: () => void }) {
+  const [value, setValue] = useState(action.dueDate ? action.dueDate.slice(0, 10) : '')
+  const [pending, startTransition] = useTransition()
+
+  function submit() {
+    if (!value) { toast.error('Choisis une date.'); return }
+    const fd = new FormData()
+    fd.set('id', action.id); fd.set('site_id', action.siteId); fd.set('due_date', value)
+    startTransition(async () => {
+      const r = await setActionDueDateAction(fd)
+      if (!r.ok) toast.error(r.error)
+      else { toast.success('Échéance mise à jour'); onDone() }
+    })
+  }
+
+  return (
+    <div className="rounded-xl border bg-muted/20 px-3 py-2.5 space-y-2.5">
+      <input
+        type="date" value={value} onChange={(e) => setValue(e.target.value)} autoFocus
+        className="w-full rounded-lg border bg-background px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onCancel} disabled={pending}
+          className="flex-1 rounded-lg border bg-background px-3 py-2 text-[13px] font-medium text-muted-foreground active:scale-[0.98] transition-transform">
+          <span className="inline-flex items-center gap-1.5"><X className="h-4 w-4" />Annuler</span>
+        </button>
+        <button type="button" onClick={submit} disabled={pending || !value}
+          className="inline-flex flex-[1.4] items-center justify-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-[13px] font-semibold text-background disabled:opacity-50 active:scale-[0.98] transition-transform">
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Enregistrer
+        </button>
+      </div>
     </div>
   )
 }

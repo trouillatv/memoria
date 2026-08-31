@@ -13,9 +13,17 @@
 import { useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Check, User, Clock, ChevronRight, ChevronDown, Camera, Loader2, Target, MapPin, CheckCircle2, PauseCircle, ArrowLeft } from 'lucide-react'
+import { Check, User, Clock, ChevronRight, ChevronDown, Camera, Loader2, Target, MapPin, CheckCircle2, PauseCircle, ArrowLeft, MoreHorizontal, Pencil, CalendarClock, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { closeActionAction, markActionProgressAction, snoozeActionAction, planActionAction } from '@/app/(dashboard)/actions/actions'
+import {
+  closeActionAction,
+  markActionProgressAction,
+  snoozeActionAction,
+  planActionAction,
+  updateActionDetailsAction,
+  setActionDueDateAction,
+} from '@/app/(dashboard)/actions/actions'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { currentSlot } from '@/lib/time/prestation-slot'
 import type { SiteActionRow } from '@/lib/db/site-actions'
 
@@ -65,15 +73,25 @@ const PRIORITY_META: Record<Priority, { rank: number; bar: string; badge: string
 type Sort = 'priorite' | 'recent'
 type Filter = 'tout' | Priority
 
-export function FieldActionsList({ actions }: { actions: SiteActionRow[] }) {
+export function FieldActionsList({ actions, scopedSiteId }: { actions: SiteActionRow[]; scopedSiteId?: string }) {
   const router = useRouter()
   const today = todayIso()
+  // Ouvert depuis la liste scopée d'un chantier (/m/actions?site=X) : on marque
+  // l'origine par un jeton contrôlé pour que la flèche de la fiche revienne à
+  // CETTE liste filtrée, pas à l'accueil chantier. Depuis la vue globale, pas de
+  // jeton : la fiche garde son retour chantier historique.
+  const ficheHref = (a: SiteActionRow) =>
+    scopedSiteId
+      ? `/m/site/${a.site_id}/action/${a.id}?from=actions`
+      : `/m/site/${a.site_id}/action/${a.id}`
   const [removed, setRemoved] = useState<Set<string>>(new Set())
   const [doneOverride, setDoneOverride] = useState<Map<string, boolean>>(new Map())
   const [snoozeOverride, setSnoozeOverride] = useState<Map<string, SnoozeReason | null>>(new Map())
   const [openId, setOpenId] = useState<string | null>(null)
   const [closingId, setClosingId] = useState<string | null>(null)
   const [reportingId, setReportingId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [dueDateId, setDueDateId] = useState<string | null>(null)
   const [sort, setSort] = useState<Sort>('priorite')
   const [filter, setFilter] = useState<Filter>('tout')
   const [, startBg] = useTransition()
@@ -215,6 +233,8 @@ export function FieldActionsList({ actions }: { actions: SiteActionRow[] }) {
               const isOpen = openId === a.id
               const isClosing = closingId === a.id
               const isReporting = reportingId === a.id
+              const isEditing = editingId === a.id
+              const isDueDate = dueDateId === a.id
               const timeText = a.last_progress_at && dayDiff(a.last_progress_at) >= 0
                 ? `Suivi ${dayLabel(a.last_progress_at)}`
                 : (dayDiff(a.created_at) <= 0 ? "créée aujourd'hui" : dayLabel(a.created_at))
@@ -223,7 +243,7 @@ export function FieldActionsList({ actions }: { actions: SiteActionRow[] }) {
                   <div className="flex items-start gap-3 p-4">
                     <button
                       type="button"
-                      onClick={() => { setOpenId(isOpen ? null : a.id); setClosingId(null); setReportingId(null) }}
+                      onClick={() => { setOpenId(isOpen ? null : a.id); setClosingId(null); setReportingId(null); setEditingId(null); setDueDateId(null) }}
                       aria-label="Suivre, reporter ou terminer cette action"
                       aria-expanded={isOpen}
                       className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 transition-colors active:scale-95 ${
@@ -236,7 +256,7 @@ export function FieldActionsList({ actions }: { actions: SiteActionRow[] }) {
                     </button>
 
                     <Link
-                      href={`/m/site/${a.site_id}/action/${a.id}`}
+                      href={ficheHref(a)}
                       className="flex min-w-0 flex-1 items-start gap-2"
                       aria-label={`Voir la fiche : ${a.title}`}
                     >
@@ -263,6 +283,45 @@ export function FieldActionsList({ actions }: { actions: SiteActionRow[] }) {
                       <ChevronRight className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground/60" />
                     </Link>
                   </div>
+
+                  {/* Gestes directs — Clôturer est le geste principal pertinent
+                      (audit convergence mobile) ; Modifier/Replanifier restent
+                      accessibles sans passer par l'expand « je reviens ? ». */}
+                  {a.status !== 'done' && a.status !== 'cancelled' && (
+                    <div className="flex items-center gap-1.5 border-t border-foreground/[0.06] px-4 py-2">
+                      <button
+                        type="button"
+                        onClick={() => { setClosingId(a.id); setOpenId(null); setReportingId(null); setEditingId(null); setDueDateId(null) }}
+                        className="rounded-lg px-2 py-1 text-[12.5px] font-semibold text-emerald-700 active:scale-[0.97] transition-transform dark:text-emerald-300"
+                      >
+                        Clôturer
+                      </button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <button
+                              type="button"
+                              aria-label="Plus d'actions"
+                              className="ml-auto flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:text-foreground active:scale-95"
+                            />
+                          }
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => { setEditingId(a.id); setOpenId(null); setClosingId(null); setReportingId(null); setDueDateId(null) }}>
+                            <Pencil className="h-3.5 w-3.5" /> Modifier
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => { setDueDateId(a.id); setOpenId(null); setClosingId(null); setReportingId(null); setEditingId(null) }}>
+                            <CalendarClock className="h-3.5 w-3.5" /> {a.due_date ? 'Replanifier' : 'Planifier une échéance'}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => router.push(ficheHref(a))}>
+                            <ChevronRight className="h-3.5 w-3.5" /> Voir la fiche
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  )}
 
                   {/* Choix métier — « est-ce que je reviens ? » */}
                   {isOpen && !isClosing && !isReporting && (
@@ -343,6 +402,16 @@ export function FieldActionsList({ actions }: { actions: SiteActionRow[] }) {
 
                   {/* Clôture — seulement si « C'est terminé ». */}
                   {isClosing && <CloseForm action={a} onCancel={() => setClosingId(null)} onDone={() => onClosed(a.id)} />}
+
+                  {/* Modifier — titre/description, réutilise updateActionDetailsAction. */}
+                  {isEditing && (
+                    <DetailsForm action={a} onCancel={() => setEditingId(null)} onDone={() => { setEditingId(null); router.refresh() }} />
+                  )}
+
+                  {/* Planifier/Replanifier — réutilise setActionDueDateAction. */}
+                  {isDueDate && (
+                    <DueDateForm action={a} onCancel={() => setDueDateId(null)} onDone={() => { setDueDateId(null); router.refresh() }} />
+                  )}
                 </li>
               )
             })}
@@ -412,6 +481,83 @@ function CloseForm({ action, onCancel, onDone }: { action: SiteActionRow; onCanc
         <button type="button" onClick={submit} disabled={pending || !comment.trim()}
           className="inline-flex flex-[1.4] items-center justify-center gap-1.5 rounded-xl bg-red-600 px-3 py-2.5 text-[13px] font-semibold text-white hover:bg-red-700 disabled:opacity-50 active:scale-[0.98] transition-transform">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Confirmer la terminaison
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function DetailsForm({ action, onCancel, onDone }: { action: SiteActionRow; onCancel: () => void; onDone: () => void }) {
+  const [title, setTitle] = useState(action.title)
+  const [body, setBody] = useState(action.body ?? '')
+  const [pending, startTransition] = useTransition()
+
+  function submit() {
+    if (!title.trim()) { toast.error('Le titre est requis.'); return }
+    const fd = new FormData()
+    fd.set('id', action.id); fd.set('site_id', action.site_id); fd.set('title', title.trim()); fd.set('body', body)
+    startTransition(async () => {
+      const r = await updateActionDetailsAction(fd)
+      if (!r.ok) toast.error(r.error)
+      else { toast.success('Action modifiée'); onDone() }
+    })
+  }
+
+  return (
+    <div className="border-t border-foreground/[0.06] bg-muted/20 px-4 py-3.5 space-y-3">
+      <input
+        value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} autoFocus
+        placeholder="Titre"
+        className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <textarea
+        value={body} onChange={(e) => setBody(e.target.value)} rows={3} maxLength={2000}
+        placeholder="Description (optionnel)"
+        className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <div className="flex items-center gap-2.5 pt-0.5">
+        <button type="button" onClick={onCancel} disabled={pending}
+          className="flex-1 rounded-xl border bg-background px-3 py-2.5 text-[13px] font-medium text-muted-foreground hover:text-foreground active:scale-[0.98] transition-transform">
+          <span className="inline-flex items-center gap-1.5"><X className="h-4 w-4" />Annuler</span>
+        </button>
+        <button type="button" onClick={submit} disabled={pending || !title.trim()}
+          className="inline-flex flex-[1.4] items-center justify-center gap-1.5 rounded-xl bg-foreground px-3 py-2.5 text-[13px] font-semibold text-background disabled:opacity-50 active:scale-[0.98] transition-transform">
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Enregistrer
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function DueDateForm({ action, onCancel, onDone }: { action: SiteActionRow; onCancel: () => void; onDone: () => void }) {
+  const [value, setValue] = useState(action.due_date ? action.due_date.slice(0, 10) : '')
+  const [pending, startTransition] = useTransition()
+
+  function submit() {
+    if (!value) { toast.error('Choisis une date.'); return }
+    const fd = new FormData()
+    fd.set('id', action.id); fd.set('site_id', action.site_id); fd.set('due_date', value)
+    startTransition(async () => {
+      const r = await setActionDueDateAction(fd)
+      if (!r.ok) toast.error(r.error)
+      else { toast.success('Échéance mise à jour'); onDone() }
+    })
+  }
+
+  return (
+    <div className="border-t border-foreground/[0.06] bg-muted/20 px-4 py-3.5 space-y-3">
+      <input
+        type="date" value={value} onChange={(e) => setValue(e.target.value)} autoFocus
+        className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <div className="flex items-center gap-2.5 pt-0.5">
+        <button type="button" onClick={onCancel} disabled={pending}
+          className="flex-1 rounded-xl border bg-background px-3 py-2.5 text-[13px] font-medium text-muted-foreground hover:text-foreground active:scale-[0.98] transition-transform">
+          <span className="inline-flex items-center gap-1.5"><X className="h-4 w-4" />Annuler</span>
+        </button>
+        <button type="button" onClick={submit} disabled={pending || !value}
+          className="inline-flex flex-[1.4] items-center justify-center gap-1.5 rounded-xl bg-foreground px-3 py-2.5 text-[13px] font-semibold text-background disabled:opacity-50 active:scale-[0.98] transition-transform">
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Enregistrer
         </button>
       </div>
     </div>
