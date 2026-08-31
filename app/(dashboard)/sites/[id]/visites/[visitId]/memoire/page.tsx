@@ -51,18 +51,17 @@ export default async function VisitMemoirePage({ params }: { params: Promise<{ i
         <ChevronRight className="h-3.5 w-3.5" aria-hidden />
         <Link href={`/sites/${id}/visites/${visitId}`} className="hover:text-foreground">{visitLabel}</Link>
         <ChevronRight className="h-3.5 w-3.5" aria-hidden />
-        <span className="font-medium text-foreground">Ce que MemorIA a retenu</span>
+        <span className="font-medium text-foreground">Historique des propositions</span>
       </nav>
 
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Tout ce que MemorIA a retenu</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Historique des propositions</h1>
         <p className="mt-1 text-[13.5px] text-muted-foreground">
-          Retrouvez les actions, échéances, décisions, connaissances, intervenants et vigilances extraits de cette visite,
-          qu&apos;ils soient ou non rattachés à un sujet de suivi.
+          Le journal d&apos;audit des propositions de cette visite : anciennes (remplacées) et écartées.
+          Les propositions actives se consultent et se traitent dans le compte-rendu de la visite.
         </p>
         <p className="mt-2 text-[12.5px] text-muted-foreground">
-          {proposals.length} élément{proposals.length > 1 ? 's' : ''} au total
-          {active.length !== proposals.length && ` · ${active.length} actif${active.length > 1 ? 's' : ''} · ${archived.length} archivé${archived.length > 1 ? 's' : ''}`}
+          {archived.length} proposition{archived.length > 1 ? 's' : ''} archivée{archived.length > 1 ? 's' : ''}
         </p>
       </header>
 

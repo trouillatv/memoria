@@ -39,11 +39,12 @@ export function FactLedgerView({ active, archived, subjectLabels, siteId }: Prop
   const superseded = archived.filter((p) => p.status === 'superseded')
   const dismissed  = archived.filter((p) => p.status === 'dismissed' || p.status === 'masked')
 
-  const allKinds = [...new Set([...active, ...archived].map((p) => p.kind))].sort((a, b) =>
+  // Filtres basés sur l'ARCHIVE seule : cette page est le journal des propositions
+  // anciennes/écartées, pas une seconde vue des propositions actives.
+  const allKinds = [...new Set(archived.map((p) => p.kind))].sort((a, b) =>
     (KIND_META[a]?.label ?? a).localeCompare(KIND_META[b]?.label ?? b, 'fr'),
   )
 
-  const filteredActive     = kindFilter === 'all' ? active     : active.filter((p) => p.kind === kindFilter)
   const filteredSuperseded = kindFilter === 'all' ? superseded : superseded.filter((p) => p.kind === kindFilter)
   const filteredDismissed  = kindFilter === 'all' ? dismissed  : dismissed.filter((p) => p.kind === kindFilter)
 
@@ -76,88 +77,58 @@ export function FactLedgerView({ active, archived, subjectLabels, siteId }: Prop
         ))}
       </div>
 
-      {/* Mémoire active */}
-      {filteredActive.length > 0 ? (
-        <section>
-          <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Mémoire active — {filteredActive.length} élément{filteredActive.length > 1 ? 's' : ''}
-          </h2>
-          <div className="divide-y rounded-xl border bg-card">
-            {filteredActive.map((p) => (
-              <ProposalRow
-                key={p.id}
-                proposal={p}
-                subjectLabels={subjectLabels}
-                siteId={siteId}
-                activeTitleById={activeTitleById}
-                activeByCanonicalSubject={activeByCanonicalSubject}
-              />
-            ))}
-          </div>
-        </section>
+      {/* ARCHIVE d'audit : anciennes propositions (remplacées) + écartées. Les
+          propositions ACTIVES ne sont PLUS dupliquées ici — elles vivent et se
+          manipulent dans le compte-rendu de visite (VisitDesk). Cette page n'est
+          pas une seconde surface de travail : c'est le journal des propositions. */}
+      {!hasArchived ? (
+        <p className="text-[13px] text-muted-foreground">
+          Aucune proposition archivée pour cette visite{kindFilter === 'all' ? '' : ' (ce filtre)'}.
+        </p>
       ) : (
-        <p className="text-[13px] text-muted-foreground">Aucun élément actif pour ce filtre.</p>
-      )}
-
-      {/* Historique de l'analyse — deux sections distinctes */}
-      {hasArchived && (
-        <details className="group rounded-xl border bg-card">
-          <summary className="flex cursor-pointer select-none list-none items-center justify-between px-4 py-3 [&::-webkit-details-marker]:hidden">
-            <span className="text-[13px] font-medium text-muted-foreground group-open:text-foreground">
-              Historique de l&apos;analyse
-            </span>
-            <span className="text-[11px] text-muted-foreground">
-              {filteredSuperseded.length > 0 && `${filteredSuperseded.length} ancienne${filteredSuperseded.length > 1 ? 's' : ''}`}
-              {filteredSuperseded.length > 0 && filteredDismissed.length > 0 && ' · '}
-              {filteredDismissed.length > 0 && `${filteredDismissed.length} écarté${filteredDismissed.length > 1 ? 's' : ''}`}
-              {' '}· Afficher
-            </span>
-          </summary>
-
-          <div className="border-t">
-            {filteredSuperseded.length > 0 && (
-              <div>
-                <p className="px-4 py-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground border-b bg-muted/30">
-                  Anciennes propositions — {filteredSuperseded.length}
-                </p>
-                <div className="divide-y">
-                  {filteredSuperseded.map((p) => (
-                    <ProposalRow
-                      key={p.id}
-                      proposal={p}
-                      subjectLabels={subjectLabels}
-                      siteId={siteId}
-                      activeTitleById={activeTitleById}
-                      activeByCanonicalSubject={activeByCanonicalSubject}
-                      muted
-                    />
-                  ))}
-                </div>
+        <div className="rounded-xl border bg-card">
+          {filteredSuperseded.length > 0 && (
+            <div>
+              <p className="px-4 py-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground border-b bg-muted/30">
+                Anciennes propositions — {filteredSuperseded.length}
+              </p>
+              <div className="divide-y">
+                {filteredSuperseded.map((p) => (
+                  <ProposalRow
+                    key={p.id}
+                    proposal={p}
+                    subjectLabels={subjectLabels}
+                    siteId={siteId}
+                    activeTitleById={activeTitleById}
+                    activeByCanonicalSubject={activeByCanonicalSubject}
+                    muted
+                  />
+                ))}
               </div>
-            )}
+            </div>
+          )}
 
-            {filteredDismissed.length > 0 && (
-              <div className={filteredSuperseded.length > 0 ? 'border-t' : ''}>
-                <p className="px-4 py-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground border-b bg-muted/30">
-                  Écartés — {filteredDismissed.length}
-                </p>
-                <div className="divide-y">
-                  {filteredDismissed.map((p) => (
-                    <ProposalRow
-                      key={p.id}
-                      proposal={p}
-                      subjectLabels={subjectLabels}
-                      siteId={siteId}
-                      activeTitleById={activeTitleById}
-                      activeByCanonicalSubject={activeByCanonicalSubject}
-                      muted
-                    />
-                  ))}
-                </div>
+          {filteredDismissed.length > 0 && (
+            <div className={filteredSuperseded.length > 0 ? 'border-t' : ''}>
+              <p className="px-4 py-2 text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground border-b bg-muted/30">
+                Écartés — {filteredDismissed.length}
+              </p>
+              <div className="divide-y">
+                {filteredDismissed.map((p) => (
+                  <ProposalRow
+                    key={p.id}
+                    proposal={p}
+                    subjectLabels={subjectLabels}
+                    siteId={siteId}
+                    activeTitleById={activeTitleById}
+                    activeByCanonicalSubject={activeByCanonicalSubject}
+                    muted
+                  />
+                ))}
               </div>
-            )}
-          </div>
-        </details>
+            </div>
+          )}
+        </div>
       )}
     </div>
   )

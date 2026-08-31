@@ -623,11 +623,13 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
                     </p>
                   )}
                 </div>
+                {/* Accès SECONDAIRE à l'archive d'audit — pas une seconde vérité
+                    opérationnelle. Démoté en lien discret, vocabulaire honnête. */}
                 <Link
                   href={`/sites/${id}/visites/${visitId}/memoire`}
-                  className="shrink-0 rounded-lg border bg-muted/30 px-3 py-1.5 text-[13px] font-medium hover:bg-muted"
+                  className="shrink-0 text-[12.5px] font-medium text-muted-foreground hover:text-foreground hover:underline"
                 >
-                  Tout voir →
+                  Voir l’historique des propositions →
                 </Link>
               </div>
             </section>

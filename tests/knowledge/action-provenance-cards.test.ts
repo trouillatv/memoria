@@ -37,7 +37,7 @@ describe('resolveActionProvenanceLines — 4 témoins + inconnu', () => {
     h.tables = { site_reports: [{ id: 'r2', origin: 'planned', started_at: '2026-08-30T00:00:00.000Z', created_at: '2026-08-30T00:00:00.000Z' }] }
     const out = await resolveActionProvenanceLines([row({ id: 'a2', report_id: 'r2' })])
     expect(out.a2.label).toBe('Issue de la visite du 30 août 2026')
-    expect(out.a2.href).toBe('/m/visite/r2')
+    expect(out.a2.href).toBe('/m/visite/r2/cr')
   })
 
   it('réunion (origin null) → « Issue du CR de réunion du … » + lien /m/reunion', async () => {
@@ -65,7 +65,7 @@ describe('resolveActionProvenanceLines — 4 témoins + inconnu', () => {
     }
     const out = await resolveActionProvenanceLines([row({ id: 'a6', source_capture_id: 'c1' })])
     expect(out.a6.label).toBe('Issue de la visite du 29 août 2026')
-    expect(out.a6.href).toBe('/m/visite/r6')
+    expect(out.a6.href).toBe('/m/visite/r6/cr')
   })
 
   it('source présente mais objet disparu → absente (la fiche dira « indisponible », pas la carte)', async () => {
