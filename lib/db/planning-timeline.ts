@@ -210,7 +210,8 @@ export async function getPlanningTimeline(
     .not('due_date', 'is', null)
     .gte('due_date', range.from)
     .lte('due_date', range.to)
-    .is('deleted_at', null)
+  // `site_actions` n'a pas de colonne `deleted_at` — ne jamais filtrer dessus
+  // (sinon PostgREST échoue et les actions disparaissent silencieusement).
   for (const a of (actionRows ?? []) as Array<Record<string, unknown>>) {
     const siteId = a.site_id as string
     const day = a.due_date as string

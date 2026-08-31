@@ -334,12 +334,12 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
       .in('site_id', siteIds)
       .in('origin', TERRAIN_VISIT_ORIGINS),
     // LES ACTIONS — total du chantier, TOUS statuts (le libellé dit « X actions »).
-    // Non supprimées uniquement : une action soft-deleted n'est plus une action.
+    // `site_actions` n'a PAS de colonne `deleted_at` (pas de soft-delete) : ne
+    // jamais filtrer dessus, sinon PostgREST échoue (400) et /sites plante (500).
     supabase
       .from('site_actions')
       .select('site_id')
-      .in('site_id', siteIds)
-      .is('deleted_at', null),
+      .in('site_id', siteIds),
     // LES PV IMPORTÉS — site_reports historiques (origin='import'), même
     // définition fiabilisée que la provenance, jamais comptés comme visite.
     supabase

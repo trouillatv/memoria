@@ -90,7 +90,7 @@ export async function getSiteActorContext(
       .select('title, status, due_date')
       .eq('site_id', siteId)
       .or(orParts.join(','))
-      .is('deleted_at', null)
+      // `site_actions` n'a pas de colonne `deleted_at` — ne jamais filtrer dessus.
       .not('status', 'in', '(done,cancelled)')
       .order('due_date', { ascending: true, nullsFirst: false })
       .limit(10)

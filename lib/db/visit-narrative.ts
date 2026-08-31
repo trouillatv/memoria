@@ -280,11 +280,13 @@ export async function buildVisitChanges(reportId: string): Promise<VisitChangeGr
   const { data: capRows } = await db.from('visit_capture').select('id').eq('report_id', reportId)
   const captureIds = ((capRows ?? []) as Array<{ id: string }>).map((c) => c.id)
 
+  // NB : `site_actions` n'a PAS de colonne `deleted_at` — ne jamais filtrer dessus
+  // (sinon PostgREST échoue et, ici, l'erreur avalée vidait silencieusement les
+  // actions des « objets produits »).
   const [actionsDirectRes, proposalsRes, actionsCaptureRes] = await Promise.all([
     db.from('site_actions')
       .select('id, title, status, priority, subject_thread_id')
-      .eq('report_id', reportId)
-      .is('deleted_at', null),
+      .eq('report_id', reportId),
     // Propositions promues, non-superseded, hors kind='action' (chemin direct STI)
     db.from('site_knowledge_proposals')
       .select('id, kind, promoted_object_id, promoted_object_type, canonical_subject_id')
@@ -293,7 +295,7 @@ export async function buildVisitChanges(reportId: string): Promise<VisitChangeGr
       .not('promoted_object_id', 'is', null)
       .neq('kind', 'action'),
     captureIds.length > 0
-      ? db.from('site_actions').select('id, title, status, priority, subject_thread_id').in('source_capture_id', captureIds).is('deleted_at', null)
+      ? db.from('site_actions').select('id, title, status, priority, subject_thread_id').in('source_capture_id', captureIds)
       : Promise.resolve({ data: [] as Array<{ id: string; title: string; status: string | null; priority: string | null; subject_thread_id: string | null }> }),
   ])
 
