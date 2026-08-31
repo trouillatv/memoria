@@ -5,7 +5,9 @@ import { requireSiteAccess } from '@/lib/field/site-access'
 import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { FieldActionsList } from '@/components/actions/FieldActionsList'
+import { resolveActionProvenanceLines } from '@/lib/knowledge/action-provenance-cards'
 import { getPendingWork } from '@/lib/knowledge/pending-work'
+import { SiteTabs } from '@/app/(field)/m/site/[siteId]/SiteTabs'
 import { PendingWorkBlock } from './PendingWorkBlock'
 
 export const dynamic = 'force-dynamic'
@@ -26,8 +28,10 @@ export default async function FieldActionsPage({
   // fait confiance à l'appelant pour avoir vérifié l'accès en amont (M3-D). Sans
   // ce garde, `?site=<id d'un autre chantier>` fuiterait des actions hors-org.
   let siteName: string | null = null
+  let userRole = ''
   if (scoped) {
-    await requireSiteAccess(siteId!)
+    const { user } = await requireSiteAccess(siteId!)
+    userRole = user.role
     const supabase = createAdminClient()
     const { data } = await supabase.from('sites').select('name').eq('id', siteId).maybeSingle()
     siteName = (data as { name?: string } | null)?.name ?? null
@@ -43,6 +47,10 @@ export default async function FieldActionsPage({
     listOpenSiteActions(scoped ? { siteIds: [siteId!] } : undefined).catch(() => [] as SiteActionRow[]),
     getPendingWork(scoped ? { siteIds: [siteId!] } : {}).catch(() => ({ actions: [], deadlines: [] })),
   ])
+
+  // Provenance compacte par carte — structurelle (colonnes FK), résolue en batch.
+  // « Pourquoi cette action existe » sans quitter la liste. Échec => pas de ligne.
+  const provenance = await resolveActionProvenanceLines(actions).catch(() => ({}))
 
   return (
     <div className="space-y-6 pb-24">
@@ -65,6 +73,12 @@ export default async function FieldActionsPage({
         </p>
       </header>
 
+      {/* Scope chantier = même shell de navigation que les autres vues chantier
+          (SiteTabs, Actions sélectionné). On NE recrée PAS l'ancienne Route A :
+          on rétablit seulement le contexte chantier autour de /m/actions?site=X.
+          Vue globale (sans ?site) = pas de pills chantier. */}
+      {scoped && <SiteTabs siteId={siteId!} active="actions" userRole={userRole} />}
+
       {/* Ce qui attend une DÉCISION — au-dessus, parce que c'est ce qu'on ne
           voit nulle part ailleurs. Attention au mot : une proposition ne bloque
           PAS le chantier. Elle bloque la CONNAISSANCE — une action proposée
@@ -73,7 +87,7 @@ export default async function FieldActionsPage({
       <PendingWorkBlock work={pending} />
 
       {/* Ce qui attend une EXÉCUTION — des engagements pris. */}
-      <FieldActionsList actions={actions} scopedSiteId={scoped ? siteId : undefined} />
+      <FieldActionsList actions={actions} scopedSiteId={scoped ? siteId : undefined} provenance={provenance} />
     </div>
   )
 }

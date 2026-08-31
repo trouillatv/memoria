@@ -5,7 +5,9 @@
 // déterministe, (2) porter les libellés. Le read model charge les objets et
 // compose ; le composant ne fait qu'afficher.
 
-export type ProvenanceType = 'visite' | 'reunion' | 'reserve' | 'sujet'
+import { isImportedDocumentOrigin, isTerrainVisitOrigin } from '@/lib/field/visit-origins'
+
+export type ProvenanceType = 'visite' | 'reunion' | 'pv' | 'reserve' | 'sujet'
 
 /** La colonne de provenance retenue comme PRIMAIRE. */
 export type ProvenanceKind = 'reserve' | 'report' | 'capture' | 'subject'
@@ -18,9 +20,12 @@ export interface ActionFicheSource {
   title: string
   /** Ligne secondaire (date/contexte), si disponible. */
   detail: string | null
-  /** Route canonique réelle, ou null si l'objet n'est pas navigable précisément
-   *  ou a disparu. */
+  /** Route canonique réelle (DESKTOP), ou null si l'objet n'est pas navigable
+   *  précisément ou a disparu. */
   href: string | null
+  /** Route MOBILE `/m` réelle, ou null si aucune surface `/m` fiable (on préfère
+   *  un lien absent à un renvoi desktop). Calculé par `mobileSourceHref`. */
+  mobileHref: string | null
   linkLabel: string
   /** false = une relation existait mais l'objet est introuvable/supprimé →
    *  « Origine indisponible » (jamais masqué silencieusement). */
@@ -36,11 +41,66 @@ export interface ActionFicheContext {
 }
 
 export const PROVENANCE_TYPE_LABEL: Record<ProvenanceType, string> = {
-  visite: 'Visite', reunion: 'Réunion', reserve: 'Réserve', sujet: 'Sujet',
+  visite: 'Visite', reunion: 'Réunion', pv: 'PV · document historique',
+  reserve: 'Réserve', sujet: 'Sujet',
 }
 export const PROVENANCE_LINK_LABEL: Record<ProvenanceType, string> = {
-  visite: 'Voir la visite', reunion: 'Voir le compte rendu',
+  visite: 'Voir la visite', reunion: 'Voir le compte rendu', pv: 'Voir le document',
   reserve: 'Voir la réserve', sujet: 'Voir le sujet',
+}
+
+/**
+ * Type de provenance d'un `site_reports`, depuis `origin` SEUL (structurel) :
+ * `import` = PV/CR historique importé (source documentaire) → `pv` ; origine
+ * terrain (planned/spontaneous/qr/gps) → `visite` ; `null` = réunion. Corrige
+ * la confusion historique « toute origine non-nulle = visite » qui étiquetait un
+ * PV importé comme « Visite » (doctrine p05-verite-imports-vs-visites).
+ */
+export function reportProvenanceType(origin: string | null): ProvenanceType {
+  if (isImportedDocumentOrigin(origin)) return 'pv'
+  if (isTerrainVisitOrigin(origin)) return 'visite'
+  return 'reunion'
+}
+
+/**
+ * Route MOBILE réelle (/m) d'une source, ou `null` si aucune surface `/m` fiable
+ * n'existe. Doctrine Vincent (2026-09-01) : sur mobile, mieux vaut perdre un clic
+ * qu'envoyer l'utilisateur vers une surface desktop. Jamais de `/sites/...` ici.
+ */
+export function mobileSourceHref(
+  type: ProvenanceType,
+  ids: { siteId: string; reportId: string | null },
+): string | null {
+  switch (type) {
+    case 'reunion': return ids.reportId ? `/m/reunion/${ids.reportId}` : null
+    case 'visite': return ids.reportId ? `/m/visite/${ids.reportId}` : null
+    case 'reserve': return `/m/site/${ids.siteId}/reserves`
+    case 'pv': return null   // pas de vue document /m fiable → libellé seul
+    case 'sujet': return null // subjects.id ≠ canonicalSubjectId : pas de route /m
+  }
+}
+
+/**
+ * Ligne COMPACTE de provenance pour une carte — déterministe (type + date), le
+ * titre complet restant réservé à la fiche. `manual` = création MemorIA sans
+ * source documentaire (« Créée manuellement »). Une action sans provenance
+ * démontrable N'A PAS de ligne : l'appelant ne construit rien dans ce cas.
+ */
+export function cardProvenanceLine(
+  input:
+    | { kind: 'source'; type: ProvenanceType; dateLabel: string | null; name?: string | null }
+    | { kind: 'manual' },
+): string {
+  if (input.kind === 'manual') return 'Créée manuellement'
+  const { type, dateLabel, name } = input
+  const d = dateLabel ? ` du ${dateLabel}` : ''
+  switch (type) {
+    case 'pv': return `Issue du PV${d}`
+    case 'visite': return `Issue de la visite${d}`
+    case 'reunion': return `Issue du CR de réunion${d}`
+    case 'reserve': return `Issue de la réserve${d}`
+    case 'sujet': return name ? `Issue du sujet : ${name}` : 'Issue d’un sujet'
+  }
 }
 
 /**

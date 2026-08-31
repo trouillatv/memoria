@@ -14,7 +14,7 @@ const NOW = '2026-07-28T08:00:00.000Z'
 const row = (over: Partial<SiteActionRow> = {}): SiteActionRow => ({
   id: 'action-1', title: 'Relancer le menuisier', body: null, corps_etat: null, assigned_to: null,
   status: 'open', kind: 'deadline', created_at: '2026-07-20T00:00:00.000Z', due_date: '2026-07-29', due_date_status: null,
-  report_id: null, converted_to_type: null, converted_to_id: null,
+  report_id: null, reserve_id: null, source_capture_id: null, created_from: null, converted_to_type: null, converted_to_id: null,
   site_id: 'site-1', organizationId: 'org-1', site_name: 'Lycée PETRO ATTITI',
   contract_id: null, contract_name: null, subject_id: null,
   last_progress_at: null, snooze_reason: null, snoozed_at: null, subject_thread_id: null, ...over,

@@ -193,6 +193,15 @@ export interface SiteActionRow {
    *  de la même façon. Il est porté jusqu'ici pour `describeOverdueAction()`. */
   due_date_status: 'explicit' | 'estimated' | null
   report_id: string | null
+  /** Provenance corrective (mig 123) — réserve d'origine. Sert la ligne de
+   *  provenance de la carte + la fiche. null = action non corrective. */
+  reserve_id: string | null
+  /** Provenance terrain (mig 183) — capture d'origine → sa visite. null sinon. */
+  source_capture_id: string | null
+  /** Porte de création (mig 112) : copilot / mobile_site / desktop_site /
+   *  actions_list / report… null = legacy. Sert à distinguer « Créée manuellement »
+   *  (porte connue, sans source) de « Origine non renseignée ». Jamais affiché brut. */
+  created_from: string | null
   converted_to_type: string | null
   converted_to_id: string | null
   site_id: string
@@ -279,6 +288,9 @@ export async function listOpenSiteActions(opts?: {
       due_date: a.due_date,
       due_date_status: a.due_date_status ?? null,
       report_id: a.report_id,
+      reserve_id: a.reserve_id ?? null,
+      source_capture_id: a.source_capture_id ?? null,
+      created_from: a.created_from ?? null,
       converted_to_type: a.converted_to_type,
       converted_to_id: a.converted_to_id,
       site_id: a.site_id,
@@ -335,6 +347,9 @@ export async function listOpenSiteActionsByReports(reportIds: string[]): Promise
       due_date: a.due_date,
       due_date_status: a.due_date_status ?? null,
       report_id: a.report_id,
+      reserve_id: a.reserve_id ?? null,
+      source_capture_id: a.source_capture_id ?? null,
+      created_from: a.created_from ?? null,
       converted_to_type: a.converted_to_type,
       converted_to_id: a.converted_to_id,
       site_id: a.site_id,

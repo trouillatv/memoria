@@ -73,7 +73,13 @@ const PRIORITY_META: Record<Priority, { rank: number; bar: string; badge: string
 type Sort = 'priorite' | 'recent'
 type Filter = 'tout' | Priority
 
-export function FieldActionsList({ actions, scopedSiteId }: { actions: SiteActionRow[]; scopedSiteId?: string }) {
+export function FieldActionsList({ actions, scopedSiteId, provenance }: {
+  actions: SiteActionRow[]
+  scopedSiteId?: string
+  /** Ligne de provenance compacte par action (résolue côté serveur, structurelle).
+   *  Clé absente = aucune provenance démontrable → pas de ligne. */
+  provenance?: Record<string, { label: string; href: string | null }>
+}) {
   const router = useRouter()
   const today = todayIso()
   // Ouvert depuis la liste scopée d'un chantier (/m/actions?site=X) : on marque
@@ -238,6 +244,7 @@ export function FieldActionsList({ actions, scopedSiteId }: { actions: SiteActio
               const timeText = a.last_progress_at && dayDiff(a.last_progress_at) >= 0
                 ? `Suivi ${dayLabel(a.last_progress_at)}`
                 : (dayDiff(a.created_at) <= 0 ? "créée aujourd'hui" : dayLabel(a.created_at))
+              const prov = provenance?.[a.id]
               return (
                 <li key={a.id} className={`overflow-hidden rounded-2xl border border-foreground/[0.08] bg-card shadow-sm border-l-[3px] ${meta.bar}`}>
                   <div className="flex items-start gap-3 p-4">
@@ -283,6 +290,21 @@ export function FieldActionsList({ actions, scopedSiteId }: { actions: SiteActio
                       <ChevronRight className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground/60" />
                     </Link>
                   </div>
+
+                  {/* Provenance : « pourquoi cette action existe » en une ligne
+                      compacte. Structurelle (colonnes FK), cliquable seulement si
+                      une route /m réelle existe — sinon libellé seul. */}
+                  {prov && (
+                    <div className="-mt-2 px-4 pb-1.5">
+                      {prov.href ? (
+                        <Link href={prov.href} className="inline-flex items-center gap-1 text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+                          <span aria-hidden>↳</span> {prov.label}
+                        </Link>
+                      ) : (
+                        <p className="text-[12px] text-muted-foreground"><span aria-hidden>↳</span> {prov.label}</p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Gestes directs — Clôturer est le geste principal pertinent
                       (audit convergence mobile) ; Modifier/Replanifier restent

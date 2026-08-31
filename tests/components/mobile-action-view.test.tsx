@@ -57,6 +57,7 @@ function makeAction(overrides: Partial<ActionFicheData> = {}): ActionFicheData {
     observed: null,
     createdByLabel: null,
     closedByLabel: null,
+    createdManually: false,
     ...overrides,
   }
 }
@@ -138,5 +139,43 @@ describe('MobileActionView — gestes (fiche non lecture seule)', () => {
     render(<MobileActionView action={makeAction()} siteId="site-1" />)
     const back = screen.getByRole('link', { name: /Chantier A/ })
     expect(back).toHaveAttribute('href', '/m/site/site-1')
+  })
+})
+
+describe('MobileActionView — Origine (toujours visible, mobile, créateur distinct)', () => {
+  const visiteSource = {
+    type: 'visite' as const, typeLabel: 'Visite', title: 'Visite du 30 août', detail: '30 août 2026',
+    href: '/sites/site-1/reunion/r1', mobileHref: '/m/visite/r1', linkLabel: 'Voir la visite', available: true,
+  }
+
+  it('lien de la source suit mobileHref, JAMAIS la route desktop', () => {
+    render(<MobileActionView action={makeAction({ source: visiteSource })} siteId="site-1" />)
+    const link = screen.getByRole('link', { name: 'Voir la visite' })
+    expect(link).toHaveAttribute('href', '/m/visite/r1')
+    expect(link).not.toHaveAttribute('href', '/sites/site-1/reunion/r1')
+  })
+
+  it('source sans route /m (PV) : type affiché, aucun lien', () => {
+    render(<MobileActionView action={makeAction({
+      source: { type: 'pv', typeLabel: 'PV · document historique', title: 'PV n°006', detail: '25 août 2026', href: '/sites/site-1/reunion/r1', mobileHref: null, linkLabel: 'Voir le document', available: true },
+    })} siteId="site-1" />)
+    expect(screen.getByText('PV · document historique')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Voir le document' })).not.toBeInTheDocument()
+  })
+
+  it('sans source, création directe → « Créée manuellement »', () => {
+    render(<MobileActionView action={makeAction({ source: null, createdManually: true })} siteId="site-1" />)
+    expect(screen.getByText('Créée manuellement')).toBeInTheDocument()
+  })
+
+  it('sans source ni création connue → « Origine non renseignée » (bloc quand même visible)', () => {
+    render(<MobileActionView action={makeAction({ source: null, createdManually: false })} siteId="site-1" />)
+    expect(screen.getByText('Origine non renseignée')).toBeInTheDocument()
+  })
+
+  it('« Créée dans MemorIA par » est distinct de l’origine', () => {
+    render(<MobileActionView action={makeAction({ source: visiteSource, createdByLabel: 'Vincent' })} siteId="site-1" />)
+    expect(screen.getByText(/Créée dans MemorIA par/)).toBeInTheDocument()
+    expect(screen.getByText('Vincent')).toBeInTheDocument()
   })
 })

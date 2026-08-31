@@ -38,8 +38,22 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 vi.mock('@/components/actions/FieldActionsList', () => ({ FieldActionsList: () => null }))
 vi.mock('@/app/(field)/m/actions/PendingWorkBlock', () => ({ PendingWorkBlock: () => null }))
+vi.mock('@/app/(field)/m/site/[siteId]/SiteTabs', () => ({ SiteTabs: () => null }))
 
 const { default: FieldActionsPage } = await import('@/app/(field)/m/actions/page')
+const { SiteTabs } = await import('@/app/(field)/m/site/[siteId]/SiteTabs')
+
+/** Cherche un élément React d'un type donné dans l'arbre renvoyé (non monté). */
+function findEl(node: unknown, type: unknown): { props: Record<string, unknown> } | null {
+  if (!node || typeof node !== 'object') return null
+  if (Array.isArray(node)) {
+    for (const n of node) { const f = findEl(n, type); if (f) return f }
+    return null
+  }
+  const el = node as { type?: unknown; props?: { children?: unknown } }
+  if (el.type === type) return el as { props: Record<string, unknown> }
+  return el.props ? findEl(el.props.children, type) : null
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -83,5 +97,24 @@ describe('/m/actions — frontière d’accès au scope chantier', () => {
     expect(result).toBeNull()
     expect(mockListOpenSiteActions).not.toHaveBeenCalled()
     expect(mockGetPendingWork).not.toHaveBeenCalled()
+  })
+})
+
+describe('/m/actions — shell de navigation chantier (SiteTabs) sans recréer Route A', () => {
+  it('scope chantier : affiche SiteTabs avec l’onglet Actions sélectionné', async () => {
+    mockRequireSiteAccess.mockResolvedValue({ siteId: 'site-1', user: { id: 'u1', role: 'admin' } })
+    const tree = await FieldActionsPage({ searchParams: Promise.resolve({ site: 'site-1' }) })
+
+    const tabs = findEl(tree, SiteTabs)
+    expect(tabs).not.toBeNull()
+    expect(tabs!.props.active).toBe('actions')
+    expect(tabs!.props.siteId).toBe('site-1')
+  })
+
+  it('vue globale : aucune barre d’onglets chantier', async () => {
+    mockGetCurrentUser.mockResolvedValue({ id: 'u1' })
+    const tree = await FieldActionsPage({ searchParams: Promise.resolve({}) })
+
+    expect(findEl(tree, SiteTabs)).toBeNull()
   })
 })

@@ -15,6 +15,7 @@ import { todayLocalIso } from '@/lib/time/local-date'
 import type { DbSiteAction, SiteActionStatus } from '@/types/db'
 import {
   primaryProvenanceKind, PROVENANCE_TYPE_LABEL, PROVENANCE_LINK_LABEL,
+  reportProvenanceType, mobileSourceHref,
   type ActionFicheSource, type ActionFicheContext, type ProvenanceType,
 } from '@/lib/knowledge/action-provenance'
 import {
@@ -112,6 +113,11 @@ export interface ActionFicheData {
   createdByLabel: string | null
   /** Qui a clôturé (auteur du dernier événement `completed`), ou `null`. */
   closedByLabel: string | null
+  /** `true` = aucune source documentaire (`source === null`) MAIS l'action a été
+   *  créée via une porte MemorIA (`created_from` renseigné) → « Créée manuellement ».
+   *  `false` avec `source === null` = origine réellement inconnue (legacy) →
+   *  « Origine non renseignée ». Distinct de `createdByLabel` (QUI a créé). */
+  createdManually: boolean
 }
 
 const PROOF_BUCKET = 'intervention-photos'
@@ -135,17 +141,21 @@ async function loadReport(db: Db, siteId: string, reportId: string): Promise<Loa
   return { origin: r.origin, date: r.started_at ?? r.created_at, title: r.title }
 }
 
-/** Une source « report » (réunion ou visite) — libellés depuis les données réelles. */
+/** Une source « report » — visite terrain, réunion, ou PV/document historique
+ *  importé. Le type vient de `origin` SEUL (reportProvenanceType), jamais du
+ *  titre : un `origin='import'` est un PV, pas une « Visite ». */
 function reportSource(r: Exclude<LoadedReport, 'missing'>, reportId: string, siteId: string): ActionFicheSource {
-  const type: ProvenanceType = r.origin ? 'visite' : 'reunion'
+  const type = reportProvenanceType(r.origin)
+  const fallbackTitle = type === 'pv' ? 'Document historique' : type === 'visite' ? 'Visite' : 'Compte rendu'
   return {
     type,
     typeLabel: PROVENANCE_TYPE_LABEL[type],
-    title: r.title?.trim() || (type === 'visite' ? 'Visite' : 'Compte rendu'),
+    title: r.title?.trim() || fallbackTitle,
     detail: frDate(r.date),
     // La réunion source s'ouvre en FICHE — une seule règle de destination pour
     // toutes les portes, y compris celles qui n'étaient pas dans le diff du Lot 4.
     href: `/sites/${siteId}/reunion/${reportId}`,
+    mobileHref: mobileSourceHref(type, { siteId, reportId }),
     linkLabel: PROVENANCE_LINK_LABEL[type],
     available: true,
   }
@@ -154,7 +164,7 @@ function reportSource(r: Exclude<LoadedReport, 'missing'>, reportId: string, sit
 /** « Origine indisponible » — une relation existait, l'objet a disparu. On ne le
  *  masque JAMAIS silencieusement. */
 function unavailable(type: ProvenanceType): ActionFicheSource {
-  return { type, typeLabel: PROVENANCE_TYPE_LABEL[type], title: 'Origine indisponible', detail: null, href: null, linkLabel: '', available: false }
+  return { type, typeLabel: PROVENANCE_TYPE_LABEL[type], title: 'Origine indisponible', detail: null, href: null, mobileHref: null, linkLabel: '', available: false }
 }
 
 export async function getSiteActionFiche(siteId: string, actionId: string): Promise<ActionFicheData | null> {
@@ -199,7 +209,8 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
           title: (r as { label: string }).label,
           detail: frDate((r as { issued_on: string | null; created_at: string }).issued_on ?? (r as { created_at: string }).created_at)
             ? `Constatée le ${frDate((r as { issued_on: string | null; created_at: string }).issued_on ?? (r as { created_at: string }).created_at)}` : null,
-          href: `/sites/${siteId}/reserves`, linkLabel: PROVENANCE_LINK_LABEL.reserve, available: true,
+          href: `/sites/${siteId}/reserves`, mobileHref: mobileSourceHref('reserve', { siteId, reportId: null }),
+          linkLabel: PROVENANCE_LINK_LABEL.reserve, available: true,
         }
   } else if (kind === 'report' && a.report_id) {
     const r = await loadReport(db, siteId, a.report_id)
@@ -220,7 +231,9 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
       ? unavailable('sujet')
       : {
           type: 'sujet', typeLabel: PROVENANCE_TYPE_LABEL.sujet, title: (s as { name: string }).name,
-          detail: null, href: `/sites/${siteId}/subjects/${a.subject_id}`, linkLabel: PROVENANCE_LINK_LABEL.sujet, available: true,
+          detail: null, href: `/sites/${siteId}/subjects/${a.subject_id}`,
+          mobileHref: mobileSourceHref('sujet', { siteId, reportId: null }),
+          linkLabel: PROVENANCE_LINK_LABEL.sujet, available: true,
         }
   }
 
@@ -352,5 +365,9 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
     observed,
     createdByLabel: historyEntries.find((e) => e.kind === 'created')?.actorLabel ?? null,
     closedByLabel: [...historyEntries].reverse().find((e) => e.kind === 'completed')?.actorLabel ?? null,
+    // Création directe (sans source documentaire) : vraie quand une porte MemorIA
+    // est enregistrée mais qu'aucune FK de provenance n'existe. `created_from` est
+    // structurel (mig 112), jamais inféré du texte.
+    createdManually: source === null && a.created_from != null,
   }
 }

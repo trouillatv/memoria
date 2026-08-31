@@ -69,25 +69,38 @@ export function MobileActionView({ action, siteId, backHref }: { action: ActionF
       {/* Gestes — mêmes primitives que la fiche desktop (ActionFicheCta). */}
       <ActionMobileCta action={a} />
 
-      {/* Origine / provenance */}
-      {a.source && (
-        <div className="rounded-xl border bg-card px-3 py-2.5">
-          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Origine</p>
-          <p className="text-[13px] font-medium">{a.source.typeLabel}</p>
-          {a.source.title && <p className="text-[12px] text-muted-foreground">{a.source.title}</p>}
-          {a.source.detail && <p className="text-[12px] text-muted-foreground">{a.source.detail}</p>}
-          {a.source.available && a.source.href ? (
-            <Link
-              href={a.source.href}
-              className="mt-1.5 inline-flex text-[12px] text-primary underline underline-offset-2"
-            >
-              {a.source.linkLabel}
-            </Link>
-          ) : !a.source.available ? (
-            <p className="mt-1 text-[11px] italic text-muted-foreground">Origine indisponible</p>
-          ) : null}
-        </div>
-      )}
+      {/* Origine / provenance — TOUJOURS visible. La source documentaire (QUOI a
+          demandé l'action) est distincte du créateur MemorIA (QUI l'a saisie). Le
+          lien n'est rendu que si une route /m réelle existe (jamais de desktop). */}
+      <div className="rounded-xl border bg-card px-3 py-2.5">
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Origine</p>
+        {a.source ? (
+          <>
+            <p className="text-[13px] font-medium">{a.source.typeLabel}</p>
+            {a.source.title && <p className="text-[12px] text-muted-foreground">{a.source.title}</p>}
+            {a.source.detail && <p className="text-[12px] text-muted-foreground">{a.source.detail}</p>}
+            {a.source.available && a.source.mobileHref ? (
+              <Link
+                href={a.source.mobileHref}
+                className="mt-1.5 inline-flex text-[12px] text-primary underline underline-offset-2"
+              >
+                {a.source.linkLabel}
+              </Link>
+            ) : !a.source.available ? (
+              <p className="mt-1 text-[11px] italic text-muted-foreground">Origine indisponible</p>
+            ) : null}
+          </>
+        ) : (
+          <p className="text-[13px] font-medium">
+            {a.createdManually ? 'Créée manuellement' : 'Origine non renseignée'}
+          </p>
+        )}
+        {a.createdByLabel && (
+          <p className="mt-2 border-t border-border/60 pt-2 text-[12px] text-muted-foreground">
+            Créée dans MemorIA par : <span className="text-foreground">{a.createdByLabel}</span>
+          </p>
+        )}
+      </div>
 
       {/* Contexte secondaire */}
       {a.context && (

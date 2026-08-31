@@ -56,6 +56,9 @@ function makeAction(overrides: Partial<SiteActionRow> = {}): SiteActionRow {
     due_date: null,
     due_date_status: null,
     report_id: null,
+    reserve_id: null,
+    source_capture_id: null,
+    created_from: null,
     converted_to_type: null,
     converted_to_id: null,
     site_id: 'site-1',
@@ -185,5 +188,37 @@ describe('FieldActionsList — retour de navigation (jeton d’origine contrôl�
     const card = cardOf('Transmettre le rapport G3')
     const link = within(card).getByRole('link', { name: /Voir la fiche/ })
     expect(link).toHaveAttribute('href', '/m/site/site-1/action/a1')
+  })
+})
+
+describe('FieldActionsList — ligne de provenance (compacte, structurelle)', () => {
+  it('affiche la ligne quand une provenance existe, cliquable si href /m', () => {
+    render(
+      <FieldActionsList
+        actions={[makeAction()]}
+        provenance={{ a1: { label: 'Issue de la visite du 30 août 2026', href: '/m/visite/r2' } }}
+      />,
+    )
+    const card = cardOf('Transmettre le rapport G3')
+    const link = within(card).getByRole('link', { name: /Issue de la visite du 30 août 2026/ })
+    expect(link).toHaveAttribute('href', '/m/visite/r2')
+  })
+
+  it('provenance sans href (PV/sujet) : libellé affiché SANS lien', () => {
+    render(
+      <FieldActionsList
+        actions={[makeAction()]}
+        provenance={{ a1: { label: 'Issue du PV du 25 août 2026', href: null } }}
+      />,
+    )
+    const card = cardOf('Transmettre le rapport G3')
+    expect(within(card).getByText(/Issue du PV du 25 août 2026/)).toBeInTheDocument()
+    expect(within(card).queryByRole('link', { name: /Issue du PV/ })).not.toBeInTheDocument()
+  })
+
+  it('aucune provenance démontrable → aucune ligne « Issue de… » sur la carte', () => {
+    render(<FieldActionsList actions={[makeAction()]} provenance={{}} />)
+    const card = cardOf('Transmettre le rapport G3')
+    expect(within(card).queryByText(/^↳|Issue d|Créée manuellement/)).not.toBeInTheDocument()
   })
 })
