@@ -17,6 +17,7 @@ import {
   listKnowledgeEntries, listWatchpoints, knowledgeKindLabel,
   type KnowledgeEntryKind,
 } from '@/lib/db/site-memory-entries'
+import { isDurableTheme } from '@/lib/knowledge/memory-durability'
 import { listDecisionsBySite, type SiteDecision } from '@/lib/db/site-decisions'
 import { listSiteIntervenants, type SiteIntervenant } from '@/lib/db/site-intervenants'
 import type { DbKnowledgeProposal } from '@/lib/db/knowledge-proposals'
@@ -72,6 +73,17 @@ export interface ConfirmedItem {
    *  « Marquer comme obsolète » : seule cette table a un cycle de vie
    *  (archivage/supersession), les autres groupes n'en ont pas encore. */
   knowledgeEntryId: string | null
+  /** Point 17A — `false` = fait d'activité/événementiel (progress/forecast/…),
+   *  montré en second niveau ; `true` = mémoire durable, lecture principale.
+   *  Décidé par `isDurableTheme(thematicCategory)`. Intervenants/décisions/
+   *  vigilances : toujours `true` (familles durables par nature). */
+  durable: boolean
+  /** Catégorie thématique stockée (knowledge_entries) ou `null`. */
+  thematicCategory: string | null
+  /** Nombre de sources distinctes qui ont établi la connaissance
+   *  (`source_report_id` ∪ `source_capture_ids`) — provenance discrète « confirmé
+   *  dans N source(s) ». `0` = non démontrable, on n'affiche rien (jamais inventé). */
+  sourceCount: number
 }
 
 export interface MemoryReview {
@@ -111,13 +123,21 @@ export async function getMemoryReview(siteId: string, options?: { includeWork?: 
 
   // Ce que le chantier sait, lu dans les objets eux-mêmes. L'ordre suit ce qu'un
   // conducteur cherche : le durable d'abord, le périssable ensuite.
+  // Point 17A — `durable`/`sourceCount` calculés pour les connaissances
+  // (thematic_category) ; les autres familles sont durables par nature. Un savoir
+  // établi par un report et/ou des captures compte ses sources distinctes.
+  const knowledgeConfirmed = (e: KnowledgeEntry): ConfirmedItem => ({
+    id: e.id, group: 'Ce que le chantier sait', title: e.title, nature: natureOf(e.kind),
+    href: null, knowledgeEntryId: e.id,
+    durable: isDurableTheme(e.thematicCategory),
+    thematicCategory: e.thematicCategory,
+    sourceCount: new Set([...(e.sourceReportId ? [e.sourceReportId] : []), ...e.sourceCaptureIds]).size,
+  })
   const confirmed: ConfirmedItem[] = [
-    ...entries
-      .filter((e) => e.kind === 'durable_knowledge')
-      .map((e) => ({ id: e.id, group: 'Ce que le chantier sait', title: e.title, nature: natureOf(e.kind), href: null, knowledgeEntryId: e.id })),
-    ...entries
-      .filter((e) => e.kind !== 'durable_knowledge')
-      .map((e) => ({ id: e.id, group: 'Ce que le chantier sait', title: e.title, nature: natureOf(e.kind), href: null, knowledgeEntryId: e.id })),
+    // Ordre inchangé (durable_knowledge d'abord) ; la sélection d'affichage
+    // durable/activité est portée par `durable`, pas par cet ordre.
+    ...entries.filter((e) => e.kind === 'durable_knowledge').map(knowledgeConfirmed),
+    ...entries.filter((e) => e.kind !== 'durable_knowledge').map(knowledgeConfirmed),
     ...intervenants.map((i) => ({
       // D1 (P0-3D) : personne ou entreprise si connues, sinon le rôle porte
       // seul l'affichage — jamais un « — ELECTRICIEN » amputé.
@@ -126,13 +146,18 @@ export async function getMemoryReview(siteId: string, options?: { includeWork?: 
       nature: null,
       href: `/sites/${siteId}/intervenant/${i.id}`,
       knowledgeEntryId: null,
+      durable: true, thematicCategory: null, sourceCount: 0,
     })),
     ...decisions.map((d) => ({
       id: d.id, group: 'Décisions', title: d.titre, nature: null,
       href: `/sites/${siteId}/decision/${d.id}`,
       knowledgeEntryId: null,
+      durable: true, thematicCategory: null, sourceCount: 0,
     })),
-    ...watchpoints.map((w) => ({ id: w.id, group: 'Points de vigilance', title: w.title, nature: null, href: null, knowledgeEntryId: null })),
+    ...watchpoints.map((w) => ({
+      id: w.id, group: 'Points de vigilance', title: w.title, nature: null, href: null,
+      knowledgeEntryId: null, durable: true, thematicCategory: null, sourceCount: 0,
+    })),
   ]
 
   return {

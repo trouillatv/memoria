@@ -15,9 +15,75 @@ import { MemoryInbox } from '@/app/(field)/m/site/[siteId]/MemoryReviewPanel'
 import { WhyButton } from '@/components/provenance/WhyButton'
 import { PrepareSitePassationButton } from '../memory/PrepareSitePassationButton'
 import { ArchiveKnowledgeEntryButton } from './ArchiveKnowledgeEntryButton'
-import type { MemoryReview } from '@/lib/knowledge/memory-review'
+import type { MemoryReview, ConfirmedItem } from '@/lib/knowledge/memory-review'
 import type { MemorySignal } from '@/lib/db/site-memory-signals'
 import type { DbTeam } from '@/types/db'
+
+// Point 17A — lecture principale = « quelques connaissances durables lisibles »,
+// pas 381 cartes. On plafonne l'affichage d'emblée ; le reste vit derrière un
+// <details> natif (aucun JS, composant serveur). Le geste « Marquer comme
+// obsolète » reste disponible sur CHAQUE item, y compris repliés — la compaction
+// ne doit jamais enterrer le cycle de vie.
+const CAP = 6
+
+// Libellés des thèmes d'ACTIVITÉ (non durables) — consignés mais hors mémoire
+// durable. Déterministe, jamais un jugement dynamique.
+const ACTIVITY_THEME_LABEL: Record<string, string> = {
+  progress: 'Avancement constaté',
+  forecast: 'Prévisions',
+  weather: 'Météo / intempéries',
+  test_control: 'Essais et contrôles',
+}
+
+function ConfirmedRow({ item, siteId }: { item: ConfirmedItem; siteId: string }) {
+  return (
+    <li className="flex items-start gap-2 text-[13px] text-foreground/90">
+      <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+      <span className="min-w-0">
+        {item.href ? (
+          <Link href={item.href} scroll={false} className="font-medium hover:underline">{item.title}</Link>
+        ) : (
+          item.title
+        )}
+        {item.nature && <span className="ml-1.5 text-[11px] text-muted-foreground">· {item.nature}</span>}
+        {/* Provenance discrète, jamais inventée : seulement si des sources existent. */}
+        {item.sourceCount > 0 && (
+          <span className="ml-1.5 text-[11px] text-muted-foreground/70">· confirmé dans {item.sourceCount} source{item.sourceCount > 1 ? 's' : ''}</span>
+        )}
+        {item.group === 'Décisions' && (
+          <span className="mt-0.5 block"><WhyButton objectType="decision" objectId={item.id} label="Voir l’origine" /></span>
+        )}
+        {item.knowledgeEntryId && (
+          <span className="mt-0.5 block"><ArchiveKnowledgeEntryButton siteId={siteId} entryId={item.knowledgeEntryId} /></span>
+        )}
+      </span>
+    </li>
+  )
+}
+
+/** Liste plafonnée : les CAP premiers d'emblée, le reste derrière un <details>.
+ *  Rien n'est perdu, aucun geste enterré, jamais 381 cartes visibles d'emblée. */
+function CappedList({ items, siteId }: { items: ConfirmedItem[]; siteId: string }) {
+  const head = items.slice(0, CAP)
+  const rest = items.slice(CAP)
+  return (
+    <ul className="mt-1.5 space-y-1">
+      {head.map((c) => <ConfirmedRow key={c.id} item={c} siteId={siteId} />)}
+      {rest.length > 0 && (
+        <li className="list-none">
+          <details>
+            <summary className="cursor-pointer list-none text-[12px] font-medium text-sky-700 hover:underline">
+              + {rest.length} autre{rest.length > 1 ? 's' : ''}
+            </summary>
+            <ul className="mt-1 space-y-1">
+              {rest.map((c) => <ConfirmedRow key={c.id} item={c} siteId={siteId} />)}
+            </ul>
+          </details>
+        </li>
+      )}
+    </ul>
+  )
+}
 
 export function MemoireConfirmer({
   siteId,
@@ -37,7 +103,13 @@ export function MemoireConfirmer({
   searchSlot?: ReactNode
 }) {
   const suites = signals.reduce((n, s) => n + s.items.length, 0)
-  const groups = [...new Set(review.confirmed.map((c) => c.group))]
+  // Point 17A — deux niveaux : mémoire DURABLE en lecture principale, faits
+  // d'ACTIVITÉ (progress/forecast/weather/test) accessibles en second niveau.
+  // Filtrage déterministe par `durable` (thematic_category), rien n'est supprimé.
+  const durable = review.confirmed.filter((c) => c.durable)
+  const activity = review.confirmed.filter((c) => !c.durable)
+  const durableGroups = [...new Set(durable.map((c) => c.group))]
+  const activityThemes = [...new Set(activity.map((c) => c.thematicCategory ?? 'autre'))]
   // La passation est toujours là ; les deux autres dépendent des données. Un
   // titre au-dessus d'un seul bouton fait croire à une section incomplète.
   const usefulCount = 1 + (subjectsCount > 0 ? 1 : 0) + (suites > 0 ? 1 : 0)
@@ -57,44 +129,47 @@ export function MemoireConfirmer({
       {/* ── La recherche, en SECOND plan ── */}
       {searchSlot}
 
-      {/* ── LES CONNAISSANCES VALIDÉES — rupture visuelle nette avec les propositions ── */}
+      {/* ── LES CONNAISSANCES VALIDÉES — mémoire DURABLE d'abord (point 17A) ── */}
       <section className="rounded-xl border bg-muted/30 p-4">
         <h2 className="text-[15px] font-semibold">Connaissances validées</h2>
-        <p className="mb-3 text-[12.5px] text-muted-foreground">Au-dessus, l’IA propose. Ici, l’humain a validé.</p>
+        <p className="mb-3 text-[12.5px] text-muted-foreground">Ce que MemorIA sait durablement sur ce chantier.</p>
         {review.confirmed.length === 0 ? (
           <p className="text-[13px] text-muted-foreground">Rien de confirmé pour l’instant.</p>
         ) : (
           <div className="space-y-3">
-            {groups.map((g) => (
+            {durableGroups.map((g) => (
               <div key={g}>
                 <h3 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">{g}</h3>
-                <ul className="mt-1.5 space-y-1">
-                  {review.confirmed.filter((c) => c.group === g).map((c) => (
-                    <li key={c.id} className="flex items-start gap-2 text-[13px] text-foreground/90">
-                      <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                      <span className="min-w-0">
-                        {/* Un savoir validé mène à son objet : la fiche s'ouvre par-dessus
-                            (?person= / ?decision=). Sans fiche propre, il reste texte. */}
-                        {c.href ? (
-                          <Link href={c.href} scroll={false} className="font-medium hover:underline">{c.title}</Link>
-                        ) : (
-                          c.title
-                        )}
-                        {c.nature && <span className="ml-1.5 text-[11px] text-muted-foreground">· {c.nature}</span>}
-                        {c.group === 'Décisions' && (
-                          <span className="mt-0.5 block"><WhyButton objectType="decision" objectId={c.id} label="Voir l’origine" /></span>
-                        )}
-                        {c.knowledgeEntryId && (
-                          <span className="mt-0.5 block">
-                            <ArchiveKnowledgeEntryButton siteId={siteId} entryId={c.knowledgeEntryId} />
-                          </span>
-                        )}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <CappedList items={durable.filter((c) => c.group === g)} siteId={siteId} />
               </div>
             ))}
+            {durable.length === 0 && (
+              <p className="text-[13px] text-muted-foreground">Aucune connaissance durable pour l’instant — voir l’activité consignée ci-dessous.</p>
+            )}
+
+            {/* ── SECOND NIVEAU — l'activité consignée du chantier (avancement,
+                 prévisions, météo, essais). Consignée, jamais supprimée, mais hors
+                 de la lecture durable. Repliée par défaut ; gestes préservés. ── */}
+            {activity.length > 0 && (
+              <details className="mt-1 border-t border-border/60 pt-3">
+                <summary className="cursor-pointer list-none text-[12.5px] font-medium text-sky-700 hover:underline">
+                  Voir toute l’activité consignée ({activity.length})
+                </summary>
+                <p className="mt-1 text-[11.5px] text-muted-foreground">
+                  Avancement, prévisions, météo, essais : consignés sur ce chantier, mais hors de la mémoire durable.
+                </p>
+                <div className="mt-2 space-y-3">
+                  {activityThemes.map((t) => (
+                    <div key={t}>
+                      <h3 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {ACTIVITY_THEME_LABEL[t] ?? 'Autres'}
+                      </h3>
+                      <CappedList items={activity.filter((c) => (c.thematicCategory ?? 'autre') === t)} siteId={siteId} />
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
         )}
       </section>

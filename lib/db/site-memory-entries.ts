@@ -83,6 +83,12 @@ export interface KnowledgeEntry {
   title: string
   body: string | null
   sourceReportId: string | null
+  /** Captures (photos/mémos) qui ont établi la connaissance. Sert au compte de
+   *  provenance « confirmé dans N source(s) » — jamais inventé (point 17A). */
+  sourceCaptureIds: string[]
+  /** Catégorie thématique stockée (progress/forecast/administrative/…) : seule
+   *  base de la sélection d'affichage « mémoire durable » (point 17A). */
+  thematicCategory: string | null
   validFrom: string
   confirmedAt: string
 }
@@ -100,7 +106,7 @@ export interface KnowledgeEntry {
 export async function listKnowledgeEntries(siteId: string): Promise<KnowledgeEntry[]> {
   const { data } = await createAdminClient()
     .from('site_knowledge_entries')
-    .select('id, kind, title, body, source_report_id, valid_from, confirmed_at')
+    .select('id, kind, title, body, source_report_id, source_capture_ids, thematic_category, valid_from, confirmed_at')
     .eq('site_id', siteId)
     .eq('status', 'active')
     .is('deleted_at', null)
@@ -111,6 +117,8 @@ export async function listKnowledgeEntries(siteId: string): Promise<KnowledgeEnt
     title: r.title as string,
     body: (r.body as string) ?? null,
     sourceReportId: (r.source_report_id as string) ?? null,
+    sourceCaptureIds: (r.source_capture_ids as string[]) ?? [],
+    thematicCategory: (r.thematic_category as string) ?? null,
     validFrom: r.valid_from as string,
     confirmedAt: r.confirmed_at as string,
   }))
@@ -126,7 +134,7 @@ export async function listKnowledgeEntries(siteId: string): Promise<KnowledgeEnt
 export async function listRecentCurrentInformationEntries(siteId: string, limit = 5): Promise<KnowledgeEntry[]> {
   const { data } = await createAdminClient()
     .from('site_knowledge_entries')
-    .select('id, kind, title, body, source_report_id, valid_from, confirmed_at')
+    .select('id, kind, title, body, source_report_id, source_capture_ids, thematic_category, valid_from, confirmed_at')
     .eq('site_id', siteId)
     .eq('kind', 'current_information')
     .eq('status', 'active')
@@ -139,6 +147,8 @@ export async function listRecentCurrentInformationEntries(siteId: string, limit 
     title: r.title as string,
     body: (r.body as string) ?? null,
     sourceReportId: (r.source_report_id as string) ?? null,
+    sourceCaptureIds: (r.source_capture_ids as string[]) ?? [],
+    thematicCategory: (r.thematic_category as string) ?? null,
     validFrom: r.valid_from as string,
     confirmedAt: r.confirmed_at as string,
   }))
